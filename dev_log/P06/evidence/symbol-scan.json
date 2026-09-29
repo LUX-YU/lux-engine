@@ -1,0 +1,34 @@
+{
+  "old_runtime_declarations": [],
+  "old_registry_clock_calls": [],
+  "duplicate_legacy_retirement": [],
+  "old_run_algorithm_members": [],
+  "new_run_driver_calls": [],
+  "retained_private_bridge_consumers": [
+    {
+      "path": "editor/tools/scene/execution/include/lux/engine/editor/scene/RunController.hpp",
+      "line": 9,
+      "text": "class SceneRunCaptureAccess;"
+    },
+    {
+      "path": "editor/tools/scene/execution/include/lux/engine/editor/scene/RunController.hpp",
+      "line": 49,
+      "text": "friend class lux::editor::transition::SceneRunCaptureAccess;"
+    },
+    {
+      "path": "editor/tools/scene/src/ScenePlayback.cpp",
+      "line": 4,
+      "text": "#include <SceneRunCaptureAccess.hpp>"
+    },
+    {
+      "path": "editor/tools/scene/src/ScenePlayback.cpp",
+      "line": 102,
+      "text": "auto prepared = transition::SceneRunCaptureAccess::prepare("
+    },
+    {
+      "path": "editor/transition/SceneRunCaptureAccess.hpp",
+      "line": 8,
+      "text": "class SceneRunCaptureAccess final"
+    }
+  ]
+}

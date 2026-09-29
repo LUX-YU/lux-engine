@@ -1,0 +1,23 @@
+[
+  {
+    "case": "producer-unavailable",
+    "accepted": true,
+    "expected": true,
+    "matched": true,
+    "failure": ""
+  },
+  {
+    "case": "missing-completion",
+    "accepted": false,
+    "expected": false,
+    "matched": true,
+    "failure": "FileNotFoundError"
+  },
+  {
+    "case": "corrupt-completion",
+    "accepted": false,
+    "expected": false,
+    "matched": true,
+    "failure": "AssertionError"
+  }
+]

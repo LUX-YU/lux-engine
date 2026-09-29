@@ -56,4 +56,6 @@ EditorContext, UI or transition. Existing RenderSystem dependencies still includ
 engine SceneRuntime itself remains graphics/editor independent.
 
 P07 author projection, P10 complete new UI/GPU product validation and P12 application lifetime integration
-remain subsequent work. C01/C03/C04 and the recorded cold-build ordering risk are unchanged.
+remain subsequent work. C01/C03/C04 remain unchanged. P06 qualification reproduced the archived
+Physics2D generated-header ordering failure and corrected only the description target's generator
+prerequisites. Both failures remain archived; this is not a whole-repository cold-build qualification.

@@ -1,0 +1,1079 @@
+[0/2] Re-checking globbed directories...
+[1/942] Building CXX object modules\platform\window\CMakeFiles\window.dir\src\GlfwRuntime.cpp.obj
+[2/942] Building CXX object modules\platform\process\CMakeFiles\platform_process_arguments.dir\test\arguments.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[3/942] Building CXX object modules\platform\process\CMakeFiles\platform_process.dir\src\Process.cpp.obj
+[4/942] Linking CXX static library lib\platform_process.lib
+[5/942] Building CXX object modules\platform\window\CMakeFiles\window.dir\src\LuxWindow.glfw.cpp.obj
+[6/942] Building CXX object modules\platform\window\CMakeFiles\window.dir\src\FileDialog.cpp.obj
+[7/942] Linking CXX executable bin\platform_process_arguments.exe
+[8/942] Building CXX object modules\function\script\core\CMakeFiles\script_core.dir\src\ScriptCore.cpp.obj
+[9/942] Building CXX object modules\platform\filewatch\CMakeFiles\filewatch.dir\src\FileWatcher.cpp.obj
+[10/942] Building CXX object modules\platform\dynamic_library\CMakeFiles\dynamic_library.dir\src\DynamicLibrary.win32.cpp.obj
+[11/942] Building CXX object modules\platform\window\CMakeFiles\window.dir\src\TrayIconWin32.cpp.obj
+[12/942] Linking CXX shared library bin\lux_engine_function_script_core.dll
+[13/942] Linking CXX shared library bin\dynamic_library.dll
+[14/942] Linking CXX shared library bin\filewatch.dll
+[15/942] Linking CXX shared library bin\window.dll
+[16/942] Building CXX object modules\core\object\CMakeFiles\object.dir\src\Connection.cpp.obj
+[17/942] Building CXX object modules\core\meta\CMakeFiles\meta.dir\src\Meta.cpp.obj
+[18/942] Building CXX object modules\core\object\CMakeFiles\object.dir\src\Object.cpp.obj
+[19/942] Building CXX object modules\core\object\CMakeFiles\object.dir\src\ObjectDispatcher.cpp.obj
+[20/942] Building CXX object modules\core\object\CMakeFiles\object_tree_test.dir\test\tree.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[21/942] Building CXX object modules\core\object\CMakeFiles\object_queue_test.dir\test\queue.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[22/942] Building CXX object modules\core\serialization\CMakeFiles\serialization.dir\src\Serialization.cpp.obj
+[23/942] Linking CXX shared library bin\lux_engine_core_meta.dll
+[24/942] Linking CXX shared library bin\lux_engine_core_object.dll
+[25/942] Building CXX object modules\core\events\CMakeFiles\events.dir\src\DomainEvents.cpp.obj
+[26/942] Linking CXX shared library bin\lux_engine_core_serialization.dll
+[27/942] Building CXX object modules\core\log\CMakeFiles\log.dir\src\Log.cpp.obj
+[28/942] Linking CXX executable bin\object_tree_test.exe
+[29/942] Building CXX object modules\core\task\CMakeFiles\task.dir\src\TaskCallable.cpp.obj
+[30/942] Linking CXX executable bin\object_queue_test.exe
+[31/942] Linking CXX shared library bin\lux_engine_core_events.dll
+[32/942] Building CXX object modules\core\task\CMakeFiles\task.dir\src\TaskExecutorFailureInjection.cpp.obj
+[33/942] Linking CXX shared library bin\lux_engine_core_log.dll
+[34/942] Building CXX object modules\core\task\CMakeFiles\task.dir\src\TaskExecutor.cpp.obj
+[35/942] Building CXX object modules\core\task\CMakeFiles\task.dir\src\TaskGraphBuilder.cpp.obj
+[36/942] Building CXX object modules\resource\description\CMakeFiles\description.dir\src\Shader.cpp.obj
+[37/942] Building CXX object modules\resource\description\CMakeFiles\description.dir\src\Texture.cpp.obj
+[38/942] Building CXX object modules\core\task\CMakeFiles\task.dir\src\TaskExecutorWorker.cpp.obj
+[39/942] Building CXX object modules\resource\description\CMakeFiles\description.dir\src\ShaderInfo.cpp.obj
+[40/942] Linking CXX shared library bin\lux_engine_core_task.dll
+[41/942] Building CXX object modules\resource\asset\CMakeFiles\asset.dir\src\Asset.cpp.obj
+[42/942] Building CXX object modules\resource\asset\CMakeFiles\asset.dir\src\CookedAssetImage.cpp.obj
+[43/942] Linking CXX shared library bin\description.dll
+[44/942] Building CXX object modules\resource\asset\CMakeFiles\asset.dir\src\detail\CookedAssetWriter.cpp.obj
+[45/942] Building CXX object modules\resource\asset\CMakeFiles\asset.dir\src\material\MaterialAssets.cpp.obj
+[46/942] Building CXX object modules\resource\asset\CMakeFiles\asset.dir\src\shader\ShaderAsset.cpp.obj
+[47/942] Building CXX object modules\resource\asset\CMakeFiles\asset.dir\src\metadata\MetadataAssets.cpp.obj
+[48/942] Building CXX object modules\resource\asset\CMakeFiles\asset.dir\src\texture\TextureAsset.cpp.obj
+[49/942] Building CXX object modules\resource\asset\CMakeFiles\asset.dir\src\model\ModelAsset.cpp.obj
+[50/942] Building CXX object modules\resource\asset\CMakeFiles\asset.dir\src\storage\VirtualPath.cpp.obj
+[51/942] Building CXX object modules\resource\asset\CMakeFiles\asset.dir\src\storage\AssetVfs.cpp.obj
+[52/942] Building CXX object modules\resource\asset\CMakeFiles\asset.dir\src\texture\TextureAtlasAssets.cpp.obj
+[53/942] Building CXX object modules\resource\asset\CMakeFiles\asset.dir\src\storage\pak\PakArchive.cpp.obj
+[54/942] Building CXX object modules\resource\asset\CMakeFiles\asset.dir\src\storage\pak\PakAssetProvider.cpp.obj
+[55/942] Building CXX object modules\resource\asset\CMakeFiles\asset.dir\src\mesh\MeshDescriptionCodec.cpp.obj
+[56/942] Building CXX object modules\resource\asset\CMakeFiles\asset.dir\src\animation\SkeletonDescriptionCodec.cpp.obj
+[57/942] Building CXX object modules\function\material\CMakeFiles\material_graph.dir\src\Node.cpp.obj
+[58/942] Building CXX object modules\resource\asset\CMakeFiles\asset.dir\src\storage\pak\PakCodec.cpp.obj
+[59/942] Building CXX object modules\resource\asset\CMakeFiles\asset.dir\src\animation\AnimationClipDescriptionCodec.cpp.obj
+[60/942] Building CXX object modules\function\material\CMakeFiles\material_graph.dir\src\MaterialGraph.cpp.obj
+[61/942] Building CXX object engine\toolchain\shader\CMakeFiles\toolchain_shader_reflection.dir\src\SpirvReflection.cpp.obj
+[62/942] Linking CXX shared library bin\lux_engine_asset.dll
+[63/942] Building CXX object engine\toolchain\shader\CMakeFiles\lux_shader_emitter.dir\src\ShaderEmitterTool.cpp.obj
+[64/942] Building CXX object engine\toolchain\shader\CMakeFiles\toolchain_shader_emitter.dir\src\lglsl\LglslEmitter.cpp.obj
+[65/942] Linking CXX static library lib\lux_engine_toolchain_shader_emitter.lib
+[66/942] Building CXX object engine\toolchain\asset\shader\CMakeFiles\toolchain_shader_asset_cooker.dir\src\ShaderCooker.cpp.obj
+[67/942] Linking CXX static library lib\lux_engine_toolchain_shader_asset_cooker.lib
+[68/942] Building CXX object modules\function\material\CMakeFiles\material_graph.dir\src\MaterialSource.cpp.obj
+[69/942] Building CXX object engine\toolchain\asset\texture\CMakeFiles\toolchain_texture_cooker.dir\src\TextureCooker.cpp.obj
+[70/942] Linking CXX executable bin\lux_shader_emitter.exe
+[71/942] Emit Material compiler cluster_common.glsl
+[72/942] Emit Material compiler lighting.glsl
+[73/942] Emit Material compiler shadow_common.glsl
+[74/942] Building CXX object engine\toolchain\asset\texture\CMakeFiles\toolchain_texture_cooker.dir\third_party\bc7enc_rdo\bc7enc.cpp.obj
+[75/942] Emit Material compiler view_prefix.glsl
+[76/942] Building CXX object engine\toolchain\asset\texture\CMakeFiles\toolchain_texture_cooker.dir\third_party\bc7enc_rdo\rgbcx.cpp.obj
+[77/942] Linking CXX static library lib\lux_engine_toolchain_texture_cooker.lib
+[78/942] Building CXX object modules\function\graph\CMakeFiles\graph.dir\src\GraphLayout.cpp.obj
+[79/942] Building CXX object modules\function\graph\CMakeFiles\graph.dir\src\GraphTopology.cpp.obj
+[80/942] Building CXX object modules\function\flowforge\CMakeFiles\flowforge.dir\src\NodeBase.cpp.obj
+[81/942] Building CXX object modules\function\flowforge\CMakeFiles\flowforge.dir\src\ControlNode.cpp.obj
+[82/942] Building CXX object modules\function\flowforge\CMakeFiles\flowforge.dir\src\NodeRegistry.cpp.obj
+[83/942] Building CXX object modules\function\flowforge\CMakeFiles\flowforge.dir\src\ArithmeticNode.cpp.obj
+[84/942] Building CXX object modules\function\flowforge\CMakeFiles\flowforge.dir\src\ObjectNode.cpp.obj
+[85/942] Building CXX object modules\function\flowforge\CMakeFiles\flowforge.dir\src\FunctionalNode.cpp.obj
+[86/942] Linking CXX shared library bin\lux_engine_function_graph.dll
+[87/942] Building CXX object modules\function\flowforge\CMakeFiles\flowforge.dir\src\FlowGraph.cpp.obj
+[88/942] Linking CXX shared library bin\lux_engine_function_material_graph.dll
+[89/942] Building CXX object modules\function\flowforge\CMakeFiles\flowforge.dir\src\StateLayout.cpp.obj
+[90/942] Building CXX object modules\function\flowforge\CMakeFiles\flowforge.dir\src\FlowSourceGraph.cpp.obj
+[91/942] Building CXX object modules\function\flowforge\CMakeFiles\flowforge.dir\src\script\ScriptGraph.cpp.obj
+[92/942] Building CXX object modules\function\flowforge\CMakeFiles\flowforge.dir\src\FlowSource.cpp.obj
+[93/942] Building CXX object modules\function\flowforge\CMakeFiles\flowforge.dir\src\script\ScriptAbilityCatalog.cpp.obj
+[94/942] Building CXX object modules\function\flowforge\CMakeFiles\flowforge.dir\src\script\ScriptAbilityNode.cpp.obj
+[95/942] Building CXX object modules\function\flowforge\CMakeFiles\flowforge.dir\src\script\ScriptEventAwaitNode.cpp.obj
+[96/942] Linking CXX static library lib\lux_engine_function_flowforge.lib
+[97/942] Embed Material compiler Shader includes
+[98/942] Building CXX object engine\toolchain\material\CMakeFiles\toolchain_material_compiler.dir\src\ShaderIR.cpp.obj
+[99/942] Building CXX object modules\function\input\CMakeFiles\input.dir\src\Input.cpp.obj
+[100/942] Building CXX object modules\function\input\CMakeFiles\input.dir\src\ActionMapper.cpp.obj
+[101/942] Building CXX object engine\toolchain\material\CMakeFiles\toolchain_material_compiler.dir\src\ShaderCompiler.cpp.obj
+[102/942] Building CXX object engine\toolchain\material\CMakeFiles\toolchain_material_compiler.dir\src\ShaderEmitter.cpp.obj
+[103/942] Building CXX object modules\function\animation\CMakeFiles\animation.dir\src\PoseSampling.cpp.obj
+[104/942] Building CXX object engine\toolchain\material\CMakeFiles\toolchain_material_compiler.dir\src\MaterialLowering.cpp.obj
+[105/942] Building CXX object engine\toolchain\material\CMakeFiles\toolchain_material_compiler.dir\src\MaterialCompiler.cpp.obj
+[106/942] Building CXX object engine\toolchain\material\CMakeFiles\toolchain_material_cooker.dir\src\MaterialToGraph.cpp.obj
+[107/942] Building CXX object engine\toolchain\material\CMakeFiles\toolchain_material_cooker.dir\src\MaterialCooker.cpp.obj
+[108/942] Linking CXX shared library bin\lux_engine_toolchain_material_compiler.dll
+[109/942] Linking CXX static library lib\lux_engine_toolchain_material_cooker.lib
+[110/942] Building CXX object modules\function\input\CMakeFiles\input.dir\src\BindingIdAllocator.cpp.obj
+[111/942] Linking CXX shared library bin\animation.dll
+[112/942] Building CXX object modules\function\input\CMakeFiles\input.dir\src\platform\glfw\InputPlatform.cpp.obj
+[113/942] Building CXX object modules\function\navigation\detour3d\CMakeFiles\navigation_detour3d.dir\src\NavigationDetour3D.cpp.obj
+[114/942] Building CXX object engine\toolchain\asset\packer\CMakeFiles\lux_asset_packer.dir\src\AssetPacker.cpp.obj
+[115/942] Linking CXX shared library bin\lux_engine_function_input.dll
+[116/942] [lux_target_add_codegen] render_comm_ops_Grid3DOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[117/942] Building CXX object modules\function\navigation\detour3d\CMakeFiles\navigation_detour3d.dir\src\Navigation3DBackend.cpp.obj
+[118/942] [lux_target_add_codegen] render_comm_ops_Grid2DOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[119/942] [lux_target_add_codegen] render_comm_ops_LineListOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[120/942] Linking CXX shared library bin\lux_engine_function_navigation_detour3d.dll
+[121/942] [lux_target_add_codegen] render_comm_ops_TriOverlayOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[122/942] [lux_target_add_codegen] render_comm_ops_TrajectoryOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[123/942] [lux_target_add_codegen] render_comm_ops_SkyboxOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[124/942] [lux_target_add_codegen] render_comm_ops_SkinningOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[125/942] Building CXX object engine\toolchain\asset\model\CMakeFiles\toolchain_model_cooker.dir\src\ModelCooker.cpp.obj
+[126/942] Linking CXX static library lib\lux_engine_toolchain_model_cooker.lib
+[127/942] [lux_target_add_codegen] render_comm_ops_TonemapOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[128/942] [lux_target_add_codegen] render_comm_ops_PointCloudOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[129/942] [lux_target_add_codegen] render_comm_ops_ViewCameraOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[130/942] [lux_target_add_codegen] render_comm_ops_ShadowMapOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[131/942] [lux_target_add_codegen] render_comm_ops_MeshStackOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[132/942] [lux_target_add_codegen] render_comm_ops_MaterialOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[133/942] Linking CXX executable bin\lux_asset_packer.exe
+[134/942] [lux_target_add_codegen] render_comm_ops_LightOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[135/942] [lux_target_add_codegen] render_comm_ops_DeferredGBufferOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[136/942] [lux_target_add_codegen] render_comm_ops_DeferredLightingOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[137/942] [lux_target_add_codegen] render_comm_ops_DepthPrepassOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[138/942] [lux_target_add_codegen] render_comm_ops_ForwardMeshOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[139/942] [lux_target_add_codegen] render_comm_ops_HzbOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[140/942] [lux_target_add_codegen] render_comm_ops_SsaoOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[141/942] [lux_target_add_codegen] render_comm_ops_HighlightOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[142/942] [lux_target_add_codegen] render_comm_ops_StreamingFeedbackOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[143/942] [lux_target_add_codegen] render_comm_ops_LinearDepthOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[144/942] [lux_target_add_codegen] render_comm_ops_FogOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[145/942] [lux_target_add_codegen] render_comm_ops_SpatialCullOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[146/942] [lux_target_add_codegen] render_comm_ops_MeshShadowOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[147/942] [lux_target_add_codegen] render_comm_ops_Canvas2DOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[148/942] [lux_target_add_codegen] render_comm_ops_RenderClusterOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[149/942] [lux_target_add_codegen] render_comm_ops_TerrainOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[150/942] [lux_target_add_codegen] render_comm_ops_WaterOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[151/942] Building CXX object modules\function\render\client\CMakeFiles\render_client.dir\src\Capacity.cpp.obj
+[152/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\features\src\client\Canvas2DOperationClient.cpp.obj
+[153/942] Building CXX object modules\function\render\client\CMakeFiles\render_client.dir\src\FeatureParamsClient.cpp.obj
+[154/942] Building CXX object modules\function\render\client\CMakeFiles\render_client.dir\src\RenderControlSession.cpp.obj
+[155/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\features\src\client\MaterialOperationClient.cpp.obj
+[156/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\features\src\client\LightOperationClient.cpp.obj
+[157/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\features\src\client\ViewCameraOperation.cpp.obj
+[158/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\features\src\client\MeshStackOperationClient.cpp.obj
+[159/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\Grid3DOperation.metadata.cpp.obj
+[160/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\Grid3DOperation.client.ops.cpp.obj
+[161/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\Grid2DOperation.metadata.cpp.obj
+[162/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\Grid2DOperation.client.ops.cpp.obj
+[163/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\LineListOperation.metadata.cpp.obj
+[164/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\LineListOperation.client.ops.cpp.obj
+[165/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\TriOverlayOperation.metadata.cpp.obj
+[166/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\TriOverlayOperation.client.ops.cpp.obj
+[167/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\TrajectoryOperation.metadata.cpp.obj
+[168/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\TrajectoryOperation.client.ops.cpp.obj
+[169/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\SkyboxOperation.metadata.cpp.obj
+[170/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\SkyboxOperation.client.ops.cpp.obj
+[171/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\SkinningOperation.client.ops.cpp.obj
+[172/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\SkinningOperation.metadata.cpp.obj
+[173/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\PointCloudOperation.metadata.cpp.obj
+[174/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\TonemapOperation.metadata.cpp.obj
+[175/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\PointCloudOperation.client.ops.cpp.obj
+[176/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\TonemapOperation.client.ops.cpp.obj
+[177/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\ViewCameraOperation.metadata.cpp.obj
+[178/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\ShadowMapOperation.metadata.cpp.obj
+[179/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\ShadowMapOperation.client.ops.cpp.obj
+[180/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\ViewCameraOperation.client.ops.cpp.obj
+[181/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\MeshStackOperation.metadata.cpp.obj
+[182/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\LightOperation.metadata.cpp.obj
+[183/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\MeshStackOperation.client.ops.cpp.obj
+[184/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\LightOperation.client.ops.cpp.obj
+[185/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\MaterialOperation.metadata.cpp.obj
+[186/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\MaterialOperation.client.ops.cpp.obj
+[187/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\DeferredGBufferOperation.metadata.cpp.obj
+[188/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\DeferredGBufferOperation.client.ops.cpp.obj
+[189/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\DeferredLightingOperation.metadata.cpp.obj
+[190/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\DeferredLightingOperation.client.ops.cpp.obj
+[191/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\DepthPrepassOperation.metadata.cpp.obj
+[192/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\DepthPrepassOperation.client.ops.cpp.obj
+[193/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\ForwardMeshOperation.metadata.cpp.obj
+[194/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\ForwardMeshOperation.client.ops.cpp.obj
+[195/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\HighlightOperation.metadata.cpp.obj
+[196/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\HighlightOperation.client.ops.cpp.obj
+[197/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\StreamingFeedbackOperation.metadata.cpp.obj
+[198/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\StreamingFeedbackOperation.client.ops.cpp.obj
+[199/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\HzbOperation.metadata.cpp.obj
+[200/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\HzbOperation.client.ops.cpp.obj
+[201/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\LinearDepthOperation.metadata.cpp.obj
+[202/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\LinearDepthOperation.client.ops.cpp.obj
+[203/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\SsaoOperation.metadata.cpp.obj
+[204/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\SsaoOperation.client.ops.cpp.obj
+[205/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\FogOperation.metadata.cpp.obj
+[206/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\FogOperation.client.ops.cpp.obj
+[207/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\Canvas2DOperation.metadata.cpp.obj
+[208/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\Canvas2DOperation.client.ops.cpp.obj
+[209/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\MeshShadowOperation.client.ops.cpp.obj
+[210/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\MeshShadowOperation.metadata.cpp.obj
+[211/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\SpatialCullOperation.client.ops.cpp.obj
+[212/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\SpatialCullOperation.metadata.cpp.obj
+[213/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\RenderClusterOperation.metadata.cpp.obj
+[214/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\TerrainOperation.metadata.cpp.obj
+[215/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\RenderClusterOperation.client.ops.cpp.obj
+[216/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\TerrainOperation.client.ops.cpp.obj
+[217/942] Building CXX object modules\function\render\client\CMakeFiles\render_client.dir\src\RenderFatal.cpp.obj
+[218/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\WaterOperation.client.ops.cpp.obj
+[219/942] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\WaterOperation.metadata.cpp.obj
+[220/942] Building CXX object modules\function\render\client\CMakeFiles\render_client.dir\src\RenderTypes.cpp.obj
+[221/942] Building CXX object modules\function\render\client\CMakeFiles\render_client.dir\src\RenderErrorRegistry.cpp.obj
+[222/942] Building CXX object modules\function\render\client\CMakeFiles\render_client.dir\src\RenderUploadClient.cpp.obj
+[223/942] Building CXX object modules\function\render\client\CMakeFiles\render_client.dir\src\RenderProgramSession.cpp.obj
+[224/942] Building CXX object modules\function\render\client\CMakeFiles\render_client.dir\src\RenderUploadSession.cpp.obj
+[225/942] Building CXX object modules\function\render\standard_content\CMakeFiles\render_standard_content.dir\src\ClassicMeshBatchCodec.cpp.obj
+[226/942] Building CXX object modules\function\render\graph\CMakeFiles\render_graph.dir\src\DependencyAnalyzer.cpp.obj
+[227/942] Linking CXX shared library bin\lux_engine_function_render_standard_content.dll
+[228/942] Linking CXX shared library bin\render_client.dll
+[229/942] Linking CXX shared library bin\render_graph.dll
+[230/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\comm\FeatureParamsHandlers.cpp.obj
+[231/942] Linking CXX shared library bin\render_feature_client.dll
+[232/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\comm\FeatureRegistration.cpp.obj
+[233/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\comm\RenderServerHandlers.cpp.obj
+[234/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\comm\RenderServerFacade.cpp.obj
+[235/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\gpu\descriptor\DescriptorService.cpp.obj
+[236/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\core\FrustumCuller.cpp.obj
+[237/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\gpu\descriptor\SceneDescriptorArena.cpp.obj
+[238/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\gpu\descriptor\SceneDomainDescriptorSets.cpp.obj
+[239/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\gpu\lifecycle\DeferredDestroyQueue.cpp.obj
+[240/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\comm\RenderServer.cpp.obj
+[241/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\gpu\lifecycle\VRAMBudgetGuard.cpp.obj
+[242/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\gpu\memory\StagingBuffer.cpp.obj
+[243/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\gpu\memory\ArenaAllocator.cpp.obj
+[244/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\comm\RenderServerBootstrap.cpp.obj
+[245/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\gpu\memory\GPUBufferVma.cpp.obj
+[246/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\gpu\memory\VmaTypes.cpp.obj
+[247/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\gpu\pipeline\SpirvPatcher.cpp.obj
+[248/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\gpu\pipeline\GeneralDescriptorSetLayout.cpp.obj
+[249/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\gpu\pipeline\PipelineLayoutService.cpp.obj
+[250/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\gpu\RenderSurface.cpp.obj
+[251/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\gpu\pipeline\PipelineManager.cpp.obj
+[252/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\gpu\pipeline\StandardPipelineLayoutBuilder.cpp.obj
+[253/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\gpu\RenderContext.cpp.obj
+[254/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\gpu\utils\StagingRingBuffer.cpp.obj
+[255/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\gpu\transfer\TransferScheduler.cpp.obj
+[256/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\gpu\VmaImplementation.cpp.obj
+[257/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\graph\FrameExtensionRegistry.cpp.obj
+[258/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\graph\KernelRegistry.cpp.obj
+[259/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\graph\FrameExternalSync.cpp.obj
+[260/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\gpu\VulkanContext.cpp.obj
+[261/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\graph\RenderGraphCompiler.cpp.obj
+[262/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\graph\RenderGraphCompiler.LayoutAllocator.cpp.obj
+[263/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\graph\RenderGraphCompiler.ExecutionPlan.cpp.obj
+[264/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\graph\RenderGraphCompiler.Barriers.cpp.obj
+[265/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\graph\RGBuilder.cpp.obj
+[266/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\graph\RenderPassPlanner.cpp.obj
+[267/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\graph\RGDebugPrint.cpp.obj
+[268/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\graph\RGGraphResize.cpp.obj
+[269/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\graph\RGVulkanRecorder.Submit.cpp.obj
+[270/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\graph\RGVulkanRecorder.RecordContext.cpp.obj
+[271/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\graph\RGVulkanResourceAllocator.cpp.obj
+[272/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\graph\RGVulkanRecorder.cpp.obj
+[273/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\renderer\FrameDriver.cpp.obj
+[274/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\RenderContextView.cpp.obj
+[275/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\renderer\RenderTargetRegistry.cpp.obj
+[276/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\renderer\FrameOrchestrator.cpp.obj
+[277/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\resources\descriptor\BindlessCombinedSet.cpp.obj
+[278/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\resources\hzb\HzbResources.cpp.obj
+[279/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\resources\lifecycle\GpuTransferPipeline.cpp.obj
+[280/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\renderer\Renderer.cpp.obj
+[281/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\resources\material\TextureSamplingRepresentationCatalog.cpp.obj
+[282/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\resources\lighting\ShadowResources.cpp.obj
+[283/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\resources\lighting\LightResources.cpp.obj
+[284/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\resources\mesh\InstanceSlotRegistry.cpp.obj
+[285/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\resources\material\VariantBucketManager.cpp.obj
+[286/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\resources\material\MaterialResources.cpp.obj
+[287/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\resources\mesh\MdcTable.cpp.obj
+[288/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\resources\mesh\SparseInstanceStream.cpp.obj
+[289/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\resources\mesh\InstanceResources.cpp.obj
+[290/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\resources\point_cloud\GpuOctreeNodeBuffer.cpp.obj
+[291/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\resources\mesh\MeshSectionTable.cpp.obj
+[292/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\resources\point_cloud\PointCloudGlobalBuffer.cpp.obj
+[293/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\resources\TrajectoryGlobalBuffer.cpp.obj
+[294/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\resources\mesh\MeshResources.cpp.obj
+[295/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\resources\vertex\IVertexSource.cpp.obj
+[296/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\resources\TextureResources.cpp.obj
+[297/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\resources\ShaderResources.cpp.obj
+[298/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\resources\vertex\TransientVertexSource.cpp.obj
+[299/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\resources\vertex\SkinningResources.cpp.obj
+[300/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\resources\vertex\VertexPoolRegistry.cpp.obj
+[301/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\resources\vertex\VertexProduction.cpp.obj
+[302/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\resources\vertex\StaticVertexSource.cpp.obj
+[303/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\scene\RenderSceneView.cpp.obj
+[304/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\scene\RenderFeatureSet.cpp.obj
+[305/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\scene\RenderFeature.cpp.obj
+[306/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\scene\RenderScene.cpp.obj
+[307/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\scene\View.cpp.obj
+[308/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\scene\SceneViewSet.cpp.obj
+[309/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\targets\RenderTargetBinding.cpp.obj
+[310/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\targets\PresentContext.cpp.obj
+[311/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\scene\SceneGraphCache.cpp.obj
+[312/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\targets\ClearRenderTarget.cpp.obj
+[313/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\targets\OffscreenImagePool.cpp.obj
+[314/942] Emitting canonical GLSL from canvas2d/group_composite.frag.lglsl
+[315/942] Emitting canonical GLSL from canvas2d/image.frag.lglsl
+[316/942] Generating plugin/render.declaration.json, plugin/RenderPluginExports.cpp
+[317/942] Emitting canonical GLSL from canvas2d/image.vert.lglsl
+[318/942] Emitting canonical GLSL from canvas2d/pixel_field.frag.lglsl
+[319/942] Emitting canonical GLSL from canvas2d/pixel_field.vert.lglsl
+[320/942] Emitting canonical GLSL from canvas2d/tile.frag.lglsl
+[321/942] Emitting canonical GLSL from canvas2d/tile.vert.lglsl
+[322/942] Emitting canonical GLSL from cluster_common.lglslh
+[323/942] Emitting canonical GLSL from deferred/gbuffer_pbr.frag.lglsl
+[324/942] Emitting canonical GLSL from deferred/gbuffer_stylized.frag.lglsl
+[325/942] Emitting canonical GLSL from deferred/gbuffer_unlit.frag.lglsl
+[326/942] Emitting canonical GLSL from deferred/gbuffer_vp.vert.lglsl
+[327/942] Emitting canonical GLSL from depth_prepass/depth_only.frag.lglsl
+[328/942] Emitting canonical GLSL from forward/forward_mesh_vp.vert.lglsl
+[329/942] Emitting canonical GLSL from forward/fr_pbr.frag.lglsl
+[330/942] Emitting canonical GLSL from forward/fr_stylized.frag.lglsl
+[331/942] Emitting canonical GLSL from forward/fr_unlit.frag.lglsl
+[332/942] Emitting canonical GLSL from gizmo/line_list.frag.lglsl
+[333/942] Emitting canonical GLSL from gizmo/line_list.vert.lglsl
+[334/942] Emitting canonical GLSL from gizmo/tri_overlay.vert.lglsl
+[335/942] Emitting canonical GLSL from grid/grid.frag.lglsl
+[336/942] Emitting canonical GLSL from grid/grid.vert.lglsl
+[337/942] Emitting canonical GLSL from grid/grid2d.frag.lglsl
+[338/942] Emitting canonical GLSL from highlight/highlight_blur.frag.lglsl
+[339/942] Emitting canonical GLSL from highlight/highlight_composite.frag.lglsl
+[340/942] Emitting canonical GLSL from highlight/highlight_mask.frag.lglsl
+[341/942] Emitting canonical GLSL from highlight/highlight_mask.vert.lglsl
+[342/942] Emitting canonical GLSL from lighting_common.lglslh
+[343/942] Emitting canonical GLSL from point_cloud/pointcloud_lod.vert.lglsl
+[344/942] Emitting canonical GLSL from point_cloud/pointcloud_simple.frag.lglsl
+[345/942] Emitting canonical GLSL from point_cloud/pointcloud_simple.vert.lglsl
+[346/942] Emitting canonical GLSL from point_cloud/pointcloud_splat.frag.lglsl
+[347/942] Emitting canonical GLSL from postprocess/fog.frag.lglsl
+[348/942] Emitting canonical GLSL from postprocess/linear_depth.frag.lglsl
+[349/942] Emitting canonical GLSL from postprocess/ssao.frag.lglsl
+[350/942] Emitting canonical GLSL from postprocess/tonemap.frag.lglsl
+[351/942] Emitting canonical GLSL from postprocess/tonemap.vert.lglsl
+[352/942] Emitting canonical GLSL from render_cluster/pick.frag.lglsl
+[353/942] Emitting canonical GLSL from render_cluster/pick.vert.lglsl
+[354/942] Emitting canonical GLSL from shadow_common.lglslh
+[355/942] Emitting canonical GLSL from skybox/skybox.vert.lglsl
+[356/942] Emitting canonical GLSL from skybox/skybox_cubemap.frag.lglsl
+[357/942] Emitting canonical GLSL from skybox/skybox_equirect.frag.lglsl
+[358/942] Emitting canonical GLSL from streaming_feedback/streaming_composite.frag.lglsl
+[359/942] Emitting canonical GLSL from streaming_feedback/streaming_mask.frag.lglsl
+[360/942] Emitting canonical GLSL from terrain/patch.frag.lglsl
+[361/942] Emitting canonical GLSL from terrain/patch.vert.lglsl
+[362/942] Emitting canonical GLSL from trajectory/trajectory_line.frag.lglsl
+[363/942] Emitting canonical GLSL from trajectory/trajectory_line.vert.lglsl
+[364/942] Emitting canonical GLSL from view_pc_prefix.lglslh
+[365/942] Emitting canonical GLSL from water/water.frag.lglsl
+[366/942] Compiling GLSL shader candidate_expand.comp (target: vulkan1.2)
+[367/942] Compiling GLSL shader clear_count_buffers.comp (target: vulkan1.2)
+[368/942] Building CXX object modules\function\render\vulkan\CMakeFiles\render_vulkan.dir\src\targets\SwapchainProvider.cpp.obj
+[369/942] Compiling GLSL shader cluster_build.comp (target: vulkan1.2)
+[370/942] Compiling GLSL shader cluster_count.comp (target: vulkan1.2)
+[371/942] Compiling GLSL shader cluster_cull.comp (target: vulkan1.2)
+[372/942] Compiling GLSL shader cluster_fill.comp (target: vulkan1.2)
+[373/942] Compiling GLSL shader cluster_scan.comp (target: vulkan1.2)
+[374/942] Compiling GLSL shader deferred_lighting.vert (target: vulkan1.2)
+[375/942] Compiling GLSL shader downsample.comp (target: vulkan1.2)
+[376/942] Compiling GLSL shader mdc_compact.comp (target: vulkan1.2)
+[377/942] Compiling GLSL shader mesh_shadow_vp.vert (target: vulkan1.2)
+[378/942] Compiling GLSL shader patch_select.comp (target: vulkan1.2)
+[379/942] Compiling GLSL shader pointcloud_culling.comp (target: vulkan1.2)
+[380/942] Compiling GLSL shader shadow_depth.frag (target: vulkan1.2)
+[381/942] [lux_target_add_codegen] render_highlight_pass_params_pass_codegen: parse once, render 2 projection(s)
+[Info] Parsed 4 target file(s) for 2 projection(s).
+[382/942] Compiling GLSL shader shadow_depth_vp.vert (target: vulkan1.2)
+[383/942] Emitting canonical GLSL from HighlightBlurPassParams.lglslh
+[384/942] Emitting canonical GLSL from HighlightCompositePassParams.lglslh
+[385/942] Emitting canonical GLSL from StreamingFeedbackPassParams.lglslh
+[386/942] Emitting canonical GLSL from TonemapPassParams.lglslh
+[387/942] Compiling GLSL shader shadow_evsm_blur_h.comp (target: vulkan1.2)
+[388/942] Compiling GLSL shader shadow_evsm_blur_v.comp (target: vulkan1.2)
+[389/942] Compiling GLSL shader shadow_evsm_caster.frag (target: vulkan1.2)
+[390/942] Compiling GLSL shader skin_compute.comp (target: vulkan1.2)
+[391/942] Generating ../../../../assets/shaders/deferred/cluster_build.comp.luxasset
+packed shader bytes=2868 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/deferred/cluster_build.comp.luxasset
+[392/942] Generating ../../../../assets/shaders/deferred/cluster_count.comp.luxasset
+packed shader bytes=18272 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/deferred/cluster_count.comp.luxasset
+[393/942] Generating ../../../../assets/shaders/deferred/cluster_fill.comp.luxasset
+packed shader bytes=19725 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/deferred/cluster_fill.comp.luxasset
+[394/942] Generating ../../../../assets/shaders/deferred/cluster_scan.comp.luxasset
+packed shader bytes=6723 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/deferred/cluster_scan.comp.luxasset
+[395/942] Generating ../../../../assets/shaders/deferred/deferred_lighting.vert.luxasset
+packed shader bytes=1647 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/deferred/deferred_lighting.vert.luxasset
+[396/942] Generating ../../../../assets/shaders/forward/clear_count_buffers.comp.luxasset
+packed shader bytes=4780 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/forward/clear_count_buffers.comp.luxasset
+[397/942] Generating ../../../../assets/shaders/forward/mdc_compact.comp.luxasset
+packed shader bytes=4865 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/forward/mdc_compact.comp.luxasset
+[398/942] Generating ../../../../assets/shaders/hzb/downsample.comp.luxasset
+packed shader bytes=4131 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/hzb/downsample.comp.luxasset
+[399/942] Generating ../../../../assets/shaders/point_cloud/pointcloud_culling.comp.luxasset
+packed shader bytes=11309 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/point_cloud/pointcloud_culling.comp.luxasset
+[400/942] Generating ../../../../assets/shaders/render_cluster/candidate_expand.comp.luxasset
+packed shader bytes=8328 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/render_cluster/candidate_expand.comp.luxasset
+[401/942] Generating ../../../../assets/shaders/render_cluster/cluster_cull.comp.luxasset
+packed shader bytes=6902 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/render_cluster/cluster_cull.comp.luxasset
+[402/942] Generating ../../../../assets/shaders/shadow/mesh_shadow_vp.vert.luxasset
+packed shader bytes=20747 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/shadow/mesh_shadow_vp.vert.luxasset
+[403/942] Generating ../../../../assets/shaders/shadow/shadow_depth.frag.luxasset
+packed shader bytes=3519 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/shadow/shadow_depth.frag.luxasset
+[404/942] Generating ../../../../assets/shaders/shadow/shadow_depth_vp.vert.luxasset
+packed shader bytes=20383 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/shadow/shadow_depth_vp.vert.luxasset
+[405/942] Generating ../../../../assets/shaders/shadow/shadow_evsm_blur_h.comp.luxasset
+packed shader bytes=3489 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/shadow/shadow_evsm_blur_h.comp.luxasset
+[406/942] Generating ../../../../assets/shaders/shadow/shadow_evsm_blur_v.comp.luxasset
+packed shader bytes=3489 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/shadow/shadow_evsm_blur_v.comp.luxasset
+[407/942] Generating ../../../../assets/shaders/shadow/shadow_evsm_caster.frag.luxasset
+packed shader bytes=4879 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/shadow/shadow_evsm_caster.frag.luxasset
+[408/942] Generating ../../../../assets/shaders/skinning/skin_compute.comp.luxasset
+packed shader bytes=14832 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/skinning/skin_compute.comp.luxasset
+[409/942] Generating ../../../../assets/shaders/terrain/patch_select.comp.luxasset
+packed shader bytes=16732 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/terrain/patch_select.comp.luxasset
+[410/942] Compiling GLSL shader depth_only.frag (target: vulkan1.2)
+[411/942] Compiling GLSL shader fog.frag (target: vulkan1.2)
+[412/942] Compiling GLSL shader forward_mesh_vp.vert (target: vulkan1.2)
+[413/942] Compiling GLSL shader fr_unlit.frag (target: vulkan1.2)
+[414/942] Compiling GLSL shader gbuffer_pbr.frag (target: vulkan1.2)
+[415/942] Compiling GLSL shader gbuffer_stylized.frag (target: vulkan1.2)
+[416/942] Compiling GLSL shader gbuffer_unlit.frag (target: vulkan1.2)
+[417/942] Compiling GLSL shader gbuffer_vp.vert (target: vulkan1.2)
+[418/942] Compiling GLSL shader grid.frag (target: vulkan1.2)
+[419/942] Compiling GLSL shader grid.vert (target: vulkan1.2)
+[420/942] Compiling GLSL shader grid2d.frag (target: vulkan1.2)
+[421/942] Compiling GLSL shader group_composite.frag (target: vulkan1.2)
+[422/942] Linking CXX shared library bin\render_vulkan.dll
+[423/942] Compiling GLSL shader highlight_blur.frag (target: vulkan1.2)
+[424/942] Compiling GLSL shader highlight_composite.frag (target: vulkan1.2)
+[425/942] Compiling GLSL shader highlight_mask.frag (target: vulkan1.2)
+[426/942] Compiling GLSL shader highlight_mask.vert (target: vulkan1.2)
+[427/942] Compiling GLSL shader image.frag (target: vulkan1.2)
+[428/942] Compiling GLSL shader image.vert (target: vulkan1.2)
+[429/942] Compiling GLSL shader line_list.frag (target: vulkan1.2)
+[430/942] Compiling GLSL shader line_list.vert (target: vulkan1.2)
+[431/942] Compiling GLSL shader linear_depth.frag (target: vulkan1.2)
+[432/942] Compiling GLSL shader patch.frag (target: vulkan1.2)
+[433/942] Compiling GLSL shader patch.vert (target: vulkan1.2)
+[434/942] Generating ../../../../assets/textures/blue_nebulae_1.luxasset
+packed texture bytes=44740096 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/textures/blue_nebulae_1.luxasset
+[435/942] Compiling GLSL shader pick.frag (target: vulkan1.2)
+[436/942] Compiling GLSL shader pick.vert (target: vulkan1.2)
+[437/942] Compiling GLSL shader pixel_field.frag (target: vulkan1.2)
+[438/942] Compiling GLSL shader pixel_field.vert (target: vulkan1.2)
+[439/942] Compiling GLSL shader pointcloud_lod.vert (target: vulkan1.2)
+[440/942] Compiling GLSL shader pointcloud_simple.frag (target: vulkan1.2)
+[441/942] Compiling GLSL shader pointcloud_simple.vert (target: vulkan1.2)
+[442/942] Compiling GLSL shader pointcloud_splat.frag (target: vulkan1.2)
+[443/942] Compiling GLSL shader skybox.vert (target: vulkan1.2)
+[444/942] Compiling GLSL shader skybox_cubemap.frag (target: vulkan1.2)
+[445/942] Compiling GLSL shader skybox_equirect.frag (target: vulkan1.2)
+[446/942] Compiling GLSL shader ssao.frag (target: vulkan1.2)
+[447/942] Compiling GLSL shader streaming_composite.frag (target: vulkan1.2)
+[448/942] Compiling GLSL shader streaming_mask.frag (target: vulkan1.2)
+[449/942] Compiling GLSL shader tile.frag (target: vulkan1.2)
+[450/942] Compiling GLSL shader tile.vert (target: vulkan1.2)
+[451/942] Compiling GLSL shader tonemap.frag (target: vulkan1.2)
+[452/942] Compiling GLSL shader tonemap.vert (target: vulkan1.2)
+[453/942] Compiling GLSL shader trajectory_line.frag (target: vulkan1.2)
+[454/942] Compiling GLSL shader trajectory_line.vert (target: vulkan1.2)
+[455/942] Generating ../../../../assets/shaders/canvas2d/group_composite.frag.luxasset
+packed shader bytes=1080 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/canvas2d/group_composite.frag.luxasset
+[456/942] Compiling GLSL shader tri_overlay.vert (target: vulkan1.2)
+[457/942] Generating ../../../../assets/shaders/canvas2d/image.frag.luxasset
+packed shader bytes=4170 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/canvas2d/image.frag.luxasset
+[458/942] Generating ../../../../assets/shaders/canvas2d/image.vert.luxasset
+packed shader bytes=8220 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/canvas2d/image.vert.luxasset
+[459/942] Compiling GLSL shader water.frag (target: vulkan1.2)
+[460/942] Generating ../../../../assets/shaders/canvas2d/pixel_field.frag.luxasset
+packed shader bytes=2942 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/canvas2d/pixel_field.frag.luxasset
+[461/942] Generating ../../../../assets/shaders/canvas2d/pixel_field.vert.luxasset
+packed shader bytes=8504 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/canvas2d/pixel_field.vert.luxasset
+[462/942] Generating ../../../../assets/shaders/canvas2d/tile.frag.luxasset
+packed shader bytes=6254 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/canvas2d/tile.frag.luxasset
+[463/942] Generating ../../../../assets/shaders/canvas2d/tile.vert.luxasset
+packed shader bytes=8723 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/canvas2d/tile.vert.luxasset
+[464/942] Generating ../../../../assets/shaders/deferred/gbuffer_pbr.frag.luxasset
+packed shader bytes=15271 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/deferred/gbuffer_pbr.frag.luxasset
+[465/942] Generating ../../../../assets/shaders/deferred/gbuffer_stylized.frag.luxasset
+packed shader bytes=12996 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/deferred/gbuffer_stylized.frag.luxasset
+[466/942] Generating ../../../../assets/shaders/deferred/gbuffer_unlit.frag.luxasset
+packed shader bytes=10389 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/deferred/gbuffer_unlit.frag.luxasset
+[467/942] Generating ../../../../assets/shaders/deferred/gbuffer_vp.vert.luxasset
+packed shader bytes=21431 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/deferred/gbuffer_vp.vert.luxasset
+[468/942] Generating ../../../../assets/shaders/depth_prepass/depth_only.frag.luxasset
+packed shader bytes=3791 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/depth_prepass/depth_only.frag.luxasset
+[469/942] Generating ../../../../assets/shaders/forward/forward_mesh_vp.vert.luxasset
+packed shader bytes=21391 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/forward/forward_mesh_vp.vert.luxasset
+[470/942] Generating ../../../../assets/shaders/forward/fr_unlit.frag.luxasset
+packed shader bytes=13739 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/forward/fr_unlit.frag.luxasset
+[471/942] Generating ../../../../assets/shaders/gizmo/line_list.frag.luxasset
+packed shader bytes=867 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/gizmo/line_list.frag.luxasset
+[472/942] Generating ../../../../assets/shaders/gizmo/line_list.vert.luxasset
+packed shader bytes=4403 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/gizmo/line_list.vert.luxasset
+[473/942] Generating ../../../../assets/shaders/gizmo/tri_overlay.vert.luxasset
+packed shader bytes=4403 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/gizmo/tri_overlay.vert.luxasset
+[474/942] Generating ../../../../assets/shaders/grid/grid.frag.luxasset
+packed shader bytes=12857 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/grid/grid.frag.luxasset
+[475/942] Generating ../../../../assets/shaders/grid/grid.vert.luxasset
+packed shader bytes=1759 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/grid/grid.vert.luxasset
+[476/942] Generating ../../../../assets/shaders/grid/grid2d.frag.luxasset
+packed shader bytes=6021 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/grid/grid2d.frag.luxasset
+[477/942] Generating ../../../../assets/shaders/highlight/highlight_blur.frag.luxasset
+packed shader bytes=3227 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/highlight/highlight_blur.frag.luxasset
+[478/942] Generating ../../../../assets/shaders/highlight/highlight_composite.frag.luxasset
+packed shader bytes=2420 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/highlight/highlight_composite.frag.luxasset
+[479/942] Generating ../../../../assets/shaders/highlight/highlight_mask.frag.luxasset
+packed shader bytes=779 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/highlight/highlight_mask.frag.luxasset
+[480/942] Generating ../../../../assets/shaders/highlight/highlight_mask.vert.luxasset
+packed shader bytes=15855 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/highlight/highlight_mask.vert.luxasset
+[481/942] Generating ../../../../assets/shaders/point_cloud/pointcloud_lod.vert.luxasset
+packed shader bytes=5271 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/point_cloud/pointcloud_lod.vert.luxasset
+[482/942] Generating ../../../../assets/shaders/point_cloud/pointcloud_simple.frag.luxasset
+packed shader bytes=1235 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/point_cloud/pointcloud_simple.frag.luxasset
+[483/942] Generating ../../../../assets/shaders/point_cloud/pointcloud_simple.vert.luxasset
+packed shader bytes=4379 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/point_cloud/pointcloud_simple.vert.luxasset
+[484/942] Generating ../../../../assets/shaders/point_cloud/pointcloud_splat.frag.luxasset
+packed shader bytes=1703 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/point_cloud/pointcloud_splat.frag.luxasset
+[485/942] Generating ../../../../assets/shaders/postprocess/fog.frag.luxasset
+packed shader bytes=6564 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/postprocess/fog.frag.luxasset
+[486/942] Generating ../../../../assets/shaders/postprocess/linear_depth.frag.luxasset
+packed shader bytes=2811 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/postprocess/linear_depth.frag.luxasset
+[487/942] Generating ../../../../assets/shaders/postprocess/ssao.frag.luxasset
+packed shader bytes=3030 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/postprocess/ssao.frag.luxasset
+[488/942] Generating ../../../../assets/shaders/postprocess/tonemap.frag.luxasset
+packed shader bytes=4408 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/postprocess/tonemap.frag.luxasset
+[489/942] Generating ../../../../assets/shaders/postprocess/tonemap.vert.luxasset
+packed shader bytes=1647 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/postprocess/tonemap.vert.luxasset
+[490/942] Generating ../../../../assets/shaders/render_cluster/pick.frag.luxasset
+packed shader bytes=5178 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/render_cluster/pick.frag.luxasset
+[491/942] Generating ../../../../assets/shaders/render_cluster/pick.vert.luxasset
+packed shader bytes=11749 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/render_cluster/pick.vert.luxasset
+[492/942] Generating ../../../../assets/shaders/skybox/skybox.vert.luxasset
+packed shader bytes=3757 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/skybox/skybox.vert.luxasset
+[493/942] Generating ../../../../assets/shaders/skybox/skybox_cubemap.frag.luxasset
+packed shader bytes=2523 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/skybox/skybox_cubemap.frag.luxasset
+[494/942] Generating ../../../../assets/shaders/skybox/skybox_equirect.frag.luxasset
+packed shader bytes=2567 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/skybox/skybox_equirect.frag.luxasset
+[495/942] Generating ../../../../assets/shaders/streaming_feedback/streaming_composite.frag.luxasset
+packed shader bytes=4568 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/streaming_feedback/streaming_composite.frag.luxasset
+[496/942] Generating ../../../../assets/shaders/streaming_feedback/streaming_mask.frag.luxasset
+packed shader bytes=1019 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/streaming_feedback/streaming_mask.frag.luxasset
+[497/942] Generating ../../../../assets/shaders/terrain/patch.frag.luxasset
+packed shader bytes=6219 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/terrain/patch.frag.luxasset
+[498/942] Generating ../../../../assets/shaders/terrain/patch.vert.luxasset
+packed shader bytes=25301 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/terrain/patch.vert.luxasset
+[499/942] Generating ../../../../assets/shaders/trajectory/trajectory_line.frag.luxasset
+packed shader bytes=935 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/trajectory/trajectory_line.frag.luxasset
+[500/942] Generating ../../../../assets/shaders/trajectory/trajectory_line.vert.luxasset
+packed shader bytes=4821 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/trajectory/trajectory_line.vert.luxasset
+[501/942] Generating ../../../../assets/shaders/water/water.frag.luxasset
+packed shader bytes=18192 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/water/water.frag.luxasset
+[502/942] Compiling GLSL variant deferred/deferred_lighting.frag [evsm] → deferred_lighting.frag.evsm.spv
+[503/942] Compiling GLSL variant deferred/deferred_lighting.frag [evsm_lr] → deferred_lighting.frag.evsm_lr.spv
+[504/942] Compiling GLSL variant deferred/deferred_lighting.frag [pcf] → deferred_lighting.frag.pcf.spv
+[505/942] Generating ../../../../assets/shaders/deferred/deferred_lighting.frag.evsm.luxasset
+packed shader bytes=69435 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/deferred/deferred_lighting.frag.evsm.luxasset
+[506/942] Compiling GLSL variant deferred/deferred_lighting.frag [pcf_lr] → deferred_lighting.frag.pcf_lr.spv
+[507/942] Generating ../../../../assets/shaders/deferred/deferred_lighting.frag.evsm_lr.luxasset
+packed shader bytes=69531 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/deferred/deferred_lighting.frag.evsm_lr.luxasset
+[508/942] Generating ../../../../assets/shaders/deferred/deferred_lighting.frag.pcf.luxasset
+packed shader bytes=77945 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/deferred/deferred_lighting.frag.pcf.luxasset
+[509/942] Generating ../../../../assets/shaders/deferred/deferred_lighting.frag.pcf_lr.luxasset
+packed shader bytes=78041 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/deferred/deferred_lighting.frag.pcf_lr.luxasset
+[510/942] Compiling GLSL variant forward/fr_pbr.frag [evsm] → fr_pbr.frag.evsm.spv
+[511/942] Compiling GLSL variant forward/fr_pbr.frag [pcf] → fr_pbr.frag.pcf.spv
+[512/942] Compiling GLSL variant forward/fr_stylized.frag [evsm] → fr_stylized.frag.evsm.spv
+[513/942] Generating ../../../../assets/shaders/forward/fr_pbr.frag.evsm.luxasset
+packed shader bytes=59614 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/forward/fr_pbr.frag.evsm.luxasset
+[514/942] Compiling GLSL variant forward/fr_stylized.frag [pcf] → fr_stylized.frag.pcf.spv
+[515/942] Generating ../../../../assets/shaders/forward/fr_pbr.frag.pcf.luxasset
+packed shader bytes=67560 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/forward/fr_pbr.frag.pcf.luxasset
+[516/942] Generating ../../../../assets/shaders/forward/fr_stylized.frag.evsm.luxasset
+packed shader bytes=51104 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/forward/fr_stylized.frag.evsm.luxasset
+[517/942] Generating ../../../../assets/shaders/forward/fr_stylized.frag.pcf.luxasset
+packed shader bytes=59034 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/forward/fr_stylized.frag.pcf.luxasset
+[518/942] Compiling GLSL variant forward/mesh_cull_unified.comp [hzb] → mesh_cull_unified.comp.hzb.spv
+[519/942] Compiling GLSL variant forward/mesh_cull_unified.comp [hzb_paged] → mesh_cull_unified.comp.hzb_paged.spv
+[520/942] Generating ../../../../assets/shaders/forward/mesh_cull_unified.comp.hzb.luxasset
+packed shader bytes=39029 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/forward/mesh_cull_unified.comp.hzb.luxasset
+[521/942] Compiling GLSL variant forward/mesh_cull_unified.comp [no_hzb] → mesh_cull_unified.comp.no_hzb.spv
+[522/942] Compiling GLSL variant forward/mesh_cull_unified.comp [no_hzb_paged] → mesh_cull_unified.comp.no_hzb_paged.spv
+[523/942] Generating ../../../../assets/shaders/forward/mesh_cull_unified.comp.hzb_paged.luxasset
+packed shader bytes=42217 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/forward/mesh_cull_unified.comp.hzb_paged.luxasset
+[524/942] Generating ../../../../assets/shaders/forward/mesh_cull_unified.comp.no_hzb.luxasset
+packed shader bytes=34499 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/forward/mesh_cull_unified.comp.no_hzb.luxasset
+[525/942] Generating ../../../../assets/shaders/forward/mesh_cull_unified.comp.no_hzb_paged.luxasset
+packed shader bytes=37687 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/forward/mesh_cull_unified.comp.no_hzb_paged.luxasset
+[526/942] Compiling GLSL variant forward/forward_mesh_vp.vert [paged] → forward_mesh_vp.vert.paged.spv
+[527/942] Generating ../../../../assets/shaders/forward/forward_mesh_vp.vert.paged.luxasset
+packed shader bytes=24687 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/forward/forward_mesh_vp.vert.paged.luxasset
+[528/942] Compiling GLSL variant highlight/highlight_mask.vert [paged] → highlight_mask.vert.paged.spv
+[529/942] Compiling GLSL variant deferred/gbuffer_vp.vert [paged] → gbuffer_vp.vert.paged.spv
+[530/942] Compiling GLSL variant shadow/mesh_shadow_vp.vert [paged] → mesh_shadow_vp.vert.paged.spv
+[531/942] Generating ../../../../assets/shaders/highlight/highlight_mask.vert.paged.luxasset
+packed shader bytes=19151 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/highlight/highlight_mask.vert.paged.luxasset
+[532/942] Generating ../../../../assets/shaders/deferred/gbuffer_vp.vert.paged.luxasset
+packed shader bytes=24747 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/deferred/gbuffer_vp.vert.paged.luxasset
+[533/942] Generating ../../../../assets/shaders/shadow/mesh_shadow_vp.vert.paged.luxasset
+packed shader bytes=24043 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/shadow/mesh_shadow_vp.vert.paged.luxasset
+[534/942] [embed_builtin_shaders] canvas2d/group_composite.frag -> canvas2d_group_composite_frag_embed.hpp
+[535/942] Compiling GLSL variant shadow/shadow_depth_vp.vert [paged] → shadow_depth_vp.vert.paged.spv
+[536/942] [embed_builtin_shaders] canvas2d/image.frag -> canvas2d_image_frag_embed.hpp
+[537/942] [embed_builtin_shaders] canvas2d/image.vert -> canvas2d_image_vert_embed.hpp
+[538/942] [embed_builtin_shaders] canvas2d/pixel_field.frag -> canvas2d_pixel_field_frag_embed.hpp
+[539/942] Generating ../../../../assets/shaders/shadow/shadow_depth_vp.vert.paged.luxasset
+packed shader bytes=23679 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/shaders/shadow/shadow_depth_vp.vert.paged.luxasset
+[540/942] [embed_builtin_shaders] canvas2d/pixel_field.vert -> canvas2d_pixel_field_vert_embed.hpp
+[541/942] [embed_builtin_shaders] canvas2d/tile.frag -> canvas2d_tile_frag_embed.hpp
+[542/942] [embed_builtin_shaders] canvas2d/tile.vert -> canvas2d_tile_vert_embed.hpp
+[543/942] [embed_builtin_shaders] deferred/cluster_build.comp -> deferred_cluster_build_comp_embed.hpp
+[544/942] [embed_builtin_shaders] deferred/cluster_count.comp -> deferred_cluster_count_comp_embed.hpp
+[545/942] [embed_builtin_shaders] deferred/cluster_fill.comp -> deferred_cluster_fill_comp_embed.hpp
+[546/942] [embed_builtin_shaders] deferred/cluster_scan.comp -> deferred_cluster_scan_comp_embed.hpp
+[547/942] [embed_builtin_shaders] deferred/deferred_lighting.frag.evsm -> deferred_deferred_lighting_frag_evsm_embed.hpp
+[548/942] [embed_builtin_shaders] deferred/deferred_lighting.frag.evsm_lr -> deferred_deferred_lighting_frag_evsm_lr_embed.hpp
+[549/942] [embed_builtin_shaders] deferred/deferred_lighting.frag.pcf -> deferred_deferred_lighting_frag_pcf_embed.hpp
+[550/942] [embed_builtin_shaders] deferred/deferred_lighting.frag.pcf_lr -> deferred_deferred_lighting_frag_pcf_lr_embed.hpp
+[551/942] [embed_builtin_shaders] deferred/deferred_lighting.vert -> deferred_deferred_lighting_vert_embed.hpp
+[552/942] [embed_builtin_shaders] deferred/gbuffer_pbr.frag -> deferred_gbuffer_pbr_frag_embed.hpp
+[553/942] [embed_builtin_shaders] deferred/gbuffer_stylized.frag -> deferred_gbuffer_stylized_frag_embed.hpp
+[554/942] [embed_builtin_shaders] deferred/gbuffer_unlit.frag -> deferred_gbuffer_unlit_frag_embed.hpp
+[555/942] [embed_builtin_shaders] deferred/gbuffer_vp.vert -> deferred_gbuffer_vp_vert_embed.hpp
+[556/942] [embed_builtin_shaders] deferred/gbuffer_vp.vert.paged -> deferred_gbuffer_vp_vert_paged_embed.hpp
+[557/942] [embed_builtin_shaders] forward/clear_count_buffers.comp -> forward_clear_count_buffers_comp_embed.hpp
+[558/942] [embed_builtin_shaders] forward/forward_mesh_vp.vert -> forward_forward_mesh_vp_vert_embed.hpp
+[559/942] [embed_builtin_shaders] forward/forward_mesh_vp.vert.paged -> forward_forward_mesh_vp_vert_paged_embed.hpp
+[560/942] [embed_builtin_shaders] forward/fr_pbr.frag.evsm -> forward_fr_pbr_frag_evsm_embed.hpp
+[561/942] [embed_builtin_shaders] forward/fr_pbr.frag.pcf -> forward_fr_pbr_frag_pcf_embed.hpp
+[562/942] [embed_builtin_shaders] forward/fr_stylized.frag.evsm -> forward_fr_stylized_frag_evsm_embed.hpp
+[563/942] [embed_builtin_shaders] forward/fr_stylized.frag.pcf -> forward_fr_stylized_frag_pcf_embed.hpp
+[564/942] [embed_builtin_shaders] forward/fr_unlit.frag -> forward_fr_unlit_frag_embed.hpp
+[565/942] [embed_builtin_shaders] forward/mdc_compact.comp -> forward_mdc_compact_comp_embed.hpp
+[566/942] [embed_builtin_shaders] forward/mesh_cull_unified.comp.hzb -> forward_mesh_cull_unified_comp_hzb_embed.hpp
+[567/942] [embed_builtin_shaders] forward/mesh_cull_unified.comp.hzb_paged -> forward_mesh_cull_unified_comp_hzb_paged_embed.hpp
+[568/942] [embed_builtin_shaders] forward/mesh_cull_unified.comp.no_hzb -> forward_mesh_cull_unified_comp_no_hzb_embed.hpp
+[569/942] [embed_builtin_shaders] forward/mesh_cull_unified.comp.no_hzb_paged -> forward_mesh_cull_unified_comp_no_hzb_paged_embed.hpp
+[570/942] [embed_builtin_shaders] gizmo/line_list.frag -> gizmo_line_list_frag_embed.hpp
+[571/942] [embed_builtin_shaders] gizmo/line_list.vert -> gizmo_line_list_vert_embed.hpp
+[572/942] [embed_builtin_shaders] gizmo/tri_overlay.vert -> gizmo_tri_overlay_vert_embed.hpp
+[573/942] [embed_builtin_shaders] grid/grid2d.frag -> grid_grid2d_frag_embed.hpp
+[574/942] [embed_builtin_shaders] grid/grid.frag -> grid_grid_frag_embed.hpp
+[575/942] [embed_builtin_shaders] grid/grid.vert -> grid_grid_vert_embed.hpp
+[576/942] [embed_builtin_shaders] highlight/highlight_blur.frag -> highlight_highlight_blur_frag_embed.hpp
+[577/942] [embed_builtin_shaders] highlight/highlight_composite.frag -> highlight_highlight_composite_frag_embed.hpp
+[578/942] [embed_builtin_shaders] highlight/highlight_mask.frag -> highlight_highlight_mask_frag_embed.hpp
+[579/942] [embed_builtin_shaders] highlight/highlight_mask.vert -> highlight_highlight_mask_vert_embed.hpp
+[580/942] [embed_builtin_shaders] highlight/highlight_mask.vert.paged -> highlight_highlight_mask_vert_paged_embed.hpp
+[581/942] [embed_builtin_shaders] hzb/downsample.comp -> hzb_downsample_comp_embed.hpp
+[582/942] [embed_builtin_shaders] point_cloud/pointcloud_culling.comp -> point_cloud_pointcloud_culling_comp_embed.hpp
+[583/942] [embed_builtin_shaders] point_cloud/pointcloud_lod.vert -> point_cloud_pointcloud_lod_vert_embed.hpp
+[584/942] [embed_builtin_shaders] point_cloud/pointcloud_simple.frag -> point_cloud_pointcloud_simple_frag_embed.hpp
+[585/942] [embed_builtin_shaders] point_cloud/pointcloud_simple.vert -> point_cloud_pointcloud_simple_vert_embed.hpp
+[586/942] [embed_builtin_shaders] point_cloud/pointcloud_splat.frag -> point_cloud_pointcloud_splat_frag_embed.hpp
+[587/942] [embed_builtin_shaders] postprocess/fog.frag -> postprocess_fog_frag_embed.hpp
+[588/942] [embed_builtin_shaders] postprocess/linear_depth.frag -> postprocess_linear_depth_frag_embed.hpp
+[589/942] [embed_builtin_shaders] postprocess/ssao.frag -> postprocess_ssao_frag_embed.hpp
+[590/942] [embed_builtin_shaders] postprocess/tonemap.frag -> postprocess_tonemap_frag_embed.hpp
+[591/942] [embed_builtin_shaders] postprocess/tonemap.vert -> postprocess_tonemap_vert_embed.hpp
+[592/942] [embed_builtin_shaders] render_cluster/cluster_cull.comp -> render_cluster_cluster_cull_comp_embed.hpp
+[593/942] [embed_builtin_shaders] render_cluster/candidate_expand.comp -> render_cluster_candidate_expand_comp_embed.hpp
+[594/942] [embed_builtin_shaders] render_cluster/pick.frag -> render_cluster_pick_frag_embed.hpp
+[595/942] [embed_builtin_shaders] render_cluster/pick.vert -> render_cluster_pick_vert_embed.hpp
+[596/942] [embed_builtin_shaders] shadow/mesh_shadow_vp.vert -> shadow_mesh_shadow_vp_vert_embed.hpp
+[597/942] [embed_builtin_shaders] shadow/mesh_shadow_vp.vert.paged -> shadow_mesh_shadow_vp_vert_paged_embed.hpp
+[598/942] [embed_builtin_shaders] shadow/shadow_depth.frag -> shadow_shadow_depth_frag_embed.hpp
+[599/942] [embed_builtin_shaders] shadow/shadow_depth_vp.vert -> shadow_shadow_depth_vp_vert_embed.hpp
+[600/942] [embed_builtin_shaders] shadow/shadow_depth_vp.vert.paged -> shadow_shadow_depth_vp_vert_paged_embed.hpp
+[601/942] [embed_builtin_shaders] shadow/shadow_evsm_blur_h.comp -> shadow_shadow_evsm_blur_h_comp_embed.hpp
+[602/942] [embed_builtin_shaders] shadow/shadow_evsm_blur_v.comp -> shadow_shadow_evsm_blur_v_comp_embed.hpp
+[603/942] [embed_builtin_shaders] shadow/shadow_evsm_caster.frag -> shadow_shadow_evsm_caster_frag_embed.hpp
+[604/942] [embed_builtin_shaders] skinning/skin_compute.comp -> skinning_skin_compute_comp_embed.hpp
+[605/942] [embed_builtin_shaders] skybox/skybox_cubemap.frag -> skybox_skybox_cubemap_frag_embed.hpp
+[606/942] [embed_builtin_shaders] skybox/skybox_equirect.frag -> skybox_skybox_equirect_frag_embed.hpp
+[607/942] [embed_builtin_shaders] skybox/skybox.vert -> skybox_skybox_vert_embed.hpp
+[608/942] [embed_builtin_shaders] streaming_feedback/streaming_composite.frag -> streaming_feedback_streaming_composite_frag_embed.hpp
+[609/942] [embed_builtin_shaders] streaming_feedback/streaming_mask.frag -> streaming_feedback_streaming_mask_frag_embed.hpp
+[610/942] [embed_builtin_shaders] terrain/patch.frag -> terrain_patch_frag_embed.hpp
+[611/942] [embed_builtin_shaders] terrain/patch_select.comp -> terrain_patch_select_comp_embed.hpp
+[612/942] [embed_builtin_shaders] terrain/patch.vert -> terrain_patch_vert_embed.hpp
+[613/942] [embed_builtin_shaders] trajectory/trajectory_line.frag -> trajectory_trajectory_line_frag_embed.hpp
+[614/942] [embed_builtin_shaders] trajectory/trajectory_line.vert -> trajectory_trajectory_line_vert_embed.hpp
+[615/942] [embed_builtin_shaders] water/water.frag -> water_water_frag_embed.hpp
+[616/942] Building CXX object modules\function\render\runtime\CMakeFiles\render_runtime.dir\src\RenderRuntime.cpp.obj
+[617/942] Generating ../../../../assets/textures/hazy_nebulae_1.luxasset
+packed texture bytes=44740096 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/textures/hazy_nebulae_1.luxasset
+[618/942] Generating ../../../../assets/textures/ringed_gas_giant_planet.luxasset
+packed texture bytes=44740096 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/textures/ringed_gas_giant_planet.luxasset
+[619/942] Generating ../../../../assets/textures/plain_starfield_1.luxasset
+packed texture bytes=44740096 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p06-player/assets/textures/plain_starfield_1.luxasset
+[620/942] Building CXX object modules\function\script\lua\CMakeFiles\script_lua.dir\src\Lua.cpp.obj
+[621/942] Building CXX object modules\function\script\lua\CMakeFiles\script_lua.dir\src\LuaVm.cpp.obj
+[622/942] Building C object modules\function\script\lua\CMakeFiles\script_lua.dir\src\LuaBoundary.c.obj
+[623/942] Building CXX object modules\function\render\runtime\CMakeFiles\render_runtime.dir\src\RendererThread.cpp.obj
+[624/942] Building CXX object modules\function\script\lua\CMakeFiles\script_lua.dir\src\LuaValue.cpp.obj
+[625/942] Building CXX object modules\function\render\runtime\CMakeFiles\render_runtime_resource_test.dir\test\resources.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[626/942] Building CXX object modules\function\script\artifact\CMakeFiles\script_artifact.dir\src\ScriptArtifact.cpp.obj
+[627/942] Linking CXX shared library bin\lux_engine_function_script_lua.dll
+[628/942] Linking CXX shared library bin\render_runtime.dll
+[629/942] Building CXX object modules\function\ui\CMakeFiles\ui_imgui_backend.dir\src\DragDrop.cpp.obj
+[630/942] Linking CXX shared library bin\lux_engine_function_script_artifact.dll
+[631/942] Building CXX object modules\function\script\native\CMakeFiles\script_native.dir\src\NativeModule.cpp.obj
+[632/942] Building CXX object modules\function\ui\CMakeFiles\ui_imgui_backend.dir\src\DrawData.cpp.obj
+[633/942] Building CXX object modules\function\ui\CMakeFiles\ui_imgui_backend.dir\src\Table.cpp.obj
+[634/942] Linking CXX executable bin\render_runtime_resource_test.exe
+[635/942] Linking CXX shared library bin\lux_engine_function_script_native.dll
+[636/942] Building CXX object modules\function\ui\CMakeFiles\ui_imgui_backend.dir\src\Layout.cpp.obj
+[637/942] Building CXX object modules\function\ui\CMakeFiles\ui_imgui_backend.dir\src\Controls.cpp.obj
+[638/942] Building CXX object modules\function\ui\CMakeFiles\ui_imgui_backend.dir\src\ImageElement.cpp.obj
+[639/942] Building CXX object modules\function\ui\CMakeFiles\ui.dir\src\Theme.cpp.obj
+[640/942] Building CXX object modules\function\ui\CMakeFiles\ui.dir\src\Pane.cpp.obj
+[641/942] Building CXX object modules\function\ui\CMakeFiles\ui.dir\src\Element.cpp.obj
+[642/942] Building CXX object modules\function\ui\CMakeFiles\ui_imgui_backend.dir\src\Root.cpp.obj
+[643/942] Building CXX object engine\domain\spatial\spatial3d\CMakeFiles\spatial3d_index.dir\src\Spatial3DPartitionIndex.cpp.obj
+[644/942] [lux_target_add_codegen] ui_render_ops_UiRenderOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[645/942] Linking CXX shared library bin\ui.dll
+[646/942] Linking CXX shared library bin\lux_engine_spatial3d_index.dll
+[647/942] Building CXX object modules\function\ui\CMakeFiles\ui_root_test.dir\test\root.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[648/942] Building CXX object modules\function\ui\rendering\CMakeFiles\ui_rendering.dir\src\VulkanBackend.cpp.obj
+[649/942] Building CXX object modules\function\ui\rendering\CMakeFiles\ui_rendering.dir\src\RenderClient.cpp.obj
+[650/942] Linking CXX executable bin\ui_root_test.exe
+[651/942] Building CXX object modules\function\ui\rendering\CMakeFiles\ui_rendering.dir\comm_gen\lux\engine\ui\rendering\genops\UiRenderOperation.metadata.cpp.obj
+[652/942] Building CXX object modules\function\ui\rendering\CMakeFiles\ui_rendering.dir\comm_gen\lux\engine\ui\rendering\genops\UiRenderOperation.client.ops.cpp.obj
+[653/942] Building CXX object engine\domain\spatial\spatial2d\CMakeFiles\spatial2d_index.dir\src\Spatial2DPartitionIndex.cpp.obj
+[654/942] Building CXX object modules\function\ui\rendering\CMakeFiles\ui_rendering.dir\src\RenderFeature.cpp.obj
+[655/942] Building CXX object engine\domain\world\partition\CMakeFiles\world_partition.dir\src\WorldPartitionFailureInjection.cpp.obj
+[656/942] Linking CXX shared library bin\lux_engine_spatial2d_index.dll
+[657/942] Building CXX object modules\function\ui\rendering\CMakeFiles\ui_rendering.dir\comm_gen\lux\engine\ui\rendering\genops\UiRenderOperation.ops.cpp.obj
+[658/942] Building CXX object engine\domain\world\partition\CMakeFiles\world_partition.dir\src\WorldPartition.cpp.obj
+[659/942] Building CXX object engine\domain\world\description\CMakeFiles\world_description.dir\src\WorldDataSchemaId.cpp.obj
+[660/942] Linking CXX shared library bin\lux_engine_world_partition.dll
+[661/942] Building CXX object engine\domain\world\description\CMakeFiles\world_description.dir\src\WorldDescription.cpp.obj
+[662/942] Building CXX object engine\domain\world\description\CMakeFiles\world_description.dir\src\WorldDescriptionFailureInjection.cpp.obj
+[663/942] Linking CXX shared library bin\ui_rendering.dll
+[664/942] Building CXX object engine\domain\world\description\CMakeFiles\world_description.dir\src\WorldDescriptionBuilder.cpp.obj
+[665/942] Building CXX object engine\domain\world\storage\CMakeFiles\world_storage.dir\src\WorldPartitionData.cpp.obj
+[666/942] Building CXX object engine\domain\system\identity\CMakeFiles\domain_system_identity.dir\src\SystemTypeId.cpp.obj
+[667/942] Linking CXX shared library bin\lux_engine_world_description.dll
+[668/942] Building CXX object engine\domain\world\storage\CMakeFiles\world_storage.dir\src\WorldStorageCodec.cpp.obj
+[669/942] Building CXX object engine\domain\world\asset\CMakeFiles\world_asset.dir\src\WorldAssetCodec.cpp.obj
+[670/942] Building CXX object engine\domain\system\description\CMakeFiles\domain_system_description.dir\src\SystemDependencyOrder.cpp.obj
+[671/942] Linking CXX shared library bin\lux_engine_domain_system_identity.dll
+[672/942] Building CXX object engine\domain\simulation\description\CMakeFiles\simulation_description.dir\src\SimulationDataSchemaId.cpp.obj
+[673/942] Linking CXX shared library bin\lux_engine_world_storage.dll
+[674/942] Linking CXX shared library bin\lux_engine_world_asset.dll
+[675/942] Building CXX object engine\domain\simulation\description\CMakeFiles\simulation_description.dir\src\SimulationDescription.cpp.obj
+[676/942] Building CXX object engine\domain\simulation\description\CMakeFiles\simulation_description.dir\src\SimulationDescriptionFailureInjection.cpp.obj
+[677/942] Linking CXX shared library bin\lux_engine_domain_system_description.dll
+[678/942] Building CXX object engine\domain\simulation\ecs\core\CMakeFiles\core.dir\src\EntityCreationPlan.cpp.obj
+[679/942] Building CXX object engine\domain\simulation\ecs\core\CMakeFiles\core.dir\src\EcsCommandBuffer.cpp.obj
+[680/942] Building CXX object engine\domain\simulation\description\CMakeFiles\simulation_description.dir\src\SimulationDescriptionBuilder.cpp.obj
+[681/942] Linking CXX shared library bin\lux_engine_simulation_ecs_core.dll
+[682/942] Building CXX object engine\domain\simulation\asset\CMakeFiles\simulation_asset.dir\src\SimulationAssetCodec.cpp.obj
+[683/942] Building CXX object engine\domain\simulation\ecs\schema\CMakeFiles\schema.dir\src\ComponentSchemaSet.cpp.obj
+[684/942] Linking CXX shared library bin\lux_engine_simulation_description.dll
+[685/942] Building CXX object engine\domain\simulation\ecs\schema\CMakeFiles\schema.dir\src\DecodedComponent.cpp.obj
+[686/942] Linking CXX shared library bin\lux_engine_simulation_ecs_schema.dll
+[687/942] Building CXX object engine\domain\simulation\ecs\snapshot\CMakeFiles\snapshot.dir\src\ComponentSnapshotSet.cpp.obj
+[688/942] Linking CXX shared library bin\lux_engine_simulation_asset.dll
+[689/942] [lux_target_add_codegen] simulation_script_script_abilities: parse once, render 5 projection(s)
+[Info] Parsed 1 target file(s) for 5 projection(s).
+[690/942] Building CXX object engine\domain\simulation\ecs\snapshot\CMakeFiles\snapshot.dir\src\EcsSnapshot.cpp.obj
+[691/942] Building CXX object engine\domain\simulation\system\CMakeFiles\system.dir\src\SimulationSystemRegistry.cpp.obj
+[692/942] Linking CXX shared library bin\lux_engine_simulation_ecs_snapshot.dll
+[693/942] Linking CXX shared library bin\lux_engine_simulation_system.dll
+[694/942] Building CXX object engine\domain\simulation\scripting\cpp_static\CMakeFiles\simulation_script_cpp_static.dir\src\CppStaticScriptBridge.cpp.obj
+[695/942] Building CXX object engine\domain\simulation\composition\CMakeFiles\simulation_composition.dir\src\Simulation.cpp.obj
+[696/942] Building CXX object engine\domain\simulation\scripting\native\CMakeFiles\simulation_script_native.dir\src\NativeScriptBackend.cpp.obj
+[697/942] Building CXX object engine\domain\simulation\scripting\lua\CMakeFiles\simulation_script_lua.dir\src\LuaScriptBackend.cpp.obj
+[698/942] Building CXX object engine\domain\simulation\scripting\native_lua_tasks\CMakeFiles\simulation_script_native_lua_tasks.dir\src\NativeLuaTaskBackend.cpp.obj
+[699/942] Building CXX object engine\domain\simulation\builtin_systems\script\CMakeFiles\simulation_script.dir\src\ScriptBindingAuthoring.cpp.obj
+[700/942] Building CXX object engine\domain\simulation\builtin_systems\script\CMakeFiles\simulation_script.dir\src\ScriptBindings.cpp.obj
+[701/942] Building CXX object engine\domain\simulation\builtin_systems\script\CMakeFiles\simulation_script.dir\src\ScriptPreparer.cpp.obj
+[702/942] Building CXX object engine\domain\simulation\builtin_systems\script\CMakeFiles\simulation_script.dir\src\ScriptInstances.cpp.obj
+[703/942] Building CXX object engine\domain\simulation\builtin_systems\script\CMakeFiles\simulation_script.dir\src\ScriptExecution.cpp.obj
+[704/942] Building CXX object engine\domain\simulation\builtin_systems\script\CMakeFiles\simulation_script.dir\src\ScriptEventWaits.cpp.obj
+[705/942] Building CXX object engine\domain\simulation\builtin_systems\script\CMakeFiles\simulation_script.dir\src\ScriptCompletionIngress.cpp.obj
+[706/942] Linking CXX shared library bin\lux_engine_simulation_composition.dll
+[707/942] [lux_target_add_codegen] hierarchy_component_codegen: parse once, render 5 projection(s)
+[Info] Parsed 1 target file(s) for 5 projection(s).
+[708/942] Building CXX object engine\domain\simulation\builtin_systems\script\CMakeFiles\simulation_script.dir\src\ScriptTimers.cpp.obj
+[709/942] Building CXX object engine\domain\simulation\builtin_systems\script\CMakeFiles\simulation_script.dir\src\ScriptSystem.cpp.obj
+[710/942] Building CXX object engine\domain\simulation\ecs\hierarchy\CMakeFiles\hierarchy.dir\src\HierarchyIndex.cpp.obj
+[711/942] [lux_target_add_codegen] transform_component_codegen: parse once, render 5 projection(s)
+[Info] Parsed 1 target file(s) for 5 projection(s).
+[712/942] Building CXX object engine\domain\simulation\ecs\hierarchy\CMakeFiles\hierarchy.dir\src\HierarchyMaintenance.cpp.obj
+[713/942] Linking CXX shared library bin\lux_engine_simulation_script.dll
+[714/942] Building CXX object engine\domain\simulation\ecs\hierarchy\CMakeFiles\hierarchy.dir\src\HierarchySchema.cpp.obj
+[715/942] Linking CXX shared library bin\lux_engine_simulation_script_cpp_static.dll
+[716/942] Linking CXX shared library bin\lux_engine_simulation_script_native.dll
+[717/942] Building CXX object engine\domain\simulation\ecs\transform\CMakeFiles\transform.dir\src\TransformSchema.cpp.obj
+[718/942] Linking CXX shared library bin\lux_engine_simulation_script_lua.dll
+[719/942] Linking CXX shared library bin\lux_engine_simulation_ecs_hierarchy.dll
+[720/942] Building CXX object engine\domain\simulation\builtin_systems\physics2d\CMakeFiles\physics2d_description.dir\src\Physics2DDescription.cpp.obj
+FAILED: engine/domain/simulation/builtin_systems/physics2d/CMakeFiles/physics2d_description.dir/src/Physics2DDescription.cpp.obj 
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\bin\Hostx64\x64\cl.exe  /nologo /TP -DENTT_NO_ETO -DLUX_ENGINE_PHYSICS2D_SIMULATION_DLL_DISABLE -IE:\SyncForder\CodeRepos\build\p05-r1-clean-f2b5a00c60e9\engine\domain\simulation\builtin_systems\physics2d\include -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\p06-player\gen\include -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\p06-player\engine\domain\simulation\builtin_systems\physics2d\type_info -IE:\SyncForder\CodeRepos\build\p05-r1-clean-f2b5a00c60e9\engine\domain\simulation\system\include -IE:\SyncForder\CodeRepos\build\p05-r1-clean-f2b5a00c60e9\engine\domain\simulation\description\include -IE:\SyncForder\CodeRepos\build\p05-r1-clean-f2b5a00c60e9\modules\core\semantic\include -IE:\SyncForder\CodeRepos\build\p05-r1-clean-f2b5a00c60e9\modules\function\script\core\include -IE:\SyncForder\CodeRepos\build\p05-r1-clean-f2b5a00c60e9\engine\domain\system\identity\include -IE:\SyncForder\CodeRepos\build\p05-r1-clean-f2b5a00c60e9\engine\domain\system\description\include -IE:\SyncForder\CodeRepos\build\p05-r1-clean-f2b5a00c60e9\modules\core\serialization\include -IE:\SyncForder\CodeRepos\build\p05-r1-clean-f2b5a00c60e9\modules\core\type_info\include -IE:\SyncForder\CodeRepos\build\p05-r1-clean-f2b5a00c60e9\engine\domain\simulation\ecs\core\include -IE:\SyncForder\CodeRepos\build\p05-r1-clean-f2b5a00c60e9\engine\domain\simulation\ecs\transform\include -IE:\SyncForder\CodeRepos\build\p05-r1-clean-f2b5a00c60e9\engine\domain\simulation\ecs\schema\include -IE:\SyncForder\CodeRepos\build\p05-r1-clean-f2b5a00c60e9\engine\domain\world\identity\include -IE:\SyncForder\CodeRepos\build\p05-r1-clean-f2b5a00c60e9\engine\domain\simulation\ecs\snapshot\include -IE:\SyncForder\CodeRepos\build\p05-r1-clean-f2b5a00c60e9\engine\domain\simulation\ecs\hierarchy\include -IE:\SyncForder\CodeRepos\build\p05-r1-clean-f2b5a00c60e9\modules\core\math\include -external:ID:\Development\vcpkg\installed\x64-windows\include -external:IE:\SyncForder\CodeRepos\install\RelWithDebInfo\include -external:ID:\Development\vcpkg\installed\x64-windows\include\eigen3 -external:ID:\Development\vcpkg\installed\x64-windows\include\stduuid -external:W0 /DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD /utf-8 /showIncludes /Foengine\domain\simulation\builtin_systems\physics2d\CMakeFiles\physics2d_description.dir\src\Physics2DDescription.cpp.obj /Fdengine\domain\simulation\builtin_systems\physics2d\CMakeFiles\physics2d_description.dir\ /FS -c E:\SyncForder\CodeRepos\build\p05-r1-clean-f2b5a00c60e9\engine\domain\simulation\builtin_systems\physics2d\src\Physics2DDescription.cpp
+E:\SyncForder\CodeRepos\build\p05-r1-clean-f2b5a00c60e9\engine\domain\simulation\builtin_systems\physics2d\src\Physics2DDescription.cpp(2): fatal error C1083: Cannot open include file: 'lux/engine/physics2d/Physics2DSystem.type_static_info.hpp': No such file or directory
+[721/942] Building CXX object engine\domain\simulation\ecs\transform\CMakeFiles\transform.dir\src\TransformEvaluation.cpp.obj
+[722/942] [lux_target_add_codegen] visual_component_codegen: parse once, render 5 projection(s)
+[Info] Parsed 1 target file(s) for 5 projection(s).
+[723/942] Linking CXX shared library bin\lux_engine_simulation_script_native_lua_tasks.dll
+[724/942] [lux_target_add_codegen] physics2d_component_codegen: parse once, render 5 projection(s)
+[Info] Parsed 1 target file(s) for 5 projection(s).
+[725/942] [lux_target_add_codegen] physics2d_simulation_script_abilities: parse once, render 5 projection(s)
+[Info] Parsed 1 target file(s) for 5 projection(s).
+[726/942] Linking CXX shared library bin\lux_engine_simulation_ecs_transform.dll
+[727/942] [lux_target_add_codegen] physics2d_configuration_codegen: parse once, render 2 projection(s)
+[Info] Parsed 1 target file(s) for 2 projection(s).
+[728/942] Building CXX object engine\process\execution\CMakeFiles\process_execution.dir\src\ExecutionRuntime.cpp.obj
+[729/942] Building CXX object engine\domain\simulation\ecs\visual\CMakeFiles\visual.dir\src\VisualSchema.cpp.obj
+[730/942] Building CXX object engine\process\execution\CMakeFiles\process_execution.dir\src\Task.cpp.obj
+[731/942] Linking CXX shared library bin\lux_engine_simulation_ecs_visual.dll
+[732/942] Building CXX object engine\process\execution\CMakeFiles\process_execution.dir\src\Timer.cpp.obj
+[733/942] Building CXX object engine\process\world_loading\CMakeFiles\process_world_loading.dir\src\WorldMemoryStorageSource.cpp.obj
+[734/942] Building CXX object engine\process\world_loading\CMakeFiles\process_world_loading.dir\src\WorldPartitionLoad.cpp.obj
+[735/942] Linking CXX shared library bin\lux_engine_process_execution.dll
+[736/942] Linking CXX shared library bin\lux_engine_process_world_loading.dll
+[737/942] Building CXX object engine\process\asset_loading\CMakeFiles\process_asset_loading.dir\src\VfsAssetReadEndpoint.cpp.obj
+[738/942] Building CXX object engine\process\asset_loading\CMakeFiles\process_asset_loading.dir\src\AssetReadOverlay.cpp.obj
+[739/942] Linking CXX shared library bin\lux_engine_process_asset_loading.dll
+[740/942] Building CXX object engine\scene\description\CMakeFiles\scene_description.dir\src\SceneDescription.cpp.obj
+[741/942] Building CXX object engine\scene\description\CMakeFiles\scene_description.dir\src\SceneDescriptionBuilder.cpp.obj
+[742/942] Building CXX object engine\process\asset_loading\CMakeFiles\asset_read_overlay_test.dir\test\overlay.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[743/942] Linking CXX shared library bin\lux_engine_scene_description.dll
+[744/942] Linking CXX executable bin\asset_read_overlay_test.exe
+[745/942] Building CXX object engine\scene\composition\CMakeFiles\scene_composition.dir\src\SceneRuntime.cpp.obj
+[746/942] Building CXX object engine\scene\composition\CMakeFiles\scene_composition.dir\src\SceneInstance.cpp.obj
+[747/942] Building CXX object engine\scene\composition\CMakeFiles\scene_composition.dir\src\SceneSystemInstaller.cpp.obj
+[748/942] Building CXX object engine\scene\composition\CMakeFiles\scene_composition.dir\src\SceneDriver.cpp.obj
+[749/942] Building CXX object engine\scene\asset\CMakeFiles\scene_asset.dir\src\SceneAssetCodec.cpp.obj
+[750/942] Linking CXX shared library bin\lux_engine_scene_composition.dll
+[751/942] Building CXX object engine\scene\asset\CMakeFiles\scene_asset.dir\src\ScenePackage.cpp.obj
+[752/942] Building CXX object engine\scene\asset\CMakeFiles\scene_asset.dir\src\SceneCapture.cpp.obj
+[753/942] Building CXX object engine\scene\asset\CMakeFiles\scene_asset.dir\src\SceneConstruction.cpp.obj
+[754/942] Building CXX object engine\scene\integration\world_materialization\CMakeFiles\scene_world_materialization.dir\src\WorldMaterializer.cpp.obj
+[755/942] Building CXX object engine\scene\integration\script_description\CMakeFiles\scene_script_description.dir\src\ScriptRuntimeAssembly.cpp.obj
+[756/942] Building CXX object engine\scene\integration\script_description\CMakeFiles\scene_script_description.dir\src\ScriptSystemDescription.cpp.obj
+[757/942] Linking CXX shared library bin\lux_engine_scene_asset.dll
+[758/942] Linking CXX shared library bin\lux_engine_scene_world_materialization.dll
+[759/942] Building CXX object engine\scene\integration\script_description\CMakeFiles\scene_script_description.dir\src\ScriptSystemDescriptionCodec.cpp.obj
+[760/942] [lux_target_add_codegen] scene_transform_configuration_codegen: parse once, render 2 projection(s)
+[Info] Parsed 1 target file(s) for 2 projection(s).
+[761/942] Linking CXX shared library bin\lux_engine_scene_script_description.dll
+[762/942] Building CXX object engine\scene\integration\script\CMakeFiles\scene_script_runtime.dir\src\ScriptRuntimeSystem.cpp.obj
+[763/942] Building CXX object engine\scene\builtin_systems\mesh_query\CMakeFiles\scene_mesh_query.dir\src\MeshQuerySystem.cpp.obj
+[764/942] Building CXX object engine\scene\composition\CMakeFiles\scene_driver_test.dir\test\driver.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[765/942] Linking CXX shared library bin\lux_engine_scene_script_runtime.dll
+[766/942] Building CXX object engine\scene\composition\CMakeFiles\scene_driver_test.dir\test\transform.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[767/942] Building CXX object engine\scene\composition\CMakeFiles\scene_runtime_test.dir\test\runtime.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[768/942] [lux_target_add_codegen] scene_render_configuration_codegen: parse once, render 2 projection(s)
+[Info] Parsed 1 target file(s) for 2 projection(s).
+[769/942] [lux_target_add_codegen] scene_camera_component_codegen: parse once, render 5 projection(s)
+[Info] Parsed 1 target file(s) for 5 projection(s).
+[770/942] Building CXX object engine\scene\builtin_systems\transform\CMakeFiles\scene_transform.dir\src\TransformSystem.cpp.obj
+[771/942] [lux_target_add_codegen] scene_observer_component_codegen: parse once, render 5 projection(s)
+[Info] Parsed 1 target file(s) for 5 projection(s).
+[772/942] Building CXX object engine\scene\components\camera\CMakeFiles\scene_camera.dir\src\Camera.cpp.obj
+[773/942] Linking CXX shared library bin\lux_engine_scene_transform.dll
+[774/942] Building CXX object engine\scene\components\camera\CMakeFiles\scene_camera.dir\src\CameraSchema.cpp.obj
+[775/942] Linking CXX executable bin\scene_driver_test.exe
+[776/942] Linking CXX static library lib\lux_engine_scene_camera.lib
+[777/942] Building CXX object engine\scene\builtin_systems\mesh_query\CMakeFiles\scene_mesh_query.dir\src\MeshQuery.cpp.obj
+[778/942] Linking CXX executable bin\scene_runtime_test.exe
+[779/942] Linking CXX shared library bin\lux_engine_scene_mesh_query.dll
+[780/942] Building CXX object engine\scene\builtin_systems\render\CMakeFiles\scene_render.dir\src\SceneRenderSchema.cpp.obj
+[781/942] Building CXX object engine\scene\builtin_systems\render\CMakeFiles\scene_render.dir\src\CameraExtraction.cpp.obj
+[782/942] Building CXX object engine\scene\builtin_systems\render\CMakeFiles\scene_render.dir\src\Builtin3DRenderStages.cpp.obj
+[783/942] Building CXX object engine\scene\builtin_systems\render\CMakeFiles\scene_render.dir\src\RenderAssets.cpp.obj
+[784/942] Building CXX object engine\scene\builtin_systems\render\CMakeFiles\scene_render.dir\src\RenderResources.cpp.obj
+[785/942] Building CXX object engine\scene\builtin_systems\render\CMakeFiles\scene_render.dir\src\RenderSystemConfiguration.cpp.obj
+[786/942] Building CXX object engine\scene\builtin_systems\render\CMakeFiles\scene_render.dir\src\RenderResourceScenes.cpp.obj
+[787/942] Building CXX object engine\scene\builtin_systems\render\CMakeFiles\scene_render.dir\src\RenderResourceAssets.cpp.obj
+[788/942] [lux_target_add_codegen] world_loading_configuration_codegen: parse once, render 2 projection(s)
+[Info] Parsed 1 target file(s) for 2 projection(s).
+[789/942] Generating plugin/render_features/identity.cpp, share/lux-engine/plugins/lux.builtin.render.json
+[790/942] Building CXX object engine\scene\builtin_systems\render\CMakeFiles\scene_render.dir\src\RenderResourceViews.cpp.obj
+[791/942] Building CXX object engine\scene\builtin_systems\render\CMakeFiles\scene_render.dir\src\RenderViewRequests.cpp.obj
+[792/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\assembly\deferred\DeferredLightingOperationHandlers.cpp.obj
+[793/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\assembly\canvas2d\Canvas2DOperationHandlers.cpp.obj
+[794/942] Building CXX object engine\scene\builtin_systems\render\CMakeFiles\scene_render.dir\src\RenderSystem.cpp.obj
+[795/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\assembly\gizmo\LineListOperationHandlers.cpp.obj
+[796/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\assembly\deferred\DeferredGBufferOperationHandlers.cpp.obj
+[797/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\assembly\gizmo\TriOverlayOperationHandlers.cpp.obj
+[798/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\assembly\grid\Grid2DOperationHandlers.cpp.obj
+[799/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\assembly\grid\Grid3DOperationHandlers.cpp.obj
+[800/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\assembly\forward\ForwardMeshOperationHandlers.cpp.obj
+[801/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\assembly\highlight\HighlightOperationHandlers.cpp.obj
+[802/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\assembly\light\LightOperationHandlers.cpp.obj
+[803/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\assembly\material\MaterialOperationHandlers.cpp.obj
+[804/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\assembly\postprocess\FogOperationHandlers.cpp.obj
+[805/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\assembly\meshstack\MeshStackOperationHandlers.cpp.obj
+[806/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\assembly\point_cloud\PCOperationHandlers.cpp.obj
+[807/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\assembly\terrain\TerrainOperationHandlers.cpp.obj
+[808/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\assembly\render_cluster\RenderClusterOperationHandlers.cpp.obj
+[809/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\assembly\shadow\ShadowMapOperationHandlers.cpp.obj
+[810/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\assembly\sky_box\SkyboxOperationHandlers.cpp.obj
+[811/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\assembly\spatialcull\SpatialCullOperationHandlers.cpp.obj
+[812/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\assembly\shadow\MeshShadowOperationHandlers.cpp.obj
+[813/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\assembly\skinning\SkinningOperationHandlers.cpp.obj
+[814/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\assembly\trajectory\TrajectoryOperationHandlers.cpp.obj
+[815/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\assembly\streaming_feedback\StreamingFeedbackOperationHandlers.cpp.obj
+[816/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\assembly\water\WaterOperationHandlers.cpp.obj
+[817/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\kernels\MeshKernels.cpp.obj
+[818/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\kernels\ShadowKernels.cpp.obj
+[819/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\kernels\UtilityKernels.cpp.obj
+[820/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\assembly\view_camera\ViewCameraOperationHandlers.cpp.obj
+[821/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\renderer\features\BuiltinShaderContextView.cpp.obj
+[822/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\renderer\features\canvas2d\Canvas2DFeature.cpp.obj
+[823/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\renderer\features\DepthPrepassFeature.cpp.obj
+[824/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\renderer\features\gizmo\LineListTransientFeature.cpp.obj
+[825/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\renderer\features\deferred\DeferredGBufferFeature.cpp.obj
+[826/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\renderer\features\deferred\DeferredLightingFeature.cpp.obj
+[827/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\renderer\features\gizmo\TriOverlayTransientFeature.cpp.obj
+[828/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\renderer\features\grid\Grid2DPassFeature.cpp.obj
+[829/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\renderer\features\grid\Grid3DPassFeature.cpp.obj
+[830/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\renderer\features\forward\ForwardMeshFeature.cpp.obj
+[831/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\renderer\features\GpuDrivenMeshFeatureBase.cpp.obj
+[832/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\renderer\features\light\LightFeature.cpp.obj
+[833/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\renderer\features\material\StandardMaterialFeature.cpp.obj
+[834/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\renderer\features\hzb\HzbFeature.cpp.obj
+[835/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\renderer\features\meshstack\StandardMeshStackFeature.cpp.obj
+[836/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\renderer\features\highlight\HighlightFeature.cpp.obj
+[837/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\renderer\features\point_cloud\PCFeatureSimple.cpp.obj
+[838/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\renderer\features\point_cloud\PCFeatureGPUDriven.cpp.obj
+[839/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\renderer\features\point_cloud\PCFeatureLOD.cpp.obj
+[840/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\renderer\features\point_cloud\PCFeatureIndirectBase.cpp.obj
+[841/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\renderer\features\point_cloud\PCFeatureSplatting.cpp.obj
+[842/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\renderer\features\point_cloud\PCFeatureTransient.cpp.obj
+[843/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\renderer\features\render_cluster\RenderClusterResources.cpp.obj
+[844/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\renderer\features\terrain\TerrainResources.cpp.obj
+[845/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\renderer\features\postprocess\LinearDepthFeature.cpp.obj
+[846/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\renderer\features\terrain\TerrainFeature.cpp.obj
+[847/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\renderer\features\render_cluster\RenderClusterFeature.cpp.obj
+[848/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\renderer\features\postprocess\FogFeature.cpp.obj
+[849/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\renderer\features\shadow\EVSMShadowResources.cpp.obj
+[850/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\renderer\features\postprocess\TonemapFeature.cpp.obj
+[851/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\renderer\features\postprocess\SsaoFeature.cpp.obj
+[852/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\renderer\features\shadow\EVSMShadowTechnique.cpp.obj
+[853/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\renderer\features\shadow\MeshShadowFeature.cpp.obj
+[854/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\renderer\features\skinning\SkinningFeature.cpp.obj
+[855/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\renderer\features\spatialcull\SpatialCullFeature.cpp.obj
+[856/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\renderer\features\sky_box\SkyboxFeature.cpp.obj
+[857/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\renderer\features\trajectory\TrajectoryLineFeature.cpp.obj
+[858/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\renderer\features\shadow\ShadowMapFeature.cpp.obj
+[859/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\renderer\features\view_camera\StandardViewCameraFeature.cpp.obj
+[860/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\scene\SpatialCullGrid.cpp.obj
+[861/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\__\comm_gen\lux\engine\function\render\features\genops\Grid3DOperation.ops.cpp.obj
+[862/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\__\comm_gen\lux\engine\function\render\features\genops\Grid2DOperation.ops.cpp.obj
+[863/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\renderer\features\water\WaterFeature.cpp.obj
+[864/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\src\renderer\features\streaming_feedback\StreamingFeedbackFeature.cpp.obj
+[865/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\__\comm_gen\lux\engine\function\render\features\genops\TriOverlayOperation.ops.cpp.obj
+[866/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\__\comm_gen\lux\engine\function\render\features\genops\LineListOperation.ops.cpp.obj
+[867/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\__\comm_gen\lux\engine\function\render\features\genops\SkyboxOperation.ops.cpp.obj
+[868/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\__\comm_gen\lux\engine\function\render\features\genops\TrajectoryOperation.ops.cpp.obj
+[869/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\__\comm_gen\lux\engine\function\render\features\genops\SkinningOperation.ops.cpp.obj
+[870/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\__\comm_gen\lux\engine\function\render\features\genops\PointCloudOperation.ops.cpp.obj
+[871/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\__\comm_gen\lux\engine\function\render\features\genops\TonemapOperation.ops.cpp.obj
+[872/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\__\comm_gen\lux\engine\function\render\features\genops\ShadowMapOperation.ops.cpp.obj
+[873/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\__\comm_gen\lux\engine\function\render\features\genops\ViewCameraOperation.ops.cpp.obj
+[874/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\__\comm_gen\lux\engine\function\render\features\genops\LightOperation.ops.cpp.obj
+[875/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\__\comm_gen\lux\engine\function\render\features\genops\MeshStackOperation.ops.cpp.obj
+[876/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\__\comm_gen\lux\engine\function\render\features\genops\MaterialOperation.ops.cpp.obj
+[877/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\__\comm_gen\lux\engine\function\render\features\genops\DeferredGBufferOperation.ops.cpp.obj
+[878/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\__\comm_gen\lux\engine\function\render\features\genops\DeferredLightingOperation.ops.cpp.obj
+[879/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\__\comm_gen\lux\engine\function\render\features\genops\DepthPrepassOperation.ops.cpp.obj
+[880/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\__\comm_gen\lux\engine\function\render\features\genops\ForwardMeshOperation.ops.cpp.obj
+[881/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\__\comm_gen\lux\engine\function\render\features\genops\HighlightOperation.ops.cpp.obj
+[882/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\__\comm_gen\lux\engine\function\render\features\genops\StreamingFeedbackOperation.ops.cpp.obj
+[883/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\__\comm_gen\lux\engine\function\render\features\genops\LinearDepthOperation.ops.cpp.obj
+[884/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\__\comm_gen\lux\engine\function\render\features\genops\HzbOperation.ops.cpp.obj
+[885/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\__\comm_gen\lux\engine\function\render\features\genops\SsaoOperation.ops.cpp.obj
+[886/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\__\comm_gen\lux\engine\function\render\features\genops\FogOperation.ops.cpp.obj
+[887/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\__\comm_gen\lux\engine\function\render\features\genops\MeshShadowOperation.ops.cpp.obj
+[888/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\__\comm_gen\lux\engine\function\render\features\genops\Canvas2DOperation.ops.cpp.obj
+[889/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\__\comm_gen\lux\engine\function\render\features\genops\SpatialCullOperation.ops.cpp.obj
+[890/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\__\comm_gen\lux\engine\function\render\features\genops\RenderClusterOperation.ops.cpp.obj
+[891/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\__\__\__\__\plugin\render_features\identity.cpp.obj
+[892/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\plugin\RenderPluginExports.cpp.obj
+[893/942] Linking CXX shared library bin\lux_engine_scene_render.dll
+[894/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\__\comm_gen\lux\engine\function\render\features\genops\WaterOperation.ops.cpp.obj
+[895/942] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\__\comm_gen\lux\engine\function\render\features\genops\TerrainOperation.ops.cpp.obj
+[896/942] Building CXX object engine\scene\builtin_systems\render\CMakeFiles\scene_render_resources_test.dir\test\resources.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[897/942] Linking CXX shared library bin\render_features.dll
+[898/942] Building CXX object engine\scene\builtin_systems\world_loading\CMakeFiles\scene_world_loading.dir\src\WorldLoadingSystem.cpp.obj
+[899/942] Building CXX object engine\scene\builtin_systems\world_loading\CMakeFiles\scene_world_loading.dir\src\WorldResidency.cpp.obj
+[900/942] Building CXX object engine\scene\builtin_systems\world_loading\CMakeFiles\scene_world_loading.dir\src\Observer.cpp.obj
+[901/942] Building CXX object engine\scene\builtin_systems\render\CMakeFiles\scene_render_resources_test.dir\test\runtime.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[902/942] Building CXX object engine\scene\plugins\CMakeFiles\builtin_runtime_exports.dir\BuiltinRuntimeExports.cpp.obj
+[903/942] Linking CXX shared library bin\lux_engine_scene_world_loading.dll
+[904/942] Building CXX object engine\scene\plugins\CMakeFiles\builtin_runtime_description.dir\__\__\__\cmake\runtime_plugin_description.cpp.obj
+[905/942] Building CXX object engine\scene\plugins\CMakeFiles\builtin_scene_render_exports.dir\BuiltinSceneRenderExports.cpp.obj
+[906/942] Building CXX object engine\scene\builtin_systems\world_loading\CMakeFiles\scene_world_loading_test.dir\test\world_loading.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[907/942] Linking CXX executable bin\builtin_runtime_description.exe
+[908/942] Generating builtin.declaration.json
+[909/942] Generating plugin/builtin_runtime_plugin/identity.cpp, share/lux-engine/plugins/lux.builtin.runtime.json
+[910/942] Building CXX object engine\scene\plugins\CMakeFiles\builtin_runtime_plugin.dir\__\__\__\plugin\builtin_runtime_plugin\identity.cpp.obj
+[911/942] Building CXX object engine\scene\plugins\CMakeFiles\builtin_scene_render_description.dir\__\__\__\cmake\runtime_plugin_description.cpp.obj
+[912/942] Building CXX object engine\context\CMakeFiles\engine_context.dir\src\EngineContext.cpp.obj
+[913/942] Linking CXX static library lib\engine_context.lib
+[914/942] Linking CXX executable bin\scene_world_loading_test.exe
+[915/942] Linking CXX shared library bin\builtin_runtime_plugin.dll
+[916/942] Linking CXX executable bin\builtin_scene_render_description.exe
+[917/942] Generating scene-render.declaration.json
+[918/942] Generating plugin/builtin_scene_render_plugin/identity.cpp, share/lux-engine/plugins/lux.builtin.scene_render.json
+[919/942] Building CXX object engine\scene\plugins\CMakeFiles\builtin_scene_render_plugin.dir\__\__\__\plugin\builtin_scene_render_plugin\identity.cpp.obj
+[920/942] Building CXX object engine\context\rendering\CMakeFiles\engine_context_render.dir\src\RenderContext.cpp.obj
+[921/942] Building CXX object engine\context\rendering\CMakeFiles\engine_context_render.dir\src\EngineRendering.cpp.obj
+[922/942] Linking CXX static library lib\engine_context_render.lib
+[923/942] Linking CXX shared library bin\builtin_scene_render_plugin.dll
+[924/942] Building CXX object engine\project\plugins\CMakeFiles\project_plugins.dir\src\PluginCatalog.cpp.obj
+[925/942] Linking CXX executable bin\scene_render_resources_test.exe
+[926/942] Building CXX object engine\project\plugins\CMakeFiles\project_plugins.dir\src\PluginLibrary.cpp.obj
+[927/942] Building CXX object engine\project\plugins\CMakeFiles\project_plugins.dir\src\PluginManager.cpp.obj
+[928/942] Linking CXX static library lib\project_plugins.lib
+[929/942] Building CXX object engine\project\plugins\rendering\CMakeFiles\project_plugin_rendering.dir\src\PluginRendering.cpp.obj
+[930/942] Linking CXX static library lib\project_plugin_rendering.lib
+[931/942] Building CXX object engine\project\plugins\CMakeFiles\engine_headless_test.dir\__\__\context\test\headless.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[932/942] Linking CXX executable bin\engine_headless_test.exe
+ninja: build stopped: cannot make progress due to previous errors.

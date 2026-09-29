@@ -1,0 +1,2 @@
+Archive portability recheck failed: importing the verifier wrote __pycache__/check_receipt.cpython-312.pyc, accidentally included in artifacts.
+Fix: verifier probes disable bytecode generation; artifact collection excludes interpreter cache. Required evidence remains mandatory.

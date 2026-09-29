@@ -1,0 +1,36 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine
+    Start  8: scene.runtime
+1/4 Test  #8: scene.runtime ......................   Passed    0.09 sec
+    Start 71: editor.scene_execution.isolation
+2/4 Test #71: editor.scene_execution.isolation ...Exit code 0xc0000409
+***Exception:   8.59 sec
+Assertion failed: std::chrono::steady_clock::now() < deadline, file E:\SyncForder\CodeRepos\lux-engine\editor\tools\scene\execution\test\runs.cpp, line 129
+
+    Start 72: editor.scene_execution.controls
+3/4 Test #72: editor.scene_execution.controls ....Exit code 0xc0000409
+***Exception:   8.25 sec
+Assertion failed: std::chrono::steady_clock::now() < deadline, file E:\SyncForder\CodeRepos\lux-engine\editor\tools\scene\execution\test\runs.cpp, line 129
+
+    Start 73: editor.scene_execution.failure
+4/4 Test #73: editor.scene_execution.failure .....Exit code 0xc0000409
+***Exception:   8.25 sec
+Assertion failed: std::chrono::steady_clock::now() < deadline, file E:\SyncForder\CodeRepos\lux-engine\editor\tools\scene\execution\test\runs.cpp, line 129
+
+
+25% tests passed, 3 tests failed out of 4
+
+Label Time Summary:
+P06       =  25.09 sec*proc (3 tests)
+editor    =  25.09 sec*proc (3 tests)
+native    =  25.09 sec*proc (3 tests)
+
+Total Test time (real) =  25.74 sec
+
+The following tests FAILED:
+	 71 - editor.scene_execution.isolation (Exit code 0xc0000409
+) P06 editor native
+	 72 - editor.scene_execution.controls (Exit code 0xc0000409
+) P06 editor native
+	 73 - editor.scene_execution.failure (Exit code 0xc0000409
+) P06 editor native
+Errors while running CTest

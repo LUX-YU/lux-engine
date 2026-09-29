@@ -1,0 +1,4 @@
+* -text
+logs/** -diff
+evidence/** -diff
+spec/** -diff

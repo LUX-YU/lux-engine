@@ -1,0 +1,2 @@
+Previous HEAD position was 38e086b0c Implement P06 scene retirement, explicit controls and independent runs
+HEAD is now at 0a62bde53 Complete external render host retirement before scene runtime teardown

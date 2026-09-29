@@ -1,0 +1,13 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/scene-execution-p06-consumer
+    Start 1: installed.scene_execution.isolation
+1/4 Test #1: installed.scene_execution.isolation ....   Passed    0.05 sec
+    Start 2: installed.scene_execution.controls
+2/4 Test #2: installed.scene_execution.controls .....   Passed    0.09 sec
+    Start 3: installed.scene_execution.failure
+3/4 Test #3: installed.scene_execution.failure ......   Passed    0.03 sec
+    Start 4: installed.scene_execution.completion
+4/4 Test #4: installed.scene_execution.completion ...   Passed    0.03 sec
+
+100% tests passed, 0 tests failed out of 4
+
+Total Test time (real) =   0.20 sec

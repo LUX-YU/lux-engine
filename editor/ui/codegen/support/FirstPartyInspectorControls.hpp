@@ -25,7 +25,7 @@ namespace lux::editor::ui
               mesh_label_(layout_, lux::ui::ElementId{"mesh-label"}, "Mesh"), mesh_(
                                                                                   layout_,
                                                                                   lux::ui::ElementId{"mesh"},
-                                                                                  interaction.editing().project(),
+                                                                                  interaction.assetCatalog(),
                                                                                   lux::asset::MeshAsset::primary_magic,
                                                                                   value.mesh
                                                                               ),
@@ -33,7 +33,7 @@ namespace lux::editor::ui
               material_(
                   layout_,
                   lux::ui::ElementId{"material"},
-                  interaction.editing().project(),
+                  interaction.assetCatalog(),
                   lux::asset::MaterialAsset::primary_magic,
                   value.material
               ),

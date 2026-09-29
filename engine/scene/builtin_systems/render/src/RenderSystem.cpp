@@ -207,6 +207,13 @@ namespace lux::scene
 
     RenderSystem::~RenderSystem() noexcept
     {
+        beginRetirement();
+    }
+
+    void RenderSystem::beginRetirement() noexcept
+    {
+        if (std::exchange(retiring_, true))
+            return;
         // SceneInstance has already revoked hook execution. Disconnect observers
         // while the Registry is still alive, then retire unaccepted input locally.
         request_created_.release();
@@ -298,6 +305,12 @@ namespace lux::scene
 
     SceneStageResult RenderSystem::maintain(SceneStageContext& context) noexcept
     {
+        if (context.stop.stop_requested())
+        {
+            beginRetirement();
+            return receipt_.status().state == ESceneResourceState::RETIRED ? ESceneProgress::COMPLETE
+                                                                           : ESceneProgress::PENDING;
+        }
         auto result = maintain();
         if (result && *result == ESceneProgress::COMPLETE)
         {

@@ -29,24 +29,24 @@ namespace lux::editor::scene
             lux::ui::PaneId{prefix + "inspector"},
             editor_context_.sceneRegistrations().components,
             this->editor_context_.componentEditors(),
-            status
+            status,
+            &editor_context_.project()
         );
         outliner_ = std::make_unique<ui::OutlinerPane>(*this, runtime_, lux::ui::PaneId{prefix + "outliner"}, status);
-        resources_ =
-            std::make_unique<ui::ResourcePane>(*this, importer, lux::ui::PaneId{prefix + "resources"}, status);
+        resources_ = std::make_unique<ui::ResourcePane>(*this, importer, lux::ui::PaneId{prefix + "resources"}, status);
         if (!status)
             return;
         if (editor_context_.panes().findFirst(lux::ui::PaneTypeIdView{kSceneEditorType}) == nullptr)
             editor->root().setDockLayout(
-            {std::string(outliner_->id().name()),
-             std::string(editor->id().name()),
-             std::string(inspector_->id().name()),
-             std::string(resources_->id().name()),
-             260,
-             350,
-             200,
-             editor->root().findPane(lux::ui::PaneIdView{"project"}) ? "project" : ""}
-        );
+                {std::string(outliner_->id().name()),
+                 std::string(editor->id().name()),
+                 std::string(inspector_->id().name()),
+                 std::string(resources_->id().name()),
+                 260,
+                 350,
+                 200,
+                 editor->root().findPane(lux::ui::PaneIdView{"project"}) ? "project" : ""}
+            );
         syncInspector();
     }
 
@@ -65,10 +65,9 @@ namespace lux::editor::scene
     {
         if (!inspector_ || !scene_editing || replacing_)
             return;
-        const bool stopping = this->run_status.state == ERunState::STOPPING;
-        const auto result = stopping
-                                ? inspector_->content().setTarget(*this->scene_editing, this->selection_.object)
-                                : inspector_->content().setTarget(editing(), selection().object);
+        const bool stopping = this->run_status.state == EPlaybackState::STOPPING;
+        const auto result = stopping ? inspector_->content().setTarget(*this->scene_editing, this->selection_.object)
+                                     : inspector_->content().setTarget(editing(), selection().object);
         if (!result)
             this->failure = result.error();
     }

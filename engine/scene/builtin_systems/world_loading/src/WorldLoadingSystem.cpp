@@ -328,7 +328,7 @@ namespace lux::scene
             recount();
             if (stopping)
             {
-                return ESceneProgress::COMPLETE;
+                return reads.empty() ? ESceneProgress::COMPLETE : ESceneProgress::PENDING;
             }
             refreshDemands();
             if (context.allow_structure)

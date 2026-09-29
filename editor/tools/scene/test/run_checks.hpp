@@ -45,8 +45,8 @@ public:
     void update() noexcept override
     {
         const auto run = scene_.runStatus();
-        const bool is_active =
-            run.state == lux::editor::scene::ERunState::RUNNING || run.state == lux::editor::scene::ERunState::PAUSED;
+        const bool is_active = run.state == lux::editor::scene::EPlaybackState::RUNNING ||
+                               run.state == lux::editor::scene::EPlaybackState::PAUSED;
         if (closing_ || (viewport_ && !is_active))
         {
             if (viewport_)
@@ -56,7 +56,7 @@ public:
             }
             return;
         }
-        if (!viewport_ && run.state == lux::editor::scene::ERunState::RUNNING)
+        if (!viewport_ && run.state == lux::editor::scene::EPlaybackState::RUNNING)
         {
             auto camera = toolTest(scene_).viewportCamera();
             if (!camera)
@@ -112,6 +112,7 @@ private:
 struct ScenePlaybackChecks final
 {
     lux::editor::scene::RunId first;
+    lux::editor::scene::StartRunId first_request;
     lux::editor::editing::HistorySnapshot author;
     std::optional<lux::editor::sessions::PersistedState> author_persisted;
     lux::editor::editing::HistoryId pause_history;
@@ -146,10 +147,11 @@ struct ScenePlaybackChecks final
     {
         selected = sceneObjects(scene).front().object;
         assert(toolTest(scene).select(selected));
-        author_translation = static_cast<const lux::simulation::ecs::Transform3D*>(
-                                 toolTest(scene).component(selected, lux::cxx::typeToken<lux::simulation::ecs::Transform3D>())
-        )
-                                 ->translation;
+        author_translation =
+            static_cast<const lux::simulation::ecs::Transform3D*>(
+                toolTest(scene).component(selected, lux::cxx::typeToken<lux::simulation::ecs::Transform3D>())
+            )
+                ->translation;
         author = scene.historyView()->history;
         author_persisted = scene.persistedState();
         first_frame = renderer.statistics().frames;
@@ -166,7 +168,7 @@ struct ScenePlaybackChecks final
     bool poll(lux::editor::scene::SceneEditor& scene, lux::render::RenderRuntime& renderer)
     {
         using namespace lux::editor;
-        if (first.serial == 0)
+        if (first_request.serial == 0)
         {
             // Run suspends author maintenance. Establish the author GPU oracle
             // before Play instead of assuming resource readiness means its
@@ -188,12 +190,17 @@ struct ScenePlaybackChecks final
             assert(!invalid_delta && invalid_delta.error().code == EEditorError::INVALID_ARGUMENT);
             auto started = scene.play(std::chrono::milliseconds(10));
             assert(started);
-            first = *started;
+            first_request = *started;
             const auto duplicate = scene.play();
             assert(!duplicate && duplicate.error().code == EEditorError::BUSY);
             return false;
         }
         const auto run = scene.runStatus();
+        if (!first.valid() && run.id.valid())
+        {
+            assert(run.request == first_request);
+            first = run.id;
+        }
         if (++polls % 120 == 0)
         {
             std::printf(
@@ -224,7 +231,7 @@ struct ScenePlaybackChecks final
                 current.revision == author.revision && current.cursor == author.cursor
             );
         }
-        if (phase == 0 && run.state == scene::ERunState::RUNNING && run.steps >= 3)
+        if (phase == 0 && run.state == scene::EPlaybackState::RUNNING && run.steps >= 3)
         {
             if (!initial_adopted)
             {
@@ -265,7 +272,7 @@ struct ScenePlaybackChecks final
             assert(scene.pauseRun(first));
             phase = 1;
         }
-        else if (phase == 1 && run.state == scene::ERunState::PAUSED)
+        else if (phase == 1 && run.state == scene::EPlaybackState::PAUSED)
         {
             pause_history = scene.historyId();
             assert(pause_history != author.current.history);
@@ -280,7 +287,8 @@ struct ScenePlaybackChecks final
                             assert(!result && result.error().code == EEditorError::BUSY);
                         }
                         assert(
-                            scene.runStatus().state == scene::ERunState::PAUSED && scene.historyId() == pause_history
+                            scene.runStatus().state == scene::EPlaybackState::PAUSED &&
+                            scene.historyId() == pause_history
                         );
                         ++notices;
                     }
@@ -314,7 +322,7 @@ struct ScenePlaybackChecks final
         }
         else if (phase == 2)
         {
-            assert(run.state == scene::ERunState::PAUSED && run.steps == paused_step);
+            assert(run.state == scene::EPlaybackState::PAUSED && run.steps == paused_step);
             if (++frames < 8)
             {
                 return false;
@@ -330,7 +338,7 @@ struct ScenePlaybackChecks final
             assert(!duplicate && duplicate.error().code == EEditorError::BUSY);
             phase = 3;
         }
-        else if (phase == 3 && run.steps == paused_step + 1 && run.state == scene::ERunState::PAUSED)
+        else if (phase == 3 && run.steps == paused_step + 1 && run.state == scene::EPlaybackState::PAUSED)
         {
             assert(scene.historyId() != pause_history && scene.historyId() != author.current.history);
             if (auto* editor = dynamic_cast<Editor*>(&scene.root()))
@@ -356,7 +364,7 @@ struct ScenePlaybackChecks final
         }
         else if (phase == 4)
         {
-            assert(run.steps == paused_step + 1 && run.state == scene::ERunState::PAUSED);
+            assert(run.steps == paused_step + 1 && run.state == scene::EPlaybackState::PAUSED);
             if (++frames < 8)
             {
                 return false;
@@ -382,7 +390,7 @@ struct ScenePlaybackChecks final
         {
             if (observer->closeStatus().state != ECloseState::CLOSED)
                 return false;
-            assert(run.state == scene::ERunState::RUNNING && run.retained_resources == 3);
+            assert(run.state == scene::EPlaybackState::RUNNING && run.retained_resources == 3);
             paused_step = run.steps;
             phase = 5;
             std::puts("D06: SceneElement closed; independent Run remains active with its resource uses");
@@ -393,7 +401,7 @@ struct ScenePlaybackChecks final
             assert(scene.stopRun(first));
             phase = 6;
         }
-        else if (phase == 6 && run.state == scene::ERunState::FINISHED)
+        else if (phase == 6 && run.state == scene::EPlaybackState::FINISHED)
         {
             assert(run.retained_resources == 0 && run.pending_updates == 0);
             assert(toolTest(scene).selection().object == selected);
@@ -419,31 +427,32 @@ struct ScenePlaybackChecks final
                 static_cast<unsigned long long>(renderer.statistics().frames - first_frame)
             );
             const auto next = scene.play(std::chrono::milliseconds(10));
-            assert(next && *next != first);
+            assert(next && *next != first_request);
             const auto late = scene.stopRun(first);
             assert(!late && late.error().code == EEditorError::STALE_REQUEST);
             phase = 7;
         }
-        else if (phase == 7 && run.state == scene::ERunState::RUNNING && run.steps >= 2)
+        else if (phase == 7 && run.state == scene::EPlaybackState::RUNNING && run.steps >= 2)
         {
+            assert(run.id != first);
             assert(scene.stopRun(run.id));
             phase = 8;
         }
-        else if (phase == 8 && run.state == scene::ERunState::FINISHED)
+        else if (phase == 8 && run.state == scene::EPlaybackState::FINISHED)
         {
             const auto cancelled = scene.play(std::chrono::milliseconds(10));
             assert(cancelled);
-            assert(scene.stopRun(*cancelled) && scene.stopRun(*cancelled));
+            assert(scene.cancelRun(*cancelled) && scene.cancelRun(*cancelled));
             phase = 9;
         }
-        else if (phase == 9 && run.state == scene::ERunState::FINISHED)
+        else if (phase == 9 && run.state == scene::EPlaybackState::FINISHED)
         {
             assert(run.retained_resources == 0 && run.steps == 0);
             const auto exit_run = scene.play(std::chrono::milliseconds(10));
             assert(exit_run);
             phase = 10;
         }
-        else if (phase == 10 && run.state == scene::ERunState::RUNNING && run.steps >= 2)
+        else if (phase == 10 && run.state == scene::EPlaybackState::RUNNING && run.steps >= 2)
         {
             observer->requestClose();
             if (observer->closeStatus().state != ECloseState::CLOSED)
@@ -477,32 +486,34 @@ struct CpuRunChecks final
         author_persisted = scene.persistedState();
         auto started = scene.play(std::chrono::milliseconds(10));
         assert(started);
-        id = *started;
+        assert(!scene.runStatus().id.valid());
     }
 
     bool poll(lux::editor::scene::SceneEditor& scene)
     {
         using namespace lux::editor::scene;
         const auto status = scene.runStatus();
+        if (!id.valid() && status.id.valid())
+            id = status.id;
         assert(status.result && !status.render_scene.isValid());
         if (phase == 0 && status.steps >= 2)
         {
             assert(scene.pauseRun(id));
             phase = 1;
         }
-        else if (phase == 1 && status.state == ERunState::PAUSED)
+        else if (phase == 1 && status.state == EPlaybackState::PAUSED)
         {
             paused = status.steps;
             assert(scene.stepRun(id));
             phase = 2;
         }
-        else if (phase == 2 && status.state == ERunState::PAUSED)
+        else if (phase == 2 && status.state == EPlaybackState::PAUSED)
         {
             assert(status.steps == paused + 1);
             assert(scene.stopRun(id));
             phase = 3;
         }
-        else if (phase == 3 && status.state == ERunState::FINISHED)
+        else if (phase == 3 && status.state == EPlaybackState::FINISHED)
         {
             const auto history = scene.historyView()->history;
             assert(history.current == author.current && history.revision == author.revision);
@@ -530,25 +541,28 @@ struct RunFailureChecks final
         using Transform = lux::simulation::ecs::Transform3D;
         object = sceneObjects(scene).front().object;
         author_translation =
-            static_cast<const Transform*>(toolTest(scene).component(object, lux::cxx::typeToken<Transform>()))->translation;
+            static_cast<const Transform*>(toolTest(scene).component(object, lux::cxx::typeToken<Transform>()))
+                ->translation;
         author = scene.historyView()->history;
         author_persisted = scene.persistedState();
         auto started = scene.play(std::chrono::milliseconds(10));
         assert(started);
-        failed_run = *started;
+        assert(!scene.runStatus().id.valid());
     }
     bool poll(lux::editor::scene::SceneEditor& scene)
     {
         using namespace lux;
         using namespace lux::editor;
         const auto run = scene.runStatus();
-        if (phase == 10 && run.state == lux::editor::scene::ERunState::RUNNING && run.steps >= 2)
+        if (!failed_run.valid() && run.id.valid())
+            failed_run = run.id;
+        if (phase == 10 && run.state == lux::editor::scene::EPlaybackState::RUNNING && run.steps >= 2)
         {
             assert(scene.pauseRun(run.id));
             phase = 11;
             return false;
         }
-        if (phase == 11 && run.state == lux::editor::scene::ERunState::PAUSED)
+        if (phase == 11 && run.state == lux::editor::scene::EPlaybackState::PAUSED)
         {
             using Transform = simulation::ecs::Transform3D;
             const auto runtime_object = sceneObjects(scene).front().object;
@@ -568,7 +582,7 @@ struct RunFailureChecks final
         }
         if (phase == 0)
         {
-            if (run.state != lux::editor::scene::ERunState::FAILED)
+            if (run.state != lux::editor::scene::EPlaybackState::FAILED)
             {
                 return false;
             }
@@ -612,16 +626,16 @@ struct RunFailureChecks final
             );
             assert(scene.historyView()->history.current == author.current);
             auto restarted = scene.play(std::chrono::milliseconds(10));
-            assert(restarted && *restarted != failed_run);
+            assert(restarted && !scene.runStatus().id.valid());
             phase = 1;
         }
-        else if (phase == 1 && run.state == lux::editor::scene::ERunState::RUNNING && run.steps >= 2)
+        else if (phase == 1 && run.state == lux::editor::scene::EPlaybackState::RUNNING && run.steps >= 2)
         {
-            assert(run.result);
+            assert(run.result && run.id != failed_run);
             assert(scene.stopRun(run.id));
             phase = 2;
         }
-        else if (phase == 2 && run.state == lux::editor::scene::ERunState::FINISHED)
+        else if (phase == 2 && run.state == lux::editor::scene::EPlaybackState::FINISHED)
         {
             assert(run.result && run.retained_resources == 0);
             const auto current = scene.historyView()->history;

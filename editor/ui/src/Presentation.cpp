@@ -32,15 +32,9 @@ namespace lux::editor::ui
             collectOutputReceipt();
             stopFrames();
             work_.cancel();
-            if (scene_.valid() && !scenes_.destroy(scene_))
-                render::renderFatal("UI scene destruction requires the owner safe point");
-            // Surface retirement must precede the native window destructor. This
-            // wait dispatches resource completions only, never UI/business events.
-            auto retired = [&]() noexcept {
-                return output_receipt_.status().status.state == lux::scene::EViewState::CLOSED;
-            };
-            if (!execution_.waitUntil(retired))
-                render::renderFatal("Presentation destruction cannot wait on this thread or callback");
+            retirement_ = scene_.retire();
+            // The application keeps the native window and shared RenderContext alive
+            // through SceneRuntime's final retirement drain. No callback blocks here.
         }
 
         EditorResult<void> initialize(lux::ui::Root& root, render::RenderRuntime& runtime) noexcept
@@ -111,15 +105,15 @@ namespace lux::editor::ui
                 .setSimulation(std::make_shared<const simulation::SimulationDescription>())
                 .setRegistrations(components, systems, std::span{&registration, 1})
                 .setProviders(providers);
-            const auto built = builder.build();
+            auto built = builder.build();
             if (!built)
                 return lux::cxx::unexpected(
                     EditorFailure{EEditorError::FRONTEND_FAILURE, "ui.scene", 0, {}, built.error()}
                 );
-            scene_ = *built;
-            if (!scenes_.invalid(scene_))
+            scene_ = std::move(*built);
+            if (!scenes_.pauseSimulation(scene_.id()))
                 render::renderFatal("New UI scene identity was rejected");
-            auto borrowed = scenes_.getSceneRegistry(scene_);
+            auto borrowed = scenes_.borrowInstance(scene_.id());
             if (!borrowed)
                 return lux::cxx::unexpected(
                     EditorFailure{EEditorError::FRONTEND_FAILURE, "ui.registry", 0, {}, borrowed.error()}
@@ -157,9 +151,9 @@ namespace lux::editor::ui
 
         void collectOutputReceipt() noexcept
         {
-            if (!window_ || !scene_.valid())
+            if (!window_ || !bool(scene_))
                 return;
-            const auto registry = std::as_const(scenes_).getSceneRegistry(scene_);
+            const auto registry = std::as_const(scenes_).borrowInstance(scene_.id());
             if (!registry)
                 return;
             const auto* result = registry->get().try_get<lux::scene::RenderViewResult>(output_request_);
@@ -179,7 +173,7 @@ namespace lux::editor::ui
             std::uint32_t width{}, height{}, pixels_x{}, pixels_y{};
             window_->size(width, height);
             window_->framebufferSize(pixels_x, pixels_y);
-            if (auto borrowed = scenes_.getSceneRegistry(scene_))
+            if (auto borrowed = scenes_.borrowInstance(scene_.id()))
             {
                 auto& registry = borrowed->get();
                 const render::PixelExtent extent{pixels_x, pixels_y};
@@ -211,7 +205,7 @@ namespace lux::editor::ui
         {
             // A pending input can become writable in the just-finished Runtime
             // traversal. Retry once at that safe point without spinning on GPU waits.
-            if (pending_ && scenes_.getSceneRegistry(scene_))
+            if (pending_ && scenes_.borrowInstance(scene_.id()))
                 return std::chrono::steady_clock::now();
             const bool has_output = !window_ || (!window_->minimized() && output_receipt_.status().status.state ==
                                                                               lux::scene::EViewState::READY);
@@ -274,7 +268,7 @@ namespace lux::editor::ui
                 return lux::cxx::unexpected(*failure_);
             if (!pending_ && !clear_pending_)
                 return {};
-            auto borrowed = scenes_.getSceneRegistry(scene_);
+            auto borrowed = scenes_.borrowInstance(scene_.id());
             if (!borrowed)
             {
                 const auto* error = std::get_if<lux::scene::ESceneRuntimeError>(&borrowed.error().cause);
@@ -297,7 +291,8 @@ namespace lux::editor::ui
         window::LuxWindow* window_;
         process::CompletionWork work_;
         std::shared_ptr<process::CompletionWork::Request> completion_;
-        lux::scene::SceneInstanceId scene_;
+        lux::scene::SceneInstanceLease scene_;
+        lux::scene::InstanceRetirement retirement_;
         simulation::ecs::Entity input_{simulation::ecs::NullEntity}, output_request_{simulation::ecs::NullEntity};
         std::stop_source output_stop_;
         lux::scene::RenderViewReceipt output_receipt_;
@@ -361,6 +356,6 @@ namespace lux::editor::ui
     }
     lux::scene::SceneInstanceId Presentation::sceneId() const noexcept
     {
-        return impl_->scene_;
+        return impl_->scene_.id();
     }
 }

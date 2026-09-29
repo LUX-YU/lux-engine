@@ -72,12 +72,12 @@ int main()
     };
     auto created = create();
     assert(created);
-    const auto instance = *created;
-    assert((*runtime)->invalid(instance));
-    auto& registry = (*runtime)->getSceneRegistry(instance)->get();
+    const auto instance = created->id();
+    assert((*runtime)->pauseSimulation(instance));
+    auto& registry = (*runtime)->borrowInstance(instance)->get();
     const auto entity = registry.create();
     registry.emplace<ecs::Transform3D>(entity);
-    assert((*runtime)->tick());
+    assert((*runtime)->driveFrame());
     auto history = editor::editing::EditHistory::create({{128, 1048576, 1048576, 256}, {}});
     assert(history);
     editor::scene::SceneEditing editing(**runtime, instance, *schemas, **history);
@@ -117,16 +117,16 @@ int main()
     assert((*history)->view()->snapshot.current == before);
     assert((*history)->redo());
     PublicationGate::blocked = true;
-    assert((*runtime)->valid(instance));
-    assert((*runtime)->tick());
-    assert(!(*runtime)->getSceneRegistry(instance));
+    assert((*runtime)->resumeSimulation(instance));
+    assert((*runtime)->driveFrame());
+    assert(!(*runtime)->borrowInstance(instance));
     const auto blocked_undo = (*history)->undo();
     assert(!blocked_undo && blocked_undo.error().code == editor::editing::EEditError::BUSY);
     assert(registry.get<ecs::Transform3D>(entity).translation == Eigen::Vector3d(1, 2, 3));
-    assert((*runtime)->invalid(instance));
+    assert((*runtime)->pauseSimulation(instance));
     PublicationGate::blocked = false;
-    assert((*runtime)->tick());
-    assert((*runtime)->getSceneRegistry(instance));
+    assert((*runtime)->driveFrame());
+    assert((*runtime)->borrowInstance(instance));
     auto token = editing.beginFieldEdit<ecs::Transform3D, Eigen::Vector3d>(
         *editing.writeTarget(reference),
         "test",
@@ -142,18 +142,18 @@ int main()
     assert(!editing.component(reference, cxx::typeToken<ecs::Transform3D>()));
     assert(!editing.writeTarget(reference));
     auto second = create();
-    assert(second && *second != instance);
-    editor::scene::SceneEditing second_editing(**runtime, *second, *schemas, **history);
-    const auto second_entity = (*runtime)->getSceneRegistry(*second)->get().create();
-    (*runtime)->getSceneRegistry(*second)->get().emplace<ecs::Transform3D>(second_entity);
+    assert(second && second->id() != instance);
+    editor::scene::SceneEditing second_editing(**runtime, second->id(), *schemas, **history);
+    const auto second_entity = (*runtime)->borrowInstance(second->id())->get().create();
+    (*runtime)->borrowInstance(second->id())->get().emplace<ecs::Transform3D>(second_entity);
     auto wrong_scene = *target;
     wrong_scene.entity = second_entity;
     const auto stale =
         second_editing
             .setField<ecs::Transform3D>(wrong_scene, "translation", "Move", translation, Eigen::Vector3d{8, 9, 10});
     assert(!stale && stale.error().code == editor::editing::EEditError::STALE_TARGET);
-    assert((*runtime)->getSceneRegistry(*second)->get().get<ecs::Transform3D>(second_entity).translation.isZero());
-    assert((*runtime)->destroy(instance));
+    assert((*runtime)->borrowInstance(second->id())->get().get<ecs::Transform3D>(second_entity).translation.isZero());
+    assert((*runtime)->retireInstance(instance));
     assert(!editing.component(replacement, transform_type));
     const auto expired = editing.writeTarget(replacement);
     assert(!expired && expired.error().code == editor::editing::EEditError::STALE_TARGET);

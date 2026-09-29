@@ -31,6 +31,7 @@ target_include_directories(
     simulation_script
     PUBLIC $<INSTALL_INTERFACE:include/lux/engine/simulation/abilities>
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
+            ${CMAKE_CURRENT_SOURCE_DIR}/../../scripting/core/sinclude
 )
 target_compile_definitions(
     simulation_script

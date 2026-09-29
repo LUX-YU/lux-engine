@@ -134,6 +134,7 @@ namespace lux::scene
         void captureViewPublications();
         void commitViewPublications() noexcept;
         void refreshViews();
+        void beginRetirement() noexcept;
         render::RenderRuntime& runtime_;
         simulation::ecs::Registry& registry_;
         // One business reference; admitted packets and Views capture passive usage.
@@ -149,7 +150,7 @@ namespace lux::scene
         std::uint64_t captured_step_{};
         std::uint64_t captured_views_{}, forwarded_views_{};
         SceneStageResult result_{ESceneProgress::COMPLETE};
-        bool initialized_{}, prepared_{}, full_sync_{true};
+        bool initialized_{}, prepared_{}, full_sync_{true}, retiring_{};
     };
 
     [[nodiscard]] LUX_ENGINE_SCENE_RENDER_PUBLIC SceneSystemRegistration builtinRenderSystemRegistration() noexcept;

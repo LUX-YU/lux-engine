@@ -101,6 +101,8 @@ def check_model(repo, targets, rules, sources, report, name):
             detail = " -> ".join(path) + " (" + kind + ")"
             dest = targets.get(dependency)
             allowed = policy["closure"].get(dependency)
+            if not dest and dependency in policy.get("native_libraries", []):
+                continue  # Explicit platform linker names; never applies to unresolved CMake targets.
             if not dest:
                 report(prefix + "_UNRESOLVED_DEPENDENCY", name, detail)
                 continue
@@ -189,6 +191,13 @@ def inspect(repo, records, rules, stage, compile_db=None):
     if stage >= "P05":
         for target in ["editor_persistence", "project_io", "scene_persistence", "material_persistence", "flowforge_persistence"]:
             check_model(repo, targets, rules, sources, report, target)
+
+    if stage >= "P06":
+        for target in ["scene_execution_api", "scene_execution"]:
+            check_model(repo, targets, rules, sources, report, target)
+        header = "engine/scene/composition/include/lux/engine/scene/SceneRuntime.hpp"
+        if re.search(r'\b(valid|invalid|getSceneRegistry|getClock|destroy|tick)\s*\(|\bTickResult\b', sources.get(header, "")):
+            report("OLD_RUNTIME_API", header, "P06 expired declaration or compatibility alias")
 
     scopes = tuple(rules["new_scopes"])
     forbidden_headers = set(rules["new_scope_forbidden_include"])

@@ -84,6 +84,10 @@ namespace lux::editor::scene
         std::size_t retained_bytes_{};
     };
 
+    // Shared frozen-content assembly for persistence and execution; no Registry/live Session borrow.
+    [[nodiscard]] lux::cxx::expected<lux::scene::ScenePackage, lux::scene::ScenePackageFailure>
+    buildSceneSnapshotPackage(const SceneSnapshot&, std::stop_token = {});
+
     // Synchronous owner-thread borrow, invalidated by any mutation/reload/close. Values read through
     // component() are owning encoded data; even plugin shared_ptr fields cannot mutate the source.
     class SceneReadView final

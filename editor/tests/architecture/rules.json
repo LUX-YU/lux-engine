@@ -497,7 +497,8 @@
   ],
   "transition_allowlist": [
     "editor/transition/LegacyPersistenceState.hpp",
-    "editor/transition/LegacyPersistenceState.cpp"
+    "editor/transition/LegacyPersistenceState.cpp",
+    "editor/transition/SceneRunCaptureAccess.hpp"
   ],
   "note": "文本检查，不扫描注释语义、不等同 AST；实际P00账本需扩充。新scope默认不含编辑器旧tools/src；旧协议字符串数据不禁止。",
   "targets": [
@@ -622,10 +623,10 @@
       "path": "editor/tools/scene/execution/api",
       "first_phase": "P06",
       "dependencies": [
-        "edit_sessions"
+        "scene_model"
       ],
       "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
-      "actual_cmake_target": null
+      "actual_cmake_target": "scene_execution_api"
     },
     {
       "name": "scene_execution",
@@ -633,10 +634,10 @@
       "first_phase": "P06",
       "dependencies": [
         "scene_execution_api",
-        "scene_model"
+        "scene_execution_api"
       ],
       "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
-      "actual_cmake_target": null
+      "actual_cmake_target": "scene_execution"
     },
     {
       "name": "scene_projection",
@@ -2211,6 +2212,621 @@
       "lux/engine/flowforge/graph/",
       "lux/engine/flowforge/script/",
       "lux/engine/meta/"
+    ]
+  },
+  "scene_execution_api": {
+    "direct": [
+      "scene_composition",
+      "scene_model"
+    ],
+    "closure": {
+      "Eigen3::Eigen": {
+        "imported": true
+      },
+      "EnTT::EnTT": {
+        "imported": true
+      },
+      "STDEXEC::stdexec": {
+        "imported": true
+      },
+      "Threads::Threads": {
+        "imported": true
+      },
+      "asset": {
+        "path": "modules/resource/asset"
+      },
+      "async_port": {
+        "path": "modules/core/async_port"
+      },
+      "core": {
+        "path": "engine/domain/simulation/ecs/core"
+      },
+      "description": {
+        "path": "modules/resource/description"
+      },
+      "domain_system_description": {
+        "path": "engine/domain/system/description"
+      },
+      "domain_system_identity": {
+        "path": "engine/domain/system/identity"
+      },
+      "ecs_task": {
+        "path": "engine/domain/simulation/ecs/task"
+      },
+      "edit_history": {
+        "path": "editor/editing/history"
+      },
+      "edit_sessions": {
+        "path": "editor/editing/sessions"
+      },
+      "editor_contracts": {
+        "path": "editor/contracts"
+      },
+      "hierarchy": {
+        "path": "engine/domain/simulation/ecs/hierarchy"
+      },
+      "hierarchy_component_codegen_generate": {
+        "path": "engine/domain/simulation/ecs/hierarchy"
+      },
+      "identity": {
+        "path": "modules/resource/identity"
+      },
+      "lux::cxx::algorithm": {
+        "imported": true
+      },
+      "lux::cxx::binary": {
+        "imported": true
+      },
+      "lux::cxx::compile_time": {
+        "imported": true
+      },
+      "lux::cxx::container": {
+        "imported": true
+      },
+      "lux::cxx::core": {
+        "imported": true
+      },
+      "lux::cxx::memory": {
+        "imported": true
+      },
+      "math": {
+        "path": "modules/core/math"
+      },
+      "partition_identity": {
+        "path": "engine/domain/partition/identity"
+      },
+      "process_execution": {
+        "path": "engine/process/execution"
+      },
+      "process_world_loading": {
+        "path": "engine/process/world_loading"
+      },
+      "scene_asset": {
+        "path": "engine/scene/asset"
+      },
+      "scene_camera": {
+        "path": "engine/scene/components/camera"
+      },
+      "scene_camera_component_codegen_generate": {
+        "path": "engine/scene/components/camera"
+      },
+      "scene_composition": {
+        "path": "engine/scene/composition"
+      },
+      "scene_description": {
+        "path": "engine/scene/description"
+      },
+      "scene_model": {
+        "path": "editor/tools/scene/model"
+      },
+      "scene_system": {
+        "path": "engine/scene/system"
+      },
+      "scene_world_materialization": {
+        "path": "engine/scene/integration/world_materialization"
+      },
+      "schema": {
+        "path": "engine/domain/simulation/ecs/schema"
+      },
+      "script_artifact": {
+        "path": "modules/function/script/artifact"
+      },
+      "script_core": {
+        "path": "modules/function/script/core"
+      },
+      "semantic": {
+        "path": "modules/core/semantic"
+      },
+      "serialization": {
+        "path": "modules/core/serialization"
+      },
+      "simulation_asset": {
+        "path": "engine/domain/simulation/asset"
+      },
+      "simulation_composition": {
+        "path": "engine/domain/simulation/composition"
+      },
+      "simulation_description": {
+        "path": "engine/domain/simulation/description"
+      },
+      "simulation_scripting_core": {
+        "path": "engine/domain/simulation/scripting/core"
+      },
+      "snapshot": {
+        "path": "engine/domain/simulation/ecs/snapshot"
+      },
+      "stduuid": {
+        "imported": true
+      },
+      "system": {
+        "path": "engine/domain/simulation/system"
+      },
+      "task": {
+        "path": "modules/core/task"
+      },
+      "transform": {
+        "path": "engine/domain/simulation/ecs/transform"
+      },
+      "transform_component_codegen_generate": {
+        "path": "engine/domain/simulation/ecs/transform"
+      },
+      "type_info": {
+        "path": "modules/core/type_info"
+      },
+      "visual": {
+        "path": "engine/domain/simulation/ecs/visual"
+      },
+      "visual_component_codegen_generate": {
+        "path": "engine/domain/simulation/ecs/visual"
+      },
+      "world_asset": {
+        "path": "engine/domain/world/asset"
+      },
+      "world_description": {
+        "path": "engine/domain/world/description"
+      },
+      "world_identity": {
+        "path": "engine/domain/world/identity"
+      },
+      "world_partition": {
+        "path": "engine/domain/world/partition"
+      },
+      "world_storage": {
+        "path": "engine/domain/world/storage"
+      }
+    },
+    "native_libraries": [
+      "comctl32"
+    ],
+    "headers": [
+      "algorithm",
+      "array",
+      "atomic",
+      "bit",
+      "cassert",
+      "cstddef",
+      "cstdint",
+      "cstdio",
+      "cstdlib",
+      "cstring",
+      "exception",
+      "functional",
+      "limits",
+      "memory",
+      "new",
+      "optional",
+      "span",
+      "stdexcept",
+      "string",
+      "string_view",
+      "thread",
+      "type_traits",
+      "utility",
+      "vector",
+      "concepts",
+      "compare",
+      "lux/engine/resource/identity/AssetId.hpp",
+      "source_location"
+    ],
+    "prefixes": [
+      "lux/cxx/",
+      "Eigen/",
+      "lux/engine/editor/contracts/",
+      "lux/engine/editor/sessions/",
+      "lux/engine/editor/editing/",
+      "lux/engine/editor/scene/",
+      "lux/engine/scene/",
+      "lux/engine/process/",
+      "lux/engine/simulation/",
+      "lux/engine/world/",
+      "lux/engine/function/render/client/core/"
+    ]
+  },
+  "scene_execution": {
+    "direct": [
+      "editor_editing_scene",
+      "process_world_loading",
+      "scene_execution_api",
+      "scene_render",
+      "scene_world_loading"
+    ],
+    "closure": {
+      "Eigen3::Eigen": {
+        "imported": true
+      },
+      "EnTT::EnTT": {
+        "imported": true
+      },
+      "GPUOpen::VulkanMemoryAllocator": {
+        "imported": true
+      },
+      "STDEXEC::stdexec": {
+        "imported": true
+      },
+      "Threads::Threads": {
+        "imported": true
+      },
+      "Vulkan::Headers": {
+        "imported": true
+      },
+      "Vulkan::Vulkan": {
+        "imported": true
+      },
+      "asset": {
+        "path": "modules/resource/asset"
+      },
+      "async_port": {
+        "path": "modules/core/async_port"
+      },
+      "core": {
+        "path": "engine/domain/simulation/ecs/core"
+      },
+      "description": {
+        "path": "modules/resource/description"
+      },
+      "domain_system_description": {
+        "path": "engine/domain/system/description"
+      },
+      "domain_system_identity": {
+        "path": "engine/domain/system/identity"
+      },
+      "ecs_task": {
+        "path": "engine/domain/simulation/ecs/task"
+      },
+      "edit_history": {
+        "path": "editor/editing/history"
+      },
+      "edit_sessions": {
+        "path": "editor/editing/sessions"
+      },
+      "editor_contracts": {
+        "path": "editor/contracts"
+      },
+      "editor_editing_scene": {
+        "path": "editor/editing/scene"
+      },
+      "gapi": {
+        "path": "modules/platform/gapi"
+      },
+      "glfw": {
+        "imported": true
+      },
+      "hierarchy": {
+        "path": "engine/domain/simulation/ecs/hierarchy"
+      },
+      "hierarchy_component_codegen_generate": {
+        "path": "engine/domain/simulation/ecs/hierarchy"
+      },
+      "identity": {
+        "path": "modules/resource/identity"
+      },
+      "lux::cxx::algorithm": {
+        "imported": true
+      },
+      "lux::cxx::binary": {
+        "imported": true
+      },
+      "lux::cxx::compile_time": {
+        "imported": true
+      },
+      "lux::cxx::concurrent": {
+        "imported": true
+      },
+      "lux::cxx::container": {
+        "imported": true
+      },
+      "lux::cxx::core": {
+        "imported": true
+      },
+      "lux::cxx::memory": {
+        "imported": true
+      },
+      "math": {
+        "path": "modules/core/math"
+      },
+      "nfd::nfd": {
+        "imported": true
+      },
+      "partition_identity": {
+        "path": "engine/domain/partition/identity"
+      },
+      "process_asset_loading": {
+        "path": "engine/process/asset_loading"
+      },
+      "process_execution": {
+        "path": "engine/process/execution"
+      },
+      "process_world_loading": {
+        "path": "engine/process/world_loading"
+      },
+      "render_client": {
+        "path": "modules/function/render/client"
+      },
+      "render_comm_ops_Canvas2DOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_DeferredGBufferOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_DeferredLightingOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_DepthPrepassOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_FogOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_ForwardMeshOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_Grid2DOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_Grid3DOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_HighlightOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_HzbOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_LightOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_LineListOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_LinearDepthOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_MaterialOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_MeshShadowOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_MeshStackOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_PointCloudOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_RenderClusterOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_ShadowMapOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_SkinningOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_SkyboxOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_SpatialCullOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_SsaoOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_StreamingFeedbackOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_TerrainOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_TonemapOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_TrajectoryOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_TriOverlayOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_ViewCameraOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_WaterOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_feature_client": {
+        "path": "modules/function/render"
+      },
+      "render_graph": {
+        "path": "modules/function/render/graph"
+      },
+      "render_runtime": {
+        "path": "modules/function/render/runtime"
+      },
+      "render_vulkan": {
+        "path": "modules/function/render/vulkan"
+      },
+      "scene_asset": {
+        "path": "engine/scene/asset"
+      },
+      "scene_camera": {
+        "path": "engine/scene/components/camera"
+      },
+      "scene_camera_component_codegen_generate": {
+        "path": "engine/scene/components/camera"
+      },
+      "scene_composition": {
+        "path": "engine/scene/composition"
+      },
+      "scene_description": {
+        "path": "engine/scene/description"
+      },
+      "scene_execution_api": {
+        "path": "editor/tools/scene/execution/api"
+      },
+      "scene_mesh_query": {
+        "path": "engine/scene/builtin_systems/mesh_query"
+      },
+      "scene_model": {
+        "path": "editor/tools/scene/model"
+      },
+      "scene_observer_component_codegen_generate": {
+        "path": "engine/scene/builtin_systems/world_loading"
+      },
+      "scene_render": {
+        "path": "engine/scene/builtin_systems/render"
+      },
+      "scene_render_configuration_codegen_generate": {
+        "path": "engine/scene/builtin_systems/render"
+      },
+      "scene_system": {
+        "path": "engine/scene/system"
+      },
+      "scene_world_loading": {
+        "path": "engine/scene/builtin_systems/world_loading"
+      },
+      "scene_world_materialization": {
+        "path": "engine/scene/integration/world_materialization"
+      },
+      "schema": {
+        "path": "engine/domain/simulation/ecs/schema"
+      },
+      "script_artifact": {
+        "path": "modules/function/script/artifact"
+      },
+      "script_core": {
+        "path": "modules/function/script/core"
+      },
+      "semantic": {
+        "path": "modules/core/semantic"
+      },
+      "serialization": {
+        "path": "modules/core/serialization"
+      },
+      "simulation_asset": {
+        "path": "engine/domain/simulation/asset"
+      },
+      "simulation_composition": {
+        "path": "engine/domain/simulation/composition"
+      },
+      "simulation_description": {
+        "path": "engine/domain/simulation/description"
+      },
+      "simulation_scripting_core": {
+        "path": "engine/domain/simulation/scripting/core"
+      },
+      "snapshot": {
+        "path": "engine/domain/simulation/ecs/snapshot"
+      },
+      "stduuid": {
+        "imported": true
+      },
+      "system": {
+        "path": "engine/domain/simulation/system"
+      },
+      "task": {
+        "path": "modules/core/task"
+      },
+      "transform": {
+        "path": "engine/domain/simulation/ecs/transform"
+      },
+      "transform_component_codegen_generate": {
+        "path": "engine/domain/simulation/ecs/transform"
+      },
+      "type_info": {
+        "path": "modules/core/type_info"
+      },
+      "visual": {
+        "path": "engine/domain/simulation/ecs/visual"
+      },
+      "visual_component_codegen_generate": {
+        "path": "engine/domain/simulation/ecs/visual"
+      },
+      "window": {
+        "path": "modules/platform/window"
+      },
+      "world_asset": {
+        "path": "engine/domain/world/asset"
+      },
+      "world_description": {
+        "path": "engine/domain/world/description"
+      },
+      "world_identity": {
+        "path": "engine/domain/world/identity"
+      },
+      "world_loading_configuration_codegen_generate": {
+        "path": "engine/scene/builtin_systems/world_loading"
+      },
+      "world_partition": {
+        "path": "engine/domain/world/partition"
+      },
+      "world_storage": {
+        "path": "engine/domain/world/storage"
+      }
+    },
+    "native_libraries": [
+      "comctl32"
+    ],
+    "headers": [
+      "algorithm",
+      "array",
+      "atomic",
+      "bit",
+      "cassert",
+      "cstddef",
+      "cstdint",
+      "cstdio",
+      "cstdlib",
+      "cstring",
+      "exception",
+      "functional",
+      "limits",
+      "memory",
+      "new",
+      "optional",
+      "span",
+      "stdexcept",
+      "string",
+      "string_view",
+      "thread",
+      "type_traits",
+      "utility",
+      "vector",
+      "concepts",
+      "compare",
+      "lux/engine/resource/identity/AssetId.hpp",
+      "source_location"
+    ],
+    "prefixes": [
+      "lux/cxx/",
+      "Eigen/",
+      "lux/engine/editor/contracts/",
+      "lux/engine/editor/sessions/",
+      "lux/engine/editor/editing/",
+      "lux/engine/editor/scene/",
+      "lux/engine/scene/",
+      "lux/engine/process/",
+      "lux/engine/simulation/",
+      "lux/engine/world/",
+      "lux/engine/function/render/client/core/"
     ]
   }
 }

@@ -187,7 +187,7 @@ int main(int argc, char** argv)
         assert(runtime->collectCompletions(16));
         assert(runtime->submitPending(controls, programs));
         assert(execution->collectCompletions());
-        const auto advanced = scenes->tick();
+        const auto advanced = scenes->driveFrame();
         assert(advanced && advanced->empty());
     };
     const auto until = [&](auto predicate, std::string_view waiting = "completion") {
@@ -212,7 +212,7 @@ int main(int argc, char** argv)
     }
 #endif
     const auto open_output = [&](scene::ViewConfig config) {
-        auto borrowed = scenes->getSceneRegistry(ui->sceneId());
+        auto borrowed = scenes->borrowInstance(ui->sceneId());
         assert(borrowed);
         auto& registry = borrowed->get();
         const auto request = registry.create();
@@ -224,7 +224,7 @@ int main(int argc, char** argv)
         );
         scene::RenderResourceId view;
         until([&] {
-            const auto read = std::as_const(*scenes).getSceneRegistry(ui->sceneId());
+            const auto read = std::as_const(*scenes).borrowInstance(ui->sceneId());
             assert(read);
             const auto* result = read->get().try_get<scene::RenderViewResult>(request);
             if (result && result->view.isValid())
@@ -253,7 +253,7 @@ int main(int argc, char** argv)
     }
     // An independent in-memory Scene, without any document, loader or SceneObjects.
     // Two elements borrow one ID. SceneRuntime is the only scheduler for content and UI.
-    std::optional<scene::SceneInstanceId> content, foreign_content;
+    std::optional<scene::SceneInstanceLease> content, foreign_content;
     ui::Pane first_window(*root, ui::PaneId{"scene-one"}, ui::PaneTypeId{"test.scene"}, "Scene one");
     ui::Pane second_window(*root, ui::PaneId{"scene-two"}, ui::PaneTypeId{"test.scene"}, "Scene two");
     std::unique_ptr<editor::ui::SceneElement> first_pane, second_pane;
@@ -306,23 +306,24 @@ int main(int argc, char** argv)
         auto created_content = builder.build();
         auto created_foreign = builder.build();
         assert(created_content && created_foreign);
-        content = *created_content;
-        foreign_content = *created_foreign;
-        assert(scenes->invalid(*content) && scenes->invalid(*foreign_content));
-        const auto* render = scene::RenderSceneState::find(scenes->getSceneRegistry(*content)->get(), {1});
+        content = std::move(*created_content);
+        foreign_content = std::move(*created_foreign);
+        assert(scenes->pauseSimulation(content->id()) && scenes->pauseSimulation(foreign_content->id()));
+        const auto* render = scene::RenderSceneState::find(scenes->borrowInstance(content->id())->get(), {1});
         content_receipt = resources->sceneReceipt(render->resource);
         until([&] { return content_receipt.status().state == scene::ESceneResourceState::READY; });
-        const auto entity = scenes->getSceneRegistry(*content)->get().create();
-        scenes->getSceneRegistry(*content)->get().emplace<scene::Camera>(entity);
-        scenes->getSceneRegistry(*content)->get().emplace<simulation::ecs::WorldTransform3D>(entity);
+        const auto entity = scenes->borrowInstance(content->id())->get().create();
+        scenes->borrowInstance(content->id())->get().emplace<scene::Camera>(entity);
+        scenes->borrowInstance(content->id())->get().emplace<simulation::ecs::WorldTransform3D>(entity);
         const auto camera = entity;
         const auto count = resources->viewCount();
-        const auto entity_count = scenes->getSceneRegistry(*content)->get().storage<simulation::ecs::Entity>().size();
+        const auto entity_count =
+            scenes->borrowInstance(content->id())->get().storage<simulation::ecs::Entity>().size();
         auto wrong_render = editor::ui::SceneElement::create(
             first_window,
             lux::ui::ElementId{"wrong-render"},
             *scenes,
-            *content,
+            content->id(),
             *resources,
             {999},
             camera,
@@ -333,19 +334,19 @@ int main(int argc, char** argv)
             first_window,
             lux::ui::ElementId{"wrong-camera"},
             *scenes,
-            *content,
+            content->id(),
             *resources,
             {1},
             simulation::ecs::NullEntity,
             {.extent = {64, 48}}
         );
         assert(!wrong_camera && resources->viewCount() == count);
-        assert(scenes->getSceneRegistry(*content)->get().storage<simulation::ecs::Entity>().size() == entity_count);
+        assert(scenes->borrowInstance(content->id())->get().storage<simulation::ecs::Entity>().size() == entity_count);
         auto native_output = editor::ui::SceneElement::create(
             first_window,
             lux::ui::ElementId{"native-output"},
             *scenes,
-            *content,
+            content->id(),
             *resources,
             {1},
             camera,
@@ -357,7 +358,7 @@ int main(int argc, char** argv)
                 first_window,
                 lux::ui::ElementId{"abandoned"},
                 *scenes,
-                *content,
+                content->id(),
                 *resources,
                 {1},
                 camera,
@@ -365,15 +366,15 @@ int main(int argc, char** argv)
             );
             assert(abandoned && !(*abandoned)->view().isValid());
             abandoned->reset(); // No request has been adopted, and no UI maintenance is required.
-            assert(scenes->tick());
-            assert(scenes->getSceneRegistry(*content)->get().view<scene::RenderViewRequest>().empty());
+            assert(scenes->driveFrame());
+            assert(scenes->borrowInstance(content->id())->get().view<scene::RenderViewRequest>().empty());
             assert(resources->viewCount() == count);
         }
         auto one = editor::ui::SceneElement::create(
             first_window,
             lux::ui::ElementId{"scene-one"},
             *scenes,
-            *content,
+            content->id(),
             *resources,
             {1},
             camera,
@@ -383,7 +384,7 @@ int main(int argc, char** argv)
             second_window,
             lux::ui::ElementId{"scene-two"},
             *scenes,
-            *content,
+            content->id(),
             *resources,
             {1},
             camera,
@@ -395,16 +396,16 @@ int main(int argc, char** argv)
         first_window.setContent(*first_pane);
         second_window.setContent(*second_pane);
         root->setDockLayout({.left = "scene-one", .center = "scene-two", .left_width = 200.F});
-        const auto replacement = scenes->getSceneRegistry(*content)->get().create();
-        scenes->getSceneRegistry(*content)->get().emplace<scene::Camera>(replacement);
-        scenes->getSceneRegistry(*content)->get().emplace<simulation::ecs::WorldTransform3D>(replacement);
+        const auto replacement = scenes->borrowInstance(content->id())->get().create();
+        scenes->borrowInstance(content->id())->get().emplace<scene::Camera>(replacement);
+        scenes->borrowInstance(content->id())->get().emplace<simulation::ecs::WorldTransform3D>(replacement);
         assert(first_pane->setCamera(replacement));
         assert(first_pane->camera() == replacement);
         assert(second_pane->camera() == camera);
-        scenes->getSceneRegistry(*content)->get().destroy(entity);
-        const auto reused = scenes->getSceneRegistry(*content)->get().create();
-        scenes->getSceneRegistry(*content)->get().emplace<scene::Camera>(reused);
-        scenes->getSceneRegistry(*content)->get().emplace<simulation::ecs::WorldTransform3D>(reused);
+        scenes->borrowInstance(content->id())->get().destroy(entity);
+        const auto reused = scenes->borrowInstance(content->id())->get().create();
+        scenes->borrowInstance(content->id())->get().emplace<scene::Camera>(reused);
+        scenes->borrowInstance(content->id())->get().emplace<simulation::ecs::WorldTransform3D>(reused);
         assert(!second_pane->setCamera(camera)); // Same slot, old Entity generation.
         assert(second_pane->setCamera(reused));
     }
@@ -421,7 +422,7 @@ int main(int argc, char** argv)
         }
         if (content)
         {
-            assert(scenes->tick());
+            assert(scenes->driveFrame());
         }
         const auto build_begin = std::chrono::steady_clock::now();
         assert(root->update({logical_extent, 1.F / 60.F}, ui->tryAcquireDrawData()));
@@ -453,7 +454,7 @@ int main(int argc, char** argv)
     {
         float framebuffer_scale = 1.F;
         const auto publish = [&] {
-            assert(scenes->tick());
+            assert(scenes->driveFrame());
             if (ui->tryAcquireDrawData() != nullptr)
             {
                 assert(root->update(
@@ -504,7 +505,7 @@ int main(int argc, char** argv)
             );
             assert(
                 std::as_const(*scenes)
-                    .getSceneRegistry(*content)
+                    .borrowInstance(content->id())
                     ->get()
                     .ctx()
                     .get<std::reference_wrapper<const scene::SceneDriveSnapshot>>()
@@ -515,7 +516,7 @@ int main(int argc, char** argv)
         std::puts("PASS SceneElement framebuffer scale 125/150/200/100 percent: pixel extent adopted without tick");
         assert(
             std::as_const(*scenes)
-                .getSceneRegistry(*content)
+                .borrowInstance(content->id())
                 ->get()
                 .ctx()
                 .get<std::reference_wrapper<const scene::SceneDriveSnapshot>>()
@@ -534,7 +535,7 @@ int main(int argc, char** argv)
             "first pane closure"
         );
         assert(second_pane->view() == second_view && second_pane->image().image().isValid());
-        assert(std::as_const(*scenes).getSceneRegistry(*content));
+        assert(std::as_const(*scenes).borrowInstance(content->id()));
         // Explicit close must report the receipt, even after the ID was released.
         const auto second_closed = *resources->viewReceipt(second_view);
         static_cast<void>(second_pane->close());
@@ -549,14 +550,14 @@ int main(int argc, char** argv)
         assert(second_closed.status().status.state == scene::EViewState::CLOSED);
         const auto last_camera = second_pane->camera();
         second_pane.reset();
-        assert(scenes->tick());
-        until([&] { return bool(scenes->getSceneRegistry(*content)); });
-        assert(scenes->getSceneRegistry(*content)->get().view<scene::RenderViewRequest>().empty());
+        assert(scenes->driveFrame());
+        until([&] { return bool(scenes->borrowInstance(content->id())); });
+        assert(scenes->borrowInstance(content->id())->get().view<scene::RenderViewRequest>().empty());
         auto expired_view = editor::ui::SceneElement::create(
             first_window,
             ui::ElementId{"expired"},
             *scenes,
-            *content,
+            content->id(),
             *resources,
             {1},
             last_camera,
@@ -564,7 +565,7 @@ int main(int argc, char** argv)
         );
         assert(expired_view);
         first_window.setContent(**expired_view);
-        assert(scenes->destroy(*content));
+        assert(scenes->retireInstance(content->id()));
         content.reset();
         assert(!(*expired_view)->setCamera(last_camera));
         assert(root->update({logical_extent, 1.F / 60.F}, nullptr));
@@ -605,9 +606,9 @@ int main(int argc, char** argv)
         const auto captures = ui->capturedFrames();
         for (unsigned retry{}; retry < 3; ++retry)
         {
-            const auto advanced = scenes->tick();
+            const auto advanced = scenes->driveFrame();
             assert(advanced && advanced->empty());
-            assert(!scenes->getSceneRegistry(ui->sceneId()));
+            assert(!scenes->borrowInstance(ui->sceneId()));
             assert(ui->applySceneInput());
             assert(pane.draws == draws && ui->capturedFrames() == captures);
         }
@@ -641,7 +642,7 @@ int main(int argc, char** argv)
     // (for sampled output) an image reference survive.
     ui.reset();
     if (foreign_content)
-        assert(scenes->destroy(*foreign_content));
+        assert(scenes->retireInstance(foreign_content->id()));
     foreign_content.reset();
     const auto cpu_exit = std::chrono::steady_clock::now();
     assert(ImGui::GetCurrentContext() == nullptr);

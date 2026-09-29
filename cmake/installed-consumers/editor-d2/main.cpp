@@ -237,14 +237,14 @@ void sharedInspector()
                         .setSimulation(std::make_shared<const simulation::SimulationDescription>())
                         .setRegistrations(*schemas, systems, {})
                         .build();
-    assert(instance && (*runtime)->invalid(*instance));
-    auto& registry = (*runtime)->getSceneRegistry(*instance)->get();
+    assert(instance && (*runtime)->pauseSimulation(instance->id()));
+    auto& registry = (*runtime)->borrowInstance(instance->id())->get();
     const auto entity = registry.create();
     registry.emplace<consumer::Component>(entity);
-    assert((*runtime)->tick());
+    assert((*runtime)->driveFrame());
     auto history = editor::editing::EditHistory::create({{128, 16777216, 16777216, 256}, {}});
     assert(history);
-    editor::scene::SceneEditing editing(**runtime, *instance, *schemas, **history);
+    editor::scene::SceneEditing editing(**runtime, instance->id(), *schemas, **history);
     auto queue = object::ObjectMessageQueue::create(64);
     assert(queue);
     auto root = ui::Root::create(queue->dispatcherRef());

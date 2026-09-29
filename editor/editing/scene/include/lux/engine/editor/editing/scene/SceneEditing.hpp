@@ -3,35 +3,23 @@
 #include <lux/engine/scene/WorldResidency.hpp>
 #include <lux/engine/simulation/ecs/ComponentSchemaSet.hpp>
 #include <lux/engine/editor/editing/EditHistory.hpp>
+#include <lux/engine/resource/identity/AssetId.hpp>
 #include <functional>
 #include <variant>
 namespace lux::scene
 {
     class SceneRuntime;
 }
-namespace lux::editor
-{
-    class ProjectStorage;
-}
 namespace lux::editor::scene
 {
     class SceneEditing final
     {
     public:
-        SceneEditing(
-            lux::scene::SceneRuntime&,
-            lux::scene::SceneInstanceId,
-            const lux::simulation::ecs::ComponentSchemaSet&,
-            editing::EditHistory&,
-            const ProjectStorage* = nullptr
-        ) noexcept;
+        SceneEditing(lux::scene::SceneRuntime&, lux::scene::SceneInstanceId, const lux::simulation::ecs::ComponentSchemaSet&, editing::EditHistory&) noexcept;
         // The host may restrict admission; history replay remains tied to this instance and history.
         std::function<editing::EditResult<void>()> admission;
         std::function<void(const ComponentNotice&)> changed;
-        [[nodiscard]] const ProjectStorage* project() const noexcept
-        {
-            return project_;
-        }
+        std::function<bool(asset::AssetId, std::uint32_t)> acceptsAsset;
         [[nodiscard]] const lux::simulation::ecs::ComponentSchemaSet& schemas() const noexcept
         {
             return schemas_;
@@ -111,7 +99,6 @@ namespace lux::editor::scene
         std::vector<ComponentNotice> component_changes_;
         std::uint64_t next_component_change_{1};
         editing::EditHistory& history_;
-        const ProjectStorage* project_;
         struct FieldGesture final
         {
             FieldEditToken token;

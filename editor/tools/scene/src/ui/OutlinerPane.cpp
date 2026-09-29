@@ -48,7 +48,7 @@ namespace lux::editor::ui
     void OutlinerElement::rebuildRows()
     {
         objects_.clear();
-        if (const auto borrowed = std::as_const(runtime_).getSceneRegistry(editor_.instance()))
+        if (const auto borrowed = std::as_const(runtime_).borrowInstance(editor_.instance()))
         {
             namespace ecs = lux::simulation::ecs;
             const auto& registry = borrowed->get();
@@ -213,8 +213,9 @@ namespace lux::editor::ui
         LUX_UI_MEASURE(measurement.directory_rebuilds = rows_dirty_ ? 1 : 0);
 
         const auto run_state = editor_.runStatus().state;
-        const bool running = run_state == scene::ERunState::PREPARING || run_state == scene::ERunState::RUNNING ||
-                             run_state == scene::ERunState::PAUSED || run_state == scene::ERunState::STOPPING;
+        const bool running = run_state == scene::EPlaybackState::PREPARING ||
+                             run_state == scene::EPlaybackState::RUNNING ||
+                             run_state == scene::EPlaybackState::PAUSED || run_state == scene::EPlaybackState::STOPPING;
         const bool structure_read_only = !editor_.writeRestriction().empty() || running;
 
         const auto record = [this](const auto& result) {

@@ -79,7 +79,7 @@ namespace lux::editor::ui
         const bool is_invalid_input = !is_sampled || is_invalid_id || is_wrong_thread || is_invalid_extent;
         if (is_invalid_input)
             return lux::cxx::unexpected(render::RendererFailure{render::ERendererError::INVALID_ARGUMENT});
-        const auto borrowed = runtime.getSceneRegistry(scene);
+        const auto borrowed = runtime.borrowInstance(scene);
         if (!borrowed)
         {
             const auto* cause = std::get_if<lux::scene::ESceneRuntimeError>(&borrowed.error().cause);
@@ -120,7 +120,7 @@ namespace lux::editor::ui
     {
         if (!scene_.valid())
             return lux::cxx::unexpected(render::RendererFailure{render::ERendererError::INVALID_ARGUMENT});
-        const auto borrowed = runtime_.getSceneRegistry(scene_);
+        const auto borrowed = runtime_.borrowInstance(scene_);
         if (!borrowed)
         {
             const auto* cause = std::get_if<lux::scene::ESceneRuntimeError>(&borrowed.error().cause);
@@ -149,7 +149,7 @@ namespace lux::editor::ui
         const bool needs_receipt = scene_.valid() && !view_.isValid();
         if (!needs_receipt)
             return;
-        const auto borrowed = std::as_const(runtime_).getSceneRegistry(scene_);
+        const auto borrowed = std::as_const(runtime_).borrowInstance(scene_);
         if (!borrowed)
             return;
         const auto* result = borrowed->get().try_get<lux::scene::RenderViewResult>(request_);
@@ -189,10 +189,10 @@ namespace lux::editor::ui
         if (!scene_.valid())
             return;
         collectReceipt();
-        const auto borrowed = runtime_.getSceneRegistry(scene_);
+        const auto borrowed = runtime_.borrowInstance(scene_);
         if (!borrowed)
         {
-            if (!std::as_const(runtime_).getSceneRegistry(scene_))
+            if (!std::as_const(runtime_).borrowInstance(scene_))
                 static_cast<void>(close());
             return;
         }

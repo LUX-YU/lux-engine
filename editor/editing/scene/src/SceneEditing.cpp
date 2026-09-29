@@ -1,6 +1,5 @@
 #include <lux/engine/editor/editing/scene/SceneEditing.hpp>
 #include <lux/engine/scene/SceneRuntime.hpp>
-#include <lux/engine/editor/storage/ProjectStorage.hpp>
 #include <lux/engine/scene/Camera.hpp>
 #include <lux/engine/simulation/ecs/Parent.hpp>
 #include <lux/engine/resource/asset/mesh/MeshAsset.hpp>
@@ -36,31 +35,30 @@ namespace lux::editor::scene
         lux::scene::SceneRuntime& runtime,
         lux::scene::SceneInstanceId scene,
         const lux::simulation::ecs::ComponentSchemaSet& schemas,
-        editing::EditHistory& history,
-        const ProjectStorage* project
+        editing::EditHistory& history
     ) noexcept
-        : runtime_(runtime), scene_(scene), schemas_(schemas), history_(history), project_(project)
+        : runtime_(runtime), scene_(scene), schemas_(schemas), history_(history)
     {}
     lux::simulation::ecs::Entity SceneEditing::resolve(lux::simulation::ecs::Entity ref) const noexcept
     {
-        const auto borrowed = std::as_const(runtime_).getSceneRegistry(scene_);
+        const auto borrowed = std::as_const(runtime_).borrowInstance(scene_);
         return borrowed && borrowed->get().valid(ref) ? ref : lux::simulation::ecs::NullEntity;
     }
     lux::simulation::ecs::Registry& SceneEditing::registry() const noexcept
     {
-        const auto borrowed = runtime_.getSceneRegistry(scene_);
+        const auto borrowed = runtime_.borrowInstance(scene_);
         if (!borrowed)
             std::terminate(); // Private write access follows admission; no Runtime boundary occurs in between.
         return borrowed->get();
     }
     lux::scene::WorldResidency* SceneEditing::residency() const noexcept
     {
-        const auto borrowed = runtime_.getSceneRegistry(scene_);
+        const auto borrowed = runtime_.borrowInstance(scene_);
         return borrowed ? borrowed->get().ctx().find<lux::scene::WorldResidency>() : nullptr;
     }
     bool SceneEditing::atSafePoint() const noexcept
     {
-        return bool(runtime_.getSceneRegistry(scene_));
+        return bool(runtime_.borrowInstance(scene_));
     }
     editing::EditResult<void> SceneEditing::prepareComponentChanges(std::size_t count) noexcept
     {
@@ -100,7 +98,7 @@ namespace lux::editor::scene
     {
         if (closed_)
             return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::CLOSED));
-        if (!std::as_const(runtime_).getSceneRegistry(scene_))
+        if (!std::as_const(runtime_).borrowInstance(scene_))
             return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::STALE_TARGET));
         if (busy_ || !atSafePoint())
             return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::BUSY));
@@ -114,7 +112,7 @@ namespace lux::editor::scene
     {
         if (closed_)
             return nullptr;
-        const auto borrowed = std::as_const(runtime_).getSceneRegistry(scene_);
+        const auto borrowed = std::as_const(runtime_).borrowInstance(scene_);
         if (!borrowed || !borrowed->get().valid(object))
             return nullptr;
         const auto* schema = schemas_.find(type);
@@ -193,7 +191,7 @@ namespace lux::editor::scene
                 return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::STALE_BASE));
             }
         }
-        if (!std::as_const(runtime_).getSceneRegistry(scene_))
+        if (!std::as_const(runtime_).borrowInstance(scene_))
             return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::STALE_TARGET));
         if (!atSafePoint())
         {
@@ -265,8 +263,7 @@ namespace lux::editor::scene
                 {
                     return true;
                 }
-                const auto* row = project_ ? project_->catalogAsset(id) : nullptr;
-                return row && row->magic == magic;
+                return acceptsAsset && acceptsAsset(id, magic);
             };
             if (!valid(original.mesh, value.mesh, asset::MeshAsset::primary_magic) ||
                 !valid(original.material, value.material, asset::MaterialAsset::primary_magic))

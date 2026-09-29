@@ -487,12 +487,12 @@ namespace lux::editor::scene
                 const auto entity = owner.content->identities().entity(edit_.object_);
                 if (forward_ || edit_.had_parent_)
                 {
-                    owner.registry(*owner.scene)
+                    owner.registry(owner.scene->id())
                         .emplace_or_replace<ecs::Parent>(entity, owner.content->identities().entity(parent));
                 }
                 else
                 {
-                    owner.registry(*owner.scene).remove<ecs::Parent>(entity);
+                    owner.registry(owner.scene->id()).remove<ecs::Parent>(entity);
                 }
                 const auto ref = owner.content->identities().entity(edit_.object_);
                 const auto type = lux::cxx::typeToken<ecs::Parent>();
@@ -521,15 +521,11 @@ namespace lux::editor::scene
 
     public:
         ParentEdit(SceneEditor& editor, Impl& owner, SceneWriteTarget target, lux::world::WorldObjectId parent)
-            : editor_(editor), owner_(owner), target_(target),
-              object_(owner.content->persistent(target.entity)),
+            : editor_(editor), owner_(owner), target_(target), object_(owner.content->persistent(target.entity)),
               after_(parent)
         {
-            const auto* value =
-                owner.registry(*owner.scene)
-                    .try_get<lux::simulation::ecs::Parent>(
-                        owner.content->resolve(target.entity)
-                    );
+            const auto* value = owner.registry(owner.scene->id())
+                                    .try_get<lux::simulation::ecs::Parent>(owner.content->resolve(target.entity));
             had_parent_ = value != nullptr;
             before_ = value ? owner.content->identities().object(value->entity) : lux::world::WorldObjectId{};
             std::vector<lux::partition::PartitionOrdinal> partitions;
@@ -585,7 +581,7 @@ namespace lux::editor::scene
             {
                 return structureFailure(ESceneStructureError::INVALID_OBJECT, "The object or parent no longer exists");
             }
-            const auto* value = owner_.registry(*owner_.scene).try_get<ecs::Parent>(entity);
+            const auto* value = owner_.registry(owner_.scene->id()).try_get<ecs::Parent>(entity);
             const auto actual =
                 value ? owner_.content->identities().object(value->entity) : lux::world::WorldObjectId{};
             if (actual != expected || (value != nullptr) != (forward ? had_parent_ : true))
@@ -593,10 +589,11 @@ namespace lux::editor::scene
                 return structureFailure(ESceneStructureError::INVALID_OBJECT, "The object's parent changed");
             }
             if (createsParentCycle(object_, parent, owner_.content->identities().size(), [&](auto id) {
-                const auto* ancestor = owner_.registry(*owner_.scene).try_get<ecs::Parent>(
-                    owner_.content->identities().entity(id));
-                return ancestor ? owner_.content->identities().object(ancestor->entity) : lux::world::WorldObjectId{};
-            }))
+                    const auto* ancestor = owner_.registry(owner_.scene->id())
+                                               .try_get<ecs::Parent>(owner_.content->identities().entity(id));
+                    return ancestor ? owner_.content->identities().object(ancestor->entity)
+                                    : lux::world::WorldObjectId{};
+                }))
             {
                 return structureFailure(ESceneStructureError::HIERARCHY_CYCLE, "The proposed parent creates a cycle");
             }

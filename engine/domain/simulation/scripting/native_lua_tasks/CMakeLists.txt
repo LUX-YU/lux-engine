@@ -8,6 +8,7 @@ add_component(COMPONENT_NAME simulation_script_native_lua_tasks NAMESPACE lux::e
     OUTPUT_NAME lux_engine_simulation_script_native_lua_tasks SOURCE_FILES src/NativeLuaTaskBackend.cpp)
 component_include_directories(simulation_script_native_lua_tasks BUILD_TIME_EXPORT
     ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR} INSTALL_TIME include)
+target_include_directories(simulation_script_native_lua_tasks PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../core/sinclude)
 target_compile_definitions(simulation_script_native_lua_tasks PRIVATE
     LUX_ENGINE_SIMULATION_SCRIPT_NATIVE_LUA_TASKS_LIBRARY)
 target_link_libraries(simulation_script_native_lua_tasks PUBLIC

@@ -4,6 +4,7 @@
 #include <lux/engine/scene/SceneCapabilityProvider.hpp>
 #include <lux/engine/scene/SceneDescription.hpp>
 #include <lux/engine/scene/SceneInstanceId.hpp>
+#include <lux/engine/scene/SceneInstanceLease.hpp>
 #include <lux/engine/scene/SceneSystem.hpp>
 #include <lux/engine/scene/SceneSystemRegistration.hpp>
 #include <lux/engine/scene/visibility.h>
@@ -82,7 +83,8 @@ namespace lux::scene
         BUSY,
         STOPPED,
         INVALID_INPUT,
-        IDENTITY_EXHAUSTED
+        IDENTITY_EXHAUSTED,
+        CAPACITY
     };
 
     struct SceneRuntimeFailure final
@@ -100,7 +102,30 @@ namespace lux::scene
 
     template <class T> using SceneRuntimeResult = lux::cxx::expected<T, SceneRuntimeFailure>;
 
-    // Owner-thread scene composition. Registry/clock borrows end before tick, structure changes or owner waits.
+    struct SceneStepTicket final
+    {
+        SceneInstanceId scene;
+        std::uint64_t serial{}, simulation_completed{};
+        friend auto operator<=>(const SceneStepTicket&, const SceneStepTicket&) = default;
+    };
+
+    enum class ESceneStepState : std::uint8_t
+    {
+        QUEUED,
+        EXECUTING,
+        COMPLETED,
+        FAILED,
+        CANCELLED
+    };
+
+    struct SceneStepStatus final
+    {
+        ESceneStepState state{ESceneStepState::QUEUED};
+        SceneRuntimeResult<void> result;
+    };
+
+    // Owner-thread scene composition. Registry/clock borrows end before driveFrame,
+    // structure changes or owner waits. A lease's runtime must outlive the lease.
     class LUX_ENGINE_SCENE_PUBLIC SceneRuntime final
     {
     public:
@@ -123,7 +148,7 @@ namespace lux::scene
             }
 
             // Registration/provider borrows must stay alive until build returns.
-            [[nodiscard]] SceneRuntimeResult<SceneInstanceId> build() noexcept;
+            [[nodiscard]] SceneRuntimeResult<SceneInstanceLease> build() noexcept;
 
         private:
             friend class SceneRuntime;
@@ -140,7 +165,7 @@ namespace lux::scene
         };
 
         using CreateResult = SceneRuntimeResult<std::unique_ptr<SceneRuntime>>;
-        using TickResult = SceneRuntimeResult<std::span<const SceneRuntimeFailure>>;
+        using DriveResult = SceneRuntimeResult<std::span<const SceneRuntimeFailure>>;
         [[nodiscard]] static CreateResult create(process::ExecutionRuntime&, task::TaskExecutorConfig) noexcept;
         ~SceneRuntime() noexcept;
         SceneRuntime(const SceneRuntime&) = delete;
@@ -150,23 +175,28 @@ namespace lux::scene
         {
             return Builder{*this};
         }
-        [[nodiscard]] SceneRuntimeResult<std::reference_wrapper<simulation::ecs::Registry>> getSceneRegistry(
+        [[nodiscard]] SceneRuntimeResult<std::reference_wrapper<simulation::ecs::Registry>> borrowInstance(
             SceneInstanceId
         ) noexcept;
-        [[nodiscard]] SceneRuntimeResult<std::reference_wrapper<const simulation::ecs::Registry>> getSceneRegistry(
+        [[nodiscard]] SceneRuntimeResult<std::reference_wrapper<const simulation::ecs::Registry>> borrowInstance(
             SceneInstanceId
         ) const noexcept;
-        [[nodiscard]] SceneRuntimeResult<std::reference_wrapper<const VSimulationClock>> getClock(SceneInstanceId
+        [[nodiscard]] SceneRuntimeResult<std::reference_wrapper<const VSimulationClock>> borrowClock(SceneInstanceId
         ) const noexcept;
-        [[nodiscard]] SceneRuntimeResult<void> invalid(SceneInstanceId) noexcept;
-        [[nodiscard]] SceneRuntimeResult<void> valid(SceneInstanceId) noexcept;
-        [[nodiscard]] SceneRuntimeResult<void> destroy(SceneInstanceId) noexcept;
-        [[nodiscard]] TickResult tick() noexcept;
+        [[nodiscard]] SceneRuntimeResult<void> pauseSimulation(SceneInstanceId) noexcept;
+        [[nodiscard]] SceneRuntimeResult<void> resumeSimulation(SceneInstanceId) noexcept;
+        // At most 32 unacknowledged tickets per instance. Only paused instances admit steps.
+        [[nodiscard]] SceneRuntimeResult<SceneStepTicket> requestStep(SceneInstanceId) noexcept;
+        [[nodiscard]] SceneRuntimeResult<SceneStepStatus> stepStatus(SceneStepTicket) const noexcept;
+        [[nodiscard]] SceneRuntimeResult<void> acknowledgeStep(SceneStepTicket) noexcept;
+        // May be called inside a system callback; no callback or erasure happens here.
+        [[nodiscard]] SceneRuntimeResult<InstanceRetirement> retireInstance(SceneInstanceId) noexcept;
+        [[nodiscard]] DriveResult driveFrame() noexcept;
 
     private:
         struct Impl;
         explicit SceneRuntime(std::unique_ptr<Impl>) noexcept;
-        [[nodiscard]] SceneRuntimeResult<SceneInstanceId> build(const Builder&) noexcept;
+        [[nodiscard]] SceneRuntimeResult<SceneInstanceLease> build(const Builder&) noexcept;
         std::unique_ptr<Impl> impl_;
     };
 }

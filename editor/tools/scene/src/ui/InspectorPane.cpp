@@ -8,10 +8,11 @@ namespace lux::editor::ui
         lux::ui::PaneId id,
         const lux::simulation::ecs::ComponentSchemaSet& schemas,
         const ComponentEditorRegistry& editors,
-        EditorResult<void>& status
+        EditorResult<void>& status,
+        const ProjectStorage* catalog
     )
         : lux::ui::Pane(parent, std::move(id), lux::ui::PaneTypeId{"lux.editor.inspector"}, "Inspector"),
-          content_(*this, lux::ui::ElementId{"inspector"}, schemas, editors, status),
+          content_(*this, lux::ui::ElementId{"inspector"}, schemas, editors, status, catalog),
           close_connection_(lux::editor::detail::takeConnection(
               lux::object::LuxObject::connect(
                   this,

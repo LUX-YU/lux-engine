@@ -55,7 +55,7 @@ namespace lux::editor
         const auto submitted = state.presentation->applySceneInput();
         if (!submitted)
             state.fail({EEditorError::FRONTEND_FAILURE, "test.ui.input"});
-        const auto advanced = state.engine->sceneRuntime().tick();
+        const auto advanced = state.engine->sceneRuntime().driveFrame();
         if (!advanced)
             state.fail({EEditorError::EXECUTION_FAILURE, "test.scenes"});
         state.handleRequests();

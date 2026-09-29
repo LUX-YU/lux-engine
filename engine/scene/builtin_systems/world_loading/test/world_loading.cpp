@@ -599,15 +599,15 @@ int main(int argc, char** argv)
         return 0;
     }
     auto opened = build();
-    assert(opened && (*scenes)->invalid(*opened));
-    const auto instance = *opened;
-    auto& registry = (*scenes)->getSceneRegistry(instance)->get();
+    assert(opened && (*scenes)->pauseSimulation(opened->id()));
+    const auto instance = opened->id();
+    auto& registry = (*scenes)->borrowInstance(instance)->get();
     const auto observer = registry.create();
     registry.emplace<scene::Observer>(observer, std::vector<partition::PartitionOrdinal>{{0}, {1}}, true);
     const auto second_observer = registry.create();
     registry.emplace<scene::Observer>(second_observer, std::vector<partition::PartitionOrdinal>{{1}}, true);
     auto poll = [&] {
-        const auto progressed = (*scenes)->tick();
+        const auto progressed = (*scenes)->driveFrame();
         assert(progressed && progressed->empty());
     };
     until(*runtime, poll, [&] {
@@ -674,7 +674,7 @@ int main(int argc, char** argv)
         registry.ctx().get<scene::WorldResidency>().statistics().resident_source_bytes == 0 &&
         registry.ctx().get<scene::WorldResidency>().statistics().resident_component_bytes == 0
     );
-    assert((*scenes)->destroy(instance));
+    assert((*scenes)->retireInstance(instance));
     std::cout << "PASS Observer: actual Process blocking IO, overlapping demand dedup, no static reread, "
                  "cross-partition retention, dirty/external lifetime, unload\n";
 
@@ -682,12 +682,12 @@ int main(int argc, char** argv)
     // Simulation clock or turning an unresolved reference into an endless wait.
     {
         auto opened = build();
-        assert(opened && (*scenes)->invalid(*opened));
-        const auto failed_instance = *opened;
-        auto& registry = (*scenes)->getSceneRegistry(failed_instance)->get();
+        assert(opened && (*scenes)->pauseSimulation(opened->id()));
+        const auto failed_instance = opened->id();
+        auto& registry = (*scenes)->borrowInstance(failed_instance)->get();
         registry.emplace<scene::Observer>(registry.create(), std::vector<partition::PartitionOrdinal>{{0}}, true);
         const auto& final = registry.ctx().get<std::reference_wrapper<const scene::SceneDriveSnapshot>>().get();
-        until(*runtime, [&] { assert((*scenes)->tick()); }, [&] { return !final.result; });
+        until(*runtime, [&] { assert((*scenes)->driveFrame()); }, [&] { return !final.result; });
         assert(final.time.step_index == 0 && final.result.error().phase == scene::ESceneDrivePhase::MAINTENANCE);
         const auto& stage = std::get<scene::SceneExecutionFailure>(final.result.error().cause);
         const auto* cause = std::any_cast<scene::WorldLoadingFailure>(&stage.cause);
@@ -701,7 +701,7 @@ int main(int argc, char** argv)
             registry.ctx().get<scene::WorldResidency>().statistics().resident_entities == 0 &&
             registry.ctx().get<scene::WorldResidency>().identities().size() == 0
         );
-        assert((*scenes)->destroy(failed_instance));
+        assert((*scenes)->retireInstance(failed_instance));
         std::cout << "PASS required partition failure: original missing object, Main Driver MAINTENANCE, clock=0\n";
     }
 

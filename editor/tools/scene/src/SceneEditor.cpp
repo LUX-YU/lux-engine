@@ -12,12 +12,8 @@
 namespace lux::editor::scene
 {
     SceneEditor::Impl::Impl(EditorResult<void>& status, EditorContext& context)
-        : editor_context_(context), runtime_(context.engine().sceneRuntime()), scenes_guard_([this]() noexcept {
-              destroyScene(candidate_scene_);
-              destroyScene(run_scene);
-              destroyScene(scene);
-          }),
-          completion_work_(context.execution(), this, [](void* owner) noexcept {
+        : editor_context_(context), runtime_(context.engine().sceneRuntime()), runs_(runtime_, context.execution()),
+          run_controller_(runs_), completion_work_(context.execution(), this, [](void* owner) noexcept {
               static_cast<Impl*>(owner)->completion_deferred_ = true;
           })
     {
@@ -36,9 +32,8 @@ namespace lux::editor::scene
     SceneEditor::Impl::~Impl()
     {
         reading_ = {};
-        run_preparation = {};
+        run_start_.reset();
         completion_work_.cancel();
-        run_stop.request_stop();
         if (auto* current = std::get_if<Placement>(&placement))
             current->stop.request_stop();
     }
@@ -118,8 +113,8 @@ namespace lux::editor::scene
         }
         if (asset_status_.phase != EAssetEditPhase::IDLE && !finishing_interaction)
             return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::BUSY));
-        const auto instance = this->run_scene ? this->run_scene : this->scene;
-        if (instance && !safe(*instance))
+        const auto instance = this->instance();
+        if (instance.valid() && !safe(instance))
             return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::BUSY));
         const auto restriction = writeRestriction();
         if (!restriction.empty())
@@ -138,7 +133,7 @@ namespace lux::editor::scene
         if (!source)
             return "No scene is open";
 
-        if (!this->runSettled() && this->run_status.state != ERunState::PAUSED)
+        if (!this->runSettled() && this->run_status.state != EPlaybackState::PAUSED)
         {
             return "Running Scene is read-only; pause to edit supported fields";
         }
@@ -168,14 +163,14 @@ namespace lux::editor::scene
         for (const auto& [object, entity] : this->content->identities().entries())
         {
             lux::partition::PartitionOrdinal partition;
-            if (!readRegistry(*scene).ctx().get<lux::scene::WorldResidency>().partitionOf(entity, partition))
+            if (!readRegistry(scene->id()).ctx().get<lux::scene::WorldResidency>().partitionOf(entity, partition))
                 return lux::cxx::unexpected(EditorFailure{EEditorError::INVALID_STATE, "scene.capture.partition"});
             capture.objects.push_back({object, partition});
         }
         capture.identities.reserve(this->content->identities().size());
         for (const auto& [object, entity] : this->content->identities().entries())
         {
-            if (!readRegistry(*scene).valid(entity) || !capture.identities.bind(object, entity))
+            if (!readRegistry(scene->id()).valid(entity) || !capture.identities.bind(object, entity))
             {
                 return lux::cxx::unexpected(EditorFailure{EEditorError::INVALID_STATE, "scene.capture.identity"});
             }
@@ -215,7 +210,7 @@ namespace lux::editor::scene
                     schema->id.name
                 });
             }
-            auto value = schema->capture(readRegistry(*scene), changed.entity, schema->code_lifetime);
+            auto value = schema->capture(readRegistry(scene->id()), changed.entity, schema->code_lifetime);
             if (!value)
             {
                 return lux::cxx::unexpected(EditorFailure{
@@ -424,7 +419,7 @@ namespace lux::editor::scene
 
     lux::scene::SceneInstanceId SceneEditor::Impl::instance() const noexcept
     {
-        return run_scene ? *run_scene : scene.value_or(lux::scene::SceneInstanceId{});
+        return run_scene ? *run_scene : (scene ? scene->id() : lux::scene::SceneInstanceId{});
     }
 
     lux::scene::QueryResult<bool> SceneEditor::Impl::raycastNearest(
@@ -439,8 +434,8 @@ namespace lux::editor::scene
         {
             return lux::cxx::unexpected(lux::scene::MeshQueryFailure{lux::scene::EMeshQueryError::INVALID_INPUT});
         }
-        const auto current = this->run_scene ? this->run_scene : this->scene;
-        const auto* query = current ? readRegistry(*current).ctx().find<lux::scene::MeshQuery>() : nullptr;
+        const auto current = this->instance();
+        const auto* query = current.valid() ? readRegistry(current).ctx().find<lux::scene::MeshQuery>() : nullptr;
         if (!query)
         {
             return lux::cxx::unexpected(lux::scene::MeshQueryFailure{lux::scene::EMeshQueryError::NOT_READY});
@@ -497,7 +492,7 @@ namespace lux::editor::scene
         }
         if (!registry.valid(this->editor_camera))
         {
-            if (!safe(*scene))
+            if (!safe(scene->id()))
                 return lux::cxx::unexpected(EditorFailure{EEditorError::BUSY, "viewport.camera"});
             const auto entity = this->registry(current).create();
             this->registry(current).emplace<detail::EditorEntity>(entity);
@@ -538,7 +533,7 @@ namespace lux::editor::scene
         const lux::scene::Camera& projection
     )
     {
-        if (!this->scene || !safe(*scene))
+        if (!this->scene || !safe(scene->id()))
             return lux::cxx::unexpected(EditorFailure{EEditorError::BUSY, "camera.navigate"});
         auto& objects = *this->content;
         const auto entity = objects.resolve(ref);
@@ -568,19 +563,19 @@ namespace lux::editor::scene
         }
         const auto entity = this->content->resolve(source);
         if (entity == lux::simulation::ecs::NullEntity || partition.value >= partitionCount() ||
-            !registry(*scene).all_of<lux::scene::Camera, lux::simulation::ecs::Transform3D>(entity))
+            !registry(scene->id()).all_of<lux::scene::Camera, lux::simulation::ecs::Transform3D>(entity))
         {
             return Impl::structureFailure(
                 ESceneStructureError::INVALID_OBJECT,
                 "Choose a current camera and partition"
             );
         }
-        auto camera = registry(*scene).get<lux::scene::Camera>(entity);
+        auto camera = registry(scene->id()).get<lux::scene::Camera>(entity);
         camera.primary = true;
-        for (const auto other : registry(*scene).view<const lux::scene::Camera>())
+        for (const auto other : registry(scene->id()).view<const lux::scene::Camera>())
         {
             if (this->content->identities().object(other).valid() &&
-                registry(*scene).get<lux::scene::Camera>(other).primary)
+                registry(scene->id()).get<lux::scene::Camera>(other).primary)
             {
                 camera.primary = false;
                 break;
@@ -593,9 +588,15 @@ namespace lux::editor::scene
         {
             id = {generate()};
         } while (!id.valid() || this->content->identities().entity(id) != lux::simulation::ecs::NullEntity);
-        auto captured = makeSceneCameraObject(id, partition, camera,
-            registry(*scene).get<lux::simulation::ecs::Transform3D>(entity), this->content->metadata);
-        if (!captured) return lux::cxx::unexpected(captured.error());
+        auto captured = makeSceneCameraObject(
+            id,
+            partition,
+            camera,
+            registry(scene->id()).get<lux::simulation::ecs::Transform3D>(entity),
+            this->content->metadata
+        );
+        if (!captured)
+            return lux::cxx::unexpected(captured.error());
         detail::ObjectContent content{id, partition, {}};
         for (auto& component : captured->components)
             content.components.push_back({this->content->metadata.find(component.schema), std::move(component.bytes)});
@@ -1193,7 +1194,7 @@ namespace lux::editor::scene
     {
         if (this->scene)
         {
-            if (const auto* render = renderFor(scene))
+            if (const auto* render = renderFor(scene ? std::optional{scene->id()} : std::nullopt))
             {
                 return render->coordinate_page_size;
             }
@@ -1341,7 +1342,7 @@ namespace lux::editor::scene
                     placement->work.emplace<std::shared_ptr<const asset::ModelAsset>>(std::move(*loaded));
                 }
             }
-            const bool can_adopt = placement->stop.stop_requested() || (safe(*scene) && !editing().active());
+            const bool can_adopt = placement->stop.stop_requested() || (safe(scene->id()) && !editing().active());
             if (!placement->task && !can_adopt)
                 completion_deferred_ = true;
             if (!placement->task && can_adopt)
@@ -1409,7 +1410,7 @@ namespace lux::editor::scene
             return;
         adoptCompletions();
         applyAssetChange();
-        if (this->run_status.state == ERunState::STOPPING && editing().active())
+        if (this->run_status.state == EPlaybackState::STOPPING && editing().active())
         {
             const auto finished = finishFieldEdits();
             if (!finished)
@@ -1433,7 +1434,7 @@ namespace lux::editor::scene
         {
             return;
         }
-        if (this->scene && safe(*scene) && !editing().active())
+        if (this->scene && safe(scene->id()) && !editing().active())
         {
             const auto history = this->history->view();
             if (history && persistence_.clean())
@@ -1443,7 +1444,10 @@ namespace lux::editor::scene
         }
         const bool has_asset_change = asset_status_.phase != EAssetEditPhase::IDLE || creation_pane_;
         observePlayback();
-        const bool has_playback_change = run_status.pause_pending || run_status.state == ERunState::STOPPING;
+        restorePlayback();
+        const bool has_playback_change = run_status.pause_pending || run_status.state == EPlaybackState::STOPPING ||
+                                         (run_start_ && run_start_->ready()) ||
+                                         (run_status.state == EPlaybackState::PAUSED && !run_editing);
         if (completion_deferred_ || has_asset_change || has_playback_change)
             editor->root().deferChange(*editor, [](object::LuxObject& target) noexcept {
                 static_cast<SceneEditor&>(target).impl_->applyChanges();
@@ -1473,7 +1477,7 @@ namespace lux::editor::scene
             return;
         if (this->runSettled())
         {
-            if (!this->changed_assets.empty() && safe(*scene))
+            if (!this->changed_assets.empty() && safe(scene->id()))
             {
                 auto source = this->editor_context_.project().captureAssetReads();
                 if (!source)
@@ -1491,7 +1495,7 @@ namespace lux::editor::scene
                 for (std::size_t index{}; index < description.systemCount(); ++index)
                 {
                     auto* assets =
-                        lux::scene::RenderAssets::find(registry(*scene), description.systemAt(index).instanceId());
+                        lux::scene::RenderAssets::find(registry(scene->id()), description.systemAt(index).instanceId());
                     if (!assets)
                         continue;
                     auto replaced = assets->replaceInput(input);
@@ -1510,7 +1514,7 @@ namespace lux::editor::scene
                 this->asset_source = std::move(input);
                 this->changed_assets.clear();
             }
-            const auto& current_progress = progress(*scene);
+            const auto& current_progress = progress(scene->id());
             if (!current_progress.result)
             {
                 if (this->failure.index() == 0)
@@ -1659,7 +1663,8 @@ namespace lux::editor::scene
 
     bool SceneEditor::hasUnsavedChanges() const noexcept
     {
-        return impl_->history && !(impl_->persistence_.clean() && !(impl_->scene_editing && impl_->scene_editing->active()));
+        return impl_->history &&
+               !(impl_->persistence_.clean() && !(impl_->scene_editing && impl_->scene_editing->active()));
     }
     std::optional<sessions::PersistedState> SceneEditor::persistedState() const noexcept
     {

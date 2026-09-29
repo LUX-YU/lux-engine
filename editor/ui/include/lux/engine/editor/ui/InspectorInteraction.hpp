@@ -5,6 +5,11 @@
 #include <lux/engine/ui/Controls.hpp>
 #include <optional>
 
+namespace lux::editor
+{
+    class ProjectStorage;
+}
+
 namespace lux::editor::ui
 {
     // Coordinates the current field transaction. Element owners hold their input buffers;
@@ -12,9 +17,14 @@ namespace lux::editor::ui
     class InspectorInteraction final
     {
     public:
-        InspectorInteraction(scene::SceneEditing& owner, std::string origin)
-            : editing_(owner), origin_(std::move(origin))
+        InspectorInteraction(scene::SceneEditing& owner, std::string origin, const ProjectStorage* catalog = nullptr)
+            : editing_(owner), origin_(std::move(origin)), catalog_(catalog)
         {}
+
+        const ProjectStorage* assetCatalog() const noexcept
+        {
+            return catalog_;
+        }
 
         void bind(scene::SceneEditing& owner) noexcept
         {
@@ -248,6 +258,7 @@ namespace lux::editor::ui
         }
 
     private:
+        const ProjectStorage* catalog_{};
         std::array<char, 192> error_{};
         bool read_only_{};
         std::reference_wrapper<scene::SceneEditing> editing_;

@@ -12,7 +12,7 @@ namespace lux::editor::scene
 {
     namespace detail
     {
-        [[nodiscard]] EditorResult<lux::scene::SceneInstanceId> instantiateScenePackage(
+        [[nodiscard]] EditorResult<lux::scene::SceneInstanceLease> instantiateScenePackage(
             lux::scene::SceneRuntime&,
             const lux::scene::ScenePackage&,
             const SceneRegistrations&,

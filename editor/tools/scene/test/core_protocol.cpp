@@ -67,10 +67,10 @@ int main(int argc, char** argv)
         std::fprintf(stderr, "scene: %s\n", scene.assetStatus().failure->domain.c_str());
     assert(!scene.assetStatus().failure && toolTest(scene).instance().valid());
     until([&] {
-        if (!bool(context.engine().sceneRuntime().getSceneRegistry(toolTest(scene).instance())))
+        if (!bool(context.engine().sceneRuntime().borrowInstance(toolTest(scene).instance())))
             return false;
         if (!lux::scene::RenderSceneState::find(
-                std::as_const(context.engine().sceneRuntime()).getSceneRegistry(toolTest(scene).instance())->get(),
+                std::as_const(context.engine().sceneRuntime()).borrowInstance(toolTest(scene).instance())->get(),
                 toolTest(scene).selectedRenderSystem()
             ))
             return true;
@@ -249,7 +249,7 @@ int main(int argc, char** argv)
         assert(
             !scene.assetStatus().failure && toolTest(scene).instance().valid() &&
             !lux::scene::RenderSceneState::find(
-                std::as_const(context.engine().sceneRuntime()).getSceneRegistry(toolTest(scene).instance())->get(),
+                std::as_const(context.engine().sceneRuntime()).borrowInstance(toolTest(scene).instance())->get(),
                 toolTest(scene).selectedRenderSystem()
             )
         );
@@ -277,7 +277,7 @@ int main(int argc, char** argv)
     else if (mode == "save-preservation" || mode == "save-retry" || mode == "save-partial")
     {
         SceneSaveChecks checks;
-        until([&] { return bool(context.engine().sceneRuntime().getSceneRegistry(toolTest(scene).instance())); });
+        until([&] { return bool(context.engine().sceneRuntime().borrowInstance(toolTest(scene).instance())); });
         checks.begin(scene, mode);
         until([&] { return checks.finished(scene); });
         assert(scene.reloadAsset());
@@ -287,7 +287,7 @@ int main(int argc, char** argv)
         assert(
             !scene.assetStatus().failure && toolTest(scene).instance() != original_instance && scene.id() == pane_id
         );
-        until([&] { return bool(context.engine().sceneRuntime().getSceneRegistry(toolTest(scene).instance())); });
+        until([&] { return bool(context.engine().sceneRuntime().borrowInstance(toolTest(scene).instance())); });
         checks.reopened(scene);
     }
     else if (mode == "fixed-run")
@@ -296,18 +296,18 @@ int main(int argc, char** argv)
         checks.begin(scene, renderer, editor.context().renderResources());
         until([&] { return checks.poll(scene, renderer); });
         const auto run = scene.runStatus().id;
-        until([&] { return scene.runStatus().state == scene::ERunState::RUNNING; });
+        until([&] { return scene.runStatus().state == scene::EPlaybackState::RUNNING; });
         assert(scene.pauseRun(run));
         assert(editor.update({}, nullptr));
         assert(scene.stopRun(run));
         editor.applyPendingChanges();
         until([&] {
             const auto status = scene.runStatus();
-            assert(status.result && status.state != scene::ERunState::PAUSED);
-            return status.state == scene::ERunState::FINISHED;
+            assert(status.result && status.state != scene::EPlaybackState::PAUSED);
+            return status.state == scene::EPlaybackState::FINISHED;
         });
         // Distinct assets own distinct tools and running scenes. Pausing/closing one must not stop the other.
-        until([&] { return bool(context.engine().sceneRuntime().getSceneRegistry(toolTest(scene).instance())); });
+        until([&] { return bool(context.engine().sceneRuntime().borrowInstance(toolTest(scene).instance())); });
         const auto original_asset = scene.assetId();
         const auto copy = scene.requestSaveAs("/Project/Independent.luxscene");
         assert(copy);
@@ -326,8 +326,8 @@ int main(int argc, char** argv)
         assert(first_run && other_run);
         until([&] { return scene.runStatus().steps >= 2 && other.runStatus().steps >= 2; });
         assert(toolTest(scene).instance() != toolTest(other).instance());
-        assert(other.pauseRun(*other_run));
-        until([&] { return other.runStatus().state == scene::ERunState::PAUSED; });
+        assert(other.pauseRun(other.runStatus().id));
+        until([&] { return other.runStatus().state == scene::EPlaybackState::PAUSED; });
         const auto paused_step = other.runStatus().steps;
         const auto active_step = scene.runStatus().steps;
         until([&] { return scene.runStatus().steps >= active_step + 3; });
@@ -337,8 +337,8 @@ int main(int argc, char** argv)
         until([&] { return context.panes().find(closed_id.view()) == nullptr; });
         const auto after_close = scene.runStatus().steps;
         until([&] { return scene.runStatus().steps >= after_close + 2; });
-        assert(scene.stopRun(*first_run));
-        until([&] { return scene.runStatus().state == scene::ERunState::FINISHED; });
+        assert(scene.stopRun(scene.runStatus().id));
+        until([&] { return scene.runStatus().state == scene::EPlaybackState::FINISHED; });
         std::puts("PASS two scene tools: separate assets/instances, pause and close leave the other Run advancing");
     }
     else if (mode == "material-gui" || mode == "flow-gui")

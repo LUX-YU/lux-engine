@@ -200,10 +200,10 @@ void verifyRenderContext()
         builder.setDescription(make_description(false));
         const auto built = builder.build();
         assert(built);
-        const auto id = *built;
-        assert(scenes.invalid(id));
+        const auto id = built->id();
+        assert(scenes.pauseSimulation(id));
         {
-            const auto& registry = std::as_const(scenes).getSceneRegistry(id)->get();
+            const auto& registry = std::as_const(scenes).borrowInstance(id)->get();
             const auto* first = scene::RenderSceneState::find(registry, {2});
             assert(first && first->coordinate_page_size == render_configuration.coordinate_page_size);
             assert(!scene::RenderSceneState::find(registry, {3}));
@@ -216,7 +216,7 @@ void verifyRenderContext()
                 if (std::chrono::steady_clock::now() >= deadline)
                 {
                     std::cerr << "timeout at " << call.line() << '\n';
-                    auto registry = std::as_const(scenes).getSceneRegistry(id);
+                    auto registry = std::as_const(scenes).borrowInstance(id);
                     for (const auto entity : registry->get().view<scene::RenderViewResult>())
                     {
                         const auto& result = registry->get().get<scene::RenderViewResult>(entity);
@@ -233,19 +233,19 @@ void verifyRenderContext()
                     assert(false && "request completion deadline");
                 }
                 assert(engine.execution().collectCompletions());
-                auto tick = scenes.tick();
+                auto tick = scenes.driveFrame();
                 assert(tick && tick->empty());
                 std::this_thread::sleep_for(1ms);
             }
         };
-        until([&] { return static_cast<bool>(scenes.getSceneRegistry(id)); });
+        until([&] { return static_cast<bool>(scenes.borrowInstance(id)); });
         ecs::Entity entity;
         {
-            auto registry = scenes.getSceneRegistry(id);
+            auto registry = scenes.borrowInstance(id);
             entity = registry->get().view<scene::RenderViewRequest>().front();
         }
         const auto published = [&](std::uint64_t revision) {
-            auto registry = scenes.getSceneRegistry(id);
+            auto registry = scenes.borrowInstance(id);
             if (!registry)
                 return false;
             const auto* result = registry->get().try_get<scene::RenderViewResult>(entity);
@@ -255,7 +255,7 @@ void verifyRenderContext()
         ); // Pre-existing request, actual font attach and no camera/asset source/loader.
         scene::RenderResourceId original;
         {
-            auto registry = scenes.getSceneRegistry(id);
+            auto registry = scenes.borrowInstance(id);
             const auto& result = registry->get().get<scene::RenderViewResult>(entity);
             original = result.view;
             assert(resources.observeView(original)->status.state == scene::EViewState::READY);
@@ -273,13 +273,13 @@ void verifyRenderContext()
             return published(3) && view && view->render_extent == render::PixelExtent{96, 72} &&
                    view->render_sequence == view->status.request_sequence;
         });
-        const auto clock = scenes.getClock(id);
+        const auto clock = scenes.borrowClock(id);
         assert(clock && std::visit([](const auto& value) { return value.snapshot().step_index; }, clock->get()) == 0);
 
         // Malformed requests fail locally and cannot stop another request or the scene.
         ecs::Entity malformed;
         {
-            auto registry = scenes.getSceneRegistry(id);
+            auto registry = scenes.borrowInstance(id);
             malformed = registry->get().create();
             registry->get().emplace<scene::RenderViewRequest>(
                 malformed,
@@ -290,7 +290,7 @@ void verifyRenderContext()
             });
         }
         until([&] {
-            auto registry = scenes.getSceneRegistry(id);
+            auto registry = scenes.borrowInstance(id);
             if (!registry)
                 return false;
             auto* result = registry->get().try_get<scene::RenderViewResult>(malformed);
@@ -299,13 +299,13 @@ void verifyRenderContext()
         });
         assert(resources.observeView(original));
         {
-            auto registry = scenes.getSceneRegistry(id);
+            auto registry = scenes.borrowInstance(id);
             registry->get().patch<scene::RenderViewRequest>(entity, [](auto& request) { request.revision = 4; });
         }
         until([&] { return published(4); });
         ecs::Entity camera;
         {
-            auto registry = scenes.getSceneRegistry(id);
+            auto registry = scenes.borrowInstance(id);
             camera = registry->get().create();
             registry->get().emplace<scene::Camera>(camera);
             registry->get().patch<scene::RenderViewRequest>(entity, [&](auto& request) {
@@ -315,15 +315,15 @@ void verifyRenderContext()
         }
         until([&] { return published(5); });
         {
-            auto registry = scenes.getSceneRegistry(id);
+            auto registry = scenes.borrowInstance(id);
             registry->get().destroy(camera);
         }
         until([&] {
-            auto registry = scenes.getSceneRegistry(id);
+            auto registry = scenes.borrowInstance(id);
             return registry && registry->get().get<scene::RenderViewResult>(entity).failure.has_value();
         });
         {
-            auto registry = scenes.getSceneRegistry(id);
+            auto registry = scenes.borrowInstance(id);
             registry->get().patch<scene::RenderViewRequest>(entity, [&](auto& request) {
                 request.camera = ecs::NullEntity;
                 request.configuration.extent = {};
@@ -332,7 +332,7 @@ void verifyRenderContext()
         }
         until([&] { return resources.observeView(original)->status.state == scene::EViewState::SUSPENDED; });
         {
-            auto registry = scenes.getSceneRegistry(id);
+            auto registry = scenes.borrowInstance(id);
             registry->get().patch<scene::RenderViewRequest>(entity, [&](auto& request) {
                 request.configuration.extent = {64, 64};
                 request.revision = 7;
@@ -343,7 +343,7 @@ void verifyRenderContext()
         std::stop_source view_owner;
         ecs::Entity cancellable;
         {
-            auto registry = scenes.getSceneRegistry(id);
+            auto registry = scenes.borrowInstance(id);
             assert(scene::RenderAssets::find(registry->get(), {2}));
             assert(!scene::RenderAssets::find(registry->get(), {999}));
             cancellable = registry->get().create();
@@ -358,7 +358,7 @@ void verifyRenderContext()
         }
         scene::RenderResourceId cancelled_view;
         until([&] {
-            auto registry = scenes.getSceneRegistry(id);
+            auto registry = scenes.borrowInstance(id);
             if (!registry)
                 return false;
             const auto* result = registry->get().try_get<scene::RenderViewResult>(cancellable);
@@ -378,10 +378,10 @@ void verifyRenderContext()
         }
         assert(!resources.retain(cancelled_view));
         until([&] {
-            const auto registry = std::as_const(scenes).getSceneRegistry(id);
+            const auto registry = std::as_const(scenes).borrowInstance(id);
             return !registry->get().all_of<scene::RenderViewRequest>(cancellable);
         });
-        assert(std::as_const(scenes).getSceneRegistry(id)->get().valid(cancellable));
+        assert(std::as_const(scenes).borrowInstance(id)->get().valid(cancellable));
         std::cout << "PASS request cancellation retires a view using completions only\n";
         // Dedicated requests opt into entity cleanup; a caller's ordinary entity survives.
         for (const bool adopt_first : {false, true})
@@ -389,7 +389,7 @@ void verifyRenderContext()
             std::stop_source owner;
             ecs::Entity transient;
             {
-                auto registry = scenes.getSceneRegistry(id);
+                auto registry = scenes.borrowInstance(id);
                 transient = registry->get().create();
                 registry->get().emplace<scene::RenderViewRequest>(
                     transient,
@@ -403,14 +403,14 @@ void verifyRenderContext()
             }
             if (adopt_first)
                 until([&] {
-                    const auto registry = std::as_const(scenes).getSceneRegistry(id);
+                    const auto registry = std::as_const(scenes).borrowInstance(id);
                     const auto* result = registry->get().try_get<scene::RenderViewResult>(transient);
                     return result && result->published_revision != 0;
                 });
             owner.request_stop();
             // Cancellation itself must never mutate an EnTT pool.
-            assert(std::as_const(scenes).getSceneRegistry(id)->get().valid(transient));
-            until([&] { return !std::as_const(scenes).getSceneRegistry(id)->get().valid(transient); });
+            assert(std::as_const(scenes).borrowInstance(id)->get().valid(transient));
+            until([&] { return !std::as_const(scenes).borrowInstance(id)->get().valid(transient); });
         }
         std::cout << "PASS transient request entities retire at maintenance, before or after adoption\n";
         // Block a real backend create callback, then fill the actual Program queue.
@@ -440,15 +440,15 @@ void verifyRenderContext()
         }
         assert(backpressured);
         {
-            auto registry = scenes.getSceneRegistry(id);
+            auto registry = scenes.borrowInstance(id);
             registry->get().patch<scene::RenderViewRequest>(entity, [](auto& request) { request.revision = 8; });
         }
         for (unsigned retry{}; retry != 3; ++retry)
         {
-            const auto tick = scenes.tick();
+            const auto tick = scenes.driveFrame();
             assert(tick && tick->empty());
-            assert(!scenes.getSceneRegistry(id)); // No writable borrow while the packet occupies this instance.
-            auto registry = std::as_const(scenes).getSceneRegistry(id);
+            assert(!scenes.borrowInstance(id)); // No writable borrow while the packet occupies this instance.
+            auto registry = std::as_const(scenes).borrowInstance(id);
             const auto& result = registry->get().get<scene::RenderViewResult>(entity);
             assert(result.adopted_revision == 8 && result.published_revision == 0);
         }
@@ -461,7 +461,7 @@ void verifyRenderContext()
         constexpr unsigned StableIterations = 1024;
         for (unsigned iteration{}; iteration != StableIterations; ++iteration)
         {
-            auto tick = scenes.tick();
+            auto tick = scenes.driveFrame();
             assert(tick && tick->empty());
         }
         const auto stable_time = std::chrono::steady_clock::now() - stable_start;
@@ -471,7 +471,7 @@ void verifyRenderContext()
         retired = *resources.viewReceipt(original);
         // Remove and reconstruct at the same Entity before maintenance. The old reference must still be released.
         {
-            auto registry = scenes.getSceneRegistry(id);
+            auto registry = scenes.borrowInstance(id);
             registry->get().remove<scene::RenderViewRequest>(entity);
             registry->get().emplace<scene::RenderViewRequest>(
                 entity,
@@ -479,7 +479,7 @@ void verifyRenderContext()
             );
         }
         until([&] {
-            auto registry = scenes.getSceneRegistry(id);
+            auto registry = scenes.borrowInstance(id);
             if (!registry)
                 return false;
             const auto* result = registry->get().try_get<scene::RenderViewResult>(entity);
@@ -488,7 +488,7 @@ void verifyRenderContext()
         until([&] { return retired.status().status.state == scene::EViewState::CLOSED; });
         assert(!resources.retain(original));
         {
-            auto registry = scenes.getSceneRegistry(id);
+            auto registry = scenes.borrowInstance(id);
             retired = *resources.viewReceipt(registry->get().get<scene::RenderViewResult>(entity).view);
         }
         // No explicit Scene destroy, resource close, event loop or Runtime polling after this point.

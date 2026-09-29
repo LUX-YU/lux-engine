@@ -27,13 +27,13 @@ inline std::vector<TestObjectRow> sceneObjects(const lux::editor::scene::SceneEd
     namespace ecs = lux::simulation::ecs;
     std::vector<TestObjectRow> rows;
     const auto instance = toolTest(document).instance();
-    const auto borrowed = std::as_const(testSceneRuntime(document)).getSceneRegistry(instance);
+    const auto borrowed = std::as_const(testSceneRuntime(document)).borrowInstance(instance);
     if (!borrowed)
         return rows;
     const auto& registry = borrowed->get();
     auto* loader = registry.ctx().find<lux::scene::WorldResidency>();
     const auto state = document.runStatus().state;
-    using RunState = lux::editor::scene::ERunState;
+    using RunState = lux::editor::scene::EPlaybackState;
     const bool inspecting_run = state == RunState::RUNNING || state == RunState::PAUSED || state == RunState::STOPPING;
     const bool author = !inspecting_run;
     for (const auto [entity] : registry.storage<ecs::Entity>()->each())

@@ -34,7 +34,7 @@ static std::vector<lux::simulation::ecs::Entity> authorEntities(lux::editor::sce
     const auto instance = toolTest(document).instance();
     auto& runtime = static_cast<lux::editor::Editor&>(document.root()).context().engine().sceneRuntime();
     const auto& residency =
-        std::as_const(runtime).getSceneRegistry(instance)->get().ctx().get<lux::scene::WorldResidency>();
+        std::as_const(runtime).borrowInstance(instance)->get().ctx().get<lux::scene::WorldResidency>();
     std::vector<lux::simulation::ecs::Entity> result;
     for (const auto& [id, entity] : residency.identities().entries())
         result.push_back(entity);

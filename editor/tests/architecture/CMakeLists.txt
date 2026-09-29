@@ -37,3 +37,8 @@ add_test(NAME editor.persistence_boundaries
         --source "${PROJECT_SOURCE_DIR}" --cmake "${CMAKE_COMMAND}"
         --evidence "${CMAKE_CURRENT_BINARY_DIR}/persistence-boundaries.json")
 set_tests_properties(editor.persistence_boundaries PROPERTIES LABELS "editor;native;P05" TIMEOUT 180)
+add_test(NAME editor.scene_execution_boundaries
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_scene_execution_boundaries.py"
+        --source "${PROJECT_SOURCE_DIR}" --cmake "${CMAKE_COMMAND}"
+        --evidence "${CMAKE_CURRENT_BINARY_DIR}/scene-execution-boundaries.json")
+set_tests_properties(editor.scene_execution_boundaries PROPERTIES LABELS "editor;native;P06" TIMEOUT 180)

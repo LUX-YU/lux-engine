@@ -83,8 +83,14 @@ namespace
             if (!root_->initializeUi())
                 return false;
             root_->bindWindow(window_.get());
-            auto presentation =
-                editor::ui::Presentation::create(*root_, engine_->execution(), engine_->sceneRuntime(), runtime, rendering.resources(), window_.get());
+            auto presentation = editor::ui::Presentation::create(
+                *root_,
+                engine_->execution(),
+                engine_->sceneRuntime(),
+                runtime,
+                rendering.resources(),
+                window_.get()
+            );
             if (!presentation)
                 return false;
             ui_ = std::move(*presentation);
@@ -153,7 +159,7 @@ namespace
                     fail("ui.update");
                 if (!ui_->applySceneInput())
                     fail("ui.submit");
-                const auto advanced = engine_->sceneRuntime().tick();
+                const auto advanced = engine_->sceneRuntime().driveFrame();
                 if (!advanced || !advanced->empty())
                     fail("scenes");
                 if (smoke_frames && ui_->capturedFrames() >= smoke_frames)
@@ -181,10 +187,8 @@ int main(int argc, char** argv)
         return 0;
     }
     const bool smoke = std::ranges::find(*arguments, "--smoke") != arguments->end();
-    auto engine = lux::engine::EngineContext::create(
-        {2, 64, 64, {64}, lux::process::BlockingSchedulerConfig{2, 64}},
-        {0, 1024}
-    );
+    auto engine =
+        lux::engine::EngineContext::create({2, 64, 64, {64}, lux::process::BlockingSchedulerConfig{2, 64}}, {0, 1024});
     if (!engine)
         return 3;
     Launcher launcher{std::move(*engine)};

@@ -520,24 +520,24 @@ int main(int argc, char** argv)
     assert(build_error.scene_system.system == system::SystemInstanceId{1});
     scene_builder.setRegistrations(*schemas, registrations, (*plugin)->sceneSystems());
     const auto instance = scene_builder.build();
-    assert(instance && scenes.invalid(*instance));
+    assert(instance && scenes.pauseSimulation(instance->id()));
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
     for (;;)
     {
         assert(std::chrono::steady_clock::now() < deadline);
         assert((*engine)->execution().collectCompletions());
-        const auto tick = scenes.tick();
+        const auto tick = scenes.driveFrame();
         assert(tick && tick->empty());
-        const auto registry = std::as_const(scenes).getSceneRegistry(*instance);
+        const auto registry = std::as_const(scenes).borrowInstance(instance->id());
         assert(registry);
         if (registry->get().ctx().get<scene::WorldResidency>().statistics().resident_partitions == 1)
             break;
     }
-    assert(scenes.valid(*instance));
-    assert(scenes.tick());
-    const auto clock = scenes.getClock(*instance);
+    assert(scenes.resumeSimulation(instance->id()));
+    assert(scenes.driveFrame());
+    const auto clock = scenes.borrowClock(instance->id());
     assert(clock && std::visit([](const auto& value) { return value.snapshot().step_index; }, clock->get()) == 1);
-    assert(scenes.destroy(*instance));
+    assert(scenes.retireInstance(instance->id()));
     assert(tasks.join());
     plugin->reset();
     // EngineContext destroys SceneRuntime (including its timer) before ExecutionRuntime.

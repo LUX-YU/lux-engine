@@ -16,7 +16,8 @@ namespace lux::editor::ui
             lux::ui::ElementId id,
             const lux::simulation::ecs::ComponentSchemaSet& schemas,
             const ComponentEditorRegistry& editors,
-            EditorResult<void>& status
+            EditorResult<void>& status,
+            const ProjectStorage* catalog
         );
         [[nodiscard]] EditorResult<void> setTarget(scene::SceneEditing&, lux::simulation::ecs::Entity);
         [[nodiscard]] EditorResult<void> finishEditing();
@@ -35,6 +36,7 @@ namespace lux::editor::ui
         [[nodiscard]] bool sameComponents() const noexcept;
         void rebuild();
         const ComponentEditorRegistry& editors_;
+        const ProjectStorage* catalog_;
         scene::SceneEditing* editing_{};
         lux::simulation::ecs::Entity target_{lux::simulation::ecs::NullEntity};
         std::optional<InspectorInteraction> interaction_;

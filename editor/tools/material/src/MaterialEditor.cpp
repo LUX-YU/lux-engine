@@ -430,8 +430,7 @@ namespace lux::editor::material
     {
         if (!history_ || saved_history_ || asset_status_.phase != EAssetEditPhase::IDLE)
             return lux::cxx::unexpected(EditorFailure{EEditorError::BUSY, "material.compile"});
-        if (this->busy_ || compile_task_ ||
-            compile_result_)
+        if (this->busy_ || compile_task_ || compile_result_)
         {
             return lux::cxx::unexpected(EditorFailure{EEditorError::BUSY, "material.compile"});
         }
@@ -506,9 +505,9 @@ namespace lux::editor::material
         auto ticket = this->persistence_.capture();
         if (!ticket)
         {
-            return lux::cxx::unexpected(EditorFailure{
-                EEditorError::BUSY, "asset.save.ticket", static_cast<std::uint64_t>(ticket.error())
-            });
+            return lux::cxx::unexpected(
+                EditorFailure{EEditorError::BUSY, "asset.save.ticket", static_cast<std::uint64_t>(ticket.error())}
+            );
         }
         const SaveRequestId id{this->history_->id(), this->next_save_++};
         const auto& job = std::get<Compilation>(this->compilation_);
@@ -630,7 +629,7 @@ namespace lux::editor::material
         {
             event.accept();
             query->matches = !query->asset.isNull() &&
-                (editor_->assetId() == query->asset || editor_->assetStatus().target == query->asset);
+                             (editor_->assetId() == query->asset || editor_->assetStatus().target == query->asset);
             return;
         }
 
@@ -654,8 +653,8 @@ namespace lux::editor::material
         if (busy_)
             return;
         completion_deferred_ = false;
-        const bool preview_busy = preview_ && preview_->scene &&
-                                  !preview_->runtime.getSceneRegistry(*preview_->scene);
+        const bool preview_busy =
+            preview_ && preview_->scene && !preview_->runtime.borrowInstance(preview_->scene->id());
         if (preview_busy && std::holds_alternative<Compilation>(compilation_))
             completion_deferred_ = true;
         if (auto* job = std::get_if<Compilation>(&this->compilation_); job && compile_result_ && !preview_busy)
@@ -664,8 +663,8 @@ namespace lux::editor::material
             compile_result_.reset();
             if (result)
             {
-                if (history_ && asset_status_.phase == EAssetEditPhase::IDLE &&
-                    job->history == this->history_->id() && this->history_->view()->snapshot.current == job->state)
+                if (history_ && asset_status_.phase == EAssetEditPhase::IDLE && job->history == this->history_->id() &&
+                    this->history_->view()->snapshot.current == job->state)
                     updatePreview(result->publication.artifact.source_bytes, job->state, job->preview_assets);
                 job->output.emplace(std::move(*result));
                 job->status = MaterialCompileSucceeded{
@@ -705,8 +704,7 @@ namespace lux::editor::material
             PaneCloseRequest request{editor_};
             static_cast<void>(object::routeEvent(*editor_, editor_->root(), request));
         }
-        if (history_ &&
-            asset_status_.phase == EAssetEditPhase::IDLE && !saved_history_)
+        if (history_ && asset_status_.phase == EAssetEditPhase::IDLE && !saved_history_)
             applyContentIntents();
         const bool has_pending_change = completion_deferred_ || asset_status_.phase != EAssetEditPhase::IDLE;
         if (has_pending_change)

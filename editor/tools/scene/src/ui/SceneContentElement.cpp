@@ -97,9 +97,9 @@ namespace lux::editor::ui
     void SceneContentElement::applyViewChange() noexcept
     {
         const auto run = editor_.runStatus();
-        const bool running = run.state == scene::ERunState::RUNNING || run.state == scene::ERunState::PAUSED;
-        const bool author = run.state == scene::ERunState::IDLE || run.state == scene::ERunState::FINISHED ||
-                            run.state == scene::ERunState::FAILED;
+        const bool running = run.state == scene::EPlaybackState::RUNNING || run.state == scene::EPlaybackState::PAUSED;
+        const bool author = run.state == scene::EPlaybackState::IDLE || run.state == scene::EPlaybackState::FINISHED ||
+                            run.state == scene::EPlaybackState::FAILED;
         const auto wanted = running ? run.id : scene::RunId{};
         const bool switching =
             displayed_run_ != wanted || (!running && !author) || displayed_render_ != editor_.selectedRenderSystem();
@@ -179,21 +179,22 @@ namespace lux::editor::ui
                 placement_ = {};
         }
         const auto playback = editor_.runStatus();
-        const bool idle = playback.state == scene::ERunState::IDLE || playback.state == scene::ERunState::FINISHED ||
-                          playback.state == scene::ERunState::FAILED;
+        const bool idle = playback.state == scene::EPlaybackState::IDLE ||
+                          playback.state == scene::EPlaybackState::FINISHED ||
+                          playback.state == scene::EPlaybackState::FAILED;
         play_.setVisible(idle);
         play_.setEnabled(editor_.instance().valid() && editor_.asset_status_.phase == EAssetEditPhase::IDLE);
-        pause_.setVisible(playback.state == scene::ERunState::RUNNING);
+        pause_.setVisible(playback.state == scene::EPlaybackState::RUNNING);
         pause_.setEnabled(!playback.pause_pending);
-        resume_.setVisible(playback.state == scene::ERunState::PAUSED);
-        step_.setVisible(playback.state == scene::ERunState::PAUSED);
+        resume_.setVisible(playback.state == scene::EPlaybackState::PAUSED);
+        step_.setVisible(playback.state == scene::EPlaybackState::PAUSED);
         stop_.setVisible(!idle);
         clock_.setText("Step " + std::to_string(playback.steps));
 
         const auto run = editor_.runStatus();
-        const bool running = run.state == scene::ERunState::RUNNING || run.state == scene::ERunState::PAUSED;
-        const bool author = run.state == scene::ERunState::IDLE || run.state == scene::ERunState::FINISHED ||
-                            run.state == scene::ERunState::FAILED;
+        const bool running = run.state == scene::EPlaybackState::RUNNING || run.state == scene::EPlaybackState::PAUSED;
+        const bool author = run.state == scene::EPlaybackState::IDLE || run.state == scene::EPlaybackState::FINISHED ||
+                            run.state == scene::EPlaybackState::FAILED;
         const auto wanted = running ? run.id : scene::RunId{};
         const bool switching =
             displayed_run_ != wanted || (!running && !author) || displayed_render_ != editor_.selectedRenderSystem();
@@ -207,7 +208,7 @@ namespace lux::editor::ui
 
         if (view().isValid() && !switching)
         {
-            if (!displayed_run_.serial)
+            if (!displayed_run_.valid())
             {
                 const auto plane = editor_.setWorkPlaneHeight(work_plane_height_);
                 if (!plane)
@@ -488,7 +489,8 @@ namespace lux::editor::ui
             result = editor_.stepRun(control_run_);
             break;
         case EControl::STOP:
-            result = editor_.stopRun(control_run_);
+            result =
+                control_run_.valid() ? editor_.stopRun(control_run_) : editor_.cancelRun(editor_.runStatus().request);
             break;
         case EControl::NONE:
             break;
@@ -525,7 +527,7 @@ namespace lux::editor::ui
         if (source_)
         {
             const auto& description = source_->scene->data();
-            const auto borrowed = std::as_const(runtime_).getSceneRegistry(editor_.instance());
+            const auto borrowed = std::as_const(runtime_).borrowInstance(editor_.instance());
             const auto selected = description.findSystem(editor_.selectedRenderSystem());
             if (ImGui::BeginCombo("Viewport system", selected ? selected.instanceName().data() : "No render system"))
             {
@@ -544,7 +546,7 @@ namespace lux::editor::ui
             }
         }
         const auto run = editor_.runStatus();
-        if (!displayed_run_.serial && camera_ != lux::simulation::ecs::NullEntity &&
+        if (!displayed_run_.valid() && camera_ != lux::simulation::ecs::NullEntity &&
             camera_scene_ == editor_.instance())
         {
             const auto* camera = static_cast<const lux::scene::Camera*>(
@@ -629,7 +631,7 @@ namespace lux::editor::ui
         {
             ImGui::Dummy({0, ImGui::GetFrameHeight()});
         }
-        if (!displayed_run_.serial)
+        if (!displayed_run_.valid())
         {
             drawPlacement();
         }
@@ -641,7 +643,7 @@ namespace lux::editor::ui
         if (!viewport_ || closing_ || !view().isValid())
             return;
         const auto& interaction = viewport_->image().interaction();
-        if (!displayed_run_.serial && interaction.hovered && ImGui::BeginDragDropTarget())
+        if (!displayed_run_.valid() && interaction.hovered && ImGui::BeginDragDropTarget())
         {
             if (const auto* payload = ImGui::AcceptDragDropPayload(kAssetReferencePayload))
             {
@@ -701,7 +703,7 @@ namespace lux::editor::ui
         {
             motion.dolly = input.MouseWheel;
         }
-        if (!displayed_run_.serial &&
+        if (!displayed_run_.valid() &&
             (motion.angular_delta.squaredNorm() || motion.pan_delta.squaredNorm() || motion.dolly))
         {
             pending_motion_.angular_delta += motion.angular_delta;

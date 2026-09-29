@@ -26,7 +26,7 @@ component_include_directories(
     BUILD_TIME_EXPORT
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${LUX_GENERATE_HEADER_DIR}
-    BUILD_TIME_SHARED
+    PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
     INSTALL_TIME include
 )

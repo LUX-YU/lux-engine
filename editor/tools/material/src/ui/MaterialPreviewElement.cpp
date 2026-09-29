@@ -58,7 +58,7 @@ namespace lux::editor::ui
         if (!instance.valid())
             return;
         const bool moved = motion_.angular_delta.squaredNorm() || motion_.pan_delta.squaredNorm() || motion_.dolly;
-        const auto borrowed = std::as_const(runtime_).getSceneRegistry(instance);
+        const auto borrowed = std::as_const(runtime_).borrowInstance(instance);
         if (moved && borrowed && borrowed->get().valid(camera_))
         {
             const auto& pose = borrowed->get().get<lux::simulation::ecs::Transform3D>(camera_);

@@ -6,12 +6,75 @@
 #include <lux/cxx/container/SlotMap.hpp>
 
 #include <atomic>
+#include <array>
+#include <algorithm>
+#include <utility>
 #include <new>
 #include <stdexcept>
 #include <thread>
 
 namespace lux::scene
 {
+    namespace detail
+    {
+        struct InstanceLifetime final
+        {
+            SceneInstanceId id;
+            process::CompletionWork::Request wake;
+            std::atomic_bool requested{}, completed{};
+            void request() noexcept
+            {
+                if (!requested.exchange(true, std::memory_order_acq_rel))
+                    wake.request();
+            }
+        };
+    }
+
+    InstanceRetirement::InstanceRetirement(std::shared_ptr<detail::InstanceLifetime> value) noexcept
+        : lifetime_(std::move(value))
+    {}
+    bool InstanceRetirement::complete() const noexcept
+    {
+        return !lifetime_ || lifetime_->completed.load(std::memory_order_acquire);
+    }
+    SceneInstanceId InstanceRetirement::id() const noexcept
+    {
+        return lifetime_ ? lifetime_->id : SceneInstanceId{};
+    }
+    SceneInstanceLease::SceneInstanceLease(std::shared_ptr<detail::InstanceLifetime> value) noexcept
+        : lifetime_(std::move(value))
+    {}
+    SceneInstanceLease::~SceneInstanceLease() noexcept
+    {
+        if (lifetime_)
+            lifetime_->request();
+    }
+    SceneInstanceLease::SceneInstanceLease(SceneInstanceLease&&) noexcept = default;
+    SceneInstanceLease& SceneInstanceLease::operator=(SceneInstanceLease&& other) noexcept
+    {
+        if (this != &other)
+        {
+            if (lifetime_)
+                lifetime_->request();
+            lifetime_ = std::move(other.lifetime_);
+        }
+        return *this;
+    }
+    SceneInstanceId SceneInstanceLease::id() const noexcept
+    {
+        return lifetime_ ? lifetime_->id : SceneInstanceId{};
+    }
+    SceneInstanceLease::operator bool() const noexcept
+    {
+        return bool(lifetime_);
+    }
+    InstanceRetirement SceneInstanceLease::retire() noexcept
+    {
+        if (lifetime_)
+            lifetime_->request();
+        return InstanceRetirement(std::move(lifetime_));
+    }
+
     namespace
     {
         using SteadyClock = std::chrono::steady_clock;
@@ -19,13 +82,14 @@ namespace lux::scene
         struct BusyScope final
         {
             bool& active;
-            explicit BusyScope(bool& value) noexcept : active(value)
+            bool previous;
+            explicit BusyScope(bool& value) noexcept : active(value), previous(value)
             {
                 active = true;
             }
             ~BusyScope() noexcept
             {
-                active = false;
+                active = previous;
             }
         };
 
@@ -43,10 +107,36 @@ namespace lux::scene
             SceneDriver driver;
             SceneInstance scene;
             std::optional<EClockError> clock_error;
-            bool enabled{true};
+            struct Step final
+            {
+                SceneStepTicket ticket;
+                SceneStepStatus status;
+            };
+            std::shared_ptr<detail::InstanceLifetime> lifetime;
+            std::array<Step, 32> steps;
+            std::uint64_t next_step{1};
+            bool enabled{true}, retiring{}, maintenance_complete{};
 
-            Record(VSimulationClock value, task::TaskExecutor& executor, std::unique_ptr<SceneInstance::Impl> instance)
-                : clock(std::move(value)), driver(executor), scene(std::move(instance))
+            Step* pendingStep() noexcept
+            {
+                Step* first{};
+                for (auto& step : steps)
+                {
+                    const bool pending = step.ticket.serial && (step.status.state == ESceneStepState::QUEUED ||
+                                                                step.status.state == ESceneStepState::EXECUTING);
+                    if (pending && (!first || step.ticket.serial < first->ticket.serial))
+                        first = &step;
+                }
+                return first;
+            }
+
+            Record(
+                VSimulationClock value,
+                task::TaskExecutor& executor,
+                std::unique_ptr<SceneInstance::Impl> instance,
+                std::shared_ptr<detail::InstanceLifetime> retirement
+            )
+                : clock(std::move(value)), driver(executor), scene(std::move(instance)), lifetime(std::move(retirement))
             {
                 scene.registry().ctx().emplace<std::reference_wrapper<const SceneDriveSnapshot>>(
                     std::cref(scene.progress())
@@ -119,19 +209,29 @@ namespace lux::scene
                 reclaimTimer();
             }
             wake_.cancel();
-            // Revocation precedes destruction; system destructors cannot observe a live ID.
-            while (!records_.empty())
-            {
-                auto record = std::move(records_.values().back());
-                const auto id = record->scene.id();
-                records_.erase({id.slot, id.generation});
-            }
+            closing_ = true;
+            for (auto& record : records_)
+                record->lifetime->request();
+            const auto retired = execution_.waitUntil([this]() noexcept {
+                BusyScope draining(busy_);
+                for (auto& record : records_)
+                {
+                    beginRetirement(*record);
+                    record->maintenance_complete = record->driver.maintain(record->scene) == ESceneProgress::COMPLETE;
+                }
+                collectRetired();
+                return records_.empty();
+            });
+            if (!retired)
+                std::terminate(); // Runtime teardown requires its owner outside any completion callback.
         }
 
         [[nodiscard]] SceneRuntimeResult<void> access() const noexcept
         {
             if (std::this_thread::get_id() != owner_)
                 return rejected(ESceneRuntimeError::WRONG_THREAD);
+            if (closing_)
+                return rejected(ESceneRuntimeError::STOPPED);
             if (busy_)
                 return rejected(ESceneRuntimeError::BUSY);
             return {};
@@ -152,7 +252,7 @@ namespace lux::scene
             return found->get();
         }
 
-        [[nodiscard]] SceneRuntimeResult<SceneInstanceId> build(const Builder& input) noexcept
+        [[nodiscard]] SceneRuntimeResult<SceneInstanceLease> build(const Builder& input) noexcept
         {
             const auto allowed = access();
             if (!allowed)
@@ -177,7 +277,7 @@ namespace lux::scene
                 return rejected(ESceneRuntimeError::IDENTITY_EXHAUSTED);
             }
             const SceneInstanceId id{domain_, key.index, key.gen};
-            const auto fail = [&](auto error) -> SceneRuntimeResult<SceneInstanceId> {
+            const auto fail = [&](auto error) -> SceneRuntimeResult<SceneInstanceLease> {
                 records_.erase(key);
                 return rejected(std::move(error), id);
             };
@@ -204,9 +304,12 @@ namespace lux::scene
             if (!reserved)
                 return fail(reserved.error());
             failures_.reserve(records_.size());
-            *records_.find(key) = std::make_unique<Record>(input.clock_, executor_, std::move(*prepared));
+            auto lifetime = std::make_shared<detail::InstanceLifetime>();
+            lifetime->id = id;
+            lifetime->wake = wake_.requester();
+            *records_.find(key) = std::make_unique<Record>(input.clock_, executor_, std::move(*prepared), lifetime);
             execution_.wake();
-            return id;
+            return SceneInstanceLease(std::move(lifetime));
         }
 
         [[nodiscard]] SceneRuntimeResult<void> setEnabled(SceneInstanceId id, bool enabled) noexcept
@@ -215,6 +318,10 @@ namespace lux::scene
             if (!found)
                 return lux::cxx::unexpected(found.error());
             auto& record = **found;
+            if (record.lifetime->requested.load(std::memory_order_acquire))
+                return rejected(ESceneRuntimeError::STOPPED, id);
+            if (enabled && record.pendingStep())
+                return rejected(ESceneRuntimeError::BUSY, id);
             if (enabled)
             {
                 if (record.clock_error)
@@ -234,24 +341,61 @@ namespace lux::scene
             return {};
         }
 
-        [[nodiscard]] SceneRuntimeResult<void> destroy(SceneInstanceId id) noexcept
+        [[nodiscard]] SceneRuntimeResult<InstanceRetirement> retireInstance(SceneInstanceId id) noexcept
         {
-            const auto allowed = access();
-            if (!allowed)
-                return allowed;
-            if (!id.valid())
-                return {};
+            // Leaf completion/intent admission is legal under the outer driving guard.
+            // Do not clear that guard or invoke stop callbacks here.
+            if (std::this_thread::get_id() != owner_)
+                return rejected(ESceneRuntimeError::WRONG_THREAD, id);
             if (id.domain != domain_)
                 return rejected(ESceneRuntimeError::WRONG_DOMAIN, id);
-            auto* found = records_.find({id.slot, id.generation});
+            const auto* found = records_.find({id.slot, id.generation});
+            if (!found || !*found)
+                return rejected(ESceneRuntimeError::INVALID_ID, id);
+            auto lifetime = (*found)->lifetime;
+            lifetime->request();
+            return InstanceRetirement(std::move(lifetime));
+        }
+
+        [[nodiscard]] SceneRuntimeResult<SceneStepTicket> requestStep(SceneInstanceId id) noexcept
+        {
+            const auto found = find(id);
             if (!found)
-                return {};
-            BusyScope destroying(busy_);
-            auto record = std::move(*found);
-            records_.erase({id.slot, id.generation});
-            failures_.clear();
+                return lux::cxx::unexpected(found.error());
+            auto& record = **found;
+            const bool stopped =
+                record.lifetime->requested.load(std::memory_order_acquire) || record.scene.stopToken().stop_requested();
+            if (stopped)
+                return rejected(ESceneRuntimeError::STOPPED, id);
+            if (record.enabled)
+                return rejected(ESceneRuntimeError::BUSY, id);
+            if (!record.scene.progress().result)
+                return rejected(record.scene.progress().result.error(), id);
+            if (record.clock_error)
+                return rejected(*record.clock_error, id);
+            auto empty = std::ranges::find_if(record.steps, [](const auto& step) { return !step.ticket.serial; });
+            if (empty == record.steps.end())
+                return rejected(ESceneRuntimeError::CAPACITY, id);
+            auto target = record.scene.progress().simulation_completed;
+            for (const auto& step : record.steps)
+                target = std::max(target, step.ticket.simulation_completed);
+            if (target == UINT64_MAX || record.next_step == UINT64_MAX)
+                return rejected(ESceneRuntimeError::IDENTITY_EXHAUSTED, id);
+            empty->ticket = {id, record.next_step++, target + 1};
+            empty->status = {};
             execution_.wake();
-            return {};
+            return empty->ticket;
+        }
+
+        [[nodiscard]] SceneRuntimeResult<Record::Step*> findStep(SceneStepTicket ticket) const noexcept
+        {
+            const auto found = find(ticket.scene);
+            if (!found)
+                return lux::cxx::unexpected(found.error());
+            for (auto& step : (**found).steps)
+                if (ticket.serial && step.ticket == ticket)
+                    return &step;
+            return rejected(ESceneRuntimeError::INVALID_ID, ticket.scene);
         }
 
         [[nodiscard]] TimerOperation* timerOperation() noexcept
@@ -296,7 +440,45 @@ namespace lux::scene
             return {};
         }
 
-        [[nodiscard]] TickResult tick() noexcept
+        void beginRetirement(Record& record) noexcept
+        {
+            if (!record.retiring && record.lifetime->requested.load(std::memory_order_acquire))
+            {
+                record.retiring = true;
+                record.enabled = false;
+                record.scene.requestStop();
+                for (auto& step : record.steps)
+                {
+                    const bool pending = step.ticket.serial && (step.status.state == ESceneStepState::QUEUED ||
+                                                                step.status.state == ESceneStepState::EXECUTING);
+                    if (pending)
+                        step.status = {
+                            ESceneStepState::CANCELLED,
+                            rejected(ESceneRuntimeError::STOPPED, record.scene.id())
+                        };
+                }
+            }
+        }
+        void collectRetired() noexcept
+        {
+            // All traversals and callbacks returned. Revocation precedes destruction;
+            // callbacks may request another record but cannot extend this fixed turn.
+            for (std::size_t index = records_.size(); index > 0; --index)
+            {
+                auto& value = records_.values()[index - 1];
+                if (!value->retiring || !value->maintenance_complete)
+                    continue;
+                auto record = std::move(value);
+                const auto id = record->scene.id();
+                records_.erase({id.slot, id.generation});
+                const auto lifetime = record->lifetime;
+                record.reset();
+                lifetime->completed.store(true, std::memory_order_release);
+                execution_.wake();
+            }
+        }
+
+        [[nodiscard]] DriveResult driveFrame() noexcept
         {
             const auto allowed = access();
             if (!allowed)
@@ -305,14 +487,23 @@ namespace lux::scene
             const auto now = SteadyClock::now();
             failures_.clear();
             for (auto& record : records_)
-                static_cast<void>(record->driver.maintain(record->scene));
+            {
+                beginRetirement(*record);
+                record->maintenance_complete = record->driver.maintain(record->scene) == ESceneProgress::COMPLETE;
+            }
             for (auto& record : records_)
             {
-                const bool may_tick = record->enabled && !record->clock_error && record->scene.canTick();
+                auto* step = record->pendingStep();
+                const bool step_ready = step && step->status.state == ESceneStepState::QUEUED;
+                const bool may_tick = !record->lifetime->requested.load(std::memory_order_acquire) &&
+                                      (record->enabled || step_ready) && !record->clock_error &&
+                                      record->scene.canTick();
                 if (!may_tick)
                     continue;
                 std::visit(
                     [&](auto& clock) noexcept {
+                        if (step_ready)
+                            clock.rebase(now);
                         const auto sampled = clock.sample(now);
                         if (!sampled)
                         {
@@ -325,7 +516,11 @@ namespace lux::scene
                         const auto executed = record->driver.tick(record->scene, **sampled);
                         const auto actual = record->scene.simulation().time();
                         if (actual.step_index != before)
+                        {
                             clock.adopt(now, actual);
+                            if (step)
+                                step->status.state = ESceneStepState::EXECUTING;
+                        }
                         (void)executed; // The original execution failure remains in SceneDriveSnapshot.
                     },
                     record->clock
@@ -335,11 +530,28 @@ namespace lux::scene
             for (auto& record : records_)
             {
                 static_cast<void>(record->driver.publish(record->scene));
+                for (auto& step : record->steps)
+                {
+                    const bool pending = step.ticket.serial && (step.status.state == ESceneStepState::QUEUED ||
+                                                                step.status.state == ESceneStepState::EXECUTING);
+                    if (!pending)
+                        continue;
+                    const auto& progress = record->scene.progress();
+                    if (!progress.result)
+                        step.status = {ESceneStepState::FAILED, rejected(progress.result.error(), record->scene.id())};
+                    else if (record->clock_error)
+                        step.status = {ESceneStepState::FAILED, rejected(*record->clock_error, record->scene.id())};
+                    else if (step.status.state == ESceneStepState::EXECUTING &&
+                             progress.publication_completed >= step.ticket.simulation_completed)
+                        step.status.state = ESceneStepState::COMPLETED;
+                }
                 if (!record->scene.progress().result)
                     failures_.push_back({record->scene.id(), record->scene.progress().result.error()});
                 else if (record->clock_error)
                     failures_.push_back({record->scene.id(), *record->clock_error});
-                const bool may_tick = record->enabled && !record->clock_error && record->scene.canTick();
+                const bool may_tick = !record->lifetime->requested.load(std::memory_order_acquire) &&
+                                      (record->enabled || record->pendingStep()) && !record->clock_error &&
+                                      record->scene.canTick();
                 if (may_tick)
                 {
                     const auto next =
@@ -348,31 +560,37 @@ namespace lux::scene
                         deadline = next;
                 }
             }
+            collectRetired();
             const auto armed = armTimer(deadline);
             if (!armed)
                 return lux::cxx::unexpected(armed.error());
             return std::span<const SceneRuntimeFailure>{failures_};
         }
 
-        SceneRuntimeResult<std::reference_wrapper<simulation::ecs::Registry>> getSceneRegistry(SceneInstanceId id
+        SceneRuntimeResult<std::reference_wrapper<simulation::ecs::Registry>> borrowInstance(SceneInstanceId id
         ) noexcept
         {
             const auto record = find(id);
             if (!record)
                 return lux::cxx::unexpected(record.error());
+            if ((**record).lifetime->requested.load(std::memory_order_acquire))
+                return rejected(ESceneRuntimeError::STOPPED, id);
             if (!(**record).scene.atSafePoint())
                 return rejected(ESceneRuntimeError::BUSY, id);
             return std::ref((**record).scene.registry());
         }
-        SceneRuntimeResult<std::reference_wrapper<const simulation::ecs::Registry>> getSceneRegistry(SceneInstanceId id
+        SceneRuntimeResult<std::reference_wrapper<const simulation::ecs::Registry>> borrowInstance(SceneInstanceId id
         ) const noexcept
         {
             const auto record = find(id);
             if (!record)
                 return lux::cxx::unexpected(record.error());
+            if ((**record).lifetime->requested.load(std::memory_order_acquire))
+                return rejected(ESceneRuntimeError::STOPPED, id);
             return std::cref((**record).scene.registry());
         }
-        SceneRuntimeResult<std::reference_wrapper<const VSimulationClock>> getClock(SceneInstanceId id) const noexcept
+        SceneRuntimeResult<std::reference_wrapper<const VSimulationClock>> borrowClock(SceneInstanceId id
+        ) const noexcept
         {
             const auto record = find(id);
             if (!record)
@@ -385,7 +603,7 @@ namespace lux::scene
         std::thread::id owner_{std::this_thread::get_id()};
         Records records_;
         std::vector<SceneRuntimeFailure> failures_;
-        bool busy_{};
+        bool busy_{}, closing_{};
         process::CompletionWork wake_;
         std::optional<stdexec::inplace_stop_source> timer_stop_;
         std::atomic_bool timer_completed_{false};
@@ -451,46 +669,68 @@ namespace lux::scene
         providers_ = providers;
         return *this;
     }
-    SceneRuntimeResult<SceneInstanceId> SceneRuntime::Builder::build() noexcept
+    SceneRuntimeResult<SceneInstanceLease> SceneRuntime::Builder::build() noexcept
     {
         return runtime_.build(*this);
     }
-    SceneRuntimeResult<SceneInstanceId> SceneRuntime::build(const Builder& input) noexcept
+    SceneRuntimeResult<SceneInstanceLease> SceneRuntime::build(const Builder& input) noexcept
     {
         return impl_->build(input);
     }
 
-    SceneRuntimeResult<std::reference_wrapper<simulation::ecs::Registry>> SceneRuntime::getSceneRegistry(
+    SceneRuntimeResult<std::reference_wrapper<simulation::ecs::Registry>> SceneRuntime::borrowInstance(
         SceneInstanceId id
     ) noexcept
     {
-        return impl_->getSceneRegistry(id);
+        return impl_->borrowInstance(id);
     }
-    SceneRuntimeResult<std::reference_wrapper<const simulation::ecs::Registry>> SceneRuntime::getSceneRegistry(
+    SceneRuntimeResult<std::reference_wrapper<const simulation::ecs::Registry>> SceneRuntime::borrowInstance(
         SceneInstanceId id
     ) const noexcept
     {
-        return std::as_const(*impl_).getSceneRegistry(id);
+        return std::as_const(*impl_).borrowInstance(id);
     }
-    SceneRuntimeResult<std::reference_wrapper<const VSimulationClock>> SceneRuntime::getClock(SceneInstanceId id
+    SceneRuntimeResult<std::reference_wrapper<const VSimulationClock>> SceneRuntime::borrowClock(SceneInstanceId id
     ) const noexcept
     {
-        return impl_->getClock(id);
+        return impl_->borrowClock(id);
     }
-    SceneRuntimeResult<void> SceneRuntime::invalid(SceneInstanceId id) noexcept
+    SceneRuntimeResult<void> SceneRuntime::pauseSimulation(SceneInstanceId id) noexcept
     {
         return impl_->setEnabled(id, false);
     }
-    SceneRuntimeResult<void> SceneRuntime::valid(SceneInstanceId id) noexcept
+    SceneRuntimeResult<void> SceneRuntime::resumeSimulation(SceneInstanceId id) noexcept
     {
         return impl_->setEnabled(id, true);
     }
-    SceneRuntimeResult<void> SceneRuntime::destroy(SceneInstanceId id) noexcept
+    SceneRuntimeResult<InstanceRetirement> SceneRuntime::retireInstance(SceneInstanceId id) noexcept
     {
-        return impl_->destroy(id);
+        return impl_->retireInstance(id);
     }
-    SceneRuntime::TickResult SceneRuntime::tick() noexcept
+    SceneRuntimeResult<SceneStepTicket> SceneRuntime::requestStep(SceneInstanceId id) noexcept
     {
-        return impl_->tick();
+        return impl_->requestStep(id);
+    }
+    SceneRuntimeResult<SceneStepStatus> SceneRuntime::stepStatus(SceneStepTicket ticket) const noexcept
+    {
+        const auto found = impl_->findStep(ticket);
+        if (!found)
+            return lux::cxx::unexpected(found.error());
+        return (*found)->status;
+    }
+    SceneRuntimeResult<void> SceneRuntime::acknowledgeStep(SceneStepTicket ticket) noexcept
+    {
+        const auto found = impl_->findStep(ticket);
+        if (!found)
+            return lux::cxx::unexpected(found.error());
+        const auto state = (*found)->status.state;
+        if (state == ESceneStepState::QUEUED || state == ESceneStepState::EXECUTING)
+            return rejected(ESceneRuntimeError::BUSY, ticket.scene);
+        **found = {};
+        return {};
+    }
+    SceneRuntime::DriveResult SceneRuntime::driveFrame() noexcept
+    {
+        return impl_->driveFrame();
     }
 }

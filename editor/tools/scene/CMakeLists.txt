@@ -15,6 +15,7 @@ component_include_directories(editor_scene
 )
 target_compile_definitions(editor_scene PRIVATE LUX_EDITOR_SCENE_LIBRARY)
 target_link_libraries(editor_scene PUBLIC
+    lux::engine::editor::scene_execution
     lux::engine::editor::editor_editing_scene
     lux::engine::editor::editor_assets lux::engine::editor::editor_metadata lux::engine::scene::scene_render lux::engine::function::render_runtime
     lux::engine::scene::scene_composition
@@ -27,6 +28,7 @@ target_link_libraries(editor_scene PUBLIC
           lux::engine::function::render_features
 )
 component_add_transitive_commands(editor_scene
+    "find_package(lux-engine-editor-scene-execution REQUIRED COMPONENTS scene_execution_api scene_execution)"
     "find_package(lux-engine-editor-editing-scene REQUIRED COMPONENTS editor_editing_scene)"
     "find_package(lux-engine-editor-assets REQUIRED COMPONENTS editor_assets)"
     "find_package(lux-engine-editor-metadata REQUIRED COMPONENTS editor_metadata)"

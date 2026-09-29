@@ -24,6 +24,9 @@ namespace
         SceneRuntime* runtime{};
         SceneInstanceId id;
         std::size_t maintained{}, published{};
+        SceneInstanceLease* retire_owner{};
+        InstanceRetirement* retirement{};
+        bool* in_flight{};
         ~State()
         {
             assert(!alive);
@@ -70,13 +73,23 @@ namespace
                         ++probe.state.maintained;
                         if (probe.state.runtime)
                         {
-                            const auto reentrant = probe.state.runtime->getClock(probe.state.id);
+                            if (probe.state.retire_owner)
+                            {
+                                const auto destroyed = Probe::destroyed;
+                                *probe.state.retirement = probe.state.retire_owner->retire();
+                                probe.state.retire_owner = nullptr;
+                                assert(!probe.state.retirement->complete() && Probe::destroyed == destroyed);
+                                // Leaf retirement must not clear the enclosing runtime traversal guard.
+                                assert(!probe.state.runtime->driveFrame());
+                            }
+                            const auto reentrant = probe.state.runtime->borrowClock(probe.state.id);
                             assert(
                                 !reentrant &&
                                 std::get<ESceneRuntimeError>(reentrant.error().cause) == ESceneRuntimeError::BUSY
                             );
                         }
-                        return probe.state.waiting ? ESceneProgress::PENDING : ESceneProgress::COMPLETE;
+                        const bool pending = probe.state.waiting || (probe.state.in_flight && *probe.state.in_flight);
+                        return pending ? ESceneProgress::PENDING : ESceneProgress::COMPLETE;
                     }
                 );
                 if (!maintenance)
@@ -97,7 +110,7 @@ namespace
 
     simulation::SimulationTime time(const SceneRuntime& runtime, SceneInstanceId id)
     {
-        const auto clock = runtime.getClock(id);
+        const auto clock = runtime.borrowClock(id);
         assert(clock);
         return std::visit([](const auto& value) { return value.snapshot(); }, clock->get());
     }
@@ -143,109 +156,143 @@ int main()
     assert(slow);
     builder.setClock(*slow);
     const auto first = builder.build(), second = builder.build();
-    assert(first && second && *first != *second);
-    assert(!(*other)->getClock(*first));
-    assert((*runtime)->invalid(*first));
-    auto registry = (*runtime)->getSceneRegistry(*first);
+    assert(first && second && first->id() != second->id());
+    assert(!(*other)->borrowClock(first->id()));
+    assert((*runtime)->pauseSimulation(first->id()));
+    auto registry = (*runtime)->borrowInstance(first->id());
     assert(registry);
     const auto parent = registry->get().create(), child = registry->get().create();
     registry->get().emplace<ecs::Transform3D>(parent).translation.x() = 10;
     registry->get().emplace<ecs::Transform3D>(child).translation.x() = 2;
     registry->get().emplace<ecs::Parent>(child, parent);
-    auto tick = (*runtime)->tick();
-    assert(tick && tick->empty() && time(**runtime, *first).step_index == 0);
-    assert(time(**runtime, *second).step_index == 1);
-    registry = (*runtime)->getSceneRegistry(*first);
+    auto tick = (*runtime)->driveFrame();
+    assert(tick && tick->empty() && time(**runtime, first->id()).step_index == 0);
+    assert(time(**runtime, second->id()).step_index == 1);
+    registry = (*runtime)->borrowInstance(first->id());
     assert(registry->get().get<ecs::WorldTransform3D>(child).value.translation().x() == 12);
     registry->get().patch<ecs::Transform3D>(parent, [](auto& value) { value.translation.x() = 20; });
-    assert((*runtime)->tick());
-    registry = (*runtime)->getSceneRegistry(*first);
+    assert((*runtime)->driveFrame());
+    registry = (*runtime)->borrowInstance(first->id());
     assert(registry->get().get<ecs::WorldTransform3D>(child).value.translation().x() == 22);
 
     auto& probe = registry->get().ctx().get<State>();
     probe.runtime = runtime->get();
-    probe.id = *first;
+    probe.id = first->id();
     probe.waiting = true;
-    assert((*runtime)->valid(*first));
-    assert((*runtime)->tick() && time(**runtime, *first).step_index == 0);
+    assert((*runtime)->resumeSimulation(first->id()));
+    assert((*runtime)->driveFrame() && time(**runtime, first->id()).step_index == 0);
     probe.waiting = false; // Controlled endpoint readiness; no Registry structural mutation.
     probe.blocked = true;
-    assert((*runtime)->tick() && time(**runtime, *first).step_index == 1);
-    assert(!(*runtime)->getSceneRegistry(*first));
-    assert(std::as_const(**runtime).getSceneRegistry(*first));
+    assert((*runtime)->driveFrame() && time(**runtime, first->id()).step_index == 1);
+    assert(!(*runtime)->borrowInstance(first->id()));
+    assert(std::as_const(**runtime).borrowInstance(first->id()));
     for (unsigned turn{}; turn < 5; ++turn)
-        assert((*runtime)->tick());
-    assert(time(**runtime, *first).step_index == 1);
+        assert((*runtime)->driveFrame());
+    assert(time(**runtime, first->id()).step_index == 1);
     probe.blocked = false;
-    assert((*runtime)->tick());
-    assert((*runtime)->invalid(*first) && (*runtime)->valid(*first));
-    assert((*runtime)->tick() && time(**runtime, *first).step_index == 2);
-    assert((*runtime)->valid(*first) && (*runtime)->tick());
-    assert(time(**runtime, *first).step_index == 2); // Repeated valid does not rebase again.
+    assert((*runtime)->driveFrame());
+    assert((*runtime)->pauseSimulation(first->id()) && (*runtime)->resumeSimulation(first->id()));
+    assert((*runtime)->driveFrame() && time(**runtime, first->id()).step_index == 2);
+    assert((*runtime)->resumeSimulation(first->id()) && (*runtime)->driveFrame());
+    assert(time(**runtime, first->id()).step_index == 2); // Repeated valid does not rebase again.
 
     probe.failed = true;
-    assert((*runtime)->invalid(*first) && (*runtime)->valid(*first));
-    tick = (*runtime)->tick();
-    assert(tick && tick->size() == 1 && tick->front().scene == *first);
+    assert((*runtime)->pauseSimulation(first->id()) && (*runtime)->resumeSimulation(first->id()));
+    tick = (*runtime)->driveFrame();
+    assert(tick && tick->size() == 1 && tick->front().scene == first->id());
     assert(std::get<SceneDriveFailure>(tick->front().cause).phase == ESceneDrivePhase::PUBLICATION);
-    assert(!(*runtime)->valid(*first) && time(**runtime, *first).step_index == 3);
-    assert((*runtime)->invalid(*second) && (*runtime)->valid(*second));
-    assert((*runtime)->tick() && time(**runtime, *second).step_index == 2);
+    assert(!(*runtime)->resumeSimulation(first->id()) && time(**runtime, first->id()).step_index == 3);
+    assert((*runtime)->pauseSimulation(second->id()) && (*runtime)->resumeSimulation(second->id()));
+    assert((*runtime)->driveFrame() && time(**runtime, second->id()).step_index == 2);
 
     bool wrong_thread{};
     std::jthread worker([&] {
-        const auto rejected = (*runtime)->getClock(*second);
+        const auto rejected = (*runtime)->borrowClock(second->id());
         wrong_thread =
             !rejected && std::get<ESceneRuntimeError>(rejected.error().cause) == ESceneRuntimeError::WRONG_THREAD;
     });
     worker.join();
     assert(wrong_thread);
-    assert((*runtime)->destroy(*first));
+    const auto first_retirement = (*runtime)->retireInstance(first->id());
+    assert(first_retirement && !first_retirement->complete());
+    assert((*runtime)->borrowClock(first->id()));
+    assert((*runtime)->driveFrame() && first_retirement->complete());
     const auto replacement = builder.build();
-    assert(replacement && replacement->slot == first->slot && replacement->generation != first->generation);
-    assert(!(*runtime)->getClock(*first) && (*runtime)->destroy(*first));
-    assert((*runtime)->getClock(*replacement));
-    assert((*runtime)->destroy(*replacement) && (*runtime)->destroy(*second));
+    assert(
+        replacement && replacement->id().slot == first->id().slot &&
+        replacement->id().generation != first->id().generation
+    );
+    assert(!(*runtime)->borrowClock(first->id()) && first_retirement->complete());
+    assert(!(*runtime)->retireInstance(first->id())); // A stale slot cannot retire its replacement.
+    assert((*runtime)->borrowClock(replacement->id()));
+    assert((*runtime)->retireInstance(replacement->id()) && (*runtime)->retireInstance(second->id()));
+    assert((*runtime)->driveFrame());
 
     auto overflowing = FixedStepClock::create(simulation::SimulationDuration::max());
     assert(overflowing);
     builder.setClock(*overflowing);
     const auto overflowed = builder.build();
     assert(overflowed);
-    tick = (*runtime)->tick();
-    assert(tick && tick->size() == 1 && tick->front().scene == *overflowed);
+    tick = (*runtime)->driveFrame();
+    assert(tick && tick->size() == 1 && tick->front().scene == overflowed->id());
     assert(std::get<EClockError>(tick->front().cause) == EClockError::TIME_OVERFLOW);
-    assert(time(**runtime, *overflowed).step_index == 0 && !(*runtime)->valid(*overflowed));
-    assert((*runtime)->destroy(*overflowed));
+    assert(time(**runtime, overflowed->id()).step_index == 0 && !(*runtime)->resumeSimulation(overflowed->id()));
+    assert((*runtime)->retireInstance(overflowed->id()));
+    assert((*runtime)->driveFrame());
 
     // Timer completion and cancellation do not create business Task records.
     builder.setClock(FixedStepClock{});
     const auto timed = builder.build();
-    assert(timed && (*runtime)->tick());
+    assert(timed && (*runtime)->driveFrame());
     const auto start = std::chrono::steady_clock::now();
-    while (time(**runtime, *timed).step_index < 3)
+    while (time(**runtime, timed->id()).step_index < 3)
     {
         const auto epoch = execution->wakeEpoch();
         assert(execution->collectCompletions());
-        assert((*runtime)->tick());
+        assert((*runtime)->driveFrame());
         assert(std::chrono::steady_clock::now() - start < 2s);
-        if (time(**runtime, *timed).step_index < 3)
+        if (time(**runtime, timed->id()).step_index < 3)
             execution->waitForWork(epoch, start + 2s);
     }
     assert(execution->taskInfos().empty());
-    assert((*runtime)->invalid(*timed));
+    assert((*runtime)->pauseSimulation(timed->id()));
     for (unsigned warmup{}; warmup < 8; ++warmup)
     {
         assert(execution->collectCompletions());
-        assert((*runtime)->tick());
+        assert((*runtime)->driveFrame());
     }
     const auto measured = std::chrono::steady_clock::now();
     for (unsigned turn{}; turn < 10000; ++turn)
-        assert((*runtime)->tick());
+        assert((*runtime)->driveFrame());
     const auto elapsed = std::chrono::steady_clock::now() - measured;
     std::cout << "MEASURE SceneRuntime paused_turns=10000 elapsed_us="
               << std::chrono::duration<double, std::micro>(elapsed).count() << " business_tasks=0\n";
-    assert((*runtime)->valid(*timed) && (*runtime)->tick());
+    assert((*runtime)->resumeSimulation(timed->id()) && (*runtime)->driveFrame());
+
+    auto callback_owned = builder.build();
+    assert(callback_owned);
+    const auto callback_id = callback_owned->id();
+    const auto destroyed_before = Probe::destroyed;
+    InstanceRetirement retirement;
+    bool in_flight{true};
+    {
+        auto& state = (*runtime)->borrowInstance(callback_id)->get().ctx().get<State>();
+        state.runtime = runtime->get();
+        state.id = callback_id;
+        state.retire_owner = &*callback_owned;
+        state.retirement = &retirement;
+        state.in_flight = &in_flight;
+    }
+    assert((*runtime)->driveFrame());
+    assert(retirement.id() == callback_id && !retirement.complete());
+    assert(Probe::destroyed == destroyed_before);
+    assert((*runtime)->driveFrame() && !retirement.complete());
+    in_flight = false;
+    assert((*runtime)->driveFrame() && retirement.complete());
+    assert(Probe::destroyed == destroyed_before + 1 && !(*runtime)->borrowClock(callback_id));
+    *callback_owned = SceneInstanceLease{};
+    assert((*runtime)->driveFrame() && Probe::destroyed == destroyed_before + 1);
+    std::cout << "PASS X06-04 callback lease release is deferred, in-flight drain, outer guard and one destruction\n";
     runtime->reset(); // Outstanding timer must be cancelled and joined before receiver storage is reclaimed.
     other->reset();
     assert(execution->collectCompletions());

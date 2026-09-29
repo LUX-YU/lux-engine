@@ -106,10 +106,13 @@ namespace lux::editor::scene
         [[nodiscard]] asset::AssetId assetId() const noexcept;
         ~SceneEditor() override;
 
-        [[nodiscard]] EditorResult<RunId> play(std::chrono::nanoseconds fixed_step = std::chrono::milliseconds(16));
+        [[nodiscard]] EditorResult<StartRunId> play(
+            std::chrono::nanoseconds fixed_step = std::chrono::milliseconds(16)
+        );
         [[nodiscard]] EditorResult<void> pauseRun(RunId);
         [[nodiscard]] EditorResult<void> resumeRun(RunId);
         [[nodiscard]] EditorResult<void> stepRun(RunId);
+        [[nodiscard]] EditorResult<void> cancelRun(StartRunId);
         [[nodiscard]] EditorResult<void> stopRun(RunId);
         [[nodiscard]] RunStatus runStatus() const;
         [[nodiscard]] std::string_view writeRestriction() const noexcept;

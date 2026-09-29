@@ -1,0 +1,23 @@
+cmake_minimum_required(VERSION 3.22)
+project(scene_execution_consumer LANGUAGES CXX)
+# Qualification copies the real execution/test/runs.cpp to this standalone main.cpp.
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+find_package(lux-engine-editor-scene-execution REQUIRED COMPONENTS scene_execution_api scene_execution)
+find_package(lux-engine-scene-transform REQUIRED COMPONENTS scene_transform)
+if(TARGET lux::engine::editor::editor_ui OR TARGET lux::engine::editor::editor_scene
+    OR TARGET lux::engine::editor::editor_context OR TARGET lux::engine::editor::editor_storage)
+    message(FATAL_ERROR "Independent Run SDK imported legacy Editor/UI/storage")
+endif()
+add_executable(scene_execution_consumer main.cpp)
+target_link_libraries(scene_execution_consumer PRIVATE lux::engine::editor::scene_execution
+    lux::engine::scene::scene_transform)
+if(MSVC)
+    target_compile_options(scene_execution_consumer PRIVATE /UNDEBUG /utf-8)
+else()
+    target_compile_options(scene_execution_consumer PRIVATE -UNDEBUG)
+endif()
+enable_testing()
+foreach(scenario isolation controls failure completion)
+    add_test(NAME installed.scene_execution.${scenario} COMMAND scene_execution_consumer ${scenario})
+endforeach()

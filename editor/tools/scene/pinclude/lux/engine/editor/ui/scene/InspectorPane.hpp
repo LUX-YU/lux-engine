@@ -13,7 +13,8 @@ namespace lux::editor::ui
             lux::ui::PaneId id,
             const lux::simulation::ecs::ComponentSchemaSet& schemas,
             const ComponentEditorRegistry& editors,
-            EditorResult<void>& status
+            EditorResult<void>& status,
+            const ProjectStorage* catalog
         );
         [[nodiscard]] InspectorElement& content() noexcept
         {

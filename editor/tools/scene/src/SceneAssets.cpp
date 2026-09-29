@@ -25,8 +25,8 @@ namespace lux::editor::scene
     EditorResult<void> SceneEditor::Impl::changeAsset(EAssetChange change, asset::AssetId id, bool reload)
     {
         const bool pending = reading_ || asset_status_.phase != EAssetEditPhase::IDLE || save.index() != 0 ||
-                             placement.index() != 0 || run_status.state == ERunState::PREPARING ||
-                             run_status.state == ERunState::STOPPING;
+                             placement.index() != 0 || run_status.state == EPlaybackState::PREPARING ||
+                             run_status.state == EPlaybackState::STOPPING;
         if (pending)
             return lux::cxx::unexpected(EditorFailure{EEditorError::BUSY, "scene.open"});
         if (change == EAssetChange::OPEN)
@@ -43,9 +43,16 @@ namespace lux::editor::scene
         auto finished = finishEditing();
         if (!finished)
             return finished;
-        resume_after_change_ = run_status.state == ERunState::RUNNING;
+        resume_after_change_ = run_status.state == EPlaybackState::RUNNING;
         if (resume_after_change_)
-            static_cast<void>(runtime_.invalid(*run_scene));
+        {
+            const auto paused = pauseRun(active_run_);
+            if (!paused)
+            {
+                resume_after_change_ = false;
+                return paused;
+            }
+        }
         asset_status_ = {EAssetEditPhase::REVIEW, change, id, {}};
         if (!history || persistence_.clean())
             startAssetChange();
@@ -54,9 +61,18 @@ namespace lux::editor::scene
 
     void SceneEditor::Impl::restorePlayback()
     {
-        if (resume_after_change_ && run_status.state == ERunState::RUNNING)
-            static_cast<void>(runtime_.valid(*run_scene));
-        resume_after_change_ = false;
+        if (!resume_after_change_ || asset_status_.phase != EAssetEditPhase::IDLE)
+            return;
+        if (runSettled())
+            resume_after_change_ = false;
+        else if (run_status.state == EPlaybackState::PAUSED)
+        {
+            const auto resumed = resumeRun(active_run_);
+            if (resumed)
+                resume_after_change_ = false;
+            else
+                failure = resumed.error();
+        }
     }
 
     void SceneEditor::Impl::assetFailure(EditorFailure failure)
@@ -64,7 +80,7 @@ namespace lux::editor::scene
         candidate_editing_.reset();
         candidate_history_.reset();
         candidate_content_.reset();
-        destroyScene(candidate_scene_);
+        candidate_scene_.reset();
         candidate_.reset();
         copied_source_.reset();
         asset_status_.phase = EAssetEditPhase::IDLE;
@@ -172,7 +188,6 @@ namespace lux::editor::scene
         );
         if (!created)
             return lux::cxx::unexpected(created.error());
-        auto rollback = lux::cxx::scope_exit([&]() noexcept { static_cast<void>(runtime_.destroy(*created)); });
         auto viewport = candidate_viewport_;
         if (!viewport.valid())
         {
@@ -182,7 +197,7 @@ namespace lux::editor::scene
             for (std::size_t index{}; index < description.systemCount(); ++index)
             {
                 const auto id = description.systemAt(index).instanceId();
-                if (!lux::scene::RenderSceneState::find(readRegistry(*created), id))
+                if (!lux::scene::RenderSceneState::find(readRegistry(created->id()), id))
                     continue;
                 if (viewport.valid())
                     return lux::cxx::unexpected(EditorFailure{
@@ -194,7 +209,7 @@ namespace lux::editor::scene
                 viewport = id;
             }
         }
-        if (viewport.valid() && !lux::scene::RenderSceneState::find(readRegistry(*created), viewport))
+        if (viewport.valid() && !lux::scene::RenderSceneState::find(readRegistry(created->id()), viewport))
             return lux::cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "scene.new.viewport"});
         auto edits = editing::EditHistory::create({kHistoryLimits, {}});
         if (!edits)
@@ -202,14 +217,16 @@ namespace lux::editor::scene
                 EditorFailure{EEditorError::SOURCE_FAILURE, "scene.history", 0, {}, edits.error()}
             );
         candidate_viewport_ = viewport;
-        candidate_scene_ = *created;
-        rollback.release();
+        candidate_scene_ = std::move(*created);
         candidate_history_ = std::move(*edits);
         candidate_persistence_.reset(*candidate_history_, asset_status_.change != EAssetChange::NEW);
         const auto& schemas = editor_context_.sceneRegistrations().components;
-        candidate_content_.emplace(runtime_, *candidate_scene_, *candidate_, schemas);
-        candidate_editing_
-            .emplace(runtime_, *candidate_scene_, schemas, *candidate_history_, &editor_context_.project());
+        candidate_content_.emplace(runtime_, candidate_scene_->id(), *candidate_, schemas);
+        candidate_editing_.emplace(runtime_, candidate_scene_->id(), schemas, *candidate_history_);
+        candidate_editing_->acceptsAsset = [this](asset::AssetId id, std::uint32_t magic) {
+            const auto* row = editor_context_.project().catalogAsset(id);
+            return row && row->magic == magic;
+        };
         candidate_editing_->admission = [this] { return checkEditAdmission(); };
         candidate_editing_->changed = [this](const ComponentNotice& notice) {
             lux::editor::detail::reportSignalDelivery(
@@ -233,7 +250,7 @@ namespace lux::editor::scene
         scene_editing.reset();
         history.reset();
         content.reset();
-        destroyScene(scene);
+        scene.reset();
         source = std::move(candidate_);
         scene = std::exchange(candidate_scene_, {});
         history = std::move(candidate_history_);
@@ -243,7 +260,7 @@ namespace lux::editor::scene
         candidate_viewport_ = {};
         render_receipt = {};
         editor_camera = lux::simulation::ecs::NullEntity;
-        selection_ = {scene.value_or(lux::scene::SceneInstanceId{}), lux::simulation::ecs::NullEntity, 0};
+        selection_ = {(scene ? scene->id() : lux::scene::SceneInstanceId{}), lux::simulation::ecs::NullEntity, 0};
         resource_snapshot.reset();
         observed_history = {};
         changed_assets.clear();
@@ -362,13 +379,13 @@ namespace lux::editor::scene
         }
         if (!replacing_)
         {
-            if (!finishEditing() || (scene && !safe(*scene)))
+            if (!finishEditing() || (scene && !safe(scene->id())))
                 return;
             if (inspector_ && !inspector_->content().clearTarget())
                 return;
             content_->requestClose();
             if (!runSettled())
-                static_cast<void>(stopRun(run_status.id));
+                static_cast<void>(run_start_ ? cancelRun(run_status.request) : stopRun(run_status.id));
             replacing_ = true;
         }
         if (!runSettled() || content_->closeStatus().state != ECloseState::CLOSED)
@@ -433,9 +450,16 @@ namespace lux::editor::scene
         if (copying)
         {
             copied_source_ = std::move(copy);
-            resume_after_change_ = run_status.state == ERunState::RUNNING;
+            resume_after_change_ = run_status.state == EPlaybackState::RUNNING;
             if (resume_after_change_)
-                static_cast<void>(runtime_.invalid(*run_scene));
+            {
+                const auto paused = pauseRun(active_run_);
+                if (!paused)
+                {
+                    resume_after_change_ = false;
+                    failure = paused.error();
+                }
+            }
             asset_status_ = {EAssetEditPhase::SAVING};
         }
         return id;

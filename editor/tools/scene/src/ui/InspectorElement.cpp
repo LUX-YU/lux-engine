@@ -29,10 +29,11 @@ namespace lux::editor::ui
         lux::ui::ElementId id,
         const lux::simulation::ecs::ComponentSchemaSet& schemas,
         const ComponentEditorRegistry& editors,
-        EditorResult<void>& status
+        EditorResult<void>& status,
+        const ProjectStorage* catalog
     )
-        : lux::ui::Element(parent, std::move(id)), editors_(editors), layout_(*this, lux::ui::ElementId{"inspector"}),
-          message_(layout_, lux::ui::ElementId{"message"}),
+        : lux::ui::Element(parent, std::move(id)), editors_(editors), catalog_(catalog),
+          layout_(*this, lux::ui::ElementId{"inspector"}), message_(layout_, lux::ui::ElementId{"message"}),
           creation_layout_(layout_, lux::ui::ElementId{"creation"}, lux::ui::ELayoutType::HORIZONTAL),
           creation_choice_(
               creation_layout_,
@@ -88,7 +89,7 @@ namespace lux::editor::ui
             return finished;
         components_.clear();
         add_requested_.reset();
-        interaction_.emplace(editing, std::string(id().name()));
+        interaction_.emplace(editing, std::string(id().name()), catalog_);
         editing_ = &editing;
         target_ = target;
         dirty_ = true;

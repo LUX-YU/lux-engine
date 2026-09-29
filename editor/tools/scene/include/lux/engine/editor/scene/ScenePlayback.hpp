@@ -1,6 +1,7 @@
 #pragma once
 
 #include <chrono>
+#include <lux/engine/editor/scene/RunTypes.hpp>
 #include <lux/engine/editor/EditorError.hpp>
 #include <lux/engine/editor/editing/EditTypes.hpp>
 #include <lux/engine/editor/scene/visibility.h>
@@ -8,14 +9,7 @@
 
 namespace lux::editor::scene
 {
-    struct RunId final
-    {
-        editing::HistoryId history;
-        std::uint64_t serial{};
-        friend bool operator==(RunId, RunId) = default;
-    };
-
-    enum class ERunState : std::uint8_t
+    enum class EPlaybackState : std::uint8_t
     {
         IDLE,
         PREPARING,
@@ -46,7 +40,8 @@ namespace lux::editor::scene
     struct RunStatus final
     {
         RunId id;
-        ERunState state{ERunState::IDLE};
+        StartRunId request;
+        EPlaybackState state{EPlaybackState::IDLE};
         bool pause_pending{};
         editing::StateId captured_state;
         std::uint64_t steps{};

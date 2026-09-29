@@ -37,14 +37,14 @@ namespace lux::editor::scene::detail
         lux::scene::SceneRuntime& runtime;
         [[nodiscard]] lux::simulation::ecs::Registry& registry() const noexcept
         {
-            auto borrowed = runtime.getSceneRegistry(instance);
+            auto borrowed = runtime.borrowInstance(instance);
             if (!borrowed)
                 std::terminate();
             return borrowed->get();
         }
         [[nodiscard]] const lux::simulation::ecs::Registry& readRegistry() const noexcept
         {
-            auto borrowed = std::as_const(runtime).getSceneRegistry(instance);
+            auto borrowed = std::as_const(runtime).borrowInstance(instance);
             if (!borrowed)
                 std::terminate();
             return borrowed->get();
@@ -81,7 +81,8 @@ namespace lux::editor::scene::detail
         ) const
         {
             auto encoded = encodeSceneValue(value, metadata, mapping, kSceneHistoryLimits.max_staging_bytes);
-            if (!encoded) return lux::cxx::unexpected(encoded.error());
+            if (!encoded)
+                return lux::cxx::unexpected(encoded.error());
             return ObjectComponent{metadata.find(encoded->schema), std::move(encoded->bytes)};
         }
     };

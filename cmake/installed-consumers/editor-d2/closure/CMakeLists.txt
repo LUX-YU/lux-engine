@@ -15,7 +15,7 @@ if(SCENE_CORE_ONLY)
         message(FATAL_ERROR "Generic Scene imported a Render target")
     endif()
     file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/scene_core.cpp"
-        "#include <lux/engine/scene/SceneRuntime.hpp>\nvolatile auto entry = &lux::scene::SceneRuntime::tick;\nint main() { return entry == nullptr; }\n")
+        "#include <lux/engine/scene/SceneRuntime.hpp>\nvolatile auto entry = &lux::scene::SceneRuntime::driveFrame;\nint main() { return entry == nullptr; }\n")
     add_executable(scene_core_consumer "${CMAKE_CURRENT_BINARY_DIR}/scene_core.cpp")
     target_link_libraries(scene_core_consumer PRIVATE lux::engine::scene::scene_composition)
     target_compile_options(scene_core_consumer PRIVATE /utf-8 /Zc:__cplusplus /Zc:preprocessor /Zc:externConstexpr)

@@ -267,9 +267,9 @@ int main(int argc, char** argv)
         assert(failure->scene_system.code == scene::ESceneSystemBuildError::INVALID_DESCRIPTION);
     }
     auto made_scene = build_scene(std::make_shared<const scene::SceneDescription>(std::move(*description)));
-    assert(made_scene && scenes->invalid(*made_scene));
-    const auto scene_id = *made_scene;
-    auto& registry = scenes->getSceneRegistry(scene_id)->get();
+    assert(made_scene && scenes->pauseSimulation(made_scene->id()));
+    const auto scene_id = made_scene->id();
+    auto& registry = scenes->borrowInstance(scene_id)->get();
     const auto entity = registry.create();
     registry.emplace<sample_ext::Tint>(entity);
     const auto* state = scene::RenderSceneState::find(registry, {1});
@@ -283,7 +283,7 @@ int main(int argc, char** argv)
         scene::ViewConfig{{64, 64}}
     );
     until([&] {
-        const auto updated = scenes->tick();
+        const auto updated = scenes->driveFrame();
         assert(updated && updated->empty());
         const auto* result = registry.try_get<scene::RenderViewResult>(view_entity);
         assert(!result || !result->failure);
@@ -293,7 +293,7 @@ int main(int argc, char** argv)
         for (unsigned index{}; index < 5; ++index)
         {
 
-            const auto updated = scenes->tick();
+            const auto updated = scenes->driveFrame();
             assert(updated && updated->empty());
             render::TRenderProgram<> frame;
             render::RenderProgramBuilder<> commands(frame);
@@ -345,7 +345,7 @@ int main(int argc, char** argv)
         unsigned(red_pixels.second),
         stable_operation
     );
-    assert(scenes->destroy(scene_id));
+    assert(scenes->retireInstance(scene_id));
     scenes.reset();
     resources->release(*old_scene);
     until([&] { return resources->empty(); });

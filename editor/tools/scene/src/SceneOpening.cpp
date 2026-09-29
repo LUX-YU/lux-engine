@@ -13,7 +13,7 @@
 
 namespace lux::editor::scene
 {
-    EditorResult<lux::scene::SceneInstanceId> detail::instantiateScenePackage(
+    EditorResult<lux::scene::SceneInstanceLease> detail::instantiateScenePackage(
         lux::scene::SceneRuntime& runtime,
         const lux::scene::ScenePackage& source,
         const SceneRegistrations& metadata,
@@ -95,15 +95,14 @@ namespace lux::editor::scene
                 EditorFailure{EEditorError::SOURCE_FAILURE, "scene.create", 0, {}, created.error()}
             );
         }
-        const auto stopped = runtime.invalid(*created);
+        const auto stopped = runtime.pauseSimulation(created->id());
         if (!stopped)
             std::terminate();
-        auto& registry = runtime.getSceneRegistry(*created)->get();
+        auto& registry = runtime.borrowInstance(created->id())->get();
         if (open_all_partitions && !registry.ctx().contains<lux::scene::WorldResidency>())
         {
-            static_cast<void>(runtime.destroy(*created));
             return lux::cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "scene.world-loading.required"});
         }
-        return *created;
+        return std::move(*created);
     }
 }

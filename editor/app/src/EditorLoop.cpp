@@ -59,7 +59,7 @@ namespace lux::editor
                 fail({EEditorError::FRONTEND_FAILURE, "editor.ui.input", 0, {}, submitted.error()});
             if (exit_requested_)
                 break;
-            const auto advanced = engine->sceneRuntime().tick();
+            const auto advanced = engine->sceneRuntime().driveFrame();
             if (!advanced)
                 fail({EEditorError::EXECUTION_FAILURE, "editor.scenes", 0, {}, advanced.error()});
             else

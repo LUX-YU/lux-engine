@@ -240,9 +240,9 @@ namespace lux::editor::material
                 .build();
         if (!instance)
             return failed("preview.create", instance.error());
-        preview->scene = *instance;
-        static_cast<void>(runtime.invalid(*instance));
-        auto& registry = runtime.getSceneRegistry(*instance)->get();
+        preview->scene = std::move(*instance);
+        static_cast<void>(runtime.pauseSimulation(preview->scene->id()));
+        auto& registry = runtime.borrowInstance(preview->scene->id())->get();
         const auto sphere = registry.create(), camera = registry.create(), light = registry.create();
         registry.emplace<ecs::Transform3D>(sphere);
         ecs::Transform3D camera_pose;
@@ -301,14 +301,14 @@ namespace lux::editor::material
         if (!preview_->scene)
             return;
         auto& p = *preview_;
-        const auto observed = std::as_const(p.runtime).getSceneRegistry(*p.scene);
+        const auto observed = std::as_const(p.runtime).borrowInstance(p.scene->id());
         if (!observed ||
             !observed->get().ctx().get<std::reference_wrapper<const lux::scene::SceneDriveSnapshot>>().get().result)
         {
             p.error = "Preview scene failed";
             return;
         }
-        const auto borrowed = p.runtime.getSceneRegistry(*p.scene);
+        const auto borrowed = p.runtime.borrowInstance(p.scene->id());
         if (!borrowed)
             return;
         auto& registry = borrowed->get();
@@ -353,7 +353,7 @@ namespace lux::editor::material
         if (!preview_ || !preview_->scene)
             return {};
         auto& preview = *preview_;
-        const auto borrowed = preview.runtime.getSceneRegistry(*preview.scene);
+        const auto borrowed = preview.runtime.borrowInstance(preview.scene->id());
         if (!borrowed)
             return failed("preview.reset", borrowed.error());
         auto& registry = borrowed->get();
@@ -378,14 +378,14 @@ namespace lux::editor::material
         if (!preview_ || !preview_->scene)
             return;
         auto& p = *preview_;
-        const auto observed = std::as_const(p.runtime).getSceneRegistry(*p.scene);
+        const auto observed = std::as_const(p.runtime).borrowInstance(p.scene->id());
         if (!observed ||
             !observed->get().ctx().get<std::reference_wrapper<const lux::scene::SceneDriveSnapshot>>().get().result)
         {
             p.error = "Preview scene failed";
             return;
         }
-        const auto borrowed = p.runtime.getSceneRegistry(*p.scene);
+        const auto borrowed = p.runtime.borrowInstance(p.scene->id());
         if (!borrowed)
             return;
         auto& registry = borrowed->get();
@@ -434,7 +434,7 @@ namespace lux::editor::material
     }
     lux::scene::SceneInstanceId MaterialEditor::Impl::previewInstance() const noexcept
     {
-        return preview_ ? preview_->scene.value_or(lux::scene::SceneInstanceId{}) : lux::scene::SceneInstanceId{};
+        return preview_ && preview_->scene ? preview_->scene->id() : lux::scene::SceneInstanceId{};
     }
     std::string MaterialEditor::Impl::previewStatus() const
     {
@@ -460,7 +460,7 @@ namespace lux::editor::material
         if (!preview_ || !preview_->scene)
             return lux::cxx::unexpected(EditorFailure{EEditorError::BUSY, "preview.camera"});
         auto& p = *preview_;
-        const auto borrowed = p.runtime.getSceneRegistry(*p.scene);
+        const auto borrowed = p.runtime.borrowInstance(p.scene->id());
         if (!borrowed)
             return failed("preview.camera", borrowed.error());
         auto& registry = borrowed->get();

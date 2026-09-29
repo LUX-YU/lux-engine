@@ -17,6 +17,7 @@ component_include_directories(
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${LUX_GENERATE_HEADER_DIR}
     INSTALL_TIME include
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../core/sinclude
 )
 target_compile_definitions(
     simulation_script_cpp_static

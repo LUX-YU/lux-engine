@@ -1,3 +1,4 @@
+#include <lux/engine/editor/scene/RunController.hpp>
 #pragma once
 #include "LegacyPersistenceState.hpp"
 #include <lux/engine/ui/Root.hpp>
@@ -114,25 +115,6 @@ namespace lux::editor::scene
         bool& busy_;
     };
 
-    struct PlaybackBuild final
-    {
-        lux::scene::SceneCapture capture;
-        std::stop_token stop;
-        EditorResult<lux::scene::ScenePackage> operator()() noexcept
-        {
-            auto result = lux::scene::buildScenePackage(capture, 256U * 1024U * 1024U, stop);
-            if (!result)
-                return lux::cxx::unexpected(EditorFailure{
-                    result.error().code == lux::scene::EScenePackageError::CANCELLED ? EEditorError::CANCELLED
-                                                                                     : EEditorError::SOURCE_FAILURE,
-                    "run.capture",
-                    0,
-                    {},
-                    result.error()
-                });
-            return std::move(*result);
-        }
-    };
     struct SceneSourceCodec final
     {
         using Source = lux::scene::ScenePackage;
@@ -161,28 +143,22 @@ namespace lux::editor::scene
         SceneEditor* editor{};
         EditorContext& editor_context_;
         lux::scene::SceneRuntime& runtime_;
-        std::optional<lux::scene::SceneInstanceId> scene, run_scene, candidate_scene_;
-        lux::cxx::scope_exit<std::function<void()>> scenes_guard_;
-        void destroyScene(std::optional<lux::scene::SceneInstanceId>& id) noexcept
-        {
-            if (id && !runtime_.destroy(*id))
-                std::terminate();
-            id.reset();
-        }
+        std::optional<lux::scene::SceneInstanceLease> scene, candidate_scene_;
+        std::optional<lux::scene::SceneInstanceId> run_scene; // Borrowed UI target, never an owner.
         bool safe(lux::scene::SceneInstanceId id) const noexcept
         {
-            return bool(runtime_.getSceneRegistry(id));
+            return bool(runtime_.borrowInstance(id));
         }
         lux::simulation::ecs::Registry& registry(lux::scene::SceneInstanceId id) const noexcept
         {
-            const auto borrowed = runtime_.getSceneRegistry(id);
+            const auto borrowed = runtime_.borrowInstance(id);
             if (!borrowed)
                 std::terminate();
             return borrowed->get();
         }
         const lux::simulation::ecs::Registry& readRegistry(lux::scene::SceneInstanceId id) const noexcept
         {
-            const auto borrowed = std::as_const(runtime_).getSceneRegistry(id);
+            const auto borrowed = std::as_const(runtime_).borrowInstance(id);
             if (!borrowed)
                 std::terminate();
             return borrowed->get();
@@ -205,47 +181,24 @@ namespace lux::editor::scene
         std::unique_ptr<editing::EditHistory> history;
         transition::LegacyPersistenceState persistence_;
         std::optional<SceneEditing> scene_editing;
-        RunStatus run_status;
-        std::uint64_t next_run{1};
-        std::chrono::nanoseconds run_delta{std::chrono::milliseconds(16)};
-        std::uint64_t step_baseline_{};
-        bool single_step{};
-        std::stop_source run_stop;
-        std::optional<EditorResult<lux::scene::ScenePackage>> run_prepared_;
-        process::Task run_preparation;
-        std::unique_ptr<lux::scene::ScenePackage> run_source;
-        lux::scene::RenderAssetInput run_assets;
-
-        std::unique_ptr<editing::EditHistory> run_history;
-        std::unique_ptr<SceneEditing> run_editing;
+        RunStore runs_;
+        RunController run_controller_;
+        std::unique_ptr<StartRunOperation> run_start_;
+        RunId active_run_;
+        RunStatus run_status; // Legacy UI projection of RunStore/request facts; P12 removal.
+        std::optional<StepTicket> displayed_step_;
+        bool cancelling_start_{};
+        editing::EditHistory* run_history{};
+        SceneEditing* run_editing{};
         SelectionNotice selection_, run_selection;
         editing::Revision structure_revision{};
-        std::vector<entt::scoped_connection> run_connections;
-        void runStructureChanged(lux::simulation::ecs::Registry&, lux::simulation::ecs::Entity) noexcept
-        {
-            run_catalog_changed = true;
-        }
-        void observeRun()
-        {
-            namespace ecs = lux::simulation::ecs;
-            auto& registry = this->registry(*run_scene);
-            run_connections.emplace_back(registry.on_construct<ecs::Entity>().connect<&Impl::runStructureChanged>(*this)
-            );
-            run_connections.emplace_back(registry.on_destroy<ecs::Entity>().connect<&Impl::runStructureChanged>(*this));
-            run_connections.emplace_back(registry.on_construct<ecs::Parent>().connect<&Impl::runStructureChanged>(*this)
-            );
-            run_connections.emplace_back(registry.on_update<ecs::Parent>().connect<&Impl::runStructureChanged>(*this));
-            run_connections.emplace_back(registry.on_destroy<ecs::Parent>().connect<&Impl::runStructureChanged>(*this));
-            run_selection = {*run_scene, ecs::NullEntity, 0};
-            run_catalog_changed = true; // Consumers build their directory from existing Registry contents.
-        }
-        lux::scene::RenderSceneReceipt run_receipt;
-        double run_page_size{};
+        std::uint64_t run_structure_seen_{};
         bool run_catalog_changed{};
         bool runSettled() const noexcept
         {
             const auto state = run_status.state;
-            return state == ERunState::IDLE || state == ERunState::FINISHED || state == ERunState::FAILED;
+            return state == EPlaybackState::IDLE || state == EPlaybackState::FINISHED ||
+                   state == EPlaybackState::FAILED;
         }
 
         std::shared_ptr<const SceneResourceSnapshot> resource_snapshot;
@@ -377,7 +330,7 @@ namespace lux::editor::scene
         );
         lux::scene::SceneInstanceId inspectedScene() const noexcept
         {
-            return run_scene ? *run_scene : *scene;
+            return run_scene ? *run_scene : scene->id();
         }
         const SelectionNotice& inspectedSelection() const noexcept
         {
@@ -396,7 +349,7 @@ namespace lux::editor::scene
         }
         editing::EditHistory& inspectedHistory() const noexcept
         {
-            if (auto* current = run_history.get())
+            if (auto* current = run_history)
             {
                 return *current;
             }
@@ -422,7 +375,7 @@ namespace lux::editor::scene
         }
         const lux::scene::RenderSceneState* inspectedRender() const noexcept
         {
-            return renderFor(run_scene ? run_scene : scene);
+            return renderFor(run_scene ? run_scene : (scene ? std::optional{scene->id()} : std::nullopt));
         }
 
         bool submit(lux::render::TRenderProgram<>& input)
@@ -442,7 +395,7 @@ namespace lux::editor::scene
 
         void updateWorkPlane()
         {
-            auto* system = renderFor(scene);
+            auto* system = renderFor(scene ? std::optional{scene->id()} : std::nullopt);
             if (!work_plane_pending || !system ||
                 editor_context_.renderResources().sceneReceipt(system->resource).status().state !=
                     lux::scene::ESceneResourceState::READY)
@@ -699,19 +652,18 @@ namespace lux::editor::scene
         void event(object::EventView& event) noexcept;
         EditorResult<void> finishEditing();
         void update() noexcept;
-        EditorResult<RunId> play(std::chrono::nanoseconds fixed_step = std::chrono::milliseconds(16));
+        EditorResult<StartRunId> play(std::chrono::nanoseconds fixed_step = std::chrono::milliseconds(16));
         EditorResult<void> pauseRun(RunId id);
         EditorResult<void> resumeRun(RunId id);
         EditorResult<void> stepRun(RunId id);
+        [[nodiscard]] EditorResult<void> cancelRun(StartRunId);
         EditorResult<void> stopRun(RunId id);
         RunStatus runStatus() const;
         double runCoordinatePageSize() const noexcept;
-        void observePlaybackRender();
         void adoptPlayback();
         void updatePlayback();
         void observePlayback();
         void beginPauseEditing();
-        void failPlayback(EditorFailure, ERunPhase = ERunPhase::STARTUP);
         void createContent(
             EditorResult<void>& status,
             assets::AssetImporter& importer,

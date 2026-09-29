@@ -1,0 +1,10 @@
+[0/2] Re-checking globbed directories...
+[1/15] Building CXX object editor\tools\material\preview\CMakeFiles\material_preview.dir\src\MaterialCompilation.cpp.obj
+[2/15] Linking CXX static library lib\material_preview.lib
+[3/15] Building CXX object editor\tools\flowforge\compilation\CMakeFiles\flowforge_compilation.dir\src\FlowCompilationService.cpp.obj
+[4/15] Linking CXX static library lib\flowforge_compilation.lib
+[5/15] Building CXX object editor\tools\flowforge\CMakeFiles\editor_flowforge.dir\src\FlowForgeEditor.cpp.obj
+[6/15] Linking CXX executable bin\editor_compilation_p07_test.exe
+[7/15] Building CXX object editor\tools\material\CMakeFiles\editor_material.dir\src\MaterialEditor.cpp.obj
+[8/15] Linking CXX shared library bin\lux_engine_editor_flowforge.dll
+[9/15] Linking CXX shared library bin\lux_engine_editor_material.dll

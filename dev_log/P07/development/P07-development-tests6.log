@@ -1,0 +1,21 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine
+    Start 83: editor.compilation.actual_publish
+1/4 Test #83: editor.compilation.actual_publish ......   Passed    0.55 sec
+    Start 92: editor.unified_core_factory-rollback
+2/4 Test #92: editor.unified_core_factory-rollback ...   Passed    1.28 sec
+    Start 94: editor.unified_core_material-gui
+3/4 Test #94: editor.unified_core_material-gui .......   Passed    2.08 sec
+    Start 95: editor.unified_core_flow-gui
+4/4 Test #95: editor.unified_core_flow-gui ...........   Passed    1.90 sec
+
+100% tests passed, 0 tests failed out of 4
+
+Label Time Summary:
+P07          =   0.55 sec*proc (1 test)
+desktop      =   5.26 sec*proc (3 tests)
+editor       =   5.82 sec*proc (4 tests)
+gpu          =   5.26 sec*proc (3 tests)
+native       =   0.55 sec*proc (1 test)
+toolchain    =   4.53 sec*proc (3 tests)
+
+Total Test time (real) =   5.86 sec

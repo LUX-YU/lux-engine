@@ -1,0 +1,18 @@
+Waiting at 102
+Waiting at 110
+Waiting at 120
+Waiting at 149
+Waiting at 173
+Waiting at 187
+Waiting at 210
+Waiting at 236
+Waiting at 245
+Waiting at 245
+Waiting at 245
+Waiting at 245
+Waiting at 245
+Waiting at 245
+Waiting at 245
+X07-04 real Material compilers completed out of order; desired/content/config/environment/target/failure verified.
+X07-05 real Flow compile, failed linker, fixed-object retry, bounded records and attempt history.
+X07-06 real IO and same WriteCoordinator conflict: derived publication preserves both author checkpoints.

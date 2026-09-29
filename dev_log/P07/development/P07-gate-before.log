@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "E:\SyncForder\CodeRepos\lux-engine\dev_log\P07\check_receipt.py", line 139, in <module>
+    args=parser.parse_args();check(args.repo.resolve())
+                             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\SyncForder\CodeRepos\lux-engine\dev_log\P07\check_receipt.py", line 126, in check
+    assert 'peak cache records=2' in (here/'logs/projection-detail.log').read_text()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError

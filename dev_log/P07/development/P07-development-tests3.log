@@ -1,0 +1,23 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine
+    Start 82: editor.compilation.actual_publish
+1/1 Test #82: editor.compilation.actual_publish ...Exit code 0xc0000409
+***Exception:  48.04 sec
+Waiting at 59
+Waiting at 66
+Assertion failed: std::chrono::steady_clock::now()<deadline, file E:\SyncForder\CodeRepos\lux-engine\editor\tools\material\preview\test\compilation.cpp, line 28
+
+
+0% tests passed, 1 tests failed out of 1
+
+Label Time Summary:
+P07          =  48.04 sec*proc (1 test)
+editor       =  48.04 sec*proc (1 test)
+native       =  48.04 sec*proc (1 test)
+toolchain    =  48.04 sec*proc (1 test)
+
+Total Test time (real) =  48.09 sec
+
+The following tests FAILED:
+	 82 - editor.compilation.actual_publish (Exit code 0xc0000409
+) P07 editor native toolchain
+Errors while running CTest

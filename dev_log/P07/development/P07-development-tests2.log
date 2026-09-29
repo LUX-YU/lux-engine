@@ -1,0 +1,27 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine
+    Start  80: editor.projection.reset_capacity
+1/4 Test  #80: editor.projection.reset_capacity ...........   Passed    0.03 sec
+    Start  81: editor.projection.highlight_backend
+2/4 Test  #81: editor.projection.highlight_backend ........   Passed    0.02 sec
+    Start  82: editor.compilation.actual_publish
+3/4 Test  #82: editor.compilation.actual_publish ..........Exit code 0xc0000409
+***Exception:  48.19 sec
+Assertion failed: std::chrono::steady_clock::now()<deadline, file E:\SyncForder\CodeRepos\lux-engine\editor\tools\material\preview\test\compilation.cpp, line 26
+
+    Start 105: editor.projection_compilation_boundaries
+4/4 Test #105: editor.projection_compilation_boundaries ...   Passed   22.24 sec
+
+75% tests passed, 1 tests failed out of 4
+
+Label Time Summary:
+P07          =  70.49 sec*proc (4 tests)
+editor       =  70.49 sec*proc (4 tests)
+native       =  70.49 sec*proc (4 tests)
+toolchain    =  48.19 sec*proc (1 test)
+
+Total Test time (real) =  70.82 sec
+
+The following tests FAILED:
+	 82 - editor.compilation.actual_publish (Exit code 0xc0000409
+) P07 editor native toolchain
+Errors while running CTest

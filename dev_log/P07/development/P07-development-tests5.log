@@ -1,0 +1,88 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine
+      Start  80: editor.projection.reset_capacity
+ 1/14 Test  #80: editor.projection.reset_capacity ...........   Passed    0.06 sec
+      Start  81: editor.projection.highlight_backend
+ 2/14 Test  #81: editor.projection.highlight_backend ........   Passed    0.03 sec
+      Start  82: render.features.view_binding
+ 3/14 Test  #82: render.features.view_binding ...............   Passed    0.06 sec
+      Start  83: editor.compilation.actual_publish
+ 4/14 Test  #83: editor.compilation.actual_publish ..........   Passed    0.57 sec
+      Start  88: editor.unified_core_new-assets
+ 5/14 Test  #88: editor.unified_core_new-assets .............   Passed    1.79 sec
+      Start  89: editor.unified_core_save-preservation
+ 6/14 Test  #89: editor.unified_core_save-preservation ......   Passed    1.37 sec
+      Start  90: editor.unified_core_save-retry
+ 7/14 Test  #90: editor.unified_core_save-retry .............   Passed    1.31 sec
+      Start  91: editor.unified_core_save-partial
+ 8/14 Test  #91: editor.unified_core_save-partial ...........   Passed    1.40 sec
+      Start  92: editor.unified_core_factory-rollback
+ 9/14 Test  #92: editor.unified_core_factory-rollback .......***Failed    5.13 sec
+native fixture: 4 objects, render=1, page=2048
+unopened sources=0 encoded_bytes=0 manifest_bytes=590
+Exception: E:\SyncForder\CodeRepos\lux-engine\cmake\installed-consumers\editor-d2\protocol\RunCase.ps1:19
+Line |
+  19 |  … ctedExit) { throw "Native test exit $result; expected $ExpectedExit.  …
+     |                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+     | Native test exit -1073740791; expected 0. Log:
+     | E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\tests\core\factory-rollback-3fb4038a3e1848568fa5bdd876d4281d-4add06bec8514f65a84a2841aacd1195.log
+
+      Start  93: editor.unified_core_fixed-run
+10/14 Test  #93: editor.unified_core_fixed-run ..............   Passed    1.73 sec
+      Start  94: editor.unified_core_material-gui
+11/14 Test  #94: editor.unified_core_material-gui ...........***Failed    6.62 sec
+native fixture: 4 objects, render=1, page=2048
+unopened sources=0 encoded_bytes=0 manifest_bytes=590
+graph journal: compound remove/restore stable node+pin IDs, displaced link undo, exact failure state, branch IDs monotonic, input retained
+node properties: exact incompatible-link rejection, retained draft retry, stale state, no-op, pin-growth stable redo
+material slots: journaled binding changes, referenced removal/type rejection, wrong asset retained, exact undo
+compiled actual SPIR-V: gbuffer=1431 forward=12860
+compiled Material published with fixed source; actual Project VFS resolve/open/decode succeeds
+unfinished graph compile rejection: domain=material.compile reason=3 history unchanged
+PASS Material actual codec/open/unique owner/edits/reentry/undo/redo/S1 save while S3 dirty/reopen/stale compile/actual compiler/close with work; formal Editor loop with hidden native window and RenderFeature; no material View
+[editor.exit] event=loop_returned code=0 failure=0
+Assertion failed: std::holds_alternative<material::MaterialCompilePending>(*material.compileStatus(*compile)), file E:\SyncForder\CodeRepos\lux-engine\editor\tools\scene\test\core_protocol.cpp, line 417
+Exception: E:\SyncForder\CodeRepos\lux-engine\cmake\installed-consumers\editor-d2\protocol\RunCase.ps1:19
+Line |
+  19 |  … ctedExit) { throw "Native test exit $result; expected $ExpectedExit.  …
+     |                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+     | Native test exit -1073740791; expected 0. Log:
+     | E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\tests\core\material-gui-cd2af9bc52a74ee3b1ede411a5617302-881f8deea8554d7790795b770c4dbfb3.log
+
+      Start  95: editor.unified_core_flow-gui
+12/14 Test  #95: editor.unified_core_flow-gui ...............Exit code 0xc0000409
+***Exception:   5.38 sec
+native fixture: 4 objects, render=1, page=2048
+unopened sources=0 encoded_bytes=0 manifest_bytes=590
+metadata: caller released; exact unregistered-pointer and duplicate registration failures; native node Undo/Redo retained source
+function signatures: atomic entry/caller/return replacement, stable pins and defaults, exact connected removal/stale rejection, event export retained, full undo/redo
+variables: typed creation/update/delete/order replay, referenced delete/type rejection, branch IDs monotonic; author graph preserved
+real FlowForge owner: unique open, graph/exports history, failed edit preservation, synchronous observer gate passed
+fixed S1 saved while S2 dirty; exact LINK_FAILED retained, same compile request retried after S3 edit
+reopened S1 native artifact=2560 bytes; actual exported Tick invocation=0
+Assertion failed: receiver_.values == expected_notices_, file E:\SyncForder\CodeRepos\lux-engine\editor\tools\flowforge\test\flow_protocol.cpp, line 628
+
+      Start  99: editor.architecture_current
+13/14 Test  #99: editor.architecture_current ................   Passed    5.61 sec
+      Start 106: editor.projection_compilation_boundaries
+14/14 Test #106: editor.projection_compilation_boundaries ...   Passed   22.73 sec
+
+79% tests passed, 3 tests failed out of 14
+
+Label Time Summary:
+P07             =  23.45 sec*proc (5 tests)
+architecture    =   5.61 sec*proc (1 test)
+desktop         =  24.73 sec*proc (8 tests)
+editor          =  53.74 sec*proc (13 tests)
+gpu             =  24.73 sec*proc (8 tests)
+native          =  29.07 sec*proc (6 tests)
+render          =   0.06 sec*proc (1 test)
+toolchain       =  12.56 sec*proc (3 tests)
+
+Total Test time (real) =  54.23 sec
+
+The following tests FAILED:
+	 92 - editor.unified_core_factory-rollback (Failed)     desktop editor gpu
+	 94 - editor.unified_core_material-gui (Failed)         desktop editor gpu toolchain
+	 95 - editor.unified_core_flow-gui (Exit code 0xc0000409
+) desktop editor gpu toolchain
+Errors while running CTest

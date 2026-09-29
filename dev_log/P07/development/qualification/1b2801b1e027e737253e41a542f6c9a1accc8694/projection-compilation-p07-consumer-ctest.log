@@ -1,0 +1,9 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/projection-compilation-p07-consumer
+    Start 1: installed.projection.reset_capacity
+1/2 Test #1: installed.projection.reset_capacity ....   Passed    0.06 sec
+    Start 2: installed.compilation.actual_publish
+2/2 Test #2: installed.compilation.actual_publish ...   Passed    0.53 sec
+
+100% tests passed, 0 tests failed out of 2
+
+Total Test time (real) =   0.60 sec

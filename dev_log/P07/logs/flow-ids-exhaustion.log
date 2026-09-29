@@ -1,0 +1,1 @@
+R04-06 PASS: actual GraphTopology and FlowGraph merge, self/bidirectional, absorbing node/pin exhaustion, explicit restore, variables

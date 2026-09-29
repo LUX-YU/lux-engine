@@ -7,3 +7,7 @@ foreach(scenario save-as unknown order close close-key capacity execution decode
     add_test(NAME editor.persistence.${scenario} COMMAND editor_persistence_models_test "${CMAKE_CURRENT_BINARY_DIR}/files" ${scenario})
     set_tests_properties(editor.persistence.${scenario} PROPERTIES LABELS "editor;native;P05" TIMEOUT 120)
 endforeach()
+foreach(scenario r1-revoke r1-recursive r1-chain r1-chain-control r1-callbacks r1-reading r1-conflicts)
+    add_test(NAME editor.persistence.${scenario} COMMAND editor_persistence_models_test "${CMAKE_CURRENT_BINARY_DIR}/files" ${scenario})
+    set_tests_properties(editor.persistence.${scenario} PROPERTIES LABELS "editor;native;P05;P05-R1" TIMEOUT 120)
+endforeach()

@@ -7,6 +7,8 @@ namespace lux::editor::persistence
 {
     // Owner-thread role dispatch; workers receive EncodeWork/PublicationQuery owning values only.
     // Drain the execution adapter before destruction. Registrations are destroyed before their source.
+    // During role callbacks/cleanup, status and token revocation remain available. Mutating service
+    // calls return BUSY; recursive adoptCompletions defers to the outer call/next owner safe point.
     class SaveService final
     {
     public:

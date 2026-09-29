@@ -17,6 +17,8 @@ namespace lux::editor::persistence
         [[nodiscard]] virtual EAdoption accept(SaveReceipt&&) noexcept = 0;
     };
     class SaveService;
+    // Revocation cuts off future role calls immediately, including between describe and capture.
+    // The adapter must outlive any callback already on the stack; the token does not own it.
     class SaveSourceRegistration final
     {
     public:

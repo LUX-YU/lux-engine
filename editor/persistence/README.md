@@ -11,6 +11,15 @@ observation and admission owner. Registration is an owner-thread RAII borrow: de
 before the adapter. Pending records pin its code, never its Session. A revoked role cannot receive
 baseline adoption, but its physical publication result remains queryable.
 
+Owner-thread service calls have a private RAII dispatch scope spanning role callbacks and their
+cleanup. Read-only status and registration-token destruction remain available in that scope;
+mutating service calls return BUSY, and recursive adoption defers to the outer traversal or next
+safe point. This is a service execution guard, not a second Session admission state. Describe and
+capture recheck the original registration on return; revocation rejects that request and releases
+its reserved capacity. A newly registered role cannot substitute for the revoked role. An already
+executing accept may finish, but no subsequent call is made through a revoked registration.
+Sources and the service must outlive callbacks already executing on their stack.
+
 An ordinary save captures committed content on the owner and immediately releases READING admission.
 `EncodeWork` carries only an owning `OwnedEncodeJob`; its code lease outlives the virtual destructor.
 `SaveExecution` binds this work to existing ExecutionRuntime CPU/Blocking schedulers. Completion
@@ -36,6 +45,22 @@ allocator internals or encoder temporary peaks. Ack removes only definite termin
 The bounded record vectors use linear lookup (and bounded predecessor scans); no new task framework,
 global cache or unbounded version list is introduced. Registration count follows live role ownership,
 not the concurrent-save limit.
+
+Each retained successful coordinator record proves a directed version edge: the effective
+precondition supplied to the store and the confirmed output version. Within the same canonical
+target, valid Session/Binding origin and uninterrupted chain, either endpoint proves continuity
+for a later ticket. This permits an early receipt to be acknowledged while its published successors
+still await adoption. Reserved, failed and Unknown records do not establish such edges. Publishing
+still compares the controlled lane version against the actual file; it never refreshes that
+precondition unconditionally. A different writer, or a successful write consuming a newly observed
+external version, starts a new chain and excludes earlier edges.
+
+The effective precondition stays in the existing PublicationQuery after successful completion;
+there is no separate receipt archive or version list. Records remain bounded by WriteLimits::tickets,
+are actually removed by acknowledge, and a lane is removed with its final record. Live records plus
+one base/current version per lane are the only provenance storage. A completely drained lane needs
+the producer's current observed version again. This does not widen the original single-coordinator
+and optimistic external-version-check guarantees.
 
 Shutdown order: stop submitting; drain/destroy SaveExecution while service/coordinator/store remain
 alive; collect and reconcile physical responsibilities; revoke source registrations; release adapters

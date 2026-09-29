@@ -51,6 +51,107 @@ namespace
         auto outcome = store.publish(**work, {});
         assert(coordinator.complete((*work)->ticket, std::move(outcome)));
     }
+    void acknowledgedChains()
+    {
+        const WriteOrigin origin{{1, 0, 1}, {1}};
+        for (int timing{}; timing < 3; ++timing)
+        {
+            Store store;
+            WriteCoordinator coordinator{{8, 128}};
+            auto first = *coordinator.reserve(*store.resolve("chain"), origin);
+            assert(coordinator.provideEncoded(first, bytes("V1")));
+            publish(coordinator, store);
+            const auto observed = *store.resolve("chain");
+            const auto second = *coordinator.reserve(observed, origin);
+            const auto third = *coordinator.reserve(observed, origin);
+            if (timing == 0)
+                assert(coordinator.acknowledge(first));
+            assert(coordinator.provideEncoded(third, bytes("V3")));
+            assert(!*coordinator.takeReady());
+            assert(coordinator.provideEncoded(second, bytes("V2")));
+            if (timing == 1)
+                assert(coordinator.acknowledge(first));
+            publish(coordinator, store);
+            publish(coordinator, store);
+            if (timing == 2)
+                assert(coordinator.acknowledge(first));
+            assert(!coordinator.status(first) && coordinator.size() == 2);
+            auto fourth = *coordinator.reserve(observed, origin);
+            assert(coordinator.provideEncoded(fourth, bytes("V4")));
+            publish(coordinator, store);
+            assert(store.files["chain"] == "V4");
+            for (auto ticket : {second, third, fourth})
+                assert(coordinator.acknowledge(ticket));
+            assert(coordinator.size() == 0);
+        }
+        std::cout << "R05-05 ack during RESERVED/READY/published, verified consumed premise and reverse encode PASS\n";
+    }
+    void brokenChains()
+    {
+        Store store;
+        WriteCoordinator coordinator;
+        const WriteOrigin origin{{1, 0, 1}, {1}};
+        const auto initial = *store.resolve("chain");
+        auto commit = [&](WriteTarget target, WriteOrigin writer, std::string_view value, bool success) {
+            auto ticket = *coordinator.reserve(std::move(target), writer);
+            assert(coordinator.provideEncoded(ticket, bytes(value)));
+            publish(coordinator, store);
+            assert(std::holds_alternative<CommitReceipt>(*coordinator.status(ticket)->outcome) == success);
+            return ticket;
+        };
+        const auto first = commit(initial, origin, "V1", true);
+        const auto v1 = *store.resolve("chain");
+        (void)commit(v1, origin, "V2", true);
+        assert(coordinator.acknowledge(first));
+        (void)commit(v1, {{1, 0, 1}, {2}}, "wrong binding", false);
+        (void)commit(v1, {}, "anonymous", false);
+        (void)commit(v1, {{1, 1, 1}, {1}}, "other session", false);
+        (void)commit({v1.key, "unverified"}, origin, "unverified", false);
+        store.files["chain"] = "external";
+        (void)commit(v1, origin, "must not overwrite external", false);
+        assert(store.files["chain"] == "external");
+        // An intentional save based on a freshly observed external version begins a new chain.
+        (void)commit(*store.resolve("chain"), origin, "new chain", true);
+        (void)commit(v1, origin, "old chain is not proof", false);
+        (void)commit(*store.resolve("chain"), {{1, 1, 1}, {1}}, "other success", true);
+        (void)commit(v1, origin, "cross-origin stale", false);
+        assert(store.files["chain"] == "other success");
+        std::cout << "R05-07 consumed proof constrained by origin/binding/chain; external edits still conflict PASS\n";
+    }
+    void boundedChains()
+    {
+        Store store;
+        WriteCoordinator coordinator{{3, 16}};
+        const WriteOrigin origin{{1, 0, 1}, {1}};
+        for (int i{}; i < 64; ++i)
+        {
+            const auto base = *store.resolve("bounded");
+            const auto hole = *coordinator.reserve(base, origin);
+            const auto unknown = *coordinator.reserve(base, origin);
+            const auto successor = *coordinator.reserve(base, origin);
+            assert(!coordinator.reserve(base, origin));
+            assert(coordinator.provideEncoded(successor, bytes("end")));
+            assert(coordinator.provideEncoded(unknown, bytes("middle")));
+            assert(!*coordinator.takeReady());
+            assert(coordinator
+                       .cancelBeforePublish(hole, {i % 2 ? EPersistenceError::ENCODE : EPersistenceError::CANCELLED}));
+            assert(coordinator.acknowledge(hole));
+            const auto work = coordinator.takeReady();
+            assert(work && *work && (*work)->ticket == unknown);
+            assert(coordinator.complete(unknown, PublicationUnknown{{EPersistenceError::IO}, "pending"}));
+            store.retired = false;
+            assert(!coordinator.acknowledge(unknown) && !coordinator.reconcile(unknown, store));
+            assert(!*coordinator.takeReady());
+            store.retired = true;
+            assert(coordinator.reconcile(unknown, store));
+            assert(coordinator.acknowledge(unknown));
+            publish(coordinator, store);
+            assert(store.files["bounded"] == "end");
+            assert(coordinator.acknowledge(successor) && coordinator.size() == 0);
+        }
+        std::cout << "R05-08 64 bounded cycles: failure/cancel holes, Unknown quarantine, early ack and all records "
+                     "freed PASS\n";
+    }
 }
 int main()
 {
@@ -116,4 +217,7 @@ int main()
     assert(bounded.acknowledge(ticket));
     assert(bounded.size() == 0 && bounded.reserve({{"bounded"}, "missing"}, origin));
     std::cout << "X05-09 bounded tickets and bytes: PASS\n";
+    acknowledgedChains();
+    brokenChains();
+    boundedChains();
 }

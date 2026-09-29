@@ -68,7 +68,9 @@ namespace lux::editor::persistence
             if (const auto* committed = std::get_if<CommitReceipt>(&outcome))
             {
                 auto target = lane(record.work.target.key);
-                if (target->last_writer != record.origin)
+                const bool is_continuation =
+                    target->last_writer == record.origin && record.work.target.expected_version == target->version;
+                if (!is_continuation)
                 {
                     target->chain_base = record.work.target.expected_version;
                     target->chain_begin = record.ticket.value;
@@ -167,7 +169,13 @@ namespace lux::editor::persistence
                 if (!is_chain)
                     return false;
                 const auto* receipt = std::get_if<CommitReceipt>(&*earlier.outcome);
-                return receipt && receipt->version == it->work.target.expected_version;
+                // A successful record proves both the version consumed and the version produced.
+                // Its effective publication precondition remains valid evidence after the preceding
+                // receipt is acknowledged. Pending/failed/unknown records prove no such edge.
+                const bool has_verified_edge =
+                    receipt && (receipt->version == it->work.target.expected_version ||
+                                earlier.work.target.expected_version == it->work.target.expected_version);
+                return has_verified_edge;
             });
             const bool is_same_chain = it->origin.session.valid() && lane->last_writer == it->origin &&
                                        (it->work.target.expected_version == lane->chain_base ||

@@ -15,6 +15,8 @@
 #include <thread>
 #include <atomic>
 #include <cstdlib>
+#include <functional>
+#include <stdexcept>
 #if defined(_WIN32)
 #define NOMINMAX
 #include <Windows.h>
@@ -250,6 +252,380 @@ namespace
             !f.flow_session->describe().dirty
         );
         std::cout << "X05-01/Q11/Q12 three models reversed encoding, FIFO actual files, Undo new intent PASS\n";
+    }
+    struct HookSource final : ISaveSource
+    {
+        ISaveSource& source;
+        mutable std::function<void()> describe_hook;
+        std::function<void()> capture_hook;
+        std::function<void()> accept_hook;
+        std::function<void(FrozenSave&)> frozen_hook;
+        unsigned captures{}, accepts{};
+        explicit HookSource(ISaveSource& value) : source(value) {}
+        PersistenceResult<SaveSourceInfo> describe() const override
+        {
+            auto info = source.describe();
+            if (auto hook = std::exchange(describe_hook, {}))
+                hook();
+            return info;
+        }
+        PersistenceResult<FrozenSave> captureForSave(
+            const SaveSourceInfo& info,
+            const SaveRequest& request,
+            std::size_t allowance
+        ) override
+        {
+            ++captures;
+            auto frozen = source.captureForSave(info, request, allowance);
+            if (auto hook = std::exchange(capture_hook, {}))
+                hook();
+            if (frozen && frozen_hook)
+                frozen_hook(*frozen);
+            return frozen;
+        }
+        EAdoption accept(SaveReceipt&& receipt) noexcept override
+        {
+            ++accepts;
+            if (auto hook = std::exchange(accept_hook, {}))
+                hook();
+            return source.accept(std::move(receipt));
+        }
+    };
+    void assertSameSession(const sessions::SessionInfo& before, const sessions::SessionInfo& after)
+    {
+        assert(before.current == after.current && before.observed == after.observed);
+        assert(before.binding == after.binding && before.dirty == after.dirty);
+        assert(before.admission == after.admission);
+    }
+    void publishWithoutAdoption(Fixture& f)
+    {
+        while (auto next = take(f.writes.takeReady()))
+            assert(f.writes.complete(next->ticket, f.disk.publish(*next)));
+    }
+    void revokeCase(Fixture& f)
+    {
+        f.registrations.clear();
+        f.edit(1);
+        HookSource source(*f.material_source);
+        std::optional<SaveSourceRegistration> registration(take(f.saves.registerSource(source)));
+        const auto before = f.material_session->describe();
+        const auto content = take(em::MaterialCodec::encode(take(f.material_session->capture()), identity("material")));
+        source.describe_hook = [&] {
+            registration.reset();
+            std::cout << "R05-01 describe revoked; real source/model still alive\n" << std::flush;
+        };
+        auto rejected = f.saves.requestSave({f.material_id});
+        assert(!rejected && rejected.error().code == EPersistenceError::STALE_SOURCE);
+        assert(source.captures == 0 && f.writes.size() == 0);
+        assertSameSession(before, f.material_session->describe());
+        assert(
+            take(em::MaterialCodec::encode(take(f.material_session->capture()), identity("material"))).bytes ==
+            content.bytes
+        );
+        assert(!std::filesystem::exists(f.root / "material.luxmaterial"));
+        registration.emplace(take(f.saves.registerSource(source)));
+        const auto id = take(f.saves.requestSave({f.material_id}));
+        f.encodeAll();
+        f.publishAll();
+        assert(take(f.saves.status(id)).outcome->adoption == EAdoption::APPLIED);
+        assert(!f.material_session->describe().dirty && f.saves.acknowledge(id));
+        assert(f.writes.size() == 0);
+        std::cout << "R05-01 real Material revoked describe, unchanged model and restored admission PASS\n";
+    }
+    void recursiveCase(Fixture& f)
+    {
+        f.registrations.clear();
+        f.edit(1);
+        HookSource source(*f.material_source);
+        auto registration = take(f.saves.registerSource(source));
+        const auto id = take(f.saves.requestSave({f.material_id}));
+        f.encodeAll();
+        publishWithoutAdoption(f);
+        source.accept_hook = [&] {
+            assert(take(f.saves.status(id)).outcome);
+            f.saves.adoptCompletions();
+            auto acknowledged = f.saves.acknowledge(id);
+            std::cout << "R05-02 accepts=" << source.accepts << " nested_ack=" << bool(acknowledged)
+                      << " record_alive=" << bool(f.saves.status(id)) << '\n'
+                      << std::flush;
+            assert(!acknowledged);
+            assert(source.accepts == 1 && f.saves.status(id));
+        };
+        f.saves.adoptCompletions();
+        const auto status = take(f.saves.status(id));
+        assert(status.stage == ESaveStage::TERMINAL && status.outcome->adoption == EAdoption::APPLIED);
+        assert(std::holds_alternative<CommitReceipt>(status.outcome->publication));
+        assert(!f.material_session->describe().dirty && source.accepts == 1);
+        assert(take(em::MaterialCodec::decode(read(f.root / "material.luxmaterial"))).source.name == "material1");
+        assert(f.saves.acknowledge(id) && f.writes.size() == 0);
+        std::cout << "R05-02 real accept executes once, deferred recursion, execution pin and later ack PASS\n";
+    }
+    void acknowledgedChainCase(Fixture& f, bool acknowledge)
+    {
+        const std::array sessions{f.scene_id, f.material_id, f.flow_id};
+        std::vector<SaveId> ids;
+        for (int turn{1}; turn <= 3; ++turn)
+        {
+            f.edit(turn);
+            for (auto session : sessions)
+                ids.push_back(take(f.saves.requestSave({session})));
+            f.encodeAll();
+            publishWithoutAdoption(f);
+            if (turn == 1)
+                f.saves.adoptCompletions();
+        }
+        if (acknowledge)
+            for (std::size_t i{}; i < 3; ++i)
+            {
+                assert(f.saves.acknowledge(ids[i]));
+                assert(!f.saves.status(ids[i]));
+            }
+        assert(f.writes.size() == (acknowledge ? 6 : 9));
+        f.edit(4);
+        for (auto session : sessions)
+            ids.push_back(take(f.saves.requestSave({session})));
+        f.encodeAll();
+        publishWithoutAdoption(f);
+        unsigned published{};
+        for (std::size_t i{9}; i < 12; ++i)
+        {
+            auto status = take(f.writes.status(take(f.saves.status(ids[i])).ticket));
+            const bool success = status.outcome && std::holds_alternative<CommitReceipt>(*status.outcome);
+            published += success;
+            std::cout << "R05-04 model=" << (i - 9) << " ack_w1=" << acknowledge << " w4_published=" << success << '\n'
+                      << std::flush;
+        }
+        std::cout << "R05-04 material_file="
+                  << take(em::MaterialCodec::decode(read(f.root / "material.luxmaterial"))).source.name
+                  << " scene_objects="
+                  << take(es::SceneCodec::decode(read(f.root / "scene.pak"))).source.partitions[0]->objectCount()
+                  << " flow_file=" << take(ef::FlowCodec::decode(read(f.root / "flow.luxflow"))).source.name << '\n'
+                  << std::flush;
+        assert(published == 3);
+        checkFiles(f, 4, "4");
+        f.saves.adoptCompletions();
+        for (auto session : sessions)
+            assert(!take(f.store.describe(session)).dirty);
+        for (std::size_t i{acknowledge ? 3u : 0u}; i < ids.size(); ++i)
+        {
+            assert(take(f.saves.status(ids[i])).outcome->adoption == EAdoption::APPLIED);
+            assert(f.saves.acknowledge(ids[i]));
+        }
+        assert(f.writes.size() == 0);
+        std::cout << "R05-04 all three actual models W1 ack, delayed W2/W3 adoption, real W4 publication PASS\n";
+    }
+    struct HookRebind final : IPreparedRebind
+    {
+        std::unique_ptr<IPreparedRebind> inner;
+        std::function<void()> on_apply, on_destroy;
+        ~HookRebind() override
+        {
+            if (on_destroy)
+                on_destroy();
+        }
+        EAdoption apply(SaveReceipt&& receipt) noexcept override
+        {
+            if (on_apply)
+                on_apply();
+            return inner->apply(std::move(receipt));
+        }
+    };
+    void callbackCases(Fixture& f)
+    {
+        f.registrations.clear();
+        f.edit(1);
+        SaveService service(f.writes, {1, 1024 * 1024, 1});
+        HookSource source(*f.material_source), replacement(*f.material_source);
+        std::optional<SaveSourceRegistration> registration(take(service.registerSource(source)));
+        const auto before = f.material_session->describe();
+        const auto content = take(em::MaterialCodec::encode(take(f.material_session->capture()), identity("material")));
+        auto unchanged = [&] {
+            assertSameSession(before, f.material_session->describe());
+            assert(
+                take(em::MaterialCodec::encode(take(f.material_session->capture()), identity("material"))).bytes ==
+                content.bytes
+            );
+            assert(f.writes.size() == 0);
+        };
+        auto rejectNested = [&] {
+            for (int i{}; i < 3; ++i)
+            {
+                auto nested = service.requestSave({f.material_id});
+                assert(!nested && nested.error().code == EPersistenceError::BUSY);
+            }
+            auto alternate = service.registerSource(replacement);
+            assert(!alternate && alternate.error().code == EPersistenceError::BUSY);
+            assert(!service.takeEncoding());
+            service.adoptCompletions();
+        };
+        // Failure, exception and revoked captures must release the full temporary admission charge.
+        for (bool during_capture : {false, true})
+        {
+            auto& hook = during_capture ? source.capture_hook : source.describe_hook;
+            hook = [&] {
+                rejectNested();
+                throw std::runtime_error("foreign role callback");
+            };
+            auto failure = service.requestSave({f.material_id});
+            assert(
+                !failure &&
+                failure.error().code == (during_capture ? EPersistenceError::ENCODE : EPersistenceError::STALE_SOURCE)
+            );
+            unchanged();
+            hook = [&] {
+                registration.reset();
+                rejectNested();
+            };
+            auto revoked = service.requestSave({f.material_id});
+            assert(!revoked && revoked.error().code == EPersistenceError::STALE_SOURCE);
+            assert(replacement.captures == 0);
+            unchanged();
+            registration.emplace(take(service.registerSource(source)));
+        }
+        source.describe_hook = rejectNested;
+        source.capture_hook = rejectNested;
+        const auto saved = take(service.requestSave({f.material_id}));
+        auto full = service.requestSave({f.material_id});
+        assert(!full && full.error().code == EPersistenceError::CAPACITY);
+        auto work = take(service.takeEncoding());
+        assert(work && service.completeEncoding(saved, work->encoding.encode({})));
+        publishWithoutAdoption(f);
+        source.accept_hook = [&] {
+            registration.reset();
+            rejectNested();
+            auto status = take(service.status(saved));
+            assert(status.stage == ESaveStage::AWAITING_ADOPTION);
+            assert(std::holds_alternative<CommitReceipt>(status.outcome->publication));
+            auto ack = service.acknowledge(saved);
+            assert(!ack && ack.error().code == EPersistenceError::BUSY);
+        };
+        service.adoptCompletions();
+        assert(source.accepts == 1 && take(service.status(saved)).outcome->adoption == EAdoption::APPLIED);
+        assert(!f.material_session->describe().dirty);
+        assert(service.acknowledge(saved) && f.writes.size() == 0);
+        // A subsequent role can register, but it never completes the revoked role's request.
+        registration.emplace(take(service.registerSource(replacement)));
+        SaveId rebind_id;
+        unsigned applied{}, destroyed{};
+        replacement.frozen_hook = [&](FrozenSave& frozen) {
+            assert(frozen.rebind);
+            auto decorated = std::make_unique<HookRebind>();
+            decorated->inner = std::move(frozen.rebind);
+            auto protectedCall = [&] {
+                service.adoptCompletions();
+                auto ack = service.acknowledge(rebind_id);
+                assert(!ack && ack.error().code == EPersistenceError::BUSY);
+                assert(service.status(rebind_id));
+            };
+            decorated->on_apply = [&, protectedCall] {
+                ++applied;
+                protectedCall();
+            };
+            decorated->on_destroy = [&, protectedCall] {
+                ++destroyed;
+                protectedCall();
+            };
+            frozen.rebind = std::move(decorated);
+        };
+        const auto history = f.material_session->describe().current;
+        rebind_id = take(service.requestSave(
+            {f.material_id, ESaveMode::SAVE_AS, take(f.disk.resolve("callback-copy")), identity("callback-copy")}
+        ));
+        work = take(service.takeEncoding());
+        assert(work && service.completeEncoding(rebind_id, work->encoding.encode({})));
+        publishWithoutAdoption(f);
+        service.adoptCompletions();
+        assert(applied == 1 && destroyed == 1);
+        assert(take(service.status(rebind_id)).outcome->adoption == EAdoption::APPLIED);
+        assert(f.material_session->describe().current == history && !f.material_session->describe().dirty);
+        assert(service.acknowledge(rebind_id));
+        assert(f.writes.size() == 0);
+        std::cout << "R05-03 real role revoke/replace, foreign exceptions, nested admission bounds, rebind+cleanup "
+                     "guards PASS\n";
+    }
+    void delayedReadCase(Fixture& f)
+    {
+        f.edit(1);
+        const auto first = take(f.saves.requestSave({f.material_id}));
+        f.encodeAll();
+        f.publishAll();
+        const auto first_content = f.material_session->describe().current;
+        f.edit(2);
+        const auto second = take(f.saves.requestSave({f.material_id}));
+        f.encodeAll();
+        publishWithoutAdoption(f);
+        auto view = take(f.material_session->read());
+        assert(view.withRead([&](const auto&) -> em::MaterialEditResult<void> {
+            f.saves.adoptCompletions();
+            const auto status = take(f.saves.status(second));
+            assert(status.stage == ESaveStage::AWAITING_ADOPTION && status.outcome->adoption == EAdoption::BUSY);
+            assert(std::holds_alternative<CommitReceipt>(status.outcome->publication));
+            assert(f.saves.acknowledge(first));
+            assert(f.material_session->describe().dirty);
+            return {};
+        }));
+        f.edit(3);
+        const auto third = take(f.saves.requestSave({f.material_id}));
+        f.encodeAll();
+        publishWithoutAdoption(f);
+        const auto latest = take(f.saves.status(third));
+        const auto info = take(f.material_source->describe());
+        const auto disk = std::get<CommitReceipt>(*take(f.writes.status(latest.ticket)).outcome);
+        assert(
+            f.material_source->accept({latest.content, info.binding, {latest.ticket.value}, *info.target, disk}) ==
+            EAdoption::APPLIED
+        );
+        f.saves.adoptCompletions();
+        assert(take(f.saves.status(second)).outcome->adoption == EAdoption::OLDER_RECEIPT);
+        assert(!f.material_session->describe().dirty && f.material_session->describe().current != first_content);
+        assert(take(em::MaterialCodec::decode(read(f.root / "material.luxmaterial"))).source.name == "material3");
+        assert(f.saves.acknowledge(second) && f.saves.acknowledge(third));
+        std::cout
+            << "R05-06 withRead BUSY, early ack, later save and reversed adoption preserve latest baseline PASS\n";
+    }
+    void actualConflictCase(Fixture& f)
+    {
+        const WriteOrigin origin{f.material_id, {1}};
+        int serial{};
+        auto commit = [&](WriteTarget target, WriteOrigin writer, bool success) {
+            f.edit(++serial);
+            auto artifact = take(em::MaterialCodec::encode(take(f.material_session->capture()), identity("material")));
+            const auto ticket = take(f.writes.reserve(std::move(target), writer));
+            assert(f.writes.provideEncoded(ticket, std::move(artifact)));
+            publishWithoutAdoption(f);
+            const auto status = take(f.writes.status(ticket));
+            assert(status.outcome && std::holds_alternative<CommitReceipt>(*status.outcome) == success);
+            if (!success)
+                assert(std::get<NotPublished>(*status.outcome).failure.code == EPersistenceError::CONFLICT);
+            return ticket;
+        };
+        const auto first = commit(take(f.disk.resolve("material.luxmaterial")), origin, true);
+        const auto observed = take(f.disk.resolve("./sub/../material.luxmaterial"));
+        (void)commit(observed, origin, true);
+        assert(f.writes.acknowledge(first));
+        const auto controlled = read(f.root / "material.luxmaterial");
+        (void)commit(observed, {f.material_id, {2}}, false);
+        (void)commit(observed, {}, false);
+        (void)commit(observed, {f.flow_id, {1}}, false);
+        assert(read(f.root / "material.luxmaterial") == controlled);
+        // A real external file replacement does not gain provenance from the coordinator.
+        {
+            std::ofstream external(f.root / "material.luxmaterial", std::ios::binary | std::ios::trunc);
+            external << "external version";
+        }
+        const auto external = read(f.root / "material.luxmaterial");
+        (void)commit(observed, origin, false);
+        assert(read(f.root / "material.luxmaterial") == external);
+        (void)commit(take(f.disk.resolve("material.luxmaterial")), origin, true);
+        const auto new_chain = read(f.root / "material.luxmaterial");
+        (void)commit(observed, origin, false);
+        assert(read(f.root / "material.luxmaterial") == new_chain);
+        (void)commit(take(f.disk.resolve("material.luxmaterial")), {f.flow_id, {1}}, true);
+        const auto other = read(f.root / "material.luxmaterial");
+        (void)commit(observed, origin, false);
+        assert(read(f.root / "material.luxmaterial") == other);
+        assert(take(em::MaterialCodec::decode(other)).source.name == "material9");
+        std::cout << "R05-07 real ProjectArtifactStore alias/binding/anonymous/external/chain-break conflicts PASS\n";
     }
     void closeCases(Fixture& f, bool revoke = true)
     {
@@ -746,6 +1122,36 @@ int main(int argc, char** argv)
                       std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
     Fixture f(root);
     const std::string_view scenario = argc == 3 ? argv[2] : "models";
+    if (scenario == "r1-revoke")
+    {
+        revokeCase(f);
+        return 0;
+    }
+    if (scenario == "r1-callbacks")
+    {
+        callbackCases(f);
+        return 0;
+    }
+    if (scenario == "r1-reading")
+    {
+        delayedReadCase(f);
+        return 0;
+    }
+    if (scenario == "r1-conflicts")
+    {
+        actualConflictCase(f);
+        return 0;
+    }
+    if (scenario == "r1-recursive")
+    {
+        recursiveCase(f);
+        return 0;
+    }
+    if (scenario == "r1-chain" || scenario == "r1-chain-control")
+    {
+        acknowledgedChainCase(f, scenario == "r1-chain");
+        return 0;
+    }
     if (scenario == "save-as")
     {
         saveAsCases(f);

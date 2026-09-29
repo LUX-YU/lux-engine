@@ -68,6 +68,22 @@ namespace lux::editor::persistence
     }
     struct SaveService::Impl final
     {
+        // One owner-thread call frame covers role dispatch and destruction of callback-owned inputs.
+        // This protects service records only; SessionState remains the sole editing admission gate.
+        struct DispatchScope final
+        {
+            bool& active;
+            explicit DispatchScope(bool& value) noexcept : active(value)
+            {
+                active = true;
+            }
+            ~DispatchScope()
+            {
+                active = false;
+            }
+            DispatchScope(const DispatchScope&) = delete;
+            DispatchScope& operator=(const DispatchScope&) = delete;
+        };
         struct Operation final
         {
             SaveId id;
@@ -84,6 +100,7 @@ namespace lux::editor::persistence
         SaveLimits limits;
         std::uint64_t next{1};
         std::size_t snapshot_bytes{};
+        bool dispatching{};
         std::vector<std::weak_ptr<SaveSourceRegistration::State>> sources;
         std::vector<std::unique_ptr<Operation>> operations;
         Impl(WriteCoordinator& value, SaveLimits policy) : coordinator(value), limits(policy) {}
@@ -131,6 +148,9 @@ namespace lux::editor::persistence
     {
         if (!impl_->onOwner())
             return failed(EPersistenceError::WRONG_THREAD);
+        if (impl_->dispatching)
+            return failed(EPersistenceError::BUSY);
+        const Impl::DispatchScope dispatch(impl_->dispatching);
         if (!code.valid())
             return failed(EPersistenceError::INVALID_ARGUMENT);
         auto info = describeSource(source);
@@ -154,6 +174,9 @@ namespace lux::editor::persistence
     {
         if (!impl_->onOwner())
             return failed(EPersistenceError::WRONG_THREAD);
+        if (impl_->dispatching)
+            return failed(EPersistenceError::BUSY);
+        const Impl::DispatchScope dispatch(impl_->dispatching);
         const auto active =
             std::ranges::count_if(impl_->operations, [](const auto& op) { return op->stage != ESaveStage::TERMINAL; });
         const bool is_full = active >= impl_->limits.max_active_saves ||
@@ -171,7 +194,10 @@ namespace lux::editor::persistence
         });
         if (request.mode == ESaveMode::SAVE_AS && has_active)
             return failed(EPersistenceError::BUSY);
-        auto info = describeSource(*registration->source);
+        auto* const source = registration->source;
+        auto info = describeSource(*source);
+        if (registration->source != source)
+            return failed(EPersistenceError::STALE_SOURCE);
         if (!info)
             return lux::cxx::unexpected(info.error());
         if (info->content.session != request.session)
@@ -201,14 +227,15 @@ namespace lux::editor::persistence
         impl_->snapshot_bytes += allowance;
         auto* captured = operation.get();
         impl_->operations.push_back(std::move(operation));
-        auto frozen = captureSource(*registration->source, *info, request, allowance);
+        auto frozen = captureSource(*source, *info, request, allowance);
+        const bool is_revoked = registration->source != source;
         const bool invalid_capture =
             frozen && (frozen->source.content != info->content || frozen->source.binding != info->binding ||
                        frozen->source.target != info->target || !frozen->encoding.job ||
                        !frozen->encoding.code.valid() || frozen->retained_bytes > allowance);
-        if (!frozen || invalid_capture)
+        if (is_revoked || !frozen || invalid_capture)
         {
-            auto error = frozen ? PersistenceFailure{EPersistenceError::STALE_SOURCE} : frozen.error();
+            auto error = is_revoked || frozen ? PersistenceFailure{EPersistenceError::STALE_SOURCE} : frozen.error();
             (void)impl_->coordinator.cancelBeforePublish(*ticket, error);
             (void)impl_->coordinator.acknowledge(*ticket);
             impl_->snapshot_bytes -= allowance;
@@ -224,6 +251,9 @@ namespace lux::editor::persistence
     {
         if (!impl_->onOwner())
             return failed(EPersistenceError::WRONG_THREAD);
+        if (impl_->dispatching)
+            return failed(EPersistenceError::BUSY);
+        const Impl::DispatchScope dispatch(impl_->dispatching);
         for (auto& op : impl_->operations)
         {
             if (op->stage != ESaveStage::CAPTURED)
@@ -237,6 +267,9 @@ namespace lux::editor::persistence
     {
         if (!impl_->onOwner())
             return failed(EPersistenceError::WRONG_THREAD);
+        if (impl_->dispatching)
+            return failed(EPersistenceError::BUSY);
+        const Impl::DispatchScope dispatch(impl_->dispatching);
         auto found = impl_->find(id);
         if (found == impl_->operations.end())
             return failed(EPersistenceError::UNKNOWN_ID);
@@ -260,6 +293,9 @@ namespace lux::editor::persistence
     {
         if (!impl_->onOwner())
             std::terminate();
+        if (impl_->dispatching)
+            return;
+        const Impl::DispatchScope dispatch(impl_->dispatching);
         // Snapshot stable IDs: role callbacks must not invalidate traversal through vector growth.
         std::vector<SaveId> batch;
         batch.reserve(impl_->operations.size());
@@ -328,6 +364,9 @@ namespace lux::editor::persistence
     {
         if (!impl_->onOwner())
             return failed(EPersistenceError::WRONG_THREAD);
+        if (impl_->dispatching)
+            return failed(EPersistenceError::BUSY);
+        const Impl::DispatchScope dispatch(impl_->dispatching);
         const auto found = impl_->find(id);
         if (found == impl_->operations.end())
             return failed(EPersistenceError::UNKNOWN_ID);
@@ -357,6 +396,9 @@ namespace lux::editor::persistence
     {
         if (!impl_->onOwner())
             return failed(EPersistenceError::WRONG_THREAD);
+        if (impl_->dispatching)
+            return failed(EPersistenceError::BUSY);
+        const Impl::DispatchScope dispatch(impl_->dispatching);
         const auto found = impl_->find(id);
         if (found == impl_->operations.end())
             return failed(EPersistenceError::UNKNOWN_ID);

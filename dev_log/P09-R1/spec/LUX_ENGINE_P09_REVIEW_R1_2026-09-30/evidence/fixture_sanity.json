@@ -1,0 +1,197 @@
+{
+  "scope": "Python TOML parsing and fixture consistency only; no Lux validation, migration, compiler, IO backend or SDK execution.",
+  "cases": [
+    {
+      "case": "01_same_slot_different_asset_selected_alpha",
+      "python_tomllib_parse": "PASS",
+      "per_file_id_uniqueness": "PASS",
+      "input_files": [
+        {
+          "filename": "Alpha.toml",
+          "panes": [
+            {
+              "id": "material-1",
+              "type": "lux.editor.material.v1",
+              "visible": true,
+              "payload": "v1:12345678-1234-1234-1234-123456789abc"
+            }
+          ],
+          "sha256": "e813c8a32f61b6d827d1d8440811615ad2dc71be40610c2e87346ec492ee896f"
+        },
+        {
+          "filename": "Beta.toml",
+          "panes": [
+            {
+              "id": "material-1",
+              "type": "lux.editor.material.v1",
+              "visible": true,
+              "payload": "v1:12345678-1234-1234-1234-123456789abd"
+            }
+          ],
+          "sha256": "84556079b14fe808b1da58c49a27b483e747f1050ee5409ae8c75b13e04d8822"
+        }
+      ],
+      "lux_cpp_executed": false
+    },
+    {
+      "case": "02_same_slot_different_asset_selected_beta",
+      "python_tomllib_parse": "PASS",
+      "per_file_id_uniqueness": "PASS",
+      "input_files": [
+        {
+          "filename": "Alpha.toml",
+          "panes": [
+            {
+              "id": "material-1",
+              "type": "lux.editor.material.v1",
+              "visible": true,
+              "payload": "v1:12345678-1234-1234-1234-123456789abc"
+            }
+          ],
+          "sha256": "e813c8a32f61b6d827d1d8440811615ad2dc71be40610c2e87346ec492ee896f"
+        },
+        {
+          "filename": "Beta.toml",
+          "panes": [
+            {
+              "id": "material-1",
+              "type": "lux.editor.material.v1",
+              "visible": true,
+              "payload": "v1:12345678-1234-1234-1234-123456789abd"
+            }
+          ],
+          "sha256": "84556079b14fe808b1da58c49a27b483e747f1050ee5409ae8c75b13e04d8822"
+        }
+      ],
+      "lux_cpp_executed": false
+    },
+    {
+      "case": "03_distinct_slots_only_selected_recovery",
+      "python_tomllib_parse": "PASS",
+      "per_file_id_uniqueness": "PASS",
+      "input_files": [
+        {
+          "filename": "Alpha.toml",
+          "panes": [
+            {
+              "id": "material-1",
+              "type": "lux.editor.material.v1",
+              "visible": true,
+              "payload": "v1:12345678-1234-1234-1234-123456789abc"
+            }
+          ],
+          "sha256": "e813c8a32f61b6d827d1d8440811615ad2dc71be40610c2e87346ec492ee896f"
+        },
+        {
+          "filename": "Beta.toml",
+          "panes": [
+            {
+              "id": "material-2",
+              "type": "lux.editor.material.v1",
+              "visible": true,
+              "payload": "v1:12345678-1234-1234-1234-123456789abd"
+            }
+          ],
+          "sha256": "d4e4eb599b166231bc5dd3a6db2b7c57d2ecf4e75bebfcad3b9aa1c506582244"
+        }
+      ],
+      "lux_cpp_executed": false
+    },
+    {
+      "case": "04_same_slot_same_asset_control",
+      "python_tomllib_parse": "PASS",
+      "per_file_id_uniqueness": "PASS",
+      "input_files": [
+        {
+          "filename": "Alpha.toml",
+          "panes": [
+            {
+              "id": "material-1",
+              "type": "lux.editor.material.v1",
+              "visible": true,
+              "payload": "v1:12345678-1234-1234-1234-123456789abc"
+            }
+          ],
+          "sha256": "e813c8a32f61b6d827d1d8440811615ad2dc71be40610c2e87346ec492ee896f"
+        },
+        {
+          "filename": "Beta.toml",
+          "panes": [
+            {
+              "id": "material-1",
+              "type": "lux.editor.material.v1",
+              "visible": true,
+              "payload": "v1:12345678-1234-1234-1234-123456789abc"
+            }
+          ],
+          "sha256": "e813c8a32f61b6d827d1d8440811615ad2dc71be40610c2e87346ec492ee896f"
+        }
+      ],
+      "lux_cpp_executed": false
+    },
+    {
+      "case": "05_no_selection",
+      "python_tomllib_parse": "PASS",
+      "per_file_id_uniqueness": "PASS",
+      "input_files": [
+        {
+          "filename": "Alpha.toml",
+          "panes": [
+            {
+              "id": "material-1",
+              "type": "lux.editor.material.v1",
+              "visible": true,
+              "payload": "v1:12345678-1234-1234-1234-123456789abc"
+            }
+          ],
+          "sha256": "e813c8a32f61b6d827d1d8440811615ad2dc71be40610c2e87346ec492ee896f"
+        },
+        {
+          "filename": "Beta.toml",
+          "panes": [
+            {
+              "id": "material-2",
+              "type": "lux.editor.material.v1",
+              "visible": true,
+              "payload": "v1:12345678-1234-1234-1234-123456789abd"
+            }
+          ],
+          "sha256": "d4e4eb599b166231bc5dd3a6db2b7c57d2ecf4e75bebfcad3b9aa1c506582244"
+        }
+      ],
+      "lux_cpp_executed": false
+    },
+    {
+      "case": "06_missing_selection",
+      "python_tomllib_parse": "PASS",
+      "per_file_id_uniqueness": "PASS",
+      "input_files": [
+        {
+          "filename": "Alpha.toml",
+          "panes": [
+            {
+              "id": "material-1",
+              "type": "lux.editor.material.v1",
+              "visible": true,
+              "payload": "v1:12345678-1234-1234-1234-123456789abc"
+            }
+          ],
+          "sha256": "e813c8a32f61b6d827d1d8440811615ad2dc71be40610c2e87346ec492ee896f"
+        },
+        {
+          "filename": "Beta.toml",
+          "panes": [
+            {
+              "id": "material-2",
+              "type": "lux.editor.material.v1",
+              "visible": true,
+              "payload": "v1:12345678-1234-1234-1234-123456789abd"
+            }
+          ],
+          "sha256": "d4e4eb599b166231bc5dd3a6db2b7c57d2ecf4e75bebfcad3b9aa1c506582244"
+        }
+      ],
+      "lux_cpp_executed": false
+    }
+  ]
+}

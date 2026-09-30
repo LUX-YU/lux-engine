@@ -1,0 +1,152 @@
+[
+  {
+    "path": "REVIEW_AND_INSTRUCTIONS.md",
+    "sha256": "7f9058befae22a0e6f42505755a70591258fedefa18c7c6a8f085122e74c74c6",
+    "bytes": 21945
+  },
+  {
+    "path": "evidence/fixture_sanity.json",
+    "sha256": "a6073d33a9d5e44e06fbc2a507fac24001540f10a84fec1b9eb15e5b19cc8162",
+    "bytes": 6002
+  },
+  {
+    "path": "evidence/fixture_validation_run.json",
+    "sha256": "a701e4eff70662d1e7d75b4d58ccf6a2dc3f747200f1d6dc28c66865efe875bc",
+    "bytes": 2707
+  },
+  {
+    "path": "evidence/review_scope.json",
+    "sha256": "37061ee2ffc6d400a97ba56353abde381a53f2ca4082c7f462c178673bc2cd71",
+    "bytes": 1284
+  },
+  {
+    "path": "fixtures/01_same_slot_different_asset_selected_alpha/.lux/editor/layouts/Alpha.toml",
+    "sha256": "e813c8a32f61b6d827d1d8440811615ad2dc71be40610c2e87346ec492ee896f",
+    "bytes": 206
+  },
+  {
+    "path": "fixtures/01_same_slot_different_asset_selected_alpha/.lux/editor/layouts/Beta.toml",
+    "sha256": "84556079b14fe808b1da58c49a27b483e747f1050ee5409ae8c75b13e04d8822",
+    "bytes": 206
+  },
+  {
+    "path": "fixtures/01_same_slot_different_asset_selected_alpha/.lux/editor/settings.toml",
+    "sha256": "1856a73d19f8b575411f576b8d825e21913af0c44f18378e7925831a23c3a1d1",
+    "bytes": 31
+  },
+  {
+    "path": "fixtures/01_same_slot_different_asset_selected_alpha/EXPECTATIONS.json",
+    "sha256": "b948febe76ad1eebe07bb94d577c961460f8367d938a10012f4ffc7562067910",
+    "bytes": 464
+  },
+  {
+    "path": "fixtures/02_same_slot_different_asset_selected_beta/.lux/editor/layouts/Alpha.toml",
+    "sha256": "e813c8a32f61b6d827d1d8440811615ad2dc71be40610c2e87346ec492ee896f",
+    "bytes": 206
+  },
+  {
+    "path": "fixtures/02_same_slot_different_asset_selected_beta/.lux/editor/layouts/Beta.toml",
+    "sha256": "84556079b14fe808b1da58c49a27b483e747f1050ee5409ae8c75b13e04d8822",
+    "bytes": 206
+  },
+  {
+    "path": "fixtures/02_same_slot_different_asset_selected_beta/.lux/editor/settings.toml",
+    "sha256": "d587800d9398113dcac23e0f8119fededdb99136a97308848f74aaa46c40b508",
+    "bytes": 30
+  },
+  {
+    "path": "fixtures/02_same_slot_different_asset_selected_beta/EXPECTATIONS.json",
+    "sha256": "8a6681304656cce6d260a794be48dfd70a6e3e082949ad14ffc210abb1845b71",
+    "bytes": 462
+  },
+  {
+    "path": "fixtures/03_distinct_slots_only_selected_recovery/.lux/editor/layouts/Alpha.toml",
+    "sha256": "e813c8a32f61b6d827d1d8440811615ad2dc71be40610c2e87346ec492ee896f",
+    "bytes": 206
+  },
+  {
+    "path": "fixtures/03_distinct_slots_only_selected_recovery/.lux/editor/layouts/Beta.toml",
+    "sha256": "d4e4eb599b166231bc5dd3a6db2b7c57d2ecf4e75bebfcad3b9aa1c506582244",
+    "bytes": 206
+  },
+  {
+    "path": "fixtures/03_distinct_slots_only_selected_recovery/.lux/editor/settings.toml",
+    "sha256": "1856a73d19f8b575411f576b8d825e21913af0c44f18378e7925831a23c3a1d1",
+    "bytes": 31
+  },
+  {
+    "path": "fixtures/03_distinct_slots_only_selected_recovery/EXPECTATIONS.json",
+    "sha256": "983ebadeb3e50c18f29b497c3d9da8df9ffba8796bfce15e54a3daa576909ec5",
+    "bytes": 461
+  },
+  {
+    "path": "fixtures/04_same_slot_same_asset_control/.lux/editor/layouts/Alpha.toml",
+    "sha256": "e813c8a32f61b6d827d1d8440811615ad2dc71be40610c2e87346ec492ee896f",
+    "bytes": 206
+  },
+  {
+    "path": "fixtures/04_same_slot_same_asset_control/.lux/editor/layouts/Beta.toml",
+    "sha256": "e813c8a32f61b6d827d1d8440811615ad2dc71be40610c2e87346ec492ee896f",
+    "bytes": 206
+  },
+  {
+    "path": "fixtures/04_same_slot_same_asset_control/.lux/editor/settings.toml",
+    "sha256": "1856a73d19f8b575411f576b8d825e21913af0c44f18378e7925831a23c3a1d1",
+    "bytes": 31
+  },
+  {
+    "path": "fixtures/04_same_slot_same_asset_control/EXPECTATIONS.json",
+    "sha256": "4b9fe03ec6cd1eed4b991c31c90eff720133d80fb4e5d61c7be7783f4a9b64cf",
+    "bytes": 452
+  },
+  {
+    "path": "fixtures/05_no_selection/.lux/editor/layouts/Alpha.toml",
+    "sha256": "e813c8a32f61b6d827d1d8440811615ad2dc71be40610c2e87346ec492ee896f",
+    "bytes": 206
+  },
+  {
+    "path": "fixtures/05_no_selection/.lux/editor/layouts/Beta.toml",
+    "sha256": "d4e4eb599b166231bc5dd3a6db2b7c57d2ecf4e75bebfcad3b9aa1c506582244",
+    "bytes": 206
+  },
+  {
+    "path": "fixtures/05_no_selection/.lux/editor/settings.toml",
+    "sha256": "6e3653faa7049408eb999b1ad4a607a3a3960acb62a2388fd7d9f1b8c672bc65",
+    "bytes": 26
+  },
+  {
+    "path": "fixtures/05_no_selection/EXPECTATIONS.json",
+    "sha256": "d58357575bc338f155590cd323550e9acc017947555580c2f5404b216f8b9505",
+    "bytes": 434
+  },
+  {
+    "path": "fixtures/06_missing_selection/.lux/editor/layouts/Alpha.toml",
+    "sha256": "e813c8a32f61b6d827d1d8440811615ad2dc71be40610c2e87346ec492ee896f",
+    "bytes": 206
+  },
+  {
+    "path": "fixtures/06_missing_selection/.lux/editor/layouts/Beta.toml",
+    "sha256": "d4e4eb599b166231bc5dd3a6db2b7c57d2ecf4e75bebfcad3b9aa1c506582244",
+    "bytes": 206
+  },
+  {
+    "path": "fixtures/06_missing_selection/.lux/editor/settings.toml",
+    "sha256": "ab1d9afd2e389cb4608176ac480d29eddedb87702807234f0642f74b5870ba92",
+    "bytes": 33
+  },
+  {
+    "path": "fixtures/06_missing_selection/EXPECTATIONS.json",
+    "sha256": "d09e7d6369f5ccc5d41b8397eac3e42a88e8e51b7e7a278bfb1f0bbd215cfefe",
+    "bytes": 453
+  },
+  {
+    "path": "scripts/validate_fixtures.py",
+    "sha256": "1787af0c468670289f9615fa4c79ac00cb81a38dca8569a2ac435885cd4b2833",
+    "bytes": 1695
+  },
+  {
+    "path": "tests/multi_layout_scope.cpp.txt",
+    "sha256": "b8f07cc59e09c87b2ebada5ec45f9cb8fbdb516ee1f890e753e8832bca611dce",
+    "bytes": 4221
+  }
+]

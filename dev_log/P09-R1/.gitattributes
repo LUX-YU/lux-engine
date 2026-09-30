@@ -1,0 +1,8 @@
+* -text
+logs/** -diff
+evidence/** -diff
+development/** -diff
+spec/** -diff
+before/*.log -diff
+before/files/** -diff
+before/build.ninja -diff

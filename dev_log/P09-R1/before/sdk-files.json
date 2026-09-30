@@ -1,0 +1,17 @@
+[
+  {
+    "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\lib\\workspace_store.lib",
+    "sha256": "2d0edf3a45606a35fde7c03b5c69e371162b9b74f85aa975a8ecde84226b534d",
+    "bytes": 9597278
+  },
+  {
+    "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\workspace\\WorkspaceStore.hpp",
+    "sha256": "4f1cf3f65c1d858844823dc10e6fac444364c677c7fc41f714d27e54f61e350a",
+    "bytes": 4584
+  },
+  {
+    "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p09-r1-before-consumer\\workspace_consumer.exe",
+    "sha256": "f03c3fa0a81c579a3244b9261b9d4538e0f9d99eb3e7d19bfa594d34f31ff2fb",
+    "bytes": 1609728
+  }
+]

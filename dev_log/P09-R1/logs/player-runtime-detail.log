@@ -1,0 +1,4 @@
+MEASURE SceneRuntime paused_turns=10000 elapsed_us=1293.6 business_tasks=0
+PASS X06-04 callback lease release is deferred, in-flight drain, outer guard and one destruction
+PASS R06-R1 result receipt identity/thread checks and copied failure code lifetime after reclamation
+PASS SceneRuntime: identity, sealed construction, multi-scene clocks, pause, failure, RAII timer

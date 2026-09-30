@@ -1,0 +1,133 @@
+[
+  {
+    "name": "configure",
+    "argv": [
+      "cmake",
+      "--fresh",
+      "-S",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p09-r1-before-source",
+      "-B",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p09-r1-before-consumer",
+      "-G",
+      "Ninja",
+      "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+      "-DCMAKE_PREFIX_PATH=E:\\SyncForder\\CodeRepos/install/RelWithDebInfo",
+      "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+      "-DVCPKG_TARGET_TRIPLET=x64-windows"
+    ],
+    "exit_code": 0,
+    "sha256": "c1b4f9d2b639a306ac8ac41a26a2c4e0efe90a41698c1ff0c169b612c857b559",
+    "archive_log": "dev_log/P09-R1/before/configure.log",
+    "implementation_sha": "38c88aeaf14ca27687d1baf844b4cc2d28cfcfe1"
+  },
+  {
+    "name": "build",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p09-r1-before-consumer",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "exit_code": 0,
+    "sha256": "0b45267a7460393d67388f9144102b6d7a628c4397b73dbe152ef07e70432d28",
+    "archive_log": "dev_log/P09-R1/before/build.log",
+    "implementation_sha": "38c88aeaf14ca27687d1baf844b4cc2d28cfcfe1"
+  },
+  {
+    "name": "no-work",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p09-r1-before-consumer",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "exit_code": 0,
+    "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6",
+    "archive_log": "dev_log/P09-R1/before/no-work.log",
+    "implementation_sha": "38c88aeaf14ca27687d1baf844b4cc2d28cfcfe1"
+  },
+  {
+    "name": "r1-alpha",
+    "argv": [
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p09-r1-before-consumer\\workspace_consumer.exe",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\P09-R1-before\\files",
+      "r1-alpha"
+    ],
+    "exit_code": 1,
+    "sha256": "9a2cb4158a6f7fcaf7bb2c9d26012cf57db4d1d4868d535fc161ff0a3e1ec737",
+    "archive_log": "dev_log/P09-R1/before/r1-alpha.log",
+    "implementation_sha": "38c88aeaf14ca27687d1baf844b4cc2d28cfcfe1"
+  },
+  {
+    "name": "r1-beta",
+    "argv": [
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p09-r1-before-consumer\\workspace_consumer.exe",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\P09-R1-before\\files",
+      "r1-beta"
+    ],
+    "exit_code": 1,
+    "sha256": "3675ba4bc8a4fe0cb57b70bf437fc14e99f25d6fb131f9c866984c991855ee88",
+    "archive_log": "dev_log/P09-R1/before/r1-beta.log",
+    "implementation_sha": "38c88aeaf14ca27687d1baf844b4cc2d28cfcfe1"
+  },
+  {
+    "name": "r1-extras",
+    "argv": [
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p09-r1-before-consumer\\workspace_consumer.exe",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\P09-R1-before\\files",
+      "r1-extras"
+    ],
+    "exit_code": 1,
+    "sha256": "6452d1afc97c00796ba0f2ae4fe1175e1c122771980e8adde63d9dc2ebd77217",
+    "archive_log": "dev_log/P09-R1/before/r1-extras.log",
+    "implementation_sha": "38c88aeaf14ca27687d1baf844b4cc2d28cfcfe1"
+  },
+  {
+    "name": "r1-selection",
+    "argv": [
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p09-r1-before-consumer\\workspace_consumer.exe",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\P09-R1-before\\files",
+      "r1-selection"
+    ],
+    "exit_code": 1,
+    "sha256": "4fcc0870625cbb2179c6ebbfcbd922cf7ec65b3a31a6e7dd02ff089e25c5609d",
+    "archive_log": "dev_log/P09-R1/before/r1-selection.log",
+    "implementation_sha": "38c88aeaf14ca27687d1baf844b4cc2d28cfcfe1"
+  },
+  {
+    "name": "r1-resume",
+    "argv": [
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p09-r1-before-consumer\\workspace_consumer.exe",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\P09-R1-before\\files",
+      "r1-resume"
+    ],
+    "exit_code": 1,
+    "sha256": "3675ba4bc8a4fe0cb57b70bf437fc14e99f25d6fb131f9c866984c991855ee88",
+    "archive_log": "dev_log/P09-R1/before/r1-resume.log",
+    "implementation_sha": "38c88aeaf14ca27687d1baf844b4cc2d28cfcfe1"
+  },
+  {
+    "name": "r1-control",
+    "argv": [
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p09-r1-before-consumer\\workspace_consumer.exe",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\P09-R1-before\\files",
+      "r1-control"
+    ],
+    "exit_code": 0,
+    "sha256": "3481be7b23b049bcde637b70e5ff95f8714068eb240cde50c3f6f9e2faba69a8",
+    "archive_log": "dev_log/P09-R1/before/r1-control.log",
+    "implementation_sha": "38c88aeaf14ca27687d1baf844b4cc2d28cfcfe1"
+  }
+]

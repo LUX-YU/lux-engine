@@ -33,6 +33,8 @@ namespace lux::editor::persistence
         WriteCoordinator& operator=(const WriteCoordinator&) = delete;
         [[nodiscard]] PersistenceResult<WriteTicket> reserve(WriteTarget target, WriteOrigin origin);
         [[nodiscard]] PersistenceResult<void> provideEncoded(WriteTicket ticket, EncodedArtifact artifact);
+        // Removal is a publication in the same bounded FIFO lane, with no encoded payload.
+        [[nodiscard]] PersistenceResult<void> provideRemoval(WriteTicket ticket);
         [[nodiscard]] PersistenceResult<void> cancelBeforePublish(WriteTicket ticket, PersistenceFailure failure);
         [[nodiscard]] PersistenceResult<std::optional<PublicationQuery>> takeReady();
         [[nodiscard]] PersistenceResult<void> complete(WriteTicket ticket, VPublicationOutcome outcome);

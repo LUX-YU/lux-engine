@@ -751,21 +751,20 @@
       "path": "editor/workspace/layout",
       "first_phase": "P09",
       "dependencies": [
-        "view_api"
+        "editor_contracts"
       ],
       "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
-      "actual_cmake_target": null
+      "actual_cmake_target": "layout_model"
     },
     {
       "name": "recovery_model",
       "path": "editor/workspace/recovery",
       "first_phase": "P09",
       "dependencies": [
-        "view_api",
-        "edit_sessions"
+        "editor_contracts"
       ],
       "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
-      "actual_cmake_target": null
+      "actual_cmake_target": "layout_model"
     },
     {
       "name": "workspace_store",
@@ -773,11 +772,10 @@
       "first_phase": "P09",
       "dependencies": [
         "layout_model",
-        "recovery_model",
         "editor_persistence"
       ],
       "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
-      "actual_cmake_target": null
+      "actual_cmake_target": "workspace_store"
     },
     {
       "name": "desktop_shell",
@@ -1002,19 +1000,28 @@
   },
   "foundation_targets": {
     "editor_contracts": {
-      "external_dependencies": [],
-      "external_closure": [],
+      "external_dependencies": [
+        "lux::cxx::core",
+        "lux::cxx::compile_time"
+      ],
+      "external_closure": [
+        "lux::cxx::core",
+        "lux::cxx::compile_time"
+      ],
       "public_prefixes": [
         "lux/engine/editor/contracts/"
       ],
-      "public_headers": []
+      "public_headers": [
+        "lux/engine/editor/views/ViewInfo.hpp"
+      ]
     },
     "edit_history": {
       "external_dependencies": [
         "lux::cxx::compile_time"
       ],
       "external_closure": [
-        "lux::cxx::compile_time"
+        "lux::cxx::compile_time",
+        "lux::cxx::core"
       ],
       "public_prefixes": [],
       "public_headers": [
@@ -1033,7 +1040,8 @@
         "lux::cxx::compile_time",
         "lux::cxx::container",
         "identity",
-        "stduuid"
+        "stduuid",
+        "lux::cxx::core"
       ],
       "public_prefixes": [
         "lux/engine/editor/sessions/"
@@ -1067,6 +1075,13 @@
       "imported": true,
       "include_prefixes": [],
       "include_headers": []
+    },
+    "lux::cxx::core": {
+      "imported": true,
+      "include_prefixes": [],
+      "include_headers": [
+        "lux/cxx/core/StableNameId.hpp"
+      ]
     }
   },
   "foundation_standard_headers": [
@@ -1581,6 +1596,9 @@
       },
       "stduuid": {
         "imported": true
+      },
+      "lux::cxx::core": {
+        "imported": true
       }
     },
     "headers": [
@@ -1681,6 +1699,9 @@
         "path": "engine/process/execution"
       },
       "stduuid": {
+        "imported": true
+      },
+      "lux::cxx::core": {
         "imported": true
       }
     },
@@ -4712,5 +4733,155 @@
     "test_headers": {
       "editor/views/api/test/lifecycle.cpp": []
     }
+  },
+  "layout_model": {
+    "direct": [
+      "editor_contracts"
+    ],
+    "closure": {
+      "editor_contracts": {
+        "path": "editor/contracts"
+      },
+      "lux::cxx::core": {
+        "imported": true
+      },
+      "lux::cxx::compile_time": {
+        "imported": true
+      }
+    },
+    "headers": [
+      "toml++/toml.hpp",
+      "algorithm",
+      "cmath",
+      "map",
+      "set",
+      "tuple",
+      "sstream",
+      "limits",
+      "span",
+      "vector",
+      "optional",
+      "cstdint",
+      "string",
+      "utility",
+      "lux/engine/editor/views/ViewInfo.hpp",
+      "lux/engine/editor/workspace/WorkspaceValues.hpp",
+      "lux/engine/editor/workspace/DockLayout.hpp",
+      "lux/engine/editor/workspace/LayoutPlan.hpp",
+      "lux/engine/editor/workspace/LayoutCatalog.hpp",
+      "lux/engine/editor/workspace/RecoveryManifest.hpp"
+    ],
+    "prefixes": [],
+    "test_headers": {}
+  },
+  "recovery_model": {
+    "direct": [
+      "editor_contracts"
+    ],
+    "closure": {
+      "editor_contracts": {
+        "path": "editor/contracts"
+      },
+      "lux::cxx::core": {
+        "imported": true
+      },
+      "lux::cxx::compile_time": {
+        "imported": true
+      }
+    },
+    "headers": [
+      "toml++/toml.hpp",
+      "algorithm",
+      "cmath",
+      "map",
+      "set",
+      "tuple",
+      "sstream",
+      "limits",
+      "span",
+      "vector",
+      "optional",
+      "cstdint",
+      "string",
+      "utility",
+      "lux/engine/editor/views/ViewInfo.hpp",
+      "lux/engine/editor/workspace/WorkspaceValues.hpp",
+      "lux/engine/editor/workspace/DockLayout.hpp",
+      "lux/engine/editor/workspace/LayoutPlan.hpp",
+      "lux/engine/editor/workspace/LayoutCatalog.hpp",
+      "lux/engine/editor/workspace/RecoveryManifest.hpp"
+    ],
+    "prefixes": [],
+    "test_headers": {}
+  },
+  "workspace_store": {
+    "direct": [
+      "layout_model",
+      "editor_persistence",
+      "editor_file_publication"
+    ],
+    "closure": {
+      "edit_history": {
+        "path": "editor/editing/history"
+      },
+      "edit_sessions": {
+        "path": "editor/editing/sessions"
+      },
+      "editor_contracts": {
+        "path": "editor/contracts"
+      },
+      "identity": {
+        "path": "modules/resource/identity"
+      },
+      "lux::cxx::compile_time": {
+        "imported": true
+      },
+      "lux::cxx::container": {
+        "imported": true
+      },
+      "stduuid": {
+        "imported": true
+      },
+      "lux::cxx::core": {
+        "imported": true
+      },
+      "layout_model": {
+        "path": "editor/workspace/layout"
+      },
+      "editor_persistence": {
+        "path": "editor/persistence"
+      },
+      "editor_file_publication": {
+        "path": "editor/storage"
+      },
+      "lux::cxx::algorithm": {
+        "imported": true
+      }
+    },
+    "headers": [
+      "toml++/toml.hpp",
+      "algorithm",
+      "cmath",
+      "map",
+      "set",
+      "tuple",
+      "sstream",
+      "limits",
+      "span",
+      "vector",
+      "optional",
+      "cstdint",
+      "string",
+      "utility",
+      "lux/engine/editor/views/ViewInfo.hpp",
+      "filesystem",
+      "charconv",
+      "lux/engine/editor/storage/FilePublication.hpp",
+      "lux/engine/editor/persistence/WriteCoordinator.hpp"
+    ],
+    "prefixes": [
+      "lux/engine/editor/workspace/"
+    ],
+    "test_headers": {}
   }
 }

@@ -30,12 +30,18 @@ namespace lux::editor::persistence
         std::string token;
     };
     using VPublicationOutcome = std::variant<CommitReceipt, NotPublished, PublicationUnknown>;
+    enum class EPublicationAction : std::uint8_t
+    {
+        WRITE,
+        REMOVE
+    };
     struct PublicationQuery final
     {
         WriteTicket ticket;
         WriteTarget target;
         std::shared_ptr<const EncodedArtifact> artifact;
         std::string token;
+        EPublicationAction action{EPublicationAction::WRITE};
     };
     struct Reconciliation final
     {

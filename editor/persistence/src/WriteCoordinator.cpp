@@ -82,12 +82,14 @@ namespace lux::editor::persistence
                 for (auto& pending : records)
                 {
                     const bool waiting = pending.stage == EWriteStage::RESERVED || pending.stage == EWriteStage::READY;
-                    const bool same_source = record.origin.session.valid() && pending.origin == record.origin &&
-                                             pending.work.target.key == target->key;
+                    const bool same_source = record.origin.session.valid() && pending.origin == record.origin;
+                    const bool follows_removal = pending.work.action == EPublicationAction::REMOVE;
+                    const bool same_target = pending.work.target.key == target->key;
                     const bool matches_base =
                         pending.work.target.expected_version == record.work.target.expected_version ||
                         pending.work.target.expected_version == target->chain_base;
-                    if (waiting && same_source && matches_base && pending.ticket.value > record.ticket.value)
+                    if (waiting && same_target && (same_source || follows_removal) && matches_base &&
+                        pending.ticket.value > record.ticket.value)
                         pending.work.target.expected_version = committed->version;
                 }
             }
@@ -132,6 +134,19 @@ namespace lux::editor::persistence
             return failed(EPersistenceError::CAPACITY);
         impl_->bytes += artifact.bytes.size();
         found->work.artifact = std::make_shared<const EncodedArtifact>(std::move(artifact));
+        found->stage = EWriteStage::READY;
+        return {};
+    }
+    PersistenceResult<void> WriteCoordinator::provideRemoval(WriteTicket ticket)
+    {
+        if (!impl_->onOwner())
+            return failed(EPersistenceError::WRONG_THREAD);
+        const auto found = impl_->find(ticket);
+        if (found == impl_->records.end())
+            return failed(EPersistenceError::UNKNOWN_ID);
+        if (found->stage != EWriteStage::RESERVED)
+            return failed(EPersistenceError::BUSY);
+        found->work.action = EPublicationAction::REMOVE;
         found->stage = EWriteStage::READY;
         return {};
     }

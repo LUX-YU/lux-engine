@@ -1,9 +1,14 @@
 #pragma once
-#include <lux/engine/ui/Ids.hpp>
+#include <lux/cxx/core/StableNameId.hpp>
 #include <lux/cxx/compile_time/expected.hpp>
 #include <cstdint>
 #include <limits>
 #include <string>
+
+namespace lux::ui
+{
+    struct PaneTypeIdTag;
+}
 
 namespace lux::editor::views
 {
@@ -18,7 +23,7 @@ namespace lux::editor::views
         }
         friend bool operator==(ViewId, ViewId) = default;
     };
-    using ViewTypeId = ui::PaneTypeId;
+    using ViewTypeId = lux::cxx::StableNameId<ui::PaneTypeIdTag>;
     struct ViewRestoreKeyTag final
     {};
     using ViewRestoreKey = lux::cxx::StableNameId<ViewRestoreKeyTag>;

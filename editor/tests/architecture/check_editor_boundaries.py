@@ -213,6 +213,10 @@ def inspect(repo, records, rules, stage, compile_db=None):
                 if re.search(r"\bRoot\s*&", source) and re.search(r"(?:make_unique<[^>]*(?:Pane|Element)|(?:Pane|Element)\s*[({])", source):
                     report("NEW_ROOTED_FACTORY", path, "P08 factory calls the expiring rooted constructor")
 
+    if stage >= "P09":
+        for target in ["layout_model", "recovery_model", "workspace_store"]:
+            check_model(repo, targets, rules, sources, report, target)
+
     scopes = tuple(rules["new_scopes"])
     forbidden_headers = set(rules["new_scope_forbidden_include"])
     for path, source in sources.items():

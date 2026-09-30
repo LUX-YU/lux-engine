@@ -43,7 +43,8 @@ namespace lux::editor::io
     }
     VPublicationOutcome ProjectArtifactStore::publish(const PublicationQuery& work, std::stop_token stop)
     {
-        if (!work.artifact || stop.stop_requested())
+        const bool missing_payload = work.action == EPublicationAction::WRITE && !work.artifact;
+        if (missing_payload || stop.stop_requested())
             return NotPublished{
                 {stop.stop_requested() ? EPersistenceError::CANCELLED : EPersistenceError::INVALID_ARGUMENT}
             };
@@ -55,6 +56,28 @@ namespace lux::editor::io
         if (is_conflict)
             return NotPublished{{EPersistenceError::CONFLICT, work.target.key.value}};
         const auto path = std::filesystem::u8path(work.target.key.value);
+        if (work.action == EPublicationAction::REMOVE)
+        {
+            // This synchronous publisher is the sole remaining writer of this taken lane item.
+            // A confirmed deletion is a disk fact even when directory durability cannot be confirmed.
+            auto current = storage::publicationFileDigest(path);
+            if (!current)
+                return NotPublished{failure(current.error())};
+            if (*current != work.target.expected_version)
+                return NotPublished{{EPersistenceError::CONFLICT, work.target.key.value}};
+            std::error_code error;
+            std::filesystem::remove(path, error);
+            if (error)
+                return NotPublished{{EPersistenceError::IO, path.generic_string(), std::uint64_t(error.value())}};
+            CommitReceipt receipt{"missing", EDurability::UNCONFIRMED};
+            if (confirm_)
+            {
+                auto confirmed = confirm(confirm_, path, context_);
+                if (!confirmed)
+                    receipt.warning = confirmed.error();
+            }
+            return receipt;
+        }
         auto staging_directory = path;
         staging_directory += ".lux-save-" + std::to_string(work.ticket.value) + ".tmp";
         std::error_code error;
@@ -110,7 +133,10 @@ namespace lux::editor::io
         auto current = resolve(work.target.key.value);
         if (!current)
             return {true, PublicationUnknown{current.error(), work.token}};
-        if (work.artifact && current->expected_version == storage::publicationDigest(work.artifact->bytes))
+        const bool removed = work.action == EPublicationAction::REMOVE && current->expected_version == "missing";
+        const bool written =
+            work.artifact && current->expected_version == storage::publicationDigest(work.artifact->bytes);
+        if (removed || written)
             return {true, CommitReceipt{current->expected_version, EDurability::UNCONFIRMED}};
         if (current->expected_version == work.target.expected_version)
             return {true, NotPublished{{EPersistenceError::IO, "Verified unchanged target after writer retirement"}}};

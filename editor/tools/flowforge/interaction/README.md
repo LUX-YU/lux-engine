@@ -10,6 +10,10 @@ SessionStore 必须活得更久；Scene 的 RunInspectAccess 是值形式的非�
 - `commit` 严格验证起始戳，并只调用一次原 Session::apply；冲突保留手势，交给取消或同步处理。
 - `cancel` 在同一读取 gate 内清理覆盖；忙时不强行解除 gate。必须先在安全点结束交互，再析构 owner。
 - `synchronize` 在作者删除、重载、关闭和运行停止后清理失效身份；不自动重定基线。
+- `cancel/synchronize` 只有收到明确的 `STALE_SESSION` 才能走旧身份清理。Store 正在回收其他会话时的
+  `BUSY` 及其他访问错误原样返回，保留选择、手势、起始戳和输入所有权；不会把临时拒绝解释为目标关闭。
+- 活目标的取消仍在原 `withRead` gate 内执行：先移出批次并解除活动手势，再在该作用域销毁输入。
+  真正旧身份不借用新代际会话；没有手势的显式取消保持幂等。
 
 节点布局仍通过原领域编辑保存；相机、hover、画布 pan/zoom 不进入共享选择组。
 旧产品即时 UI guard/输入适配只留原消费者至 P12，新 target 不链接旧 Context、Editor、UI 或转换桥。

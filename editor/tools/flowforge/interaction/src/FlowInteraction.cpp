@@ -73,14 +73,19 @@ namespace lux::editor::flowforge
         auto owner = access_.read(key_);
         if (!owner)
         {
-            gesture_.reset(); // A closed/reused Store slot cannot be edited by an input destructor.
+            if (owner.error() != sessions::ESessionError::STALE_SESSION)
+                return lux::cxx::unexpected(owner.error());
+            // Only a confirmed stale identity can release input without borrowing a live Session gate.
+            auto discarded = std::move(*gesture_);
+            gesture_.reset();
             return {};
         }
         auto read = owner->get().read();
         if (!read)
             return lux::cxx::unexpected(read.error());
         return read->withRead([&]() -> FlowEditResult<void> {
-            gesture_.reset();
+            auto discarded = std::move(*gesture_);
+            gesture_.reset(); // Input destruction follows below, while this read admission is still held.
             return {};
         });
     }
@@ -107,6 +112,8 @@ namespace lux::editor::flowforge
     FlowEditResult<void> FlowInteraction::synchronize()
     {
         auto info = access_.describe(key_);
+        if (!info && info.error() != sessions::ESessionError::STALE_SESSION)
+            return lux::cxx::unexpected(info.error());
         if (!info || (gesture_ && info->current != gesture_->expected))
         {
             auto cancelled = cancel();

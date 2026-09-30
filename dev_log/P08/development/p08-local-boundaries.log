@@ -1,0 +1,12 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine
+    Start 114: editor.interaction_view_boundaries
+1/1 Test #114: editor.interaction_view_boundaries ...   Passed   35.75 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Label Time Summary:
+P08       =  35.75 sec*proc (1 test)
+editor    =  35.75 sec*proc (1 test)
+native    =  35.75 sec*proc (1 test)
+
+Total Test time (real) =  35.80 sec

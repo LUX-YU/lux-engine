@@ -1,0 +1,11 @@
+Warning: you are leaving 1 commit behind, not connected to
+any of your branches:
+
+  834a210db Implement P08 domain interactions and detached UI attachment protocol
+
+If you want to keep it by creating a new branch, this may be a good time
+to do so with:
+
+ git branch <new-branch-name> 834a210db
+
+HEAD is now at 6a08a75a1 Implement P08 domain interactions and detached UI attachment protocol

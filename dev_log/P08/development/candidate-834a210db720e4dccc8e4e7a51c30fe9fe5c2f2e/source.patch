@@ -1,0 +1,4260 @@
+diff --git a/cmake/installed-consumers/interaction-views/CMakeLists.txt b/cmake/installed-consumers/interaction-views/CMakeLists.txt
+new file mode 100644
+index 000000000..5f1feed33
+--- /dev/null
++++ b/cmake/installed-consumers/interaction-views/CMakeLists.txt
+@@ -0,0 +1,27 @@
++cmake_minimum_required(VERSION 3.22)
++project(interaction_views_consumer LANGUAGES CXX)
++set(CMAKE_CXX_STANDARD 20)
++set(CMAKE_CXX_STANDARD_REQUIRED ON)
++find_package(lux-engine-editor-scene-interaction REQUIRED COMPONENTS scene_interaction)
++find_package(lux-engine-editor-material-interaction REQUIRED COMPONENTS material_interaction)
++find_package(lux-engine-editor-flowforge-interaction REQUIRED COMPONENTS flowforge_interaction)
++find_package(lux-engine-editor-view-api REQUIRED COMPONENTS view_api)
++if(TARGET lux::engine::editor::editor_ui OR TARGET lux::engine::editor::editor_context
++    OR TARGET lux::engine::editor::editor_scene OR TARGET lux::engine::editor::editor_material)
++    message(FATAL_ERROR "P08 consumer imports a legacy product")
++endif()
++add_executable(interaction_consumer interactions.cpp)
++target_link_libraries(interaction_consumer PRIVATE lux::engine::editor::scene_interaction
++    lux::engine::editor::material_interaction lux::engine::editor::flowforge_interaction)
++add_executable(detached_views_consumer lifecycle.cpp)
++target_link_libraries(detached_views_consumer PRIVATE lux::engine::editor::view_api)
++foreach(target interaction_consumer detached_views_consumer)
++    if(MSVC)
++        target_compile_options(${target} PRIVATE /UNDEBUG /utf-8)
++    else()
++        target_compile_options(${target} PRIVATE -UNDEBUG)
++    endif()
++endforeach()
++enable_testing()
++add_test(NAME installed.interactions COMMAND interaction_consumer)
++add_test(NAME installed.detached_views COMMAND detached_views_consumer)
+diff --git a/cmake/installed-consumers/interaction-views/interactions.cpp b/cmake/installed-consumers/interaction-views/interactions.cpp
+new file mode 100644
+index 000000000..9a7c14bab
+--- /dev/null
++++ b/cmake/installed-consumers/interaction-views/interactions.cpp
+@@ -0,0 +1,126 @@
++#include <lux/engine/editor/scene/SceneInteraction.hpp>
++#include <lux/engine/editor/material/MaterialInteraction.hpp>
++#include <lux/engine/editor/flowforge/FlowInteraction.hpp>
++#include <lux/engine/editor/scene/SceneSessionAccess.hpp>
++#include <lux/engine/editor/material/MaterialSessionAccess.hpp>
++#include <lux/engine/editor/flowforge/FlowSessionAccess.hpp>
++#include <lux/engine/material/graph/Nodes.hpp>
++#include <lux/engine/flowforge/graph/ControlNode.hpp>
++#include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
++#include <cassert>
++#include <cstdio>
++
++int main()
++{
++    using namespace lux;
++    using namespace lux::editor;
++    using contracts::CodeLease;
++    sessions::SessionStore store{3};
++    const asset::AssetId root{*uuids::uuid::from_string("12345678-1234-1234-1234-123456789abc")};
++    auto scene_reservation =
++        store.reserve<lux::editor::scene::SceneSession>({"lux.editor.scene"}, CodeLease::builtin());
++    auto material_reservation =
++        store.reserve<lux::editor::material::MaterialSession>({"lux.editor.material"}, CodeLease::builtin());
++    auto flow_reservation =
++        store.reserve<lux::editor::flowforge::FlowSession>({"lux.editor.flowforge"}, CodeLease::builtin());
++    assert(scene_reservation && material_reservation && flow_reservation);
++    auto schemas = simulation::ecs::ComponentSchemaSet::build({});
++    auto rules = std::move(simulation::SimulationDescriptionBuilder{}).build();
++    auto scene_description = std::move(lux::scene::SceneDescriptionBuilder{}).buildResolved();
++    assert(schemas && rules && scene_description);
++    auto package = lux::scene::createScenePackage(
++        root,
++        "real scene",
++        {},
++        std::make_shared<const simulation::SimulationDescription>(std::move(*rules)),
++        *scene_description
++    );
++    assert(package);
++    auto source = lux::editor::scene::SceneSource::create(*package, *schemas);
++    assert(source);
++    auto scene_session = lux::editor::scene::SceneSession::create(scene_reservation->id(), {}, std::move(*source));
++    assert(scene_session);
++    lux::material::MaterialSource material_source{root, "real material", {}};
++    const auto constant = material_source.graph.addNode(std::make_unique<lux::material::ConstantNode>());
++    auto material_session =
++        lux::editor::material::MaterialSession::create(material_reservation->id(), {}, std::move(material_source));
++    assert(material_session);
++    lux::editor::flowforge::FlowAuthoringSource flow_source{root, "real flow", {}};
++    (void)flow_source.graph.addNodes(std::make_unique<lux::flowforge::StartNode>());
++    auto flow_session = lux::editor::flowforge::FlowSession::create(flow_reservation->id(), {}, std::move(flow_source));
++    assert(flow_session);
++    auto* scene_owner = scene_session->get();
++    auto* material_owner = material_session->get();
++    auto* flow_owner = flow_session->get();
++    assert(store.prepare(*scene_reservation, *scene_session));
++    assert(store.prepare(*material_reservation, *material_session));
++    assert(store.prepare(*flow_reservation, *flow_session));
++    const auto scene_id = store.publish(*scene_reservation);
++    const auto material_id = store.publish(*material_reservation);
++    const auto flow_id = store.publish(*flow_reservation);
++    assert(scene_id && material_id && flow_id && store.size() == 3);
++    auto scene_key = store.key<lux::editor::scene::SceneSession>(*scene_id);
++    auto material_key = store.key<lux::editor::material::MaterialSession>(*material_id);
++    auto flow_key = store.key<lux::editor::flowforge::FlowSession>(*flow_id);
++    assert(scene_key && material_key && flow_key);
++    assert(store.access<lux::editor::scene::SceneSession>().read(*scene_key));
++    assert(store.access<lux::editor::material::MaterialSession>().edit(*material_key));
++    assert(store.access<lux::editor::flowforge::FlowSession>().edit(*flow_key));
++    assert(
++        !store.key<lux::editor::scene::SceneSession>(*material_id) &&
++        !store.key<lux::editor::material::MaterialSession>(*flow_id)
++    );
++    assert(!store.key<lux::editor::flowforge::FlowSession>(*scene_id));
++    lux::editor::scene::SceneInteractionGroup scene_gesture(
++        store.access<lux::editor::scene::SceneSession>(),
++        *scene_key,
++        {1}
++    );
++    lux::editor::material::MaterialInteraction material_gesture(
++        store.access<lux::editor::material::MaterialSession>(),
++        *material_key
++    );
++    lux::editor::flowforge::FlowInteraction flow_gesture(
++        store.access<lux::editor::flowforge::FlowSession>(),
++        *flow_key
++    );
++    const auto scene_before = scene_owner->describe();
++    const auto material_before = material_owner->describe();
++    const auto flow_before = flow_owner->describe();
++    assert(scene_gesture.begin("new object") && material_gesture.begin("constant") && flow_gesture.begin("rename"));
++    std::vector<lux::editor::scene::VSceneEdit> scene_preview;
++    const world::WorldObjectId object{*uuids::uuid::from_string("12345678-1234-1234-1234-123456789abd")};
++    scene_preview.push_back(lux::editor::scene::SceneCreateObject{{object, {0}, {}}});
++    std::vector<lux::editor::material::VMaterialEdit> material_preview;
++    material_preview.push_back(lux::editor::material::MaterialSetConstant{constant, {1, 2, 3, 4}});
++    std::vector<lux::editor::flowforge::VFlowEdit> flow_preview;
++    flow_preview.push_back(lux::editor::flowforge::FlowRename{"preview flow"});
++    assert(
++        scene_gesture.preview(scene_preview) && material_gesture.preview(material_preview) &&
++        flow_gesture.preview(flow_preview)
++    );
++    assert(
++        scene_owner->describe().current == scene_before.current && scene_owner->describe().dirty == scene_before.dirty
++    );
++    assert(
++        material_owner->describe().current == material_before.current &&
++        material_owner->describe().dirty == material_before.dirty
++    );
++    assert(flow_owner->describe().current == flow_before.current && flow_owner->describe().dirty == flow_before.dirty);
++    assert(scene_owner->capture()->objects().empty());
++    assert(flow_owner->capture()->source().name == "real flow");
++    assert(material_owner->capture()->source().graph.node(constant)->as<lux::material::ConstantNode>()->value[3] != 4);
++    assert(scene_gesture.commit() && material_gesture.commit() && flow_gesture.commit());
++    assert(scene_owner->capture()->objects().size() == 1);
++    assert(flow_owner->capture()->source().name == "preview flow");
++    assert(material_owner->capture()->source().graph.node(constant)->as<lux::material::ConstantNode>()->value[3] == 4);
++    assert(scene_owner->undo() && material_owner->undo() && flow_owner->undo());
++    assert(scene_owner->describe().current == scene_before.current);
++    assert(material_owner->describe().current == material_before.current);
++    assert(flow_owner->describe().current == flow_before.current);
++    assert(!scene_owner->undo() && !material_owner->undo() && !flow_owner->undo());
++    assert(scene_owner->redo() && material_owner->redo() && flow_owner->redo());
++    assert(scene_gesture.begin("cancel") && material_gesture.begin("cancel") && flow_gesture.begin("cancel"));
++    assert(scene_gesture.cancel() && material_gesture.cancel() && flow_gesture.cancel());
++    std::puts("PASS installed P08 three real interactions, one Store, preview not captured, one undo, cancel");
++}
+diff --git a/editor/CMakeLists.txt b/editor/CMakeLists.txt
+index 975eb733e..b90c8e3b0 100644
+--- a/editor/CMakeLists.txt
++++ b/editor/CMakeLists.txt
+@@ -19,6 +19,10 @@ add_subdirectory(tools/scene/execution)
+ add_subdirectory(tools/scene/projection)
+ add_subdirectory(tools/material/preview)
+ add_subdirectory(tools/flowforge/compilation)
++add_subdirectory(tools/scene/interaction)
++add_subdirectory(tools/material/interaction)
++add_subdirectory(tools/flowforge/interaction)
++add_subdirectory(views/api)
+ add_subdirectory(context)
+ add_subdirectory(ui)
+ add_subdirectory(tools)
+diff --git a/editor/tests/architecture/CMakeLists.txt b/editor/tests/architecture/CMakeLists.txt
+index 686286091..40007480e 100644
+--- a/editor/tests/architecture/CMakeLists.txt
++++ b/editor/tests/architecture/CMakeLists.txt
+@@ -48,3 +48,9 @@ add_test(NAME editor.projection_compilation_boundaries
+         --source "${PROJECT_SOURCE_DIR}" --cmake "${CMAKE_COMMAND}"
+         --evidence "${CMAKE_CURRENT_BINARY_DIR}/projection-compilation-boundaries.json")
+ set_tests_properties(editor.projection_compilation_boundaries PROPERTIES LABELS "editor;native;P07" TIMEOUT 180)
++
++add_test(NAME editor.interaction_view_boundaries
++    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_interaction_view_boundaries.py"
++        --source "${PROJECT_SOURCE_DIR}" --cmake "${CMAKE_COMMAND}"
++        --evidence "${CMAKE_CURRENT_BINARY_DIR}/interaction-view-boundaries.json")
++set_tests_properties(editor.interaction_view_boundaries PROPERTIES LABELS "editor;native;P08" TIMEOUT 180)
+diff --git a/editor/tests/architecture/check_editor_boundaries.py b/editor/tests/architecture/check_editor_boundaries.py
+index 8a4402df4..cd5407923 100644
+--- a/editor/tests/architecture/check_editor_boundaries.py
++++ b/editor/tests/architecture/check_editor_boundaries.py
+@@ -122,7 +122,8 @@ def check_model(repo, targets, rules, sources, report, name):
+         for delimiter, header in re.findall(r'^\s*#\s*include\s*([<"])([^>"\n]+)', source, re.M):
+             local = delimiter == '"' and (repo / path).parent.joinpath(header).resolve().is_relative_to(
+                 (repo / scope).resolve())
+-            if not local and header not in policy["headers"] and not header.startswith(tuple(policy["prefixes"])):
++            test_header = header in policy.get("test_headers", {}).get(path, [])
++            if not local and not test_header and header not in policy["headers"] and not header.startswith(tuple(policy["prefixes"])):
+                 report(prefix + "_FORBIDDEN_INCLUDE", path, header)
+ 
+ 
+@@ -203,6 +204,15 @@ def inspect(repo, records, rules, stage, compile_db=None):
+         for target in ["scene_projection", "material_preview", "flowforge_compilation"]:
+             check_model(repo, targets, rules, sources, report, target)
+ 
++    if stage >= "P08":
++        for target in ["scene_interaction", "material_interaction", "flowforge_interaction", "view_api"]:
++            check_model(repo, targets, rules, sources, report, target)
++        # Factories in the new protocol must receive a dispatcher, never a Root for construction.
++        for path, source in sources.items():
++            if path.startswith("editor/views/") and "/test/" not in path:
++                if re.search(r"\bRoot\s*&", source) and re.search(r"(?:make_unique<[^>]*(?:Pane|Element)|(?:Pane|Element)\s*[({])", source):
++                    report("NEW_ROOTED_FACTORY", path, "P08 factory calls the expiring rooted constructor")
++
+     scopes = tuple(rules["new_scopes"])
+     forbidden_headers = set(rules["new_scope_forbidden_include"])
+     for path, source in sources.items():
+@@ -235,7 +245,7 @@ def inspect(repo, records, rules, stage, compile_db=None):
+                     own = include.startswith(record["SOURCE_DIR"].rstrip("/") + "/")
+                     if private and (not own or key.startswith("INTERFACE")):
+                         report("PRIVATE_INCLUDE", name, include)
+-        if not source_dir.startswith("engine/") and name not in new_targets:
++        if not source_dir.startswith(("engine/", "modules/")) and name not in new_targets:
+             continue
+         queue = [(name, [name])]
+         seen = set()
+@@ -256,7 +266,7 @@ def inspect(repo, records, rules, stage, compile_db=None):
+                     continue
+                 chain_next = chain + [dependency]
+                 detail = " -> ".join(chain_next) + " (" + kind + ")"
+-                if source_dir.startswith("engine/") and location.startswith("editor/"):
++                if source_dir.startswith(("engine/", "modules/")) and location.startswith("editor/"):
+                     report("ENGINE_DEPENDS_ON_EDITOR", name, detail)
+                 if name == "editor_workflows" and dependency == "editor_bootstrap":
+                     report("WORKFLOWS_DEPEND_ON_BOOTSTRAP", name, detail)
+diff --git a/editor/tests/architecture/rules.json b/editor/tests/architecture/rules.json
+index 77ba612e2..77a85d847 100644
+--- a/editor/tests/architecture/rules.json
++++ b/editor/tests/architecture/rules.json
+@@ -704,7 +704,7 @@
+         "scene_execution_api"
+       ],
+       "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+-      "actual_cmake_target": null
++      "actual_cmake_target": "scene_interaction"
+     },
+     {
+       "name": "material_interaction",
+@@ -714,7 +714,7 @@
+         "material_model"
+       ],
+       "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+-      "actual_cmake_target": null
++      "actual_cmake_target": "material_interaction"
+     },
+     {
+       "name": "flowforge_interaction",
+@@ -724,7 +724,7 @@
+         "flowforge_model"
+       ],
+       "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+-      "actual_cmake_target": null
++      "actual_cmake_target": "flowforge_interaction"
+     },
+     {
+       "name": "view_api",
+@@ -734,7 +734,7 @@
+         "editor_contracts"
+       ],
+       "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+-      "actual_cmake_target": null
++      "actual_cmake_target": "view_api"
+     },
+     {
+       "name": "editor_widgets",
+@@ -4210,5 +4210,507 @@
+       "lux/engine/flowforge/",
+       "lux/engine/function/script/"
+     ]
++  },
++  "scene_interaction": {
++    "direct": [
++      "scene_model",
++      "scene_execution_api"
++    ],
++    "closure": {
++      "Eigen3::Eigen": {
++        "imported": true
++      },
++      "EnTT::EnTT": {
++        "imported": true
++      },
++      "STDEXEC::stdexec": {
++        "imported": true
++      },
++      "Threads::Threads": {
++        "imported": true
++      },
++      "asset": {
++        "path": "modules/resource/asset"
++      },
++      "async_port": {
++        "path": "modules/core/async_port"
++      },
++      "core": {
++        "path": "engine/domain/simulation/ecs/core"
++      },
++      "description": {
++        "path": "modules/resource/description"
++      },
++      "domain_system_description": {
++        "path": "engine/domain/system/description"
++      },
++      "domain_system_identity": {
++        "path": "engine/domain/system/identity"
++      },
++      "ecs_task": {
++        "path": "engine/domain/simulation/ecs/task"
++      },
++      "edit_history": {
++        "path": "editor/editing/history"
++      },
++      "edit_sessions": {
++        "path": "editor/editing/sessions"
++      },
++      "editor_contracts": {
++        "path": "editor/contracts"
++      },
++      "hierarchy": {
++        "path": "engine/domain/simulation/ecs/hierarchy"
++      },
++      "hierarchy_component_codegen_generate": {
++        "path": "engine/domain/simulation/ecs/hierarchy"
++      },
++      "identity": {
++        "path": "modules/resource/identity"
++      },
++      "lux::cxx::algorithm": {
++        "imported": true
++      },
++      "lux::cxx::binary": {
++        "imported": true
++      },
++      "lux::cxx::compile_time": {
++        "imported": true
++      },
++      "lux::cxx::container": {
++        "imported": true
++      },
++      "lux::cxx::core": {
++        "imported": true
++      },
++      "lux::cxx::memory": {
++        "imported": true
++      },
++      "math": {
++        "path": "modules/core/math"
++      },
++      "partition_identity": {
++        "path": "engine/domain/partition/identity"
++      },
++      "process_execution": {
++        "path": "engine/process/execution"
++      },
++      "process_world_loading": {
++        "path": "engine/process/world_loading"
++      },
++      "scene_asset": {
++        "path": "engine/scene/asset"
++      },
++      "scene_camera": {
++        "path": "engine/scene/components/camera"
++      },
++      "scene_camera_component_codegen_generate": {
++        "path": "engine/scene/components/camera"
++      },
++      "scene_composition": {
++        "path": "engine/scene/composition"
++      },
++      "scene_description": {
++        "path": "engine/scene/description"
++      },
++      "scene_execution_api": {
++        "path": "editor/tools/scene/execution/api"
++      },
++      "scene_model": {
++        "path": "editor/tools/scene/model"
++      },
++      "scene_system": {
++        "path": "engine/scene/system"
++      },
++      "scene_world_materialization": {
++        "path": "engine/scene/integration/world_materialization"
++      },
++      "schema": {
++        "path": "engine/domain/simulation/ecs/schema"
++      },
++      "script_artifact": {
++        "path": "modules/function/script/artifact"
++      },
++      "script_core": {
++        "path": "modules/function/script/core"
++      },
++      "semantic": {
++        "path": "modules/core/semantic"
++      },
++      "serialization": {
++        "path": "modules/core/serialization"
++      },
++      "simulation_asset": {
++        "path": "engine/domain/simulation/asset"
++      },
++      "simulation_composition": {
++        "path": "engine/domain/simulation/composition"
++      },
++      "simulation_description": {
++        "path": "engine/domain/simulation/description"
++      },
++      "simulation_scripting_core": {
++        "path": "engine/domain/simulation/scripting/core"
++      },
++      "snapshot": {
++        "path": "engine/domain/simulation/ecs/snapshot"
++      },
++      "stduuid": {
++        "imported": true
++      },
++      "system": {
++        "path": "engine/domain/simulation/system"
++      },
++      "task": {
++        "path": "modules/core/task"
++      },
++      "transform": {
++        "path": "engine/domain/simulation/ecs/transform"
++      },
++      "transform_component_codegen_generate": {
++        "path": "engine/domain/simulation/ecs/transform"
++      },
++      "type_info": {
++        "path": "modules/core/type_info"
++      },
++      "visual": {
++        "path": "engine/domain/simulation/ecs/visual"
++      },
++      "visual_component_codegen_generate": {
++        "path": "engine/domain/simulation/ecs/visual"
++      },
++      "world_asset": {
++        "path": "engine/domain/world/asset"
++      },
++      "world_description": {
++        "path": "engine/domain/world/description"
++      },
++      "world_identity": {
++        "path": "engine/domain/world/identity"
++      },
++      "world_partition": {
++        "path": "engine/domain/world/partition"
++      },
++      "world_storage": {
++        "path": "engine/domain/world/storage"
++      }
++    },
++    "native_libraries": [],
++    "headers": [
++      "algorithm",
++      "cassert",
++      "cstdio",
++      "cstring",
++      "exception",
++      "optional",
++      "source_location",
++      "span",
++      "thread"
++    ],
++    "prefixes": [
++      "lux/cxx/",
++      "lux/engine/editor/contracts/",
++      "lux/engine/editor/sessions/",
++      "lux/engine/editor/scene/",
++      "lux/engine/scene/",
++      "lux/engine/scene/",
++      "lux/engine/simulation/",
++      "lux/engine/editor/editing/"
++    ],
++    "test_headers": {
++      "editor/tools/scene/interaction/test/interaction.cpp": [
++        "../../model/src/PreparedSceneReload.hpp"
++      ],
++      "editor/tools/scene/interaction/test/run_selection.cpp": []
++    }
++  },
++  "material_interaction": {
++    "direct": [
++      "material_model",
++      "material_model"
++    ],
++    "closure": {
++      "Eigen3::Eigen": {
++        "imported": true
++      },
++      "description": {
++        "path": "modules/resource/description"
++      },
++      "edit_history": {
++        "path": "editor/editing/history"
++      },
++      "edit_sessions": {
++        "path": "editor/editing/sessions"
++      },
++      "editor_contracts": {
++        "path": "editor/contracts"
++      },
++      "graph": {
++        "path": "modules/function/graph"
++      },
++      "identity": {
++        "path": "modules/resource/identity"
++      },
++      "lux::cxx::compile_time": {
++        "imported": true
++      },
++      "lux::cxx::container": {
++        "imported": true
++      },
++      "lux::cxx::core": {
++        "imported": true
++      },
++      "lux::cxx::memory": {
++        "imported": true
++      },
++      "material_graph": {
++        "path": "modules/function/material"
++      },
++      "material_model": {
++        "path": "editor/tools/material/model"
++      },
++      "math": {
++        "path": "modules/core/math"
++      },
++      "script_core": {
++        "path": "modules/function/script/core"
++      },
++      "semantic": {
++        "path": "modules/core/semantic"
++      },
++      "stduuid": {
++        "imported": true
++      }
++    },
++    "native_libraries": [],
++    "headers": [
++      "algorithm",
++      "cassert",
++      "cstdio",
++      "exception",
++      "functional",
++      "limits",
++      "optional",
++      "span",
++      "stdexcept"
++    ],
++    "prefixes": [
++      "lux/cxx/",
++      "lux/engine/editor/contracts/",
++      "lux/engine/editor/sessions/",
++      "lux/engine/editor/material/",
++      "lux/engine/material/"
++    ],
++    "test_headers": {
++      "editor/tools/material/interaction/test/interaction.cpp": [
++        "../../model/src/PreparedMaterialReload.hpp"
++      ]
++    }
++  },
++  "flowforge_interaction": {
++    "direct": [
++      "flowforge_model",
++      "flowforge_model"
++    ],
++    "closure": {
++      "Eigen3::Eigen": {
++        "imported": true
++      },
++      "description": {
++        "path": "modules/resource/description"
++      },
++      "edit_history": {
++        "path": "editor/editing/history"
++      },
++      "edit_sessions": {
++        "path": "editor/editing/sessions"
++      },
++      "editor_contracts": {
++        "path": "editor/contracts"
++      },
++      "flowforge": {
++        "path": "modules/function/flowforge"
++      },
++      "flowforge_model": {
++        "path": "editor/tools/flowforge/model"
++      },
++      "graph": {
++        "path": "modules/function/graph"
++      },
++      "identity": {
++        "path": "modules/resource/identity"
++      },
++      "lux::cxx::algorithm": {
++        "imported": true
++      },
++      "lux::cxx::binary": {
++        "imported": true
++      },
++      "lux::cxx::compile_time": {
++        "imported": true
++      },
++      "lux::cxx::container": {
++        "imported": true
++      },
++      "lux::cxx::core": {
++        "imported": true
++      },
++      "lux::cxx::memory": {
++        "imported": true
++      },
++      "lux::cxx::reflection_runtime": {
++        "imported": true
++      },
++      "math": {
++        "path": "modules/core/math"
++      },
++      "meta": {
++        "path": "modules/core/meta"
++      },
++      "script_core": {
++        "path": "modules/function/script/core"
++      },
++      "semantic": {
++        "path": "modules/core/semantic"
++      },
++      "stduuid": {
++        "imported": true
++      },
++      "type_info": {
++        "path": "modules/core/type_info"
++      }
++    },
++    "native_libraries": [],
++    "headers": [
++      "algorithm",
++      "array",
++      "cassert",
++      "cstdio",
++      "exception",
++      "functional",
++      "optional",
++      "span",
++      "stdexcept"
++    ],
++    "prefixes": [
++      "lux/cxx/",
++      "lux/engine/editor/contracts/",
++      "lux/engine/editor/sessions/",
++      "lux/engine/editor/flowforge/",
++      "lux/engine/flowforge/",
++      "lux/engine/meta/"
++    ],
++    "test_headers": {
++      "editor/tools/flowforge/interaction/test/interaction.cpp": [
++        "../../model/src/PreparedFlowReload.hpp"
++      ]
++    }
++  },
++  "view_api": {
++    "direct": [
++      "ui",
++      "editor_contracts"
++    ],
++    "closure": {
++      "Eigen3::Eigen": {
++        "imported": true
++      },
++      "Vulkan::Headers": {
++        "imported": true
++      },
++      "description": {
++        "path": "modules/resource/description"
++      },
++      "editor_contracts": {
++        "path": "editor/contracts"
++      },
++      "glfw": {
++        "imported": true
++      },
++      "identity": {
++        "path": "modules/resource/identity"
++      },
++      "imgui::core": {
++        "imported": true
++      },
++      "lux::cxx::binary": {
++        "imported": true
++      },
++      "lux::cxx::compile_time": {
++        "imported": true
++      },
++      "lux::cxx::concurrent": {
++        "imported": true
++      },
++      "lux::cxx::container": {
++        "imported": true
++      },
++      "lux::cxx::core": {
++        "imported": true
++      },
++      "lux::cxx::memory": {
++        "imported": true
++      },
++      "math": {
++        "path": "modules/core/math"
++      },
++      "nfd::nfd": {
++        "imported": true
++      },
++      "object": {
++        "path": "modules/core/object"
++      },
++      "render_client": {
++        "path": "modules/function/render/client"
++      },
++      "script_core": {
++        "path": "modules/function/script/core"
++      },
++      "semantic": {
++        "path": "modules/core/semantic"
++      },
++      "serialization": {
++        "path": "modules/core/serialization"
++      },
++      "stduuid": {
++        "imported": true
++      },
++      "type_info": {
++        "path": "modules/core/type_info"
++      },
++      "ui": {
++        "path": "modules/function/ui"
++      },
++      "ui_imgui_backend": {
++        "path": "modules/function/ui"
++      },
++      "window": {
++        "path": "modules/platform/window"
++      }
++    },
++    "native_libraries": [
++      "comctl32"
++    ],
++    "headers": [
++      "array",
++      "cassert",
++      "cstdint",
++      "cstdio",
++      "limits",
++      "optional",
++      "string",
++      "type_traits",
++      "utility"
++    ],
++    "prefixes": [
++      "lux/cxx/",
++      "lux/engine/editor/contracts/",
++      "lux/engine/editor/views/",
++      "lux/engine/ui/",
++      "lux/engine/object/"
++    ],
++    "test_headers": {
++      "editor/views/api/test/lifecycle.cpp": []
++    }
+   }
+ }
+diff --git a/editor/tests/architecture/test_interaction_view_boundaries.py b/editor/tests/architecture/test_interaction_view_boundaries.py
+new file mode 100644
+index 000000000..1b8008752
+--- /dev/null
++++ b/editor/tests/architecture/test_interaction_view_boundaries.py
+@@ -0,0 +1,101 @@
++"""P08: actual CMake runtime/run/model dependency and private bridge negative fixtures."""
++import argparse
++import json
++from pathlib import Path
++import shutil
++import subprocess
++import tempfile
++
++
++def run(args):
++    return subprocess.run(list(map(str, args)), capture_output=True, text=True, encoding="utf-8", errors="replace")
++
++
++def main():
++    parser = argparse.ArgumentParser()
++    parser.add_argument("--source", required=True, type=Path)
++    parser.add_argument("--cmake", default="cmake")
++    parser.add_argument("--evidence", required=True, type=Path)
++    args = parser.parse_args()
++    repo = args.source.resolve()
++    rules = json.loads((repo / "editor/tests/architecture/rules.json").read_text())
++    locations = {x["name"]: x["path"] for x in rules["targets"]}
++    locations.update(editor_storage="editor/storage", editor_context="editor/context", ui_fixture="modules/function/ui", process_execution="engine/process/execution")
++    locations.update(scene_composition="engine/scene/composition", render_runtime="modules/function/render/runtime")
++    cases = [
++        ("scene-author-interaction", "scene_model", None, "scene_interaction", ""),
++        ("material-author-interaction", "material_model", None, "material_interaction", ""),
++        ("flow-author-interaction", "flowforge_model", None, "flowforge_interaction", ""),
++        ("scene-context", "scene_interaction", None, "editor_context", ""),
++        ("material-transitive-context", "material_interaction", "material_model", "editor_context", ""),
++        ("flow-transitive-ui", "flowforge_interaction", "flowforge_model", "ui_fixture", ""),
++        ("scene-ui", "scene_interaction", None, "ui_fixture", ""),
++        ("view-scene", "view_api", None, "scene_model", ""),
++        ("view-storage", "view_api", None, "editor_storage", ""),
++        ("view-render", "view_api", None, "render_runtime", ""),
++        ("view-transitive-model", "view_api", "editor_contracts", "material_model", ""),
++        ("engine-ui-editor", "ui_fixture", None, "view_api", ""),
++        ("scene-old-bridge", "scene_interaction", None, None, "SceneRunCaptureAccess.hpp"),
++        ("view-model-include", "view_api", None, None, "lux/engine/editor/scene/SceneSession.hpp"),
++        ("view-rooted-factory", "view_api", None, None, "ROOTED_FACTORY"),
++        ("scene-legal", "scene_interaction", "scene_model", None, ""),
++        ("material-legal", "material_interaction", "material_model", None, ""),
++        ("flow-legal", "flowforge_interaction", "flowforge_model", None, ""),
++        ("view-legal", "view_api", "editor_contracts", None, ""),
++    ]
++    evidence = []
++    for name, target, intermediate, forbidden, header in cases:
++        with tempfile.TemporaryDirectory(prefix="lux-p08-boundary-") as directory:
++            root = Path(directory)
++            assert run(["git", "init", root]).returncode == 0
++            policy = root / "editor/tests/architecture"
++            policy.mkdir(parents=True)
++            for file in ["rules.json", "check_editor_boundaries.py"]:
++                shutil.copyfile(repo / "editor/tests/architecture" / file, policy / file)
++            targets = list(dict.fromkeys(x for x in [target, intermediate, forbidden] if x))
++            top = "cmake_minimum_required(VERSION 3.22)\nproject(execution_boundary LANGUAGES CXX)\nset(LUX_EDITOR_MIGRATION_STAGE P08)\n"
++            for value in targets:
++                folder = root / locations[value]
++                folder.mkdir(parents=True, exist_ok=True)
++                (folder / "dummy.cpp").write_text("int " + value + "_fixture;\n")
++                (folder / "CMakeLists.txt").write_text(f"add_library({value} STATIC dummy.cpp)\nadd_library(fixture::{value} ALIAS {value})\n")
++                top += f"add_subdirectory({locations[value]})\n"
++            edges = ""
++            if intermediate:
++                edges += f"target_link_libraries({target} PRIVATE fixture::{intermediate})\n"
++            if forbidden:
++                edges += f'target_link_libraries({intermediate or target} PRIVATE "$<LINK_ONLY:fixture::{forbidden}>")\n'
++            tail = f'include("{repo.as_posix()}/cmake/EditorArchitectureChecks.cmake")\nlux_editor_check_architecture()\n'
++            (root / "CMakeLists.txt").write_text(top + edges + tail)
++            probe = root / locations[target] / "probe.hpp"
++            probe.write_text('auto build(ui::Root& root) { return std::make_unique<ui::Pane>(root, ui::PaneId{"bad"}, ui::PaneTypeId{"test"}, "bad"); }\n' if header == "ROOTED_FACTORY" else f"#include <{header}>\n" if header else "")
++            build = root / "build"
++            result = run([args.cmake, "-S", root, "-B", build, "-G", "Ninja"])
++            output = result.stdout + result.stderr
++            rule = target.upper() + ("_FORBIDDEN_INCLUDE" if header else "_FORBIDDEN_DEPENDENCY")
++            if target == "ui_fixture": rule = "ENGINE_DEPENDS_ON_EDITOR"
++            if header == "ROOTED_FACTORY": rule = "NEW_ROOTED_FACTORY"
++            if name == "unused-old-editor": rule = "NEW_DEPENDS_ON_OLD"
++            legal = name.endswith("-legal")
++            rejected = result.returncode == 0 if legal else result.returncode != 0 and rule in output
++            if forbidden:
++                chain = " -> ".join(x for x in [target, intermediate, forbidden] if x)
++                rejected = rejected and chain in " ".join(output.split())
++            graph_file = build / "editor-architecture/targets.json"
++            graph = json.loads(graph_file.read_text()) if graph_file.exists() else []
++            rejected = rejected and graph_file.exists()
++            (root / "CMakeLists.txt").write_text(top + tail)
++            probe.write_text("")
++            repaired = run([args.cmake, "-S", root, "-B", build])
++            passed = rejected and repaired.returncode == 0
++            evidence.append(dict(id=name, passed=passed, expected_rule=None if legal else rule,
++                exit_code=result.returncode, log=output, graph=graph, repaired_exit_code=repaired.returncode,
++                repaired_log=repaired.stdout + repaired.stderr))
++            print("PASS" if passed else "FAIL", name, flush=True)
++    args.evidence.parent.mkdir(parents=True, exist_ok=True)
++    args.evidence.write_text(json.dumps(evidence, indent=2) + "\n")
++    return 0 if all(x["passed"] for x in evidence) else 1
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff --git a/editor/tools/flowforge/interaction/CMakeLists.txt b/editor/tools/flowforge/interaction/CMakeLists.txt
+new file mode 100644
+index 000000000..3d693aee1
+--- /dev/null
++++ b/editor/tools/flowforge/interaction/CMakeLists.txt
+@@ -0,0 +1,15 @@
++add_component(COMPONENT_NAME flowforge_interaction NAMESPACE lux::engine::editor STATIC SOURCE_FILES src/FlowInteraction.cpp)
++component_include_directories(flowforge_interaction BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
++target_link_libraries(flowforge_interaction PUBLIC lux::engine::editor::flowforge_model)
++component_add_transitive_commands(flowforge_interaction "find_package(lux-engine-editor-flowforge-model REQUIRED COMPONENTS flowforge_model)")
++lux_classify_target(TARGET flowforge_interaction LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
++lux_engine_install_components(PROJECT_NAME lux-engine-editor-flowforge-interaction VERSION ${PROJECT_VERSION}
++    NAMESPACE lux::engine::editor COMPONENTS flowforge_interaction)
++
++if(LUX_EDITOR_BUILD_NATIVE_TESTS)
++    add_executable(editor_flowforge_interaction_test test/interaction.cpp)
++    target_link_libraries(editor_flowforge_interaction_test PRIVATE flowforge_interaction)
++    lux_editor_test_options(editor_flowforge_interaction_test)
++    add_test(NAME editor.flowforge_interaction COMMAND editor_flowforge_interaction_test)
++    set_tests_properties(editor.flowforge_interaction PROPERTIES LABELS "editor;native;P08")
++endif()
+diff --git a/editor/tools/flowforge/interaction/README.md b/editor/tools/flowforge/interaction/README.md
+new file mode 100644
+index 000000000..a4dfba209
+--- /dev/null
++++ b/editor/tools/flowforge/interaction/README.md
+@@ -0,0 +1,15 @@
++# flowforge interaction（P08）
++
++该 STATIC target 只保存选择和一份临时领域批次，不拥有 Session、History、Registry 或保存基线。
++SessionStore 必须活得更久；Scene 的 RunInspectAccess 是值形式的非拥有能力，其 RunStore 也必须活得更久。
++构造、读取和交互在同一 owner 线程。活动交互 owner 不可复制或移动。
++
++- `begin` 捕获既有 ContentStamp；重复开始或领域 gate 占用时拒绝。
++- `preview(candidate)` 仅在原 gate 的 READING 范围内交换临时覆盖并清理旧 payload；拒绝时输入仍归调用方。
++- `overlay()` 是同步只读观察，后续交互会使它失效，不得保存可写领域借用。
++- `commit` 严格验证起始戳，并只调用一次原 Session::apply；冲突保留手势，交给取消或同步处理。
++- `cancel` 在同一读取 gate 内清理覆盖；忙时不强行解除 gate。必须先在安全点结束交互，再析构 owner。
++- `synchronize` 在作者删除、重载、关闭和运行停止后清理失效身份；不自动重定基线。
++
++节点布局仍通过原领域编辑保存；相机、hover、画布 pan/zoom 不进入共享选择组。
++旧产品即时 UI guard/输入适配只留原消费者至 P12，新 target 不链接旧 Context、Editor、UI 或转换桥。
+diff --git a/editor/tools/flowforge/interaction/include/lux/engine/editor/flowforge/FlowInteraction.hpp b/editor/tools/flowforge/interaction/include/lux/engine/editor/flowforge/FlowInteraction.hpp
+new file mode 100644
+index 000000000..34fe6e39d
+--- /dev/null
++++ b/editor/tools/flowforge/interaction/include/lux/engine/editor/flowforge/FlowInteraction.hpp
+@@ -0,0 +1,42 @@
++#pragma once
++#include <lux/engine/editor/flowforge/FlowSession.hpp>
++#include <lux/engine/editor/sessions/SessionStore.hpp>
++#include <optional>
++#include <span>
++
++namespace lux::editor::flowforge
++{
++    // Owner-thread interaction only. The Store outlives this object. No live ReadView is retained.
++    // Preview inputs are consumed only after admission. Finish/cancel before destroying inside a callback.
++    class FlowInteraction final
++    {
++    public:
++        FlowInteraction(sessions::TSessionAccess<FlowSession> access, sessions::TSessionKey<FlowSession> key) noexcept;
++        ~FlowInteraction() noexcept;
++        FlowInteraction(const FlowInteraction&) = delete;
++        FlowInteraction& operator=(const FlowInteraction&) = delete;
++        FlowInteraction(FlowInteraction&&) = delete;
++        FlowInteraction& operator=(FlowInteraction&&) = delete;
++        [[nodiscard]] FlowEditResult<void> begin(std::string label);
++        [[nodiscard]] FlowEditResult<void> preview(std::vector<VFlowEdit>& candidate);
++        [[nodiscard]] FlowEditResult<FlowEditReceipt> commit();
++        [[nodiscard]] FlowEditResult<void> cancel();
++        [[nodiscard]] FlowEditResult<void> synchronize();
++        [[nodiscard]] const FlowEditBatch* overlay() const noexcept
++        {
++            return gesture_ ? &*gesture_ : nullptr;
++        }
++        [[nodiscard]] FlowEditResult<void> select(std::vector<lux::flowforge::NodeId> nodes);
++        [[nodiscard]] std::span<const lux::flowforge::NodeId> selection() const noexcept
++        {
++            return selection_;
++        }
++
++    private:
++        sessions::TSessionAccess<FlowSession> access_;
++        sessions::TSessionKey<FlowSession> key_;
++        std::optional<FlowEditBatch> gesture_;
++        std::vector<lux::flowforge::NodeId> selection_;
++        editing::HistoryId selection_history_;
++    };
++}
+diff --git a/editor/tools/flowforge/interaction/src/FlowInteraction.cpp b/editor/tools/flowforge/interaction/src/FlowInteraction.cpp
+new file mode 100644
+index 000000000..469dffc65
+--- /dev/null
++++ b/editor/tools/flowforge/interaction/src/FlowInteraction.cpp
+@@ -0,0 +1,134 @@
++#include <lux/engine/editor/flowforge/FlowInteraction.hpp>
++#include <algorithm>
++#include <exception>
++
++namespace lux::editor::flowforge
++{
++    FlowInteraction::FlowInteraction(
++        sessions::TSessionAccess<FlowSession> access,
++        sessions::TSessionKey<FlowSession> key
++    ) noexcept
++        : access_(access), key_(key)
++    {}
++    FlowInteraction::~FlowInteraction() noexcept
++    {
++        if (gesture_ && !cancel())
++            std::terminate(); // Destruction inside an admitted callback violates the owner lifetime contract.
++    }
++    FlowEditResult<void> FlowInteraction::begin(std::string label)
++    {
++        if (gesture_)
++            return lux::cxx::unexpected(sessions::ESessionError::BUSY);
++        auto info = access_.describe(key_);
++        if (!info)
++            return lux::cxx::unexpected(info.error());
++        if (info->admission != sessions::EEditAdmission::AVAILABLE)
++            return lux::cxx::unexpected(sessions::ESessionError::BUSY);
++        gesture_.emplace(FlowEditBatch{info->current, std::move(label), {}});
++        return {};
++    }
++    FlowEditResult<void> FlowInteraction::preview(std::vector<VFlowEdit>& candidate)
++    {
++        if (!gesture_)
++            return lux::cxx::unexpected(sessions::ESessionError::NOT_PREPARED);
++        auto info = access_.describe(key_);
++        if (!info)
++            return lux::cxx::unexpected(info.error());
++        if (info->current != gesture_->expected)
++            return lux::cxx::unexpected(sessions::ESessionError::STALE_CONTENT);
++        auto owner = access_.read(key_);
++        if (!owner)
++            return lux::cxx::unexpected(owner.error());
++        auto read = owner->get().read();
++        if (!read)
++            return lux::cxx::unexpected(read.error());
++        return read->withRead([&]() -> FlowEditResult<void> {
++            gesture_->edits.swap(candidate);
++            candidate.clear(); // Old preview payload and its code are released under the original gate.
++            return {};
++        });
++    }
++    FlowEditResult<FlowEditReceipt> FlowInteraction::commit()
++    {
++        if (!gesture_)
++            return lux::cxx::unexpected(sessions::ESessionError::NOT_PREPARED);
++        auto info = access_.describe(key_);
++        if (!info)
++            return lux::cxx::unexpected(info.error());
++        if (info->admission != sessions::EEditAdmission::AVAILABLE)
++            return lux::cxx::unexpected(sessions::ESessionError::BUSY);
++        if (info->current != gesture_->expected)
++            return lux::cxx::unexpected(sessions::ESessionError::STALE_CONTENT);
++        auto owner = access_.edit(key_);
++        if (!owner)
++            return lux::cxx::unexpected(owner.error());
++        auto batch = std::move(*gesture_);
++        gesture_.reset();
++        return owner->get().apply(std::move(batch));
++    }
++    FlowEditResult<void> FlowInteraction::cancel()
++    {
++        if (!gesture_)
++            return {};
++        auto owner = access_.read(key_);
++        if (!owner)
++        {
++            gesture_.reset(); // A closed/reused Store slot cannot be edited by an input destructor.
++            return {};
++        }
++        auto read = owner->get().read();
++        if (!read)
++            return lux::cxx::unexpected(read.error());
++        return read->withRead([&]() -> FlowEditResult<void> {
++            gesture_.reset();
++            return {};
++        });
++    }
++    FlowEditResult<void> FlowInteraction::select(std::vector<lux::flowforge::NodeId> nodes)
++    {
++        auto info = access_.describe(key_);
++        if (!info)
++            return lux::cxx::unexpected(info.error());
++        auto owner = access_.read(key_);
++        if (!owner)
++            return lux::cxx::unexpected(owner.error());
++        auto read = owner->get().read();
++        if (!read)
++            return lux::cxx::unexpected(read.error());
++        return read->withRead([&](const lux::flowforge::FlowSource& source) -> FlowEditResult<void> {
++            for (auto id : nodes)
++                if (!(std::ranges::any_of(source.nodes, [&](const auto& node) { return node.id == id; })))
++                    return lux::cxx::unexpected(sessions::ESessionError::INVALID_ARGUMENT);
++            selection_ = std::move(nodes);
++            selection_history_ = info->current.state.history;
++            return {};
++        });
++    }
++    FlowEditResult<void> FlowInteraction::synchronize()
++    {
++        auto info = access_.describe(key_);
++        if (!info || (gesture_ && info->current != gesture_->expected))
++        {
++            auto cancelled = cancel();
++            if (!cancelled)
++                return cancelled;
++        }
++        if (!info || info->current.state.history != selection_history_)
++        {
++            selection_.clear();
++            return {};
++        }
++        auto owner = access_.read(key_);
++        if (!owner)
++            return lux::cxx::unexpected(owner.error());
++        auto read = owner->get().read();
++        if (!read)
++            return lux::cxx::unexpected(read.error());
++        return read->withRead([&](const lux::flowforge::FlowSource& source) -> FlowEditResult<void> {
++            std::erase_if(selection_, [&](auto id) {
++                return !(std::ranges::any_of(source.nodes, [&](const auto& node) { return node.id == id; }));
++            });
++            return {};
++        });
++    }
++}
+diff --git a/editor/tools/flowforge/interaction/test/interaction.cpp b/editor/tools/flowforge/interaction/test/interaction.cpp
+new file mode 100644
+index 000000000..29bd4f025
+--- /dev/null
++++ b/editor/tools/flowforge/interaction/test/interaction.cpp
+@@ -0,0 +1,216 @@
++#include "../../model/src/PreparedFlowReload.hpp"
++#include <lux/engine/editor/flowforge/FlowInteraction.hpp>
++#include <lux/engine/editor/flowforge/FlowSessionAccess.hpp>
++#include <lux/engine/flowforge/graph/ControlNode.hpp>
++#include <lux/engine/flowforge/graph/FunctionalNode.hpp>
++#include <lux/engine/flowforge/graph/ObjectNode.hpp>
++#include <lux/engine/meta/Meta.hpp>
++#include <array>
++#include <cassert>
++#include <cstdio>
++#include <functional>
++#include <stdexcept>
++
++namespace
++{
++    using namespace lux;
++    using namespace lux::editor;
++    using namespace lux::editor::flowforge;
++    namespace flow = lux::flowforge;
++    namespace access = lux::editor::flowforge::detail;
++    template <class T> auto take(T result)
++    {
++        if (!result)
++        {
++            if constexpr (requires { result.error().code; })
++                std::fprintf(stderr, "unexpected error %u\n", unsigned(result.error().code));
++            if constexpr (requires { result.error().history; })
++                std::fprintf(
++                    stderr,
++                    "history %u domain %llu\n",
++                    unsigned(result.error().history.code),
++                    result.error().history.domain_code
++                );
++            std::abort();
++        }
++        return std::move(*result);
++    }
++    asset::AssetId rootId()
++    {
++        return asset::AssetId{*uuids::uuid::from_string("12345678-1234-1234-1234-123456789abc")};
++    }
++    FlowAuthoringSource source()
++    {
++        FlowAuthoringSource result{rootId(), "flow source", {}};
++        auto event = result.graph.addNodes(std::make_unique<flow::OnEventNode>("tick"));
++        assert(result.graph.addExport({flow::FlowForgeExportNodeId{1}, result.graph.getNode(event).node->id(), 1234}));
++        (void)result.graph.addNodes(std::make_unique<flow::BranchNode>());
++        (void)result.graph.addNodes(std::make_unique<flow::FuncDefNode>(
++            "function",
++            std::vector<flow::FuncArgInfo>{{&meta::ref_type_of_v<bool>, "condition"}},
++            std::vector<flow::FuncArgInfo>{{&meta::ref_type_of_v<bool>, "result"}}
++        ));
++        return result;
++    }
++    struct Fixture final
++    {
++        sessions::SessionStore store{8};
++        FlowSession* session{};
++        sessions::SessionId id;
++        Fixture(
++            FlowAuthoringSource input = source(),
++            flow::FlowSourceEnvironment environment = {},
++            bool bound = true,
++            FlowSessionLimits limits = {}
++        )
++        {
++            auto reservation =
++                take(store.reserve<FlowSession>({"lux.editor.flowforge"}, contracts::CodeLease::builtin()));
++            id = reservation.id();
++            auto candidate = take(FlowSession::create(
++                id,
++                bound ? sessions::SourceBinding{sessions::BoundSource{input.id, "flow.luxflow"}} : std::nullopt,
++                std::move(input),
++                std::move(environment),
++                limits
++            ));
++            session = candidate.get();
++            assert(store.prepare(reservation, candidate));
++            assert(store.publish(reservation));
++        }
++        FlowEditBatch batch() const
++        {
++            return {session->describe().current, "flow edit", {}};
++        }
++        std::string encoded() const
++        {
++            return take(take(session->read()).encode());
++        }
++        editing::HistorySnapshot history() const
++        {
++            return take(access::FlowSessionAccess::data(*session).history->view()).snapshot;
++        }
++        flow::FlowSourceNode node(flow::ENodeOperation op) const
++        {
++            const auto snapshot = take(session->capture());
++            for (const auto& node : snapshot.source().nodes)
++                if (node.operation == op)
++                    return node;
++            std::abort();
++        }
++        FlowEditReceipt apply(VFlowEdit value)
++        {
++            auto edits = batch();
++            edits.edits.push_back(std::move(value));
++            return take(session->apply(std::move(edits)));
++        }
++    };
++    struct Saved final
++    {
++        std::string bytes;
++        sessions::SessionInfo info;
++        editing::HistorySnapshot history;
++        sessions::BindingRevision binding;
++        std::optional<sessions::PersistedState> persisted;
++        explicit Saved(const Fixture& f) : bytes(f.encoded()), info(f.session->describe()), history(f.history())
++        {
++            const auto& state = access::FlowSessionAccess::data(*f.session).state;
++            binding = state.bindingRevision();
++            persisted = state.checkpoint().persisted();
++        }
++        void unchanged(const Fixture& f) const
++        {
++            const auto now = f.session->describe();
++            const auto h = f.history();
++            assert(bytes == f.encoded());
++            assert(info.current == now.current && info.observed == now.observed && info.dirty == now.dirty);
++            assert(info.binding == now.binding && info.admission == now.admission);
++            assert(history.history == h.history && history.current == h.current && history.revision == h.revision);
++            assert(
++                history.event_sequence == h.event_sequence && history.entry_count == h.entry_count &&
++                history.cursor == h.cursor
++            );
++            assert(history.charged_retained_bytes == h.charged_retained_bytes && history.closed == h.closed);
++            const auto& state = access::FlowSessionAccess::data(*f.session).state;
++            assert(binding == state.bindingRevision() && persisted == state.checkpoint().persisted());
++        }
++    };
++    flow::PinId dataInput(const flow::FlowSourceNode& node)
++    {
++        for (const auto& pin : node.inputs)
++            if (pin.kind == flow::EPinKind::DATA_IN)
++                return pin.id;
++        std::abort();
++    }
++    flow::PinId dataOutput(const flow::FlowSourceNode& node)
++    {
++        for (const auto& pin : node.outputs)
++            if (pin.kind == flow::EPinKind::DATA_OUT)
++                return pin.id;
++        std::abort();
++    }
++    flow::FlowSourceLiteral boolean(bool value)
++    {
++        return {flow::EFlowLiteralKind::BOOLEAN, value ? "true" : "false"};
++    }
++    void interaction()
++    {
++        Fixture f;
++        auto key = take(f.store.key<FlowSession>(f.id));
++        FlowInteraction gesture(f.store.access<FlowSession>(), key);
++        FlowInteraction independent(f.store.access<FlowSession>(), key);
++        const Saved start(f);
++        const auto node = take(f.session->capture()).source().nodes.front().id;
++        assert(gesture.select({node}));
++        assert(independent.selection().empty());
++        assert(gesture.begin("drag"));
++        std::vector<VFlowEdit> preview;
++        preview.push_back(FlowMoveNodes{{{node, {50, 60}}}});
++        assert(gesture.preview(preview) && preview.empty());
++        assert(gesture.overlay()->edits.size() == 1);
++        start.unchanged(f);
++        assert(gesture.cancel());
++        start.unchanged(f);
++        assert(gesture.begin("drag"));
++        preview.push_back(FlowMoveNodes{{{node, {50, 60}}}});
++        assert(gesture.preview(preview));
++        const auto committed = take(gesture.commit());
++        assert(committed.content != start.info.current);
++        const auto history = f.history();
++        assert(history.entry_count == start.history.entry_count + 1);
++        assert(!gesture.overlay());
++        const auto encoded = f.encoded();
++        assert(encoded != start.bytes);
++        assert(f.session->undo());
++        assert(f.encoded() == start.bytes);
++        assert(f.session->redo());
++        assert(f.encoded() == encoded);
++        assert(gesture.begin("stale"));
++        preview.push_back(FlowRename{"preview"});
++        assert(gesture.preview(preview));
++        auto concurrent = f.batch();
++        concurrent.edits.push_back(FlowRename{"other view"});
++        assert(f.session->apply(std::move(concurrent)));
++        const Saved after(f);
++        assert(!gesture.commit());
++        after.unchanged(f);
++        assert(gesture.synchronize() && !gesture.overlay());
++        after.unchanged(f);
++        auto read = take(f.session->read());
++        assert(read.withRead([&](const auto&) -> FlowEditResult<void> {
++            const auto denied = gesture.begin("nested");
++            assert(!denied && denied.error().session == sessions::ESessionError::BUSY);
++            return {};
++        }));
++        const auto current = f.session->describe().current;
++        auto close = take(f.store.prepareClose(current));
++        assert(f.store.close(close));
++        assert(gesture.synchronize() && gesture.selection().empty());
++        assert(!gesture.begin("closed"));
++    }
++}
++int main()
++{
++    interaction();
++    std::puts("PASS P08 flowforge preview/cancel, one commit, persistent layout, conflict, gate, closed identity");
++}
+diff --git a/editor/tools/flowforge/model/include/lux/engine/editor/flowforge/FlowSnapshot.hpp b/editor/tools/flowforge/model/include/lux/engine/editor/flowforge/FlowSnapshot.hpp
+index 7c9578ab2..a244c9e30 100644
+--- a/editor/tools/flowforge/model/include/lux/engine/editor/flowforge/FlowSnapshot.hpp
++++ b/editor/tools/flowforge/model/include/lux/engine/editor/flowforge/FlowSnapshot.hpp
+@@ -1,4 +1,5 @@
+ #pragma once
++#include <concepts>
+ #include <lux/engine/editor/flowforge/FlowEdit.hpp>
+ #include <lux/engine/editor/sessions/SessionState.hpp>
+ 
+@@ -42,7 +43,15 @@ namespace lux::editor::flowforge
+     public:
+         // A const FlowGraph is not deep-const (unique_ptr<Node> and RuntimeObject expose mutation).
+         // Callbacks see a frozen source constructed and destroyed inside the same READING admission.
++        // Stable admission for owning temporary cleanup; no graph inspection or cloning is needed.
+         template <class Fn>
++            requires std::invocable<Fn>
++        [[nodiscard]] auto withRead(Fn&& function) const -> std::invoke_result_t<Fn>
++        {
++            return gate_.withRead(std::forward<Fn>(function));
++        }
++        template <class Fn>
++            requires std::invocable<Fn, const lux::flowforge::FlowSource&>
+         [[nodiscard]] auto withRead(Fn&& function, FlowSnapshotBudget budget = {}) const
+             -> std::invoke_result_t<Fn, const lux::flowforge::FlowSource&>
+         {
+diff --git a/editor/tools/material/interaction/CMakeLists.txt b/editor/tools/material/interaction/CMakeLists.txt
+new file mode 100644
+index 000000000..19b0fcf65
+--- /dev/null
++++ b/editor/tools/material/interaction/CMakeLists.txt
+@@ -0,0 +1,15 @@
++add_component(COMPONENT_NAME material_interaction NAMESPACE lux::engine::editor STATIC SOURCE_FILES src/MaterialInteraction.cpp)
++component_include_directories(material_interaction BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
++target_link_libraries(material_interaction PUBLIC lux::engine::editor::material_model)
++component_add_transitive_commands(material_interaction "find_package(lux-engine-editor-material-model REQUIRED COMPONENTS material_model)")
++lux_classify_target(TARGET material_interaction LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
++lux_engine_install_components(PROJECT_NAME lux-engine-editor-material-interaction VERSION ${PROJECT_VERSION}
++    NAMESPACE lux::engine::editor COMPONENTS material_interaction)
++
++if(LUX_EDITOR_BUILD_NATIVE_TESTS)
++    add_executable(editor_material_interaction_test test/interaction.cpp)
++    target_link_libraries(editor_material_interaction_test PRIVATE material_interaction)
++    lux_editor_test_options(editor_material_interaction_test)
++    add_test(NAME editor.material_interaction COMMAND editor_material_interaction_test)
++    set_tests_properties(editor.material_interaction PROPERTIES LABELS "editor;native;P08")
++endif()
+diff --git a/editor/tools/material/interaction/README.md b/editor/tools/material/interaction/README.md
+new file mode 100644
+index 000000000..e16ae6475
+--- /dev/null
++++ b/editor/tools/material/interaction/README.md
+@@ -0,0 +1,15 @@
++# material interaction（P08）
++
++该 STATIC target 只保存选择和一份临时领域批次，不拥有 Session、History、Registry 或保存基线。
++SessionStore 必须活得更久；Scene 的 RunInspectAccess 是值形式的非拥有能力，其 RunStore 也必须活得更久。
++构造、读取和交互在同一 owner 线程。活动交互 owner 不可复制或移动。
++
++- `begin` 捕获既有 ContentStamp；重复开始或领域 gate 占用时拒绝。
++- `preview(candidate)` 仅在原 gate 的 READING 范围内交换临时覆盖并清理旧 payload；拒绝时输入仍归调用方。
++- `overlay()` 是同步只读观察，后续交互会使它失效，不得保存可写领域借用。
++- `commit` 严格验证起始戳，并只调用一次原 Session::apply；冲突保留手势，交给取消或同步处理。
++- `cancel` 在同一读取 gate 内清理覆盖；忙时不强行解除 gate。必须先在安全点结束交互，再析构 owner。
++- `synchronize` 在作者删除、重载、关闭和运行停止后清理失效身份；不自动重定基线。
++
++节点布局仍通过原领域编辑保存；相机、hover、画布 pan/zoom 不进入共享选择组。
++旧产品即时 UI guard/输入适配只留原消费者至 P12，新 target 不链接旧 Context、Editor、UI 或转换桥。
+diff --git a/editor/tools/material/interaction/include/lux/engine/editor/material/MaterialInteraction.hpp b/editor/tools/material/interaction/include/lux/engine/editor/material/MaterialInteraction.hpp
+new file mode 100644
+index 000000000..2776e4f89
+--- /dev/null
++++ b/editor/tools/material/interaction/include/lux/engine/editor/material/MaterialInteraction.hpp
+@@ -0,0 +1,45 @@
++#pragma once
++#include <lux/engine/editor/material/MaterialSession.hpp>
++#include <lux/engine/editor/sessions/SessionStore.hpp>
++#include <optional>
++#include <span>
++
++namespace lux::editor::material
++{
++    // Owner-thread interaction only. The Store outlives this object. No live ReadView is retained.
++    // Preview inputs are consumed only after admission. Finish/cancel before destroying inside a callback.
++    class MaterialInteraction final
++    {
++    public:
++        MaterialInteraction(
++            sessions::TSessionAccess<MaterialSession> access,
++            sessions::TSessionKey<MaterialSession> key
++        ) noexcept;
++        ~MaterialInteraction() noexcept;
++        MaterialInteraction(const MaterialInteraction&) = delete;
++        MaterialInteraction& operator=(const MaterialInteraction&) = delete;
++        MaterialInteraction(MaterialInteraction&&) = delete;
++        MaterialInteraction& operator=(MaterialInteraction&&) = delete;
++        [[nodiscard]] MaterialEditResult<void> begin(std::string label);
++        [[nodiscard]] MaterialEditResult<void> preview(std::vector<VMaterialEdit>& candidate);
++        [[nodiscard]] MaterialEditResult<MaterialEditReceipt> commit();
++        [[nodiscard]] MaterialEditResult<void> cancel();
++        [[nodiscard]] MaterialEditResult<void> synchronize();
++        [[nodiscard]] const MaterialEditBatch* overlay() const noexcept
++        {
++            return gesture_ ? &*gesture_ : nullptr;
++        }
++        [[nodiscard]] MaterialEditResult<void> select(std::vector<lux::material::NodeId> nodes);
++        [[nodiscard]] std::span<const lux::material::NodeId> selection() const noexcept
++        {
++            return selection_;
++        }
++
++    private:
++        sessions::TSessionAccess<MaterialSession> access_;
++        sessions::TSessionKey<MaterialSession> key_;
++        std::optional<MaterialEditBatch> gesture_;
++        std::vector<lux::material::NodeId> selection_;
++        editing::HistoryId selection_history_;
++    };
++}
+diff --git a/editor/tools/material/interaction/src/MaterialInteraction.cpp b/editor/tools/material/interaction/src/MaterialInteraction.cpp
+new file mode 100644
+index 000000000..6bb3c27eb
+--- /dev/null
++++ b/editor/tools/material/interaction/src/MaterialInteraction.cpp
+@@ -0,0 +1,132 @@
++#include <lux/engine/editor/material/MaterialInteraction.hpp>
++#include <algorithm>
++#include <exception>
++
++namespace lux::editor::material
++{
++    MaterialInteraction::MaterialInteraction(
++        sessions::TSessionAccess<MaterialSession> access,
++        sessions::TSessionKey<MaterialSession> key
++    ) noexcept
++        : access_(access), key_(key)
++    {}
++    MaterialInteraction::~MaterialInteraction() noexcept
++    {
++        if (gesture_ && !cancel())
++            std::terminate(); // Destruction inside an admitted callback violates the owner lifetime contract.
++    }
++    MaterialEditResult<void> MaterialInteraction::begin(std::string label)
++    {
++        if (gesture_)
++            return lux::cxx::unexpected(sessions::ESessionError::BUSY);
++        auto info = access_.describe(key_);
++        if (!info)
++            return lux::cxx::unexpected(info.error());
++        if (info->admission != sessions::EEditAdmission::AVAILABLE)
++            return lux::cxx::unexpected(sessions::ESessionError::BUSY);
++        gesture_.emplace(MaterialEditBatch{info->current, std::move(label), {}});
++        return {};
++    }
++    MaterialEditResult<void> MaterialInteraction::preview(std::vector<VMaterialEdit>& candidate)
++    {
++        if (!gesture_)
++            return lux::cxx::unexpected(sessions::ESessionError::NOT_PREPARED);
++        auto info = access_.describe(key_);
++        if (!info)
++            return lux::cxx::unexpected(info.error());
++        if (info->current != gesture_->expected)
++            return lux::cxx::unexpected(sessions::ESessionError::STALE_CONTENT);
++        auto owner = access_.read(key_);
++        if (!owner)
++            return lux::cxx::unexpected(owner.error());
++        auto read = owner->get().read();
++        if (!read)
++            return lux::cxx::unexpected(read.error());
++        return read->withRead([&](const lux::material::MaterialSource&) -> MaterialEditResult<void> {
++            gesture_->edits.swap(candidate);
++            candidate.clear(); // Old preview payload and its code are released under the original gate.
++            return {};
++        });
++    }
++    MaterialEditResult<MaterialEditReceipt> MaterialInteraction::commit()
++    {
++        if (!gesture_)
++            return lux::cxx::unexpected(sessions::ESessionError::NOT_PREPARED);
++        auto info = access_.describe(key_);
++        if (!info)
++            return lux::cxx::unexpected(info.error());
++        if (info->admission != sessions::EEditAdmission::AVAILABLE)
++            return lux::cxx::unexpected(sessions::ESessionError::BUSY);
++        if (info->current != gesture_->expected)
++            return lux::cxx::unexpected(sessions::ESessionError::STALE_CONTENT);
++        auto owner = access_.edit(key_);
++        if (!owner)
++            return lux::cxx::unexpected(owner.error());
++        auto batch = std::move(*gesture_);
++        gesture_.reset();
++        return owner->get().apply(std::move(batch));
++    }
++    MaterialEditResult<void> MaterialInteraction::cancel()
++    {
++        if (!gesture_)
++            return {};
++        auto owner = access_.read(key_);
++        if (!owner)
++        {
++            gesture_.reset(); // A closed/reused Store slot cannot be edited by an input destructor.
++            return {};
++        }
++        auto read = owner->get().read();
++        if (!read)
++            return lux::cxx::unexpected(read.error());
++        return read->withRead([&](const lux::material::MaterialSource&) -> MaterialEditResult<void> {
++            gesture_.reset();
++            return {};
++        });
++    }
++    MaterialEditResult<void> MaterialInteraction::select(std::vector<lux::material::NodeId> nodes)
++    {
++        auto info = access_.describe(key_);
++        if (!info)
++            return lux::cxx::unexpected(info.error());
++        auto owner = access_.read(key_);
++        if (!owner)
++            return lux::cxx::unexpected(owner.error());
++        auto read = owner->get().read();
++        if (!read)
++            return lux::cxx::unexpected(read.error());
++        return read->withRead([&](const lux::material::MaterialSource& source) -> MaterialEditResult<void> {
++            for (auto id : nodes)
++                if (source.graph.node(id) == nullptr)
++                    return lux::cxx::unexpected(sessions::ESessionError::INVALID_ARGUMENT);
++            selection_ = std::move(nodes);
++            selection_history_ = info->current.state.history;
++            return {};
++        });
++    }
++    MaterialEditResult<void> MaterialInteraction::synchronize()
++    {
++        auto info = access_.describe(key_);
++        if (!info || (gesture_ && info->current != gesture_->expected))
++        {
++            auto cancelled = cancel();
++            if (!cancelled)
++                return cancelled;
++        }
++        if (!info || info->current.state.history != selection_history_)
++        {
++            selection_.clear();
++            return {};
++        }
++        auto owner = access_.read(key_);
++        if (!owner)
++            return lux::cxx::unexpected(owner.error());
++        auto read = owner->get().read();
++        if (!read)
++            return lux::cxx::unexpected(read.error());
++        return read->withRead([&](const lux::material::MaterialSource& source) -> MaterialEditResult<void> {
++            std::erase_if(selection_, [&](auto id) { return source.graph.node(id) == nullptr; });
++            return {};
++        });
++    }
++}
+diff --git a/editor/tools/material/interaction/test/interaction.cpp b/editor/tools/material/interaction/test/interaction.cpp
+new file mode 100644
+index 000000000..203da59d5
+--- /dev/null
++++ b/editor/tools/material/interaction/test/interaction.cpp
+@@ -0,0 +1,195 @@
++#include "../../model/src/PreparedMaterialReload.hpp"
++#include <lux/engine/editor/material/MaterialInteraction.hpp>
++#include <lux/engine/editor/material/MaterialSessionAccess.hpp>
++#include <lux/engine/material/graph/Nodes.hpp>
++#include <cassert>
++#include <cstdio>
++#include <functional>
++#include <limits>
++#include <stdexcept>
++
++namespace
++{
++    using namespace lux;
++    using namespace lux::editor;
++    using namespace lux::editor::material;
++    namespace mat = lux::material;
++    template <class T> auto take(T result)
++    {
++        if (!result)
++        {
++            if constexpr (requires { result.error().code; })
++                std::fprintf(stderr, "unexpected error %u\n", unsigned(result.error().code));
++            std::abort();
++        }
++        return std::move(*result);
++    }
++    asset::AssetId rootId()
++    {
++        return asset::AssetId{*uuids::uuid::from_string("12345678-1234-1234-1234-123456789abc")};
++    }
++    mat::MaterialSource source()
++    {
++        mat::MaterialSource result{rootId(), "test material", {}};
++        const auto id = result.graph.addNode(std::make_unique<mat::ConstantNode>());
++        assert(id.valid());
++        assert(result.graph.layout().set(id, {1, 2}));
++        return result;
++    }
++    struct Fixture final
++    {
++        sessions::SessionStore store{8};
++        MaterialSession* session{};
++        sessions::SessionId id;
++        Fixture(
++            mat::MaterialSource input = source(),
++            contracts::CodeLease code = contracts::CodeLease::builtin(),
++            MaterialSessionLimits limits = {},
++            bool bound = true
++        )
++        {
++            auto reservation =
++                take(store.reserve<MaterialSession>({"lux.editor.material"}, contracts::CodeLease::builtin()));
++            id = reservation.id();
++            auto candidate = take(MaterialSession::create(
++                id,
++                bound ? sessions::SourceBinding{sessions::BoundSource{input.id, "test.luxmaterial"}} : std::nullopt,
++                std::move(input),
++                code,
++                limits
++            ));
++            session = candidate.get();
++            assert(store.prepare(reservation, candidate));
++            assert(store.publish(reservation));
++        }
++        MaterialEditBatch batch() const
++        {
++            return {session->describe().current, "material edit", {}};
++        }
++        std::string encoded() const
++        {
++            return take(take(session->read()).encode());
++        }
++        mat::NodeId first() const
++        {
++            return take(take(session->read()).withRead([](const auto& value) -> MaterialEditResult<mat::NodeId> {
++                return value.graph.topology().nodes().front().id;
++            }));
++        }
++        editing::HistorySnapshot history() const
++        {
++            return take(lux::editor::material::detail::MaterialSessionAccess::data(*session).history->view()).snapshot;
++        }
++    };
++    void sameHistory(const editing::HistorySnapshot& a, const editing::HistorySnapshot& b)
++    {
++        assert(a.history == b.history && a.current == b.current && a.revision == b.revision);
++        assert(a.event_sequence == b.event_sequence && a.entry_count == b.entry_count && a.cursor == b.cursor);
++        assert(a.charged_retained_bytes == b.charged_retained_bytes && a.closed == b.closed);
++    }
++    struct Saved final
++    {
++        std::string bytes;
++        sessions::SessionInfo info;
++        editing::HistorySnapshot history;
++        sessions::BindingRevision binding_revision;
++        std::optional<sessions::PersistedState> persisted;
++        explicit Saved(const Fixture& f) : bytes(f.encoded()), info(f.session->describe()), history(f.history())
++        {
++            const auto& state = lux::editor::material::detail::MaterialSessionAccess::data(*f.session).state;
++            binding_revision = state.bindingRevision();
++            persisted = state.checkpoint().persisted();
++        }
++        void unchanged(const Fixture& f) const
++        {
++            assert(bytes == f.encoded());
++            const auto now = f.session->describe();
++            assert(info.current == now.current && info.observed == now.observed && info.dirty == now.dirty);
++            assert(info.id == now.id && info.binding == now.binding && info.admission == now.admission);
++            const auto& state = lux::editor::material::detail::MaterialSessionAccess::data(*f.session).state;
++            assert(binding_revision == state.bindingRevision() && persisted == state.checkpoint().persisted());
++            sameHistory(history, f.history());
++        }
++        void report(const Fixture& f) const
++        {
++            const auto now = f.session->describe();
++            const auto h = f.history();
++            const bool same_history = history.history == h.history && history.current == h.current &&
++                                      history.revision == h.revision && history.event_sequence == h.event_sequence &&
++                                      history.entry_count == h.entry_count && history.cursor == h.cursor &&
++                                      history.charged_retained_bytes == h.charged_retained_bytes &&
++                                      history.closed == h.closed;
++            std::printf(
++                "source_unchanged=%d history_unchanged=%d observed_unchanged=%d dirty_unchanged=%d "
++                "binding_unchanged=%d\n",
++                bytes == f.encoded(),
++                same_history,
++                info.observed == now.observed,
++                info.dirty == now.dirty,
++                info.binding == now.binding
++            );
++            std::fflush(stdout);
++            unchanged(f);
++        }
++    };
++    void interaction()
++    {
++        Fixture f;
++        auto key = take(f.store.key<MaterialSession>(f.id));
++        MaterialInteraction gesture(f.store.access<MaterialSession>(), key);
++        MaterialInteraction independent(f.store.access<MaterialSession>(), key);
++        const Saved start(f);
++        const auto node = f.first();
++        assert(gesture.select({node}));
++        assert(independent.selection().empty());
++        assert(gesture.begin("drag"));
++        std::vector<VMaterialEdit> preview;
++        preview.push_back(MaterialPlaceNode{node, {50, 60}});
++        assert(gesture.preview(preview) && preview.empty());
++        assert(gesture.overlay()->edits.size() == 1);
++        start.unchanged(f);
++        assert(gesture.cancel());
++        start.unchanged(f);
++        assert(gesture.begin("drag"));
++        preview.push_back(MaterialPlaceNode{node, {50, 60}});
++        assert(gesture.preview(preview));
++        const auto committed = take(gesture.commit());
++        assert(committed.content != start.info.current);
++        const auto history = f.history();
++        assert(history.entry_count == start.history.entry_count + 1);
++        assert(!gesture.overlay());
++        const auto encoded = f.encoded();
++        assert(encoded != start.bytes);
++        assert(f.session->undo());
++        assert(f.encoded() == start.bytes);
++        assert(f.session->redo());
++        assert(f.encoded() == encoded);
++        assert(gesture.begin("stale"));
++        preview.push_back(MaterialRename{"preview"});
++        assert(gesture.preview(preview));
++        auto concurrent = f.batch();
++        concurrent.edits.push_back(MaterialRename{"other view"});
++        assert(f.session->apply(std::move(concurrent)));
++        const Saved after(f);
++        assert(!gesture.commit());
++        after.unchanged(f);
++        assert(gesture.synchronize() && !gesture.overlay());
++        after.unchanged(f);
++        auto read = take(f.session->read());
++        assert(read.withRead([&](const auto&) -> MaterialEditResult<void> {
++            const auto denied = gesture.begin("nested");
++            assert(!denied && denied.error().session == sessions::ESessionError::BUSY);
++            return {};
++        }));
++        const auto current = f.session->describe().current;
++        auto close = take(f.store.prepareClose(current));
++        assert(f.store.close(close));
++        assert(gesture.synchronize() && gesture.selection().empty());
++        assert(!gesture.begin("closed"));
++    }
++}
++int main()
++{
++    interaction();
++    std::puts("PASS P08 material preview/cancel, one commit, persistent layout, conflict, gate, closed identity");
++}
+diff --git a/editor/tools/scene/execution/api/include/lux/engine/editor/scene/RunInspectAccess.hpp b/editor/tools/scene/execution/api/include/lux/engine/editor/scene/RunInspectAccess.hpp
+index a3100a3cf..aee5b6303 100644
+--- a/editor/tools/scene/execution/api/include/lux/engine/editor/scene/RunInspectAccess.hpp
++++ b/editor/tools/scene/execution/api/include/lux/engine/editor/scene/RunInspectAccess.hpp
+@@ -18,12 +18,19 @@ namespace lux::editor::scene
+     {
+     public:
+         [[nodiscard]] RunResult<std::reference_wrapper<const simulation::ecs::Registry>> borrow(RunId) const noexcept;
+-        [[nodiscard]] bool contains(RunningObjectRef) const noexcept;
++        [[nodiscard]] bool contains(RunningObjectRef ref) const noexcept
++        {
++            return contains_(store_, ref);
++        }
+         [[nodiscard]] RunResult<RunningObjectRef> reference(RunId, simulation::ecs::Entity) const noexcept;
+ 
+     private:
+         friend class RunStore;
+-        explicit RunInspectAccess(const RunStore& store) noexcept : store_(store) {}
++        using Contains = bool (*)(const RunStore&, RunningObjectRef) noexcept;
++        explicit RunInspectAccess(const RunStore& store, Contains contains) noexcept
++            : store_(store), contains_(contains)
++        {}
+         const RunStore& store_;
++        Contains contains_;
+     };
+ }
+diff --git a/editor/tools/scene/execution/include/lux/engine/editor/scene/RunStore.hpp b/editor/tools/scene/execution/include/lux/engine/editor/scene/RunStore.hpp
+index 521a8f3ae..262be7a99 100644
+--- a/editor/tools/scene/execution/include/lux/engine/editor/scene/RunStore.hpp
++++ b/editor/tools/scene/execution/include/lux/engine/editor/scene/RunStore.hpp
+@@ -42,10 +42,7 @@ namespace lux::editor::scene
+         [[nodiscard]] RunResult<void> acknowledgeStop(RunId);
+         // Receives actual drive/retirement facts, then maintains pause debug state. No tick here.
+         [[nodiscard]] RunResult<void> update();
+-        [[nodiscard]] RunInspectAccess inspect() const noexcept
+-        {
+-            return RunInspectAccess(*this);
+-        }
++        [[nodiscard]] RunInspectAccess inspect() const noexcept;
+         [[nodiscard]] RunResult<std::reference_wrapper<SceneEditing>> debugEditing(RunId) noexcept;
+         [[nodiscard]] RunResult<std::reference_wrapper<editing::EditHistory>> debugHistory(RunId) noexcept;
+         [[nodiscard]] RunResult<void> finishEditing(RunId);
+diff --git a/editor/tools/scene/execution/src/RunStore.cpp b/editor/tools/scene/execution/src/RunStore.cpp
+index 58cf066e5..f8758efb8 100644
+--- a/editor/tools/scene/execution/src/RunStore.cpp
++++ b/editor/tools/scene/execution/src/RunStore.cpp
+@@ -414,13 +414,18 @@ namespace lux::editor::scene
+             return rejected(borrowed.error());
+         return *borrowed;
+     }
+-    bool RunInspectAccess::contains(RunningObjectRef ref) const noexcept
++    RunInspectAccess RunStore::inspect() const noexcept
+     {
+-        auto run = store_.impl_->find(ref.run);
+-        if (!run || (*run)->info.instance != ref.instance)
+-            return false;
+-        auto registry = borrow(ref.run);
+-        return registry && registry->get().valid(ref.entity);
++        return RunInspectAccess(
++            *this,
++            +[](const RunStore& store, RunningObjectRef ref) noexcept {
++                auto run = store.impl_->find(ref.run);
++                if (!run || (*run)->info.instance != ref.instance)
++                    return false;
++                auto registry = store.inspect().borrow(ref.run);
++                return registry && registry->get().valid(ref.entity);
++            }
++        );
+     }
+     RunResult<RunningObjectRef> RunInspectAccess::reference(RunId id, simulation::ecs::Entity entity) const noexcept
+     {
+diff --git a/editor/tools/scene/interaction/CMakeLists.txt b/editor/tools/scene/interaction/CMakeLists.txt
+new file mode 100644
+index 000000000..6841e3fb3
+--- /dev/null
++++ b/editor/tools/scene/interaction/CMakeLists.txt
+@@ -0,0 +1,24 @@
++add_component(COMPONENT_NAME scene_interaction NAMESPACE lux::engine::editor STATIC SOURCE_FILES src/SceneInteraction.cpp)
++component_include_directories(scene_interaction BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
++target_link_libraries(scene_interaction PUBLIC lux::engine::editor::scene_model lux::engine::editor::scene_execution_api)
++component_add_transitive_commands(scene_interaction "find_package(lux-engine-editor-scene-model REQUIRED COMPONENTS scene_model)"
++    "find_package(lux-engine-editor-scene-execution REQUIRED COMPONENTS scene_execution_api)")
++lux_classify_target(TARGET scene_interaction LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
++lux_engine_install_components(PROJECT_NAME lux-engine-editor-scene-interaction VERSION ${PROJECT_VERSION}
++    NAMESPACE lux::engine::editor COMPONENTS scene_interaction)
++
++if(LUX_EDITOR_BUILD_NATIVE_TESTS)
++    add_executable(editor_scene_interaction_test test/interaction.cpp)
++    target_link_libraries(editor_scene_interaction_test PRIVATE scene_interaction)
++    lux_editor_test_options(editor_scene_interaction_test)
++    add_test(NAME editor.scene_interaction COMMAND editor_scene_interaction_test)
++    set_tests_properties(editor.scene_interaction PROPERTIES LABELS "editor;native;P08")
++endif()
++
++if(LUX_EDITOR_BUILD_NATIVE_TESTS)
++    add_executable(editor_run_selection_test test/run_selection.cpp)
++    target_link_libraries(editor_run_selection_test PRIVATE scene_interaction scene_execution lux::engine::scene::scene_transform)
++    lux_editor_test_options(editor_run_selection_test)
++    add_test(NAME editor.interaction_run_identity COMMAND editor_run_selection_test)
++    set_tests_properties(editor.interaction_run_identity PROPERTIES LABELS "editor;native;P08")
++endif()
+diff --git a/editor/tools/scene/interaction/README.md b/editor/tools/scene/interaction/README.md
+new file mode 100644
+index 000000000..482089d7d
+--- /dev/null
++++ b/editor/tools/scene/interaction/README.md
+@@ -0,0 +1,15 @@
++# scene interaction（P08）
++
++该 STATIC target 只保存选择和一份临时领域批次，不拥有 Session、History、Registry 或保存基线。
++SessionStore 必须活得更久；Scene 的 RunInspectAccess 是值形式的非拥有能力，其 RunStore 也必须活得更久。
++构造、读取和交互在同一 owner 线程。活动交互 owner 不可复制或移动。
++
++- `begin` 捕获既有 ContentStamp；重复开始或领域 gate 占用时拒绝。
++- `preview(candidate)` 仅在原 gate 的 READING 范围内交换临时覆盖并清理旧 payload；拒绝时输入仍归调用方。
++- `overlay()` 是同步只读观察，后续交互会使它失效，不得保存可写领域借用。
++- `commit` 严格验证起始戳，并只调用一次原 Session::apply；冲突保留手势，交给取消或同步处理。
++- `cancel` 在同一读取 gate 内清理覆盖；忙时不强行解除 gate。必须先在安全点结束交互，再析构 owner。
++- `synchronize` 在作者删除、重载、关闭和运行停止后清理失效身份；不自动重定基线。
++
++节点布局仍通过原领域编辑保存；相机、hover、画布 pan/zoom 不进入共享选择组。
++旧产品即时 UI guard/输入适配只留原消费者至 P12，新 target 不链接旧 Context、Editor、UI 或转换桥。
+diff --git a/editor/tools/scene/interaction/include/lux/engine/editor/scene/SceneInteraction.hpp b/editor/tools/scene/interaction/include/lux/engine/editor/scene/SceneInteraction.hpp
+new file mode 100644
+index 000000000..5a36ee96f
+--- /dev/null
++++ b/editor/tools/scene/interaction/include/lux/engine/editor/scene/SceneInteraction.hpp
+@@ -0,0 +1,63 @@
++#pragma once
++#include <lux/engine/editor/scene/SceneSession.hpp>
++#include <lux/engine/editor/sessions/SessionStore.hpp>
++#include <lux/engine/editor/scene/RunInspectAccess.hpp>
++#include <optional>
++#include <span>
++
++namespace lux::editor::scene
++{
++    struct InteractionGroupId final
++    {
++        std::uint64_t value{};
++        friend bool operator==(InteractionGroupId, InteractionGroupId) = default;
++    };
++    using VSceneSelectionTarget = std::variant<SceneObjectRef, RunningObjectRef>;
++    struct SceneSelection final
++    {
++        std::vector<VSceneSelectionTarget> objects;
++    };
++    // Owner-thread interaction only. The Store outlives this object. No live ReadView is retained.
++    // Preview inputs are consumed only after admission. Finish/cancel before destroying inside a callback.
++    class SceneInteractionGroup final
++    {
++    public:
++        SceneInteractionGroup(
++            sessions::TSessionAccess<SceneSession> access,
++            sessions::TSessionKey<SceneSession> key,
++            InteractionGroupId id,
++            std::optional<RunInspectAccess> runs = {}
++        ) noexcept;
++        ~SceneInteractionGroup() noexcept;
++        SceneInteractionGroup(const SceneInteractionGroup&) = delete;
++        SceneInteractionGroup& operator=(const SceneInteractionGroup&) = delete;
++        SceneInteractionGroup(SceneInteractionGroup&&) = delete;
++        SceneInteractionGroup& operator=(SceneInteractionGroup&&) = delete;
++        [[nodiscard]] SceneEditResult<void> begin(std::string label);
++        [[nodiscard]] SceneEditResult<void> preview(std::vector<VSceneEdit>& candidate);
++        [[nodiscard]] SceneEditResult<SceneEditReceipt> commit();
++        [[nodiscard]] SceneEditResult<void> cancel();
++        [[nodiscard]] SceneEditResult<void> synchronize();
++        [[nodiscard]] const SceneEditBatch* overlay() const noexcept
++        {
++            return gesture_ ? &*gesture_ : nullptr;
++        }
++        [[nodiscard]] InteractionGroupId id() const noexcept
++        {
++            return id_;
++        }
++        [[nodiscard]] SceneEditResult<void> select(SceneSelection selection);
++        [[nodiscard]] const SceneSelection& selection() const noexcept
++        {
++            return selection_;
++        }
++
++    private:
++        sessions::TSessionAccess<SceneSession> access_;
++        sessions::TSessionKey<SceneSession> key_;
++        std::optional<SceneEditBatch> gesture_;
++        InteractionGroupId id_;
++        std::optional<RunInspectAccess> runs_;
++        SceneSelection selection_;
++    };
++}
+diff --git a/editor/tools/scene/interaction/src/SceneInteraction.cpp b/editor/tools/scene/interaction/src/SceneInteraction.cpp
+new file mode 100644
+index 000000000..1410fd7de
+--- /dev/null
++++ b/editor/tools/scene/interaction/src/SceneInteraction.cpp
+@@ -0,0 +1,147 @@
++#include <lux/engine/editor/scene/SceneInteraction.hpp>
++#include <algorithm>
++#include <exception>
++
++namespace lux::editor::scene
++{
++    SceneInteractionGroup::SceneInteractionGroup(
++        sessions::TSessionAccess<SceneSession> access,
++        sessions::TSessionKey<SceneSession> key,
++        InteractionGroupId id,
++        std::optional<RunInspectAccess> runs
++    ) noexcept
++        : access_(access), key_(key), id_(id), runs_(runs)
++    {}
++    SceneInteractionGroup::~SceneInteractionGroup() noexcept
++    {
++        if (gesture_ && !cancel())
++            std::terminate(); // Destruction inside an admitted callback violates the owner lifetime contract.
++    }
++    SceneEditResult<void> SceneInteractionGroup::begin(std::string label)
++    {
++        if (gesture_)
++            return lux::cxx::unexpected(sessions::ESessionError::BUSY);
++        auto info = access_.describe(key_);
++        if (!info)
++            return lux::cxx::unexpected(info.error());
++        if (info->admission != sessions::EEditAdmission::AVAILABLE)
++            return lux::cxx::unexpected(sessions::ESessionError::BUSY);
++        gesture_.emplace(SceneEditBatch{info->current, std::move(label), {}});
++        return {};
++    }
++    SceneEditResult<void> SceneInteractionGroup::preview(std::vector<VSceneEdit>& candidate)
++    {
++        if (!gesture_)
++            return lux::cxx::unexpected(sessions::ESessionError::NOT_PREPARED);
++        auto info = access_.describe(key_);
++        if (!info)
++            return lux::cxx::unexpected(info.error());
++        if (info->current != gesture_->expected)
++            return lux::cxx::unexpected(sessions::ESessionError::STALE_CONTENT);
++        auto owner = access_.read(key_);
++        if (!owner)
++            return lux::cxx::unexpected(owner.error());
++        auto read = owner->get().read();
++        if (!read)
++            return lux::cxx::unexpected(read.error());
++        return read->withRead([&](const SceneReadView&) -> SceneEditResult<void> {
++            gesture_->edits.swap(candidate);
++            candidate.clear(); // Old preview payload and its code are released under the original gate.
++            return {};
++        });
++    }
++    SceneEditResult<SceneEditReceipt> SceneInteractionGroup::commit()
++    {
++        if (!gesture_)
++            return lux::cxx::unexpected(sessions::ESessionError::NOT_PREPARED);
++        auto info = access_.describe(key_);
++        if (!info)
++            return lux::cxx::unexpected(info.error());
++        if (info->admission != sessions::EEditAdmission::AVAILABLE)
++            return lux::cxx::unexpected(sessions::ESessionError::BUSY);
++        if (info->current != gesture_->expected)
++            return lux::cxx::unexpected(sessions::ESessionError::STALE_CONTENT);
++        auto owner = access_.edit(key_);
++        if (!owner)
++            return lux::cxx::unexpected(owner.error());
++        auto batch = std::move(*gesture_);
++        gesture_.reset();
++        return owner->get().apply(std::move(batch));
++    }
++    SceneEditResult<void> SceneInteractionGroup::cancel()
++    {
++        if (!gesture_)
++            return {};
++        auto owner = access_.read(key_);
++        if (!owner)
++        {
++            gesture_.reset(); // A closed/reused Store slot cannot be edited by an input destructor.
++            return {};
++        }
++        auto read = owner->get().read();
++        if (!read)
++            return lux::cxx::unexpected(read.error());
++        return read->withRead([&](const SceneReadView&) -> SceneEditResult<void> {
++            gesture_.reset();
++            return {};
++        });
++    }
++    SceneEditResult<void> SceneInteractionGroup::select(SceneSelection selection)
++    {
++        auto owner = access_.read(key_);
++        if (!owner)
++            return lux::cxx::unexpected(owner.error());
++        auto read = owner->get().read();
++        if (!read)
++            return lux::cxx::unexpected(read.error());
++        for (const auto& target : selection.objects)
++        {
++            const bool valid = std::visit(
++                [&](const auto& ref) {
++                    if constexpr (std::same_as<std::decay_t<decltype(ref)>, SceneObjectRef>)
++                        return read->contains(ref);
++                    else
++                        return runs_ && runs_->contains(ref);
++                },
++                target
++            );
++            if (!valid)
++                return lux::cxx::unexpected(SceneEditError{ESceneEditError::STALE_OBJECT});
++        }
++        selection_ = std::move(selection);
++        return {};
++    }
++    SceneEditResult<void> SceneInteractionGroup::synchronize()
++    {
++        auto info = access_.describe(key_);
++        if (!info || (gesture_ && info->current != gesture_->expected))
++        {
++            auto cancelled = cancel();
++            if (!cancelled)
++                return cancelled;
++        }
++        if (!info)
++        {
++            selection_.objects.clear();
++            return {};
++        }
++        auto owner = access_.read(key_);
++        if (!owner)
++            return lux::cxx::unexpected(owner.error());
++        auto read = owner->get().read();
++        if (!read)
++            return lux::cxx::unexpected(read.error());
++        std::erase_if(selection_.objects, [&](const auto& target) {
++            return !std::visit(
++                [&](const auto& ref) {
++                    if constexpr (std::same_as<std::decay_t<decltype(ref)>, SceneObjectRef>)
++                        return read->contains(ref);
++                    else
++                        return runs_ && runs_->contains(ref);
++                },
++                target
++            );
++        });
++        return {};
++    }
++}
+diff --git a/editor/tools/scene/interaction/test/interaction.cpp b/editor/tools/scene/interaction/test/interaction.cpp
+new file mode 100644
+index 000000000..904983496
+--- /dev/null
++++ b/editor/tools/scene/interaction/test/interaction.cpp
+@@ -0,0 +1,187 @@
++#include "../../model/src/PreparedSceneReload.hpp"
++#include <lux/engine/editor/scene/SceneInteraction.hpp>
++#include <lux/engine/editor/scene/SceneSessionAccess.hpp>
++#include <lux/engine/editor/scene/SceneAlgorithms.hpp>
++#include <lux/engine/scene/CameraSchema.hpp>
++#include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
++#include <lux/engine/simulation/ecs/TransformSchema.hpp>
++#include <lux/engine/simulation/ecs/HierarchySchema.hpp>
++#include <lux/engine/simulation/ecs/VisualSchema.hpp>
++#include <cassert>
++#include <cstdio>
++#include <cstring>
++
++namespace
++{
++    using namespace lux;
++    using namespace lux::editor;
++    using namespace lux::editor::scene;
++    namespace ecs = simulation::ecs;
++
++    template <class Result> auto take(Result result)
++    {
++        if (!result)
++        {
++            if constexpr (requires { result.error().code; })
++                std::fprintf(stderr, "Unexpected error code %u\n", static_cast<unsigned>(result.error().code));
++            std::abort();
++        }
++        return std::move(*result);
++    }
++    uuids::uuid uuid(std::string_view key)
++    {
++        return uuids::uuid_name_generator(*uuids::uuid::from_string("01234567-89ab-cdef-0123-456789abcdef"))(key);
++    }
++    world::WorldObjectId object(std::string_view key)
++    {
++        return {uuid(key)};
++    }
++    ecs::ComponentSchemaSet schemas()
++    {
++        std::vector<ecs::ComponentSchema> values;
++        for (auto list :
++             {ecs::transformComponentSchemas(),
++              ecs::hierarchyComponentSchemas(),
++              ecs::visualComponentSchemas(),
++              lux::scene::cameraComponentSchemas()})
++            for (auto schema : list)
++                if (schema.snapshot == ecs::EComponentSnapshotPolicy::COPY)
++                    values.push_back(std::move(schema));
++        return take(ecs::ComponentSchemaSet::build(std::move(values)));
++    }
++    lux::scene::ScenePackage package(const ecs::ComponentSchemaSet& schemas, std::string_view root = "root")
++    {
++        std::vector<world::WorldDataSchemaId> ids;
++        for (const auto& schema : schemas.all())
++            ids.push_back(world::worldDataSchemaId(schema.id.name));
++        ids.push_back(world::worldDataSchemaId("test.unknown"));
++        auto simulation = take(std::move(simulation::SimulationDescriptionBuilder{}).build());
++        auto description = take(std::move(lux::scene::SceneDescriptionBuilder{}).buildResolved());
++        return take(lux::scene::createScenePackage(
++            asset::AssetId{uuid(root)},
++            "CPU author scene",
++            ids,
++            std::make_shared<const simulation::SimulationDescription>(std::move(simulation)),
++            description
++        ));
++    }
++    struct Fixture final
++    {
++        ecs::ComponentSchemaSet metadata{schemas()};
++        lux::scene::ScenePackage input{package(metadata)};
++        sessions::SessionStore store{8};
++        SceneSession* session{};
++        sessions::SessionId id;
++
++        explicit Fixture(SceneSessionLimits limits = {}, std::string_view root = "root")
++            : input(package(metadata, root))
++        {
++            auto reservation = take(store.reserve<SceneSession>({"lux.editor.scene"}, contracts::CodeLease::builtin()));
++            id = reservation.id();
++            auto source = take(SceneSource::create(input, metadata));
++            auto candidate = take(SceneSession::create(
++                id,
++                sessions::BoundSource{input.scene->id(), "scene.lux"},
++                std::move(source),
++                limits
++            ));
++            session = candidate.get();
++            assert(store.prepare(reservation, candidate));
++            assert(store.publish(reservation));
++        }
++        SceneObjectRef ref(world::WorldObjectId id) const
++        {
++            return {this->id, session->describe().current.state.history, id};
++        }
++        SceneEditBatch batch(std::string label = "edit") const
++        {
++            return {session->describe().current, std::move(label), {}};
++        }
++        SceneObjectData spatial(std::string_view name) const
++        {
++            ecs::WorldEntityMap identities;
++            return {object(name), {0}, {take(encodeSceneValue(ecs::Transform3D{}, metadata, identities, 4096))}};
++        }
++        void create(std::string_view name)
++        {
++            auto edit = batch("create");
++            edit.edits.push_back(SceneCreateObject{spatial(name)});
++            assert(session->apply(std::move(edit)));
++        }
++        SceneSetField translation(world::WorldObjectId id, double x) const
++        {
++            return SceneSetField::make<ecs::Transform3D>(
++                {ref(id), ecs::componentSchemaId("lux.ecs.Transform3D"), "translation"},
++                Eigen::Vector3d{x, 2, 3}
++            );
++        }
++    };
++
++    void interaction()
++    {
++        Fixture f;
++        f.create("a");
++        auto key = take(f.store.key<SceneSession>(f.id));
++        SceneInteractionGroup gesture(f.store.access<SceneSession>(), key, {1});
++        SceneInteractionGroup independent(f.store.access<SceneSession>(), key, {2});
++        assert(gesture.select({{f.ref(object("a"))}}));
++        assert(independent.selection().objects.empty());
++        const auto start = f.session->describe();
++        const auto snapshot = take(f.session->capture());
++        const auto original =
++            take(take(f.session->read()).component(f.ref(object("a")), ecs::componentSchemaId("lux.ecs.Transform3D")));
++        auto& data = lux::editor::scene::detail::SceneSessionAccess::data(*f.session);
++        const auto history = take(data.history->view()).snapshot;
++        const auto checkpoint = data.state.checkpoint().persisted();
++        const auto unchanged = [&] {
++            auto info = f.session->describe();
++            assert(info.current == start.current && info.dirty == start.dirty && info.observed == start.observed);
++            assert(info.binding == start.binding && checkpoint == data.state.checkpoint().persisted());
++            auto now = take(f.session->capture());
++            assert(std::ranges::equal(snapshot.objects(), now.objects()));
++            assert(take(data.history->view()).snapshot.entry_count == history.entry_count);
++        };
++        assert(gesture.begin("field"));
++        std::vector<VSceneEdit> preview;
++        preview.push_back(f.translation(object("a"), 20));
++        assert(gesture.preview(preview));
++        unchanged();
++        assert(gesture.cancel());
++        unchanged();
++        assert(gesture.begin("field"));
++        preview.push_back(f.translation(object("a"), 20));
++        assert(gesture.preview(preview));
++        assert(gesture.commit());
++        assert(take(data.history->view()).snapshot.entry_count == history.entry_count + 1);
++        assert(f.session->undo());
++        assert(take(take(f.session->read()).component(f.ref(object("a")), original.schema)) == original);
++        assert(f.session->redo());
++        assert(gesture.begin("stale"));
++        preview.push_back(f.translation(object("a"), 30));
++        assert(gesture.preview(preview));
++        auto concurrent = f.batch();
++        concurrent.edits.push_back(SceneEraseObject{f.ref(object("a"))});
++        assert(f.session->apply(std::move(concurrent)));
++        auto changed = f.session->describe();
++        assert(!gesture.commit());
++        assert(f.session->describe().current == changed.current);
++        assert(gesture.synchronize() && !gesture.overlay() && gesture.selection().objects.empty());
++        f.create("reload-target");
++        const auto old_ref = f.ref(object("reload-target"));
++        assert(gesture.select({{old_ref}}));
++        auto reloaded = take(lux::editor::scene::detail::PreparedSceneReload::prepare(
++            *f.session,
++            take(SceneSource::create(f.input, f.metadata))
++        ));
++        assert(reloaded.adopt(*f.session));
++        assert(gesture.synchronize() && gesture.selection().objects.empty());
++        f.create("reload-target");
++        assert(!gesture.select({{old_ref}}));
++        assert(gesture.select({{f.ref(object("reload-target"))}}));
++    }
++}
++int main()
++{
++    interaction();
++    std::puts("PASS P08 scene preview/cancel, one field commit, conflict and selection invalidation");
++}
+diff --git a/editor/tools/scene/interaction/test/run_selection.cpp b/editor/tools/scene/interaction/test/run_selection.cpp
+new file mode 100644
+index 000000000..5700590f5
+--- /dev/null
++++ b/editor/tools/scene/interaction/test/run_selection.cpp
+@@ -0,0 +1,316 @@
++#include <lux/engine/editor/scene/SceneInteraction.hpp>
++#include <lux/engine/editor/scene/RunController.hpp>
++#include <lux/engine/editor/scene/SceneSessionAccess.hpp>
++#include <lux/engine/editor/scene/SceneAlgorithms.hpp>
++#include <lux/engine/simulation/ecs/Transform.hpp>
++#include <lux/engine/editor/editing/scene/FieldEdit.hpp>
++#include <lux/engine/scene/WorldLoadingSystem.hpp>
++#include <lux/engine/scene/TransformSystem.hpp>
++#include <lux/engine/scene/SceneSystemInstaller.hpp>
++#include <lux/engine/simulation/ecs/TransformSchema.hpp>
++#include <lux/engine/simulation/ecs/HierarchySchema.hpp>
++#include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
++#include <cassert>
++#include <cstdio>
++#include <thread>
++#include <source_location>
++
++namespace
++{
++    using namespace lux;
++    using namespace lux::editor;
++    using namespace lux::editor::scene;
++    using namespace std::chrono_literals;
++    namespace ecs = simulation::ecs;
++    template <class T> auto take(T value, std::source_location where = std::source_location::current())
++    {
++        if (!value)
++            std::fprintf(stderr, "Unexpected failure at %s:%u\n", where.file_name(), where.line());
++        assert(value);
++        return std::move(*value);
++    }
++    uuids::uuid uuid(std::string_view name)
++    {
++        return uuids::uuid_name_generator(*uuids::uuid::from_string("01234567-89ab-cdef-0123-456789abcdef"))(name);
++    }
++    struct Probe final
++    {
++        inline static constexpr std::string_view supported[]{"*"};
++        inline static constexpr system::SystemTypeDescription Description{
++            .canonical_name = "test.run.probe",
++            .version = 1,
++            .supported_world_types = supported
++        };
++        struct Facts final
++        {
++            std::uint64_t maintenance{}, publication{};
++            bool fail{}, pending{};
++        };
++        inline static std::function<void()> installing;
++        inline static bool reject_install{};
++        inline static bool custom_failure{};
++        inline static std::function<void()> copying_failure;
++        struct Failure final
++        {
++            int reason{731};
++            Failure() = default;
++            Failure(const Failure& other) : reason(other.reason)
++            {
++                if (copying_failure)
++                    copying_failure();
++            }
++        };
++        inline static std::function<void()> maintaining;
++        inline static bool* in_flight{};
++        inline static unsigned destroyed{};
++        Facts& facts;
++        explicit Probe(ecs::Registry& registry) : facts(registry.ctx().emplace<Facts>()) {}
++        ~Probe()
++        {
++            ++destroyed;
++        }
++    };
++    lux::scene::SceneSystemRegistration probeRegistration()
++    {
++        return {
++            .type = system::systemTypeId(Probe::Description.canonical_name),
++            .cpp_type = cxx::typeToken<Probe>(),
++            .description = &Probe::Description,
++            .install = +[](lux::scene::SceneSystemInstaller& installer, lux::scene::SceneSystemDescription description
++                        ) noexcept -> cxx::expected<void, lux::scene::SceneSystemBuildFailure> {
++                auto system = installer.emplaceSystem<Probe>(description.instanceId(), installer.registry());
++                if (!system)
++                    return cxx::unexpected(system.error());
++                if (Probe::installing)
++                    Probe::installing();
++                if (Probe::reject_install)
++                    return cxx::unexpected(lux::scene::SceneSystemBuildFailure{
++                        .code = lux::scene::ESceneSystemBuildError::EXTERNAL_OPERATION_FAILURE,
++                        .system = description.instanceId(),
++                        .cause = 419
++                    });
++                auto maintenance = installer.addMaintenanceTask<Probe>(
++                    description.instanceId(),
++                    [](Probe& probe) noexcept -> lux::scene::SceneStageResult {
++                        ++probe.facts.maintenance;
++                        if (Probe::maintaining)
++                            Probe::maintaining();
++                        if (Probe::in_flight && *Probe::in_flight)
++                            return lux::scene::ESceneProgress::PENDING;
++                        return probe.facts.pending ? lux::scene::ESceneProgress::PENDING
++                                                   : lux::scene::ESceneProgress::COMPLETE;
++                    }
++                );
++                if (!maintenance)
++                    return maintenance;
++                return installer.addPublicationTask<Probe>(
++                    description.instanceId(),
++                    [](Probe& probe) noexcept -> lux::scene::SceneStageResult {
++                        ++probe.facts.publication;
++                        if (probe.facts.fail && Probe::custom_failure)
++                            return cxx::unexpected(lux::scene::SceneExecutionFailure{
++                                lux::scene::ESceneExecutionError::SYSTEM_FAILURE,
++                                {},
++                                Probe::Failure{}
++                            });
++                        if (probe.facts.fail)
++                            return cxx::unexpected(lux::scene::SceneExecutionFailure{
++                                lux::scene::ESceneExecutionError::SYSTEM_FAILURE,
++                                {},
++                                731
++                            });
++                        return lux::scene::ESceneProgress::COMPLETE;
++                    }
++                );
++            }
++        };
++    }
++    struct Fixture final
++    {
++        // Disable diagnostic history so taskInfos() below measures live task records.
++        process::ExecutionRuntime execution{take(process::ExecutionRuntime::create({1, 64, 64, {32}, {}, 0}))};
++        std::unique_ptr<lux::scene::SceneRuntime> runtime{take(lux::scene::SceneRuntime::create(execution, {0, 1024}))};
++        RunStore runs{*runtime, execution, 4};
++        RunController controller{runs};
++        sessions::SessionStore authors{4};
++        ecs::ComponentSchemaSet schemas;
++        std::shared_ptr<const simulation::SimulationSystemRegistry> systems{
++            std::make_shared<simulation::SimulationSystemRegistry>()
++        };
++        std::vector<lux::scene::SceneSystemRegistration> registrations{
++            lux::scene::worldLoadingSystemRegistration(),
++            lux::scene::transformSystemRegistration(),
++            probeRegistration()
++        };
++        SceneSession* author{};
++        sessions::SessionId author_id;
++        world::WorldObjectId object{uuid("object")};
++
++        explicit Fixture(std::size_t capacity = 4) : runs(*runtime, execution, capacity)
++        {
++            std::vector<ecs::ComponentSchema> types;
++            for (auto group : {ecs::transformComponentSchemas(), ecs::hierarchyComponentSchemas()})
++                for (auto schema : group)
++                    if (schema.snapshot == ecs::EComponentSnapshotPolicy::COPY)
++                        types.push_back(std::move(schema));
++            schemas = take(ecs::ComponentSchemaSet::build(std::move(types)));
++            std::vector<world::WorldDataSchemaId> ids;
++            for (const auto& schema : schemas.all())
++                ids.push_back(world::worldDataSchemaId(schema.id.name));
++            lux::scene::SceneDescriptionBuilder builder;
++            lux::scene::WorldLoadingConfiguration loading{{{0}}};
++            std::vector<std::byte> payload;
++            assert(registrations[0].configuration.encode(&loading, payload));
++            assert(builder.addSystem(
++                {1},
++                "loading",
++                registrations[0].type,
++                1,
++                registrations[0].description->configuration_schema_name,
++                1,
++                payload
++            ));
++            auto transform = take(lux::scene::makeTransformSystemConfiguration(64, {512, 65536}));
++            assert(builder.addSystem(
++                {2},
++                "transform",
++                registrations[1].type,
++                1,
++                registrations[1].description->configuration_schema_name,
++                1,
++                transform
++            ));
++            assert(builder.addSystem({3}, "probe", registrations[2].type, 1, {}, 0));
++            auto description = take(std::move(builder).buildResolved());
++            auto simulation = take(std::move(simulation::SimulationDescriptionBuilder{}).build());
++            auto package = take(lux::scene::createScenePackage(
++                asset::AssetId{uuid("run-scene")},
++                "run",
++                ids,
++                std::make_shared<const simulation::SimulationDescription>(std::move(simulation)),
++                description
++            ));
++            auto reservation =
++                take(authors.reserve<SceneSession>({"lux.editor.scene"}, contracts::CodeLease::builtin()));
++            author_id = reservation.id();
++            auto source = take(SceneSource::create(package, schemas));
++            auto session = take(SceneSession::create(
++                author_id,
++                sessions::BoundSource{package.scene->id(), "scene.lux"},
++                std::move(source)
++            ));
++            author = session.get();
++            assert(authors.prepare(reservation, session) && authors.publish(reservation));
++            ecs::WorldEntityMap identities;
++            ecs::Transform3D pose;
++            pose.translation.x() = 10;
++            SceneEditBatch batch{author->describe().current, "S10", {}};
++            batch.edits.push_back(
++                SceneCreateObject{{object, {0}, {take(encodeSceneValue(pose, schemas, identities, 4096))}}}
++            );
++            assert(author->apply(std::move(batch)));
++        }
++        RunEnvironment environment() const
++        {
++            return {schemas, systems, registrations};
++        }
++        void frame()
++        {
++            assert(execution.collectCompletions());
++            assert(execution.dispatchTaskEvents());
++            assert(runtime->driveFrame());
++            assert(runs.update());
++        }
++        template <class Predicate>
++        void until(Predicate ready, std::source_location where = std::source_location::current())
++        {
++            const auto deadline = std::chrono::steady_clock::now() + 5s;
++            while (!ready())
++            {
++                frame();
++                if (std::chrono::steady_clock::now() >= deadline)
++                {
++                    std::fprintf(stderr, "Timed out at %s:%u\n", where.file_name(), where.line());
++                    std::abort();
++                }
++                std::this_thread::yield();
++            }
++        }
++        RunId start()
++        {
++            auto prepared = take(controller.prepare(*author, environment()));
++            until([&] { return prepared->ready(); });
++            const auto id = take(controller.adopt(*prepared));
++            until([&] { return entity(id) != ecs::NullEntity; });
++            return id;
++        }
++        ecs::Entity entity(RunId id)
++        {
++            auto registry = runs.inspect().borrow(id);
++            if (!registry)
++                return ecs::NullEntity;
++            return registry->get().ctx().get<lux::scene::WorldResidency>().identities().entity(object);
++        }
++        const Probe::Facts& facts(RunId id)
++        {
++            return take(runs.inspect().borrow(id)).get().ctx().get<Probe::Facts>();
++        }
++        void setAuthor(double x)
++        {
++            const auto before = author->describe();
++            SceneEditBatch edit{before.current, "S12", {}};
++            edit.edits.push_back(SceneSetField::make<ecs::Transform3D>(
++                {{author_id, before.current.state.history, object},
++                 ecs::componentSchemaId("lux.ecs.Transform3D"),
++                 "translation"},
++                Eigen::Vector3d{x, 0, 0}
++            ));
++            assert(author->apply(std::move(edit)));
++        }
++        void stop(RunId id)
++        {
++            auto ticket = take(runs.stop(id));
++            assert(!ticket.complete());
++            until([&] { return ticket.complete(); });
++            assert(runs.update());
++            assert(take(runs.info(id)).state == ERunState::STOPPED || take(runs.info(id)).state == ERunState::FAILED);
++            assert(runs.acknowledgeStop(id));
++        }
++    };
++    void selection()
++    {
++        Fixture f(1);
++        auto inspect = f.runs.inspect();
++        auto key = take(f.authors.key<SceneSession>(f.author_id));
++        SceneInteractionGroup group(f.authors.access<SceneSession>(), key, {5}, inspect);
++        auto first = f.start();
++        const auto ref = take(inspect.reference(first, f.entity(first)));
++        const SceneObjectRef author{f.author_id, f.author->describe().current.state.history, f.object};
++        assert(group.select({{author, ref}}));
++        assert(group.selection().objects.size() == 2);
++        assert(std::holds_alternative<SceneObjectRef>(group.selection().objects[0]));
++        assert(std::holds_alternative<RunningObjectRef>(group.selection().objects[1]));
++        const auto author_before = f.author->describe();
++        f.stop(first);
++        assert(group.synchronize() && group.selection().objects.size() == 1);
++        const auto second = f.start();
++        const auto second_ref = take(inspect.reference(second, f.entity(second)));
++        assert(first.slot == second.slot && first.generation != second.generation);
++        assert(second_ref.entity == ref.entity); // Same actual EnTT number in distinct real instances.
++        assert(!group.select({{ref}}));
++        assert(group.select({{author, second_ref}}));
++        assert(f.author->describe().current == author_before.current);
++        assert(f.author->describe().dirty == author_before.dirty);
++        f.stop(second);
++        assert(group.synchronize());
++        auto permit = take(f.authors.prepareClose(f.author->describe().current));
++        assert(f.authors.close(permit));
++        assert(group.synchronize() && group.selection().objects.empty());
++        assert(!group.select({{author}}));
++    }
++}
++int main()
++{
++    selection();
++    std::puts("PASS X08-02 real author/Run sources, overlapping Entity and reused Run slot");
++}
+diff --git a/editor/tools/scene/model/include/lux/engine/editor/scene/SceneSnapshot.hpp b/editor/tools/scene/model/include/lux/engine/editor/scene/SceneSnapshot.hpp
+index e6b7f92b0..2e95d156f 100644
+--- a/editor/tools/scene/model/include/lux/engine/editor/scene/SceneSnapshot.hpp
++++ b/editor/tools/scene/model/include/lux/engine/editor/scene/SceneSnapshot.hpp
+@@ -2,6 +2,7 @@
+ 
+ #include <lux/engine/editor/scene/SceneSource.hpp>
+ #include <lux/engine/editor/scene/SceneObjectRef.hpp>
++#include <lux/engine/editor/sessions/SessionState.hpp>
+ 
+ namespace lux::editor::sessions
+ {
+@@ -93,6 +94,11 @@ namespace lux::editor::scene
+     class SceneReadView final
+     {
+     public:
++        template <class Fn>
++        [[nodiscard]] auto withRead(Fn&& function) const -> std::invoke_result_t<Fn, const SceneReadView&>
++        {
++            return gate_.withRead([&] { return std::invoke(std::forward<Fn>(function), *this); });
++        }
+         [[nodiscard]] std::vector<SceneObjectRef> objects() const;
+         [[nodiscard]] bool contains(SceneObjectRef target) const noexcept;
+         [[nodiscard]] SceneEditResult<world::WorldObjectId> parent(SceneObjectRef target) const noexcept;
+diff --git a/editor/views/api/CMakeLists.txt b/editor/views/api/CMakeLists.txt
+new file mode 100644
+index 000000000..49328808c
+--- /dev/null
++++ b/editor/views/api/CMakeLists.txt
+@@ -0,0 +1,17 @@
++add_interface_component(COMPONENT_NAME view_api NAMESPACE lux::engine::editor)
++component_include_directories(view_api BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
++target_link_libraries(view_api INTERFACE lux::engine::function::ui lux::engine::editor::editor_contracts)
++component_add_transitive_commands(view_api
++    "find_package(lux-engine-function REQUIRED COMPONENTS ui)"
++    "find_package(lux-engine-editor-contracts REQUIRED COMPONENTS editor_contracts)")
++lux_classify_target(TARGET view_api LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
++lux_engine_install_components(PROJECT_NAME lux-engine-editor-view-api VERSION ${PROJECT_VERSION}
++    NAMESPACE lux::engine::editor COMPONENTS view_api)
++
++if(LUX_EDITOR_BUILD_NATIVE_TESTS)
++    add_executable(editor_detached_views_test test/lifecycle.cpp)
++    target_link_libraries(editor_detached_views_test PRIVATE view_api)
++    lux_editor_test_options(editor_detached_views_test)
++    add_test(NAME editor.detached_views COMMAND editor_detached_views_test)
++    set_tests_properties(editor.detached_views PROPERTIES LABELS "editor;native;P08" TIMEOUT 60 RUN_SERIAL TRUE)
++endif()
+diff --git a/editor/views/api/README.md b/editor/views/api/README.md
+new file mode 100644
+index 000000000..91280aafd
+--- /dev/null
++++ b/editor/views/api/README.md
+@@ -0,0 +1,14 @@
++# View API（P08）
++
++窄公共契约只链接 UI 和 contracts。ViewId 是 host 域、槽位和代次；恢复键独立；ViewTypeId 复用 PaneTypeId。
++Host 为一次挂载分配 PaneId，不能把稳定恢复键当成 live ViewId。ViewInfo 拥有字符串，不暴露集合。
++
++DetachedView 是 code + unique_ptr<Pane> 的唯一 owning 单元，移动赋值以完整单元交换，旧节点先于旧 code 清理。
++必须离树构造；挂载后由 Host 保持该单元，完成卸载和资源责任交接再析构。直接析构仍挂载的单元是契约错误。
++Pane 和控件成员／unique_ptr 各自只有一个 C++ owner；Root 和 LuxObject 父子链只观察。
++
++ViewRequests 的 close/show/focus 接收 ViewId，宿主排队，在安全点重新检查代次。当前回调不得删除自身。
++本阶段仅提供真实 Root 协议及测试用 FakeHost，不提供 P10 桌面宿主，不作 P12 产品切换。
++
++`test/lifecycle.cpp` 同时用于安装消费者，执行真实 ImGui Root 的绘制、注册、焦点撤销、离树析构与通知故障。
++这不是 P10/P13 GPU 像素、IME 或新产品资格。
+diff --git a/editor/views/api/include/lux/engine/editor/views/IViewHost.hpp b/editor/views/api/include/lux/engine/editor/views/IViewHost.hpp
+new file mode 100644
+index 000000000..d0544098b
+--- /dev/null
++++ b/editor/views/api/include/lux/engine/editor/views/IViewHost.hpp
+@@ -0,0 +1,59 @@
++#pragma once
++#include <lux/engine/editor/views/ViewInfo.hpp>
++#include <lux/engine/editor/contracts/CodeLease.hpp>
++#include <lux/engine/ui/Pane.hpp>
++#include <utility>
++
++namespace lux::editor::views
++{
++    // Owner order is intentional, including move assignment. The host completes detach and transfers
++    // resource retirement before destroying a mounted result. Factories use detached Pane constructors.
++    class DetachedView final
++    {
++    public:
++        DetachedView(contracts::CodeLease code, std::unique_ptr<ui::Pane> pane) noexcept
++            : code_(std::move(code)), pane_(std::move(pane))
++        {
++            if (!code_.valid() || !pane_ || pane_->attachedRoot() || pane_->parent())
++                std::terminate();
++        }
++        ~DetachedView() noexcept
++        {
++            if (pane_ && pane_->attachedRoot())
++                std::terminate();
++        }
++        DetachedView(DetachedView&&) noexcept = default;
++        DetachedView& operator=(DetachedView&& other) noexcept
++        {
++            DetachedView previous(std::move(other));
++            using std::swap;
++            swap(code_, previous.code_);
++            swap(pane_, previous.pane_);
++            return *this;
++        }
++        DetachedView(const DetachedView&) = delete;
++        DetachedView& operator=(const DetachedView&) = delete;
++        [[nodiscard]] ui::Pane* pane() const noexcept
++        {
++            return pane_.get();
++        }
++
++    private:
++        contracts::CodeLease code_;
++        std::unique_ptr<ui::Pane> pane_;
++    };
++    // Accept only identities. Implementations queue intents; no callback may erase its own UI owner.
++    class ViewRequests
++    {
++    public:
++        virtual ~ViewRequests() = default;
++        [[nodiscard]] virtual ViewResult<void> close(ViewId) noexcept = 0;
++        [[nodiscard]] virtual ViewResult<void> show(ViewId) noexcept = 0;
++        [[nodiscard]] virtual ViewResult<void> focus(ViewId) noexcept = 0;
++    };
++    class IViewHost : public ViewRequests
++    {
++    public:
++        [[nodiscard]] virtual ViewResult<ViewInfo> describe(ViewId) const = 0;
++    };
++}
+diff --git a/editor/views/api/include/lux/engine/editor/views/ViewInfo.hpp b/editor/views/api/include/lux/engine/editor/views/ViewInfo.hpp
+new file mode 100644
+index 000000000..0bf967ec1
+--- /dev/null
++++ b/editor/views/api/include/lux/engine/editor/views/ViewInfo.hpp
+@@ -0,0 +1,42 @@
++#pragma once
++#include <lux/engine/ui/Ids.hpp>
++#include <lux/cxx/compile_time/expected.hpp>
++#include <cstdint>
++#include <limits>
++#include <string>
++
++namespace lux::editor::views
++{
++    struct ViewId final
++    {
++        std::uint64_t domain{};
++        std::uint32_t slot{std::numeric_limits<std::uint32_t>::max()};
++        std::uint64_t generation{};
++        [[nodiscard]] bool valid() const noexcept
++        {
++            return domain && generation;
++        }
++        friend bool operator==(ViewId, ViewId) = default;
++    };
++    using ViewTypeId = ui::PaneTypeId;
++    struct ViewRestoreKeyTag final
++    {};
++    using ViewRestoreKey = lux::cxx::StableNameId<ViewRestoreKeyTag>;
++    struct ViewInfo final
++    {
++        ViewId id;
++        ViewTypeId type;
++        ViewRestoreKey restore_key;
++        std::string title;
++        bool visible{}, focused{};
++    };
++    enum class EViewError : std::uint8_t
++    {
++        INVALID_ID,
++        NOT_ATTACHED,
++        CAPACITY,
++        CLOSED,
++        BUSY
++    };
++    template <class T> using ViewResult = lux::cxx::expected<T, EViewError>;
++}
+diff --git a/editor/views/api/test/lifecycle.cpp b/editor/views/api/test/lifecycle.cpp
+new file mode 100644
+index 000000000..a889c0830
+--- /dev/null
++++ b/editor/views/api/test/lifecycle.cpp
+@@ -0,0 +1,459 @@
++#include <lux/engine/editor/views/IViewHost.hpp>
++#include <lux/engine/ui/Root.hpp>
++#include <lux/engine/ui/Layout.hpp>
++#include <lux/engine/ui/Controls.hpp>
++#include <lux/engine/object/ObjectDispatcher.hpp>
++#include <array>
++#include <cassert>
++#include <cstdio>
++#include <optional>
++#include <type_traits>
++
++using namespace lux;
++using namespace lux::editor::views;
++static_assert(!std::is_copy_constructible_v<DetachedView> && !std::is_copy_assignable_v<DetachedView>);
++static_assert(std::is_nothrow_move_constructible_v<DetachedView> && std::is_nothrow_move_assignable_v<DetachedView>);
++static_assert(!std::is_copy_constructible_v<ui::PreparedAttachment> && !std::is_copy_assignable_v<ui::PreparedAttachment>);
++static_assert(std::is_nothrow_move_constructible_v<ui::PreparedAttachment>);
++static_assert(std::is_nothrow_move_assignable_v<ui::PreparedAttachment>);
++static_assert(!std::same_as<ViewRestoreKey, ui::PaneId>);
++static_assert(std::same_as<ViewTypeId, ui::PaneTypeId>);
++namespace
++{
++    template <class T> auto take(T result)
++    {
++        assert(result);
++        return std::move(*result);
++    }
++    struct Facts final
++    {
++        bool code_alive{true};
++        unsigned panes{}, elements{}, code{}, draws{}, events{};
++    };
++    struct Code final
++    {
++        Facts& facts;
++        explicit Code(Facts& value) : facts(value) {}
++        ~Code()
++        {
++            assert(facts.panes == 1 && facts.elements == 1);
++            facts.code_alive = false;
++            ++facts.code;
++        }
++    };
++    class Content final : public ui::Element
++    {
++    public:
++        Content(ui::Pane& parent, Facts& facts) : Element(parent, ui::ElementId{"content"}), facts_(facts) {}
++        ~Content() override
++        {
++            assert(facts_.code_alive);
++            ++facts_.elements;
++        }
++        ViewRequests* requests{};
++        ViewId target;
++
++    private:
++        void draw() noexcept override
++        {
++            ++facts_.draws;
++            if (requests)
++            {
++                assert(requests->close(target));
++                requests = nullptr;
++                assert(facts_.panes == 0);
++            }
++        }
++        Facts& facts_;
++    };
++    class Window final : public ui::Pane
++    {
++    public:
++        Window(object::ObjectDispatcherRef dispatcher, Facts& facts, const char* name)
++            : Pane(std::move(dispatcher), ui::PaneId{name}, ui::PaneTypeId{"test.p08"}, name), content(*this, facts),
++              facts_(facts)
++        {
++            setContent(content);
++        }
++        ~Window() override
++        {
++            assert(facts_.code_alive);
++            ++facts_.panes;
++        }
++        Content content;
++
++    private:
++        Facts& facts_;
++    };
++    DetachedView candidate(object::ObjectDispatcherRef dispatcher, Facts& facts, const char* name)
++    {
++        auto code = std::make_shared<Code>(facts);
++        return {editor::contracts::CodeLease::plugin(code), std::make_unique<Window>(dispatcher, facts, name)};
++    }
++    // Protocol fixture only: bounded identities and real Root transactions, not a desktop product host.
++    class FakeHost final : public IViewHost
++    {
++    public:
++        explicit FakeHost(ui::Root& root) : root_(root) {}
++        ~FakeHost() override
++        {
++            for (auto& slot : slots_)
++                if (slot.view)
++                    detach(slot);
++        }
++        FakeHost(const FakeHost&) = delete;
++        FakeHost& operator=(const FakeHost&) = delete;
++        FakeHost(FakeHost&&) = delete;
++        FakeHost& operator=(FakeHost&&) = delete;
++        bool owner_capacity{true}, notification_capacity{true};
++        ViewResult<ViewId> attach(DetachedView& input)
++        {
++            if (!owner_capacity || !notification_capacity)
++                return cxx::unexpected(EViewError::CAPACITY);
++            for (std::size_t i{}; i != slots_.size(); ++i)
++            {
++                auto& slot = slots_[i];
++                if (slot.view)
++                    continue;
++                auto prepared = root_.prepareMount(*input.pane());
++                if (!prepared)
++                    return cxx::unexpected(EViewError::BUSY);
++                slot.view.emplace(std::move(input));
++                const ViewId id{71, static_cast<std::uint32_t>(i), ++slot.generation};
++                const auto committed = root_.commit(*prepared);
++                assert(committed && committed->mounted);
++                return id;
++            }
++            return cxx::unexpected(EViewError::CAPACITY);
++        }
++        ViewResult<ViewInfo> describe(ViewId id) const override
++        {
++            const auto* slot = find(id);
++            if (!slot)
++                return cxx::unexpected(EViewError::INVALID_ID);
++            auto* pane = slot->view->pane();
++            return ViewInfo{
++                id,
++                pane->type(),
++                ViewRestoreKey{"restore-test"},
++                std::string(pane->title()),
++                pane->visible(),
++                pane->focused()
++            };
++        }
++        ViewResult<void> close(ViewId id) noexcept override
++        {
++            return request(id, EAction::CLOSE);
++        }
++        ViewResult<void> show(ViewId id) noexcept override
++        {
++            return request(id, EAction::SHOW);
++        }
++        ViewResult<void> focus(ViewId id) noexcept override
++        {
++            return request(id, EAction::FOCUS);
++        }
++        void drain()
++        {
++            const auto batch = requests_;
++            const auto count = std::exchange(size_, 0);
++            for (std::size_t i{}; i != count; ++i)
++            {
++                auto* slot = find(batch[i].id);
++                if (!slot)
++                    continue;
++                if (batch[i].action == EAction::CLOSE)
++                    detach(*slot);
++                else if (batch[i].action == EAction::SHOW)
++                    slot->view->pane()->setVisible(true);
++                else
++                    assert(root_.requestFocus(*slot->view->pane()));
++            }
++        }
++
++    private:
++        struct Slot final
++        {
++            std::uint64_t generation{};
++            std::optional<DetachedView> view;
++        };
++        enum class EAction : std::uint8_t
++        {
++            CLOSE,
++            SHOW,
++            FOCUS
++        };
++        struct Request final
++        {
++            ViewId id;
++            EAction action{};
++        };
++        Slot* find(ViewId id) noexcept
++        {
++            if (id.domain != 71 || id.slot >= slots_.size())
++                return nullptr;
++            auto& slot = slots_[id.slot];
++            return slot.view && slot.generation == id.generation ? &slot : nullptr;
++        }
++        const Slot* find(ViewId id) const noexcept
++        {
++            return const_cast<FakeHost*>(this)->find(id);
++        }
++        ViewResult<void> request(ViewId id, EAction action) noexcept
++        {
++            if (!find(id))
++                return cxx::unexpected(EViewError::INVALID_ID);
++            if (size_ == requests_.size())
++                return cxx::unexpected(EViewError::CAPACITY);
++            requests_[size_++] = {id, action};
++            return {};
++        }
++        void detach(Slot& slot)
++        {
++            auto prepared = take(root_.prepareDetach(*slot.view->pane()));
++            auto result = take(root_.commit(prepared));
++            assert(!result.mounted);
++            slot.view.reset();
++        }
++        ui::Root& root_;
++        std::array<Slot, 2> slots_;
++        std::array<Request, 8> requests_;
++        std::size_t size_{};
++    };
++    class Standalone final : public ui::Element
++    {
++    public:
++        using Element::Element;
++
++    private:
++        void draw() noexcept override {}
++    };
++    void protocol(object::ObjectDispatcherRef dispatcher)
++    {
++        auto root = take(ui::Root::create(dispatcher, {.docking = false}));
++        const auto revision = root->windowRevision();
++        Facts first;
++        auto view = candidate(dispatcher, first, "detached");
++        auto* pane = static_cast<Window*>(view.pane());
++        assert(!pane->attachedRoot() && !pane->content.attachedRoot());
++        assert(!pane->focused() && !pane->content.focused());
++        assert(!root->requestFocus(*pane) && !root->requestFocus(pane->content));
++        assert(!root->capturePointer(pane->content));
++        pane->setTitle("configured off tree");
++        pane->setModal(false);
++        assert(root->windowRevision() == revision && root->panes().empty());
++        FakeHost host(*root);
++        host.owner_capacity = false;
++        assert(!host.attach(view) && view.pane() == pane);
++        host.owner_capacity = true;
++        host.notification_capacity = false;
++        assert(!host.attach(view) && root->windowRevision() == revision);
++        host.notification_capacity = true;
++        auto id = take(host.attach(view));
++        assert(!view.pane());
++        assert(pane->attachedRoot() == root.get() && pane->content.attachedRoot() == root.get());
++        assert(root->findPane(pane->id().view()) == pane);
++        assert(root->capturePointer(pane->content));
++        pane->content.requests = &host;
++        pane->content.target = id;
++        ui::DrawData data;
++        assert(root->update({{640, 480}, .016F}, &data));
++        assert(first.draws && !first.panes && host.describe(id));
++        host.drain();
++        assert(first.panes == 1 && first.elements == 1 && first.code == 1);
++        assert(!host.describe(id));
++        assert(!root->focusedPane() && !root->focusedElement());
++        Facts replacement;
++        auto next = candidate(dispatcher, replacement, "replacement");
++        const auto next_id = take(host.attach(next));
++        assert(next_id.slot == id.slot && next_id.generation != id.generation);
++        assert(!host.close(id));
++        assert(host.describe(next_id));
++        assert(host.close(next_id));
++        host.drain();
++        assert(replacement.panes == 1 && replacement.code == 1);
++    }
++    void preparation(object::ObjectDispatcherRef dispatcher)
++    {
++        auto root = take(ui::Root::create(dispatcher, {.docking = false, .attachment_capacity = 1}));
++        Facts a, b;
++        auto first = candidate(dispatcher, a, "one");
++        assert(!root->prepareMount(*first.pane()));
++        assert(root->panes().empty() && a.panes == 0);
++        // Replacement must destroy all old nodes before the last old code owner.
++        auto second = candidate(dispatcher, b, "two");
++        first = std::move(second);
++        assert(a.panes == 1 && a.elements == 1 && a.code == 1);
++        assert(!second.pane() && b.panes == 0);
++        auto roomy = take(ui::Root::create(dispatcher, {.docking = false}));
++        auto pending = take(roomy->prepareMount(*first.pane()));
++        first.pane()->setModal(true); // Local structure/configuration invalidates the prepared association.
++        auto stale = roomy->commit(pending);
++        assert(!stale && stale.error() == ui::EAttachmentError::STALE_PREPARATION);
++        assert(!first.pane()->attachedRoot());
++        {
++            auto orphan = take(ui::Root::create(dispatcher));
++            Facts c;
++            auto input = candidate(dispatcher, c, "candidate-lifetime");
++            auto prepared = take(orphan->prepareMount(*input.pane()));
++            orphan.reset(); // Token destruction does not dereference a dead Root.
++        }
++    }
++    class NoticeReceiver final : public object::LuxObject
++    {
++    public:
++        using LuxObject::LuxObject;
++        unsigned calls{};
++        void receive(const ui::AttachmentChanged&) noexcept
++        {
++            ++calls;
++        }
++    };
++    void notifications(object::ObjectDispatcherRef dispatcher)
++    {
++        auto messages = take(object::ObjectMessageQueue::create(1));
++        NoticeReceiver receiver(messages.dispatcherRef());
++        auto root = take(ui::Root::create(dispatcher));
++        auto queued = take(object::LuxObject::connect(
++            root.get(),
++            &ui::Root::attachmentChanged,
++            &receiver,
++            &NoticeReceiver::receive,
++            object::EDelivery::QUEUED
++        ));
++        assert(object::detail::post(messages.dispatcherRef(), object::detail::makeMessage([]() noexcept {
++                                    })) == object::detail::EPostStatus::POSTED);
++        Facts facts;
++        auto view = candidate(dispatcher, facts, "notifications");
++        auto prepared = take(root->prepareMount(*view.pane()));
++        unsigned calls{};
++        auto direct = take(object::LuxObject::connect(
++            root.get(),
++            &ui::Root::attachmentChanged,
++            [&](const ui::AttachmentChanged& changed) noexcept {
++                ++calls;
++                assert(changed.mounted == (view.pane()->attachedRoot() == root.get()));
++                auto recursive = root->prepareDetach(*view.pane());
++                assert(!recursive && recursive.error() == ui::EAttachmentError::BUSY);
++                assert(!facts.panes);
++            }
++        ));
++        auto mounted = take(root->commit(prepared));
++        assert(mounted.mounted && mounted.notifications.full == 1 && mounted.notifications.direct == 1);
++        assert(view.pane()->attachedRoot() == root.get() && calls == 1);
++        assert(messages.dispatchPending() == 1 && receiver.calls == 0);
++        std::optional<ui::PreparedAttachment> detach{take(root->prepareDetach(*view.pane()))};
++        unsigned removed{};
++        auto release_token =
++            take(object::LuxObject::connect(root.get(), &ui::Root::objectRemoved, [&](object::LuxObject*) noexcept {
++                ++removed;
++                detach.reset(); // The commit now owns its plan until every post-commit callback returns.
++            }));
++        assert(root->commit(*detach));
++        assert(!detach && removed == 2);
++        release_token.disconnect();
++        assert(calls == 2 && !view.pane()->attachedRoot());
++        assert(messages.dispatchPending() == 1 && receiver.calls == 1);
++        FakeHost host(*root);
++        auto connection = take(object::LuxObject::connect(view.pane(), &ui::Pane::closeRequested, [&]() noexcept {
++            const auto expected = ViewId{71, 0, 1};
++            assert(host.close(expected));
++            assert(!facts.panes);
++        }));
++        direct.disconnect();
++        const auto id = take(host.attach(view));
++        root->findPane(ui::PaneId{"notifications"}.view())->requestClose();
++        assert(host.describe(id) && !facts.panes);
++        host.drain();
++        assert(!host.describe(id) && facts.panes == 1 && facts.code == 1);
++    }
++    class PartialChild final : public ui::Element
++    {
++    public:
++        PartialChild(ui::Pane& parent, int& live, bool reject)
++            : Element(parent, ui::ElementId{reject ? "rejected-child" : "kept-child"}), live_(live)
++        {
++            if (reject)
++                throw 42; // Foreign constructor failure, test-only fault injection.
++            ++live_;
++        }
++        ~PartialChild() override
++        {
++            --live_;
++        }
++
++    private:
++        void draw() noexcept override {}
++        int& live_;
++    };
++    class PartialWindow final : public ui::Pane
++    {
++    public:
++        PartialWindow(object::ObjectDispatcherRef dispatcher, int& live)
++            : Pane(dispatcher, ui::PaneId{"partial-constructor"}, ui::PaneTypeId{"test"}, "partial"),
++              first_(*this, live, false), rejected_(*this, live, true)
++        {}
++
++    private:
++        PartialChild first_, rejected_;
++    };
++    void construction(object::ObjectDispatcherRef dispatcher)
++    {
++        auto root = take(ui::Root::create(dispatcher));
++        const auto revision = root->windowRevision();
++        int live{};
++        bool rejected{};
++        try
++        {
++            auto partial = std::make_unique<PartialWindow>(dispatcher, live);
++        }
++        catch (int code)
++        {
++            assert(code == 42);
++            rejected = true;
++        }
++        assert(rejected && live == 0 && root->panes().empty() && root->windowRevision() == revision);
++        Facts failed;
++        const auto factory = [&]() -> ViewResult<DetachedView> {
++            auto partial = candidate(dispatcher, failed, "partial");
++            // A later fallible child/provider step rejects the fully owned partial subtree.
++            return cxx::unexpected(EViewError::CAPACITY);
++        };
++        assert(!factory());
++        assert(failed.panes == 1 && failed.elements == 1 && failed.code == 1);
++        assert(root->panes().empty() && root->windowRevision() == revision);
++        ui::Pane standalone(dispatcher, ui::PaneId{"standalone"}, ui::PaneTypeId{"test"}, "standalone");
++        Standalone layout(dispatcher, ui::ElementId{"standalone-element"});
++        Standalone child(dispatcher, ui::ElementId{"standalone-child"});
++        layout.addChild(child);
++        standalone.setContent(layout);
++        assert(layout.containingPane() == &standalone && child.containingPane() == &standalone);
++        auto mount = take(root->prepareMount(standalone));
++        auto moved = std::move(mount);
++        assert(root->commit(moved));
++        assert(!root->commit(moved));
++        auto detach = take(root->prepareDetach(standalone));
++        assert(root->commit(detach));
++        assert(!standalone.parent() && !child.attachedRoot());
++        auto remount = take(root->prepareMount(standalone));
++        assert(root->commit(remount));
++        auto remove = take(root->prepareDetach(standalone));
++        assert(root->commit(remove));
++        for (int i = 0; i != 64; ++i)
++        {
++            auto next = take(root->prepareMount(standalone));
++            assert(root->commit(next) && root->panes().size() == 1);
++            auto retired = take(root->prepareDetach(standalone));
++            assert(root->commit(retired));
++        }
++    }
++}
++int main()
++{
++    auto messages = take(object::ObjectMessageQueue::create(32));
++    protocol(messages.dispatcherRef());
++    preparation(messages.dispatcherRef());
++    construction(messages.dispatcherRef());
++    notifications(messages.dispatcherRef());
++    std::puts("PASS X08-03..06 real detached tree, preparation, callback close, IDs, code lifetime and remount");
++}
+diff --git a/modules/core/object/include/lux/engine/object/LuxObject.hpp b/modules/core/object/include/lux/engine/object/LuxObject.hpp
+index 250de739f..eb480b161 100644
+--- a/modules/core/object/include/lux/engine/object/LuxObject.hpp
++++ b/modules/core/object/include/lux/engine/object/LuxObject.hpp
+@@ -255,6 +255,8 @@ namespace lux::object
+         }
+         // Typed owners can attach after validating their public parent contract.
+         void attachTo(LuxObject& parent) noexcept;
++        // Removes only the non-owning parent association, never deletes an object.
++        void detachFromParent() noexcept;
+         virtual bool allowsGenericChildren() const noexcept
+         {
+             return true;
+@@ -268,6 +270,7 @@ namespace lux::object
+         virtual void filterEvent(LuxObject&, EventView&) noexcept {}
+ 
+     private:
++        void unlinkParent() noexcept;
+         friend void detail::invokeConnection(detail::ConnectionControl*, const void*) noexcept;
+         friend bool detail::sendEventErased(LuxObject&, EventView&) noexcept;
+         friend bool detail::routeEventErased(LuxObject&, LuxObject&, EventView&) noexcept;
+diff --git a/modules/core/object/src/Object.cpp b/modules/core/object/src/Object.cpp
+index 7a3f14801..83d05c580 100644
+--- a/modules/core/object/src/Object.cpp
++++ b/modules/core/object/src/Object.cpp
+@@ -331,11 +331,17 @@ namespace lux::object
+         parent.last_child_ = this;
+     }
+ 
+-    LuxObject::~LuxObject()
++    void LuxObject::detachFromParent() noexcept
+     {
+         assertAffinity();
+-        if (first_child_ || active_events_ != 0)
++        const bool is_active = active_events_ != 0 || (parent_ && parent_->active_events_ != 0);
++        if (is_active)
+             detail::failObjectContract();
++        unlinkParent();
++    }
++
++    void LuxObject::unlinkParent() noexcept
++    {
+         if (parent_)
+         {
+             if (previous_sibling_)
+@@ -347,6 +353,15 @@ namespace lux::object
+             else
+                 parent_->last_child_ = previous_sibling_;
+         }
++        parent_ = previous_sibling_ = next_sibling_ = nullptr;
++    }
++
++    LuxObject::~LuxObject()
++    {
++        assertAffinity();
++        if (first_child_ || active_events_ != 0)
++            detail::failObjectContract();
++        unlinkParent();
+         auto* state = state_.exchange(nullptr, std::memory_order_acq_rel);
+         if (!state)
+             return;
+diff --git a/modules/function/ui/README.md b/modules/function/ui/README.md
+index 9e56ccadc..1c9ee6d4a 100644
+--- a/modules/function/ui/README.md
++++ b/modules/function/ui/README.md
+@@ -69,3 +69,23 @@ Root::setMenu 接收 MenuItem 值树。主菜单占用固定区域，复用 Comm
+ 
+ DockIdentity 只将保存的窗口身份映射为当前窗口身份，包含内部角色后缀及选中标签；
+ DockState 仍使用原 ImGui ini 编码。Root 不认识资产、插件和磁盘设置，布局 I/O 与恢复工厂属于 Editor。
++
++## P08 离树装配
++
++`Pane(dispatcher, id, type, title)` 和 `Element(dispatcher, id)` 不注册 Root。
++以父 Pane/Element 构造的固定成员可组成离树子树；独立 Element 可通过 `addChild` / `setContent` 关联。
++关联不接管 C++ 所有权；必须按成员/unique_ptr 的逆序析构子对象。
++
++`attachedRoot()` 返回空表示未挂载，`containingPane()` 还区分独立 Element。
++离树时可设标题、modal、可见性、尺寸约束和内容；focus/capture 请求返回 false。
++测量、排列、实际绘制和旧 `root()/pane()` 引用入口要求已建立相应关联，不能把离树测量伪称成功。
++新工厂只传 owner dispatcher，不传 Root。rooted 构造和 root() 保留给既有产品到 P12。
++
++Root 的 `prepareMount/prepareDetach` 只拥有一次性准备记录，不拥有节点。
++整棵子树的注册容量预留在准备阶段；候选/Root 析构、子树或活动注册变更会使准备失效。
++`commit` 必须在 draw、measure、update、事件和 deferred callback 之外；先完成所有关联，再通知。
++提交结果含通知统计，队列 FULL/CLOSED 不能把已经提交的事实改判失败。
++
++卸载撤销输入目标、捕获、菜单目标和延迟修改记录，再撤销注册和父链，最后发出通知。
++Host 在此之前结束业务交互，在此之后按各组件原协议移交 GPU 退休责任并析构节点。
++Root 不执行保存，不等待 GPU，也不接管子对象 delete。已接受的异步工作仍由原 owner 接收完成。
+diff --git a/modules/function/ui/include/lux/engine/ui/Attachment.hpp b/modules/function/ui/include/lux/engine/ui/Attachment.hpp
+new file mode 100644
+index 000000000..1535a1d62
+--- /dev/null
++++ b/modules/function/ui/include/lux/engine/ui/Attachment.hpp
+@@ -0,0 +1,52 @@
++#pragma once
++#include <lux/engine/function/visibility.h>
++#include <lux/engine/object/LuxObject.hpp>
++#include <memory>
++#include <lux/engine/ui/Ids.hpp>
++
++namespace lux::ui
++{
++    class Root;
++    class Pane;
++    namespace detail
++    {
++        struct AttachmentState;
++    }
++    enum class EAttachmentError : std::uint8_t
++    {
++        WRONG_THREAD,
++        WRONG_DISPATCHER,
++        BUSY,
++        ALREADY_ATTACHED,
++        NOT_ATTACHED,
++        INVALID_TREE,
++        DUPLICATE_ID,
++        CAPACITY,
++        STALE_PREPARATION
++    };
++    // A one-shot, non-owning preparation. Destroying Root/candidate invalidates it.
++    class LUX_FUNCTION_PUBLIC PreparedAttachment final
++    {
++    public:
++        ~PreparedAttachment() noexcept;
++        PreparedAttachment(PreparedAttachment&&) noexcept;
++        PreparedAttachment& operator=(PreparedAttachment&&) noexcept;
++        PreparedAttachment(const PreparedAttachment&) = delete;
++        PreparedAttachment& operator=(const PreparedAttachment&) = delete;
++
++    private:
++        friend class Root;
++        explicit PreparedAttachment(std::unique_ptr<detail::AttachmentState>) noexcept;
++        std::unique_ptr<detail::AttachmentState> state_;
++    };
++    struct AttachmentCommit final
++    {
++        bool mounted{};
++        object::SignalDelivery notifications;
++    };
++    struct AttachmentChanged final
++    {
++        PaneId pane;
++        bool mounted{};
++    };
++}
+diff --git a/modules/function/ui/include/lux/engine/ui/Element.hpp b/modules/function/ui/include/lux/engine/ui/Element.hpp
+index 5712d6f14..24cf1110c 100644
+--- a/modules/function/ui/include/lux/engine/ui/Element.hpp
++++ b/modules/function/ui/include/lux/engine/ui/Element.hpp
+@@ -30,6 +30,14 @@ namespace lux::ui
+     class LUX_FUNCTION_PUBLIC Element : public lux::object::LuxObject
+     {
+     public:
++        Element(object::ObjectDispatcherRef, ElementId id);
++        [[nodiscard]] Root* attachedRoot() const noexcept;
++        [[nodiscard]] Pane* containingPane() const noexcept
++        {
++            return pane_;
++        }
++        // Logical assembly is valid before mount; the parent never owns/deletes this child.
++        void addChild(Element&) noexcept;
+         Element(Pane& parent, ElementId id);
+         Element(Element& parent, ElementId id);
+         ~Element() noexcept override;
+@@ -100,7 +108,9 @@ namespace lux::ui
+         {
+             return false;
+         }
+-        Element(object::LuxObject&, Pane&, Element*, ElementId);
++        Element(object::LuxObject&, Pane*, Element*, ElementId);
++        void attachContent(Pane&) noexcept;
++        void assignPane(Pane*) noexcept;
+         [[nodiscard]] SizeHint constrain(SizeHint) const noexcept;
+         std::size_t registration_slot_{SIZE_MAX};
+         std::uint64_t hint_epoch_{}, measure_epoch_{};
+diff --git a/modules/function/ui/include/lux/engine/ui/Pane.hpp b/modules/function/ui/include/lux/engine/ui/Pane.hpp
+index 6dc4ba1de..e24e76d35 100644
+--- a/modules/function/ui/include/lux/engine/ui/Pane.hpp
++++ b/modules/function/ui/include/lux/engine/ui/Pane.hpp
+@@ -13,6 +13,10 @@ namespace lux::ui
+ {
+     class Root;
+     class Element;
++    namespace detail
++    {
++        struct AttachmentState;
++    }
+ 
+     struct PaneFocusChanged final
+     {
+@@ -36,6 +40,12 @@ namespace lux::ui
+         object::TSignal<PaneVisibilityChanged> visibilityChanged{*this};
+         object::TSignal<> closeRequested{*this};
+ 
++        Pane(object::ObjectDispatcherRef, PaneId id, PaneTypeId type, std::string title);
++        [[nodiscard]] Root* attachedRoot() const noexcept
++        {
++            return root_;
++        }
++        // transition: rooted construction is restricted to existing products until P12.
+         Pane(Root& parent, PaneId id, PaneTypeId type, std::string title);
+         Pane(Pane& parent, PaneId id, PaneTypeId type, std::string title);
+ 
+@@ -90,6 +100,7 @@ namespace lux::ui
+         virtual void update() noexcept {}
+ 
+     private:
++        friend class PreparedAttachment;
+         friend class Root;
+         friend class Element;
+         void setFocused(bool focused);
+@@ -102,7 +113,9 @@ namespace lux::ui
+         {
+             return false;
+         }
+-        Pane(object::LuxObject&, Root&, PaneId, PaneTypeId, std::string);
++        Pane(object::LuxObject&, Root*, PaneId, PaneTypeId, std::string);
++        void invalidatePreparation() noexcept;
++        detail::AttachmentState* preparation_{};
+         std::size_t registration_slot_{SIZE_MAX}, window_slot_{SIZE_MAX};
+ 
+         PaneId id_;
+diff --git a/modules/function/ui/include/lux/engine/ui/Root.hpp b/modules/function/ui/include/lux/engine/ui/Root.hpp
+index ab3dc91bf..99eaaa26d 100644
+--- a/modules/function/ui/include/lux/engine/ui/Root.hpp
++++ b/modules/function/ui/include/lux/engine/ui/Root.hpp
+@@ -11,6 +11,7 @@
+ #include <lux/engine/ui/InputEvent.hpp>
+ #include <lux/engine/ui/Ids.hpp>
+ #include <lux/engine/ui/Menu.hpp>
++#include <lux/engine/ui/Attachment.hpp>
+ 
+ namespace lux::window
+ {
+@@ -29,6 +30,7 @@ namespace lux::ui
+         bool docking{true};
+         const FontSource* font{};
+         std::size_t input_capacity{4096};
++        std::size_t attachment_capacity{65536};
+     };
+ 
+     struct FrameInfo final
+@@ -64,6 +66,13 @@ namespace lux::ui
+         // A null output maintains owners without generating another frame or replaying input.
+         [[nodiscard]] lux::cxx::expected<void, ECaptureError> update(FrameInfo, DrawData* output) noexcept;
+ 
++        // Cold-path preparation reserves the complete subtree. Commit is owner-thread and outside callbacks.
++        using AttachmentResult = lux::cxx::expected<PreparedAttachment, EAttachmentError>;
++        [[nodiscard]] AttachmentResult prepareMount(Pane&);
++        [[nodiscard]] AttachmentResult prepareDetach(Pane&);
++        [[nodiscard]] lux::cxx::expected<AttachmentCommit, EAttachmentError> commit(PreparedAttachment&) noexcept;
++        object::TSignal<AttachmentChanged> attachmentChanged{*this};
++
+         using ChangeCallback = void (*)(object::LuxObject&) noexcept;
+         // Non-owning, coalesced target/callback intents; inputs stay in the target owner.
+         // Destruction cancels them synchronously. New intents during apply wait for the next batch.
+@@ -111,13 +120,17 @@ namespace lux::ui
+         [[nodiscard]] virtual lux::cxx::expected<void, ECaptureError> drawDataReady(const DrawData&) noexcept;
+ 
+     private:
++        friend class PreparedAttachment;
+         friend class Pane;
+         friend class Element;
+         void registerPane(Pane&);
+         void registerElement(Element&);
+-        void unregisterPane(Pane&) noexcept;
++        void unregisterPane(Pane&, bool notify = true) noexcept;
+         void paneLabelChanged() noexcept;
+-        void unregisterElement(Element&) noexcept;
++        void unregisterElement(Element&, bool notify = true) noexcept;
++        [[nodiscard]] bool attachmentSafe() const noexcept;
++        [[nodiscard]] AttachmentResult prepareAttachment(Pane&, bool mount);
++        void abandonAttachment(detail::AttachmentState&) noexcept;
+         bool allowsGenericChildren() const noexcept override
+         {
+             return false;
+diff --git a/modules/function/ui/pinclude/lux/engine/ui/detail/AttachmentState.hpp b/modules/function/ui/pinclude/lux/engine/ui/detail/AttachmentState.hpp
+new file mode 100644
+index 000000000..f097bc91d
+--- /dev/null
++++ b/modules/function/ui/pinclude/lux/engine/ui/detail/AttachmentState.hpp
+@@ -0,0 +1,26 @@
++#pragma once
++#include <vector>
++#include <cstdint>
++namespace lux::ui
++{
++    class Root;
++    class Pane;
++    class Element;
++    namespace detail
++    {
++        struct AttachmentNode final
++        {
++            Pane* pane{};
++            Element* element{};
++        };
++        // Root and candidate only observe this record. The preparation is its sole owner.
++        struct AttachmentState final
++        {
++            Root* root{};
++            Pane* pane{};
++            std::vector<AttachmentNode> nodes;
++            std::uint64_t revision{};
++            bool mount{}, valid{true};
++        };
++    }
++}
+diff --git a/modules/function/ui/src/Controls.cpp b/modules/function/ui/src/Controls.cpp
+index e16da68b9..dd8994e75 100644
+--- a/modules/function/ui/src/Controls.cpp
++++ b/modules/function/ui/src/Controls.cpp
+@@ -209,7 +209,8 @@ namespace lux::ui
+             return;
+         if (cancel)
+             value_ = before_;
+-        root().releaseFocus(*this);
++        if (auto* attached = attachedRoot())
++            attached->releaseFocus(*this);
+         static_cast<void>(emit(edited, EditResult{cancel, false, !cancel, cancel}));
+     }
+     void TextEdit::event(object::EventView& event) noexcept
+@@ -285,7 +286,8 @@ namespace lux::ui
+             return;
+         if (cancel)
+             value_ = before_;
+-        root().releaseFocus(*this);
++        if (auto* attached = attachedRoot())
++            attached->releaseFocus(*this);
+         static_cast<void>(emit(edited, EditResult{cancel, false, !cancel, cancel}));
+     }
+     void NumericEdit::event(object::EventView& event) noexcept
+diff --git a/modules/function/ui/src/Element.cpp b/modules/function/ui/src/Element.cpp
+index af071e10c..7c645dbe0 100644
+--- a/modules/function/ui/src/Element.cpp
++++ b/modules/function/ui/src/Element.cpp
+@@ -19,39 +19,81 @@ namespace lux::ui
+         }
+     }
+ 
+-    Element::Element(Pane& parent, ElementId id) : Element(parent, parent, nullptr, std::move(id)) {}
+-    Element::Element(Element& parent, ElementId id) : Element(parent, parent.pane(), &parent, std::move(id)) {}
+-    Element::Element(object::LuxObject& parent, Pane& pane, Element* element_parent, ElementId id)
+-        : LuxObject(parent.dispatcherRef()), element_parent_(element_parent), id_(std::move(id)), pane_(&pane)
++    Element::Element(object::ObjectDispatcherRef dispatcher, ElementId id)
++        : LuxObject(std::move(dispatcher)), id_(std::move(id))
+     {
+         if (!id_.isValid())
+             detail::failContract();
+-        root().checkContentChange();
++    }
++    Root* Element::attachedRoot() const noexcept
++    {
++        return pane_ ? pane_->attachedRoot() : nullptr;
++    }
++    void Element::attachContent(Pane& pane) noexcept
++    {
++        attachTo(pane);
++        assignPane(&pane);
++    }
++    void Element::assignPane(Pane* pane) noexcept
++    {
++        pane_ = pane;
++        for (auto* child = firstChild(); child; child = child->nextSibling())
++            static_cast<Element*>(child)->assignPane(pane);
++    }
++    void Element::addChild(Element& child) noexcept
++    {
++        if (attachedRoot() || child.parent() || child.attachedRoot())
++            detail::failContract();
++        if (pane_)
++            pane_->invalidatePreparation();
++        child.attachTo(*this);
++        child.element_parent_ = this;
++        child.assignPane(pane_);
++    }
++    Element::Element(Pane& parent, ElementId id) : Element(parent, &parent, nullptr, std::move(id)) {}
++    Element::Element(Element& parent, ElementId id) : Element(parent, parent.containingPane(), &parent, std::move(id))
++    {}
++    Element::Element(object::LuxObject& parent, Pane* pane, Element* element_parent, ElementId id)
++        : LuxObject(parent.dispatcherRef()), element_parent_(element_parent), id_(std::move(id)), pane_(pane)
++    {
++        if (!id_.isValid())
++            detail::failContract();
++        if (pane_)
++            pane_->invalidatePreparation();
++        if (auto* attached = attachedRoot())
++            attached->checkContentChange();
+         attachTo(parent);
+-        root().registerElement(*this);
++        if (auto* attached = attachedRoot())
++            attached->registerElement(*this);
+     }
+ 
+     Element::~Element() noexcept
+     {
+-        root().unregisterElement(*this);
+-        if (pane_->content_ == this)
++        if (pane_)
++            pane_->invalidatePreparation();
++        if (auto* attached = attachedRoot())
++            attached->unregisterElement(*this);
++        if (pane_ && pane_->content_ == this)
+             pane_->content_ = nullptr;
+     }
+     Root& Element::root() const noexcept
+     {
+-        return pane_->root();
++        return pane().root();
+     }
+     Pane& Element::pane() const noexcept
+     {
++        if (!pane_)
++            detail::failContract();
+         return *pane_;
+     }
+     bool Element::focused() const noexcept
+     {
+-        return root().focusedElement() == this;
++        const auto* attached = attachedRoot();
++        return attached && attached->focusedElement() == this;
+     }
+     bool Element::displayed() const noexcept
+     {
+-        if (!pane_->visible())
++        if (!attachedRoot() || !pane_->visible())
+             return false;
+         for (auto* node = this; node; node = node->element_parent_)
+             if (!node->visible())
+diff --git a/modules/function/ui/src/Pane.cpp b/modules/function/ui/src/Pane.cpp
+index 2aaac521b..08c442de9 100644
+--- a/modules/function/ui/src/Pane.cpp
++++ b/modules/function/ui/src/Pane.cpp
+@@ -2,35 +2,61 @@
+ #include <lux/engine/ui/Root.hpp>
+ #include <lux/engine/ui/Element.hpp>
+ #include <lux/engine/ui/detail/Contract.hpp>
++#include <lux/engine/ui/detail/AttachmentState.hpp>
+ 
+ #include <algorithm>
+ #include <utility>
+ 
+ namespace lux::ui
+ {
++    Pane::Pane(object::ObjectDispatcherRef dispatcher, PaneId id, PaneTypeId type, std::string title)
++        : LuxObject(std::move(dispatcher)), id_(std::move(id)), type_(std::move(type)), title_(std::move(title))
++    {
++        if (!id_.isValid())
++            detail::failContract();
++        rebuildWindowLabel();
++    }
++    void Pane::invalidatePreparation() noexcept
++    {
++        for (auto* node = this; node; node = dynamic_cast<Pane*>(node->parent()))
++            if (node->preparation_)
++                node->preparation_->valid = false;
++    }
++
+     Pane::Pane(Root& parent, PaneId id, PaneTypeId type, std::string title)
+-        : Pane(parent, parent, std::move(id), std::move(type), std::move(title))
++        : Pane(parent, &parent, std::move(id), std::move(type), std::move(title))
+     {}
+ 
+     Pane::Pane(Pane& parent, PaneId id, PaneTypeId type, std::string title)
+-        : Pane(parent, parent.root(), std::move(id), std::move(type), std::move(title))
++        : Pane(parent, parent.attachedRoot(), std::move(id), std::move(type), std::move(title))
+     {}
+ 
+-    Pane::Pane(object::LuxObject& parent, Root& root, PaneId id, PaneTypeId type, std::string title)
++    Pane::Pane(object::LuxObject& parent, Root* root, PaneId id, PaneTypeId type, std::string title)
+         : LuxObject(parent.dispatcherRef()), id_(std::move(id)), type_(std::move(type)), title_(std::move(title)),
+-          root_(&root)
++          root_(root)
+     {
+         if (!id_.isValid())
+             detail::failContract();
+-        root.checkContentChange();
++        if (root)
++            root->checkContentChange();
++        if (auto* pane = dynamic_cast<Pane*>(&parent))
++            pane->invalidatePreparation();
+         rebuildWindowLabel();
+         attachTo(parent);
+-        root.registerPane(*this);
++        if (root)
++            root->registerPane(*this);
+     }
+ 
+     Pane::~Pane()
+     {
+-        root().unregisterPane(*this);
++        invalidatePreparation();
++        if (preparation_)
++        {
++            preparation_->pane = nullptr;
++            preparation_ = nullptr;
++        }
++        if (root_)
++            root_->unregisterPane(*this);
+     }
+ 
+     Root& Pane::root() const noexcept
+@@ -42,7 +68,13 @@ namespace lux::ui
+ 
+     void Pane::setContent(Element& element) noexcept
+     {
+-        root().checkContentChange();
++        invalidatePreparation();
++        if (root_)
++            root_->checkContentChange();
++        if (!element.parent() && !root_)
++        {
++            element.attachContent(*this);
++        }
+         if (!isOnAffinityThread() || element.parent() != this)
+             detail::failContract();
+         content_ = &element;
+@@ -54,7 +86,8 @@ namespace lux::ui
+             return;
+         title_ = std::move(title);
+         rebuildWindowLabel();
+-        root().paneLabelChanged();
++        if (root_)
++            root_->paneLabelChanged();
+     }
+ 
+     void Pane::setVisible(bool visible)
+@@ -67,7 +100,9 @@ namespace lux::ui
+ 
+     void Pane::setModal(bool modal) noexcept
+     {
+-        root().checkContentChange();
++        invalidatePreparation();
++        if (root_)
++            root_->checkContentChange();
+         modal_ = modal;
+     }
+ 
+diff --git a/modules/function/ui/src/Root.cpp b/modules/function/ui/src/Root.cpp
+index b7aab5acd..a41002d86 100644
+--- a/modules/function/ui/src/Root.cpp
++++ b/modules/function/ui/src/Root.cpp
+@@ -6,6 +6,7 @@
+ #include <lux/engine/ui/detail/ContextActivation.hpp>
+ #include <lux/engine/ui/detail/FontValidation.hpp>
+ #include <lux/engine/ui/detail/Contract.hpp>
++#include <lux/engine/ui/detail/AttachmentState.hpp>
+ #include <lux/engine/object/ObjectEvent.hpp>
+ #include <imgui_internal.h>
+ #include <algorithm>
+@@ -254,6 +255,9 @@ namespace lux::ui
+         Pane *draw_focused{}, *draw_hovered{};
+         Element *focused_element{}, *hovered_element{}, *pending_element{};
+         Element *draw_focused_element{}, *draw_hovered_element{};
++        detail::AttachmentState* preparation{};
++        std::uint64_t structure_revision{};
++        std::size_t attachment_capacity{65536};
+         std::vector<Entry> registrations;
+         std::vector<Pane*> windows;
+         struct Change final
+@@ -292,6 +296,31 @@ namespace lux::ui
+             ImVec2 position, size;
+         };
+         std::array<Placement, 5> placements{};
++        void compactRegistrations() noexcept
++        {
++            if (std::exchange(registration_holes, false))
++            {
++                std::size_t kept{};
++                for (const auto entry : registrations)
++                    if (entry.object)
++                    {
++                        *entry.registration_slot = kept;
++                        registrations[kept++] = entry;
++                    }
++                registrations.resize(kept);
++            }
++            if (std::exchange(window_holes, false))
++            {
++                std::size_t kept{};
++                for (auto* pane : windows)
++                    if (pane)
++                    {
++                        pane->window_slot_ = kept;
++                        windows[kept++] = pane;
++                    }
++                windows.resize(kept);
++            }
++        }
+     };
+ 
+     Root::Impl::~Impl()
+@@ -315,6 +344,8 @@ namespace lux::ui
+             detail::failContract();
+         if (impl_)
+         {
++            if (impl_->preparation)
++                impl_->preparation->root = nullptr;
+             checkDestruction(*this);
+             checkContentChange();
+         }
+@@ -365,6 +396,7 @@ namespace lux::ui
+                 }
+             } restore;
+             auto data = std::make_unique<Impl>();
++            data->attachment_capacity = config.attachment_capacity;
+             data->theme = config.theme;
+             data->docking = config.docking;
+             data->native = ImGui::CreateContext();
+@@ -486,7 +518,7 @@ namespace lux::ui
+     bool Root::requestFocus(Pane& pane) noexcept
+     {
+         requireOwner();
+-        if (&pane.root() != this || !pane.visible() || !allowedByModal(pane))
++        if (pane.attachedRoot() != this || !pane.visible() || !allowedByModal(pane))
+             return false;
+         impl_->pending_focus = &pane;
+         return true;
+@@ -499,7 +531,7 @@ namespace lux::ui
+     bool Root::capturePointer(Pane& pane) noexcept
+     {
+         requireOwner();
+-        if (&pane.root() != this || !pane.visible() || !impl_->window_focused || !allowedByModal(pane))
++        if (pane.attachedRoot() != this || !pane.visible() || !impl_->window_focused || !allowedByModal(pane))
+             return false;
+         impl_->pointer_capture = &pane;
+         return true;
+@@ -561,7 +593,7 @@ namespace lux::ui
+     void Root::deferChange(Pane& target, ChangeCallback apply) noexcept
+     {
+         requireOwner();
+-        if (&target.root() != this)
++        if (target.attachedRoot() != this)
+             detail::failContract();
+         impl_->queueChange(target, apply);
+     }
+@@ -569,7 +601,7 @@ namespace lux::ui
+     void Root::deferChange(Element& target, ChangeCallback apply) noexcept
+     {
+         requireOwner();
+-        if (&target.root() != this)
++        if (target.attachedRoot() != this)
+             detail::failContract();
+         impl_->queueChange(target, apply);
+     }
+@@ -857,8 +889,180 @@ namespace lux::ui
+         return {};
+     }
+ 
++    PreparedAttachment::PreparedAttachment(std::unique_ptr<detail::AttachmentState> state) noexcept
++        : state_(std::move(state))
++    {}
++    PreparedAttachment::~PreparedAttachment() noexcept
++    {
++        if (!state_)
++            return;
++        if (state_->root)
++            state_->root->abandonAttachment(*state_);
++        else if (state_->pane && state_->pane->preparation_ == state_.get())
++            state_->pane->preparation_ = nullptr;
++    }
++    PreparedAttachment::PreparedAttachment(PreparedAttachment&&) noexcept = default;
++    PreparedAttachment& PreparedAttachment::operator=(PreparedAttachment&& other) noexcept
++    {
++        PreparedAttachment previous(std::move(other));
++        state_.swap(previous.state_);
++        return *this;
++    }
++    void Root::abandonAttachment(detail::AttachmentState& state) noexcept
++    {
++        requireOwner();
++        if (impl_->preparation == &state)
++            impl_->preparation = nullptr;
++        if (state.pane && state.pane->preparation_ == &state)
++            state.pane->preparation_ = nullptr;
++        state.root = nullptr;
++        state.pane = nullptr;
++        state.valid = false;
++    }
++    bool Root::attachmentSafe() const noexcept
++    {
++        return isOnAffinityThread() && !impl_->drawing && !impl_->updating && !impl_->layout_depth &&
++               !impl_->active_change && !isDispatching();
++    }
++    Root::AttachmentResult Root::prepareMount(Pane& pane)
++    {
++        return prepareAttachment(pane, true);
++    }
++    Root::AttachmentResult Root::prepareDetach(Pane& pane)
++    {
++        return prepareAttachment(pane, false);
++    }
++    Root::AttachmentResult Root::prepareAttachment(Pane& pane, bool mount)
++    {
++        if (!isOnAffinityThread() || !pane.isOnAffinityThread())
++            return lux::cxx::unexpected(EAttachmentError::WRONG_THREAD);
++        if (!attachmentSafe() || impl_->preparation || pane.preparation_)
++            return lux::cxx::unexpected(EAttachmentError::BUSY);
++        if (pane.dispatcherRef() != dispatcherRef())
++            return lux::cxx::unexpected(EAttachmentError::WRONG_DISPATCHER);
++        if (mount && (pane.attachedRoot() || pane.parent()))
++            return lux::cxx::unexpected(EAttachmentError::ALREADY_ATTACHED);
++        if (!mount && (pane.attachedRoot() != this || pane.parent() != this))
++            return lux::cxx::unexpected(EAttachmentError::NOT_ATTACHED);
++        auto prepared = std::make_unique<detail::AttachmentState>();
++        std::size_t windows{};
++        bool invalid{};
++        const auto visit = [&](auto&& self, object::LuxObject& node) -> void {
++            if (auto* window = dynamic_cast<Pane*>(&node))
++            {
++                const bool wrong_root = mount ? window->attachedRoot() != nullptr : window->attachedRoot() != this;
++                invalid |= wrong_root;
++                prepared->nodes.push_back({window, nullptr});
++                ++windows;
++            }
++            else if (auto* element = dynamic_cast<Element*>(&node))
++            {
++                invalid |= !element->containingPane();
++                prepared->nodes.push_back({nullptr, element});
++            }
++            else
++            {
++                invalid = true;
++                return;
++            }
++            for (auto* child = node.firstChild(); child; child = child->nextSibling())
++                self(self, *child);
++        };
++        visit(visit, pane);
++        if (invalid)
++            return lux::cxx::unexpected(EAttachmentError::INVALID_TREE);
++        if (mount)
++        {
++            std::vector<PaneIdView> names;
++            names.reserve(windows);
++            for (auto node : prepared->nodes)
++                if (node.pane)
++                {
++                    auto name = node.pane->id().view();
++                    if (findPane(name) || std::ranges::find(names, name) != names.end())
++                        return lux::cxx::unexpected(EAttachmentError::DUPLICATE_ID);
++                    names.push_back(name);
++                }
++            const auto active =
++                std::ranges::count_if(impl_->registrations, [](const auto& entry) { return entry.object; });
++            if (prepared->nodes.size() >
++                impl_->attachment_capacity - std::min<std::size_t>(active, impl_->attachment_capacity))
++                return lux::cxx::unexpected(EAttachmentError::CAPACITY);
++            impl_->compactRegistrations();
++            impl_->registrations.reserve(impl_->registrations.size() + prepared->nodes.size());
++            impl_->windows.reserve(impl_->windows.size() + windows);
++        }
++        prepared->root = this;
++        prepared->pane = &pane;
++        prepared->revision = impl_->structure_revision;
++        prepared->mount = mount;
++        impl_->preparation = prepared.get();
++        pane.preparation_ = prepared.get();
++        return PreparedAttachment{std::move(prepared)};
++    }
++    lux::cxx::expected<AttachmentCommit, EAttachmentError> Root::commit(PreparedAttachment& token) noexcept
++    {
++        if (!isOnAffinityThread())
++            return lux::cxx::unexpected(EAttachmentError::WRONG_THREAD);
++        if (!attachmentSafe())
++            return lux::cxx::unexpected(EAttachmentError::BUSY);
++        auto* state = token.state_.get();
++        const bool stale = !state || state->root != this || !state->pane || !state->valid ||
++                           state->revision != impl_->structure_revision;
++        if (stale)
++            return lux::cxx::unexpected(EAttachmentError::STALE_PREPARATION);
++        // Consume the public token before notifications. Callers may release or replace it in a callback.
++        auto committed = std::move(token.state_);
++        auto& pane = *state->pane;
++        const bool mount = state->mount;
++        // Clear preparation before changing links. No callbacks or allocations until every link is adopted.
++        abandonAttachment(*state);
++        if (mount)
++        {
++            pane.attachTo(*this);
++            for (auto node : state->nodes)
++            {
++                if (node.pane)
++                {
++                    node.pane->root_ = this;
++                    registerPane(*node.pane);
++                }
++                else
++                    registerElement(*node.element);
++            }
++        }
++        else
++        {
++            for (auto node : state->nodes)
++                if (node.pane)
++                    unregisterPane(*node.pane, false);
++                else
++                    unregisterElement(*node.element, false);
++            pane.detachFromParent();
++            for (auto node : state->nodes)
++                if (node.pane)
++                    node.pane->root_ = nullptr;
++        }
++        AttachmentCommit result{mount, {}};
++        const auto append = [&](object::SignalDelivery delivered) {
++            result.notifications.direct += delivered.direct;
++            result.notifications.queued += delivered.queued;
++            result.notifications.full += delivered.full;
++            result.notifications.closed += delivered.closed;
++        };
++        // A notification cannot mutate/destroy this subtree, even after it has left Root's routing chain.
++        pane.beginTreeVisit();
++        if (!mount)
++            for (auto node : state->nodes)
++                append(emit(objectRemoved, node.pane ? static_cast<object::LuxObject*>(node.pane) : node.element));
++        append(emit(attachmentChanged, AttachmentChanged{pane.id(), mount}));
++        pane.endTreeVisit();
++        return result;
++    }
++
+     void Root::registerPane(Pane& pane)
+     {
++        ++impl_->structure_revision;
+         ++impl_->window_revision;
+         checkContentChange();
+         // Reserve all fallible storage before publishing either borrowed registration.
+@@ -879,6 +1083,7 @@ namespace lux::ui
+ 
+     void Root::registerElement(Element& element)
+     {
++        ++impl_->structure_revision;
+         checkContentChange();
+         const auto count = impl_->registrations.size() + 1;
+         if (count > impl_->registrations.capacity())
+@@ -897,11 +1102,14 @@ namespace lux::ui
+         ++impl_->window_revision;
+     }
+ 
+-    void Root::unregisterPane(Pane& pane) noexcept
++    void Root::unregisterPane(Pane& pane, bool notify) noexcept
+     {
+         checkDestruction(pane);
+         checkContentChange();
+-        static_cast<void>(emit(objectRemoved, static_cast<object::LuxObject*>(&pane)));
++        // The rooted destructor adapter keeps its established notification order until P12.
++        if (notify)
++            static_cast<void>(emit(objectRemoved, static_cast<object::LuxObject*>(&pane)));
++        ++impl_->structure_revision;
+         if (impl_->menu_pane == &pane)
+         {
+             impl_->menu_pane = nullptr;
+@@ -923,13 +1131,18 @@ namespace lux::ui
+                 *target = nullptr;
+         if (impl_->pointer_capture.window == &pane)
+             impl_->pointer_capture = {};
++        pane.registration_slot_ = pane.window_slot_ = SIZE_MAX;
++        pane.focused_ = pane.hovered_ = false;
+     }
+ 
+-    void Root::unregisterElement(Element& element) noexcept
++    void Root::unregisterElement(Element& element, bool notify) noexcept
+     {
+         checkDestruction(element);
+         checkContentChange();
+-        static_cast<void>(emit(objectRemoved, static_cast<object::LuxObject*>(&element)));
++        // The rooted destructor adapter keeps its established notification order until P12.
++        if (notify)
++            static_cast<void>(emit(objectRemoved, static_cast<object::LuxObject*>(&element)));
++        ++impl_->structure_revision;
+         if (impl_->menu_element == &element)
+             impl_->menu_element = nullptr;
+         impl_->cancelChanges(element);
+@@ -950,6 +1163,8 @@ namespace lux::ui
+                 *target = nullptr;
+         if (impl_->pointer_capture.element == &element)
+             impl_->pointer_capture = {};
++        element.registration_slot_ = SIZE_MAX;
++        element.hovered_ = false;
+     }
+ 
+     void Root::checkDestruction(const object::LuxObject& object) const noexcept
+@@ -1009,28 +1224,7 @@ namespace lux::ui
+             entry.update(entry.object);
+             impl_->active_update = nullptr;
+         }
+-        if (std::exchange(impl_->registration_holes, false))
+-        {
+-            std::size_t kept{};
+-            for (const auto entry : impl_->registrations)
+-                if (entry.object)
+-                {
+-                    *entry.registration_slot = kept;
+-                    impl_->registrations[kept++] = entry;
+-                }
+-            impl_->registrations.resize(kept);
+-        }
+-        if (std::exchange(impl_->window_holes, false))
+-        {
+-            std::size_t kept{};
+-            for (auto* pane : impl_->windows)
+-                if (pane)
+-                {
+-                    pane->window_slot_ = kept;
+-                    impl_->windows[kept++] = pane;
+-                }
+-            impl_->windows.resize(kept);
+-        }
++        impl_->compactRegistrations();
+         impl_->updating = false;
+     }
+ 
+@@ -1041,7 +1235,7 @@ namespace lux::ui
+     }
+     bool Root::requestFocus(Element& element) noexcept
+     {
+-        if (&element.root() != this || !element.displayed() || !element.enabled() || !allowedByModal(element))
++        if (element.attachedRoot() != this || !element.displayed() || !element.enabled() || !allowedByModal(element))
+             return false;
+         impl_->pending_element = &element;
+         return requestFocus(element.pane());
+@@ -1049,7 +1243,7 @@ namespace lux::ui
+     bool Root::capturePointer(Element& element) noexcept
+     {
+         requireOwner();
+-        if (&element.root() != this || !element.displayed() || !element.enabled() || !impl_->window_focused ||
++        if (element.attachedRoot() != this || !element.displayed() || !element.enabled() || !impl_->window_focused ||
+             !allowedByModal(element))
+             return false;
+         impl_->pointer_capture = &element;
+@@ -1058,7 +1252,7 @@ namespace lux::ui
+     void Root::releaseFocus(Element& element) noexcept
+     {
+         requireOwner();
+-        if (&element.root() != this)
++        if (element.attachedRoot() != this)
+             detail::failContract();
+         if (impl_->pending_element == &element)
+             impl_->pending_element = {};
+@@ -1111,7 +1305,7 @@ namespace lux::ui
+     }
+     void Root::drawElement(Element& element, Point parent_origin) noexcept
+     {
+-        if (!impl_->drawing || &element.root() != this)
++        if (!impl_->drawing || element.attachedRoot() != this)
+             detail::failContract();
+         if (!element.visible_)
+             return;

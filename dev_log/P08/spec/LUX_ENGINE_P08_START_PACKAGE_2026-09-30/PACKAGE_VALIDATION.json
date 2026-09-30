@@ -1,0 +1,28 @@
+{
+  "document_fences_balanced": true,
+  "original_reference_files_byte_equal": 36,
+  "local_links_checked": [
+    {
+      "file": "START.md",
+      "target": "reference/v4/phases/P08_interaction_and_detached_ui.md",
+      "exists": true
+    },
+    {
+      "file": "README.md",
+      "target": "START.md",
+      "exists": true
+    },
+    {
+      "file": "README.md",
+      "target": "reference/v4/phases/P08_interaction_and_detached_ui.md",
+      "exists": true
+    },
+    {
+      "file": "README.md",
+      "target": "review/REVIEW_SCOPE.json",
+      "exists": true
+    }
+  ],
+  "start_file_matches_standalone": true,
+  "engine_validation_performed": false
+}

@@ -1,0 +1,6 @@
+[0/2] Re-checking globbed directories...
+[1/31] Building CXX object editor\views\api\CMakeFiles\editor_detached_views_test.dir\test\lifecycle.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[2/31] Building CXX object modules\function\ui\CMakeFiles\ui_imgui_backend.dir\src\Root.cpp.obj
+[3/31] Linking CXX shared library bin\ui.dll
+[4/4] Linking CXX executable bin\editor_detached_views_test.exe

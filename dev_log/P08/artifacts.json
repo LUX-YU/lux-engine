@@ -1,0 +1,1370 @@
+[
+  {
+    "archive_path": "dev_log/P08/.gitattributes",
+    "sha256": "7afb3f01ddafe5753866715df760a6b662e98d44a3793d51f161b5eabe1531f6"
+  },
+  {
+    "archive_path": "dev_log/P08/architecture.json",
+    "sha256": "33bb728b8afc18b19fc30a994526148563f2b18348bc989f2381125751fc4de2"
+  },
+  {
+    "archive_path": "dev_log/P08/check_receipt.py",
+    "sha256": "4641a0f8669afb0fa42068f054571dd936cad884edc51f4ba248f24594bada1b"
+  },
+  {
+    "archive_path": "dev_log/P08/development/candidate-59444890dde2fba5bce96145e9bcd4c465fd9951/build.log",
+    "sha256": "6b22465dd5a52a2350d123efceca43cafe1fb2e43ca1f08e532bc172cf0a6a48"
+  },
+  {
+    "archive_path": "dev_log/P08/development/candidate-59444890dde2fba5bce96145e9bcd4c465fd9951/clone-before-status.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "archive_path": "dev_log/P08/development/candidate-59444890dde2fba5bce96145e9bcd4c465fd9951/clone-checkout.log",
+    "sha256": "1a56eaab89749e2d9f16255c071606369945995c78750ce07a6ff78e3704b96e"
+  },
+  {
+    "archive_path": "dev_log/P08/development/candidate-59444890dde2fba5bce96145e9bcd4c465fd9951/clone-fetch.log",
+    "sha256": "a7d9b4b899721c0eb3421fef92d35f13fdda45e489a457d0ee1d51f38d45c5cb"
+  },
+  {
+    "archive_path": "dev_log/P08/development/candidate-59444890dde2fba5bce96145e9bcd4c465fd9951/clone-origin.log",
+    "sha256": "29500a6145d74352769d8877d92b68ec63bcbdcd62976e32a496bce144543fdd"
+  },
+  {
+    "archive_path": "dev_log/P08/development/candidate-59444890dde2fba5bce96145e9bcd4c465fd9951/commands.json",
+    "sha256": "172c0c95d9e426d6cb889d099782a4b8f67342b81789ad013b743b6fa2652525"
+  },
+  {
+    "archive_path": "dev_log/P08/development/candidate-59444890dde2fba5bce96145e9bcd4c465fd9951/configure.log",
+    "sha256": "68a52339976480465b9bc1433a12191ed9c0e5a8ac09e4577c3dd1577c3b563e"
+  },
+  {
+    "archive_path": "dev_log/P08/development/candidate-59444890dde2fba5bce96145e9bcd4c465fd9951/module-header-sync.log",
+    "sha256": "6bb01e9620b2ef1158be4bd0ce9d0971c0459acc27181bddf2c6f8a7f8a2af59"
+  },
+  {
+    "archive_path": "dev_log/P08/development/candidate-59444890dde2fba5bce96145e9bcd4c465fd9951/source.patch",
+    "sha256": "632dea7e9d3f3efc3848bd2707392e1884620007e1cbef4bd8b2cb67f4c2b37e"
+  },
+  {
+    "archive_path": "dev_log/P08/development/candidate-59444890dde2fba5bce96145e9bcd4c465fd9951/tracked-snapshot.log",
+    "sha256": "6051c71fcc2fd1eeeb42218945a15d2e09b662452176f9e3afd70de0e2e41c7a"
+  },
+  {
+    "archive_path": "dev_log/P08/development/candidate-834a210db720e4dccc8e4e7a51c30fe9fe5c2f2e/build.log",
+    "sha256": "bf6f9147116ef2f28eeafcfef9525f6090cda565438c6cafe75eaa74fc2b7704"
+  },
+  {
+    "archive_path": "dev_log/P08/development/candidate-834a210db720e4dccc8e4e7a51c30fe9fe5c2f2e/clone-before-status.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "archive_path": "dev_log/P08/development/candidate-834a210db720e4dccc8e4e7a51c30fe9fe5c2f2e/clone-checkout.log",
+    "sha256": "0bf05b2e191a5c183ad15b162ba891a9ad49cf1c6b05310e4ed3e63484b44b06"
+  },
+  {
+    "archive_path": "dev_log/P08/development/candidate-834a210db720e4dccc8e4e7a51c30fe9fe5c2f2e/clone-fetch.log",
+    "sha256": "ad68700c8cf230c5ef22e0b162f7c8a675eb535c56c888fb85e8f6cc66097520"
+  },
+  {
+    "archive_path": "dev_log/P08/development/candidate-834a210db720e4dccc8e4e7a51c30fe9fe5c2f2e/clone-origin.log",
+    "sha256": "29500a6145d74352769d8877d92b68ec63bcbdcd62976e32a496bce144543fdd"
+  },
+  {
+    "archive_path": "dev_log/P08/development/candidate-834a210db720e4dccc8e4e7a51c30fe9fe5c2f2e/commands.json",
+    "sha256": "6d894a703527096a70a517fa056a812ae36023fc2ffd0b77665c04529fbcffe5"
+  },
+  {
+    "archive_path": "dev_log/P08/development/candidate-834a210db720e4dccc8e4e7a51c30fe9fe5c2f2e/configure.log",
+    "sha256": "4b948477a08971f918c09ed1769ca26a06a15d05039aec9e628d2cefb16d8cd8"
+  },
+  {
+    "archive_path": "dev_log/P08/development/candidate-834a210db720e4dccc8e4e7a51c30fe9fe5c2f2e/ctest.log",
+    "sha256": "645d2c023c8c3b7333a65294857beeb2fe63571805a81ddad52288c4a98d8274"
+  },
+  {
+    "archive_path": "dev_log/P08/development/candidate-834a210db720e4dccc8e4e7a51c30fe9fe5c2f2e/module-header-sync.log",
+    "sha256": "6bb01e9620b2ef1158be4bd0ce9d0971c0459acc27181bddf2c6f8a7f8a2af59"
+  },
+  {
+    "archive_path": "dev_log/P08/development/candidate-834a210db720e4dccc8e4e7a51c30fe9fe5c2f2e/no-work.log",
+    "sha256": "7716162f3cd3b99cf3b8a8dd6decf324e08c7e941aae7e730baba5e4fc8c075b"
+  },
+  {
+    "archive_path": "dev_log/P08/development/candidate-834a210db720e4dccc8e4e7a51c30fe9fe5c2f2e/source.patch",
+    "sha256": "f65b968bfaa8e8350872b6ab3733d076f944e4abd1f6640b1ac4d2c8f37ead34"
+  },
+  {
+    "archive_path": "dev_log/P08/development/candidate-834a210db720e4dccc8e4e7a51c30fe9fe5c2f2e/tracked-snapshot.log",
+    "sha256": "549f1d3b78c43df48e1aba3a68c0ab777ab38ca67443d6ae390d5b780ec6614f"
+  },
+  {
+    "archive_path": "dev_log/P08/development/p08-build-2.log",
+    "sha256": "ac06530f8ac0becc5d5101c17b623b9b469365d060a5b856e1a3bfda21347107"
+  },
+  {
+    "archive_path": "dev_log/P08/development/p08-build-4.log",
+    "sha256": "cdb7141e55f965ed6355595c0f32fa1865981a473ab8640ca1db63dd867b7d65"
+  },
+  {
+    "archive_path": "dev_log/P08/development/p08-build-5.log",
+    "sha256": "640baa54b9ea6c931edc268aa4379595d4897849897dbfa3ab2ba80f6b45ba03"
+  },
+  {
+    "archive_path": "dev_log/P08/development/p08-build-6.log",
+    "sha256": "5d0f116102405d111987f615dcc32455e1f809c53f63f52d997e1fc5c362c803"
+  },
+  {
+    "archive_path": "dev_log/P08/development/p08-build-7.log",
+    "sha256": "ed284c905eb43a3731bfc05c20ec3af3a6072108b4c033c835935f07d71b9859"
+  },
+  {
+    "archive_path": "dev_log/P08/development/p08-build-final.log",
+    "sha256": "4d395a960be9159cb228017cff88daa428277236cf19c3835b2e2db408b3bf00"
+  },
+  {
+    "archive_path": "dev_log/P08/development/p08-build-token.log",
+    "sha256": "824f3f4f002ec520fabd224ff2b498ce325b51bfafd8fb8c0d8f982578d157ca"
+  },
+  {
+    "archive_path": "dev_log/P08/development/p08-build.log",
+    "sha256": "38747b2bd1dd6e079a1c5f8daa6644db9378ec485c4aed794c8a2ec44c83ec24"
+  },
+  {
+    "archive_path": "dev_log/P08/development/p08-configure-2.log",
+    "sha256": "50d693efb1eb77e7232854ebc1dd5ca8db6d33775bfb1c5f81f1df46d9c29e34"
+  },
+  {
+    "archive_path": "dev_log/P08/development/p08-configure-3.log",
+    "sha256": "b527ad29c22c4a28acac26ef19ae747b8f699275baa9873936f900f1663e07f7"
+  },
+  {
+    "archive_path": "dev_log/P08/development/p08-configure-4.log",
+    "sha256": "b41b3f1702783c4fd6ebba2614c355dd87629d24ecd871b7b5abf49d8aed261a"
+  },
+  {
+    "archive_path": "dev_log/P08/development/p08-configure.log",
+    "sha256": "5dfea064e4373f2d2aa826483c483b5075cb5d3f2e3378bd65a7df730efe3440"
+  },
+  {
+    "archive_path": "dev_log/P08/development/p08-local-boundaries.log",
+    "sha256": "219a111c7d34b37c500f1674646e19449d69a14d4de3e1bc84d30343d8f9c14f"
+  },
+  {
+    "archive_path": "dev_log/P08/development/p08-local-tests-final.log",
+    "sha256": "d5dbc5092341ef53102374598ee05d64ba86985c902d17dbd2dc8b424c486728"
+  },
+  {
+    "archive_path": "dev_log/P08/development/p08-local-tests.log",
+    "sha256": "06bb768ee14087948994487dbc2e5303daf618d18394032b35b52940859afa4a"
+  },
+  {
+    "archive_path": "dev_log/P08/evidence/boundaries.json",
+    "sha256": "b4d12f52ddf1ab32ff0078feb31cfdc601ca6bd6baf80efbfab87a6db01d2dec"
+  },
+  {
+    "archive_path": "dev_log/P08/evidence/flow-boundaries.json",
+    "sha256": "0fb5084ecd6fd8025461332c1e3e2c833e4506280816e7433d2722fab0abfef2"
+  },
+  {
+    "archive_path": "dev_log/P08/evidence/interaction-boundaries.json",
+    "sha256": "9022a9ea784916cc743ace3ec87a012f0a977954cb6870ddf61e90feb3cd5169"
+  },
+  {
+    "archive_path": "dev_log/P08/evidence/material-boundaries.json",
+    "sha256": "57b9fcd3c2420783da89ed469ab623015817eecb7fc6fc62dd4e718f2eab6c9a"
+  },
+  {
+    "archive_path": "dev_log/P08/evidence/model-boundaries.json",
+    "sha256": "7a33ba4fc29571f052ee21e40ea6b0ba541e12da9f206f7024fd30a330139dfb"
+  },
+  {
+    "archive_path": "dev_log/P08/evidence/persistence-boundaries.json",
+    "sha256": "672187c31c0e3ec819cdbe84ea5e70b7f3528eb62ae0c94d02485046e1eae5bd"
+  },
+  {
+    "archive_path": "dev_log/P08/evidence/player-compile-commands.json",
+    "sha256": "9cd76ebca2be53784cd95811f8521fffe4b2ef679d2869f21b4f17d60008789a"
+  },
+  {
+    "archive_path": "dev_log/P08/evidence/player-target-directories.log",
+    "sha256": "0bbd34aa741e4bafe9e77839ebaf6f23aa0f53965de589ba76232daa25545e4d"
+  },
+  {
+    "archive_path": "dev_log/P08/evidence/projection-boundaries.json",
+    "sha256": "589001ce87b5b908eb36eac47f2cbdde0853c084f0633db32cc57436dc72fbb2"
+  },
+  {
+    "archive_path": "dev_log/P08/evidence/projection-measurements.json",
+    "sha256": "6914c8b2be0617b08b39b6927c693282319853065c92fbc81ffecb63916acc8e"
+  },
+  {
+    "archive_path": "dev_log/P08/evidence/receipt-portability.json",
+    "sha256": "9b9c2d3c0611714871dc08b6565302aeb25579b68eb4f08ebbddb85bf0348870"
+  },
+  {
+    "archive_path": "dev_log/P08/evidence/run-boundaries.json",
+    "sha256": "cb0e97c4ccb624c29df4e29172ebcd23dfe25577afe38dcfcf28bbef9916728c"
+  },
+  {
+    "archive_path": "dev_log/P08/evidence/targets.json",
+    "sha256": "c67e45aa595ba42d7e5208d397944c6af2fe7a27498086153a2e26f05b6293da"
+  },
+  {
+    "archive_path": "dev_log/P08/files.json",
+    "sha256": "81e8ab718c906964b7d9f02517ddac114ff4b9e367766b21f62d886f1e92ccb4"
+  },
+  {
+    "archive_path": "dev_log/P08/FILES.md",
+    "sha256": "50925dbac47ba613503cb989b3e6fc4f8cc871d1b9834f12ad45a95c025da07d"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/after-sdk-contract.log",
+    "sha256": "a47db7075a1160debb4ad57a4c7a9b1284c8120aada637ca508d470d12256a95"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/after-sdk-illegal-runtime.log",
+    "sha256": "293b5c110ae559c32425f6576342c405e093424c0266ab82f0cd18d53f6f803d"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/after-sdk-traits.log",
+    "sha256": "b875f82398c167e2a3d9309b5aee9cbb6e0469b5405524e33ce0c19b003e87b7"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/architecture.log",
+    "sha256": "8e7975d18aa71d3e7ce1f9b9329b916990798dd8c1d2cee7dc3a28d049092a40"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/backend-binding-detail.log",
+    "sha256": "828ec41f09e552a2fd11a59af41cdb57322d71d88266116cef716d3b740575b3"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/boundaries.log",
+    "sha256": "64ed90364c183dee6063ebfa23b3cf02bc6a96dfa0cecc87f940e205a32ade0d"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/build.log",
+    "sha256": "5e34843d2f656592d4467380897fcec3b1a3f054f18b52ff00fca5da28645935"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/C01.log",
+    "sha256": "0dbfe595f0e021e51634fce2ac4ea94333d7b45abfe32ae13d4c70503ce2fa37"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/C03.log",
+    "sha256": "81b8ef88867808a3afa6c3d8a498aaa0bbe254c88b1722b5afadced874960159"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/C04.log",
+    "sha256": "e86c1b07b3a1db340e031ce7be7c470acc68e192ef35f894aaab33e9bb6f2e66"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/clean-final.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/clone-before-status.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/clone-checkout.log",
+    "sha256": "2fd8f90682085421e144b9dd6b6b6e8144d9e5c8d4f856e4e78f343f053214ea"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/clone-fetch.log",
+    "sha256": "79138c0e7f8f8fc08e7601723303e6c69ded221ca82fb78760a7f8316e0f7150"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/clone-origin.log",
+    "sha256": "29500a6145d74352769d8877d92b68ec63bcbdcd62976e32a496bce144543fdd"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/close-contract.log",
+    "sha256": "c18f0d1bfc4d2e2698c7b7ff607721107cd2a8843e7932a867cb3efac519da5a"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/close-throw.log",
+    "sha256": "4b5f1392e9027cc8bf5e299d48c3ac58d294945890d5900bd93636dbf2761288"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/compilation-detail.log",
+    "sha256": "67f0f0cf0c32214adab562eafe75a99a2efb17349a12bfc21a4983d2c35581c2"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/compilation-imports.log",
+    "sha256": "963e7fa33edf4e30c506956972a4d89ab629d4cbe771d56e8109671328c1b320"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/configure.log",
+    "sha256": "de3c34cbc77ef9d98191abfff443ca9150b7bc2d20bdf0682d11d2fe7a551cc0"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/ctest.log",
+    "sha256": "8013943384f5820df59794a776a214290c174de4405e91687333ef3babff8217"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/detached-views.log",
+    "sha256": "59d3e0910b331347a52c5b14991a4b2197d603f94676eac43127cb2f7c93e70e"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/driver-detail.log",
+    "sha256": "8a8ba82a0ce32ae2662dd2b1825886e7d5c7cf2498e0671fa4548dcfd3e9ae92"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/editor-sessions-p01-consumer-build.log",
+    "sha256": "facfbe885a970ec67de99bc2ce329a17fcde3a3c2bf1124747f5ea113374dc27"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/editor-sessions-p01-consumer-configure.log",
+    "sha256": "63c5ef02066ab29e901de8ddc83c72d37e40ca30bd38b3ffbea7a17b2a906dfa"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/editor-sessions-p01-consumer-ctest.log",
+    "sha256": "ca1ed40e4ef62938175970e69e1cdbc23c6a3b9a716e63fe956b40408f2729de"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/editor-sessions-p01-consumer-no-work.log",
+    "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/flow-boundaries.log",
+    "sha256": "8a571c6dc01446ede8442db860379b23818f84492f8c530ed68090e2c3154cfc"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/flow-budgets.log",
+    "sha256": "1a384b49eb4b151ebcc91dc7d883cb9fbedfefb59c0cf5b8559a0b0515a583c8"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/flow-content.log",
+    "sha256": "65a3f16d9880eda1e82659f178ddea668df86d600f39d1dd8a9c50ff71791cb2"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/flow-failure.log",
+    "sha256": "43f02dc5cfc35d80ef117032ab5ba4da4208015e9adb00604d0d37769e61ada9"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/flow-ids-candidate-seed.log",
+    "sha256": "cd7f9fbfcc98e12bbdfff005f82c16ba0a40470dc1896c1ea533b54ac7f45151"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/flow-ids-exhaustion.log",
+    "sha256": "b51336c795e5e683f51f6aabd844bba6de223a41a93e8f2895945052d22ec4e9"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/flow-ids-failure.log",
+    "sha256": "cd64c83200c47877eb6a997cec1cbd62aa6207932755c1606e84ec509447d3c2"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/flow-ids-restore.log",
+    "sha256": "d976117a4c32e516073407f2f25bb6abbc8024211fe5248e4279d01120d19a1d"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/flow-ids-signature.log",
+    "sha256": "f4968cbfbb418916d2d636a4ed9b4e6abbaeb5ada506d13fc0df474061f4dd6d"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/flow-ids-undo-branch.log",
+    "sha256": "400742ffe757d41124361dad3ed6ff2ab8fa8dfcdf776a720f83298aa78848a8"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/flow-imports.log",
+    "sha256": "df1f543113adc7d57562749421d935eef06523ad63ba343856b796ea8ffc3658"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/flow-input-closing.log",
+    "sha256": "05f83d403f3f3bebac26e0837653adef5d72b7f73ea6433ac4c786fd66c8d052"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/flow-input-reading.log",
+    "sha256": "05f83d403f3f3bebac26e0837653adef5d72b7f73ea6433ac4c786fd66c8d052"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/flow-input-stale.log",
+    "sha256": "05f83d403f3f3bebac26e0837653adef5d72b7f73ea6433ac4c786fd66c8d052"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/flow-installed-detail.log",
+    "sha256": "168e38ca23abc63050a8ab0e5de33c39a46a161bd5cea2546002a21677052577"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/flow-interaction.log",
+    "sha256": "d1182357c808a20478f508736fd978fafe2fade5d272bdf955fbb1b9c6944f93"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/flow-lifetime.log",
+    "sha256": "df9697beff27b7a507e3c6745b15e177a59aae1f59c0060905d5f7c555af7445"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/flow-mixed-recreate.log",
+    "sha256": "ac191f47d1a5df21354ba0d4dacaad147679ae34d7d6784787bce421ec5761ad"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/flow-mixed-signature.log",
+    "sha256": "bf4b9c9220bd17fd0f7a741833145cfb42801958e440a0f90a74604c8bfb5a9a"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/flow-reading.log",
+    "sha256": "690826dbc4ed9a1e4f437856f78be1abaea2c3134cf837cfef23503310bf8461"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/flow-reload-closing.log",
+    "sha256": "0366a2f51cfa73735dbd5bdfdf6d8a9c89f0cfe4c5368b3d3fd63199ea552fd0"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/flow-reload-identity.log",
+    "sha256": "0366a2f51cfa73735dbd5bdfdf6d8a9c89f0cfe4c5368b3d3fd63199ea552fd0"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/flow-reload-reading.log",
+    "sha256": "0366a2f51cfa73735dbd5bdfdf6d8a9c89f0cfe4c5368b3d3fd63199ea552fd0"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/flow-reload-success.log",
+    "sha256": "ec9dce787748adbc873b05f17c4bc0cdc571f14a23562d245f14a8c19920d26d"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/flow-reload-unbound-external.log",
+    "sha256": "0366a2f51cfa73735dbd5bdfdf6d8a9c89f0cfe4c5368b3d3fd63199ea552fd0"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/flow-reload-unbound.log",
+    "sha256": "0366a2f51cfa73735dbd5bdfdf6d8a9c89f0cfe4c5368b3d3fd63199ea552fd0"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/flowforge-model-p04-consumer-build.log",
+    "sha256": "6d72ff4cfeb271ae57b4d577eadf76013750be83a6a0687268d89d5ac4932af6"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/flowforge-model-p04-consumer-configure.log",
+    "sha256": "744391a7586d3cf6a2a2a79f65e5f138d3727b41e594421a9c8020f7812878f9"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/flowforge-model-p04-consumer-ctest.log",
+    "sha256": "f6d0183392aa79a9cd87090700eead1072e56f1f4db1c27cdc8f17c3679a8b20"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/flowforge-model-p04-consumer-no-work.log",
+    "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/highlight-detail.log",
+    "sha256": "15bf499ba76329629d5f93f83f8bf9aaf13d3802276178b45f152b6e49bb59a7"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/historical/P00.log",
+    "sha256": "8cd7c9d8eb2e79e104b1192bbf3d78bc1f715f45691ddef0e695b64f60cf5e25"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/historical/P01-R1.log",
+    "sha256": "09b911064f335fade54838d62a0b62dc5c67d5a657c42dd462ca97c1708fcd89"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/historical/P01.log",
+    "sha256": "6276be70602b174b4686bde663b1ec1d714170fcbcb0c13a5d0753491f21a971"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/historical/P02-R1.log",
+    "sha256": "8ed784744eaf03204a0b66187118bcf7860578b3ebadd13a5e46951ef537462e"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/historical/P02.log",
+    "sha256": "c36dc4ca22e402a8b0ed862b80de3398c90c42dd60472bd0f3e2051683a9d25f"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/historical/results.json",
+    "sha256": "ac1c4fc21ec56cc85ca5126c0f6b540941324ae0f01d4fbe4adb0c6f6b92342e"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/historical-verifiers.log",
+    "sha256": "e72219832d3863b81e962a4c0a0733222691f05cccd4a0cf251881341e2a554f"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/install.log",
+    "sha256": "c9c7cc70a6aa7484a68848708accbac7f150322951104c8554be12c099007355"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/interaction-boundaries.log",
+    "sha256": "33cd6b1ea5fb2f39668c077b3a38381e68cce48283702bbba92e93a5fdb5bb89"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/interaction-views-p08-consumer-build.log",
+    "sha256": "8a58a12be62d5ebc01bfcd6ec1401453bafa24c184e8badb1039f972dfca251e"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/interaction-views-p08-consumer-configure.log",
+    "sha256": "86507487d04eb80a8ecda80eae07b2ba6b968456d250b6c5ce4505e26615a41f"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/interaction-views-p08-consumer-ctest.log",
+    "sha256": "2431abaa3597c1ceab7f9b291162251e51bbe9bb156563cf65f1c85f8435e5be"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/interaction-views-p08-consumer-no-work.log",
+    "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/material-boundaries.log",
+    "sha256": "3a18037852fc55ed4057ee7045760c09675b32f78e6e03e12bca816b4daa0e54"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/material-content.log",
+    "sha256": "316add362d88afe83acab15eb5cf9854d9f129636c1232bf91b5aa6a17dfccfa"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/material-failure.log",
+    "sha256": "d1ea3897c7373cef78af024a3e2c7d70c505c5ab9e61c6abf039b195929d398d"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/material-imports.log",
+    "sha256": "b8e257faf946b067361e73a09a86b0ab80f2ccc941244a1b175e776efb2c0e99"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/material-interaction.log",
+    "sha256": "e8a2e5dad25787f1d02b8e1538285769ade5f36d89627c3d5d2967aea3b970ee"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/material-layout.log",
+    "sha256": "f5749a84dbd827af261f63befa6c53ad910a40419445b180c03c8f8990c236d4"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/material-lifetime.log",
+    "sha256": "8f5bffd784bfef4bc26e86422e2b82c5a144909c82ec540089d364a21390e39d"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/material-mixed-recreate.log",
+    "sha256": "6f7db4089659d5a8d9b1684d09a3fb9f6669ee0f0e4aafa3c75adc7f4c10c485"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/material-mixed-replace.log",
+    "sha256": "d8e15df280795642843b483665e06f2937c8d47f21a2b29aa0a9ebf6952d3cd8"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/material-model-p03-consumer-build.log",
+    "sha256": "44dcd0f4b7b97b742eadf9b0aa1ee50b55f078b72eb3f189a4e3935177f51f6f"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/material-model-p03-consumer-configure.log",
+    "sha256": "5e625ac501ff81cc845d9f856d441f454594b959965b686a2ade0d7a53653eab"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/material-model-p03-consumer-ctest.log",
+    "sha256": "8debdd74ff75c55381fa7dc2f0e9e9f0d8ee6fb7230fa23bde275b785e811e39"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/material-model-p03-consumer-no-work.log",
+    "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/material-reading.log",
+    "sha256": "afbdb29e24aea972e6d019e46df8f18b3be2261a2ad0c5f0530572ba9c8ad8b9"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/material-reload-closing-lease.log",
+    "sha256": "d85c55e9f6879efb6492c1f032210537532e9c443a444ca6cceb1c815db39a1e"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/material-reload-outcomes.log",
+    "sha256": "b24d4a5c62e33473bad0d0c9281eb4c34b33e42d1e2d65ea2ae2bcfa2272effe"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/material-reload-reading-lease.log",
+    "sha256": "332dd9e1e66beded02cc32b88b8a33e3a1e3e651eb5f945173d54f9c445f1b4c"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/material-reload-unbound-lease.log",
+    "sha256": "8260a0368fd084ed50a84ad2a718ebc36fa8fa6a0ee5ca5070d704ebfa4a282c"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/material-reload-unbound.log",
+    "sha256": "b8eb222b25960c246d12568199496bc517cfc0a44adbec4ac851f11930296def"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/model-atomic.log",
+    "sha256": "e429e08c2b9dbee111e41e742d8b742cd627be1501346130ec8e9df1dfb2e75f"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/model-boundaries.log",
+    "sha256": "27a721dba5a67ddff578b7c4b8e18f36eebb326955ca81b7fbdb4f06dcbf6fdb"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/model-changes.log",
+    "sha256": "429b895b64e40669f63e18a30d3be0fd05b439914137127cc9b7e9b52c1d54b1"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/model-content.log",
+    "sha256": "46668f7c89e9bd24a7de6c0c2a11fc3858db235423dc526674fed7e5ce31a3c2"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/model-identity.log",
+    "sha256": "e866c0824ae12229976a178e938790a544bf531824ef505aa8ef480a117363ea"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/model-imports.log",
+    "sha256": "6ec45cba5bc2958f308e92f9cf7a693baa37c0fe79a1dd7d779fe0b99d5c91c4"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/model-mixed-1.log",
+    "sha256": "485c9f7be2b8b7457329cad5e69a0f5e543f373fcc84b1697eab77a06c9e2c4f"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/model-mixed-2.log",
+    "sha256": "e965126827db41611390f0e83e91b3eed73f807ccbc1040f9d4267204d47158a"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/model-mixed-3.log",
+    "sha256": "1fd1c261c6550803b8e41fc3511316786067df5ef027272e6d13c7de48548e22"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/model-mixed-4.log",
+    "sha256": "ce454d0fc62340c48c6265669c1a10550cdc5c70c5191d67d634b724a7fb31ef"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/model-plugin.log",
+    "sha256": "1cbb6b756d2e62be82ba2e26c8a466bf4db19b9273d3fade271c85b0f7e307ff"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/model-read-5.log",
+    "sha256": "0de885c4bf8ad3504f5cb4a9bdec04173e36b0734adcbeafe0b10c51d8c59eb0"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/model-read-6.log",
+    "sha256": "7658ea9bc28b9eab62007d901bb4925b1703690015dac3cd3592d929c1cc1853"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/model-read-7.log",
+    "sha256": "e9c629594a72a34fe7d66475dc2028c9ef9c776ba9c0ccd1d9c78949230620c7"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/model-read-8.log",
+    "sha256": "e6a6f6f32eea56fce07b206d56f3b646ccd156ccaf1abc1adf7d997704f1e534"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/module-header-sync.log",
+    "sha256": "6bb01e9620b2ef1158be4bd0ce9d0971c0459acc27181bddf2c6f8a7f8a2af59"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/no-work.log",
+    "sha256": "7716162f3cd3b99cf3b8a8dd6decf324e08c7e941aae7e730baba5e4fc8c075b"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/original-p03-gate.log",
+    "sha256": "20c9378daa3a331c43d4e8406db88a114640b43faf904147e0dd72d98158405d"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/original-p03-r1-gate.log",
+    "sha256": "3cb5f9b5fc3964779898b32a66aaae90b0449d53fffc61542ee802e466995f2f"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/original-p04-gate.log",
+    "sha256": "e0b713a91f1a19065e046183e5aef7aa2f79b43da48a9e62ea9817b86e06df84"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/original-p04-r1-gate.log",
+    "sha256": "98e84c04b0f9fc0a78fafdb612588e5f3ec2e3a970e5107ce54a8524d22ead61"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/original-p05-gate.log",
+    "sha256": "6912a3fe618b8f03edcc0883f392f8d0a2abd64bdfb14af4f84d1b404ef7ef27"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/original-p05-r1-gate.log",
+    "sha256": "8974aea33b194f9de669154707311ff81a31d976cdd4d988f0477979f38279bb"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/original-p05-r2-gate.log",
+    "sha256": "8e4e556154fdba937fb375eb5744021c1bb3a1432d072641b0ae783bc6569586"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/original-p06-gate.log",
+    "sha256": "4378cc770d25bf9b32263033669f291d5228c09a69d79cea57c5551a1a54e694"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/original-p06-r1-gate.log",
+    "sha256": "1d3722a086807ac8bdfdf8ded260f4829ccf9b427f47ca465342947324972a71"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/original-p07-gate.log",
+    "sha256": "afe693ecefc5d37a81f728e32c73239457505a4c8202c1559be35f52677db00c"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/original-p07-r1-gate.log",
+    "sha256": "d25962f5a84e7b10689fd581ead229ce863cf7ac02d7f1fe08c0f98ea4d8964d"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/ownership-flow.log",
+    "sha256": "3b09781b0751ad76a4eeccf55e6879facf0058522905c47ff3cc4cea8554624a"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/ownership-material.log",
+    "sha256": "984d8761a5bc3363470ba2ac7fe85afbee8eb3b018802ca1a07d9650d8299eff"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/package-audit.log",
+    "sha256": "ff171d6c2d2e8ac73bfa8f9a49bbc1e8b3a08f13c4ef5d95994a4b42c0a445c7"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/persistence-boundaries.log",
+    "sha256": "2c3e303e104d534ef8ceb2f30300dc053adc30ac38312e20feb0ca1f9408027f"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/persistence-capacity.log",
+    "sha256": "09b5e2ce98a156abf7a03bb48849bfae91132c69039fd6810c891fd9949f0c69"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/persistence-close-key.log",
+    "sha256": "2144433f4994160d031901f8851ca4b22c54c1d2dc0ee0f23e6ff353efd3e983"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/persistence-close.log",
+    "sha256": "2144433f4994160d031901f8851ca4b22c54c1d2dc0ee0f23e6ff353efd3e983"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/persistence-conflict.log",
+    "sha256": "80fe50c3fcaf02a331d8d1b683e424aadb4841524f3f1cf9cd96102dc44eb77c"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/persistence-coordinator.log",
+    "sha256": "23265a650013bbd0dd44092fc36105a27cedaa2e6025202ccd6ae046bbf208fa"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/persistence-decoded.log",
+    "sha256": "051fc1f497424c59a4b969a2f3d5a2b067bcca353f8c15aa52dffb9a3b153ee5"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/persistence-execution.log",
+    "sha256": "d0d38e22d95b4b21266bf31218cd6b39cea2e491542b85812ff6e762a8b599d7"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/persistence-files.log",
+    "sha256": "a75f7e478fd12f9c7fce363050456312857579db76cb3ca5ff2441a1f4243c4b"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/persistence-identities.log",
+    "sha256": "78603d929e951208095f4360261173e68e288e142772007710ecc52d4fc2b4e5"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/persistence-imports.log",
+    "sha256": "1aee3440217dda1e3532b83f01d56292e652c1573781e3f7db2130e9098f45f1"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/persistence-measure.log",
+    "sha256": "a8a7ef64cc0f5765754958161a78580c14e46ad8c997ce1fe8930c0a38f7799a"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/persistence-models.log",
+    "sha256": "9cda5460167cb2bdf60cae129d33f3d566d58a2a4450ec211cc25aa78a10cfec"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/persistence-order.log",
+    "sha256": "e37cf9bbffabb29c1ba3059e7da9d858caea3a74496d1180dca769835cc45cb6"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/persistence-p05-consumer-build.log",
+    "sha256": "4aa0db63a3eb05992389bf23124b7aa9dbb06435e8c8acb59614915843b46240"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/persistence-p05-consumer-configure.log",
+    "sha256": "2741bd6f898a7a554e3cacb8ca639a73a7e9a7fb4d9a39933d5ac2ac54355143"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/persistence-p05-consumer-ctest.log",
+    "sha256": "de5299ab48b2eadc00626dee24bb7ce674067ac919cdeaa6cb49b920f6e3a118"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/persistence-p05-consumer-no-work.log",
+    "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/persistence-r1-callbacks.log",
+    "sha256": "e857c5981568ab7120cd5a52e9c646f6c37bb8f5f3ce20aa84abe09546c2b489"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/persistence-r1-chain-control.log",
+    "sha256": "c59a75c431c01b1c3619f7d8048005d9d23aa3275b3ebc7bb700e5074587eaf7"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/persistence-r1-chain.log",
+    "sha256": "d622b144a05db2b148c823245d21ba32e9600cf6a564a2b7511411e28fdab31e"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/persistence-r1-conflicts.log",
+    "sha256": "7bf96965a00cf92bc4eb72738e3c612d4a44f385392de447f9b04fc7f62ab2c8"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/persistence-r1-reading.log",
+    "sha256": "9861f81fec446a1ef52eba13d2334feb7dc1d8bb7291e7456c963ef7b8f951cf"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/persistence-r1-recursive.log",
+    "sha256": "7e62cbf9435696a9547c710038243b40c056292ce98b23e941595ee5e0e0fe42"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/persistence-r1-revoke.log",
+    "sha256": "f64531575fc9193700b816a915362fc3a9b14d404e58e3637a1f43ab3b1d6089"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/persistence-r2-accept-cancel.log",
+    "sha256": "aadf3f9dd14aa7f0278772db2162a27a317e1ce645c92aaecc31c4755b02558d"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/persistence-r2-accept-drain.log",
+    "sha256": "63f03e9993fcb401503286884c94acdd7e5a26551957f53b9caacd57ede549a4"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/persistence-r2-accept-error.log",
+    "sha256": "6024a8b63d2c48d732cdf360fbe148b37b514c171788be4b14d5026e0bfe6f75"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/persistence-r2-accept-success.log",
+    "sha256": "bb8e0b18d0ad238d4948ec858e4216c03d52dab686b440432e9e14cadda93057"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/persistence-r2-admission.log",
+    "sha256": "f34be80da41adc25758c69219ea2531fb08d2b2842b25df54db32e4b107489f3"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/persistence-receipts.log",
+    "sha256": "9a94c8dfda90619ac99ca68deeaeb8eb942039cfb408786624ce7e4f1f78d807"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/persistence-save-as.log",
+    "sha256": "d6d9634c1bfad3031b58c52c2d9b8e4ec153fdff3dc5febfc097a2b0e0a7ab36"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/persistence-unknown.log",
+    "sha256": "104e8e7c7d14f6bd1849af7380dc42b4a120ef4198f7b551b5e5527a815c21ef"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/player-build.log",
+    "sha256": "63ce1915360d8e0ecae7feecfd8b9815d98e87cb0e845c010f820c681359e776"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/player-configure.log",
+    "sha256": "3a2b74c54a4c20e12c67192fa20a3db5a5ed0c9d9e72d8593c164ea6b5c9c16f"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/player-ctest.log",
+    "sha256": "8a28f32c31d4b516b337bed7cc7fc383310e06d23fbe34d49df8aef437e61686"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/player-headless-imports.log",
+    "sha256": "048b49143872db4557b0458988fec4b1ac8d5d2b1ae9dbe5b6c96a55f7cf1f67"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/player-no-work.log",
+    "sha256": "7716162f3cd3b99cf3b8a8dd6decf324e08c7e941aae7e730baba5e4fc8c075b"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/player-runtime-detail.log",
+    "sha256": "156543bbe8972c91507543ce9869d1f9bd47472366b56c7c656470dfcec6db98"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/player-target-directories.log",
+    "sha256": "0bbd34aa741e4bafe9e77839ebaf6f23aa0f53965de589ba76232daa25545e4d"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/player-targets.log",
+    "sha256": "26a8d7e436261962c946379ff0b49cfa7f1454f7a55a61062324e6b3380752fa"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/player-test-names.log",
+    "sha256": "6165f06c8ccad4eb5caa5c34da845ef289e902bdd7f85e59fecdd6ef142673a5"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/portability/restored.log",
+    "sha256": "6276be70602b174b4686bde663b1ec1d714170fcbcb0c13a5d0753491f21a971"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/portability/results.json",
+    "sha256": "882f8fce6d3a7b65d6e67764c71c1d5d44a1dd3d06bbd7a8d0a487a7d66e56e9"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/portability/X01-R3-01-relocated.log",
+    "sha256": "6276be70602b174b4686bde663b1ec1d714170fcbcb0c13a5d0753491f21a971"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/portability/X01-R3-02-windows-provenance.log",
+    "sha256": "6276be70602b174b4686bde663b1ec1d714170fcbcb0c13a5d0753491f21a971"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/portability/X01-R3-03-missing-log.log",
+    "sha256": "b05af3d25fbc601c9bd95c657e835223c2a586fe741528e7a02e253166ead2fa"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/portability/X01-R3-03-missing.log",
+    "sha256": "45b46f9fc93dc1d14a3e082e576166aed7ab8062a10d01b5b58f867107b6f3d3"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/portability/X01-R3-03-tampered.log",
+    "sha256": "a91f4a8531e058b7b9392092ee59c4bcaf9ad2d084ef52ffc02c625384ffc918"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/portable.log",
+    "sha256": "b892e6d4a4bcd06bbd5e00c396462e03b970524d683143d459b30149e9a0fb3d"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/projection-boundaries.log",
+    "sha256": "5476523f4d938604372779fb4480931fbdd5458ac3bcef98955cfdbd0238fe8c"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/projection-compilation-p07-consumer-build.log",
+    "sha256": "47f581aa58036e0abb5dbcf0165f76a0e4e11d339b3f2ae2cc0caaf771289c54"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/projection-compilation-p07-consumer-configure.log",
+    "sha256": "bc0a55048e5302e44a9902a9f3d35a866f29272fb4308a64423dd74da560a003"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/projection-compilation-p07-consumer-ctest.log",
+    "sha256": "c71f35b5454e4088911fa518dc7e4f6baa2255953b9223dc7a1c746ebfae3aa0"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/projection-compilation-p07-consumer-no-work.log",
+    "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/projection-detail.log",
+    "sha256": "7447a0cf13f43f8bc47db764a52cab8a70c8a625386be69cbdfee74bc9e2ef90"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/projection-measure-0.log",
+    "sha256": "7447a0cf13f43f8bc47db764a52cab8a70c8a625386be69cbdfee74bc9e2ef90"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/projection-measure-1.log",
+    "sha256": "7447a0cf13f43f8bc47db764a52cab8a70c8a625386be69cbdfee74bc9e2ef90"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/projection-measure-2.log",
+    "sha256": "7447a0cf13f43f8bc47db764a52cab8a70c8a625386be69cbdfee74bc9e2ef90"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/projection-measure-3.log",
+    "sha256": "7447a0cf13f43f8bc47db764a52cab8a70c8a625386be69cbdfee74bc9e2ef90"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/projection-measure-4.log",
+    "sha256": "7447a0cf13f43f8bc47db764a52cab8a70c8a625386be69cbdfee74bc9e2ef90"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/projection-measure.log",
+    "sha256": "6b9f9888748ce239224134604780f6aa27231d0919c9fe8bb8f49a396adca1d0"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/reject_flow_copy_assign.log",
+    "sha256": "0aafc0b723ded50d58c052d05a154d9e4dfa1252594c349acadc947dfb7d2900"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/reject_flow_copy_construct.log",
+    "sha256": "421ff1183416913addbcaaf65a471f1fe9a01fda295af6fc51dd14dbb8c76d8f"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/reject_flow_move_assign.log",
+    "sha256": "3753804c2d8441fc0327af49be186fa7ea1b489ef612df23caac234e22abfa1c"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/reject_flow_move_construct.log",
+    "sha256": "a0548c61cec16e9da0e2080020ecb69be4feda28ee8e56bc29f447e6144eda39"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/reject_material_copy_assign.log",
+    "sha256": "946f4cbb27eaefea602842b4c73daae283f5cc5a1e42ef715f7fa51a2410d249"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/reject_material_copy_construct.log",
+    "sha256": "e13f7a985e9de368210ac2728be5ca579605408ed34c25a28967ab7dea7b53b6"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/reject_material_move_assign.log",
+    "sha256": "29a3556d4bc48964c0f2ed08d824881d42ec90ccd4fabd569427f2923f7ebff9"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/reject_material_move_construct.log",
+    "sha256": "00a8124475ebea9b826da2d3979c9f2976ef5c690021109a17d98ad6ef8c7d2a"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/run-boundaries.log",
+    "sha256": "3a851f7bda87c070282dbc838455b22475cafeac5a007658541cfbe7814387a6"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/run-completion.log",
+    "sha256": "2538fa70420766333a625c39148404cba768a592acf6b1b9ad1be9c295c8925a"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/run-controls.log",
+    "sha256": "a2f67570ebacc5e7c282924d7498e3db651148a1a382ffbf08e01cb115cfab97"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/run-failure.log",
+    "sha256": "ac0fd6cc39dc91f43c00ea77c076cfff77b8ac8b680bba21012f3e17fa15d793"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/run-imports.log",
+    "sha256": "0d8c4e460e07d65c8902b94bf0578036824acc78359ef07fdb3936be38159859"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/run-isolation.log",
+    "sha256": "c1d0060ddde400b20ee3075677b9174c72fbec4fb74fbbc3a52e425df543af4e"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/run-r1-callback.log",
+    "sha256": "d4538847e74d34abb96f18c95ba23d81b6cb172ef8d49ada52213779740c5557"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/run-r1-capacity.log",
+    "sha256": "6685298673544270d68621d390d96d4345c4306d322b5c5d1edc9aa2e21d5dab"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/run-r1-failed.log",
+    "sha256": "c9c749342db41347266143b8078821abea4cec3801de500f247336755014da37"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/run-r1-mixed.log",
+    "sha256": "46bd6bc118d2e94dcac7f84a9bd30722db6a1898ebfc8e5975c778decaedf34b"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/run-r1-queued.log",
+    "sha256": "9908b6829652f49898aa46f6b9ed882a29959834ea205d494461cf78b7180d57"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/run-selection.log",
+    "sha256": "ccdc890f258e2b52b42ee478c64ce329c3732bc3348aa4fe4c05b9d025ca7247"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/runtime-detail.log",
+    "sha256": "fbc67c87cce99a7a38a94ff8c43ab78d1a3cb101570375fd382210ca6e4eae3c"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/scene-execution-p06-consumer-build.log",
+    "sha256": "1a593dbebc503d5a3fd8f68de18088bf2946830e788842eb2284fa6152590ba3"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/scene-execution-p06-consumer-configure.log",
+    "sha256": "7f88841ecf6dcfc52fa6829460d4351b7479a88773a78ce1c6bbded740531aac"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/scene-execution-p06-consumer-ctest.log",
+    "sha256": "138844e8dabe579db871536fc7d09255f9921b070252cfe5979eaf7f197ce6d6"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/scene-execution-p06-consumer-no-work.log",
+    "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/scene-interaction.log",
+    "sha256": "3c7b13e67cbc67ebdb5fe187b4874aaac4eca47a190df76dc60bf4a6be54008c"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/scene-model-p02-consumer-build.log",
+    "sha256": "e23a1e7536176d3d3c660ef54e3ca634bc5c7f6f26f9a89f005d8abec4573180"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/scene-model-p02-consumer-configure.log",
+    "sha256": "c5e45ee156f4eaca1e2145f1dc59d7602bf0c21abc8fd2ff8910ecc4a19d5256"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/scene-model-p02-consumer-ctest.log",
+    "sha256": "2d72bb5e57abf2b5e07276c593cc28f4adebafeb8d4adb52f323856c2042f987"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/scene-model-p02-consumer-no-work.log",
+    "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/sdk-owner-detail.log",
+    "sha256": "863fbcc48ecabf14bdb51a2ada465927c321797a913748d03e0935dbbbc2eeab"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/sessions-detail.log",
+    "sha256": "64c1c6954f1d69e79e6f61165f37abed03a0b908d944b043c7cbd3a849fe2aff"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/sessions-imports.log",
+    "sha256": "65b3c2d58485ad716a3fd2e01ee54f89ee3aa6fd5e104b0a512cee7c29ecfa9d"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/test-names.log",
+    "sha256": "7811c3cc8d550438bb8df200280fd45d3e8cc22496869d941aac434e1d22fb68"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/three-sessions.log",
+    "sha256": "6d3e133121e6ce2f39c96c23c359542885a0d3e4352b189338ea844461e8a5cf"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/tracked-snapshot.log",
+    "sha256": "cfffedd1f7b9c685fab106afd089c8d40560bc5643d685e6bcf2c73b33ad0f64"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/ui-resources-editor-d2-build.log",
+    "sha256": "9701eeb4ed5c239f28bb9330db6a9c4fdb3d72d4a6dc0cc4921e1f887b683f35"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/ui-resources-editor-d2-configure.log",
+    "sha256": "82d1bef97d097e066d9e69401121238f073b5327efedf46df9457bc56e2890e0"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/ui-resources-editor-d2-ctest.log",
+    "sha256": "69f752e743b550ea713b36a0ee64c5529298f90e67a3f99e1b7f78c26579a0d1"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/ui-resources-editor-d2-no-work.log",
+    "sha256": "7716162f3cd3b99cf3b8a8dd6decf324e08c7e941aae7e730baba5e4fc8c075b"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/ui-resources-external-feature-build.log",
+    "sha256": "dd71c4abd400dabe152facbdb5a114c4103933bced42a4fc02825d0b6b58ac58"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/ui-resources-external-feature-configure.log",
+    "sha256": "eac412433f45aea2b212486ee45e3e0e9056ef4b48d111e169f28db5ca34faf3"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/ui-resources-external-feature-ctest.log",
+    "sha256": "0d7fb582cd91d7ee2fe74b58549114458dda3f8b90cfcadc2534876e4cce5ec6"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/ui-resources-external-feature-no-work.log",
+    "sha256": "7716162f3cd3b99cf3b8a8dd6decf324e08c7e941aae7e730baba5e4fc8c075b"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/ui-root-detail.log",
+    "sha256": "b6eac52e82c3026d15654f055e8e3bfb0bcbeac84ea6baed5264103851f0bb6e"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/ui-scene-pane-consumer-build.log",
+    "sha256": "edf6ea66f2c875c41a4cf9e8600d06ed5a24b9adc279b7b39be11e7871d1c45b"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/ui-scene-pane-consumer-configure.log",
+    "sha256": "b93314420684622e53bf83737ab9b466b47558b03f5e4c2a21cca4f56b8556f2"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/ui-scene-pane-consumer-ctest.log",
+    "sha256": "b5861a92e22532258b49044259e7f2374ba8d0f373fca3a77087eeb9607a311e"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/ui-scene-pane-consumer-no-work.log",
+    "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/ui-views-gpu-consumer-build.log",
+    "sha256": "edf6ea66f2c875c41a4cf9e8600d06ed5a24b9adc279b7b39be11e7871d1c45b"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/ui-views-gpu-consumer-configure.log",
+    "sha256": "28269fe96e506cccadc5473ea24742aff1bc557b84989684f14b80c78fffc79c"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/ui-views-gpu-consumer-ctest.log",
+    "sha256": "98810711e73de515f59b8b356d5a7a6b8917b085f98acfaaa2dfb27f608338bb"
+  },
+  {
+    "archive_path": "dev_log/P08/logs/ui-views-gpu-consumer-no-work.log",
+    "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6"
+  },
+  {
+    "archive_path": "dev_log/P08/migration-ledger.json",
+    "sha256": "bb9707b7211b2195df5ad86aff2794162b2b5b6db6ca87d48f70b61fc2e86122"
+  },
+  {
+    "archive_path": "dev_log/P08/README.md",
+    "sha256": "941da9b3ddc720e9293aa8d6ad267ec80abd020510ff66c5b746c5ac1cb80d42"
+  },
+  {
+    "archive_path": "dev_log/P08/receipt.json",
+    "sha256": "263a0e58a71d4386093547ee6974764a7f9161996c15803d8c539c493fb817a5"
+  },
+  {
+    "archive_path": "dev_log/P08/scripts/measure_projection.py",
+    "sha256": "ebe944482fe02c9ff3e6c485965e041b834497c5883e823b5519f45207c6523f"
+  },
+  {
+    "archive_path": "dev_log/P08/scripts/sync_headers.py",
+    "sha256": "2a38acd892bb39d057f21fd6e249369268f2abd51f83431b1e1dc31ff70cbbaa"
+  },
+  {
+    "archive_path": "dev_log/P08/scripts/test_portability.py",
+    "sha256": "136860b722c7dba9ae27c9b5963174403b03e239a773688e80b0a84e3573532a"
+  },
+  {
+    "archive_path": "dev_log/P08/scripts/validate.py",
+    "sha256": "f0dee7a194085bf6db3a6f55d220a23fbae59f2d577c145bcc1a55e11d8bd603"
+  },
+  {
+    "archive_path": "dev_log/P08/spec/LUX_ENGINE_P08_START_PACKAGE_2026-09-30/PACKAGE_VALIDATION.json",
+    "sha256": "daf8c804b0af4d3531d7ae89f23bec9b22a2e4da914765a70e7bf776ed1248a2"
+  },
+  {
+    "archive_path": "dev_log/P08/spec/LUX_ENGINE_P08_START_PACKAGE_2026-09-30/README.md",
+    "sha256": "1f0cae3b7b4d3b14a84083c224009a1d4123bdf09d8076ea6252b99a40ab10ad"
+  },
+  {
+    "archive_path": "dev_log/P08/spec/LUX_ENGINE_P08_START_PACKAGE_2026-09-30/reference/v4/00_EXECUTION_CONTRACT.md",
+    "sha256": "d9799ec94a096741c700946de853cd28041bbe1cfc9b0ade499ac0b5b56e2205"
+  },
+  {
+    "archive_path": "dev_log/P08/spec/LUX_ENGINE_P08_START_PACKAGE_2026-09-30/reference/v4/appendices/A_TYPE_INDEX.md",
+    "sha256": "b3e7ff74ea55032e0fdc3f7c6b995a918cd06b1536967c0b844ffc5d0c08023f"
+  },
+  {
+    "archive_path": "dev_log/P08/spec/LUX_ENGINE_P08_START_PACKAGE_2026-09-30/reference/v4/appendices/B_RETIREMENT_LEDGER.md",
+    "sha256": "64d3596874b3f9eaca78214be68cbcc4caa21e670bcccdf98394651bda495570"
+  },
+  {
+    "archive_path": "dev_log/P08/spec/LUX_ENGINE_P08_START_PACKAGE_2026-09-30/reference/v4/appendices/C_TEST_MATRIX.md",
+    "sha256": "8a84b3d27535d59ee4d19e003d6cbd6840b29c80562c48169d12896b9465b8d8"
+  },
+  {
+    "archive_path": "dev_log/P08/spec/LUX_ENGINE_P08_START_PACKAGE_2026-09-30/reference/v4/appendices/D_MODULES_AND_DECISIONS.md",
+    "sha256": "a68642160ffb2a5552b5284a2557436371228e6f9dccfcdcf904e46c5251e021"
+  },
+  {
+    "archive_path": "dev_log/P08/spec/LUX_ENGINE_P08_START_PACKAGE_2026-09-30/reference/v4/appendices/E_SOURCE_REFERENCES.md",
+    "sha256": "899903f1defa1d6f3ecd972c1848f330d7aafcab0b2fed1ddf4ff8c4e2a8580e"
+  },
+  {
+    "archive_path": "dev_log/P08/spec/LUX_ENGINE_P08_START_PACKAGE_2026-09-30/reference/v4/manifests/architecture.json",
+    "sha256": "6c767492703eeadd848f5d995ff8cde6a588b42ea8c9e50935015a208d4bf642"
+  },
+  {
+    "archive_path": "dev_log/P08/spec/LUX_ENGINE_P08_START_PACKAGE_2026-09-30/reference/v4/manifests/audit-rules.json",
+    "sha256": "29e07e505845dc6e120dbfca4eeb6c9b3a10c25c4deab3ed4fe44ec4d753fb12"
+  },
+  {
+    "archive_path": "dev_log/P08/spec/LUX_ENGINE_P08_START_PACKAGE_2026-09-30/reference/v4/manifests/migration-ledger.seed.json",
+    "sha256": "a62d04aed587f99497ef4abbd2cd3cf9a70666d7696410e78b2f9012839f774c"
+  },
+  {
+    "archive_path": "dev_log/P08/spec/LUX_ENGINE_P08_START_PACKAGE_2026-09-30/reference/v4/manifests/phases.json",
+    "sha256": "b0ce83a79d2f7afdef97278562813d8988dec24d7849896952b27f7fb644017f"
+  },
+  {
+    "archive_path": "dev_log/P08/spec/LUX_ENGINE_P08_START_PACKAGE_2026-09-30/reference/v4/manifests/receipt.schema.json",
+    "sha256": "592ff8c90e69cbeb67d897bb8c4723e615938d4cba9905672031c8c0c85dc472"
+  },
+  {
+    "archive_path": "dev_log/P08/spec/LUX_ENGINE_P08_START_PACKAGE_2026-09-30/reference/v4/manifests/receipt.template.json",
+    "sha256": "ce5981e8dbb35e39ab3c1fd8d0af878fb864f34bf0e0057b4aef2573ff83c8fc"
+  },
+  {
+    "archive_path": "dev_log/P08/spec/LUX_ENGINE_P08_START_PACKAGE_2026-09-30/reference/v4/manifests/test-coverage.seed.json",
+    "sha256": "3415dd9e0d9049e4037335863395ff8afc8a3ba7da186d24867776bba30a807f"
+  },
+  {
+    "archive_path": "dev_log/P08/spec/LUX_ENGINE_P08_START_PACKAGE_2026-09-30/reference/v4/manifests/types.json",
+    "sha256": "949cdb7e18dc76cf5c075494053bba4293f0f1109582e64f907d7548c3dc7b7c"
+  },
+  {
+    "archive_path": "dev_log/P08/spec/LUX_ENGINE_P08_START_PACKAGE_2026-09-30/reference/v4/PACKAGE_VALIDATION.json",
+    "sha256": "99a25091b8eb1a68ec44d880fb19558512982ce920ba0f08bb0acc328acf3377"
+  },
+  {
+    "archive_path": "dev_log/P08/spec/LUX_ENGINE_P08_START_PACKAGE_2026-09-30/reference/v4/phases/P00_baseline_and_guards.md",
+    "sha256": "bbaf65af378a4597944f7f9a2119f1abc20bf56fe6e576fb8846124d13a34ac3"
+  },
+  {
+    "archive_path": "dev_log/P08/spec/LUX_ENGINE_P08_START_PACKAGE_2026-09-30/reference/v4/phases/P01_history_and_sessions.md",
+    "sha256": "23a11ec30fa81f85a37036b44b4e67c04e635a33654620a238bd748ab206511d"
+  },
+  {
+    "archive_path": "dev_log/P08/spec/LUX_ENGINE_P08_START_PACKAGE_2026-09-30/reference/v4/phases/P02_scene_authoring.md",
+    "sha256": "327d07e0e18cd89092f1405d41b023f0ada77866cdfe7923fbf21a77204bab6e"
+  },
+  {
+    "archive_path": "dev_log/P08/spec/LUX_ENGINE_P08_START_PACKAGE_2026-09-30/reference/v4/phases/P03_material_authoring.md",
+    "sha256": "35eae39507c3143f57a7af3a56743393dd7c65d64b6d9d11e2d18ee31665f8b4"
+  },
+  {
+    "archive_path": "dev_log/P08/spec/LUX_ENGINE_P08_START_PACKAGE_2026-09-30/reference/v4/phases/P04_flowforge_authoring.md",
+    "sha256": "7c19e7f9a3c34f531e8295324e43edb799bf8c78de44de9f4989180abd9f5f10"
+  },
+  {
+    "archive_path": "dev_log/P08/spec/LUX_ENGINE_P08_START_PACKAGE_2026-09-30/reference/v4/phases/P05_persistence.md",
+    "sha256": "54da59240343a8449cfbf8e5fb6229843bc3b3585d5339c235b14fe3443908fe"
+  },
+  {
+    "archive_path": "dev_log/P08/spec/LUX_ENGINE_P08_START_PACKAGE_2026-09-30/reference/v4/phases/P06_scene_runtime.md",
+    "sha256": "949696d4c5fb7b649eaff543eeefcd5a823b66290c06687cbe6433e64966b058"
+  },
+  {
+    "archive_path": "dev_log/P08/spec/LUX_ENGINE_P08_START_PACKAGE_2026-09-30/reference/v4/phases/P07_projection_and_compilation.md",
+    "sha256": "3c59fa89983356f9b80ba62caf3181f64ebf1065bd9e1afde40796ec625e172d"
+  },
+  {
+    "archive_path": "dev_log/P08/spec/LUX_ENGINE_P08_START_PACKAGE_2026-09-30/reference/v4/phases/P08_interaction_and_detached_ui.md",
+    "sha256": "dff7f956f45d75e2082fbee76d8033ee5363e8872dc8403dc8c89375e79561c7"
+  },
+  {
+    "archive_path": "dev_log/P08/spec/LUX_ENGINE_P08_START_PACKAGE_2026-09-30/reference/v4/phases/P09_layout_storage.md",
+    "sha256": "73973c99735f00167cdc630a78a8f8f5bee51af7a8aa0ec1351876da2f72da4f"
+  },
+  {
+    "archive_path": "dev_log/P08/spec/LUX_ENGINE_P08_START_PACKAGE_2026-09-30/reference/v4/phases/P10_views_and_desktop.md",
+    "sha256": "2f7ad9183a94eca1725019383f4892a7858c9083a901ba0ea09f37e32d7e0460"
+  },
+  {
+    "archive_path": "dev_log/P08/spec/LUX_ENGINE_P08_START_PACKAGE_2026-09-30/reference/v4/phases/P11_commands_and_extensions.md",
+    "sha256": "57382873c95a41c4e2800f45a15c416b172ead138c41000fb2ca86e326b839a9"
+  },
+  {
+    "archive_path": "dev_log/P08/spec/LUX_ENGINE_P08_START_PACKAGE_2026-09-30/reference/v4/phases/P12_workflows_and_cutover.md",
+    "sha256": "31c38b5c46f53f6443435c286d4fe18199a5e93b332023bb67947e9b136b0eb7"
+  },
+  {
+    "archive_path": "dev_log/P08/spec/LUX_ENGINE_P08_START_PACKAGE_2026-09-30/reference/v4/phases/P13_final_qualification.md",
+    "sha256": "1eb0781a1fbe0f53eb2891b57ef19c42e27c88ddb86990db585cf40db801275e"
+  },
+  {
+    "archive_path": "dev_log/P08/spec/LUX_ENGINE_P08_START_PACKAGE_2026-09-30/reference/v4/README.md",
+    "sha256": "4e787faa3d966e31adfefcd0b897e14ee7ac5fe2701783afee3a479852106728"
+  },
+  {
+    "archive_path": "dev_log/P08/spec/LUX_ENGINE_P08_START_PACKAGE_2026-09-30/reference/v4/references/V3_REFERENCE.md",
+    "sha256": "2d11906c9724929801aea12c0a9aa648e2464d7a5020fa41c00a1cd33e256d67"
+  },
+  {
+    "archive_path": "dev_log/P08/spec/LUX_ENGINE_P08_START_PACKAGE_2026-09-30/reference/v4/scripts/audit_migration.py",
+    "sha256": "b6e16937c4bae5eda0d35d21862650370d59e0a232915751152c0b971dc7b0cd"
+  },
+  {
+    "archive_path": "dev_log/P08/spec/LUX_ENGINE_P08_START_PACKAGE_2026-09-30/reference/v4/scripts/README.md",
+    "sha256": "621134be43154f6764154ab469278a1ffb33bc3123f439ef97b2562588802af5"
+  },
+  {
+    "archive_path": "dev_log/P08/spec/LUX_ENGINE_P08_START_PACKAGE_2026-09-30/reference/v4/scripts/SELF_TEST_RESULT.txt",
+    "sha256": "cb76c2a22ad9beed2ce3e2c42bfd90f04b19a0b4d25439349ddc6094ed7ec3c5"
+  },
+  {
+    "archive_path": "dev_log/P08/spec/LUX_ENGINE_P08_START_PACKAGE_2026-09-30/reference/v4/scripts/test_audit_migration.py",
+    "sha256": "9042c20e636fe3b7afa2c810ffb691975afbe957793a3cc0916aa845d6abaf03"
+  },
+  {
+    "archive_path": "dev_log/P08/spec/LUX_ENGINE_P08_START_PACKAGE_2026-09-30/reference/v4/SHA256SUMS.txt",
+    "sha256": "ca9d761a0bfb68c1cbc533c423e953252391a87d4708db9edbe781d016442cfb"
+  },
+  {
+    "archive_path": "dev_log/P08/spec/LUX_ENGINE_P08_START_PACKAGE_2026-09-30/review/REVIEW_SCOPE.json",
+    "sha256": "517f63fcf898d9f4544158fd7f155dd4a87fad18c52e6ecb6276e4f4b76ff16a"
+  },
+  {
+    "archive_path": "dev_log/P08/spec/LUX_ENGINE_P08_START_PACKAGE_2026-09-30/SHA256SUMS.txt",
+    "sha256": "456e9e03e8f957795c880a20bc74f048ae57f9e2e6869bd3e9a6da9916aea768"
+  },
+  {
+    "archive_path": "dev_log/P08/spec/LUX_ENGINE_P08_START_PACKAGE_2026-09-30/START.md",
+    "sha256": "489756109a6732ae7d180c1abf2601117c1de88579151be3ee10c69afb9a1dcb"
+  },
+  {
+    "archive_path": "dev_log/P08/spec/start-package.zip",
+    "sha256": "1f591e0603879076ff2d943ec8aab05d5ef171398ae0aa6bccce6054f96bbd47"
+  },
+  {
+    "archive_path": "dev_log/P08/spec-input.json",
+    "sha256": "509cbee5de057bb3ce28bd1e971f749a536df7095a721c1cbd1af91596ee488a"
+  },
+  {
+    "archive_path": "dev_log/P08/test-coverage.json",
+    "sha256": "7c60759fbe2cdea77a2521e08059f780005bfdb512c374fc8d08d7cefa435e45"
+  }
+]

@@ -1,0 +1,104 @@
+UpdateCTestConfiguration  from :E:/SyncForder/CodeRepos/build/RelWithDebInfo/projection-compilation-p07-consumer/DartConfiguration.tcl
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/projection-compilation-p07-consumer
+Constructing a list of tests
+Done constructing a list of tests
+Updating test list for fixtures
+Added 0 tests to meet fixture requirements
+Checking test dependency graph...
+Checking test dependency graph end
+test 3
+      Start  3: installed.compilation.ownership_material
+
+3: Test command: E:\SyncForder\CodeRepos\build\RelWithDebInfo\projection-compilation-p07-consumer\ownership_consumer.exe "material" "D:/Development/vcpkg/installed/x64-windows/tools/llvm/lld-link.exe"
+3: Working Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/projection-compilation-p07-consumer
+3: Test timeout computed to be: 10000000
+3: Material: worker-finished handoff, unique_ptr moves, independent cleanup, exactly-once completion, owning result after owner destruction; author unchanged.
+ 1/10 Test  #3: installed.compilation.ownership_material ...............   Passed    0.38 sec
+test 4
+      Start  4: installed.compilation.reject_material_copy_construct
+
+4: Test command: D:\Development\CMake\bin\cmake.exe "-DBUILD_DIR=E:/SyncForder/CodeRepos/build/RelWithDebInfo/projection-compilation-p07-consumer" "-DPROBE=reject_material_copy_construct" "-P" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/projection-compilation-p07-source/reject_copy.cmake"
+4: Working Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/projection-compilation-p07-consumer
+4: Test timeout computed to be: 120
+4: -- reject_material_copy_construct: compiler rejected the deleted special member
+ 2/10 Test  #4: installed.compilation.reject_material_copy_construct ...   Passed    1.67 sec
+test 5
+      Start  5: installed.compilation.reject_material_copy_assign
+
+5: Test command: D:\Development\CMake\bin\cmake.exe "-DBUILD_DIR=E:/SyncForder/CodeRepos/build/RelWithDebInfo/projection-compilation-p07-consumer" "-DPROBE=reject_material_copy_assign" "-P" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/projection-compilation-p07-source/reject_copy.cmake"
+5: Working Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/projection-compilation-p07-consumer
+5: Test timeout computed to be: 120
+5: -- reject_material_copy_assign: compiler rejected the deleted special member
+ 3/10 Test  #5: installed.compilation.reject_material_copy_assign ......   Passed    1.66 sec
+test 6
+      Start  6: installed.compilation.reject_material_move_construct
+
+6: Test command: D:\Development\CMake\bin\cmake.exe "-DBUILD_DIR=E:/SyncForder/CodeRepos/build/RelWithDebInfo/projection-compilation-p07-consumer" "-DPROBE=reject_material_move_construct" "-P" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/projection-compilation-p07-source/reject_copy.cmake"
+6: Working Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/projection-compilation-p07-consumer
+6: Test timeout computed to be: 120
+6: -- reject_material_move_construct: compiler rejected the deleted special member
+ 4/10 Test  #6: installed.compilation.reject_material_move_construct ...   Passed    1.68 sec
+test 7
+      Start  7: installed.compilation.reject_material_move_assign
+
+7: Test command: D:\Development\CMake\bin\cmake.exe "-DBUILD_DIR=E:/SyncForder/CodeRepos/build/RelWithDebInfo/projection-compilation-p07-consumer" "-DPROBE=reject_material_move_assign" "-P" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/projection-compilation-p07-source/reject_copy.cmake"
+7: Working Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/projection-compilation-p07-consumer
+7: Test timeout computed to be: 120
+7: -- reject_material_move_assign: compiler rejected the deleted special member
+ 5/10 Test  #7: installed.compilation.reject_material_move_assign ......   Passed    1.63 sec
+test 8
+      Start  8: installed.compilation.ownership_flow
+
+8: Test command: E:\SyncForder\CodeRepos\build\RelWithDebInfo\projection-compilation-p07-consumer\ownership_consumer.exe "flow" "D:/Development/vcpkg/installed/x64-windows/tools/llvm/lld-link.exe"
+8: Working Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/projection-compilation-p07-consumer
+8: Test timeout computed to be: 10000000
+8: Flow: const borrowing, BUSY/capacity before dispatch, exactly-once completion, independent records, fixed-object retry, capacity recovery, owning result after acknowledge; author unchanged.
+ 6/10 Test  #8: installed.compilation.ownership_flow ...................   Passed    0.11 sec
+test 9
+      Start  9: installed.compilation.reject_flow_copy_construct
+
+9: Test command: D:\Development\CMake\bin\cmake.exe "-DBUILD_DIR=E:/SyncForder/CodeRepos/build/RelWithDebInfo/projection-compilation-p07-consumer" "-DPROBE=reject_flow_copy_construct" "-P" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/projection-compilation-p07-source/reject_copy.cmake"
+9: Working Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/projection-compilation-p07-consumer
+9: Test timeout computed to be: 120
+9: -- reject_flow_copy_construct: compiler rejected the deleted special member
+ 7/10 Test  #9: installed.compilation.reject_flow_copy_construct .......   Passed    1.61 sec
+test 10
+      Start 10: installed.compilation.reject_flow_copy_assign
+
+10: Test command: D:\Development\CMake\bin\cmake.exe "-DBUILD_DIR=E:/SyncForder/CodeRepos/build/RelWithDebInfo/projection-compilation-p07-consumer" "-DPROBE=reject_flow_copy_assign" "-P" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/projection-compilation-p07-source/reject_copy.cmake"
+10: Working Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/projection-compilation-p07-consumer
+10: Test timeout computed to be: 120
+10: -- reject_flow_copy_assign: compiler rejected the deleted special member
+ 8/10 Test #10: installed.compilation.reject_flow_copy_assign ..........   Passed    1.61 sec
+test 11
+      Start 11: installed.compilation.reject_flow_move_construct
+
+11: Test command: D:\Development\CMake\bin\cmake.exe "-DBUILD_DIR=E:/SyncForder/CodeRepos/build/RelWithDebInfo/projection-compilation-p07-consumer" "-DPROBE=reject_flow_move_construct" "-P" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/projection-compilation-p07-source/reject_copy.cmake"
+11: Working Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/projection-compilation-p07-consumer
+11: Test timeout computed to be: 120
+11: -- reject_flow_move_construct: compiler rejected the deleted special member
+ 9/10 Test #11: installed.compilation.reject_flow_move_construct .......   Passed    1.66 sec
+test 12
+      Start 12: installed.compilation.reject_flow_move_assign
+
+12: Test command: D:\Development\CMake\bin\cmake.exe "-DBUILD_DIR=E:/SyncForder/CodeRepos/build/RelWithDebInfo/projection-compilation-p07-consumer" "-DPROBE=reject_flow_move_assign" "-P" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/projection-compilation-p07-source/reject_copy.cmake"
+12: Working Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/projection-compilation-p07-consumer
+12: Test timeout computed to be: 120
+12: -- reject_flow_move_assign: compiler rejected the deleted special member
+10/10 Test #12: installed.compilation.reject_flow_move_assign ..........   Passed    1.63 sec
+
+The following tests passed:
+	installed.compilation.ownership_material
+	installed.compilation.reject_material_copy_construct
+	installed.compilation.reject_material_copy_assign
+	installed.compilation.reject_material_move_construct
+	installed.compilation.reject_material_move_assign
+	installed.compilation.ownership_flow
+	installed.compilation.reject_flow_copy_construct
+	installed.compilation.reject_flow_copy_assign
+	installed.compilation.reject_flow_move_construct
+	installed.compilation.reject_flow_move_assign
+
+100% tests passed, 0 tests failed out of 10
+
+Total Test time (real) =  13.66 sec

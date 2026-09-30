@@ -1,0 +1,12 @@
+[0/2] Re-checking globbed directories...
+[1/37] Building CXX object editor\views\api\CMakeFiles\editor_detached_views_test.dir\test\lifecycle.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[2/37] Building CXX object editor\tools\material\interaction\CMakeFiles\material_interaction.dir\src\MaterialInteraction.cpp.obj
+[3/37] Linking CXX static library lib\material_interaction.lib
+[4/37] Building CXX object editor\tools\flowforge\interaction\CMakeFiles\flowforge_interaction.dir\src\FlowInteraction.cpp.obj
+[5/37] Linking CXX static library lib\flowforge_interaction.lib
+[6/37] Building CXX object modules\function\ui\CMakeFiles\ui_imgui_backend.dir\src\Root.cpp.obj
+[7/37] Linking CXX executable bin\editor_material_interaction_test.exe
+[8/37] Linking CXX executable bin\editor_flowforge_interaction_test.exe
+[9/37] Linking CXX shared library bin\ui.dll
+[10/10] Linking CXX executable bin\editor_detached_views_test.exe

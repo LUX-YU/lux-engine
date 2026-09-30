@@ -1,0 +1,24 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine
+    Start   5: ui.root
+1/7 Test   #5: ui.root ..............................   Passed    0.04 sec
+    Start  86: editor.scene_interaction
+2/7 Test  #86: editor.scene_interaction .............   Passed    0.05 sec
+    Start  87: editor.interaction_run_identity
+3/7 Test  #87: editor.interaction_run_identity ......   Passed    0.03 sec
+    Start  88: editor.material_interaction
+4/7 Test  #88: editor.material_interaction ..........   Passed    0.01 sec
+    Start  89: editor.flowforge_interaction
+5/7 Test  #89: editor.flowforge_interaction .........   Passed    0.04 sec
+    Start  90: editor.detached_views
+6/7 Test  #90: editor.detached_views ................   Passed    0.05 sec
+    Start 114: editor.interaction_view_boundaries
+7/7 Test #114: editor.interaction_view_boundaries ...   Passed   33.90 sec
+
+100% tests passed, 0 tests failed out of 7
+
+Label Time Summary:
+P08       =  34.09 sec*proc (6 tests)
+editor    =  34.09 sec*proc (6 tests)
+native    =  34.09 sec*proc (6 tests)
+
+Total Test time (real) =  34.53 sec

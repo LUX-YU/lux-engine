@@ -1,0 +1,9 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/ui-resources-external-feature
+    Start 1: plugin.external_editor
+1/2 Test #1: plugin.external_editor ...........   Passed    0.53 sec
+    Start 2: plugin.external_gpu
+2/2 Test #2: plugin.external_gpu ..............   Passed    0.45 sec
+
+100% tests passed, 0 tests failed out of 2
+
+Total Test time (real) =   0.98 sec

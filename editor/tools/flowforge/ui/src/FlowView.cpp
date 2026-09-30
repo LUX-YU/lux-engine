@@ -108,8 +108,12 @@ namespace lux::editor::flowforge
         std::optional<FlowViewBinding> binding_;
         FlowViewResult<void> status_;
         Display display_;
-        std::optional<lux::flowforge::FlowSourceNode> properties_;
-        sessions::ContentStamp properties_base_;
+        struct NodePropertiesDraft final
+        {
+            sessions::ContentStamp based_on;
+            lux::flowforge::FlowSourceNode value;
+        };
+        std::optional<NodePropertiesDraft> properties_;
         std::optional<std::uint64_t> selected_;
         enum class ECanvasStage : std::uint8_t
         {
@@ -121,17 +125,71 @@ namespace lux::editor::flowforge
         };
         struct CanvasRequest final
         {
+            sessions::ContentStamp based_on;
             widgets::CanvasEdit input;
             std::vector<VFlowEdit> edits;
             ECanvasStage stage;
         };
         std::deque<CanvasRequest> canvas_edit_;
-        std::vector<VFlowEdit> edits_;
         EControl control_{};
         FlowCompileId compile_;
         std::string compile_status_;
         lux::ui::Layout layout_;
         widgets::GraphCanvas graph_;
+        template <class MakeEdit> FlowViewResult<void> enqueue(sessions::ContentStamp based_on, MakeEdit make_edit)
+        {
+            if (canvas_edit_.size() >= 64)
+                return rejected(views::EViewError::CAPACITY);
+            canvas_edit_.push_back({based_on, widgets::CanvasEdit{{}, true, true, false}, {}, ECanvasStage::BEGIN});
+            canvas_edit_.back().edits.emplace_back(make_edit());
+            return {};
+        }
+        FlowViewResult<void> validate(sessions::ContentStamp based_on) const
+        {
+            auto info = services_.sessions.describe(binding_->session);
+            if (!info)
+                return rejected(FlowEditError{info.error()});
+            if (info->admission != sessions::EEditAdmission::AVAILABLE)
+                return rejected(FlowEditError{sessions::ESessionError::BUSY});
+            if (info->current != based_on)
+                return rejected(FlowEditError{EFlowEditError::STALE_CONTENT});
+            return {};
+        }
+        FlowViewResult<void> rejectInput(const VFlowViewFailure& failure)
+        {
+            if (temporary(failure))
+                return cxx::unexpected(failure);
+            const auto based_on = canvas_edit_.front().based_on;
+            const auto* overlay = binding_->interaction->overlay();
+            if (overlay && overlay->expected == based_on)
+            {
+                auto cancelled = binding_->interaction->cancel();
+                if (!cancelled)
+                    return rejected(cancelled.error());
+            }
+            const auto clear = [&] {
+                canvas_edit_.pop_front();
+                graph_.setEnabled(canvas_edit_.size() < 60);
+            };
+            auto owner = services_.sessions.read(binding_->session);
+            if (!owner)
+            {
+                if (owner.error() != sessions::ESessionError::STALE_SESSION)
+                    return rejected(FlowEditError{owner.error()});
+                clear();
+                return cxx::unexpected(failure);
+            }
+            auto read = owner->get().read();
+            if (!read)
+                return rejected(read.error());
+            auto cleared = read->withRead([&]() -> FlowEditResult<void> {
+                clear(); // A terminal input cannot block later requests; payload destruction keeps the original gate.
+                return {};
+            });
+            if (!cleared)
+                return rejected(cleared.error());
+            return cxx::unexpected(failure);
+        }
         struct Properties final : lux::ui::Element
         {
             Impl& state_;
@@ -146,9 +204,11 @@ namespace lux::editor::flowforge
             void insert(std::unique_ptr<lux::flowforge::Node> node)
             {
                 const auto& owner = state_.services_.metadata.code_lifetime;
-                state_.edits_.emplace_back(FlowInsertNode{
-                    owner ? contracts::CodeLease::plugin(owner) : contracts::CodeLease::builtin(),
-                    std::move(node)
+                state_.status_ = state_.enqueue(state_.display_.content, [&] {
+                    return FlowInsertNode{
+                        owner ? contracts::CodeLease::plugin(owner) : contracts::CodeLease::builtin(),
+                        std::move(node)
+                    };
                 });
             }
             void draw() noexcept override
@@ -179,9 +239,10 @@ namespace lux::editor::flowforge
                     state_.control_ = EControl::CANCEL;
                 ImGui::TextWrapped("%s", state_.compile_status_.c_str());
                 if (!state_.status_)
-                    ImGui::TextUnformatted("Operation rejected; previous values are retained.");
+                    ImGui::TextUnformatted("Input rejected; Revert properties or Cancel pending edits to recover.");
                 if (ImGui::InputText("Name", &state_.display_.name, ImGuiInputTextFlags_EnterReturnsTrue))
-                    state_.edits_.emplace_back(FlowRename{state_.display_.name});
+                    state_.status_ =
+                        state_.enqueue(state_.display_.content, [&] { return FlowRename{state_.display_.name}; });
                 if (ImGui::BeginCombo("Add node", "Choose node kind"))
                 {
                     constexpr ENodeOperation choices[]{
@@ -213,19 +274,25 @@ namespace lux::editor::flowforge
                 }
                 if (state_.properties_ && ImGui::CollapsingHeader("Selected node", ImGuiTreeNodeFlags_DefaultOpen))
                 {
-                    auto& node = *state_.properties_;
+                    auto& node = state_.properties_->value;
                     if (auto* signature = std::get_if<FlowSourceSignature>(&node.parameters))
                     {
                         ImGui::InputText("Function name", &node.name);
                         static_cast<void>(editFlowArguments("Arguments", signature->arguments));
                         static_cast<void>(editFlowArguments("Results", signature->results));
                         if (ImGui::Button("Apply signature"))
-                            state_.edits_.emplace_back(FlowSetSignature{node.id, node.name, *signature});
+                            state_.status_ = state_.enqueue(state_.properties_->based_on, [&] {
+                                return FlowSetSignature{node.id, node.name, *signature};
+                            });
                         if (ImGui::Button("Add call"))
-                            state_.edits_.emplace_back(FlowInsertFunctionUse{node.id, false});
+                            state_.status_ = state_.enqueue(state_.properties_->based_on, [&] {
+                                return FlowInsertFunctionUse{node.id, false};
+                            });
                         ImGui::SameLine();
                         if (ImGui::Button("Add return"))
-                            state_.edits_.emplace_back(FlowInsertFunctionUse{node.id, true});
+                            state_.status_ = state_.enqueue(state_.properties_->based_on, [&] {
+                                return FlowInsertFunctionUse{node.id, true};
+                            });
                     }
                     for (auto& pin : node.inputs)
                     {
@@ -235,7 +302,9 @@ namespace lux::editor::flowforge
                         if (editFlowScalar(scalar))
                             pin.literal = flowScalarLiteral(scalar);
                         if (ImGui::SmallButton("Apply literal"))
-                            state_.edits_.emplace_back(FlowSetLiteral{pin.id, pin.literal});
+                            state_.status_ = state_.enqueue(state_.properties_->based_on, [&] {
+                                return FlowSetLiteral{pin.id, pin.literal};
+                            });
                         ImGui::PopID();
                     }
                     if (ImGui::Button("Revert properties"))
@@ -253,10 +322,12 @@ namespace lux::editor::flowforge
                         ImGui::EndCombo();
                     }
                     if (ImGui::SmallButton("Add variable"))
-                        state_.edits_.emplace_back(FlowAddVariable{
-                            variable_name_,
-                            std::string(types[variable_type_]->name),
-                            {EFlowLiteralKind::ZERO, {}}
+                        state_.status_ = state_.enqueue(state_.display_.content, [&] {
+                            return FlowAddVariable{
+                                variable_name_,
+                                std::string(types[variable_type_]->name),
+                                {EFlowLiteralKind::ZERO, {}}
+                            };
                         });
                     for (auto& variable : state_.display_.variables)
                     {
@@ -266,10 +337,13 @@ namespace lux::editor::flowforge
                         if (editFlowScalar(scalar))
                             variable.value = flowScalarLiteral(scalar);
                         if (ImGui::SmallButton("Apply variable"))
-                            state_.edits_.emplace_back(FlowSetVariable{variable});
+                            state_.status_ =
+                                state_.enqueue(state_.display_.content, [&] { return FlowSetVariable{variable}; });
                         ImGui::SameLine();
                         if (ImGui::SmallButton("Remove variable"))
-                            state_.edits_.emplace_back(FlowRemoveVariable{variable.id});
+                            state_.status_ = state_.enqueue(state_.display_.content, [&] {
+                                return FlowRemoveVariable{variable.id};
+                            });
                         ImGui::PopID();
                     }
                 }
@@ -312,7 +386,8 @@ namespace lux::editor::flowforge
                     if (ImGui::SmallButton("Remove export") && !entries.empty())
                         entries.pop_back();
                     if (ImGui::Button("Apply exports"))
-                        state_.edits_.emplace_back(FlowSetExports{entries});
+                        state_.status_ =
+                            state_.enqueue(state_.display_.content, [&] { return FlowSetExports{entries}; });
                 }
                 ImGui::EndDisabled();
             }
@@ -337,7 +412,7 @@ namespace lux::editor::flowforge
                     const auto stage = value.cancelled ? ECanvasStage::CANCEL
                                        : value.began   ? ECanvasStage::BEGIN
                                                        : ECanvasStage::PREVIEW;
-                    canvas_edit_.push_back({value, {}, stage});
+                    canvas_edit_.push_back({display_.content, value, {}, stage});
                     graph_.setEnabled(canvas_edit_.size() < 60);
                 }
             );
@@ -369,7 +444,6 @@ namespace lux::editor::flowforge
             const auto clear = [&] {
                 properties_.reset();
                 selected_.reset();
-                edits_.clear();
                 canvas_edit_.clear();
                 control_ = EControl::NONE;
                 graph_.setEnabled(true);
@@ -434,23 +508,22 @@ namespace lux::editor::flowforge
         {
             if (!binding_)
                 return rejected(views::EViewError::INVALID_ID);
-            std::optional<lux::flowforge::FlowSourceNode> candidate;
+            std::optional<NodePropertiesDraft> candidate;
             auto owner = services_.sessions.read(binding_->session);
             if (!owner)
                 return rejected(FlowEditError{owner.error()});
             auto read = owner->get().read();
             if (!read)
                 return rejected(read.error());
+            const auto based_on = owner->get().describe().current;
             auto inspected = read->withRead([&](const lux::flowforge::FlowSource& source) -> FlowEditResult<void> {
                 if (!id)
                     return {};
-                for (const auto& node : source.nodes)
-                    if (node.id.value == id)
-                    {
-                        candidate = node;
-                        return {};
-                    }
-                return cxx::unexpected(FlowEditError{EFlowEditError::INVALID_SOURCE});
+                const auto found = std::ranges::find(source.nodes, id, [](const auto& node) { return node.id.value; });
+                if (found == source.nodes.end())
+                    return cxx::unexpected(FlowEditError{EFlowEditError::INVALID_SOURCE});
+                candidate.emplace(NodePropertiesDraft{based_on, *found});
+                return {};
             });
             if (!inspected)
                 return rejected(inspected.error());
@@ -462,9 +535,12 @@ namespace lux::editor::flowforge
             );
             if (!selected)
                 return rejected(selected.error());
-            properties_ = std::move(candidate);
-            properties_base_ = display_.content;
-            return {};
+            return accepted(read->withRead([&]() -> FlowEditResult<void> {
+                canvas_edit_.clear();
+                properties_ = std::move(candidate);
+                graph_.setEnabled(true);
+                return {};
+            }));
         }
         FlowViewResult<void> maintain()
         {
@@ -475,6 +551,16 @@ namespace lux::editor::flowforge
                 auto cancelled = view_.cancelEdit();
                 if (!cancelled)
                     return cancelled;
+                status_ = {};
+            }
+            if (control_ == EControl::REVERT)
+            {
+                auto reverted = select(properties_ ? properties_->value.id.value : 0);
+                if (reverted || !temporary(reverted.error()))
+                    control_ = EControl::NONE;
+                if (!reverted)
+                    return reverted;
+                status_ = {};
             }
             auto synchronized = binding_->interaction->synchronize();
             if (!synchronized)
@@ -484,36 +570,21 @@ namespace lux::editor::flowforge
                 auto selected = select(*selected_);
                 if (!selected)
                     return selected;
+                status_ = {};
                 selected_.reset();
-            }
-            if (!edits_.empty())
-            {
-                if (canvas_edit_.size() >= 64)
-                    return rejected(views::EViewError::CAPACITY);
-                auto owner = services_.sessions.read(binding_->session);
-                if (!owner)
-                    return rejected(FlowEditError{owner.error()});
-                if (owner->get().describe().current != display_.content)
-                    return rejected(FlowEditError{EFlowEditError::STALE_CONTENT});
-                auto read = owner->get().read();
-                if (!read)
-                    return rejected(read.error());
-                auto queued = read->withRead([&]() -> FlowEditResult<void> {
-                    // The same bounded delivery stages serve property buttons and graph gestures.
-                    // A BUSY preview/commit resumes that stage; it never starts a second gesture.
-                    canvas_edit_.push_back(
-                        {widgets::CanvasEdit{{}, true, true, false}, std::move(edits_), ECanvasStage::BEGIN}
-                    );
-                    edits_.clear();
-                    return {};
-                });
-                if (!queued)
-                    return rejected(queued.error());
             }
             while (!canvas_edit_.empty())
             {
                 auto& pending = canvas_edit_.front();
                 const auto& request = pending.input;
+                const bool requires_source =
+                    pending.stage != ECanvasStage::CANCEL && pending.stage != ECanvasStage::COMPLETE;
+                if (requires_source)
+                {
+                    auto admitted = validate(pending.based_on);
+                    if (!admitted)
+                        return rejectInput(admitted.error());
+                }
                 if (pending.stage == ECanvasStage::CANCEL)
                 {
                     auto ended = accepted(binding_->interaction->cancel());
@@ -525,7 +596,7 @@ namespace lux::editor::flowforge
                 {
                     auto begun = view_.beginEdit("Move/connect graph nodes");
                     if (!begun)
-                        return begun;
+                        return rejectInput(begun.error());
                     pending.stage = ECanvasStage::PREVIEW;
                 }
                 if (pending.stage == ECanvasStage::PREVIEW)
@@ -559,15 +630,16 @@ namespace lux::editor::flowforge
                     }
                     auto previewed = view_.previewEdit(pending.edits);
                     if (!previewed)
-                        return previewed;
+                        return rejectInput(previewed.error());
                     pending.stage = request.committed ? ECanvasStage::COMMIT : ECanvasStage::COMPLETE;
                 }
                 if (pending.stage == ECanvasStage::COMMIT)
                 {
                     auto committed = view_.commitEdit();
                     if (!committed)
-                        return committed;
+                        return rejectInput(committed.error());
                     pending.stage = ECanvasStage::COMPLETE;
+                    status_ = {};
                 }
                 auto owner = services_.sessions.read(binding_->session);
                 if (!owner)
@@ -603,9 +675,6 @@ namespace lux::editor::flowforge
                 break;
             case EControl::CANCEL:
                 controlled = view_.cancelEdit();
-                break;
-            case EControl::REVERT:
-                controlled = select(properties_ ? properties_->id.value : 0);
                 break;
             default:
                 break;
@@ -756,6 +825,7 @@ namespace lux::editor::flowforge
     }
     void FlowView::update() noexcept
     {
-        impl_->status_ = impl_->maintain();
+        if (auto result = impl_->maintain(); !result)
+            impl_->status_ = cxx::unexpected(result.error());
     }
 }

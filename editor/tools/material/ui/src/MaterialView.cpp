@@ -112,8 +112,12 @@ namespace lux::editor::material
         MaterialViewState state_;
         Display display_;
         MaterialViewResult<void> status_;
-        std::optional<MaterialReplaceNode> draft_;
-        sessions::ContentStamp draft_base_;
+        struct NodePropertiesDraft final
+        {
+            sessions::ContentStamp based_on;
+            MaterialReplaceNode value;
+        };
+        std::optional<NodePropertiesDraft> draft_;
         lux::material::NodeId selected_node_;
         std::optional<std::uint64_t> selection_request_;
         enum class ECanvasStage : std::uint8_t
@@ -126,17 +130,71 @@ namespace lux::editor::material
         };
         struct CanvasRequest final
         {
+            sessions::ContentStamp based_on;
             widgets::CanvasEdit input;
             std::vector<VMaterialEdit> edits;
             ECanvasStage stage;
         };
         std::deque<CanvasRequest> canvas_request_;
-        std::vector<VMaterialEdit> edits_;
         EControl control_{};
         lux::scene::SceneInstanceId presented_;
         lux::ui::Layout layout_, side_;
         widgets::GraphCanvas graph_;
         scene::SceneElement viewport_;
+        template <class MakeEdit> MaterialViewResult<void> enqueue(sessions::ContentStamp based_on, MakeEdit make_edit)
+        {
+            if (canvas_request_.size() >= 64)
+                return rejected(views::EViewError::CAPACITY);
+            canvas_request_.push_back({based_on, widgets::CanvasEdit{{}, true, true, false}, {}, ECanvasStage::BEGIN});
+            canvas_request_.back().edits.emplace_back(make_edit());
+            return {};
+        }
+        MaterialViewResult<void> validate(sessions::ContentStamp based_on) const
+        {
+            auto info = services_.sessions.describe(binding_->session);
+            if (!info)
+                return rejected(MaterialEditError{info.error()});
+            if (info->admission != sessions::EEditAdmission::AVAILABLE)
+                return rejected(MaterialEditError{sessions::ESessionError::BUSY});
+            if (info->current != based_on)
+                return rejected(MaterialEditError{EMaterialEditError::STALE_CONTENT});
+            return {};
+        }
+        MaterialViewResult<void> rejectInput(const VMaterialViewFailure& failure)
+        {
+            if (temporary(failure))
+                return cxx::unexpected(failure);
+            const auto based_on = canvas_request_.front().based_on;
+            const auto* overlay = binding_->interaction->overlay();
+            if (overlay && overlay->expected == based_on)
+            {
+                auto cancelled = binding_->interaction->cancel();
+                if (!cancelled)
+                    return rejected(cancelled.error());
+            }
+            const auto clear = [&] {
+                canvas_request_.pop_front();
+                graph_.setEnabled(canvas_request_.size() < 60);
+            };
+            auto owner = services_.sessions.read(binding_->session);
+            if (!owner)
+            {
+                if (owner.error() != sessions::ESessionError::STALE_SESSION)
+                    return rejected(MaterialEditError{owner.error()});
+                clear();
+                return cxx::unexpected(failure);
+            }
+            auto read = owner->get().read();
+            if (!read)
+                return rejected(read.error());
+            auto cleared = read->withRead([&](const lux::material::MaterialSource&) -> MaterialEditResult<void> {
+                clear(); // A terminal input cannot block later requests; payload destruction keeps the original gate.
+                return {};
+            });
+            if (!cleared)
+                return rejected(cleared.error());
+            return cxx::unexpected(failure);
+        }
         struct Properties final : lux::ui::Element
         {
             Impl& state_;
@@ -201,7 +259,7 @@ namespace lux::editor::material
                     state_.control_ = EControl::PUBLISH;
                 ImGui::EndDisabled();
                 if (!state_.status_)
-                    ImGui::TextUnformatted("Operation rejected; inspect the retained structured status.");
+                    ImGui::TextUnformatted("Input rejected; Revert node or Cancel pending edits to recover.");
                 if (ImGui::Button("Cancel pending edits"))
                     state_.control_ = EControl::CANCEL;
                 const auto preview = state_.services_.preview.status();
@@ -210,16 +268,16 @@ namespace lux::editor::material
                 if (!preview.diagnostic.empty())
                     ImGui::TextWrapped("%s", preview.diagnostic.c_str());
                 if (ImGui::InputText("Name", &name_, ImGuiInputTextFlags_EnterReturnsTrue))
-                    state_.edits_.emplace_back(MaterialRename{name_});
+                    state_.status_ = state_.enqueue(state_.display_.content, [&] { return MaterialRename{name_}; });
                 if (ImGui::BeginCombo("Add node", "Choose node kind"))
                 {
                     for (auto kind = 1; kind < static_cast<int>(lux::material::EMatNodeKind::COUNT); ++kind)
                     {
                         const auto type = static_cast<lux::material::EMatNodeKind>(kind);
                         if (ImGui::Selectable(lux::material::toString(type)))
-                            state_.edits_.emplace_back(
-                                MaterialInsertNode{contracts::CodeLease::builtin(), makeMaterialNode(type)}
-                            );
+                            state_.status_ = state_.enqueue(state_.display_.content, [&] {
+                                return MaterialInsertNode{contracts::CodeLease::builtin(), makeMaterialNode(type)};
+                            });
                     }
                     ImGui::EndCombo();
                 }
@@ -234,7 +292,7 @@ namespace lux::editor::material
                             auto rendered =
                                 read->withRead([&](const lux::material::MaterialSource&) -> MaterialEditResult<void> {
                                     static_cast<void>(editMaterialNodePayload(
-                                        *state_.draft_->value,
+                                        *state_.draft_->value.value,
                                         state_.display_.textures,
                                         state_.display_.parameters
                                     ));
@@ -263,16 +321,18 @@ namespace lux::editor::material
                             &shading,
                             "Unlit\0Legacy lit\0PBR metallic / roughness\0Stylized\0Graph\0"
                         ))
-                        state_.edits_.emplace_back(
-                            MaterialSetShading{static_cast<lux::rdesc::ELightingTechnique>(shading)}
-                        );
+                        state_.status_ = state_.enqueue(state_.display_.content, [&] {
+                            return MaterialSetShading{static_cast<lux::rdesc::ELightingTechnique>(shading)};
+                        });
                     int alpha = static_cast<int>(data.render.alpha_mode);
                     if (ImGui::Combo("Alpha", &alpha, "Opaque\0Mask\0Blend\0"))
                         data.render.alpha_mode = static_cast<lux::rdesc::EAlphaMode>(alpha);
                     ImGui::SliderFloat("Cutoff", &data.render.alpha_cutoff, 0, 1);
                     ImGui::Checkbox("Double sided", &data.render.double_sided);
                     if (ImGui::Button("Apply render state"))
-                        state_.edits_.emplace_back(MaterialSetRenderState{data.render});
+                        state_.status_ = state_.enqueue(state_.display_.content, [&] {
+                            return MaterialSetRenderState{data.render};
+                        });
                     if (ImGui::TreeNode("Textures"))
                     {
                         for (std::size_t i{}; i < data.textures.size(); ++i)
@@ -292,13 +352,17 @@ namespace lux::editor::material
                             ImGui::PopID();
                         }
                         if (ImGui::SmallButton("Add texture"))
-                            state_.edits_.emplace_back(MaterialSetTextureSlots{[&] {
-                                auto values = data.textures;
-                                values.push_back({"Texture", {}});
-                                return values;
-                            }()});
+                            state_.status_ = state_.enqueue(state_.display_.content, [&] {
+                                return MaterialSetTextureSlots{[&] {
+                                    auto values = data.textures;
+                                    values.push_back({"Texture", {}});
+                                    return values;
+                                }()};
+                            });
                         if (ImGui::Button("Apply textures"))
-                            state_.edits_.emplace_back(MaterialSetTextureSlots{data.textures});
+                            state_.status_ = state_.enqueue(state_.display_.content, [&] {
+                                return MaterialSetTextureSlots{data.textures};
+                            });
                         ImGui::TreePop();
                     }
                     if (ImGui::TreeNode("Parameters"))
@@ -319,13 +383,17 @@ namespace lux::editor::material
                             ImGui::PopID();
                         }
                         if (ImGui::SmallButton("Add parameter"))
-                            state_.edits_.emplace_back(MaterialSetParameterSlots{[&] {
-                                auto values = data.parameters;
-                                values.push_back({"Parameter"});
-                                return values;
-                            }()});
+                            state_.status_ = state_.enqueue(state_.display_.content, [&] {
+                                return MaterialSetParameterSlots{[&] {
+                                    auto values = data.parameters;
+                                    values.push_back({"Parameter"});
+                                    return values;
+                                }()};
+                            });
                         if (ImGui::Button("Apply parameters"))
-                            state_.edits_.emplace_back(MaterialSetParameterSlots{data.parameters});
+                            state_.status_ = state_.enqueue(state_.display_.content, [&] {
+                                return MaterialSetParameterSlots{data.parameters};
+                            });
                         ImGui::TreePop();
                     }
                 }
@@ -356,7 +424,7 @@ namespace lux::editor::material
                     const auto stage = edit.cancelled ? ECanvasStage::CANCEL
                                        : edit.began   ? ECanvasStage::BEGIN
                                                       : ECanvasStage::PREVIEW;
-                    canvas_request_.push_back({edit, {}, stage});
+                    canvas_request_.push_back({display_.content, edit, {}, stage});
                     graph_.setEnabled(canvas_request_.size() < 60);
                 }
             );
@@ -405,7 +473,6 @@ namespace lux::editor::material
                 draft_.reset();
                 selection_request_.reset();
                 selected_node_ = {};
-                edits_.clear();
                 canvas_request_.clear();
                 control_ = EControl::NONE;
                 graph_.setEnabled(true);
@@ -475,13 +542,14 @@ namespace lux::editor::material
             auto read = session->get().read();
             if (!read)
                 return rejected(read.error());
-            std::optional<MaterialReplaceNode> candidate;
+            const auto based_on = session->get().describe().current;
+            std::optional<NodePropertiesDraft> candidate;
             if (node.valid())
             {
                 auto copy = read->copyNode(node);
                 if (!copy)
                     return rejected(copy.error());
-                candidate.emplace(std::move(*copy));
+                candidate.emplace(NodePropertiesDraft{based_on, std::move(*copy)});
             }
             // The synchronous operations below cannot release the live session: each callback uses
             // its existing admission. Any discarded clone (including the former draft after swap)
@@ -507,11 +575,17 @@ namespace lux::editor::material
                 dispose();
                 return rejected(selection.error());
             }
-            draft_.swap(candidate);
-            dispose();
-            selected_node_ = node;
-            draft_base_ = display_.content;
-            return {};
+            auto adopted = read->withRead([&](const lux::material::MaterialSource&) -> MaterialEditResult<void> {
+                canvas_request_.clear();
+                draft_.swap(candidate);
+                candidate.reset();
+                selected_node_ = node;
+                graph_.setEnabled(true);
+                return {};
+            });
+            if (!adopted)
+                dispose();
+            return accepted(std::move(adopted));
         }
         MaterialViewResult<void> maintain()
         {
@@ -522,6 +596,16 @@ namespace lux::editor::material
                 auto cancelled = view_.cancelEdit();
                 if (!cancelled)
                     return cancelled;
+                status_ = {};
+            }
+            if (control_ == EControl::REVERT_NODE)
+            {
+                auto reverted = select(selected_node_);
+                if (reverted || !temporary(reverted.error()))
+                    control_ = EControl::NONE;
+                if (!reverted)
+                    return reverted;
+                status_ = {};
             }
             if (motion_pending_)
             {
@@ -539,36 +623,21 @@ namespace lux::editor::material
                 auto selected = select(lux::material::NodeId{*selection_request_});
                 if (!selected)
                     return selected;
+                status_ = {};
                 selection_request_.reset();
-            }
-            if (!edits_.empty())
-            {
-                if (canvas_request_.size() >= 64)
-                    return rejected(views::EViewError::CAPACITY);
-                auto owner = services_.sessions.read(binding_->session);
-                if (!owner)
-                    return rejected(MaterialEditError{owner.error()});
-                if (owner->get().describe().current != display_.content)
-                    return rejected(MaterialEditError{EMaterialEditError::STALE_CONTENT});
-                auto read = owner->get().read();
-                if (!read)
-                    return rejected(read.error());
-                auto queued = read->withRead([&](const lux::material::MaterialSource&) -> MaterialEditResult<void> {
-                    // The same bounded delivery stages serve property buttons and graph gestures.
-                    // A BUSY preview/commit resumes that stage; it never starts a second gesture.
-                    canvas_request_.push_back(
-                        {widgets::CanvasEdit{{}, true, true, false}, std::move(edits_), ECanvasStage::BEGIN}
-                    );
-                    edits_.clear();
-                    return {};
-                });
-                if (!queued)
-                    return rejected(queued.error());
             }
             while (!canvas_request_.empty())
             {
                 auto& pending = canvas_request_.front();
                 const auto& request = pending.input;
+                const bool requires_source =
+                    pending.stage != ECanvasStage::CANCEL && pending.stage != ECanvasStage::COMPLETE;
+                if (requires_source)
+                {
+                    auto admitted = validate(pending.based_on);
+                    if (!admitted)
+                        return rejectInput(admitted.error());
+                }
                 if (pending.stage == ECanvasStage::CANCEL)
                 {
                     auto ended = accepted(binding_->interaction->cancel());
@@ -580,7 +649,7 @@ namespace lux::editor::material
                 {
                     auto begun = view_.beginEdit("Move/connect graph nodes");
                     if (!begun)
-                        return begun;
+                        return rejectInput(begun.error());
                     pending.stage = ECanvasStage::PREVIEW;
                 }
                 if (pending.stage == ECanvasStage::PREVIEW)
@@ -610,15 +679,16 @@ namespace lux::editor::material
                     }
                     auto previewed = view_.previewEdit(pending.edits);
                     if (!previewed)
-                        return previewed;
+                        return rejectInput(previewed.error());
                     pending.stage = request.committed ? ECanvasStage::COMMIT : ECanvasStage::COMPLETE;
                 }
                 if (pending.stage == ECanvasStage::COMMIT)
                 {
                     auto committed = view_.commitEdit();
                     if (!committed)
-                        return committed;
+                        return rejectInput(committed.error());
                     pending.stage = ECanvasStage::COMPLETE;
+                    status_ = {};
                 }
                 auto owner = services_.sessions.read(binding_->session);
                 if (!owner)
@@ -653,23 +723,26 @@ namespace lux::editor::material
             case EControl::CANCEL:
                 command_result = view_.cancelEdit();
                 break;
-            case EControl::REVERT_NODE:
-                command_result = select(selected_node_);
-                break;
             case EControl::APPLY_NODE:
                 if (draft_)
                 {
-                    if (draft_base_ != display_.content)
-                        return rejected(MaterialEditError{EMaterialEditError::STALE_CONTENT});
+                    command_result = validate(draft_->based_on);
+                    if (!command_result)
+                        break;
                     auto owner = services_.sessions.read(binding_->session);
                     if (!owner)
                         return rejected(MaterialEditError{owner.error()});
                     auto read = owner->get().read();
                     if (!read)
                         return rejected(read.error());
+                    if (canvas_request_.size() >= 64)
+                        return rejected(views::EViewError::CAPACITY);
                     command_result =
                         accepted(read->withRead([&](const lux::material::MaterialSource&) -> MaterialEditResult<void> {
-                            edits_.emplace_back(std::move(*draft_));
+                            canvas_request_.push_back(
+                                {draft_->based_on, widgets::CanvasEdit{{}, true, true, false}, {}, ECanvasStage::BEGIN}
+                            );
+                            canvas_request_.back().edits.emplace_back(std::move(draft_->value));
                             draft_.reset();
                             return {};
                         }));
@@ -836,6 +909,7 @@ namespace lux::editor::material
     }
     void MaterialView::update() noexcept
     {
-        impl_->status_ = impl_->maintain();
+        if (auto result = impl_->maintain(); !result)
+            impl_->status_ = cxx::unexpected(result.error());
     }
 }

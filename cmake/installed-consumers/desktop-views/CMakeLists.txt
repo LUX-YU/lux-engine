@@ -46,7 +46,7 @@ file(READ "${engine_source}/editor/tools/scene/ui/test/views.cpp" source)
 string(REPLACE "../../../../../cmake/installed-consumers/common/ControlsTestAccess.hpp"
     "ControlsTestAccess.hpp" source "${source}")
 file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/views.cpp" "${source}")
-foreach(helper NativeDesktop AuxiliaryViews)
+foreach(helper NativeDesktop AuxiliaryViews DraftSources)
     configure_file("${engine_source}/editor/tools/scene/ui/test/${helper}.hpp"
         "${CMAKE_CURRENT_BINARY_DIR}/${helper}.hpp" COPYONLY)
 endforeach()
@@ -85,3 +85,8 @@ if(WIN32)
     add_test(NAME installed.desktop.native_input COMMAND desktop_views "${P10_LINKER}" "${sdk_prefix}" native)
     set_tests_properties(installed.desktop.native_input PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)
 endif()
+
+foreach(case literal signature flow-canvas material-canvas flow-queue material-queue material-lifetime lifecycle positive)
+    add_test(NAME installed.desktop.draft_source_${case} COMMAND desktop_views "${P10_LINKER}" "${sdk_prefix}" "r1-${case}")
+    set_tests_properties(installed.desktop.draft_source_${case} PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)
+endforeach()

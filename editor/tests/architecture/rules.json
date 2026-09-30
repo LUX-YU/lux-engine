@@ -6161,9 +6161,16 @@
         "lux/engine/window/LuxWindow.hpp",
         "source_location",
         "thread",
-        "lux/engine/flowforge/graph/FunctionalNode.hpp"
+        "lux/engine/flowforge/graph/FunctionalNode.hpp",
+        "lux/engine/editor/widgets/GraphCanvas.hpp",
+        "lux/engine/flowforge/graph/ArithmeticNode.hpp",
+        "imgui_internal.h",
+        "DraftSources.hpp",
+        "../../../flowforge/model/src/PreparedFlowReload.hpp",
+        "../../../material/model/src/MaterialSessionData.hpp"
       ],
-      "editor/tools/scene/ui/test/AuxiliaryViews.hpp": []
+      "editor/tools/scene/ui/test/AuxiliaryViews.hpp": [],
+      "editor/tools/scene/ui/test/DraftSources.hpp": []
     }
   },
   "material_ui": {
@@ -8548,9 +8555,16 @@
         "lux/engine/window/LuxWindow.hpp",
         "source_location",
         "thread",
-        "lux/engine/flowforge/graph/FunctionalNode.hpp"
+        "lux/engine/flowforge/graph/FunctionalNode.hpp",
+        "lux/engine/editor/widgets/GraphCanvas.hpp",
+        "lux/engine/flowforge/graph/ArithmeticNode.hpp",
+        "imgui_internal.h",
+        "DraftSources.hpp",
+        "../../../flowforge/model/src/PreparedFlowReload.hpp",
+        "../../../material/model/src/MaterialSessionData.hpp"
       ],
-      "editor/tools/scene/ui/test/AuxiliaryViews.hpp": []
+      "editor/tools/scene/ui/test/AuxiliaryViews.hpp": [],
+      "editor/tools/scene/ui/test/DraftSources.hpp": []
     }
   },
   "p10_targets": [

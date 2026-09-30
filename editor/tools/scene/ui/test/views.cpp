@@ -18,6 +18,13 @@
 #include <lux/engine/editor/scene/SceneConfigurationView.hpp>
 #include "../../../../../cmake/installed-consumers/common/ControlsTestAccess.hpp"
 #include <lux/engine/editor/flowforge/FlowView.hpp>
+#include <lux/engine/editor/widgets/GraphCanvas.hpp>
+#include <lux/engine/flowforge/graph/ArithmeticNode.hpp>
+#include <imgui_internal.h>
+#ifdef LUX_P10_R1_NATIVE
+#include "../../../flowforge/model/src/PreparedFlowReload.hpp"
+#include "../../../material/model/src/MaterialSessionData.hpp"
+#endif
 #include <lux/engine/flowforge/graph/ControlNode.hpp>
 #include <lux/engine/flowforge/graph/FunctionalNode.hpp>
 #include <lux/engine/editor/scene/SceneAlgorithms.hpp>
@@ -1268,10 +1275,19 @@ namespace
 
 #include "NativeDesktop.hpp"
 #include "AuxiliaryViews.hpp"
+#include "DraftSources.hpp"
 }
 int main(int argc, char** argv)
 {
     assert(argc == 3 || argc == 4);
+    if (argc == 4 && std::string_view{argv[3]}.starts_with("r1-"))
+    {
+        Fixture fixture;
+        return (std::string_view{argv[3]}.starts_with("r1-material-") ? draft_test::material(fixture, argv[3])
+                                                                      : draft_test::flow(fixture, argv[3]))
+                   ? 0
+                   : 1;
+    }
 #if defined(_WIN32)
     if (argc == 4)
     {

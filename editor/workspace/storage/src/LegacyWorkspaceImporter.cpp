@@ -267,11 +267,39 @@ namespace lux::editor::workspace
         }
         std::ranges::sort(files);
         LegacyMigration migration;
+        // Each legacy file is an independent snapshot. Only explicit selection supplies recovery bindings.
+        // Read settings first, but keep its contribution last in the original canonical input digest.
+        auto settings = read(".lux/editor/settings.toml");
+        std::string selected_file;
+        if (settings)
+        {
+            const std::string text(reinterpret_cast<const char*>(settings->bytes.data()), settings->bytes.size());
+            auto parsed = toml::parse(text);
+            if (!parsed || parsed["version"].value_or(0) != 1)
+                return failed(EWorkspaceError::INVALID_DATA, "legacy settings");
+            auto selected = parsed["selected"].value<std::string>();
+            if (!selected)
+                return failed(EWorkspaceError::INVALID_DATA, "legacy selected");
+            if (!selected->empty())
+            {
+                selected_file = *selected + ".toml";
+                migration.preferences.selected_layout = legacyId(selected_file);
+            }
+            else
+                migration.diagnostics.push_back("Legacy selected is empty; no snapshot supplies recovery.");
+            migration.preferences.opaque.push_back({"lux.workspace.legacy.settings", 1, settings->bytes});
+        }
+        else if (settings.error().code != EWorkspaceError::NOT_FOUND)
+            return lux::cxx::unexpected(settings.error());
+        else
+            migration.diagnostics.push_back("Legacy settings are absent; no snapshot supplies recovery.");
         std::string manifest;
         std::size_t input_bytes{};
-        std::map<std::pair<std::string, std::string>, std::string> locators;
+        bool selected_found{};
         for (const auto& file : files)
         {
+            const bool is_selected = file.generic_string() == selected_file;
+            selected_found = selected_found || is_selected;
             const auto relative = ".lux/editor/layouts/" + file.generic_string();
             auto input = read(relative);
             if (!input)
@@ -294,6 +322,7 @@ namespace lux::editor::workspace
             layout.label = file.stem().string();
             layout.legacy_origin = LegacyOrigin{relative, input->target.expected_version};
             layout.opaque.push_back({"lux.workspace.legacy.toml", 1, input->bytes});
+            std::set<std::string> pane_ids;
             for (const auto& item : *panes)
             {
                 const auto* row = item.as_table();
@@ -304,6 +333,8 @@ namespace lux::editor::workspace
                 const auto payload = (*row)["payload"].value<std::string>();
                 if (!type || !id || !payload || id->empty())
                     return failed(EWorkspaceError::INVALID_DATA, "legacy pane fields");
+                if (!pane_ids.insert(*id).second)
+                    return failed(EWorkspaceError::INVALID_DATA, "duplicate legacy pane");
                 const auto bytes = std::as_bytes(std::span(*payload));
                 LayoutSlot slot{
                     {static_cast<std::uint32_t>(layout.slots.size() + 1)},
@@ -314,14 +345,11 @@ namespace lux::editor::workspace
                 };
                 if (knownTool(*type) && assetLocator(*payload))
                 {
-                    const auto locator = "asset:" + payload->substr(3);
-                    const auto key = std::pair{std::string(slot.restore_key.name()), *type};
-                    const auto [found, inserted] = locators.emplace(key, locator);
-                    if (!inserted && found->second != locator)
-                        return failed(EWorkspaceError::CONFLICT, "legacy recovery binding");
-                    if (inserted)
-                        migration.recovery.entries.push_back({slot.restore_key, slot.type, locator, false});
-                    // Content locators belong to recovery. Raw original bytes remain in the legacy envelope.
+                    if (is_selected)
+                        migration.recovery.entries.push_back(
+                            {slot.restore_key, slot.type, "asset:" + payload->substr(3), false}
+                        );
+                    // Every snapshot keeps its original locator in the envelope, never in active view state.
                     slot.state.bytes.clear();
                 }
                 else if (knownTool(*type) && !payload->empty())
@@ -337,23 +365,13 @@ namespace lux::editor::workspace
             migration.layouts.push_back(valid->value());
             manifest += relative + "\n" + input->target.expected_version + "\n";
         }
-        auto settings = read(".lux/editor/settings.toml");
         if (settings)
-        {
-            const std::string text(reinterpret_cast<const char*>(settings->bytes.data()), settings->bytes.size());
-            auto parsed = toml::parse(text);
-            if (!parsed || parsed["version"].value_or(0) != 1)
-                return failed(EWorkspaceError::INVALID_DATA, "legacy settings");
-            auto selected = parsed["selected"].value<std::string>();
-            if (!selected)
-                return failed(EWorkspaceError::INVALID_DATA, "legacy selected");
-            if (!selected->empty())
-                migration.preferences.selected_layout = legacyId(*selected + ".toml");
-            migration.preferences.opaque.push_back({"lux.workspace.legacy.settings", 1, settings->bytes});
             manifest += "settings\n" + settings->target.expected_version;
-        }
-        else if (settings.error().code != EWorkspaceError::NOT_FOUND)
-            return lux::cxx::unexpected(settings.error());
+        const bool selected_missing = !selected_file.empty() && !selected_found;
+        if (selected_missing)
+            migration.diagnostics.push_back(
+                "Legacy selected snapshot is missing; no snapshot supplies recovery: " + selected_file
+            );
         migration.source_digest = digest(manifest);
         migration.recovery.legacy_origin = LegacyOrigin{"legacy.workspace.v1", migration.source_digest};
         migration.preferences.legacy_origin = migration.recovery.legacy_origin;

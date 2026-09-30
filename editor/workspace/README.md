@@ -52,12 +52,20 @@ pending save cannot run after that lane's deletion.
 callbacks. Stable layout identities derive from the old filename; per-record provenance records old bytes'
 digest. Recognized built-in tool `v1:<asset UUID>` locators enter RecoveryManifest, not view content. Original
 TOML (including unknown payloads, auxiliary window state and unsupported INI fields) remains exact opaque data.
+Each old file is an independent snapshot: all valid files migrate, but only the explicitly selected file supplies
+RecoveryManifest entries. Same PaneId/type in different snapshots can name different assets. Nonselected
+locators remain in their original envelopes, not active view state. Empty selection, absent settings or a missing
+selected file yields an empty recovery with a diagnostic; access errors still fail without guessing a selection.
+The settings digest remains after the sorted layout digests, preserving existing source identities and markers.
 
 `continueMigration` checks real disk and accepts at most one missing record. Its caller must settle that ticket
 before the next call. A reconstructed Store can resume after interruption. Existing records with matching
 provenance are preserved, including user edits since first import. Other records conflict. Only after every
 new record has been reread/validated is the marker accepted. Original `.lux/editor` files are never modified.
 Locators do not recover unsaved source contents; this limitation is returned as a diagnostic.
+An existing same-origin recovery or completed marker remains authoritative, including user changes. R1 does not
+silently replace a previously migrated recovery that used the earlier directory-wide selection policy. Any
+later repair of such user data needs a separate explicit decision; no format version changes in this correction.
 
 No product uses this module yet. The original EditorWorkspace files and settings consumers remain confined to
 the old product until P12. Original C01 full application still fails; the new pure validation is separate evidence.

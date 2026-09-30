@@ -1,0 +1,13 @@
+{
+  "head": "f6598e65f9d77620f1374065a76d82e6e6e00d79",
+  "headers": [
+    {
+      "installed_path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\material\\MaterialCompilation.hpp",
+      "sha256": "425191778ec4bc73eb2881ddf6ea5bf851675866345fa8addb90f8e9b568caab"
+    },
+    {
+      "installed_path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\flowforge\\FlowCompilationService.hpp",
+      "sha256": "b11b94e13cfd3993e691fd3c87c34d419adb0ba11011ac089c03bb7bf4b36e18"
+    }
+  ]
+}

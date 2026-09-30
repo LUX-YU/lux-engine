@@ -1,0 +1,18 @@
+---- Importing lux-cxx-compile_time
+---- Importing lux-cxx-memory
+---- Importing lux-cxx-core
+---- Importing lux-cxx-container
+---- Importing lux-cxx-algorithm
+---- Importing lux-cxx-binary
+---- Importing lux-cxx-concurrent
+---- Importing lux-cxx-reflection_runtime
+-- Configuring done (0.4s)
+-- Generating done (0.1s)
+-- Build files have been written to: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p07-r1-before-consumer
+[0/1] Re-running CMake...
+[1/4] Building CXX object CMakeFiles\contract.dir\contract.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[2/4] Building CXX object CMakeFiles\traits.dir\traits.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[3/4] Linking CXX executable contract.exe
+[4/4] Linking CXX executable traits.exe

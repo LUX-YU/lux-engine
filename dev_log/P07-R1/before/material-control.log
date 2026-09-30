@@ -1,0 +1,3 @@
+Waiting at 99
+worker_finished=1 business_ready_before=0 original_owner_retained=1
+delivered=1 ready=1 acknowledge_busy=0 capacity_stuck=0 author_unchanged=1

@@ -1,0 +1,25 @@
+/mnt/data/LUX_ENGINE_P07_REVIEW_R1_2026-09-29/probes/copyability.cpp: In function ‘int main()’:
+/mnt/data/LUX_ENGINE_P07_REVIEW_R1_2026-09-29/probes/copyability.cpp:106:19: error: static assertion failed: Material operation owner must not copy
+  106 |     static_assert(!std::is_copy_constructible_v<M>, "Material operation owner must not copy");
+      |                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/mnt/data/LUX_ENGINE_P07_REVIEW_R1_2026-09-29/probes/copyability.cpp:107:19: error: static assertion failed: Material operation owner must not copy-assign
+  107 |     static_assert(!std::is_copy_assignable_v<M>, "Material operation owner must not copy-assign");
+      |                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/mnt/data/LUX_ENGINE_P07_REVIEW_R1_2026-09-29/probes/copyability.cpp:108:19: error: static assertion failed: Move unique_ptr, not operation object
+  108 |     static_assert(!std::is_move_constructible_v<M>, "Move unique_ptr, not operation object");
+      |                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/mnt/data/LUX_ENGINE_P07_REVIEW_R1_2026-09-29/probes/copyability.cpp:109:19: error: static assertion failed: Move unique_ptr, not operation object
+  109 |     static_assert(!std::is_move_assignable_v<M>, "Move unique_ptr, not operation object");
+      |                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/mnt/data/LUX_ENGINE_P07_REVIEW_R1_2026-09-29/probes/copyability.cpp:110:19: error: static assertion failed: Flow service operation must not copy
+  110 |     static_assert(!std::is_copy_constructible_v<F>, "Flow service operation must not copy");
+      |                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/mnt/data/LUX_ENGINE_P07_REVIEW_R1_2026-09-29/probes/copyability.cpp:111:19: error: static assertion failed: Flow service operation must not copy-assign
+  111 |     static_assert(!std::is_copy_assignable_v<F>, "Flow service operation must not copy-assign");
+      |                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/mnt/data/LUX_ENGINE_P07_REVIEW_R1_2026-09-29/probes/copyability.cpp:112:19: error: static assertion failed: Flow service retains stable object
+  112 |     static_assert(!std::is_move_constructible_v<F>, "Flow service retains stable object");
+      |                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/mnt/data/LUX_ENGINE_P07_REVIEW_R1_2026-09-29/probes/copyability.cpp:113:19: error: static assertion failed: Flow service retains stable object
+  113 |     static_assert(!std::is_move_assignable_v<F>, "Flow service retains stable object");
+      |                   ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~

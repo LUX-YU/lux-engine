@@ -1,0 +1,2 @@
+MaterialCompileOperation copy_ctor=1 copy_assign=1 move_ctor=1 move_assign=1
+FlowCompileOperation copy_ctor=1 copy_assign=1 move_ctor=1 move_assign=1

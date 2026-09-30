@@ -1,0 +1,1 @@
+Flow: const borrowing, BUSY/capacity before dispatch, exactly-once completion, independent records, fixed-object retry, capacity recovery, owning result after acknowledge; author unchanged.

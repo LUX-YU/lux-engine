@@ -331,11 +331,17 @@ namespace lux::object
         parent.last_child_ = this;
     }
 
-    LuxObject::~LuxObject()
+    void LuxObject::detachFromParent() noexcept
     {
         assertAffinity();
-        if (first_child_ || active_events_ != 0)
+        const bool is_active = active_events_ != 0 || (parent_ && parent_->active_events_ != 0);
+        if (is_active)
             detail::failObjectContract();
+        unlinkParent();
+    }
+
+    void LuxObject::unlinkParent() noexcept
+    {
         if (parent_)
         {
             if (previous_sibling_)
@@ -347,6 +353,15 @@ namespace lux::object
             else
                 parent_->last_child_ = previous_sibling_;
         }
+        parent_ = previous_sibling_ = next_sibling_ = nullptr;
+    }
+
+    LuxObject::~LuxObject()
+    {
+        assertAffinity();
+        if (first_child_ || active_events_ != 0)
+            detail::failObjectContract();
+        unlinkParent();
         auto* state = state_.exchange(nullptr, std::memory_order_acq_rel);
         if (!state)
             return;

@@ -2,6 +2,7 @@
 
 #include <lux/engine/editor/scene/SceneSource.hpp>
 #include <lux/engine/editor/scene/SceneObjectRef.hpp>
+#include <lux/engine/editor/sessions/SessionState.hpp>
 
 namespace lux::editor::sessions
 {
@@ -93,6 +94,11 @@ namespace lux::editor::scene
     class SceneReadView final
     {
     public:
+        template <class Fn>
+        [[nodiscard]] auto withRead(Fn&& function) const -> std::invoke_result_t<Fn, const SceneReadView&>
+        {
+            return gate_.withRead([&] { return std::invoke(std::forward<Fn>(function), *this); });
+        }
         [[nodiscard]] std::vector<SceneObjectRef> objects() const;
         [[nodiscard]] bool contains(SceneObjectRef target) const noexcept;
         [[nodiscard]] SceneEditResult<world::WorldObjectId> parent(SceneObjectRef target) const noexcept;

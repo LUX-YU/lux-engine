@@ -19,39 +19,81 @@ namespace lux::ui
         }
     }
 
-    Element::Element(Pane& parent, ElementId id) : Element(parent, parent, nullptr, std::move(id)) {}
-    Element::Element(Element& parent, ElementId id) : Element(parent, parent.pane(), &parent, std::move(id)) {}
-    Element::Element(object::LuxObject& parent, Pane& pane, Element* element_parent, ElementId id)
-        : LuxObject(parent.dispatcherRef()), element_parent_(element_parent), id_(std::move(id)), pane_(&pane)
+    Element::Element(object::ObjectDispatcherRef dispatcher, ElementId id)
+        : LuxObject(std::move(dispatcher)), id_(std::move(id))
     {
         if (!id_.isValid())
             detail::failContract();
-        root().checkContentChange();
+    }
+    Root* Element::attachedRoot() const noexcept
+    {
+        return pane_ ? pane_->attachedRoot() : nullptr;
+    }
+    void Element::attachContent(Pane& pane) noexcept
+    {
+        attachTo(pane);
+        assignPane(&pane);
+    }
+    void Element::assignPane(Pane* pane) noexcept
+    {
+        pane_ = pane;
+        for (auto* child = firstChild(); child; child = child->nextSibling())
+            static_cast<Element*>(child)->assignPane(pane);
+    }
+    void Element::addChild(Element& child) noexcept
+    {
+        if (attachedRoot() || child.parent() || child.attachedRoot())
+            detail::failContract();
+        if (pane_)
+            pane_->invalidatePreparation();
+        child.attachTo(*this);
+        child.element_parent_ = this;
+        child.assignPane(pane_);
+    }
+    Element::Element(Pane& parent, ElementId id) : Element(parent, &parent, nullptr, std::move(id)) {}
+    Element::Element(Element& parent, ElementId id) : Element(parent, parent.containingPane(), &parent, std::move(id))
+    {}
+    Element::Element(object::LuxObject& parent, Pane* pane, Element* element_parent, ElementId id)
+        : LuxObject(parent.dispatcherRef()), element_parent_(element_parent), id_(std::move(id)), pane_(pane)
+    {
+        if (!id_.isValid())
+            detail::failContract();
+        if (pane_)
+            pane_->invalidatePreparation();
+        if (auto* attached = attachedRoot())
+            attached->checkContentChange();
         attachTo(parent);
-        root().registerElement(*this);
+        if (auto* attached = attachedRoot())
+            attached->registerElement(*this);
     }
 
     Element::~Element() noexcept
     {
-        root().unregisterElement(*this);
-        if (pane_->content_ == this)
+        if (pane_)
+            pane_->invalidatePreparation();
+        if (auto* attached = attachedRoot())
+            attached->unregisterElement(*this);
+        if (pane_ && pane_->content_ == this)
             pane_->content_ = nullptr;
     }
     Root& Element::root() const noexcept
     {
-        return pane_->root();
+        return pane().root();
     }
     Pane& Element::pane() const noexcept
     {
+        if (!pane_)
+            detail::failContract();
         return *pane_;
     }
     bool Element::focused() const noexcept
     {
-        return root().focusedElement() == this;
+        const auto* attached = attachedRoot();
+        return attached && attached->focusedElement() == this;
     }
     bool Element::displayed() const noexcept
     {
-        if (!pane_->visible())
+        if (!attachedRoot() || !pane_->visible())
             return false;
         for (auto* node = this; node; node = node->element_parent_)
             if (!node->visible())

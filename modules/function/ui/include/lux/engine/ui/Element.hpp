@@ -30,6 +30,14 @@ namespace lux::ui
     class LUX_FUNCTION_PUBLIC Element : public lux::object::LuxObject
     {
     public:
+        Element(object::ObjectDispatcherRef, ElementId id);
+        [[nodiscard]] Root* attachedRoot() const noexcept;
+        [[nodiscard]] Pane* containingPane() const noexcept
+        {
+            return pane_;
+        }
+        // Logical assembly is valid before mount; the parent never owns/deletes this child.
+        void addChild(Element&) noexcept;
         Element(Pane& parent, ElementId id);
         Element(Element& parent, ElementId id);
         ~Element() noexcept override;
@@ -100,7 +108,9 @@ namespace lux::ui
         {
             return false;
         }
-        Element(object::LuxObject&, Pane&, Element*, ElementId);
+        Element(object::LuxObject&, Pane*, Element*, ElementId);
+        void attachContent(Pane&) noexcept;
+        void assignPane(Pane*) noexcept;
         [[nodiscard]] SizeHint constrain(SizeHint) const noexcept;
         std::size_t registration_slot_{SIZE_MAX};
         std::uint64_t hint_epoch_{}, measure_epoch_{};

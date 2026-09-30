@@ -42,10 +42,7 @@ namespace lux::editor::scene
         [[nodiscard]] RunResult<void> acknowledgeStop(RunId);
         // Receives actual drive/retirement facts, then maintains pause debug state. No tick here.
         [[nodiscard]] RunResult<void> update();
-        [[nodiscard]] RunInspectAccess inspect() const noexcept
-        {
-            return RunInspectAccess(*this);
-        }
+        [[nodiscard]] RunInspectAccess inspect() const noexcept;
         [[nodiscard]] RunResult<std::reference_wrapper<SceneEditing>> debugEditing(RunId) noexcept;
         [[nodiscard]] RunResult<std::reference_wrapper<editing::EditHistory>> debugHistory(RunId) noexcept;
         [[nodiscard]] RunResult<void> finishEditing(RunId);

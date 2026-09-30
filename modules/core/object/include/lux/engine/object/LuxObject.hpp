@@ -255,6 +255,8 @@ namespace lux::object
         }
         // Typed owners can attach after validating their public parent contract.
         void attachTo(LuxObject& parent) noexcept;
+        // Removes only the non-owning parent association, never deletes an object.
+        void detachFromParent() noexcept;
         virtual bool allowsGenericChildren() const noexcept
         {
             return true;
@@ -268,6 +270,7 @@ namespace lux::object
         virtual void filterEvent(LuxObject&, EventView&) noexcept {}
 
     private:
+        void unlinkParent() noexcept;
         friend void detail::invokeConnection(detail::ConnectionControl*, const void*) noexcept;
         friend bool detail::sendEventErased(LuxObject&, EventView&) noexcept;
         friend bool detail::routeEventErased(LuxObject&, LuxObject&, EventView&) noexcept;

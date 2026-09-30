@@ -13,6 +13,10 @@ namespace lux::ui
 {
     class Root;
     class Element;
+    namespace detail
+    {
+        struct AttachmentState;
+    }
 
     struct PaneFocusChanged final
     {
@@ -36,6 +40,12 @@ namespace lux::ui
         object::TSignal<PaneVisibilityChanged> visibilityChanged{*this};
         object::TSignal<> closeRequested{*this};
 
+        Pane(object::ObjectDispatcherRef, PaneId id, PaneTypeId type, std::string title);
+        [[nodiscard]] Root* attachedRoot() const noexcept
+        {
+            return root_;
+        }
+        // transition: rooted construction is restricted to existing products until P12.
         Pane(Root& parent, PaneId id, PaneTypeId type, std::string title);
         Pane(Pane& parent, PaneId id, PaneTypeId type, std::string title);
 
@@ -90,6 +100,7 @@ namespace lux::ui
         virtual void update() noexcept {}
 
     private:
+        friend class PreparedAttachment;
         friend class Root;
         friend class Element;
         void setFocused(bool focused);
@@ -102,7 +113,9 @@ namespace lux::ui
         {
             return false;
         }
-        Pane(object::LuxObject&, Root&, PaneId, PaneTypeId, std::string);
+        Pane(object::LuxObject&, Root*, PaneId, PaneTypeId, std::string);
+        void invalidatePreparation() noexcept;
+        detail::AttachmentState* preparation_{};
         std::size_t registration_slot_{SIZE_MAX}, window_slot_{SIZE_MAX};
 
         PaneId id_;

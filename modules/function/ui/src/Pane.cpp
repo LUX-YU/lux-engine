@@ -2,35 +2,61 @@
 #include <lux/engine/ui/Root.hpp>
 #include <lux/engine/ui/Element.hpp>
 #include <lux/engine/ui/detail/Contract.hpp>
+#include <lux/engine/ui/detail/AttachmentState.hpp>
 
 #include <algorithm>
 #include <utility>
 
 namespace lux::ui
 {
-    Pane::Pane(Root& parent, PaneId id, PaneTypeId type, std::string title)
-        : Pane(parent, parent, std::move(id), std::move(type), std::move(title))
-    {}
-
-    Pane::Pane(Pane& parent, PaneId id, PaneTypeId type, std::string title)
-        : Pane(parent, parent.root(), std::move(id), std::move(type), std::move(title))
-    {}
-
-    Pane::Pane(object::LuxObject& parent, Root& root, PaneId id, PaneTypeId type, std::string title)
-        : LuxObject(parent.dispatcherRef()), id_(std::move(id)), type_(std::move(type)), title_(std::move(title)),
-          root_(&root)
+    Pane::Pane(object::ObjectDispatcherRef dispatcher, PaneId id, PaneTypeId type, std::string title)
+        : LuxObject(std::move(dispatcher)), id_(std::move(id)), type_(std::move(type)), title_(std::move(title))
     {
         if (!id_.isValid())
             detail::failContract();
-        root.checkContentChange();
+        rebuildWindowLabel();
+    }
+    void Pane::invalidatePreparation() noexcept
+    {
+        for (auto* node = this; node; node = dynamic_cast<Pane*>(node->parent()))
+            if (node->preparation_)
+                node->preparation_->valid = false;
+    }
+
+    Pane::Pane(Root& parent, PaneId id, PaneTypeId type, std::string title)
+        : Pane(parent, &parent, std::move(id), std::move(type), std::move(title))
+    {}
+
+    Pane::Pane(Pane& parent, PaneId id, PaneTypeId type, std::string title)
+        : Pane(parent, parent.attachedRoot(), std::move(id), std::move(type), std::move(title))
+    {}
+
+    Pane::Pane(object::LuxObject& parent, Root* root, PaneId id, PaneTypeId type, std::string title)
+        : LuxObject(parent.dispatcherRef()), id_(std::move(id)), type_(std::move(type)), title_(std::move(title)),
+          root_(root)
+    {
+        if (!id_.isValid())
+            detail::failContract();
+        if (root)
+            root->checkContentChange();
+        if (auto* pane = dynamic_cast<Pane*>(&parent))
+            pane->invalidatePreparation();
         rebuildWindowLabel();
         attachTo(parent);
-        root.registerPane(*this);
+        if (root)
+            root->registerPane(*this);
     }
 
     Pane::~Pane()
     {
-        root().unregisterPane(*this);
+        invalidatePreparation();
+        if (preparation_)
+        {
+            preparation_->pane = nullptr;
+            preparation_ = nullptr;
+        }
+        if (root_)
+            root_->unregisterPane(*this);
     }
 
     Root& Pane::root() const noexcept
@@ -42,7 +68,13 @@ namespace lux::ui
 
     void Pane::setContent(Element& element) noexcept
     {
-        root().checkContentChange();
+        invalidatePreparation();
+        if (root_)
+            root_->checkContentChange();
+        if (!element.parent() && !root_)
+        {
+            element.attachContent(*this);
+        }
         if (!isOnAffinityThread() || element.parent() != this)
             detail::failContract();
         content_ = &element;
@@ -54,7 +86,8 @@ namespace lux::ui
             return;
         title_ = std::move(title);
         rebuildWindowLabel();
-        root().paneLabelChanged();
+        if (root_)
+            root_->paneLabelChanged();
     }
 
     void Pane::setVisible(bool visible)
@@ -67,7 +100,9 @@ namespace lux::ui
 
     void Pane::setModal(bool modal) noexcept
     {
-        root().checkContentChange();
+        invalidatePreparation();
+        if (root_)
+            root_->checkContentChange();
         modal_ = modal;
     }
 

@@ -1,4 +1,5 @@
 #pragma once
+#include <concepts>
 #include <lux/engine/editor/flowforge/FlowEdit.hpp>
 #include <lux/engine/editor/sessions/SessionState.hpp>
 
@@ -42,7 +43,15 @@ namespace lux::editor::flowforge
     public:
         // A const FlowGraph is not deep-const (unique_ptr<Node> and RuntimeObject expose mutation).
         // Callbacks see a frozen source constructed and destroyed inside the same READING admission.
+        // Stable admission for owning temporary cleanup; no graph inspection or cloning is needed.
         template <class Fn>
+            requires std::invocable<Fn>
+        [[nodiscard]] auto withRead(Fn&& function) const -> std::invoke_result_t<Fn>
+        {
+            return gate_.withRead(std::forward<Fn>(function));
+        }
+        template <class Fn>
+            requires std::invocable<Fn, const lux::flowforge::FlowSource&>
         [[nodiscard]] auto withRead(Fn&& function, FlowSnapshotBudget budget = {}) const
             -> std::invoke_result_t<Fn, const lux::flowforge::FlowSource&>
         {

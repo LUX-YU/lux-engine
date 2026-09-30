@@ -209,7 +209,8 @@ namespace lux::ui
             return;
         if (cancel)
             value_ = before_;
-        root().releaseFocus(*this);
+        if (auto* attached = attachedRoot())
+            attached->releaseFocus(*this);
         static_cast<void>(emit(edited, EditResult{cancel, false, !cancel, cancel}));
     }
     void TextEdit::event(object::EventView& event) noexcept
@@ -285,7 +286,8 @@ namespace lux::ui
             return;
         if (cancel)
             value_ = before_;
-        root().releaseFocus(*this);
+        if (auto* attached = attachedRoot())
+            attached->releaseFocus(*this);
         static_cast<void>(emit(edited, EditResult{cancel, false, !cancel, cancel}));
     }
     void NumericEdit::event(object::EventView& event) noexcept

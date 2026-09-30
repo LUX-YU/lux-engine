@@ -414,13 +414,18 @@ namespace lux::editor::scene
             return rejected(borrowed.error());
         return *borrowed;
     }
-    bool RunInspectAccess::contains(RunningObjectRef ref) const noexcept
+    RunInspectAccess RunStore::inspect() const noexcept
     {
-        auto run = store_.impl_->find(ref.run);
-        if (!run || (*run)->info.instance != ref.instance)
-            return false;
-        auto registry = borrow(ref.run);
-        return registry && registry->get().valid(ref.entity);
+        return RunInspectAccess(
+            *this,
+            +[](const RunStore& store, RunningObjectRef ref) noexcept {
+                auto run = store.impl_->find(ref.run);
+                if (!run || (*run)->info.instance != ref.instance)
+                    return false;
+                auto registry = store.inspect().borrow(ref.run);
+                return registry && registry->get().valid(ref.entity);
+            }
+        );
     }
     RunResult<RunningObjectRef> RunInspectAccess::reference(RunId id, simulation::ecs::Entity entity) const noexcept
     {

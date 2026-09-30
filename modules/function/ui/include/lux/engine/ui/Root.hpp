@@ -11,6 +11,7 @@
 #include <lux/engine/ui/InputEvent.hpp>
 #include <lux/engine/ui/Ids.hpp>
 #include <lux/engine/ui/Menu.hpp>
+#include <lux/engine/ui/Attachment.hpp>
 
 namespace lux::window
 {
@@ -29,6 +30,7 @@ namespace lux::ui
         bool docking{true};
         const FontSource* font{};
         std::size_t input_capacity{4096};
+        std::size_t attachment_capacity{65536};
     };
 
     struct FrameInfo final
@@ -63,6 +65,13 @@ namespace lux::ui
         // Optional capture, immediate resource pinning, remaining input, then owner maintenance.
         // A null output maintains owners without generating another frame or replaying input.
         [[nodiscard]] lux::cxx::expected<void, ECaptureError> update(FrameInfo, DrawData* output) noexcept;
+
+        // Cold-path preparation reserves the complete subtree. Commit is owner-thread and outside callbacks.
+        using AttachmentResult = lux::cxx::expected<PreparedAttachment, EAttachmentError>;
+        [[nodiscard]] AttachmentResult prepareMount(Pane&);
+        [[nodiscard]] AttachmentResult prepareDetach(Pane&);
+        [[nodiscard]] lux::cxx::expected<AttachmentCommit, EAttachmentError> commit(PreparedAttachment&) noexcept;
+        object::TSignal<AttachmentChanged> attachmentChanged{*this};
 
         using ChangeCallback = void (*)(object::LuxObject&) noexcept;
         // Non-owning, coalesced target/callback intents; inputs stay in the target owner.
@@ -111,13 +120,17 @@ namespace lux::ui
         [[nodiscard]] virtual lux::cxx::expected<void, ECaptureError> drawDataReady(const DrawData&) noexcept;
 
     private:
+        friend class PreparedAttachment;
         friend class Pane;
         friend class Element;
         void registerPane(Pane&);
         void registerElement(Element&);
-        void unregisterPane(Pane&) noexcept;
+        void unregisterPane(Pane&, bool notify = true) noexcept;
         void paneLabelChanged() noexcept;
-        void unregisterElement(Element&) noexcept;
+        void unregisterElement(Element&, bool notify = true) noexcept;
+        [[nodiscard]] bool attachmentSafe() const noexcept;
+        [[nodiscard]] AttachmentResult prepareAttachment(Pane&, bool mount);
+        void abandonAttachment(detail::AttachmentState&) noexcept;
         bool allowsGenericChildren() const noexcept override
         {
             return false;

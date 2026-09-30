@@ -69,3 +69,23 @@ Root::setMenu 接收 MenuItem 值树。主菜单占用固定区域，复用 Comm
 
 DockIdentity 只将保存的窗口身份映射为当前窗口身份，包含内部角色后缀及选中标签；
 DockState 仍使用原 ImGui ini 编码。Root 不认识资产、插件和磁盘设置，布局 I/O 与恢复工厂属于 Editor。
+
+## P08 离树装配
+
+`Pane(dispatcher, id, type, title)` 和 `Element(dispatcher, id)` 不注册 Root。
+以父 Pane/Element 构造的固定成员可组成离树子树；独立 Element 可通过 `addChild` / `setContent` 关联。
+关联不接管 C++ 所有权；必须按成员/unique_ptr 的逆序析构子对象。
+
+`attachedRoot()` 返回空表示未挂载，`containingPane()` 还区分独立 Element。
+离树时可设标题、modal、可见性、尺寸约束和内容；focus/capture 请求返回 false。
+测量、排列、实际绘制和旧 `root()/pane()` 引用入口要求已建立相应关联，不能把离树测量伪称成功。
+新工厂只传 owner dispatcher，不传 Root。rooted 构造和 root() 保留给既有产品到 P12。
+
+Root 的 `prepareMount/prepareDetach` 只拥有一次性准备记录，不拥有节点。
+整棵子树的注册容量预留在准备阶段；候选/Root 析构、子树或活动注册变更会使准备失效。
+`commit` 必须在 draw、measure、update、事件和 deferred callback 之外；先完成所有关联，再通知。
+提交结果含通知统计，队列 FULL/CLOSED 不能把已经提交的事实改判失败。
+
+卸载撤销输入目标、捕获、菜单目标和延迟修改记录，再撤销注册和父链，最后发出通知。
+Host 在此之前结束业务交互，在此之后按各组件原协议移交 GPU 退休责任并析构节点。
+Root 不执行保存，不等待 GPU，也不接管子对象 delete。已接受的异步工作仍由原 owner 接收完成。

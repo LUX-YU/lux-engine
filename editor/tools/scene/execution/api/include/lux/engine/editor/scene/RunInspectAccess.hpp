@@ -18,12 +18,19 @@ namespace lux::editor::scene
     {
     public:
         [[nodiscard]] RunResult<std::reference_wrapper<const simulation::ecs::Registry>> borrow(RunId) const noexcept;
-        [[nodiscard]] bool contains(RunningObjectRef) const noexcept;
+        [[nodiscard]] bool contains(RunningObjectRef ref) const noexcept
+        {
+            return contains_(store_, ref);
+        }
         [[nodiscard]] RunResult<RunningObjectRef> reference(RunId, simulation::ecs::Entity) const noexcept;
 
     private:
         friend class RunStore;
-        explicit RunInspectAccess(const RunStore& store) noexcept : store_(store) {}
+        using Contains = bool (*)(const RunStore&, RunningObjectRef) noexcept;
+        explicit RunInspectAccess(const RunStore& store, Contains contains) noexcept
+            : store_(store), contains_(contains)
+        {}
         const RunStore& store_;
+        Contains contains_;
     };
 }

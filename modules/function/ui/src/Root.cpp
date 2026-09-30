@@ -6,6 +6,7 @@
 #include <lux/engine/ui/detail/ContextActivation.hpp>
 #include <lux/engine/ui/detail/FontValidation.hpp>
 #include <lux/engine/ui/detail/Contract.hpp>
+#include <lux/engine/ui/detail/AttachmentState.hpp>
 #include <lux/engine/object/ObjectEvent.hpp>
 #include <imgui_internal.h>
 #include <algorithm>
@@ -254,6 +255,9 @@ namespace lux::ui
         Pane *draw_focused{}, *draw_hovered{};
         Element *focused_element{}, *hovered_element{}, *pending_element{};
         Element *draw_focused_element{}, *draw_hovered_element{};
+        detail::AttachmentState* preparation{};
+        std::uint64_t structure_revision{};
+        std::size_t attachment_capacity{65536};
         std::vector<Entry> registrations;
         std::vector<Pane*> windows;
         struct Change final
@@ -292,6 +296,31 @@ namespace lux::ui
             ImVec2 position, size;
         };
         std::array<Placement, 5> placements{};
+        void compactRegistrations() noexcept
+        {
+            if (std::exchange(registration_holes, false))
+            {
+                std::size_t kept{};
+                for (const auto entry : registrations)
+                    if (entry.object)
+                    {
+                        *entry.registration_slot = kept;
+                        registrations[kept++] = entry;
+                    }
+                registrations.resize(kept);
+            }
+            if (std::exchange(window_holes, false))
+            {
+                std::size_t kept{};
+                for (auto* pane : windows)
+                    if (pane)
+                    {
+                        pane->window_slot_ = kept;
+                        windows[kept++] = pane;
+                    }
+                windows.resize(kept);
+            }
+        }
     };
 
     Root::Impl::~Impl()
@@ -315,6 +344,8 @@ namespace lux::ui
             detail::failContract();
         if (impl_)
         {
+            if (impl_->preparation)
+                impl_->preparation->root = nullptr;
             checkDestruction(*this);
             checkContentChange();
         }
@@ -365,6 +396,7 @@ namespace lux::ui
                 }
             } restore;
             auto data = std::make_unique<Impl>();
+            data->attachment_capacity = config.attachment_capacity;
             data->theme = config.theme;
             data->docking = config.docking;
             data->native = ImGui::CreateContext();
@@ -486,7 +518,7 @@ namespace lux::ui
     bool Root::requestFocus(Pane& pane) noexcept
     {
         requireOwner();
-        if (&pane.root() != this || !pane.visible() || !allowedByModal(pane))
+        if (pane.attachedRoot() != this || !pane.visible() || !allowedByModal(pane))
             return false;
         impl_->pending_focus = &pane;
         return true;
@@ -499,7 +531,7 @@ namespace lux::ui
     bool Root::capturePointer(Pane& pane) noexcept
     {
         requireOwner();
-        if (&pane.root() != this || !pane.visible() || !impl_->window_focused || !allowedByModal(pane))
+        if (pane.attachedRoot() != this || !pane.visible() || !impl_->window_focused || !allowedByModal(pane))
             return false;
         impl_->pointer_capture = &pane;
         return true;
@@ -561,7 +593,7 @@ namespace lux::ui
     void Root::deferChange(Pane& target, ChangeCallback apply) noexcept
     {
         requireOwner();
-        if (&target.root() != this)
+        if (target.attachedRoot() != this)
             detail::failContract();
         impl_->queueChange(target, apply);
     }
@@ -569,7 +601,7 @@ namespace lux::ui
     void Root::deferChange(Element& target, ChangeCallback apply) noexcept
     {
         requireOwner();
-        if (&target.root() != this)
+        if (target.attachedRoot() != this)
             detail::failContract();
         impl_->queueChange(target, apply);
     }
@@ -857,8 +889,180 @@ namespace lux::ui
         return {};
     }
 
+    PreparedAttachment::PreparedAttachment(std::unique_ptr<detail::AttachmentState> state) noexcept
+        : state_(std::move(state))
+    {}
+    PreparedAttachment::~PreparedAttachment() noexcept
+    {
+        if (!state_)
+            return;
+        if (state_->root)
+            state_->root->abandonAttachment(*state_);
+        else if (state_->pane && state_->pane->preparation_ == state_.get())
+            state_->pane->preparation_ = nullptr;
+    }
+    PreparedAttachment::PreparedAttachment(PreparedAttachment&&) noexcept = default;
+    PreparedAttachment& PreparedAttachment::operator=(PreparedAttachment&& other) noexcept
+    {
+        PreparedAttachment previous(std::move(other));
+        state_.swap(previous.state_);
+        return *this;
+    }
+    void Root::abandonAttachment(detail::AttachmentState& state) noexcept
+    {
+        requireOwner();
+        if (impl_->preparation == &state)
+            impl_->preparation = nullptr;
+        if (state.pane && state.pane->preparation_ == &state)
+            state.pane->preparation_ = nullptr;
+        state.root = nullptr;
+        state.pane = nullptr;
+        state.valid = false;
+    }
+    bool Root::attachmentSafe() const noexcept
+    {
+        return isOnAffinityThread() && !impl_->drawing && !impl_->updating && !impl_->layout_depth &&
+               !impl_->active_change && !isDispatching();
+    }
+    Root::AttachmentResult Root::prepareMount(Pane& pane)
+    {
+        return prepareAttachment(pane, true);
+    }
+    Root::AttachmentResult Root::prepareDetach(Pane& pane)
+    {
+        return prepareAttachment(pane, false);
+    }
+    Root::AttachmentResult Root::prepareAttachment(Pane& pane, bool mount)
+    {
+        if (!isOnAffinityThread() || !pane.isOnAffinityThread())
+            return lux::cxx::unexpected(EAttachmentError::WRONG_THREAD);
+        if (!attachmentSafe() || impl_->preparation || pane.preparation_)
+            return lux::cxx::unexpected(EAttachmentError::BUSY);
+        if (pane.dispatcherRef() != dispatcherRef())
+            return lux::cxx::unexpected(EAttachmentError::WRONG_DISPATCHER);
+        if (mount && (pane.attachedRoot() || pane.parent()))
+            return lux::cxx::unexpected(EAttachmentError::ALREADY_ATTACHED);
+        if (!mount && (pane.attachedRoot() != this || pane.parent() != this))
+            return lux::cxx::unexpected(EAttachmentError::NOT_ATTACHED);
+        auto prepared = std::make_unique<detail::AttachmentState>();
+        std::size_t windows{};
+        bool invalid{};
+        const auto visit = [&](auto&& self, object::LuxObject& node) -> void {
+            if (auto* window = dynamic_cast<Pane*>(&node))
+            {
+                const bool wrong_root = mount ? window->attachedRoot() != nullptr : window->attachedRoot() != this;
+                invalid |= wrong_root;
+                prepared->nodes.push_back({window, nullptr});
+                ++windows;
+            }
+            else if (auto* element = dynamic_cast<Element*>(&node))
+            {
+                invalid |= !element->containingPane();
+                prepared->nodes.push_back({nullptr, element});
+            }
+            else
+            {
+                invalid = true;
+                return;
+            }
+            for (auto* child = node.firstChild(); child; child = child->nextSibling())
+                self(self, *child);
+        };
+        visit(visit, pane);
+        if (invalid)
+            return lux::cxx::unexpected(EAttachmentError::INVALID_TREE);
+        if (mount)
+        {
+            std::vector<PaneIdView> names;
+            names.reserve(windows);
+            for (auto node : prepared->nodes)
+                if (node.pane)
+                {
+                    auto name = node.pane->id().view();
+                    if (findPane(name) || std::ranges::find(names, name) != names.end())
+                        return lux::cxx::unexpected(EAttachmentError::DUPLICATE_ID);
+                    names.push_back(name);
+                }
+            const auto active =
+                std::ranges::count_if(impl_->registrations, [](const auto& entry) { return entry.object; });
+            if (prepared->nodes.size() >
+                impl_->attachment_capacity - std::min<std::size_t>(active, impl_->attachment_capacity))
+                return lux::cxx::unexpected(EAttachmentError::CAPACITY);
+            impl_->compactRegistrations();
+            impl_->registrations.reserve(impl_->registrations.size() + prepared->nodes.size());
+            impl_->windows.reserve(impl_->windows.size() + windows);
+        }
+        prepared->root = this;
+        prepared->pane = &pane;
+        prepared->revision = impl_->structure_revision;
+        prepared->mount = mount;
+        impl_->preparation = prepared.get();
+        pane.preparation_ = prepared.get();
+        return PreparedAttachment{std::move(prepared)};
+    }
+    lux::cxx::expected<AttachmentCommit, EAttachmentError> Root::commit(PreparedAttachment& token) noexcept
+    {
+        if (!isOnAffinityThread())
+            return lux::cxx::unexpected(EAttachmentError::WRONG_THREAD);
+        if (!attachmentSafe())
+            return lux::cxx::unexpected(EAttachmentError::BUSY);
+        auto* state = token.state_.get();
+        const bool stale = !state || state->root != this || !state->pane || !state->valid ||
+                           state->revision != impl_->structure_revision;
+        if (stale)
+            return lux::cxx::unexpected(EAttachmentError::STALE_PREPARATION);
+        // Consume the public token before notifications. Callers may release or replace it in a callback.
+        auto committed = std::move(token.state_);
+        auto& pane = *state->pane;
+        const bool mount = state->mount;
+        // Clear preparation before changing links. No callbacks or allocations until every link is adopted.
+        abandonAttachment(*state);
+        if (mount)
+        {
+            pane.attachTo(*this);
+            for (auto node : state->nodes)
+            {
+                if (node.pane)
+                {
+                    node.pane->root_ = this;
+                    registerPane(*node.pane);
+                }
+                else
+                    registerElement(*node.element);
+            }
+        }
+        else
+        {
+            for (auto node : state->nodes)
+                if (node.pane)
+                    unregisterPane(*node.pane, false);
+                else
+                    unregisterElement(*node.element, false);
+            pane.detachFromParent();
+            for (auto node : state->nodes)
+                if (node.pane)
+                    node.pane->root_ = nullptr;
+        }
+        AttachmentCommit result{mount, {}};
+        const auto append = [&](object::SignalDelivery delivered) {
+            result.notifications.direct += delivered.direct;
+            result.notifications.queued += delivered.queued;
+            result.notifications.full += delivered.full;
+            result.notifications.closed += delivered.closed;
+        };
+        // A notification cannot mutate/destroy this subtree, even after it has left Root's routing chain.
+        pane.beginTreeVisit();
+        if (!mount)
+            for (auto node : state->nodes)
+                append(emit(objectRemoved, node.pane ? static_cast<object::LuxObject*>(node.pane) : node.element));
+        append(emit(attachmentChanged, AttachmentChanged{pane.id(), mount}));
+        pane.endTreeVisit();
+        return result;
+    }
+
     void Root::registerPane(Pane& pane)
     {
+        ++impl_->structure_revision;
         ++impl_->window_revision;
         checkContentChange();
         // Reserve all fallible storage before publishing either borrowed registration.
@@ -879,6 +1083,7 @@ namespace lux::ui
 
     void Root::registerElement(Element& element)
     {
+        ++impl_->structure_revision;
         checkContentChange();
         const auto count = impl_->registrations.size() + 1;
         if (count > impl_->registrations.capacity())
@@ -897,11 +1102,14 @@ namespace lux::ui
         ++impl_->window_revision;
     }
 
-    void Root::unregisterPane(Pane& pane) noexcept
+    void Root::unregisterPane(Pane& pane, bool notify) noexcept
     {
         checkDestruction(pane);
         checkContentChange();
-        static_cast<void>(emit(objectRemoved, static_cast<object::LuxObject*>(&pane)));
+        // The rooted destructor adapter keeps its established notification order until P12.
+        if (notify)
+            static_cast<void>(emit(objectRemoved, static_cast<object::LuxObject*>(&pane)));
+        ++impl_->structure_revision;
         if (impl_->menu_pane == &pane)
         {
             impl_->menu_pane = nullptr;
@@ -923,13 +1131,18 @@ namespace lux::ui
                 *target = nullptr;
         if (impl_->pointer_capture.window == &pane)
             impl_->pointer_capture = {};
+        pane.registration_slot_ = pane.window_slot_ = SIZE_MAX;
+        pane.focused_ = pane.hovered_ = false;
     }
 
-    void Root::unregisterElement(Element& element) noexcept
+    void Root::unregisterElement(Element& element, bool notify) noexcept
     {
         checkDestruction(element);
         checkContentChange();
-        static_cast<void>(emit(objectRemoved, static_cast<object::LuxObject*>(&element)));
+        // The rooted destructor adapter keeps its established notification order until P12.
+        if (notify)
+            static_cast<void>(emit(objectRemoved, static_cast<object::LuxObject*>(&element)));
+        ++impl_->structure_revision;
         if (impl_->menu_element == &element)
             impl_->menu_element = nullptr;
         impl_->cancelChanges(element);
@@ -950,6 +1163,8 @@ namespace lux::ui
                 *target = nullptr;
         if (impl_->pointer_capture.element == &element)
             impl_->pointer_capture = {};
+        element.registration_slot_ = SIZE_MAX;
+        element.hovered_ = false;
     }
 
     void Root::checkDestruction(const object::LuxObject& object) const noexcept
@@ -1009,28 +1224,7 @@ namespace lux::ui
             entry.update(entry.object);
             impl_->active_update = nullptr;
         }
-        if (std::exchange(impl_->registration_holes, false))
-        {
-            std::size_t kept{};
-            for (const auto entry : impl_->registrations)
-                if (entry.object)
-                {
-                    *entry.registration_slot = kept;
-                    impl_->registrations[kept++] = entry;
-                }
-            impl_->registrations.resize(kept);
-        }
-        if (std::exchange(impl_->window_holes, false))
-        {
-            std::size_t kept{};
-            for (auto* pane : impl_->windows)
-                if (pane)
-                {
-                    pane->window_slot_ = kept;
-                    impl_->windows[kept++] = pane;
-                }
-            impl_->windows.resize(kept);
-        }
+        impl_->compactRegistrations();
         impl_->updating = false;
     }
 
@@ -1041,7 +1235,7 @@ namespace lux::ui
     }
     bool Root::requestFocus(Element& element) noexcept
     {
-        if (&element.root() != this || !element.displayed() || !element.enabled() || !allowedByModal(element))
+        if (element.attachedRoot() != this || !element.displayed() || !element.enabled() || !allowedByModal(element))
             return false;
         impl_->pending_element = &element;
         return requestFocus(element.pane());
@@ -1049,7 +1243,7 @@ namespace lux::ui
     bool Root::capturePointer(Element& element) noexcept
     {
         requireOwner();
-        if (&element.root() != this || !element.displayed() || !element.enabled() || !impl_->window_focused ||
+        if (element.attachedRoot() != this || !element.displayed() || !element.enabled() || !impl_->window_focused ||
             !allowedByModal(element))
             return false;
         impl_->pointer_capture = &element;
@@ -1058,7 +1252,7 @@ namespace lux::ui
     void Root::releaseFocus(Element& element) noexcept
     {
         requireOwner();
-        if (&element.root() != this)
+        if (element.attachedRoot() != this)
             detail::failContract();
         if (impl_->pending_element == &element)
             impl_->pending_element = {};
@@ -1111,7 +1305,7 @@ namespace lux::ui
     }
     void Root::drawElement(Element& element, Point parent_origin) noexcept
     {
-        if (!impl_->drawing || &element.root() != this)
+        if (!impl_->drawing || element.attachedRoot() != this)
             detail::failContract();
         if (!element.visible_)
             return;

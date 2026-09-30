@@ -122,7 +122,8 @@ def check_model(repo, targets, rules, sources, report, name):
         for delimiter, header in re.findall(r'^\s*#\s*include\s*([<"])([^>"\n]+)', source, re.M):
             local = delimiter == '"' and (repo / path).parent.joinpath(header).resolve().is_relative_to(
                 (repo / scope).resolve())
-            if not local and header not in policy["headers"] and not header.startswith(tuple(policy["prefixes"])):
+            test_header = header in policy.get("test_headers", {}).get(path, [])
+            if not local and not test_header and header not in policy["headers"] and not header.startswith(tuple(policy["prefixes"])):
                 report(prefix + "_FORBIDDEN_INCLUDE", path, header)
 
 
@@ -203,6 +204,15 @@ def inspect(repo, records, rules, stage, compile_db=None):
         for target in ["scene_projection", "material_preview", "flowforge_compilation"]:
             check_model(repo, targets, rules, sources, report, target)
 
+    if stage >= "P08":
+        for target in ["scene_interaction", "material_interaction", "flowforge_interaction", "view_api"]:
+            check_model(repo, targets, rules, sources, report, target)
+        # Factories in the new protocol must receive a dispatcher, never a Root for construction.
+        for path, source in sources.items():
+            if path.startswith("editor/views/") and "/test/" not in path:
+                if re.search(r"\bRoot\s*&", source) and re.search(r"(?:make_unique<[^>]*(?:Pane|Element)|(?:Pane|Element)\s*[({])", source):
+                    report("NEW_ROOTED_FACTORY", path, "P08 factory calls the expiring rooted constructor")
+
     scopes = tuple(rules["new_scopes"])
     forbidden_headers = set(rules["new_scope_forbidden_include"])
     for path, source in sources.items():
@@ -235,7 +245,7 @@ def inspect(repo, records, rules, stage, compile_db=None):
                     own = include.startswith(record["SOURCE_DIR"].rstrip("/") + "/")
                     if private and (not own or key.startswith("INTERFACE")):
                         report("PRIVATE_INCLUDE", name, include)
-        if not source_dir.startswith("engine/") and name not in new_targets:
+        if not source_dir.startswith(("engine/", "modules/")) and name not in new_targets:
             continue
         queue = [(name, [name])]
         seen = set()
@@ -256,7 +266,7 @@ def inspect(repo, records, rules, stage, compile_db=None):
                     continue
                 chain_next = chain + [dependency]
                 detail = " -> ".join(chain_next) + " (" + kind + ")"
-                if source_dir.startswith("engine/") and location.startswith("editor/"):
+                if source_dir.startswith(("engine/", "modules/")) and location.startswith("editor/"):
                     report("ENGINE_DEPENDS_ON_EDITOR", name, detail)
                 if name == "editor_workflows" and dependency == "editor_bootstrap":
                     report("WORKFLOWS_DEPEND_ON_BOOTSTRAP", name, detail)

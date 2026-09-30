@@ -194,7 +194,7 @@ namespace lux::editor::flowforge
     FlowCompileOperation::~FlowCompileOperation()
     {
         cancel();
-        // The executor keeps the completion's shared state alive. The last public owner must
+        // The executor keeps the completion's shared state alive. The unique public owner must
         // release its Task handle so abandoned UI delivery cannot form a record/state cycle.
         impl_->task = {};
     }

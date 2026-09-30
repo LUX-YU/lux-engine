@@ -68,6 +68,11 @@ namespace lux::editor::material
             std::uint64_t target = 1
         );
         ~MaterialCompileOperation();
+        // Transfer the unique_ptr returned by start(), never the task control object itself.
+        MaterialCompileOperation(const MaterialCompileOperation&) = delete;
+        MaterialCompileOperation& operator=(const MaterialCompileOperation&) = delete;
+        MaterialCompileOperation(MaterialCompileOperation&&) = delete;
+        MaterialCompileOperation& operator=(MaterialCompileOperation&&) = delete;
         [[nodiscard]] MaterialCompileId id() const noexcept;
         [[nodiscard]] process::TaskId task() const noexcept;
         [[nodiscard]] MaterialCompileKey key() const noexcept;

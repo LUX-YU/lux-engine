@@ -79,6 +79,11 @@ namespace lux::editor::flowforge
     {
     public:
         ~FlowCompileOperation();
+        // The service owns task control; callers retain an ID or borrow a const reference.
+        FlowCompileOperation(const FlowCompileOperation&) = delete;
+        FlowCompileOperation& operator=(const FlowCompileOperation&) = delete;
+        FlowCompileOperation(FlowCompileOperation&&) = delete;
+        FlowCompileOperation& operator=(FlowCompileOperation&&) = delete;
         [[nodiscard]] FlowCompileId id() const noexcept;
         [[nodiscard]] FlowCompileKey key() const noexcept;
         [[nodiscard]] sessions::ObservationVersion observed() const noexcept;
@@ -108,6 +113,7 @@ namespace lux::editor::flowforge
             LinkSettings = {}
         );
         [[nodiscard]] FlowCompilationResult<void> retryLink(FlowCompileId, LinkSettings);
+        // The borrowed operation remains valid until acknowledge(id) or service destruction.
         [[nodiscard]] FlowCompilationResult<std::reference_wrapper<const FlowCompileOperation>> operation(FlowCompileId
         ) const;
         [[nodiscard]] FlowCompilationResult<void> acknowledge(FlowCompileId);

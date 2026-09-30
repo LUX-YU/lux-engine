@@ -9,7 +9,8 @@ add_component(COMPONENT_NAME desktop_shell NAMESPACE lux::engine::editor STATIC
     SOURCE_FILES src/DesktopShell.cpp src/WindowInput.cpp src/WindowOutput.cpp src/Presentation.cpp src/UiRenderSyncStage.cpp)
 component_include_directories(desktop_shell BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude INSTALL_TIME include)
-target_link_libraries(desktop_shell PUBLIC view_host lux::engine::scene::scene_render
+component_add_internal_dependencies(desktop_shell view_host)
+target_link_libraries(desktop_shell PUBLIC lux::engine::scene::scene_render
     lux::engine::function::ui_rendering lux::engine::function::input lux::engine::platform::window)
 component_add_transitive_commands(desktop_shell
     "find_package(lux-engine-scene-render REQUIRED COMPONENTS scene_render)"

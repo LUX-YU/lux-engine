@@ -23,7 +23,7 @@ namespace lux::editor::views
         }
         friend bool operator==(ViewId, ViewId) = default;
     };
-    using ViewTypeId = lux::cxx::StableNameId<ui::PaneTypeIdTag>;
+    using ViewTypeId = lux::cxx::StableNameId<lux::ui::PaneTypeIdTag>;
     struct ViewRestoreKeyTag final
     {};
     using ViewRestoreKey = lux::cxx::StableNameId<ViewRestoreKeyTag>;

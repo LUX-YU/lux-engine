@@ -60,3 +60,9 @@ add_test(NAME editor.workspace_boundaries
         --source "${PROJECT_SOURCE_DIR}" --cmake "${CMAKE_COMMAND}"
         --evidence "${CMAKE_CURRENT_BINARY_DIR}/workspace-boundaries.json")
 set_tests_properties(editor.workspace_boundaries PROPERTIES LABELS "editor;native;P09" TIMEOUT 180)
+
+add_test(NAME editor.desktop_view_boundaries
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_interaction_view_boundaries.py"
+        --stage P10 --source "${PROJECT_SOURCE_DIR}" --cmake "${CMAKE_COMMAND}"
+        --evidence "${CMAKE_CURRENT_BINARY_DIR}/desktop-view-boundaries.json")
+set_tests_properties(editor.desktop_view_boundaries PROPERTIES LABELS "editor;native;P10" TIMEOUT 240)

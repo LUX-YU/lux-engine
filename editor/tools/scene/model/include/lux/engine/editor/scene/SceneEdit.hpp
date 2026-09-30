@@ -2,6 +2,7 @@
 
 #include <lux/engine/editor/scene/FieldValue.hpp>
 #include <lux/engine/editor/scene/SceneSnapshot.hpp>
+#include <lux/engine/simulation/ecs/DecodedComponent.hpp>
 #include <charconv>
 
 namespace lux::editor::scene
@@ -90,10 +91,16 @@ namespace lux::editor::scene
             return false;
         }
 
-        template <class Component, class Value> class TSceneFieldChange final : public SceneFieldChange
+        struct ReflectedSceneField final
+        {};
+
+        template <class Component, class Value, class Access = ReflectedSceneField>
+        class TSceneFieldChange final : public SceneFieldChange
         {
         public:
-            explicit TSceneFieldChange(Value value) : value_(std::move(value)) {}
+            explicit TSceneFieldChange(Value value, Access access = {})
+                : value_(std::move(value)), access_(std::move(access))
+            {}
             lux::cxx::TypeToken type() const noexcept override
             {
                 return lux::cxx::typeToken<Component>();
@@ -105,21 +112,47 @@ namespace lux::editor::scene
             SwapSceneComponent swap() const noexcept override
             {
                 return [](auto& left, auto entity, auto& right, auto other) noexcept {
-                    TFieldValue<Component>::swap(
-                        left.template get<Component>(entity),
-                        right.template get<Component>(other)
-                    );
+                    auto& first = left.template get<Component>(entity);
+                    auto& second = right.template get<Component>(other);
+                    if constexpr (!std::is_nothrow_swappable_v<Component> &&
+                                  simulation::ecs::componentInstallHasNoBusinessFailure<Component>)
+                    {
+                        // Use the schema's reviewed installation contract, not potentially fallible
+                        // move assignment or a reflected-fields-only swap that loses private state.
+                        static_assert(std::is_nothrow_destructible_v<Component>);
+                        Component saved(std::move(first));
+                        std::destroy_at(std::addressof(first));
+                        std::construct_at(std::addressof(first), std::move(second));
+                        std::destroy_at(std::addressof(second));
+                        std::construct_at(std::addressof(second), std::move(saved));
+                    }
+                    else
+                        TFieldValue<Component>::swap(first, second);
                 };
             }
             bool apply(void* component, std::string_view path) const override
             {
-                return TFieldValue<Value>::valid(value_) &&
-                       assignSceneField(*static_cast<Component*>(component), path, value_) &&
-                       TFieldValue<Component>::valid(*static_cast<Component*>(component));
+                if (!TFieldValue<Value>::valid(value_))
+                    return false;
+                auto& typed = *static_cast<Component*>(component);
+                if constexpr (std::same_as<Access, ReflectedSceneField>)
+                {
+                    if (!assignSceneField(typed, path, value_))
+                        return false;
+                }
+                else
+                {
+                    auto* field = access_(typed);
+                    if (!field)
+                        return false;
+                    *field = value_;
+                }
+                return TFieldValue<Component>::valid(typed);
             }
 
         private:
             Value value_;
+            [[no_unique_address]] Access access_;
         };
     }
 
@@ -168,6 +201,26 @@ namespace lux::editor::scene
                 std::move(target),
                 std::move(code),
                 std::make_unique<detail::TSceneFieldChange<Component, Value>>(std::move(value))
+            };
+        }
+
+        // Generated field accessors own indices/keys and reacquire the field on the model's scratch
+        // component. They never borrow a live Registry address or bypass the existing batch gate.
+        template <class Component, class Value, class Access>
+        [[nodiscard]] static SceneSetField makeWithAccess(
+            SceneObjectLocator target,
+            Value value,
+            Access access,
+            std::shared_ptr<const void> code = {}
+        )
+        {
+            return {
+                std::move(target),
+                std::move(code),
+                std::make_unique<detail::TSceneFieldChange<Component, Value, Access>>(
+                    std::move(value),
+                    std::move(access)
+                )
             };
         }
     };

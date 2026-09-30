@@ -4,7 +4,7 @@ from pathlib import Path
 import unittest
 
 spec = importlib.util.spec_from_file_location(
-    "inspector_generator", Path(__file__).parents[1] / "codegen/inspector_codegen.py")
+    "inspector_generator", Path(__file__).parents[2] / "tools/scene/ui/codegen/inspector_codegen.py")
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
@@ -44,7 +44,7 @@ class GeneratorTests(unittest.TestCase):
         self.assertIn("std::get<1>(*value)", code)
         self.assertIn("(*value)[1]", code)
         self.assertIn("TSequenceFieldElement<", code)
-        self.assertIn("TFieldElement<Component, int", code)
+        self.assertIn("TFieldElement<InspectorInteraction, Component, int", code)
         self.assertIn("std::make_unique<FieldGroup>", code)
         self.assertNotIn("TCompositeFieldElement<", code)
         self.assertNotIn("state.input", code)
@@ -56,7 +56,7 @@ class GeneratorTests(unittest.TestCase):
                                      {"custom_elements": ["MyValue=MyControl"]})
         generator.element_factory("Component", "MyValue")
         code = "\n".join(generator.functions)
-        self.assertIn("TFieldElement<Component, MyValue, Access, MyControl>", code)
+        self.assertIn("TFieldElement<InspectorInteraction, Component, MyValue, Access, MyControl>", code)
         self.assertIn("std::move(access), interaction, status", code)
         self.assertNotIn("TCompositeFieldElement", code)
         self.assertNotIn("TInspectorControl", code)

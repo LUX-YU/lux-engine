@@ -24,7 +24,7 @@ namespace lux::editor
             return lux::cxx::unexpected(object::EConnectError::CAPACITY_EXHAUSTED);
         return result;
     }
-    ui::Presentation* EditorTestAccess::ui(Editor& editor) noexcept
+    desktop::Presentation* EditorTestAccess::ui(Editor& editor) noexcept
     {
         return editor.impl_->presentation.get();
     }

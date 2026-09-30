@@ -13,7 +13,7 @@ namespace lux::editor
         void draw() noexcept override;
         void update() noexcept override;
         ProjectStorage& project_;
-        const project::PluginManager& plugins_;
+        const lux::project::PluginManager& plugins_;
         process::ExecutionRuntime& execution_;
         std::vector<ProjectPluginEntry> selection_;
         bool save_requested_{}, retry_requested_{}, abandon_requested_{};

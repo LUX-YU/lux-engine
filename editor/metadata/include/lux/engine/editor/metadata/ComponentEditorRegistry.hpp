@@ -37,7 +37,7 @@ namespace lux::editor
         std::string name;
         CreateFn create{};
         std::shared_ptr<const void> code_lifetime;
-        project::MetadataIdentity provider;
+        lux::project::MetadataIdentity provider;
     };
 
     // Immutable editor extensions. Runtime component semantics remain in the schema set.

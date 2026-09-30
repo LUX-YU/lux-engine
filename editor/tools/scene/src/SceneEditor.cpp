@@ -756,34 +756,11 @@ namespace lux::editor::scene
             id = lux::world::WorldObjectId{generate()};
         } while (!id.valid() || this->content->identities().entity(id) != ecs::NullEntity);
 
+        auto encoded = makeSceneObject(id, partition, space, supportsHierarchy(), this->content->metadata);
+        if (!encoded) return lux::cxx::unexpected(encoded.error());
         detail::ObjectContent content{id, partition, {}};
-        ecs::WorldEntityMap identities;
-        const auto append = [&](const auto& value) -> editing::EditResult<void> {
-            auto encoded = this->content->encodeComponent(value, identities);
-            if (!encoded)
-            {
-                return lux::cxx::unexpected(encoded.error());
-            }
-            content.components.push_back(std::move(*encoded));
-            return {};
-        };
-        editing::EditResult<void> encoded;
-        if (space == EObjectSpace::SPACE_2D)
-        {
-            encoded = append(ecs::Transform2D{});
-        }
-        else if (space == EObjectSpace::SPACE_3D)
-        {
-            encoded = append(ecs::Transform3D{});
-        }
-        if (encoded && supportsHierarchy())
-        {
-            encoded = append(ecs::Parent{ecs::NullEntity});
-        }
-        if (!encoded)
-        {
-            return lux::cxx::unexpected(encoded.error());
-        }
+        for (auto& component : encoded->components)
+            content.components.push_back({this->content->metadata.find(component.schema), std::move(component.bytes)});
         std::vector<detail::ObjectContent> objects;
         objects.push_back(std::move(content));
         editing::EditOperationPtr operation =

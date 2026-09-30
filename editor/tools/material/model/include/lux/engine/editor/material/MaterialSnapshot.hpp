@@ -70,6 +70,8 @@ namespace lux::editor::material
             return gate_.withRead([&] { return std::invoke(std::forward<Fn>(function), std::as_const(source_)); });
         }
         [[nodiscard]] MaterialEditResult<MaterialSnapshot> capture(MaterialSnapshotBudget budget = {}) const;
+        // One local node gesture, not a second graph. Its outer lease outlives the cloned node.
+        [[nodiscard]] MaterialEditResult<MaterialReplaceNode> copyNode(lux::material::NodeId) const;
         [[nodiscard]] MaterialEditResult<std::string> encode() const;
 
     private:

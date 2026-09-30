@@ -3,7 +3,7 @@
 #include <lux/engine/editor/EditorError.hpp>
 
 #include <lux/engine/editor/editing/scene/SceneEdit.hpp>
-#include <lux/engine/math/Ray.hpp>
+#include <lux/engine/editor/scene/CameraNavigation.hpp>
 #include <lux/engine/scene/Camera.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
 
@@ -14,27 +14,13 @@ namespace lux::scene
 
 namespace lux::editor::ui
 {
-    struct CameraMotion final
-    {
-        Eigen::Vector3d local_translation{Eigen::Vector3d::Zero()};
-        Eigen::Vector2d angular_delta{Eigen::Vector2d::Zero()};
-        Eigen::Vector2d pan_delta{Eigen::Vector2d::Zero()};
-        double dolly{};
-    };
-
-    struct CameraPose final
-    {
-        lux::simulation::ecs::Transform3D transform;
-        lux::scene::Camera camera;
-    };
-
     // Open extension point, constructed by the GUI provider. No registry of global viewports.
     class LUX_EDITOR_UI_PUBLIC SpatialInteraction
     {
     public:
         virtual ~SpatialInteraction();
-        [[nodiscard]] virtual EditorResult<CameraPose>
-        navigate(const lux::simulation::ecs::Transform3D&, const lux::scene::Camera&, const CameraMotion&) = 0;
+        [[nodiscard]] virtual EditorResult<scene::CameraPose>
+        navigate(const lux::simulation::ecs::Transform3D&, const lux::scene::Camera&, const scene::CameraMotion&) = 0;
         // Point and extent share image-local logical units; their ratio is DPI invariant.
         [[nodiscard]] virtual EditorResult<lux::math::Ray3d> ray(
             const lux::simulation::ecs::WorldTransform3D&,

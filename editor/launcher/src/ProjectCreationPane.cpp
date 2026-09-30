@@ -27,33 +27,33 @@ namespace lux::editor
             {"lux.render.assets", "assets"},
             {"lux.world.loading", "world-storage"}
         };
-        EditorFailure pluginError(const project::PluginFailure& error)
+        EditorFailure pluginError(const lux::project::PluginFailure& error)
         {
             return {EEditorError::SOURCE_FAILURE, "project.plugins", 0, error.plugin + ": " + error.subject, error};
         }
         struct ReadCatalog final
         {
             std::filesystem::path installation;
-            EditorResult<project::PluginCatalog> operator()() const noexcept
+            EditorResult<lux::project::PluginCatalog> operator()() const noexcept
             {
-                project::PluginCatalog result;
+                lux::project::PluginCatalog result;
                 const auto read = result.read(installation / "share/lux-engine/plugins/catalog.json", installation);
                 if (!read)
                     return lux::cxx::unexpected(pluginError(read.error()));
                 return result;
             }
         };
-        using LoadedPlugins = std::pair<project::PluginManager, std::vector<EditorPlugin>>;
+        using LoadedPlugins = std::pair<lux::project::PluginManager, std::vector<EditorPlugin>>;
         struct LoadPlugins final
         {
             std::filesystem::path installation;
-            std::vector<project::MetadataIdentity> selected;
+            std::vector<lux::project::MetadataIdentity> selected;
             EditorResult<LoadedPlugins> operator()() const noexcept
             {
                 auto catalog = ReadCatalog{installation}();
                 if (!catalog)
                     return lux::cxx::unexpected(catalog.error());
-                auto manager = project::PluginManager::create(std::move(*catalog), selected);
+                auto manager = lux::project::PluginManager::create(std::move(*catalog), selected);
                 if (!manager)
                     return lux::cxx::unexpected(pluginError(manager.error()));
                 std::vector<EditorPlugin> extensions;
@@ -152,7 +152,7 @@ namespace lux::editor
         process::ExecutionRuntime& execution;
         std::filesystem::path installation;
         std::shared_ptr<const void> reflection;
-        std::optional<project::PluginCatalog> catalog;
+        std::optional<lux::project::PluginCatalog> catalog;
         std::optional<LoadedPlugins> plugins;
         SceneRegistrations registrations;
         std::vector<ConfigurationEditorRegistration> configuration_editors;
@@ -166,7 +166,7 @@ namespace lux::editor
         lux::ui::Layout plugin_list;
         lux::ui::Choice preset;
         lux::ui::Label spatial, confirmation, error;
-        std::vector<std::pair<project::MetadataIdentity, std::unique_ptr<lux::ui::CheckBox>>> selections;
+        std::vector<std::pair<lux::project::MetadataIdentity, std::unique_ptr<lux::ui::CheckBox>>> selections;
         std::unique_ptr<ui::SceneConfigurationElement> scene;
         Waiting waiting;
         lux::ui::Layout actions;
@@ -174,7 +174,7 @@ namespace lux::editor
         std::array<object::Connection, 6> connections;
         using VPending = std::variant<
             std::monostate,
-            EditorResult<project::PluginCatalog>,
+            EditorResult<lux::project::PluginCatalog>,
             EditorResult<LoadedPlugins>,
             EditorResult<ProjectCreationResult>,
             EditorResult<void>>;
@@ -402,7 +402,7 @@ namespace lux::editor
             auto completed = std::move(pending);
             pending.emplace<std::monostate>();
             phase = EPhase::CONFIGURE;
-            if (auto* value = std::get_if<EditorResult<project::PluginCatalog>>(&completed))
+            if (auto* value = std::get_if<EditorResult<lux::project::PluginCatalog>>(&completed))
             {
                 if (!*value)
                     report(value->error());
@@ -500,7 +500,7 @@ namespace lux::editor
                         error.setText("Enter a name, an absolute new directory and a relative package directory.");
                     else
                     {
-                        std::vector<project::MetadataIdentity> selected;
+                        std::vector<lux::project::MetadataIdentity> selected;
                         for (const auto& [id, enabled] : selections)
                             if (enabled->value())
                                 selected.push_back(id);

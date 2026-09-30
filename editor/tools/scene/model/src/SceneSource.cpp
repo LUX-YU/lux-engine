@@ -362,6 +362,23 @@ namespace lux::editor::scene
         const bool is_same_source = target.session == stamp_.session && target.history == stamp_.state.history;
         return is_same_source && source_->data_->identities.entity(target.object) != ecs::NullEntity;
     }
+    SceneEditResult<std::vector<simulation::ecs::ComponentSchemaId>>
+    SceneReadView::components(SceneObjectRef target) const
+    {
+        return gate_.withRead([&]() -> SceneEditResult<std::vector<simulation::ecs::ComponentSchemaId>> {
+            if (!contains(target)) return detail::rejected(ESceneEditError::STALE_OBJECT, target.object);
+            std::vector<simulation::ecs::ComponentSchemaId> result;
+            const auto& data = *source_->data_;
+            const auto found = std::ranges::find(data.objects, target.object, &SceneObjectData::id);
+            if (found == data.objects.end()) return detail::rejected(ESceneEditError::STALE_OBJECT, target.object);
+            for (const auto& component : found->components) result.push_back(component.schema);
+            const auto entity = data.identities.entity(target.object);
+            for (const auto& schema : data.schemas.all())
+                if (schema.operations.has(data.registry, entity)) result.push_back(schema.id);
+            return result;
+        });
+    }
+
     SceneEditResult<world::WorldObjectId> SceneReadView::parent(SceneObjectRef target) const noexcept
     {
         if (!contains(target))

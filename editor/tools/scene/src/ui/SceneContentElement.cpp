@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <imgui.h>
-#include <lux/engine/editor/ui/asset/AssetDragDrop.hpp>
+#include <lux/engine/editor/project/ProjectCatalogAccess.hpp>
 #include <lux/engine/editor/ui/scene/SceneContentElement.hpp>
 #include <lux/engine/scene/SceneRuntime.hpp>
 #include <lux/engine/scene/RenderAssets.hpp>
@@ -140,7 +140,7 @@ namespace lux::editor::ui
                 status_ = camera ? "Scene is unavailable" : camera.error().message;
                 return;
             }
-            auto opened = ui::SceneElement::create(
+            auto opened = scene::SceneElement::create(
                 layout_,
                 lux::ui::ElementId{std::string(id().name()) + ".view"},
                 runtime_,
@@ -656,14 +656,14 @@ namespace lux::editor::ui
         const auto& interaction = viewport_->image().interaction();
         if (!displayed_run_.valid() && interaction.hovered && ImGui::BeginDragDropTarget())
         {
-            if (const auto* payload = ImGui::AcceptDragDropPayload(kAssetReferencePayload))
+            if (const auto* payload = ImGui::AcceptDragDropPayload(project::kAssetReferencePayload))
             {
-                const auto reference = decodeAssetReference(
+                const auto reference = project::decodeAssetReference(
                     {static_cast<const std::byte*>(payload->Data), static_cast<std::size_t>(payload->DataSize)}
                 );
                 if (!reference)
                 {
-                    status_ = reference.error().domain + ": " + reference.error().message;
+                    status_ = "Invalid asset reference payload";
                 }
                 else if (spatial_)
                 {
@@ -701,7 +701,7 @@ namespace lux::editor::ui
             rotating_ = (rotating_ || interaction.right_clicked) && ImGui::IsMouseDown(ImGuiMouseButton_Right);
             panning_ = (panning_ || interaction.middle_clicked) && ImGui::IsMouseDown(ImGuiMouseButton_Middle);
         }
-        CameraMotion motion;
+        lux::editor::scene::CameraMotion motion;
         if (rotating_)
         {
             motion.angular_delta = {-input.MouseDelta.x * 0.004, -input.MouseDelta.y * 0.004};

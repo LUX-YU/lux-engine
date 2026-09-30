@@ -165,7 +165,7 @@ namespace lux::editor
                 EditorFailure{EEditorError::FRONTEND_FAILURE, "editor.ui.initialize", 0, {}, cpu_ui.error()}
             );
         root->bindWindow(window.get());
-        auto created = ui::Presentation::create(
+        auto created = desktop::Presentation::create(
             *root,
             process,
             engine->sceneRuntime(),
@@ -174,7 +174,9 @@ namespace lux::editor
             window.get()
         );
         if (!created)
-            return lux::cxx::unexpected(created.error());
+            return lux::cxx::unexpected(
+                EditorFailure{EEditorError::FRONTEND_FAILURE, "desktop.presentation", 0, {}, created.error()}
+            );
         presentation = std::move(*created);
         return {};
     }

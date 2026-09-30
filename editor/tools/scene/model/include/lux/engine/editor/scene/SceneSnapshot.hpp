@@ -101,6 +101,8 @@ namespace lux::editor::scene
         }
         [[nodiscard]] std::vector<SceneObjectRef> objects() const;
         [[nodiscard]] bool contains(SceneObjectRef target) const noexcept;
+        [[nodiscard]] SceneEditResult<std::vector<simulation::ecs::ComponentSchemaId>>
+        components(SceneObjectRef target) const;
         [[nodiscard]] SceneEditResult<world::WorldObjectId> parent(SceneObjectRef target) const noexcept;
         [[nodiscard]] SceneEditResult<SceneComponentData> component(
             SceneObjectRef target,

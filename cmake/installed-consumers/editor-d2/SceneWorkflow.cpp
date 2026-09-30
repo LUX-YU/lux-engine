@@ -13,7 +13,7 @@
 #include <lux/engine/editor/Editor.hpp>
 #include <lux/engine/editor/scene/SceneEditor.hpp>
 #include <lux/engine/editor/editing/scene/FieldEdit.hpp>
-#include <lux/engine/editor/ui/Presentation.hpp>
+#include <lux/engine/editor/desktop/Presentation.hpp>
 #include <lux/engine/object/detail/MessageEnvelope.hpp>
 #include <lux/engine/process/TaskScope.hpp>
 #include <lux/engine/resource/asset/storage/pak/PakArchive.hpp>

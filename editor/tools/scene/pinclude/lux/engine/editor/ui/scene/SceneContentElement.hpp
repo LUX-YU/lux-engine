@@ -8,7 +8,7 @@
 #include <lux/engine/ui/Controls.hpp>
 #include <lux/engine/editor/ui/SpatialInteraction.hpp>
 #include <lux/engine/editor/scene/detail/SceneEditorImpl.hpp>
-#include <lux/engine/editor/ui/SceneElement.hpp>
+#include <lux/engine/editor/scene/SceneElement.hpp>
 
 namespace lux::editor::ui
 {
@@ -99,7 +99,7 @@ namespace lux::editor::ui
         std::unique_ptr<SpatialInteraction> spatial_;
         lux::simulation::ecs::Entity camera_{lux::simulation::ecs::NullEntity};
         lux::scene::SceneInstanceId camera_scene_;
-        CameraMotion pending_motion_;
+        lux::editor::scene::CameraMotion pending_motion_;
         bool navigation_pending_{};
         struct Pick final
         {
@@ -118,7 +118,7 @@ namespace lux::editor::ui
         };
         std::variant<std::monostate, Pick, Create> action_;
         double work_plane_height_{};
-        std::unique_ptr<ui::SceneElement> viewport_;
+        std::unique_ptr<scene::SceneElement> viewport_;
         scene::RunId displayed_run_;
         lux::system::SystemInstanceId displayed_render_;
         std::optional<lux::system::SystemInstanceId> render_selection_;

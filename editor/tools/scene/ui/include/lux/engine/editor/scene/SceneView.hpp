@@ -1,0 +1,107 @@
+#pragma once
+#include <lux/engine/editor/scene/SceneSessionAccess.hpp>
+#include <lux/engine/editor/scene/SceneInteraction.hpp>
+#include <lux/engine/editor/scene/SceneProjection.hpp>
+#include <lux/engine/editor/scene/CameraNavigation.hpp>
+#include <lux/engine/editor/views/IViewHost.hpp>
+#include <lux/engine/scene/MeshQuery.hpp>
+
+namespace lux::editor::scene
+{
+    struct UnboundSceneBinding final
+    {
+        friend bool operator==(UnboundSceneBinding, UnboundSceneBinding) = default;
+    };
+    struct EditedSceneBinding final
+    {
+        sessions::TSessionKey<SceneSession> session;
+        SceneInteractionGroup* interaction{}; // Explicit external group owner; closing a view does not delete it.
+        friend bool operator==(EditedSceneBinding, EditedSceneBinding) = default;
+    };
+    struct RunningSceneBinding final
+    {
+        RunId run;
+        SceneInteractionGroup* interaction{};
+        friend bool operator==(RunningSceneBinding, RunningSceneBinding) = default;
+    };
+    using VSceneViewBinding = std::variant<UnboundSceneBinding, EditedSceneBinding, RunningSceneBinding>;
+    struct SceneViewState final
+    {
+        CameraPose camera;
+        render::PixelExtent extent{640, 480};
+        float work_plane_height{};
+    };
+    struct SceneViewServices final
+    {
+        SceneSessionAccess sessions;
+        ScenePresentationHub& projections;
+        lux::scene::SceneRuntime& runtime;
+        lux::scene::RenderResources& resources;
+        render::RenderRuntime& renderer;
+        const ProjectionEnvironment& environment;
+        std::optional<RunInspectAccess> runs;
+    };
+    struct SceneViewFailure final
+    {
+        using VCause = std::variant<
+            SceneEditError,
+            ProjectionFailure,
+            RunFailure,
+            lux::scene::MeshQueryFailure,
+            render::RendererFailure,
+            views::EViewError,
+            std::string_view>;
+        VCause cause;
+    };
+    template <class T> using SceneViewResult = cxx::expected<T, SceneViewFailure>;
+    struct SceneViewCreateInfo final
+    {
+        lux::ui::PaneId id;
+        std::string title{"Scene"};
+        VSceneViewBinding binding{UnboundSceneBinding{}};
+        SceneViewState state;
+        system::SystemInstanceId render_system;
+    };
+
+    class SceneView final : public lux::ui::Pane
+    {
+    public:
+        [[nodiscard]] static SceneViewResult<std::unique_ptr<SceneView>> create(
+            object::ObjectDispatcherRef,
+            SceneViewServices,
+            SceneViewCreateInfo
+        );
+        ~SceneView() noexcept override;
+        SceneView(const SceneView&) = delete;
+        SceneView& operator=(const SceneView&) = delete;
+        SceneView(SceneView&&) = delete;
+        SceneView& operator=(SceneView&&) = delete;
+        [[nodiscard]] SceneViewResult<void> rebind(VSceneViewBinding);
+        [[nodiscard]] const VSceneViewBinding& binding() const noexcept;
+        [[nodiscard]] const SceneViewState& state() const noexcept;
+        [[nodiscard]] SceneViewResult<void> navigate(const CameraMotion&);
+        [[nodiscard]] SceneViewResult<void> pick(Eigen::Vector2d position, Eigen::Vector2d extent);
+        [[nodiscard]] SceneViewResult<void> undo();
+        [[nodiscard]] SceneViewResult<void> redo();
+        [[nodiscard]] SceneViewResult<void> beginEdit(std::string);
+        [[nodiscard]] SceneViewResult<void> previewEdit(std::vector<VSceneEdit>&);
+        [[nodiscard]] SceneViewResult<void> commitEdit();
+        [[nodiscard]] SceneViewResult<void> cancelEdit();
+        [[nodiscard]] std::optional<sessions::ContentStamp> projectedContent() const noexcept;
+        [[nodiscard]] lux::scene::SceneInstanceId presentedInstance() const noexcept;
+        [[nodiscard]] lux::scene::RenderResourceId viewport() const noexcept;
+        [[nodiscard]] render::RTextureHandle image() const noexcept;
+        [[nodiscard]] const SceneViewResult<void>& status() const noexcept;
+
+    private:
+        SceneView(object::ObjectDispatcherRef, SceneViewServices, SceneViewCreateInfo);
+        void update() noexcept override;
+        struct Impl;
+        std::unique_ptr<Impl> impl_;
+    };
+    [[nodiscard]] SceneViewResult<views::DetachedView> makeSceneView(
+        object::ObjectDispatcherRef,
+        SceneViewServices,
+        SceneViewCreateInfo
+    );
+}

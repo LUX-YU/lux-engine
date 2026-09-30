@@ -1,0 +1,476 @@
+#include <lux/engine/editor/scene/SceneView.hpp>
+#include <lux/engine/editor/scene/SceneElement.hpp>
+#include <lux/engine/scene/WorldResidency.hpp>
+#include <lux/engine/object/ObjectEvent.hpp>
+#include <lux/engine/ui/Layout.hpp>
+#include <lux/engine/ui/Controls.hpp>
+#include <lux/engine/ui/Root.hpp>
+#include <array>
+
+namespace lux::editor::scene
+{
+    namespace
+    {
+        template <class T> auto rejected(T error)
+        {
+            return cxx::unexpected(SceneViewFailure{std::move(error)});
+        }
+        template <class T> SceneViewResult<void> adopted(T result)
+        {
+            if (!result)
+                return rejected(result.error());
+            return {};
+        }
+        SceneInteractionGroup* interaction(const VSceneViewBinding& binding) noexcept
+        {
+            return std::visit(
+                [](const auto& value) -> SceneInteractionGroup* {
+                    if constexpr (requires { value.interaction; })
+                        return value.interaction;
+                    else
+                        return nullptr;
+                },
+                binding
+            );
+        }
+    }
+    struct SceneView::Impl final
+    {
+        enum class EControl : std::uint8_t
+        {
+            NONE,
+            UNDO,
+            REDO
+        };
+        SceneView& view_;
+        SceneViewServices services_;
+        VSceneViewBinding binding_{UnboundSceneBinding{}};
+        SceneViewState state_;
+        system::SystemInstanceId system_;
+        // Shared derived projection only, never a writable author source or an instance lease.
+        std::shared_ptr<SceneProjection> projection_;
+        lux::scene::SceneInstanceId presented_;
+        lux::ui::Layout layout_, toolbar_;
+        lux::ui::Button undo_, redo_;
+        lux::ui::Label message_;
+        SceneElement viewport_;
+        std::array<object::Connection, 4> controls_;
+        std::optional<ViewportPoint> pick_;
+        lux::scene::SceneInstanceId pick_instance_;
+        SceneViewResult<void> status_;
+        EControl control_{};
+        CameraMotion motion_;
+        bool motion_pending_{};
+
+        Impl(SceneView& view, SceneViewServices services, SceneViewState state, system::SystemInstanceId system)
+            : view_(view), services_(services), state_(std::move(state)), system_(system),
+              layout_(view, lux::ui::ElementId{"content"}),
+              toolbar_(layout_, lux::ui::ElementId{"toolbar"}, lux::ui::ELayoutType::HORIZONTAL),
+              undo_(toolbar_, lux::ui::ElementId{"undo"}, "Undo"), redo_(toolbar_, lux::ui::ElementId{"redo"}, "Redo"),
+              message_(layout_, lux::ui::ElementId{"status"}, "No scene bound"),
+              viewport_(layout_, lux::ui::ElementId{"viewport"})
+        {
+            toolbar_.setStretch({1, 0});
+            message_.setStretch({1, 0});
+            view.setContent(layout_);
+            auto connect = [&](lux::ui::Button& button, EControl value, std::size_t index) {
+                auto result =
+                    object::LuxObject::connect(&button, &lux::ui::Button::activated, [this, value]() noexcept {
+                        control_ = value;
+                    });
+                if (result)
+                    controls_[index] = std::move(*result);
+                else
+                    status_ = rejected(views::EViewError::CAPACITY);
+            };
+            connect(undo_, EControl::UNDO, 0);
+            connect(redo_, EControl::REDO, 1);
+            viewport_.enableNavigation(true);
+            auto navigation = object::LuxObject::connect(
+                &viewport_,
+                &SceneElement::cameraMoved,
+                [this](const CameraMotion& motion) noexcept {
+                    motion_.angular_delta += motion.angular_delta;
+                    motion_.pan_delta += motion.pan_delta;
+                    motion_.dolly += motion.dolly;
+                    motion_pending_ = true;
+                }
+            );
+            if (!navigation)
+                status_ = rejected(views::EViewError::CAPACITY);
+            else
+                controls_[2] = std::move(*navigation);
+            auto picked = object::LuxObject::connect(
+                &viewport_,
+                &SceneElement::clicked,
+                [this](const ViewportPoint& point) noexcept {
+                    pick_ = point;
+                    pick_instance_ = presented_;
+                }
+            );
+            if (!picked)
+                status_ = rejected(views::EViewError::CAPACITY);
+            else
+                controls_[3] = std::move(*picked);
+        }
+        SceneViewResult<std::unique_ptr<ViewportPresentation>> preparePresentation(lux::scene::SceneInstanceId instance)
+        {
+            auto prepared = ViewportPresentation::create(
+                services_.runtime,
+                instance,
+                services_.resources,
+                system_,
+                state_.camera.transform,
+                state_.camera.camera,
+                lux::scene::ViewConfig{.extent = state_.extent}
+            );
+            if (!prepared)
+                return rejected(prepared.error());
+            return std::move(*prepared);
+        }
+        SceneViewResult<void> rebind(VSceneViewBinding binding)
+        {
+            if (!view_.isOnAffinityThread() || object::LuxObject::isDispatching())
+                return rejected(views::EViewError::BUSY);
+            if (binding == binding_)
+                return {};
+            std::shared_ptr<SceneProjection> projection;
+            lux::scene::SceneInstanceId instance;
+            if (const auto* author = std::get_if<EditedSceneBinding>(&binding))
+            {
+                const bool is_wrong_group = !author->interaction || author->interaction->session() != author->session;
+                if (is_wrong_group)
+                    return rejected(views::EViewError::INVALID_ID);
+                auto session = services_.sessions.read(author->session);
+                if (!session)
+                    return rejected(SceneEditError{session.error()});
+                auto acquired = services_.projections.acquire(session->get(), services_.environment);
+                if (!acquired)
+                    return rejected(acquired.error());
+                projection = std::move(*acquired);
+                instance = projection->instance();
+            }
+            else if (const auto* running = std::get_if<RunningSceneBinding>(&binding))
+            {
+                if (!services_.runs || !running->interaction)
+                    return rejected(views::EViewError::INVALID_ID);
+                auto run = services_.runs->describe(running->run);
+                if (!run)
+                    return rejected(run.error());
+                if (running->interaction->session().id() != run->provenance.content.session)
+                    return rejected(views::EViewError::INVALID_ID);
+                if (run->state == ERunState::STOPPED || run->state == ERunState::STOPPING)
+                    return rejected(RunFailure{ERunError::STOPPED});
+                instance = run->instance;
+            }
+            std::unique_ptr<ViewportPresentation> presentation;
+            if (instance.valid())
+            {
+                auto prepared = preparePresentation(instance);
+                if (!prepared)
+                    return rejected(prepared.error());
+                presentation = std::move(*prepared);
+            }
+            // Only after the entire candidate has been prepared may the old interaction be ended.
+            // BUSY preserves both original binding and overlay; candidate resource cancellation is owned.
+            if (auto* previous = interaction(binding_))
+            {
+                auto cancelled = previous->cancel();
+                if (!cancelled)
+                    return rejected(cancelled.error());
+            }
+            motion_pending_ = false;
+            motion_ = {};
+            pick_.reset();
+            projection_ = std::move(projection);
+            viewport_.setPresentation(std::move(presentation), state_.extent);
+            presented_ = instance;
+            binding_ = std::move(binding);
+            status_ = {};
+            return {};
+        }
+        SceneViewResult<void> history(bool redo)
+        {
+            auto* author = std::get_if<EditedSceneBinding>(&binding_);
+            if (!author)
+                return rejected(views::EViewError::NOT_ATTACHED);
+            if (author->interaction->overlay())
+                return rejected(views::EViewError::BUSY);
+            auto session = services_.sessions.edit(author->session);
+            if (!session)
+                return rejected(SceneEditError{session.error()});
+            return redo ? adopted(session->get().redo()) : adopted(session->get().undo());
+        }
+        SceneViewResult<void> navigate(const CameraMotion& motion)
+        {
+            auto candidate = navigateCamera(state_.camera.transform, state_.camera.camera, motion);
+            if (!candidate)
+                return rejected(candidate.error());
+            if (viewport_.bound())
+            {
+                auto changed = viewport_.presentation().setCameraPose(candidate->transform, candidate->camera);
+                if (!changed)
+                    return rejected(changed.error());
+            }
+            state_.camera = std::move(*candidate);
+            return {};
+        }
+        SceneViewResult<void> pick(Eigen::Vector2d position, Eigen::Vector2d extent)
+        {
+            auto* selected = interaction(binding_);
+            if (!selected || !presented_.valid())
+                return rejected(views::EViewError::NOT_ATTACHED);
+            const auto* author = std::get_if<EditedSceneBinding>(&binding_);
+            if (author)
+            {
+                auto info = services_.sessions.describe(author->session);
+                if (!info)
+                    return rejected(SceneEditError{info.error()});
+                if (!projection_ || projection_->version().content != info->current)
+                    return rejected(SceneEditError{ESceneEditError::STALE_CONTENT});
+            }
+            auto registry = std::as_const(services_.runtime).borrowInstance(presented_);
+            if (!registry)
+                return rejected(ProjectionFailure{registry.error()});
+            const auto* query = registry->get().ctx().find<lux::scene::MeshQuery>();
+            if (!query)
+                return rejected(lux::scene::MeshQueryFailure{lux::scene::EMeshQueryError::NOT_READY});
+            simulation::ecs::WorldTransform3D camera;
+            camera.value = Eigen::Translation3d(state_.camera.transform.translation) *
+                           state_.camera.transform.rotation * Eigen::Scaling(state_.camera.transform.scale);
+            auto ray = cameraRay(camera, state_.camera.camera, position, extent);
+            if (!ray)
+                return rejected(ray.error());
+            lux::scene::RayHit3D hit;
+            auto found = query->raycastNearest(*ray, 1.0e12, hit);
+            if (!found)
+                return rejected(found.error());
+            SceneSelection selection;
+            if (*found)
+            {
+                if (author)
+                {
+                    const auto* identities = registry->get().ctx().find<lux::scene::WorldResidency>();
+                    if (!identities)
+                        return rejected(SceneEditError{ESceneEditError::INVALID_OBJECT});
+                    const auto object = identities->identities().object(hit.entity);
+                    selection.objects.emplace_back(
+                        SceneObjectRef{author->session.id(), projection_->version().content.state.history, object}
+                    );
+                }
+                else if (auto* running = std::get_if<RunningSceneBinding>(&binding_); running && services_.runs)
+                {
+                    auto ref = services_.runs->reference(running->run, hit.entity);
+                    if (!ref)
+                        return rejected(ref.error());
+                    selection.objects.emplace_back(*ref);
+                }
+            }
+            auto ended = selected->cancel();
+            if (!ended)
+                return rejected(ended.error());
+            return adopted(selected->select(std::move(selection)));
+        }
+        SceneViewResult<void> refresh()
+        {
+            if (const auto* author = std::get_if<EditedSceneBinding>(&binding_))
+            {
+                auto session = services_.sessions.read(author->session);
+                if (!session)
+                    return rejected(SceneEditError{session.error()});
+                auto refreshed = projection_->update(session->get());
+                if (!refreshed)
+                    return rejected(refreshed.error());
+                if (projection_->instance() != presented_)
+                {
+                    auto prepared = preparePresentation(projection_->instance());
+                    if (!prepared)
+                        return rejected(prepared.error());
+                    viewport_.setPresentation(std::move(*prepared), state_.extent);
+                    presented_ = projection_->instance();
+                }
+            }
+            else if (const auto* running = std::get_if<RunningSceneBinding>(&binding_))
+            {
+                auto info = services_.runs->describe(running->run);
+                if (!info)
+                    return rejected(info.error());
+                if (info->instance != presented_ || info->state == ERunState::STOPPED ||
+                    info->state == ERunState::STOPPING)
+                    return rejected(RunFailure{ERunError::STOPPED});
+            }
+            if (!viewport_.bound())
+                return {};
+            if (motion_pending_)
+            {
+                auto moved = navigate(motion_);
+                if (!moved)
+                    return moved;
+                motion_ = {};
+                motion_pending_ = false;
+            }
+            auto* group = interaction(binding_);
+            if (group)
+            {
+                auto synchronized = group->synchronize();
+                if (!synchronized)
+                    return rejected(synchronized.error());
+            }
+            auto registry = std::as_const(services_.runtime).borrowInstance(presented_);
+            if (!registry)
+                return rejected(ProjectionFailure{registry.error()});
+            OverlayConfiguration overlay;
+            overlay.plane_height = state_.work_plane_height;
+            if (group && !group->selection().objects.empty())
+                std::visit(
+                    [&](const auto& selected) {
+                        using T = std::decay_t<decltype(selected)>;
+                        if constexpr (std::same_as<T, SceneObjectRef>)
+                        {
+                            const auto* author = std::get_if<EditedSceneBinding>(&binding_);
+                            const auto* identities = registry->get().ctx().find<lux::scene::WorldResidency>();
+                            const bool is_current = author && selected.session == author->session.id() &&
+                                                    selected.history == projection_->version().content.state.history;
+                            if (is_current && identities)
+                                overlay.selection = identities->identities().entity(selected.object);
+                        }
+                        else
+                        {
+                            const auto* run = std::get_if<RunningSceneBinding>(&binding_);
+                            if (run && selected.run == run->run && selected.instance == presented_)
+                                overlay.selection = selected.entity;
+                        }
+                    },
+                    group->selection().objects.front()
+                );
+            // Entity generation and projection serial are part of the backend overlay key.
+            overlay.selection_version = static_cast<std::uint32_t>(overlay.selection);
+            overlay.structure_version = projection_ ? projection_->version().serial : presented_.generation;
+            auto submitted = viewport_.presentation().updateOverlay(services_.renderer, overlay);
+            if (!submitted)
+                return rejected(submitted.error());
+            return {};
+        }
+        void update() noexcept
+        {
+            const bool author = std::holds_alternative<EditedSceneBinding>(binding_);
+            undo_.setEnabled(author);
+            redo_.setEnabled(author);
+            const auto control = std::exchange(control_, EControl::NONE);
+            if (control != EControl::NONE)
+                status_ = history(control == EControl::REDO);
+            auto refreshed = refresh();
+            if (!refreshed)
+                status_ = std::move(refreshed);
+            else if (pick_)
+            {
+                const auto point = *std::exchange(pick_, {});
+                status_ = pick_instance_ == presented_
+                              ? pick({point.position.x, point.position.y}, {point.extent.width, point.extent.height})
+                              : SceneViewResult<void>{rejected(views::EViewError::INVALID_ID)};
+            }
+            if (std::holds_alternative<UnboundSceneBinding>(binding_))
+                message_.setText("No scene bound");
+            else if (!status_)
+                message_.setText("Scene operation unavailable; previous binding retained");
+            else
+                message_.setText(author ? "Author scene" : "Run (independent source)");
+        }
+    };
+    SceneView::SceneView(object::ObjectDispatcherRef dispatcher, SceneViewServices services, SceneViewCreateInfo info)
+        : Pane(dispatcher, std::move(info.id), lux::ui::PaneTypeId{"lux.editor.scene.view"}, std::move(info.title)),
+          impl_(std::make_unique<Impl>(*this, services, std::move(info.state), info.render_system))
+    {}
+    SceneView::~SceneView() noexcept = default;
+    SceneViewResult<std::unique_ptr<SceneView>> SceneView::create(
+        object::ObjectDispatcherRef dispatcher,
+        SceneViewServices services,
+        SceneViewCreateInfo info
+    )
+    {
+        auto binding = info.binding;
+        auto view = std::unique_ptr<SceneView>(new SceneView(dispatcher, services, std::move(info)));
+        if (!view->status())
+            return rejected(view->status().error());
+        auto bound = view->rebind(std::move(binding));
+        if (!bound)
+            return rejected(bound.error());
+        return view;
+    }
+    const VSceneViewBinding& SceneView::binding() const noexcept
+    {
+        return impl_->binding_;
+    }
+    const SceneViewState& SceneView::state() const noexcept
+    {
+        return impl_->state_;
+    }
+    SceneViewResult<void> SceneView::rebind(VSceneViewBinding binding)
+    {
+        return impl_->rebind(std::move(binding));
+    }
+    SceneViewResult<void> SceneView::pick(Eigen::Vector2d position, Eigen::Vector2d extent)
+    {
+        return impl_->pick(position, extent);
+    }
+    SceneViewResult<void> SceneView::navigate(const CameraMotion& motion)
+    {
+        return impl_->navigate(motion);
+    }
+    SceneViewResult<void> SceneView::undo()
+    {
+        return impl_->history(false);
+    }
+    SceneViewResult<void> SceneView::redo()
+    {
+        return impl_->history(true);
+    }
+    SceneViewResult<void> SceneView::beginEdit(std::string label)
+    {
+        auto* author = std::get_if<EditedSceneBinding>(&impl_->binding_);
+        return author ? adopted(author->interaction->begin(std::move(label)))
+                      : SceneViewResult<void>{rejected(views::EViewError::NOT_ATTACHED)};
+    }
+    SceneViewResult<void> SceneView::previewEdit(std::vector<VSceneEdit>& edits)
+    {
+        auto* author = std::get_if<EditedSceneBinding>(&impl_->binding_);
+        return author ? adopted(author->interaction->preview(edits))
+                      : SceneViewResult<void>{rejected(views::EViewError::NOT_ATTACHED)};
+    }
+    SceneViewResult<void> SceneView::commitEdit()
+    {
+        auto* author = std::get_if<EditedSceneBinding>(&impl_->binding_);
+        return author ? adopted(author->interaction->commit())
+                      : SceneViewResult<void>{rejected(views::EViewError::NOT_ATTACHED)};
+    }
+    SceneViewResult<void> SceneView::cancelEdit()
+    {
+        auto* group = interaction(impl_->binding_);
+        return group ? adopted(group->cancel()) : SceneViewResult<void>{};
+    }
+    std::optional<sessions::ContentStamp> SceneView::projectedContent() const noexcept
+    {
+        return impl_->projection_ ? std::optional{impl_->projection_->version().content} : std::nullopt;
+    }
+    lux::scene::SceneInstanceId SceneView::presentedInstance() const noexcept
+    {
+        return impl_->presented_;
+    }
+    lux::scene::RenderResourceId SceneView::viewport() const noexcept
+    {
+        return impl_->viewport_.view();
+    }
+    render::RTextureHandle SceneView::image() const noexcept
+    {
+        return impl_->viewport_.image().image();
+    }
+    const SceneViewResult<void>& SceneView::status() const noexcept
+    {
+        return impl_->status_;
+    }
+    void SceneView::update() noexcept
+    {
+        impl_->update();
+    }
+
+}

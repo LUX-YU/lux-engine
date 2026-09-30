@@ -2,6 +2,7 @@
 
 #include <compare>
 #include <lux/engine/editor/scene/SceneEditError.hpp>
+#include <lux/engine/editor/scene/SceneSource.hpp>
 #include <functional>
 #include <lux/cxx/compile_time/TypeToken.hpp>
 #include <lux/engine/editor/editing/EditOperation.hpp>
@@ -12,13 +13,6 @@
 
 namespace lux::editor::scene
 {
-    enum class EObjectSpace : std::uint8_t
-    {
-        NONE,
-        SPACE_2D,
-        SPACE_3D
-    };
-
     struct SceneWriteTarget final
     {
         lux::scene::SceneInstanceId scene_id;

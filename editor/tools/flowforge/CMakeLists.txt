@@ -38,3 +38,6 @@ endif()
 target_link_libraries(editor_flowforge PUBLIC lux::engine::editor::flowforge_model)
 component_add_transitive_commands(editor_flowforge
     "find_package(lux-engine-editor-flowforge-model REQUIRED COMPONENTS flowforge_model)")
+
+target_link_libraries(editor_flowforge PUBLIC lux::engine::editor::flow_ui)
+component_add_transitive_commands(editor_flowforge "find_package(lux-engine-editor-flow-ui REQUIRED COMPONENTS flow_ui)")

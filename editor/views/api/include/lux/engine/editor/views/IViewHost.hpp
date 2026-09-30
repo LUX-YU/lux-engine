@@ -11,8 +11,9 @@ namespace lux::editor::views
     class DetachedView final
     {
     public:
-        DetachedView(contracts::CodeLease code, std::unique_ptr<ui::Pane> pane) noexcept
-            : code_(std::move(code)), pane_(std::move(pane))
+        using PrepareClose = ViewResult<void> (*)(lux::ui::Pane&);
+        DetachedView(contracts::CodeLease code, std::unique_ptr<lux::ui::Pane> pane, PrepareClose prepare_close = nullptr) noexcept
+            : code_(std::move(code)), pane_(std::move(pane)), prepare_close_(prepare_close)
         {
             if (!code_.valid() || !pane_ || pane_->attachedRoot() || pane_->parent())
                 std::terminate();
@@ -29,18 +30,26 @@ namespace lux::editor::views
             using std::swap;
             swap(code_, previous.code_);
             swap(pane_, previous.pane_);
+            swap(prepare_close_, previous.prepare_close_);
             return *this;
         }
         DetachedView(const DetachedView&) = delete;
         DetachedView& operator=(const DetachedView&) = delete;
-        [[nodiscard]] ui::Pane* pane() const noexcept
+        [[nodiscard]] lux::ui::Pane* pane() const noexcept
         {
             return pane_.get();
+        }
+        // Called at the host's outer safe point before focus/routing are revoked. BUSY retains the
+        // entire mounted view and its pending close. It never releases a Session or task owner.
+        [[nodiscard]] ViewResult<void> prepareClose()
+        {
+            return prepare_close_ ? prepare_close_(*pane_) : ViewResult<void>{};
         }
 
     private:
         contracts::CodeLease code_;
-        std::unique_ptr<ui::Pane> pane_;
+        std::unique_ptr<lux::ui::Pane> pane_;
+        PrepareClose prepare_close_{};
     };
     // Accept only identities. Implementations queue intents; no callback may erase its own UI owner.
     class ViewRequests

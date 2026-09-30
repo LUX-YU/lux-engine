@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <imgui.h>
 #include <imgui_stdlib.h>
-#include <lux/engine/editor/ui/asset/AssetDragDrop.hpp>
+#include <lux/engine/editor/project/ProjectCatalogAccess.hpp>
 #include <lux/engine/editor/ui/scene/ResourcePane.hpp>
 #include <lux/engine/window/FileDialog.hpp>
 #include <lux/engine/object/ObjectEvent.hpp>
@@ -218,7 +218,7 @@ namespace lux::editor::ui
                         if (ImGui::BeginDragDropSource())
                         {
                             const auto reference = project.reference(asset.id);
-                            ImGui::SetDragDropPayload(kAssetReferencePayload, &reference, sizeof(reference));
+                            ImGui::SetDragDropPayload(project::kAssetReferencePayload, &reference, sizeof(reference));
                             ImGui::TextUnformatted(asset.path.c_str());
                             ImGui::EndDragDropSource();
                         }

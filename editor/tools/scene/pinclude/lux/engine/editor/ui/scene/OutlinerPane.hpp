@@ -3,6 +3,7 @@
 #include <lux/engine/ui/Element.hpp>
 #include <lux/engine/editor/scene/detail/SceneEditorImpl.hpp>
 #include <unordered_set>
+#include <lux/engine/editor/widgets/TreeRows.hpp>
 
 namespace lux::editor::ui
 {
@@ -20,10 +21,6 @@ namespace lux::editor::ui
             std::string label;
         };
         std::vector<ObjectRow> objects_;
-        struct Row final
-        {
-            std::size_t source, depth, end;
-        };
         void rebuildRows();
         void rebuildVisibleRows();
         [[nodiscard]] EditorResult<void> select(lux::simulation::ecs::Entity);
@@ -34,7 +31,7 @@ namespace lux::editor::ui
         lux::scene::SceneInstanceId observed_instance_;
         editing::Revision observed_revision_;
         scene::SelectionNotice selection_;
-        std::vector<Row> rows_;
+        std::vector<widgets::TreeRow> rows_;
         std::vector<std::size_t> visible_rows_;
         std::unordered_set<lux::simulation::ecs::Entity> collapsed_;
         bool rows_dirty_{true};

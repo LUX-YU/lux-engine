@@ -7,6 +7,7 @@
 
 namespace lux::editor::scene
 {
+    enum class EObjectSpace : std::uint8_t { NONE, SPACE_2D, SPACE_3D };
     struct SnapshotBudget final
     {
         std::size_t max_bytes{64 * 1024 * 1024};

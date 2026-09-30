@@ -39,7 +39,7 @@ endfunction()
 
 enable_testing()
 check_component(lux-engine-editor-storage editor_storage lux/engine/editor/storage/ProjectStorage.hpp lux::editor::ProjectStorage::advanceClose)
-check_component(lux-engine-editor-ui editor_ui lux/engine/editor/ui/Presentation.hpp lux::editor::ui::Presentation::create)
+check_component(lux-engine-editor-desktop desktop_shell lux/engine/editor/desktop/Presentation.hpp lux::editor::desktop::Presentation::create)
 check_component(lux-engine-editor-material editor_material lux/engine/editor/material/MaterialEditor.hpp lux::editor::material::MaterialEditor::openAsset)
 check_component(lux-engine-editor-flowforge editor_flowforge lux/engine/editor/flowforge/FlowForgeEditor.hpp lux::editor::flowforge::FlowForgeEditor::openAsset)
 check_component(lux-engine-editor-scene editor_scene lux/engine/editor/scene/SceneEditor.hpp lux::editor::scene::SceneEditor::openAsset)

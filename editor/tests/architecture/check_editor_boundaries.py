@@ -217,6 +217,15 @@ def inspect(repo, records, rules, stage, compile_db=None):
         for target in ["layout_model", "recovery_model", "workspace_store"]:
             check_model(repo, targets, rules, sources, report, target)
 
+    if stage >= "P10":
+        for target in rules["p10_targets"]:
+            check_model(repo, targets, rules, sources, report, target)
+        for path, source in sources.items():
+            is_factory = path.startswith(("editor/tools/", "editor/project/ui/", "editor/tasks/ui/")) and "/ui/" in path
+            if is_factory and "/test/" not in path and re.search(r"\bRoot\s*&", source) and re.search(
+                    r"(?:make_unique<[^>]*(?:Pane|Element)|(?:Pane|Element)\s*[({])", source):
+                report("NEW_ROOTED_FACTORY", path, "P10 factories must assemble detached subtrees")
+
     scopes = tuple(rules["new_scopes"])
     forbidden_headers = set(rules["new_scope_forbidden_include"])
     for path, source in sources.items():

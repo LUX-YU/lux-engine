@@ -1,6 +1,8 @@
 #pragma once
 #include <lux/engine/scene/RenderResources.hpp>
 #include <lux/engine/system/SystemInstanceId.hpp>
+#include <lux/engine/scene/Camera.hpp>
+#include <lux/engine/simulation/ecs/Transform.hpp>
 #include <stop_token>
 
 namespace lux::scene
@@ -37,6 +39,17 @@ namespace lux::editor::scene
             simulation::ecs::Entity,
             lux::scene::ViewConfig
         ) noexcept;
+        // Local camera and request share one entity. RenderSystem's existing stop protocol retires it;
+        // neither view navigation nor camera lifetime writes an author/Run camera component.
+        [[nodiscard]] static CreateResult create(
+            lux::scene::SceneRuntime&,
+            lux::scene::SceneInstanceId,
+            lux::scene::RenderResources&,
+            lux::system::SystemInstanceId,
+            const simulation::ecs::Transform3D&,
+            const lux::scene::Camera&,
+            lux::scene::ViewConfig
+        ) noexcept;
         ~ViewportPresentation() noexcept;
         [[nodiscard]] lux::scene::RenderResourceId view() const noexcept
         {
@@ -63,6 +76,8 @@ namespace lux::editor::scene
             return receipt_.status();
         }
         [[nodiscard]] render::RenderResult<void> setCamera(simulation::ecs::Entity) noexcept;
+        [[nodiscard]] render::RenderResult<void>
+        setCameraPose(const simulation::ecs::Transform3D&, const lux::scene::Camera&) noexcept;
         [[nodiscard]] render::ERenderClose close() noexcept;
         void update(render::PixelExtent) noexcept;
         [[nodiscard]] render::RenderResult<EOverlaySubmit> updateOverlay(render::RenderRuntime&, OverlayConfiguration);

@@ -402,18 +402,6 @@ namespace lux::editor::scene
         return (*run)->finishEditing();
     }
 
-    RunResult<std::reference_wrapper<const simulation::ecs::Registry>> RunInspectAccess::borrow(RunId id) const noexcept
-    {
-        auto run = store_.impl_->find(id);
-        if (!run)
-            return lux::cxx::unexpected(run.error());
-        if (!(*run)->instance)
-            return rejected(ERunError::STOPPED);
-        auto borrowed = std::as_const(store_.impl_->runtime).borrowInstance((*run)->info.instance);
-        if (!borrowed)
-            return rejected(borrowed.error());
-        return *borrowed;
-    }
     RunInspectAccess RunStore::inspect() const noexcept
     {
         return RunInspectAccess(
@@ -424,18 +412,30 @@ namespace lux::editor::scene
                     return false;
                 auto registry = store.inspect().borrow(ref.run);
                 return registry && registry->get().valid(ref.entity);
+            },
+            +[](const RunStore& store, RunId id) noexcept -> RunInspectAccess::BorrowResult {
+                auto run = store.impl_->find(id);
+                if (!run)
+                    return lux::cxx::unexpected(run.error());
+                if (!(*run)->instance)
+                    return rejected(ERunError::STOPPED);
+                auto borrowed = std::as_const(store.impl_->runtime).borrowInstance((*run)->info.instance);
+                if (!borrowed)
+                    return rejected(borrowed.error());
+                return *borrowed;
+            },
+            +[](const RunStore& store, RunId id) { return store.info(id); },
+            +[](const RunStore& store, RunId id, simulation::ecs::Entity entity
+             ) noexcept -> RunResult<RunningObjectRef> {
+                auto run = store.impl_->find(id);
+                if (!run)
+                    return lux::cxx::unexpected(run.error());
+                RunningObjectRef ref{id, (*run)->info.instance, entity};
+                if (!store.inspect().contains(ref))
+                    return rejected(ERunError::INVALID_ID);
+                return ref;
             }
         );
-    }
-    RunResult<RunningObjectRef> RunInspectAccess::reference(RunId id, simulation::ecs::Entity entity) const noexcept
-    {
-        auto run = store_.impl_->find(id);
-        if (!run)
-            return lux::cxx::unexpected(run.error());
-        RunningObjectRef ref{id, (*run)->info.instance, entity};
-        if (!contains(ref))
-            return rejected(ERunError::INVALID_ID);
-        return ref;
     }
 
     struct StartRunOperation::Impl final

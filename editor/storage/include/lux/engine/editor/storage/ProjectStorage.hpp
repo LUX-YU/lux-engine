@@ -4,7 +4,7 @@
 
 #include <filesystem>
 #include <lux/engine/editor/EditorError.hpp>
-#include <lux/engine/editor/storage/AssetCatalog.hpp>
+#include <lux/engine/editor/project/AssetCatalog.hpp>
 #include <lux/engine/editor/project/ProjectManifest.hpp>
 #include <lux/engine/editor/storage/ProjectOpenData.hpp>
 #include <lux/engine/object/LuxObject.hpp>

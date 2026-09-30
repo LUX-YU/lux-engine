@@ -70,6 +70,83 @@ namespace lux::editor::scene
         static_cast<void>(close());
     }
 
+    ViewportPresentation::CreateResult ViewportPresentation::create(
+        lux::scene::SceneRuntime& runtime,
+        lux::scene::SceneInstanceId scene,
+        lux::scene::RenderResources& resources,
+        lux::system::SystemInstanceId system,
+        const simulation::ecs::Transform3D& transform,
+        const lux::scene::Camera& camera,
+        lux::scene::ViewConfig config
+    ) noexcept
+    {
+        const bool is_invalid_extent = config.extent.width > 16384 || config.extent.height > 16384;
+        const bool is_invalid_transform = !transform.translation.allFinite() ||
+                                          !transform.rotation.coeffs().allFinite() || !transform.scale.allFinite();
+        if (!system.valid() || is_invalid_extent || is_invalid_transform || !lux::scene::cameraProjection(camera, 1.0))
+            return lux::cxx::unexpected(render::RendererFailure{render::ERendererError::INVALID_ARGUMENT});
+        const auto borrowed = runtime.borrowInstance(scene);
+        if (!borrowed)
+        {
+            const auto* cause = std::get_if<lux::scene::ESceneRuntimeError>(&borrowed.error().cause);
+            const bool is_busy = cause && *cause == lux::scene::ESceneRuntimeError::BUSY;
+            return lux::cxx::unexpected(render::RendererFailure{
+                is_busy ? render::ERendererError::BUSY : render::ERendererError::INVALID_ARGUMENT
+            });
+        }
+        auto& registry = borrowed->get();
+        if (!lux::scene::RenderAssets::find(registry, system))
+            return lux::cxx::unexpected(render::RendererFailure{render::ERendererError::INVALID_ARGUMENT});
+        auto result = std::unique_ptr<ViewportPresentation>(
+            new ViewportPresentation(runtime, scene, resources, simulation::ecs::NullEntity)
+        );
+        result->system_ = system;
+        result->request_ = registry.create();
+        result->camera_ = result->request_;
+        registry.emplace<simulation::ecs::Transform3D>(result->request_, transform);
+        registry.emplace<lux::scene::Camera>(result->request_, camera);
+        registry.emplace<lux::scene::RenderViewRequest>(
+            result->request_,
+            lux::scene::RenderViewRequest{
+                .system = system,
+                .camera = result->camera_,
+                .configuration = config,
+                .stop = result->stop_.get_token(),
+                .destroy_entity_on_stop = true
+            }
+        );
+        return result;
+    }
+
+    render::RenderResult<void> ViewportPresentation::setCameraPose(
+        const simulation::ecs::Transform3D& transform,
+        const lux::scene::Camera& camera
+    ) noexcept
+    {
+        const bool is_invalid_pose = !transform.translation.allFinite() || !transform.rotation.coeffs().allFinite() ||
+                                     !transform.scale.allFinite() || !lux::scene::cameraProjection(camera, 1.0);
+        if (camera_ != request_ || is_invalid_pose)
+            return lux::cxx::unexpected(render::RendererFailure{render::ERendererError::INVALID_ARGUMENT});
+        const auto borrowed = runtime_.borrowInstance(scene_);
+        if (!borrowed)
+        {
+            const auto* cause = std::get_if<lux::scene::ESceneRuntimeError>(&borrowed.error().cause);
+            const bool is_busy = cause && *cause == lux::scene::ESceneRuntimeError::BUSY;
+            return lux::cxx::unexpected(render::RendererFailure{
+                is_busy ? render::ERendererError::BUSY : render::ERendererError::INVALID_ARGUMENT
+            });
+        }
+        auto& registry = borrowed->get();
+        const bool has_target =
+            registry.valid(request_) &&
+            registry.all_of<simulation::ecs::Transform3D, lux::scene::Camera, lux::scene::RenderViewRequest>(request_);
+        if (!has_target)
+            return lux::cxx::unexpected(render::RendererFailure{render::ERendererError::INVALID_ARGUMENT});
+        registry.patch<simulation::ecs::Transform3D>(request_, [&](auto& value) { value = transform; });
+        registry.patch<lux::scene::Camera>(request_, [&](auto& value) { value = camera; });
+        return {};
+    }
+
     render::RenderResult<void> ViewportPresentation::setCamera(lux::simulation::ecs::Entity camera) noexcept
     {
         if (!scene_.valid())
@@ -146,7 +223,10 @@ namespace lux::editor::scene
         const auto borrowed = runtime_.borrowInstance(scene_);
         if (!borrowed)
         {
-            if (!std::as_const(runtime_).borrowInstance(scene_))
+            const auto* error = std::get_if<lux::scene::ESceneRuntimeError>(&borrowed.error().cause);
+            const bool is_retired = error && (*error == lux::scene::ESceneRuntimeError::INVALID_ID ||
+                                              *error == lux::scene::ESceneRuntimeError::STOPPED);
+            if (is_retired)
                 static_cast<void>(close());
             return;
         }

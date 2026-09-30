@@ -25,7 +25,7 @@ namespace lux::editor::ui
         if (!viewport_ && visible())
         {
             const auto camera = editor_.previewCamera();
-            auto opened = ui::SceneElement::create(
+            auto opened = scene::SceneElement::create(
                 layout_,
                 lux::ui::ElementId{std::string(id().name()) + ".view"},
                 runtime_,

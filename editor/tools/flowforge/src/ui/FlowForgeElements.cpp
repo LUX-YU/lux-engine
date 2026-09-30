@@ -4,11 +4,13 @@
 #include <lux/engine/ui/Layout.hpp>
 #include <algorithm>
 #include <charconv>
+#include <lux/engine/editor/flowforge/FlowNodeControls.hpp>
 #include <imgui.h>
 #include <imgui_node_editor.h>
 #include <imgui_stdlib.h>
 #include <lux/engine/editor/flowforge/FlowForgeEditor.hpp>
-#include <lux/engine/editor/ui/NodeCanvasIds.hpp>
+#include <lux/engine/editor/widgets/NodeCanvasIds.hpp>
+#include <lux/engine/editor/widgets/NodeCanvas.hpp>
 #include <lux/engine/editor/ui/PublicationControls.hpp>
 #include <lux/engine/editor/ui/AssetActions.hpp>
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
@@ -29,58 +31,10 @@ namespace lux::editor::flowforge
     namespace
     {
         namespace canvas = ax::NodeEditor;
-        struct CanvasDelete final
-        {
-            void operator()(canvas::EditorContext* context) const noexcept
-            {
-                canvas::DestroyEditor(context);
-            }
-        };
-        struct CanvasScope final
-        {
-            canvas::EditorContext* previous{canvas::GetCurrentEditor()};
-            explicit CanvasScope(canvas::EditorContext* context)
-            {
-                canvas::SetCurrentEditor(context);
-            }
-            ~CanvasScope()
-            {
-                canvas::SetCurrentEditor(previous);
-            }
-        };
-        std::unique_ptr<canvas::EditorContext, CanvasDelete> createCanvas()
-        {
-            canvas::Config config;
-            config.SettingsFile = nullptr;
-            // Resizing the surrounding Pane preserves the user's graph zoom.
-            config.CanvasSizeMode = canvas::CanvasSizeMode::CenterOnly;
-            return std::unique_ptr<canvas::EditorContext, CanvasDelete>(canvas::CreateEditor(&config));
-        }
-        std::unique_ptr<lux::flowforge::Node> createNode(lux::flowforge::ENodeOperation operation)
-        {
-            using namespace lux::flowforge;
-            switch (operation)
-            {
-            case ENodeOperation::ON_EVENT:
-                return std::make_unique<OnEventNode>(0, "event");
-            case ENodeOperation::BRANCH:
-                return std::make_unique<BranchNode>(0);
-            case ENodeOperation::SEQUENCE:
-                return std::make_unique<SequenceNode>(0);
-            case ENodeOperation::FOR_LOOP:
-                return std::make_unique<ForLoopNode>(0);
-            case ENodeOperation::WHILE_LOOP:
-                return std::make_unique<WhileLoopNode>(0);
-            case ENodeOperation::BREAK:
-                return std::make_unique<BreakNode>(0);
-            case ENodeOperation::RETURN:
-                return std::make_unique<ReturnNode>(0);
-            case ENodeOperation::FUNC_DEF_START:
-                return std::make_unique<FuncDefNode>(0, "function", std::vector<FuncArgInfo>{});
-            default:
-                return std::make_unique<BinaryOpNode>(0, operation, lux::meta::builtin_ref_type_ptr<double>());
-            }
-        }
+        using widgets::CanvasDelete;
+        using widgets::CanvasScope;
+        using widgets::createCanvas;
+
 
     } // namespace
 
@@ -93,35 +47,7 @@ namespace lux::editor::flowforge
             editing::StateId base;
             bool active{};
         };
-        static VScalar scalar(const lux::flowforge::FlowSourceLiteral& literal)
-        {
-            using K = lux::flowforge::EFlowLiteralKind;
-            if (literal.kind == K::BOOLEAN)
-            {
-                return literal.value == "true";
-            }
-            const auto parse = [&]<class T>() -> VScalar {
-                T value{};
-                const auto begin = literal.value.data(), end = begin + literal.value.size();
-                const auto result = std::from_chars(begin, end, value);
-                if (result.ec == std::errc{} && result.ptr == end)
-                {
-                    return value;
-                }
-                return std::monostate{};
-            };
-            switch (literal.kind)
-            {
-            case K::SIGNED:
-                return parse.template operator()<std::int64_t>();
-            case K::UNSIGNED:
-                return parse.template operator()<std::uint64_t>();
-            case K::REAL:
-                return parse.template operator()<double>();
-            default:
-                return std::monostate{};
-            }
-        }
+
         struct VariableDraft final
         {
             lux::flowforge::FlowSourceVariable source;
@@ -131,124 +57,10 @@ namespace lux::editor::flowforge
         };
         void drawRegisteredNodes()
         {
-            using namespace lux::flowforge;
-            const auto& metadata = editor_.metadata();
-            if (ImGui::BeginMenu("Native functions", !metadata.functions.empty()))
-            {
-                for (const auto* function : metadata.functions)
-                {
-                    ImGui::PushID(function);
-                    const auto& info = function->invokable;
-                    ImGui::TextUnformatted(info.full_name.data(), info.full_name.data() + info.full_name.size());
-                    ImGui::SameLine();
-                    if (ImGui::Selectable(std::string(info.type_signature).c_str()))
-                    {
-                        std::unique_ptr<Node> node = std::make_unique<NativeFuncCall>(0, *function);
-                        accept(editor_.insertNode(node));
-                    }
-                    ImGui::PopID();
-                }
-                ImGui::EndMenu();
-            }
-            if (ImGui::BeginMenu("Classes", !metadata.classes.empty()))
-            {
-                for (const auto* type : metadata.classes)
-                {
-                    ImGui::PushID(type);
-                    if (ImGui::BeginMenu(std::string(type->full_name).c_str()))
-                    {
-                        for (const auto& field : type->fields)
-                        {
-                            if (field.visibility != lux::meta::EVisibility::PUBLIC || field.is_volatile)
-                            {
-                                continue;
-                            }
-                            ImGui::PushID(&field);
-                            ImGui::TextUnformatted(field.name.data(), field.name.data() + field.name.size());
-                            ImGui::SameLine();
-                            if (ImGui::Selectable("Read"))
-                            {
-                                std::unique_ptr<Node> node = std::make_unique<GetFieldNode>(0, *type, field);
-                                accept(editor_.insertNode(node));
-                            }
-                            if (!field.is_const && ImGui::Selectable("Write"))
-                            {
-                                std::unique_ptr<Node> node = std::make_unique<SetFieldNode>(0, *type, field);
-                                accept(editor_.insertNode(node));
-                            }
-                            ImGui::PopID();
-                        }
-                        for (const auto& method : type->methods)
-                        {
-                            if (method.visibility != lux::meta::EVisibility::PUBLIC)
-                            {
-                                continue;
-                            }
-                            ImGui::PushID(&method);
-                            const auto& info = method.invokable;
-                            ImGui::TextUnformatted(info.name.data(), info.name.data() + info.name.size());
-                            ImGui::SameLine();
-                            if (ImGui::Selectable(std::string(info.type_signature).c_str()))
-                            {
-                                std::unique_ptr<Node> node = std::make_unique<NativeFuncCall>(0, *type, method);
-                                accept(editor_.insertNode(node));
-                            }
-                            ImGui::PopID();
-                        }
-                        ImGui::EndMenu();
-                    }
-                    ImGui::PopID();
-                }
-                ImGui::EndMenu();
-            }
-            if (ImGui::BeginMenu("Script abilities", !metadata.abilities.nodes().empty()))
-            {
-                for (const auto& ability : metadata.abilities.nodes())
-                {
-                    ImGui::PushID(&ability);
-                    const auto contract = ability.contract.name();
-                    ImGui::TextUnformatted(contract.data(), contract.data() + contract.size());
-                    ImGui::SameLine();
-                    if (ImGui::Selectable(std::string(ability.method.name()).c_str()))
-                    {
-                        std::unique_ptr<Node> node = std::make_unique<ScriptAbilityNode>(0, ability);
-                        accept(editor_.insertNode(node));
-                    }
-                    ImGui::PopID();
-                }
-                ImGui::EndMenu();
-            }
-            if (ImGui::BeginMenu("Script events", !metadata.events.empty()))
-            {
-                for (const auto& event : metadata.events)
-                {
-                    ImGui::PushID(&event);
-                    ImGui::TextUnformatted(event.system_name.c_str());
-                    ImGui::SameLine();
-                    if (ImGui::Selectable(event.event_name.c_str()))
-                    {
-                        std::unique_ptr<Node> node = std::make_unique<ScriptEventAwaitNode>(0, event);
-                        accept(editor_.insertNode(node));
-                    }
-                    ImGui::PopID();
-                }
-                ImGui::EndMenu();
-            }
+            if (auto node = chooseRegisteredFlowNode(editor_.metadata()))
+                accept(editor_.insertNode(node));
         }
 
-        static std::span<const lux::meta::RefType* const> scalarTypes()
-        {
-            static const std::array values{
-                lux::meta::builtin_ref_type_ptr<bool>(),
-                lux::meta::builtin_ref_type_ptr<std::int32_t>(),
-                lux::meta::builtin_ref_type_ptr<std::uint32_t>(),
-                lux::meta::builtin_ref_type_ptr<std::int64_t>(),
-                lux::meta::builtin_ref_type_ptr<std::uint64_t>(),
-                lux::meta::builtin_ref_type_ptr<float>(),
-                lux::meta::builtin_ref_type_ptr<double>()
-            };
-            return values;
-        }
         static VScalar zero(const lux::meta::RefType& type)
         {
             auto value = lux::meta::RuntimeObject::defaultOf(&type);
@@ -257,60 +69,10 @@ namespace lux::editor::flowforge
                 return std::monostate{};
             }
             auto literal = lux::flowforge::captureFlowLiteral(value);
-            return literal ? scalar(*literal) : VScalar{std::monostate{}};
+            return literal ? flowScalar(*literal) : VScalar{std::monostate{}};
         }
-        static bool scalarField(VScalar& scalar)
-        {
-            return std::visit(
-                [](auto& value) {
-                    using T = std::decay_t<decltype(value)>;
-                    if constexpr (std::is_same_v<T, bool>)
-                    {
-                        return ImGui::Checkbox("##value", &value);
-                    }
-                    else if constexpr (!std::is_same_v<T, std::monostate>)
-                    {
-                        constexpr auto type = std::is_same_v<T, double> ? ImGuiDataType_Double
-                                              : std::is_signed_v<T>     ? ImGuiDataType_S64
-                                                                        : ImGuiDataType_U64;
-                        return ImGui::InputScalar("##value", type, &value);
-                    }
-                    else
-                    {
-                        ImGui::TextDisabled("Default value");
-                        return false;
-                    }
-                },
-                scalar
-            );
-        }
-        static lux::flowforge::FlowSourceLiteral scalarLiteral(const VScalar& scalar)
-        {
-            return std::visit(
-                [](const auto& value) -> lux::flowforge::FlowSourceLiteral {
-                    using T = std::decay_t<decltype(value)>;
-                    using K = lux::flowforge::EFlowLiteralKind;
-                    if constexpr (std::is_same_v<T, bool>)
-                    {
-                        return {K::BOOLEAN, value ? "true" : "false"};
-                    }
-                    else if constexpr (std::is_same_v<T, std::monostate>)
-                    {
-                        return {};
-                    }
-                    else
-                    {
-                        char bytes[96];
-                        const auto result = std::to_chars(bytes, bytes + sizeof(bytes), value);
-                        constexpr auto kind = std::is_same_v<T, double> ? K::REAL
-                                              : std::is_signed_v<T>     ? K::SIGNED
-                                                                        : K::UNSIGNED;
-                        return {kind, {bytes, result.ptr}};
-                    }
-                },
-                scalar
-            );
-        }
+
+
         struct FunctionDraft final
         {
             lux::flowforge::FlowSourceNode source;
@@ -323,52 +85,7 @@ namespace lux::editor::flowforge
             editing::StateId base;
             bool dirty{};
         };
-        static bool drawArguments(const char* label, std::vector<lux::flowforge::FlowSourceArgument>& arguments)
-        {
-            ImGui::PushID(label);
-            ImGui::TextUnformatted(label);
-            bool changed{};
-            for (std::size_t index{}; index < arguments.size(); ++index)
-            {
-                ImGui::PushID(static_cast<int>(index));
-                auto& argument = arguments[index];
-                ImGui::SetNextItemWidth(140);
-                changed |= ImGui::InputText("##name", &argument.name);
-                ImGui::SameLine();
-                ImGui::SetNextItemWidth(130);
-                if (ImGui::BeginCombo("##type", argument.type.c_str()))
-                {
-                    for (const auto* type : scalarTypes())
-                    {
-                        if (ImGui::Selectable(type->name.data(), argument.type == type->name))
-                        {
-                            argument.type = type->name;
-                            changed = true;
-                        }
-                    }
-                    ImGui::EndCombo();
-                }
-                ImGui::PopID();
-            }
-            if (ImGui::SmallButton("Add"))
-            {
-                arguments.push_back(
-                    {"value" + std::to_string(arguments.size() + 1),
-                     std::string(lux::meta::builtin_ref_type_ptr<double>()->name)}
-                );
-                changed = true;
-            }
-            ImGui::SameLine();
-            ImGui::BeginDisabled(arguments.empty());
-            if (ImGui::SmallButton("Remove last"))
-            {
-                arguments.pop_back();
-                changed = true;
-            }
-            ImGui::EndDisabled();
-            ImGui::PopID();
-            return changed;
-        }
+
         void drawFunctions()
         {
             using O = lux::flowforge::ENodeOperation;
@@ -419,11 +136,11 @@ namespace lux::editor::flowforge
                         auto& draft = found->second;
                         draft.dirty |= ImGui::InputText("Name", &draft.source.name);
                         auto& signature = std::get<lux::flowforge::FlowSourceSignature>(draft.source.parameters);
-                        draft.dirty |= drawArguments("Arguments", signature.arguments);
+                        draft.dirty |= editFlowArguments("Arguments", signature.arguments);
                         const bool function = draft.source.operation == O::FUNC_DEF_START;
                         if (function)
                         {
-                            draft.dirty |= drawArguments("Results", signature.results);
+                            draft.dirty |= editFlowArguments("Results", signature.results);
                         }
                         if (draft.dirty && draft.base != current)
                         {
@@ -592,7 +309,7 @@ namespace lux::editor::flowforge
             ImGui::SetNextItemWidth(180);
             ImGui::InputText("New variable", &variable_name_);
             ImGui::SameLine();
-            const auto types = scalarTypes();
+            const auto types = flowScalarTypes();
             if (ImGui::BeginCombo("##new-variable-type", types[variable_type_]->name.data()))
             {
                 for (std::size_t index{}; index < types.size(); ++index)
@@ -610,7 +327,7 @@ namespace lux::editor::flowforge
                 if (accept(editor_.addVariable(
                         variable_name_,
                         types[variable_type_]->name,
-                        scalarLiteral(zero(*types[variable_type_]))
+                        flowScalarLiteral(zero(*types[variable_type_]))
                     )))
                 {
                     variable_name_.clear();
@@ -629,7 +346,7 @@ namespace lux::editor::flowforge
                         continue;
                     }
                     draft.source = std::move(*captured);
-                    draft.value = scalar(draft.source.value);
+                    draft.value = flowScalar(draft.source.value);
                 }
                 ImGui::PushID(reinterpret_cast<const void*>(static_cast<std::uintptr_t>(variable.id)));
                 bool changed{};
@@ -652,7 +369,7 @@ namespace lux::editor::flowforge
                 }
                 ImGui::SameLine();
                 ImGui::SetNextItemWidth(140);
-                changed |= scalarField(draft.value);
+                changed |= editFlowScalar(draft.value);
                 if (changed && !draft.dirty)
                 {
                     draft.base = editor_.historyView()->history.current;
@@ -664,7 +381,7 @@ namespace lux::editor::flowforge
                 {
                     if (draft.value.index() != 0)
                     {
-                        draft.source.value = scalarLiteral(draft.value);
+                        draft.source.value = flowScalarLiteral(draft.value);
                     }
                     if (accept(editor_.setVariable(draft.source)))
                     {
@@ -679,7 +396,7 @@ namespace lux::editor::flowforge
                     if (accept(captured))
                     {
                         draft.source = std::move(*captured);
-                        draft.value = scalar(draft.source.value);
+                        draft.value = flowScalar(draft.source.value);
                         draft.dirty = false;
                     }
 
@@ -727,7 +444,7 @@ namespace lux::editor::flowforge
             auto& field = found->second;
             ImGui::PushID(reinterpret_cast<const void*>(static_cast<std::uintptr_t>(pin.value)));
             ImGui::SetNextItemWidth(160);
-            const bool changed = scalarField(field.value);
+            const bool changed = editFlowScalar(field.value);
             if (ImGui::IsItemActivated())
             {
                 field.base = editor_.historyView()->history.current;
@@ -736,7 +453,7 @@ namespace lux::editor::flowforge
             const bool commit = field.value.index() == 1 ? changed : ImGui::IsItemDeactivatedAfterEdit();
             if (commit && unchanged(field.base))
             {
-                auto literal = scalarLiteral(field.value);
+                auto literal = flowScalarLiteral(field.value);
                 accept(editor_.setPinLiteral(pin, literal));
             }
             if (ImGui::IsItemDeactivated())
@@ -840,7 +557,7 @@ namespace lux::editor::flowforge
             {
                 if (!field.active)
                     continue;
-                if (auto result = adopt(editor_.setPinLiteral(pin, scalarLiteral(field.value))); !result)
+                if (auto result = adopt(editor_.setPinLiteral(pin, flowScalarLiteral(field.value))); !result)
                     return result;
                 field.active = false;
             }
@@ -859,7 +576,7 @@ namespace lux::editor::flowforge
                 if (!draft.dirty)
                     continue;
                 if (draft.value.index() != 0)
-                    draft.source.value = scalarLiteral(draft.value);
+                    draft.source.value = flowScalarLiteral(draft.value);
                 if (auto result = adopt(editor_.setVariable(draft.source)); !result)
                     return result;
                 draft.dirty = false;
@@ -1028,7 +745,7 @@ namespace lux::editor::flowforge
                 {
                     if (ImGui::Selectable(lux::flowforge::toString(kind)))
                     {
-                        auto node = createNode(kind);
+                        auto node = makeFlowNode(kind);
                         accept(editor_.insertNode(node));
                     }
                 }
@@ -1059,7 +776,7 @@ namespace lux::editor::flowforge
                         if (!field.active)
                         {
                             const auto value = editor_.pinLiteral(pin.id);
-                            field.value = value ? scalar(*value) : VScalar{std::monostate{}};
+                            field.value = value ? flowScalar(*value) : VScalar{std::monostate{}};
                         }
                     }
                 }
@@ -1241,7 +958,7 @@ namespace lux::editor::flowforge
                        ) == editor_.links().end();
             });
         }
-        NodeCanvasIds canvas_ids_;
+        widgets::NodeCanvasIds canvas_ids_;
         std::unique_ptr<canvas::EditorContext, CanvasDelete> canvas_;
         std::unordered_map<lux::flowforge::NodeId, Position> positions_;
         std::map<std::pair<std::uint64_t, std::uint64_t>, std::uint64_t> links_;

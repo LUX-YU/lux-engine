@@ -22,6 +22,7 @@ namespace lux::editor::flowforge
         [[nodiscard]] FlowEditResult<FlowEditReceipt> commit();
         [[nodiscard]] FlowEditResult<void> cancel();
         [[nodiscard]] FlowEditResult<void> synchronize();
+        [[nodiscard]] sessions::TSessionKey<FlowSession> session() const noexcept { return key_; }
         [[nodiscard]] const FlowEditBatch* overlay() const noexcept
         {
             return gesture_ ? &*gesture_ : nullptr;

@@ -1,7 +1,7 @@
 #pragma once
 #include "ToolTestAccess.hpp"
 #include "menu_checks.hpp"
-#include <lux/engine/editor/ui/SceneElement.hpp>
+#include <lux/engine/editor/scene/SceneElement.hpp>
 
 #include "entity_checks.hpp"
 #include <lux/engine/scene/RenderResources.hpp>
@@ -61,7 +61,7 @@ public:
             auto camera = toolTest(scene_).viewportCamera();
             if (!camera)
                 return;
-            auto opened = lux::editor::ui::SceneElement::create(
+            auto opened = lux::editor::scene::SceneElement::create(
                 *this,
                 lux::ui::ElementId{"test.run-image.image"},
                 testSceneRuntime(scene_),
@@ -105,7 +105,7 @@ private:
     lux::scene::RenderResources& resources_;
     RenderOutputProbe& captured_;
     lux::scene::ViewObservation receipt_;
-    std::unique_ptr<lux::editor::ui::SceneElement> viewport_;
+    std::unique_ptr<lux::editor::scene::SceneElement> viewport_;
     bool closing_{};
 };
 
@@ -377,7 +377,7 @@ struct ScenePlaybackChecks final
             assert(scene.resumeRun(first));
             scene.content()->setVisible(false);
             const auto closeViewport = [&](auto&& self, lux::object::LuxObject& node) -> void {
-                if (auto* viewport = dynamic_cast<lux::editor::ui::SceneElement*>(&node))
+                if (auto* viewport = dynamic_cast<lux::editor::scene::SceneElement*>(&node))
                     static_cast<void>(viewport->close());
                 for (auto* child = node.firstChild(); child; child = child->nextSibling())
                     self(self, *child);

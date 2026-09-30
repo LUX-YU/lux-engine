@@ -20,9 +20,9 @@ namespace lux::editor
         std::vector<lux::scene::RenderFeatureSceneBinding> render_bindings;
     };
 
-    [[nodiscard]] LUX_EDITOR_METADATA_PUBLIC project::PluginResult<SceneRegistrations> sceneRegistrations(
+    [[nodiscard]] LUX_EDITOR_METADATA_PUBLIC lux::project::PluginResult<SceneRegistrations> sceneRegistrations(
         std::span<const lux::simulation::ecs::ComponentSchema> additional = {},
-        std::span<const std::shared_ptr<const project::PluginLibrary>> plugins = {}
+        std::span<const std::shared_ptr<const lux::project::PluginLibrary>> plugins = {}
     );
 
 }

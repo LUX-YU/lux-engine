@@ -11,7 +11,7 @@
 #include <imgui_internal.h>
 #include "ComponentFactoryPane.hpp"
 
-#include <lux/engine/editor/ui/Presentation.hpp>
+#include <lux/engine/editor/desktop/Presentation.hpp>
 #include <lux/engine/scene/SceneDescriptionBuilder.hpp>
 #include <lux/engine/scene/SceneRuntime.hpp>
 #include <thread>

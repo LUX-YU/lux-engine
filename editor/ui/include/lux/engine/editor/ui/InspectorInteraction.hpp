@@ -1,9 +1,12 @@
 #pragma once
 
 #include <array>
+#include <lux/engine/editor/EditorError.hpp>
 #include <lux/engine/editor/editing/scene/FieldEdit.hpp>
 #include <lux/engine/ui/Controls.hpp>
 #include <optional>
+#include <lux/engine/editor/project/ProjectCatalogAccess.hpp>
+#include <lux/engine/editor/ui/visibility.h>
 
 namespace lux::editor
 {
@@ -17,6 +20,19 @@ namespace lux::editor::ui
     class InspectorInteraction final
     {
     public:
+        using Editing = scene::SceneEditing;
+        using Target = lux::simulation::ecs::Entity;
+        using Status = EditorResult<void>;
+        static Status connectionFailure(object::EConnectError error)
+        {
+            if (error == object::EConnectError::ALLOCATION_FAILURE) std::terminate();
+            return lux::cxx::unexpected(EditorFailure{EEditorError::FRONTEND_FAILURE, "inspector.connect"});
+        }
+        static Status constructionFailure()
+        {
+            return lux::cxx::unexpected(EditorFailure{EEditorError::FRONTEND_FAILURE, "inspector.create"});
+        }
+        [[nodiscard]] LUX_EDITOR_UI_PUBLIC project::ProjectCatalogAccess catalogAccess() const noexcept;
         InspectorInteraction(scene::SceneEditing& owner, std::string origin, const ProjectStorage* catalog = nullptr)
             : editing_(owner), origin_(std::move(origin)), catalog_(catalog)
         {}
@@ -60,7 +76,7 @@ namespace lux::editor::ui
 
         // Structural commands are adopted by the Inspector owner during maintenance.
         // Captures own keys/indices and reacquire Registry fields; no Element is borrowed.
-        bool queueEdit(std::function<editing::EditResult<void>()> edit)
+        bool queueEdit(std::function<bool()> edit)
         {
             if (pending_edit_)
             {
@@ -74,11 +90,11 @@ namespace lux::editor::ui
         {
             if (!pending_edit_)
                 return true;
+            failure_ = {};
             const auto result = pending_edit_();
             if (!result)
             {
-                fail(result.error());
-                if (result.error().code != editing::EEditError::BUSY)
+                if (failure_.code != editing::EEditError::BUSY)
                     pending_edit_ = {};
                 return false;
             }
@@ -270,7 +286,7 @@ namespace lux::editor::ui
 
         std::string origin_;
         std::optional<Gesture> gesture_;
-        std::function<editing::EditResult<void>()> pending_edit_;
+        std::function<bool()> pending_edit_;
         editing::EditFailure failure_;
     };
 } // namespace lux::editor::ui

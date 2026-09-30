@@ -46,6 +46,7 @@ namespace lux::editor::scene
         {
             return id_;
         }
+        [[nodiscard]] sessions::TSessionKey<SceneSession> session() const noexcept { return key_; }
         [[nodiscard]] SceneEditResult<void> select(SceneSelection selection);
         [[nodiscard]] const SceneSelection& selection() const noexcept
         {

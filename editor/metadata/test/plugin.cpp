@@ -25,7 +25,7 @@ int main(int argc, char** argv)
     using Clock = std::chrono::steady_clock;
     const auto microseconds = [](auto elapsed) { return std::chrono::duration<double, std::micro>(elapsed).count(); };
     assert(!meta::ReflectionRegistry::initialized());
-    project::PluginCatalog metadata;
+    lux::project::PluginCatalog metadata;
     const auto read_started = Clock::now();
     assert(metadata.read(argv[1], argv[2]));
     const auto read_finished = Clock::now();
@@ -42,9 +42,9 @@ int main(int argc, char** argv)
             output << altered;
             assert(output.good());
         }
-        project::PluginCatalog candidate;
+        lux::project::PluginCatalog candidate;
         const auto changed = candidate.read(file, argv[2]);
-        assert(!changed && changed.error().code == project::EPluginError::DECLARATION_MISMATCH);
+        assert(!changed && changed.error().code == lux::project::EPluginError::DECLARATION_MISMATCH);
         assert(candidate.plugins().empty() && !meta::ReflectionRegistry::initialized());
         assert(std::filesystem::remove(file));
     }
@@ -55,16 +55,16 @@ int main(int argc, char** argv)
     auto order = metadata.loadOrder(description->identity.id);
     assert(order && order->size() == 2);
     const auto load_started = Clock::now();
-    std::vector<std::shared_ptr<const project::PluginLibrary>> dependencies;
+    std::vector<std::shared_ptr<const lux::project::PluginLibrary>> dependencies;
     for (const auto* item : *order)
     {
         if (item->identity == description->identity)
             continue;
-        auto dependency = project::PluginLibrary::load(*item, dependencies);
+        auto dependency = lux::project::PluginLibrary::load(*item, dependencies);
         assert(dependency);
         dependencies.push_back(std::move(*dependency));
     }
-    auto loaded = project::PluginLibrary::load(*description, dependencies);
+    auto loaded = lux::project::PluginLibrary::load(*description, dependencies);
     assert(loaded && (*loaded)->simulationSystems().size() == 1 && (*loaded)->components().size() == 2);
     const auto load_finished = Clock::now();
     std::printf(
@@ -88,32 +88,32 @@ int main(int argc, char** argv)
             moved.get_symbol<engine::platform::GetLibraryExportIdentity>(engine::platform::kLibraryIdentitySymbol);
         assert(identity && identity()->module_id == description->identity.id);
     }
-    const auto rejected = [&](auto change, project::EPluginError expected) {
+    const auto rejected = [&](auto change, lux::project::EPluginError expected) {
         auto input = *description;
         change(input);
-        const auto result = project::PluginLibrary::load(input, dependencies);
+        const auto result = lux::project::PluginLibrary::load(input, dependencies);
         assert(!result && result.error().code == expected);
     };
     rejected(
         [](auto& d) { d.runtime_library.path = "bin/absent-test-plugin.dll"; },
-        project::EPluginError::LIBRARY_LOAD_FAILURE
+        lux::project::EPluginError::LIBRARY_LOAD_FAILURE
     );
-    rejected([](auto& d) { d.identity.id = "test.wrong.identity"; }, project::EPluginError::MODULE_MISMATCH);
+    rejected([](auto& d) { d.identity.id = "test.wrong.identity"; }, lux::project::EPluginError::MODULE_MISMATCH);
     rejected(
         [](auto& d) { d.runtime_library.declaration_digest.assign(64, '0'); },
-        project::EPluginError::DECLARATION_MISMATCH
+        lux::project::EPluginError::DECLARATION_MISMATCH
     );
     rejected(
-        [](auto& d) { d.runtime_library.exports.push_back(project::EPluginExport::SCENE); },
-        project::EPluginError::MISSING_EXPORT
+        [](auto& d) { d.runtime_library.exports.push_back(lux::project::EPluginExport::SCENE); },
+        lux::project::EPluginError::MISSING_EXPORT
     );
     different_sdk.runtime_library.sdk_abi = "different-sdk";
-    auto wrong_abi = project::PluginLibrary::load(different_sdk, dependencies);
-    assert(!wrong_abi && wrong_abi.error().code == project::EPluginError::ABI_MISMATCH);
+    auto wrong_abi = lux::project::PluginLibrary::load(different_sdk, dependencies);
+    assert(!wrong_abi && wrong_abi.error().code == lux::project::EPluginError::ABI_MISMATCH);
     auto wrong_build_description = *description;
     wrong_build_description.runtime_library.build_id.assign(64, '0');
-    auto wrong_build = project::PluginLibrary::load(wrong_build_description, dependencies);
-    assert(!wrong_build && wrong_build.error().code == project::EPluginError::BUILD_MISMATCH);
+    auto wrong_build = lux::project::PluginLibrary::load(wrong_build_description, dependencies);
+    assert(!wrong_build && wrong_build.error().code == lux::project::EPluginError::BUILD_MISMATCH);
     assert(!meta::ReflectionRegistry::initialized());
     std::weak_ptr<const void> code = (*loaded)->runtimeCode();
     {
@@ -152,28 +152,28 @@ int main(int argc, char** argv)
         auto runtime_only = *description;
         if (runtime_only.editor_library)
             runtime_only.editor_library->path = "missing-editor-library.dll";
-        assert(project::PluginLibrary::load(runtime_only, dependencies));
+        assert(lux::project::PluginLibrary::load(runtime_only, dependencies));
     }
     {
-        project::PluginCatalog catalog;
+        lux::project::PluginCatalog catalog;
         assert(catalog.read(argv[1], argv[2]));
         const std::array selected{description->identity};
-        auto manager = project::PluginManager::create(std::move(catalog), selected);
+        auto manager = lux::project::PluginManager::create(std::move(catalog), selected);
         assert(manager && manager->find(description->identity.id));
         assert(manager->libraries().size() == order->size());
     }
-    const auto reject_selection = [&](std::vector<project::MetadataIdentity> selection,
-                                      project::EPluginError expected) {
-        project::PluginCatalog catalog;
+    const auto reject_selection = [&](std::vector<lux::project::MetadataIdentity> selection,
+                                      lux::project::EPluginError expected) {
+        lux::project::PluginCatalog catalog;
         assert(catalog.read(argv[1], argv[2]));
-        auto result = project::PluginManager::create(std::move(catalog), selection);
+        auto result = lux::project::PluginManager::create(std::move(catalog), selection);
         assert(!result && result.error().code == expected);
     };
-    reject_selection({description->identity, description->identity}, project::EPluginError::DUPLICATE_IDENTITY);
-    reject_selection({{"test.absent.plugin", 1}}, project::EPluginError::MISSING_DEPENDENCY);
+    reject_selection({description->identity, description->identity}, lux::project::EPluginError::DUPLICATE_IDENTITY);
+    reject_selection({{"test.absent.plugin", 1}}, lux::project::EPluginError::MISSING_DEPENDENCY);
     reject_selection(
         {{description->identity.id, description->identity.version + 1}},
-        project::EPluginError::DEPENDENCY_VERSION_MISMATCH
+        lux::project::EPluginError::DEPENDENCY_VERSION_MISMATCH
     );
     if (description->editor_library)
     {
@@ -191,7 +191,7 @@ int main(int argc, char** argv)
             assert(extension);
             editor_dependencies.push_back(std::move(*extension));
         }
-        auto runtime = project::PluginLibrary::load(*description, dependencies);
+        auto runtime = lux::project::PluginLibrary::load(*description, dependencies);
         assert(runtime);
         auto library = editor::loadEditorPlugin(*description, **runtime, editor_dependencies);
         assert(library && library->exports);

@@ -77,67 +77,11 @@ namespace lux::editor::ui
             by_id.emplace(objects[index].object, index);
         }
 
-        // The extra head contains roots; hierarchy facts were read directly from the Registry.
-        std::vector<std::size_t> first(objects.size() + 1, none), next(objects.size(), none);
-        for (auto index = objects.size(); index-- > 0;)
-        {
-            const auto parent = by_id.find(objects[index].parent);
-            const auto head = parent == by_id.end() ? none : parent->second;
-            next[index] = first[head];
-            first[head] = index;
-        }
-
-        rows_.clear();
-        rows_.reserve(objects.size());
-        std::vector<bool> visited(objects.size());
-        std::vector<std::size_t> parents;
-        auto source = first[none];
-        std::size_t depth{}, orphan{};
-        while (rows_.size() < objects.size())
-        {
-            if (source == none)
-            {
-                if (!parents.empty())
-                {
-                    source = next[rows_[parents.back()].source];
-                    rows_[parents.back()].end = rows_.size();
-                    parents.pop_back();
-                    --depth;
-                    continue;
-                }
-                while (orphan < objects.size() && visited[orphan])
-                {
-                    ++orphan;
-                }
-                source = orphan;
-                if (source == none)
-                {
-                    break;
-                }
-            }
-            if (visited[source])
-            {
-                source = none;
-                continue;
-            }
-            visited[source] = true;
-            const auto row = rows_.size();
-            rows_.push_back({source, depth, row + 1});
-            if (first[source] != none)
-            {
-                parents.push_back(row);
-                source = first[source];
-                ++depth;
-            }
-            else
-            {
-                source = next[source];
-            }
-        }
-        for (const auto row : parents)
-        {
-            rows_[row].end = rows_.size();
-        }
+        std::vector<std::size_t> parent_indices(objects.size(), none);
+        for (std::size_t index{}; index < objects.size(); ++index)
+            if (const auto parent = by_id.find(objects[index].parent); parent != by_id.end())
+                parent_indices[index] = parent->second;
+        rows_ = widgets::makeTreeRows(parent_indices);
         std::erase_if(collapsed_, [&](const auto& id) { return !by_id.contains(id); });
         rows_dirty_ = false;
         visible_dirty_ = true;

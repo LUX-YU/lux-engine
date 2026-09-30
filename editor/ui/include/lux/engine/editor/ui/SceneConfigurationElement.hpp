@@ -48,7 +48,7 @@ namespace lux::editor::ui
         SceneConfigurationElement(
             lux::ui::Element& parent,
             lux::ui::ElementId,
-            const project::PluginCatalog&,
+            const lux::project::PluginCatalog&,
             const SceneRegistrations&,
             std::span<const ConfigurationEditorRegistration>,
             std::span<const SceneProviderOption>,
@@ -64,7 +64,6 @@ namespace lux::editor::ui
         lux::ui::SizeHint measureContent(float width) noexcept override;
         void arrangeContent() noexcept override;
         void draw() noexcept override;
-        void update() noexcept override;
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };

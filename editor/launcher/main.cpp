@@ -1,8 +1,8 @@
 #include <lux/engine/editor/launcher/ProjectCreationPane.hpp>
-#include <lux/engine/editor/ui/Presentation.hpp>
-#include <lux/engine/editor/ui/WindowOutput.hpp>
+#include <lux/engine/editor/desktop/Presentation.hpp>
+#include <lux/engine/editor/desktop/WindowOutput.hpp>
 #include <lux/engine/ui/Root.hpp>
-#include <lux/engine/editor/ui/WindowInput.hpp>
+#include <lux/engine/editor/desktop/WindowInput.hpp>
 #include <lux/engine/EngineContext.hpp>
 #include <lux/engine/EngineRendering.hpp>
 #include <lux/engine/platform/Process.hpp>
@@ -28,7 +28,7 @@ namespace
         {
             return initialize({});
         }
-        editor::ui::Presentation* presentation{};
+        editor::desktop::Presentation* presentation{};
 
     private:
         cxx::expected<void, ui::ECaptureError> drawDataReady(const ui::DrawData& data) noexcept override
@@ -43,7 +43,7 @@ namespace
         std::unique_ptr<engine::EngineContext> engine_;
         std::optional<object::ObjectMessageQueue> messages_;
         std::unique_ptr<LauncherRoot> root_;
-        std::unique_ptr<editor::ui::Presentation> ui_;
+        std::unique_ptr<editor::desktop::Presentation> ui_;
         std::unique_ptr<editor::ProjectCreationPane> creation_;
         input::Input input_;
         bool close_requested_{};
@@ -83,7 +83,7 @@ namespace
             if (!root_->initializeUi())
                 return false;
             root_->bindWindow(window_.get());
-            auto presentation = editor::ui::Presentation::create(
+            auto presentation = editor::desktop::Presentation::create(
                 *root_,
                 engine_->execution(),
                 engine_->sceneRuntime(),
@@ -150,7 +150,7 @@ namespace
             {
                 window::LuxWindow::pollEvents();
                 input_.sample(*window_);
-                if (!editor::ui::feedWindowInput(*root_, input_.snapshot()))
+                if (!editor::desktop::feedWindowInput(*root_, input_.snapshot()))
                     fail("input");
                 dispatchCompletions();
                 const auto frame = ui_->frameInfo();

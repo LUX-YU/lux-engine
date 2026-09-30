@@ -1,4 +1,6 @@
 find_package(nlohmann_json CONFIG REQUIRED)
+# The architecture walk runs at the root; preserve this imported target's real identity and edges there.
+set_property(TARGET nlohmann_json::nlohmann_json PROPERTY IMPORTED_GLOBAL TRUE)
 add_component(COMPONENT_NAME project_plugins NAMESPACE lux::engine::project STATIC
     SOURCE_FILES src/PluginCatalog.cpp src/PluginLibrary.cpp src/PluginManager.cpp)
 lux_classify_target(TARGET project_plugins LAYER SCENE PRODUCT SHARED ROLE LIBRARY)

@@ -11,6 +11,10 @@
 
 namespace lux::editor::scene
 {
+    [[nodiscard]] editing::EditResult<SceneObjectData> makeSceneObject(
+        world::WorldObjectId, partition::PartitionOrdinal, EObjectSpace, bool hierarchy,
+        const simulation::ecs::ComponentSchemaSet&
+    );
     struct SceneModelObject final
     {
         world::WorldObjectId object, parent;

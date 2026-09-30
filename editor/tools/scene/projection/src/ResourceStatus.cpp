@@ -7,6 +7,13 @@ namespace lux::editor::scene
         {
             return lux::cxx::unexpected(render::RendererFailure{render::ERendererError::INVALID_ARGUMENT});
         }
+        auto unavailable(const lux::scene::SceneRuntimeFailure& failure)
+        {
+            const auto* error = std::get_if<lux::scene::ESceneRuntimeError>(&failure.cause);
+            return lux::cxx::unexpected(render::RendererFailure{
+                error && *error == lux::scene::ESceneRuntimeError::BUSY ? render::ERendererError::BUSY :
+                    render::ERendererError::INVALID_ARGUMENT});
+        }
     }
     render::RenderResult<ResourceStatusSnapshot> captureResourceStatus(
         const lux::scene::SceneRuntime& runtime,
@@ -16,7 +23,7 @@ namespace lux::editor::scene
     {
         auto borrowed = runtime.borrowInstance(instance);
         if (!borrowed)
-            return missing();
+            return unavailable(borrowed.error());
         const auto* assets = lux::scene::RenderAssets::find(borrowed->get(), system);
         if (!assets)
             return missing();
@@ -27,7 +34,7 @@ namespace lux::editor::scene
     {
         auto borrowed = runtime.borrowInstance(request.instance);
         if (!borrowed)
-            return missing();
+            return unavailable(borrowed.error());
         auto* assets = lux::scene::RenderAssets::find(borrowed->get(), request.system);
         if (!assets)
             return missing();

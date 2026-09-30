@@ -1,4 +1,4 @@
-#include <lux/engine/editor/ui/WindowInput.hpp>
+#include <lux/engine/editor/desktop/WindowInput.hpp>
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -14,7 +14,7 @@ namespace lux::editor
         }
         lux::window::LuxWindow::pollEvents();
         input.sample(*window);
-        const auto accepted = ui::feedWindowInput(*root, input.snapshot());
+        const auto accepted = desktop::feedWindowInput(*root, input.snapshot());
         if (!accepted)
             fail({EEditorError::FRONTEND_FAILURE, "editor.ui.input", static_cast<std::uint64_t>(accepted.error())});
         if (!native_close && window->shouldClose())

@@ -18,7 +18,7 @@ namespace lux::editor
 {
     namespace
     {
-        EditorFailure pluginFailure(const project::PluginFailure& error)
+        EditorFailure pluginFailure(const lux::project::PluginFailure& error)
         {
             return {
                 EEditorError::SOURCE_FAILURE,
@@ -29,7 +29,7 @@ namespace lux::editor
             };
         }
 
-        using PreparedPlugins = std::pair<project::PluginManager, std::vector<EditorPlugin>>;
+        using PreparedPlugins = std::pair<lux::project::PluginManager, std::vector<EditorPlugin>>;
         EditorResult<PreparedPlugins> preparePlugins(
             const std::filesystem::path& project_root,
             std::span<const ProjectPluginEntry> selection,
@@ -37,14 +37,14 @@ namespace lux::editor
         ) noexcept
         try
         {
-            project::PluginCatalog catalog;
+            lux::project::PluginCatalog catalog;
             if (!installation.empty())
             {
                 auto read = catalog.read(installation / "share/lux-engine/plugins/catalog.json", installation);
                 if (!read)
                     return lux::cxx::unexpected(pluginFailure(read.error()));
             }
-            std::vector<project::MetadataIdentity> selected;
+            std::vector<lux::project::MetadataIdentity> selected;
             std::vector<std::string> descriptions;
             for (const auto& plugin : selection)
             {
@@ -75,7 +75,7 @@ namespace lux::editor
                     return lux::cxx::unexpected(pluginFailure(read.error()));
                 descriptions.push_back(plugin.description_path);
             }
-            auto loaded = project::PluginManager::create(std::move(catalog), selected);
+            auto loaded = lux::project::PluginManager::create(std::move(catalog), selected);
             if (!loaded)
                 return lux::cxx::unexpected(pluginFailure(loaded.error()));
             std::vector<EditorPlugin> extensions;
@@ -107,7 +107,7 @@ namespace lux::editor
         process::ExecutionRuntime& execution;
         std::uint64_t task_revision{};
         std::shared_ptr<const void> reflection;
-        std::optional<project::PluginManager> plugins;
+        std::optional<lux::project::PluginManager> plugins;
         std::vector<EditorPlugin> editor_plugins;
         process::TaskScope project_tasks{execution};
         std::unique_ptr<ProjectStorage> project;
@@ -317,7 +317,7 @@ namespace lux::editor
     {
         return impl_->rendering.resources();
     }
-    const project::PluginManager& EditorContext::plugins() const noexcept
+    const lux::project::PluginManager& EditorContext::plugins() const noexcept
     {
         return *impl_->plugins;
     }

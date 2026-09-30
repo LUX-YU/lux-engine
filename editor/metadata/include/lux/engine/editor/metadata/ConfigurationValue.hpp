@@ -10,7 +10,7 @@ namespace lux::editor
     class LUX_EDITOR_METADATA_PUBLIC ConfigurationValue final
     {
     public:
-        [[nodiscard]] static project::PluginResult<ConfigurationValue> create(
+        [[nodiscard]] static lux::project::PluginResult<ConfigurationValue> create(
             const ConfigurationEditorRegistration&,
             std::shared_ptr<const void> code
         ) noexcept;

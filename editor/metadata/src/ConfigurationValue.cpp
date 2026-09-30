@@ -11,7 +11,7 @@ namespace lux::editor
         : code_(std::move(code)), value_(std::move(value)), registration_(registration)
     {}
 
-    project::PluginResult<ConfigurationValue> ConfigurationValue::create(
+    lux::project::PluginResult<ConfigurationValue> ConfigurationValue::create(
         const ConfigurationEditorRegistration& registration,
         std::shared_ptr<const void> code
     ) noexcept
@@ -20,7 +20,7 @@ namespace lux::editor
                              !registration.schema_version || !meta::ReflectionRegistry::initialized();
         if (invalid)
             return lux::cxx::unexpected(
-                project::PluginFailure{project::EPluginError::INVALID_EXPORT, {}, "configuration"}
+                lux::project::PluginFailure{lux::project::EPluginError::INVALID_EXPORT, {}, "configuration"}
             );
         const auto* reflection = registration.reflection(meta::ReflectionRegistry::instance());
         const bool invalid_type = !reflection || reflection->type.ptr != reflection ||
@@ -28,12 +28,12 @@ namespace lux::editor
                                   reflection->type.name != registration.codec.type.name();
         if (invalid_type)
             return lux::cxx::unexpected(
-                project::PluginFailure{project::EPluginError::INVALID_EXPORT, {}, registration.schema_name}
+                lux::project::PluginFailure{lux::project::EPluginError::INVALID_EXPORT, {}, registration.schema_name}
             );
         auto value = meta::RuntimeObject::create(reflection);
         if (!value)
             return lux::cxx::unexpected(
-                project::PluginFailure{project::EPluginError::REGISTRATION_FAILURE, {}, registration.schema_name}
+                lux::project::PluginFailure{lux::project::EPluginError::REGISTRATION_FAILURE, {}, registration.schema_name}
             );
         return ConfigurationValue(std::move(code), std::move(*value), registration);
     }

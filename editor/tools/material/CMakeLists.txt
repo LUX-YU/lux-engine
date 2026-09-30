@@ -40,3 +40,6 @@ lux_engine_install_components(PROJECT_NAME lux-engine-editor-material VERSION ${
 if(LUX_EDITOR_TEST_DESKTOP_GPU)
     target_sources(editor_material PRIVATE test/MaterialEditorTestAccess.cpp)
 endif()
+
+target_link_libraries(editor_material PUBLIC lux::engine::editor::material_ui)
+component_add_transitive_commands(editor_material "find_package(lux-engine-editor-material-ui REQUIRED COMPONENTS material_ui)")

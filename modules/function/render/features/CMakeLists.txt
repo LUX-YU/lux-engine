@@ -156,12 +156,12 @@ component_include_directories(
     render_features
     BUILD_TIME_SHARED
         ${CMAKE_CURRENT_SOURCE_DIR}/../vulkan/include
-        ${CMAKE_CURRENT_SOURCE_DIR}/../vulkan/sinclude
-        ${CMAKE_CURRENT_SOURCE_DIR}/sinclude
         ${CMAKE_CURRENT_SOURCE_DIR}/../client/include
         ${CMAKE_BINARY_DIR}/gen
         ${LUX_GENERATE_HEADER_DIR}
     PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/../vulkan/sinclude
+        ${CMAKE_CURRENT_SOURCE_DIR}/sinclude
         ${CMAKE_CURRENT_SOURCE_DIR}/../vulkan/pinclude
         ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
         ${meshoptimizer_INCLUDE_DIRS}

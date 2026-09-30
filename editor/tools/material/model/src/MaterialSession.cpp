@@ -191,6 +191,30 @@ namespace lux::editor::material
             }
         });
     }
+    MaterialEditResult<MaterialReplaceNode> MaterialReadView::copyNode(lux::material::NodeId id) const
+    {
+        return gate_.withRead([&]() -> MaterialEditResult<MaterialReplaceNode> {
+            const auto* node = source_.graph.node(id);
+            if (!node)
+                return detail::rejected(EMaterialEditError::INVALID_NODE);
+            auto code = contracts::CodeLease::plugin(std::make_shared<const std::vector<contracts::CodeLease>>(code_));
+            try
+            {
+                auto candidate = node->clone();
+                if (!candidate || !lux::material::validateMaterialNode(*candidate))
+                    return detail::rejected(EMaterialEditError::CALLBACK);
+                return MaterialReplaceNode{std::move(code), std::move(candidate)};
+            }
+            catch (const std::bad_alloc&)
+            {
+                std::terminate();
+            }
+            catch (...)
+            {
+                return detail::rejected(EMaterialEditError::CALLBACK);
+            }
+        });
+    }
     MaterialEditResult<std::string> MaterialReadView::encode() const
     {
         return gate_.withRead([&]() -> MaterialEditResult<std::string> {

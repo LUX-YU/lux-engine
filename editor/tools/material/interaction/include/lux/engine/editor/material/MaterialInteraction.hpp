@@ -25,6 +25,7 @@ namespace lux::editor::material
         [[nodiscard]] MaterialEditResult<MaterialEditReceipt> commit();
         [[nodiscard]] MaterialEditResult<void> cancel();
         [[nodiscard]] MaterialEditResult<void> synchronize();
+        [[nodiscard]] sessions::TSessionKey<MaterialSession> session() const noexcept { return key_; }
         [[nodiscard]] const MaterialEditBatch* overlay() const noexcept
         {
             return gesture_ ? &*gesture_ : nullptr;

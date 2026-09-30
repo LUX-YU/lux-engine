@@ -72,11 +72,12 @@ namespace lux::editor::scene
                 "lux.render.scene_bindings",
                 bindings
             ));
-            providers.push_back(lux::scene::makeSceneCapabilityProvider<lux::scene::RenderAssetInput>(
-                "assets",
-                "lux.render.assets",
-                assets
-            ));
+            if (assets)
+                providers.push_back(lux::scene::makeSceneCapabilityProvider<lux::scene::RenderAssetInput>(
+                    "assets",
+                    "lux.render.assets",
+                    assets
+                ));
         }
         auto created =
             runtime.builder()

@@ -3,9 +3,9 @@
 #include <lux/engine/project/PluginRendering.hpp>
 namespace lux::editor
 {
-    project::PluginResult<SceneRegistrations> sceneRegistrations(
+    lux::project::PluginResult<SceneRegistrations> sceneRegistrations(
         std::span<const lux::simulation::ecs::ComponentSchema> additional,
-        std::span<const std::shared_ptr<const project::PluginLibrary>> plugins
+        std::span<const std::shared_ptr<const lux::project::PluginLibrary>> plugins
     )
     {
         std::vector<lux::simulation::ecs::ComponentSchema> schemas;
@@ -16,8 +16,8 @@ namespace lux::editor
         auto set = lux::simulation::ecs::ComponentSchemaSet::build(std::move(schemas));
         if (!set)
         {
-            return lux::cxx::unexpected(project::PluginFailure{
-                project::EPluginError::REGISTRATION_FAILURE,
+            return lux::cxx::unexpected(lux::project::PluginFailure{
+                lux::project::EPluginError::REGISTRATION_FAILURE,
                 {},
                 "component.schemas",
                 std::to_string(static_cast<std::uint64_t>(set.error().code))
@@ -28,8 +28,8 @@ namespace lux::editor
         {
             auto result = systems.add(plugin->simulationSystems());
             if (!result)
-                return lux::cxx::unexpected(project::PluginFailure{
-                    project::EPluginError::REGISTRATION_FAILURE,
+                return lux::cxx::unexpected(lux::project::PluginFailure{
+                    lux::project::EPluginError::REGISTRATION_FAILURE,
                     plugin->identity().id,
                     "simulation.plugins",
                     std::to_string(static_cast<std::uint64_t>(result.error().code))
@@ -41,7 +41,7 @@ namespace lux::editor
         for (const auto& plugin : plugins)
         {
             registrations.insert(registrations.end(), plugin->sceneSystems().begin(), plugin->sceneSystems().end());
-            auto graphics = project::readPluginRendering(*plugin, plugins);
+            auto graphics = lux::project::readPluginRendering(*plugin, plugins);
             if (!graphics)
                 return lux::cxx::unexpected(graphics.error());
             loaded_bindings.insert(loaded_bindings.end(), graphics->bindings.begin(), graphics->bindings.end());

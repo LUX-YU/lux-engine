@@ -7,8 +7,8 @@
 #include <lux/engine/editor/AssetOpenRequest.hpp>
 #include <lux/engine/editor/CloseRequest.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
-#include <lux/engine/editor/ui/Presentation.hpp>
-#include <lux/engine/editor/ui/WindowOutput.hpp>
+#include <lux/engine/editor/desktop/Presentation.hpp>
+#include <lux/engine/editor/desktop/WindowOutput.hpp>
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
 #include <lux/engine/scene/SceneRuntime.hpp>
 #include <lux/engine/EngineContext.hpp>
@@ -96,7 +96,7 @@ namespace lux::editor
         input::Input input;
         std::unique_ptr<engine::EngineContext> engine;
         std::optional<object::ObjectMessageQueue> messages;
-        std::unique_ptr<ui::Presentation> presentation;
+        std::unique_ptr<desktop::Presentation> presentation;
         // Project services and tools retire before the shared UI presentation and EngineContext.
         std::unique_ptr<EditorContext> context;
         detail::WorkspaceData workspace_;

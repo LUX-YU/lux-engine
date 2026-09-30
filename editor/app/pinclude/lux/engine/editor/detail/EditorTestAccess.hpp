@@ -8,7 +8,7 @@ namespace lux::editor
         LUX_EDITOR_APP_PUBLIC static void captureMenu(Editor&, lux::ui::Pane&);
         LUX_EDITOR_APP_PUBLIC static bool validMenu(Editor&);
         LUX_EDITOR_APP_PUBLIC static lux::ui::ECommandDispatchResult executeMenu(Editor&, editing::EHistoryAction);
-        LUX_EDITOR_APP_PUBLIC static ui::Presentation* ui(Editor&) noexcept;
+        LUX_EDITOR_APP_PUBLIC static desktop::Presentation* ui(Editor&) noexcept;
         LUX_EDITOR_APP_PUBLIC static render::RenderRuntime& renderer(Editor&) noexcept;
         LUX_EDITOR_APP_PUBLIC static void turn(Editor&);
         LUX_EDITOR_APP_PUBLIC static EditorResult<void> restoreWorkspace(Editor&, const detail::WorkspaceData&);

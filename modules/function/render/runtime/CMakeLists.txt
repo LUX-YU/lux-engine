@@ -5,7 +5,7 @@ add_component(COMPONENT_NAME render_runtime NAMESPACE lux::engine::function
     SOURCE_FILES src/RenderRuntime.cpp src/RendererThread.cpp)
 component_include_directories(render_runtime
     BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR}
-    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude ${CMAKE_CURRENT_SOURCE_DIR}/../vulkan/sinclude
     INSTALL_TIME include)
 target_compile_definitions(render_runtime PRIVATE LUX_RENDER_RUNTIME_LIBRARY)
 target_link_libraries(render_runtime PUBLIC render_client PRIVATE render_vulkan)

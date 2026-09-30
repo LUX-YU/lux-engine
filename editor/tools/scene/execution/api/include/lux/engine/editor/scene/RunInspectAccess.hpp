@@ -17,20 +17,43 @@ namespace lux::editor::scene
     class RunInspectAccess final
     {
     public:
-        [[nodiscard]] RunResult<std::reference_wrapper<const simulation::ecs::Registry>> borrow(RunId) const noexcept;
+        using BorrowResult = RunResult<std::reference_wrapper<const simulation::ecs::Registry>>;
+        [[nodiscard]] BorrowResult borrow(RunId id) const noexcept
+        {
+            return borrow_(store_, id);
+        }
+        [[nodiscard]] RunResult<RunInfo> describe(RunId id) const
+        {
+            return describe_(store_, id);
+        }
         [[nodiscard]] bool contains(RunningObjectRef ref) const noexcept
         {
             return contains_(store_, ref);
         }
-        [[nodiscard]] RunResult<RunningObjectRef> reference(RunId, simulation::ecs::Entity) const noexcept;
+        [[nodiscard]] RunResult<RunningObjectRef> reference(RunId id, simulation::ecs::Entity entity) const noexcept
+        {
+            return reference_(store_, id, entity);
+        }
 
     private:
         friend class RunStore;
         using Contains = bool (*)(const RunStore&, RunningObjectRef) noexcept;
-        explicit RunInspectAccess(const RunStore& store, Contains contains) noexcept
-            : store_(store), contains_(contains)
+        using Borrow = BorrowResult (*)(const RunStore&, RunId) noexcept;
+        using Describe = RunResult<RunInfo> (*)(const RunStore&, RunId);
+        using Reference = RunResult<RunningObjectRef> (*)(const RunStore&, RunId, simulation::ecs::Entity) noexcept;
+        explicit RunInspectAccess(
+            const RunStore& store,
+            Contains contains,
+            Borrow borrow,
+            Describe describe,
+            Reference reference
+        ) noexcept
+            : store_(store), contains_(contains), borrow_(borrow), describe_(describe), reference_(reference)
         {}
         const RunStore& store_;
         Contains contains_;
+        Borrow borrow_;
+        Describe describe_;
+        Reference reference_;
     };
 }

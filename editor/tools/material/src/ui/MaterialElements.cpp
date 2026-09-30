@@ -9,12 +9,15 @@
 #include <imgui.h>
 #include <imgui_node_editor.h>
 #include <imgui_stdlib.h>
-#include <lux/engine/editor/ui/NodeCanvasIds.hpp>
+#include <lux/engine/editor/widgets/NodeCanvasIds.hpp>
+#include <lux/engine/editor/widgets/NodeCanvas.hpp>
 #include <lux/engine/editor/ui/PublicationControls.hpp>
-#include <lux/engine/editor/ui/asset/AssetPickerElement.hpp>
+#include <lux/engine/editor/project/AssetPickerElement.hpp>
+#include "ProjectCatalogAdapter.hpp"
 #include <lux/engine/editor/material/MaterialEditor.hpp>
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
 #include <lux/engine/material/graph/Nodes.hpp>
+#include <lux/engine/editor/material/MaterialNodeControls.hpp>
 #include <lux/engine/resource/asset/texture/TextureAsset.hpp>
 #include <lux/engine/ui/Controls.hpp>
 #include <map>
@@ -26,62 +29,10 @@ namespace lux::editor::material
     namespace
     {
         namespace canvas = ax::NodeEditor;
-        struct CanvasDelete final
-        {
-            void operator()(canvas::EditorContext* context) const noexcept
-            {
-                canvas::DestroyEditor(context);
-            }
-        };
-        struct CanvasScope final
-        {
-            canvas::EditorContext* previous{canvas::GetCurrentEditor()};
-            explicit CanvasScope(canvas::EditorContext* context)
-            {
-                canvas::SetCurrentEditor(context);
-            }
-            ~CanvasScope()
-            {
-                canvas::SetCurrentEditor(previous);
-            }
-        };
-        std::unique_ptr<canvas::EditorContext, CanvasDelete> createCanvas()
-        {
-            canvas::Config config;
-            config.SettingsFile = nullptr;
-            // Pane layout changes must not magnify a canvas first opened with little available height.
-            config.CanvasSizeMode = canvas::CanvasSizeMode::CenterOnly;
-            return std::unique_ptr<canvas::EditorContext, CanvasDelete>(canvas::CreateEditor(&config));
-        }
-        std::unique_ptr<lux::material::Node> createNode(lux::material::EMatNodeKind kind)
-        {
-            using namespace lux::material;
-            switch (kind)
-            {
-            case EMatNodeKind::CONSTANT:
-                return std::make_unique<ConstantNode>();
-            case EMatNodeKind::INPUT:
-                return std::make_unique<InputNode>();
-            case EMatNodeKind::SAMPLE_TEXTURE:
-                return std::make_unique<SampleTextureNode>();
-            case EMatNodeKind::MATH:
-                return std::make_unique<MathNode>();
-            case EMatNodeKind::SWIZZLE:
-                return std::make_unique<SwizzleNode>();
-            case EMatNodeKind::CONSTRUCT:
-                return std::make_unique<ConstructNode>();
-            case EMatNodeKind::DECODE_NORMAL:
-                return std::make_unique<DecodeNormalNode>();
-            case EMatNodeKind::TBN_TRANSFORM:
-                return std::make_unique<TbnTransformNode>();
-            case EMatNodeKind::PARAM:
-                return std::make_unique<ParamNode>();
-            case EMatNodeKind::OUTPUT_SURFACE:
-                return std::make_unique<OutputSurfaceNode>();
-            default:
-                return {};
-            }
-        }
+        using widgets::CanvasDelete;
+        using widgets::CanvasScope;
+        using widgets::createCanvas;
+
 
     } // namespace
 
@@ -275,7 +226,7 @@ namespace lux::editor::material
         // by MaterialSourceLimits and retain their own values until Apply/finishEditing.
         struct TexturePicker final
         {
-            std::unique_ptr<AssetPickerElement> element;
+            std::unique_ptr<project::AssetPickerElement> element;
             object::Connection connection;
         };
         void synchronizePickers(EditorResult<void>& status)
@@ -291,10 +242,10 @@ namespace lux::editor::material
             {
                 const auto index = texture_pickers_.size();
                 TexturePicker picker;
-                picker.element = std::make_unique<AssetPickerElement>(
+                picker.element = std::make_unique<project::AssetPickerElement>(
                     *this,
                     lux::ui::ElementId{"texture-slot-" + std::to_string(index)},
-                    &editor_.project(),
+                    projectCatalogAccess(&editor_.project()),
                     lux::asset::TextureAsset::primary_magic,
                     textures_.values[index].texture
                 );
@@ -302,7 +253,7 @@ namespace lux::editor::material
                 picker.connection = lux::editor::detail::takeConnection(
                     connect(
                         element,
-                        &AssetPickerElement::edited,
+                        &project::AssetPickerElement::edited,
                         [this, index, element](lux::ui::EditResult change) noexcept {
                             if (!change.changed || index >= textures_.values.size())
                                 return;
@@ -402,7 +353,7 @@ namespace lux::editor::material
                     const auto kind = static_cast<lux::material::EMatNodeKind>(i);
                     if (ImGui::Selectable(lux::material::toString(kind)))
                     {
-                        auto node = createNode(kind);
+                        auto node = makeMaterialNode(kind);
                         accept(editor_.insertNode(node));
                     }
                 }
@@ -602,182 +553,6 @@ namespace lux::editor::material
             });
         }
 
-        static bool valueType(const char* label, lux::material::EValueType& value)
-        {
-            int selected = static_cast<int>(value);
-            if (!ImGui::Combo(label, &selected, "Float\0Vec2\0Vec3\0Vec4\0"))
-            {
-                return false;
-            }
-            value = static_cast<lux::material::EValueType>(selected);
-            return true;
-        }
-
-        template <class Slots> static bool slotChoice(const char* label, std::uint32_t& value, const Slots& slots)
-        {
-            bool changed{};
-            const char* current = value < slots.size() ? slots[value].name.c_str() : "Unassigned";
-            if (ImGui::BeginCombo(label, current))
-            {
-                for (std::size_t index{}; index < slots.size(); ++index)
-                {
-                    ImGui::PushID(static_cast<int>(index));
-                    if (ImGui::Selectable(slots[index].name.c_str(), index == value))
-                    {
-                        value = static_cast<std::uint32_t>(index);
-                        changed = true;
-                    }
-                    ImGui::PopID();
-                }
-                ImGui::EndCombo();
-            }
-            return changed;
-        }
-
-        bool drawPayload(lux::material::Node& node)
-        {
-            using namespace lux::material;
-            bool changed{};
-            if (auto* constant = node.as<ConstantNode>())
-            {
-                auto type = constant->value_type;
-                if (valueType("Type", type))
-                {
-                    constant->setType(type);
-                    changed = true;
-                }
-                changed |= ImGui::DragScalarN(
-                    "Value",
-                    ImGuiDataType_Float,
-                    constant->value,
-                    static_cast<int>(constant->value_type) + 1,
-                    0.01F
-                );
-            }
-            else if (auto* input = node.as<InputNode>())
-            {
-                const auto* description = materialInputDescription(input->input);
-                if (ImGui::BeginCombo("Input", description ? description->name : "Unassigned"))
-                {
-                    for (const auto& candidate : kMaterialInputs)
-                    {
-                        if (ImGui::Selectable(candidate.name, input->input == candidate.input))
-                        {
-                            input->setInput(candidate.input);
-                            changed = true;
-                        }
-                    }
-                    ImGui::EndCombo();
-                }
-            }
-            else if (auto* sample = node.as<SampleTextureNode>())
-            {
-                changed |= slotChoice("Texture slot", sample->texture_slot, editor_.source().graph.texture_slots);
-            }
-            else if (auto* parameter = node.as<ParamNode>())
-            {
-                const auto& slots = editor_.source().graph.param_slots;
-                if (slotChoice("Parameter slot", parameter->param_slot, slots))
-                {
-                    parameter->setType(slots[parameter->param_slot].type);
-                    changed = true;
-                }
-                auto type = parameter->type;
-                if (valueType("Parameter type", type))
-                {
-                    parameter->setType(type);
-                    changed = true;
-                }
-            }
-            else if (auto* math = node.as<MathNode>())
-            {
-                constexpr const char* names[]{
-                    "Multiply",
-                    "Add",
-                    "Subtract",
-                    "Divide",
-                    "Dot",
-                    "Minimum",
-                    "Maximum",
-                    "Power",
-                    "Step",
-                    "Modulo",
-                    "Cross",
-                    "Reflect",
-                    "Lerp (requires three inputs)",
-                    "Saturate",
-                    "One minus",
-                    "Absolute",
-                    "Square root",
-                    "Floor",
-                    "Fraction",
-                    "Sine",
-                    "Cosine",
-                    "Normalize",
-                    "Length"
-                };
-                static_assert(std::size(names) == static_cast<std::size_t>(EMathOp::LENGTH) + 1);
-                int operation = static_cast<int>(math->op);
-                if (ImGui::Combo("Operation", &operation, names, static_cast<int>(std::size(names))))
-                {
-                    math->op = static_cast<EMathOp>(operation);
-                    changed = true;
-                }
-                auto type = math->operand_type;
-                if (valueType("Operand type", type))
-                {
-                    math->setOperandType(type);
-                    changed = true;
-                }
-            }
-            else if (auto* swizzle = node.as<SwizzleNode>())
-            {
-                auto input = swizzle->source_type;
-                auto output = swizzle->out_type;
-                const bool input_changed = valueType("Input type", input);
-                const bool output_changed = valueType("Output type", output);
-                if (input_changed || output_changed)
-                {
-                    swizzle->setTypes(input, output);
-                    changed = true;
-                }
-                for (int index{}; index <= static_cast<int>(swizzle->out_type); ++index)
-                {
-                    ImGui::PushID(index);
-                    int channel = swizzle->components[index];
-                    if (ImGui::Combo("Channel", &channel, "X\0Y\0Z\0W\0"))
-                    {
-                        swizzle->components[index] = static_cast<std::uint8_t>(channel);
-                        changed = true;
-                    }
-                    ImGui::PopID();
-                }
-            }
-            else if (auto* construct = node.as<ConstructNode>())
-            {
-                auto type = construct->out_type;
-                if (valueType("Output type", type))
-                {
-                    construct->setType(type);
-                    changed = true;
-                }
-            }
-            for (std::size_t index{}; index < node.inputs().size(); ++index)
-            {
-                auto& pin = node.inputs()[index];
-                ImGui::PushID(static_cast<int>(index));
-                changed |= ImGui::DragScalarN(
-                    pin.name.c_str(),
-                    ImGuiDataType_Float,
-                    pin.constant,
-                    static_cast<int>(pin.type) + 1,
-                    0.01F
-                );
-                ImGui::PopID();
-            }
-            return changed;
-        }
-
         template <class Slot> void drawSlots(TSlotDraft<Slot>& draft, editing::StateId current)
         {
             using namespace lux::material;
@@ -824,7 +599,7 @@ namespace lux::editor::material
                     }
                     else
                     {
-                        draft.changed |= valueType("Type", slot.type);
+                        draft.changed |= editMaterialValueType("Type", slot.type);
                         draft.changed |= ImGui::DragScalarN(
                             "Default",
                             ImGuiDataType_Float,
@@ -968,7 +743,7 @@ namespace lux::editor::material
                 draft->value->setName(draft->name);
                 draft->changed = true;
             }
-            draft->changed |= drawPayload(*draft->value);
+            draft->changed |= editMaterialNodePayload(*draft->value, editor_.source().graph.texture_slots, editor_.source().graph.param_slots);
             const bool apply = ImGui::Button("Apply properties");
             ImGui::SameLine();
             const bool revert = ImGui::Button("Revert properties");
@@ -983,7 +758,7 @@ namespace lux::editor::material
             ImGui::EndDisabled();
             ImGui::EndChild();
         }
-        NodeCanvasIds canvas_ids_;
+        widgets::NodeCanvasIds canvas_ids_;
         std::unique_ptr<canvas::EditorContext, CanvasDelete> canvas_;
         std::unordered_map<lux::material::NodeId, Position> positions_;
         std::map<std::pair<std::uint64_t, std::uint64_t>, std::uint64_t> links_;

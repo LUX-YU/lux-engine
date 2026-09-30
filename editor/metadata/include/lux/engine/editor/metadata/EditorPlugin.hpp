@@ -8,16 +8,16 @@ namespace lux::editor
 {
     struct EditorPlugin final
     {
-        project::MetadataIdentity identity;
+        lux::project::MetadataIdentity identity;
         std::shared_ptr<const engine::platform::DynamicLibrary> code;
         const EditorPluginExports* exports{};
     };
 
     // Runtime modules are already verified. Only the Editor product calls this
     // boundary; a game never opens or interprets these optional exports.
-    [[nodiscard]] LUX_EDITOR_METADATA_PUBLIC project::PluginResult<EditorPlugin> loadEditorPlugin(
-        const project::PluginDescription& description,
-        const project::PluginLibrary& runtime,
+    [[nodiscard]] LUX_EDITOR_METADATA_PUBLIC lux::project::PluginResult<EditorPlugin> loadEditorPlugin(
+        const lux::project::PluginDescription& description,
+        const lux::project::PluginLibrary& runtime,
         std::span<const EditorPlugin> dependencies = {}
     ) noexcept;
 }

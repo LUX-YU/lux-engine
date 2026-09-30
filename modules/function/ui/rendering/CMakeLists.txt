@@ -7,6 +7,7 @@ add_component(COMPONENT_NAME ui_rendering NAMESPACE lux::engine::function
 component_include_directories(ui_rendering
     BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR}
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude ${CMAKE_CURRENT_SOURCE_DIR}/../sinclude
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../render/vulkan/sinclude
     INSTALL_TIME include)
 target_compile_definitions(ui_rendering PRIVATE LUX_UI_RENDERING_LIBRARY)
 target_link_libraries(ui_rendering PUBLIC ui render_client PRIVATE imgui::vulkan Vulkan::Vulkan render_vulkan)

@@ -4,12 +4,12 @@
 #include <lux/engine/scene/RenderResources.hpp>
 #include "../../../cmake/installed-consumers/common/RenderRegistration.hpp"
 #include <imgui.h>
-#include <lux/engine/editor/ui/Presentation.hpp>
-#include <lux/engine/editor/ui/WindowOutput.hpp>
+#include <lux/engine/editor/desktop/Presentation.hpp>
+#include <lux/engine/editor/desktop/WindowOutput.hpp>
 #include <lux/engine/ui/Root.hpp>
 #include <lux/engine/ui/Pane.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
-#include <lux/engine/editor/ui/SceneElement.hpp>
+#include <lux/engine/editor/scene/SceneElement.hpp>
 #include <lux/engine/scene/RenderSystemConfiguration.hpp>
 #include <lux/engine/scene/Camera.hpp>
 #include <lux/engine/scene/Builtin3DRenderIntegration.hpp>
@@ -62,7 +62,7 @@ namespace
         lux::scene::SceneInstanceId scene,
         lux::scene::RenderResources& resources
     ) {
-        lux::editor::ui::SceneElement::create(
+        lux::editor::scene::SceneElement::create(
             parent,
             lux::ui::ElementId{"view"},
             scenes,
@@ -81,7 +81,7 @@ namespace
         {
             assert(initialize({.docking = docking}));
         }
-        lux::editor::ui::Presentation* presentation{};
+        lux::editor::desktop::Presentation* presentation{};
         lux::cxx::expected<void, lux::ui::ECaptureError> drawDataReady(const lux::ui::DrawData& data) noexcept override
         {
             return presentation->captureDrawData(data);
@@ -176,7 +176,7 @@ int main(int argc, char** argv)
     auto made_scenes = scene::SceneRuntime::create(*execution, {0, 1024});
     assert(made_scenes);
     auto scenes = std::move(*made_scenes);
-    auto made_ui = editor::ui::Presentation::create(*root, *execution, *scenes, *runtime, *resources);
+    auto made_ui = editor::desktop::Presentation::create(*root, *execution, *scenes, *runtime, *resources);
     assert(made_ui);
     auto ui = std::move(*made_ui);
     root->presentation = ui.get();
@@ -256,7 +256,7 @@ int main(int argc, char** argv)
     std::optional<scene::SceneInstanceLease> content, foreign_content;
     ui::Pane first_window(*root, ui::PaneId{"scene-one"}, ui::PaneTypeId{"test.scene"}, "Scene one");
     ui::Pane second_window(*root, ui::PaneId{"scene-two"}, ui::PaneTypeId{"test.scene"}, "Scene two");
-    std::unique_ptr<editor::ui::SceneElement> first_pane, second_pane;
+    std::unique_ptr<editor::scene::SceneElement> first_pane, second_pane;
     scene::RenderSceneReceipt content_receipt;
     if (scene_panes)
     {
@@ -319,7 +319,7 @@ int main(int argc, char** argv)
         const auto count = resources->viewCount();
         const auto entity_count =
             scenes->borrowInstance(content->id())->get().storage<simulation::ecs::Entity>().size();
-        auto wrong_render = editor::ui::SceneElement::create(
+        auto wrong_render = editor::scene::SceneElement::create(
             first_window,
             lux::ui::ElementId{"wrong-render"},
             *scenes,
@@ -330,7 +330,7 @@ int main(int argc, char** argv)
             {.extent = {64, 48}}
         );
         assert(!wrong_render && wrong_render.error().code == render::ERendererError::INVALID_ARGUMENT);
-        auto wrong_camera = editor::ui::SceneElement::create(
+        auto wrong_camera = editor::scene::SceneElement::create(
             first_window,
             lux::ui::ElementId{"wrong-camera"},
             *scenes,
@@ -342,7 +342,7 @@ int main(int argc, char** argv)
         );
         assert(!wrong_camera && resources->viewCount() == count);
         assert(scenes->borrowInstance(content->id())->get().storage<simulation::ecs::Entity>().size() == entity_count);
-        auto native_output = editor::ui::SceneElement::create(
+        auto native_output = editor::scene::SceneElement::create(
             first_window,
             lux::ui::ElementId{"native-output"},
             *scenes,
@@ -354,7 +354,7 @@ int main(int argc, char** argv)
         );
         assert(!native_output && resources->viewCount() == count);
         {
-            auto abandoned = editor::ui::SceneElement::create(
+            auto abandoned = editor::scene::SceneElement::create(
                 first_window,
                 lux::ui::ElementId{"abandoned"},
                 *scenes,
@@ -370,7 +370,7 @@ int main(int argc, char** argv)
             assert(scenes->borrowInstance(content->id())->get().view<scene::RenderViewRequest>().empty());
             assert(resources->viewCount() == count);
         }
-        auto one = editor::ui::SceneElement::create(
+        auto one = editor::scene::SceneElement::create(
             first_window,
             lux::ui::ElementId{"scene-one"},
             *scenes,
@@ -380,7 +380,7 @@ int main(int argc, char** argv)
             camera,
             {.extent = {64, 48}}
         );
-        auto two = editor::ui::SceneElement::create(
+        auto two = editor::scene::SceneElement::create(
             second_window,
             lux::ui::ElementId{"scene-two"},
             *scenes,
@@ -553,7 +553,7 @@ int main(int argc, char** argv)
         assert(scenes->driveFrame());
         until([&] { return bool(scenes->borrowInstance(content->id())); });
         assert(scenes->borrowInstance(content->id())->get().view<scene::RenderViewRequest>().empty());
-        auto expired_view = editor::ui::SceneElement::create(
+        auto expired_view = editor::scene::SceneElement::create(
             first_window,
             ui::ElementId{"expired"},
             *scenes,

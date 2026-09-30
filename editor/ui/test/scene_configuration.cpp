@@ -32,10 +32,10 @@ int main(int argc, char** argv)
     assert(argc == 2);
     const std::filesystem::path installation{argv[1]};
     auto reflection = editor::acquireEditorReflection();
-    project::PluginCatalog catalog;
+    lux::project::PluginCatalog catalog;
     assert(catalog.read(installation / "share/lux-engine/plugins/catalog.json", installation));
-    const project::MetadataIdentity selected{"lux.builtin.scene_render", 1};
-    auto manager = project::PluginManager::create(std::move(catalog), std::span(&selected, 1));
+    const lux::project::MetadataIdentity selected{"lux.builtin.scene_render", 1};
+    auto manager = lux::project::PluginManager::create(std::move(catalog), std::span(&selected, 1));
     assert(manager);
     std::vector<editor::EditorPlugin> extensions;
     std::vector<editor::ConfigurationEditorRegistration> configurations;

@@ -1,0 +1,42 @@
+[
+  {
+    "path": "README.md",
+    "bytes": 512,
+    "sha256": "9c52fc1bcbd43d22936cb88d89831c36a8f76260c91e4cf293fa8527a6898fe6"
+  },
+  {
+    "path": "REVIEW_AND_INSTRUCTIONS.md",
+    "bytes": 22434,
+    "sha256": "f916ccea09158d4278993a6855972c5c0425057133e1c81239709311a63cfbc6"
+  },
+  {
+    "path": "SOURCE_INDEX.md",
+    "bytes": 6257,
+    "sha256": "1232d5be2301d243e415d1d6033a995a7051c7447e91a0642f44453993680192"
+  },
+  {
+    "path": "TEST_PLAN.md",
+    "bytes": 5511,
+    "sha256": "e3bb38c32d6548f0bd246d16baa2628d8b9053e149da8e11aeafcdf3b5b3d26f"
+  },
+  {
+    "path": "reference/P10_START_ORIGINAL.md",
+    "bytes": 42132,
+    "sha256": "06b910165e3e2854ac77df08d65e0b38fdbff526fd374160dd76bf6097cf312f"
+  },
+  {
+    "path": "reference/P10_SUBMITTED_FILES.md",
+    "bytes": 11383,
+    "sha256": "2319c0b420ec56fd243bb5e95d33827be6323e71214713e2e118ad5918404b31"
+  },
+  {
+    "path": "reference/P10_SUBMITTED_README.md",
+    "bytes": 6762,
+    "sha256": "206283ab27ecf99ff9090f9bc8c58e59851d7bb1ccfd84ca137f80870123c3d3"
+  },
+  {
+    "path": "review_scope.json",
+    "bytes": 5647,
+    "sha256": "cbc72076119d9a16f67872a543b5e744395f20becf1836bdc31739053014d219"
+  }
+]

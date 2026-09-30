@@ -1,0 +1,72 @@
+{
+  "implementation_sha": "11de2c1fee9d477daaa2d26b07911306ea9d6b9f",
+  "input_sha": "b9b856477755a9247a7a6810fa880ae62151f565",
+  "sdk": [
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10-r1-before-sdk\\bin\\desktop_views.exe",
+      "sha256": "88ae206fd1a56e0a4411cfa20f238a23570592a45a500a3f7a70588b5758f12d"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\lib\\flow_ui.lib",
+      "sha256": "1fbfc8fe9679d71d584afe32550d3a5f926d64bca320ecd06e749236212de54e"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\lib\\material_ui.lib",
+      "sha256": "f8cd121af08bcc29ba37cca27fdfa683ba7d91dd37f3e45c83962a1e3f87ada2"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\flowforge\\FlowView.hpp",
+      "sha256": "26f7802f3c04ee67c0a9366762ddfc3a8e47b4716adab628348d66990fe1a309"
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\material\\MaterialView.hpp",
+      "sha256": "5fd3e32d4190427f4e21dc9230a6f28df065ecdd6a6d6df713bc9aaa2c94dd2f"
+    }
+  ],
+  "commands": [
+    {
+      "argv": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10-r1-before-sdk\\bin\\desktop_views.exe",
+        "D:/Development/vcpkg/installed/x64-windows/tools/llvm/lld-link.exe",
+        "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo",
+        "r1-literal"
+      ],
+      "exit_code": 1,
+      "log": "r1-literal.log",
+      "sha256": "2430cf5ed73309cf7f50c87849c51de32706aedb7add1d6270389d68d8fc9149"
+    },
+    {
+      "argv": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10-r1-before-sdk\\bin\\desktop_views.exe",
+        "D:/Development/vcpkg/installed/x64-windows/tools/llvm/lld-link.exe",
+        "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo",
+        "r1-signature"
+      ],
+      "exit_code": 1,
+      "log": "r1-signature.log",
+      "sha256": "5b82080b668ba682b510f82b709ef3615373e1acf40572cf6d014b69982ec44b"
+    },
+    {
+      "argv": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10-r1-before-sdk\\bin\\desktop_views.exe",
+        "D:/Development/vcpkg/installed/x64-windows/tools/llvm/lld-link.exe",
+        "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo",
+        "r1-flow-canvas"
+      ],
+      "exit_code": 1,
+      "log": "r1-flow-canvas.log",
+      "sha256": "7427d803bbbb0214f6be0f8f37c6d67c2c6c524d1474523003730ea3864c8273"
+    },
+    {
+      "argv": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10-r1-before-sdk\\bin\\desktop_views.exe",
+        "D:/Development/vcpkg/installed/x64-windows/tools/llvm/lld-link.exe",
+        "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo",
+        "r1-material-canvas"
+      ],
+      "exit_code": 1,
+      "log": "r1-material-canvas.log",
+      "sha256": "fe29ebd5e717daeed151dd6607b54c284c3877ff8810d1537d5647d9cd50daf5"
+    }
+  ]
+}

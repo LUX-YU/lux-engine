@@ -1,0 +1,11 @@
+version=1
+future='keep original'
+dock='''[Window][Material###material-1]
+Pos=0,0
+Size=800,600
+'''
+[[panes]]
+id='material-1'
+type='lux.editor.material.v1'
+visible=true
+payload='v1:12345678-1234-1234-1234-123456789abc'

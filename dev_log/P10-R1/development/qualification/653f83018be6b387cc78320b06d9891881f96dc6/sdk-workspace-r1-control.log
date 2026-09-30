@@ -1,0 +1,8 @@
+input Alpha.toml sha256=9de47bc8acd0ce14e80168e045ab670f814df18ecb228e26760a671b4124a07c
+input Beta.toml sha256=9de47bc8acd0ce14e80168e045ab670f814df18ecb228e26760a671b4124a07c
+input settings.toml sha256=ede9e9595f99e2fc616a018cd20a3112274fe2038b194c08eaf635e78825c8f9
+individual Alpha accepted=1 id=7d1fa268702a2ae1c11b7ebd77f92c6f
+individual Beta accepted=1 id=b960792148fe37faa25f2587a1c0c283
+multi-layout accepted=1 layouts=2 recovery_entries=1 selected_scope=1 selected=Alpha
+recovery key=legacy:material-1 locator=asset:12345678-1234-1234-1234-123456789abc
+REAL files: both layouts preserved, only selected recovery published, original bytes unchanged PASS

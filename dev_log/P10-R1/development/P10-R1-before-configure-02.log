@@ -1,0 +1,18 @@
+---- Importing lux-cxx-core
+---- Importing lux-cxx-compile_time
+---- Importing lux-cxx-binary
+---- Importing lux-cxx-container
+---- Importing lux-cxx-concurrent
+---- Importing lux-cxx-memory
+---- Importing lux-cxx-algorithm
+---- Importing imgui-core
+---- Importing node_editor-node_editor
+---- Importing lux-cxx-reflection_runtime
+---- Importing lux-cxx-reflection_generator
+-- Found LibClang:
+--   Version: 0.64
+--   Include directory: D:/Development/vcpkg/installed/x64-windows/include
+--   Library: D:/Development/vcpkg/installed/x64-windows/lib/libclang.lib
+-- Configuring done (0.9s)
+-- Generating done (0.1s)
+-- Build files have been written to: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p10-r1-before-sdk

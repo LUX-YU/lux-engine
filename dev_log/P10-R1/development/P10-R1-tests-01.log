@@ -1,0 +1,113 @@
+UpdateCTestConfiguration  from :E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine/DartConfiguration.tcl
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine
+Constructing a list of tests
+Done constructing a list of tests
+Updating test list for fixtures
+Added 0 tests to meet fixture requirements
+Checking test dependency graph...
+Checking test dependency graph end
+test 93
+      Start  93: editor.draft_source_literal
+
+93: Test command: E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\bin\editor_scene_views_test.exe "D:/Development/vcpkg/installed/x64-windows/tools/llvm/lld-link.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine" "r1-literal"
+93: Working Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine/editor/tools/scene/ui
+93: Test timeout computed to be: 120
+93: P10 R1 r1-literal: real cached property/canvas input; S0!=S1=1 source_and_history_preserved=1 stale=1
+93: R10-R1-06 actual Revert/edit/Apply one-history Undo/Redo PASS
+ 1/10 Test  #93: editor.draft_source_literal .............   Passed    0.61 sec
+test 94
+      Start  94: editor.draft_source_signature
+
+94: Test command: E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\bin\editor_scene_views_test.exe "D:/Development/vcpkg/installed/x64-windows/tools/llvm/lld-link.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine" "r1-signature"
+94: Working Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine/editor/tools/scene/ui
+94: Test timeout computed to be: 120
+94: P10 R1 r1-signature: real cached property/canvas input; S0!=S1=1 source_and_history_preserved=1 stale=1
+94: R10-R1-06 actual Revert/edit/Apply one-history Undo/Redo PASS
+ 2/10 Test  #94: editor.draft_source_signature ...........   Passed    0.54 sec
+test 95
+      Start  95: editor.draft_source_flow-canvas
+
+95: Test command: E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\bin\editor_scene_views_test.exe "D:/Development/vcpkg/installed/x64-windows/tools/llvm/lld-link.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine" "r1-flow-canvas"
+95: Working Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine/editor/tools/scene/ui
+95: Test timeout computed to be: 120
+95: P10 R1 r1-flow-canvas: real cached property/canvas input; S0!=S1=1 source_and_history_preserved=1 stale=1
+ 3/10 Test  #95: editor.draft_source_flow-canvas .........   Passed    0.33 sec
+test 96
+      Start  96: editor.draft_source_material-canvas
+
+96: Test command: E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\bin\editor_scene_views_test.exe "D:/Development/vcpkg/installed/x64-windows/tools/llvm/lld-link.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine" "r1-material-canvas"
+96: Working Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine/editor/tools/scene/ui
+96: Test timeout computed to be: 120
+96: P10 R1 material-canvas: actual GraphCanvas signal -> queued BEGIN; source_and_history_preserved=1 stale=1
+ 4/10 Test  #96: editor.draft_source_material-canvas .....   Passed    0.30 sec
+test 97
+      Start  97: editor.draft_source_flow-queue
+
+97: Test command: E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\bin\editor_scene_views_test.exe "D:/Development/vcpkg/installed/x64-windows/tools/llvm/lld-link.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine" "r1-flow-queue"
+97: Working Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine/editor/tools/scene/ui
+97: Test timeout computed to be: 120
+97: R10-R1-05/06 BUSY stable pointer/source/stage, one history, capacity/cancel/retry PASS
+ 5/10 Test  #97: editor.draft_source_flow-queue ..........   Passed    0.32 sec
+test 98
+      Start  98: editor.draft_source_material-queue
+
+98: Test command: E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\bin\editor_scene_views_test.exe "D:/Development/vcpkg/installed/x64-windows/tools/llvm/lld-link.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine" "r1-material-queue"
+98: Working Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine/editor/tools/scene/ui
+98: Test timeout computed to be: 120
+98: R10-R1-05/06 BUSY stable pointer/source/stage, one history, capacity/cancel/retry PASS
+ 6/10 Test  #98: editor.draft_source_material-queue ......   Passed    0.30 sec
+test 99
+      Start  99: editor.draft_source_material-lifetime
+
+99: Test command: E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\bin\editor_scene_views_test.exe "D:/Development/vcpkg/installed/x64-windows/tools/llvm/lld-link.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine" "r1-material-lifetime"
+99: Working Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine/editor/tools/scene/ui
+99: Test timeout computed to be: 120
+99: R10-R1-05 dynamic node draft: BUSY retains/code alive/disposal under original gate PASS
+ 7/10 Test  #99: editor.draft_source_material-lifetime ...   Passed    0.30 sec
+test 100
+      Start 100: editor.draft_source_lifecycle
+
+100: Test command: E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\bin\editor_scene_views_test.exe "D:/Development/vcpkg/installed/x64-windows/tools/llvm/lld-link.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine" "r1-lifecycle"
+100: Working Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine/editor/tools/scene/ui
+100: Test timeout computed to be: 120
+100: R10-R1-03 failed BUSY rebind preserves; old generation rejected; new binding same IDs recaptured PASS
+ 8/10 Test #100: editor.draft_source_lifecycle ...........   Passed    0.52 sec
+test 101
+      Start 101: editor.draft_source_positive
+
+101: Test command: E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\bin\editor_scene_views_test.exe "D:/Development/vcpkg/installed/x64-windows/tools/llvm/lld-link.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine" "r1-positive"
+101: Working Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine/editor/tools/scene/ui
+101: Test timeout computed to be: 120
+101: R10-R1-01 positive actual property Apply/Undo/Redo PASS
+ 9/10 Test #101: editor.draft_source_positive ............   Passed    0.43 sec
+test 102
+      Start 102: editor.draft_source_history
+
+102: Test command: E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\bin\editor_scene_views_test.exe "D:/Development/vcpkg/installed/x64-windows/tools/llvm/lld-link.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine" "r1-history"
+102: Working Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine/editor/tools/scene/ui
+102: Test timeout computed to be: 120
+102: P10 R1 r1-history: real cached property/canvas input; S0!=S1=1 source_and_history_preserved=1 stale=1
+102: R10-R1-06 actual Revert/edit/Apply one-history Undo/Redo PASS
+10/10 Test #102: editor.draft_source_history .............   Passed    0.55 sec
+
+The following tests passed:
+	editor.draft_source_literal
+	editor.draft_source_signature
+	editor.draft_source_flow-canvas
+	editor.draft_source_material-canvas
+	editor.draft_source_flow-queue
+	editor.draft_source_material-queue
+	editor.draft_source_material-lifetime
+	editor.draft_source_lifecycle
+	editor.draft_source_positive
+	editor.draft_source_history
+
+100% tests passed, 0 tests failed out of 10
+
+Label Time Summary:
+P10       =   4.22 sec*proc (10 tests)
+R1        =   4.22 sec*proc (10 tests)
+editor    =   4.22 sec*proc (10 tests)
+gpu       =   4.22 sec*proc (10 tests)
+
+Total Test time (real) =   5.11 sec

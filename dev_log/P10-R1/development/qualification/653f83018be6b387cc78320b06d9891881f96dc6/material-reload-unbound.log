@@ -1,0 +1,3 @@
+unbound last_lease=0 rejected=1 nested_edit=0 callback_admission=4 destroyed=2 alive=0 released_early=0 released_with_nodes=0 released=0
+source_unchanged=1 history_unchanged=1 observed_unchanged=1 dirty_unchanged=1 binding_unchanged=1
+normal_public_edit_after_gate_release=1

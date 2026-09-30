@@ -1,0 +1,91 @@
+
+Microsoft (R) Windows Debugger Version 10.0.17763.132 AMD64
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+
+Loading Dump File [C:\Users\ChenHui\AppData\Local\CrashDumps\editor_workspace_test.exe.36240.dmp]
+User Mini Dump File: Only registers, stack and portions of memory are available
+
+
+************* Path validation summary **************
+Response                         Time (ms)     Location
+OK                                             E:/SyncForder/CodeRepos/build/RelWithDebInfo/p05-r1-f2b5a00c60e9/bin
+Symbol search path is: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p05-r1-f2b5a00c60e9/bin
+Executable search path is: 
+Windows 10 Version 26200 MP (24 procs) Free x64
+Product: WinNt, suite: SingleUserTS
+26100.1.amd64fre.ge_release.240331-1435
+Machine Name:
+Debug session time: Wed Sep 30 23:20:00.000 2026 (UTC + 1:00)
+System Uptime: 6 days 4:07:13.470
+Process Uptime: 0 days 0:00:04.000
+.........
+This dump file has an exception of interest stored in it.
+The stored exception information can be accessed via .ecxr.
+(8d90.3f24): Security check failure or stack buffer overrun - code c0000409 (first/second chance not available)
+*** ERROR: Symbol file could not be found.  Defaulted to export symbols for ucrtbase.dll - 
+ucrtbase!abort+0x4e:
+00007ffa`eb09527e cd29            int     29h
+0:000> cdb: Reading initial command '.ecxr; kn; .frame 0xe; dv /t; .frame 0xf; dv /t; dt editor_workspace_test!std::filesystem::filesystem_error 0000001b53aff600; q'
+rax=0000000000000001 rbx=0000001b53afec90 rcx=0000000000000007
+rdx=000001fc4b550000 rsi=00007ff765df310c rdi=0000001b53afe480
+rip=00007ffaeb09527e rsp=0000001b53afe2a0 rbp=0000001b53afff70
+ r8=7ffffffffffffffc  r9=0000000000000002 r10=0000000000000065
+r11=000001fc4b7abbce r12=ffffffffffffffff r13=00007ffaeb93d9a0
+r14=0000001b53afeab0 r15=0000001b53afe480
+iopl=0         nv up ei pl nz na pe nc
+cs=0033  ss=002b  ds=002b  es=002b  fs=0053  gs=002b             efl=00000202
+ucrtbase!abort+0x4e:
+00007ffa`eb09527e cd29            int     29h
+  *** Stack trace for last set context - .thread/.cxr resets it
+ # Child-SP          RetAddr           Call Site
+00 0000001b`53afe2a0 00007ffa`eb0b218e ucrtbase!abort+0x4e
+*** WARNING: Unable to verify checksum for editor_workspace_test.exe
+01 0000001b`53afe2d0 00007ff7`65f08286 ucrtbase!terminate+0x1e
+*** ERROR: Symbol file could not be found.  Defaulted to export symbols for KERNELBASE.dll - 
+02 0000001b`53afe300 00007ffa`eb69ef83 editor_workspace_test!__scrt_unhandled_exception_filter+0x62
+*** ERROR: Symbol file could not be found.  Defaulted to export symbols for ntdll.dll - 
+03 0000001b`53afe330 00007ffa`edde9ba0 KERNELBASE!UnhandledExceptionFilter+0x1f3
+04 0000001b`53afe420 00007ffa`edda4703 ntdll!strncpy+0x2a50
+05 0000001b`53afe450 00007ffa`edde54ff ntdll!_C_specific_handler+0x93
+06 0000001b`53afe4c0 00007ffa`edd4bd25 ntdll!_chkstk+0x9f
+07 0000001b`53afe4f0 00007ffa`edc8f88d ntdll!RtlWow64GetCurrentMachine+0x655
+08 0000001b`53afec50 00007ffa`eb6541ca ntdll!RtlRaiseException+0x18d
+*** ERROR: Symbol file could not be found.  Defaulted to export symbols for VCRUNTIME140.dll - 
+09 0000001b`53aff430 00007ffa`c2df55a9 KERNELBASE!RaiseException+0x8a
+0a 0000001b`53aff530 00007ff7`65e2d4be VCRUNTIME140!CxxThrowException+0x99
+0b 0000001b`53aff590 00007ff7`65e31113 editor_workspace_test!std::filesystem::_Throw_fs_error+0x6e
+0c (Inline Function) --------`-------- editor_workspace_test!std::filesystem::rename+0x299
+0d 0000001b`53aff6b0 00007ff7`65e475ec editor_workspace_test!`anonymous namespace'::catalog+0x5a3
+0e 0000001b`53affb40 00007ff7`65f06b10 editor_workspace_test!main+0x8ac
+*** ERROR: Symbol file could not be found.  Defaulted to export symbols for kernel32.dll - 
+0f (Inline Function) --------`-------- editor_workspace_test!invoke_main+0x22
+10 0000001b`53afff00 00007ffa`ecb3cd87 editor_workspace_test!__scrt_common_main_seh+0x10c
+11 0000001b`53afff40 00007ffa`edd2caec kernel32!BaseThreadInitThunk+0x17
+12 0000001b`53afff70 00000000`00000000 ntdll!RtlUserThreadStart+0x2c
+0e 0000001b`53affb40 00007ff7`65f06b10 editor_workspace_test!main+0x8ac
+int argc = <value unavailable>
+char ** argv = <value unavailable>
+class std::filesystem::path path = class std::filesystem::path
+struct `anonymous-namespace'::Fixture f = struct `anonymous-namespace'::Fixture
+class std::basic_string<char,std::char_traits<char>,std::allocator<char> > scenario = "catalog"
+struct `anonymous-namespace'::Fixture forward = struct `anonymous-namespace'::Fixture
+struct `anonymous-namespace'::Fixture reverse = struct `anonymous-namespace'::Fixture
+0f (Inline Function) --------`-------- editor_workspace_test!invoke_main+0x22
+   +0x000 __VFN_table : 0x00007ff7`65f1afc8 
+   +0x008 _Data            : __std_exception_data
+   +0x018 _Mycode          : std::error_code
+   +0x028 _Path1           : std::filesystem::path
+   +0x048 _Path2           : std::filesystem::path
+   +0x068 _What            : std::basic_string<char,std::char_traits<char>,std::allocator<char> >
+quit:
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\atlmfc.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\concurrency.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\cpp_rest.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\stl.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Data.Json.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Geolocation.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Sensors.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Media.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\windows.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\winrt.natvis'

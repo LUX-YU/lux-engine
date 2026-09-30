@@ -1,0 +1,179 @@
+[0/2] Re-checking globbed directories...
+[1/10] Building CXX object CMakeFiles\view_host.dir\host.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[2/10] [lux_target_add_codegen] desktop_consumer_ir: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+
+[3/10] Linking CXX executable bin\view_host.exe
+[4/10] [lux_target_add_codegen] desktop_consumer_schema: parse once, render 5 projection(s)
+[Info] Parsed 1 target file(s) for 5 projection(s).
+
+[5/10] Generate Editor-only ImGui Inspector: desktop_consumer
+Editor Inspector: 1 component implementation(s); no runtime target output
+
+[6/10] Building CXX object CMakeFiles\desktop_views.dir\views.cpp.obj
+FAILED: CMakeFiles/desktop_views.dir/views.cpp.obj 
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\bin\Hostx64\x64\cl.exe  /nologo /TP -DENTT_NO_ETO -DIMGUI_SHARED_CORE -DLUX_ENGINE_FLOWFORGE_DLL_DISABLE -DSTDEXEC_ENABLE_WINDOWS_THREAD_POOL -DVULKAN_DEBUG_REPORT -DVULKAN_SUPPORT -D__PLATFORM_WIN32__ -D__TRAY_ENABLED__ -external:IE:\SyncForder\CodeRepos\install\RelWithDebInfo\include -external:ID:\Development\vcpkg\installed\x64-windows\include\eigen3 -external:ID:\Development\vcpkg\installed\x64-windows\include -external:ID:\Development\vcpkg\installed\x64-windows\include\stduuid -external:ID:\Development\VulkanSDK\1.4.304.0\include -external:W0 /DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD /UNDEBUG /utf-8 /Zc:__cplusplus /Zc:preprocessor /Zc:externConstexpr /showIncludes /FoCMakeFiles\desktop_views.dir\views.cpp.obj /FdCMakeFiles\desktop_views.dir\ /FS -c E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10-r1-before-sdk\views.cpp
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/editor/widgets/GraphCanvas.hpp(21): error C3083: 'ui': the symbol to the left of a '::' must be a type
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/editor/widgets/GraphCanvas.hpp(21): error C2039: 'Point': is not a member of '`anonymous-namespace'::lux'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/editor/widgets/GraphCanvas.hpp(8): note: see declaration of '`anonymous-namespace'::lux'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/editor/widgets/GraphCanvas.hpp(21): error C3646: 'position': unknown override specifier
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/editor/widgets/GraphCanvas.hpp(32): error C3083: 'ui': the symbol to the left of a '::' must be a type
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/editor/widgets/GraphCanvas.hpp(32): error C2039: 'Point': is not a member of '`anonymous-namespace'::lux'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/editor/widgets/GraphCanvas.hpp(8): note: see declaration of '`anonymous-namespace'::lux'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/editor/widgets/GraphCanvas.hpp(32): error C3646: 'position': unknown override specifier
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/editor/widgets/GraphCanvas.hpp(50): error C3083: 'ui': the symbol to the left of a '::' must be a type
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/editor/widgets/GraphCanvas.hpp(50): error C2039: 'Element': is not a member of '`anonymous-namespace'::lux'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/editor/widgets/GraphCanvas.hpp(8): note: see declaration of '`anonymous-namespace'::lux'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/editor/widgets/GraphCanvas.hpp(50): error C2504: 'Element': base class undefined
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/editor/widgets/GraphCanvas.hpp(55): error C3083: 'ui': the symbol to the left of a '::' must be a type
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/editor/widgets/GraphCanvas.hpp(55): error C2039: 'Element': is not a member of '`anonymous-namespace'::lux'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/editor/widgets/GraphCanvas.hpp(8): note: see declaration of '`anonymous-namespace'::lux'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/editor/widgets/GraphCanvas.hpp(55): error C2061: syntax error: identifier 'Element'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/editor/widgets/GraphCanvas.hpp(70): error C3668: '`anonymous-namespace'::lux::editor::widgets::GraphCanvas::finishEdit': method with override specifier 'override' did not override any base class methods
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/editor/widgets/GraphCanvas.hpp(73): error C3668: '`anonymous-namespace'::lux::editor::widgets::GraphCanvas::draw': method with override specifier 'override' did not override any base class methods
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/editor/widgets/GraphCanvas.hpp(53): error C2665: 'lux::object::TSignal<`anonymous-namespace'::lux::editor::widgets::CanvasEdit>::TSignal': no overloaded function could convert all the argument types
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/object/Signal.hpp(45): note: could be 'lux::object::TSignal<`anonymous-namespace'::lux::editor::widgets::CanvasEdit>::TSignal(lux::object::TSignal<`anonymous-namespace'::lux::editor::widgets::CanvasEdit> &&)'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/editor/widgets/GraphCanvas.hpp(53): note: 'lux::object::TSignal<`anonymous-namespace'::lux::editor::widgets::CanvasEdit>::TSignal(lux::object::TSignal<`anonymous-namespace'::lux::editor::widgets::CanvasEdit> &&)': cannot convert argument 1 from '`anonymous-namespace'::lux::editor::widgets::GraphCanvas' to 'lux::object::TSignal<`anonymous-namespace'::lux::editor::widgets::CanvasEdit> &&'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/editor/widgets/GraphCanvas.hpp(53): note: Reason: cannot convert from '`anonymous-namespace'::lux::editor::widgets::GraphCanvas' to 'lux::object::TSignal<`anonymous-namespace'::lux::editor::widgets::CanvasEdit>'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/editor/widgets/GraphCanvas.hpp(53): note: No user-defined-conversion operator available that can perform this conversion, or the operator cannot be called
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/object/Signal.hpp(43): note: or       'lux::object::TSignal<`anonymous-namespace'::lux::editor::widgets::CanvasEdit>::TSignal(const lux::object::TSignal<`anonymous-namespace'::lux::editor::widgets::CanvasEdit> &)'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/editor/widgets/GraphCanvas.hpp(53): note: 'lux::object::TSignal<`anonymous-namespace'::lux::editor::widgets::CanvasEdit>::TSignal(const lux::object::TSignal<`anonymous-namespace'::lux::editor::widgets::CanvasEdit> &)': cannot convert argument 1 from '`anonymous-namespace'::lux::editor::widgets::GraphCanvas' to 'const lux::object::TSignal<`anonymous-namespace'::lux::editor::widgets::CanvasEdit> &'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/editor/widgets/GraphCanvas.hpp(53): note: Reason: cannot convert from '`anonymous-namespace'::lux::editor::widgets::GraphCanvas' to 'const lux::object::TSignal<`anonymous-namespace'::lux::editor::widgets::CanvasEdit>'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/editor/widgets/GraphCanvas.hpp(53): note: No user-defined-conversion operator available that can perform this conversion, or the operator cannot be called
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/object/Signal.hpp(38): note: or       'lux::object::TSignal<`anonymous-namespace'::lux::editor::widgets::CanvasEdit>::TSignal(lux::object::LuxObject &) noexcept'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/editor/widgets/GraphCanvas.hpp(53): note: 'lux::object::TSignal<`anonymous-namespace'::lux::editor::widgets::CanvasEdit>::TSignal(lux::object::LuxObject &) noexcept': cannot convert argument 1 from '`anonymous-namespace'::lux::editor::widgets::GraphCanvas' to 'lux::object::LuxObject &'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/editor/widgets/GraphCanvas.hpp(53): note: while trying to match the argument list '(`anonymous-namespace'::lux::editor::widgets::GraphCanvas)'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/editor/widgets/GraphCanvas.hpp(54): error C2665: 'lux::object::TSignal<std::span<const uint64_t,18446744073709551615>>::TSignal': no overloaded function could convert all the argument types
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/object/Signal.hpp(45): note: could be 'lux::object::TSignal<std::span<const uint64_t,18446744073709551615>>::TSignal(lux::object::TSignal<std::span<const uint64_t,18446744073709551615>> &&)'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/editor/widgets/GraphCanvas.hpp(54): note: 'lux::object::TSignal<std::span<const uint64_t,18446744073709551615>>::TSignal(lux::object::TSignal<std::span<const uint64_t,18446744073709551615>> &&)': cannot convert argument 1 from '`anonymous-namespace'::lux::editor::widgets::GraphCanvas' to 'lux::object::TSignal<std::span<const uint64_t,18446744073709551615>> &&'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/editor/widgets/GraphCanvas.hpp(54): note: Reason: cannot convert from '`anonymous-namespace'::lux::editor::widgets::GraphCanvas' to 'lux::object::TSignal<std::span<const uint64_t,18446744073709551615>>'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/editor/widgets/GraphCanvas.hpp(54): note: No user-defined-conversion operator available that can perform this conversion, or the operator cannot be called
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/object/Signal.hpp(43): note: or       'lux::object::TSignal<std::span<const uint64_t,18446744073709551615>>::TSignal(const lux::object::TSignal<std::span<const uint64_t,18446744073709551615>> &)'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/editor/widgets/GraphCanvas.hpp(54): note: 'lux::object::TSignal<std::span<const uint64_t,18446744073709551615>>::TSignal(const lux::object::TSignal<std::span<const uint64_t,18446744073709551615>> &)': cannot convert argument 1 from '`anonymous-namespace'::lux::editor::widgets::GraphCanvas' to 'const lux::object::TSignal<std::span<const uint64_t,18446744073709551615>> &'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/editor/widgets/GraphCanvas.hpp(54): note: Reason: cannot convert from '`anonymous-namespace'::lux::editor::widgets::GraphCanvas' to 'const lux::object::TSignal<std::span<const uint64_t,18446744073709551615>>'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/editor/widgets/GraphCanvas.hpp(54): note: No user-defined-conversion operator available that can perform this conversion, or the operator cannot be called
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/object/Signal.hpp(38): note: or       'lux::object::TSignal<std::span<const uint64_t,18446744073709551615>>::TSignal(lux::object::LuxObject &) noexcept'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/editor/widgets/GraphCanvas.hpp(54): note: 'lux::object::TSignal<std::span<const uint64_t,18446744073709551615>>::TSignal(lux::object::LuxObject &) noexcept': cannot convert argument 1 from '`anonymous-namespace'::lux::editor::widgets::GraphCanvas' to 'lux::object::LuxObject &'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/editor/widgets/GraphCanvas.hpp(54): note: while trying to match the argument list '(`anonymous-namespace'::lux::editor::widgets::GraphCanvas)'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(17): error C2504: 'Node': base class undefined
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(26): error C2061: syntax error: identifier 'ENodeOperation'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(27): error C2061: syntax error: identifier 'ENodeOperation'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(29): error C2143: syntax error: missing ';' before '&'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(30): error C2334: unexpected token(s) preceding '{'; skipping apparent function body
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(33): error C2327: '`anonymous-namespace'::lux::flowforge::BinaryOpNode::DataInPin': is not a type name, static, or enumerator
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(33): note: see declaration of '`anonymous-namespace'::lux::flowforge::BinaryOpNode::DataInPin'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(33): error C2143: syntax error: missing ';' before '&'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(33): error C2086: 'const int `anonymous-namespace'::lux::flowforge::BinaryOpNode::DataInPin': redefinition
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(34): error C2334: unexpected token(s) preceding '{'; skipping apparent function body
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(37): error C2143: syntax error: missing ';' before '&'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(38): error C2334: unexpected token(s) preceding '{'; skipping apparent function body
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(42): error C3083: 'meta': the symbol to the left of a '::' must be a type
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(42): error C2039: 'RefType': is not a member of '`anonymous-namespace'::lux'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(4): note: see declaration of '`anonymous-namespace'::lux'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(42): error C2143: syntax error: missing ';' before '*'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(43): error C2334: unexpected token(s) preceding '{'; skipping apparent function body
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(48): error C3083: 'meta': the symbol to the left of a '::' must be a type
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(48): error C2039: 'RefType': is not a member of '`anonymous-namespace'::lux'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(4): note: see declaration of '`anonymous-namespace'::lux'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(48): error C2327: '`anonymous-namespace'::lux::flowforge::BinaryOpNode::RefType': is not a type name, static, or enumerator
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(48): note: see declaration of '`anonymous-namespace'::lux::flowforge::BinaryOpNode::RefType'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(48): error C2143: syntax error: missing ';' before '*'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(48): error C2086: 'const int `anonymous-namespace'::lux::flowforge::BinaryOpNode::RefType': redefinition
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(48): error C2238: unexpected token(s) preceding ';'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(49): error C2327: '`anonymous-namespace'::lux::flowforge::BinaryOpNode::DataInPin': is not a type name, static, or enumerator
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(49): note: see declaration of '`anonymous-namespace'::lux::flowforge::BinaryOpNode::DataInPin'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(49): error C3646: 'lhs_': unknown override specifier
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(50): error C2327: '`anonymous-namespace'::lux::flowforge::BinaryOpNode::DataInPin': is not a type name, static, or enumerator
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(50): note: see declaration of '`anonymous-namespace'::lux::flowforge::BinaryOpNode::DataInPin'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(50): error C3646: 'rhs_': unknown override specifier
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(51): error C2327: '`anonymous-namespace'::lux::flowforge::BinaryOpNode::DataOutPin': is not a type name, static, or enumerator
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(51): note: see declaration of '`anonymous-namespace'::lux::flowforge::BinaryOpNode::DataOutPin'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(51): error C3646: 'result_': unknown override specifier
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(58): error C2504: 'Node': base class undefined
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(61): error C2061: syntax error: identifier 'ENodeOperation'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(62): error C2061: syntax error: identifier 'ENodeOperation'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(64): error C2143: syntax error: missing ';' before '&'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(65): error C2334: unexpected token(s) preceding '{'; skipping apparent function body
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(68): error C2143: syntax error: missing ';' before '&'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(69): error C2334: unexpected token(s) preceding '{'; skipping apparent function body
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(73): error C3083: 'meta': the symbol to the left of a '::' must be a type
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(73): error C2039: 'RefType': is not a member of '`anonymous-namespace'::lux'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(4): note: see declaration of '`anonymous-namespace'::lux'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(73): error C2143: syntax error: missing ';' before '*'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(74): error C2334: unexpected token(s) preceding '{'; skipping apparent function body
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(79): error C3083: 'meta': the symbol to the left of a '::' must be a type
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(79): error C2039: 'RefType': is not a member of '`anonymous-namespace'::lux'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(4): note: see declaration of '`anonymous-namespace'::lux'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(79): error C2327: '`anonymous-namespace'::lux::flowforge::UnaryOpNode::RefType': is not a type name, static, or enumerator
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(79): note: see declaration of '`anonymous-namespace'::lux::flowforge::UnaryOpNode::RefType'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(79): error C2143: syntax error: missing ';' before '*'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(79): error C2086: 'const int `anonymous-namespace'::lux::flowforge::UnaryOpNode::RefType': redefinition
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(79): error C2238: unexpected token(s) preceding ';'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(80): error C2327: '`anonymous-namespace'::lux::flowforge::UnaryOpNode::DataInPin': is not a type name, static, or enumerator
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(80): note: see declaration of '`anonymous-namespace'::lux::flowforge::UnaryOpNode::DataInPin'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(80): error C3646: 'operand_': unknown override specifier
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(81): error C2327: '`anonymous-namespace'::lux::flowforge::UnaryOpNode::DataOutPin': is not a type name, static, or enumerator
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(81): note: see declaration of '`anonymous-namespace'::lux::flowforge::UnaryOpNode::DataOutPin'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/engine/flowforge/graph/ArithmeticNode.hpp(81): error C3646: 'result_': unknown override specifier
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\imgui_internal.h(3276): error C2664: 'ImDrawList *`anonymous-namespace'::ImGui::GetForegroundDrawList(`anonymous-namespace'::ImGuiWindow *)': cannot convert argument 1 from '`anonymous-namespace'::ImGuiViewportP *' to '`anonymous-namespace'::ImGuiWindow *'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\imgui_internal.h(3276): note: Types pointed to are unrelated; conversion requires reinterpret_cast, C-style cast or parenthesized function-style cast
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\imgui_internal.h(3276): note: see declaration of '`anonymous-namespace'::ImGui::GetForegroundDrawList'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\imgui_internal.h(3276): note: while trying to match the argument list '(`anonymous-namespace'::ImGuiViewportP *)'
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10-r1-before-sdk\DraftSources.hpp(24): error C2653: 'widgets': is not a class or namespace name
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10-r1-before-sdk\DraftSources.hpp(24): error C2061: syntax error: identifier 'GraphCanvas'
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10-r1-before-sdk\DraftSources.hpp(31): error C2653: 'widgets': is not a class or namespace name
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10-r1-before-sdk\DraftSources.hpp(31): error C2061: syntax error: identifier 'GraphCanvas'
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10-r1-before-sdk\DraftSources.hpp(36): error C2653: 'widgets': is not a class or namespace name
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10-r1-before-sdk\DraftSources.hpp(36): error C2061: syntax error: identifier 'GraphCanvas'
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10-r1-before-sdk\DraftSources.hpp(28): error C3861: 'canvas': identifier not found
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10-r1-before-sdk\DraftSources.hpp(24): note: This diagnostic occurred in the compiler generated function 'void `anonymous-namespace'::draft_test::CanvasInput::send(void)'
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10-r1-before-sdk\DraftSources.hpp(28): error C3861: 'signal': identifier not found
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10-r1-before-sdk\DraftSources.hpp(24): note: This diagnostic occurred in the compiler generated function 'void `anonymous-namespace'::draft_test::CanvasInput::send(void)'
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10-r1-before-sdk\DraftSources.hpp(28): error C3861: 'value': identifier not found
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10-r1-before-sdk\DraftSources.hpp(24): note: This diagnostic occurred in the compiler generated function 'void `anonymous-namespace'::draft_test::CanvasInput::send(void)'
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10-r1-before-sdk\DraftSources.hpp(28): error C2065: 'canvas': undeclared identifier
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10-r1-before-sdk\DraftSources.hpp(24): note: This diagnostic occurred in the compiler generated function 'void `anonymous-namespace'::draft_test::CanvasInput::send(void)'
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10-r1-before-sdk\DraftSources.hpp(28): error C2065: 'signal': undeclared identifier
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10-r1-before-sdk\DraftSources.hpp(24): note: This diagnostic occurred in the compiler generated function 'void `anonymous-namespace'::draft_test::CanvasInput::send(void)'
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10-r1-before-sdk\DraftSources.hpp(28): error C2065: 'value': undeclared identifier
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10-r1-before-sdk\DraftSources.hpp(24): note: This diagnostic occurred in the compiler generated function 'void `anonymous-namespace'::draft_test::CanvasInput::send(void)'
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10-r1-before-sdk\DraftSources.hpp(33): error C2065: 'id': undeclared identifier
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10-r1-before-sdk\DraftSources.hpp(33): error C2440: 'initializing': cannot convert from 'initializer list' to 'std::span<const uint64_t,18446744073709551615>'
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10-r1-before-sdk\DraftSources.hpp(33): note: 'std::span<const uint64_t,18446744073709551615>::span': function does not take 2 arguments
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\span(355): note: could be 'std::span<const uint64_t,18446744073709551615>::span(const std::span<_OtherTy,_OtherExtent> &) noexcept'
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\span(342): note: or       'std::span<const uint64_t,18446744073709551615>::span(_Rng &&)'
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\span(339): note: or       'std::span<const uint64_t,18446744073709551615>::span(const std::array<_OtherTy,_Size> &) noexcept'
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\span(334): note: or       'std::span<const uint64_t,18446744073709551615>::span(std::array<_OtherTy,_Size> &) noexcept'
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\span(330): note: or       'std::span<const uint64_t,18446744073709551615>::span(const unsigned __int64 (&)[_Size]) noexcept'
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\span(316): note: or       'std::span<const uint64_t,18446744073709551615>::span(_It,_Sentinel) noexcept(<expr>)'
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\span(305): note: or       'std::span<const uint64_t,18446744073709551615>::span(_It,std::span<const uint64_t,18446744073709551615>::size_type) noexcept'
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10-r1-before-sdk\DraftSources.hpp(33): note: while trying to match the argument list '(<error type>, int)'
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10-r1-before-sdk\DraftSources.hpp(34): error C2065: 'canvas': undeclared identifier
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10-r1-before-sdk\DraftSources.hpp(34): error C2065: 'canvas': undeclared identifier
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10-r1-before-sdk\DraftSources.hpp(38): error C2065: 'canvas': undeclared identifier
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10-r1-before-sdk\DraftSources.hpp(38): error C2065: 'canvas': undeclared identifier
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10-r1-before-sdk\DraftSources.hpp(38): error C2653: 'widgets': is not a class or namespace name
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10-r1-before-sdk\DraftSources.hpp(38): error C2065: 'CanvasEdit': undeclared identifier
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10-r1-before-sdk\DraftSources.hpp(38): error C2653: 'widgets': is not a class or namespace name
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10-r1-before-sdk\DraftSources.hpp(38): error C2065: 'CanvasMove': undeclared identifier
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10-r1-before-sdk\DraftSources.hpp(38): error C2065: 'id': undeclared identifier
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10-r1-before-sdk\DraftSources.hpp(38): error C2065: 'x': undeclared identifier
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10-r1-before-sdk\DraftSources.hpp(38): error C2065: 'begin': undeclared identifier
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10-r1-before-sdk\DraftSources.hpp(38): error C2065: 'commit': undeclared identifier
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10-r1-before-sdk\DraftSources.hpp(53): error C2039: 'GetCurrentContext': is not a member of '`anonymous-namespace'::ImGui'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\imgui_internal.h(3228): note: see declaration of '`anonymous-namespace'::ImGui'
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10-r1-before-sdk\DraftSources.hpp(53): error C3861: 'GetCurrentContext': identifier not found
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10-r1-before-sdk\DraftSources.hpp(54): error C2039: 'TextUnformatted': is not a member of '`anonymous-namespace'::ImGui'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\imgui_internal.h(3228): note: see declaration of '`anonymous-namespace'::ImGui'
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10-r1-before-sdk\DraftSources.hpp(54): error C3861: 'TextUnformatted': identifier not found
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10-r1-before-sdk\DraftSources.hpp(105): error C2039: 'GetCurrentContext': is not a member of '`anonymous-namespace'::ImGui'
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\imgui_internal.h(3228): note: see declaration of '`anonymous-namespace'::ImGui'
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10-r1-before-sdk\DraftSources.hpp(105): fatal error C1003: error count exceeds 100; stopping compilation
+[7/10] Building CXX object CMakeFiles\inspector_fields.dir\Inspector.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[8/10] Building CXX object CMakeFiles\inspector_fields.dir\inspector_gen\desktop_consumer\consumer__Component_2abfe8b5.inspector.generated.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[9/10] Linking CXX executable bin\inspector_fields.exe
+ninja: build stopped: cannot make progress due to previous errors.

@@ -1,0 +1,9 @@
+[
+  "ui/WindowInput.hpp",
+  "ui/WindowOutput.hpp",
+  "ui/Presentation.hpp",
+  "ui/SceneElement.hpp",
+  "ui/asset/AssetPickerElement.hpp",
+  "ui/asset/AssetDragDrop.hpp",
+  "storage/AssetCatalog.hpp"
+]

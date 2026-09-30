@@ -1,0 +1,37 @@
+[
+  {
+    "path": "cmake/installed-consumers/desktop-views/CMakeLists.txt",
+    "change": "M",
+    "git_content_sha256": "e400b7c175ebffb5449e16c54d9b49e4fe22db1b55d70c904047d5d4c8b76c84"
+  },
+  {
+    "path": "editor/tests/architecture/rules.json",
+    "change": "M",
+    "git_content_sha256": "1439b0ebeb694fe43f6f1582f28f37c715606a583dc8d0826dc97d30927b090f"
+  },
+  {
+    "path": "editor/tools/flowforge/ui/src/FlowView.cpp",
+    "change": "M",
+    "git_content_sha256": "a56c5dafd2e73fd85a11b4443fdc2fd74fecac198bd65feac0edf6191512504e"
+  },
+  {
+    "path": "editor/tools/material/ui/src/MaterialView.cpp",
+    "change": "M",
+    "git_content_sha256": "947241e288217c1a48be80f70a4f635cb418c2c086b583460617075734d45a08"
+  },
+  {
+    "path": "editor/tools/scene/ui/CMakeLists.txt",
+    "change": "M",
+    "git_content_sha256": "5577f623c0cfe81192b94b1caf04595a502e6c625cf7584e9cb64f9de6facae9"
+  },
+  {
+    "path": "editor/tools/scene/ui/test/DraftSources.hpp",
+    "change": "A",
+    "git_content_sha256": "07e9e3190c1f2f3e7bd25e7755f1b9f2d6f20c618e71d958be7595aa98ff3bcf"
+  },
+  {
+    "path": "editor/tools/scene/ui/test/views.cpp",
+    "change": "M",
+    "git_content_sha256": "69eee604f45d7e743e6627eaa1f4ad3bd937cf98f3fb888a388c42a323e17078"
+  }
+]

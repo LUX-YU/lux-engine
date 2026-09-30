@@ -1,0 +1,14 @@
+[0/2] Re-checking globbed directories...
+[1/11] Building CXX object CMakeFiles\sample_external_editor.dir\plugin\sample_external_plugin\identity.cpp.obj
+[2/11] Building CXX object CMakeFiles\sample_external_plugin.dir\plugin\sample_external_plugin\identity.cpp.obj
+[3/11] Building CXX object CMakeFiles\sample_external_editor.dir\ExternalEditor.cpp.obj
+[4/11] Building CXX object CMakeFiles\sample_editor_test.dir\ExternalEditorTest.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[5/11] Linking CXX shared library bin\sample_external_editor.dll
+[6/11] Building CXX object CMakeFiles\sample_external_plugin.dir\ExternalFeatureSample.cpp.obj
+[7/11] Generating sdk-runtime.stamp
+[8/11] Linking CXX shared library bin\sample_external_plugin.dll
+[9/11] Linking CXX executable bin\sample_editor_test.exe
+[10/11] Building CXX object CMakeFiles\sample_external_test.dir\ExternalFeatureTest.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[11/11] Linking CXX executable bin\sample_external_test.exe

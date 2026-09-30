@@ -1,0 +1,46 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine
+      Start 115: editor.workspace_boundaries
+ 1/14 Test #115: editor.workspace_boundaries ......   Passed   33.26 sec
+      Start 162: editor.workspace.validation
+ 2/14 Test #162: editor.workspace.validation ......   Passed    0.05 sec
+      Start 163: editor.workspace.opaque
+ 3/14 Test #163: editor.workspace.opaque ..........   Passed    0.02 sec
+      Start 164: editor.workspace.rename
+ 4/14 Test #164: editor.workspace.rename ..........   Passed    0.15 sec
+      Start 165: editor.workspace.remove
+ 5/14 Test #165: editor.workspace.remove ..........   Passed    0.10 sec
+      Start 166: editor.workspace.ordering
+ 6/14 Test #166: editor.workspace.ordering ........   Passed    0.10 sec
+      Start 167: editor.workspace.unknown
+ 7/14 Test #167: editor.workspace.unknown .........   Passed    0.09 sec
+      Start 168: editor.workspace.aliases
+ 8/14 Test #168: editor.workspace.aliases .........   Passed    0.06 sec
+      Start 169: editor.workspace.reads
+ 9/14 Test #169: editor.workspace.reads ...........   Passed    0.06 sec
+      Start 170: editor.workspace.catalog
+10/14 Test #170: editor.workspace.catalog .........   Passed    0.13 sec
+      Start 171: editor.workspace.migration
+11/14 Test #171: editor.workspace.migration .......   Passed    0.24 sec
+      Start 172: editor.workspace.collision
+12/14 Test #172: editor.workspace.collision .......   Passed    0.08 sec
+      Start 173: editor.workspace.budgets
+13/14 Test #173: editor.workspace.budgets .........   Passed    0.02 sec
+      Start 174: editor.workspace.effects
+14/14 Test #174: editor.workspace.effects .........Exit code 0xc0000409
+***Exception:   2.81 sec
+Assertion failed: store.prepare(reserved, session), file E:\SyncForder\CodeRepos\lux-engine\editor\tests\workspace\effects.cpp, line 39
+
+
+93% tests passed, 1 tests failed out of 14
+
+Label Time Summary:
+P09       =  37.16 sec*proc (14 tests)
+editor    =  37.16 sec*proc (14 tests)
+native    =  37.16 sec*proc (14 tests)
+
+Total Test time (real) =  38.13 sec
+
+The following tests FAILED:
+	174 - editor.workspace.effects (Exit code 0xc0000409
+)  P09 editor native
+Errors while running CTest

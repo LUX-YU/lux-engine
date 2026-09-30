@@ -1,0 +1,475 @@
+{
+  "schema": 1,
+  "baseline_commit": "2bb33ff1a1f11025cf404e074c0e9b259239d8a4",
+  "source_extensions": [
+    ".h",
+    ".hpp",
+    ".hh",
+    ".hxx",
+    ".cpp",
+    ".cc",
+    ".cxx",
+    ".ixx",
+    ".cppm",
+    ".cmake"
+  ],
+  "expired_paths": [
+    {
+      "path": "editor/editing/src/EditHistory.cpp",
+      "deadline": "P01",
+      "id": "F001"
+    },
+    {
+      "path": "editor/editing/src/EditTypes.cpp",
+      "deadline": "P01",
+      "id": "F002"
+    },
+    {
+      "path": "editor/editing/include/lux/engine/editor/editing/EditHistory.hpp",
+      "deadline": "P01",
+      "id": "F003"
+    },
+    {
+      "path": "editor/editing/include/lux/engine/editor/editing/EditTypes.hpp",
+      "deadline": "P01",
+      "id": "F004"
+    },
+    {
+      "path": "editor/editing/include/lux/engine/editor/editing/EditOperation.hpp",
+      "deadline": "P01",
+      "id": "F005"
+    },
+    {
+      "path": "editor/context/include/lux/engine/editor/EditorContext.hpp",
+      "deadline": "P12",
+      "id": "F006"
+    },
+    {
+      "path": "editor/context/include/lux/engine/editor/PaneManager.hpp",
+      "deadline": "P12",
+      "id": "F007"
+    },
+    {
+      "path": "editor/context/src/EditorContext.cpp",
+      "deadline": "P12",
+      "id": "F008"
+    },
+    {
+      "path": "editor/context/src/PaneManager.cpp",
+      "deadline": "P12",
+      "id": "F009"
+    },
+    {
+      "path": "editor/context/CMakeLists.txt",
+      "deadline": "P12",
+      "id": "F010"
+    },
+    {
+      "path": "editor/app/src/Editor.cpp",
+      "deadline": "P12",
+      "id": "F011"
+    },
+    {
+      "path": "editor/app/src/EditorStartup.cpp",
+      "deadline": "P12",
+      "id": "F012"
+    },
+    {
+      "path": "editor/app/src/EditorMenu.cpp",
+      "deadline": "P12",
+      "id": "F013"
+    },
+    {
+      "path": "editor/app/src/EditorWorkspace.cpp",
+      "deadline": "P12",
+      "id": "F014"
+    },
+    {
+      "path": "editor/app/src/EditorWorkspaceStorage.cpp",
+      "deadline": "P12",
+      "id": "F015"
+    },
+    {
+      "path": "editor/app/pinclude/lux/engine/editor/detail/EditorImpl.hpp",
+      "deadline": "P12",
+      "id": "F016"
+    },
+    {
+      "path": "editor/app/pinclude/lux/engine/editor/detail/EditorWorkspace.hpp",
+      "deadline": "P12",
+      "id": "F017"
+    },
+    {
+      "path": "editor/context/include/lux/engine/editor/WorkspaceRequest.hpp",
+      "deadline": "P12",
+      "id": "F018"
+    },
+    {
+      "path": "editor/editing/include/lux/engine/editor/CloseRequest.hpp",
+      "deadline": "P12",
+      "id": "F019"
+    },
+    {
+      "path": "editor/editing/include/lux/engine/editor/AssetEditing.hpp",
+      "deadline": "P12",
+      "id": "F020"
+    },
+    {
+      "path": "editor/metadata/include/lux/engine/editor/metadata/PaneRegistration.hpp",
+      "deadline": "P12",
+      "id": "F021"
+    },
+    {
+      "path": "editor/metadata/include/lux/engine/editor/metadata/CommandRegistration.hpp",
+      "deadline": "P12",
+      "id": "F022"
+    },
+    {
+      "path": "editor/tools/scene/include/lux/engine/editor/scene/SceneEditor.hpp",
+      "deadline": "P12",
+      "id": "F023"
+    },
+    {
+      "path": "editor/tools/scene/pinclude/lux/engine/editor/scene/detail/SceneEditorImpl.hpp",
+      "deadline": "P12",
+      "id": "F024"
+    },
+    {
+      "path": "editor/tools/scene/src/SceneEditor.cpp",
+      "deadline": "P12",
+      "id": "F025"
+    },
+    {
+      "path": "editor/tools/scene/src/SceneAssets.cpp",
+      "deadline": "P12",
+      "id": "F026"
+    },
+    {
+      "path": "editor/tools/scene/test/SceneEditorTestAccess.hpp",
+      "deadline": "P12",
+      "id": "F027"
+    },
+    {
+      "path": "editor/tools/scene/test/SceneEditorTestAccess.cpp",
+      "deadline": "P12",
+      "id": "F028"
+    },
+    {
+      "path": "editor/tools/material/include/lux/engine/editor/material/MaterialEditor.hpp",
+      "deadline": "P12",
+      "id": "F029"
+    },
+    {
+      "path": "editor/tools/material/pinclude/lux/engine/editor/material/MaterialEditorImpl.hpp",
+      "deadline": "P12",
+      "id": "F030"
+    },
+    {
+      "path": "editor/tools/material/src/MaterialEditor.cpp",
+      "deadline": "P12",
+      "id": "F031"
+    },
+    {
+      "path": "editor/tools/material/src/MaterialAssets.cpp",
+      "deadline": "P12",
+      "id": "F032"
+    },
+    {
+      "path": "editor/tools/material/test/MaterialEditorTestAccess.hpp",
+      "deadline": "P12",
+      "id": "F033"
+    },
+    {
+      "path": "editor/tools/material/test/MaterialEditorTestAccess.cpp",
+      "deadline": "P12",
+      "id": "F034"
+    },
+    {
+      "path": "editor/tools/flowforge/include/lux/engine/editor/flowforge/FlowForgeEditor.hpp",
+      "deadline": "P12",
+      "id": "F035"
+    },
+    {
+      "path": "editor/tools/flowforge/pinclude/lux/engine/editor/flowforge/FlowForgeEditorImpl.hpp",
+      "deadline": "P12",
+      "id": "F036"
+    },
+    {
+      "path": "editor/tools/flowforge/src/FlowForgeEditor.cpp",
+      "deadline": "P12",
+      "id": "F037"
+    },
+    {
+      "path": "editor/tools/flowforge/src/FlowAssets.cpp",
+      "deadline": "P12",
+      "id": "F038"
+    },
+    {
+      "path": "editor/tools/flowforge/test/FlowForgeEditorTestAccess.hpp",
+      "deadline": "P12",
+      "id": "F039"
+    },
+    {
+      "path": "editor/tools/flowforge/test/FlowForgeEditorTestAccess.cpp",
+      "deadline": "P12",
+      "id": "F040"
+    },
+    {
+      "path": "editor/tools/scene/src/SceneSource.cpp",
+      "deadline": "P12",
+      "id": "F041"
+    },
+    {
+      "path": "editor/tools/scene/src/SceneContent.cpp",
+      "deadline": "P12",
+      "id": "F042"
+    },
+    {
+      "path": "editor/tools/scene/src/SceneObjectEdits.cpp",
+      "deadline": "P12",
+      "id": "F043"
+    },
+    {
+      "path": "editor/tools/scene/src/SceneOpening.cpp",
+      "deadline": "P12",
+      "id": "F044"
+    },
+    {
+      "path": "editor/tools/scene/src/ScenePlayback.cpp",
+      "deadline": "P12",
+      "id": "F045"
+    },
+    {
+      "path": "editor/tools/scene/src/ModelCreation.cpp",
+      "deadline": "P12",
+      "id": "F046"
+    },
+    {
+      "path": "editor/tools/material/pinclude/lux/engine/editor/material/MaterialCompilation.hpp",
+      "deadline": "P12",
+      "id": "F047"
+    },
+    {
+      "path": "editor/tools/material/pinclude/lux/engine/editor/material/MaterialPreview.hpp",
+      "deadline": "P12",
+      "id": "F048"
+    },
+    {
+      "path": "editor/tools/flowforge/pinclude/lux/engine/editor/flowforge/FlowCompilation.hpp",
+      "deadline": "P12",
+      "id": "F049"
+    },
+    {
+      "path": "editor/tools/flowforge/src/ui/FlowForgeElements.cpp",
+      "deadline": "P12",
+      "id": "F050"
+    },
+    {
+      "path": "editor/ui/src/TaskPane.cpp",
+      "deadline": "P12",
+      "id": "F051"
+    },
+    {
+      "path": "editor/ui/src/WindowInput.cpp",
+      "deadline": "P12",
+      "id": "F052"
+    },
+    {
+      "path": "editor/ui/src/WindowOutput.cpp",
+      "deadline": "P12",
+      "id": "F053"
+    },
+    {
+      "path": "editor/ui/src/Presentation.cpp",
+      "deadline": "P12",
+      "id": "F054"
+    },
+    {
+      "path": "editor/ui/src/UiRenderSyncStage.cpp",
+      "deadline": "P12",
+      "id": "F055"
+    },
+    {
+      "path": "editor/ui/src/SceneConfigurationElement.cpp",
+      "deadline": "P12",
+      "id": "F056"
+    },
+    {
+      "path": "editor/ui/src/ComponentEditors.cpp",
+      "deadline": "P12",
+      "id": "F057"
+    },
+    {
+      "path": "editor/ui/src/CodegenInput.cpp",
+      "deadline": "P12",
+      "id": "F058"
+    },
+    {
+      "path": "editor/ui/src/SceneElement.cpp",
+      "deadline": "P12",
+      "id": "F059"
+    },
+    {
+      "path": "editor/ui/src/SpatialInteraction3D.cpp",
+      "deadline": "P12",
+      "id": "F060"
+    },
+    {
+      "path": "editor/ui/src/asset/AssetPickerElement.cpp",
+      "deadline": "P12",
+      "id": "F061"
+    }
+  ],
+  "forbidden_definitions": [
+    {
+      "id": "OLDDEF_EditorContext",
+      "deadline": "P12",
+      "pattern": "\\b(?:class|struct|enum\\s+class)\\s+(?:[A-Z][A-Z0-9_]*\\s+)?EditorContext\\b|\\busing\\s+EditorContext\\s*=",
+      "description": "旧公开 owner/协议或别名 EditorContext"
+    },
+    {
+      "id": "OLDDEF_PaneManager",
+      "deadline": "P12",
+      "pattern": "\\b(?:class|struct|enum\\s+class)\\s+(?:[A-Z][A-Z0-9_]*\\s+)?PaneManager\\b|\\busing\\s+PaneManager\\s*=",
+      "description": "旧公开 owner/协议或别名 PaneManager"
+    },
+    {
+      "id": "OLDDEF_SceneEditor",
+      "deadline": "P12",
+      "pattern": "\\b(?:class|struct|enum\\s+class)\\s+(?:[A-Z][A-Z0-9_]*\\s+)?SceneEditor\\b|\\busing\\s+SceneEditor\\s*=",
+      "description": "旧公开 owner/协议或别名 SceneEditor"
+    },
+    {
+      "id": "OLDDEF_MaterialEditor",
+      "deadline": "P12",
+      "pattern": "\\b(?:class|struct|enum\\s+class)\\s+(?:[A-Z][A-Z0-9_]*\\s+)?MaterialEditor\\b|\\busing\\s+MaterialEditor\\s*=",
+      "description": "旧公开 owner/协议或别名 MaterialEditor"
+    },
+    {
+      "id": "OLDDEF_FlowForgeEditor",
+      "deadline": "P12",
+      "pattern": "\\b(?:class|struct|enum\\s+class)\\s+(?:[A-Z][A-Z0-9_]*\\s+)?FlowForgeEditor\\b|\\busing\\s+FlowForgeEditor\\s*=",
+      "description": "旧公开 owner/协议或别名 FlowForgeEditor"
+    },
+    {
+      "id": "OLDDEF_WorkspaceRequest",
+      "deadline": "P12",
+      "pattern": "\\b(?:class|struct|enum\\s+class)\\s+(?:[A-Z][A-Z0-9_]*\\s+)?WorkspaceRequest\\b|\\busing\\s+WorkspaceRequest\\s*=",
+      "description": "旧公开 owner/协议或别名 WorkspaceRequest"
+    },
+    {
+      "id": "OLDDEF_EWorkspaceAction",
+      "deadline": "P12",
+      "pattern": "\\b(?:class|struct|enum\\s+class)\\s+(?:[A-Z][A-Z0-9_]*\\s+)?EWorkspaceAction\\b|\\busing\\s+EWorkspaceAction\\s*=",
+      "description": "旧公开 owner/协议或别名 EWorkspaceAction"
+    },
+    {
+      "id": "OLDDEF_PaneRegistration",
+      "deadline": "P12",
+      "pattern": "\\b(?:class|struct|enum\\s+class)\\s+(?:[A-Z][A-Z0-9_]*\\s+)?PaneRegistration\\b|\\busing\\s+PaneRegistration\\s*=",
+      "description": "旧公开 owner/协议或别名 PaneRegistration"
+    },
+    {
+      "id": "OLDDEF_CommandRegistration",
+      "deadline": "P12",
+      "pattern": "\\b(?:class|struct|enum\\s+class)\\s+(?:[A-Z][A-Z0-9_]*\\s+)?CommandRegistration\\b|\\busing\\s+CommandRegistration\\s*=",
+      "description": "旧公开 owner/协议或别名 CommandRegistration"
+    },
+    {
+      "id": "OLDDEF_CloseRequest",
+      "deadline": "P12",
+      "pattern": "\\b(?:class|struct|enum\\s+class)\\s+(?:[A-Z][A-Z0-9_]*\\s+)?CloseRequest\\b|\\busing\\s+CloseRequest\\s*=",
+      "description": "旧公开 owner/协议或别名 CloseRequest"
+    },
+    {
+      "id": "OLDDEF_AssetEditStatus",
+      "deadline": "P12",
+      "pattern": "\\b(?:class|struct|enum\\s+class)\\s+(?:[A-Z][A-Z0-9_]*\\s+)?AssetEditStatus\\b|\\busing\\s+AssetEditStatus\\s*=",
+      "description": "旧公开 owner/协议或别名 AssetEditStatus"
+    },
+    {
+      "id": "OLDDEF_LegacyPersistenceState",
+      "deadline": "P12",
+      "pattern": "\\b(?:class|struct|enum\\s+class)\\s+(?:[A-Z][A-Z0-9_]*\\s+)?LegacyPersistenceState\\b|\\busing\\s+LegacyPersistenceState\\s*=",
+      "description": "旧公开 owner/协议或别名 LegacyPersistenceState"
+    },
+    {
+      "id": "OLDDEF_LegacySaveTicket",
+      "deadline": "P12",
+      "pattern": "\\b(?:class|struct|enum\\s+class)\\s+(?:[A-Z][A-Z0-9_]*\\s+)?LegacySaveTicket\\b|\\busing\\s+LegacySaveTicket\\s*=",
+      "description": "旧公开 owner/协议或别名 LegacySaveTicket"
+    },
+    {
+      "id": "OLDDEF_LegacyPersistenceOutcome",
+      "deadline": "P12",
+      "pattern": "\\b(?:class|struct|enum\\s+class)\\s+(?:[A-Z][A-Z0-9_]*\\s+)?LegacyPersistenceOutcome\\b|\\busing\\s+LegacyPersistenceOutcome\\s*=",
+      "description": "旧公开 owner/协议或别名 LegacyPersistenceOutcome"
+    },
+    {
+      "id": "HISTORY_SAVE_API",
+      "deadline": "P01",
+      "pattern": "\\bEditHistory::(?:beginSave|finishSave)\\s*\\(",
+      "description": "已删除的历史保存 API 定义"
+    },
+    {
+      "id": "OLD_RUNTIME_API",
+      "deadline": "P06",
+      "pattern": "\\bSceneRuntime::(?:valid|invalid|tick|getSceneRegistry|getClock|destroy)\\s*\\(",
+      "description": "旧 runtime 公开定义"
+    }
+  ],
+  "transition_root": "editor/transition/",
+  "transition_delete_by": "P12",
+  "new_scope_forbidden_include": [
+    "lux/engine/editor/EditorContext.hpp",
+    "lux/engine/editor/PaneManager.hpp",
+    "lux/engine/editor/scene/SceneEditor.hpp",
+    "lux/engine/editor/material/MaterialEditor.hpp",
+    "lux/engine/editor/flowforge/FlowForgeEditor.hpp"
+  ],
+  "new_scopes": [
+    "editor/contracts/",
+    "editor/history/",
+    "editor/sessions/",
+    "editor/tools/scene/model/",
+    "editor/tools/material/model/",
+    "editor/tools/flowforge/model/",
+    "editor/persistence/",
+    "editor/adapters/project_io/",
+    "editor/tools/scene/persistence/",
+    "editor/tools/material/persistence/",
+    "editor/tools/flowforge/persistence/",
+    "editor/tools/scene/execution/api/",
+    "editor/tools/scene/execution/",
+    "editor/tools/scene/projection/",
+    "editor/tools/material/preview/",
+    "editor/tools/flowforge/compilation/",
+    "editor/tools/scene/interaction/",
+    "editor/tools/material/interaction/",
+    "editor/tools/flowforge/interaction/",
+    "editor/views/api/",
+    "editor/widgets/",
+    "editor/workspace/layout/",
+    "editor/workspace/recovery/",
+    "editor/workspace/storage/",
+    "editor/desktop/",
+    "editor/tools/scene/ui/",
+    "editor/tools/material/ui/",
+    "editor/tools/flowforge/ui/",
+    "editor/tasks/ui/",
+    "editor/project/ui/",
+    "editor/commands/",
+    "editor/extensions/api/",
+    "editor/extensions/host/",
+    "editor/workflows/",
+    "editor/tools/scene/integration/",
+    "editor/tools/material/integration/",
+    "editor/tools/flowforge/integration/",
+    "editor/application/"
+  ],
+  "transition_allowlist": [
+    "editor/transition/LegacyPersistenceState.hpp",
+    "editor/transition/LegacyPersistenceState.cpp"
+  ],
+  "note": "文本检查，不扫描注释语义、不等同 AST；实际P00账本需扩充。新scope默认不含编辑器旧tools/src；旧协议字符串数据不禁止。"
+}

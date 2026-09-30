@@ -1,0 +1,768 @@
+{
+  "schema": 1,
+  "types": [
+    {
+      "phase": "P00",
+      "symbol": "architecture.json（数据，不是 C++ 类型）",
+      "file": "docs/editor-redesign/architecture.json",
+      "relation": "构建边界唯一清单",
+      "contract": "逐 target 记录逻辑名、真实 CMake target、源码/公开头目录、直接依赖、禁边与首次实施阶段。"
+    },
+    {
+      "phase": "P00",
+      "symbol": "migration-ledger.json",
+      "file": "docs/editor-redesign/migration-ledger.json",
+      "relation": "迁移管理记录，不进入产品",
+      "contract": "每个旧符号/文件有事实证据、引用点、去向、责任阶段、删除期限、当前状态和实际实现 SHA。"
+    },
+    {
+      "phase": "P00",
+      "symbol": "test-coverage.json / baseline.json",
+      "file": "docs/editor-redesign/test-coverage.json",
+      "relation": "证据记录",
+      "contract": "保留全部既有测试的语义与替代去向；未执行、失败、通过分别记录。"
+    },
+    {
+      "phase": "P00",
+      "symbol": "阶段收据模式",
+      "file": "docs/editor-redesign/receipts/schema.json",
+      "relation": "交付契约",
+      "contract": "禁止用测试数量替代功能覆盖；implementation_sha 与收据提交分离。"
+    },
+    {
+      "phase": "P00",
+      "symbol": "EditorArchitectureChecks.cmake",
+      "file": "cmake/EditorArchitectureChecks.cmake",
+      "relation": "独立构建检查",
+      "contract": "按实际 target 属性检查直接/传递边与生成工具边；不修改被测代码使错误消失。"
+    },
+    {
+      "phase": "P00",
+      "symbol": "check_editor_boundaries.py",
+      "file": "editor/tests/architecture/check_editor_boundaries.py",
+      "relation": "测试工具",
+      "contract": "检查 include 路径和编译数据库；不能把正则结果宣传成完整 C++ 语义分析。"
+    },
+    {
+      "phase": "P01",
+      "symbol": "CodeLease（复用既有代码保活机制）",
+      "file": "editor/contracts/include/lux/engine/editor/contracts/CodeLease.hpp",
+      "relation": "小值组合，不依赖 extensions host",
+      "contract": "包装并命名已有生命周期责任；实际对象、回调及 deleter 析构结束后才释放代码。"
+    },
+    {
+      "phase": "P01",
+      "symbol": "HistoryId / StateId / Revision / EditOperation / PreparedEdit / EditHistory",
+      "file": "editor/history/include/lux/engine/editor/editing/{EditTypes,EditOperation,EditHistory}.hpp",
+      "relation": "保留历史协议继承和原算法",
+      "contract": "execute/undo/redo/clear/close 保留；移出保存票据、保存中与 clean 状态；不依赖 sessions。"
+    },
+    {
+      "phase": "P01",
+      "symbol": "SessionId / SessionKey<T> / SessionKindId",
+      "file": "editor/sessions/include/lux/engine/editor/sessions/SessionId.hpp",
+      "relation": "身份值；Store 制造 typed key",
+      "contract": "代际与类型检查；不是 AssetId、HistoryId；不把 RTTI hash 序列化。"
+    },
+    {
+      "phase": "P01",
+      "symbol": "ContentStamp / ObservationVersion / BindingRevision",
+      "file": "editor/sessions/include/lux/engine/editor/sessions/ContentStamp.hpp",
+      "relation": "不同事实类别",
+      "contract": "ContentStamp=SessionId+StateId；不另造重复 SourceEpoch；通知版本不能决定 dirty。"
+    },
+    {
+      "phase": "P01",
+      "symbol": "SourceBinding / PersistenceCheckpoint / PersistedState",
+      "file": "editor/sessions/include/lux/engine/editor/sessions/PersistenceCheckpoint.hpp",
+      "relation": "SessionState 值组合",
+      "contract": "来源未命名/已绑定互斥；基线与持久顺序只有一个 owner；不依赖 IArtifactStore。"
+    },
+    {
+      "phase": "P01",
+      "symbol": "SessionState / EditGate / EditScope",
+      "file": "editor/sessions/include/lux/engine/editor/sessions/SessionState.hpp",
+      "relation": "具体会话组合；scope 局部且不可复制/移动",
+      "contract": "管理身份、绑定、编辑准入；不保存窗口、编译、布局状态。"
+    },
+    {
+      "phase": "P01",
+      "symbol": "ClosePermit / BindingChangePermit",
+      "file": "editor/sessions/include/lux/engine/editor/sessions/SessionPermits.hpp",
+      "relation": "move-only 跨阶段许可",
+      "contract": "未消费析构只解除限制；已消费不再解锁被复用槽位。"
+    },
+    {
+      "phase": "P01",
+      "symbol": "IEditSession / SessionInfo",
+      "file": "editor/sessions/include/lux/engine/editor/sessions/IEditSession.hpp",
+      "relation": "窄接口继承的边界",
+      "contract": "describe；private prepareClose 给 Store；无 save/play/compile/Pane。"
+    },
+    {
+      "phase": "P01",
+      "symbol": "SessionStore / SessionAccess<T> / SessionReservation",
+      "file": "editor/sessions/include/lux/engine/editor/sessions/SessionStore.hpp",
+      "relation": "Store 唯一拥有 unique_ptr<IEditSession>",
+      "contract": "reserve→prepare→publish；代际查找；close permit 消费删除；不提供任意 erase 给 UI。"
+    },
+    {
+      "phase": "P01",
+      "symbol": "LegacyPersistenceState / LegacySaveTicket / LegacyPersistenceOutcome（限期桥）",
+      "file": "editor/transition/LegacyPersistenceState.hpp",
+      "relation": "旧产品私有适配；不进新 SDK",
+      "contract": "替代旧历史保存 API，使旧工具仍可编译；只维护本工作副本唯一 checkpoint，P12 删除。"
+    },
+    {
+      "phase": "P02",
+      "symbol": "SceneSource",
+      "file": "editor/tools/scene/model/include/lux/engine/editor/scene/SceneSource.hpp",
+      "relation": "SceneSession 值/独占组合",
+      "contract": "唯一可写作者事实；保留 WorldObjectId、schema、分区、配置；不是运行 Registry。"
+    },
+    {
+      "phase": "P02",
+      "symbol": "SceneSession",
+      "file": "editor/tools/scene/model/include/lux/engine/editor/scene/SceneSession.hpp",
+      "relation": "final : sessions::IEditSession",
+      "contract": "组合 SessionState、SceneSource、EditHistory；describe/read/apply/undo/redo/capture。"
+    },
+    {
+      "phase": "P02",
+      "symbol": "SceneReadView / SceneSnapshot / SceneChangeSet",
+      "file": "editor/tools/scene/model/include/lux/engine/editor/scene/SceneSnapshot.hpp",
+      "relation": "短借用 / 冻结拥有值 / 有界变更值",
+      "contract": "短借用不能跨 tick；Snapshot 深度冻结插件数据并保活代码；变化裁剪有 ResetRequired。"
+    },
+    {
+      "phase": "P02",
+      "symbol": "SceneEditBatch / SceneEditReceipt / SceneEditError",
+      "file": "editor/tools/scene/model/include/lux/engine/editor/scene/SceneEdit.hpp",
+      "relation": "领域意图和值",
+      "contract": "一次批量编辑一个历史提交；precondition 使用 ContentStamp 或 StateId。"
+    },
+    {
+      "phase": "P02",
+      "symbol": "SceneSessionAccess",
+      "file": "editor/tools/scene/model/include/lux/engine/editor/scene/SceneSessionAccess.hpp",
+      "relation": "复用 SessionAccess<SceneSession> 的窄别名/适配",
+      "contract": "读与编辑能力分配给不同消费者；无 engine()/panes()/project()。"
+    },
+    {
+      "phase": "P02",
+      "symbol": "SceneObjectRef / SceneObjectLocator",
+      "file": "editor/tools/scene/model/include/lux/engine/editor/scene/SceneObjectRef.hpp",
+      "relation": "作者对象身份值",
+      "contract": "复用已有 WorldObjectId；跨会话引用带 SessionId/HistoryId；禁止裸 ECS Entity 作为持久作者地址。"
+    },
+    {
+      "phase": "P02",
+      "symbol": "SceneObjectEdit / SceneFieldEdit / SceneConfigurationEdit",
+      "file": "editor/tools/scene/model/src/edits/",
+      "relation": "继承既有 EditOperation/PreparedEdit",
+      "contract": "准备候选、预算、逆操作；无 Context、Pane 或可写运行世界；不要从 UI 借 memento。"
+    },
+    {
+      "phase": "P02",
+      "symbol": "PreparedSceneReload（内部值）",
+      "file": "editor/tools/scene/model/src/PreparedSceneReload.hpp",
+      "relation": "私有候选",
+      "contract": "源、全新历史、checkpoint 和索引一起准备；失败保留旧会话。"
+    },
+    {
+      "phase": "P03",
+      "symbol": "MaterialSession",
+      "file": "editor/tools/material/model/include/lux/engine/editor/material/MaterialSession.hpp",
+      "relation": "final : sessions::IEditSession；组合 source/state/history",
+      "contract": "describe/read/apply/undo/redo/capture；不持有 preview/compiler/window。"
+    },
+    {
+      "phase": "P03",
+      "symbol": "MaterialSource（复用 lux::material::MaterialSource）",
+      "file": "既有 modules 中定义；model 只做需要的受限适配",
+      "relation": "复用已有领域数据",
+      "contract": "不再造一份同名源并双向同步；作者图布局若被序列化仍属于源。"
+    },
+    {
+      "phase": "P03",
+      "symbol": "MaterialReadView / MaterialSnapshot",
+      "file": "editor/tools/material/model/include/lux/engine/editor/material/MaterialSnapshot.hpp",
+      "relation": "短借用 / 不可变拥有值",
+      "contract": "节点、参数/纹理槽、状态与图布局均可准确捕获；无渲染句柄。"
+    },
+    {
+      "phase": "P03",
+      "symbol": "MaterialEditBatch / MaterialEditReceipt",
+      "file": "editor/tools/material/model/include/lux/engine/editor/material/MaterialEdit.hpp",
+      "relation": "具体领域值",
+      "contract": "校验引脚类型/连接/节点与槽引用；提交一次历史。"
+    },
+    {
+      "phase": "P03",
+      "symbol": "MaterialGraphEdit / MaterialValueEdit",
+      "file": "editor/tools/material/model/src/edits/",
+      "relation": "保留 EditOperation 协议继承",
+      "contract": "逆操作拥有真实节点/值与代码寿命，不引用 GraphElement。"
+    },
+    {
+      "phase": "P03",
+      "symbol": "MaterialSessionAccess / PreparedMaterialReload",
+      "file": "editor/tools/material/model/include/lux/engine/editor/material/MaterialSessionAccess.hpp",
+      "relation": "受限访问 / 私有候选",
+      "contract": "重载保留 SessionId、更新 HistoryId，候选失败不改源。"
+    },
+    {
+      "phase": "P04",
+      "symbol": "FlowSession",
+      "file": "editor/tools/flowforge/model/include/lux/engine/editor/flowforge/FlowSession.hpp",
+      "relation": "final : sessions::IEditSession",
+      "contract": "组合 SessionState、Flow 作者源、EditHistory；无 compiler/linker/UI。"
+    },
+    {
+      "phase": "P04",
+      "symbol": "FlowAuthoringSource（仅当既有 FlowSource 不能表达可编辑图时）",
+      "file": "editor/tools/flowforge/model/include/lux/engine/editor/flowforge/FlowAuthoringSource.hpp",
+      "relation": "具体模型适配，不是又一份同步源",
+      "contract": "可复用旧 Content{id,name,FlowGraph}，改准确语义名；FlowSource 是编码/捕获值时不混同。"
+    },
+    {
+      "phase": "P04",
+      "symbol": "FlowSnapshot / FlowReadView",
+      "file": "editor/tools/flowforge/model/include/lux/engine/editor/flowforge/FlowSnapshot.hpp",
+      "relation": "拥有快照 / 限时只读视图",
+      "contract": "变量、导出、函数签名、字面值、节点布局与环境寿命完整。"
+    },
+    {
+      "phase": "P04",
+      "symbol": "FlowEditBatch / FlowEditReceipt",
+      "file": "editor/tools/flowforge/model/include/lux/engine/editor/flowforge/FlowEdit.hpp",
+      "relation": "领域值",
+      "contract": "具体编辑不继承 MaterialSession；共享图 UI 不代表共享语义。"
+    },
+    {
+      "phase": "P04",
+      "symbol": "FlowGraphEdit / FlowVariableEdit / FlowLiteralEdit",
+      "file": "editor/tools/flowforge/model/src/edits/",
+      "relation": "沿用 EditOperation/PreparedEdit",
+      "contract": "保留可逆编辑与引用校验；不依赖 linker。"
+    },
+    {
+      "phase": "P04",
+      "symbol": "FlowSessionAccess / FlowSourceEnvironment",
+      "file": "editor/tools/flowforge/model/include/lux/engine/editor/flowforge/FlowSessionAccess.hpp",
+      "relation": "typed access；环境复用既有类型",
+      "contract": "元信息和 module lease 长于节点、history 与快照。"
+    },
+    {
+      "phase": "P05",
+      "symbol": "SaveId / SaveRequest / SaveStatus / SaveOutcome",
+      "file": "editor/persistence/include/lux/engine/editor/persistence/SaveTypes.hpp",
+      "relation": "业务值与互斥结果",
+      "contract": "区分 admission、运行状态、已提交事实、采用结果、取消及不确定发布。"
+    },
+    {
+      "phase": "P05",
+      "symbol": "FrozenSave / EncodedArtifact / IEncodeJob",
+      "file": "editor/persistence/include/lux/engine/editor/persistence/EncodeJob.hpp",
+      "relation": "异步边界接口；FrozenSave 拥有输入",
+      "contract": "无 Session/Pane 裸指针；encoding 输出拥有字节，CodeLease 在外层 owner 中长于 job 虚析构。"
+    },
+    {
+      "phase": "P05",
+      "symbol": "ISaveSource / SaveSourceRegistration",
+      "file": "editor/persistence/include/lux/engine/editor/persistence/SaveSource.hpp",
+      "relation": "具体会话的角色适配",
+      "contract": "owner 上 captureForSave / accept；注册销毁先于 Session；不继承会话或 UI。"
+    },
+    {
+      "phase": "P05",
+      "symbol": "SaveService / SaveOperation",
+      "file": "editor/persistence/include/lux/engine/editor/persistence/SaveService.hpp",
+      "relation": "服务拥有稳定操作记录",
+      "contract": "requestSave/status/requestCancel/acknowledge；worker 仅投递 ID+拥有结果。"
+    },
+    {
+      "phase": "P05",
+      "symbol": "WriteTargetKey / WriteTarget / WriteTicket / WriteLane",
+      "file": "editor/persistence/include/lux/engine/editor/persistence/WriteLane.hpp",
+      "relation": "同目标顺序机制",
+      "contract": "准入时订票；编码可并行，发布只调度队首；失败/取消/不确定分别处理。"
+    },
+    {
+      "phase": "P05",
+      "symbol": "WriteCoordinator",
+      "file": "editor/persistence/include/lux/engine/editor/persistence/WriteCoordinator.hpp",
+      "relation": "应用拥有、所有写入生产者借用的唯一具体协调器",
+      "contract": "reserve / provideEncoded / cancelBeforePublish / status / reconcile；内部拥有 WriteLane，SaveService、SaveAs、编译发布、WorkspaceStore 共用同一实例。"
+    },
+    {
+      "phase": "P05",
+      "symbol": "IArtifactStore / PublicationOutcome / CommitReceipt",
+      "file": "editor/persistence/include/lux/engine/editor/persistence/ArtifactStore.hpp",
+      "relation": "真实 IO 副作用接口",
+      "contract": "Published / NotPublished / PublicationUnknown；持久性保证独立字段，不伪称全局 CAS。"
+    },
+    {
+      "phase": "P05",
+      "symbol": "ProjectArtifactStore",
+      "file": "editor/adapters/project_io/include/lux/engine/editor/io/ProjectArtifactStore.hpp",
+      "relation": "final : IArtifactStore",
+      "contract": "复用现有 ProjectStorage/文件系统；规范化同目标别名与实际版本检查。"
+    },
+    {
+      "phase": "P05",
+      "symbol": "SceneSaveSource / SceneEncodeJob / SceneCodec / ScenePersistenceAccess",
+      "file": "editor/tools/scene/persistence/include/lux/engine/editor/scene/SceneSaveSource.hpp",
+      "relation": "具体适配，不拥有 SceneSession",
+      "contract": "capture 内容戳/绑定；显式编码输出；受限基线采用。"
+    },
+    {
+      "phase": "P05",
+      "symbol": "MaterialSaveSource / MaterialEncodeJob / MaterialCodec",
+      "file": "editor/tools/material/persistence/include/lux/engine/editor/material/MaterialSaveSource.hpp",
+      "relation": "对应材质源的具体适配",
+      "contract": "源保存不是编译产物发布；节点快照与 lease 完整。"
+    },
+    {
+      "phase": "P05",
+      "symbol": "FlowSaveSource / FlowEncodeJob / FlowCodec",
+      "file": "editor/tools/flowforge/persistence/include/lux/engine/editor/flowforge/FlowSaveSource.hpp",
+      "relation": "对应 Flow 作者源的具体适配",
+      "contract": "编码快照环境而非读取 live FlowGraph；不执行 linker。"
+    },
+    {
+      "phase": "P05",
+      "symbol": "SceneSaveAsOperation / EncodedSceneClone / PreparedSceneRebind",
+      "file": "editor/tools/scene/persistence/include/lux/engine/editor/scene/SceneSaveAs.hpp",
+      "relation": "具体用例组合 permit/candidate/write ticket",
+      "contract": "克隆 package 与映射显式输出；发布前备妥采用，成功不清历史。"
+    },
+    {
+      "phase": "P05",
+      "symbol": "MaterialSaveAsOperation / FlowSaveAsOperation / SaveAsOutcome",
+      "file": "editor/tools/material/persistence/include/lux/engine/editor/material/MaterialSaveAs.hpp；editor/tools/flowforge/persistence/include/lux/engine/editor/flowforge/FlowSaveAs.hpp",
+      "relation": "具体用例；不建立万能基类",
+      "contract": "绑定冻结范围相同；各自处理格式身份；Export Copy 不改来源。"
+    },
+    {
+      "phase": "P05",
+      "symbol": "PreparedSceneData / PreparedMaterialData / PreparedFlowData",
+      "file": "editor/tools/{scene,material,flowforge}/persistence/include/lux/engine/editor/{scene,material,flowforge}/PreparedData.hpp",
+      "relation": "拥有解码产物值",
+      "contract": "后台 decode 与 owner 构造分离；P11 通过 SessionLoadJob 接入。"
+    },
+    {
+      "phase": "P06",
+      "symbol": "SceneInstanceLease / InstanceRetirement",
+      "file": "engine/scene/composition/include/lux/engine/scene/SceneInstanceLease.hpp",
+      "relation": "move-only 退休责任；host 存实际记录",
+      "contract": "不增加第二套 Runtime；析构不在 BUSY 回调中同步 destroy。"
+    },
+    {
+      "phase": "P06",
+      "symbol": "SceneRuntime 明确控制 API",
+      "file": "engine/scene/composition/include/lux/engine/scene/SceneRuntime.hpp",
+      "relation": "原宿主原算法重整",
+      "contract": "borrowInstance/borrowClock/pauseSimulation/resumeSimulation/requestStep/retireInstance/driveFrame。"
+    },
+    {
+      "phase": "P06",
+      "symbol": "RunId / RunInfo / RunProvenance / StepTicket / StopTicket",
+      "file": "editor/tools/scene/execution/api/include/lux/engine/editor/scene/RunTypes.hpp",
+      "relation": "运行域值，不属于 Session 身份",
+      "contract": "票据指向真实一次步进/停止，区分 accepted/completed。"
+    },
+    {
+      "phase": "P06",
+      "symbol": "RunSession / RunStore",
+      "file": "editor/tools/scene/execution/include/lux/engine/editor/scene/RunStore.hpp",
+      "relation": "RunStore 独占 RunSession；不继承 SceneSession",
+      "contract": "持启动快照、provenance、instance lease、执行状态；不持 UI 或作者可写引用。"
+    },
+    {
+      "phase": "P06",
+      "symbol": "RunController / StartRunOperation",
+      "file": "editor/tools/scene/execution/include/lux/engine/editor/scene/RunController.hpp",
+      "relation": "具体启动/控制服务",
+      "contract": "capture→prepare→owner 实例创建→发布 RunId；只借用既有执行器。"
+    },
+    {
+      "phase": "P06",
+      "symbol": "RunInspectAccess / RunningObjectRef",
+      "file": "editor/tools/scene/execution/api/include/lux/engine/editor/scene/RunInspectAccess.hpp",
+      "relation": "轻量读取能力",
+      "contract": "RunId+实例/对象代际隔离；UI 不取得 tick/EngineContext。"
+    },
+    {
+      "phase": "P06",
+      "symbol": "RunDebugEdits（仅保留已有临时调试能力）",
+      "file": "editor/tools/scene/execution/src/RunDebugEdits.hpp",
+      "relation": "运行自己的编辑/undo 记录",
+      "contract": "暂停调试不改变作者源；stop 不回写。RunChangeProposal 未实现时明确不可用。"
+    },
+    {
+      "phase": "P07",
+      "symbol": "SceneProjection / ScenePresentationHub / ProjectionVersion",
+      "file": "editor/tools/scene/projection/include/lux/engine/editor/scene/SceneProjection.hpp",
+      "relation": "共享派生 owner；不拥有作者源",
+      "contract": "按 ContentStamp/增量更新一个作者投影；多视图共享场景，不共享可写作者事实。"
+    },
+    {
+      "phase": "P07",
+      "symbol": "ViewportPresentation / ViewportConfiguration",
+      "file": "editor/tools/scene/projection/include/lux/engine/editor/scene/ViewportPresentation.hpp",
+      "relation": "每视口组合资源",
+      "contract": "独立相机/输出尺寸/overlay；以渲染视口身份寻址，不依赖具体 SceneView。"
+    },
+    {
+      "phase": "P07",
+      "symbol": "HighlightRenderer / HighlightKey / PreparedHighlight / SubmitOutcome",
+      "file": "editor/tools/scene/projection/src/HighlightRenderer.hpp",
+      "relation": "私有分阶段派生组件",
+      "contract": "desired/prepared/accepted；背压保留 pin；拒绝分类；后端 GPU 退休独立。"
+    },
+    {
+      "phase": "P07",
+      "symbol": "MaterialCompileId / MaterialCompileOperation / MaterialCompileSettings",
+      "file": "editor/tools/material/preview/include/lux/engine/editor/material/MaterialCompilation.hpp",
+      "relation": "实际异步编译业务；TaskId 仅关联进度",
+      "contract": "捕获快照+编译配置+环境版本；过期结果不覆盖新预览。"
+    },
+    {
+      "phase": "P07",
+      "symbol": "MaterialPreviewStore / CompiledMaterial",
+      "file": "editor/tools/material/preview/include/lux/engine/editor/material/MaterialPreviewStore.hpp",
+      "relation": "拥有编译结果和派生预览",
+      "contract": "失败保留作者内容；资源采用与 GPU 退休准确。"
+    },
+    {
+      "phase": "P07",
+      "symbol": "FlowCompileId / FlowCompilationService / FlowCompileOperation / LinkSettings",
+      "file": "editor/tools/flowforge/compilation/include/lux/engine/editor/flowforge/FlowCompilationService.hpp",
+      "relation": "编译与链接的具体阶段",
+      "contract": "输入 FlowSnapshot；重试链接固定原产物和来源，不捕获 FlowSession*。"
+    },
+    {
+      "phase": "P07",
+      "symbol": "PublishCompiledMaterialOperation / PublishFlowArtifactOperation",
+      "file": "editor/tools/material/preview/include/lux/engine/editor/material/PublishCompiledMaterial.hpp；editor/tools/flowforge/compilation/include/lux/engine/editor/flowforge/PublishFlowArtifact.hpp",
+      "relation": "具体派生产物发布用例",
+      "contract": "使用 P05 同一写入协调器；不更新作者源保存基线。"
+    },
+    {
+      "phase": "P07",
+      "symbol": "ResourceStatusSnapshot / ResourceRetryRequest",
+      "file": "editor/tools/scene/projection/include/lux/engine/editor/scene/ResourceStatus.hpp",
+      "relation": "投影资源状态与明确重试值",
+      "contract": "与作者结构修改错误分开；不从旧 SceneEditor 直接查 GPU 私有字段。"
+    },
+    {
+      "phase": "P08",
+      "symbol": "SceneInteractionGroup / SceneSelection / InteractionGroupId",
+      "file": "editor/tools/scene/interaction/include/lux/engine/editor/scene/SceneInteraction.hpp",
+      "relation": "交互服务拥有；视图仅关联",
+      "contract": "来源带作者/运行身份；共享选择不共享相机；不拥有 Session。"
+    },
+    {
+      "phase": "P08",
+      "symbol": "EditedObjectRef / RunningObjectRef / Gesture",
+      "file": "editor/tools/scene/interaction/include/lux/engine/editor/scene/InteractionTypes.hpp",
+      "relation": "封闭来源值 / 私有手势状态",
+      "contract": "作者 UUID 与运行 Entity 不混；预览与已提交编辑分开。"
+    },
+    {
+      "phase": "P08",
+      "symbol": "MaterialInteraction / FlowInteraction",
+      "file": "editor/tools/{material,flowforge}/interaction/",
+      "relation": "具体图交互组合",
+      "contract": "临时拖拽/选中/候选连接；最终调用具体域编辑，不共用万能图模型。"
+    },
+    {
+      "phase": "P08",
+      "symbol": "ViewId / ViewTypeId / ViewRestoreKey / ViewInfo",
+      "file": "editor/views/api/include/lux/engine/editor/views/ViewInfo.hpp",
+      "relation": "视图身份和只读值",
+      "contract": "ViewId 是 Host 代际身份；ViewRestoreKey 是持久键；ViewTypeId 直接复用 PaneTypeId。PaneId 留作 UI 树注册名，不与前两者互转。"
+    },
+    {
+      "phase": "P08",
+      "symbol": "DetachedView / IViewHost / ViewRequests",
+      "file": "editor/views/api/include/lux/engine/editor/views/IViewHost.hpp",
+      "relation": "外层 CodeLease+unique_ptr<Pane>；窄 host 接口",
+      "contract": "工厂结果未挂 Root；请求 close/show/focus 不暴露 owning vector。"
+    },
+    {
+      "phase": "P08",
+      "symbol": "Pane/Element 的 detached 构造与内容拥有",
+      "file": "modules/function/ui/include/lux/engine/ui/{Pane,Element}.hpp",
+      "relation": "保留真实 UI 继承，明确树 owner",
+      "contract": "Detached 状态无活动 Root 注册；节点是 owner 线程对象；非 worker 构造。"
+    },
+    {
+      "phase": "P08",
+      "symbol": "PreparedMountBatch / PreparedDetachBatch / AttachmentState",
+      "file": "modules/function/ui/ 的 private UI 实现",
+      "relation": "Root 局部准备/提交机制",
+      "contract": "先准备容量与路由，提交不调用可失败插件代码；Root 只登记不双重删除。"
+    },
+    {
+      "phase": "P09",
+      "symbol": "LayoutId / LayoutSlotId / DockLayout / DockTree",
+      "file": "editor/workspace/layout/include/lux/engine/editor/workspace/DockLayout.hpp",
+      "relation": "持久纯值",
+      "contract": "布局组织不含作者源、运行实例或 live SessionId。"
+    },
+    {
+      "phase": "P09",
+      "symbol": "ValidatedLayout / LayoutPlan / LayoutPlanner",
+      "file": "editor/workspace/layout/include/lux/engine/editor/workspace/LayoutPlan.hpp",
+      "relation": "验证后值与纯计划",
+      "contract": "parse→validate→resolve；不修改 Root，不创建活动视图。"
+    },
+    {
+      "phase": "P09",
+      "symbol": "LayoutCatalog / LayoutSummary / CatalogVersion",
+      "file": "editor/workspace/layout/include/lux/engine/editor/workspace/LayoutCatalog.hpp",
+      "relation": "查询快照",
+      "contract": "目录不是请求；没有 pending/result/action 组合袋。"
+    },
+    {
+      "phase": "P09",
+      "symbol": "RecoveryManifest / RecoveryEntry",
+      "file": "editor/workspace/recovery/include/lux/engine/editor/workspace/RecoveryManifest.hpp",
+      "relation": "独立恢复描述",
+      "contract": "存可持久定位与视图绑定；不声称能恢复未持久化修改。"
+    },
+    {
+      "phase": "P09",
+      "symbol": "UserPreferences / VersionedViewState / PreservedOpaqueState",
+      "file": "editor/workspace/layout/include/lux/engine/editor/workspace/WorkspaceValues.hpp",
+      "relation": "独立值/版本化载荷",
+      "contract": "未知 type/schema 字节保留；偏好坏引用可回退。"
+    },
+    {
+      "phase": "P09",
+      "symbol": "WorkspaceStore / LayoutCommitReceipt / PreferenceWriteResult",
+      "file": "editor/workspace/storage/include/lux/engine/editor/workspace/WorkspaceStore.hpp",
+      "relation": "真实布局/偏好 IO 适配",
+      "contract": "save/rename/remove/read/list 各有准确事实，偏好写失败不撤销布局成功。"
+    },
+    {
+      "phase": "P09",
+      "symbol": "LegacyWorkspaceImporter（只读格式适配）",
+      "file": "editor/workspace/storage/src/LegacyWorkspaceImporter.cpp",
+      "relation": "保留的数据迁移边界，不是旧 owner",
+      "contract": "解析旧数据到新值；不 include WorkspaceRequest/旧 PaneManager，不执行未知 provider。"
+    },
+    {
+      "phase": "P10",
+      "symbol": "ViewHost / DesktopShell",
+      "file": "editor/desktop/include/lux/engine/editor/desktop/{ViewHost,DesktopShell}.hpp",
+      "relation": "ViewHost : views::IViewHost；Shell 组合平台/Root/呈现",
+      "contract": "Host 独占顶层 Pane；Shell 不持作者模型，不解析具体工具绑定。"
+    },
+    {
+      "phase": "P10",
+      "symbol": "SceneView / SceneViewState / SceneViewBinding",
+      "file": "editor/tools/scene/ui/include/lux/engine/editor/scene/SceneView.hpp",
+      "relation": "final : ui::Pane；组合视图状态/绑定/呈现",
+      "contract": "Unbound/EditedSceneBinding/RunningSceneBinding 显式 variant；无 history/save/run owner。"
+    },
+    {
+      "phase": "P10",
+      "symbol": "OutlinerView / InspectorView / ResourceView / SceneCreationView",
+      "file": "editor/tools/scene/ui/include/lux/engine/editor/scene/{OutlinerView,InspectorView,ResourceView,SceneCreationView}.hpp",
+      "relation": "真实 Pane 或 Element UI 特化",
+      "contract": "调用 Scene/Run 窄访问；不成为 SceneSession::Impl 的 friend。"
+    },
+    {
+      "phase": "P10",
+      "symbol": "MaterialView / MaterialViewState / MaterialViewServices",
+      "file": "editor/tools/material/ui/include/lux/engine/editor/material/MaterialView.hpp",
+      "relation": "Pane + typed SessionKey + 图交互/预览",
+      "contract": "视图有零/一绑定；不自动新建或销毁 MaterialSession。"
+    },
+    {
+      "phase": "P10",
+      "symbol": "FlowView / FlowViewState / FlowViewServices",
+      "file": "editor/tools/flowforge/ui/include/lux/engine/editor/flowforge/FlowView.hpp",
+      "relation": "Pane + FlowSessionKey + FlowInteraction",
+      "contract": "图 UI 不拥有源/history/compiler；支持已有变量/导出/函数交互。"
+    },
+    {
+      "phase": "P10",
+      "symbol": "makeSceneView / makeMaterialView / makeFlowView",
+      "file": "editor/tools/{scene,material,flowforge}/ui/src/ViewFactory.cpp",
+      "relation": "普通工厂函数，避免无意义工厂继承树",
+      "contract": "输入受限 services/create info；返回 DetachedView，不接管/复用/聚焦。"
+    },
+    {
+      "phase": "P10",
+      "symbol": "TaskView / TaskQueryPort",
+      "file": "editor/tasks/ui/include/lux/engine/editor/tasks/{TaskView,TaskQueryPort}.hpp",
+      "relation": "只读任务面板与受限请求",
+      "contract": "复用执行器真实任务状态；不是新的任务管理器。"
+    },
+    {
+      "phase": "P10",
+      "symbol": "ProjectView / AssetPickerElement / ProjectCatalogAccess / AssetOpenRequests",
+      "file": "editor/project/ui/include/lux/engine/editor/project/{ProjectView,AssetPickerElement,ProjectCatalogAccess,AssetOpenRequests}.hpp",
+      "relation": "项目 UI 与只读查询/明确请求接口",
+      "contract": "不持 EditorContext；打开资产是请求，不返回任意 Pane 引用。"
+    },
+    {
+      "phase": "P10",
+      "symbol": "Editor widgets / Inspector 字段适配",
+      "file": "editor/widgets/ 与 editor/tools/scene/ui/codegen/",
+      "relation": "通用控件仅 UI；领域 adapter 在 tool/ui",
+      "contract": "模板/生成代码不传播 scene/runtime 到通用 widgets。"
+    },
+    {
+      "phase": "P11",
+      "symbol": "CommandDescriptor / CommandState / CommandQuery / CommandInvocation",
+      "file": "editor/commands/include/lux/engine/editor/commands/Command.hpp",
+      "relation": "描述、只读输入、确定目标意图",
+      "contract": "query 不取全局 Context；execution 重新验证目标和可用性。"
+    },
+    {
+      "phase": "P11",
+      "symbol": "DispatchReceipt / OperationRef / RegistryBinding",
+      "file": "editor/commands/include/lux/engine/editor/commands/DispatchReceipt.hpp",
+      "relation": "准入结果/仅 UI 跟踪身份/明确注册绑定策略",
+      "contract": "ImmediateCompletion 与 AcceptedOperation 分开；不携所有业务状态的全局 any。"
+    },
+    {
+      "phase": "P11",
+      "symbol": "CommandEntry / CommandRegistrySnapshot / CommandHandle",
+      "file": "editor/commands/include/lux/engine/editor/commands/CommandRegistry.hpp",
+      "relation": "不可变记录和拥有 snapshot 的调用句柄",
+      "contract": "query/execute 同样保活 entry+code；批次内不替换正在迭代容器。"
+    },
+    {
+      "phase": "P11",
+      "symbol": "SessionKindDescriptor / ViewFactoryRegistration / SessionFactoryRegistration",
+      "file": "editor/extensions/api/include/lux/engine/editor/extensions/Registrations.hpp",
+      "relation": "typed 描述与执行入口组合",
+      "contract": "构造、接管、复用、显示分开；无 PaneManager& factory。"
+    },
+    {
+      "phase": "P11",
+      "symbol": "SessionLoadJob / PreparedSessionData / PreparedSessionInstallation",
+      "file": "editor/extensions/api/include/lux/engine/editor/extensions/SessionFactory.hpp",
+      "relation": "worker 准备角色与 owner 安装值",
+      "contract": "worker 只拥有 decode 结果；owner 构造线程亲和 Session/History；发布前角色齐备。"
+    },
+    {
+      "phase": "P11",
+      "symbol": "HistoryActions / SessionRoleBundle / SaveAsActions",
+      "file": "editor/extensions/api/include/lux/engine/editor/extensions/SessionRoles.hpp",
+      "relation": "按实际需要定义的窄角色适配",
+      "contract": "history query/undo/redo、保存源、SaveAs；可缺省角色明确可用性，不用万能服务表。"
+    },
+    {
+      "phase": "P11",
+      "symbol": "ExtensionSnapshot / ExtensionPublisher",
+      "file": "editor/extensions/host/include/lux/engine/editor/extensions/ExtensionHost.hpp",
+      "relation": "批次发布服务，不是全局 ServiceLocator",
+      "contract": "只在 owner 发布阶段替换；在途实例/任务独立保活旧代码。"
+    },
+    {
+      "phase": "P11",
+      "symbol": "SceneToolModule / MaterialToolModule / FlowToolModule",
+      "file": "editor/tools/{scene,material,flowforge}/integration/",
+      "relation": "装配函数/对象，不给业务传递",
+      "contract": "绑定具体工厂、角色、命令、编译/运行与视图；不封装可达整个引擎的 getters。"
+    },
+    {
+      "phase": "P12",
+      "symbol": "OpenAssetOperation / OpenId / OpenResult",
+      "file": "editor/workflows/include/lux/engine/editor/workflows/OpenAsset.hpp",
+      "relation": "具体操作集合拥有，不是万能 workflow 基类",
+      "contract": "session publication 与 presentation 结果分开；相同资产默认复用工作副本。"
+    },
+    {
+      "phase": "P12",
+      "symbol": "ReloadSessionOperation / ReloadOutcome",
+      "file": "editor/workflows/include/lux/engine/editor/workflows/ReloadSession.hpp",
+      "relation": "候选与原子采用用例",
+      "contract": "处理在途写入、审阅戳；保留 SessionId，成功更新 HistoryId，失败不 clear。"
+    },
+    {
+      "phase": "P12",
+      "symbol": "CloseViewOperation / CloseSessionsOperation / CloseViewPolicy / CloseReport",
+      "file": "editor/workflows/include/lux/engine/editor/workflows/CloseSessions.hpp",
+      "relation": "不同生命周期动作",
+      "contract": "固定被审阅内容集合与 stamp；全部许可后才提交删除；Cancel 不回滚已保存。"
+    },
+    {
+      "phase": "P12",
+      "symbol": "SaveAllOperation / SaveAllReport",
+      "file": "editor/workflows/include/lux/engine/editor/workflows/SaveAll.hpp",
+      "relation": "固定会话集合的保存编排",
+      "contract": "按 Session 而非 Pane 保存；逐项记录准入/结果/缺角色，不能重复保存两视图同源。"
+    },
+    {
+      "phase": "P12",
+      "symbol": "ApplyLayoutOperation / LayoutApplyReport / RestoreSessionOperation",
+      "file": "editor/workflows/include/lux/engine/editor/workflows/ApplyLayout.hpp",
+      "relation": "布局结构提交与内容恢复分开",
+      "contract": "pure plan→prepare→safe commit→report；偏好保存独立结果。"
+    },
+    {
+      "phase": "P12",
+      "symbol": "InstalledSession / SessionViewBindings / SessionCloseDependencies",
+      "file": "editor/workflows/src/SessionInstallation.hpp",
+      "relation": "角色注册与关联记录，不拥有第二份源",
+      "contract": "撤销角色/视图/运行依赖后 Store 消费许可；领域退休 hook 由 integration 注入。"
+    },
+    {
+      "phase": "P12",
+      "symbol": "ModelCreationOperation",
+      "file": "editor/tools/scene/integration/src/ModelCreationOperation.hpp",
+      "relation": "领域特定长期操作",
+      "contract": "IO产物校验后一次 SceneEditBatch；载入完成不等于模型插入完成。"
+    },
+    {
+      "phase": "P12",
+      "symbol": "EditorApplication / EditorApplicationConfig",
+      "file": "editor/application/include/lux/engine/editor/EditorApplication.hpp",
+      "relation": "生命周期装配根",
+      "contract": "create 返回完整成功对象；exec 驱动既有宿主；不保存各用例中间字段。"
+    },
+    {
+      "phase": "P12",
+      "symbol": "工具/桌面/用例装配函数",
+      "file": "editor/application/src/ 与 editor/tools/*/integration/",
+      "relation": "连接具体依赖，不作业务参数",
+      "contract": "唯一产品 lux_editor 指向 editor_bootstrap；没有 old/new 路由开关。"
+    },
+    {
+      "phase": "P13",
+      "symbol": "最终 architecture/retirement/test evidence",
+      "file": "docs/editor-redesign/",
+      "relation": "证据，不新增产品类型",
+      "contract": "账本中全部过渡已关闭；最终模块、公开头、安装和功能覆盖一致。"
+    },
+    {
+      "phase": "P13",
+      "symbol": "分层 CI workflow",
+      "file": " .github/workflows/ 下对应 Editor/Player 工作流",
+      "relation": "工程门禁",
+      "contract": "每次相关 PR 跑 native/边界；desktop/GPU/toolchain/installed 按真实环境运行并保留结果。"
+    },
+    {
+      "phase": "P13",
+      "symbol": "独立消费者与公共头测试",
+      "file": "editor/tests/installed/ 与 editor/tests/architecture/",
+      "relation": "测试支撑不进产品库",
+      "contract": "安装后 clean prefix 构建，不读取源码/构建私有头；负向依赖夹具仍有效。"
+    },
+    {
+      "phase": "P13",
+      "symbol": "性能/容量基准",
+      "file": "editor/tests/benchmarks/",
+      "relation": "可复现实验，不作为新框架",
+      "contract": "测启动/交互/快照/多视图/GPU 退休/长期任务保留，不预设提速。"
+    }
+  ]
+}

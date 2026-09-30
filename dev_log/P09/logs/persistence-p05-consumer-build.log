@@ -1,0 +1,3 @@
+[1/2] Building CXX object CMakeFiles\persistence_consumer.dir\main.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[2/2] Linking CXX executable persistence_consumer.exe

@@ -1,0 +1,9 @@
+[0/2] Re-checking globbed directories...
+[1/7] Building CXX object editor\tests\workspace\CMakeFiles\editor_workspace_test.dir\workspace.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[2/7] Building CXX object editor\workspace\layout\CMakeFiles\layout_model.dir\src\WorkspaceCodec.cpp.obj
+[3/7] Linking CXX static library lib\layout_model.lib
+[4/7] Building CXX object editor\workspace\storage\CMakeFiles\workspace_store.dir\src\LegacyWorkspaceImporter.cpp.obj
+[5/7] Linking CXX static library lib\workspace_store.lib
+[6/7] Linking CXX executable bin\editor_layout_effects_test.exe
+[7/7] Linking CXX executable bin\editor_workspace_test.exe

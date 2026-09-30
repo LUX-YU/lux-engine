@@ -1,0 +1,1 @@
+X09-04 exact unknown bytes/schema/fields roundtrip; budget errors preserve input, no truncation

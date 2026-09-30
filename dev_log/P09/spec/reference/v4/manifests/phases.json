@@ -1,0 +1,358 @@
+{
+  "schema": 1,
+  "baseline_commit": "2bb33ff1a1f11025cf404e074c0e9b259239d8a4",
+  "phases": [
+    {
+      "id": "P00",
+      "file": "phases/P00_baseline_and_guards.md",
+      "title": "基线盘点、反向依赖门禁与迁移账本",
+      "depends": [],
+      "modules": "全局边界；尚不建立新业务 owner",
+      "issues": "A01—A08、B01—B04",
+      "q_tests": [
+        "Q31",
+        "Q38",
+        "Q42",
+        "Q45",
+        "Q49"
+      ]
+    },
+    {
+      "id": "P01",
+      "file": "phases/P01_history_and_sessions.md",
+      "title": "历史纯化、身份、保存基线与会话唯一所有权",
+      "depends": [
+        "P00"
+      ],
+      "modules": "M01 / M02 / M03",
+      "issues": "A02、A03、A05、T05、T06、T09",
+      "q_tests": [
+        "Q06",
+        "Q07",
+        "Q08",
+        "Q09",
+        "Q10",
+        "Q45"
+      ]
+    },
+    {
+      "id": "P02",
+      "file": "phases/P02_scene_authoring.md",
+      "title": "Scene 作者模型、稳定对象身份与可撤销编辑",
+      "depends": [
+        "P01"
+      ],
+      "modules": "M04；复用 M02/M03",
+      "issues": "A02、A08、T05、T06、T09",
+      "q_tests": [
+        "Q01",
+        "Q06",
+        "Q09",
+        "Q11",
+        "Q22",
+        "Q26"
+      ]
+    },
+    {
+      "id": "P03",
+      "file": "phases/P03_material_authoring.md",
+      "title": "Material 作者图与独立会话",
+      "depends": [
+        "P01",
+        "P02"
+      ],
+      "modules": "M05；验证通用 Session/History 不是 Scene 专用",
+      "issues": "A02、A06、A08、T06",
+      "q_tests": [
+        "Q01",
+        "Q07",
+        "Q09",
+        "Q11",
+        "Q27"
+      ]
+    },
+    {
+      "id": "P04",
+      "file": "phases/P04_flowforge_authoring.md",
+      "title": "FlowForge 作者图与第三工具覆盖",
+      "depends": [
+        "P01",
+        "P03"
+      ],
+      "modules": "新增 M17：FlowForge；遵守 M03/M06/M11 相同边界",
+      "issues": "A02、A03、A08；补齐 V3 未单列的旧框架消费者",
+      "q_tests": [
+        "Q01",
+        "Q06",
+        "Q09",
+        "Q11",
+        "Q49"
+      ]
+    },
+    {
+      "id": "P05",
+      "file": "phases/P05_persistence.md",
+      "title": "冻结保存、有序发布、Save As 与三类编码适配",
+      "depends": [
+        "P01",
+        "P02",
+        "P03",
+        "P04"
+      ],
+      "modules": "M06 / M07；包括 FlowForge 持久化适配",
+      "issues": "A08、T04、T07、T08、C02",
+      "q_tests": [
+        "Q11",
+        "Q12",
+        "Q13",
+        "Q14",
+        "Q15",
+        "Q16",
+        "Q17",
+        "Q18",
+        "Q50"
+      ]
+    },
+    {
+      "id": "P06",
+      "file": "phases/P06_scene_runtime.md",
+      "title": "统一场景驱动、实例退休与独立 Run 会话",
+      "depends": [
+        "P01",
+        "P02"
+      ],
+      "modules": "M08；引擎 SceneRuntime 受影响边界",
+      "issues": "A02、T04、T05、T06",
+      "q_tests": [
+        "Q22",
+        "Q23",
+        "Q24",
+        "Q25",
+        "Q29",
+        "Q43",
+        "Q47"
+      ]
+    },
+    {
+      "id": "P07",
+      "file": "phases/P07_projection_and_compilation.md",
+      "title": "作者投影、视口资源、材质预览与 Flow 编译",
+      "depends": [
+        "P02",
+        "P03",
+        "P04",
+        "P05",
+        "P06"
+      ],
+      "modules": "M09；FlowForge 编译子模块",
+      "issues": "A02、A06、T04、C05",
+      "q_tests": [
+        "Q23",
+        "Q27",
+        "Q28",
+        "Q29",
+        "Q30",
+        "Q50"
+      ]
+    },
+    {
+      "id": "P08",
+      "file": "phases/P08_interaction_and_detached_ui.md",
+      "title": "独立交互状态与底层 UI 离树构造/挂载协议",
+      "depends": [
+        "P01",
+        "P02",
+        "P03",
+        "P04",
+        "P06",
+        "P07"
+      ],
+      "modules": "M10 / M11 的 view_api；引擎 UI 基础",
+      "issues": "A04、A05、T03、T06",
+      "q_tests": [
+        "Q02",
+        "Q10",
+        "Q26",
+        "Q29",
+        "Q34",
+        "Q44",
+        "Q45"
+      ]
+    },
+    {
+      "id": "P09",
+      "file": "phases/P09_layout_storage.md",
+      "title": "布局、会话恢复与偏好的模型和持久化",
+      "depends": [
+        "P01",
+        "P05",
+        "P08"
+      ],
+      "modules": "M12；P12 ApplyLayout 用例的纯输入",
+      "issues": "T01、T02、C01、C02",
+      "q_tests": [
+        "Q04",
+        "Q31",
+        "Q32",
+        "Q33",
+        "Q35",
+        "Q36",
+        "Q37",
+        "Q52"
+      ]
+    },
+    {
+      "id": "P10",
+      "file": "phases/P10_views_and_desktop.md",
+      "title": "独立视图、双视口与桌面宿主完整接线",
+      "depends": [
+        "P02",
+        "P03",
+        "P04",
+        "P06",
+        "P07",
+        "P08",
+        "P09"
+      ],
+      "modules": "M11 / M16 的桌面部分；Flow、任务与项目 UI",
+      "issues": "A02、A04、A06、T03",
+      "q_tests": [
+        "Q02",
+        "Q03",
+        "Q04",
+        "Q21",
+        "Q26",
+        "Q29",
+        "Q34",
+        "Q50",
+        "Q51"
+      ]
+    },
+    {
+      "id": "P11",
+      "file": "phases/P11_commands_and_extensions.md",
+      "title": "命令事实、不可变扩展发布与工具工厂",
+      "depends": [
+        "P01",
+        "P05",
+        "P08",
+        "P09",
+        "P10"
+      ],
+      "modules": "M13 / M14 / 三类工具的 integration",
+      "issues": "A03、A04、A05、A07、C03、B04",
+      "q_tests": [
+        "Q38",
+        "Q39",
+        "Q40",
+        "Q41",
+        "Q46",
+        "Q48",
+        "Q52"
+      ]
+    },
+    {
+      "id": "P12",
+      "file": "phases/P12_workflows_and_cutover.md",
+      "title": "产品用例闭合、唯一入口切换与旧框架删除",
+      "depends": [
+        "P01",
+        "P02",
+        "P03",
+        "P04",
+        "P05",
+        "P06",
+        "P07",
+        "P08",
+        "P09",
+        "P10",
+        "P11"
+      ],
+      "modules": "M15 / M16；全产品唯一新路径",
+      "issues": "A01—A08、T01—T09、C01—C04",
+      "q_tests": [
+        "Q03",
+        "Q04",
+        "Q05",
+        "Q15",
+        "Q18",
+        "Q19",
+        "Q20",
+        "Q21",
+        "Q31",
+        "Q33",
+        "Q36",
+        "Q37",
+        "Q40",
+        "Q41",
+        "Q42",
+        "Q43",
+        "Q51"
+      ]
+    },
+    {
+      "id": "P13",
+      "file": "phases/P13_final_qualification.md",
+      "title": "工程收尾、独立安装、全量资格与交付封存",
+      "depends": [
+        "P12"
+      ],
+      "modules": "M16；所有责任域的最终证据",
+      "issues": "B01—B04；全部已修问题的系统回归",
+      "q_tests": [
+        "Q01",
+        "Q02",
+        "Q03",
+        "Q04",
+        "Q05",
+        "Q06",
+        "Q07",
+        "Q08",
+        "Q09",
+        "Q10",
+        "Q11",
+        "Q12",
+        "Q13",
+        "Q14",
+        "Q15",
+        "Q16",
+        "Q17",
+        "Q18",
+        "Q19",
+        "Q20",
+        "Q21",
+        "Q22",
+        "Q23",
+        "Q24",
+        "Q25",
+        "Q26",
+        "Q27",
+        "Q28",
+        "Q29",
+        "Q30",
+        "Q31",
+        "Q32",
+        "Q33",
+        "Q34",
+        "Q35",
+        "Q36",
+        "Q37",
+        "Q38",
+        "Q39",
+        "Q40",
+        "Q41",
+        "Q42",
+        "Q43",
+        "Q44",
+        "Q45",
+        "Q46",
+        "Q47",
+        "Q48",
+        "Q49",
+        "Q50",
+        "Q51",
+        "Q52"
+      ]
+    }
+  ]
+}

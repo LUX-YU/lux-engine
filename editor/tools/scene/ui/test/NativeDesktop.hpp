@@ -29,7 +29,12 @@ void nativeDesktop(Fixture& f, window::LuxWindow& window)
         if (attached)
             AttachThreadInput(current_thread, foreground_thread, FALSE);
     }
-    std::printf("native activation: foreground=%d visible=%d\n", GetForegroundWindow() == hwnd, IsWindowVisible(hwnd));
+    std::fprintf(
+        stderr,
+        "native activation: foreground=%d visible=%d\n",
+        GetForegroundWindow() == hwnd,
+        IsWindowVisible(hwnd)
+    );
     assert(GetForegroundWindow() == hwnd);
     SetFocus(hwnd);
     const auto frames = [&] {
@@ -40,6 +45,17 @@ void nativeDesktop(Fixture& f, window::LuxWindow& window)
         POINT screen{static_cast<LONG>(point.x), static_cast<LONG>(point.y)};
         assert(ClientToScreen(hwnd, &screen));
         assert(SetCursorPos(screen.x, screen.y));
+        // A captured GPU frame does not prove the OS input queue has delivered this movement.
+        // Wait for the actual platform position and for Root to consume that native event.
+        std::uint64_t sequence{};
+        f.wait([&] {
+            for (const auto& event : f.input_.snapshot().events)
+                if (const auto* cursor = std::get_if<input::CursorAction>(&event))
+                    sequence = std::max(sequence, cursor->sequence);
+            const auto& input = f.input_.snapshot();
+            const bool reached = std::abs(input.cursor_x - point.x) <= 1 && std::abs(input.cursor_y - point.y) <= 1;
+            return reached && f.desktop->root().inputSnapshot().sequence >= sequence;
+        });
         frames();
     };
     const auto button = [&](DWORD flags) {
@@ -47,6 +63,9 @@ void nativeDesktop(Fixture& f, window::LuxWindow& window)
         input.type = INPUT_MOUSE;
         input.mi.dwFlags = flags;
         assert(SendInput(1, &input, sizeof input) == 1);
+        const bool right = flags == MOUSEEVENTF_RIGHTDOWN || flags == MOUSEEVENTF_RIGHTUP;
+        const bool down = flags == MOUSEEVENTF_LEFTDOWN || flags == MOUSEEVENTF_RIGHTDOWN;
+        f.wait([&] { return f.desktop->root().inputSnapshot().buttons[right ? 2 : 0] == down; });
         frames();
     };
     const auto key = [&](WORD value) {
@@ -66,6 +85,9 @@ void nativeDesktop(Fixture& f, window::LuxWindow& window)
         return ui::Point{origin.x + element.rect().size.width / 2, origin.y + element.rect().size.height / 2};
     };
     const auto before = f.session->describe();
+    // Establish the input precondition even when a previous failed process ended while holding a button.
+    button(MOUSEEVENTF_LEFTUP);
+    button(MOUSEEVENTF_RIGHTUP);
     author::SceneInteractionGroup group(f.store.access<author::SceneSession>(), *f.key, {77});
     auto detached = take(author::makeInspectorView(
         f.messages.dispatcherRef(),
@@ -85,7 +107,26 @@ void nativeDesktop(Fixture& f, window::LuxWindow& window)
     auto start = center(*number);
     pointer(start);
     button(MOUSEEVENTF_LEFTDOWN);
+    std::fprintf(
+        stderr,
+        "native drag: point=(%.1f,%.1f) sampled=(%.1f,%.1f) editing=%d foreground=%d\n",
+        start.x,
+        start.y,
+        f.input_.snapshot().cursor_x,
+        f.input_.snapshot().cursor_y,
+        number->editing(),
+        GetForegroundWindow() == hwnd
+    );
+    f.wait([&] { return number->editing(); });
     pointer({start.x + 40, start.y});
+    std::fprintf(
+        stderr,
+        "native moved: overlay=%d editing=%d left=%d\n",
+        group.overlay() != nullptr,
+        number->editing(),
+        f.desktop->root().inputSnapshot().buttons[0]
+    );
+    f.wait([&] { return group.overlay() != nullptr; });
     assert(group.overlay() && f.session->describe().current == before.current);
     button(MOUSEEVENTF_LEFTUP);
     f.wait([&] { return !group.overlay(); });

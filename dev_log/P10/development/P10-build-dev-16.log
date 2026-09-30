@@ -1,0 +1,38 @@
+[0/2] Re-checking globbed directories...
+[1/36] Building CXX object editor\tools\scene\ui\CMakeFiles\scene_ui.dir\src\OutlinerView.cpp.obj
+[2/36] Linking CXX static library lib\scene_ui.lib
+[3/36] Generate Editor-only ImGui Inspector: desktop_hierarchy
+Editor Inspector: 1 component implementation(s); no runtime target output
+
+[4/35] Generate Editor-only ImGui Inspector: desktop_transform
+Editor Inspector: 2 component implementation(s); no runtime target output
+
+[5/33] Generate Editor-only ImGui Inspector: desktop_visual
+Editor Inspector: 2 component implementation(s); no runtime target output
+
+[6/31] Generate Editor-only ImGui Inspector: desktop_camera
+Editor Inspector: 1 component implementation(s); no runtime target output
+
+[7/29] Building CXX object editor\ui\CMakeFiles\editor_ui.dir\src\TaskPane.cpp.obj
+[8/29] Linking CXX executable bin\editor_scene_views_test.exe
+[9/29] Linking CXX shared library bin\lux_engine_editor_ui.dll
+[10/29] Linking CXX executable bin\editor_ui_presentation.exe
+[11/29] Linking CXX executable bin\editor_scene_configuration.exe
+[12/29] Linking CXX shared library bin\lux_engine_editor_material.dll
+[13/29] Linking CXX shared library bin\lux_engine_editor_flowforge.dll
+[14/29] Generate Editor-only ImGui Inspector: consumer
+Editor Inspector: 1 component implementation(s); no runtime target output
+
+[15/27] Linking CXX shared library bin\lux_engine_editor_scene.dll
+[16/27] Linking CXX executable bin\lux_launcher.exe
+[17/27] Linking CXX shared library bin\consumer_gui.dll
+[18/27] Linking CXX shared library bin\lux_engine_editor_app.dll
+[19/27] Linking CXX executable bin\editor_scene_fixture.exe
+[20/27] Linking CXX executable bin\lux_editor.exe
+[21/27] Linking CXX executable bin\editor_baseline_failures.exe
+[22/27] Linking CXX executable bin\editor_context_lifecycle.exe
+[23/27] Linking CXX executable bin\editor_material_protocol.exe
+[24/27] Linking CXX executable bin\editor_flow_protocol.exe
+[25/27] Linking CXX executable bin\editor_review_regressions.exe
+[26/27] Linking CXX executable bin\editor_core_protocol.exe
+[27/27] Linking CXX executable bin\consumer_protocol.exe

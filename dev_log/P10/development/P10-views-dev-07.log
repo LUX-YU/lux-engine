@@ -1,0 +1,22 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine
+    Start 92: editor.scene_views_gpu
+1/1 Test #92: editor.scene_views_gpu ...........Exit code 0xc0000409
+***Exception:   4.48 sec
+Unexpected failure at E:\SyncForder\CodeRepos\lux-engine\editor\tools\scene\ui\test\views.cpp:338
+enum lux::editor::flowforge::EFlowCompilationError=5
+Assertion failed: value, file E:\SyncForder\CodeRepos\lux-engine\editor\tools\scene\ui\test\views.cpp, line 65
+
+
+0% tests passed, 1 tests failed out of 1
+
+Label Time Summary:
+P10       =   4.48 sec*proc (1 test)
+editor    =   4.48 sec*proc (1 test)
+gpu       =   4.48 sec*proc (1 test)
+
+Total Test time (real) =   4.90 sec
+
+The following tests FAILED:
+	 92 - editor.scene_views_gpu (Exit code 0xc0000409
+)    P10 editor gpu
+Errors while running CTest

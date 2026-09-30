@@ -1,0 +1,12 @@
+opaque = []
+schema = 1
+
+[origin]
+digest = 'c2d1e678742bfb87b2447675fbec4b2af715e5fd15c68c94d919563f2d1f8f64'
+key = 'legacy.workspace.v1'
+
+[[entries]]
+key = 'legacy:material-1'
+locator = 'asset:12345678-1234-1234-1234-123456789abc'
+type = 'lux.editor.material.v1'
+unpersisted = false

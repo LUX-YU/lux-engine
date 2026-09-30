@@ -1,0 +1,102 @@
+[0/2] Re-checking globbed directories...
+[1/81] Building CXX object editor\tools\scene\model\CMakeFiles\scene_model.dir\src\SceneSource.cpp.obj
+[2/81] Linking CXX static library lib\scene_model.lib
+[3/81] Linking CXX executable bin\editor_scene_model_test.exe
+[4/81] Linking CXX executable bin\editor_scene_editing_test.exe
+[5/81] Linking CXX executable bin\editor_scene_execution_test.exe
+[6/81] Linking CXX executable bin\editor_projection_test.exe
+[7/81] Linking CXX executable bin\editor_highlight_p07_test.exe
+[8/81] Linking CXX executable bin\editor_compilation_p07_test.exe
+[9/81] Generate Editor-only ImGui Inspector: scene_fields_transform
+Editor Inspector: 2 component implementation(s); no runtime target output
+
+[10/81] Generate Editor-only ImGui Inspector: scene_fields_hierarchy
+Editor Inspector: 1 component implementation(s); no runtime target output
+
+[11/81] Generate Editor-only ImGui Inspector: scene_fields_visual
+Editor Inspector: 2 component implementation(s); no runtime target output
+
+[12/81] Linking CXX executable bin\editor_compilation_ownership_test.exe
+[13/81] Generate Editor-only ImGui Inspector: scene_fields_camera
+Editor Inspector: 1 component implementation(s); no runtime target output
+
+[14/79] Linking CXX executable bin\editor_scene_interaction_test.exe
+[15/79] Linking CXX executable bin\editor_run_selection_test.exe
+[16/79] Linking CXX executable bin\editor_three_sessions_test.exe
+[17/79] Building CXX object editor\tools\scene\ui\CMakeFiles\scene_ui.dir\inspector_gen\scene_fields_transform\lux__simulation__ecs__Transform2D_038ea190.inspector.generated.cpp.obj
+[18/79] Building CXX object editor\tools\scene\ui\CMakeFiles\scene_ui.dir\inspector_gen\scene_fields_transform\lux__simulation__ecs__Transform3D_b831b8b5.inspector.generated.cpp.obj
+[19/79] Building CXX object editor\tools\scene\ui\CMakeFiles\scene_ui.dir\inspector_gen\scene_fields_hierarchy\lux__simulation__ecs__Parent_4de25119.inspector.generated.cpp.obj
+[20/79] Building CXX object editor\tools\scene\ui\CMakeFiles\scene_ui.dir\inspector_gen\scene_fields_visual\lux__simulation__ecs__Mesh3D_5c2b5d9d.inspector.generated.cpp.obj
+[21/79] Building CXX object editor\tools\scene\ui\CMakeFiles\scene_ui.dir\inspector_gen\scene_fields_visual\lux__simulation__ecs__Light3D_3f6bfbf7.inspector.generated.cpp.obj
+[22/79] Linking CXX executable bin\editor_persistence_models_test.exe
+[23/79] Building CXX object editor\tools\scene\ui\CMakeFiles\scene_ui.dir\inspector_gen\scene_fields_camera\lux__scene__Camera_1804ce33.inspector.generated.cpp.obj
+[24/79] Linking CXX static library lib\scene_ui.lib
+[25/79] Linking CXX static library lib\material_ui.lib
+[26/79] Generate Editor-only ImGui Inspector: desktop_transform
+Editor Inspector: 2 component implementation(s); no runtime target output
+
+[27/79] Generate Editor-only ImGui Inspector: desktop_hierarchy
+Editor Inspector: 1 component implementation(s); no runtime target output
+
+[28/79] Generate Editor-only ImGui Inspector: desktop_visual
+Editor Inspector: 2 component implementation(s); no runtime target output
+
+[29/79] Generate Editor-only ImGui Inspector: desktop_camera
+Editor Inspector: 1 component implementation(s); no runtime target output
+
+[30/79] Linking CXX executable bin\editor_interaction_reclaim_test.exe
+[31/79] Building CXX object editor\ui\CMakeFiles\editor_ui.dir\src\ComponentEditors.cpp.obj
+[32/79] Building CXX object editor\ui\CMakeFiles\editor_ui.dir\inspector_gen\desktop_transform\lux__simulation__ecs__Transform2D_038ea190.inspector.generated.cpp.obj
+[33/79] Building CXX object editor\tools\scene\ui\CMakeFiles\editor_scene_views_test.dir\test\views.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[34/79] Building CXX object editor\ui\CMakeFiles\editor_ui.dir\inspector_gen\desktop_transform\lux__simulation__ecs__Transform3D_b831b8b5.inspector.generated.cpp.obj
+[35/79] Building CXX object editor\ui\CMakeFiles\editor_ui.dir\inspector_gen\desktop_hierarchy\lux__simulation__ecs__Parent_4de25119.inspector.generated.cpp.obj
+[36/79] Building CXX object editor\ui\CMakeFiles\editor_ui.dir\inspector_gen\desktop_visual\lux__simulation__ecs__Mesh3D_5c2b5d9d.inspector.generated.cpp.obj
+[37/79] Building CXX object editor\ui\CMakeFiles\editor_ui.dir\inspector_gen\desktop_visual\lux__simulation__ecs__Light3D_3f6bfbf7.inspector.generated.cpp.obj
+[38/79] Building CXX object editor\ui\CMakeFiles\editor_ui.dir\inspector_gen\desktop_camera\lux__scene__Camera_1804ce33.inspector.generated.cpp.obj
+[39/79] Linking CXX executable bin\editor_scene_views_test.exe
+[40/79] Building CXX object editor\tools\material\CMakeFiles\editor_material.dir\src\MaterialPreview.cpp.obj
+[41/79] Building CXX object editor\tools\material\CMakeFiles\editor_material.dir\src\MaterialEditor.cpp.obj
+[42/79] Linking CXX shared library bin\lux_engine_editor_ui.dll
+[43/79] Building CXX object editor\tools\material\CMakeFiles\editor_material.dir\src\MaterialAssets.cpp.obj
+[44/79] Linking CXX executable bin\editor_ui_presentation.exe
+[45/79] Linking CXX executable bin\editor_scene_configuration.exe
+[46/79] Building CXX object editor\tools\material\CMakeFiles\editor_material.dir\src\ui\MaterialPreviewElement.cpp.obj
+[47/79] Building CXX object editor\tools\material\CMakeFiles\editor_material.dir\src\ui\MaterialElements.cpp.obj
+[48/79] Building CXX object editor\tools\material\CMakeFiles\editor_material.dir\test\MaterialEditorTestAccess.cpp.obj
+[49/79] Linking CXX shared library bin\lux_engine_editor_flowforge.dll
+[50/79] Linking CXX shared library bin\lux_engine_editor_material.dll
+[51/79] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\SceneAssets.cpp.obj
+[52/79] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\SceneEditor.cpp.obj
+[53/79] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\SceneOpening.cpp.obj
+[54/79] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\SceneObjectEdits.cpp.obj
+[55/79] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\ui\InspectorPane.cpp.obj
+[56/79] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\ui\InspectorElement.cpp.obj
+[57/79] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\ScenePlayback.cpp.obj
+[58/79] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\ui\SceneUi.cpp.obj
+[59/79] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\ui\SceneContentElement.cpp.obj
+[60/79] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\ui\OutlinerPane.cpp.obj
+[61/79] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\ui\ResourcePane.cpp.obj
+[62/79] Generate Editor-only ImGui Inspector: consumer
+Editor Inspector: 1 component implementation(s); no runtime target output
+
+[63/79] Building CXX object editor\app\CMakeFiles\consumer_gui.dir\__\__\cmake\installed-consumers\editor-d2\Gui.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[64/79] Linking CXX executable bin\lux_launcher.exe
+[65/79] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\test\SceneEditorTestAccess.cpp.obj
+[66/79] Linking CXX shared library bin\lux_engine_editor_app.dll
+[67/79] Linking CXX shared library bin\lux_engine_editor_scene.dll
+[68/79] Linking CXX executable bin\editor_baseline_failures.exe
+[69/79] Building CXX object editor\app\CMakeFiles\consumer_gui.dir\__\__\cmake\installed-consumers\editor-d2\GuiGesture.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[70/79] Linking CXX executable bin\editor_scene_fixture.exe
+[71/79] Building CXX object editor\app\CMakeFiles\consumer_gui.dir\inspector_gen\consumer\consumer__Component_2abfe8b5.inspector.generated.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[72/79] Linking CXX executable bin\lux_editor.exe
+[73/79] Linking CXX executable bin\editor_context_lifecycle.exe
+[74/79] Linking CXX executable bin\editor_material_protocol.exe
+[75/79] Linking CXX executable bin\editor_flow_protocol.exe
+[76/79] Linking CXX executable bin\editor_review_regressions.exe
+[77/79] Linking CXX executable bin\editor_core_protocol.exe
+[78/79] Linking CXX shared library bin\consumer_gui.dll
+[79/79] Linking CXX executable bin\consumer_protocol.exe

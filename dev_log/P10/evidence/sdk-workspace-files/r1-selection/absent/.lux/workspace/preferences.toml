@@ -1,0 +1,6 @@
+opaque = []
+schema = 1
+
+[origin]
+digest = '03b360bfcef300f30b92805828f59b0d200a537472ba2b1dcb27863e50a29ed9'
+key = 'legacy.workspace.v1'

@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "stage": "P10",
+  "repo": "E:\\SyncForder\\CodeRepos\\build\\p05-r1-clean-f2b5a00c60e9",
+  "status": "NO_LISTED_STATIC_VIOLATIONS",
+  "inspected_source_files": 1881,
+  "findings": [],
+  "limitations": [
+    "Not an AST, build-graph, runtime, ownership, API-completeness or performance proof.",
+    "The bundled inventory is a manual seed; use the P00 completed ledger as well.",
+    "Comments can match definition expressions; quoted include patterns are literal only.",
+    "Tracked and non-ignored untracked sources are inspected; expired exact paths are checked regardless of gitignore.",
+    "A renamed God object, macro-generated alias or copied algorithm may require semantic review."
+  ]
+}

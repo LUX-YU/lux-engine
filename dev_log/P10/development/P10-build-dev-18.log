@@ -1,0 +1,26 @@
+[0/2] Re-checking globbed directories...
+[1/25] Building CXX object editor\tools\scene\projection\CMakeFiles\scene_projection.dir\src\SceneProjection.cpp.obj
+[2/25] Linking CXX static library lib\scene_projection.lib
+[3/25] Linking CXX executable bin\editor_highlight_p07_test.exe
+[4/25] Linking CXX executable bin\editor_projection_test.exe
+[5/25] Linking CXX executable bin\editor_compilation_ownership_test.exe
+[6/25] Linking CXX executable bin\editor_compilation_p07_test.exe
+[7/25] Linking CXX executable bin\editor_scene_views_test.exe
+[8/25] Linking CXX shared library bin\lux_engine_editor_ui.dll
+[9/25] Linking CXX executable bin\editor_ui_presentation.exe
+[10/25] Linking CXX executable bin\editor_scene_configuration.exe
+[11/25] Linking CXX shared library bin\lux_engine_editor_material.dll
+[12/25] Linking CXX shared library bin\lux_engine_editor_flowforge.dll
+[13/25] Linking CXX shared library bin\lux_engine_editor_scene.dll
+[14/25] Linking CXX executable bin\lux_launcher.exe
+[15/25] Linking CXX shared library bin\consumer_gui.dll
+[16/25] Linking CXX shared library bin\lux_engine_editor_app.dll
+[17/25] Linking CXX executable bin\editor_scene_fixture.exe
+[18/25] Linking CXX executable bin\lux_editor.exe
+[19/25] Linking CXX executable bin\editor_baseline_failures.exe
+[20/25] Linking CXX executable bin\editor_context_lifecycle.exe
+[21/25] Linking CXX executable bin\editor_material_protocol.exe
+[22/25] Linking CXX executable bin\editor_flow_protocol.exe
+[23/25] Linking CXX executable bin\editor_review_regressions.exe
+[24/25] Linking CXX executable bin\editor_core_protocol.exe
+[25/25] Linking CXX executable bin\consumer_protocol.exe

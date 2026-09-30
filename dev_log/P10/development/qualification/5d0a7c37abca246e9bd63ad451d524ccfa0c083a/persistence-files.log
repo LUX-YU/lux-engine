@@ -1,0 +1,3 @@
+Actual filesystem access denial preserves old bytes; case alias and unsupported hard-link aliases PASS
+X05-08 real file create/overwrite/conflict/cancel/path-failure/post-replace durability: PASS
+Evidence directory: "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\P10-run\\5d0a7c37abca246e9bd63ad451d524ccfa0c083a\\physical-files\\494274064446200"

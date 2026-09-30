@@ -1,0 +1,11 @@
+[0/2] Re-checking globbed directories...
+[1/10] Building CXX object editor\tools\material\ui\CMakeFiles\material_ui.dir\src\MaterialView.cpp.obj
+[2/10] Linking CXX static library lib\material_ui.lib
+[3/10] Linking CXX executable bin\editor_scene_views_test.exe
+[4/10] Linking CXX shared library bin\lux_engine_editor_material.dll
+[5/10] Linking CXX executable bin\lux_editor.exe
+[6/10] Linking CXX executable bin\editor_material_protocol.exe
+[7/10] Linking CXX executable bin\editor_flow_protocol.exe
+[8/10] Linking CXX executable bin\editor_review_regressions.exe
+[9/10] Linking CXX executable bin\editor_core_protocol.exe
+[10/10] Linking CXX executable bin\consumer_protocol.exe

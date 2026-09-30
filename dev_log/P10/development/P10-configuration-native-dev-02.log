@@ -1,0 +1,49 @@
+UpdateCTestConfiguration  from :E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine/DartConfiguration.tcl
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine
+Constructing a list of tests
+Done constructing a list of tests
+Updating test list for fixtures
+Added 0 tests to meet fixture requirements
+Checking test dependency graph...
+Checking test dependency graph end
+test 92
+    Start 92: editor.scene_views_gpu
+
+92: Test command: E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\bin\editor_scene_views_test.exe "D:/Development/vcpkg/installed/x64-windows/tools/llvm/lld-link.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine"
+92: Working Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine/editor/tools/scene/ui
+92: Test timeout computed to be: 120
+92: scene.new.provider
+92: Failure type: struct std::monostate
+92: Assertion failed: configuration->status(), file E:\SyncForder\CodeRepos\lux-engine\editor\tools\scene\ui\test\views.cpp, line 806
+1/2 Test #92: editor.scene_views_gpu ...........Exit code 0xc0000409
+***Exception:   4.79 sec
+test 93
+    Start 93: editor.desktop_native_input
+
+93: Test command: E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\bin\editor_scene_views_test.exe "D:/Development/vcpkg/installed/x64-windows/tools/llvm/lld-link.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine" "native"
+93: Working Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine/editor/tools/scene/ui
+93: Test timeout computed to be: 120
+93: native TextEdit value='ab' focus=1 composing=0
+93: native activation: foreground=1 visible=1
+93: P10 native desktop: OS mouse drag -> generated Inspector preview/commit/undo; OS keyboard -> TextEdit; DIRECT close releases focus after callback; system IME candidate/commit NOT tested; validation_errors=0
+2/2 Test #93: editor.desktop_native_input ......   Passed    1.46 sec
+
+The following tests passed:
+	editor.desktop_native_input
+
+50% tests passed, 1 tests failed out of 2
+
+Label Time Summary:
+P10        =   6.24 sec*proc (2 tests)
+desktop    =   1.46 sec*proc (1 test)
+editor     =   6.24 sec*proc (2 tests)
+gpu        =   6.24 sec*proc (2 tests)
+
+Total Test time (real) =   6.32 sec
+
+The following tests FAILED:
+	 92 - editor.scene_views_gpu (Exit code 0xc0000409
+)    P10 editor gpu
+Errors while running CTest
+Output from these tests are in: E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine/Testing/Temporary/LastTest.log
+Use "--rerun-failed --output-on-failure" to re-run the failed cases verbosely.

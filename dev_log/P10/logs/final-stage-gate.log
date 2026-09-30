@@ -1,0 +1,5 @@
+producer-unavailable PASS
+missing-result PASS
+corrupt-result PASS
+PASS P10: exact implementation, formal desktop/tools, real dual SceneView GPU/native input, installed generator, inherited regressions; system IME NOT_RUN
+Frozen P10 11de2c1fee9d477daaa2d26b07911306ea9d6b9f native 185 SDK 97

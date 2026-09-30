@@ -1,0 +1,15 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine
+    Start 92: editor.scene_views_gpu
+1/2 Test #92: editor.scene_views_gpu ...........   Passed    0.93 sec
+    Start 95: editor.scene_configuration
+2/2 Test #95: editor.scene_configuration .......   Passed    0.10 sec
+
+100% tests passed, 0 tests failed out of 2
+
+Label Time Summary:
+P10       =   0.93 sec*proc (1 test)
+editor    =   1.04 sec*proc (2 tests)
+gpu       =   0.93 sec*proc (1 test)
+native    =   0.10 sec*proc (1 test)
+
+Total Test time (real) =   1.49 sec

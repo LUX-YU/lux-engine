@@ -1,0 +1,46 @@
+UpdateCTestConfiguration  from :E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine/DartConfiguration.tcl
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine
+Constructing a list of tests
+Done constructing a list of tests
+Updating test list for fixtures
+Added 0 tests to meet fixture requirements
+Checking test dependency graph...
+Checking test dependency graph end
+test 91
+    Start 91: editor.view_host
+
+91: Test command: E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\bin\editor_view_host_test.exe
+91: Working Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine/editor/desktop
+91: Test timeout computed to be: 60
+91: PASS P10 real ViewHost ownership, bounded requests, generation, callback batches and prepare failure
+1/2 Test #91: editor.view_host .................   Passed    0.05 sec
+test 92
+    Start 92: editor.scene_views_gpu
+
+92: Test command: E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\bin\editor_scene_views_test.exe
+92: Working Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine/editor/tools/scene/ui
+92: Test timeout computed to be: 120
+92: Unexpected failure at E:\SyncForder\CodeRepos\lux-engine\editor\tools\scene\ui\test\views.cpp:195
+92: Assertion failed: value, file E:\SyncForder\CodeRepos\lux-engine\editor\tools\scene\ui\test\views.cpp, line 31
+2/2 Test #92: editor.scene_views_gpu ...........Exit code 0xc0000409
+***Exception:   4.75 sec
+
+The following tests passed:
+	editor.view_host
+
+50% tests passed, 1 tests failed out of 2
+
+Label Time Summary:
+P10       =   4.79 sec*proc (2 tests)
+editor    =   4.79 sec*proc (2 tests)
+gpu       =   4.75 sec*proc (1 test)
+native    =   0.05 sec*proc (1 test)
+
+Total Test time (real) =   5.34 sec
+
+The following tests FAILED:
+	 92 - editor.scene_views_gpu (Exit code 0xc0000409
+)    P10 editor gpu
+Errors while running CTest
+Output from these tests are in: E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine/Testing/Temporary/LastTest.log
+Use "--rerun-failed --output-on-failure" to re-run the failed cases verbosely.

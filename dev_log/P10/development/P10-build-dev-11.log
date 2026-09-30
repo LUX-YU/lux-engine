@@ -1,0 +1,224 @@
+[0/2] Re-checking globbed directories...
+[1/101] Building CXX object editor\tasks\ui\CMakeFiles\tasks_ui.dir\src\TaskView.cpp.obj
+[2/101] Linking CXX static library lib\tasks_ui.lib
+[3/101] Generate Editor-only ImGui Inspector: desktop_hierarchy
+Editor Inspector: 1 component implementation(s); no runtime target output
+
+[4/101] Generate Editor-only ImGui Inspector: desktop_transform
+Editor Inspector: 2 component implementation(s); no runtime target output
+
+[5/101] Generate Editor-only ImGui Inspector: desktop_visual
+Editor Inspector: 2 component implementation(s); no runtime target output
+
+[6/101] Generate Editor-only ImGui Inspector: desktop_camera
+Editor Inspector: 1 component implementation(s); no runtime target output
+
+[7/101] Building CXX object editor\ui\CMakeFiles\editor_ui.dir\src\TaskPane.cpp.obj
+FAILED: editor/ui/CMakeFiles/editor_ui.dir/src/TaskPane.cpp.obj 
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\bin\Hostx64\x64\cl.exe  /nologo /TP -DENTT_NO_ETO -DIMGUI_SHARED_CORE -DLUX_EDITOR_ASSETS_DLL_DISABLE -DLUX_EDITOR_STORAGE_DLL_DISABLE -DLUX_EDITOR_UI_LIBRARY -DLUX_ENGINE_MATERIAL_COOKER_DLL_DISABLE -DLUX_ENGINE_TOOLCHAIN_MODEL_DLL_DISABLE -DLUX_ENGINE_TOOLCHAIN_TEXTURE_DLL_DISABLE -DSTDEXEC_ENABLE_WINDOWS_THREAD_POOL -D__PLATFORM_WIN32__ -D__TRAY_ENABLED__ -Deditor_ui_EXPORTS -IE:\SyncForder\CodeRepos\lux-engine\editor\ui\include -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\gen\include -IE:\SyncForder\CodeRepos\lux-engine\editor\ui\pinclude -IE:\SyncForder\CodeRepos\lux-engine\editor\ui\sinclude -IE:\SyncForder\CodeRepos\lux-engine\editor\assets\sinclude -IE:\SyncForder\CodeRepos\lux-engine\editor\storage\sinclude -IE:\SyncForder\CodeRepos\lux-engine\editor\editing\sinclude -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\editor\ui\inspector_gen\desktop_transform -IE:\SyncForder\CodeRepos\lux-engine\editor\ui\cmake\..\codegen\support -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\editor\ui\inspector_gen\desktop_hierarchy -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\editor\ui\inspector_gen\desktop_visual -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\editor\ui\inspector_gen\desktop_camera -IE:\SyncForder\CodeRepos\lux-engine\editor\tasks\ui\include -IE:\SyncForder\CodeRepos\lux-engine\editor\views\api\include -IE:\SyncForder\CodeRepos\lux-engine\modules\function\ui\include -IE:\SyncForder\CodeRepos\lux-engine\modules\core\object\include -IE:\SyncForder\CodeRepos\lux-engine\modules\function\render\client\include -IE:\SyncForder\CodeRepos\lux-engine\modules\core\math\include -IE:\SyncForder\CodeRepos\lux-engine\modules\core\serialization\include -IE:\SyncForder\CodeRepos\lux-engine\modules\core\type_info\include -IE:\SyncForder\CodeRepos\lux-engine\modules\resource\description\include -IE:\SyncForder\CodeRepos\lux-engine\modules\function\script\core\include -IE:\SyncForder\CodeRepos\lux-engine\modules\core\semantic\include -IE:\SyncForder\CodeRepos\lux-engine\modules\resource\identity\include -IE:\SyncForder\CodeRepos\lux-engine\editor\contracts\include -IE:\SyncForder\CodeRepos\lux-engine\engine\process\execution\include -IE:\SyncForder\CodeRepos\lux-engine\modules\core\async_port\include -IE:\SyncForder\CodeRepos\lux-engine\editor\tools\scene\ui\include -IE:\SyncForder\CodeRepos\lux-engine\editor\tools\scene\projection\include -IE:\SyncForder\CodeRepos\lux-engine\editor\tools\scene\model\include -IE:\SyncForder\CodeRepos\lux-engine\editor\editing\sessions\include -IE:\SyncForder\CodeRepos\lux-engine\editor\editing\history\include -IE:\SyncForder\CodeRepos\lux-engine\engine\scene\asset\include -IE:\SyncForder\CodeRepos\lux-engine\engine\scene\description\include -IE:\SyncForder\CodeRepos\lux-engine\engine\domain\system\identity\include -IE:\SyncForder\CodeRepos\lux-engine\engine\domain\system\description\include -IE:\SyncForder\CodeRepos\lux-engine\modules\resource\asset\include -IE:\SyncForder\CodeRepos\lux-engine\engine\domain\world\asset\include -IE:\SyncForder\CodeRepos\lux-engine\engine\domain\world\description\include -IE:\SyncForder\CodeRepos\lux-engine\engine\domain\world\partition\include -IE:\SyncForder\CodeRepos\lux-engine\engine\domain\world\identity\include -IE:\SyncForder\CodeRepos\lux-engine\engine\domain\partition\identity\include -IE:\SyncForder\CodeRepos\lux-engine\engine\domain\simulation\asset\include -IE:\SyncForder\CodeRepos\lux-engine\engine\domain\simulation\description\include -IE:\SyncForder\CodeRepos\lux-engine\engine\domain\simulation\ecs\schema\include -IE:\SyncForder\CodeRepos\lux-engine\engine\domain\simulation\ecs\core\include -IE:\SyncForder\CodeRepos\lux-engine\engine\process\world_loading\include -IE:\SyncForder\CodeRepos\lux-engine\engine\domain\world\storage\include -IE:\SyncForder\CodeRepos\lux-engine\engine\scene\integration\world_materialization\include -IE:\SyncForder\CodeRepos\lux-engine\engine\scene\components\camera\include -IE:\SyncForder\CodeRepos\lux-engine\engine\domain\simulation\ecs\transform\include -IE:\SyncForder\CodeRepos\lux-engine\engine\domain\simulation\ecs\snapshot\include -IE:\SyncForder\CodeRepos\lux-engine\engine\domain\simulation\ecs\hierarchy\include -IE:\SyncForder\CodeRepos\lux-engine\engine\domain\simulation\ecs\visual\include -IE:\SyncForder\CodeRepos\lux-engine\engine\scene\composition\include -IE:\SyncForder\CodeRepos\lux-engine\engine\domain\simulation\composition\include -IE:\SyncForder\CodeRepos\lux-engine\engine\domain\simulation\system\include -IE:\SyncForder\CodeRepos\lux-engine\engine\domain\simulation\ecs\task\include -IE:\SyncForder\CodeRepos\lux-engine\modules\core\task\include -IE:\SyncForder\CodeRepos\lux-engine\engine\domain\simulation\scripting\core\include -IE:\SyncForder\CodeRepos\lux-engine\modules\function\script\artifact\include -IE:\SyncForder\CodeRepos\lux-engine\engine\scene\system\include -IE:\SyncForder\CodeRepos\lux-engine\engine\scene\builtin_systems\render\include -IE:\SyncForder\CodeRepos\lux-engine\modules\function\render\features\cmake\..\include -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\modules\function\render\comm_gen -IE:\SyncForder\CodeRepos\lux-engine\modules\function\render\runtime\include -IE:\SyncForder\CodeRepos\lux-engine\engine\scene\builtin_systems\mesh_query\include -IE:\SyncForder\CodeRepos\lux-engine\engine\process\asset_loading\include -IE:\SyncForder\CodeRepos\lux-engine\engine\scene\builtin_systems\world_loading\include -IE:\SyncForder\CodeRepos\lux-engine\editor\tools\scene\interaction\include -IE:\SyncForder\CodeRepos\lux-engine\editor\tools\scene\execution\api\include -IE:\SyncForder\CodeRepos\lux-engine\editor\desktop\include -IE:\SyncForder\CodeRepos\lux-engine\editor\workspace\layout\include -IE:\SyncForder\CodeRepos\lux-engine\editor\workspace\layout\..\recovery\include -IE:\SyncForder\CodeRepos\lux-engine\modules\function\ui\rendering\include -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\modules\function\ui\rendering\comm_gen -IE:\SyncForder\CodeRepos\lux-engine\modules\function\input\include -IE:\SyncForder\CodeRepos\lux-engine\modules\platform\window\include -IE:\SyncForder\CodeRepos\lux-engine\editor\metadata\include -IE:\SyncForder\CodeRepos\lux-engine\editor\editing\include -IE:\SyncForder\CodeRepos\lux-engine\engine\project\plugins\include -IE:\SyncForder\CodeRepos\lux-engine\modules\platform\dynamic_library\include -IE:\SyncForder\CodeRepos\lux-engine\modules\core\meta\include -IE:\SyncForder\CodeRepos\lux-engine\editor\editing\scene\include -IE:\SyncForder\CodeRepos\lux-engine\editor\context\include -IE:\SyncForder\CodeRepos\lux-engine\engine\context\rendering\include -IE:\SyncForder\CodeRepos\lux-engine\engine\context\include -IE:\SyncForder\CodeRepos\lux-engine\editor\assets\include -IE:\SyncForder\CodeRepos\lux-engine\editor\storage\include -IE:\SyncForder\CodeRepos\lux-engine\editor\project\include -IE:\SyncForder\CodeRepos\lux-engine\modules\core\log\include -IE:\SyncForder\CodeRepos\lux-engine\engine\toolchain\asset\model\include -IE:\SyncForder\CodeRepos\lux-engine\engine\toolchain\material\include -IE:\SyncForder\CodeRepos\lux-engine\modules\function\material\include -IE:\SyncForder\CodeRepos\lux-engine\modules\function\graph\include -IE:\SyncForder\CodeRepos\lux-engine\engine\toolchain\asset\texture\include -IE:\SyncForder\CodeRepos\lux-engine\engine\scene\builtin_systems\transform\include -external:IE:\SyncForder\CodeRepos\install\RelWithDebInfo\include -external:ID:\Development\vcpkg\installed\x64-windows\include\eigen3 -external:ID:\Development\vcpkg\installed\x64-windows\include -external:ID:\Development\vcpkg\installed\x64-windows\include\stduuid -external:W0 /DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD /utf-8 /Zc:__cplusplus /Zc:preprocessor /Zc:externConstexpr /showIncludes /Foeditor\ui\CMakeFiles\editor_ui.dir\src\TaskPane.cpp.obj /Fdeditor\ui\CMakeFiles\editor_ui.dir\ /FS -c E:\SyncForder\CodeRepos\lux-engine\editor\ui\src\TaskPane.cpp
+E:\SyncForder\CodeRepos\lux-engine\editor\contracts\include\lux/engine/editor/views/ViewInfo.hpp(26): error C2039: 'PaneTypeIdTag': is not a member of 'lux::editor::ui'
+E:\SyncForder\CodeRepos\lux-engine\editor\ui\include\lux/engine/editor/ui/TaskPane.hpp(13): note: see declaration of 'lux::editor::ui'
+E:\SyncForder\CodeRepos\lux-engine\editor\contracts\include\lux/engine/editor/views/ViewInfo.hpp(26): error C2065: 'PaneTypeIdTag': undeclared identifier
+E:\SyncForder\CodeRepos\lux-engine\editor\contracts\include\lux/engine/editor/views/ViewInfo.hpp(26): error C2923: 'lux::cxx::StableNameId': 'PaneTypeIdTag' is not a valid template type argument for parameter 'Tag'
+E:\SyncForder\CodeRepos\lux-engine\editor\contracts\include\lux/engine/editor/views/ViewInfo.hpp(26): note: see declaration of 'PaneTypeIdTag'
+E:\SyncForder\CodeRepos\lux-engine\editor\contracts\include\lux/engine/editor/views/ViewInfo.hpp(26): error C2976: 'lux::cxx::StableNameId': too few template arguments
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/cxx/core/StableNameId.hpp(85): note: see declaration of 'lux::cxx::StableNameId'
+E:\SyncForder\CodeRepos\lux-engine\editor\contracts\include\lux/engine/editor/views/ViewInfo.hpp(33): error C2955: 'lux::cxx::StableNameId': use of class template requires template argument list
+E:\SyncForder\CodeRepos\install\RelWithDebInfo\include\lux/cxx/core/StableNameId.hpp(85): note: see declaration of 'lux::cxx::StableNameId'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(14): error C2039: 'Pane': is not a member of 'lux::editor::ui'
+E:\SyncForder\CodeRepos\lux-engine\editor\ui\include\lux/engine/editor/ui/TaskPane.hpp(13): note: see declaration of 'lux::editor::ui'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(14): error C2065: 'Pane': undeclared identifier
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(14): error C2923: 'std::unique_ptr': 'Pane' is not a valid template type argument for parameter '_Ty'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(14): note: see declaration of 'Pane'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(14): error C2976: 'std::unique_ptr': too few template arguments
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\memory(3347): note: see declaration of 'std::unique_ptr'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(14): error C2955: 'std::unique_ptr': use of class template requires template argument list
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\memory(3347): note: see declaration of 'std::unique_ptr'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(36): error C2039: 'Pane': is not a member of 'lux::editor::ui'
+E:\SyncForder\CodeRepos\lux-engine\editor\ui\include\lux/engine/editor/ui/TaskPane.hpp(13): note: see declaration of 'lux::editor::ui'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(36): error C2143: syntax error: missing ';' before '*'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(36): error C4430: missing type specifier - int assumed. Note: C++ does not support default-int
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(37): error C2334: unexpected token(s) preceding '{'; skipping apparent function body
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(43): error C2039: 'Pane': is not a member of 'lux::editor::ui'
+E:\SyncForder\CodeRepos\lux-engine\editor\ui\include\lux/engine/editor/ui/TaskPane.hpp(13): note: see declaration of 'lux::editor::ui'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(43): error C2065: 'Pane': undeclared identifier
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(43): error C2923: 'std::unique_ptr': 'Pane' is not a valid template type argument for parameter '_Ty'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(43): note: see declaration of 'Pane'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(43): error C2976: 'std::unique_ptr': too few template arguments
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\memory(3347): note: see declaration of 'std::unique_ptr'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(43): error C2955: 'std::unique_ptr': use of class template requires template argument list
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\memory(3347): note: see declaration of 'std::unique_ptr'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(15): error C2672: 'std::move': no matching overloaded function found
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\xutility(5172): note: could be '_FwdIt2 std::move(_ExPo &&,_FwdIt1,_FwdIt1,_FwdIt2) noexcept'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(15): note: '_FwdIt2 std::move(_ExPo &&,_FwdIt1,_FwdIt1,_FwdIt2) noexcept': expects 4 arguments - 1 provided
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\xutility(5160): note: or       '_OutIt std::move(_InIt,_InIt,_OutIt)'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(15): note: '_OutIt std::move(_InIt,_InIt,_OutIt)': expects 3 arguments - 1 provided
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\type_traits(1512): note: or       'remove_reference<_Ty>::type &&std::move(_Ty &&) noexcept'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(15): note: Failed to specialize function template 'remove_reference<_Ty>::type &&std::move(_Ty &&) noexcept'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(15): note: With the following template arguments:
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(15): note: '_Ty=std::unique_ptr &'
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\xtr1common(235): note: 'std::unique_ptr': use of class template requires template argument list
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\memory(3347): note: see declaration of 'std::unique_ptr'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(17): error C2678: binary '!': no operator found which takes a left-hand operand of type 'std::unique_ptr' (or there is no acceptable conversion)
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(17): note: could be 'built-in C++ operator!(bool)'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(17): note: '!': cannot convert argument 1 from 'std::unique_ptr' to 'bool'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(17): note: while trying to match the argument list '(std::unique_ptr)'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(17): error C2088: built-in operator '!' cannot be applied to an operand of type 'std::unique_ptr'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(17): error C2678: binary '->': no operator found which takes a left-hand operand of type 'std::unique_ptr' (or there is no acceptable conversion)
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\memory(3452): note: could be '_Get_deleter_pointer_type<_Ty,remove_reference<_Ty2>::type,void>::type std::unique_ptr<_Ty,_Dx>::operator ->(void) noexcept const'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(17): note: '_Get_deleter_pointer_type<_Ty,remove_reference<_Ty2>::type,void>::type std::unique_ptr<_Ty,_Dx>::operator ->(void) noexcept const': cannot convert 'this' pointer from 'std::unique_ptr' to 'const std::unique_ptr<_Ty,_Dx> &'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(17): note: Reason: cannot convert from 'std::unique_ptr' to 'const std::unique_ptr<_Ty,_Dx>'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(17): note: Conversion requires a second user-defined-conversion operator or constructor
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(17): note: while trying to match the argument list '(std::unique_ptr)'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(17): error C2039: 'attachedRoot': is not a member of 'std::unique_ptr'
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\memory(3347): note: see declaration of 'std::unique_ptr'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(17): error C2678: binary '->': no operator found which takes a left-hand operand of type 'std::unique_ptr' (or there is no acceptable conversion)
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\memory(3452): note: could be '_Get_deleter_pointer_type<_Ty,remove_reference<_Ty2>::type,void>::type std::unique_ptr<_Ty,_Dx>::operator ->(void) noexcept const'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(17): note: '_Get_deleter_pointer_type<_Ty,remove_reference<_Ty2>::type,void>::type std::unique_ptr<_Ty,_Dx>::operator ->(void) noexcept const': cannot convert 'this' pointer from 'std::unique_ptr' to 'const std::unique_ptr<_Ty,_Dx> &'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(17): note: Reason: cannot convert from 'std::unique_ptr' to 'const std::unique_ptr<_Ty,_Dx>'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(17): note: Conversion requires a second user-defined-conversion operator or constructor
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(17): note: while trying to match the argument list '(std::unique_ptr)'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(17): error C2039: 'parent': is not a member of 'std::unique_ptr'
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\memory(3347): note: see declaration of 'std::unique_ptr'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(22): error C2678: binary '->': no operator found which takes a left-hand operand of type 'std::unique_ptr' (or there is no acceptable conversion)
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\memory(3452): note: could be '_Get_deleter_pointer_type<_Ty,remove_reference<_Ty2>::type,void>::type std::unique_ptr<_Ty,_Dx>::operator ->(void) noexcept const'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(22): note: '_Get_deleter_pointer_type<_Ty,remove_reference<_Ty2>::type,void>::type std::unique_ptr<_Ty,_Dx>::operator ->(void) noexcept const': cannot convert 'this' pointer from 'std::unique_ptr' to 'const std::unique_ptr<_Ty,_Dx> &'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(22): note: Reason: cannot convert from 'std::unique_ptr' to 'const std::unique_ptr<_Ty,_Dx>'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(22): note: Conversion requires a second user-defined-conversion operator or constructor
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(22): note: while trying to match the argument list '(std::unique_ptr)'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(22): error C2039: 'attachedRoot': is not a member of 'std::unique_ptr'
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\memory(3347): note: see declaration of 'std::unique_ptr'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(31): error C2665: 'std::swap': no overloaded function could convert all the argument types
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\thread(263): note: could be 'void std::swap(std::thread &,std::thread &) noexcept'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(31): note: 'void std::swap(std::thread &,std::thread &) noexcept': cannot convert argument 1 from 'std::unique_ptr' to 'std::thread &'
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\any(370): note: or       'void std::swap(std::any &,std::any &) noexcept'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(31): note: 'void std::swap(std::any &,std::any &) noexcept': cannot convert argument 1 from 'std::unique_ptr' to 'std::any &'
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\queue(494): note: or       'void std::swap(std::priority_queue<_Ty,_Container,_Pr> &,std::priority_queue<_Ty,_Container,_Pr> &) noexcept(<expr>)'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(31): note: 'void std::swap(std::priority_queue<_Ty,_Container,_Pr> &,std::priority_queue<_Ty,_Container,_Pr> &) noexcept(<expr>)': could not deduce template argument for 'std::priority_queue<_Ty,_Container,_Pr> &' from 'std::unique_ptr'
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\queue(220): note: or       'void std::swap(std::queue<_Ty,_Container> &,std::queue<_Ty,_Container> &) noexcept(<expr>)'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(31): note: 'void std::swap(std::queue<_Ty,_Container> &,std::queue<_Ty,_Container> &) noexcept(<expr>)': could not deduce template argument for 'std::queue<_Ty,_Container> &' from 'std::unique_ptr'
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\deque(1788): note: or       'void std::swap(std::deque<_Ty,_Alloc> &,std::deque<_Ty,_Alloc> &) noexcept'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(31): note: 'void std::swap(std::deque<_Ty,_Alloc> &,std::deque<_Ty,_Alloc> &) noexcept': could not deduce template argument for 'std::deque<_Ty,_Alloc> &' from 'std::unique_ptr'
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\mutex(263): note: or       'void std::swap(std::unique_lock<_Mutex> &,std::unique_lock<_Mutex> &) noexcept'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(31): note: 'void std::swap(std::unique_lock<_Mutex> &,std::unique_lock<_Mutex> &) noexcept': could not deduce template argument for 'std::unique_lock<_Mutex> &' from 'std::unique_ptr'
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\variant(1678): note: or       'void std::swap(std::variant<_Types...> &,std::variant<_Types...> &) noexcept(<expr>)'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(31): note: 'void std::swap(std::variant<_Types...> &,std::variant<_Types...> &) noexcept(<expr>)': could not deduce template argument for 'std::variant<_Types...> &' from 'std::unique_ptr'
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\forward_list(1584): note: or       'void std::swap(std::forward_list<_Ty,_Alloc> &,std::forward_list<_Ty,_Alloc> &) noexcept'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(31): note: 'void std::swap(std::forward_list<_Ty,_Alloc> &,std::forward_list<_Ty,_Alloc> &) noexcept': could not deduce template argument for 'std::forward_list<_Ty,_Alloc> &' from 'std::unique_ptr'
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\optional(968): note: or       'void std::swap(std::optional<_Ty> &,std::optional<_Ty> &) noexcept(<expr>)'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(31): note: 'void std::swap(std::optional<_Ty> &,std::optional<_Ty> &) noexcept(<expr>)': could not deduce template argument for 'std::optional<_Ty> &' from 'std::unique_ptr'
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\array(772): note: or       'void std::swap(std::array<_Ty,_Size> &,std::array<_Ty,_Size> &) noexcept(<expr>)'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(31): note: 'void std::swap(std::array<_Ty,_Size> &,std::array<_Ty,_Size> &) noexcept(<expr>)': could not deduce template argument for 'std::array<_Ty,_Size> &' from 'std::unique_ptr'
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\sstream(969): note: or       'void std::swap(std::basic_stringstream<_Elem,_Traits,_Alloc> &,std::basic_stringstream<_Elem,_Traits,_Alloc> &) noexcept'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(31): note: 'void std::swap(std::basic_stringstream<_Elem,_Traits,_Alloc> &,std::basic_stringstream<_Elem,_Traits,_Alloc> &) noexcept': could not deduce template argument for 'std::basic_stringstream<_Elem,_Traits,_Alloc> &' from 'std::unique_ptr'
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\sstream(844): note: or       'void std::swap(std::basic_ostringstream<_Elem,_Traits,_Alloc> &,std::basic_ostringstream<_Elem,_Traits,_Alloc> &) noexcept'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(31): note: 'void std::swap(std::basic_ostringstream<_Elem,_Traits,_Alloc> &,std::basic_ostringstream<_Elem,_Traits,_Alloc> &) noexcept': could not deduce template argument for 'std::basic_ostringstream<_Elem,_Traits,_Alloc> &' from 'std::unique_ptr'
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\sstream(725): note: or       'void std::swap(std::basic_istringstream<_Elem,_Traits,_Alloc> &,std::basic_istringstream<_Elem,_Traits,_Alloc> &) noexcept'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(31): note: 'void std::swap(std::basic_istringstream<_Elem,_Traits,_Alloc> &,std::basic_istringstream<_Elem,_Traits,_Alloc> &) noexcept': could not deduce template argument for 'std::basic_istringstream<_Elem,_Traits,_Alloc> &' from 'std::unique_ptr'
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\sstream(606): note: or       'void std::swap(std::basic_stringbuf<_Elem,_Traits,_Alloc> &,std::basic_stringbuf<_Elem,_Traits,_Alloc> &) noexcept'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(31): note: 'void std::swap(std::basic_stringbuf<_Elem,_Traits,_Alloc> &,std::basic_stringbuf<_Elem,_Traits,_Alloc> &) noexcept': could not deduce template argument for 'std::basic_stringbuf<_Elem,_Traits,_Alloc> &' from 'std::unique_ptr'
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\memory(3661): note: or       'void std::swap(std::unique_ptr<_Ty,_Dx> &,std::unique_ptr<_Ty,_Dx> &) noexcept'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(31): note: 'void std::swap(std::unique_ptr<_Ty,_Dx> &,std::unique_ptr<_Ty,_Dx> &) noexcept': could not deduce template argument for 'std::unique_ptr<_Ty,_Dx> &' from 'std::unique_ptr'
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\memory(3255): note: or       'void std::swap(std::weak_ptr<_Ty> &,std::weak_ptr<_Ty> &) noexcept'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(31): note: 'void std::swap(std::weak_ptr<_Ty> &,std::weak_ptr<_Ty> &) noexcept': could not deduce template argument for 'std::weak_ptr<_Ty> &' from 'std::unique_ptr'
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\memory(1990): note: or       'void std::swap(std::shared_ptr<_Ty> &,std::shared_ptr<_Ty> &) noexcept'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(31): note: 'void std::swap(std::shared_ptr<_Ty> &,std::shared_ptr<_Ty> &) noexcept': could not deduce template argument for 'std::shared_ptr<_Ty> &' from 'std::unique_ptr'
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\xstring(3141): note: or       'void std::swap(std::basic_string<_Elem,_Traits,_Alloc> &,std::basic_string<_Elem,_Traits,_Alloc> &) noexcept'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(31): note: 'void std::swap(std::basic_string<_Elem,_Traits,_Alloc> &,std::basic_string<_Elem,_Traits,_Alloc> &) noexcept': could not deduce template argument for 'std::basic_string<_Elem,_Traits,_Alloc> &' from 'std::unique_ptr'
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\functional(1279): note: or       'void std::swap(std::function<_Fty> &,std::function<_Fty> &) noexcept'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(31): note: 'void std::swap(std::function<_Fty> &,std::function<_Fty> &) noexcept': could not deduce template argument for 'std::function<_Fty> &' from 'std::unique_ptr'
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\unordered_map(894): note: or       'void std::swap(std::unordered_multimap<_Kty,_Ty,_Hasher,_Keyeq,_Alloc> &,std::unordered_multimap<_Kty,_Ty,_Hasher,_Keyeq,_Alloc> &) noexcept(<expr>)'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(31): note: 'void std::swap(std::unordered_multimap<_Kty,_Ty,_Hasher,_Keyeq,_Alloc> &,std::unordered_multimap<_Kty,_Ty,_Hasher,_Keyeq,_Alloc> &) noexcept(<expr>)': could not deduce template argument for 'std::unordered_multimap<_Kty,_Ty,_Hasher,_Keyeq,_Alloc> &' from 'std::unique_ptr'
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\unordered_map(522): note: or       'void std::swap(std::unordered_map<_Kty,_Ty,_Hasher,_Keyeq,_Alloc> &,std::unordered_map<_Kty,_Ty,_Hasher,_Keyeq,_Alloc> &) noexcept(<expr>)'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(31): note: 'void std::swap(std::unordered_map<_Kty,_Ty,_Hasher,_Keyeq,_Alloc> &,std::unordered_map<_Kty,_Ty,_Hasher,_Keyeq,_Alloc> &) noexcept(<expr>)': could not deduce template argument for 'std::unordered_map<_Kty,_Ty,_Hasher,_Keyeq,_Alloc> &' from 'std::unique_ptr'
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\vector(2399): note: or       'void std::swap(std::vector<_Ty,_Alloc> &,std::vector<_Ty,_Alloc> &) noexcept'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(31): note: 'void std::swap(std::vector<_Ty,_Alloc> &,std::vector<_Ty,_Alloc> &) noexcept': could not deduce template argument for 'std::vector<_Ty,_Alloc> &' from 'std::unique_ptr'
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\list(1885): note: or       'void std::swap(std::list<_Ty,_Alloc> &,std::list<_Ty,_Alloc> &) noexcept'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(31): note: 'void std::swap(std::list<_Ty,_Alloc> &,std::list<_Ty,_Alloc> &) noexcept': could not deduce template argument for 'std::list<_Ty,_Alloc> &' from 'std::unique_ptr'
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\tuple(885): note: or       'void std::swap(std::tuple<_Types...> &,std::tuple<_Types...> &) noexcept(<expr>)'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(31): note: 'void std::swap(std::tuple<_Types...> &,std::tuple<_Types...> &) noexcept(<expr>)': could not deduce template argument for 'std::tuple<_Types...> &' from 'std::unique_ptr'
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\utility(489): note: or       'void std::swap(std::pair<_Ty1,_Ty2> &,std::pair<_Ty1,_Ty2> &) noexcept(<expr>)'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(31): note: 'void std::swap(std::pair<_Ty1,_Ty2> &,std::pair<_Ty1,_Ty2> &) noexcept(<expr>)': could not deduce template argument for 'std::pair<_Ty1,_Ty2> &' from 'std::unique_ptr'
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\type_traits(2077): note: or       'void std::swap(_Ty (&)[_Size],_Ty (&)[_Size]) noexcept(<expr>)'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(31): note: 'void std::swap(_Ty (&)[_Size],_Ty (&)[_Size]) noexcept(<expr>)': could not deduce template argument for '_Ty (&)[_Size]' from 'std::unique_ptr'
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\type_traits(2074): note: or       'void std::swap(_Ty &,_Ty &) noexcept(<expr>)'
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(31): note: 'void std::swap(_Ty &,_Ty &) noexcept(<expr>)': could not deduce template argument for '__formal'
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\type_traits(2070): note: 'unique_ptr': unspecialized class template can't be used as a template argument for template parameter '_Ty', expected a real type
+E:\SyncForder\CodeRepos\lux-engine\editor\views\api\include\lux/engine/editor/views/IViewHost.hpp(31): note: while trying to match the argument list '(std::unique_ptr, std::unique_ptr)'
+[8/101] Building CXX object editor\ui\CMakeFiles\editor_ui.dir\src\SpatialInteraction3D.cpp.obj
+[9/101] Building CXX object editor\ui\CMakeFiles\editor_ui.dir\src\ComponentEditors.cpp.obj
+[10/101] Building CXX object editor\ui\CMakeFiles\editor_ui.dir\src\CodegenInput.cpp.obj
+[11/101] Building CXX object editor\ui\CMakeFiles\editor_ui.dir\src\asset\AssetPickerElement.cpp.obj
+[12/101] Building CXX object editor\ui\CMakeFiles\editor_ui.dir\src\SceneConfigurationElement.cpp.obj
+[13/101] Building CXX object editor\ui\CMakeFiles\editor_ui.dir\inspector_gen\desktop_transform\lux__simulation__ecs__Transform2D_038ea190.inspector.generated.cpp.obj
+[14/101] Building CXX object editor\ui\CMakeFiles\editor_ui.dir\inspector_gen\desktop_transform\lux__simulation__ecs__Transform3D_b831b8b5.inspector.generated.cpp.obj
+[15/101] Building CXX object editor\ui\CMakeFiles\editor_ui.dir\inspector_gen\desktop_hierarchy\lux__simulation__ecs__Parent_4de25119.inspector.generated.cpp.obj
+[16/101] Building CXX object editor\ui\CMakeFiles\editor_ui.dir\inspector_gen\desktop_visual\lux__simulation__ecs__Mesh3D_5c2b5d9d.inspector.generated.cpp.obj
+[17/101] Building CXX object editor\ui\CMakeFiles\editor_ui.dir\inspector_gen\desktop_visual\lux__simulation__ecs__Light3D_3f6bfbf7.inspector.generated.cpp.obj
+[18/101] Building CXX object editor\ui\CMakeFiles\editor_ui.dir\inspector_gen\desktop_camera\lux__scene__Camera_1804ce33.inspector.generated.cpp.obj
+[19/101] Building CXX object editor\ui\CMakeFiles\editor_scene_configuration.dir\test\scene_configuration.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[20/101] Building CXX object editor\ui\CMakeFiles\editor_ui_presentation.dir\test\unified_ui.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[21/101] Building CXX object editor\tools\material\CMakeFiles\editor_material.dir\meta_gen\MaterialEditor.meta.cpp.obj
+[22/101] Building CXX object editor\tools\material\CMakeFiles\editor_material.dir\src\MaterialEditor.cpp.obj
+[23/101] Building CXX object editor\tools\material\CMakeFiles\editor_material.dir\src\MaterialPreview.cpp.obj
+[24/101] Building CXX object editor\tools\material\CMakeFiles\editor_material.dir\src\MaterialAssets.cpp.obj
+[25/101] Building CXX object editor\tools\material\CMakeFiles\editor_material.dir\test\MaterialEditorTestAccess.cpp.obj
+[26/101] Building CXX object editor\tools\material\CMakeFiles\editor_material.dir\src\ui\MaterialElements.cpp.obj
+[27/101] Building CXX object editor\tools\material\CMakeFiles\editor_material.dir\src\ui\MaterialPreviewElement.cpp.obj
+[28/101] Building CXX object editor\tools\flowforge\CMakeFiles\editor_flowforge.dir\meta_gen\FlowForgeEditor.meta.cpp.obj
+[29/101] Building CXX object editor\tools\flowforge\CMakeFiles\editor_flowforge.dir\src\FlowForgeEditor.cpp.obj
+[30/101] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\SceneSource.cpp.obj
+[31/101] Building CXX object editor\tools\flowforge\CMakeFiles\editor_flowforge.dir\src\FlowAssets.cpp.obj
+[32/101] Building CXX object editor\tools\flowforge\CMakeFiles\editor_flowforge.dir\test\FlowForgeEditorTestAccess.cpp.obj
+[33/101] Building CXX object editor\tools\flowforge\CMakeFiles\editor_flowforge.dir\src\ui\FlowForgeElements.cpp.obj
+[34/101] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\SceneContent.cpp.obj
+[35/101] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\SceneAssets.cpp.obj
+[36/101] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\SceneObjectEdits.cpp.obj
+[37/101] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\ModelCreation.cpp.obj
+[38/101] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\SceneEditor.cpp.obj
+[39/101] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\SceneOpening.cpp.obj
+[40/101] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\meta_gen\SceneEditor.meta.cpp.obj
+[41/101] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\ui\SceneCreationPane.cpp.obj
+[42/101] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\ui\InspectorPane.cpp.obj
+[43/101] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\ScenePlayback.cpp.obj
+[44/101] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\ui\InspectorElement.cpp.obj
+[45/101] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\ui\SceneUi.cpp.obj
+[46/101] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\meta_gen\TransformSystem.meta.cpp.obj
+[47/101] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\ui\SceneContentElement.cpp.obj
+[48/101] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\ui\OutlinerPane.cpp.obj
+[49/101] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\ui\ResourcePane.cpp.obj
+[50/101] Building CXX object editor\tools\project\CMakeFiles\editor_project_tools.dir\src\ProjectPane.cpp.obj
+[51/101] Building CXX object editor\tools\settings\CMakeFiles\editor_settings.dir\src\SettingPane.cpp.obj
+[52/101] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\test\SceneEditorTestAccess.cpp.obj
+[53/101] Building CXX object editor\tools\settings\CMakeFiles\editor_settings.dir\src\PluginSettingsElement.cpp.obj
+[54/101] Building CXX object editor\launcher\CMakeFiles\editor_launcher.dir\src\LaunchEditor.cpp.obj
+[55/101] Building CXX object editor\launcher\CMakeFiles\editor_launcher.dir\src\ProjectCreationPane.cpp.obj
+[56/101] Building CXX object editor\launcher\CMakeFiles\lux_launcher.dir\main.cpp.obj
+[57/101] Building CXX object editor\app\CMakeFiles\editor_app.dir\src\Editor.cpp.obj
+[58/101] Building CXX object editor\app\CMakeFiles\editor_app.dir\src\EditorStartup.cpp.obj
+[59/101] Building CXX object editor\app\CMakeFiles\editor_app.dir\src\EditorLoop.cpp.obj
+[60/101] Building CXX object editor\app\CMakeFiles\editor_app.dir\src\EditorPlatform.cpp.obj
+[61/101] Building CXX object editor\tools\scene\CMakeFiles\editor_scene_fixture.dir\test\fixture.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[62/101] Building CXX object editor\app\CMakeFiles\editor_app.dir\src\EditorWorkspaceStorage.cpp.obj
+[63/101] Building CXX object editor\app\CMakeFiles\editor_app.dir\src\EditorMenu.cpp.obj
+[64/101] Building CXX object editor\app\CMakeFiles\editor_app.dir\src\EditorWorkspace.cpp.obj
+[65/101] Building CXX object editor\app\CMakeFiles\lux_editor.dir\main.cpp.obj
+[66/101] Building CXX object editor\app\CMakeFiles\editor_app.dir\src\EditorTestAccess.cpp.obj
+[67/101] Building CXX object editor\app\CMakeFiles\lux_editor.dir\product\ProductAssembly.cpp.obj
+[68/101] Building CXX object editor\app\CMakeFiles\editor_baseline_failures.dir\test\baseline_failures.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[69/101] Building CXX object editor\app\CMakeFiles\editor_context_lifecycle.dir\test\context_lifecycle.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[70/101] Building CXX object editor\app\CMakeFiles\lux_editor.dir\product\ProductCommands.cpp.obj
+[71/101] Building CXX object editor\app\CMakeFiles\editor_material_protocol.dir\__\tools\material\test\material_protocol.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[72/101] Building CXX object editor\app\CMakeFiles\editor_review_regressions.dir\__\__\cmake\installed-consumers\editor-d2\protocol\review_regressions.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[73/101] Building CXX object editor\app\CMakeFiles\editor_flow_protocol.dir\__\tools\flowforge\test\flow_protocol.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[74/101] Building CXX object editor\app\CMakeFiles\editor_core_protocol.dir\__\tools\scene\test\core_protocol.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+ninja: build stopped: cannot make progress due to previous errors.

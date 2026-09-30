@@ -1,0 +1,47 @@
+-- The CXX compiler identification is MSVC 19.44.35228.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: D:/Development/Mircosoft/VisualStudio/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+---- Importing lux-cxx-reflection_generator
+---- Importing lux-cxx-algorithm
+---- Importing lux-cxx-compile_time
+---- Importing lux-cxx-reflection_runtime
+---- Importing lux-cxx-binary
+---- Importing lux-cxx-core
+---- Importing lux-cxx-container
+---- Importing lux-cxx-memory
+---- Importing lux-cxx-concurrent
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Failed
+-- Looking for pthread_create in pthreads
+-- Looking for pthread_create in pthreads - not found
+-- Looking for pthread_create in pthread
+-- Looking for pthread_create in pthread - not found
+-- Found Threads: TRUE
+-- Found stdexec: D:/Development/vcpkg/installed/x64-windows/share/stdexec/stdexec-config.cmake (found version "0.10.0")
+---- Importing imgui-core
+---- Importing node_editor-node_editor
+-- Found nlohmann_json: D:/Development/vcpkg/installed/x64-windows/share/nlohmann_json/nlohmann_jsonConfig.cmake (found version "3.12.0")
+-- Found Vulkan: D:/Development/VulkanSDK/1.4.304.0/Lib/vulkan-1.lib (found version "1.4.304") found components: glslc glslangValidator
+CMake Error at D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake:908 (_find_package):
+  Found package configuration file:
+
+    E:/SyncForder/CodeRepos/install/RelWithDebInfo/share/lux-engine-editor-desktop/lux-engine-editor-desktop-config.cmake
+
+  but it set lux-engine-editor-desktop_FOUND to FALSE so package
+  "lux-engine-editor-desktop" is considered to be NOT FOUND.  Reason given by
+  package:
+
+  The following imported targets are referenced, but are missing:
+  lux::engine::editor::view_host
+
+Call Stack (most recent call first):
+  E:/SyncForder/CodeRepos/install/RelWithDebInfo/share/lux-engine-editor-ui/editor_ui/lux-engine-editor-ui-editor_ui-import.cmake:8 (find_package)
+  E:/SyncForder/CodeRepos/install/RelWithDebInfo/share/lux-engine-editor-ui/lux-engine-editor-ui-config.cmake:34 (include)
+  D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake:908 (_find_package)
+  CMakeLists.txt:20 (find_package)
+
+
+-- Configuring incomplete, errors occurred!

@@ -1,0 +1,29 @@
+UpdateCTestConfiguration  from :E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine/DartConfiguration.tcl
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine
+Constructing a list of tests
+Done constructing a list of tests
+Updating test list for fixtures
+Added 0 tests to meet fixture requirements
+Checking test dependency graph...
+Checking test dependency graph end
+test 92
+    Start 92: editor.scene_views_gpu
+
+92: Test command: E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\bin\editor_scene_views_test.exe "D:/Development/vcpkg/installed/x64-windows/tools/llvm/lld-link.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine"
+92: Working Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine/editor/tools/scene/ui
+92: Test timeout computed to be: 120
+92: P10 dual SceneView GPU readback: actual mesh pick, left/right highlight isolation and retirement verified.
+92: P10 DEV SceneView GPU: shared author edit/undo, independent cameras, failed rebind gesture, close/reopen; frames=745 validation_errors=0
+1/1 Test #92: editor.scene_views_gpu ...........   Passed    1.67 sec
+
+The following tests passed:
+	editor.scene_views_gpu
+
+100% tests passed, 0 tests failed out of 1
+
+Label Time Summary:
+P10       =   1.67 sec*proc (1 test)
+editor    =   1.67 sec*proc (1 test)
+gpu       =   1.67 sec*proc (1 test)
+
+Total Test time (real) =   2.09 sec

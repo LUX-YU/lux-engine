@@ -1,0 +1,1095 @@
+dev_log/P10/FILES.md:1: trailing whitespace.
++# P10 文件变更
+dev_log/P10/FILES.md:2: trailing whitespace.
++
+dev_log/P10/FILES.md:3: trailing whitespace.
++前置 `3363f83dcc448db9e79cea97c5176a546c05cf5a` → 实现 `11de2c1fee9d477daaa2d26b07911306ea9d6b9f`。
+dev_log/P10/FILES.md:4: trailing whitespace.
++
+dev_log/P10/FILES.md:5: trailing whitespace.
++## 新增（93）
+dev_log/P10/FILES.md:6: trailing whitespace.
++
+dev_log/P10/FILES.md:7: trailing whitespace.
++- `cmake/installed-consumers/desktop-views/CMakeLists.txt`
+dev_log/P10/FILES.md:8: trailing whitespace.
++- `cmake/installed-consumers/desktop-views/Inspector.cpp`
+dev_log/P10/FILES.md:9: trailing whitespace.
++- `editor/desktop/CMakeLists.txt`
+dev_log/P10/FILES.md:10: trailing whitespace.
++- `editor/desktop/README.md`
+dev_log/P10/FILES.md:11: trailing whitespace.
++- `editor/desktop/include/lux/engine/editor/desktop/DesktopError.hpp`
+dev_log/P10/FILES.md:12: trailing whitespace.
++- `editor/desktop/include/lux/engine/editor/desktop/DesktopShell.hpp`
+dev_log/P10/FILES.md:13: trailing whitespace.
++- `editor/desktop/include/lux/engine/editor/desktop/Presentation.hpp`
+dev_log/P10/FILES.md:14: trailing whitespace.
++- `editor/desktop/include/lux/engine/editor/desktop/ViewHost.hpp`
+dev_log/P10/FILES.md:15: trailing whitespace.
++- `editor/desktop/include/lux/engine/editor/desktop/WindowInput.hpp`
+dev_log/P10/FILES.md:16: trailing whitespace.
++- `editor/desktop/include/lux/engine/editor/desktop/WindowOutput.hpp`
+dev_log/P10/FILES.md:17: trailing whitespace.
++- `editor/desktop/pinclude/lux/engine/editor/desktop/detail/UiFrame.hpp`
+dev_log/P10/FILES.md:18: trailing whitespace.
++- `editor/desktop/pinclude/lux/engine/editor/desktop/detail/UiRenderSyncStage.hpp`
+dev_log/P10/FILES.md:19: trailing whitespace.
++- `editor/desktop/src/DesktopShell.cpp`
+dev_log/P10/FILES.md:20: trailing whitespace.
++- `editor/desktop/src/Presentation.cpp`
+dev_log/P10/FILES.md:21: trailing whitespace.
++- `editor/desktop/src/UiRenderSyncStage.cpp`
+dev_log/P10/FILES.md:22: trailing whitespace.
++- `editor/desktop/src/ViewHost.cpp`
+dev_log/P10/FILES.md:23: trailing whitespace.
++- `editor/desktop/src/WindowInput.cpp`
+dev_log/P10/FILES.md:24: trailing whitespace.
++- `editor/desktop/src/WindowOutput.cpp`
+dev_log/P10/FILES.md:25: trailing whitespace.
++- `editor/desktop/test/host.cpp`
+dev_log/P10/FILES.md:26: trailing whitespace.
++- `editor/project/include/lux/engine/editor/project/AssetCatalog.hpp`
+dev_log/P10/FILES.md:27: trailing whitespace.
++- `editor/project/ui/CMakeLists.txt`
+dev_log/P10/FILES.md:28: trailing whitespace.
++- `editor/project/ui/include/lux/engine/editor/project/AssetPickerElement.hpp`
+dev_log/P10/FILES.md:29: trailing whitespace.
++- `editor/project/ui/include/lux/engine/editor/project/ProjectCatalogAccess.hpp`
+dev_log/P10/FILES.md:30: trailing whitespace.
++- `editor/project/ui/include/lux/engine/editor/project/ProjectView.hpp`
+dev_log/P10/FILES.md:31: trailing whitespace.
++- `editor/project/ui/src/AssetPickerElement.cpp`
+dev_log/P10/FILES.md:32: trailing whitespace.
++- `editor/project/ui/src/ProjectCatalogAccess.cpp`
+dev_log/P10/FILES.md:33: trailing whitespace.
++- `editor/project/ui/src/ProjectView.cpp`
+dev_log/P10/FILES.md:34: trailing whitespace.
++- `editor/project/ui/test/catalog.cpp`
+dev_log/P10/FILES.md:35: trailing whitespace.
++- `editor/tasks/ui/CMakeLists.txt`
+dev_log/P10/FILES.md:36: trailing whitespace.
++- `editor/tasks/ui/include/lux/engine/editor/tasks/TaskQueryPort.hpp`
+dev_log/P10/FILES.md:37: trailing whitespace.
++- `editor/tasks/ui/include/lux/engine/editor/tasks/TaskView.hpp`
+dev_log/P10/FILES.md:38: trailing whitespace.
++- `editor/tasks/ui/src/TaskView.cpp`
+dev_log/P10/FILES.md:39: trailing whitespace.
++- `editor/tools/flowforge/ui/CMakeLists.txt`
+dev_log/P10/FILES.md:40: trailing whitespace.
++- `editor/tools/flowforge/ui/include/lux/engine/editor/flowforge/FlowNodeControls.hpp`
+dev_log/P10/FILES.md:41: trailing whitespace.
++- `editor/tools/flowforge/ui/include/lux/engine/editor/flowforge/FlowView.hpp`
+dev_log/P10/FILES.md:42: trailing whitespace.
++- `editor/tools/flowforge/ui/src/FlowNodeControls.cpp`
+dev_log/P10/FILES.md:43: trailing whitespace.
++- `editor/tools/flowforge/ui/src/FlowView.cpp`
+dev_log/P10/FILES.md:44: trailing whitespace.
++- `editor/tools/flowforge/ui/src/ViewFactory.cpp`
+dev_log/P10/FILES.md:45: trailing whitespace.
++- `editor/tools/material/ui/CMakeLists.txt`
+dev_log/P10/FILES.md:46: trailing whitespace.
++- `editor/tools/material/ui/include/lux/engine/editor/material/MaterialNodeControls.hpp`
+dev_log/P10/FILES.md:47: trailing whitespace.
++- `editor/tools/material/ui/include/lux/engine/editor/material/MaterialView.hpp`
+dev_log/P10/FILES.md:48: trailing whitespace.
++- `editor/tools/material/ui/src/MaterialNodeControls.cpp`
+dev_log/P10/FILES.md:49: trailing whitespace.
++- `editor/tools/material/ui/src/MaterialView.cpp`
+dev_log/P10/FILES.md:50: trailing whitespace.
++- `editor/tools/material/ui/src/ViewFactory.cpp`
+dev_log/P10/FILES.md:51: trailing whitespace.
++- `editor/tools/scene/ui/CMakeLists.txt`
+dev_log/P10/FILES.md:52: trailing whitespace.
++- `editor/tools/scene/ui/cmake/engine_editor_imgui_inspector_codegen.cmake`
+dev_log/P10/FILES.md:53: trailing whitespace.
++- `editor/tools/scene/ui/codegen/inspector_codegen.py`
+dev_log/P10/FILES.md:54: trailing whitespace.
++- `editor/tools/scene/ui/codegen/ir.template`
+dev_log/P10/FILES.md:55: trailing whitespace.
++- `editor/tools/scene/ui/codegen/support/FirstPartyInspectorControls.hpp`
+dev_log/P10/FILES.md:56: trailing whitespace.
++- `editor/tools/scene/ui/codegen/support/InspectorAggregateElements.hpp`
+dev_log/P10/FILES.md:57: trailing whitespace.
++- `editor/tools/scene/ui/codegen/support/InspectorAlternativeElement.hpp`
+dev_log/P10/FILES.md:58: trailing whitespace.
++- `editor/tools/scene/ui/codegen/support/InspectorAssociativeElement.hpp`
+dev_log/P10/FILES.md:59: trailing whitespace.
++- `editor/tools/scene/ui/codegen/support/InspectorControl.hpp`
+dev_log/P10/FILES.md:60: trailing whitespace.
++- `editor/tools/scene/ui/codegen/support/InspectorElementFields.hpp`
+dev_log/P10/FILES.md:61: trailing whitespace.
++- `editor/tools/scene/ui/include/lux/engine/editor/scene/CameraNavigation.hpp`
+dev_log/P10/FILES.md:62: trailing whitespace.
++- `editor/tools/scene/ui/include/lux/engine/editor/scene/InspectorFields.hpp`
+dev_log/P10/FILES.md:63: trailing whitespace.
++- `editor/tools/scene/ui/include/lux/engine/editor/scene/InspectorView.hpp`
+dev_log/P10/FILES.md:64: trailing whitespace.
++- `editor/tools/scene/ui/include/lux/engine/editor/scene/OutlinerView.hpp`
+dev_log/P10/FILES.md:65: trailing whitespace.
++- `editor/tools/scene/ui/include/lux/engine/editor/scene/ResourceView.hpp`
+dev_log/P10/FILES.md:66: trailing whitespace.
++- `editor/tools/scene/ui/include/lux/engine/editor/scene/SceneConfigurationElement.hpp`
+dev_log/P10/FILES.md:67: trailing whitespace.
++- `editor/tools/scene/ui/include/lux/engine/editor/scene/SceneConfigurationView.hpp`
+dev_log/P10/FILES.md:68: trailing whitespace.
++- `editor/tools/scene/ui/include/lux/engine/editor/scene/SceneCreationView.hpp`
+dev_log/P10/FILES.md:69: trailing whitespace.
++- `editor/tools/scene/ui/include/lux/engine/editor/scene/SceneElement.hpp`
+dev_log/P10/FILES.md:70: trailing whitespace.
++- `editor/tools/scene/ui/include/lux/engine/editor/scene/SceneView.hpp`
+dev_log/P10/FILES.md:71: trailing whitespace.
++- `editor/tools/scene/ui/src/CameraNavigation.cpp`
+dev_log/P10/FILES.md:72: trailing whitespace.
++- `editor/tools/scene/ui/src/CodegenInput.cpp`
+dev_log/P10/FILES.md:73: trailing whitespace.
++- `editor/tools/scene/ui/src/ComponentEditors.cpp`
+dev_log/P10/FILES.md:74: trailing whitespace.
++- `editor/tools/scene/ui/src/InspectorFields.cpp`
+dev_log/P10/FILES.md:75: trailing whitespace.
++- `editor/tools/scene/ui/src/InspectorView.cpp`
+dev_log/P10/FILES.md:76: trailing whitespace.
++- `editor/tools/scene/ui/src/OutlinerView.cpp`
+dev_log/P10/FILES.md:77: trailing whitespace.
++- `editor/tools/scene/ui/src/ResourceView.cpp`
+dev_log/P10/FILES.md:78: trailing whitespace.
++- `editor/tools/scene/ui/src/SceneConfigurationElement.cpp`
+dev_log/P10/FILES.md:79: trailing whitespace.
++- `editor/tools/scene/ui/src/SceneConfigurationView.cpp`
+dev_log/P10/FILES.md:80: trailing whitespace.
++- `editor/tools/scene/ui/src/SceneCreationView.cpp`
+dev_log/P10/FILES.md:81: trailing whitespace.
++- `editor/tools/scene/ui/src/SceneElement.cpp`
+dev_log/P10/FILES.md:82: trailing whitespace.
++- `editor/tools/scene/ui/src/SceneView.cpp`
+dev_log/P10/FILES.md:83: trailing whitespace.
++- `editor/tools/scene/ui/src/ViewFactory.cpp`
+dev_log/P10/FILES.md:84: trailing whitespace.
++- `editor/tools/scene/ui/test/AuxiliaryViews.hpp`
+dev_log/P10/FILES.md:85: trailing whitespace.
++- `editor/tools/scene/ui/test/NativeDesktop.hpp`
+dev_log/P10/FILES.md:86: trailing whitespace.
++- `editor/tools/scene/ui/test/views.cpp`
+dev_log/P10/FILES.md:87: trailing whitespace.
++- `editor/transition/LegacyCodegenInput.cpp`
+dev_log/P10/FILES.md:88: trailing whitespace.
++- `editor/transition/LegacyComponentEditors.cpp`
+dev_log/P10/FILES.md:89: trailing whitespace.
++- `editor/transition/LegacySceneConfiguration.cpp`
+dev_log/P10/FILES.md:90: trailing whitespace.
++- `editor/transition/ProjectCatalogAdapter.cpp`
+dev_log/P10/FILES.md:91: trailing whitespace.
++- `editor/transition/ProjectCatalogAdapter.hpp`
+dev_log/P10/FILES.md:92: trailing whitespace.
++- `editor/widgets/CMakeLists.txt`
+dev_log/P10/FILES.md:93: trailing whitespace.
++- `editor/widgets/include/lux/engine/editor/widgets/GraphCanvas.hpp`
+dev_log/P10/FILES.md:94: trailing whitespace.
++- `editor/widgets/include/lux/engine/editor/widgets/NodeCanvas.hpp`
+dev_log/P10/FILES.md:95: trailing whitespace.
++- `editor/widgets/include/lux/engine/editor/widgets/NodeCanvasIds.hpp`
+dev_log/P10/FILES.md:96: trailing whitespace.
++- `editor/widgets/include/lux/engine/editor/widgets/TreeRows.hpp`
+dev_log/P10/FILES.md:97: trailing whitespace.
++- `editor/widgets/src/GraphCanvas.cpp`
+dev_log/P10/FILES.md:98: trailing whitespace.
++- `editor/widgets/src/NodeCanvas.cpp`
+dev_log/P10/FILES.md:99: trailing whitespace.
++- `editor/widgets/src/TreeRows.cpp`
+dev_log/P10/FILES.md:100: trailing whitespace.
++
+dev_log/P10/FILES.md:101: trailing whitespace.
++## 修改（74）
+dev_log/P10/FILES.md:102: trailing whitespace.
++
+dev_log/P10/FILES.md:103: trailing whitespace.
++- `cmake/installed-consumers/editor-d2/GuiGesture.cpp`
+dev_log/P10/FILES.md:104: trailing whitespace.
++- `cmake/installed-consumers/editor-d2/SceneWorkflow.cpp`
+dev_log/P10/FILES.md:105: trailing whitespace.
++- `cmake/installed-consumers/editor-d2/closure/CMakeLists.txt`
+dev_log/P10/FILES.md:106: trailing whitespace.
++- `editor/CMakeLists.txt`
+dev_log/P10/FILES.md:107: trailing whitespace.
++- `editor/app/pinclude/lux/engine/editor/detail/EditorImpl.hpp`
+dev_log/P10/FILES.md:108: trailing whitespace.
++- `editor/app/pinclude/lux/engine/editor/detail/EditorTestAccess.hpp`
+dev_log/P10/FILES.md:109: trailing whitespace.
++- `editor/app/src/EditorPlatform.cpp`
+dev_log/P10/FILES.md:110: trailing whitespace.
++- `editor/app/src/EditorStartup.cpp`
+dev_log/P10/FILES.md:111: trailing whitespace.
++- `editor/app/src/EditorTestAccess.cpp`
+dev_log/P10/FILES.md:112: trailing whitespace.
++- `editor/context/src/EditorContext.cpp`
+dev_log/P10/FILES.md:113: trailing whitespace.
++- `editor/contracts/include/lux/engine/editor/views/ViewInfo.hpp`
+dev_log/P10/FILES.md:114: trailing whitespace.
++- `editor/editing/scene/include/lux/engine/editor/editing/scene/SceneEdit.hpp`
+dev_log/P10/FILES.md:115: trailing whitespace.
++- `editor/launcher/main.cpp`
+dev_log/P10/FILES.md:116: trailing whitespace.
++- `editor/launcher/src/ProjectCreationPane.cpp`
+dev_log/P10/FILES.md:117: trailing whitespace.
++- `editor/metadata/include/lux/engine/editor/metadata/ComponentEditorRegistry.hpp`
+dev_log/P10/FILES.md:118: trailing whitespace.
++- `editor/metadata/include/lux/engine/editor/metadata/ConfigurationValue.hpp`
+dev_log/P10/FILES.md:119: trailing whitespace.
++- `editor/metadata/include/lux/engine/editor/metadata/EditorPlugin.hpp`
+dev_log/P10/FILES.md:120: trailing whitespace.
++- `editor/metadata/include/lux/engine/editor/metadata/SceneRegistrations.hpp`
+dev_log/P10/FILES.md:121: trailing whitespace.
++- `editor/metadata/src/ConfigurationValue.cpp`
+dev_log/P10/FILES.md:122: trailing whitespace.
++- `editor/metadata/src/EditorPlugin.cpp`
+dev_log/P10/FILES.md:123: trailing whitespace.
++- `editor/metadata/src/SceneRegistrations.cpp`
+dev_log/P10/FILES.md:124: trailing whitespace.
++- `editor/metadata/test/plugin.cpp`
+dev_log/P10/FILES.md:125: trailing whitespace.
++- `editor/storage/include/lux/engine/editor/storage/ProjectStorage.hpp`
+dev_log/P10/FILES.md:126: trailing whitespace.
++- `editor/tests/architecture/CMakeLists.txt`
+dev_log/P10/FILES.md:127: trailing whitespace.
++- `editor/tests/architecture/check_editor_boundaries.py`
+dev_log/P10/FILES.md:128: trailing whitespace.
++- `editor/tests/architecture/rules.json`
+dev_log/P10/FILES.md:129: trailing whitespace.
++- `editor/tests/architecture/test_interaction_view_boundaries.py`
+dev_log/P10/FILES.md:130: trailing whitespace.
++- `editor/tools/flowforge/CMakeLists.txt`
+dev_log/P10/FILES.md:131: trailing whitespace.
++- `editor/tools/flowforge/interaction/include/lux/engine/editor/flowforge/FlowInteraction.hpp`
+dev_log/P10/FILES.md:132: trailing whitespace.
++- `editor/tools/flowforge/src/ui/FlowForgeElements.cpp`
+dev_log/P10/FILES.md:133: trailing whitespace.
++- `editor/tools/material/CMakeLists.txt`
+dev_log/P10/FILES.md:134: trailing whitespace.
++- `editor/tools/material/interaction/include/lux/engine/editor/material/MaterialInteraction.hpp`
+dev_log/P10/FILES.md:135: trailing whitespace.
++- `editor/tools/material/model/include/lux/engine/editor/material/MaterialSnapshot.hpp`
+dev_log/P10/FILES.md:136: trailing whitespace.
++- `editor/tools/material/model/src/MaterialSession.cpp`
+dev_log/P10/FILES.md:137: trailing whitespace.
++- `editor/tools/material/pinclude/lux/engine/editor/ui/material/MaterialPreviewElement.hpp`
+dev_log/P10/FILES.md:138: trailing whitespace.
++- `editor/tools/material/src/ui/MaterialElements.cpp`
+dev_log/P10/FILES.md:139: trailing whitespace.
++- `editor/tools/material/src/ui/MaterialPreviewElement.cpp`
+dev_log/P10/FILES.md:140: trailing whitespace.
++- `editor/tools/scene/execution/api/include/lux/engine/editor/scene/RunInspectAccess.hpp`
+dev_log/P10/FILES.md:141: trailing whitespace.
++- `editor/tools/scene/execution/src/RunStore.cpp`
+dev_log/P10/FILES.md:142: trailing whitespace.
++- `editor/tools/scene/interaction/include/lux/engine/editor/scene/SceneInteraction.hpp`
+dev_log/P10/FILES.md:143: trailing whitespace.
++- `editor/tools/scene/model/include/lux/engine/editor/scene/SceneAlgorithms.hpp`
+dev_log/P10/FILES.md:144: trailing whitespace.
++- `editor/tools/scene/model/include/lux/engine/editor/scene/SceneEdit.hpp`
+dev_log/P10/FILES.md:145: trailing whitespace.
++- `editor/tools/scene/model/include/lux/engine/editor/scene/SceneSnapshot.hpp`
+dev_log/P10/FILES.md:146: trailing whitespace.
++- `editor/tools/scene/model/include/lux/engine/editor/scene/SceneSource.hpp`
+dev_log/P10/FILES.md:147: trailing whitespace.
++- `editor/tools/scene/model/src/SceneAlgorithms.cpp`
+dev_log/P10/FILES.md:148: trailing whitespace.
++- `editor/tools/scene/model/src/SceneSource.cpp`
+dev_log/P10/FILES.md:149: trailing whitespace.
++- `editor/tools/scene/pinclude/lux/engine/editor/ui/scene/OutlinerPane.hpp`
+dev_log/P10/FILES.md:150: trailing whitespace.
++- `editor/tools/scene/pinclude/lux/engine/editor/ui/scene/SceneContentElement.hpp`
+dev_log/P10/FILES.md:151: trailing whitespace.
++- `editor/tools/scene/projection/CMakeLists.txt`
+dev_log/P10/FILES.md:152: trailing whitespace.
++- `editor/tools/scene/projection/include/lux/engine/editor/scene/ViewportPresentation.hpp`
+dev_log/P10/FILES.md:153: trailing whitespace.
++- `editor/tools/scene/projection/src/ResourceStatus.cpp`
+dev_log/P10/FILES.md:154: trailing whitespace.
++- `editor/tools/scene/projection/src/SceneProjection.cpp`
+dev_log/P10/FILES.md:155: trailing whitespace.
++- `editor/tools/scene/projection/src/ViewportPresentation.cpp`
+dev_log/P10/FILES.md:156: trailing whitespace.
++- `editor/tools/scene/src/SceneEditor.cpp`
+dev_log/P10/FILES.md:157: trailing whitespace.
++- `editor/tools/scene/src/ui/OutlinerPane.cpp`
+dev_log/P10/FILES.md:158: trailing whitespace.
++- `editor/tools/scene/src/ui/ResourcePane.cpp`
+dev_log/P10/FILES.md:159: trailing whitespace.
++- `editor/tools/scene/src/ui/SceneContentElement.cpp`
+dev_log/P10/FILES.md:160: trailing whitespace.
++- `editor/tools/scene/test/run_checks.hpp`
+dev_log/P10/FILES.md:161: trailing whitespace.
++- `editor/tools/settings/pinclude/lux/engine/editor/settings/detail/PluginSettingsElement.hpp`
+dev_log/P10/FILES.md:162: trailing whitespace.
++- `editor/ui/CMakeLists.txt`
+dev_log/P10/FILES.md:163: trailing whitespace.
++- `editor/ui/include/lux/engine/editor/ui/InspectorInteraction.hpp`
+dev_log/P10/FILES.md:164: trailing whitespace.
++- `editor/ui/include/lux/engine/editor/ui/SceneConfigurationElement.hpp`
+dev_log/P10/FILES.md:165: trailing whitespace.
++- `editor/ui/include/lux/engine/editor/ui/SpatialInteraction.hpp`
+dev_log/P10/FILES.md:166: trailing whitespace.
++- `editor/ui/src/SpatialInteraction3D.cpp`
+dev_log/P10/FILES.md:167: trailing whitespace.
++- `editor/ui/src/TaskPane.cpp`
+dev_log/P10/FILES.md:168: trailing whitespace.
++- `editor/ui/test/inspector_codegen.py`
+dev_log/P10/FILES.md:169: trailing whitespace.
++- `editor/ui/test/scene_configuration.cpp`
+dev_log/P10/FILES.md:170: trailing whitespace.
++- `editor/ui/test/unified_ui.cpp`
+dev_log/P10/FILES.md:171: trailing whitespace.
++- `editor/views/api/include/lux/engine/editor/views/IViewHost.hpp`
+dev_log/P10/FILES.md:172: trailing whitespace.
++- `engine/project/plugins/CMakeLists.txt`
+dev_log/P10/FILES.md:173: trailing whitespace.
++- `modules/function/render/features/CMakeLists.txt`
+dev_log/P10/FILES.md:174: trailing whitespace.
++- `modules/function/render/runtime/CMakeLists.txt`
+dev_log/P10/FILES.md:175: trailing whitespace.
++- `modules/function/render/vulkan/CMakeLists.txt`
+dev_log/P10/FILES.md:176: trailing whitespace.
++- `modules/function/ui/rendering/CMakeLists.txt`
+dev_log/P10/FILES.md:177: trailing whitespace.
++
+dev_log/P10/FILES.md:178: trailing whitespace.
++## 删除（28）
+dev_log/P10/FILES.md:179: trailing whitespace.
++
+dev_log/P10/FILES.md:180: trailing whitespace.
++- `editor/storage/include/lux/engine/editor/storage/AssetCatalog.hpp`
+dev_log/P10/FILES.md:181: trailing whitespace.
++- `editor/ui/cmake/engine_editor_imgui_inspector_codegen.cmake`
+dev_log/P10/FILES.md:182: trailing whitespace.
++- `editor/ui/codegen/inspector_codegen.py`
+dev_log/P10/FILES.md:183: trailing whitespace.
++- `editor/ui/codegen/ir.template`
+dev_log/P10/FILES.md:184: trailing whitespace.
++- `editor/ui/codegen/support/FirstPartyInspectorControls.hpp`
+dev_log/P10/FILES.md:185: trailing whitespace.
++- `editor/ui/codegen/support/InspectorAggregateElements.hpp`
+dev_log/P10/FILES.md:186: trailing whitespace.
++- `editor/ui/codegen/support/InspectorAlternativeElement.hpp`
+dev_log/P10/FILES.md:187: trailing whitespace.
++- `editor/ui/codegen/support/InspectorAssociativeElement.hpp`
+dev_log/P10/FILES.md:188: trailing whitespace.
++- `editor/ui/codegen/support/InspectorControl.hpp`
+dev_log/P10/FILES.md:189: trailing whitespace.
++- `editor/ui/codegen/support/InspectorElementFields.hpp`
+dev_log/P10/FILES.md:190: trailing whitespace.
++- `editor/ui/include/lux/engine/editor/ui/Presentation.hpp`
+dev_log/P10/FILES.md:191: trailing whitespace.
++- `editor/ui/include/lux/engine/editor/ui/SceneElement.hpp`
+dev_log/P10/FILES.md:192: trailing whitespace.
++- `editor/ui/include/lux/engine/editor/ui/WindowInput.hpp`
+dev_log/P10/FILES.md:193: trailing whitespace.
++- `editor/ui/include/lux/engine/editor/ui/WindowOutput.hpp`
+dev_log/P10/FILES.md:194: trailing whitespace.
++- `editor/ui/include/lux/engine/editor/ui/asset/AssetDragDrop.hpp`
+dev_log/P10/FILES.md:195: trailing whitespace.
++- `editor/ui/include/lux/engine/editor/ui/asset/AssetPickerElement.hpp`
+dev_log/P10/FILES.md:196: trailing whitespace.
++- `editor/ui/pinclude/lux/engine/editor/ui/detail/UiFrame.hpp`
+dev_log/P10/FILES.md:197: trailing whitespace.
++- `editor/ui/pinclude/lux/engine/editor/ui/detail/UiRenderSyncStage.hpp`
+dev_log/P10/FILES.md:198: trailing whitespace.
++- `editor/ui/sinclude/lux/engine/editor/ui/NodeCanvasIds.hpp`
+dev_log/P10/FILES.md:199: trailing whitespace.
++- `editor/ui/src/CodegenInput.cpp`
+dev_log/P10/FILES.md:200: trailing whitespace.
++- `editor/ui/src/ComponentEditors.cpp`
+dev_log/P10/FILES.md:201: trailing whitespace.
++- `editor/ui/src/Presentation.cpp`
+dev_log/P10/FILES.md:202: trailing whitespace.
++- `editor/ui/src/SceneConfigurationElement.cpp`
+dev_log/P10/FILES.md:203: trailing whitespace.
++- `editor/ui/src/SceneElement.cpp`
+dev_log/P10/FILES.md:204: trailing whitespace.
++- `editor/ui/src/UiRenderSyncStage.cpp`
+dev_log/P10/FILES.md:205: trailing whitespace.
++- `editor/ui/src/WindowInput.cpp`
+dev_log/P10/FILES.md:206: trailing whitespace.
++- `editor/ui/src/WindowOutput.cpp`
+dev_log/P10/FILES.md:207: trailing whitespace.
++- `editor/ui/src/asset/AssetPickerElement.cpp`
+dev_log/P10/scripts/measure_projection.py:1: trailing whitespace.
++"""Measure the real P07 projection executable; no production instrumentation or test replacement."""
+dev_log/P10/scripts/measure_projection.py:2: trailing whitespace.
++import ctypes,ctypes.wintypes as wt,json,subprocess,time,argparse
+dev_log/P10/scripts/measure_projection.py:3: trailing whitespace.
++from pathlib import Path
+dev_log/P10/scripts/measure_projection.py:4: trailing whitespace.
++parser=argparse.ArgumentParser();parser.add_argument('--program',type=Path,required=True);parser.add_argument('--output',type=Path,required=True)
+dev_log/P10/scripts/measure_projection.py:5: trailing whitespace.
++args=parser.parse_args()
+dev_log/P10/scripts/measure_projection.py:6: trailing whitespace.
++class Memory(ctypes.Structure):
+dev_log/P10/scripts/measure_projection.py:7: trailing whitespace.
++ _fields_=[('cb',wt.DWORD),('PageFaultCount',wt.DWORD),('PeakWorkingSetSize',ctypes.c_size_t),('WorkingSetSize',ctypes.c_size_t),('QuotaPeakPagedPoolUsage',ctypes.c_size_t),('QuotaPagedPoolUsage',ctypes.c_size_t),('QuotaPeakNonPagedPoolUsage',ctypes.c_size_t),('QuotaNonPagedPoolUsage',ctypes.c_size_t),('PagefileUsage',ctypes.c_size_t),('PeakPagefileUsage',ctypes.c_size_t),('PrivateUsage',ctypes.c_size_t)]
+dev_log/P10/scripts/measure_projection.py:8: trailing whitespace.
++get_memory=ctypes.WinDLL('psapi').GetProcessMemoryInfo
+dev_log/P10/scripts/measure_projection.py:9: trailing whitespace.
++get_memory.argtypes=[wt.HANDLE,ctypes.POINTER(Memory),wt.DWORD];get_memory.restype=wt.BOOL
+dev_log/P10/scripts/measure_projection.py:10: trailing whitespace.
++runs=[]
+dev_log/P10/scripts/measure_projection.py:11: trailing whitespace.
++for iteration in range(5):
+dev_log/P10/scripts/measure_projection.py:12: trailing whitespace.
++ stdout_path=args.output.parent/f'projection-measure-{iteration}.log'
+dev_log/P10/scripts/measure_projection.py:13: trailing whitespace.
++ peak_working=peak_private=samples=0
+dev_log/P10/scripts/measure_projection.py:14: trailing whitespace.
++ start=time.perf_counter_ns()
+dev_log/P10/scripts/measure_projection.py:15: trailing whitespace.
++ with stdout_path.open('wb') as log:
+dev_log/P10/scripts/measure_projection.py:16: trailing whitespace.
++  process=subprocess.Popen([str(args.program)],cwd=args.program.parent,stdout=log,stderr=subprocess.STDOUT)
+dev_log/P10/scripts/measure_projection.py:17: trailing whitespace.
++  while process.poll() is None:
+dev_log/P10/scripts/measure_projection.py:18: trailing whitespace.
++   counters=Memory();counters.cb=ctypes.sizeof(counters)
+dev_log/P10/scripts/measure_projection.py:19: trailing whitespace.
++   if get_memory(wt.HANDLE(int(process._handle)),ctypes.byref(counters),counters.cb):
+dev_log/P10/scripts/measure_projection.py:20: trailing whitespace.
++    samples+=1;peak_working=max(peak_working,counters.PeakWorkingSetSize);peak_private=max(peak_private,counters.PrivateUsage)
+dev_log/P10/scripts/measure_projection.py:21: trailing whitespace.
++   time.sleep(0.001)
+dev_log/P10/scripts/measure_projection.py:22: trailing whitespace.
++  code=process.wait()
+dev_log/P10/scripts/measure_projection.py:23: trailing whitespace.
++ elapsed=time.perf_counter_ns()-start
+dev_log/P10/scripts/measure_projection.py:24: trailing whitespace.
++ assert code==0 and 'X07-07 actual CPU scene' in stdout_path.read_text()
+dev_log/P10/scripts/measure_projection.py:25: trailing whitespace.
++ assert samples and peak_working and peak_private
+dev_log/P10/scripts/measure_projection.py:26: trailing whitespace.
++ row={'process_launch':iteration,'elapsed_ns':elapsed,'peak_working_set_bytes':peak_working,'sampled_peak_private_bytes':peak_private,'samples':samples,'exit_code':code,'archive_log':'dev_log/P08-R1/logs/'+stdout_path.name}
+dev_log/P10/scripts/measure_projection.py:27: trailing whitespace.
++ runs.append(row);print(json.dumps(row),flush=True)
+dev_log/P10/scripts/measure_projection.py:28: trailing whitespace.
++result={'scope':'Five fresh process launches of the actual CPU projection test. Includes DLL load and process startup; not in-process warmed latency or allocation count. Windows peak working set; sampled private bytes may miss short transients.',
+dev_log/P10/scripts/measure_projection.py:29: trailing whitespace.
++ 'capacity_contract':{'hub_limit':2,'iterations_per_process':32,'same_key_two_users_share_one_projection':True,'rejected_third_key':True,'drained_to_zero_each_iteration':True,'evidence':'Unmodified C++ assertions in editor/tools/scene/projection/test/projection.cpp; capacity is an asserted contract, not a measured allocation count.'},'runs':runs}
+dev_log/P10/scripts/measure_projection.py:30: trailing whitespace.
++args.output.write_text(json.dumps(result,indent=2)+'\n')
+dev_log/P10/scripts/qualify_gpu.py:1: trailing whitespace.
++"""Explicit installed scene-ui modes, after the main sequential qualification has finished."""
+dev_log/P10/scripts/qualify_gpu.py:2: trailing whitespace.
++from pathlib import Path
+dev_log/P10/scripts/qualify_gpu.py:3: trailing whitespace.
++import json,os,subprocess,hashlib,shutil
+dev_log/P10/scripts/qualify_gpu.py:4: trailing whitespace.
++repo=Path(__file__).resolve().parents[2]
+dev_log/P10/scripts/qualify_gpu.py:5: trailing whitespace.
++cluster=repo.parent;base=cluster/'build/RelWithDebInfo'
+dev_log/P10/scripts/qualify_gpu.py:6: trailing whitespace.
++sha=subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip()
+dev_log/P10/scripts/qualify_gpu.py:7: trailing whitespace.
++out=repo/'.internal/editor-redesign/P10-run'/sha
+dev_log/P10/scripts/qualify_gpu.py:8: trailing whitespace.
++records=json.loads((out/'commands.json').read_text())
+dev_log/P10/scripts/qualify_gpu.py:9: trailing whitespace.
++assert any(Path(x['log']).stem=='clean-final' and x['exit_code']==0 for x in records)
+dev_log/P10/scripts/qualify_gpu.py:10: trailing whitespace.
++source=cluster/'build/p05-r1-clean-f2b5a00c60e9'
+dev_log/P10/scripts/qualify_gpu.py:11: trailing whitespace.
++paths=[str(cluster/'install/RelWithDebInfo/bin'),'D:/Development/vcpkg/installed/x64-windows/bin']
+dev_log/P10/scripts/qualify_gpu.py:12: trailing whitespace.
++os.environ['PATH']=';'.join(paths)+';'+os.environ['PATH']
+dev_log/P10/scripts/qualify_gpu.py:13: trailing whitespace.
++def run(name,args,cwd=source):
+dev_log/P10/scripts/qualify_gpu.py:14: trailing whitespace.
++ args=list(map(str,args));path=out/(name+'.log')
+dev_log/P10/scripts/qualify_gpu.py:15: trailing whitespace.
++ existing=next((x for x in records if x['log']==str(path)),None)
+dev_log/P10/scripts/qualify_gpu.py:16: trailing whitespace.
++ if existing and existing['exit_code']==0:
+dev_log/P10/scripts/qualify_gpu.py:17: trailing whitespace.
++  assert existing['argv']==args and hashlib.sha256(path.read_bytes()).hexdigest()==existing['sha256']
+dev_log/P10/scripts/qualify_gpu.py:18: trailing whitespace.
++  return
+dev_log/P10/scripts/qualify_gpu.py:19: trailing whitespace.
++ if existing:
+dev_log/P10/scripts/qualify_gpu.py:20: trailing whitespace.
++  shutil.copyfile(path,out/(name+'-failed.log'));records.remove(existing)
+dev_log/P10/scripts/qualify_gpu.py:21: trailing whitespace.
++ with path.open('wb') as log:
+dev_log/P10/scripts/qualify_gpu.py:22: trailing whitespace.
++  code=subprocess.run(args,cwd=cwd,stdout=log,stderr=subprocess.STDOUT).returncode
+dev_log/P10/scripts/qualify_gpu.py:23: trailing whitespace.
++ records.append(dict(argv=args,cwd=str(cwd),exit_code=code,log=str(path),sha256=hashlib.sha256(path.read_bytes()).hexdigest(),implementation_sha=sha,archive_log='dev_log/P10/logs/'+path.name,runtime_search_paths=paths))
+dev_log/P10/scripts/qualify_gpu.py:24: trailing whitespace.
++ (out/'commands.json').write_text(json.dumps(records,indent=2)+'\n')
+dev_log/P10/scripts/qualify_gpu.py:25: trailing whitespace.
++ print(name,code,flush=True)
+dev_log/P10/scripts/qualify_gpu.py:26: trailing whitespace.
++ if code:
+dev_log/P10/scripts/qualify_gpu.py:27: trailing whitespace.
++  print(path.read_text(errors='replace')[-8000:]);raise SystemExit(code)
+dev_log/P10/scripts/qualify_gpu.py:28: trailing whitespace.
++run('gpu-device',[shutil.which('vulkaninfo'), '--summary'])
+dev_log/P10/scripts/qualify_gpu.py:29: trailing whitespace.
++for mode in ['GPU_UI','EDITOR_SCENE_PANE']:
+dev_log/P10/scripts/qualify_gpu.py:30: trailing whitespace.
++ name='explicit-'+mode.lower();build=base/('p10-'+mode.lower())
+dev_log/P10/scripts/qualify_gpu.py:31: trailing whitespace.
++ run(name+'-configure',['cmake','-S',source/'cmake/installed-consumers/scene-ui','-B',build,'-G','Ninja',
+dev_log/P10/scripts/qualify_gpu.py:32: trailing whitespace.
++  '-DCMAKE_BUILD_TYPE=RelWithDebInfo',f'-DCONSUMER_MODE={mode}',f'-DCMAKE_PREFIX_PATH={cluster}/install/RelWithDebInfo',
+dev_log/P10/scripts/qualify_gpu.py:33: trailing whitespace.
++  '-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake','-DVCPKG_TARGET_TRIPLET=x64-windows'])
+dev_log/P10/scripts/qualify_gpu.py:34: trailing whitespace.
++ for action in ['build','no-work']:run(name+'-'+action,['cmake','--build',build,'--target','all','-j','4','--','-k','0'])
+dev_log/P10/scripts/qualify_gpu.py:35: trailing whitespace.
++ run(name+'-ctest',['ctest','--test-dir',build,'-V','--timeout','120','-j','1'])
+dev_log/P10/scripts/test_portability.py:34: trailing whitespace.
++
+dev_log/P10/scripts/test_portability.py:34: new blank line at EOF.
+dev_log/P10/scripts/validate.py:1: trailing whitespace.
++"""Run exact-commit P10 qualification sequentially. All evidence stays in this work area until frozen."""
+dev_log/P10/scripts/validate.py:2: trailing whitespace.
++from pathlib import Path
+dev_log/P10/scripts/validate.py:3: trailing whitespace.
++import subprocess,json,hashlib,sys,os,shutil
+dev_log/P10/scripts/validate.py:4: trailing whitespace.
++workspace=Path(__file__).resolve().parents[2]
+dev_log/P10/scripts/validate.py:5: trailing whitespace.
++cluster=workspace.parent
+dev_log/P10/scripts/validate.py:6: trailing whitespace.
++work=workspace/'.internal/editor-redesign'
+dev_log/P10/scripts/validate.py:7: trailing whitespace.
++base=cluster/'build/RelWithDebInfo'
+dev_log/P10/scripts/validate.py:8: trailing whitespace.
++sha=subprocess.check_output(['git','rev-parse','HEAD'],cwd=workspace,text=True).strip()
+dev_log/P10/scripts/validate.py:9: trailing whitespace.
++repo=cluster/'build/p05-r1-clean-f2b5a00c60e9'
+dev_log/P10/scripts/validate.py:10: trailing whitespace.
++build=base/'p05-r1-f2b5a00c60e9'
+dev_log/P10/scripts/validate.py:11: trailing whitespace.
++out=work/'P10-run'/sha;out.mkdir(parents=True,exist_ok=True)
+dev_log/P10/scripts/validate.py:12: trailing whitespace.
++runtime_dirs=[]
+dev_log/P10/scripts/validate.py:13: trailing whitespace.
++record_file=out/'commands.json'
+dev_log/P10/scripts/validate.py:14: trailing whitespace.
++records=json.loads(record_file.read_text()) if record_file.exists() else []
+dev_log/P10/scripts/validate.py:15: trailing whitespace.
++def run(name,args,cwd=repo,expected=0):
+dev_log/P10/scripts/validate.py:16: trailing whitespace.
++ args=list(map(str,args));path=out/(name+'.log')
+dev_log/P10/scripts/validate.py:17: trailing whitespace.
++ existing=next((x for x in records if Path(x['log'])==path),None)
+dev_log/P10/scripts/validate.py:18: trailing whitespace.
++ if existing and existing['exit_code']==expected and existing['argv']==args and path.is_file():
+dev_log/P10/scripts/validate.py:19: trailing whitespace.
++  assert hashlib.sha256(path.read_bytes()).hexdigest()==existing['sha256']
+dev_log/P10/scripts/validate.py:20: trailing whitespace.
++  print(name,'verified prior same-commit run',flush=True);return
+dev_log/P10/scripts/validate.py:21: trailing whitespace.
++ if existing:
+dev_log/P10/scripts/validate.py:22: trailing whitespace.
++  archive=out/(name+'-failed-'+str(len(list(out.glob(name+'-failed-*'))))+'.log')
+dev_log/P10/scripts/validate.py:23: trailing whitespace.
++  if path.exists():archive.write_bytes(path.read_bytes())
+dev_log/P10/scripts/validate.py:24: trailing whitespace.
++  records.remove(existing)
+dev_log/P10/scripts/validate.py:25: trailing whitespace.
++ with path.open('wb') as log:
+dev_log/P10/scripts/validate.py:26: trailing whitespace.
++  p=subprocess.run(args,cwd=cwd,stdout=log,stderr=subprocess.STDOUT)
+dev_log/P10/scripts/validate.py:27: trailing whitespace.
++ records.append({'argv':args,'cwd':str(cwd),'exit_code':p.returncode,'log':str(path),
+dev_log/P10/scripts/validate.py:28: trailing whitespace.
++  'sha256':hashlib.sha256(path.read_bytes()).hexdigest(),'implementation_sha':sha,
+dev_log/P10/scripts/validate.py:29: trailing whitespace.
++  'archive_log':'dev_log/P10/logs/'+path.name,'runtime_search_paths':runtime_dirs.copy()})
+dev_log/P10/scripts/validate.py:30: trailing whitespace.
++ record_file.write_text(json.dumps(records,indent=2)+'\n')
+dev_log/P10/scripts/validate.py:31: trailing whitespace.
++ print(name,p.returncode,flush=True)
+dev_log/P10/scripts/validate.py:32: trailing whitespace.
++ if p.returncode!=expected:
+dev_log/P10/scripts/validate.py:33: trailing whitespace.
++  print(path.read_text(errors='replace')[-12000:]);raise SystemExit(p.returncode or 1)
+dev_log/P10/scripts/validate.py:34: trailing whitespace.
++if not repo.exists():run('clone',['git','clone','--no-hardlinks','--no-checkout',workspace,repo],workspace)
+dev_log/P10/scripts/validate.py:35: trailing whitespace.
++run('clone-before-status',['git','status','--porcelain'],repo)
+dev_log/P10/scripts/validate.py:36: trailing whitespace.
++assert not (out/'clone-before-status.log').read_bytes()
+dev_log/P10/scripts/validate.py:37: trailing whitespace.
++run('clone-origin',['git','remote','get-url','origin'],repo)
+dev_log/P10/scripts/validate.py:38: trailing whitespace.
++run('clone-fetch',['git','fetch','origin',sha],repo)
+dev_log/P10/scripts/validate.py:39: trailing whitespace.
++run('clone-checkout',['git','checkout','--detach',sha],repo)
+dev_log/P10/scripts/validate.py:40: trailing whitespace.
++run('tracked-snapshot',['cmake',f'-DLUX_SOURCE_DIR={repo}','-P',repo/'cmake/ValidateTrackedSnapshot.cmake'])
+dev_log/P10/scripts/validate.py:41: trailing whitespace.
++cache={}
+dev_log/P10/scripts/validate.py:42: trailing whitespace.
++for line in (base/'lux-engine/CMakeCache.txt').read_text().splitlines():
+dev_log/P10/scripts/validate.py:43: trailing whitespace.
++ if '=' in line and not line.startswith(('//','#')):
+dev_log/P10/scripts/validate.py:44: trailing whitespace.
++  key,value=line.split('=',1);name,kind=key.split(':',1);cache[name]=(kind,value)
+dev_log/P10/scripts/validate.py:45: trailing whitespace.
++options=[]
+dev_log/P10/scripts/validate.py:46: trailing whitespace.
++for name,(kind,value) in cache.items():
+dev_log/P10/scripts/validate.py:47: trailing whitespace.
++ if name in ['CMAKE_BUILD_TYPE','CMAKE_PREFIX_PATH','CMAKE_TOOLCHAIN_FILE','VCPKG_TARGET_TRIPLET','Python3_EXECUTABLE','BUILD_TESTING'] or name.startswith('LUX_') and kind not in ('INTERNAL','STATIC'):
+dev_log/P10/scripts/validate.py:48: trailing whitespace.
++  options.append('-D'+name+'='+value)
+dev_log/P10/scripts/validate.py:49: trailing whitespace.
++ elif name.endswith('_DIR') and kind not in ('INTERNAL','STATIC') and value and Path(value).is_dir():
+dev_log/P10/scripts/validate.py:50: trailing whitespace.
++  directory=Path(value).resolve()
+dev_log/P10/scripts/validate.py:51: trailing whitespace.
++  if not directory.is_relative_to(workspace) and not directory.is_relative_to(base/'lux-engine'):
+dev_log/P10/scripts/validate.py:52: trailing whitespace.
++   options.append('-D'+name+'='+value)
+dev_log/P10/scripts/validate.py:53: trailing whitespace.
++run('configure',['cmake','-S',repo,'-B',build,'-G','Ninja',*options,'-DLUX_EDITOR_MIGRATION_STAGE=P10'])
+dev_log/P10/scripts/validate.py:54: trailing whitespace.
++for name in ['build','no-work']:run(name,['cmake','--build',build,'--target','all','-j','4','--','-k','0'])
+dev_log/P10/scripts/validate.py:55: trailing whitespace.
++run('ctest',['ctest','--test-dir',build,'--output-on-failure','-j','1'])
+dev_log/P10/scripts/validate.py:56: trailing whitespace.
++for name in ['content','atomic','identity','changes','plugin','mixed-1','mixed-2','mixed-3','mixed-4','read-5','read-6','read-7','read-8']:
+dev_log/P10/scripts/validate.py:57: trailing whitespace.
++ run('model-'+name,[build/'bin/editor_scene_model_test.exe',name],build/'bin')
+dev_log/P10/scripts/validate.py:58: trailing whitespace.
++for name in ['close-throw','close-contract']:
+dev_log/P10/scripts/validate.py:59: trailing whitespace.
++ run(name,[build/'bin/editor_sessions_test.exe',name],build/'bin')
+dev_log/P10/scripts/validate.py:60: trailing whitespace.
++run('sessions-detail',[build/'bin/editor_sessions_test.exe'],build/'bin')
+dev_log/P10/scripts/validate.py:61: trailing whitespace.
++for scenario in ['content','failure','layout','lifetime','mixed-replace','mixed-recreate','reading','reload-unbound','reload-unbound-lease','reload-closing-lease','reload-reading-lease','reload-outcomes']:
+dev_log/P10/scripts/validate.py:62: trailing whitespace.
++ run('material-'+scenario,[build/'bin/editor_material_model_test.exe',scenario],build/'bin')
+dev_log/P10/scripts/validate.py:63: trailing whitespace.
++for scenario in ['content','failure','mixed-signature','mixed-recreate','lifetime','reading',
+dev_log/P10/scripts/validate.py:64: trailing whitespace.
++ 'reload-unbound','reload-unbound-external','reload-reading','reload-closing','reload-identity','reload-success',
+dev_log/P10/scripts/validate.py:65: trailing whitespace.
++ 'input-stale','input-reading','input-closing','budgets','ids-undo-branch','ids-candidate-seed','ids-signature','ids-restore','ids-failure','ids-exhaustion']:
+dev_log/P10/scripts/validate.py:66: trailing whitespace.
++ run('flow-'+scenario,[build/'bin/editor_flowforge_model_test.exe',scenario],build/'bin')
+dev_log/P10/scripts/validate.py:67: trailing whitespace.
++run('three-sessions',[build/'bin/editor_three_sessions_test.exe'],build/'bin')
+dev_log/P10/scripts/validate.py:68: trailing whitespace.
++for scenario in ['models','order','close','close-key','capacity','execution','decoded','receipts','identities','conflict','measure','save-as','unknown','r1-revoke','r1-recursive','r1-chain','r1-chain-control','r1-callbacks','r1-reading','r1-conflicts','r2-accept-success','r2-accept-error','r2-accept-cancel','r2-accept-drain','r2-admission']:
+dev_log/P10/scripts/validate.py:69: trailing whitespace.
++ run('persistence-'+scenario,[build/'bin/editor_persistence_models_test.exe',out/'files',scenario],build/'bin')
+dev_log/P10/scripts/validate.py:70: trailing whitespace.
++run('persistence-files',[build/'bin/editor_publication_test.exe',out/'physical-files'],build/'bin')
+dev_log/P10/scripts/validate.py:71: trailing whitespace.
++run('persistence-coordinator',[build/'bin/editor_write_coordinator_test.exe'],build/'bin')
+dev_log/P10/scripts/validate.py:72: trailing whitespace.
++run('install',['cmake','--install',build,'--prefix',cluster/'install/RelWithDebInfo'])
+dev_log/P10/scripts/validate.py:73: trailing whitespace.
++removed_headers=['ui/WindowInput.hpp','ui/WindowOutput.hpp','ui/Presentation.hpp','ui/SceneElement.hpp',
+dev_log/P10/scripts/validate.py:74: trailing whitespace.
++ 'ui/asset/AssetPickerElement.hpp','ui/asset/AssetDragDrop.hpp','storage/AssetCatalog.hpp']
+dev_log/P10/scripts/validate.py:75: trailing whitespace.
++for name in removed_headers:
+dev_log/P10/scripts/validate.py:76: trailing whitespace.
++ retired=cluster/'install/RelWithDebInfo/include/lux/engine/editor'/name
+dev_log/P10/scripts/validate.py:77: trailing whitespace.
++ if retired.exists():retired.unlink()
+dev_log/P10/scripts/validate.py:78: trailing whitespace.
++(out/'removed-installed-headers.json').write_text(json.dumps(removed_headers,indent=2)+'\n')
+dev_log/P10/scripts/validate.py:79: trailing whitespace.
++
+dev_log/P10/scripts/validate.py:80: trailing whitespace.
++groups=['editor-sessions-p01-consumer','ui-resources-editor-d2','ui-resources-external-feature','ui-scene-pane-consumer','ui-views-gpu-consumer']
+dev_log/P10/scripts/validate.py:81: trailing whitespace.
++for group in groups:
+dev_log/P10/scripts/validate.py:82: trailing whitespace.
++ cache=(base/group/'CMakeCache.txt').read_text();line=next(x for x in cache.splitlines() if x.startswith('CMAKE_HOME_DIRECTORY:'))
+dev_log/P10/scripts/validate.py:83: trailing whitespace.
++ source=Path(line.split('=',1)[1])
+dev_log/P10/scripts/validate.py:84: trailing whitespace.
++ if source.is_relative_to(workspace): source=repo/source.relative_to(workspace)
+dev_log/P10/scripts/validate.py:85: trailing whitespace.
++ consumer_options=[]
+dev_log/P10/scripts/validate.py:86: trailing whitespace.
++ for entry in cache.splitlines():
+dev_log/P10/scripts/validate.py:87: trailing whitespace.
++  if '=' not in entry or entry.startswith(('//','#')):continue
+dev_log/P10/scripts/validate.py:88: trailing whitespace.
++  lhs,value=entry.split('=',1);key,kind=lhs.split(':',1)
+dev_log/P10/scripts/validate.py:89: trailing whitespace.
++  if key in ['CMAKE_BUILD_TYPE','CMAKE_PREFIX_PATH','CMAKE_TOOLCHAIN_FILE','VCPKG_TARGET_TRIPLET'] or key.startswith('LUX_') and kind not in ['INTERNAL','STATIC']:
+dev_log/P10/scripts/validate.py:90: trailing whitespace.
++   consumer_options.append('-D'+key+'='+value)
+dev_log/P10/scripts/validate.py:91: trailing whitespace.
++ run(group+'-configure',['cmake','--fresh','-S',source,'-B',base/group,'-G','Ninja',*consumer_options])
+dev_log/P10/scripts/validate.py:92: trailing whitespace.
++ for name in ['build','no-work']:run(group+'-'+name,['cmake','--build',base/group,'--target','all','-j','4','--','-k','0'])
+dev_log/P10/scripts/validate.py:93: trailing whitespace.
++group='scene-model-p02-consumer'
+dev_log/P10/scripts/validate.py:94: trailing whitespace.
++run(group+'-configure',['cmake','--fresh','-S',repo/'cmake/installed-consumers/scene-model','-B',base/group,'-G','Ninja',
+dev_log/P10/scripts/validate.py:95: trailing whitespace.
++ '-DCMAKE_BUILD_TYPE=RelWithDebInfo',f'-DCMAKE_PREFIX_PATH={cluster}/install/RelWithDebInfo',
+dev_log/P10/scripts/validate.py:96: trailing whitespace.
++ '-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake','-DVCPKG_TARGET_TRIPLET=x64-windows'])
+dev_log/P10/scripts/validate.py:97: trailing whitespace.
++for name in ['build','no-work']:run(group+'-'+name,['cmake','--build',base/group,'--target','all','-j','4','--','-k','0'])
+dev_log/P10/scripts/validate.py:98: trailing whitespace.
++group='material-model-p03-consumer'
+dev_log/P10/scripts/validate.py:99: trailing whitespace.
++run(group+'-configure',['cmake','--fresh','-S',repo/'cmake/installed-consumers/material-model','-B',base/group,'-G','Ninja',
+dev_log/P10/scripts/validate.py:100: trailing whitespace.
++ '-DCMAKE_BUILD_TYPE=RelWithDebInfo',f'-DCMAKE_PREFIX_PATH={cluster}/install/RelWithDebInfo',
+dev_log/P10/scripts/validate.py:101: trailing whitespace.
++ '-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake','-DVCPKG_TARGET_TRIPLET=x64-windows'])
+dev_log/P10/scripts/validate.py:102: trailing whitespace.
++for name in ['build','no-work']:run(group+'-'+name,['cmake','--build',base/group,'--target','all','-j','4','--','-k','0'])
+dev_log/P10/scripts/validate.py:103: trailing whitespace.
++group='flowforge-model-p04-consumer'
+dev_log/P10/scripts/validate.py:104: trailing whitespace.
++run(group+'-configure',['cmake','--fresh','-S',repo/'cmake/installed-consumers/flowforge-model','-B',base/group,'-G','Ninja',
+dev_log/P10/scripts/validate.py:105: trailing whitespace.
++ '-DCMAKE_BUILD_TYPE=RelWithDebInfo',f'-DCMAKE_PREFIX_PATH={cluster}/install/RelWithDebInfo',
+dev_log/P10/scripts/validate.py:106: trailing whitespace.
++ '-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake','-DVCPKG_TARGET_TRIPLET=x64-windows'])
+dev_log/P10/scripts/validate.py:107: trailing whitespace.
++for name in ['build','no-work']:run(group+'-'+name,['cmake','--build',base/group,'--target','all','-j','4','--','-k','0'])
+dev_log/P10/scripts/validate.py:108: trailing whitespace.
++group='persistence-p05-consumer'
+dev_log/P10/scripts/validate.py:109: trailing whitespace.
++consumer_source=base/'persistence-p05-source';consumer_source.mkdir(parents=True,exist_ok=True)
+dev_log/P10/scripts/validate.py:110: trailing whitespace.
++shutil.copyfile(repo/'cmake/installed-consumers/persistence/CMakeLists.txt',consumer_source/'CMakeLists.txt')
+dev_log/P10/scripts/validate.py:111: trailing whitespace.
++shutil.copyfile(repo/'editor/tests/persistence/models.cpp',consumer_source/'main.cpp')
+dev_log/P10/scripts/validate.py:112: trailing whitespace.
++run(group+'-configure',['cmake','-S',consumer_source,'-B',base/group,'-G','Ninja',
+dev_log/P10/scripts/validate.py:113: trailing whitespace.
++ '-DCMAKE_BUILD_TYPE=RelWithDebInfo',f'-DCMAKE_PREFIX_PATH={cluster}/install/RelWithDebInfo',
+dev_log/P10/scripts/validate.py:114: trailing whitespace.
++ '-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake','-DVCPKG_TARGET_TRIPLET=x64-windows'])
+dev_log/P10/scripts/validate.py:115: trailing whitespace.
++for name in ['build','no-work']:run(group+'-'+name,['cmake','--build',base/group,'--target','all','-j','4','--','-k','0'])
+dev_log/P10/scripts/validate.py:116: trailing whitespace.
++group='scene-execution-p06-consumer'
+dev_log/P10/scripts/validate.py:117: trailing whitespace.
++consumer_source=base/'scene-execution-p06-source';consumer_source.mkdir(parents=True,exist_ok=True)
+dev_log/P10/scripts/validate.py:118: trailing whitespace.
++shutil.copyfile(repo/'cmake/installed-consumers/scene-execution/CMakeLists.txt',consumer_source/'CMakeLists.txt')
+dev_log/P10/scripts/validate.py:119: trailing whitespace.
++shutil.copyfile(repo/'editor/tools/scene/execution/test/runs.cpp',consumer_source/'main.cpp')
+dev_log/P10/scripts/validate.py:120: trailing whitespace.
++run(group+'-configure',['cmake','-S',consumer_source,'-B',base/group,'-G','Ninja',
+dev_log/P10/scripts/validate.py:121: trailing whitespace.
++ '-DCMAKE_BUILD_TYPE=RelWithDebInfo',f'-DCMAKE_PREFIX_PATH={cluster}/install/RelWithDebInfo',
+dev_log/P10/scripts/validate.py:122: trailing whitespace.
++ '-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake','-DVCPKG_TARGET_TRIPLET=x64-windows'])
+dev_log/P10/scripts/validate.py:123: trailing whitespace.
++for name in ['build','no-work']:run(group+'-'+name,['cmake','--build',base/group,'--target','all','-j','4','--','-k','0'])
+dev_log/P10/scripts/validate.py:124: trailing whitespace.
++group='projection-compilation-p07-consumer'
+dev_log/P10/scripts/validate.py:125: trailing whitespace.
++consumer_source=base/'projection-compilation-p07-source';consumer_source.mkdir(parents=True,exist_ok=True)
+dev_log/P10/scripts/validate.py:126: trailing whitespace.
++for source,destination in [('cmake/installed-consumers/projection-compilation/CMakeLists.txt','CMakeLists.txt'),
+dev_log/P10/scripts/validate.py:127: trailing whitespace.
++ ('editor/tools/scene/projection/test/projection.cpp','projection.cpp'),
+dev_log/P10/scripts/validate.py:128: trailing whitespace.
++ ('editor/tools/material/preview/test/compilation.cpp','compilation.cpp'),
+dev_log/P10/scripts/validate.py:129: trailing whitespace.
++ ('editor/tools/material/preview/test/ownership.cpp','ownership.cpp'),
+dev_log/P10/scripts/validate.py:130: trailing whitespace.
++ ('cmake/installed-consumers/projection-compilation/ownership_negative.cpp','ownership_negative.cpp'),
+dev_log/P10/scripts/validate.py:131: trailing whitespace.
++ ('cmake/installed-consumers/projection-compilation/reject_copy.cmake','reject_copy.cmake')]:
+dev_log/P10/scripts/validate.py:132: trailing whitespace.
++ shutil.copyfile(repo/source,consumer_source/destination)
+dev_log/P10/scripts/validate.py:133: trailing whitespace.
++run(group+'-configure',['cmake','--fresh','-S',consumer_source,'-B',base/group,'-G','Ninja',
+dev_log/P10/scripts/validate.py:134: trailing whitespace.
++ '-DCMAKE_BUILD_TYPE=RelWithDebInfo',f'-DCMAKE_PREFIX_PATH={cluster}/install/RelWithDebInfo',
+dev_log/P10/scripts/validate.py:135: trailing whitespace.
++ '-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake','-DVCPKG_TARGET_TRIPLET=x64-windows',
+dev_log/P10/scripts/validate.py:136: trailing whitespace.
++ *[x for x in options if x.startswith(('-DMLIR_DIR=','-DLLVM_DIR='))]])
+dev_log/P10/scripts/validate.py:137: trailing whitespace.
++for name in ['build','no-work']:run(group+'-'+name,['cmake','--build',base/group,'--target','all','-j','4','--','-k','0'])
+dev_log/P10/scripts/validate.py:138: trailing whitespace.
++group='interaction-views-p08-consumer'
+dev_log/P10/scripts/validate.py:139: trailing whitespace.
++consumer_source=base/'interaction-views-p08-source';consumer_source.mkdir(parents=True,exist_ok=True)
+dev_log/P10/scripts/validate.py:140: trailing whitespace.
++for source,destination in [('cmake/installed-consumers/interaction-views/CMakeLists.txt','CMakeLists.txt'),
+dev_log/P10/scripts/validate.py:141: trailing whitespace.
++ ('cmake/installed-consumers/interaction-views/interactions.cpp','interactions.cpp'),
+dev_log/P10/scripts/validate.py:142: trailing whitespace.
++ ('editor/views/api/test/lifecycle.cpp','lifecycle.cpp'),
+dev_log/P10/scripts/validate.py:143: trailing whitespace.
++ ('editor/tests/persistence/interaction_reclaim.cpp','interaction_reclaim.cpp')]:
+dev_log/P10/scripts/validate.py:144: trailing whitespace.
++ shutil.copyfile(repo/source,consumer_source/destination)
+dev_log/P10/scripts/validate.py:145: trailing whitespace.
++run(group+'-configure',['cmake','--fresh','-S',consumer_source,'-B',base/group,'-G','Ninja',
+dev_log/P10/scripts/validate.py:146: trailing whitespace.
++ '-DCMAKE_BUILD_TYPE=RelWithDebInfo',f'-DCMAKE_PREFIX_PATH={cluster}/install/RelWithDebInfo',
+dev_log/P10/scripts/validate.py:147: trailing whitespace.
++ '-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake','-DVCPKG_TARGET_TRIPLET=x64-windows'])
+dev_log/P10/scripts/validate.py:148: trailing whitespace.
++for name in ['build','no-work']:run(group+'-'+name,['cmake','--build',base/group,'--target','all','-j','4','--','-k','0'])
+dev_log/P10/scripts/validate.py:149: trailing whitespace.
++group='workspace-p09-consumer'
+dev_log/P10/scripts/validate.py:150: trailing whitespace.
++consumer_source=base/'workspace-p09-source';consumer_source.mkdir(parents=True,exist_ok=True)
+dev_log/P10/scripts/validate.py:151: trailing whitespace.
++for source,destination in [('cmake/installed-consumers/workspace/CMakeLists.txt','CMakeLists.txt'),
+dev_log/P10/scripts/validate.py:152: trailing whitespace.
++ ('editor/tests/workspace/workspace.cpp','workspace.cpp'),('editor/tests/workspace/effects.cpp','effects.cpp')]:
+dev_log/P10/scripts/validate.py:153: trailing whitespace.
++ shutil.copyfile(repo/source,consumer_source/destination)
+dev_log/P10/scripts/validate.py:154: trailing whitespace.
++run(group+'-configure',['cmake','--fresh','-S',consumer_source,'-B',base/group,'-G','Ninja',
+dev_log/P10/scripts/validate.py:155: trailing whitespace.
++ '-DCMAKE_BUILD_TYPE=RelWithDebInfo',f'-DCMAKE_PREFIX_PATH={cluster}/install/RelWithDebInfo',
+dev_log/P10/scripts/validate.py:156: trailing whitespace.
++ '-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake','-DVCPKG_TARGET_TRIPLET=x64-windows'])
+dev_log/P10/scripts/validate.py:157: trailing whitespace.
++for name in ['build','no-work']:run(group+'-'+name,['cmake','--build',base/group,'--target','all','-j','4','--','-k','0'])
+dev_log/P10/scripts/validate.py:158: trailing whitespace.
++# SDK DLLs must be discoverable without a source/build-tree dependency.
+dev_log/P10/scripts/validate.py:159: trailing whitespace.
++runtime_dirs=[str(cluster/'install/RelWithDebInfo/bin'),'D:/Development/vcpkg/installed/x64-windows/bin']
+dev_log/P10/scripts/validate.py:160: trailing whitespace.
++os.environ['PATH']=os.pathsep.join(runtime_dirs)+os.pathsep+os.environ['PATH']
+dev_log/P10/scripts/validate.py:161: trailing whitespace.
++for group in groups+['scene-model-p02-consumer','material-model-p03-consumer','flowforge-model-p04-consumer','persistence-p05-consumer','scene-execution-p06-consumer','projection-compilation-p07-consumer','interaction-views-p08-consumer','workspace-p09-consumer']:
+dev_log/P10/scripts/validate.py:162: trailing whitespace.
++ run(group+'-ctest',['ctest','--test-dir',base/group,'--timeout','120','--output-on-failure','-j','1'])
+dev_log/P10/scripts/validate.py:163: trailing whitespace.
++run('flow-installed-detail',[base/'flowforge-model-p04-consumer/flowforge_model_consumer.exe'],base/'flowforge-model-p04-consumer')
+dev_log/P10/scripts/validate.py:164: trailing whitespace.
++for probe in ['C01','C03','C04']:
+dev_log/P10/scripts/validate.py:165: trailing whitespace.
++ run(probe,[build/'bin/editor_baseline_failures.exe',probe,build,out/'probes'],build/'bin',expected=1)
+dev_log/P10/scripts/validate.py:166: trailing whitespace.
++run('boundaries',[sys.executable,repo/'editor/tests/architecture/test_editor_boundaries.py','--source',repo,'--cmake','cmake','--evidence',out/'boundaries.json'])
+dev_log/P10/scripts/validate.py:167: trailing whitespace.
++run('model-boundaries',[sys.executable,repo/'editor/tests/architecture/test_scene_model_boundaries.py','--source',repo,'--cmake','cmake','--evidence',out/'model-boundaries.json'])
+dev_log/P10/scripts/validate.py:168: trailing whitespace.
++run('material-boundaries',[sys.executable,repo/'editor/tests/architecture/test_scene_model_boundaries.py','--source',repo,'--cmake','cmake','--model','material','--evidence',out/'material-boundaries.json'])
+dev_log/P10/scripts/validate.py:169: trailing whitespace.
++run('flow-boundaries',[sys.executable,repo/'editor/tests/architecture/test_scene_model_boundaries.py','--source',repo,'--cmake','cmake','--model','flowforge','--evidence',out/'flow-boundaries.json'])
+dev_log/P10/scripts/validate.py:170: trailing whitespace.
++run('persistence-boundaries',[sys.executable,repo/'editor/tests/architecture/test_persistence_boundaries.py','--source',repo,'--cmake','cmake','--evidence',out/'persistence-boundaries.json'])
+dev_log/P10/scripts/validate.py:171: trailing whitespace.
++run('run-boundaries',[sys.executable,repo/'editor/tests/architecture/test_scene_execution_boundaries.py','--source',repo,'--cmake','cmake','--evidence',out/'run-boundaries.json'])
+dev_log/P10/scripts/validate.py:172: trailing whitespace.
++run('architecture',[sys.executable,repo/'editor/tests/architecture/check_editor_boundaries.py','--repo',repo,'--graph',build/'editor-architecture/targets.json','--compile-db',build/'compile_commands.json','--stage','P10'])
+dev_log/P10/scripts/validate.py:173: trailing whitespace.
++run('portable',[sys.executable,repo/'editor/tests/architecture/test_p01_evidence.py','--source',repo,'--evidence',out/'portability'])
+dev_log/P10/scripts/validate.py:174: trailing whitespace.
++run('historical-verifiers',[sys.executable,repo/'editor/tests/architecture/check_historical_evidence.py','--source',repo,'--evidence',out/'historical'])
+dev_log/P10/scripts/validate.py:175: trailing whitespace.
++run('original-p04-r1-gate',[sys.executable,repo/'dev_log/P04-R1/check_receipt.py'])
+dev_log/P10/scripts/validate.py:176: trailing whitespace.
++run('original-p04-gate',[sys.executable,repo/'dev_log/P04/check_receipt.py'])
+dev_log/P10/scripts/validate.py:177: trailing whitespace.
++run('original-p03-gate',[sys.executable,repo/'dev_log/P03/check_receipt.py'])
+dev_log/P10/scripts/validate.py:178: trailing whitespace.
++run('original-p03-r1-gate',[sys.executable,repo/'dev_log/P03-R1/check_receipt.py'])
+dev_log/P10/scripts/validate.py:179: trailing whitespace.
++run('package-audit',[sys.executable,workspace/'.internal/editor-redesign/spec-v4/scripts/audit_migration.py','--repo',repo,'--stage','P10','--manifest',repo/'editor/tests/architecture/rules.json','--output',out/'package-audit.json'])
+dev_log/P10/scripts/validate.py:180: trailing whitespace.
++run('test-names',['ctest','--test-dir',build,'--show-only=json-v1'])
+dev_log/P10/scripts/validate.py:181: trailing whitespace.
++run('model-imports',['dumpbin','/dependents',base/'scene-model-p02-consumer/scene_model_consumer.exe'])
+dev_log/P10/scripts/validate.py:182: trailing whitespace.
++run('material-imports',['dumpbin','/dependents',base/'material-model-p03-consumer/material_model_consumer.exe'])
+dev_log/P10/scripts/validate.py:183: trailing whitespace.
++run('flow-imports',['dumpbin','/dependents',base/'flowforge-model-p04-consumer/flowforge_model_consumer.exe'])
+dev_log/P10/scripts/validate.py:184: trailing whitespace.
++run('persistence-imports',['dumpbin','/dependents',base/'persistence-p05-consumer/persistence_consumer.exe'])
+dev_log/P10/scripts/validate.py:185: trailing whitespace.
++run('sessions-imports',['dumpbin','/dependents',base/'editor-sessions-p01-consumer/sessions_consumer.exe'])
+dev_log/P10/scripts/validate.py:186: trailing whitespace.
++run('original-p05-gate',[sys.executable,repo/'dev_log/P05/check_receipt.py'])
+dev_log/P10/scripts/validate.py:187: trailing whitespace.
++run('original-p05-r1-gate',[sys.executable,repo/'dev_log/P05-R1/check_receipt.py'])
+dev_log/P10/scripts/validate.py:188: trailing whitespace.
++run('original-p05-r2-gate',[sys.executable,repo/'dev_log/P05-R2/check_receipt.py'])
+dev_log/P10/scripts/validate.py:189: trailing whitespace.
++run('run-imports',['dumpbin','/dependents',base/'scene-execution-p06-consumer/scene_execution_consumer.exe'])
+dev_log/P10/scripts/validate.py:190: trailing whitespace.
++for scenario in ['isolation','controls','failure','completion','r1-queued','r1-mixed','r1-failed','r1-callback','r1-capacity']:
+dev_log/P10/scripts/validate.py:191: trailing whitespace.
++ run('run-'+scenario,[build/'bin/editor_scene_execution_test.exe',scenario],build/'bin')
+dev_log/P10/scripts/validate.py:192: trailing whitespace.
++# Separate product configuration has no Editor directory/targets. The inherited P06 tree is reused.
+dev_log/P10/scripts/validate.py:193: trailing whitespace.
++player=base/'p06-player'
+dev_log/P10/scripts/validate.py:194: trailing whitespace.
++run('player-configure',['cmake','-S',repo,'-B',player,'-G','Ninja',*options,
+dev_log/P10/scripts/validate.py:195: trailing whitespace.
++ '-DLUX_BUILD_PROFILE=PLAYER','-DBUILD_TESTING=ON','-DLUX_EDITOR_MIGRATION_STAGE=P10'])
+dev_log/P10/scripts/validate.py:196: trailing whitespace.
++# Preserve P06's separate missing-generation qualification; P07 does not alter Physics2D.
+dev_log/P10/scripts/validate.py:197: trailing whitespace.
++for name in ['build','no-work']:run('player-'+name,['cmake','--build',player,'--target','all','-j','4','--','-k','0'])
+dev_log/P10/scripts/validate.py:198: trailing whitespace.
++run('player-ctest',['ctest','--test-dir',player,'--output-on-failure','-j','1'])
+dev_log/P10/scripts/validate.py:199: trailing whitespace.
++run('player-targets',['ninja','-C',player,'-t','targets','all'])
+dev_log/P10/scripts/validate.py:200: trailing whitespace.
++run('player-test-names',['ctest','--test-dir',player,'--show-only=json-v1'])
+dev_log/P10/scripts/validate.py:201: trailing whitespace.
++# Ninja lists CMake's source-header regeneration inputs as phony targets too.
+dev_log/P10/scripts/validate.py:202: trailing whitespace.
++# Qualify actual target directories and translation units, without ignoring any compiled Editor input.
+dev_log/P10/scripts/validate.py:203: trailing whitespace.
++for source,destination in [('CMakeFiles/TargetDirectories.txt','player-target-directories.log'),
+dev_log/P10/scripts/validate.py:204: trailing whitespace.
++ ('compile_commands.json','player-compile-commands.json')]:
+dev_log/P10/scripts/validate.py:205: trailing whitespace.
++ shutil.copyfile(player/source,out/destination)
+dev_log/P10/scripts/validate.py:206: trailing whitespace.
++assert '/editor/' not in (out/'player-target-directories.log').read_text().replace('\\','/').lower()
+dev_log/P10/scripts/validate.py:207: trailing whitespace.
++for unit in json.loads((out/'player-compile-commands.json').read_text()):
+dev_log/P10/scripts/validate.py:208: trailing whitespace.
++ assert '/editor/' not in (unit['file']+' '+unit['command']).replace('\\','/').lower()
+dev_log/P10/scripts/validate.py:209: trailing whitespace.
++run('runtime-detail',[build/'bin/scene_runtime_test.exe'],build/'bin')
+dev_log/P10/scripts/validate.py:210: trailing whitespace.
++run('driver-detail',[build/'bin/scene_driver_test.exe'],build/'bin')
+dev_log/P10/scripts/validate.py:211: trailing whitespace.
++run('player-runtime-detail',[player/'bin/scene_runtime_test.exe'],player/'bin')
+dev_log/P10/scripts/validate.py:212: trailing whitespace.
++run('player-headless-imports',['dumpbin','/dependents',player/'bin/engine_headless_test.exe'])
+dev_log/P10/scripts/validate.py:213: trailing whitespace.
++run('original-p06-gate',[sys.executable,repo/'dev_log/P06/check_receipt.py'])
+dev_log/P10/scripts/validate.py:214: trailing whitespace.
++run('original-p06-r1-gate',[sys.executable,repo/'dev_log/P06-R1/check_receipt.py'])
+dev_log/P10/scripts/validate.py:215: trailing whitespace.
++run('projection-boundaries',[sys.executable,repo/'editor/tests/architecture/test_projection_compilation_boundaries.py','--source',repo,'--cmake','cmake','--evidence',out/'projection-boundaries.json'])
+dev_log/P10/scripts/validate.py:216: trailing whitespace.
++run('projection-detail',[build/'bin/editor_projection_test.exe'],build/'bin')
+dev_log/P10/scripts/validate.py:217: trailing whitespace.
++run('backend-binding-detail',[build/'bin/render_view_binding_p07_test.exe'],build/'bin')
+dev_log/P10/scripts/validate.py:218: trailing whitespace.
++run('highlight-detail',[build/'bin/editor_highlight_p07_test.exe'],build/'bin')
+dev_log/P10/scripts/validate.py:219: trailing whitespace.
++run('compilation-detail',[build/'bin/editor_compilation_p07_test.exe',shutil.which('lld-link'),out/'derived-files'],build/'bin')
+dev_log/P10/scripts/validate.py:220: trailing whitespace.
++run('compilation-imports',['dumpbin','/dependents',base/'projection-compilation-p07-consumer/compilation_consumer.exe'])
+dev_log/P10/scripts/validate.py:221: trailing whitespace.
++run('projection-measure',[sys.executable,work/'measure_p08_r1.py','--program',build/'bin/editor_projection_test.exe','--output',out/'projection-measurements.json'])
+dev_log/P10/scripts/validate.py:222: trailing whitespace.
++run('original-p07-gate',[sys.executable,repo/'dev_log/P07/check_receipt.py'])
+dev_log/P10/scripts/validate.py:223: trailing whitespace.
++for kind in ['material','flow']:
+dev_log/P10/scripts/validate.py:224: trailing whitespace.
++ run('ownership-'+kind,[build/'bin/editor_compilation_ownership_test.exe',kind,shutil.which('lld-link')],build/'bin')
+dev_log/P10/scripts/validate.py:225: trailing whitespace.
++run('sdk-owner-detail',['ctest','--test-dir',base/'projection-compilation-p07-consumer','-V','-R','installed.compilation.(ownership|reject)','-j','1'])
+dev_log/P10/scripts/validate.py:226: trailing whitespace.
++for p in (base/'projection-compilation-p07-consumer').glob('reject_*.log'):shutil.copyfile(p,out/p.name)
+dev_log/P10/scripts/validate.py:227: trailing whitespace.
++before=base/'p07-r1-before-consumer'
+dev_log/P10/scripts/validate.py:228: trailing whitespace.
++run('after-sdk-contract',['cmake','--build',before,'--target','contract','traits','-j','4','--','-k','0'])
+dev_log/P10/scripts/validate.py:229: trailing whitespace.
++run('after-sdk-traits',[before/'traits.exe'])
+dev_log/P10/scripts/validate.py:230: trailing whitespace.
++run('after-sdk-illegal-runtime',['cmake','--build',before,'--target','before','-j','4','--','-k','0'],expected=1)
+dev_log/P10/scripts/validate.py:231: trailing whitespace.
++assert 'C2280' in (out/'after-sdk-illegal-runtime.log').read_text(errors='replace')
+dev_log/P10/scripts/validate.py:232: trailing whitespace.
++assert 'C1083' not in (out/'after-sdk-illegal-runtime.log').read_text(errors='replace')
+dev_log/P10/scripts/validate.py:233: trailing whitespace.
++run('original-p07-r1-gate',[sys.executable,repo/'dev_log/P07-R1/check_receipt.py'])
+dev_log/P10/scripts/validate.py:234: trailing whitespace.
++run('interaction-boundaries',[sys.executable,repo/'editor/tests/architecture/test_interaction_view_boundaries.py','--source',repo,'--cmake','cmake','--evidence',out/'interaction-boundaries.json'])
+dev_log/P10/scripts/validate.py:235: trailing whitespace.
++for name,program in [('scene-interaction','editor_scene_interaction_test'),('material-interaction','editor_material_interaction_test'),
+dev_log/P10/scripts/validate.py:236: trailing whitespace.
++ ('flow-interaction','editor_flowforge_interaction_test'),('run-selection','editor_run_selection_test'),('detached-views','editor_detached_views_test')]:
+dev_log/P10/scripts/validate.py:237: trailing whitespace.
++ run(name,[build/('bin/'+program+'.exe')],build/'bin')
+dev_log/P10/scripts/validate.py:238: trailing whitespace.
++run('ui-root-detail',[build/'bin/ui_root_test.exe'],build/'bin')
+dev_log/P10/scripts/validate.py:239: trailing whitespace.
++run('original-p08-gate',[sys.executable,repo/'dev_log/P08/check_receipt.py'])
+dev_log/P10/scripts/validate.py:240: trailing whitespace.
++for model in ['scene','material','flow']:
+dev_log/P10/scripts/validate.py:241: trailing whitespace.
++ for mode in ['sync','cancel','selection','stale','gate','thread','reload']:
+dev_log/P10/scripts/validate.py:242: trailing whitespace.
++  run('r1-'+model+'-'+mode,[build/'bin/editor_interaction_reclaim_test.exe',model,mode],build/'bin')
+dev_log/P10/scripts/validate.py:243: trailing whitespace.
++ for mode in ['sync','cancel','selection','stale','gate','thread']:
+dev_log/P10/scripts/validate.py:244: trailing whitespace.
++  run('sdk-r1-'+model+'-'+mode,[base/'interaction-views-p08-consumer/interaction_reclaim_consumer.exe',model,mode])
+dev_log/P10/scripts/validate.py:245: trailing whitespace.
++run('original-p08-r1-gate',[sys.executable,repo/'dev_log/P08-R1/check_receipt.py'])
+dev_log/P10/scripts/validate.py:246: trailing whitespace.
++run('workspace-boundaries',[sys.executable,repo/'editor/tests/architecture/test_workspace_boundaries.py','--source',repo,'--cmake','cmake','--evidence',out/'workspace-boundaries.json'])
+dev_log/P10/scripts/validate.py:247: trailing whitespace.
++for scenario in ['validation','opaque','rename','remove','ordering','unknown','aliases','reads','catalog','migration','collision','budgets']:
+dev_log/P10/scripts/validate.py:248: trailing whitespace.
++ run('workspace-'+scenario,[build/'bin/editor_workspace_test.exe',out/'workspace-files',scenario],build/'bin')
+dev_log/P10/scripts/validate.py:249: trailing whitespace.
++ run('sdk-workspace-'+scenario,[base/'workspace-p09-consumer/workspace_consumer.exe',out/'sdk-workspace-files',scenario])
+dev_log/P10/scripts/validate.py:250: trailing whitespace.
++run('workspace-effects',[build/'bin/editor_layout_effects_test.exe'],build/'bin')
+dev_log/P10/scripts/validate.py:251: trailing whitespace.
++run('sdk-workspace-effects',[base/'workspace-p09-consumer/layout_effects_consumer.exe'])
+dev_log/P10/scripts/validate.py:252: trailing whitespace.
++run('workspace-imports',['dumpbin','/dependents',base/'workspace-p09-consumer/workspace_consumer.exe'])
+dev_log/P10/scripts/validate.py:253: trailing whitespace.
++run('original-p09-gate',[sys.executable,repo/'dev_log/P09/check_receipt.py'])
+dev_log/P10/scripts/validate.py:254: trailing whitespace.
++for scenario in ['r1-alpha','r1-beta','r1-extras','r1-selection','r1-resume','r1-control']:
+dev_log/P10/scripts/validate.py:255: trailing whitespace.
++ run('workspace-'+scenario,[build/'bin/editor_workspace_test.exe',out/'workspace-files',scenario],build/'bin')
+dev_log/P10/scripts/validate.py:256: trailing whitespace.
++ run('sdk-workspace-'+scenario,[base/'workspace-p09-consumer/workspace_consumer.exe',out/'sdk-workspace-files',scenario])
+dev_log/P10/scripts/validate.py:257: trailing whitespace.
++run('original-p09-r1-gate',[sys.executable,repo/'dev_log/P09-R1/check_receipt.py'])
+dev_log/P10/scripts/validate.py:258: trailing whitespace.
++run('desktop-boundaries',[sys.executable,repo/'editor/tests/architecture/test_interaction_view_boundaries.py','--source',repo,'--stage','P10','--cmake','cmake','--evidence',out/'desktop-boundaries.json'])
+dev_log/P10/scripts/validate.py:259: trailing whitespace.
++run('desktop-detail',['ctest','--test-dir',build,'-V','-R','editor.(view_host|scene_views_gpu|desktop_native_input)$','-j','1'])
+dev_log/P10/scripts/validate.py:260: trailing whitespace.
++group='desktop-views-p10-consumer'
+dev_log/P10/scripts/validate.py:261: trailing whitespace.
++run(group+'-configure',['cmake','--fresh','-S',repo/'cmake/installed-consumers/desktop-views','-B',base/group,'-G','Ninja',
+dev_log/P10/scripts/validate.py:262: trailing whitespace.
++ '-DCMAKE_BUILD_TYPE=RelWithDebInfo',f'-DCMAKE_PREFIX_PATH={cluster}/install/RelWithDebInfo',
+dev_log/P10/scripts/validate.py:263: trailing whitespace.
++ '-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake','-DVCPKG_TARGET_TRIPLET=x64-windows'])
+dev_log/P10/scripts/validate.py:264: trailing whitespace.
++for name in ['build','no-work']:run(group+'-'+name,['cmake','--build',base/group,'--target','all','-j','4','--','-k','0'])
+dev_log/P10/scripts/validate.py:265: trailing whitespace.
++run(group+'-ctest',['ctest','--test-dir',base/group,'--timeout','120','-V','-j','1'])
+dev_log/P10/scripts/validate.py:266: trailing whitespace.
++run('desktop-imports',['dumpbin','/dependents',base/group/'bin/desktop_views.exe'])
+dev_log/P10/scripts/validate.py:267: trailing whitespace.
++consumer_commands=json.loads((base/group/'compile_commands.json').read_text())
+dev_log/P10/scripts/validate.py:268: trailing whitespace.
++for unit in consumer_commands:
+dev_log/P10/scripts/validate.py:269: trailing whitespace.
++ command=unit['command'].replace('\\','/').lower()
+dev_log/P10/scripts/validate.py:270: trailing whitespace.
++ assert '/pinclude/' not in command and '/sinclude/' not in command
+dev_log/P10/scripts/validate.py:271: trailing whitespace.
++ assert not any('/'+name+'/' in command for name in ['editor/context','editor/ui','editor/tools/scene/pinclude'])
+dev_log/P10/scripts/validate.py:272: trailing whitespace.
++shutil.copyfile(base/group/'compile_commands.json',out/'desktop-consumer-compile-commands.json')
+dev_log/P10/scripts/validate.py:273: trailing whitespace.
++run('clean-final'   ,['git','status','--porcelain'],repo)
+dev_log/P10/scripts/validate.py:274: trailing whitespace.
++print('P10 exact-SHA executable checks finished.',flush=True)

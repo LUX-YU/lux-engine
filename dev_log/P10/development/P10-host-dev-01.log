@@ -1,0 +1,20 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine
+    Start 91: editor.view_host
+1/1 Test #91: editor.view_host .................Exit code 0xc0000409
+***Exception:   4.27 sec
+Assertion failed: !host.describe(id) && root->panes().empty(), file E:\SyncForder\CodeRepos\lux-engine\editor\desktop\test\host.cpp, line 103
+
+
+0% tests passed, 1 tests failed out of 1
+
+Label Time Summary:
+P10       =   4.27 sec*proc (1 test)
+editor    =   4.27 sec*proc (1 test)
+native    =   4.27 sec*proc (1 test)
+
+Total Test time (real) =   5.17 sec
+
+The following tests FAILED:
+	 91 - editor.view_host (Exit code 0xc0000409
+)          P10 editor native
+Errors while running CTest

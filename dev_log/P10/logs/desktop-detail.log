@@ -1,0 +1,54 @@
+UpdateCTestConfiguration  from :E:/SyncForder/CodeRepos/build/RelWithDebInfo/p05-r1-f2b5a00c60e9/DartConfiguration.tcl
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p05-r1-f2b5a00c60e9
+Constructing a list of tests
+Done constructing a list of tests
+Updating test list for fixtures
+Added 0 tests to meet fixture requirements
+Checking test dependency graph...
+Checking test dependency graph end
+test 91
+    Start 91: editor.view_host
+
+91: Test command: E:\SyncForder\CodeRepos\build\RelWithDebInfo\p05-r1-f2b5a00c60e9\bin\editor_view_host_test.exe
+91: Working Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p05-r1-f2b5a00c60e9/editor/desktop
+91: Test timeout computed to be: 60
+91: PASS P10 real ViewHost ownership, bounded requests, generation, callback batches and prepare failure
+1/3 Test #91: editor.view_host .................   Passed    0.02 sec
+test 92
+    Start 92: editor.scene_views_gpu
+
+92: Test command: E:\SyncForder\CodeRepos\build\RelWithDebInfo\p05-r1-f2b5a00c60e9\bin\editor_scene_views_test.exe "D:/Development/vcpkg/installed/x64-windows/tools/llvm/lld-link.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p05-r1-f2b5a00c60e9"
+92: Working Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p05-r1-f2b5a00c60e9/editor/tools/scene/ui
+92: Test timeout computed to be: 120
+92: P10 actual services: timer cancellation after view close; catalog BUSY/IO/permission preserves rows; saved Material decoded through asset-open request; picker revision/type/project checked.
+92: P10 dual SceneView GPU readback: failed material read -> ResourceView retry -> ready after close; actual mesh pick, left/right highlight isolation and retirement verified.
+92: P10 DEV SceneView GPU: shared author edit/undo, independent cameras, failed rebind gesture, close/reopen; frames=764 validation_errors=0
+2/3 Test #92: editor.scene_views_gpu ...........   Passed    1.70 sec
+test 93
+    Start 93: editor.desktop_native_input
+
+93: Test command: E:\SyncForder\CodeRepos\build\RelWithDebInfo\p05-r1-f2b5a00c60e9\bin\editor_scene_views_test.exe "D:/Development/vcpkg/installed/x64-windows/tools/llvm/lld-link.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p05-r1-f2b5a00c60e9" "native"
+93: Working Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p05-r1-f2b5a00c60e9/editor/tools/scene/ui
+93: Test timeout computed to be: 120
+93: native activation: foreground=1 visible=1
+93: native drag: point=(329.5,140.5) sampled=(329.0,140.0) editing=1 foreground=1
+93: native moved: overlay=1 editing=1 left=1
+93: native TextEdit value='ab' focus=1 composing=0
+93: P10 native desktop: OS mouse drag -> generated Inspector preview/commit/undo; captured SceneElement navigates outside its rectangle and closes while held; OS keyboard -> TextEdit; DIRECT close releases focus after callback; system IME candidate/commit NOT tested; validation_errors=0
+3/3 Test #93: editor.desktop_native_input ......   Passed    1.97 sec
+
+The following tests passed:
+	editor.view_host
+	editor.scene_views_gpu
+	editor.desktop_native_input
+
+100% tests passed, 0 tests failed out of 3
+
+Label Time Summary:
+P10        =   3.69 sec*proc (3 tests)
+desktop    =   1.97 sec*proc (1 test)
+editor     =   3.69 sec*proc (3 tests)
+gpu        =   3.67 sec*proc (2 tests)
+native     =   0.02 sec*proc (1 test)
+
+Total Test time (real) =   3.73 sec

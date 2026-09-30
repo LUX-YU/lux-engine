@@ -1,0 +1,1 @@
+PASS P04 gate: X04-01..04; scoped Q01/Q06/Q09/Q11/Q49; ordered batches, stable reads and input cleanup; original 64 tests preserved, exact-SHA full build/CTest/install, eight consumer groups and real dependency negatives. C01/C03/C04 remain FAIL. Stop at P04.

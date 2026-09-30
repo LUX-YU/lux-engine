@@ -1,0 +1,949 @@
+[
+  {
+    "path": "cmake/installed-consumers/desktop-views/CMakeLists.txt",
+    "change": "A",
+    "git_content_sha256": "510e2d08df6f0e728319e5d45b5add7678e8e3c17c02bb38ef9ef5e22f041dca"
+  },
+  {
+    "path": "cmake/installed-consumers/desktop-views/Inspector.cpp",
+    "change": "A",
+    "git_content_sha256": "b844cfd02be7b60793506af6d3eb8e7b5cf652b9fbfa8aa62808f040e0d6895c"
+  },
+  {
+    "path": "cmake/installed-consumers/editor-d2/GuiGesture.cpp",
+    "change": "M",
+    "git_content_sha256": "eca86f31103c35ce4960659cc5d539e3fba332872e79561c921fa7dc70daf92b"
+  },
+  {
+    "path": "cmake/installed-consumers/editor-d2/SceneWorkflow.cpp",
+    "change": "M",
+    "git_content_sha256": "8dbcd629c5c30634b09ad988124240d36d7a0b918b0d90efc5f1feb5368dbf61"
+  },
+  {
+    "path": "cmake/installed-consumers/editor-d2/closure/CMakeLists.txt",
+    "change": "M",
+    "git_content_sha256": "63440f3c825740861f6d33b3bdb1528501359b08ce519abbafe6e896ccaab6aa"
+  },
+  {
+    "path": "editor/CMakeLists.txt",
+    "change": "M",
+    "git_content_sha256": "2914b93fbc31e850c987efb8b6dc743784561347e1c607d316fc92a38817a748"
+  },
+  {
+    "path": "editor/app/pinclude/lux/engine/editor/detail/EditorImpl.hpp",
+    "change": "M",
+    "git_content_sha256": "a4a12ab7454ec47627997a037a7f4e414c227d0c7d8060d4510ce2d2c92f31b0"
+  },
+  {
+    "path": "editor/app/pinclude/lux/engine/editor/detail/EditorTestAccess.hpp",
+    "change": "M",
+    "git_content_sha256": "b4f5f1b124d7ab172063c41b414990a3ebf03035072643d5597d486957d8b1c6"
+  },
+  {
+    "path": "editor/app/src/EditorPlatform.cpp",
+    "change": "M",
+    "git_content_sha256": "641a196575e7e58c8fca3e2190abe6d4346798e04e2525bedf3ca26c090914be"
+  },
+  {
+    "path": "editor/app/src/EditorStartup.cpp",
+    "change": "M",
+    "git_content_sha256": "cf91687f05271c6c417382f8a675362ebb8468f29a7477bdc9a9499c9b27016d"
+  },
+  {
+    "path": "editor/app/src/EditorTestAccess.cpp",
+    "change": "M",
+    "git_content_sha256": "d487c963d59b1dd06aec7657ae22c3de2b24c0deeaaaca270e86a3c672502110"
+  },
+  {
+    "path": "editor/context/src/EditorContext.cpp",
+    "change": "M",
+    "git_content_sha256": "8b336abb676a9670c9d17e4bd831f413fae33c914e06979d9f24eaf26e9d0350"
+  },
+  {
+    "path": "editor/contracts/include/lux/engine/editor/views/ViewInfo.hpp",
+    "change": "M",
+    "git_content_sha256": "bb8fb7b254606e24dc13ee3f8f603a6fdd87ae8f164e0544f9929e0a3380c254"
+  },
+  {
+    "path": "editor/desktop/CMakeLists.txt",
+    "change": "A",
+    "git_content_sha256": "8818846c449ddbb0ac43fdc6d117bd151a64dde7a6860b1584d5a9dfd1cb3859"
+  },
+  {
+    "path": "editor/desktop/README.md",
+    "change": "A",
+    "git_content_sha256": "beae38a2352c6d0c52540a450ecfb6d3e4f3b193bdea63c46633b30704cf6566"
+  },
+  {
+    "path": "editor/desktop/include/lux/engine/editor/desktop/DesktopError.hpp",
+    "change": "A",
+    "git_content_sha256": "3132043dab6a693ad2e569d2dcf647e893b4e5e821c24352d83307afd9673815"
+  },
+  {
+    "path": "editor/desktop/include/lux/engine/editor/desktop/DesktopShell.hpp",
+    "change": "A",
+    "git_content_sha256": "eed7b708fe0464609178bb7b52ecbf41f82b2cfccae65bc3787dbeecd8f92005"
+  },
+  {
+    "path": "editor/desktop/include/lux/engine/editor/desktop/Presentation.hpp",
+    "change": "A",
+    "git_content_sha256": "3cb3dd9d867d9cd05729ba34aa8088872e9e94b32ba9c706eb605cdfa68fe327"
+  },
+  {
+    "path": "editor/desktop/include/lux/engine/editor/desktop/ViewHost.hpp",
+    "change": "A",
+    "git_content_sha256": "017eb622106f9b88f436629e651d19fb4e4fd11da4df080ffe3860eb340062e6"
+  },
+  {
+    "path": "editor/desktop/include/lux/engine/editor/desktop/WindowInput.hpp",
+    "change": "A",
+    "git_content_sha256": "c8d573b41d20cad1340c200031bb6d4d86f308dfe4dbd9522666cc39c2226f08"
+  },
+  {
+    "path": "editor/desktop/include/lux/engine/editor/desktop/WindowOutput.hpp",
+    "change": "A",
+    "git_content_sha256": "38c889680e4f84c6622e46830bb8338a8a0627ca2d9931afd4fc379db2dacdaf"
+  },
+  {
+    "path": "editor/desktop/pinclude/lux/engine/editor/desktop/detail/UiFrame.hpp",
+    "change": "A",
+    "git_content_sha256": "56b267c610d23769c1f50bb61ed8d7f670efabcbd58193de5fc8181d8aef933f"
+  },
+  {
+    "path": "editor/desktop/pinclude/lux/engine/editor/desktop/detail/UiRenderSyncStage.hpp",
+    "change": "A",
+    "git_content_sha256": "2529e970ab0be885e4f349b7be65d677b3cf755fddf17364d103cf0865e13165"
+  },
+  {
+    "path": "editor/desktop/src/DesktopShell.cpp",
+    "change": "A",
+    "git_content_sha256": "cfbad9423332f638a110dd091e6fe3aa41731425e4a903d67564a1b98dddab45"
+  },
+  {
+    "path": "editor/desktop/src/Presentation.cpp",
+    "change": "A",
+    "git_content_sha256": "c91f89d36be6e440d6ee87a952997432b5e01eede7c10d3ed808d1aa161baa05"
+  },
+  {
+    "path": "editor/desktop/src/UiRenderSyncStage.cpp",
+    "change": "A",
+    "git_content_sha256": "d21551148bff251593d8aef05ff9ae911090d864307471996cc987bc16c9caf3"
+  },
+  {
+    "path": "editor/desktop/src/ViewHost.cpp",
+    "change": "A",
+    "git_content_sha256": "cb062e5fef4a118cc2af2a14de5baa8f4d6c92bb774612b8178d3b34458b4084"
+  },
+  {
+    "path": "editor/desktop/src/WindowInput.cpp",
+    "change": "A",
+    "git_content_sha256": "e56c7d3dea7653ca648684ae639209b36265f6c1c3b41808b2715e0ac6276c53"
+  },
+  {
+    "path": "editor/desktop/src/WindowOutput.cpp",
+    "change": "A",
+    "git_content_sha256": "c1c341119a44f98d96b4b32e895f147625695ea1cb05f2892a2da885fe12f9a7"
+  },
+  {
+    "path": "editor/desktop/test/host.cpp",
+    "change": "A",
+    "git_content_sha256": "c00c7cec8d6321450ff665be3b10d80d5dfa6ffedf732a4efdb98d6c409f9824"
+  },
+  {
+    "path": "editor/editing/scene/include/lux/engine/editor/editing/scene/SceneEdit.hpp",
+    "change": "M",
+    "git_content_sha256": "111a18765521e1f6174b90aaf39aaaab54d7232b67665317a0ce72d3cffd4e0b"
+  },
+  {
+    "path": "editor/launcher/main.cpp",
+    "change": "M",
+    "git_content_sha256": "eea4a8097f49655eca39c8cca905f707ecc8afd781be6eb42fa3fcda7c02c608"
+  },
+  {
+    "path": "editor/launcher/src/ProjectCreationPane.cpp",
+    "change": "M",
+    "git_content_sha256": "592587017737da6e547975b6b9656191b34b0c056980103a8640294b49bf06ad"
+  },
+  {
+    "path": "editor/metadata/include/lux/engine/editor/metadata/ComponentEditorRegistry.hpp",
+    "change": "M",
+    "git_content_sha256": "2bc3505af5516417d00cf80a964924fefdc4463cea65eba4042e9554dad80240"
+  },
+  {
+    "path": "editor/metadata/include/lux/engine/editor/metadata/ConfigurationValue.hpp",
+    "change": "M",
+    "git_content_sha256": "0693d2775ae0bb1e38a172d20cefa08e83877eae694cb915628791c9ef090781"
+  },
+  {
+    "path": "editor/metadata/include/lux/engine/editor/metadata/EditorPlugin.hpp",
+    "change": "M",
+    "git_content_sha256": "219927e41173f9da14687f132f1191823411718a1a3e7d16156f371d9a6ab8f8"
+  },
+  {
+    "path": "editor/metadata/include/lux/engine/editor/metadata/SceneRegistrations.hpp",
+    "change": "M",
+    "git_content_sha256": "75134fcc5f6397c8ffdeb7714ba977fcf810375640ba5339d93d6471fe75ab1d"
+  },
+  {
+    "path": "editor/metadata/src/ConfigurationValue.cpp",
+    "change": "M",
+    "git_content_sha256": "72a0ff0f5da395f0a81e5ed6da5e649048b9a5d349d307c5065691cdc2589bb8"
+  },
+  {
+    "path": "editor/metadata/src/EditorPlugin.cpp",
+    "change": "M",
+    "git_content_sha256": "a74b159221bb5a46effc4f6fe136717bec37989f65ee22be00332e4710c202d8"
+  },
+  {
+    "path": "editor/metadata/src/SceneRegistrations.cpp",
+    "change": "M",
+    "git_content_sha256": "7c9347fa7c4783f421ecabd2bf4a48f50c637fefa6c7cdbf6d6d28e46611565f"
+  },
+  {
+    "path": "editor/metadata/test/plugin.cpp",
+    "change": "M",
+    "git_content_sha256": "bb7309cd01b0e8d636bef4af805ea359a8d2595103ef8cef3525184d8c5862f8"
+  },
+  {
+    "path": "editor/project/include/lux/engine/editor/project/AssetCatalog.hpp",
+    "change": "A",
+    "git_content_sha256": "8398b80c1ec05997936c2914f12c40b13cf069813d1e237ca9253a8a939e258b"
+  },
+  {
+    "path": "editor/project/ui/CMakeLists.txt",
+    "change": "A",
+    "git_content_sha256": "436c27f461c2ccb7aa61886a3a30c5779647c2f24fdc3d47d429671d647b3655"
+  },
+  {
+    "path": "editor/project/ui/include/lux/engine/editor/project/AssetPickerElement.hpp",
+    "change": "A",
+    "git_content_sha256": "ee77d522df030eaae0317b1ac1b56b8acbce32ece43de4e00a58745b7adf18bc"
+  },
+  {
+    "path": "editor/project/ui/include/lux/engine/editor/project/ProjectCatalogAccess.hpp",
+    "change": "A",
+    "git_content_sha256": "65cdc4e3036e87412cc4630d32b6e9e3629855be2ccb84b7b4ab4bcf03b5665a"
+  },
+  {
+    "path": "editor/project/ui/include/lux/engine/editor/project/ProjectView.hpp",
+    "change": "A",
+    "git_content_sha256": "38f3d41b75cc26c9e339eb3063c808dd93d279a8206727d311e325c8935947b6"
+  },
+  {
+    "path": "editor/project/ui/src/AssetPickerElement.cpp",
+    "change": "A",
+    "git_content_sha256": "41d17dba85c08f5d2adc1e9d34ebbba30cd6ed8ba8bfd72b5de0e18df19ece1f"
+  },
+  {
+    "path": "editor/project/ui/src/ProjectCatalogAccess.cpp",
+    "change": "A",
+    "git_content_sha256": "618b81663123b395bbacc9de5864c5bee56615a25646d6d0c4e0104be1950b65"
+  },
+  {
+    "path": "editor/project/ui/src/ProjectView.cpp",
+    "change": "A",
+    "git_content_sha256": "60f81a61e23bf012e126cd9c0b050562c495cad889b8ddc1c7fefe1742d8eb5e"
+  },
+  {
+    "path": "editor/project/ui/test/catalog.cpp",
+    "change": "A",
+    "git_content_sha256": "1ccc63f7561760bf5ef3b7881ce18718b0abf2ee5148ebfd923af93e8423c8ac"
+  },
+  {
+    "path": "editor/storage/include/lux/engine/editor/storage/AssetCatalog.hpp",
+    "change": "D"
+  },
+  {
+    "path": "editor/storage/include/lux/engine/editor/storage/ProjectStorage.hpp",
+    "change": "M",
+    "git_content_sha256": "e9c923d807d800dbeec66f21dc30b8a0059ba8aa4114e0c8e5446638c71eabbf"
+  },
+  {
+    "path": "editor/tasks/ui/CMakeLists.txt",
+    "change": "A",
+    "git_content_sha256": "c1dd27404baf181cc9d58fd8a6555b785935df782b501870f8fbe7214195816d"
+  },
+  {
+    "path": "editor/tasks/ui/include/lux/engine/editor/tasks/TaskQueryPort.hpp",
+    "change": "A",
+    "git_content_sha256": "e4d6eba0ab2570e536838f9c37b3ed6805f10aad816aa6c8b149df575d88db90"
+  },
+  {
+    "path": "editor/tasks/ui/include/lux/engine/editor/tasks/TaskView.hpp",
+    "change": "A",
+    "git_content_sha256": "7aea90a1d745aa3cd78d5e4ef2a6918e4d034332e2c1e2d659b563ba82aa3140"
+  },
+  {
+    "path": "editor/tasks/ui/src/TaskView.cpp",
+    "change": "A",
+    "git_content_sha256": "bae7b039c3f91f1f4b9ea3e96e64df3aa8b0acaa368908f0d59456e7ed7c4e37"
+  },
+  {
+    "path": "editor/tests/architecture/CMakeLists.txt",
+    "change": "M",
+    "git_content_sha256": "76cea2df782c43deaf2985350df65951492fbfd4556e3eddd23ce514ddd2f84b"
+  },
+  {
+    "path": "editor/tests/architecture/check_editor_boundaries.py",
+    "change": "M",
+    "git_content_sha256": "b175a63738f068e19482e4c09f9ff9f682a4dc2e8a0bf647018c1c21c7efe450"
+  },
+  {
+    "path": "editor/tests/architecture/rules.json",
+    "change": "M",
+    "git_content_sha256": "9b1217d9b4f219d893e5bbc2468674fc96fa468df173322b699faad1c2bf293d"
+  },
+  {
+    "path": "editor/tests/architecture/test_interaction_view_boundaries.py",
+    "change": "M",
+    "git_content_sha256": "a0d65f3a9d3ef8ae843835001db1f55d665a03284a3457aa9bc519a58d2e2ea0"
+  },
+  {
+    "path": "editor/tools/flowforge/CMakeLists.txt",
+    "change": "M",
+    "git_content_sha256": "c87a4e50f2e478271cc4e36bcee4de02454c31d9c13e129279e6679044c34da1"
+  },
+  {
+    "path": "editor/tools/flowforge/interaction/include/lux/engine/editor/flowforge/FlowInteraction.hpp",
+    "change": "M",
+    "git_content_sha256": "4edd18e80d087e67a36f7aff004dfe361a7044af793ad0e4f6124521409c47c2"
+  },
+  {
+    "path": "editor/tools/flowforge/src/ui/FlowForgeElements.cpp",
+    "change": "M",
+    "git_content_sha256": "0599aafae2c74df75424c2c30a4ae4d3767c5040495dad3966b240909bedbac9"
+  },
+  {
+    "path": "editor/tools/flowforge/ui/CMakeLists.txt",
+    "change": "A",
+    "git_content_sha256": "1f7588a6e107af4d83b94cdeb955c83c7bb57f32613def20860f8ad0d0242395"
+  },
+  {
+    "path": "editor/tools/flowforge/ui/include/lux/engine/editor/flowforge/FlowNodeControls.hpp",
+    "change": "A",
+    "git_content_sha256": "7f431be43f1ec1f927b8f26fc8924e6f02fa510eaf109b69b33e5f6ae7c1034c"
+  },
+  {
+    "path": "editor/tools/flowforge/ui/include/lux/engine/editor/flowforge/FlowView.hpp",
+    "change": "A",
+    "git_content_sha256": "836739738e1c29853435e481ae8b3679981749030c434b27cec37259c6097364"
+  },
+  {
+    "path": "editor/tools/flowforge/ui/src/FlowNodeControls.cpp",
+    "change": "A",
+    "git_content_sha256": "5d0e3c0e3f23a22643c599eade89edadc93494aba43febbdbd9bfe089418e66e"
+  },
+  {
+    "path": "editor/tools/flowforge/ui/src/FlowView.cpp",
+    "change": "A",
+    "git_content_sha256": "4793d29706b853192a288a2285e5fc761032efde1e20cf3859dad259de501468"
+  },
+  {
+    "path": "editor/tools/flowforge/ui/src/ViewFactory.cpp",
+    "change": "A",
+    "git_content_sha256": "53ea9d612b0dae8a1687ab1166259819a651ac70cc95b95eb434ce22380241b2"
+  },
+  {
+    "path": "editor/tools/material/CMakeLists.txt",
+    "change": "M",
+    "git_content_sha256": "58f0cdd96edb23920e89ca28412f63e2570ec89545dd7edfee1f61725144d220"
+  },
+  {
+    "path": "editor/tools/material/interaction/include/lux/engine/editor/material/MaterialInteraction.hpp",
+    "change": "M",
+    "git_content_sha256": "aee9a44724f7ca5c86bb17ccbaa0b94dfe7e8b50f5a63717733412c5f1a59cc5"
+  },
+  {
+    "path": "editor/tools/material/model/include/lux/engine/editor/material/MaterialSnapshot.hpp",
+    "change": "M",
+    "git_content_sha256": "cc97408d08e314cd3e3b5ebe9254e1dea51ebe138f521d25cd913c864eec5d84"
+  },
+  {
+    "path": "editor/tools/material/model/src/MaterialSession.cpp",
+    "change": "M",
+    "git_content_sha256": "2d4ec9790f37df7e7c3d85d79f5c05ca6a874256d492eac8cbe0557130185811"
+  },
+  {
+    "path": "editor/tools/material/pinclude/lux/engine/editor/ui/material/MaterialPreviewElement.hpp",
+    "change": "M",
+    "git_content_sha256": "aabaf5eec48c1f518b44a9955444f7818e452376615778a134c07b691656a602"
+  },
+  {
+    "path": "editor/tools/material/src/ui/MaterialElements.cpp",
+    "change": "M",
+    "git_content_sha256": "60eb9b660665ce4e71e020c1802863623bef85680c4d0316a8e896612ec22737"
+  },
+  {
+    "path": "editor/tools/material/src/ui/MaterialPreviewElement.cpp",
+    "change": "M",
+    "git_content_sha256": "9351a10f802ba66e24c1a2f6c88bf57ce46e045eafa951c48e7f73836377eff3"
+  },
+  {
+    "path": "editor/tools/material/ui/CMakeLists.txt",
+    "change": "A",
+    "git_content_sha256": "de6b52e19520fe25b78528281e4df8d230c213c0cde14999932784a09346ef95"
+  },
+  {
+    "path": "editor/tools/material/ui/include/lux/engine/editor/material/MaterialNodeControls.hpp",
+    "change": "A",
+    "git_content_sha256": "bb9bb7261baa9119f8149aa71e534c93904dc8e0ad6257c4fa2371d110ffa3a5"
+  },
+  {
+    "path": "editor/tools/material/ui/include/lux/engine/editor/material/MaterialView.hpp",
+    "change": "A",
+    "git_content_sha256": "09a6889aba5e087c96aa9f534db14690db4e37f551be7cb85cea7fd4eaae49bd"
+  },
+  {
+    "path": "editor/tools/material/ui/src/MaterialNodeControls.cpp",
+    "change": "A",
+    "git_content_sha256": "d3081c4ecbbf887f581367fc29a44efcb0f9559f996ee4bcb46f87003d8da65f"
+  },
+  {
+    "path": "editor/tools/material/ui/src/MaterialView.cpp",
+    "change": "A",
+    "git_content_sha256": "63e0bd3511a8e5437c345374250d099815f4648d805aef5b6f75fb9e11d1bb0e"
+  },
+  {
+    "path": "editor/tools/material/ui/src/ViewFactory.cpp",
+    "change": "A",
+    "git_content_sha256": "d8451fb1b6e0e02d9cf74bb692d3aebe912d0be5a810a870696606478407073a"
+  },
+  {
+    "path": "editor/tools/scene/execution/api/include/lux/engine/editor/scene/RunInspectAccess.hpp",
+    "change": "M",
+    "git_content_sha256": "bd080a71d1e6e46402e1b7b0d0616489cf6e9594cdb482023fbaa43650debdbe"
+  },
+  {
+    "path": "editor/tools/scene/execution/src/RunStore.cpp",
+    "change": "M",
+    "git_content_sha256": "25593da6bb1bb1621c55cb40d7b9da86109285da0802cc187a2d7edefe8427c4"
+  },
+  {
+    "path": "editor/tools/scene/interaction/include/lux/engine/editor/scene/SceneInteraction.hpp",
+    "change": "M",
+    "git_content_sha256": "3402595c4c2e44abe9e6d3a784d14b65fbef00888e4ea351c3d92cf05dfc242b"
+  },
+  {
+    "path": "editor/tools/scene/model/include/lux/engine/editor/scene/SceneAlgorithms.hpp",
+    "change": "M",
+    "git_content_sha256": "dd8d4775cae24939423fda2f01b444fae324e2eb9fc07a05727da520bd21c269"
+  },
+  {
+    "path": "editor/tools/scene/model/include/lux/engine/editor/scene/SceneEdit.hpp",
+    "change": "M",
+    "git_content_sha256": "abdf61d2a1e66c12442b809456a8c559160a8fd25425231c6225e9c69c543a12"
+  },
+  {
+    "path": "editor/tools/scene/model/include/lux/engine/editor/scene/SceneSnapshot.hpp",
+    "change": "M",
+    "git_content_sha256": "62ac641642847fd48af69c9adaac99fbbb5c7cf2194c83f56fc218f3d73b1810"
+  },
+  {
+    "path": "editor/tools/scene/model/include/lux/engine/editor/scene/SceneSource.hpp",
+    "change": "M",
+    "git_content_sha256": "b8c5cd204660694db58e5ace1a2cae755699480e86c3f59a0691bfb2277392ce"
+  },
+  {
+    "path": "editor/tools/scene/model/src/SceneAlgorithms.cpp",
+    "change": "M",
+    "git_content_sha256": "fc5fccf13bec47b18ac54dd891a84b65f13ed837142cdda6be5acc0f7160c3c5"
+  },
+  {
+    "path": "editor/tools/scene/model/src/SceneSource.cpp",
+    "change": "M",
+    "git_content_sha256": "a38fde0d2505997d68069e6b639385b96e7a3b6d51ce99a3d9e6a4fb85947df2"
+  },
+  {
+    "path": "editor/tools/scene/pinclude/lux/engine/editor/ui/scene/OutlinerPane.hpp",
+    "change": "M",
+    "git_content_sha256": "4a3b617e02bf7dd9a6416d1bf0d835b18335c1da571fa39845d613cc989d9564"
+  },
+  {
+    "path": "editor/tools/scene/pinclude/lux/engine/editor/ui/scene/SceneContentElement.hpp",
+    "change": "M",
+    "git_content_sha256": "4d4cbc270f75a6899cf0f5560f25634380891a36dd4ff5899e919d21d133eb4e"
+  },
+  {
+    "path": "editor/tools/scene/projection/CMakeLists.txt",
+    "change": "M",
+    "git_content_sha256": "b53420bfe32537db85c56ee7b98d3c143abdc882a42b896c24105a89c1a6437a"
+  },
+  {
+    "path": "editor/tools/scene/projection/include/lux/engine/editor/scene/ViewportPresentation.hpp",
+    "change": "M",
+    "git_content_sha256": "62e5d2d14be75c6323d43d1eabe8f24fc0d73cd06144688f7d97d59be3b6c5e9"
+  },
+  {
+    "path": "editor/tools/scene/projection/src/ResourceStatus.cpp",
+    "change": "M",
+    "git_content_sha256": "b934a3d57abff22d87f2701ddd445dd9225eb0bfddd88e776986f7eaf6849c8c"
+  },
+  {
+    "path": "editor/tools/scene/projection/src/SceneProjection.cpp",
+    "change": "M",
+    "git_content_sha256": "f69c7f1321b44988a15ff1333bfcc00d5602f769658197bb1692ce539b4c9f39"
+  },
+  {
+    "path": "editor/tools/scene/projection/src/ViewportPresentation.cpp",
+    "change": "M",
+    "git_content_sha256": "5fcb62c95cee0a85a37e4e1bc3cb386a57969e37907f73144055f8e2da7bafe5"
+  },
+  {
+    "path": "editor/tools/scene/src/SceneEditor.cpp",
+    "change": "M",
+    "git_content_sha256": "97b7c5cef91b2683fa8a0a2e3e00f7b8cd6b9e7d612144e47f6075018f47bc84"
+  },
+  {
+    "path": "editor/tools/scene/src/ui/OutlinerPane.cpp",
+    "change": "M",
+    "git_content_sha256": "4e8afccf3792e1d1375a2a1ef212c6b7eb0cc6c2c188240a45fe095d1e71f607"
+  },
+  {
+    "path": "editor/tools/scene/src/ui/ResourcePane.cpp",
+    "change": "M",
+    "git_content_sha256": "291178425d82010ae3ba665969e55344b4396211004906a57b3d2e6e55cdecbe"
+  },
+  {
+    "path": "editor/tools/scene/src/ui/SceneContentElement.cpp",
+    "change": "M",
+    "git_content_sha256": "2f83e8c70bddcb106bb910837daa1e04a5df2bfdc4501709759ca327d9a955c5"
+  },
+  {
+    "path": "editor/tools/scene/test/run_checks.hpp",
+    "change": "M",
+    "git_content_sha256": "fa234e7430a0b72470b893336ef9704251910de664955044d59e7127917387fc"
+  },
+  {
+    "path": "editor/tools/scene/ui/CMakeLists.txt",
+    "change": "A",
+    "git_content_sha256": "9c51355372eaa38dd045be7ec85c74e5ad3f732240a2befcf49ebc7d3f42fdd2"
+  },
+  {
+    "path": "editor/tools/scene/ui/cmake/engine_editor_imgui_inspector_codegen.cmake",
+    "change": "A",
+    "git_content_sha256": "85cbb6f70a154890f56422f3f722345c9cf9cd670702be5a7974f15adb638297"
+  },
+  {
+    "path": "editor/tools/scene/ui/codegen/inspector_codegen.py",
+    "change": "A",
+    "git_content_sha256": "fbf52a777b464b1769181d6d410bd38a80f334f78e7fe86ac3a6ce1c9058e3f0"
+  },
+  {
+    "path": "editor/tools/scene/ui/codegen/ir.template",
+    "change": "A",
+    "git_content_sha256": "93571f333ffbead7bd5e2a9b8ffcca53de8910ca96f05263670724c27c40511d"
+  },
+  {
+    "path": "editor/tools/scene/ui/codegen/support/FirstPartyInspectorControls.hpp",
+    "change": "A",
+    "git_content_sha256": "f0e5c8cdbacab9de65a7d443b745b6f6f832fbabd47fd4e562a35f96d81ce20d"
+  },
+  {
+    "path": "editor/tools/scene/ui/codegen/support/InspectorAggregateElements.hpp",
+    "change": "A",
+    "git_content_sha256": "acac6eb8400c0ceabe28fc4bdeb6857f03b650974aad8b7f56962653cd644d1f"
+  },
+  {
+    "path": "editor/tools/scene/ui/codegen/support/InspectorAlternativeElement.hpp",
+    "change": "A",
+    "git_content_sha256": "b4d2827ad5610e5fb15a8537a13eba7a66eca161b1ead36328085b950a96b7ab"
+  },
+  {
+    "path": "editor/tools/scene/ui/codegen/support/InspectorAssociativeElement.hpp",
+    "change": "A",
+    "git_content_sha256": "dbc3f27751d428ea2f5ee8c8b08495799f08b321a8e0f1eeb743060e9c7ec2fd"
+  },
+  {
+    "path": "editor/tools/scene/ui/codegen/support/InspectorControl.hpp",
+    "change": "A",
+    "git_content_sha256": "25ae555027ed8603ec6e667bfda55d65fd96b179609ca53d3a9bd66791cadca9"
+  },
+  {
+    "path": "editor/tools/scene/ui/codegen/support/InspectorElementFields.hpp",
+    "change": "A",
+    "git_content_sha256": "5f1df4164c8f0f0bb9d8d0a5294d346ed3279f6718eab7b61098bcc11222e39d"
+  },
+  {
+    "path": "editor/tools/scene/ui/include/lux/engine/editor/scene/CameraNavigation.hpp",
+    "change": "A",
+    "git_content_sha256": "1c367ef38d8f3fc7e503435f23154f12235ffe97222f7589571f8625e644ceb6"
+  },
+  {
+    "path": "editor/tools/scene/ui/include/lux/engine/editor/scene/InspectorFields.hpp",
+    "change": "A",
+    "git_content_sha256": "3e73c43690f3b2d3d255c614d9732c32e804c0d5dabdd144d3d2eeed3c274551"
+  },
+  {
+    "path": "editor/tools/scene/ui/include/lux/engine/editor/scene/InspectorView.hpp",
+    "change": "A",
+    "git_content_sha256": "b22df6e772e470f5d3c0235220f14ae8690f878dadec0833b42bab72b72f177a"
+  },
+  {
+    "path": "editor/tools/scene/ui/include/lux/engine/editor/scene/OutlinerView.hpp",
+    "change": "A",
+    "git_content_sha256": "b1c99827e184d258cee3ca25119c30a6936498a338a9d5f9cec2e53ad2173abd"
+  },
+  {
+    "path": "editor/tools/scene/ui/include/lux/engine/editor/scene/ResourceView.hpp",
+    "change": "A",
+    "git_content_sha256": "56dcc30a1f9345bb86b9c7d2d93b300d616a663671ec6692ed90db0b7ab7538d"
+  },
+  {
+    "path": "editor/tools/scene/ui/include/lux/engine/editor/scene/SceneConfigurationElement.hpp",
+    "change": "A",
+    "git_content_sha256": "d1333d5978a1236ebdef43a1f367ded6892e877ab4c17a91ef7952adec2ef408"
+  },
+  {
+    "path": "editor/tools/scene/ui/include/lux/engine/editor/scene/SceneConfigurationView.hpp",
+    "change": "A",
+    "git_content_sha256": "235896ca184626da4b104d8873f6cbf8daeb5c87c0e40026c3f0ea05d07730ab"
+  },
+  {
+    "path": "editor/tools/scene/ui/include/lux/engine/editor/scene/SceneCreationView.hpp",
+    "change": "A",
+    "git_content_sha256": "d9c8e7af572e1926f180ae7de0b40ef41b987a7a6bb6d01c3f421676323f5301"
+  },
+  {
+    "path": "editor/tools/scene/ui/include/lux/engine/editor/scene/SceneElement.hpp",
+    "change": "A",
+    "git_content_sha256": "06f2ab3afcfff7e63a968fce678b8447b53bcf9e899124fbc27dd99be42d179a"
+  },
+  {
+    "path": "editor/tools/scene/ui/include/lux/engine/editor/scene/SceneView.hpp",
+    "change": "A",
+    "git_content_sha256": "799e071e2b3041d2627f4188e3741c43bbafdf4dcc9a35864c69492b48d9fdf0"
+  },
+  {
+    "path": "editor/tools/scene/ui/src/CameraNavigation.cpp",
+    "change": "A",
+    "git_content_sha256": "467d35fe38c94f809d82c624478c4b601e555dbb30fa34bcb486797dfc3a060b"
+  },
+  {
+    "path": "editor/tools/scene/ui/src/CodegenInput.cpp",
+    "change": "A",
+    "git_content_sha256": "051f9e6ff0afa8b387668e8658b5cac52a4f61570cad91a0682d496c144652f3"
+  },
+  {
+    "path": "editor/tools/scene/ui/src/ComponentEditors.cpp",
+    "change": "A",
+    "git_content_sha256": "0053e6fb0bb0c4f64886fb1fa90afaa3a12de268942cf3d5a7ec51c0355754ea"
+  },
+  {
+    "path": "editor/tools/scene/ui/src/InspectorFields.cpp",
+    "change": "A",
+    "git_content_sha256": "542dce6904df5865708a0c9c240df0dde2b372940c82860f74007aa749c1f14d"
+  },
+  {
+    "path": "editor/tools/scene/ui/src/InspectorView.cpp",
+    "change": "A",
+    "git_content_sha256": "60314219caacf8c0c707b5ac14e365f53a9b33eb5c6612ff7c8fbb55ab718e52"
+  },
+  {
+    "path": "editor/tools/scene/ui/src/OutlinerView.cpp",
+    "change": "A",
+    "git_content_sha256": "5c0b2a2928c5c58b220033929f9572bac9438e981c9c46bc79161e048d72e990"
+  },
+  {
+    "path": "editor/tools/scene/ui/src/ResourceView.cpp",
+    "change": "A",
+    "git_content_sha256": "5de3cfb19aa5560664803172b708279a50e3481a5b90782db12e7bfc4c033089"
+  },
+  {
+    "path": "editor/tools/scene/ui/src/SceneConfigurationElement.cpp",
+    "change": "A",
+    "git_content_sha256": "448fbfd68b4b06e451ee410898b619e947d0d3d21d619a083fcd5346f657c7b6"
+  },
+  {
+    "path": "editor/tools/scene/ui/src/SceneConfigurationView.cpp",
+    "change": "A",
+    "git_content_sha256": "630b1610f8f13ad5b23116b5d145ddd772fde076d75fcb882b8d4f4eefefd5ae"
+  },
+  {
+    "path": "editor/tools/scene/ui/src/SceneCreationView.cpp",
+    "change": "A",
+    "git_content_sha256": "0a919f51635c25615e88186412c01141edabb525d360358568e4e02665b59bb7"
+  },
+  {
+    "path": "editor/tools/scene/ui/src/SceneElement.cpp",
+    "change": "A",
+    "git_content_sha256": "204fba741639626bde3796138e0abf1059f50be4995e5a2e4cdf9c4d18d811d7"
+  },
+  {
+    "path": "editor/tools/scene/ui/src/SceneView.cpp",
+    "change": "A",
+    "git_content_sha256": "5717df21b5dd9e8a176c865201c919150f7c335f1dd9b39937d58fea8d33522e"
+  },
+  {
+    "path": "editor/tools/scene/ui/src/ViewFactory.cpp",
+    "change": "A",
+    "git_content_sha256": "657f4a522f92ad3f033281a66f9709767a8057febc537180f46b1ed8139a4885"
+  },
+  {
+    "path": "editor/tools/scene/ui/test/AuxiliaryViews.hpp",
+    "change": "A",
+    "git_content_sha256": "ce3c6cbbf3fc27bfe8ce22687e1ed7467de778d69a851cb0e4de8fb0fc6d8844"
+  },
+  {
+    "path": "editor/tools/scene/ui/test/NativeDesktop.hpp",
+    "change": "A",
+    "git_content_sha256": "d026a149810218f4482d396afff9bae37d8d4dac68cecb0c6814d186b0eb5208"
+  },
+  {
+    "path": "editor/tools/scene/ui/test/views.cpp",
+    "change": "A",
+    "git_content_sha256": "dc8cf134be8ba6195d42c65504ff216abcba95e567092c9b7c59fa0c8d6101c8"
+  },
+  {
+    "path": "editor/tools/settings/pinclude/lux/engine/editor/settings/detail/PluginSettingsElement.hpp",
+    "change": "M",
+    "git_content_sha256": "57997732c8dacc034e51c33c033ab6b1f731d9abc46809db3d3d54b88c97263a"
+  },
+  {
+    "path": "editor/transition/LegacyCodegenInput.cpp",
+    "change": "A",
+    "git_content_sha256": "b524f7a1021b1cddd7805bf08c9f24ee6d9964b40f728e4e879b9c9987c137c6"
+  },
+  {
+    "path": "editor/transition/LegacyComponentEditors.cpp",
+    "change": "A",
+    "git_content_sha256": "9f7cc38990f28250916f904a82cca67d50fa3fb496cf63c25479367ce9405982"
+  },
+  {
+    "path": "editor/transition/LegacySceneConfiguration.cpp",
+    "change": "A",
+    "git_content_sha256": "d8fd75654e728afe522553628af16cea5f6cd5e906f0fd08318fc92d9e5dba94"
+  },
+  {
+    "path": "editor/transition/ProjectCatalogAdapter.cpp",
+    "change": "A",
+    "git_content_sha256": "56ac70d34ce51c10926acd6ef403fbec26be4a53d051b18521db527c4cce1e99"
+  },
+  {
+    "path": "editor/transition/ProjectCatalogAdapter.hpp",
+    "change": "A",
+    "git_content_sha256": "13fa985ae9e3b3ca79c372b31d3b59e5e4ec1e7ba99d2c708c55abe72130cd72"
+  },
+  {
+    "path": "editor/ui/CMakeLists.txt",
+    "change": "M",
+    "git_content_sha256": "0b7509fabb66ac772c2d030af8234a669b56dcce1fb8e136d49ca6a45f241922"
+  },
+  {
+    "path": "editor/ui/cmake/engine_editor_imgui_inspector_codegen.cmake",
+    "change": "D"
+  },
+  {
+    "path": "editor/ui/codegen/inspector_codegen.py",
+    "change": "D"
+  },
+  {
+    "path": "editor/ui/codegen/ir.template",
+    "change": "D"
+  },
+  {
+    "path": "editor/ui/codegen/support/FirstPartyInspectorControls.hpp",
+    "change": "D"
+  },
+  {
+    "path": "editor/ui/codegen/support/InspectorAggregateElements.hpp",
+    "change": "D"
+  },
+  {
+    "path": "editor/ui/codegen/support/InspectorAlternativeElement.hpp",
+    "change": "D"
+  },
+  {
+    "path": "editor/ui/codegen/support/InspectorAssociativeElement.hpp",
+    "change": "D"
+  },
+  {
+    "path": "editor/ui/codegen/support/InspectorControl.hpp",
+    "change": "D"
+  },
+  {
+    "path": "editor/ui/codegen/support/InspectorElementFields.hpp",
+    "change": "D"
+  },
+  {
+    "path": "editor/ui/include/lux/engine/editor/ui/InspectorInteraction.hpp",
+    "change": "M",
+    "git_content_sha256": "8f678a4d5135d93bfc3a2630ad172227f7ed486aa8083e4abce2ac0f5ab1987f"
+  },
+  {
+    "path": "editor/ui/include/lux/engine/editor/ui/Presentation.hpp",
+    "change": "D"
+  },
+  {
+    "path": "editor/ui/include/lux/engine/editor/ui/SceneConfigurationElement.hpp",
+    "change": "M",
+    "git_content_sha256": "23cf27962fceae5016d5e043cba260833c47b12e234fd63ad3e19fb6c400be27"
+  },
+  {
+    "path": "editor/ui/include/lux/engine/editor/ui/SceneElement.hpp",
+    "change": "D"
+  },
+  {
+    "path": "editor/ui/include/lux/engine/editor/ui/SpatialInteraction.hpp",
+    "change": "M",
+    "git_content_sha256": "037953f7d54021a6bfc4860d16cbbf36e3ddf7c40541bc064ce4f40c46483b78"
+  },
+  {
+    "path": "editor/ui/include/lux/engine/editor/ui/WindowInput.hpp",
+    "change": "D"
+  },
+  {
+    "path": "editor/ui/include/lux/engine/editor/ui/WindowOutput.hpp",
+    "change": "D"
+  },
+  {
+    "path": "editor/ui/include/lux/engine/editor/ui/asset/AssetDragDrop.hpp",
+    "change": "D"
+  },
+  {
+    "path": "editor/ui/include/lux/engine/editor/ui/asset/AssetPickerElement.hpp",
+    "change": "D"
+  },
+  {
+    "path": "editor/ui/pinclude/lux/engine/editor/ui/detail/UiFrame.hpp",
+    "change": "D"
+  },
+  {
+    "path": "editor/ui/pinclude/lux/engine/editor/ui/detail/UiRenderSyncStage.hpp",
+    "change": "D"
+  },
+  {
+    "path": "editor/ui/sinclude/lux/engine/editor/ui/NodeCanvasIds.hpp",
+    "change": "D"
+  },
+  {
+    "path": "editor/ui/src/CodegenInput.cpp",
+    "change": "D"
+  },
+  {
+    "path": "editor/ui/src/ComponentEditors.cpp",
+    "change": "D"
+  },
+  {
+    "path": "editor/ui/src/Presentation.cpp",
+    "change": "D"
+  },
+  {
+    "path": "editor/ui/src/SceneConfigurationElement.cpp",
+    "change": "D"
+  },
+  {
+    "path": "editor/ui/src/SceneElement.cpp",
+    "change": "D"
+  },
+  {
+    "path": "editor/ui/src/SpatialInteraction3D.cpp",
+    "change": "M",
+    "git_content_sha256": "d226564f13087297bc8ba2bb150d65c1028fda911945c547a5132fadea66d073"
+  },
+  {
+    "path": "editor/ui/src/TaskPane.cpp",
+    "change": "M",
+    "git_content_sha256": "6cae366bfada79b6e5611989b6b706882971485f96706e216ec68e87ed79e8c6"
+  },
+  {
+    "path": "editor/ui/src/UiRenderSyncStage.cpp",
+    "change": "D"
+  },
+  {
+    "path": "editor/ui/src/WindowInput.cpp",
+    "change": "D"
+  },
+  {
+    "path": "editor/ui/src/WindowOutput.cpp",
+    "change": "D"
+  },
+  {
+    "path": "editor/ui/src/asset/AssetPickerElement.cpp",
+    "change": "D"
+  },
+  {
+    "path": "editor/ui/test/inspector_codegen.py",
+    "change": "M",
+    "git_content_sha256": "02bb03f2f5b1c39b16c0d3a0583edd56df04441ebf5cc30256ce007c9dc34194"
+  },
+  {
+    "path": "editor/ui/test/scene_configuration.cpp",
+    "change": "M",
+    "git_content_sha256": "c38b55aadee14de02d868a5f6c140cc4f21a916fdebb2bd5fd9b94b32045a8b7"
+  },
+  {
+    "path": "editor/ui/test/unified_ui.cpp",
+    "change": "M",
+    "git_content_sha256": "f2b045e554c82ae7a52f4d0dcb7aaf749e0d5f0f0a638499be1bf5f6dd490d05"
+  },
+  {
+    "path": "editor/views/api/include/lux/engine/editor/views/IViewHost.hpp",
+    "change": "M",
+    "git_content_sha256": "01b06be7067b1364751747cb73548d3fb380fabcd32b861ef1d5ebd8f673fdee"
+  },
+  {
+    "path": "editor/widgets/CMakeLists.txt",
+    "change": "A",
+    "git_content_sha256": "6cba9be665b0a099f319a70d5dfed8c6af165860a02cc6d248d4868ec483dfb4"
+  },
+  {
+    "path": "editor/widgets/include/lux/engine/editor/widgets/GraphCanvas.hpp",
+    "change": "A",
+    "git_content_sha256": "1af85ec95a4654ed8c914ca1caf68b8bcbe3a65181d3284f39251ba912ce4f8e"
+  },
+  {
+    "path": "editor/widgets/include/lux/engine/editor/widgets/NodeCanvas.hpp",
+    "change": "A",
+    "git_content_sha256": "1943212974f99995d14e1b7a9ad0f9d708cefe67e0ffadd18b448eb2d1a1c39d"
+  },
+  {
+    "path": "editor/widgets/include/lux/engine/editor/widgets/NodeCanvasIds.hpp",
+    "change": "A",
+    "git_content_sha256": "9b508ef835fe5bd7722ce74802db6f76444e33c3dfc72dd676b5e30ac4aeac6e"
+  },
+  {
+    "path": "editor/widgets/include/lux/engine/editor/widgets/TreeRows.hpp",
+    "change": "A",
+    "git_content_sha256": "9a15de750c43b7ed53df7ba22b58b62d30bbf80b2a508a8a44e749ad7d0620c4"
+  },
+  {
+    "path": "editor/widgets/src/GraphCanvas.cpp",
+    "change": "A",
+    "git_content_sha256": "4591c7cf6672142a287bea2141f12a0238dfc25b690f47424029346cbec9416f"
+  },
+  {
+    "path": "editor/widgets/src/NodeCanvas.cpp",
+    "change": "A",
+    "git_content_sha256": "b051d49de00ed530798f28311ca196ea3d65fcdf490916390efca104879eed2f"
+  },
+  {
+    "path": "editor/widgets/src/TreeRows.cpp",
+    "change": "A",
+    "git_content_sha256": "7c62fc4ef7b6189e35beceb2e3f4e4739d5a49e2c7769a79b4cda1549f60078c"
+  },
+  {
+    "path": "engine/project/plugins/CMakeLists.txt",
+    "change": "M",
+    "git_content_sha256": "b38bfc3d3f76644cc209f34fd9e07d2e107c189aefe93d522caffb2b78b6ccc6"
+  },
+  {
+    "path": "modules/function/render/features/CMakeLists.txt",
+    "change": "M",
+    "git_content_sha256": "11350a088f518a3c071f2c6c0ea3662ef20fcae2367718816608feb27eee1613"
+  },
+  {
+    "path": "modules/function/render/runtime/CMakeLists.txt",
+    "change": "M",
+    "git_content_sha256": "b2fdeb206d0af287d3422d07cb4cf2a74ab8b119835a40e12a64bc8cc0cbd481"
+  },
+  {
+    "path": "modules/function/render/vulkan/CMakeLists.txt",
+    "change": "M",
+    "git_content_sha256": "ce6a4066f8b9aa23fb789a2fa4b8d08a8665c639722a2bab80d2d6b261184ecc"
+  },
+  {
+    "path": "modules/function/ui/rendering/CMakeLists.txt",
+    "change": "M",
+    "git_content_sha256": "78c75b9836be7b65ad9a72c4dad8cd594f9af6b68acf140ce67e9d2874a3028a"
+  }
+]

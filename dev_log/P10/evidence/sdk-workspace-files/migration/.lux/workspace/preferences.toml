@@ -1,0 +1,12 @@
+schema = 1
+selected = '18596655e83bdfc94a657ffda65f31b3'
+
+[origin]
+digest = '79e220a6a83b97eee625e2c2df2aca1afbbf6955a4d471f58cade4545a24e6c0'
+key = 'legacy.workspace.v1'
+
+[[opaque]]
+bytes = '76657273696f6e3d310a73656c65637465643d27426567696e6e6572270a'
+schema = 1
+size = 30
+type = 'lux.workspace.legacy.settings'

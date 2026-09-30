@@ -1,0 +1,52 @@
+{
+  "review_date": "2026-09-30",
+  "repository": "LUX-YU/lux-engine",
+  "branch": "codex/editor-redesign-v4",
+  "implementation_sha": "c5bf69a2bb722741391984d5b584d3f90651eaeb",
+  "receipt_sha": "3363f83dcc448db9e79cea97c5176a546c05cf5a",
+  "decision": "P09 R1 source/evidence review passed; authorize P10 only",
+  "review_basis": [
+    "connected GitHub ref/commit metadata and implementation diff",
+    "LegacyWorkspaceImporter prepareLegacyMigration/continueMigration",
+    "workspace.cpp R1 scenarios",
+    "P09-R1 README and before commands",
+    "selected actual before/after SDK logs",
+    "CTest tail and checker source",
+    "current editor_ui CMake, IViewHost, contracts/ViewInfo",
+    "full original V4 P10 document"
+  ],
+  "independent_engine_runs": [],
+  "not_performed": [
+    "engine build",
+    "CTest",
+    "PLAYER",
+    "SDK consumers",
+    "GPU",
+    "runtime fault reproduction",
+    "full repository archive validator",
+    "all remote archive hash recomputation"
+  ],
+  "reported_results": {
+    "editor_ctest": "180/180",
+    "player": "11/11",
+    "sdk": "13 groups / 93 tests",
+    "explicit_gpu_modes": [
+      "GPU_UI",
+      "EDITOR_SCENE_PANE"
+    ]
+  },
+  "result_scope": "Editor CTest tail and selected SDK before/after records read; complete result matrix is implementer-archived, not independently rerun.",
+  "known_limits": [
+    "No retroactive automatic rewrite of same-origin recovery/marker",
+    "No whole-repository first cold build certification",
+    "Full P10 new double-viewport GPU is still required",
+    "P12 product ApplyLayout/entry cutover not yet implemented"
+  ],
+  "reference_v4_source_zip_sha256": "853a669b72973737f0e33f035fdf9ea89b97aa8b966dc7f85b9205d3b952dc0b",
+  "reference_v4_file_count": 36,
+  "reference_role": "Historical original bytes only. Do not overwrite current source, scripts, paths or mutable ledger.",
+  "current_mutable_ledger": ".internal/editor-redesign/",
+  "next_receipt_directory": "dev_log/P10/",
+  "stop_after": "P10",
+  "main_modification_authorized": false
+}

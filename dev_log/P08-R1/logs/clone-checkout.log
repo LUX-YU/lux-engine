@@ -1,0 +1,2 @@
+Previous HEAD position was 6a08a75a1 Implement P08 domain interactions and detached UI attachment protocol
+HEAD is now at 48ebdb9d8 fix(editor): preserve interactions on transient session access errors

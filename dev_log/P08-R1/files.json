@@ -1,0 +1,47 @@
+[
+  {
+    "path": "cmake/installed-consumers/interaction-views/CMakeLists.txt",
+    "change": "M",
+    "git_content_sha256": "b59f5fde26d095b09296ceed888a4a2e3b0b6605fdee8e5e6888e57eb151f59c"
+  },
+  {
+    "path": "editor/tests/persistence/CMakeLists.txt",
+    "change": "M",
+    "git_content_sha256": "313318c9eadcc83accad3c1eaa8dbb78b670a044796ff0f153c65b5da8bb423f"
+  },
+  {
+    "path": "editor/tests/persistence/interaction_reclaim.cpp",
+    "change": "A",
+    "git_content_sha256": "b0207138195786775e69fa3da5e7fdf7645ab147acbcbe7a868725e04d9969f9"
+  },
+  {
+    "path": "editor/tools/flowforge/interaction/README.md",
+    "change": "M",
+    "git_content_sha256": "3d812087911a0154256d96024fc4cffb7a64cc08f67c9c7d12c5d235377ec026"
+  },
+  {
+    "path": "editor/tools/flowforge/interaction/src/FlowInteraction.cpp",
+    "change": "M",
+    "git_content_sha256": "fdb40c678f0f15ccd3b59272ff4c29039cc697f3b23dc0a140b09a17b4e7d5da"
+  },
+  {
+    "path": "editor/tools/material/interaction/README.md",
+    "change": "M",
+    "git_content_sha256": "797d3f297cc70b3632e7d9b5837cfda0516fcdb707e8f452421286228981174c"
+  },
+  {
+    "path": "editor/tools/material/interaction/src/MaterialInteraction.cpp",
+    "change": "M",
+    "git_content_sha256": "9208195e1a4cd64f4592a33cc8ac081cf4f0532c5036c536f2236c5064f76089"
+  },
+  {
+    "path": "editor/tools/scene/interaction/README.md",
+    "change": "M",
+    "git_content_sha256": "0c8da9eb7eebdc45c6e8fe7cba63a8adc9add61e041ba5d7bf9655a2c5ff3199"
+  },
+  {
+    "path": "editor/tools/scene/interaction/src/SceneInteraction.cpp",
+    "change": "M",
+    "git_content_sha256": "6a104592afe9dc157b2a9dc2506726acec16fbda29a78140f550d9201c8e1ceb"
+  }
+]

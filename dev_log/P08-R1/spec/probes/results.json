@@ -1,0 +1,175 @@
+{
+  "scope": "Original MaterialInteraction.cpp Git blob compiled against explicit isolated access/model shim. BUSY is injected; real SessionStore/SDK/UI not compiled or run. C++23 only supplies std::expected in the shim, not a requested project standard change. Exit 1 denotes the preserved-state target contract failing.",
+  "git_blob": "6bb3c27ebc361d65c4fb319b86bb9387b3e68383",
+  "compiler": "g++ (Debian 14.2.0-19) 14.2.0",
+  "runs": [
+    {
+      "optimization": "-O0",
+      "scenario": "busy-cancel",
+      "compile_command": [
+        "g++",
+        "-std=c++23",
+        "-O0",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-I",
+        "/mnt/data/LUX_ENGINE_P08_REVIEW_R1_2026-09-30/probes/include",
+        "/mnt/data/LUX_ENGINE_P08_REVIEW_R1_2026-09-30/probes/MaterialInteraction.cpp",
+        "/mnt/data/LUX_ENGINE_P08_REVIEW_R1_2026-09-30/probes/main.cpp",
+        "-o",
+        "/mnt/data/LUX_ENGINE_P08_REVIEW_R1_2026-09-30/probes/probeO0"
+      ],
+      "exit_code": 1,
+      "stdout": "mode=busy-cancel result_ok=1 reported_busy=0 author_alive=1 author_unchanged=1 overlay_retained=0 selection_count=1 payload_released=1 cleanup_outside_read=1 read_scopes_added=0 contract_pass=0\n",
+      "stderr": ""
+    },
+    {
+      "optimization": "-O0",
+      "scenario": "busy-sync",
+      "compile_command": [
+        "g++",
+        "-std=c++23",
+        "-O0",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-I",
+        "/mnt/data/LUX_ENGINE_P08_REVIEW_R1_2026-09-30/probes/include",
+        "/mnt/data/LUX_ENGINE_P08_REVIEW_R1_2026-09-30/probes/MaterialInteraction.cpp",
+        "/mnt/data/LUX_ENGINE_P08_REVIEW_R1_2026-09-30/probes/main.cpp",
+        "-o",
+        "/mnt/data/LUX_ENGINE_P08_REVIEW_R1_2026-09-30/probes/probeO0"
+      ],
+      "exit_code": 1,
+      "stdout": "mode=busy-sync result_ok=1 reported_busy=0 author_alive=1 author_unchanged=1 overlay_retained=0 selection_count=0 payload_released=1 cleanup_outside_read=1 read_scopes_added=0 contract_pass=0\n",
+      "stderr": ""
+    },
+    {
+      "optimization": "-O0",
+      "scenario": "live-cancel",
+      "compile_command": [
+        "g++",
+        "-std=c++23",
+        "-O0",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-I",
+        "/mnt/data/LUX_ENGINE_P08_REVIEW_R1_2026-09-30/probes/include",
+        "/mnt/data/LUX_ENGINE_P08_REVIEW_R1_2026-09-30/probes/MaterialInteraction.cpp",
+        "/mnt/data/LUX_ENGINE_P08_REVIEW_R1_2026-09-30/probes/main.cpp",
+        "-o",
+        "/mnt/data/LUX_ENGINE_P08_REVIEW_R1_2026-09-30/probes/probeO0"
+      ],
+      "exit_code": 0,
+      "stdout": "mode=live-cancel result_ok=1 reported_busy=0 author_alive=1 author_unchanged=1 overlay_retained=0 selection_count=1 payload_released=1 cleanup_outside_read=0 read_scopes_added=1 contract_pass=1\n",
+      "stderr": ""
+    },
+    {
+      "optimization": "-O0",
+      "scenario": "stale-sync",
+      "compile_command": [
+        "g++",
+        "-std=c++23",
+        "-O0",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-I",
+        "/mnt/data/LUX_ENGINE_P08_REVIEW_R1_2026-09-30/probes/include",
+        "/mnt/data/LUX_ENGINE_P08_REVIEW_R1_2026-09-30/probes/MaterialInteraction.cpp",
+        "/mnt/data/LUX_ENGINE_P08_REVIEW_R1_2026-09-30/probes/main.cpp",
+        "-o",
+        "/mnt/data/LUX_ENGINE_P08_REVIEW_R1_2026-09-30/probes/probeO0"
+      ],
+      "exit_code": 0,
+      "stdout": "mode=stale-sync result_ok=1 reported_busy=0 author_alive=1 author_unchanged=1 overlay_retained=0 selection_count=0 payload_released=1 cleanup_outside_read=1 read_scopes_added=0 contract_pass=1\n",
+      "stderr": ""
+    },
+    {
+      "optimization": "-O2",
+      "scenario": "busy-cancel",
+      "compile_command": [
+        "g++",
+        "-std=c++23",
+        "-O2",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-I",
+        "/mnt/data/LUX_ENGINE_P08_REVIEW_R1_2026-09-30/probes/include",
+        "/mnt/data/LUX_ENGINE_P08_REVIEW_R1_2026-09-30/probes/MaterialInteraction.cpp",
+        "/mnt/data/LUX_ENGINE_P08_REVIEW_R1_2026-09-30/probes/main.cpp",
+        "-o",
+        "/mnt/data/LUX_ENGINE_P08_REVIEW_R1_2026-09-30/probes/probeO2"
+      ],
+      "exit_code": 1,
+      "stdout": "mode=busy-cancel result_ok=1 reported_busy=0 author_alive=1 author_unchanged=1 overlay_retained=0 selection_count=1 payload_released=1 cleanup_outside_read=1 read_scopes_added=0 contract_pass=0\n",
+      "stderr": ""
+    },
+    {
+      "optimization": "-O2",
+      "scenario": "busy-sync",
+      "compile_command": [
+        "g++",
+        "-std=c++23",
+        "-O2",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-I",
+        "/mnt/data/LUX_ENGINE_P08_REVIEW_R1_2026-09-30/probes/include",
+        "/mnt/data/LUX_ENGINE_P08_REVIEW_R1_2026-09-30/probes/MaterialInteraction.cpp",
+        "/mnt/data/LUX_ENGINE_P08_REVIEW_R1_2026-09-30/probes/main.cpp",
+        "-o",
+        "/mnt/data/LUX_ENGINE_P08_REVIEW_R1_2026-09-30/probes/probeO2"
+      ],
+      "exit_code": 1,
+      "stdout": "mode=busy-sync result_ok=1 reported_busy=0 author_alive=1 author_unchanged=1 overlay_retained=0 selection_count=0 payload_released=1 cleanup_outside_read=1 read_scopes_added=0 contract_pass=0\n",
+      "stderr": ""
+    },
+    {
+      "optimization": "-O2",
+      "scenario": "live-cancel",
+      "compile_command": [
+        "g++",
+        "-std=c++23",
+        "-O2",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-I",
+        "/mnt/data/LUX_ENGINE_P08_REVIEW_R1_2026-09-30/probes/include",
+        "/mnt/data/LUX_ENGINE_P08_REVIEW_R1_2026-09-30/probes/MaterialInteraction.cpp",
+        "/mnt/data/LUX_ENGINE_P08_REVIEW_R1_2026-09-30/probes/main.cpp",
+        "-o",
+        "/mnt/data/LUX_ENGINE_P08_REVIEW_R1_2026-09-30/probes/probeO2"
+      ],
+      "exit_code": 0,
+      "stdout": "mode=live-cancel result_ok=1 reported_busy=0 author_alive=1 author_unchanged=1 overlay_retained=0 selection_count=1 payload_released=1 cleanup_outside_read=0 read_scopes_added=1 contract_pass=1\n",
+      "stderr": ""
+    },
+    {
+      "optimization": "-O2",
+      "scenario": "stale-sync",
+      "compile_command": [
+        "g++",
+        "-std=c++23",
+        "-O2",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-I",
+        "/mnt/data/LUX_ENGINE_P08_REVIEW_R1_2026-09-30/probes/include",
+        "/mnt/data/LUX_ENGINE_P08_REVIEW_R1_2026-09-30/probes/MaterialInteraction.cpp",
+        "/mnt/data/LUX_ENGINE_P08_REVIEW_R1_2026-09-30/probes/main.cpp",
+        "-o",
+        "/mnt/data/LUX_ENGINE_P08_REVIEW_R1_2026-09-30/probes/probeO2"
+      ],
+      "exit_code": 0,
+      "stdout": "mode=stale-sync result_ok=1 reported_busy=0 author_alive=1 author_unchanged=1 overlay_retained=0 selection_count=0 payload_released=1 cleanup_outside_read=1 read_scopes_added=0 contract_pass=1\n",
+      "stderr": ""
+    }
+  ]
+}

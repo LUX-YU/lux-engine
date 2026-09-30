@@ -1,0 +1,32 @@
+{
+  "date": "2026-09-30",
+  "repository": "LUX-YU/lux-engine",
+  "branch": "codex/editor-redesign-v4",
+  "head": "8f210a282109ec9e0dae3f32f88bc04359ef2c65",
+  "implementation": "6a08a75a162a056a4d1cef1777eae9759f593b3d",
+  "verdict": "P08 main work recognised; P09 not authorised until narrow R08-B01 correction is reviewed",
+  "source_review": [
+    "P08 README/FILES/check_receipt",
+    "three interaction implementations",
+    "Root/Pane/Element/Attachment/DetachedView",
+    "LuxObject parent and callback lifetime",
+    "actual UI and Scene/Material interaction test code",
+    "SessionStore::slot/find/close and typed access",
+    "P08 CTest summary"
+  ],
+  "independently_executed": "GCC 14.2 O0/O2; exact production MaterialInteraction.cpp plus explicit shim; 8 runs, injected BUSY and stale/live controls",
+  "not_executed": [
+    "full engine build",
+    "real SDK before test",
+    "actual other-session reclaim callback",
+    "PLAYER",
+    "CTest139",
+    "SDK56",
+    "GPU",
+    "entire receipt verifier",
+    "all archive hashes"
+  ],
+  "source_identity": "probes/source_identity.json",
+  "results": "probes/results.json",
+  "new_issue": "Temporary BUSY is treated as proof of stale session in cancel/synchronize; live interaction state is discarded"
+}

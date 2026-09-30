@@ -1,0 +1,21 @@
+UpdateCTestConfiguration  from :E:/SyncForder/CodeRepos/build/RelWithDebInfo/p08-r1-editor_scene_pane/DartConfiguration.tcl
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p08-r1-editor_scene_pane
+Constructing a list of tests
+Done constructing a list of tests
+Updating test list for fixtures
+Added 0 tests to meet fixture requirements
+Checking test dependency graph...
+Checking test dependency graph end
+test 1
+    Start 1: installed.scene_panes
+
+1: Test command: E:\SyncForder\CodeRepos\build\RelWithDebInfo\p08-r1-editor_scene_pane\bin\scene_panes.exe "--scene-panes"
+1: Working Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p08-r1-editor_scene_pane
+1: Test timeout computed to be: 120
+1: PASS SceneElement framebuffer scale 125/150/200/100 percent: pixel extent adopted without tick
+1: PASS Presentation/RenderFeature through SceneRuntime: 12 GPU frames, publication without redraw, rejected frame, Scene exits before View and GPU retirement
+1/1 Test #1: installed.scene_panes ............   Passed    0.84 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) =   0.84 sec

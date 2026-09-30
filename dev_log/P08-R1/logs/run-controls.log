@@ -1,0 +1,1 @@
+PASS X06-01/02/03 one real frame owner, two consumers, pause maintenance, bounded FIFO, resume dt, stale RunId

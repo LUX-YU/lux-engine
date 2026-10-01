@@ -40,7 +40,7 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
         target_compile_options(plugin_configuration_test PRIVATE -UNDEBUG)
     endif()
     add_test(NAME plugin.configuration COMMAND plugin_configuration_test )
-    set_tests_properties(plugin.configuration PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
+    set_tests_properties(plugin.configuration PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE LABELS "editor;native")
 
     if(TARGET physics2d_simulation)
     add_executable(plugin_library_test test/plugin.cpp)
@@ -52,13 +52,9 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
         target_compile_options(plugin_library_test PRIVATE -UNDEBUG)
     endif()
     add_test(NAME plugin.physics2d COMMAND plugin_library_test "${CMAKE_BINARY_DIR}/share/lux-engine/plugins/catalog.json" "${CMAKE_BINARY_DIR}")
-    set_tests_properties(plugin.physics2d PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
+    set_tests_properties(plugin.physics2d PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE LABELS "editor;native")
 
         add_dependencies(plugin_library_test physics2d_simulation builtin_runtime_plugin lux_plugin_capabilities)
     endif()
 endif()
 
-if(LUX_EDITOR_BUILD_NATIVE_TESTS)
-    set_tests_properties(plugin.configuration plugin.physics2d
-        PROPERTIES LABELS "editor;native")
-endif()

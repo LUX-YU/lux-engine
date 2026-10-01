@@ -351,7 +351,7 @@ namespace draft_test
         auto detached = take(ef::makeFlowView(
             f.messages.dispatcherRef(),
             ui::PaneId{"r1-flow"},
-            {f.store.access<ef::FlowSession>(), compilation},
+            {f.store.access<ef::FlowSession>(), compilation, {}, f.writes, f.disk, {}},
             ef::FlowViewBinding{key, &interaction}
         ));
         auto* view = static_cast<ef::FlowView*>(detached.pane());
@@ -600,10 +600,21 @@ namespace draft_test
         const auto key = take(f.store.key<em::MaterialSession>(take(f.store.publish(reservation))));
         em::MaterialInteraction interaction(f.store.access<em::MaterialSession>(), key);
         em::MaterialPreviewStore preview{*f.runtime, {f.environment, {}}};
+        em::MaterialCompilationService compilation(f.execution);
         auto detached = take(em::makeMaterialView(
             f.messages.dispatcherRef(),
             ui::PaneId{"r1-material"},
-            {f.store.access<em::MaterialSession>(), *f.runtime, *f.resources, *f.renderer, preview, {}, {}, {3}},
+            {f.store.access<em::MaterialSession>(),
+             *f.runtime,
+             *f.resources,
+             *f.renderer,
+             preview,
+             compilation,
+             f.writes,
+             f.disk,
+             {},
+             {},
+             {3}},
             em::MaterialViewBinding{key, &interaction}
         ));
         auto* view = static_cast<em::MaterialView*>(detached.pane());

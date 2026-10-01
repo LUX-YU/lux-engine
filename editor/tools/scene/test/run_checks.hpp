@@ -1,7 +1,7 @@
 #pragma once
 #include "ToolTestAccess.hpp"
 #include "menu_checks.hpp"
-#include <lux/engine/editor/scene/SceneElement.hpp>
+#include <lux/engine/editor/views/ViewportElement.hpp>
 
 #include "entity_checks.hpp"
 #include <lux/engine/scene/RenderResources.hpp>
@@ -61,7 +61,7 @@ public:
             auto camera = toolTest(scene_).viewportCamera();
             if (!camera)
                 return;
-            auto opened = lux::editor::scene::SceneElement::create(
+            auto opened = lux::editor::views::ViewportElement::create(
                 *this,
                 lux::ui::ElementId{"test.run-image.image"},
                 testSceneRuntime(scene_),
@@ -105,7 +105,7 @@ private:
     lux::scene::RenderResources& resources_;
     RenderOutputProbe& captured_;
     lux::scene::ViewObservation receipt_;
-    std::unique_ptr<lux::editor::scene::SceneElement> viewport_;
+    std::unique_ptr<lux::editor::views::ViewportElement> viewport_;
     bool closing_{};
 };
 
@@ -377,7 +377,7 @@ struct ScenePlaybackChecks final
             assert(scene.resumeRun(first));
             scene.content()->setVisible(false);
             const auto closeViewport = [&](auto&& self, lux::object::LuxObject& node) -> void {
-                if (auto* viewport = dynamic_cast<lux::editor::scene::SceneElement*>(&node))
+                if (auto* viewport = dynamic_cast<lux::editor::views::ViewportElement*>(&node))
                     static_cast<void>(viewport->close());
                 for (auto* child = node.firstChild(); child; child = child->nextSibling())
                     self(self, *child);
@@ -393,7 +393,9 @@ struct ScenePlaybackChecks final
             assert(run.state == scene::EPlaybackState::RUNNING && run.retained_resources == 3);
             paused_step = run.steps;
             phase = 5;
-            std::puts("D06: SceneElement closed; independent Run remains active with its resource uses");
+            std::puts(
+                "D06: lux::editor::views::ViewportElement closed; independent Run remains active with its resource uses"
+            );
         }
         else if (phase == 5 && run.steps >= paused_step + 4)
         {

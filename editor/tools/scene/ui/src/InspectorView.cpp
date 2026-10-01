@@ -61,10 +61,11 @@ namespace lux::editor::scene
                 }
                 if (controls)
                 {
-                    auto result = fields->withRead([&]() -> SceneEditResult<void> {
+                    auto read_action = [&]() -> SceneEditResult<void> {
                         controls.reset();
                         return {};
-                    });
+                    };
+                    auto result = fields->withRead(read_action);
                     if (!result)
                     {
                         const auto& error = result.error();
@@ -78,10 +79,10 @@ namespace lux::editor::scene
                 return fields->release();
             }
         };
-        SceneSessionAccess sessions_;
+        sessions::TSessionAccess<SceneSession> sessions_;
         simulation::ecs::ComponentSchemaSet schemas_;
         std::vector<InspectorComponent> registrations_;
-        project::ProjectCatalogAccess catalog_;
+        project::ProjectCatalogModel* catalog_;
         std::optional<EditedSceneBinding> binding_;
         std::optional<SceneObjectRef> target_;
         std::vector<simulation::ecs::ComponentSchemaId> components_;
@@ -96,10 +97,10 @@ namespace lux::editor::scene
         SceneEditResult<void> status_;
         Impl(
             InspectorView& view,
-            SceneSessionAccess sessions,
+            sessions::TSessionAccess<SceneSession> sessions,
             simulation::ecs::ComponentSchemaSet schemas,
             std::vector<InspectorComponent> registrations,
-            project::ProjectCatalogAccess catalog
+            project::ProjectCatalogModel* catalog
         )
             : sessions_(sessions), schemas_(std::move(schemas)), registrations_(std::move(registrations)),
               catalog_(catalog), layout_(view, lux::ui::ElementId{"components"}),
@@ -252,13 +253,14 @@ namespace lux::editor::scene
                 auto refreshed = entry->fields->refresh();
                 if (!refreshed)
                     return refreshed;
-                auto created = entry->fields->withRead([&]() -> SceneEditResult<void> {
+                auto read_action = [&]() -> SceneEditResult<void> {
                     auto element = found->create(candidate_root->layout(), lux::ui::ElementId{id.name}, *entry->fields);
                     if (!element)
                         return cxx::unexpected(element.error());
                     entry->controls = std::move(*element);
                     return {};
-                });
+                };
+                auto created = entry->fields->withRead(read_action);
                 if (!created)
                     return created;
                 candidate.push_back(std::move(entry));
@@ -363,10 +365,10 @@ namespace lux::editor::scene
     InspectorView::InspectorView(
         object::ObjectDispatcherRef dispatcher,
         lux::ui::PaneId id,
-        SceneSessionAccess sessions,
+        sessions::TSessionAccess<SceneSession> sessions,
         simulation::ecs::ComponentSchemaSet schemas,
         std::vector<InspectorComponent> registrations,
-        project::ProjectCatalogAccess catalog
+        project::ProjectCatalogModel* catalog
     )
         : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{"lux.editor.inspector"}, "Inspector"),
           impl_(std::make_unique<Impl>(*this, sessions, std::move(schemas), std::move(registrations), catalog))
@@ -407,12 +409,12 @@ namespace lux::editor::scene
     SceneViewResult<views::DetachedView> makeInspectorView(
         object::ObjectDispatcherRef dispatcher,
         lux::ui::PaneId id,
-        SceneSessionAccess sessions,
+        sessions::TSessionAccess<SceneSession> sessions,
         EditedSceneBinding binding,
         SceneObjectRef target,
         simulation::ecs::ComponentSchemaSet schemas,
         std::vector<InspectorComponent> registrations,
-        project::ProjectCatalogAccess catalog
+        project::ProjectCatalogModel* catalog
     )
     {
         auto view = std::make_unique<InspectorView>(
@@ -431,10 +433,19 @@ namespace lux::editor::scene
         return views::DetachedView{
             contracts::CodeLease::builtin(),
             std::move(view),
-            +[](lux::ui::Pane& pane) -> views::ViewResult<void> {
+            +[](lux::ui::Pane& pane) -> views::ViewCloseResult {
                 auto cleared = static_cast<InspectorView&>(pane).prepareClose();
                 if (!cleared)
-                    return cxx::unexpected(views::EViewError::BUSY);
+                    return cxx::unexpected(views::ViewCloseFailure{
+                        cleared.error().code == ESceneEditError::SESSION ? "session" : "scene.edit",
+                        cleared.error().code == ESceneEditError::SESSION
+                            ? static_cast<std::uint64_t>(cleared.error().session)
+                            : static_cast<std::uint64_t>(cleared.error().code),
+                        "Field interaction could not be ended",
+                        cleared.error().code == ESceneEditError::BUSY ||
+                            (cleared.error().code == ESceneEditError::SESSION &&
+                             cleared.error().session == sessions::ESessionError::BUSY)
+                    });
                 return {};
             }
         };

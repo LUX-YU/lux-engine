@@ -1,5 +1,5 @@
 add_executable(editor_workspace_test workspace.cpp)
-target_link_libraries(editor_workspace_test PRIVATE workspace_store project_io editor_file_publication)
+target_link_libraries(editor_workspace_test PRIVATE workspace_store editor_persistence_execution editor_file_publication editor_file_publication)
 lux_editor_test_options(editor_workspace_test)
 foreach(scenario validation opaque rename remove ordering unknown aliases reads catalog migration collision budgets)
     add_test(NAME editor.workspace.${scenario} COMMAND editor_workspace_test "${CMAKE_CURRENT_BINARY_DIR}/files" ${scenario})

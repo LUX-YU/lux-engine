@@ -1,5 +1,6 @@
 #pragma once
-#include <lux/engine/editor/material/MaterialSessionAccess.hpp>
+#include <lux/engine/editor/sessions/SessionStore.hpp>
+#include <lux/engine/editor/material/MaterialSession.hpp>
 #include <lux/engine/editor/material/MaterialPersistenceAccess.hpp>
 #include <lux/engine/editor/persistence/SaveSource.hpp>
 namespace lux::editor::material
@@ -8,7 +9,7 @@ namespace lux::editor::material
     {
     public:
         MaterialSaveSource(
-            MaterialSessionAccess access,
+            sessions::TSessionAccess<MaterialSession> access,
             sessions::TSessionKey<MaterialSession> key,
             std::optional<persistence::WriteTarget> target,
             sessions::BindingRevision binding
@@ -24,7 +25,7 @@ namespace lux::editor::material
         [[nodiscard]] persistence::EAdoption accept(persistence::SaveReceipt&&) noexcept override;
 
     private:
-        MaterialSessionAccess access_;
+        sessions::TSessionAccess<MaterialSession> access_;
         sessions::TSessionKey<MaterialSession> key_;
         std::optional<persistence::WriteTarget> target_;
         sessions::BindingRevision target_binding_;

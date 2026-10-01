@@ -1,10 +1,20 @@
 #pragma once
 #include <lux/engine/editor/material/MaterialInteraction.hpp>
 #include <lux/engine/editor/material/MaterialPreviewStore.hpp>
-#include <lux/engine/editor/scene/SceneElement.hpp>
-#include <lux/engine/editor/scene/CameraNavigation.hpp>
-#include <lux/engine/editor/project/ProjectCatalogAccess.hpp>
+#include <lux/engine/editor/material/MaterialCompilationService.hpp>
+#include <lux/engine/editor/persistence/WriteLane.hpp>
+#include <lux/engine/editor/views/CameraNavigation.hpp>
 #include <lux/engine/editor/views/IViewHost.hpp>
+
+namespace lux::editor::project
+{
+    class ProjectCatalogModel;
+}
+namespace lux::editor::persistence
+{
+    class WriteCoordinator;
+    class IArtifactStore;
+}
 
 namespace lux::editor::material
 {
@@ -14,16 +24,6 @@ namespace lux::editor::material
         MaterialInteraction* interaction{};
         friend bool operator==(MaterialViewBinding, MaterialViewBinding) = default;
     };
-    enum class EMaterialViewAction : std::uint8_t
-    {
-        COMPILE,
-        PUBLISH
-    };
-    struct MaterialViewRequests final
-    {
-        void* owner{};
-        MaterialCompileResult<void> (*request)(void*, sessions::TSessionKey<MaterialSession>, EMaterialViewAction){};
-    };
     struct MaterialViewServices final
     {
         sessions::TSessionAccess<MaterialSession> sessions;
@@ -31,18 +31,22 @@ namespace lux::editor::material
         lux::scene::RenderResources& resources;
         render::RenderRuntime& renderer;
         MaterialPreviewStore& preview;
-        MaterialViewRequests requests;
-        project::ProjectCatalogAccess assets;
+        MaterialCompilationService& compilation;
+        persistence::WriteCoordinator& writes;
+        persistence::IArtifactStore& artifacts;
+        std::string publication_address;
+        project::ProjectCatalogModel* assets{};
         system::SystemInstanceId render_system;
     };
     struct MaterialViewState final
     {
-        scene::CameraPose camera;
+        lux::editor::views::CameraPose camera;
         render::PixelExtent extent{400, 400};
     };
     using VMaterialViewFailure = std::variant<
         MaterialEditError,
         VMaterialCompileFailure,
+        persistence::PersistenceFailure,
         scene::ProjectionFailure,
         render::RendererFailure,
         views::EViewError,
@@ -70,8 +74,10 @@ namespace lux::editor::material
         [[nodiscard]] MaterialViewResult<void> cancelEdit();
         [[nodiscard]] MaterialViewResult<void> undo();
         [[nodiscard]] MaterialViewResult<void> redo();
-        [[nodiscard]] MaterialViewResult<void> request(EMaterialViewAction);
-        [[nodiscard]] MaterialViewResult<void> navigate(const scene::CameraMotion&);
+        [[nodiscard]] MaterialViewResult<MaterialCompileId> compile();
+        [[nodiscard]] MaterialViewResult<persistence::WriteTicket> publish();
+        [[nodiscard]] MaterialCompileId compilation() const noexcept;
+        [[nodiscard]] MaterialViewResult<void> navigate(const lux::editor::views::CameraMotion&);
         [[nodiscard]] const std::optional<MaterialViewBinding>& binding() const noexcept;
         [[nodiscard]] const MaterialViewState& state() const noexcept;
         [[nodiscard]] const MaterialViewResult<void>& status() const noexcept;

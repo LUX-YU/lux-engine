@@ -2,7 +2,7 @@
 #include <cassert>
 #include <iostream>
 using namespace lux::render;
-using namespace lux::editor::scene;
+using namespace lux::editor::views;
 int main()
 {
     HighlightRenderer renderer;
@@ -26,7 +26,7 @@ int main()
     assert(captured == 2 && encoded == 1);
     assert(!observer.cpuReleased());
     auto blocked = [](auto&) -> RenderResult<EFrameSubmit> { return EFrameSubmit::BACKPRESSURED; };
-    assert(*renderer.submit(blocked) == EOverlaySubmit::BACKPRESSURED);
+    assert(*renderer.submit(blocked) == lux::editor::views::EOverlaySubmit::BACKPRESSURED);
     assert(renderer.prepared == key && !renderer.accepted && !observer.cpuReleased());
     assert(*renderer.prepare(key, capture, encode));
     assert(captured == 2 && encoded == 1);
@@ -34,7 +34,7 @@ int main()
     assert(*renderer.submit([&](auto& input) -> RenderResult<EFrameSubmit> {
         inflight = std::move(input);
         return EFrameSubmit::SUBMITTED;
-    }) == EOverlaySubmit::ACCEPTED);
+    }) == lux::editor::views::EOverlaySubmit::ACCEPTED);
     assert(renderer.accepted == key && !renderer.prepared);
     auto gpu = observer.acquire();
     assert(gpu && gpu.record(9));
@@ -48,7 +48,7 @@ int main()
     // Returning to the already displayed selection cancels a different backpressured candidate.
     key.selection = 20;
     assert(*renderer.prepare(key, capture, encode));
-    assert(*renderer.submit(blocked) == EOverlaySubmit::BACKPRESSURED);
+    assert(*renderer.submit(blocked) == lux::editor::views::EOverlaySubmit::BACKPRESSURED);
     auto abandoned = observer;
     key.selection = 12;
     const auto before_revert = captured;

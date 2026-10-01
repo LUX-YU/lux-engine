@@ -47,4 +47,11 @@ namespace lux::editor::persistence
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };
+    // Admits an already frozen derived product without source-save version inheritance.
+    [[nodiscard]] PersistenceResult<WriteTicket> publishEncodedArtifact(
+        WriteCoordinator&,
+        WriteTarget,
+        EncodedArtifact
+    );
+
 }

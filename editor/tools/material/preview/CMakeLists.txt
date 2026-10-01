@@ -1,5 +1,5 @@
 add_component(COMPONENT_NAME material_preview NAMESPACE lux::engine::editor STATIC
-    SOURCE_FILES src/PublishCompiledMaterial.cpp src/MaterialCompilation.cpp src/MaterialPreviewStore.cpp)
+    SOURCE_FILES src/PublishCompiledMaterial.cpp src/MaterialCompilation.cpp src/MaterialCompilationService.cpp src/MaterialPreviewStore.cpp)
 component_include_directories(material_preview BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
 target_link_libraries(material_preview PUBLIC lux::engine::editor::editor_persistence lux::engine::editor::material_model
     lux::engine::toolchain::toolchain_material_compiler lux::engine::process::process_execution
@@ -19,11 +19,11 @@ lux_classify_target(TARGET material_preview LAYER EDITOR PRODUCT EDITOR ROLE LIB
 lux_engine_install_components(PROJECT_NAME lux-engine-editor-material-preview VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS material_preview)
 
-if(LUX_EDITOR_BUILD_NATIVE_TESTS)
+if(LUX_EDITOR_BUILD_NATIVE_TESTS AND LUX_EDITOR_BUILD_TOOLCHAIN_TESTS)
     add_executable(editor_compilation_p07_test test/compilation.cpp)
-    target_link_libraries(editor_compilation_p07_test PRIVATE material_preview flowforge_compilation project_io)
+    target_link_libraries(editor_compilation_p07_test PRIVATE material_preview flowforge_compilation editor_persistence_execution editor_file_publication)
     lux_editor_test_options(editor_compilation_p07_test)
-    find_program(P07_LINKER NAMES lld-link REQUIRED)
+    lux_editor_find_linker(P07_LINKER)
     add_test(NAME editor.compilation.actual_publish COMMAND editor_compilation_p07_test "${P07_LINKER}" "${CMAKE_CURRENT_BINARY_DIR}/publication")
     set_tests_properties(editor.compilation.actual_publish PROPERTIES LABELS "editor;native;P07;toolchain" TIMEOUT 180)
     add_executable(editor_compilation_ownership_test test/ownership.cpp)

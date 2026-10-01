@@ -1,8 +1,9 @@
 #pragma once
-#include <lux/engine/editor/scene/SceneSessionAccess.hpp>
+#include <lux/engine/editor/sessions/SessionStore.hpp>
+#include <lux/engine/editor/scene/SceneSession.hpp>
 #include <lux/engine/editor/scene/SceneInteraction.hpp>
 #include <lux/engine/editor/scene/SceneProjection.hpp>
-#include <lux/engine/editor/scene/CameraNavigation.hpp>
+#include <lux/engine/editor/views/CameraNavigation.hpp>
 #include <lux/engine/editor/views/IViewHost.hpp>
 #include <lux/engine/scene/MeshQuery.hpp>
 
@@ -27,13 +28,13 @@ namespace lux::editor::scene
     using VSceneViewBinding = std::variant<UnboundSceneBinding, EditedSceneBinding, RunningSceneBinding>;
     struct SceneViewState final
     {
-        CameraPose camera;
+        lux::editor::views::CameraPose camera;
         render::PixelExtent extent{640, 480};
         float work_plane_height{};
     };
     struct SceneViewServices final
     {
-        SceneSessionAccess sessions;
+        sessions::TSessionAccess<SceneSession> sessions;
         ScenePresentationHub& projections;
         lux::scene::SceneRuntime& runtime;
         lux::scene::RenderResources& resources;
@@ -79,7 +80,7 @@ namespace lux::editor::scene
         [[nodiscard]] SceneViewResult<void> rebind(VSceneViewBinding);
         [[nodiscard]] const VSceneViewBinding& binding() const noexcept;
         [[nodiscard]] const SceneViewState& state() const noexcept;
-        [[nodiscard]] SceneViewResult<void> navigate(const CameraMotion&);
+        [[nodiscard]] SceneViewResult<void> navigate(const lux::editor::views::CameraMotion&);
         [[nodiscard]] SceneViewResult<void> pick(Eigen::Vector2d position, Eigen::Vector2d extent);
         [[nodiscard]] SceneViewResult<void> undo();
         [[nodiscard]] SceneViewResult<void> redo();

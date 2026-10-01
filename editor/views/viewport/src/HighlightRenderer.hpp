@@ -1,5 +1,5 @@
 #pragma once
-#include <lux/engine/editor/scene/ViewportPresentation.hpp>
+#include <lux/engine/editor/views/ViewportPresentation.hpp>
 #include <lux/engine/scene/RenderSceneState.hpp>
 #include <lux/engine/scene/SceneRuntime.hpp>
 #include <lux/engine/simulation/ecs/Parent.hpp>
@@ -7,7 +7,7 @@
 #include <lux/engine/function/render/features/genops/HighlightOperation.ops.hpp>
 #include <lux/engine/function/render/features/genops/Grid3DOperation.ops.hpp>
 
-namespace lux::editor::scene
+namespace lux::editor::views
 {
     struct HighlightRenderer final
     {

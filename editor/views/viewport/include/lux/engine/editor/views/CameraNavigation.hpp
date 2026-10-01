@@ -3,11 +3,7 @@
 #include <lux/engine/scene/Camera.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
 #include <string_view>
-namespace lux::scene
-{
-    struct RayHit3D;
-}
-namespace lux::editor::scene
+namespace lux::editor::views
 {
     struct CameraMotion final
     {
@@ -32,10 +28,5 @@ namespace lux::editor::scene
         const lux::scene::Camera&,
         Eigen::Vector2d,
         Eigen::Vector2d
-    );
-    [[nodiscard]] CameraNavigationResult<Eigen::Vector3d> sceneCreationPoint(
-        const lux::scene::RayHit3D*,
-        const lux::math::Ray3d&,
-        double
     );
 }

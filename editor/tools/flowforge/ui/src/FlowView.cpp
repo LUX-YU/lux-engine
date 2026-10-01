@@ -1,3 +1,5 @@
+#include <lux/engine/editor/editing/InteractionDelivery.hpp>
+#include <lux/engine/editor/flowforge/PublishFlowArtifact.hpp>
 #include <lux/engine/editor/flowforge/FlowView.hpp>
 #include <lux/engine/editor/flowforge/FlowNodeControls.hpp>
 #include <lux/engine/editor/widgets/GraphCanvas.hpp>
@@ -115,14 +117,7 @@ namespace lux::editor::flowforge
         };
         std::optional<NodePropertiesDraft> properties_;
         std::optional<std::uint64_t> selected_;
-        enum class ECanvasStage : std::uint8_t
-        {
-            BEGIN,
-            PREVIEW,
-            COMMIT,
-            CANCEL,
-            COMPLETE
-        };
+        using ECanvasStage = editing::detail::EInputDeliveryStage;
         struct CanvasRequest final
         {
             sessions::ContentStamp based_on;
@@ -220,7 +215,7 @@ namespace lux::editor::flowforge
                 ImGui::SameLine();
                 if (ImGui::Button("Redo"))
                     state_.control_ = EControl::REDO;
-                ImGui::BeginDisabled(!state_.services_.compile);
+                ImGui::BeginDisabled(!state_.binding_);
                 if (ImGui::Button("Compile"))
                     state_.control_ = EControl::COMPILE;
                 ImGui::EndDisabled();
@@ -231,7 +226,7 @@ namespace lux::editor::flowforge
                     ++state_.state_.linker.version;
                     state_.control_ = EControl::RETRY;
                 }
-                ImGui::BeginDisabled(!state_.services_.publish);
+                ImGui::BeginDisabled(state_.services_.publication_address.empty());
                 if (ImGui::Button("Publish artifact"))
                     state_.control_ = EControl::PUBLISH;
                 ImGui::EndDisabled();
@@ -434,10 +429,12 @@ namespace lux::editor::flowforge
             if (!discardInputs())
                 std::terminate();
         }
-        void install(Display value)
+        FlowViewResult<void> install(Display value)
         {
-            graph_.setGraph(std::move(value.nodes), std::move(value.links));
+            if (!graph_.setGraph(std::move(value.nodes), std::move(value.links), canvas_edit_.empty()))
+                return rejected(views::EViewError::BUSY);
             display_ = std::move(value);
+            return {};
         }
         FlowViewResult<void> discardInputs()
         {
@@ -497,11 +494,13 @@ namespace lux::editor::flowforge
             auto discarded = discardInputs();
             if (!discarded)
                 return discarded;
+            auto installed = install(std::move(candidate));
+            if (!installed)
+                return installed;
             binding_ = binding;
             compile_ = {};
             compile_status_.clear();
             control_ = EControl::NONE;
-            install(std::move(candidate));
             return {};
         }
         FlowViewResult<void> select(std::uint64_t id)
@@ -577,70 +576,53 @@ namespace lux::editor::flowforge
             {
                 auto& pending = canvas_edit_.front();
                 const auto& request = pending.input;
-                const bool requires_source =
-                    pending.stage != ECanvasStage::CANCEL && pending.stage != ECanvasStage::COMPLETE;
-                if (requires_source)
-                {
-                    auto admitted = validate(pending.based_on);
-                    if (!admitted)
-                        return rejectInput(admitted.error());
-                }
-                if (pending.stage == ECanvasStage::CANCEL)
-                {
-                    auto ended = accepted(binding_->interaction->cancel());
-                    if (!ended)
-                        return ended;
-                    pending.stage = ECanvasStage::COMPLETE;
-                }
-                if (pending.stage == ECanvasStage::BEGIN)
-                {
-                    auto begun = view_.beginEdit("Move/connect graph nodes");
-                    if (!begun)
-                        return rejectInput(begun.error());
-                    pending.stage = ECanvasStage::PREVIEW;
-                }
-                if (pending.stage == ECanvasStage::PREVIEW)
-                {
-                    if (pending.edits.empty())
-                    {
-                        std::visit(
-                            [&](const auto& value) {
-                                using T = std::decay_t<decltype(value)>;
-                                if constexpr (std::same_as<T, widgets::CanvasLink>)
-                                    pending.edits.emplace_back(FlowConnect{{value.from}, {value.to}});
-                                else if constexpr (std::same_as<T, widgets::CanvasErase>)
-                                {
-                                    FlowRemoveNodes removed;
-                                    for (auto node : value.nodes)
-                                        removed.nodes.push_back({node});
-                                    for (auto link : value.links)
-                                        removed.links.push_back({{link.from}, {link.to}});
-                                    pending.edits.emplace_back(std::move(removed));
-                                }
-                                else
-                                {
-                                    FlowMoveNodes moved;
-                                    for (auto node : value.nodes)
-                                        moved.value.push_back({{node.node}, {node.position.x, node.position.y, true}});
-                                    pending.edits.emplace_back(std::move(moved));
-                                }
-                            },
-                            request.value
-                        );
+                auto delivered = editing::detail::deliverInput(
+                    pending.stage,
+                    request.committed,
+                    [&] { return validate(pending.based_on); },
+                    [&] { return accepted(binding_->interaction->cancel()); },
+                    [&] { return view_.beginEdit("Move/connect graph nodes"); },
+                    [&]() -> FlowViewResult<void> {
+                        if (pending.edits.empty())
+                        {
+                            std::visit(
+                                [&](const auto& value) {
+                                    using T = std::decay_t<decltype(value)>;
+                                    if constexpr (std::same_as<T, widgets::CanvasLink>)
+                                        pending.edits.emplace_back(FlowConnect{{value.from}, {value.to}});
+                                    else if constexpr (std::same_as<T, widgets::CanvasErase>)
+                                    {
+                                        FlowRemoveNodes removed;
+                                        for (auto node : value.nodes)
+                                            removed.nodes.push_back({node});
+                                        for (auto link : value.links)
+                                            removed.links.push_back({{link.from}, {link.to}});
+                                        pending.edits.emplace_back(std::move(removed));
+                                    }
+                                    else
+                                    {
+                                        FlowMoveNodes moved;
+                                        for (auto node : value.nodes)
+                                            moved.value.push_back(
+                                                {{node.node}, {node.position.x, node.position.y, true}}
+                                            );
+                                        pending.edits.emplace_back(std::move(moved));
+                                    }
+                                },
+                                request.value
+                            );
+                        }
+                        return view_.previewEdit(pending.edits);
+                    },
+                    [&] {
+                        auto committed = view_.commitEdit();
+                        if (committed)
+                            status_ = {};
+                        return committed;
                     }
-                    auto previewed = view_.previewEdit(pending.edits);
-                    if (!previewed)
-                        return rejectInput(previewed.error());
-                    pending.stage = request.committed ? ECanvasStage::COMMIT : ECanvasStage::COMPLETE;
-                }
-                if (pending.stage == ECanvasStage::COMMIT)
-                {
-                    auto committed = view_.commitEdit();
-                    if (!committed)
-                        return rejectInput(committed.error());
-                    pending.stage = ECanvasStage::COMPLETE;
-                    status_ = {};
-                }
+                );
+                if (!delivered)
+                    return pending.stage == ECanvasStage::CANCEL ? delivered : rejectInput(delivered.error());
                 auto owner = services_.sessions.read(binding_->session);
                 if (!owner)
                     return rejected(FlowEditError{owner.error()});
@@ -671,7 +653,7 @@ namespace lux::editor::flowforge
                 controlled = view_.retryLink(state_.linker);
                 break;
             case EControl::PUBLISH:
-                controlled = view_.publish();
+                controlled = accepted(view_.publish());
                 break;
             case EControl::CANCEL:
                 controlled = view_.cancelEdit();
@@ -692,7 +674,8 @@ namespace lux::editor::flowforge
                 auto read = display(owner->get());
                 if (!read)
                     return cxx::unexpected(read.error());
-                install(std::move(*read));
+                if (auto installed = install(std::move(*read)); !installed)
+                    return installed;
             }
             if (compile_.value)
             {
@@ -805,9 +788,20 @@ namespace lux::editor::flowforge
     }
     FlowViewResult<FlowCompileId> FlowView::compile()
     {
-        if (!impl_->binding_ || !impl_->services_.compile)
+        if (!impl_->binding_)
             return rejected(views::EViewError::INVALID_ID);
-        auto requested = impl_->services_.compile(impl_->services_.request_owner, impl_->binding_->session);
+        auto owner = impl_->services_.sessions.read(impl_->binding_->session);
+        if (!owner)
+            return rejected(FlowEditError{owner.error()});
+        auto snapshot = owner->get().capture();
+        if (!snapshot)
+            return rejected(snapshot.error());
+        auto requested = impl_->services_.compilation.start(
+            std::move(*snapshot),
+            FlowCompileEnvironment{impl_->services_.metadata},
+            {},
+            impl_->state_.linker
+        );
         if (!requested)
             return rejected(requested.error());
         impl_->compile_ = *requested;
@@ -817,15 +811,66 @@ namespace lux::editor::flowforge
     {
         return accepted(impl_->services_.compilation.retryLink(impl_->compile_, std::move(settings)));
     }
-    FlowViewResult<void> FlowView::publish()
+    FlowViewResult<persistence::WriteTicket> FlowView::publish()
     {
-        if (!impl_->binding_ || !impl_->services_.publish)
-            return rejected(views::EViewError::INVALID_ID);
-        return accepted(impl_->services_.publish(impl_->services_.request_owner, impl_->compile_));
+        auto operation = impl_->services_.compilation.operation(impl_->compile_);
+        if (!operation)
+            return rejected(operation.error());
+        auto compiled = operation->get().result();
+        if (!compiled)
+            return rejected(compiled.error());
+        auto target = impl_->services_.artifacts.resolve(impl_->services_.publication_address);
+        if (!target)
+            return rejected(target.error());
+        auto ticket = publishFlowArtifact(impl_->services_.writes, std::move(*target), std::move(*compiled));
+        if (!ticket)
+            return rejected(ticket.error());
+        return *ticket;
     }
     void FlowView::update() noexcept
     {
         if (auto result = impl_->maintain(); !result)
             impl_->status_ = cxx::unexpected(result.error());
+    }
+}
+
+namespace lux::editor::flowforge
+{
+    FlowViewResult<views::DetachedView> makeFlowView(
+        object::ObjectDispatcherRef dispatcher,
+        lux::ui::PaneId id,
+        FlowViewServices services,
+        std::optional<FlowViewBinding> binding,
+        FlowViewState state
+    )
+    {
+        auto created = FlowView::create(dispatcher, std::move(id), services, binding, std::move(state));
+        if (!created)
+            return cxx::unexpected(created.error());
+        return views::DetachedView{
+            contracts::CodeLease::builtin(),
+            std::move(*created),
+            +[](lux::ui::Pane& pane) -> views::ViewCloseResult {
+                auto ended = static_cast<FlowView&>(pane).cancelEdit();
+                if (!ended)
+                {
+                    const auto* edit = std::get_if<FlowEditError>(&ended.error());
+                    const bool is_session = edit && edit->code == EFlowEditError::SESSION;
+                    const auto* view = std::get_if<views::EViewError>(&ended.error());
+                    const auto code = is_session ? static_cast<std::uint64_t>(edit->session)
+                                      : edit     ? static_cast<std::uint64_t>(edit->code)
+                                                 : static_cast<std::uint64_t>(*view);
+                    return cxx::unexpected(views::ViewCloseFailure{
+                        is_session ? "session"
+                        : edit     ? "flowforge.edit"
+                                   : "view",
+                        code,
+                        "Interaction could not be ended",
+                        temporary(ended.error())
+                    });
+                }
+                return {};
+            }
+        };
     }
 }

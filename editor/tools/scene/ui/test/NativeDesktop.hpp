@@ -17,6 +17,10 @@ void nativeDesktop(Fixture& f, window::LuxWindow& window)
     assert(GetCursorPos(&previous_pointer));
     ShowWindow(hwnd, SW_SHOW);
     assert(IsWindow(hwnd));
+    const bool was_topmost = (GetWindowLongPtr(hwnd, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0;
+    // Foreground and hit testing are different OS facts. A floating always-on-top application
+    // can cover a foreground test window; injected clicks then activate that other application.
+    assert(SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE));
     SetForegroundWindow(hwnd);
     if (GetForegroundWindow() != hwnd)
     {
@@ -48,24 +52,77 @@ void nativeDesktop(Fixture& f, window::LuxWindow& window)
         // A captured GPU frame does not prove the OS input queue has delivered this movement.
         // Wait for the actual platform position and for Root to consume that native event.
         std::uint64_t sequence{};
+        auto next_diagnostic = std::chrono::steady_clock::now() + std::chrono::seconds(5);
         f.wait([&] {
             for (const auto& event : f.input_.snapshot().events)
                 if (const auto* cursor = std::get_if<input::CursorAction>(&event))
                     sequence = std::max(sequence, cursor->sequence);
             const auto& input = f.input_.snapshot();
             const bool reached = std::abs(input.cursor_x - point.x) <= 1 && std::abs(input.cursor_y - point.y) <= 1;
+            if (!reached && std::chrono::steady_clock::now() >= next_diagnostic)
+            {
+                POINT actual{};
+                GetCursorPos(&actual);
+                ScreenToClient(hwnd, &actual);
+                std::fprintf(
+                    stderr,
+                    "pointer pending: requested=(%.1f,%.1f) native=(%.1f,%.1f) OS=(%ld,%ld) sequences=%llu/%llu "
+                    "foreground=%d\n",
+                    point.x,
+                    point.y,
+                    input.cursor_x,
+                    input.cursor_y,
+                    actual.x,
+                    actual.y,
+                    static_cast<unsigned long long>(sequence),
+                    static_cast<unsigned long long>(f.desktop->root().inputSnapshot().sequence),
+                    GetForegroundWindow() == hwnd
+                );
+                next_diagnostic += std::chrono::seconds(5);
+            }
             return reached && f.desktop->root().inputSnapshot().sequence >= sequence;
         });
         frames();
     };
     const auto button = [&](DWORD flags) {
+        if (flags == MOUSEEVENTF_LEFTDOWN || flags == MOUSEEVENTF_RIGHTDOWN)
+        {
+            POINT at{};
+            assert(GetCursorPos(&at));
+            const auto hit = GetAncestor(WindowFromPoint(at), GA_ROOT);
+            std::fprintf(
+                stderr,
+                "native click target: foreground=%d hit_test=%d\n",
+                GetForegroundWindow() == hwnd,
+                hit == hwnd
+            );
+            assert(GetForegroundWindow() == hwnd && hit == hwnd);
+        }
         INPUT input{};
         input.type = INPUT_MOUSE;
         input.mi.dwFlags = flags;
         assert(SendInput(1, &input, sizeof input) == 1);
         const bool right = flags == MOUSEEVENTF_RIGHTDOWN || flags == MOUSEEVENTF_RIGHTUP;
         const bool down = flags == MOUSEEVENTF_LEFTDOWN || flags == MOUSEEVENTF_RIGHTDOWN;
-        f.wait([&] { return f.desktop->root().inputSnapshot().buttons[right ? 2 : 0] == down; });
+        auto next_diagnostic = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        std::fprintf(stderr, "native button: flags=%lu right=%d down=%d\n", flags, right, down);
+        f.wait([&] {
+            const auto sampled = f.desktop->root().inputSnapshot().buttons[right ? 2 : 0];
+            if (sampled != down && std::chrono::steady_clock::now() >= next_diagnostic)
+            {
+                std::fprintf(
+                    stderr,
+                    "button pending: flags=%lu expected=%d Root=%d OS=%d foreground=%d\n",
+                    flags,
+                    down,
+                    sampled,
+                    (GetAsyncKeyState(right ? VK_RBUTTON : VK_LBUTTON) & 0x8000) != 0,
+                    GetForegroundWindow() == hwnd
+                );
+                next_diagnostic += std::chrono::seconds(5);
+            }
+            return sampled == down;
+        });
         frames();
     };
     const auto key = [&](WORD value) {
@@ -147,7 +204,7 @@ void nativeDesktop(Fixture& f, window::LuxWindow& window)
     assert(f.desktop->views().focus(scene_id));
     f.wait([&] { return scene_view->image().isValid(); });
     frames();
-    auto* viewport = findControl<author::SceneElement>(*scene_view);
+    auto* viewport = findControl<lux::editor::views::ViewportElement>(*scene_view);
     assert(viewport && viewport->displayed());
     pointer(center(*viewport));
     const auto rotation = scene_view->state().camera.transform.rotation;
@@ -159,7 +216,7 @@ void nativeDesktop(Fixture& f, window::LuxWindow& window)
     assert(f.desktop->views().close(scene_id));
     frames();
     assert(!f.desktop->views().describe(scene_id));
-    button(MOUSEEVENTF_RIGHTUP); // Must not deliver to the retired SceneElement.
+    button(MOUSEEVENTF_RIGHTUP); // Must not deliver to the retired lux::editor::views::ViewportElement.
 
     // Real OS keyboard input through the same desktop, plus close during DIRECT delivery.
     struct TextWindow final : ui::Pane
@@ -205,11 +262,13 @@ void nativeDesktop(Fixture& f, window::LuxWindow& window)
     assert(signalled && !f.desktop->views().describe(text_id));
     assert(!f.desktop->root().focusedElement());
     assert(SetCursorPos(previous_pointer.x, previous_pointer.y));
+    if (!was_topmost)
+        assert(SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE));
     if (previous_window)
         SetForegroundWindow(previous_window);
     std::printf(
         "P10 native desktop: OS mouse drag -> generated Inspector preview/commit/undo; "
-        "captured SceneElement navigates outside its rectangle and closes while held; "
+        "captured lux::editor::views::ViewportElement navigates outside its rectangle and closes while held; "
         "OS keyboard -> TextEdit; DIRECT close releases focus after callback; "
         "system IME candidate/commit NOT tested; validation_errors=%llu\n",
         static_cast<unsigned long long>(f.renderer->statistics().validation_errors)

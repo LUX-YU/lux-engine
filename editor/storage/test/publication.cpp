@@ -1,4 +1,4 @@
-#include <lux/engine/editor/io/ProjectArtifactStore.hpp>
+#include <lux/engine/editor/storage/FileArtifactStore.hpp>
 #include <cassert>
 #include <fstream>
 #include <iostream>
@@ -38,7 +38,7 @@ int main(int argc, char** argv)
     // Every test invocation gets its own directory; never overwrite user data.
     root /= std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
     std::filesystem::create_directories(root);
-    io::ProjectArtifactStore store(root);
+    storage::FileArtifactStore store(root);
     auto target = store.resolve("Content/a.lux");
     assert(target && target->expected_version == "missing");
     PublicationQuery work{{1}, *target, artifact("first")};
@@ -54,7 +54,7 @@ int main(int argc, char** argv)
     assert(std::holds_alternative<NotPublished>(store.publish(work, stop.get_token())));
     assert(read(root / "Content/a.lux") == "first");
     int calls{};
-    io::ProjectArtifactStore faulting(root, failAfterReplace, &calls);
+    storage::FileArtifactStore faulting(root, failAfterReplace, &calls);
     work = {{3}, *alias, artifact("replaced")};
     auto outcome = faulting.publish(work);
     const auto* committed = std::get_if<CommitReceipt>(&outcome);

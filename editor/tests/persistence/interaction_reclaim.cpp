@@ -1,9 +1,12 @@
 #include <lux/engine/editor/scene/SceneInteraction.hpp>
 #include <lux/engine/editor/material/MaterialInteraction.hpp>
 #include <lux/engine/editor/flowforge/FlowInteraction.hpp>
-#include <lux/engine/editor/scene/SceneSessionAccess.hpp>
-#include <lux/engine/editor/material/MaterialSessionAccess.hpp>
-#include <lux/engine/editor/flowforge/FlowSessionAccess.hpp>
+#include <lux/engine/editor/sessions/SessionStore.hpp>
+#include <lux/engine/editor/scene/SceneSession.hpp>
+#include <lux/engine/editor/sessions/SessionStore.hpp>
+#include <lux/engine/editor/material/MaterialSession.hpp>
+#include <lux/engine/editor/sessions/SessionStore.hpp>
+#include <lux/engine/editor/flowforge/FlowSession.hpp>
 #include <lux/engine/editor/scene/SceneAlgorithms.hpp>
 #include <lux/engine/material/graph/Nodes.hpp>
 #include <lux/engine/flowforge/graph/ControlNode.hpp>

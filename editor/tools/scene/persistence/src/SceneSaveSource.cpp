@@ -15,7 +15,7 @@ namespace lux::editor::scene
         {
         public:
             PreparedSceneRebind(
-                SceneSessionAccess access,
+                sessions::TSessionAccess<SceneSession> access,
                 sessions::TSessionKey<SceneSession> key,
                 sessions::SourceBinding binding,
                 WriteTarget target,
@@ -42,7 +42,7 @@ namespace lux::editor::scene
             }
 
         private:
-            SceneSessionAccess access_;
+            sessions::TSessionAccess<SceneSession> access_;
             sessions::TSessionKey<SceneSession> key_;
             sessions::SourceBinding binding_;
             WriteTarget target_;

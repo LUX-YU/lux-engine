@@ -20,10 +20,10 @@ namespace lux::editor::scene
         InspectorView(
             object::ObjectDispatcherRef,
             lux::ui::PaneId,
-            SceneSessionAccess,
+            sessions::TSessionAccess<SceneSession>,
             simulation::ecs::ComponentSchemaSet,
             std::vector<InspectorComponent>,
-            project::ProjectCatalogAccess = {}
+            project::ProjectCatalogModel* = {}
         );
         ~InspectorView() noexcept override;
         InspectorView(const InspectorView&) = delete;
@@ -46,11 +46,11 @@ namespace lux::editor::scene
     [[nodiscard]] SceneViewResult<views::DetachedView> makeInspectorView(
         object::ObjectDispatcherRef,
         lux::ui::PaneId,
-        SceneSessionAccess,
+        sessions::TSessionAccess<SceneSession>,
         EditedSceneBinding,
         SceneObjectRef,
         simulation::ecs::ComponentSchemaSet,
         std::vector<InspectorComponent>,
-        project::ProjectCatalogAccess = {}
+        project::ProjectCatalogModel* = {}
     );
 }

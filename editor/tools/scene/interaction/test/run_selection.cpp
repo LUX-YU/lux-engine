@@ -1,6 +1,7 @@
 #include <lux/engine/editor/scene/SceneInteraction.hpp>
 #include <lux/engine/editor/scene/RunController.hpp>
-#include <lux/engine/editor/scene/SceneSessionAccess.hpp>
+#include <lux/engine/editor/sessions/SessionStore.hpp>
+#include <lux/engine/editor/scene/SceneSession.hpp>
 #include <lux/engine/editor/scene/SceneAlgorithms.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
 #include <lux/engine/editor/editing/scene/FieldEdit.hpp>

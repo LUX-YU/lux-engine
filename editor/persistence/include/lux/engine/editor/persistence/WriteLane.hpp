@@ -4,6 +4,7 @@
 #include <lux/cxx/compile_time/expected.hpp>
 #include <string>
 #include <vector>
+#include <lux/cxx/memory/SharedBytes.hpp>
 
 namespace lux::editor::persistence
 {
@@ -58,6 +59,13 @@ namespace lux::editor::persistence
     };
     struct EncodedArtifact final
     {
-        std::vector<std::byte> bytes;
+        lux::cxx::SharedBytes<> bytes;
+        EncodedArtifact() = default;
+        EncodedArtifact(lux::cxx::SharedBytes<> frozen) noexcept : bytes(std::move(frozen)) {}
+        EncodedArtifact(std::vector<std::byte> owned)
+        {
+            auto frozen = std::make_shared<const std::vector<std::byte>>(std::move(owned));
+            bytes = lux::cxx::SharedBytes<>::fromOwner(frozen, *frozen);
+        }
     };
 }

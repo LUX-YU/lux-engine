@@ -1,5 +1,5 @@
 add_component(COMPONENT_NAME scene_projection NAMESPACE lux::engine::editor STATIC
-    SOURCE_FILES src/ResourceStatus.cpp src/ViewportPresentation.cpp src/SceneProjection.cpp)
+    SOURCE_FILES src/ResourceStatus.cpp src/SceneProjection.cpp)
 component_include_directories(scene_projection BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
 target_link_libraries(scene_projection PUBLIC lux::engine::editor::scene_model
     lux::engine::scene::scene_composition lux::engine::scene::scene_render
@@ -16,19 +16,13 @@ lux_engine_install_components(PROJECT_NAME lux-engine-editor-scene-projection VE
 
 if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     add_executable(editor_projection_test test/projection.cpp)
-    target_link_libraries(editor_projection_test PRIVATE scene_projection lux::engine::scene::scene_transform)
+    target_link_libraries(editor_projection_test PRIVATE scene_projection editor_viewport lux::engine::scene::scene_transform)
     lux_editor_test_options(editor_projection_test)
     add_test(NAME editor.projection.reset_capacity COMMAND editor_projection_test)
     set_tests_properties(editor.projection.reset_capacity PROPERTIES LABELS "editor;native;P07")
 endif()
 
-if(LUX_EDITOR_BUILD_NATIVE_TESTS)
-    add_executable(editor_highlight_p07_test test/highlight.cpp)
-    target_link_libraries(editor_highlight_p07_test PRIVATE scene_projection)
-    lux_editor_test_options(editor_highlight_p07_test)
-    add_test(NAME editor.projection.highlight_backend COMMAND editor_highlight_p07_test)
-    set_tests_properties(editor.projection.highlight_backend PROPERTIES LABELS "editor;native;P07")
-endif()
+
 
 # This executable inspects backend-owned state and therefore lives in the render feature test directory.
 if(LUX_EDITOR_BUILD_NATIVE_TESTS AND LUX_BUILD_PACKED_RENDER_CONTENT)

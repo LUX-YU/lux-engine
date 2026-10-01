@@ -1,5 +1,6 @@
 #pragma once
-#include <lux/engine/editor/flowforge/FlowSessionAccess.hpp>
+#include <lux/engine/editor/sessions/SessionStore.hpp>
+#include <lux/engine/editor/flowforge/FlowSession.hpp>
 #include <lux/engine/editor/flowforge/FlowPersistenceAccess.hpp>
 #include <lux/engine/editor/persistence/SaveSource.hpp>
 namespace lux::editor::flowforge
@@ -8,7 +9,7 @@ namespace lux::editor::flowforge
     {
     public:
         FlowSaveSource(
-            FlowSessionAccess access,
+            sessions::TSessionAccess<FlowSession> access,
             sessions::TSessionKey<FlowSession> key,
             std::optional<persistence::WriteTarget> target,
             sessions::BindingRevision binding
@@ -24,7 +25,7 @@ namespace lux::editor::flowforge
         [[nodiscard]] persistence::EAdoption accept(persistence::SaveReceipt&&) noexcept override;
 
     private:
-        FlowSessionAccess access_;
+        sessions::TSessionAccess<FlowSession> access_;
         sessions::TSessionKey<FlowSession> key_;
         std::optional<persistence::WriteTarget> target_;
         sessions::BindingRevision target_binding_;

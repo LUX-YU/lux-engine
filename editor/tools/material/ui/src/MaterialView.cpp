@@ -1,3 +1,6 @@
+#include <lux/engine/editor/views/ViewportElement.hpp>
+#include <lux/engine/editor/editing/InteractionDelivery.hpp>
+#include <lux/engine/editor/material/PublishCompiledMaterial.hpp>
 #include <lux/engine/editor/material/MaterialView.hpp>
 #include <lux/engine/editor/material/MaterialNodeControls.hpp>
 #include <lux/engine/editor/project/AssetPickerElement.hpp>
@@ -108,6 +111,7 @@ namespace lux::editor::material
         };
         MaterialView& view_;
         MaterialViewServices services_;
+        MaterialCompileId compile_;
         std::optional<MaterialViewBinding> binding_;
         MaterialViewState state_;
         Display display_;
@@ -120,14 +124,7 @@ namespace lux::editor::material
         std::optional<NodePropertiesDraft> draft_;
         lux::material::NodeId selected_node_;
         std::optional<std::uint64_t> selection_request_;
-        enum class ECanvasStage : std::uint8_t
-        {
-            BEGIN,
-            PREVIEW,
-            COMMIT,
-            CANCEL,
-            COMPLETE
-        };
+        using ECanvasStage = editing::detail::EInputDeliveryStage;
         struct CanvasRequest final
         {
             sessions::ContentStamp based_on;
@@ -140,7 +137,7 @@ namespace lux::editor::material
         lux::scene::SceneInstanceId presented_;
         lux::ui::Layout layout_, side_;
         widgets::GraphCanvas graph_;
-        scene::SceneElement viewport_;
+        lux::editor::views::ViewportElement viewport_;
         template <class MakeEdit> MaterialViewResult<void> enqueue(sessions::ContentStamp based_on, MakeEdit make_edit)
         {
             if (canvas_request_.size() >= 64)
@@ -251,7 +248,7 @@ namespace lux::editor::material
                 ImGui::SameLine();
                 if (ImGui::Button("Redo"))
                     state_.control_ = EControl::REDO;
-                ImGui::BeginDisabled(!state_.services_.requests.request);
+                ImGui::BeginDisabled(!state_.binding_);
                 if (ImGui::Button("Compile"))
                     state_.control_ = EControl::COMPILE;
                 ImGui::SameLine();
@@ -401,7 +398,7 @@ namespace lux::editor::material
             }
         } properties_;
         std::array<object::Connection, 3> connections_;
-        scene::CameraMotion motion_;
+        lux::editor::views::CameraMotion motion_;
         bool motion_pending_{};
         Impl(MaterialView& view, MaterialViewServices services, MaterialViewState state)
             : view_(view), services_(services), state_(state),
@@ -438,8 +435,8 @@ namespace lux::editor::material
             viewport_.enableNavigation(true);
             auto navigation = object::LuxObject::connect(
                 &viewport_,
-                &scene::SceneElement::cameraMoved,
-                [this](const scene::CameraMotion& motion) noexcept {
+                &lux::editor::views::ViewportElement::cameraMoved,
+                [this](const lux::editor::views::CameraMotion& motion) noexcept {
                     motion_.angular_delta += motion.angular_delta;
                     motion_.pan_delta += motion.pan_delta;
                     motion_.dolly += motion.dolly;
@@ -461,11 +458,13 @@ namespace lux::editor::material
             if (!discardInputs())
                 std::terminate();
         }
-        void install(Display candidate)
+        MaterialViewResult<void> install(Display candidate)
         {
-            graph_.setGraph(std::move(candidate.nodes), std::move(candidate.links));
+            if (!graph_.setGraph(std::move(candidate.nodes), std::move(candidate.links), canvas_request_.empty()))
+                return rejected(views::EViewError::BUSY);
             display_ = std::move(candidate);
             properties_.synchronize();
+            return {};
         }
         MaterialViewResult<void> discardInputs()
         {
@@ -526,10 +525,12 @@ namespace lux::editor::material
             auto discarded = discardInputs();
             if (!discarded)
                 return discarded;
+            auto installed = install(std::move(candidate));
+            if (!installed)
+                return installed;
             binding_ = binding;
             viewport_.setPresentation({}, state_.extent);
             presented_ = {};
-            install(std::move(candidate));
             return {};
         }
         MaterialViewResult<void> select(lux::material::NodeId node)
@@ -630,66 +631,47 @@ namespace lux::editor::material
             {
                 auto& pending = canvas_request_.front();
                 const auto& request = pending.input;
-                const bool requires_source =
-                    pending.stage != ECanvasStage::CANCEL && pending.stage != ECanvasStage::COMPLETE;
-                if (requires_source)
-                {
-                    auto admitted = validate(pending.based_on);
-                    if (!admitted)
-                        return rejectInput(admitted.error());
-                }
-                if (pending.stage == ECanvasStage::CANCEL)
-                {
-                    auto ended = accepted(binding_->interaction->cancel());
-                    if (!ended)
-                        return ended;
-                    pending.stage = ECanvasStage::COMPLETE;
-                }
-                if (pending.stage == ECanvasStage::BEGIN)
-                {
-                    auto begun = view_.beginEdit("Move/connect graph nodes");
-                    if (!begun)
-                        return rejectInput(begun.error());
-                    pending.stage = ECanvasStage::PREVIEW;
-                }
-                if (pending.stage == ECanvasStage::PREVIEW)
-                {
-                    if (pending.edits.empty())
-                    {
-                        std::visit(
-                            [&](const auto& value) {
-                                using T = std::decay_t<decltype(value)>;
-                                if constexpr (std::same_as<T, widgets::CanvasLink>)
-                                    pending.edits.emplace_back(MaterialConnect{{value.from}, {value.to}});
-                                else if constexpr (std::same_as<T, widgets::CanvasErase>)
-                                {
-                                    for (auto link : value.links)
-                                        pending.edits.emplace_back(MaterialDisconnect{{link.from}, {link.to}});
-                                    for (auto node : value.nodes)
-                                        pending.edits.emplace_back(MaterialEraseNode{{node}});
-                                }
-                                else
-                                    for (auto node : value.nodes)
-                                        pending.edits.emplace_back(
-                                            MaterialPlaceNode{{node.node}, {node.position.x, node.position.y, true}}
-                                        );
-                            },
-                            request.value
-                        );
+                auto delivered = editing::detail::deliverInput(
+                    pending.stage,
+                    request.committed,
+                    [&] { return validate(pending.based_on); },
+                    [&] { return accepted(binding_->interaction->cancel()); },
+                    [&] { return view_.beginEdit("Move/connect graph nodes"); },
+                    [&]() -> MaterialViewResult<void> {
+                        if (pending.edits.empty())
+                        {
+                            std::visit(
+                                [&](const auto& value) {
+                                    using T = std::decay_t<decltype(value)>;
+                                    if constexpr (std::same_as<T, widgets::CanvasLink>)
+                                        pending.edits.emplace_back(MaterialConnect{{value.from}, {value.to}});
+                                    else if constexpr (std::same_as<T, widgets::CanvasErase>)
+                                    {
+                                        for (auto link : value.links)
+                                            pending.edits.emplace_back(MaterialDisconnect{{link.from}, {link.to}});
+                                        for (auto node : value.nodes)
+                                            pending.edits.emplace_back(MaterialEraseNode{{node}});
+                                    }
+                                    else
+                                        for (auto node : value.nodes)
+                                            pending.edits.emplace_back(
+                                                MaterialPlaceNode{{node.node}, {node.position.x, node.position.y, true}}
+                                            );
+                                },
+                                request.value
+                            );
+                        }
+                        return view_.previewEdit(pending.edits);
+                    },
+                    [&] {
+                        auto committed = view_.commitEdit();
+                        if (committed)
+                            status_ = {};
+                        return committed;
                     }
-                    auto previewed = view_.previewEdit(pending.edits);
-                    if (!previewed)
-                        return rejectInput(previewed.error());
-                    pending.stage = request.committed ? ECanvasStage::COMMIT : ECanvasStage::COMPLETE;
-                }
-                if (pending.stage == ECanvasStage::COMMIT)
-                {
-                    auto committed = view_.commitEdit();
-                    if (!committed)
-                        return rejectInput(committed.error());
-                    pending.stage = ECanvasStage::COMPLETE;
-                    status_ = {};
-                }
+                );
+                if (!delivered)
+                    return pending.stage == ECanvasStage::CANCEL ? delivered : rejectInput(delivered.error());
                 auto owner = services_.sessions.read(binding_->session);
                 if (!owner)
                     return rejected(MaterialEditError{owner.error()});
@@ -715,10 +697,10 @@ namespace lux::editor::material
                 command_result = view_.redo();
                 break;
             case EControl::COMPILE:
-                command_result = view_.request(EMaterialViewAction::COMPILE);
+                command_result = accepted(view_.compile());
                 break;
             case EControl::PUBLISH:
-                command_result = view_.request(EMaterialViewAction::PUBLISH);
+                command_result = accepted(view_.publish());
                 break;
             case EControl::CANCEL:
                 command_result = view_.cancelEdit();
@@ -764,14 +746,15 @@ namespace lux::editor::material
                 auto current = display(owner->get());
                 if (!current)
                     return cxx::unexpected(current.error());
-                install(std::move(*current));
+                if (auto installed = install(std::move(*current)); !installed)
+                    return installed;
             }
             const auto instance = services_.preview.instance();
             const auto preview = services_.preview.status();
             const bool same_source = preview.accepted && preview.accepted->content.session == binding_->session.id();
             if (same_source && instance.valid() && instance != presented_)
             {
-                auto candidate = scene::ViewportPresentation::create(
+                auto candidate = lux::editor::views::ViewportPresentation::create(
                     services_.runtime,
                     instance,
                     services_.resources,
@@ -886,16 +869,50 @@ namespace lux::editor::material
             return rejected(MaterialEditError{owner.error()});
         return accepted(owner->get().redo());
     }
-    MaterialViewResult<void> MaterialView::request(EMaterialViewAction action)
+    MaterialViewResult<MaterialCompileId> MaterialView::compile()
     {
-        if (!impl_->binding_ || !impl_->services_.requests.request)
+        if (!impl_->binding_)
             return rejected(views::EViewError::INVALID_ID);
-        const auto& request = impl_->services_.requests;
-        return accepted(request.request(request.owner, impl_->binding_->session, action));
+        auto owner = impl_->services_.sessions.read(impl_->binding_->session);
+        if (!owner)
+            return rejected(MaterialEditError{owner.error()});
+        auto snapshot = owner->get().capture();
+        if (!snapshot)
+            return rejected(snapshot.error());
+        auto started =
+            impl_->services_.compilation.start(std::move(*snapshot), {}, 1, impl_->services_.preview.target());
+        if (!started)
+            return rejected(started.error());
+        impl_->compile_ = *started;
+        const auto operation = impl_->services_.compilation.operation(*started);
+        impl_->services_.preview.setDesired(operation->get().key());
+        return *started;
     }
-    MaterialViewResult<void> MaterialView::navigate(const scene::CameraMotion& motion)
+    MaterialCompileId MaterialView::compilation() const noexcept
     {
-        auto next = scene::navigateCamera(impl_->state_.camera.transform, impl_->state_.camera.camera, motion);
+        return impl_->compile_;
+    }
+    MaterialViewResult<persistence::WriteTicket> MaterialView::publish()
+    {
+        auto operation = impl_->services_.compilation.operation(impl_->compile_);
+        if (!operation)
+            return rejected(operation.error());
+        auto compiled = operation->get().result();
+        if (!compiled)
+            return rejected(compiled.error());
+        auto target = impl_->services_.artifacts.resolve(impl_->services_.publication_address);
+        if (!target)
+            return rejected(target.error());
+        auto ticket = publishCompiledMaterial(impl_->services_.writes, std::move(*target), std::move(*compiled));
+        if (!ticket)
+            return rejected(ticket.error());
+        return *ticket;
+    }
+
+    MaterialViewResult<void> MaterialView::navigate(const lux::editor::views::CameraMotion& motion)
+    {
+        auto next =
+            lux::editor::views::navigateCamera(impl_->state_.camera.transform, impl_->state_.camera.camera, motion);
         if (!next)
             return rejected(next.error());
         if (impl_->viewport_.bound())
@@ -911,5 +928,46 @@ namespace lux::editor::material
     {
         if (auto result = impl_->maintain(); !result)
             impl_->status_ = cxx::unexpected(result.error());
+    }
+}
+
+namespace lux::editor::material
+{
+    MaterialViewResult<views::DetachedView> makeMaterialView(
+        object::ObjectDispatcherRef dispatcher,
+        lux::ui::PaneId id,
+        MaterialViewServices services,
+        std::optional<MaterialViewBinding> binding,
+        MaterialViewState state
+    )
+    {
+        auto created = MaterialView::create(dispatcher, std::move(id), services, binding, state);
+        if (!created)
+            return cxx::unexpected(created.error());
+        return views::DetachedView{
+            contracts::CodeLease::builtin(),
+            std::move(*created),
+            +[](lux::ui::Pane& pane) -> views::ViewCloseResult {
+                auto ended = static_cast<MaterialView&>(pane).cancelEdit();
+                if (!ended)
+                {
+                    const auto* edit = std::get_if<MaterialEditError>(&ended.error());
+                    const bool is_session = edit && edit->code == EMaterialEditError::SESSION;
+                    const auto* view = std::get_if<views::EViewError>(&ended.error());
+                    const auto code = is_session ? static_cast<std::uint64_t>(edit->session)
+                                      : edit     ? static_cast<std::uint64_t>(edit->code)
+                                                 : static_cast<std::uint64_t>(*view);
+                    return cxx::unexpected(views::ViewCloseFailure{
+                        is_session ? "session"
+                        : edit     ? "material.edit"
+                                   : "view",
+                        code,
+                        "Interaction could not be ended",
+                        temporary(ended.error())
+                    });
+                }
+                return {};
+            }
+        };
     }
 }

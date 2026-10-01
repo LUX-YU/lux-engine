@@ -14,7 +14,7 @@ namespace lux::editor::ui
             const lux::simulation::ecs::ComponentSchemaSet& schemas,
             const ComponentEditorRegistry& editors,
             EditorResult<void>& status,
-            const ProjectStorage* catalog
+            project::ProjectCatalogModel* catalog
         );
         [[nodiscard]] InspectorElement& content() noexcept
         {

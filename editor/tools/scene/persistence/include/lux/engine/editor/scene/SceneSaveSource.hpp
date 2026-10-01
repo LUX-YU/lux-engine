@@ -1,5 +1,6 @@
 #pragma once
-#include <lux/engine/editor/scene/SceneSessionAccess.hpp>
+#include <lux/engine/editor/sessions/SessionStore.hpp>
+#include <lux/engine/editor/scene/SceneSession.hpp>
 #include <lux/engine/editor/scene/ScenePersistenceAccess.hpp>
 #include <lux/engine/editor/persistence/SaveSource.hpp>
 namespace lux::editor::scene
@@ -8,7 +9,7 @@ namespace lux::editor::scene
     {
     public:
         SceneSaveSource(
-            SceneSessionAccess access,
+            sessions::TSessionAccess<SceneSession> access,
             sessions::TSessionKey<SceneSession> key,
             std::optional<persistence::WriteTarget> target,
             sessions::BindingRevision binding
@@ -24,7 +25,7 @@ namespace lux::editor::scene
         [[nodiscard]] persistence::EAdoption accept(persistence::SaveReceipt&&) noexcept override;
 
     private:
-        SceneSessionAccess access_;
+        sessions::TSessionAccess<SceneSession> access_;
         sessions::TSessionKey<SceneSession> key_;
         std::optional<persistence::WriteTarget> target_;
         sessions::BindingRevision target_binding_;

@@ -1,6 +1,7 @@
 #pragma once
 #include <lux/engine/editor/scene/SceneConfigurationElement.hpp>
-#include <lux/engine/editor/scene/SceneSessionAccess.hpp>
+#include <lux/engine/editor/sessions/SessionStore.hpp>
+#include <lux/engine/editor/scene/SceneSession.hpp>
 #include <lux/engine/editor/views/IViewHost.hpp>
 
 namespace lux::editor::scene
@@ -11,7 +12,7 @@ namespace lux::editor::scene
         SceneConfigurationView(
             object::ObjectDispatcherRef,
             lux::ui::PaneId,
-            SceneSessionAccess,
+            sessions::TSessionAccess<SceneSession>,
             SceneConfigurationInputs
         );
         ~SceneConfigurationView() noexcept override;
@@ -32,5 +33,5 @@ namespace lux::editor::scene
         std::unique_ptr<Impl> impl_;
     };
     [[nodiscard]] SceneConfigurationResult<views::DetachedView>
-        makeSceneConfigurationView(object::ObjectDispatcherRef, lux::ui::PaneId, SceneSessionAccess, SceneConfigurationInputs, sessions::TSessionKey<SceneSession>);
+        makeSceneConfigurationView(object::ObjectDispatcherRef, lux::ui::PaneId, sessions::TSessionAccess<SceneSession>, SceneConfigurationInputs, sessions::TSessionKey<SceneSession>);
 }

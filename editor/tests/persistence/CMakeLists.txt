@@ -1,5 +1,5 @@
 add_executable(editor_persistence_models_test models.cpp)
-target_link_libraries(editor_persistence_models_test PRIVATE scene_persistence material_persistence flowforge_persistence project_io)
+target_link_libraries(editor_persistence_models_test PRIVATE scene_persistence material_persistence flowforge_persistence editor_persistence_execution editor_file_publication)
 lux_editor_test_options(editor_persistence_models_test)
 add_test(NAME editor.persistence.models COMMAND editor_persistence_models_test "${CMAKE_CURRENT_BINARY_DIR}/files")
 set_tests_properties(editor.persistence.models PROPERTIES LABELS "editor;native;P05" TIMEOUT 120)

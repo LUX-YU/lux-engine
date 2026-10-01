@@ -1,4 +1,4 @@
-#include <lux/engine/editor/scene/SceneElement.hpp>
+#include <lux/engine/editor/views/ViewportElement.hpp>
 #include <lux/engine/scene/Camera.hpp>
 #include <lux/engine/scene/RenderAssets.hpp>
 #include <lux/engine/scene/RenderViewRequest.hpp>
@@ -11,9 +11,9 @@
 #include <cmath>
 #include <utility>
 
-namespace lux::editor::scene
+namespace lux::editor::views
 {
-    void SceneElement::event(object::EventView& event) noexcept
+    void ViewportElement::event(object::EventView& event) noexcept
     {
         const auto* input = event.getIf<lux::ui::VInputEvent>();
         if (!input || !attachedRoot())
@@ -73,13 +73,13 @@ namespace lux::editor::scene
         if (moved)
             navigation_delivery_ = emit(cameraMoved, motion);
     }
-    SceneElement::SceneElement(lux::ui::Pane& parent, lux::ui::ElementId id)
+    ViewportElement::ViewportElement(lux::ui::Pane& parent, lux::ui::ElementId id)
         : Element(parent, std::move(id)), image_(*this, lux::ui::ElementId{"viewport-image"})
     {}
-    SceneElement::SceneElement(lux::ui::Element& parent, lux::ui::ElementId id)
+    ViewportElement::ViewportElement(lux::ui::Element& parent, lux::ui::ElementId id)
         : Element(parent, std::move(id)), image_(*this, lux::ui::ElementId{"viewport-image"})
     {}
-    void SceneElement::setPresentation(
+    void ViewportElement::setPresentation(
         std::unique_ptr<ViewportPresentation> presentation,
         render::PixelExtent extent
     ) noexcept
@@ -92,7 +92,7 @@ namespace lux::editor::scene
         requested_extent_ = extent;
     }
     template <class Parent>
-    SceneElement::SceneElement(
+    ViewportElement::ViewportElement(
         Parent& parent,
         lux::ui::ElementId id,
         lux::scene::SceneRuntime& runtime,
@@ -104,7 +104,7 @@ namespace lux::editor::scene
           image_(*this, lux::ui::ElementId{std::string(this->id().name()) + ".image"})
     {}
 
-    SceneElement::CreateResult SceneElement::create(
+    ViewportElement::CreateResult ViewportElement::create(
         lux::ui::Pane& parent,
         lux::ui::ElementId id,
         lux::scene::SceneRuntime& runtime,
@@ -118,7 +118,7 @@ namespace lux::editor::scene
         return createImpl(parent, std::move(id), runtime, scene, resources, system, camera, config);
     }
 
-    SceneElement::CreateResult SceneElement::create(
+    ViewportElement::CreateResult ViewportElement::create(
         lux::ui::Element& parent,
         lux::ui::ElementId id,
         lux::scene::SceneRuntime& runtime,
@@ -133,7 +133,7 @@ namespace lux::editor::scene
     }
 
     template <class Parent>
-    SceneElement::CreateResult SceneElement::createImpl(
+    ViewportElement::CreateResult ViewportElement::createImpl(
         Parent& parent,
         lux::ui::ElementId id,
         lux::scene::SceneRuntime& runtime,
@@ -154,29 +154,30 @@ namespace lux::editor::scene
         auto presentation = ViewportPresentation::create(runtime, scene, resources, system, camera, config);
         if (!presentation)
             return lux::cxx::unexpected(presentation.error());
-        auto element =
-            std::unique_ptr<SceneElement>(new SceneElement(parent, std::move(id), runtime, scene, resources, camera));
+        auto element = std::unique_ptr<ViewportElement>(
+            new ViewportElement(parent, std::move(id), runtime, scene, resources, camera)
+        );
         element->presentation_ = std::move(*presentation);
         element->requested_extent_ = config.extent;
         return element;
     }
-    SceneElement::~SceneElement() noexcept
+    ViewportElement::~ViewportElement() noexcept
     {
         static_cast<void>(close());
     }
-    render::RenderResult<void> SceneElement::setCamera(simulation::ecs::Entity camera) noexcept
+    render::RenderResult<void> ViewportElement::setCamera(simulation::ecs::Entity camera) noexcept
     {
         if (!presentation_)
             return lux::cxx::unexpected(render::RendererFailure{render::ERendererError::INVALID_ARGUMENT});
         return presentation_->setCamera(camera);
     }
-    render::ERenderClose SceneElement::close() noexcept
+    render::ERenderClose ViewportElement::close() noexcept
     {
         image_.setImage({});
         setVisible(false);
         return presentation_ ? presentation_->close() : render::ERenderClose::COMPLETE;
     }
-    void SceneElement::update() noexcept
+    void ViewportElement::update() noexcept
     {
         if (!presentation_)
             return;
@@ -184,20 +185,20 @@ namespace lux::editor::scene
         image_.setImage(presentation_->image());
     }
 
-    lux::ui::SizeHint SceneElement::sizeHintContent() noexcept
+    lux::ui::SizeHint ViewportElement::sizeHintContent() noexcept
     {
         return image_.sizeHint();
     }
-    lux::ui::SizeHint SceneElement::measureContent(float width) noexcept
+    lux::ui::SizeHint ViewportElement::measureContent(float width) noexcept
     {
         return image_.measure(width);
     }
-    void SceneElement::arrangeContent() noexcept
+    void ViewportElement::arrangeContent() noexcept
     {
         image_.arrange({{}, rect().size});
     }
 
-    void SceneElement::draw() noexcept
+    void ViewportElement::draw() noexcept
     {
         if (!presentation_ || !presentation_->active())
             return;
@@ -212,4 +213,4 @@ namespace lux::editor::scene
         };
         requested_extent_ = {pixels(size.width, scale.x), pixels(size.height, scale.y)};
     }
-} // namespace lux::editor::scene
+} // namespace lux::editor::views

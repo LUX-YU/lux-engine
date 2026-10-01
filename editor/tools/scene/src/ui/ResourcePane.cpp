@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <imgui.h>
 #include <imgui_stdlib.h>
-#include <lux/engine/editor/project/ProjectCatalogAccess.hpp>
+#include <lux/engine/editor/project/ProjectCatalogModel.hpp>
 #include <lux/engine/editor/ui/scene/ResourcePane.hpp>
 #include <lux/engine/window/FileDialog.hpp>
 #include <lux/engine/object/ObjectEvent.hpp>
@@ -34,8 +34,8 @@ namespace lux::editor::ui
           )),
           catalog_connection_(lux::editor::detail::takeConnection(
               lux::object::LuxObject::connect(
-                  std::addressof(editor.project()),
-                  &ProjectStorage::catalogChanged,
+                  std::addressof(editor.project().catalogModel()),
+                  &project::ProjectCatalogModel::changed,
                   [this](std::uint64_t) noexcept { catalog_dirty_ = true; }
               ),
               status

@@ -8,7 +8,7 @@ namespace lux::editor::scene
         OutlinerView(
             object::ObjectDispatcherRef,
             lux::ui::PaneId,
-            SceneSessionAccess,
+            sessions::TSessionAccess<SceneSession>,
             VSceneViewBinding,
             std::optional<RunInspectAccess> = {},
             simulation::ecs::ComponentSchemaSet = {}
@@ -38,7 +38,7 @@ namespace lux::editor::scene
     [[nodiscard]] SceneViewResult<views::DetachedView> makeOutlinerView(
         object::ObjectDispatcherRef,
         lux::ui::PaneId,
-        SceneSessionAccess,
+        sessions::TSessionAccess<SceneSession>,
         VSceneViewBinding,
         std::optional<RunInspectAccess> = {},
         simulation::ecs::ComponentSchemaSet = {}

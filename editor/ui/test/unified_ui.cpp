@@ -9,7 +9,7 @@
 #include <lux/engine/ui/Root.hpp>
 #include <lux/engine/ui/Pane.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
-#include <lux/engine/editor/scene/SceneElement.hpp>
+#include <lux/engine/editor/views/ViewportElement.hpp>
 #include <lux/engine/scene/RenderSystemConfiguration.hpp>
 #include <lux/engine/scene/Camera.hpp>
 #include <lux/engine/scene/Builtin3DRenderIntegration.hpp>
@@ -62,7 +62,7 @@ namespace
         lux::scene::SceneInstanceId scene,
         lux::scene::RenderResources& resources
     ) {
-        lux::editor::scene::SceneElement::create(
+        lux::editor::views::ViewportElement::create(
             parent,
             lux::ui::ElementId{"view"},
             scenes,
@@ -256,7 +256,7 @@ int main(int argc, char** argv)
     std::optional<scene::SceneInstanceLease> content, foreign_content;
     ui::Pane first_window(*root, ui::PaneId{"scene-one"}, ui::PaneTypeId{"test.scene"}, "Scene one");
     ui::Pane second_window(*root, ui::PaneId{"scene-two"}, ui::PaneTypeId{"test.scene"}, "Scene two");
-    std::unique_ptr<editor::scene::SceneElement> first_pane, second_pane;
+    std::unique_ptr<lux::editor::views::ViewportElement> first_pane, second_pane;
     scene::RenderSceneReceipt content_receipt;
     if (scene_panes)
     {
@@ -319,7 +319,7 @@ int main(int argc, char** argv)
         const auto count = resources->viewCount();
         const auto entity_count =
             scenes->borrowInstance(content->id())->get().storage<simulation::ecs::Entity>().size();
-        auto wrong_render = editor::scene::SceneElement::create(
+        auto wrong_render = lux::editor::views::ViewportElement::create(
             first_window,
             lux::ui::ElementId{"wrong-render"},
             *scenes,
@@ -330,7 +330,7 @@ int main(int argc, char** argv)
             {.extent = {64, 48}}
         );
         assert(!wrong_render && wrong_render.error().code == render::ERendererError::INVALID_ARGUMENT);
-        auto wrong_camera = editor::scene::SceneElement::create(
+        auto wrong_camera = lux::editor::views::ViewportElement::create(
             first_window,
             lux::ui::ElementId{"wrong-camera"},
             *scenes,
@@ -342,7 +342,7 @@ int main(int argc, char** argv)
         );
         assert(!wrong_camera && resources->viewCount() == count);
         assert(scenes->borrowInstance(content->id())->get().storage<simulation::ecs::Entity>().size() == entity_count);
-        auto native_output = editor::scene::SceneElement::create(
+        auto native_output = lux::editor::views::ViewportElement::create(
             first_window,
             lux::ui::ElementId{"native-output"},
             *scenes,
@@ -354,7 +354,7 @@ int main(int argc, char** argv)
         );
         assert(!native_output && resources->viewCount() == count);
         {
-            auto abandoned = editor::scene::SceneElement::create(
+            auto abandoned = lux::editor::views::ViewportElement::create(
                 first_window,
                 lux::ui::ElementId{"abandoned"},
                 *scenes,
@@ -370,7 +370,7 @@ int main(int argc, char** argv)
             assert(scenes->borrowInstance(content->id())->get().view<scene::RenderViewRequest>().empty());
             assert(resources->viewCount() == count);
         }
-        auto one = editor::scene::SceneElement::create(
+        auto one = lux::editor::views::ViewportElement::create(
             first_window,
             lux::ui::ElementId{"scene-one"},
             *scenes,
@@ -380,7 +380,7 @@ int main(int argc, char** argv)
             camera,
             {.extent = {64, 48}}
         );
-        auto two = editor::scene::SceneElement::create(
+        auto two = lux::editor::views::ViewportElement::create(
             second_window,
             lux::ui::ElementId{"scene-two"},
             *scenes,
@@ -513,7 +513,8 @@ int main(int argc, char** argv)
                     .time.step_index == 0
             );
         }
-        std::puts("PASS SceneElement framebuffer scale 125/150/200/100 percent: pixel extent adopted without tick");
+        std::puts("PASS lux::editor::views::ViewportElement framebuffer scale 125/150/200/100 percent: pixel extent "
+                  "adopted without tick");
         assert(
             std::as_const(*scenes)
                 .borrowInstance(content->id())
@@ -553,7 +554,7 @@ int main(int argc, char** argv)
         assert(scenes->driveFrame());
         until([&] { return bool(scenes->borrowInstance(content->id())); });
         assert(scenes->borrowInstance(content->id())->get().view<scene::RenderViewRequest>().empty());
-        auto expired_view = editor::scene::SceneElement::create(
+        auto expired_view = lux::editor::views::ViewportElement::create(
             first_window,
             ui::ElementId{"expired"},
             *scenes,

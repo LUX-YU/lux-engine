@@ -15,7 +15,7 @@ namespace lux::editor::material
         {
         public:
             PreparedMaterialRebind(
-                MaterialSessionAccess access,
+                sessions::TSessionAccess<MaterialSession> access,
                 sessions::TSessionKey<MaterialSession> key,
                 sessions::SourceBinding binding,
                 WriteTarget target,
@@ -42,7 +42,7 @@ namespace lux::editor::material
             }
 
         private:
-            MaterialSessionAccess access_;
+            sessions::TSessionAccess<MaterialSession> access_;
             sessions::TSessionKey<MaterialSession> key_;
             sessions::SourceBinding binding_;
             WriteTarget target_;

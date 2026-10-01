@@ -1,5 +1,6 @@
 #include <lux/engine/editor/scene/SceneProjection.hpp>
-#include <lux/engine/editor/scene/SceneSessionAccess.hpp>
+#include <lux/engine/editor/sessions/SessionStore.hpp>
+#include <lux/engine/editor/scene/SceneSession.hpp>
 #include <lux/engine/editor/scene/SceneAlgorithms.hpp>
 #include <lux/engine/scene/WorldLoadingSystem.hpp>
 #include <lux/engine/scene/TransformSystem.hpp>

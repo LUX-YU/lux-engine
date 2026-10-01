@@ -1,7 +1,7 @@
 #pragma once
 
-#include <lux/engine/editor/scene/ViewportPresentation.hpp>
-#include <lux/engine/editor/scene/CameraNavigation.hpp>
+#include <lux/engine/editor/views/ViewportPresentation.hpp>
+#include <lux/engine/editor/views/CameraNavigation.hpp>
 #include <lux/engine/system/SystemInstanceId.hpp>
 #include <lux/engine/ui/ImageElement.hpp>
 #include <stop_token>
@@ -11,7 +11,7 @@ namespace lux::scene
     class SceneRuntime;
 }
 
-namespace lux::editor::scene
+namespace lux::editor::views
 {
     struct ViewportPoint final
     {
@@ -20,7 +20,7 @@ namespace lux::editor::scene
     };
     // The runtime and resources outlive the element. An ID never retains the scene;
     // expired scenes end the binding without exposing an instance pointer.
-    class SceneElement final : public lux::ui::Element
+    class ViewportElement final : public lux::ui::Element
     {
     public:
         object::TSignal<CameraMotion> cameraMoved{*this};
@@ -33,19 +33,19 @@ namespace lux::editor::scene
         {
             return navigation_delivery_;
         }
-        SceneElement(lux::ui::Pane&, lux::ui::ElementId);
-        SceneElement(lux::ui::Element&, lux::ui::ElementId);
-        SceneElement(const SceneElement&) = delete;
-        SceneElement& operator=(const SceneElement&) = delete;
-        SceneElement(SceneElement&&) = delete;
-        SceneElement& operator=(SceneElement&&) = delete;
+        ViewportElement(lux::ui::Pane&, lux::ui::ElementId);
+        ViewportElement(lux::ui::Element&, lux::ui::ElementId);
+        ViewportElement(const ViewportElement&) = delete;
+        ViewportElement& operator=(const ViewportElement&) = delete;
+        ViewportElement(ViewportElement&&) = delete;
+        ViewportElement& operator=(ViewportElement&&) = delete;
         // Cold/safe-point swap of a fully prepared presentation; old retirement remains with RenderResources.
         void setPresentation(std::unique_ptr<ViewportPresentation>, render::PixelExtent) noexcept;
         [[nodiscard]] bool bound() const noexcept
         {
             return bool(presentation_);
         }
-        using CreateResult = render::RenderResult<std::unique_ptr<SceneElement>>;
+        using CreateResult = render::RenderResult<std::unique_ptr<ViewportElement>>;
         [[nodiscard]] static CreateResult create(
             lux::ui::Pane& parent,
             lux::ui::ElementId id,
@@ -66,7 +66,7 @@ namespace lux::editor::scene
             lux::simulation::ecs::Entity camera,
             lux::scene::ViewConfig config
         ) noexcept;
-        ~SceneElement() noexcept override;
+        ~ViewportElement() noexcept override;
         [[nodiscard]] ViewportPresentation& presentation() noexcept
         {
             return *presentation_;
@@ -114,7 +114,7 @@ namespace lux::editor::scene
             lux::scene::ViewConfig
         ) noexcept;
         template <class Parent>
-        SceneElement(
+        ViewportElement(
             Parent&,
             lux::ui::ElementId,
             lux::scene::SceneRuntime&,
@@ -132,4 +132,4 @@ namespace lux::editor::scene
         lux::ui::ImageElement image_;
         render::PixelExtent requested_extent_;
     };
-} // namespace lux::editor::scene
+} // namespace lux::editor::views

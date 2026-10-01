@@ -3,7 +3,7 @@ generate_visibility_header(ENABLE_MACRO_NAME LUX_EDITOR_UI_LIBRARY
     PUBLIC_MACRO_NAME LUX_EDITOR_UI_PUBLIC DISABLE_DLL_MACRO_NAME LUX_EDITOR_UI_DLL_DISABLE
     GENERATE_FILE_PATH lux/engine/editor/ui/visibility.h)
 add_component(COMPONENT_NAME editor_ui NAMESPACE lux::engine::editor OUTPUT_NAME lux_engine_editor_ui
-    SOURCE_FILES src/TaskPane.cpp ../transition/LegacySceneConfiguration.cpp src/SpatialInteraction3D.cpp ../transition/LegacyComponentEditors.cpp ../transition/LegacyCodegenInput.cpp ../transition/ProjectCatalogAdapter.cpp)
+    SOURCE_FILES src/TaskPane.cpp ../transition/LegacySceneConfiguration.cpp src/SpatialInteraction3D.cpp ../transition/LegacyComponentEditors.cpp ../transition/LegacyCodegenInput.cpp)
 component_include_directories(editor_ui
     BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR}
     PRIVATE ${PROJECT_SOURCE_DIR}/editor/transition ${CMAKE_CURRENT_SOURCE_DIR}/pinclude ${CMAKE_CURRENT_SOURCE_DIR}/sinclude ${PROJECT_SOURCE_DIR}/editor/assets/sinclude ${PROJECT_SOURCE_DIR}/editor/storage/sinclude ${PROJECT_SOURCE_DIR}/editor/editing/sinclude

@@ -13,7 +13,6 @@
 #include <lux/engine/editor/widgets/NodeCanvas.hpp>
 #include <lux/engine/editor/ui/PublicationControls.hpp>
 #include <lux/engine/editor/project/AssetPickerElement.hpp>
-#include "ProjectCatalogAdapter.hpp"
 #include <lux/engine/editor/material/MaterialEditor.hpp>
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
 #include <lux/engine/material/graph/Nodes.hpp>
@@ -32,7 +31,6 @@ namespace lux::editor::material
         using widgets::CanvasDelete;
         using widgets::CanvasScope;
         using widgets::createCanvas;
-
 
     } // namespace
 
@@ -245,7 +243,7 @@ namespace lux::editor::material
                 picker.element = std::make_unique<project::AssetPickerElement>(
                     *this,
                     lux::ui::ElementId{"texture-slot-" + std::to_string(index)},
-                    projectCatalogAccess(&editor_.project()),
+                    &editor_.project().catalogModel(),
                     lux::asset::TextureAsset::primary_magic,
                     textures_.values[index].texture
                 );
@@ -743,7 +741,11 @@ namespace lux::editor::material
                 draft->value->setName(draft->name);
                 draft->changed = true;
             }
-            draft->changed |= editMaterialNodePayload(*draft->value, editor_.source().graph.texture_slots, editor_.source().graph.param_slots);
+            draft->changed |= editMaterialNodePayload(
+                *draft->value,
+                editor_.source().graph.texture_slots,
+                editor_.source().graph.param_slots
+            );
             const bool apply = ImGui::Button("Apply properties");
             ImGui::SameLine();
             const bool revert = ImGui::Button("Revert properties");

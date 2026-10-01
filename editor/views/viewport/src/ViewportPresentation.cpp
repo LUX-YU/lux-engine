@@ -1,11 +1,11 @@
-#include <lux/engine/editor/scene/ViewportPresentation.hpp>
+#include <lux/engine/editor/views/ViewportPresentation.hpp>
 #include <lux/engine/scene/Camera.hpp>
 #include <lux/engine/scene/RenderAssets.hpp>
 #include <lux/engine/scene/RenderViewRequest.hpp>
 #include <lux/engine/scene/SceneRuntime.hpp>
 #include <utility>
 #include "HighlightRenderer.hpp"
-namespace lux::editor::scene
+namespace lux::editor::views
 {
     namespace
     {
@@ -300,7 +300,7 @@ namespace lux::editor::scene
 
 }
 
-namespace lux::editor::scene
+namespace lux::editor::views
 {
     render::RenderResult<EOverlaySubmit> ViewportPresentation::updateOverlay(
         render::RenderRuntime& renderer,

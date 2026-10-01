@@ -1,5 +1,5 @@
-#include <lux/engine/editor/io/ProjectArtifactStore.hpp>
-#include <lux/engine/editor/io/SaveExecution.hpp>
+#include <lux/engine/editor/storage/FileArtifactStore.hpp>
+#include <lux/engine/editor/persistence/SaveExecution.hpp>
 #include <lux/engine/editor/material/MaterialSaveSource.hpp>
 #include <lux/engine/editor/material/MaterialCodec.hpp>
 #include <lux/engine/editor/material/PublishCompiledMaterial.hpp>
@@ -8,6 +8,7 @@
 #include <lux/engine/editor/project/ProjectView.hpp>
 #include <lux/engine/editor/project/AssetPickerElement.hpp>
 #include <fstream>
+#include <source_location>
 #include <lux/engine/editor/desktop/DesktopShell.hpp>
 #include <lux/engine/editor/scene/SceneView.hpp>
 #include <lux/engine/editor/scene/RunController.hpp>
@@ -19,6 +20,7 @@
 #include "../../../../../cmake/installed-consumers/common/ControlsTestAccess.hpp"
 #include <lux/engine/editor/flowforge/FlowView.hpp>
 #include <lux/engine/editor/widgets/GraphCanvas.hpp>
+#include <lux/engine/editor/views/ViewportElement.hpp>
 #include <lux/engine/flowforge/graph/ArithmeticNode.hpp>
 #include <imgui_internal.h>
 #ifdef LUX_P10_R1_NATIVE
@@ -29,7 +31,8 @@
 #include <lux/engine/flowforge/graph/FunctionalNode.hpp>
 #include <lux/engine/editor/scene/SceneAlgorithms.hpp>
 #include <lux/engine/editor/material/MaterialView.hpp>
-#include <lux/engine/editor/material/MaterialSessionAccess.hpp>
+#include <lux/engine/editor/sessions/SessionStore.hpp>
+#include <lux/engine/editor/material/MaterialSession.hpp>
 #include <lux/engine/material/graph/Nodes.hpp>
 #include <lux/engine/process/asset_loading/AssetReadOverlay.hpp>
 #include <lux/engine/scene/WorldLoadingSystem.hpp>
@@ -132,10 +135,10 @@ namespace
             std::filesystem::temp_directory_path() /
             ("lux-p10-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()))
         };
-        io::ProjectArtifactStore disk{files};
+        storage::FileArtifactStore disk{files};
         persistence::WriteCoordinator writes;
         persistence::SaveService saves{writes};
-        io::SaveExecution transfer{execution, saves, writes, disk};
+        persistence::SaveExecution transfer{execution, saves, writes, disk};
 
         window::LuxWindow* window_{};
         input::Input input_;
@@ -301,12 +304,23 @@ namespace
             if (hub)
                 hub->collectReleased();
         }
-        template <class Fn> void wait(Fn condition, bool draw = true)
+        template <class Fn>
+        void wait(Fn condition, bool draw = true, std::source_location location = std::source_location::current())
         {
             const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
             while (!condition())
             {
-                assert(std::chrono::steady_clock::now() < deadline);
+                if (std::chrono::steady_clock::now() >= deadline)
+                {
+                    std::fprintf(
+                        stderr,
+                        "wait expired at %s:%u (%s)\n",
+                        location.file_name(),
+                        location.line(),
+                        location.function_name()
+                    );
+                    std::abort();
+                }
                 frame(draw);
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
             }
@@ -480,7 +494,7 @@ namespace
         assert(b->presentedInstance() == take(runs.info(run)).instance);
         const auto stamp = f.session->describe();
         const auto camera = a->state().camera.transform.translation;
-        author::CameraMotion motion;
+        lux::editor::views::CameraMotion motion;
         motion.local_translation.x() = 1;
         const auto run_camera = b->state().camera.transform.translation;
         f.wait([&] {
@@ -532,48 +546,14 @@ namespace
         const auto key = take(f.store.key<ef::FlowSession>(take(f.store.publish(reserved))));
         ef::FlowInteraction interaction(f.store.access<ef::FlowSession>(), key);
         ef::FlowCompilationService compilation(f.execution);
-        struct Requests final
-        {
-            ef::FlowSession& session;
-            ef::FlowCompilationService& compilation;
-            sessions::TSessionKey<ef::FlowSession> key;
-            Fixture& fixture;
-            std::optional<persistence::WriteTicket> publication;
-        } requests{*author, compilation, key, f};
-        ef::FlowViewServices services{
-            f.store.access<ef::FlowSession>(),
-            compilation,
-            {},
-            &requests,
-            [](void* owner, auto key) -> ef::FlowCompilationResult<ef::FlowCompileId> {
-                auto& request = *static_cast<Requests*>(owner);
-                assert(key == request.key);
-                return request.compilation.start(
-                    take(request.session.capture()),
-                    ef::FlowCompileEnvironment{},
-                    {},
-                    {"P10-deliberately-missing-linker.exe"}
-                );
-            },
-            [](void* owner, ef::FlowCompileId id) -> persistence::PersistenceResult<void> {
-                auto& request = *static_cast<Requests*>(owner);
-                auto artifact = take(take(request.compilation.operation(id)).get().result());
-                auto ticket = ef::PublishFlowArtifactOperation::start(
-                    request.fixture.writes,
-                    take(request.fixture.disk.resolve("derived.flow")),
-                    std::move(artifact)
-                );
-                if (!ticket)
-                    return cxx::unexpected(ticket.error());
-                request.publication = *ticket;
-                return {};
-            }
-        };
+        ef::FlowViewServices
+            services{f.store.access<ef::FlowSession>(), compilation, {}, f.writes, f.disk, "derived.flow"};
         auto detached = take(ef::makeFlowView(
             f.messages.dispatcherRef(),
             ui::PaneId{"flow"},
             services,
-            ef::FlowViewBinding{key, &interaction}
+            ef::FlowViewBinding{key, &interaction},
+            ef::FlowViewState{{"P10-deliberately-missing-linker.exe"}}
         ));
         auto* view = static_cast<ef::FlowView*>(detached.pane());
         const auto id = take(f.desktop->views().adopt(detached, views::ViewRestoreKey{"flow"})).id;
@@ -604,7 +584,8 @@ namespace
             f.messages.dispatcherRef(),
             ui::PaneId{"flow"},
             services,
-            ef::FlowViewBinding{key, &interaction}
+            ef::FlowViewBinding{key, &interaction},
+            ef::FlowViewState{{"P10-deliberately-missing-linker.exe"}}
         ));
         view = static_cast<ef::FlowView*>(reopened.pane());
         const auto next = take(f.desktop->views().adopt(reopened, views::ViewRestoreKey{"flow"})).id;
@@ -674,18 +655,16 @@ namespace
         assert(completed.result() && completed.attempts().size() == 2);
         assert(completed.object() == object); // Failed linker configuration cannot discard the compiled artifact.
         const auto published_author = author->describe();
-        assert(view->publish() && requests.publication);
+        const auto publication = take(view->publish());
         assert(view->undo() && author->describe().current == initial.current);
         assert(f.desktop->views().close(next));
         f.wait([&] { return !f.desktop->views().describe(next); });
         assert(take(compilation.operation(operation)).get().object() == object);
-        f.wait([&] { return take(f.writes.status(*requests.publication)).stage == persistence::EWriteStage::TERMINAL; }
-        );
-        assert(std::holds_alternative<persistence::CommitReceipt>(*take(f.writes.status(*requests.publication)).outcome)
-        );
+        f.wait([&] { return take(f.writes.status(publication)).stage == persistence::EWriteStage::TERMINAL; });
+        assert(std::holds_alternative<persistence::CommitReceipt>(*take(f.writes.status(publication)).outcome));
         assert(std::filesystem::file_size(f.files / "derived.flow") == take(completed.result())->bytes.size());
         assert(author->describe().current == initial.current && author->describe().dirty == initial.dirty);
-        assert(f.writes.acknowledge(*requests.publication));
+        assert(f.writes.acknowledge(publication));
         assert(compilation.acknowledge(operation));
         assert(take(take(author->read()).encode()) == encoded);
     }
@@ -717,49 +696,7 @@ namespace
             environment.features.push_back(feature);
         em::MaterialPreviewStore preview{*f.runtime, std::move(environment)};
         f.material_preview = &preview;
-        struct Requests final
-        {
-            Fixture& fixture;
-            em::MaterialSession& session;
-            em::MaterialPreviewStore& preview;
-            sessions::TSessionKey<em::MaterialSession> key;
-            std::unique_ptr<em::MaterialCompileOperation> operation;
-            std::shared_ptr<const em::CompiledMaterial> compiled;
-            std::optional<persistence::WriteTicket> publication;
-        } requests{f, *author, preview, key};
-        const em::MaterialViewRequests request_port{
-            &requests,
-            [](void* owner, auto key, em::EMaterialViewAction action) -> em::MaterialCompileResult<void> {
-                auto& request = *static_cast<Requests*>(owner);
-                assert(key == request.key);
-                if (action == em::EMaterialViewAction::COMPILE)
-                {
-                    auto operation = em::MaterialCompileOperation::start(
-                        request.fixture.execution,
-                        take(request.session.capture()),
-                        {},
-                        1,
-                        request.preview.target()
-                    );
-                    if (!operation)
-                        return cxx::unexpected(operation.error());
-                    request.operation = std::move(*operation);
-                    request.preview.setDesired(request.operation->key());
-                    return {};
-                }
-                auto publication = em::PublishCompiledMaterialOperation::start(
-                    request.fixture.writes,
-                    take(request.fixture.disk.resolve("derived.material")),
-                    request.compiled
-                );
-                if (!publication)
-                    return cxx::unexpected(
-                        em::VMaterialCompileFailure{em::MaterialPreviewFailure{"publication", publication.error()}}
-                    );
-                request.publication = *publication;
-                return {};
-            }
-        };
+        em::MaterialCompilationService compilation(f.execution);
         em::MaterialSaveSource save_source(
             f.store.access<em::MaterialSession>(),
             key,
@@ -777,7 +714,10 @@ namespace
              *f.resources,
              *f.renderer,
              preview,
-             request_port,
+             compilation,
+             f.writes,
+             f.disk,
+             "derived.material",
              {},
              {2}},
             em::MaterialViewBinding{key, &interaction},
@@ -818,25 +758,23 @@ namespace
         edits.emplace_back(em::MaterialSetConstant{constant_id, {.2F, .8F, .1F, 1.F}});
         assert(view->previewEdit(edits) && view->commitEdit());
         assert(author->describe().current != initial.current);
-        assert(view->request(em::EMaterialViewAction::COMPILE));
-        auto& operation = requests.operation;
+        const auto compile_id = take(view->compile());
+        const auto* operation = &take(compilation.operation(compile_id)).get();
         f.wait([&] { return operation->ready(); });
         const auto compiled = take(operation->result());
-        requests.compiled = compiled;
         const auto unsaved = author->describe();
-        assert(view->request(em::EMaterialViewAction::PUBLISH) && requests.publication);
-        f.wait([&] { return take(f.writes.status(*requests.publication)).stage == persistence::EWriteStage::TERMINAL; }
-        );
-        assert(std::holds_alternative<persistence::CommitReceipt>(*take(f.writes.status(*requests.publication)).outcome)
-        );
+        const auto publication = take(view->publish());
+        f.wait([&] { return take(f.writes.status(publication)).stage == persistence::EWriteStage::TERMINAL; });
+        assert(std::holds_alternative<persistence::CommitReceipt>(*take(f.writes.status(publication)).outcome));
         assert(std::filesystem::file_size(f.files / "derived.material") == compiled->bytes.size());
         assert(author->describe().current == unsaved.current && author->describe().dirty == unsaved.dirty);
-        assert(f.writes.acknowledge(*requests.publication));
+        assert(f.writes.acknowledge(publication));
         auto reads = take(process::asset_loading::makeAssetReadOverlay({}, {}));
         assert(preview.receive(*operation, {{9, 1}, 1, std::move(reads), {}}));
         f.wait([&] { return preview.status().accepted.has_value() && view->image().isValid(); });
         assert(preview.status().accepted == operation->key());
-        operation.reset();
+        assert(compilation.acknowledge(compile_id));
+        operation = nullptr;
         assert(view->image().isValid());
         auto resource_candidate = take(editor::scene::makeResourceView(
             f.messages.dispatcherRef(),
@@ -859,7 +797,7 @@ namespace
         f.wait([&] { return !f.desktop->views().describe(resource_id); });
         assert(view->image().isValid());
         const auto before_navigation = author->describe();
-        editor::scene::CameraMotion motion;
+        lux::editor::views::CameraMotion motion;
         motion.angular_delta.x() = .1;
         assert(view->navigate(motion) && author->describe().current == before_navigation.current);
         assert(view->undo() && author->describe().current == initial.current);
@@ -1314,7 +1252,7 @@ int main(int argc, char** argv)
     assert(a->presentedInstance() == b->presentedInstance() && a->viewport() != b->viewport());
     const auto before = f.session->describe();
     const auto second_camera = b->state().camera.transform.translation;
-    author::CameraMotion motion;
+    lux::editor::views::CameraMotion motion;
     motion.local_translation.x() = 2;
     assert(a->navigate(motion));
     assert(b->state().camera.transform.translation == second_camera);

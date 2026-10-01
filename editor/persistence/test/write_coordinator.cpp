@@ -51,6 +51,36 @@ namespace
         auto outcome = store.publish(**work, {});
         assert(coordinator.complete((*work)->ticket, std::move(outcome)));
     }
+    void sharedByteLifetime()
+    {
+        Store store;
+        WriteCoordinator coordinator{{4, 8}};
+        auto source = std::make_shared<const std::vector<std::byte>>(4, std::byte{'x'});
+        std::weak_ptr<const std::vector<std::byte>> lifetime = source;
+        const auto* original = source->data();
+        auto frozen = lux::cxx::SharedBytes<>::fromOwner(source, *source);
+        const auto a = *publishEncodedArtifact(coordinator, *store.resolve("shared-a"), frozen);
+        const auto b = *publishEncodedArtifact(coordinator, *store.resolve("shared-b"), frozen);
+        const auto rejected = publishEncodedArtifact(coordinator, *store.resolve("shared-c"), frozen);
+        assert(!rejected && rejected.error().code == EPersistenceError::CAPACITY && coordinator.size() == 2);
+        frozen = {};
+        source.reset();
+        assert(!lifetime.expired());
+        {
+            const auto work = coordinator.takeReady();
+            assert(work && *work && (*work)->ticket == a && (*work)->artifact->bytes.data() == original);
+            assert(coordinator.complete(a, PublicationUnknown{{EPersistenceError::IO}, "still active"}));
+        }
+        assert(!coordinator.acknowledge(a) && !lifetime.expired());
+        assert(coordinator.cancelBeforePublish(b, {EPersistenceError::CANCELLED}));
+        assert(coordinator.acknowledge(b) && !lifetime.expired());
+        store.retired = true;
+        assert(coordinator.reconcile(a, store));
+        assert(store.files["shared-a"] == "xxxx" && lifetime.expired());
+        assert(coordinator.acknowledge(a) && coordinator.size() == 0);
+        std::cout
+            << "XQ23 SharedBytes: no copy, source released, logical budget per ticket, Unknown and cancellation PASS\n";
+    }
     void acknowledgedChains()
     {
         const WriteOrigin origin{{1, 0, 1}, {1}};
@@ -217,6 +247,7 @@ int main()
     assert(bounded.acknowledge(ticket));
     assert(bounded.size() == 0 && bounded.reserve({{"bounded"}, "missing"}, origin));
     std::cout << "X05-09 bounded tickets and bytes: PASS\n";
+    sharedByteLifetime();
     acknowledgedChains();
     brokenChains();
     boundedChains();

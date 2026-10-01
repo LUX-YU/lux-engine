@@ -25,7 +25,7 @@ namespace lux::editor::scene
     }
     struct SceneConfigurationView::Impl final
     {
-        SceneSessionAccess sessions_;
+        sessions::TSessionAccess<SceneSession> sessions_;
         SceneConfigurationInputs inputs_;
         std::optional<sessions::TSessionKey<SceneSession>> binding_;
         sessions::ContentStamp base_;
@@ -37,7 +37,11 @@ namespace lux::editor::scene
         SceneConfigurationResult<void> status_;
         object::Connection apply_connection_, revert_connection_;
         bool apply_requested_{}, revert_requested_{};
-        Impl(SceneConfigurationView& view, SceneSessionAccess sessions, SceneConfigurationInputs inputs)
+        Impl(
+            SceneConfigurationView& view,
+            sessions::TSessionAccess<SceneSession> sessions,
+            SceneConfigurationInputs inputs
+        )
             : sessions_(sessions), inputs_(std::move(inputs)), layout_(view, lux::ui::ElementId{"body"}),
               actions_(layout_, lux::ui::ElementId{"actions"}, lux::ui::ELayoutType::HORIZONTAL),
               apply_(actions_, lux::ui::ElementId{"apply"}, "Apply configuration"),
@@ -196,7 +200,7 @@ namespace lux::editor::scene
     SceneConfigurationView::SceneConfigurationView(
         object::ObjectDispatcherRef dispatcher,
         lux::ui::PaneId id,
-        SceneSessionAccess sessions,
+        sessions::TSessionAccess<SceneSession> sessions,
         SceneConfigurationInputs inputs
     )
         : Pane(dispatcher, id, lux::ui::PaneTypeId{"lux.editor.scene.configuration"}, "Scene configuration"),
@@ -238,7 +242,7 @@ namespace lux::editor::scene
     SceneConfigurationResult<views::DetachedView> makeSceneConfigurationView(
         object::ObjectDispatcherRef dispatcher,
         lux::ui::PaneId id,
-        SceneSessionAccess sessions,
+        sessions::TSessionAccess<SceneSession> sessions,
         SceneConfigurationInputs inputs,
         sessions::TSessionKey<SceneSession> target
     )
@@ -252,12 +256,15 @@ namespace lux::editor::scene
         return views::DetachedView{
             contracts::CodeLease::builtin(),
             std::move(view),
-            [](lux::ui::Pane& pane) -> views::ViewResult<void> {
+            [](lux::ui::Pane& pane) -> views::ViewCloseResult {
                 auto closed = static_cast<SceneConfigurationView&>(pane).prepareClose();
                 if (!closed)
-                    return cxx::unexpected(
-                        busy(closed.error()) ? views::EViewError::BUSY : views::EViewError::INVALID_ID
-                    );
+                    return cxx::unexpected(views::ViewCloseFailure{
+                        closed.error().domain,
+                        closed.error().reason,
+                        closed.error().message,
+                        busy(closed.error())
+                    });
                 return {};
             }
         };

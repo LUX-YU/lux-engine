@@ -15,7 +15,7 @@ namespace lux::editor::flowforge
         {
         public:
             PreparedFlowRebind(
-                FlowSessionAccess access,
+                sessions::TSessionAccess<FlowSession> access,
                 sessions::TSessionKey<FlowSession> key,
                 sessions::SourceBinding binding,
                 WriteTarget target,
@@ -42,7 +42,7 @@ namespace lux::editor::flowforge
             }
 
         private:
-            FlowSessionAccess access_;
+            sessions::TSessionAccess<FlowSession> access_;
             sessions::TSessionKey<FlowSession> key_;
             sessions::SourceBinding binding_;
             WriteTarget target_;

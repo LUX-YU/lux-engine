@@ -62,7 +62,7 @@ namespace lux::editor::scene
             Impl& owner_;
         };
         OutlinerView& view_;
-        SceneSessionAccess sessions_;
+        sessions::TSessionAccess<SceneSession> sessions_;
         simulation::ecs::ComponentSchemaSet schemas_;
         std::optional<RunInspectAccess> runs_;
         VSceneViewBinding binding_{UnboundSceneBinding{}};
@@ -78,7 +78,7 @@ namespace lux::editor::scene
         Content content_;
         Impl(
             OutlinerView& view,
-            SceneSessionAccess sessions,
+            sessions::TSessionAccess<SceneSession> sessions,
             std::optional<RunInspectAccess> runs,
             simulation::ecs::ComponentSchemaSet schemas
         )
@@ -397,7 +397,7 @@ namespace lux::editor::scene
     OutlinerView::OutlinerView(
         object::ObjectDispatcherRef dispatcher,
         lux::ui::PaneId id,
-        SceneSessionAccess sessions,
+        sessions::TSessionAccess<SceneSession> sessions,
         VSceneViewBinding binding,
         std::optional<RunInspectAccess> runs,
         simulation::ecs::ComponentSchemaSet schemas
@@ -478,7 +478,7 @@ namespace lux::editor::scene
     SceneViewResult<views::DetachedView> makeOutlinerView(
         object::ObjectDispatcherRef dispatcher,
         lux::ui::PaneId id,
-        SceneSessionAccess sessions,
+        sessions::TSessionAccess<SceneSession> sessions,
         VSceneViewBinding binding,
         std::optional<RunInspectAccess> runs,
         simulation::ecs::ComponentSchemaSet schemas

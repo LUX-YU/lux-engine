@@ -8,7 +8,7 @@
 #include <lux/engine/ui/Controls.hpp>
 #include <lux/engine/editor/ui/SpatialInteraction.hpp>
 #include <lux/engine/editor/scene/detail/SceneEditorImpl.hpp>
-#include <lux/engine/editor/scene/SceneElement.hpp>
+#include <lux/engine/editor/views/ViewportElement.hpp>
 
 namespace lux::editor::ui
 {
@@ -28,7 +28,10 @@ namespace lux::editor::ui
         void requestClose() noexcept;
         void reopen() noexcept;
         void applyControl() noexcept;
-        void command(object::EventView& event) noexcept { assets_.command(event); }
+        void command(object::EventView& event) noexcept
+        {
+            assets_.command(event);
+        }
         CloseStatus closeStatus() const;
 
     private:
@@ -99,7 +102,7 @@ namespace lux::editor::ui
         std::unique_ptr<SpatialInteraction> spatial_;
         lux::simulation::ecs::Entity camera_{lux::simulation::ecs::NullEntity};
         lux::scene::SceneInstanceId camera_scene_;
-        lux::editor::scene::CameraMotion pending_motion_;
+        lux::editor::views::CameraMotion pending_motion_;
         bool navigation_pending_{};
         struct Pick final
         {
@@ -118,7 +121,7 @@ namespace lux::editor::ui
         };
         std::variant<std::monostate, Pick, Create> action_;
         double work_plane_height_{};
-        std::unique_ptr<scene::SceneElement> viewport_;
+        std::unique_ptr<lux::editor::views::ViewportElement> viewport_;
         scene::RunId displayed_run_;
         lux::system::SystemInstanceId displayed_render_;
         std::optional<lux::system::SystemInstanceId> render_selection_;

@@ -2,7 +2,7 @@
 #include <lux/engine/ui/Element.hpp>
 #include <lux/engine/ui/Layout.hpp>
 #include <lux/engine/ui/Controls.hpp>
-#include <lux/engine/editor/scene/SceneElement.hpp>
+#include <lux/engine/editor/views/ViewportElement.hpp>
 #include <lux/engine/editor/ui/SpatialInteraction.hpp>
 #include <lux/engine/editor/material/MaterialEditorImpl.hpp>
 
@@ -32,10 +32,10 @@ namespace lux::editor::ui
         lux::system::SystemInstanceId render_system_;
         lux::ui::Layout layout_;
         lux::ui::Label status_;
-        std::unique_ptr<scene::SceneElement> viewport_;
+        std::unique_ptr<lux::editor::views::ViewportElement> viewport_;
         std::unique_ptr<SpatialInteraction> spatial_;
         lux::simulation::ecs::Entity camera_{lux::simulation::ecs::NullEntity};
-        lux::editor::scene::CameraMotion motion_;
+        lux::editor::views::CameraMotion motion_;
         Eigen::Vector3d pivot_{Eigen::Vector3d::Zero()};
         std::string error_;
         bool rotating_{}, panning_{};

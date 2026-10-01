@@ -1,4 +1,5 @@
-#include <lux/engine/editor/scene/SceneSessionAccess.hpp>
+#include <lux/engine/editor/sessions/SessionStore.hpp>
+#include <lux/engine/editor/scene/SceneSession.hpp>
 #include <lux/engine/editor/scene/SceneAlgorithms.hpp>
 #include <lux/engine/scene/CameraSchema.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
@@ -362,17 +363,21 @@ namespace
             batch.edits.push_back(SceneAddComponent{f.ref(id), encoded});
         if (scenario == 3 || scenario == 4)
         {
-            batch.edits.push_back(SceneSetField::make<ecs::Transform3D>(
-                {f.ref(id), schema, "scale"}, Eigen::Vector3d{3, 4, 5}
-            ));
-            batch.edits.push_back(SceneSetField::make<ecs::Transform3D>(
-                {f.ref(id), schema, "scale"}, Eigen::Vector3d{5, 6, 7}
-            ));
+            batch.edits.push_back(
+                SceneSetField::make<ecs::Transform3D>({f.ref(id), schema, "scale"}, Eigen::Vector3d{3, 4, 5})
+            );
+            batch.edits.push_back(
+                SceneSetField::make<ecs::Transform3D>({f.ref(id), schema, "scale"}, Eigen::Vector3d{5, 6, 7})
+            );
             replacement.scale = Eigen::Vector3d{5, 6, 7};
         }
         auto result = f.session->apply(std::move(batch));
-        std::printf("R02-0%d apply=%d error=%u\n", scenario, bool(result),
-                    result ? 0u : static_cast<unsigned>(result.error().code));
+        std::printf(
+            "R02-0%d apply=%d error=%u\n",
+            scenario,
+            bool(result),
+            result ? 0u : static_cast<unsigned>(result.error().code)
+        );
         std::fflush(stdout);
         if (scenario == 4)
         {

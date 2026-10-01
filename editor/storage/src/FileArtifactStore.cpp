@@ -1,7 +1,7 @@
-#include <lux/engine/editor/io/ProjectArtifactStore.hpp>
+#include <lux/engine/editor/storage/FileArtifactStore.hpp>
 #include <lux/engine/editor/storage/FilePublication.hpp>
 
-namespace lux::editor::io
+namespace lux::editor::storage
 {
     using namespace persistence;
     namespace
@@ -11,7 +11,7 @@ namespace lux::editor::io
             return {EPersistenceError::IO, error.path.generic_string(), error.native_code};
         }
         PersistenceResult<void> confirm(
-            ProjectArtifactStore::ConfirmDurability callback,
+            FileArtifactStore::ConfirmDurability callback,
             const std::filesystem::path& path,
             void* context
         )
@@ -28,10 +28,10 @@ namespace lux::editor::io
             return lux::cxx::unexpected(PersistenceFailure{EPersistenceError::IO, "Durability callback failed"});
         }
     }
-    ProjectArtifactStore::ProjectArtifactStore(std::filesystem::path root, ConfirmDurability confirm, void* context)
+    FileArtifactStore::FileArtifactStore(std::filesystem::path root, ConfirmDurability confirm, void* context)
         : root_(std::move(root)), confirm_(confirm), context_(context)
     {}
-    PersistenceResult<WriteTarget> ProjectArtifactStore::resolve(std::string_view address)
+    PersistenceResult<WriteTarget> FileArtifactStore::resolve(std::string_view address)
     {
         auto key = storage::publicationTargetKey(root_, std::filesystem::u8path(address));
         if (!key)
@@ -41,7 +41,7 @@ namespace lux::editor::io
             return lux::cxx::unexpected(failure(version.error()));
         return WriteTarget{{std::move(*key)}, std::move(*version)};
     }
-    VPublicationOutcome ProjectArtifactStore::publish(const PublicationQuery& work, std::stop_token stop)
+    VPublicationOutcome FileArtifactStore::publish(const PublicationQuery& work, std::stop_token stop)
     {
         const bool missing_payload = work.action == EPublicationAction::WRITE && !work.artifact;
         if (missing_payload || stop.stop_requested())
@@ -101,7 +101,7 @@ namespace lux::editor::io
                 std::filesystem::remove(directory, error);
             }
         } cleanup{staged, staging_directory};
-        auto written = storage::writePublicationFile(staged, work.artifact->bytes);
+        auto written = storage::writePublicationFile(staged, work.artifact->bytes.view());
         if (!written)
             return NotPublished{failure(written.error())};
         if (stop.stop_requested())
@@ -112,7 +112,7 @@ namespace lux::editor::io
             return NotPublished{failure(current.error())};
         if (*current != work.target.expected_version)
             return NotPublished{{EPersistenceError::CONFLICT}};
-        CommitReceipt receipt{storage::publicationDigest(work.artifact->bytes), EDurability::FILE_FLUSHED};
+        CommitReceipt receipt{storage::publicationDigest(work.artifact->bytes.view()), EDurability::FILE_FLUSHED};
         auto replaced = storage::replacePublicationFile(staged, path);
         if (!replaced)
             return NotPublished{failure(replaced.error())};
@@ -127,7 +127,7 @@ namespace lux::editor::io
         }
         return receipt;
     }
-    Reconciliation ProjectArtifactStore::reconcile(const PublicationQuery& work)
+    Reconciliation FileArtifactStore::reconcile(const PublicationQuery& work)
     {
         // This synchronous backend has no detached writer after publish returns.
         auto current = resolve(work.target.key.value);
@@ -135,7 +135,7 @@ namespace lux::editor::io
             return {true, PublicationUnknown{current.error(), work.token}};
         const bool removed = work.action == EPublicationAction::REMOVE && current->expected_version == "missing";
         const bool written =
-            work.artifact && current->expected_version == storage::publicationDigest(work.artifact->bytes);
+            work.artifact && current->expected_version == storage::publicationDigest(work.artifact->bytes.view());
         if (removed || written)
             return {true, CommitReceipt{current->expected_version, EDurability::UNCONFIRMED}};
         if (current->expected_version == work.target.expected_version)

@@ -30,7 +30,7 @@ namespace lux::editor::scene
             editor_context_.sceneRegistrations().components,
             this->editor_context_.componentEditors(),
             status,
-            &editor_context_.project()
+            &editor_context_.project().catalogModel()
         );
         outliner_ = std::make_unique<ui::OutlinerPane>(*this, runtime_, lux::ui::PaneId{prefix + "outliner"}, status);
         resources_ = std::make_unique<ui::ResourcePane>(*this, importer, lux::ui::PaneId{prefix + "resources"}, status);

@@ -1,8 +1,14 @@
 #pragma once
 #include <lux/engine/editor/flowforge/FlowInteraction.hpp>
 #include <lux/engine/editor/flowforge/FlowCompilationService.hpp>
-#include <lux/engine/editor/persistence/ArtifactStore.hpp>
+#include <lux/engine/editor/persistence/WriteLane.hpp>
 #include <lux/engine/editor/views/IViewHost.hpp>
+
+namespace lux::editor::persistence
+{
+    class WriteCoordinator;
+    class IArtifactStore;
+}
 
 namespace lux::editor::flowforge
 {
@@ -17,9 +23,9 @@ namespace lux::editor::flowforge
         sessions::TSessionAccess<FlowSession> sessions;
         FlowCompilationService& compilation;
         lux::flowforge::FlowSourceEnvironment metadata;
-        void* request_owner{};
-        FlowCompilationResult<FlowCompileId> (*compile)(void*, sessions::TSessionKey<FlowSession>){};
-        persistence::PersistenceResult<void> (*publish)(void*, FlowCompileId){};
+        persistence::WriteCoordinator& writes;
+        persistence::IArtifactStore& artifacts;
+        std::string publication_address;
     };
     struct FlowViewState final
     {
@@ -52,7 +58,7 @@ namespace lux::editor::flowforge
         [[nodiscard]] FlowViewResult<void> redo();
         [[nodiscard]] FlowViewResult<FlowCompileId> compile();
         [[nodiscard]] FlowViewResult<void> retryLink(LinkSettings);
-        [[nodiscard]] FlowViewResult<void> publish();
+        [[nodiscard]] FlowViewResult<persistence::WriteTicket> publish();
         [[nodiscard]] const std::optional<FlowViewBinding>& binding() const noexcept;
         [[nodiscard]] const FlowViewResult<void>& status() const noexcept;
         [[nodiscard]] FlowCompileId compilation() const noexcept;

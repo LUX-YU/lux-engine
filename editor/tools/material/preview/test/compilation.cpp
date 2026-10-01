@@ -1,11 +1,13 @@
 #include <lux/engine/editor/material/MaterialPreviewStore.hpp>
-#include <lux/engine/editor/material/MaterialSessionAccess.hpp>
+#include <lux/engine/editor/sessions/SessionStore.hpp>
+#include <lux/engine/editor/material/MaterialSession.hpp>
 #include <lux/engine/editor/material/PublishCompiledMaterial.hpp>
 #include <lux/engine/editor/flowforge/FlowCompilationService.hpp>
-#include <lux/engine/editor/flowforge/FlowSessionAccess.hpp>
+#include <lux/engine/editor/sessions/SessionStore.hpp>
+#include <lux/engine/editor/flowforge/FlowSession.hpp>
 #include <lux/engine/editor/flowforge/PublishFlowArtifact.hpp>
-#include <lux/engine/editor/io/ProjectArtifactStore.hpp>
-#include <lux/engine/editor/io/SaveExecution.hpp>
+#include <lux/engine/editor/storage/FileArtifactStore.hpp>
+#include <lux/engine/editor/persistence/SaveExecution.hpp>
 #include <lux/engine/material/graph/Nodes.hpp>
 #include <lux/engine/flowforge/graph/ControlNode.hpp>
 #include <cassert>
@@ -197,16 +199,15 @@ int main(int argc, char** argv)
     const auto root =
         std::filesystem::path(argv[2]) / std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
     std::filesystem::create_directories(root);
-    io::ProjectArtifactStore disk(root);
+    storage::FileArtifactStore disk(root);
     persistence::WriteCoordinator writes;
     persistence::SaveService saves(writes);
-    io::SaveExecution io(execution, saves, writes, disk);
+    persistence::SaveExecution io(execution, saves, writes, disk);
     const auto material_state = mat->describe();
     auto target = take(disk.resolve("derived.material"));
-    auto first = take(em::PublishCompiledMaterialOperation::start(writes, target, compiled));
-    auto conflict = take(ef::PublishFlowArtifactOperation::start(writes, target, artifact));
-    auto flow_ticket =
-        take(ef::PublishFlowArtifactOperation::start(writes, take(disk.resolve("derived.flow")), artifact));
+    auto first = take(em::publishCompiledMaterial(writes, target, compiled));
+    auto conflict = take(ef::publishFlowArtifact(writes, target, artifact));
+    auto flow_ticket = take(ef::publishFlowArtifact(writes, take(disk.resolve("derived.flow")), artifact));
     until([&] {
         assert(io.submitReady());
         assert(execution.collectCompletions());
@@ -239,6 +240,14 @@ int main(int argc, char** argv)
         return limited_operation.ready();
     });
     const auto fixed_object = limited_operation.object();
+    auto mismatched = *fixed_object;
+    mismatched.target_triple = fixed_object->target_triple.find("windows") == std::string::npos
+                                   ? "x86_64-pc-windows-msvc"
+                                   : "x86_64-unknown-linux-gnu";
+    const auto object_mismatch = lux::flowforge::linkFlowForgeObject(mismatched, argv[1]);
+    assert(!object_mismatch && object_mismatch.error().code == lux::flowforge::EFlowForgeError::LINK_FAILED);
+    assert(object_mismatch.error().message.find("object bytes") != std::string::npos);
+    assert(limited_operation.object() == fixed_object && limited_operation.retryable());
     for (std::uint64_t attempt = 2; attempt <= 8; ++attempt)
     {
         assert(retry_limit.retryLink(limited, {"missing-P07-linker.exe", attempt}));

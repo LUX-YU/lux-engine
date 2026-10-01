@@ -264,4 +264,24 @@ namespace lux::editor::persistence
     {
         return impl_->records.size();
     }
+    PersistenceResult<WriteTicket> publishEncodedArtifact(
+        WriteCoordinator& writes,
+        WriteTarget target,
+        EncodedArtifact artifact
+    )
+    {
+        auto ticket = writes.reserve(std::move(target), {});
+        if (!ticket)
+            return lux::cxx::unexpected(ticket.error());
+        auto admitted = writes.provideEncoded(*ticket, std::move(artifact));
+        if (!admitted)
+        {
+            const auto cancelled = writes.cancelBeforePublish(*ticket, admitted.error());
+            if (cancelled)
+                static_cast<void>(writes.acknowledge(*ticket));
+            return lux::cxx::unexpected(admitted.error());
+        }
+        return *ticket;
+    }
+
 }

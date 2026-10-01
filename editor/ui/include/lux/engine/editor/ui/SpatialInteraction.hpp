@@ -3,7 +3,7 @@
 #include <lux/engine/editor/EditorError.hpp>
 
 #include <lux/engine/editor/editing/scene/SceneEdit.hpp>
-#include <lux/engine/editor/scene/CameraNavigation.hpp>
+#include <lux/engine/editor/views/CameraNavigation.hpp>
 #include <lux/engine/scene/Camera.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>
 
@@ -19,8 +19,8 @@ namespace lux::editor::ui
     {
     public:
         virtual ~SpatialInteraction();
-        [[nodiscard]] virtual EditorResult<scene::CameraPose>
-        navigate(const lux::simulation::ecs::Transform3D&, const lux::scene::Camera&, const scene::CameraMotion&) = 0;
+        [[nodiscard]] virtual EditorResult<lux::editor::views::CameraPose>
+        navigate(const lux::simulation::ecs::Transform3D&, const lux::scene::Camera&, const lux::editor::views::CameraMotion&) = 0;
         // Point and extent share image-local logical units; their ratio is DPI invariant.
         [[nodiscard]] virtual EditorResult<lux::math::Ray3d> ray(
             const lux::simulation::ecs::WorldTransform3D&,

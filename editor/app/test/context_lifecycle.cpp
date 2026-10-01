@@ -1,3 +1,4 @@
+#include <lux/engine/editor/tasks/TaskMonitor.hpp>
 #include <lux/engine/editor/Editor.hpp>
 #include <lux/engine/editor/EditorContext.hpp>
 #include <lux/engine/editor/launcher/ProjectCreationPane.hpp>
@@ -104,9 +105,9 @@ int main(int argc, char** argv)
             unsigned notices{}, delivered{};
             auto& context = (*editor)->context();
             auto connected = lux::object::LuxObject::connect(
-                &context,
-                &EditorContext::taskChanged,
-                [&](lux::process::TaskId) noexcept { ++notices; }
+                &context.taskMonitor(),
+                &tasks::TaskMonitor::changed,
+                [&](std::uint64_t) noexcept { ++notices; }
             );
             assert(connected);
             auto task = context.execution().submit(
@@ -129,7 +130,8 @@ int main(int argc, char** argv)
             assert(context.execution().collectCompletions());
             assert(delivered == 0 && notices == 0); // Collection and closing the list do not notify business.
             assert(context.execution().dispatchTaskEvents());
-            assert(delivered == 1 && notices > 0 && context.taskRevision() > 0);
+            assert(context.taskMonitor().dispatchChanges().complete());
+            assert(delivered == 1 && notices > 0 && context.taskMonitor().revision() > 0);
         }
         if (pass == 1)
         {

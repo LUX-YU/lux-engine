@@ -1,6 +1,7 @@
 #include "../../model/src/PreparedMaterialReload.hpp"
 #include <lux/engine/editor/material/MaterialInteraction.hpp>
-#include <lux/engine/editor/material/MaterialSessionAccess.hpp>
+#include <lux/engine/editor/sessions/SessionStore.hpp>
+#include <lux/engine/editor/material/MaterialSession.hpp>
 #include <lux/engine/material/graph/Nodes.hpp>
 #include <cassert>
 #include <cstdio>

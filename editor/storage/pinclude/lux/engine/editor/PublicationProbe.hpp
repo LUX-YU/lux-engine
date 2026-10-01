@@ -23,7 +23,7 @@ namespace lux::editor::detail
 #define LUX_EDITOR_PUBLICATION_BOUNDARY(phase, index) ::lux::editor::detail::publicationBoundary(phase, index)
 #define LUX_EDITOR_IO(kind, path, bytes)                                                                               \
     std::printf(                                                                                                       \
-        "DIAGNOSTIC project_io kind=%s bytes=%zu path=%s\n",                                                           \
+        "DIAGNOSTIC file_publication kind=%s bytes=%zu path=%s\n",                                                           \
         kind,                                                                                                          \
         static_cast<std::size_t>(bytes),                                                                               \
         (path).string().c_str()                                                                                        \

@@ -4,8 +4,8 @@
 #include <lux/engine/editor/material/MaterialCodec.hpp>
 #include <lux/engine/editor/flowforge/FlowSaveSource.hpp>
 #include <lux/engine/editor/flowforge/FlowCodec.hpp>
-#include <lux/engine/editor/io/ProjectArtifactStore.hpp>
-#include <lux/engine/editor/io/SaveExecution.hpp>
+#include <lux/engine/editor/storage/FileArtifactStore.hpp>
+#include <lux/engine/editor/persistence/SaveExecution.hpp>
 #include <lux/engine/material/graph/Nodes.hpp>
 #include <lux/engine/flowforge/graph/ControlNode.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
@@ -94,7 +94,7 @@ namespace
         sessions::SessionStore store{8};
         WriteCoordinator writes;
         SaveService saves{writes};
-        io::ProjectArtifactStore disk;
+        storage::FileArtifactStore disk;
         es::SceneSession* scene_session{};
         em::MaterialSession* material_session{};
         ef::FlowSession* flow_session{};
@@ -370,7 +370,7 @@ namespace
              .blocking = process::BlockingSchedulerConfig{2, 16}}
         ));
         EncodingProbe probe;
-        io::SaveExecution execution(runtime, f.saves, f.writes, f.disk);
+        persistence::SaveExecution execution(runtime, f.saves, f.writes, f.disk);
         f.edit(1);
         const auto first = take(f.saves.requestSave({f.material_id}));
         f.encodeAll();
@@ -492,7 +492,7 @@ namespace
              .blocking = process::BlockingSchedulerConfig{2, 16}}
         ));
         EncodingProbe probe;
-        io::SaveExecution execution(runtime, service, f.writes, f.disk);
+        persistence::SaveExecution execution(runtime, service, f.writes, f.disk);
         for (unsigned iteration{}; iteration != 12; ++iteration)
         {
             SaveRequest request{
@@ -595,7 +595,7 @@ namespace
             [](process::TTaskResult<void, process::EExecutionError>&&) noexcept {}
         ));
         waitFor([&] { return entered.load(); });
-        io::SaveExecution execution(runtime, f.saves, f.writes, f.disk);
+        persistence::SaveExecution execution(runtime, f.saves, f.writes, f.disk);
         const auto first = take(f.saves.requestSave({f.material_id}));
         assert(execution.submitReady());
         const auto state = take(f.saves.status(first));
@@ -639,10 +639,10 @@ namespace
         assert(!rejected && rejected.error().code == EPersistenceError::STALE_SOURCE);
         assert(source.captures == 0 && f.writes.size() == 0);
         assertSameSession(before, f.material_session->describe());
-        assert(
-            take(em::MaterialCodec::encode(take(f.material_session->capture()), identity("material"))).bytes ==
-            content.bytes
-        );
+        assert(std::ranges::equal(
+            take(em::MaterialCodec::encode(take(f.material_session->capture()), identity("material"))).bytes.view(),
+            content.bytes.view()
+        ));
         assert(!std::filesystem::exists(f.root / "material.luxmaterial"));
         registration.emplace(take(f.saves.registerSource(source)));
         const auto id = take(f.saves.requestSave({f.material_id}));
@@ -762,10 +762,10 @@ namespace
         const auto content = take(em::MaterialCodec::encode(take(f.material_session->capture()), identity("material")));
         auto unchanged = [&] {
             assertSameSession(before, f.material_session->describe());
-            assert(
-                take(em::MaterialCodec::encode(take(f.material_session->capture()), identity("material"))).bytes ==
-                content.bytes
-            );
+            assert(std::ranges::equal(
+                take(em::MaterialCodec::encode(take(f.material_session->capture()), identity("material"))).bytes.view(),
+                content.bytes.view()
+            ));
             assert(f.writes.size() == 0);
         };
         auto rejectNested = [&] {
@@ -946,7 +946,7 @@ namespace
         (void)commit(observed, origin, false);
         assert(read(f.root / "material.luxmaterial") == other);
         assert(take(em::MaterialCodec::decode(other)).source.name == "material9");
-        std::cout << "R05-07 real ProjectArtifactStore alias/binding/anonymous/external/chain-break conflicts PASS\n";
+        std::cout << "R05-07 real FileArtifactStore alias/binding/anonymous/external/chain-break conflicts PASS\n";
     }
     void closeCases(Fixture& f, bool revoke = true)
     {
@@ -1040,7 +1040,7 @@ namespace
         std::vector<SaveId> ids;
         for (auto id : {f.scene_id, f.material_id, f.flow_id})
             ids.push_back(take(f.saves.requestSave({id})));
-        io::SaveExecution execution(runtime, f.saves, f.writes, f.disk);
+        persistence::SaveExecution execution(runtime, f.saves, f.writes, f.disk);
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
         while (std::ranges::any_of(ids, [&](auto id) { return take(f.saves.status(id)).stage != ESaveStage::TERMINAL; })
         )
@@ -1370,9 +1370,9 @@ namespace
     }
     struct LateStore final : IArtifactStore
     {
-        io::ProjectArtifactStore& disk;
+        storage::FileArtifactStore& disk;
         bool retired{};
-        explicit LateStore(io::ProjectArtifactStore& value) : disk(value) {}
+        explicit LateStore(storage::FileArtifactStore& value) : disk(value) {}
         PersistenceResult<WriteTarget> resolve(std::string_view path) override
         {
             return disk.resolve(path);

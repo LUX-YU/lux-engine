@@ -1,5 +1,5 @@
 #include <lux/engine/editor/workspace/WorkspaceStore.hpp>
-#include <lux/engine/editor/io/ProjectArtifactStore.hpp>
+#include <lux/engine/editor/storage/FileArtifactStore.hpp>
 #include <lux/engine/editor/storage/FilePublication.hpp>
 #include <algorithm>
 #include <array>
@@ -8,13 +8,13 @@
 #include <fstream>
 #include <limits>
 #include <memory>
+#include <random>
 #include <type_traits>
 
 namespace w = lux::editor::workspace;
 namespace p = lux::editor::persistence;
 namespace v = lux::editor::views;
 namespace fs = std::filesystem;
-namespace io = lux::editor::io;
 namespace file = lux::editor::storage;
 static_assert(!std::is_default_constructible_v<w::ValidatedLayout>);
 static_assert(!std::is_copy_constructible_v<w::WorkspaceStore>);
@@ -59,7 +59,7 @@ namespace
     {
         fs::path root;
         p::WriteCoordinator coordinator;
-        io::ProjectArtifactStore backend;
+        lux::editor::storage::FileArtifactStore backend;
         w::WorkspaceStore store;
         explicit Fixture(fs::path path) : root(std::move(path)), backend(root), store(root, coordinator, backend)
         {
@@ -244,9 +244,9 @@ namespace
             assert(!f.coordinator.acknowledge(save));
             struct Backend final : p::IArtifactStore
             {
-                io::ProjectArtifactStore& real;
+                lux::editor::storage::FileArtifactStore& real;
                 bool retired{};
-                explicit Backend(io::ProjectArtifactStore& store) : real(store) {}
+                explicit Backend(lux::editor::storage::FileArtifactStore& store) : real(store) {}
                 p::PersistenceResult<p::WriteTarget> resolve(std::string_view name) override
                 {
                     return real.resolve(name);
@@ -302,7 +302,7 @@ namespace
         auto value = layout();
         auto first = take(f.store.saveLayout(value, "missing"));
         fs::create_directories(f.root / ".lux");
-        io::ProjectArtifactStore other(f.root / ".lux/..");
+        lux::editor::storage::FileArtifactStore other(f.root / ".lux/..");
         auto a = take(f.backend.resolve(".lux/workspace/layouts/" + value.id.value + ".layout"));
         auto b = take(other.resolve(".lux/workspace/layouts/../layouts/" + value.id.value + ".layout"));
         assert(a.key == b.key);
@@ -517,7 +517,7 @@ visible = false
             assert(layout.opaque[0].bytes == bytes(text));
             assert(layout.legacy_origin == (w::LegacyOrigin{relative, file::publicationDigest(bytes(text))}));
             const auto single = f.root / "individual" / layout.label;
-            io::ProjectArtifactStore backend(single);
+            lux::editor::storage::FileArtifactStore backend(single);
             w::WorkspaceStore store(single, f.coordinator, backend);
             assert(take(store.prepareLegacyMigration()).layouts[0].id == layout.id);
             if (layout.label == selected)
@@ -746,10 +746,14 @@ int main(int argc, char** argv)
 {
     assert(argc == 3);
     const std::string scenario = argv[2];
-    const fs::path path = fs::absolute(fs::path(argv[1]) / scenario);
-    // Test-owned path only. Each scenario gets an isolated directory below the explicitly supplied test root.
+    // Two invocations of the same scenario must never remove or rename each other's live files.
+    // Keep failed directories for diagnosis; directory rename errors are not retried.
+    std::mt19937_64 random{std::random_device{}()};
+    const fs::path path = fs::absolute(fs::path(argv[1]) / (scenario + "-" + std::to_string(random())));
     assert(path.parent_path() == fs::absolute(argv[1]));
-    fs::remove_all(path);
+    fs::create_directories(path.parent_path());
+    assert(fs::create_directory(path));
+    std::printf("isolated workspace fixture: %s\n", path.generic_string().c_str());
     Fixture f(path);
     if (scenario == "r1-alpha")
         return selectedLegacy(f, true, false) ? 0 : 1;

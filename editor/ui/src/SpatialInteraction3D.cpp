@@ -1,10 +1,11 @@
+#include <lux/engine/editor/scene/SceneCreationPoint.hpp>
 #include <lux/engine/editor/ui/SpatialInteraction.hpp>
 namespace lux::editor::ui
 {
     SpatialInteraction::~SpatialInteraction() = default;
     namespace
     {
-        template <class T> EditorResult<T> adapt(scene::CameraNavigationResult<T> result)
+        template <class T> EditorResult<T> adapt(lux::editor::views::CameraNavigationResult<T> result)
         {
             if (!result)
                 return lux::cxx::unexpected(
@@ -16,13 +17,13 @@ namespace lux::editor::ui
         class SpatialInteraction3D final : public SpatialInteraction
         {
         public:
-            EditorResult<scene::CameraPose> navigate(
+            EditorResult<lux::editor::views::CameraPose> navigate(
                 const simulation::ecs::Transform3D& transform,
                 const lux::scene::Camera& camera,
-                const scene::CameraMotion& motion
+                const lux::editor::views::CameraMotion& motion
             ) override
             {
-                return adapt(scene::navigateCamera(transform, camera, motion));
+                return adapt(lux::editor::views::navigateCamera(transform, camera, motion));
             }
             EditorResult<lux::math::Ray3d> ray(
                 const simulation::ecs::WorldTransform3D& transform,
@@ -31,7 +32,7 @@ namespace lux::editor::ui
                 Eigen::Vector2d extent
             ) const override
             {
-                return adapt(scene::cameraRay(transform, camera, point, extent));
+                return adapt(lux::editor::views::cameraRay(transform, camera, point, extent));
             }
             EditorResult<Eigen::Vector3d> creationPoint(
                 const lux::scene::RayHit3D* hit,

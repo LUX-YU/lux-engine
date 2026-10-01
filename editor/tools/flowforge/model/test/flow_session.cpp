@@ -1,4 +1,5 @@
-#include <lux/engine/editor/flowforge/FlowSessionAccess.hpp>
+#include <lux/engine/editor/sessions/SessionStore.hpp>
+#include <lux/engine/editor/flowforge/FlowSession.hpp>
 #include <lux/engine/flowforge/graph/ControlNode.hpp>
 #include <lux/engine/flowforge/graph/FunctionalNode.hpp>
 #include <lux/engine/flowforge/graph/ObjectNode.hpp>

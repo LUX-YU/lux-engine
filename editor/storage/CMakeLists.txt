@@ -1,10 +1,11 @@
 add_component(COMPONENT_NAME editor_file_publication NAMESPACE lux::engine::editor STATIC
-    SOURCE_FILES src/FilePublication.cpp)
+    SOURCE_FILES src/FilePublication.cpp src/FileArtifactStore.cpp)
 component_include_directories(editor_file_publication
     BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
-target_link_libraries(editor_file_publication PUBLIC lux::cxx::compile_time PRIVATE lux::cxx::algorithm)
+target_link_libraries(editor_file_publication PUBLIC lux::cxx::compile_time lux::engine::editor::editor_persistence PRIVATE lux::cxx::algorithm)
 component_add_transitive_commands(editor_file_publication
-    "find_package(lux-cxx REQUIRED COMPONENTS compile_time algorithm)")
+    "find_package(lux-cxx REQUIRED COMPONENTS compile_time algorithm)"
+    "find_package(lux-engine-editor-persistence REQUIRED COMPONENTS editor_persistence)")
 lux_classify_target(TARGET editor_file_publication LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 lux_engine_install_components(PROJECT_NAME lux-engine-editor-file-publication VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS editor_file_publication)
@@ -76,4 +77,12 @@ endif()
 if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     set_tests_properties(editor.project_creation editor.plugin_publication
         PROPERTIES LABELS "editor;native")
+endif()
+
+if(LUX_EDITOR_BUILD_NATIVE_TESTS)
+    add_executable(editor_publication_test test/publication.cpp)
+    target_link_libraries(editor_publication_test PRIVATE editor_file_publication)
+    lux_editor_test_options(editor_publication_test)
+    add_test(NAME editor.persistence.real_files COMMAND editor_publication_test "${CMAKE_CURRENT_BINARY_DIR}/test-files")
+    set_tests_properties(editor.persistence.real_files PROPERTIES LABELS "editor;native;P05")
 endif()

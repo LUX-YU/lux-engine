@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <imgui.h>
-#include <lux/engine/editor/project/ProjectCatalogAccess.hpp>
+#include <lux/engine/editor/project/ProjectCatalogModel.hpp>
 #include <lux/engine/editor/ui/scene/SceneContentElement.hpp>
 #include <lux/engine/scene/SceneRuntime.hpp>
 #include <lux/engine/scene/RenderAssets.hpp>
@@ -140,7 +140,7 @@ namespace lux::editor::ui
                 status_ = camera ? "Scene is unavailable" : camera.error().message;
                 return;
             }
-            auto opened = scene::SceneElement::create(
+            auto opened = lux::editor::views::ViewportElement::create(
                 layout_,
                 lux::ui::ElementId{std::string(id().name()) + ".view"},
                 runtime_,
@@ -701,7 +701,7 @@ namespace lux::editor::ui
             rotating_ = (rotating_ || interaction.right_clicked) && ImGui::IsMouseDown(ImGuiMouseButton_Right);
             panning_ = (panning_ || interaction.middle_clicked) && ImGui::IsMouseDown(ImGuiMouseButton_Middle);
         }
-        lux::editor::scene::CameraMotion motion;
+        lux::editor::views::CameraMotion motion;
         if (rotating_)
         {
             motion.angular_delta = {-input.MouseDelta.x * 0.004, -input.MouseDelta.y * 0.004};

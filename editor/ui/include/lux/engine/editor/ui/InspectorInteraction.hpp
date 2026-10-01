@@ -5,7 +5,7 @@
 #include <lux/engine/editor/editing/scene/FieldEdit.hpp>
 #include <lux/engine/ui/Controls.hpp>
 #include <optional>
-#include <lux/engine/editor/project/ProjectCatalogAccess.hpp>
+#include <lux/engine/editor/project/ProjectCatalogModel.hpp>
 #include <lux/engine/editor/ui/visibility.h>
 
 namespace lux::editor
@@ -25,19 +25,27 @@ namespace lux::editor::ui
         using Status = EditorResult<void>;
         static Status connectionFailure(object::EConnectError error)
         {
-            if (error == object::EConnectError::ALLOCATION_FAILURE) std::terminate();
+            if (error == object::EConnectError::ALLOCATION_FAILURE)
+                std::terminate();
             return lux::cxx::unexpected(EditorFailure{EEditorError::FRONTEND_FAILURE, "inspector.connect"});
         }
         static Status constructionFailure()
         {
             return lux::cxx::unexpected(EditorFailure{EEditorError::FRONTEND_FAILURE, "inspector.create"});
         }
-        [[nodiscard]] LUX_EDITOR_UI_PUBLIC project::ProjectCatalogAccess catalogAccess() const noexcept;
-        InspectorInteraction(scene::SceneEditing& owner, std::string origin, const ProjectStorage* catalog = nullptr)
+        [[nodiscard]] project::ProjectCatalogModel* catalogAccess() const noexcept
+        {
+            return catalog_;
+        }
+        InspectorInteraction(
+            scene::SceneEditing& owner,
+            std::string origin,
+            project::ProjectCatalogModel* catalog = nullptr
+        )
             : editing_(owner), origin_(std::move(origin)), catalog_(catalog)
         {}
 
-        const ProjectStorage* assetCatalog() const noexcept
+        project::ProjectCatalogModel* assetCatalog() const noexcept
         {
             return catalog_;
         }
@@ -274,7 +282,7 @@ namespace lux::editor::ui
         }
 
     private:
-        const ProjectStorage* catalog_{};
+        project::ProjectCatalogModel* catalog_{};
         std::array<char, 192> error_{};
         bool read_only_{};
         std::reference_wrapper<scene::SceneEditing> editing_;

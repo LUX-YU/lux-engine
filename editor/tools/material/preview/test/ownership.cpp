@@ -1,4 +1,5 @@
 #include <lux/engine/editor/material/MaterialCompilation.hpp>
+#include <lux/engine/editor/material/MaterialCompilationService.hpp>
 #include <lux/engine/editor/material/MaterialSession.hpp>
 #include <lux/engine/editor/flowforge/FlowCompilationService.hpp>
 #include <lux/engine/editor/flowforge/FlowSession.hpp>
@@ -121,6 +122,26 @@ namespace
             return next->ready();
         });
         assert(delivered == 1 && take(next->result())->source->name == "Ownership");
+        em::MaterialCompilationService service(execution, 1);
+        const auto controlled = take(service.start(take(author->capture())));
+        const auto& operation = take(service.operation(controlled)).get();
+        assert(!service.start(take(author->capture())) && !service.acknowledge(controlled));
+        workerFinished(execution, operation.task());
+        assert(!operation.ready() && !service.acknowledge(controlled));
+        until([&] {
+            dispatch(execution);
+            return operation.ready();
+        });
+        auto retained = take(operation.result());
+        assert(service.acknowledge(controlled) && !service.operation(controlled));
+        assert(!retained->bytes.empty() && retained->source->name == "Ownership");
+        const auto again = take(service.start(take(author->capture())));
+        assert(again != controlled);
+        until([&] {
+            dispatch(execution);
+            return take(service.operation(again)).get().ready();
+        });
+        assert(service.acknowledge(again));
         assert(author->describe().current == before.current && author->describe().dirty == before.dirty);
         assert(author->describe().observed == before.observed);
         assert(take(take(author->read()).encode()) == bytes);

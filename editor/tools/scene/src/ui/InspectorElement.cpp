@@ -30,7 +30,7 @@ namespace lux::editor::ui
         const lux::simulation::ecs::ComponentSchemaSet& schemas,
         const ComponentEditorRegistry& editors,
         EditorResult<void>& status,
-        const ProjectStorage* catalog
+        project::ProjectCatalogModel* catalog
     )
         : lux::ui::Element(parent, std::move(id)), editors_(editors), catalog_(catalog),
           layout_(*this, lux::ui::ElementId{"inspector"}), message_(layout_, lux::ui::ElementId{"message"}),

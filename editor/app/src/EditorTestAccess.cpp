@@ -1,3 +1,5 @@
+#include <lux/engine/editor/detail/SignalDelivery.hpp>
+#include <lux/engine/editor/tasks/TaskMonitor.hpp>
 #include <lux/engine/editor/detail/EditorTestAccess.hpp>
 #include <lux/engine/editor/assets/AssetImporter.hpp>
 namespace lux::editor
@@ -38,6 +40,7 @@ namespace lux::editor
         state.collectInput();
         static_cast<void>(state.context->execution().collectCompletions());
         static_cast<void>(state.context->execution().dispatchTaskEvents());
+        detail::reportSignalDelivery(state.context->taskMonitor().dispatchChanges(), "tasks.changed");
         state.context->project().dispatchEvents();
         if (std::exchange(state.close_decisions_pending_, false))
             state.applyCloseDecisions();

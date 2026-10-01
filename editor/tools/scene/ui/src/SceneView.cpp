@@ -1,5 +1,5 @@
 #include <lux/engine/editor/scene/SceneView.hpp>
-#include <lux/engine/editor/scene/SceneElement.hpp>
+#include <lux/engine/editor/views/ViewportElement.hpp>
 #include <lux/engine/scene/WorldResidency.hpp>
 #include <lux/engine/object/ObjectEvent.hpp>
 #include <lux/engine/ui/Layout.hpp>
@@ -53,13 +53,13 @@ namespace lux::editor::scene
         lux::ui::Layout layout_, toolbar_;
         lux::ui::Button undo_, redo_;
         lux::ui::Label message_;
-        SceneElement viewport_;
+        lux::editor::views::ViewportElement viewport_;
         std::array<object::Connection, 4> controls_;
-        std::optional<ViewportPoint> pick_;
+        std::optional<lux::editor::views::ViewportPoint> pick_;
         lux::scene::SceneInstanceId pick_instance_;
         SceneViewResult<void> status_;
         EControl control_{};
-        CameraMotion motion_;
+        lux::editor::views::CameraMotion motion_;
         bool motion_pending_{};
 
         Impl(SceneView& view, SceneViewServices services, SceneViewState state, system::SystemInstanceId system)
@@ -88,8 +88,8 @@ namespace lux::editor::scene
             viewport_.enableNavigation(true);
             auto navigation = object::LuxObject::connect(
                 &viewport_,
-                &SceneElement::cameraMoved,
-                [this](const CameraMotion& motion) noexcept {
+                &lux::editor::views::ViewportElement::cameraMoved,
+                [this](const lux::editor::views::CameraMotion& motion) noexcept {
                     motion_.angular_delta += motion.angular_delta;
                     motion_.pan_delta += motion.pan_delta;
                     motion_.dolly += motion.dolly;
@@ -102,8 +102,8 @@ namespace lux::editor::scene
                 controls_[2] = std::move(*navigation);
             auto picked = object::LuxObject::connect(
                 &viewport_,
-                &SceneElement::clicked,
-                [this](const ViewportPoint& point) noexcept {
+                &lux::editor::views::ViewportElement::clicked,
+                [this](const lux::editor::views::ViewportPoint& point) noexcept {
                     pick_ = point;
                     pick_instance_ = presented_;
                 }
@@ -113,9 +113,11 @@ namespace lux::editor::scene
             else
                 controls_[3] = std::move(*picked);
         }
-        SceneViewResult<std::unique_ptr<ViewportPresentation>> preparePresentation(lux::scene::SceneInstanceId instance)
+        SceneViewResult<std::unique_ptr<lux::editor::views::ViewportPresentation>> preparePresentation(
+            lux::scene::SceneInstanceId instance
+        )
         {
-            auto prepared = ViewportPresentation::create(
+            auto prepared = lux::editor::views::ViewportPresentation::create(
                 services_.runtime,
                 instance,
                 services_.resources,
@@ -163,7 +165,7 @@ namespace lux::editor::scene
                     return rejected(RunFailure{ERunError::STOPPED});
                 instance = run->instance;
             }
-            std::unique_ptr<ViewportPresentation> presentation;
+            std::unique_ptr<lux::editor::views::ViewportPresentation> presentation;
             if (instance.valid())
             {
                 auto prepared = preparePresentation(instance);
@@ -201,9 +203,9 @@ namespace lux::editor::scene
                 return rejected(SceneEditError{session.error()});
             return redo ? adopted(session->get().redo()) : adopted(session->get().undo());
         }
-        SceneViewResult<void> navigate(const CameraMotion& motion)
+        SceneViewResult<void> navigate(const lux::editor::views::CameraMotion& motion)
         {
-            auto candidate = navigateCamera(state_.camera.transform, state_.camera.camera, motion);
+            auto candidate = lux::editor::views::navigateCamera(state_.camera.transform, state_.camera.camera, motion);
             if (!candidate)
                 return rejected(candidate.error());
             if (viewport_.bound())
@@ -238,7 +240,7 @@ namespace lux::editor::scene
             simulation::ecs::WorldTransform3D camera;
             camera.value = Eigen::Translation3d(state_.camera.transform.translation) *
                            state_.camera.transform.rotation * Eigen::Scaling(state_.camera.transform.scale);
-            auto ray = cameraRay(camera, state_.camera.camera, position, extent);
+            auto ray = lux::editor::views::cameraRay(camera, state_.camera.camera, position, extent);
             if (!ray)
                 return rejected(ray.error());
             lux::scene::RayHit3D hit;
@@ -319,7 +321,7 @@ namespace lux::editor::scene
             auto registry = std::as_const(services_.runtime).borrowInstance(presented_);
             if (!registry)
                 return rejected(ProjectionFailure{registry.error()});
-            OverlayConfiguration overlay;
+            lux::editor::views::OverlayConfiguration overlay;
             overlay.plane_height = state_.work_plane_height;
             if (group && !group->selection().objects.empty())
                 std::visit(
@@ -413,7 +415,7 @@ namespace lux::editor::scene
     {
         return impl_->pick(position, extent);
     }
-    SceneViewResult<void> SceneView::navigate(const CameraMotion& motion)
+    SceneViewResult<void> SceneView::navigate(const lux::editor::views::CameraMotion& motion)
     {
         return impl_->navigate(motion);
     }
@@ -473,4 +475,43 @@ namespace lux::editor::scene
         impl_->update();
     }
 
+}
+
+namespace lux::editor::scene
+{
+    SceneViewResult<views::DetachedView> makeSceneView(
+        object::ObjectDispatcherRef dispatcher,
+        SceneViewServices services,
+        SceneViewCreateInfo info
+    )
+    {
+        auto view = SceneView::create(dispatcher, services, std::move(info));
+        if (!view)
+            return cxx::unexpected(view.error());
+        return views::DetachedView{
+            contracts::CodeLease::builtin(),
+            std::move(*view),
+            +[](lux::ui::Pane& pane) -> views::ViewCloseResult {
+                auto& scene = static_cast<SceneView&>(pane);
+                if (std::holds_alternative<UnboundSceneBinding>(scene.binding()))
+                    return {};
+                auto ended = scene.cancelEdit();
+                if (!ended)
+                {
+                    const auto* error = std::get_if<SceneEditError>(&ended.error().cause);
+                    const bool is_session = error->code == ESceneEditError::SESSION;
+                    const bool retryable = error->code == ESceneEditError::BUSY ||
+                                           (is_session && error->session == sessions::ESessionError::BUSY);
+                    return cxx::unexpected(views::ViewCloseFailure{
+                        is_session ? "session" : "scene.edit",
+                        is_session ? static_cast<std::uint64_t>(error->session)
+                                   : static_cast<std::uint64_t>(error->code),
+                        "Scene interaction could not be ended",
+                        retryable
+                    });
+                }
+                return {};
+            }
+        };
+    }
 }

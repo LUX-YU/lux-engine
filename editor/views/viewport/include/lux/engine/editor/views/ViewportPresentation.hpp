@@ -9,7 +9,7 @@ namespace lux::scene
 {
     class SceneRuntime;
 }
-namespace lux::editor::scene
+namespace lux::editor::views
 {
     enum class EOverlaySubmit : std::uint8_t
     {
@@ -51,6 +51,10 @@ namespace lux::editor::scene
             lux::scene::ViewConfig
         ) noexcept;
         ~ViewportPresentation() noexcept;
+        ViewportPresentation(const ViewportPresentation&) = delete;
+        ViewportPresentation& operator=(const ViewportPresentation&) = delete;
+        ViewportPresentation(ViewportPresentation&&) = delete;
+        ViewportPresentation& operator=(ViewportPresentation&&) = delete;
         [[nodiscard]] lux::scene::RenderResourceId view() const noexcept
         {
             return view_;

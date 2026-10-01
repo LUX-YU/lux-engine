@@ -7,7 +7,6 @@
 #include <lux/engine/world/WorldPartitionData.hpp>
 #include <lux/engine/world/WorldStorageCodec.hpp>
 #include <lux/engine/world/WorldDescriptionBuilder.hpp>
-#include <lux/engine/process/world_loading/WorldStorageSource.hpp>
 #include <lux/engine/resource/asset/storage/pak/PakArchive.hpp>
 #include <lux/engine/serialization/SerializationError.hpp>
 #include <stop_token>
@@ -49,7 +48,6 @@ namespace lux::scene
             std::monostate,
             std::string,
             lux::asset::AssetDecodeFailure,
-            lux::process::world_loading::WorldStorageRuntimeFailure,
             lux::asset::AssetEncodeFailure,
             lux::world::WorldStorageCodecFailure,
             lux::world::WorldDescriptionFailure,

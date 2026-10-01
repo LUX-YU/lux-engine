@@ -24,7 +24,7 @@ target_link_libraries(
         lux::engine::scene::scene_description
         lux::engine::resource::asset
         lux::engine::world::world_asset lux::engine::simulation::simulation_asset
-        lux::engine::simulation::ecs::schema lux::engine::process::world_loading
+        lux::engine::simulation::ecs::schema lux::engine::world::storage
     PUBLIC lux::engine::core::serialization
 )
 component_add_transitive_commands(
@@ -34,7 +34,7 @@ component_add_transitive_commands(
     "find_package(lux-engine-world-asset REQUIRED COMPONENTS world_asset)"
     "find_package(lux-engine-simulation-asset REQUIRED COMPONENTS simulation_asset)"
     "find_package(lux-engine-simulation-ecs REQUIRED COMPONENTS schema)"
-    "find_package(lux-engine-process-world-loading REQUIRED COMPONENTS process_world_loading)"
+    "find_package(lux-engine-world-storage REQUIRED COMPONENTS world_storage)"
     "find_package(lux-engine-core REQUIRED COMPONENTS serialization)"
 )
 

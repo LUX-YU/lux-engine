@@ -1,4 +1,4 @@
-find_package(lux-cxx REQUIRED COMPONENTS algorithm)
+find_package(lux-cxx REQUIRED COMPONENTS algorithm memory)
 
 generate_visibility_header(
     ENABLE_MACRO_NAME       LUX_ENGINE_WORLD_STORAGE_LIBRARY
@@ -14,6 +14,7 @@ add_component(
     SOURCE_FILES
         ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldPartitionData.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldStorageCodec.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/WorldPartitionDecoder.cpp
 )
 add_library(lux::engine::world::storage ALIAS world_storage)
 
@@ -35,13 +36,13 @@ target_link_libraries(
     world_storage
     PUBLIC
         lux::engine::world::description
-        lux::cxx::algorithm
+        lux::cxx::algorithm lux::cxx::memory
     PRIVATE
         lux::engine::core::serialization
 )
 component_add_transitive_commands(
     world_storage
-    "find_package(lux-cxx REQUIRED COMPONENTS algorithm)"
+    "find_package(lux-cxx REQUIRED COMPONENTS algorithm memory)"
     "find_package(lux-engine-world-description REQUIRED COMPONENTS world_description)"
     "find_package(lux-engine-core REQUIRED COMPONENTS serialization)"
     "if(NOT TARGET lux::engine::world::storage)"

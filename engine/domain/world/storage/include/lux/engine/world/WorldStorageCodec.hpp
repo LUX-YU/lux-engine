@@ -2,6 +2,7 @@
 
 #include <lux/engine/world/WorldPartitionData.hpp>
 #include <lux/cxx/compile_time/expected.hpp>
+#include <lux/cxx/memory/SharedBytes.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -43,6 +44,8 @@ namespace lux::world
         DECODE_FAILURE,
         CANCELLED,
         ALLOCATION_FAILURE,
+        INVALID_PARTITION,
+        INVALID_VOLUME,
     };
 
     struct WorldStorageCodecFailure final
@@ -124,6 +127,15 @@ namespace lux::world
         WorldPartitionId id,
         std::uint32_t schema_count,
         std::size_t decoded_limit,
+        std::stop_token stop = {}
+    ) noexcept;
+    // Borrow already-owned immutable volumes; this path never schedules work or performs IO.
+    [[nodiscard]] LUX_ENGINE_WORLD_STORAGE_PUBLIC lux::cxx::expected<WorldPartitionData, WorldStorageCodecFailure>
+    decodeWorldStoragePartition(
+        const WorldDescription& world,
+        std::span<const lux::cxx::SharedBytes<>> volumes,
+        partition::PartitionOrdinal partition,
+        std::size_t max_bytes,
         std::stop_token stop = {}
     ) noexcept;
 } // namespace lux::world

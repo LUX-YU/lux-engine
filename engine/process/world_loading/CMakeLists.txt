@@ -47,3 +47,15 @@ lux_engine_install_components(
 
 # Storage transport is the only external consumer of this internal codec.
 target_include_directories(process_world_loading PRIVATE "${PROJECT_SOURCE_DIR}/engine/domain/world/storage/sinclude")
+
+if(BUILD_TESTING)
+    add_executable(world_partition_decoder_test test/partition_decoder.cpp)
+    target_link_libraries(world_partition_decoder_test PRIVATE process_world_loading)
+    if(MSVC)
+        target_compile_options(world_partition_decoder_test PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(world_partition_decoder_test PRIVATE -UNDEBUG)
+    endif()
+    add_test(NAME world.partition_decoder_parity COMMAND world_partition_decoder_test)
+    set_tests_properties(world.partition_decoder_parity PROPERTIES LABELS "native;P10Q;editor_layering")
+endif()

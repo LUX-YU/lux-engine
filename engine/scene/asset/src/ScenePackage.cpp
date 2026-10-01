@@ -1,7 +1,5 @@
 #include <algorithm>
 #include <lux/engine/scene/ScenePackage.hpp>
-#include <lux/engine/process/world_loading/WorldMemoryStorageSource.hpp>
-#include <lux/engine/process/world_loading/WorldPartitionLoadSender.hpp>
 #include <lux/engine/resource/asset/storage/pak/PakArchive.hpp>
 #include <unordered_map>
 
@@ -9,44 +7,10 @@ namespace lux::scene
 {
     namespace
     {
-        namespace loading = lux::process::world_loading;
-
         auto failed(EScenePackageError code, lux::asset::AssetId id = {}, std::size_t ordinal = 0)
         {
             return lux::cxx::unexpected(ScenePackageFailure{code, id, ordinal});
         }
-
-        struct Cancelled final
-        {};
-
-        using VPartitionResult =
-            std::variant<lux::world::WorldPartitionData, loading::WorldStorageRuntimeFailure, Cancelled>;
-
-        struct PartitionReceiver final
-        {
-            using receiver_concept = stdexec::receiver_t;
-            VPartitionResult& result;
-
-            stdexec::empty_env get_env() const noexcept
-            {
-                return {};
-            }
-
-            void set_value(lux::world::WorldPartitionData value) && noexcept
-            {
-                result = std::move(value);
-            }
-
-            void set_error(loading::WorldStorageRuntimeFailure error) && noexcept
-            {
-                result = error;
-            }
-
-            void set_stopped() && noexcept
-            {
-                result = Cancelled{};
-            }
-        };
 
         template <class T>
         lux::cxx::expected<std::shared_ptr<const T>, ScenePackageFailure> decodeAsset(
@@ -142,14 +106,6 @@ namespace lux::scene
             result.volumes.push_back(found->second->bytes);
         }
 
-        auto source = loading::makeWorldMemoryStorageSource(
-            std::shared_ptr<const lux::world::WorldDescription>(result.world, &result.world->data()),
-            result.volumes
-        );
-        if (!source)
-        {
-            return lux::cxx::unexpected(ScenePackageFailure{EScenePackageError::STORAGE, {}, 0, source.error()});
-        }
         const auto count = result.world->data().partitionCount();
         if (count > byte_limit / sizeof(lux::world::WorldPartitionData))
         {
@@ -166,30 +122,19 @@ namespace lux::scene
             {
                 return failed(EScenePackageError::CANCELLED);
             }
-            VPartitionResult loaded{Cancelled{}};
-            auto operation = stdexec::connect(
-                loading::loadWorldPartition(*source, lux::partition::PartitionOrdinal{index}, remaining, stop),
-                PartitionReceiver{loaded}
+            auto loaded = lux::world::decodeWorldStoragePartition(
+                result.world->data(), result.volumes, lux::partition::PartitionOrdinal{index}, remaining, stop
             );
-            // The memory source completes synchronously; decoding performs no IO or wait.
-            stdexec::start(operation);
-            if (auto* value = std::get_if<lux::world::WorldPartitionData>(&loaded))
+            if (!loaded)
             {
-                if (value->retainedBytes() > remaining)
-                {
-                    return failed(EScenePackageError::LIMIT);
-                }
-                remaining -= value->retainedBytes();
-                result.partitions.push_back(std::make_shared<const lux::world::WorldPartitionData>(std::move(*value)));
+                if (loaded.error().code == lux::world::EWorldStorageCodecError::CANCELLED)
+                    return failed(EScenePackageError::CANCELLED);
+                return lux::cxx::unexpected(ScenePackageFailure{EScenePackageError::STORAGE, {}, index, loaded.error()});
             }
-            else if (const auto* error = std::get_if<loading::WorldStorageRuntimeFailure>(&loaded))
-            {
-                return lux::cxx::unexpected(ScenePackageFailure{EScenePackageError::STORAGE, {}, index, *error});
-            }
-            else
-            {
-                return failed(EScenePackageError::CANCELLED);
-            }
+            if (loaded->retainedBytes() > remaining)
+                return failed(EScenePackageError::LIMIT);
+            remaining -= loaded->retainedBytes();
+            result.partitions.push_back(std::make_shared<const lux::world::WorldPartitionData>(std::move(*loaded)));
         }
         result.package = std::move(*package);
         return result;

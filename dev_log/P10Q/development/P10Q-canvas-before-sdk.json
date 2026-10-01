@@ -1,0 +1,17 @@
+[
+  {
+    "path": "E:/SyncForder/CodeRepos/install/P10Q-qualification/include/lux/engine/editor/widgets/GraphCanvas.hpp",
+    "length": 3223,
+    "sha256": "7B50B515B258064455A8431A8E57A2A3C082FA49AE42630FF507EA59ABBB7310"
+  },
+  {
+    "path": "E:/SyncForder/CodeRepos/install/P10Q-qualification/lib/editor_widgets.lib",
+    "length": 7940298,
+    "sha256": "1587246B5223E1EA9CC35E2049C662887A886CE6A30697C1CF6B6B7918101594"
+  },
+  {
+    "path": "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p10q-sdk-dev/quality/canvas.cpp",
+    "length": 8295,
+    "sha256": "D6AD286ACAFA445A74CE515FDFD8BC95A3F1E9085D4C0C186614921B3CF78E73"
+  }
+]

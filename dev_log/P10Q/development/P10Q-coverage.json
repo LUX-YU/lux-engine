@@ -1,0 +1,592 @@
+[
+  {
+    "id": "XQ01",
+    "status": "PASS",
+    "evidence": [
+      "logs/ctest.log",
+      "logs/ctest-details.log",
+      "behavior-map.md"
+    ],
+    "tests": [
+      "editor.draft_source_literal",
+      "editor.draft_source_signature",
+      "editor.draft_source_flow-canvas",
+      "editor.draft_source_material-canvas",
+      "editor.draft_source_flow-queue",
+      "editor.draft_source_material-queue",
+      "editor.draft_source_material-lifetime",
+      "editor.draft_source_lifecycle",
+      "editor.draft_source_positive",
+      "editor.draft_source_history"
+    ],
+    "reason": "P10 R1 来源保持"
+  },
+  {
+    "id": "XQ02",
+    "status": "PASS",
+    "evidence": [
+      "logs/ctest.log",
+      "logs/ctest-details.log"
+    ],
+    "tests": [
+      "editor.material_interaction",
+      "editor.flowforge_interaction",
+      "editor.draft_source_literal",
+      "editor.draft_source_signature",
+      "editor.draft_source_flow-canvas",
+      "editor.draft_source_material-canvas",
+      "editor.draft_source_flow-queue",
+      "editor.draft_source_material-queue",
+      "editor.draft_source_material-lifetime",
+      "editor.draft_source_lifecycle",
+      "editor.draft_source_positive",
+      "editor.draft_source_history"
+    ],
+    "reason": "共享阶段，领域载荷和 gate 不变"
+  },
+  {
+    "id": "XQ03",
+    "status": "PASS",
+    "evidence": [
+      "logs/ctest.log",
+      "logs/ctest-details.log",
+      "performance.md"
+    ],
+    "tests": [
+      "editor.project_views"
+    ],
+    "reason": "目录唯一 owner，多消费者共享"
+  },
+  {
+    "id": "XQ04",
+    "status": "PASS",
+    "evidence": [
+      "logs/ctest.log",
+      "logs/ctest-details.log"
+    ],
+    "tests": [
+      "object.queue",
+      "editor.project_views"
+    ],
+    "reason": "目录失败／连接／FULL/CLOSED/resync"
+  },
+  {
+    "id": "XQ05",
+    "status": "PASS",
+    "evidence": [
+      "logs/ctest.log",
+      "logs/ctest-details.log",
+      "performance.md"
+    ],
+    "tests": [
+      "editor.tasks.monitor"
+    ],
+    "reason": "双 TaskView、单 observer、稳定查询"
+  },
+  {
+    "id": "XQ06",
+    "status": "PASS",
+    "evidence": [
+      "logs/ctest.log",
+      "logs/ctest-details.log"
+    ],
+    "tests": [
+      "editor.tasks.monitor"
+    ],
+    "reason": "关闭视图不取消任务 owner"
+  },
+  {
+    "id": "XQ07",
+    "status": "PASS",
+    "evidence": [
+      "logs/ctest.log",
+      "logs/ctest-details.log"
+    ],
+    "tests": [
+      "editor.compilation.actual_publish",
+      "editor.compilation.ownership_material",
+      "editor.compilation.ownership_flow"
+    ],
+    "reason": "编译与发布准确结果"
+  },
+  {
+    "id": "XQ08",
+    "status": "PASS",
+    "evidence": [
+      "logs/ctest.log",
+      "logs/ctest-details.log"
+    ],
+    "tests": [
+      "editor.detached_views",
+      "editor.view_host"
+    ],
+    "reason": "关闭重试分类"
+  },
+  {
+    "id": "XQ09",
+    "status": "PASS",
+    "evidence": [
+      "logs/ctest.log",
+      "logs/ctest-details.log"
+    ],
+    "tests": [
+      "editor.persistence.write_coordinator",
+      "editor.persistence.real_files",
+      "editor.persistence.models",
+      "editor.persistence.save-as",
+      "editor.persistence.unknown",
+      "editor.persistence.order",
+      "editor.persistence.close",
+      "editor.persistence.close-key",
+      "editor.persistence.capacity",
+      "editor.persistence.execution",
+      "editor.persistence.decoded",
+      "editor.persistence.receipts",
+      "editor.persistence.identities",
+      "editor.persistence.conflict",
+      "editor.persistence.measure",
+      "editor.persistence.r2-accept-success",
+      "editor.persistence.r2-accept-error",
+      "editor.persistence.r2-accept-cancel",
+      "editor.persistence.r2-accept-drain",
+      "editor.persistence.r2-admission",
+      "editor.persistence.r1-revoke",
+      "editor.persistence.r1-recursive",
+      "editor.persistence.r1-chain",
+      "editor.persistence.r1-chain-control",
+      "editor.persistence.r1-callbacks",
+      "editor.persistence.r1-reading",
+      "editor.persistence.r1-conflicts",
+      "editor.workspace.validation",
+      "editor.workspace.opaque",
+      "editor.workspace.rename",
+      "editor.workspace.remove",
+      "editor.workspace.ordering",
+      "editor.workspace.unknown",
+      "editor.workspace.aliases",
+      "editor.workspace.reads",
+      "editor.workspace.catalog",
+      "editor.workspace.migration",
+      "editor.workspace.collision",
+      "editor.workspace.budgets",
+      "editor.workspace.r1-alpha",
+      "editor.workspace.r1-beta",
+      "editor.workspace.r1-extras",
+      "editor.workspace.r1-selection",
+      "editor.workspace.r1-resume",
+      "editor.workspace.r1-control",
+      "editor.workspace.effects"
+    ],
+    "reason": "保存／产物／Workspace 真实发布"
+  },
+  {
+    "id": "XQ10",
+    "status": "PASS",
+    "evidence": [
+      "logs/ctest.log",
+      "logs/ctest-details.log"
+    ],
+    "tests": [
+      "editor.projection.highlight_backend",
+      "editor.scene_views_gpu",
+      "editor.quality.boundaries"
+    ],
+    "reason": "共享 viewport 的真实双视口和 Material"
+  },
+  {
+    "id": "XQ11",
+    "status": "PASS",
+    "evidence": [
+      "logs/ctest.log",
+      "logs/ctest-details.log",
+      "link-audit.md",
+      "logs/public-headers/commands.json"
+    ],
+    "tests": [
+      "editor.scene_execution_boundaries",
+      "editor.interaction_view_boundaries",
+      "editor.quality.boundaries"
+    ],
+    "reason": "公共头、精确依赖正负例"
+  },
+  {
+    "id": "XQ12",
+    "status": "PASS",
+    "evidence": [
+      "logs/ctest.log",
+      "logs/ctest-details.log",
+      "link-audit.md",
+      "logs/extra/removed-symbols.log",
+      "logs/extra/migrated-consumers.log"
+    ],
+    "tests": [
+      "editor.quality.boundaries"
+    ],
+    "reason": "一次迁移、旧入口删除"
+  },
+  {
+    "id": "XQ13",
+    "status": "PASS",
+    "evidence": [
+      "logs/ctest.log",
+      "logs/ctest-details.log",
+      "logs/sdk/projection-compilation-ctest.log",
+      "logs/performance/owners.log"
+    ],
+    "tests": [
+      "editor.compilation.ownership_material",
+      "editor.compilation.ownership_flow"
+    ],
+    "reason": "owner 特殊成员和 operation 八项负例"
+  },
+  {
+    "id": "XQ14",
+    "status": "PASS",
+    "evidence": [
+      "logs/ctest.log",
+      "logs/ctest-details.log",
+      "README.md",
+      "performance.md"
+    ],
+    "tests": [
+      "editor.draft_source_literal",
+      "editor.draft_source_signature",
+      "editor.draft_source_flow-canvas",
+      "editor.draft_source_material-canvas",
+      "editor.draft_source_flow-queue",
+      "editor.draft_source_material-queue",
+      "editor.draft_source_material-lifetime",
+      "editor.draft_source_lifecycle",
+      "editor.draft_source_positive",
+      "editor.draft_source_history",
+      "editor.tasks.monitor",
+      "editor.project_views"
+    ],
+    "reason": "受控连续区间复用；未删除跨回调检查"
+  },
+  {
+    "id": "XQ15",
+    "status": "PASS",
+    "evidence": [
+      "logs/ctest.log",
+      "logs/ctest-details.log"
+    ],
+    "tests": [
+      "editor.material_model.reload-unbound",
+      "editor.material_model.reload-unbound-lease",
+      "editor.material_model.reload-closing-lease",
+      "editor.material_model.reload-reading-lease",
+      "editor.material_model.reload-outcomes",
+      "editor.flowforge_model.reload-unbound",
+      "editor.flowforge_model.reload-unbound-external",
+      "editor.flowforge_model.reload-reading",
+      "editor.flowforge_model.reload-closing",
+      "editor.flowforge_model.reload-identity",
+      "editor.flowforge_model.reload-success",
+      "editor.persistence.r1-revoke",
+      "editor.persistence.r1-recursive",
+      "editor.persistence.r1-chain",
+      "editor.persistence.r1-chain-control",
+      "editor.persistence.r1-callbacks",
+      "editor.persistence.r1-reading",
+      "editor.persistence.r1-conflicts",
+      "editor.interaction_reclaim.scene.sync",
+      "editor.interaction_reclaim.scene.cancel",
+      "editor.interaction_reclaim.scene.selection",
+      "editor.interaction_reclaim.scene.stale",
+      "editor.interaction_reclaim.scene.gate",
+      "editor.interaction_reclaim.scene.thread",
+      "editor.interaction_reclaim.scene.reload",
+      "editor.interaction_reclaim.material.sync",
+      "editor.interaction_reclaim.material.cancel",
+      "editor.interaction_reclaim.material.selection",
+      "editor.interaction_reclaim.material.stale",
+      "editor.interaction_reclaim.material.gate",
+      "editor.interaction_reclaim.material.thread",
+      "editor.interaction_reclaim.material.reload",
+      "editor.interaction_reclaim.flow.sync",
+      "editor.interaction_reclaim.flow.cancel",
+      "editor.interaction_reclaim.flow.selection",
+      "editor.interaction_reclaim.flow.stale",
+      "editor.interaction_reclaim.flow.gate",
+      "editor.interaction_reclaim.flow.thread",
+      "editor.interaction_reclaim.flow.reload"
+    ],
+    "reason": "回调修改／关闭／代码寿命"
+  },
+  {
+    "id": "XQ16",
+    "status": "PASS",
+    "evidence": [
+      "logs/ctest.log",
+      "logs/ctest-details.log"
+    ],
+    "tests": [
+      "editor.persistence.capacity",
+      "editor.persistence.conflict",
+      "editor.workspace.aliases",
+      "editor.workspace.reads"
+    ],
+    "reason": "外部输入／真实文件冲突与容量"
+  },
+  {
+    "id": "XQ17",
+    "status": "PASS",
+    "evidence": [
+      "logs/ctest.log",
+      "logs/ctest-details.log"
+    ],
+    "tests": [
+      "editor.scene_execution.r1-queued",
+      "editor.scene_execution.r1-mixed",
+      "editor.scene_execution.r1-failed",
+      "editor.scene_execution.r1-callback",
+      "editor.scene_execution.r1-capacity",
+      "editor.compilation.ownership_material",
+      "editor.compilation.ownership_flow",
+      "editor.persistence.r2-accept-success",
+      "editor.persistence.r2-accept-error",
+      "editor.persistence.r2-accept-cancel",
+      "editor.persistence.r2-accept-drain",
+      "editor.persistence.r2-admission"
+    ],
+    "reason": "可靠完成／外层 dispatch"
+  },
+  {
+    "id": "XQ18",
+    "status": "PASS",
+    "evidence": [
+      "logs/ctest.log",
+      "logs/ctest-details.log",
+      "performance.md",
+      "logs/query-counts/commands.json",
+      "before/query-counts/commands.json"
+    ],
+    "tests": [
+      "editor.scene_model.identity",
+      "editor.scene_model.hierarchy_chain",
+      "editor.scene_model.hierarchy_wide",
+      "editor.scene_model.hierarchy_roots",
+      "editor.scene_model.hierarchy_cycle"
+    ],
+    "reason": "线性深链、宽树、多根、环"
+  },
+  {
+    "id": "XQ19",
+    "status": "PASS",
+    "evidence": [
+      "logs/ctest.log",
+      "logs/ctest-details.log",
+      "performance.md"
+    ],
+    "tests": [
+      "editor.flowforge_model.ids-undo-branch",
+      "editor.flowforge_model.ids-candidate-seed",
+      "editor.flowforge_model.ids-signature",
+      "editor.flowforge_model.ids-restore",
+      "editor.flowforge_model.ids-failure",
+      "editor.flowforge_model.ids-exhaustion",
+      "editor.three_actual_sessions",
+      "editor.quality.containers"
+    ],
+    "reason": "跨域和 generation 资格"
+  },
+  {
+    "id": "XQ20",
+    "status": "PASS",
+    "evidence": [
+      "logs/ctest.log",
+      "logs/ctest-details.log",
+      "performance.md"
+    ],
+    "tests": [
+      "editor.quality.containers"
+    ],
+    "reason": "StableSlotMap 回调／构造失败／稳定地址"
+  },
+  {
+    "id": "XQ21",
+    "status": "PASS",
+    "evidence": [
+      "logs/ctest.log",
+      "logs/ctest-details.log",
+      "performance.md"
+    ],
+    "tests": [
+      "editor.quality.containers"
+    ],
+    "reason": "SmallVector SBO、move-only、allocator 清理"
+  },
+  {
+    "id": "XQ22",
+    "status": "PASS",
+    "evidence": [
+      "logs/ctest.log",
+      "logs/ctest-details.log",
+      "performance.md"
+    ],
+    "tests": [
+      "editor.canvas.churn"
+    ],
+    "reason": "真实画布 churn、首帧导航／旧 UI ID"
+  },
+  {
+    "id": "XQ23",
+    "status": "PASS",
+    "evidence": [
+      "logs/ctest.log",
+      "logs/ctest-details.log",
+      "performance.md"
+    ],
+    "tests": [
+      "editor.persistence.write_coordinator",
+      "editor.compilation.actual_publish"
+    ],
+    "reason": "SharedBytes 源释放／预算／取消／Unknown"
+  },
+  {
+    "id": "XQ24",
+    "status": "PARTIAL",
+    "evidence": [
+      "performance.md",
+      "logs/performance/commands.json",
+      "before/extended/commands.json"
+    ],
+    "tests": [],
+    "reason": "BQ1–BQ5 对照和未采用方案; user ended old 50k-chain before all 100 samples; completed raw iterations retained"
+  },
+  {
+    "id": "XQ25",
+    "status": "PASS",
+    "evidence": [
+      "link-audit.md",
+      "logs/extra/file-api-inventory.json",
+      "logs/imports.log",
+      "logs/extra/editor-loaded-modules.log"
+    ],
+    "tests": [],
+    "reason": "实际 target／链接／装载"
+  },
+  {
+    "id": "XQ26",
+    "status": "PASS",
+    "evidence": [
+      "logs/ctest.log",
+      "logs/ctest-details.log",
+      "link-audit.md",
+      "logs/sdk/editor-d2-ctest.log",
+      "logs/sdk/external-feature-ctest.log"
+    ],
+    "tests": [
+      "editor.plugin_publication",
+      "plugin.configuration",
+      "plugin.physics2d",
+      "editor.component_elements"
+    ],
+    "reason": "动态插件和 domain/GUI DLL"
+  },
+  {
+    "id": "XQ27",
+    "status": "PASS",
+    "evidence": [
+      "link-audit.md",
+      "logs/sdk/commands.json"
+    ],
+    "tests": [],
+    "reason": "新 prefix 安装闭包"
+  },
+  {
+    "id": "XQ28",
+    "status": "PASS",
+    "evidence": [
+      "logs/cpu-ctest.log",
+      "logs/cpu-test-names.log"
+    ],
+    "tests": [],
+    "reason": "CPU native，不要求 GPU／linker 运行"
+  },
+  {
+    "id": "XQ29",
+    "status": "PARTIAL",
+    "evidence": [
+      "logs/ctest.log",
+      "logs/ctest-details.log",
+      "logs/clang-ctest.log"
+    ],
+    "tests": [
+      "editor.compilation.actual_publish"
+    ],
+    "reason": "Windows／Linux 实际工具链; Linux mandatory NOT_RUN"
+  },
+  {
+    "id": "XQ30",
+    "status": "PARTIAL",
+    "evidence": [
+      "logs/ctest.log",
+      "logs/ctest-details.log"
+    ],
+    "tests": [
+      "editor.persistence.real_files",
+      "editor.workspace.aliases",
+      "editor.workspace.reads"
+    ],
+    "reason": "路径、IO 与相对归档; Linux mandatory NOT_RUN"
+  },
+  {
+    "id": "XQ31",
+    "status": "PASS",
+    "evidence": [
+      "development/P10Q-work.md",
+      "logs/build.log",
+      "logs/no-work.log",
+      "logs/tracked-snapshot.log"
+    ],
+    "tests": [],
+    "reason": "完全新 build tree 的生成顺序"
+  },
+  {
+    "id": "XQ32",
+    "status": "PASS",
+    "evidence": [
+      "logs/ctest.log",
+      "logs/ctest-details.log",
+      "logs/sdk/gpu-ui-ctest.log",
+      "logs/sdk/editor-scene-pane-ctest.log"
+    ],
+    "tests": [
+      "editor.scene_views_gpu",
+      "editor.desktop_native_input"
+    ],
+    "reason": "测试分组与实机范围; system IME NOT_RUN (separate from automatic native input)"
+  },
+  {
+    "id": "XQ33",
+    "status": "PASS",
+    "evidence": [
+      "behavior-map.md",
+      "logs/C01.log",
+      "logs/C03.log",
+      "logs/C04.log"
+    ],
+    "tests": [],
+    "reason": "原有行为、历史失败范围"
+  },
+  {
+    "id": "XQ34",
+    "status": "PASS",
+    "evidence": [
+      "logs/ctest.log",
+      "logs/ctest-details.log",
+      "archive-probes/relocated-positive.log",
+      "archive-probes/missing-real-evidence.log",
+      "archive-probes/tampered-real-evidence.log",
+      "archive-probes/restored-relocated-positive.log",
+      "archive-probes/canonical-final.log"
+    ],
+    "tests": [
+      "editor.quality.boundaries",
+      "editor.quality.evidence"
+    ],
+    "reason": "正式 P10Q、证据缺失／篡改拒绝; real relocated archive accepted, missing/tampered CTest evidence rejected, restored archive accepted"
+  }
+]

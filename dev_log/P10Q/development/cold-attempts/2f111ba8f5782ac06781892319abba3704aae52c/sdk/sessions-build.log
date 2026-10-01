@@ -1,0 +1,3 @@
+[1/2] Building CXX object CMakeFiles\sessions_consumer.dir\E_\SyncForder\CodeRepos\build\p10q-clean-2f111ba8f578\editor\editing\sessions\test\sessions.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[2/2] Linking CXX executable sessions_consumer.exe

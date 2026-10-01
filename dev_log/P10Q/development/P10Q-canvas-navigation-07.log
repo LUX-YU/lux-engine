@@ -1,0 +1,12 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine
+    Start 95: editor.canvas.churn
+1/1 Test #95: editor.canvas.churn ..............   Passed   44.46 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Label Time Summary:
+P10Q      =  44.46 sec*proc (1 test)
+editor    =  44.46 sec*proc (1 test)
+native    =  44.46 sec*proc (1 test)
+
+Total Test time (real) =  44.51 sec

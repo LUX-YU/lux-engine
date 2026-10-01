@@ -1,0 +1,15 @@
+[1/10] Building CXX object CMakeFiles\canvas_ids.dir\canvas_ids.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[2/10] Building CXX object CMakeFiles\records.dir\records.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[3/10] Linking CXX executable canvas_ids.exe
+[4/10] Linking CXX executable records.exe
+[5/10] Building CXX object CMakeFiles\measure.dir\main.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[6/10] Building CXX object CMakeFiles\hierarchy_alloc.dir\hierarchy_alloc.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[7/10] Linking CXX executable measure.exe
+[8/10] Linking CXX executable hierarchy_alloc.exe
+[9/10] Building CXX object CMakeFiles\candidates.dir\candidates.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[10/10] Linking CXX executable candidates.exe

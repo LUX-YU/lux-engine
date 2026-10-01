@@ -1,0 +1,7 @@
+{
+  "implementation_sha": "514bca1f180e91a88545d26d5d11a63fcd7e7498",
+  "source": "editor/tools/scene/model/src/SceneSource.cpp",
+  "original_sha256": "a38fde0d2505997d68069e6b639385b96e7a3b6d51ce99a3d9e6a4fb85947df2",
+  "instrumented_sha256": "3de5800cdd9db488e688c2ce4d6ec2d434a3e8936b188559266f04183ab24e51",
+  "scope": "One counter immediately before each actual Parent read in validate. No algorithm replacement; count-only, not timing or independent installed SDK qualification."
+}

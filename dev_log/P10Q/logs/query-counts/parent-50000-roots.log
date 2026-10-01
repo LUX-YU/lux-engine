@@ -1,0 +1,2 @@
+parent_reads n=50000 shape=roots count=50000
+hierarchy n=50000 shape=roots owner-thread executable/static new calls=50005 requested_bytes=3498861 (one count-only run; no timing qualification)

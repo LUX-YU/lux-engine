@@ -1,0 +1,607 @@
+capacity=16 sample=0 duration_us=14.300
+capacity=16 sample=1 duration_us=14.300
+capacity=16 sample=2 duration_us=14.300
+capacity=16 sample=3 duration_us=14.000
+capacity=16 sample=4 duration_us=14.300
+capacity=16 sample=5 duration_us=14.300
+capacity=16 sample=6 duration_us=14.400
+capacity=16 sample=7 duration_us=14.000
+capacity=16 sample=8 duration_us=14.100
+capacity=16 sample=9 duration_us=14.000
+capacity=16 sample=10 duration_us=14.400
+capacity=16 sample=11 duration_us=14.300
+capacity=16 sample=12 duration_us=14.400
+capacity=16 sample=13 duration_us=14.300
+capacity=16 sample=14 duration_us=14.400
+capacity=16 sample=15 duration_us=14.300
+capacity=16 sample=16 duration_us=14.300
+capacity=16 sample=17 duration_us=14.300
+capacity=16 sample=18 duration_us=14.300
+capacity=16 sample=19 duration_us=14.300
+capacity=16 sample=20 duration_us=14.600
+capacity=16 sample=21 duration_us=14.000
+capacity=16 sample=22 duration_us=14.000
+capacity=16 sample=23 duration_us=14.000
+capacity=16 sample=24 duration_us=14.000
+capacity=16 sample=25 duration_us=14.000
+capacity=16 sample=26 duration_us=14.000
+capacity=16 sample=27 duration_us=14.000
+capacity=16 sample=28 duration_us=14.000
+capacity=16 sample=29 duration_us=14.100
+capacity=16 sample=30 duration_us=14.200
+capacity=16 sample=31 duration_us=14.100
+capacity=16 sample=32 duration_us=14.100
+capacity=16 sample=33 duration_us=14.200
+capacity=16 sample=34 duration_us=14.200
+capacity=16 sample=35 duration_us=14.300
+capacity=16 sample=36 duration_us=14.300
+capacity=16 sample=37 duration_us=14.300
+capacity=16 sample=38 duration_us=14.300
+capacity=16 sample=39 duration_us=14.300
+capacity=16 sample=40 duration_us=14.300
+capacity=16 sample=41 duration_us=14.300
+capacity=16 sample=42 duration_us=14.300
+capacity=16 sample=43 duration_us=14.000
+capacity=16 sample=44 duration_us=14.000
+capacity=16 sample=45 duration_us=14.000
+capacity=16 sample=46 duration_us=14.000
+capacity=16 sample=47 duration_us=14.000
+capacity=16 sample=48 duration_us=14.000
+capacity=16 sample=49 duration_us=13.900
+capacity=16 sample=50 duration_us=14.000
+capacity=16 sample=51 duration_us=14.200
+capacity=16 sample=52 duration_us=14.300
+capacity=16 sample=53 duration_us=14.300
+capacity=16 sample=54 duration_us=14.300
+capacity=16 sample=55 duration_us=14.300
+capacity=16 sample=56 duration_us=14.300
+capacity=16 sample=57 duration_us=14.300
+capacity=16 sample=58 duration_us=14.300
+capacity=16 sample=59 duration_us=14.300
+capacity=16 sample=60 duration_us=14.300
+capacity=16 sample=61 duration_us=14.300
+capacity=16 sample=62 duration_us=14.200
+capacity=16 sample=63 duration_us=14.300
+capacity=16 sample=64 duration_us=14.400
+capacity=16 sample=65 duration_us=14.000
+capacity=16 sample=66 duration_us=14.300
+capacity=16 sample=67 duration_us=14.400
+capacity=16 sample=68 duration_us=14.300
+capacity=16 sample=69 duration_us=16.700
+capacity=16 sample=70 duration_us=14.000
+capacity=16 sample=71 duration_us=14.000
+capacity=16 sample=72 duration_us=14.000
+capacity=16 sample=73 duration_us=13.300
+capacity=16 sample=74 duration_us=13.700
+capacity=16 sample=75 duration_us=13.700
+capacity=16 sample=76 duration_us=13.700
+capacity=16 sample=77 duration_us=13.700
+capacity=16 sample=78 duration_us=13.700
+capacity=16 sample=79 duration_us=13.700
+capacity=16 sample=80 duration_us=13.700
+capacity=16 sample=81 duration_us=13.700
+capacity=16 sample=82 duration_us=13.700
+capacity=16 sample=83 duration_us=13.700
+capacity=16 sample=84 duration_us=13.700
+capacity=16 sample=85 duration_us=13.700
+capacity=16 sample=86 duration_us=13.700
+capacity=16 sample=87 duration_us=13.700
+capacity=16 sample=88 duration_us=13.700
+capacity=16 sample=89 duration_us=13.700
+capacity=16 sample=90 duration_us=13.700
+capacity=16 sample=91 duration_us=13.700
+capacity=16 sample=92 duration_us=13.700
+capacity=16 sample=93 duration_us=13.700
+capacity=16 sample=94 duration_us=13.700
+capacity=16 sample=95 duration_us=13.700
+capacity=16 sample=96 duration_us=13.700
+capacity=16 sample=97 duration_us=13.800
+capacity=16 sample=98 duration_us=13.700
+capacity=16 sample=99 duration_us=13.700
+cancel/erase capacity=16 sample=0 duration_us=2.200
+cancel/erase capacity=16 sample=1 duration_us=2.200
+cancel/erase capacity=16 sample=2 duration_us=2.200
+cancel/erase capacity=16 sample=3 duration_us=2.200
+cancel/erase capacity=16 sample=4 duration_us=2.200
+cancel/erase capacity=16 sample=5 duration_us=2.300
+cancel/erase capacity=16 sample=6 duration_us=2.200
+cancel/erase capacity=16 sample=7 duration_us=2.200
+cancel/erase capacity=16 sample=8 duration_us=2.200
+cancel/erase capacity=16 sample=9 duration_us=2.200
+cancel/erase capacity=16 sample=10 duration_us=2.200
+cancel/erase capacity=16 sample=11 duration_us=2.200
+cancel/erase capacity=16 sample=12 duration_us=2.200
+cancel/erase capacity=16 sample=13 duration_us=2.200
+cancel/erase capacity=16 sample=14 duration_us=2.100
+cancel/erase capacity=16 sample=15 duration_us=2.200
+cancel/erase capacity=16 sample=16 duration_us=2.200
+cancel/erase capacity=16 sample=17 duration_us=2.200
+cancel/erase capacity=16 sample=18 duration_us=2.200
+cancel/erase capacity=16 sample=19 duration_us=2.200
+cancel/erase capacity=16 sample=20 duration_us=2.200
+cancel/erase capacity=16 sample=21 duration_us=2.200
+cancel/erase capacity=16 sample=22 duration_us=2.200
+cancel/erase capacity=16 sample=23 duration_us=2.200
+cancel/erase capacity=16 sample=24 duration_us=2.200
+cancel/erase capacity=16 sample=25 duration_us=2.100
+cancel/erase capacity=16 sample=26 duration_us=2.200
+cancel/erase capacity=16 sample=27 duration_us=2.200
+cancel/erase capacity=16 sample=28 duration_us=2.200
+cancel/erase capacity=16 sample=29 duration_us=2.200
+cancel/erase capacity=16 sample=30 duration_us=2.300
+cancel/erase capacity=16 sample=31 duration_us=2.200
+cancel/erase capacity=16 sample=32 duration_us=2.200
+cancel/erase capacity=16 sample=33 duration_us=2.200
+cancel/erase capacity=16 sample=34 duration_us=2.200
+cancel/erase capacity=16 sample=35 duration_us=2.200
+cancel/erase capacity=16 sample=36 duration_us=2.200
+cancel/erase capacity=16 sample=37 duration_us=2.200
+cancel/erase capacity=16 sample=38 duration_us=2.200
+cancel/erase capacity=16 sample=39 duration_us=2.200
+cancel/erase capacity=16 sample=40 duration_us=2.200
+cancel/erase capacity=16 sample=41 duration_us=2.200
+cancel/erase capacity=16 sample=42 duration_us=2.200
+cancel/erase capacity=16 sample=43 duration_us=2.200
+cancel/erase capacity=16 sample=44 duration_us=2.200
+cancel/erase capacity=16 sample=45 duration_us=2.200
+cancel/erase capacity=16 sample=46 duration_us=2.200
+cancel/erase capacity=16 sample=47 duration_us=2.200
+cancel/erase capacity=16 sample=48 duration_us=2.200
+cancel/erase capacity=16 sample=49 duration_us=2.200
+cancel/erase capacity=16 sample=50 duration_us=2.200
+cancel/erase capacity=16 sample=51 duration_us=2.200
+cancel/erase capacity=16 sample=52 duration_us=2.100
+cancel/erase capacity=16 sample=53 duration_us=2.200
+cancel/erase capacity=16 sample=54 duration_us=2.100
+cancel/erase capacity=16 sample=55 duration_us=2.200
+cancel/erase capacity=16 sample=56 duration_us=2.200
+cancel/erase capacity=16 sample=57 duration_us=2.200
+cancel/erase capacity=16 sample=58 duration_us=2.100
+cancel/erase capacity=16 sample=59 duration_us=2.200
+cancel/erase capacity=16 sample=60 duration_us=2.100
+cancel/erase capacity=16 sample=61 duration_us=2.200
+cancel/erase capacity=16 sample=62 duration_us=2.100
+cancel/erase capacity=16 sample=63 duration_us=2.200
+cancel/erase capacity=16 sample=64 duration_us=2.100
+cancel/erase capacity=16 sample=65 duration_us=2.200
+cancel/erase capacity=16 sample=66 duration_us=2.200
+cancel/erase capacity=16 sample=67 duration_us=2.200
+cancel/erase capacity=16 sample=68 duration_us=2.100
+cancel/erase capacity=16 sample=69 duration_us=2.200
+cancel/erase capacity=16 sample=70 duration_us=2.100
+cancel/erase capacity=16 sample=71 duration_us=2.200
+cancel/erase capacity=16 sample=72 duration_us=2.100
+cancel/erase capacity=16 sample=73 duration_us=2.200
+cancel/erase capacity=16 sample=74 duration_us=2.200
+cancel/erase capacity=16 sample=75 duration_us=2.200
+cancel/erase capacity=16 sample=76 duration_us=2.200
+cancel/erase capacity=16 sample=77 duration_us=2.200
+cancel/erase capacity=16 sample=78 duration_us=2.200
+cancel/erase capacity=16 sample=79 duration_us=2.100
+cancel/erase capacity=16 sample=80 duration_us=2.200
+cancel/erase capacity=16 sample=81 duration_us=2.200
+cancel/erase capacity=16 sample=82 duration_us=2.200
+cancel/erase capacity=16 sample=83 duration_us=2.200
+cancel/erase capacity=16 sample=84 duration_us=2.200
+cancel/erase capacity=16 sample=85 duration_us=2.200
+cancel/erase capacity=16 sample=86 duration_us=2.200
+cancel/erase capacity=16 sample=87 duration_us=2.200
+cancel/erase capacity=16 sample=88 duration_us=2.200
+cancel/erase capacity=16 sample=89 duration_us=2.200
+cancel/erase capacity=16 sample=90 duration_us=2.200
+cancel/erase capacity=16 sample=91 duration_us=2.200
+cancel/erase capacity=16 sample=92 duration_us=2.100
+cancel/erase capacity=16 sample=93 duration_us=2.200
+cancel/erase capacity=16 sample=94 duration_us=2.200
+cancel/erase capacity=16 sample=95 duration_us=2.200
+cancel/erase capacity=16 sample=96 duration_us=2.200
+cancel/erase capacity=16 sample=97 duration_us=2.200
+cancel/erase capacity=16 sample=98 duration_us=2.200
+cancel/erase capacity=16 sample=99 duration_us=2.200
+capacity=64 sample=0 duration_us=111.800
+capacity=64 sample=1 duration_us=111.300
+capacity=64 sample=2 duration_us=111.200
+capacity=64 sample=3 duration_us=111.200
+capacity=64 sample=4 duration_us=112.800
+capacity=64 sample=5 duration_us=113.800
+capacity=64 sample=6 duration_us=110.100
+capacity=64 sample=7 duration_us=112.400
+capacity=64 sample=8 duration_us=110.800
+capacity=64 sample=9 duration_us=111.200
+capacity=64 sample=10 duration_us=113.500
+capacity=64 sample=11 duration_us=113.500
+capacity=64 sample=12 duration_us=113.600
+capacity=64 sample=13 duration_us=113.500
+capacity=64 sample=14 duration_us=114.600
+capacity=64 sample=15 duration_us=113.300
+capacity=64 sample=16 duration_us=111.100
+capacity=64 sample=17 duration_us=113.400
+capacity=64 sample=18 duration_us=112.000
+capacity=64 sample=19 duration_us=110.500
+capacity=64 sample=20 duration_us=110.400
+capacity=64 sample=21 duration_us=110.300
+capacity=64 sample=22 duration_us=111.000
+capacity=64 sample=23 duration_us=112.400
+capacity=64 sample=24 duration_us=112.000
+capacity=64 sample=25 duration_us=113.300
+capacity=64 sample=26 duration_us=113.200
+capacity=64 sample=27 duration_us=112.700
+capacity=64 sample=28 duration_us=111.800
+capacity=64 sample=29 duration_us=115.100
+capacity=64 sample=30 duration_us=115.300
+capacity=64 sample=31 duration_us=116.200
+capacity=64 sample=32 duration_us=114.200
+capacity=64 sample=33 duration_us=115.000
+capacity=64 sample=34 duration_us=114.900
+capacity=64 sample=35 duration_us=114.900
+capacity=64 sample=36 duration_us=115.000
+capacity=64 sample=37 duration_us=115.000
+capacity=64 sample=38 duration_us=115.000
+capacity=64 sample=39 duration_us=117.500
+capacity=64 sample=40 duration_us=117.700
+capacity=64 sample=41 duration_us=117.300
+capacity=64 sample=42 duration_us=114.200
+capacity=64 sample=43 duration_us=114.900
+capacity=64 sample=44 duration_us=115.100
+capacity=64 sample=45 duration_us=114.800
+capacity=64 sample=46 duration_us=124.100
+capacity=64 sample=47 duration_us=115.400
+capacity=64 sample=48 duration_us=114.900
+capacity=64 sample=49 duration_us=114.100
+capacity=64 sample=50 duration_us=114.900
+capacity=64 sample=51 duration_us=114.900
+capacity=64 sample=52 duration_us=114.900
+capacity=64 sample=53 duration_us=114.900
+capacity=64 sample=54 duration_us=114.900
+capacity=64 sample=55 duration_us=114.900
+capacity=64 sample=56 duration_us=114.900
+capacity=64 sample=57 duration_us=114.900
+capacity=64 sample=58 duration_us=113.000
+capacity=64 sample=59 duration_us=113.000
+capacity=64 sample=60 duration_us=113.000
+capacity=64 sample=61 duration_us=113.000
+capacity=64 sample=62 duration_us=113.000
+capacity=64 sample=63 duration_us=113.000
+capacity=64 sample=64 duration_us=116.700
+capacity=64 sample=65 duration_us=114.200
+capacity=64 sample=66 duration_us=114.900
+capacity=64 sample=67 duration_us=114.800
+capacity=64 sample=68 duration_us=115.100
+capacity=64 sample=69 duration_us=114.900
+capacity=64 sample=70 duration_us=114.800
+capacity=64 sample=71 duration_us=114.900
+capacity=64 sample=72 duration_us=114.800
+capacity=64 sample=73 duration_us=114.900
+capacity=64 sample=74 duration_us=114.800
+capacity=64 sample=75 duration_us=114.800
+capacity=64 sample=76 duration_us=114.900
+capacity=64 sample=77 duration_us=114.800
+capacity=64 sample=78 duration_us=114.900
+capacity=64 sample=79 duration_us=118.100
+capacity=64 sample=80 duration_us=114.900
+capacity=64 sample=81 duration_us=117.000
+capacity=64 sample=82 duration_us=114.100
+capacity=64 sample=83 duration_us=114.800
+capacity=64 sample=84 duration_us=114.300
+capacity=64 sample=85 duration_us=116.000
+capacity=64 sample=86 duration_us=116.000
+capacity=64 sample=87 duration_us=116.100
+capacity=64 sample=88 duration_us=116.100
+capacity=64 sample=89 duration_us=116.000
+capacity=64 sample=90 duration_us=116.000
+capacity=64 sample=91 duration_us=116.100
+capacity=64 sample=92 duration_us=116.100
+capacity=64 sample=93 duration_us=116.100
+capacity=64 sample=94 duration_us=116.100
+capacity=64 sample=95 duration_us=114.100
+capacity=64 sample=96 duration_us=114.900
+capacity=64 sample=97 duration_us=116.100
+capacity=64 sample=98 duration_us=116.100
+capacity=64 sample=99 duration_us=116.000
+cancel/erase capacity=64 sample=0 duration_us=28.100
+cancel/erase capacity=64 sample=1 duration_us=28.200
+cancel/erase capacity=64 sample=2 duration_us=28.100
+cancel/erase capacity=64 sample=3 duration_us=28.200
+cancel/erase capacity=64 sample=4 duration_us=28.000
+cancel/erase capacity=64 sample=5 duration_us=28.200
+cancel/erase capacity=64 sample=6 duration_us=28.200
+cancel/erase capacity=64 sample=7 duration_us=28.000
+cancel/erase capacity=64 sample=8 duration_us=28.200
+cancel/erase capacity=64 sample=9 duration_us=28.400
+cancel/erase capacity=64 sample=10 duration_us=28.200
+cancel/erase capacity=64 sample=11 duration_us=28.200
+cancel/erase capacity=64 sample=12 duration_us=28.000
+cancel/erase capacity=64 sample=13 duration_us=28.300
+cancel/erase capacity=64 sample=14 duration_us=28.200
+cancel/erase capacity=64 sample=15 duration_us=28.300
+cancel/erase capacity=64 sample=16 duration_us=28.200
+cancel/erase capacity=64 sample=17 duration_us=28.300
+cancel/erase capacity=64 sample=18 duration_us=28.200
+cancel/erase capacity=64 sample=19 duration_us=28.300
+cancel/erase capacity=64 sample=20 duration_us=28.300
+cancel/erase capacity=64 sample=21 duration_us=28.200
+cancel/erase capacity=64 sample=22 duration_us=28.900
+cancel/erase capacity=64 sample=23 duration_us=28.300
+cancel/erase capacity=64 sample=24 duration_us=28.100
+cancel/erase capacity=64 sample=25 duration_us=28.000
+cancel/erase capacity=64 sample=26 duration_us=28.100
+cancel/erase capacity=64 sample=27 duration_us=28.200
+cancel/erase capacity=64 sample=28 duration_us=28.100
+cancel/erase capacity=64 sample=29 duration_us=28.100
+cancel/erase capacity=64 sample=30 duration_us=28.000
+cancel/erase capacity=64 sample=31 duration_us=28.200
+cancel/erase capacity=64 sample=32 duration_us=28.200
+cancel/erase capacity=64 sample=33 duration_us=28.200
+cancel/erase capacity=64 sample=34 duration_us=28.200
+cancel/erase capacity=64 sample=35 duration_us=28.200
+cancel/erase capacity=64 sample=36 duration_us=28.100
+cancel/erase capacity=64 sample=37 duration_us=28.200
+cancel/erase capacity=64 sample=38 duration_us=28.200
+cancel/erase capacity=64 sample=39 duration_us=28.200
+cancel/erase capacity=64 sample=40 duration_us=28.100
+cancel/erase capacity=64 sample=41 duration_us=28.200
+cancel/erase capacity=64 sample=42 duration_us=28.200
+cancel/erase capacity=64 sample=43 duration_us=28.200
+cancel/erase capacity=64 sample=44 duration_us=28.300
+cancel/erase capacity=64 sample=45 duration_us=28.200
+cancel/erase capacity=64 sample=46 duration_us=28.200
+cancel/erase capacity=64 sample=47 duration_us=28.300
+cancel/erase capacity=64 sample=48 duration_us=28.300
+cancel/erase capacity=64 sample=49 duration_us=28.200
+cancel/erase capacity=64 sample=50 duration_us=28.200
+cancel/erase capacity=64 sample=51 duration_us=28.200
+cancel/erase capacity=64 sample=52 duration_us=28.100
+cancel/erase capacity=64 sample=53 duration_us=28.200
+cancel/erase capacity=64 sample=54 duration_us=28.100
+cancel/erase capacity=64 sample=55 duration_us=28.300
+cancel/erase capacity=64 sample=56 duration_us=28.000
+cancel/erase capacity=64 sample=57 duration_us=28.100
+cancel/erase capacity=64 sample=58 duration_us=28.200
+cancel/erase capacity=64 sample=59 duration_us=28.200
+cancel/erase capacity=64 sample=60 duration_us=28.200
+cancel/erase capacity=64 sample=61 duration_us=28.200
+cancel/erase capacity=64 sample=62 duration_us=28.200
+cancel/erase capacity=64 sample=63 duration_us=28.200
+cancel/erase capacity=64 sample=64 duration_us=28.100
+cancel/erase capacity=64 sample=65 duration_us=28.200
+cancel/erase capacity=64 sample=66 duration_us=28.200
+cancel/erase capacity=64 sample=67 duration_us=28.200
+cancel/erase capacity=64 sample=68 duration_us=28.100
+cancel/erase capacity=64 sample=69 duration_us=28.100
+cancel/erase capacity=64 sample=70 duration_us=28.100
+cancel/erase capacity=64 sample=71 duration_us=28.200
+cancel/erase capacity=64 sample=72 duration_us=27.900
+cancel/erase capacity=64 sample=73 duration_us=28.200
+cancel/erase capacity=64 sample=74 duration_us=28.100
+cancel/erase capacity=64 sample=75 duration_us=28.200
+cancel/erase capacity=64 sample=76 duration_us=28.100
+cancel/erase capacity=64 sample=77 duration_us=28.100
+cancel/erase capacity=64 sample=78 duration_us=28.100
+cancel/erase capacity=64 sample=79 duration_us=29.000
+cancel/erase capacity=64 sample=80 duration_us=29.900
+cancel/erase capacity=64 sample=81 duration_us=32.800
+cancel/erase capacity=64 sample=82 duration_us=32.500
+cancel/erase capacity=64 sample=83 duration_us=30.100
+cancel/erase capacity=64 sample=84 duration_us=28.800
+cancel/erase capacity=64 sample=85 duration_us=29.200
+cancel/erase capacity=64 sample=86 duration_us=32.300
+cancel/erase capacity=64 sample=87 duration_us=28.400
+cancel/erase capacity=64 sample=88 duration_us=28.300
+cancel/erase capacity=64 sample=89 duration_us=28.100
+cancel/erase capacity=64 sample=90 duration_us=28.200
+cancel/erase capacity=64 sample=91 duration_us=28.100
+cancel/erase capacity=64 sample=92 duration_us=28.400
+cancel/erase capacity=64 sample=93 duration_us=28.500
+cancel/erase capacity=64 sample=94 duration_us=34.400
+cancel/erase capacity=64 sample=95 duration_us=29.100
+cancel/erase capacity=64 sample=96 duration_us=28.300
+cancel/erase capacity=64 sample=97 duration_us=28.500
+cancel/erase capacity=64 sample=98 duration_us=28.400
+cancel/erase capacity=64 sample=99 duration_us=28.200
+capacity=256 sample=0 duration_us=986.300
+capacity=256 sample=1 duration_us=1060.900
+capacity=256 sample=2 duration_us=973.800
+capacity=256 sample=3 duration_us=965.000
+capacity=256 sample=4 duration_us=967.600
+capacity=256 sample=5 duration_us=965.800
+capacity=256 sample=6 duration_us=967.100
+capacity=256 sample=7 duration_us=1053.500
+capacity=256 sample=8 duration_us=983.700
+capacity=256 sample=9 duration_us=969.500
+capacity=256 sample=10 duration_us=984.600
+capacity=256 sample=11 duration_us=969.500
+capacity=256 sample=12 duration_us=983.600
+capacity=256 sample=13 duration_us=1066.100
+capacity=256 sample=14 duration_us=974.000
+capacity=256 sample=15 duration_us=969.300
+capacity=256 sample=16 duration_us=964.700
+capacity=256 sample=17 duration_us=969.500
+capacity=256 sample=18 duration_us=966.300
+capacity=256 sample=19 duration_us=943.500
+capacity=256 sample=20 duration_us=1010.800
+capacity=256 sample=21 duration_us=961.700
+capacity=256 sample=22 duration_us=960.900
+capacity=256 sample=23 duration_us=989.400
+capacity=256 sample=24 duration_us=972.000
+capacity=256 sample=25 duration_us=969.300
+capacity=256 sample=26 duration_us=987.100
+capacity=256 sample=27 duration_us=951.300
+capacity=256 sample=28 duration_us=955.700
+capacity=256 sample=29 duration_us=976.400
+capacity=256 sample=30 duration_us=969.600
+capacity=256 sample=31 duration_us=964.300
+capacity=256 sample=32 duration_us=980.000
+capacity=256 sample=33 duration_us=945.100
+capacity=256 sample=34 duration_us=950.000
+capacity=256 sample=35 duration_us=954.400
+capacity=256 sample=36 duration_us=984.200
+capacity=256 sample=37 duration_us=968.000
+capacity=256 sample=38 duration_us=1054.400
+capacity=256 sample=39 duration_us=985.200
+capacity=256 sample=40 duration_us=989.400
+capacity=256 sample=41 duration_us=988.900
+capacity=256 sample=42 duration_us=987.000
+capacity=256 sample=43 duration_us=986.500
+capacity=256 sample=44 duration_us=988.400
+capacity=256 sample=45 duration_us=967.400
+capacity=256 sample=46 duration_us=986.600
+capacity=256 sample=47 duration_us=969.800
+capacity=256 sample=48 duration_us=986.400
+capacity=256 sample=49 duration_us=969.800
+capacity=256 sample=50 duration_us=985.700
+capacity=256 sample=51 duration_us=994.300
+capacity=256 sample=52 duration_us=949.300
+capacity=256 sample=53 duration_us=964.100
+capacity=256 sample=54 duration_us=944.400
+capacity=256 sample=55 duration_us=969.700
+capacity=256 sample=56 duration_us=953.400
+capacity=256 sample=57 duration_us=976.000
+capacity=256 sample=58 duration_us=938.300
+capacity=256 sample=59 duration_us=939.600
+capacity=256 sample=60 duration_us=949.300
+capacity=256 sample=61 duration_us=954.700
+capacity=256 sample=62 duration_us=944.200
+capacity=256 sample=63 duration_us=1032.800
+capacity=256 sample=64 duration_us=956.100
+capacity=256 sample=65 duration_us=943.500
+capacity=256 sample=66 duration_us=937.600
+capacity=256 sample=67 duration_us=1069.400
+capacity=256 sample=68 duration_us=952.500
+capacity=256 sample=69 duration_us=959.800
+capacity=256 sample=70 duration_us=960.300
+capacity=256 sample=71 duration_us=936.300
+capacity=256 sample=72 duration_us=948.500
+capacity=256 sample=73 duration_us=947.600
+capacity=256 sample=74 duration_us=932.300
+capacity=256 sample=75 duration_us=951.800
+capacity=256 sample=76 duration_us=949.300
+capacity=256 sample=77 duration_us=948.500
+capacity=256 sample=78 duration_us=946.200
+capacity=256 sample=79 duration_us=952.900
+capacity=256 sample=80 duration_us=953.300
+capacity=256 sample=81 duration_us=953.600
+capacity=256 sample=82 duration_us=939.700
+capacity=256 sample=83 duration_us=960.400
+capacity=256 sample=84 duration_us=943.800
+capacity=256 sample=85 duration_us=957.000
+capacity=256 sample=86 duration_us=961.100
+capacity=256 sample=87 duration_us=993.800
+capacity=256 sample=88 duration_us=956.300
+capacity=256 sample=89 duration_us=973.400
+capacity=256 sample=90 duration_us=953.300
+capacity=256 sample=91 duration_us=954.100
+capacity=256 sample=92 duration_us=959.800
+capacity=256 sample=93 duration_us=949.400
+capacity=256 sample=94 duration_us=967.300
+capacity=256 sample=95 duration_us=950.500
+capacity=256 sample=96 duration_us=963.000
+capacity=256 sample=97 duration_us=953.800
+capacity=256 sample=98 duration_us=954.100
+capacity=256 sample=99 duration_us=971.100
+cancel/erase capacity=256 sample=0 duration_us=423.500
+cancel/erase capacity=256 sample=1 duration_us=423.100
+cancel/erase capacity=256 sample=2 duration_us=422.300
+cancel/erase capacity=256 sample=3 duration_us=424.300
+cancel/erase capacity=256 sample=4 duration_us=423.500
+cancel/erase capacity=256 sample=5 duration_us=423.400
+cancel/erase capacity=256 sample=6 duration_us=423.400
+cancel/erase capacity=256 sample=7 duration_us=424.200
+cancel/erase capacity=256 sample=8 duration_us=423.200
+cancel/erase capacity=256 sample=9 duration_us=425.100
+cancel/erase capacity=256 sample=10 duration_us=423.100
+cancel/erase capacity=256 sample=11 duration_us=422.700
+cancel/erase capacity=256 sample=12 duration_us=422.800
+cancel/erase capacity=256 sample=13 duration_us=422.500
+cancel/erase capacity=256 sample=14 duration_us=424.200
+cancel/erase capacity=256 sample=15 duration_us=422.800
+cancel/erase capacity=256 sample=16 duration_us=422.900
+cancel/erase capacity=256 sample=17 duration_us=425.700
+cancel/erase capacity=256 sample=18 duration_us=423.400
+cancel/erase capacity=256 sample=19 duration_us=458.500
+cancel/erase capacity=256 sample=20 duration_us=434.800
+cancel/erase capacity=256 sample=21 duration_us=422.800
+cancel/erase capacity=256 sample=22 duration_us=425.000
+cancel/erase capacity=256 sample=23 duration_us=440.400
+cancel/erase capacity=256 sample=24 duration_us=423.500
+cancel/erase capacity=256 sample=25 duration_us=423.200
+cancel/erase capacity=256 sample=26 duration_us=423.800
+cancel/erase capacity=256 sample=27 duration_us=421.800
+cancel/erase capacity=256 sample=28 duration_us=422.400
+cancel/erase capacity=256 sample=29 duration_us=421.300
+cancel/erase capacity=256 sample=30 duration_us=420.300
+cancel/erase capacity=256 sample=31 duration_us=415.400
+cancel/erase capacity=256 sample=32 duration_us=414.900
+cancel/erase capacity=256 sample=33 duration_us=415.700
+cancel/erase capacity=256 sample=34 duration_us=415.500
+cancel/erase capacity=256 sample=35 duration_us=415.300
+cancel/erase capacity=256 sample=36 duration_us=415.300
+cancel/erase capacity=256 sample=37 duration_us=415.000
+cancel/erase capacity=256 sample=38 duration_us=415.900
+cancel/erase capacity=256 sample=39 duration_us=414.800
+cancel/erase capacity=256 sample=40 duration_us=414.900
+cancel/erase capacity=256 sample=41 duration_us=414.900
+cancel/erase capacity=256 sample=42 duration_us=421.500
+cancel/erase capacity=256 sample=43 duration_us=419.000
+cancel/erase capacity=256 sample=44 duration_us=414.700
+cancel/erase capacity=256 sample=45 duration_us=414.700
+cancel/erase capacity=256 sample=46 duration_us=415.500
+cancel/erase capacity=256 sample=47 duration_us=414.700
+cancel/erase capacity=256 sample=48 duration_us=415.100
+cancel/erase capacity=256 sample=49 duration_us=419.600
+cancel/erase capacity=256 sample=50 duration_us=415.800
+cancel/erase capacity=256 sample=51 duration_us=442.900
+cancel/erase capacity=256 sample=52 duration_us=421.100
+cancel/erase capacity=256 sample=53 duration_us=420.800
+cancel/erase capacity=256 sample=54 duration_us=428.000
+cancel/erase capacity=256 sample=55 duration_us=453.500
+cancel/erase capacity=256 sample=56 duration_us=440.900
+cancel/erase capacity=256 sample=57 duration_us=462.200
+cancel/erase capacity=256 sample=58 duration_us=423.900
+cancel/erase capacity=256 sample=59 duration_us=423.800
+cancel/erase capacity=256 sample=60 duration_us=427.900
+cancel/erase capacity=256 sample=61 duration_us=422.300
+cancel/erase capacity=256 sample=62 duration_us=422.500
+cancel/erase capacity=256 sample=63 duration_us=422.800
+cancel/erase capacity=256 sample=64 duration_us=424.100
+cancel/erase capacity=256 sample=65 duration_us=422.800
+cancel/erase capacity=256 sample=66 duration_us=422.800
+cancel/erase capacity=256 sample=67 duration_us=422.900
+cancel/erase capacity=256 sample=68 duration_us=423.400
+cancel/erase capacity=256 sample=69 duration_us=438.400
+cancel/erase capacity=256 sample=70 duration_us=451.100
+cancel/erase capacity=256 sample=71 duration_us=452.200
+cancel/erase capacity=256 sample=72 duration_us=437.700
+cancel/erase capacity=256 sample=73 duration_us=422.600
+cancel/erase capacity=256 sample=74 duration_us=422.600
+cancel/erase capacity=256 sample=75 duration_us=422.400
+cancel/erase capacity=256 sample=76 duration_us=422.800
+cancel/erase capacity=256 sample=77 duration_us=426.000
+cancel/erase capacity=256 sample=78 duration_us=423.200
+cancel/erase capacity=256 sample=79 duration_us=422.600
+cancel/erase capacity=256 sample=80 duration_us=424.100
+cancel/erase capacity=256 sample=81 duration_us=422.400
+cancel/erase capacity=256 sample=82 duration_us=465.500
+cancel/erase capacity=256 sample=83 duration_us=423.600
+cancel/erase capacity=256 sample=84 duration_us=422.800
+cancel/erase capacity=256 sample=85 duration_us=429.200
+cancel/erase capacity=256 sample=86 duration_us=429.400
+cancel/erase capacity=256 sample=87 duration_us=430.100
+cancel/erase capacity=256 sample=88 duration_us=435.900
+cancel/erase capacity=256 sample=89 duration_us=426.200
+cancel/erase capacity=256 sample=90 duration_us=422.500
+cancel/erase capacity=256 sample=91 duration_us=422.500
+cancel/erase capacity=256 sample=92 duration_us=422.800
+cancel/erase capacity=256 sample=93 duration_us=422.800
+cancel/erase capacity=256 sample=94 duration_us=422.400
+cancel/erase capacity=256 sample=95 duration_us=464.000
+cancel/erase capacity=256 sample=96 duration_us=474.000
+cancel/erase capacity=256 sample=97 duration_us=421.800
+cancel/erase capacity=256 sample=98 duration_us=422.300
+cancel/erase capacity=256 sample=99 duration_us=422.100
+XQ19-21 installed lux-cxx: growth address, failed construction, generation exhaustion, callback visibility, move-only/SBO allocator cleanup
+BQ5 actual WriteCoordinator capacity=16 lookups_per_sample=1600 p50_us=14.100 p95_us=14.400 p99_us=16.700 max_us=16.700
+BQ5 actual cancel/ack erase capacity=16 p50_us=2.200 p95_us=2.200 p99_us=2.300 max_us=2.300
+BQ5 actual WriteCoordinator capacity=64 lookups_per_sample=6400 p50_us=114.900 p95_us=117.300 p99_us=124.100 max_us=124.100
+BQ5 actual cancel/ack erase capacity=64 p50_us=28.200 p95_us=30.100 p99_us=34.400 max_us=34.400
+BQ5 actual WriteCoordinator capacity=256 lookups_per_sample=25600 p50_us=965.000 p95_us=1053.500 p99_us=1069.400 max_us=1069.400
+BQ5 actual cancel/ack erase capacity=256 p50_us=422.800 p95_us=458.500 p99_us=474.000 max_us=474.000

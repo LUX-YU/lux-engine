@@ -1,0 +1,102 @@
+[
+  {
+    "name": "clone",
+    "argv": [
+      "git",
+      "clone",
+      "--no-hardlinks",
+      "--no-checkout",
+      "E:\\SyncForder\\CodeRepos\\lux-engine",
+      "E:\\SyncForder\\CodeRepos\\build\\p10q-clean-b3572858ffe3"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine",
+    "exit_code": 0,
+    "log": "clone.log",
+    "sha256": "d49e372e30a756291155eb3425f369bb03c5472f8ac430f438fcce733ac17d9e",
+    "implementation_sha": "b3572858ffe30856a010059b5e3800d006840195"
+  },
+  {
+    "name": "checkout",
+    "argv": [
+      "git",
+      "checkout",
+      "--detach",
+      "b3572858ffe30856a010059b5e3800d006840195"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-clean-b3572858ffe3",
+    "exit_code": 0,
+    "log": "checkout.log",
+    "sha256": "b936324662fe425d9f7b858868de7903f06b6776678dd14415438f9415385cec",
+    "implementation_sha": "b3572858ffe30856a010059b5e3800d006840195"
+  },
+  {
+    "name": "tracked-snapshot",
+    "argv": [
+      "cmake",
+      "-DLUX_SOURCE_DIR=E:\\SyncForder\\CodeRepos\\build\\p10q-clean-b3572858ffe3",
+      "-P",
+      "E:\\SyncForder\\CodeRepos\\build\\p10q-clean-b3572858ffe3\\cmake\\ValidateTrackedSnapshot.cmake"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-clean-b3572858ffe3",
+    "exit_code": 0,
+    "log": "tracked-snapshot.log",
+    "sha256": "18b3d59b61654209f3a2348971c2d4275fb187f2d65e5b4dd71ec8c85b785e19",
+    "implementation_sha": "b3572858ffe30856a010059b5e3800d006840195"
+  },
+  {
+    "name": "configure",
+    "argv": [
+      "cmake",
+      "-S",
+      "E:\\SyncForder\\CodeRepos\\build\\p10q-clean-b3572858ffe3",
+      "-B",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-b3572858ffe3",
+      "-G",
+      "Ninja",
+      "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+      "-DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/P10Q-b3572858ffe3",
+      "-DCMAKE_INSTALL_PREFIX=E:/SyncForder/CodeRepos/install/P10Q-b3572858ffe3",
+      "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+      "-DVCPKG_TARGET_TRIPLET=x64-windows",
+      "-DBUILD_TESTING=ON",
+      "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+      "-DLuxLua55_DIR=E:/SyncForder/CodeRepos/install/o/v4/lua55/lib/cmake/LuxLua55",
+      "-DPython3_EXECUTABLE=C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+      "-DLUX_EDITOR_MIGRATION_STAGE=P10Q",
+      "-DLUX_BUILD_COMPONENT_LUA_META=OFF",
+      "-DLUX_BUILD_PHYSICS2D=ON",
+      "-DLUX_BUILD_PACKED_RENDER_CONTENT=ON",
+      "-DLUX_EDITOR_BUILD_NATIVE_TESTS=ON",
+      "-DLUX_EDITOR_BUILD_DESKTOP_TESTS=ON",
+      "-DLUX_EDITOR_BUILD_GPU_TESTS=ON",
+      "-DLUX_EDITOR_BUILD_TOOLCHAIN_TESTS=ON",
+      "-DLUX_EDITOR_BUILD_INSTALLED_TESTS=ON",
+      "-DLUX_BUILD_PROFILE=EDITOR"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-clean-b3572858ffe3",
+    "exit_code": 0,
+    "log": "configure.log",
+    "sha256": "b1afaa1bb9998eae824a72ee58a7d4536f808f43a170837d6e55c254b5c52716",
+    "implementation_sha": "b3572858ffe30856a010059b5e3800d006840195"
+  },
+  {
+    "name": "build",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-b3572858ffe3",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-clean-b3572858ffe3",
+    "exit_code": 1,
+    "log": "build.log",
+    "sha256": "2fedc4bc8173f33e200bf6f1f430e262aff7d0cd3f7433ef024aaf0dd30ba82a",
+    "implementation_sha": "b3572858ffe30856a010059b5e3800d006840195"
+  }
+]

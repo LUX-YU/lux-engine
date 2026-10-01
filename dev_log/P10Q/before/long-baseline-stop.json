@@ -1,0 +1,14 @@
+{
+  "executable": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-bq1-before\\bq1.exe",
+  "command_line": "\"E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-bq1-before\\bq1.exe\" 50000 chain 100",
+  "process_id": 57560,
+  "stopped_at": "2026-10-01T06:23:39.3543587+01:00",
+  "creation_date": "2026-10-01T03:37:54.250019+01:00",
+  "completed_samples": "Read retained stderr after process exit; no aggregate is inferred",
+  "authorization": "User explicitly requested ending this long baseline and marking performance PARTIAL",
+  "completed_warmups": 10,
+  "completed_measured_samples": 66,
+  "required_measured_samples": 100,
+  "status": "PARTIAL",
+  "process_outcome": "Stopped at the user request; no completed aggregate output; in-progress iteration excluded"
+}

@@ -1,0 +1,31 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine
+      Start  93: editor.draft_source_literal
+ 1/10 Test  #93: editor.draft_source_literal .............   Passed    1.36 sec
+      Start  94: editor.draft_source_signature
+ 2/10 Test  #94: editor.draft_source_signature ...........   Passed    0.59 sec
+      Start  95: editor.draft_source_flow-canvas
+ 3/10 Test  #95: editor.draft_source_flow-canvas .........   Passed    0.38 sec
+      Start  96: editor.draft_source_material-canvas
+ 4/10 Test  #96: editor.draft_source_material-canvas .....   Passed    0.33 sec
+      Start  97: editor.draft_source_flow-queue
+ 5/10 Test  #97: editor.draft_source_flow-queue ..........   Passed    0.38 sec
+      Start  98: editor.draft_source_material-queue
+ 6/10 Test  #98: editor.draft_source_material-queue ......   Passed    0.35 sec
+      Start  99: editor.draft_source_material-lifetime
+ 7/10 Test  #99: editor.draft_source_material-lifetime ...   Passed    0.35 sec
+      Start 100: editor.draft_source_lifecycle
+ 8/10 Test #100: editor.draft_source_lifecycle ...........   Passed    0.57 sec
+      Start 101: editor.draft_source_positive
+ 9/10 Test #101: editor.draft_source_positive ............   Passed    0.47 sec
+      Start 102: editor.draft_source_history
+10/10 Test #102: editor.draft_source_history .............   Passed    0.60 sec
+
+100% tests passed, 0 tests failed out of 10
+
+Label Time Summary:
+P10       =   5.38 sec*proc (10 tests)
+R1        =   5.38 sec*proc (10 tests)
+editor    =   5.38 sec*proc (10 tests)
+gpu       =   5.38 sec*proc (10 tests)
+
+Total Test time (real) =   9.82 sec

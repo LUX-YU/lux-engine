@@ -1,0 +1,28 @@
+warning: in the working copy of 'cmake/installed-consumers/desktop-views/Inspector.cpp', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'editor/app/CMakeLists.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'editor/project/src/ProjectBuilder.cpp', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'editor/project/ui/CMakeLists.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'editor/storage/include/lux/engine/editor/storage/ProjectStorage.hpp', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'editor/ui/CMakeLists.txt', LF will be replaced by CRLF the next time Git touches it
+fatal: Unable to create 'E:/SyncForder/CodeRepos/lux-engine/.git/index.lock': File exists.
+
+Another git process seems to be running in this repository, e.g.
+an editor opened by 'git commit'. Please make sure all processes
+are terminated then try again. If it still fails, a git process
+may have crashed in this repository earlier:
+remove the file manually to continue.
+Traceback (most recent call last):
+  File "E:\SyncForder\CodeRepos\lux-engine\.internal\editor-redesign\commit_p10q.py", line 26, in <module>
+    commit('Consolidate catalog, task observation, compilation owners and close results',providers)
+  File "E:\SyncForder\CodeRepos\lux-engine\.internal\editor-redesign\commit_p10q.py", line 13, in commit
+    git('add','--',*chosen);files.difference_update(chosen)
+    ^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\SyncForder\CodeRepos\lux-engine\.internal\editor-redesign\commit_p10q.py", line 5, in git
+    def git(*args,**kw):return subprocess.check_output(['git',*args],cwd=repo,**kw)
+                               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ChenHui\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\subprocess.py", line 466, in check_output
+    return run(*popenargs, stdout=PIPE, timeout=timeout, check=True,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ChenHui\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['git', 'add', '--', 'editor/app/src/EditorLoop.cpp', 'editor/context/CMakeLists.txt', 'editor/context/README.md', 'editor/context/include/lux/engine/editor/EditorContext.hpp', 'editor/context/src/EditorContext.cpp', 'editor/contracts/include/lux/engine/editor/views/ViewInfo.hpp', 'editor/desktop/include/lux/engine/editor/desktop/ViewHost.hpp', 'editor/desktop/src/ViewHost.cpp', 'editor/desktop/test/host.cpp', 'editor/project/include/lux/engine/editor/project/ProjectCatalogModel.hpp', 'editor/project/src/AssetCatalog.cpp', 'editor/project/src/ProjectCatalogModel.cpp', 'editor/project/ui/CMakeLists.txt', 'editor/project/ui/include/lux/engine/editor/project/AssetPickerElement.hpp', 'editor/project/ui/include/lux/engine/editor/project/ProjectCatalogAccess.hpp', 'editor/project/ui/include/lux/engine/editor/project/ProjectView.hpp', 'editor/project/ui/src/AssetPickerElement.cpp', 'editor/project/ui/src/ProjectCatalogAccess.cpp', 'editor/project/ui/src/ProjectView.cpp', 'editor/project/ui/test/catalog.cpp', 'editor/storage/include/lux/engine/editor/storage/ProjectStorage.hpp', 'editor/storage/src/ProjectStorage.cpp', 'editor/tasks/ui/CMakeLists.txt', 'editor/tasks/ui/README.md', 'editor/tasks/ui/include/lux/engine/editor/tasks/TaskMonitor.hpp', 'editor/tasks/ui/include/lux/engine/editor/tasks/TaskQueryPort.hpp', 'editor/tasks/ui/include/lux/engine/editor/tasks/TaskView.hpp', 'editor/tasks/ui/src/TaskMonitor.cpp', 'editor/tasks/ui/src/TaskView.cpp', 'editor/tasks/ui/test/monitor.cpp', 'editor/tools/flowforge/compilation/include/lux/engine/editor/flowforge/FlowCompilationService.hpp', 'editor/tools/material/preview/include/lux/engine/editor/material/MaterialCompilationService.hpp', 'editor/tools/material/preview/src/MaterialCompilationService.cpp', 'editor/transition/ProjectCatalogAdapter.cpp', 'editor/transition/ProjectCatalogAdapter.hpp', 'editor/ui/src/TaskPane.cpp', 'editor/views/api/include/lux/engine/editor/views/IViewHost.hpp', 'engine/process/execution/src/ExecutionRuntime.cpp']' returned non-zero exit status 128.

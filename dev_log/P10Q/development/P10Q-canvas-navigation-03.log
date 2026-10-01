@@ -1,0 +1,22 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine
+    Start 95: editor.canvas.churn
+1/1 Test #95: editor.canvas.churn ..............Exit code 0xc0000409
+***Exception:  10.41 sec
+canvas compaction: zoom 0.800000 -> 0.800000; origin (12.000000,-32.000000) -> (12.000000,-32.000000)
+element rect before (0,0 224,125), after (0,0 224,125)
+Assertion failed: GraphCanvasTestAccess::selected(view.canvas, 42), file E:\SyncForder\CodeRepos\lux-engine\editor\widgets\test\churn.cpp, line 115
+
+
+0% tests passed, 1 tests failed out of 1
+
+Label Time Summary:
+P10Q      =  10.41 sec*proc (1 test)
+editor    =  10.41 sec*proc (1 test)
+native    =  10.41 sec*proc (1 test)
+
+Total Test time (real) =  10.46 sec
+
+The following tests FAILED:
+	 95 - editor.canvas.churn (Exit code 0xc0000409
+)       P10Q editor native
+Errors while running CTest

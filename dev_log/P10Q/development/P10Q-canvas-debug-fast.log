@@ -1,0 +1,71 @@
+
+Microsoft (R) Windows Debugger Version 10.0.17763.132 AMD64
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+CommandLine: E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine/bin/editor_canvas_churn_test.exe
+
+************* Path validation summary **************
+Response                         Time (ms)     Location
+OK                                             E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine/bin
+Symbol search path is: E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine/bin
+Executable search path is: 
+ModLoad: 00007ff7`3e310000 00007ff7`3e415000   editor_canvas_churn_test.exe
+ModLoad: 00007ffa`edc80000 00007ffa`edee7000   ntdll.dll
+ModLoad: 00007ffa`ecb10000 00007ffa`ecbdb000   C:\WINDOWS\System32\KERNEL32.DLL
+ModLoad: 00007ffa`eb590000 00007ffa`eb992000   C:\WINDOWS\System32\KERNELBASE.dll
+ModLoad: 00007ffa`e6f50000 00007ffa`e6fef000   C:\WINDOWS\SYSTEM32\apphelp.dll
+ModLoad: 00007ffa`eaff0000 00007ffa`eb13c000   C:\WINDOWS\System32\ucrtbase.dll
+ModLoad: 00007ffa`c3180000 00007ffa`c321d000   C:\WINDOWS\SYSTEM32\MSVCP140.dll
+ModLoad: 00007ffa`994a0000 00007ffa`99533000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\bin\ui.dll
+ModLoad: 00007ffa`54490000 00007ffa`545f7000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\bin\imgui_core.dll
+ModLoad: 00007ffa`bca60000 00007ffa`bca80000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\bin\lux_engine_core_object.dll
+ModLoad: 00007ffa`c2df0000 00007ffa`c2e1c000   C:\WINDOWS\SYSTEM32\VCRUNTIME140.dll
+ModLoad: 00007ffa`ecc70000 00007ffa`ece3f000   C:\WINDOWS\System32\USER32.dll
+ModLoad: 00007ffa`c71c0000 00007ffa`c71cc000   C:\WINDOWS\SYSTEM32\VCRUNTIME140_1.dll
+ModLoad: 00007ffa`eb410000 00007ffa`eb437000   C:\WINDOWS\System32\win32u.dll
+ModLoad: 00007ffa`ec0e0000 00007ffa`ec10b000   C:\WINDOWS\System32\GDI32.dll
+ModLoad: 00007ffa`bc400000 00007ffa`bc433000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\bin\window.dll
+ModLoad: 00007ffa`eb150000 00007ffa`eb279000   C:\WINDOWS\System32\gdi32full.dll
+ModLoad: 00007ffa`eaf40000 00007ffa`eafe3000   C:\WINDOWS\System32\msvcp_win.dll
+ModLoad: 00007ffa`ece60000 00007ffa`ed5f8000   C:\WINDOWS\System32\SHELL32.dll
+ModLoad: 00000201`3b570000 00000201`3bd08000   C:\WINDOWS\System32\SHELL32.dll
+ModLoad: 00007ffa`b0dd0000 00007ffa`b0e11000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\bin\glfw3.dll
+ModLoad: 00007ffa`c64f0000 00007ffa`c64fa000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\bin\nfd.dll
+ModLoad: 00007ffa`edb00000 00007ffa`edb31000   C:\WINDOWS\System32\IMM32.dll
+ModLoad: 00007ffa`ebf30000 00007ffa`ec0ca000   C:\WINDOWS\System32\ole32.dll
+ModLoad: 00007ffa`d0250000 00007ffa`d0305000   C:\WINDOWS\WinSxS\amd64_microsoft.windows.common-controls_6595b64144ccf1df_5.82.26100.8328_none_87eede957a2ccddd\COMCTL32.dll
+ModLoad: 00007ffa`ebaf0000 00007ffa`ebe75000   C:\WINDOWS\System32\combase.dll
+ModLoad: 00007ffa`eb9a0000 00007ffa`eba5c000   C:\WINDOWS\System32\ADVAPI32.dll
+ModLoad: 00007ffa`eda50000 00007ffa`edaf9000   C:\WINDOWS\System32\msvcrt.dll
+ModLoad: 00007ffa`ec130000 00007ffa`ec248000   C:\WINDOWS\System32\RPCRT4.dll
+ModLoad: 00007ffa`ebe80000 00007ffa`ebf29000   C:\WINDOWS\System32\sechost.dll
+(c39c.7bdc): Access violation - code c0000005 (first chance)
+First chance exceptions are reported before any exception handling.
+This exception may be expected and handled.
+*** WARNING: Unable to verify checksum for E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\bin\imgui_core.dll
+*** ERROR: Symbol file could not be found.  Defaulted to export symbols for E:\SyncForder\CodeRepos\build\RelWithDebInfo\lux-engine\bin\imgui_core.dll - 
+*** WARNING: Unable to verify checksum for editor_canvas_churn_test.exe
+imgui_core!ImGui::ShowDemoWindow+0xc1043:
+00007ffa`545550fe 80bc02f800000000 cmp     byte ptr [rdx+rax+0F8h],0 ds:00000000`000000f8=??
+0:000> cdb: Reading initial command 'k; q'
+Child-SP          RetAddr           Call Site
+000000c6`f48fef70 00007ff7`3e358d44 imgui_core!ImGui::ShowDemoWindow+0xc1043
+000000c6`f48fefa0 00007ff7`3e32a792 editor_canvas_churn_test!lux::editor::widgets::GraphCanvas::setGraph+0x2e4
+000000c6`f48ff180 00007ff7`3e3d2ea0 editor_canvas_churn_test!main+0x6a2
+*** ERROR: Symbol file could not be found.  Defaulted to export symbols for C:\WINDOWS\System32\KERNEL32.DLL - 
+(Inline Function) --------`-------- editor_canvas_churn_test!invoke_main+0x22
+000000c6`f48ffe10 00007ffa`ecb3cd87 editor_canvas_churn_test!__scrt_common_main_seh+0x10c
+*** ERROR: Symbol file could not be found.  Defaulted to export symbols for ntdll.dll - 
+000000c6`f48ffe50 00007ffa`edd2caec KERNEL32!BaseThreadInitThunk+0x17
+000000c6`f48ffe80 00000000`00000000 ntdll!RtlUserThreadStart+0x2c
+quit:
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\atlmfc.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\concurrency.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\cpp_rest.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\stl.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Data.Json.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Geolocation.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Sensors.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Media.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\windows.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\winrt.natvis'

@@ -1,0 +1,22 @@
+{
+  "platform": "Windows-11-10.0.26200-SP0",
+  "python": "3.12.14 (main, Aug 25 2026, 14:01:42) [MSC v.1944 64 bit (AMD64)]",
+  "processor": "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
+  "measurement_scope": "Owner-thread wall time; some runs overlap the explicitly recorded long legacy BQ1 process and build. No idle-machine speedup guarantee.",
+  "dependencies": {
+    "head": "b583e7ffe20e7a1ac55c7119d6a13ac337ebb323",
+    "branch": "codex/editor-redesign-v4",
+    "status": "M editor/project/src/ProjectBuilder.cpp",
+    "protected_file": "editor\\project\\src\\ProjectBuilder.cpp",
+    "protected_sha256": "ccac49618140d014236c9f23b55fc15d31c96e94b44395dee39fd67d35ab1f5c",
+    "package_sha256": "efb7faa6c42a9db682d32353211f827d58499d8d6db86811dba6e8cb504586b7",
+    "main": "2bb33ff1a1f11025cf404e074c0e9b259239d8a4",
+    "platform_scope": "Windows first; Linux NOT_RUN; total PARTIAL until mandatory Linux qualification",
+    "captured_at": "2026-10-01T00:14:02.732345+00:00",
+    "lux-cxx": "aae62e2fc17ef78ae7be2559a6d58fa0f8297b05",
+    "imgui": "7524d14a14ab68b20ac4732db398569482a7096b",
+    "imgui-node-editor": "d948c439d84d9a12c36ac15fb8e2b4e6bd18a7ef",
+    "lux-cmake-toolset": "961c63eda82448b8108219461ba624ff016b2297"
+  },
+  "implementation_sha": "4be559f8d08e8d78c255a8297e37c44521b7f5b0"
+}

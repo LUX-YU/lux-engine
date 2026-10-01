@@ -1,0 +1,74 @@
+[
+  {
+    "name": "desktop-views-configure",
+    "argv": [
+      "cmake",
+      "-S",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\cmake\\installed-consumers\\desktop-views",
+      "-B",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-sdk-dev\\desktop-views",
+      "-G",
+      "Ninja",
+      "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+      "-DCMAKE_CXX_STANDARD=20",
+      "-DCMAKE_CXX_EXTENSIONS=OFF",
+      "-DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/P10Q-qualification",
+      "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+      "-DVCPKG_TARGET_TRIPLET=x64-windows",
+      "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+    ],
+    "exit_code": 0,
+    "log": "desktop-views-configure.log",
+    "sha256": "4edea2140f8f3605d8f2cd8674941cffd7656ee6e06ff443a102746da42b96af"
+  },
+  {
+    "name": "desktop-views-build",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-sdk-dev\\desktop-views",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "exit_code": 0,
+    "log": "desktop-views-build.log",
+    "sha256": "aec96678906cff0c2e03d3e68fb2e7a63102ef0b83273546e792cd838bbc156a"
+  },
+  {
+    "name": "desktop-views-no-work",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-sdk-dev\\desktop-views",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "exit_code": 0,
+    "log": "desktop-views-no-work.log",
+    "sha256": "7716162f3cd3b99cf3b8a8dd6decf324e08c7e941aae7e730baba5e4fc8c075b"
+  },
+  {
+    "name": "desktop-views-ctest",
+    "argv": [
+      "ctest",
+      "--test-dir",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-sdk-dev\\desktop-views",
+      "--output-on-failure",
+      "-j",
+      "1"
+    ],
+    "exit_code": 8,
+    "log": "desktop-views-ctest.log",
+    "sha256": "f6c601fd093173c081a2a0ac7dffb599f8d319d663fb8354f46b438a09383f42"
+  }
+]

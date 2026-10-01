@@ -1,0 +1,145 @@
+
+Microsoft (R) Windows Debugger Version 10.0.17763.132 AMD64
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+CommandLine: E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\editor_scene_views_test.exe D:\Development\vcpkg\installed\x64-windows\tools\llvm\lld-link.exe E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6
+Symbol search path is: srv*
+Executable search path is: 
+ModLoad: 00007ff6`97920000 00007ff6`98112000   editor_scene_views_test.exe
+ModLoad: 00007ffa`edc80000 00007ffa`edee7000   ntdll.dll
+ModLoad: 00007ffa`ecb10000 00007ffa`ecbdb000   C:\WINDOWS\System32\KERNEL32.DLL
+ModLoad: 00007ffa`eb590000 00007ffa`eb992000   C:\WINDOWS\System32\KERNELBASE.dll
+ModLoad: 00007ffa`e6f50000 00007ffa`e6fef000   C:\WINDOWS\SYSTEM32\apphelp.dll
+ModLoad: 00007ffa`ecc70000 00007ffa`ece3f000   C:\WINDOWS\System32\USER32.dll
+ModLoad: 00007ffa`eb410000 00007ffa`eb437000   C:\WINDOWS\System32\win32u.dll
+ModLoad: 00007ffa`ec0e0000 00007ffa`ec10b000   C:\WINDOWS\System32\GDI32.dll
+ModLoad: 00007ffa`eb150000 00007ffa`eb279000   C:\WINDOWS\System32\gdi32full.dll
+ModLoad: 00007ffa`36430000 00007ffa`3698d000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\render_features.dll
+ModLoad: 00007ffa`bc3e0000 00007ffa`bc42a000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\ui_rendering.dll
+ModLoad: 00007ffa`eaf40000 00007ffa`eafe3000   C:\WINDOWS\System32\msvcp_win.dll
+ModLoad: 00007ffa`eaff0000 00007ffa`eb13c000   C:\WINDOWS\System32\ucrtbase.dll
+ModLoad: 00007ffa`bc2f0000 00007ffa`bc362000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\lux_engine_scene_transform.dll
+ModLoad: 00007ffa`bd640000 00007ffa`bd67f000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\lux_engine_function_input.dll
+ModLoad: 00007ffa`2c580000 00007ffa`2ce69000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\lux_engine_toolchain_material_compiler.dll
+ModLoad: 00007ffa`51ff0000 00007ffa`52187000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\lux_engine_scene_render.dll
+ModLoad: 00007ff9`d2880000 00007ff9`d6b76000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\lux_engine_flowforge_compiler.dll
+ModLoad: 00007ffa`b9d10000 00007ffa`b9dae000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\lux_engine_scene_mesh_query.dll
+ModLoad: 00007ffa`b9f90000 00007ffa`ba00b000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\render_runtime.dll
+ModLoad: 00007ffa`bc3b0000 00007ffa`bc3da000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\lux_engine_process_asset_loading.dll
+ModLoad: 00007ffa`eb9a0000 00007ffa`eba5c000   C:\WINDOWS\System32\ADVAPI32.dll
+ModLoad: 00007ffa`9b1b0000 00007ffa`9b235000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\lux_engine_simulation_ecs_transform.dll
+ModLoad: 00007ffa`bbc60000 00007ffa`bbcac000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\lux_engine_simulation_ecs_hierarchy.dll
+ModLoad: 00007ffa`eda50000 00007ffa`edaf9000   C:\WINDOWS\System32\msvcrt.dll
+ModLoad: 00007ffa`ebe80000 00007ffa`ebf29000   C:\WINDOWS\System32\sechost.dll
+ModLoad: 00007ffa`ec130000 00007ffa`ec248000   C:\WINDOWS\System32\RPCRT4.dll
+ModLoad: 00007ffa`b7d50000 00007ffa`b7da5000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\lux_engine_simulation_ecs_visual.dll
+ModLoad: 00007ffa`eca80000 00007ffa`ecb00000   C:\WINDOWS\System32\WS2_32.dll
+ModLoad: 00007ffa`8cc90000 00007ffa`8cd3f000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\lux_engine_scene_asset.dll
+ModLoad: 00007ffa`ed670000 00007ffa`ed749000   C:\WINDOWS\System32\OLEAUT32.dll
+ModLoad: 00007ffa`b7650000 00007ffa`b7674000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\lux_engine_world_asset.dll
+ModLoad: 00007ffa`ebaf0000 00007ffa`ebe75000   C:\WINDOWS\System32\combase.dll
+ModLoad: 00007ffa`b6a40000 00007ffa`b6a84000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\lux_engine_simulation_asset.dll
+ModLoad: 00007ffa`89b00000 00007ffa`89bc8000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\lux_engine_scene_world_loading.dll
+ModLoad: 00007ffa`c6090000 00007ffa`c60ab000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\lux_engine_simulation_system.dll
+ModLoad: 00007ffa`994c0000 00007ffa`99534000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\lux_engine_scene_composition.dll
+ModLoad: 00007ffa`afb20000 00007ffa`afb88000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\lux_engine_simulation_description.dll
+ModLoad: 00007ffa`4dcc0000 00007ffa`4de4a000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\lux_engine_asset.dll
+ModLoad: 00007ffa`a0ca0000 00007ffa`a0cd5000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\lux_engine_scene_description.dll
+ModLoad: 00007ffa`af790000 00007ffa`af7ce000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\lux_engine_function_script_artifact.dll
+ModLoad: 00007ffa`d3ac0000 00007ffa`d3ad0000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\lux_engine_domain_system_identity.dll
+ModLoad: 00007ffa`af760000 00007ffa`af790000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\lux_engine_scene_world_materialization.dll
+ModLoad: 00007ffa`bbaf0000 00007ffa`bbb0f000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\lux_engine_simulation_ecs_schema.dll
+ModLoad: 00007ffa`b6ba0000 00007ffa`b6bbd000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\lux_engine_process_world_loading.dll
+ModLoad: 00007ffa`a2490000 00007ffa`a24c0000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\lux_engine_world_storage.dll
+ModLoad: 00007ffa`9f8e0000 00007ffa`9f937000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\lux_engine_world_description.dll
+ModLoad: 00007ffa`9fea0000 00007ffa`9fed1000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\lux_engine_world_partition.dll
+ModLoad: 00007ffa`4a570000 00007ffa`4a6d7000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\imgui_core.dll
+ModLoad: 00007ffa`8c770000 00007ffa`8c803000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\ui.dll
+ModLoad: 00007ffa`ece60000 00007ffa`ed5f8000   C:\WINDOWS\System32\SHELL32.dll
+ModLoad: 00007ffa`32b30000 00007ffa`32fda000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\render_vulkan.dll
+ModLoad: 00007ffa`48df0000 00007ffa`48f82000   C:\WINDOWS\SYSTEM32\vulkan-1.dll
+ModLoad: 00007ffa`edb00000 00007ffa`edb31000   C:\WINDOWS\System32\IMM32.dll
+ModLoad: 00007ffa`ac310000 00007ffa`ac330000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\lux_engine_core_object.dll
+ModLoad: 00007ffa`9c990000 00007ffa`9c9b2000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\lux_engine_edit_sessions.dll
+ModLoad: 00007ffa`9ba20000 00007ffa`9ba60000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\lux_engine_process_execution.dll
+ModLoad: 00007ffa`48c50000 00007ffa`48de6000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\render_client.dll
+ModLoad: 00007ffa`9b110000 00007ffa`9b15c000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\lux_engine_edit_history.dll
+ModLoad: 00007ffa`c3180000 00007ffa`c321d000   C:\WINDOWS\SYSTEM32\MSVCP140.dll
+ModLoad: 00007ffa`c2df0000 00007ffa`c2e1c000   C:\WINDOWS\SYSTEM32\VCRUNTIME140.dll
+ModLoad: 00007ffa`681e0000 00007ffa`682ce000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\lux_engine_function_material_graph.dll
+ModLoad: 00007ffa`c71c0000 00007ffa`c71cc000   C:\WINDOWS\SYSTEM32\VCRUNTIME140_1.dll
+ModLoad: 00007ffa`9c890000 00007ffa`9c8bc000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\lux_engine_function_graph.dll
+ModLoad: 00007ffa`9af50000 00007ffa`9af83000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\window.dll
+ModLoad: 00007ffa`65780000 00007ffa`65882000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\render_feature_client.dll
+ModLoad: 00007ffa`ae210000 00007ffa`ae226000   C:\WINDOWS\SYSTEM32\MSVCP140_ATOMIC_WAIT.dll
+ModLoad: 00007ffa`9b180000 00007ffa`9b1a7000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\description.dll
+ModLoad: 00007ffa`aa3f0000 00007ffa`aa410000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\lux_engine_simulation_ecs_core.dll
+ModLoad: 00007ffa`8b3d0000 00007ffa`8b443000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\lux_engine_core_meta.dll
+ModLoad: 00007ffa`a0390000 00007ffa`a03aa000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\zlib1.dll
+ModLoad: 00007ffa`86940000 00007ffa`869e6000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\zstd.dll
+ModLoad: 00007ffa`8b0c0000 00007ffa`8b148000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\lux_engine_simulation_composition.dll
+ModLoad: 00007ffa`9af20000 00007ffa`9af48000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\lux_engine_core_task.dll
+ModLoad: 00007ffa`9fcf0000 00007ffa`9fd03000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\lux_engine_domain_system_description.dll
+ModLoad: 00007ffa`99a80000 00007ffa`99ad8000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\render_graph.dll
+ModLoad: 00007ffa`eaa50000 00007ffa`eaaa2000   C:\WINDOWS\SYSTEM32\CFGMGR32.dll
+ModLoad: 00007ffa`d0250000 00007ffa`d0305000   C:\WINDOWS\WinSxS\amd64_microsoft.windows.common-controls_6595b64144ccf1df_5.82.26100.8328_none_87eede957a2ccddd\COMCTL32.dll
+ModLoad: 00007ffa`c3b90000 00007ffa`c3b9a000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\nfd.dll
+ModLoad: 00007ffa`8caa0000 00007ffa`8cae1000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-3c20910d05d6\bin\glfw3.dll
+ModLoad: 00007ffa`ebf30000 00007ffa`ec0ca000   C:\WINDOWS\System32\ole32.dll
+ModLoad: 00007ffa`e9b50000 00007ffa`e9b6b000   C:\WINDOWS\SYSTEM32\kernel.appcore.dll
+ModLoad: 00007ffa`e8320000 00007ffa`e845b000   C:\WINDOWS\system32\dxgi.dll
+ModLoad: 00007ffa`eab20000 00007ffa`eab7e000   C:\WINDOWS\SYSTEM32\powrprof.dll
+ModLoad: 00007ffa`eab00000 00007ffa`eab15000   C:\WINDOWS\SYSTEM32\UMPDC.dll
+ModLoad: 00007ffa`d1440000 00007ffa`d145e000   C:\WINDOWS\SYSTEM32\windows.staterepositorycore.dll
+ModLoad: 00007ffa`e7b80000 00007ffa`e7bc4000   C:\WINDOWS\SYSTEM32\dxcore.dll
+ModLoad: 00007ffa`e84e0000 00007ffa`e84f4000   C:\WINDOWS\SYSTEM32\resourcepolicyclient.dll
+ModLoad: 00007ffa`e4350000 00007ffa`e43ae000   C:\WINDOWS\SYSTEM32\directxdatabasehelper.dll
+ModLoad: 00007ffa`eb440000 00007ffa`eb4ec000   C:\WINDOWS\System32\bcryptPrimitives.dll
+ModLoad: 00007ffa`250d0000 00007ffa`279f5000   C:\WINDOWS\System32\DriverStore\FileRepository\nv_dispig.inf_amd64_f4c7a2fd13e0f763\nvoglv64.dll
+ModLoad: 00007ffa`ec250000 00007ffa`ec6d7000   C:\WINDOWS\System32\SETUPAPI.dll
+ModLoad: 00007ffa`e35e0000 00007ffa`e35eb000   C:\WINDOWS\SYSTEM32\VERSION.dll
+ModLoad: 00007ffa`e7040000 00007ffa`e706a000   C:\WINDOWS\SYSTEM32\WTSAPI32.dll
+ModLoad: 00007ffa`eb280000 00007ffa`eb3fe000   C:\WINDOWS\System32\CRYPT32.dll
+ModLoad: 00007ffa`e9e10000 00007ffa`e9e59000   C:\WINDOWS\SYSTEM32\SspiCli.dll
+ModLoad: 00007ffa`ea480000 00007ffa`ea493000   C:\WINDOWS\SYSTEM32\msasn1.dll
+ModLoad: 00007ffa`e2a60000 00007ffa`e2a9b000   C:\WINDOWS\SYSTEM32\cryptnet.dll
+ModLoad: 00007ffa`ea420000 00007ffa`ea42c000   C:\WINDOWS\SYSTEM32\cryptbase.dll
+ModLoad: 00007ffa`ea500000 00007ffa`ea56a000   C:\WINDOWS\SYSTEM32\wldp.dll
+ModLoad: 00007ffa`e2810000 00007ffa`e298a000   C:\WINDOWS\SYSTEM32\drvstore.dll
+ModLoad: 00007ffa`eaa10000 00007ffa`eaa3f000   C:\WINDOWS\SYSTEM32\devobj.dll
+ModLoad: 00007ffa`eb500000 00007ffa`eb582000   C:\WINDOWS\System32\WINTRUST.dll
+ModLoad: 00007ffa`e9c80000 00007ffa`e9cb6000   C:\WINDOWS\SYSTEM32\ntmarta.dll
+ModLoad: 00007ffa`ed7a0000 00007ffa`ed7c0000   C:\WINDOWS\System32\imagehlp.dll
+ModLoad: 00007ffa`ea400000 00007ffa`ea41b000   C:\WINDOWS\SYSTEM32\CRYPTSP.dll
+ModLoad: 00007ffa`e9ab0000 00007ffa`e9ae9000   C:\WINDOWS\system32\rsaenh.dll
+ModLoad: 00007ffa`ead70000 00007ffa`ead9a000   C:\WINDOWS\SYSTEM32\bcrypt.dll
+ModLoad: 00007ffa`dd500000 00007ffa`e21ff000   C:\WINDOWS\System32\DriverStore\FileRepository\nv_dispig.inf_amd64_f4c7a2fd13e0f763\nvgpucomp64.dll
+ModLoad: 00007ffa`ec8c0000 00007ffa`ec96e000   C:\WINDOWS\System32\clbcatq.dll
+ModLoad: 00007ffa`e41b0000 00007ffa`e431a000   C:\Windows\System32\WinTypes.dll
+ModLoad: 00007ffa`d0960000 00007ffa`d0999000   C:\WINDOWS\SYSTEM32\rometadata.dll
+ModLoad: 000001cf`241c0000 000001cf`2429d000   image000001cf`241c0000
+ModLoad: 00007ffa`1c220000 00007ffa`1d3db000   D:\Development\VulkanSDK\1.4.304.0\Bin\VkLayer_khronos_validation.dll
+ModLoad: 00007ffa`8b610000 00007ffa`8b65d000   C:\ProgramData\obs-studio-hook\graphics-hook64.dll
+ModLoad: 00007ffa`e8920000 00007ffa`e91ce000   C:\WINDOWS\SYSTEM32\windows.storage.dll
+ModLoad: 00007ffa`ed7d0000 00007ffa`ed8cb000   C:\WINDOWS\System32\SHCORE.dll
+ModLoad: 00007ffa`edb40000 00007ffa`edba6000   C:\WINDOWS\System32\shlwapi.dll
+ModLoad: 00007ffa`62d40000 00007ffa`62ea4000   C:\WINDOWS\system32\nvspcap64.dll
+ModLoad: 00007ffa`eada0000 00007ffa`eadc9000   C:\WINDOWS\SYSTEM32\profapi.dll
+ModLoad: 00007ff9`ccbd0000 00007ff9`d2871000   C:\WINDOWS\System32\DriverStore\FileRepository\nv_dispig.inf_amd64_f4c7a2fd13e0f763\nvrtum64.dll
+[OBS] graphics-hook.dll loaded against process: editor_scene_views_test.exe
+[OBS] (half life scientist) everything..  seems to be in order
+ModLoad: 00007ffa`e70a0000 00007ffa`e7148000   C:\WINDOWS\system32\uxtheme.dll
+ModLoad: 00007ffa`ed8d0000 00007ffa`eda2b000   C:\WINDOWS\System32\MSCTF.dll
+P10 actual services: timer cancellation after view close; catalog BUSY/IO/permission preserves rows; saved Material decoded through asset-open request; picker revision/type/project checked.
+P10 dual SceneView GPU readback: failed material read -> ResourceView retry -> ready after close; actual mesh pick, left/right highlight isolation and retirement verified.
+P10 DEV SceneView GPU: shared author edit/undo, independent cameras, failed rebind gesture, close/reopen; frames=824 validation_errors=0
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\atlmfc.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\concurrency.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\cpp_rest.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\stl.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Data.Json.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Geolocation.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Sensors.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Media.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\windows.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\winrt.natvis'

@@ -1,0 +1,39 @@
+-- The CXX compiler identification is Clang 19.1.5 with MSVC-like command-line
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - failed
+-- Check for working CXX compiler: D:/Development/Mircosoft/VisualStudio/VC/Tools/Llvm/x64/bin/clang-cl.exe
+-- Check for working CXX compiler: D:/Development/Mircosoft/VisualStudio/VC/Tools/Llvm/x64/bin/clang-cl.exe - broken
+CMake Error at D:/Development/CMake/share/cmake-4.1/Modules/CMakeTestCXXCompiler.cmake:73 (message):
+  The C++ compiler
+
+    "D:/Development/Mircosoft/VisualStudio/VC/Tools/Llvm/x64/bin/clang-cl.exe"
+
+  is not able to compile a simple test program.
+
+  It fails with the following output:
+
+    Change Dir: 'E:/SyncForder/CodeRepos/build/RelWithDebInfo/p10q-2f111ba8f578-asan/CMakeFiles/CMakeScratch/TryCompile-c5alzh'
+    
+    Run Build Command(s): D:/Softwares/ninja-win/ninja.exe -v cmTC_a1d6d
+    [1/2] D:\Development\Mircosoft\VisualStudio\VC\Tools\Llvm\x64\bin\clang-cl.exe  /nologo -TP   /fsanitize=address  /Zi /O2 /Ob1 /DNDEBUG -MD /showIncludes /FoCMakeFiles\cmTC_a1d6d.dir\testCXXCompiler.cxx.obj /FdCMakeFiles\cmTC_a1d6d.dir\ -c -- E:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-2f111ba8f578-asan\CMakeFiles\CMakeScratch\TryCompile-c5alzh\testCXXCompiler.cxx
+    [2/2] C:\WINDOWS\system32\cmd.exe /C "cd . && D:\Development\CMake\bin\cmake.exe -E vs_link_exe --msvc-ver=1944 --intdir=CMakeFiles\cmTC_a1d6d.dir --rc=C:\PROGRA~2\WI3CF2~1\10\bin\100261~1.0\x64\rc.exe --mt=D:\Development\Mircosoft\VisualStudio\VC\Tools\Llvm\x64\bin\llvm-mt.exe --manifests  -- D:\Development\Mircosoft\VisualStudio\VC\Tools\Llvm\x64\bin\lld-link.exe /nologo CMakeFiles\cmTC_a1d6d.dir\testCXXCompiler.cxx.obj  /out:cmTC_a1d6d.exe /implib:cmTC_a1d6d.lib /pdb:cmTC_a1d6d.pdb /version:0.0 /INCREMENTAL:NO /debug /INCREMENTAL /subsystem:console  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib && cd ."
+    FAILED: cmTC_a1d6d.exe 
+    C:\WINDOWS\system32\cmd.exe /C "cd . && D:\Development\CMake\bin\cmake.exe -E vs_link_exe --msvc-ver=1944 --intdir=CMakeFiles\cmTC_a1d6d.dir --rc=C:\PROGRA~2\WI3CF2~1\10\bin\100261~1.0\x64\rc.exe --mt=D:\Development\Mircosoft\VisualStudio\VC\Tools\Llvm\x64\bin\llvm-mt.exe --manifests  -- D:\Development\Mircosoft\VisualStudio\VC\Tools\Llvm\x64\bin\lld-link.exe /nologo CMakeFiles\cmTC_a1d6d.dir\testCXXCompiler.cxx.obj  /out:cmTC_a1d6d.exe /implib:cmTC_a1d6d.lib /pdb:cmTC_a1d6d.pdb /version:0.0 /INCREMENTAL:NO /debug /INCREMENTAL /subsystem:console  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib && cd ."
+    LINK Pass 1: command "D:\Development\Mircosoft\VisualStudio\VC\Tools\Llvm\x64\bin\lld-link.exe /nologo CMakeFiles\cmTC_a1d6d.dir\testCXXCompiler.cxx.obj /out:cmTC_a1d6d.exe /implib:cmTC_a1d6d.lib /pdb:cmTC_a1d6d.pdb /version:0.0 /INCREMENTAL:NO /debug /INCREMENTAL /subsystem:console kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTFILE:CMakeFiles\cmTC_a1d6d.dir/intermediate.manifest CMakeFiles\cmTC_a1d6d.dir/manifest.res" failed (exit code 1) with the following output:
+    lld-link: error: undefined symbol: __asan_init
+    >>> referenced by CMakeFiles\cmTC_a1d6d.dir\testCXXCompiler.cxx.obj:(asan.module_ctor)
+    
+    lld-link: error: undefined symbol: __asan_version_mismatch_check_v8
+    >>> referenced by CMakeFiles\cmTC_a1d6d.dir\testCXXCompiler.cxx.obj:(asan.module_ctor)
+    ninja: build stopped: subcommand failed.
+    
+    
+
+
+
+  CMake will not be able to correctly generate this project.
+Call Stack (most recent call first):
+  CMakeLists.txt:2 (project)
+
+
+-- Configuring incomplete, errors occurred!

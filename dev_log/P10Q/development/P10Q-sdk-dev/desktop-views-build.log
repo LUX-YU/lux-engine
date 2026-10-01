@@ -1,0 +1,30 @@
+[0/2] Re-checking globbed directories...
+[1/10] Building CXX object CMakeFiles\view_host.dir\host.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[2/10] [lux_target_add_codegen] desktop_consumer_schema: parse once, render 5 projection(s)
+[Info] Parsed 1 target file(s) for 5 projection(s).
+[3/10] [lux_target_add_codegen] desktop_consumer_ir: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[4/10] Generate Editor-only ImGui Inspector: desktop_consumer
+Editor Inspector: 1 component implementation(s); no runtime target output
+[5/10] Linking CXX executable bin\view_host.exe
+[6/10] Building CXX object CMakeFiles\inspector_fields.dir\Inspector.cpp.obj
+FAILED: CMakeFiles/inspector_fields.dir/Inspector.cpp.obj 
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\bin\Hostx64\x64\cl.exe  /nologo /TP -DENTT_NO_ETO -DIMGUI_SHARED_CORE -DLUX_EDITOR_PROJECT_DLL_DISABLE -DSTDEXEC_ENABLE_WINDOWS_THREAD_POOL -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-sdk-dev\desktop-views -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-sdk-dev\desktop-views\include -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-sdk-dev\desktop-views\generated -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-sdk-dev\desktop-views\lux_codegen\validation -IE:\SyncForder\CodeRepos\build\RelWithDebInfo\p10q-sdk-dev\desktop-views\inspector_gen\desktop_consumer -IE:\SyncForder\CodeRepos\install\P10Q-qualification\share\lux-engine-editor-scene-ui\scene_ui\cmake_scripts\codegen\support -external:IE:\SyncForder\CodeRepos\install\P10Q-qualification\include -external:ID:\Development\vcpkg\installed\x64-windows\include -external:ID:\Development\vcpkg\installed\x64-windows\include\stduuid -external:ID:\Development\vcpkg\installed\x64-windows\include\eigen3 -external:W0 /DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD /UNDEBUG /utf-8 /Zc:__cplusplus /Zc:preprocessor /Zc:externConstexpr /showIncludes /FoCMakeFiles\inspector_fields.dir\Inspector.cpp.obj /FdCMakeFiles\inspector_fields.dir\ /FS -c E:\SyncForder\CodeRepos\lux-engine\cmake\installed-consumers\desktop-views\Inspector.cpp
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+E:\SyncForder\CodeRepos\lux-engine\cmake\installed-consumers\desktop-views\Inspector.cpp(26): error C2027: use of undefined type 'lux::ui::Root'
+E:\SyncForder\CodeRepos\install\P10Q-qualification\include\lux/engine/ui/Element.hpp(11): note: see declaration of 'lux::ui::Root'
+E:\SyncForder\CodeRepos\lux-engine\cmake\installed-consumers\desktop-views\Inspector.cpp(26): error C3861: 'create': identifier not found
+E:\SyncForder\CodeRepos\lux-engine\cmake\installed-consumers\desktop-views\Inspector.cpp(26): error C2672: '`anonymous-namespace'::take': no matching overloaded function found
+E:\SyncForder\CodeRepos\lux-engine\cmake\installed-consumers\desktop-views\Inspector.cpp(17): note: could be 'auto `anonymous-namespace'::take(T)'
+E:\SyncForder\CodeRepos\lux-engine\cmake\installed-consumers\desktop-views\Inspector.cpp(26): note: Failed to specialize function template 'auto `anonymous-namespace'::take(T)'
+E:\SyncForder\CodeRepos\lux-engine\cmake\installed-consumers\desktop-views\Inspector.cpp(26): note: With the following template arguments:
+E:\SyncForder\CodeRepos\lux-engine\cmake\installed-consumers\desktop-views\Inspector.cpp(26): note: 'T=<error type>'
+E:\SyncForder\CodeRepos\lux-engine\cmake\installed-consumers\desktop-views\Inspector.cpp(28): error C3536: 'root': cannot be used before it is initialized
+E:\SyncForder\CodeRepos\lux-engine\cmake\installed-consumers\desktop-views\Inspector.cpp(28): error C2100: you cannot dereference an operand of type '<error type>'
+[7/10] Building CXX object CMakeFiles\desktop_views.dir\views.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[8/10] Building CXX object CMakeFiles\inspector_fields.dir\inspector_gen\desktop_consumer\consumer__Component_2abfe8b5.inspector.generated.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[9/10] Linking CXX executable bin\desktop_views.exe
+ninja: build stopped: cannot make progress due to previous errors.

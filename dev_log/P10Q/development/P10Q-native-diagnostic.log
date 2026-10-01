@@ -1,0 +1,22 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-engine
+    Start 108: editor.desktop_native_input
+1/1 Test #108: editor.desktop_native_input ......Exit code 0xc0000409
+***Exception:  34.83 sec
+native activation: foreground=1 visible=1
+wait expired at E:\SyncForder\CodeRepos\lux-engine\editor\tools\scene\ui\test\NativeDesktop.hpp:51 (auto __cdecl `anonymous-namespace'::nativeDesktop::<lambda_2>::operator ()(struct lux::ui::Point) const)
+
+
+0% tests passed, 1 tests failed out of 1
+
+Label Time Summary:
+P10        =  34.83 sec*proc (1 test)
+desktop    =  34.83 sec*proc (1 test)
+editor     =  34.83 sec*proc (1 test)
+gpu        =  34.83 sec*proc (1 test)
+
+Total Test time (real) =  34.88 sec
+
+The following tests FAILED:
+	108 - editor.desktop_native_input (Exit code 0xc0000409
+) P10 desktop editor gpu
+Errors while running CTest

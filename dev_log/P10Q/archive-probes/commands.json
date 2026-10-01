@@ -1,0 +1,82 @@
+[
+  {
+    "name": "relocated-positive",
+    "argv": [
+      "C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\editor\\tests\\architecture\\validate_quality_evidence.py",
+      "--source",
+      "E:\\SyncForder\\CodeRepos\\lux-engine",
+      "--archive",
+      "E:\\SyncForder\\CodeRepos\\build\\p10q-archive-3c20910d05d6-\u8fc1\u79fb proof"
+    ],
+    "expected_exit": 0,
+    "exit_code": 0,
+    "log": "relocated-positive.log",
+    "implementation_sha": "3c20910d05d635078ef9021a3a3318086a792b8d",
+    "sha256": "978387be9db6a5e9c87148f89db87f85f78f1f7587fcf84d70206e9bba35b19e"
+  },
+  {
+    "name": "missing-real-evidence",
+    "argv": [
+      "C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\editor\\tests\\architecture\\validate_quality_evidence.py",
+      "--source",
+      "E:\\SyncForder\\CodeRepos\\lux-engine",
+      "--archive",
+      "E:\\SyncForder\\CodeRepos\\build\\p10q-archive-3c20910d05d6-\u8fc1\u79fb proof"
+    ],
+    "expected_exit": 1,
+    "exit_code": 1,
+    "log": "missing-real-evidence.log",
+    "implementation_sha": "3c20910d05d635078ef9021a3a3318086a792b8d",
+    "sha256": "402f71b104a61099ce42f5590bc686fc9c3f0326afcb7681a52493c545b04fb2"
+  },
+  {
+    "name": "tampered-real-evidence",
+    "argv": [
+      "C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\editor\\tests\\architecture\\validate_quality_evidence.py",
+      "--source",
+      "E:\\SyncForder\\CodeRepos\\lux-engine",
+      "--archive",
+      "E:\\SyncForder\\CodeRepos\\build\\p10q-archive-3c20910d05d6-\u8fc1\u79fb proof"
+    ],
+    "expected_exit": 1,
+    "exit_code": 1,
+    "log": "tampered-real-evidence.log",
+    "implementation_sha": "3c20910d05d635078ef9021a3a3318086a792b8d",
+    "sha256": "bd64b0a2d24392de7fa81f72d0122b6f377d7339c56105e01c83ab5a53355ab5"
+  },
+  {
+    "name": "restored-relocated-positive",
+    "argv": [
+      "C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\editor\\tests\\architecture\\validate_quality_evidence.py",
+      "--source",
+      "E:\\SyncForder\\CodeRepos\\lux-engine",
+      "--archive",
+      "E:\\SyncForder\\CodeRepos\\build\\p10q-archive-3c20910d05d6-\u8fc1\u79fb proof"
+    ],
+    "expected_exit": 0,
+    "exit_code": 0,
+    "log": "restored-relocated-positive.log",
+    "implementation_sha": "3c20910d05d635078ef9021a3a3318086a792b8d",
+    "sha256": "978387be9db6a5e9c87148f89db87f85f78f1f7587fcf84d70206e9bba35b19e"
+  },
+  {
+    "name": "canonical-final",
+    "argv": [
+      "C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\editor\\tests\\architecture\\validate_quality_evidence.py",
+      "--source",
+      "E:\\SyncForder\\CodeRepos\\lux-engine",
+      "--archive",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\dev_log\\P10Q"
+    ],
+    "expected_exit": 0,
+    "exit_code": 0,
+    "log": "canonical-final.log",
+    "implementation_sha": "3c20910d05d635078ef9021a3a3318086a792b8d",
+    "sha256": "978387be9db6a5e9c87148f89db87f85f78f1f7587fcf84d70206e9bba35b19e"
+  }
+]

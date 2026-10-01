@@ -1,0 +1,292 @@
+[
+  {
+    "name": "quality-configure",
+    "argv": [
+      "cmake",
+      "-S",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\cmake\\installed-consumers\\quality",
+      "-B",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-sdk-dev\\quality",
+      "-G",
+      "Ninja",
+      "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+      "-DCMAKE_CXX_STANDARD=20",
+      "-DCMAKE_CXX_EXTENSIONS=OFF",
+      "-DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/P10Q-qualification",
+      "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+      "-DVCPKG_TARGET_TRIPLET=x64-windows",
+      "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+    ],
+    "exit_code": 0,
+    "log": "quality-configure.log",
+    "sha256": "115a244c8febcaec6823562332d9b19067baf24f2d14eaaa9c5790a89acf5a9a"
+  },
+  {
+    "name": "quality-build",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-sdk-dev\\quality",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "exit_code": 0,
+    "log": "quality-build.log",
+    "sha256": "766e02c703671fe40462cf8b7ef423d09ed60752d4bd8911a29e09d73361ac0e"
+  },
+  {
+    "name": "quality-no-work",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-sdk-dev\\quality",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "exit_code": 0,
+    "log": "quality-no-work.log",
+    "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6"
+  },
+  {
+    "name": "quality-ctest",
+    "argv": [
+      "ctest",
+      "--test-dir",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-sdk-dev\\quality",
+      "--output-on-failure",
+      "-j",
+      "1"
+    ],
+    "exit_code": 0,
+    "log": "quality-ctest.log",
+    "sha256": "f3749c2e633d711b23c15f19e97b3dc46f46162e42e4a1fca960b8c44864af6b"
+  },
+  {
+    "name": "desktop-views-configure",
+    "argv": [
+      "cmake",
+      "-S",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\cmake\\installed-consumers\\desktop-views",
+      "-B",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-sdk-dev\\desktop-views",
+      "-G",
+      "Ninja",
+      "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+      "-DCMAKE_CXX_STANDARD=20",
+      "-DCMAKE_CXX_EXTENSIONS=OFF",
+      "-DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/P10Q-qualification",
+      "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+      "-DVCPKG_TARGET_TRIPLET=x64-windows",
+      "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+    ],
+    "exit_code": 0,
+    "log": "desktop-views-configure.log",
+    "sha256": "4edea2140f8f3605d8f2cd8674941cffd7656ee6e06ff443a102746da42b96af"
+  },
+  {
+    "name": "desktop-views-build",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-sdk-dev\\desktop-views",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "exit_code": 0,
+    "log": "desktop-views-build.log",
+    "sha256": "64456aea249f4e0a9862c555bcfb8c49b99905de8bd6fff6fef817b958d92a59"
+  },
+  {
+    "name": "desktop-views-no-work",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-sdk-dev\\desktop-views",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "exit_code": 0,
+    "log": "desktop-views-no-work.log",
+    "sha256": "7716162f3cd3b99cf3b8a8dd6decf324e08c7e941aae7e730baba5e4fc8c075b"
+  },
+  {
+    "name": "desktop-views-ctest",
+    "argv": [
+      "ctest",
+      "--test-dir",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-sdk-dev\\desktop-views",
+      "--output-on-failure",
+      "-j",
+      "1"
+    ],
+    "exit_code": 0,
+    "log": "desktop-views-ctest.log",
+    "sha256": "e6e385aeefa3e2b0ca90bdcaebc5fbbc715359f9b0b2c2c029a2ef13cca61041"
+  },
+  {
+    "name": "gpu-ui-configure",
+    "argv": [
+      "cmake",
+      "-S",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\cmake\\installed-consumers\\scene-ui",
+      "-B",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-sdk-dev\\gpu-ui",
+      "-G",
+      "Ninja",
+      "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+      "-DCMAKE_CXX_STANDARD=20",
+      "-DCMAKE_CXX_EXTENSIONS=OFF",
+      "-DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/P10Q-qualification",
+      "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+      "-DVCPKG_TARGET_TRIPLET=x64-windows",
+      "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+      "-DCONSUMER_MODE=GPU_UI"
+    ],
+    "exit_code": 0,
+    "log": "gpu-ui-configure.log",
+    "sha256": "6b556dadedd725a2f4f1214cf79b822efb1a85f14d9bfd3aeef5f86ac76eba94"
+  },
+  {
+    "name": "gpu-ui-build",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-sdk-dev\\gpu-ui",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "exit_code": 0,
+    "log": "gpu-ui-build.log",
+    "sha256": "95e95626631f83d20362ae43d7c8aeab5c6524f6195a73860cace13bb52709f9"
+  },
+  {
+    "name": "gpu-ui-no-work",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-sdk-dev\\gpu-ui",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "exit_code": 0,
+    "log": "gpu-ui-no-work.log",
+    "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6"
+  },
+  {
+    "name": "gpu-ui-ctest",
+    "argv": [
+      "ctest",
+      "--test-dir",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-sdk-dev\\gpu-ui",
+      "--output-on-failure",
+      "-j",
+      "1"
+    ],
+    "exit_code": 0,
+    "log": "gpu-ui-ctest.log",
+    "sha256": "dafa026446b5fdb1f9377d7c4f9c66bade72dc549f181e2fa0ac2b486e9fea91"
+  },
+  {
+    "name": "editor-scene-pane-configure",
+    "argv": [
+      "cmake",
+      "-S",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\cmake\\installed-consumers\\scene-ui",
+      "-B",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-sdk-dev\\editor-scene-pane",
+      "-G",
+      "Ninja",
+      "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+      "-DCMAKE_CXX_STANDARD=20",
+      "-DCMAKE_CXX_EXTENSIONS=OFF",
+      "-DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/P10Q-qualification",
+      "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+      "-DVCPKG_TARGET_TRIPLET=x64-windows",
+      "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+      "-DCONSUMER_MODE=EDITOR_SCENE_PANE"
+    ],
+    "exit_code": 0,
+    "log": "editor-scene-pane-configure.log",
+    "sha256": "11c1e3da7ff3979057bc298ade118efee287ecb5c97392d1e30f2a77ce0430d2"
+  },
+  {
+    "name": "editor-scene-pane-build",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-sdk-dev\\editor-scene-pane",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "exit_code": 0,
+    "log": "editor-scene-pane-build.log",
+    "sha256": "19b288e47fb7d1bf33a9f6045eaad5ee9f5f19d8824e3a05368ab68b0b1ab50c"
+  },
+  {
+    "name": "editor-scene-pane-no-work",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-sdk-dev\\editor-scene-pane",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "exit_code": 0,
+    "log": "editor-scene-pane-no-work.log",
+    "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6"
+  },
+  {
+    "name": "editor-scene-pane-ctest",
+    "argv": [
+      "ctest",
+      "--test-dir",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-sdk-dev\\editor-scene-pane",
+      "--output-on-failure",
+      "-j",
+      "1"
+    ],
+    "exit_code": 0,
+    "log": "editor-scene-pane-ctest.log",
+    "sha256": "f8c2094e4c7f63fad758322d4ea12355631798231501d96e493a11f51107f50e"
+  }
+]

@@ -1,0 +1,80 @@
+warning: in the working copy of 'cmake/installed-consumers/desktop-views/Inspector.cpp', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'editor/app/CMakeLists.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'editor/project/src/ProjectBuilder.cpp', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'editor/project/ui/CMakeLists.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'editor/storage/include/lux/engine/editor/storage/ProjectStorage.hpp', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'editor/ui/CMakeLists.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'editor/project/ui/CMakeLists.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'editor/storage/include/lux/engine/editor/storage/ProjectStorage.hpp', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'editor/project/src/ProjectCatalogModel.cpp', LF will be replaced by CRLF the next time Git touches it
+[codex/editor-redesign-v4 cd13a634] Consolidate catalog, task observation, compilation owners and close results
+ 37 files changed, 902 insertions(+), 410 deletions(-)
+ create mode 100644 editor/project/include/lux/engine/editor/project/ProjectCatalogModel.hpp
+ rename editor/project/{ui/src/ProjectCatalogAccess.cpp => src/AssetCatalog.cpp} (92%)
+ create mode 100644 editor/project/src/ProjectCatalogModel.cpp
+ delete mode 100644 editor/project/ui/include/lux/engine/editor/project/ProjectCatalogAccess.hpp
+ create mode 100644 editor/tasks/ui/README.md
+ create mode 100644 editor/tasks/ui/include/lux/engine/editor/tasks/TaskMonitor.hpp
+ delete mode 100644 editor/tasks/ui/include/lux/engine/editor/tasks/TaskQueryPort.hpp
+ create mode 100644 editor/tasks/ui/src/TaskMonitor.cpp
+ create mode 100644 editor/tasks/ui/test/monitor.cpp
+ create mode 100644 editor/tools/material/preview/include/lux/engine/editor/material/MaterialCompilationService.hpp
+ create mode 100644 editor/tools/material/preview/src/MaterialCompilationService.cpp
+ delete mode 100644 editor/transition/ProjectCatalogAdapter.cpp
+ delete mode 100644 editor/transition/ProjectCatalogAdapter.hpp
+
+warning: in the working copy of 'editor/ui/CMakeLists.txt', LF will be replaced by CRLF the next time Git touches it
+[codex/editor-redesign-v4 8f73644d] Move persistence adapters and share viewport and artifact publication implementations
+ 97 files changed, 1064 insertions(+), 868 deletions(-)
+ delete mode 100644 editor/adapters/project_io/CMakeLists.txt
+ rename editor/{adapters/project_io/include/lux/engine/editor/io => persistence/include/lux/engine/editor/persistence}/SaveExecution.hpp (87%)
+ rename editor/{adapters/project_io => persistence}/src/SaveExecution.cpp (98%)
+ rename editor/{adapters/project_io/include/lux/engine/editor/io/ProjectArtifactStore.hpp => storage/include/lux/engine/editor/storage/FileArtifactStore.hpp} (71%)
+ rename editor/{adapters/project_io/src/ProjectArtifactStore.cpp => storage/src/FileArtifactStore.cpp} (90%)
+ rename editor/{adapters/project_io => storage}/test/publication.cpp (96%)
+ delete mode 100644 editor/tools/flowforge/model/include/lux/engine/editor/flowforge/FlowSessionAccess.hpp
+ delete mode 100644 editor/tools/flowforge/ui/src/ViewFactory.cpp
+ delete mode 100644 editor/tools/material/model/include/lux/engine/editor/material/MaterialSessionAccess.hpp
+ delete mode 100644 editor/tools/material/ui/src/ViewFactory.cpp
+ delete mode 100644 editor/tools/scene/model/include/lux/engine/editor/scene/SceneSessionAccess.hpp
+ create mode 100644 editor/tools/scene/ui/include/lux/engine/editor/scene/SceneCreationPoint.hpp
+ create mode 100644 editor/tools/scene/ui/src/SceneCreationPoint.cpp
+ delete mode 100644 editor/tools/scene/ui/src/ViewFactory.cpp
+ create mode 100644 editor/views/viewport/CMakeLists.txt
+ rename editor/{tools/scene/ui/include/lux/engine/editor/scene => views/viewport/include/lux/engine/editor/views}/CameraNavigation.hpp (81%)
+ rename editor/{tools/scene/ui/include/lux/engine/editor/scene/SceneElement.hpp => views/viewport/include/lux/engine/editor/views/ViewportElement.hpp} (86%)
+ rename editor/{tools/scene/projection/include/lux/engine/editor/scene => views/viewport/include/lux/engine/editor/views}/ViewportPresentation.hpp (92%)
+ rename editor/{tools/scene/ui => views/viewport}/src/CameraNavigation.cpp (80%)
+ rename editor/{tools/scene/projection => views/viewport}/src/HighlightRenderer.hpp (98%)
+ rename editor/{tools/scene/ui/src/SceneElement.cpp => views/viewport/src/ViewportElement.cpp} (85%)
+ rename editor/{tools/scene/projection => views/viewport}/src/ViewportPresentation.cpp (99%)
+ rename editor/{tools/scene/projection => views/viewport}/test/highlight.cpp (91%)
+
+warning: in the working copy of 'editor/app/CMakeLists.txt', LF will be replaced by CRLF the next time Git touches it
+[codex/editor-redesign-v4 287cb54b] Make internal product libraries static with explicit installed dependencies
+ 5 files changed, 24 insertions(+), 9 deletions(-)
+
+[codex/editor-redesign-v4 feb88445] Enforce C++20 and share borrowed callback and interaction delivery contracts
+ 4 files changed, 87 insertions(+), 21 deletions(-)
+ create mode 100644 editor/editing/sinclude/lux/engine/editor/editing/InteractionDelivery.hpp
+
+[codex/editor-redesign-v4 40138e8b] Bound graph canvas identities and validate scene hierarchies linearly
+ 7 files changed, 475 insertions(+), 23 deletions(-)
+ create mode 100644 editor/tools/scene/model/test/hierarchy_benchmark.cpp
+ create mode 100644 editor/widgets/test/churn.cpp
+
+warning: in the working copy of 'cmake/installed-consumers/desktop-views/Inspector.cpp', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'cmake/installed-consumers/quality/CMakeLists.txt', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'editor/tests/architecture/test_quality_evidence.py', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'editor/tests/architecture/validate_quality_evidence.py', LF will be replaced by CRLF the next time Git touches it
+[codex/editor-redesign-v4 633e4f17] Qualify P10Q boundaries, platforms, installed consumers and quality rules
+ 41 files changed, 1933 insertions(+), 347 deletions(-)
+ create mode 100644 AGENTS.md
+ create mode 100644 cmake/installed-consumers/quality/CMakeLists.txt
+ create mode 100644 docs/editor-quality.md
+ delete mode 100644 editor/adapters/project_io/README.md
+ create mode 100644 editor/tests/architecture/quality.cpp
+ create mode 100644 editor/tests/architecture/test_quality_evidence.py
+ create mode 100644 editor/tests/architecture/validate_quality_evidence.py
+ create mode 100644 editor/views/viewport/README.md
+

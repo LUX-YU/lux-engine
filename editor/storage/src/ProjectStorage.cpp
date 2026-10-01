@@ -34,8 +34,8 @@ namespace lux::editor
         process::TaskScope& tasks,
         process::BlockingScheduler blocking
     )
-        : lux::object::LuxObject(std::move(dispatcher)), tasks_(tasks), blocking_(blocking), vfs_(assets),
-          instance_(instance)
+        : lux::object::LuxObject(dispatcher), tasks_(tasks), blocking_(blocking), vfs_(assets),
+          catalog_(std::move(dispatcher), instance)
     {}
 
     EditorResult<std::unique_ptr<ProjectStorage>> ProjectStorage::open(
@@ -122,14 +122,13 @@ namespace lux::editor
 
     void ProjectStorage::rebuildCatalog()
     {
-        catalog_.clear();
-        catalog_by_id_.clear();
-        catalog_.reserve(source_.manifest.assets.size());
+        std::vector<AssetCatalogEntry> entries;
+        std::unordered_map<asset::AssetId, std::size_t> by_id;
+        entries.reserve(source_.manifest.assets.size());
         for (const auto& entry : source_.manifest.assets)
         {
-            catalog_by_id_.emplace(entry.id, catalog_.size());
-            catalog_.push_back({entry.id, entry.id, 0, entry.mount_path.empty() ? entry.source_path : entry.mount_path}
-            );
+            by_id.emplace(entry.id, entries.size());
+            entries.push_back({entry.id, entry.id, 0, entry.mount_path.empty() ? entry.source_path : entry.mount_path});
         }
         std::unordered_set<asset::AssetId> claimed;
         for (auto package = mounts_.rbegin(); package != mounts_.rend(); ++package)
@@ -143,29 +142,25 @@ namespace lux::editor
                 {
                     continue;
                 }
-                auto [found, inserted] = catalog_by_id_.try_emplace(entry.id, catalog_.size());
+                auto [found, inserted] = by_id.try_emplace(entry.id, entries.size());
                 if (inserted)
                 {
-                    catalog_.push_back({entry.id, source_id, entry.magic_number, entry.vpath});
+                    entries.push_back({entry.id, source_id, entry.magic_number, entry.vpath});
                 }
                 else
                 {
-                    catalog_[found->second].magic = entry.magic_number;
+                    entries[found->second].magic = entry.magic_number;
                 }
             }
         }
-        std::ranges::sort(catalog_, {}, &AssetCatalogEntry::path);
-        for (std::size_t index{}; index < catalog_.size(); ++index)
-        {
-            catalog_by_id_[catalog_[index].id] = index;
-        }
-        ++catalog_revision_;
+        const auto adopted = catalog_.replace(source_.manifest.name, std::move(entries));
+        if (!adopted)
+            std::terminate(); // Identity/revision admission already occurred before publication.
     }
 
     const AssetCatalogEntry* ProjectStorage::catalogAsset(asset::AssetId id) const noexcept
     {
-        const auto found = catalog_by_id_.find(id);
-        return found == catalog_by_id_.end() ? nullptr : &catalog_[found->second];
+        return catalog_.find(id);
     }
 
     std::string_view ProjectStorage::assetName(asset::AssetId id) const noexcept
@@ -179,38 +174,28 @@ namespace lux::editor
 
     AssetReference ProjectStorage::reference(asset::AssetId id) const noexcept
     {
-        return {instance_, catalog_revision_, id};
+        return catalog_.reference(id);
     }
 
     EditorResult<asset::AssetId> ProjectStorage::resolveReference(AssetReference reference, std::uint32_t magic) const
     {
-        const auto fail = [](EAssetReferenceError code) {
-            return lux::cxx::unexpected(EditorFailure{
-                EEditorError::INVALID_ARGUMENT,
-                "project.asset-reference",
-                static_cast<std::uint64_t>(code),
-                {},
-                code
-            });
-        };
-        if (reference.project_instance != instance_)
+        auto result = catalog_.resolve(reference, magic);
+        if (!result)
         {
-            return fail(EAssetReferenceError::FOREIGN_PROJECT);
+            return std::visit(
+                [](auto error) -> EditorResult<asset::AssetId> {
+                    return lux::cxx::unexpected(EditorFailure{
+                        EEditorError::INVALID_ARGUMENT,
+                        "project.asset-reference",
+                        static_cast<std::uint64_t>(error),
+                        {},
+                        error
+                    });
+                },
+                result.error()
+            );
         }
-        if (reference.catalog_revision != catalog_revision_)
-        {
-            return fail(EAssetReferenceError::STALE_CATALOG);
-        }
-        const auto* entry = catalogAsset(reference.asset);
-        if (!entry)
-        {
-            return fail(EAssetReferenceError::MISSING_ASSET);
-        }
-        if (magic && entry->magic != magic)
-        {
-            return fail(EAssetReferenceError::WRONG_TYPE);
-        }
-        return reference.asset;
+        return *result;
     }
 
     ProjectPublication::~ProjectPublication()
@@ -266,7 +251,7 @@ namespace lux::editor
         {
             return lux::cxx::unexpected(EditorFailure{EEditorError::BUSY, "project.publication"});
         }
-        if (catalog_revision_ == UINT64_MAX)
+        if (catalog_.revision() == UINT64_MAX)
         {
             return lux::cxx::unexpected(EditorFailure{EEditorError::CAPACITY, "project.catalog"});
         }
@@ -443,11 +428,8 @@ namespace lux::editor
 
     void ProjectStorage::dispatchEvents() noexcept
     {
-        if (notified_catalog_revision_ == catalog_revision_)
-            return;
-        notified_catalog_revision_ = catalog_revision_;
         auto changed = std::exchange(changed_assets_, {});
-        lux::editor::detail::reportSignalDelivery(emit(catalogChanged, notified_catalog_revision_), "catalogChanged");
+        lux::editor::detail::reportSignalDelivery(catalog_.dispatchChanges(), "catalog.changed");
         for (const auto id : changed)
         {
             lux::editor::detail::reportSignalDelivery(emit(assetContentChanged, id), "assetContentChanged");

@@ -1,6 +1,6 @@
 find_package(imgui REQUIRED COMPONENTS core)
 add_component(COMPONENT_NAME project_ui NAMESPACE lux::engine::editor STATIC
-    SOURCE_FILES src/ProjectCatalogAccess.cpp src/AssetPickerElement.cpp src/ProjectView.cpp)
+    SOURCE_FILES src/AssetPickerElement.cpp src/ProjectView.cpp)
 component_include_directories(project_ui BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
 target_link_libraries(project_ui PUBLIC lux::engine::editor::view_api lux::engine::editor::editor_project
     lux::engine::function::ui PRIVATE imgui::core)

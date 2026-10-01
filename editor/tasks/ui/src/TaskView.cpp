@@ -3,9 +3,17 @@
 #include <algorithm>
 namespace lux::editor::tasks
 {
-    TaskListElement::TaskListElement(lux::ui::Pane& parent, TaskQueryPort query)
-        : Element(parent, lux::ui::ElementId{"tasks"}), query_(query), rows_(query_.query())
-    {}
+    TaskListElement::TaskListElement(lux::ui::Pane& parent, TaskMonitor& query)
+        : Element(parent, lux::ui::ElementId{"tasks"}), query_(query), rows_(query_.snapshot()),
+          revision_(query.revision())
+    {
+        auto connected = object::LuxObject::connect(&query_, &TaskMonitor::changed, [this](std::uint64_t) noexcept {
+            revision_.reset();
+        });
+        if (!connected)
+            std::terminate();
+        changes_ = std::move(*connected);
+    }
     void TaskListElement::requestCancel(process::TaskId id)
     {
         if (std::ranges::find(cancel_, id) == cancel_.end())
@@ -15,25 +23,23 @@ namespace lux::editor::tasks
     {
         rejected_.clear();
         for (auto id : cancel_)
-            if (!query_.cancel(id))
+            if (!query_.requestCancel(id))
                 rejected_.push_back(id);
         cancel_.clear();
-        // The application's existing Runtime observer can supply its revision. No second observer or
-        // task catalog is registered here. Without that hint, conservatively requery the bounded catalog.
         const auto revision = query_.revision();
-        if (!revision || revision != revision_)
+        if (revision != revision_)
         {
-            rows_ = query_.query();
+            rows_ = query_.snapshot();
             revision_ = revision;
         }
     }
-    TaskView::TaskView(object::ObjectDispatcherRef dispatcher, lux::ui::PaneId id, TaskQueryPort query)
+    TaskView::TaskView(object::ObjectDispatcherRef dispatcher, lux::ui::PaneId id, TaskMonitor& query)
         : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{"lux.editor.tasks"}, "Background tasks"),
           content_(*this, query)
     {
         setContent(content_);
     }
-    views::DetachedView makeTaskView(object::ObjectDispatcherRef dispatcher, lux::ui::PaneId id, TaskQueryPort query)
+    views::DetachedView makeTaskView(object::ObjectDispatcherRef dispatcher, lux::ui::PaneId id, TaskMonitor& query)
     {
         return {contracts::CodeLease::builtin(), std::make_unique<TaskView>(dispatcher, std::move(id), query)};
     }
@@ -49,11 +55,11 @@ namespace lux::editor::tasks
         ImGui::TableSetupColumn("Action");
         ImGui::TableHeadersRow();
         ImGuiListClipper clipper;
-        clipper.Begin(static_cast<int>(rows_.size()));
+        clipper.Begin(static_cast<int>(rows_->size()));
         while (clipper.Step())
             for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i)
             {
-                const auto& task = rows_[i];
+                const auto& task = (*rows_)[i];
                 ImGui::PushID(i);
                 ImGui::TableNextRow();
                 ImGui::TableNextColumn();

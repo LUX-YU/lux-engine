@@ -7,13 +7,23 @@ namespace lux::editor::project
     AssetPickerElement::AssetPickerElement(
         lux::ui::Element& parent,
         lux::ui::ElementId id,
-        ProjectCatalogAccess query,
+        ProjectCatalogModel* query,
         std::uint32_t magic,
         asset::AssetId value
     )
         : Element(parent, std::move(id)), query_(query), required_magic_(magic), value_(value)
     {
         setStretch({1, 0});
+        if (query_)
+        {
+            auto connected =
+                object::LuxObject::connect(query_, &ProjectCatalogModel::changed, [this](std::uint64_t) noexcept {
+                    refresh_requested_ = true;
+                });
+            if (!connected)
+                std::terminate();
+            changes_ = std::move(*connected);
+        }
         static_cast<void>(refresh());
     }
     void AssetPickerElement::setValue(asset::AssetId value) noexcept
@@ -35,7 +45,7 @@ namespace lux::editor::project
     {
         if (!enabled() || !query_ || !required_magic_)
             return lux::cxx::unexpected(VProjectQueryFailure{EProjectQueryError::UNBOUND});
-        auto selected = query_.resolve(query_.owner, reference, required_magic_);
+        auto selected = query_->resolve(reference, required_magic_);
         if (!selected)
         {
             error_ = selected.error();
@@ -48,15 +58,18 @@ namespace lux::editor::project
     {
         if (!query_)
             return lux::cxx::unexpected(VProjectQueryFailure{EProjectQueryError::UNBOUND});
-        auto version = query_.version(query_.owner);
+        auto version = query_->version();
         if (!version)
         {
             error_ = version.error();
             return lux::cxx::unexpected(version.error());
         }
         if (*version == catalog_.version)
+        {
+            error_.reset();
             return {};
-        auto candidate = query_.read(query_.owner);
+        }
+        auto candidate = query_->snapshot();
         if (!candidate)
         {
             error_ = candidate.error();
@@ -68,7 +81,15 @@ namespace lux::editor::project
     }
     void AssetPickerElement::update() noexcept
     {
-        static_cast<void>(refresh());
+        if (!query_)
+            return;
+        const auto revision = query_->version();
+        const bool needs_refresh = refresh_requested_ || !revision || *revision != catalog_.version || error_;
+        if (needs_refresh)
+        {
+            refresh_requested_ = false;
+            static_cast<void>(refresh());
+        }
     }
     lux::ui::SizeHint AssetPickerElement::sizeHintContent() noexcept
     {

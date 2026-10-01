@@ -1,6 +1,6 @@
 #pragma once
+#include <optional>
 #include <lux/engine/editor/views/IViewHost.hpp>
-#include <lux/engine/ui/Root.hpp>
 
 namespace lux::editor::desktop
 {
@@ -36,6 +36,7 @@ namespace lux::editor::desktop
         [[nodiscard]] views::ViewResult<ViewAdoption> adopt(views::DetachedView&, views::ViewRestoreKey);
         [[nodiscard]] views::ViewResult<views::ViewInfo> describe(views::ViewId) const override;
         [[nodiscard]] views::ViewResult<std::vector<views::ViewInfo>> describeAll() const;
+        [[nodiscard]] views::ViewResult<std::optional<views::ViewCloseFailure>> closeFailure(views::ViewId) const;
         [[nodiscard]] views::ViewResult<void> close(views::ViewId) noexcept override;
         [[nodiscard]] views::ViewResult<void> show(views::ViewId) noexcept override;
         [[nodiscard]] views::ViewResult<void> focus(views::ViewId) noexcept override;

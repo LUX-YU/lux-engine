@@ -1,4 +1,5 @@
 #include <lux/engine/editor/desktop/ViewHost.hpp>
+#include <lux/engine/ui/Root.hpp>
 #include <algorithm>
 #include <atomic>
 #include <optional>
@@ -56,6 +57,7 @@ namespace lux::editor::desktop
             std::optional<views::DetachedView> owner;
             object::Connection close_connection;
             bool close_requested{};
+            std::optional<views::ViewCloseFailure> close_failure;
         };
         struct Request final
         {
@@ -183,8 +185,13 @@ namespace lux::editor::desktop
         }
         bool detach(Slot& slot, ViewDrain& report)
         {
-            if (!slot.owner->prepareClose())
+            auto ready = slot.owner->prepareClose();
+            if (!ready)
+            {
+                slot.close_failure = std::move(ready.error());
                 return false;
+            }
+            slot.close_failure.reset();
             auto prepared = root_.prepareDetach(*slot.owner->pane());
             if (!prepared)
                 return false;
@@ -217,8 +224,9 @@ namespace lux::editor::desktop
                     ++report.stale;
                 else if (request.action == EAction::CLOSE)
                 {
+                    slot->close_failure.reset(); // A new explicit close request retries a previous refusal.
                     if (!detach(*slot, report))
-                        slot->close_requested = true;
+                        slot->close_requested = !slot->close_failure || slot->close_failure->retryable;
                 }
                 else if (request.action == EAction::SHOW)
                 {
@@ -233,8 +241,9 @@ namespace lux::editor::desktop
             }
             batch_.clear();
             for (auto id : close_batch_)
-                if (auto* slot = find(id); slot && !detach(*slot, report))
-                    slot->close_requested = true;
+                if (auto* slot = find(id); slot && (!slot->close_failure || slot->close_failure->retryable))
+                    if (!detach(*slot, report))
+                        slot->close_requested = !slot->close_failure || slot->close_failure->retryable;
             report.pending = requests_.size() + std::ranges::count_if(slots_, [](const Slot& slot) {
                                  return slot.owner && slot.close_requested;
                              });
@@ -283,4 +292,14 @@ namespace lux::editor::desktop
     {
         return impl_->drain();
     }
+    views::ViewResult<std::optional<views::ViewCloseFailure>> ViewHost::closeFailure(views::ViewId id) const
+    {
+        if (impl_->busy())
+            return cxx::unexpected(views::EViewError::BUSY);
+        const auto* slot = impl_->find(id);
+        if (!slot)
+            return cxx::unexpected(views::EViewError::INVALID_ID);
+        return slot->close_failure;
+    }
+
 }

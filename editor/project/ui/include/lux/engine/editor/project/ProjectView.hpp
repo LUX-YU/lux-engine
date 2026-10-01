@@ -1,5 +1,5 @@
 #pragma once
-#include <lux/engine/editor/project/ProjectCatalogAccess.hpp>
+#include <lux/engine/editor/project/ProjectCatalogModel.hpp>
 #include <lux/engine/editor/views/IViewHost.hpp>
 
 namespace lux::editor::project
@@ -7,7 +7,8 @@ namespace lux::editor::project
     class ProjectView final : public lux::ui::Pane
     {
     public:
-        ProjectView(object::ObjectDispatcherRef, lux::ui::PaneId, ProjectCatalogAccess, AssetOpenRequests);
+        object::TSignal<AssetReference> openRequested{*this};
+        ProjectView(object::ObjectDispatcherRef, lux::ui::PaneId, ProjectCatalogModel&);
         ~ProjectView() noexcept override;
         ProjectView(const ProjectView&) = delete;
         ProjectView& operator=(const ProjectView&) = delete;
@@ -15,7 +16,7 @@ namespace lux::editor::project
         ProjectView& operator=(ProjectView&&) = delete;
         [[nodiscard]] ProjectQueryResult<void> refresh();
         [[nodiscard]] ProjectQueryResult<void> requestOpen(AssetReference);
-        [[nodiscard]] const ProjectCatalog& catalog() const noexcept;
+        [[nodiscard]] const ProjectCatalogSnapshot& catalog() const noexcept;
         [[nodiscard]] const std::optional<VProjectQueryFailure>& status() const noexcept;
 
     private:
@@ -23,10 +24,6 @@ namespace lux::editor::project
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };
-    [[nodiscard]] views::DetachedView makeProjectView(
-        object::ObjectDispatcherRef,
-        lux::ui::PaneId,
-        ProjectCatalogAccess,
-        AssetOpenRequests
-    );
+    [[nodiscard]] views::DetachedView
+    makeProjectView(object::ObjectDispatcherRef, lux::ui::PaneId, ProjectCatalogModel&);
 }

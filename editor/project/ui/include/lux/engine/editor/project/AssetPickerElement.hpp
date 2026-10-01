@@ -1,5 +1,5 @@
 #pragma once
-#include <lux/engine/editor/project/ProjectCatalogAccess.hpp>
+#include <lux/engine/editor/project/ProjectCatalogModel.hpp>
 #include <lux/engine/ui/Controls.hpp>
 
 namespace lux::editor::project
@@ -11,7 +11,7 @@ namespace lux::editor::project
         AssetPickerElement(
             lux::ui::Element&,
             lux::ui::ElementId,
-            ProjectCatalogAccess,
+            ProjectCatalogModel*,
             std::uint32_t required_magic,
             asset::AssetId value = {}
         );
@@ -40,11 +40,13 @@ namespace lux::editor::project
         void draw() noexcept override;
         void update() noexcept override;
         void adopt(asset::AssetId) noexcept;
-        ProjectCatalogAccess query_;
-        ProjectCatalog catalog_;
+        ProjectCatalogModel* query_;
+        ProjectCatalogSnapshot catalog_;
         std::uint32_t required_magic_;
         asset::AssetId value_;
         std::optional<VProjectQueryFailure> error_;
         object::SignalDelivery delivery_;
+        object::Connection changes_;
+        bool refresh_requested_{true};
     };
 }

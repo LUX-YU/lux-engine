@@ -421,6 +421,11 @@ namespace lux::process
     void ExecutionRuntime::setTaskObserver(void* owner, TaskObserver observer) noexcept
     {
         tasks_->requireOwner();
+        // Installation is an exclusive application responsibility, not last-writer-wins registration.
+        const bool is_partial_observer = (owner == nullptr) != (observer == nullptr);
+        const bool is_other_observer = observer && tasks_->observer && tasks_->observer_owner != owner;
+        if (is_partial_observer || is_other_observer)
+            std::terminate();
         tasks_->observer_owner = owner;
         tasks_->observer = observer;
     }

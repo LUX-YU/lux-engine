@@ -43,47 +43,39 @@ namespace lux::editor::project
                 }
             }
         } content;
-        ProjectCatalogAccess query;
-        AssetOpenRequests requests;
-        ProjectCatalog catalog;
+        ProjectCatalogModel& query;
+        ProjectCatalogSnapshot catalog;
         std::optional<AssetReference> pending;
         std::optional<VProjectQueryFailure> failure;
-        Impl(ProjectView& view, ProjectCatalogAccess access, AssetOpenRequests open)
-            : content(view, *this), query(access), requests(open)
-        {}
+        bool refresh_requested{true};
+        object::Connection changes;
+        Impl(ProjectView& view, ProjectCatalogModel& access) : content(view, *this), query(access)
+        {
+            auto connected =
+                object::LuxObject::connect(&query, &ProjectCatalogModel::changed, [this](std::uint64_t) noexcept {
+                    refresh_requested = true;
+                });
+            if (!connected)
+                std::terminate();
+            changes = std::move(*connected);
+        }
         ProjectQueryResult<void> refresh()
         {
-            if (!query)
-                return lux::cxx::unexpected(VProjectQueryFailure{EProjectQueryError::UNBOUND});
-            auto version = query.version(query.owner);
+            auto version = query.version();
             if (!version)
                 return lux::cxx::unexpected(version.error());
             if (*version == catalog.version)
                 return {};
-            auto read = query.read(query.owner);
+            auto read = query.snapshot();
             if (!read)
                 return lux::cxx::unexpected(read.error());
             catalog = std::move(*read);
             return {};
         }
-        ProjectQueryResult<void> open(AssetReference reference)
-        {
-            if (!query)
-                return lux::cxx::unexpected(VProjectQueryFailure{EProjectQueryError::UNBOUND});
-            auto valid = query.resolve(query.owner, reference, 0);
-            if (!valid)
-                return lux::cxx::unexpected(valid.error());
-            return requests.request(reference);
-        }
     };
-    ProjectView::ProjectView(
-        object::ObjectDispatcherRef dispatcher,
-        lux::ui::PaneId id,
-        ProjectCatalogAccess query,
-        AssetOpenRequests requests
-    )
+    ProjectView::ProjectView(object::ObjectDispatcherRef dispatcher, lux::ui::PaneId id, ProjectCatalogModel& query)
         : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{"lux.editor.project"}, "Project"),
-          impl_(std::make_unique<Impl>(*this, query, requests))
+          impl_(std::make_unique<Impl>(*this, query))
     {
         setContent(impl_->content);
         static_cast<void>(refresh());
@@ -100,12 +92,24 @@ namespace lux::editor::project
     }
     ProjectQueryResult<void> ProjectView::requestOpen(AssetReference reference)
     {
-        auto result = impl_->open(reference);
-        if (!result)
-            impl_->failure = result.error();
-        return result;
+        auto resolved = impl_->query.resolve(reference, 0);
+        if (!resolved)
+        {
+            impl_->failure = resolved.error();
+            return lux::cxx::unexpected(resolved.error());
+        }
+        // Intent only. The explicitly connected receiver owns admission and its result.
+        const auto delivered = emit(openRequested, reference);
+        if (!delivered.complete())
+        {
+            // A partial broadcast must not be retried: some recipients already received the intent.
+            const auto error = delivered.closed ? EProjectQueryError::CLOSED : EProjectQueryError::CAPACITY;
+            impl_->failure = error;
+            return lux::cxx::unexpected(VProjectQueryFailure{error});
+        }
+        return {};
     }
-    const ProjectCatalog& ProjectView::catalog() const noexcept
+    const ProjectCatalogSnapshot& ProjectView::catalog() const noexcept
     {
         return impl_->catalog;
     }
@@ -115,7 +119,14 @@ namespace lux::editor::project
     }
     void ProjectView::update() noexcept
     {
-        static_cast<void>(refresh());
+        const auto revision = impl_->query.version();
+        const bool needs_refresh =
+            impl_->refresh_requested || !revision || *revision != impl_->catalog.version || impl_->failure;
+        if (needs_refresh)
+        {
+            impl_->refresh_requested = false;
+            static_cast<void>(refresh());
+        }
         if (impl_->pending)
         {
             auto result = requestOpen(*impl_->pending);
@@ -128,13 +139,9 @@ namespace lux::editor::project
     views::DetachedView makeProjectView(
         object::ObjectDispatcherRef dispatcher,
         lux::ui::PaneId id,
-        ProjectCatalogAccess query,
-        AssetOpenRequests requests
+        ProjectCatalogModel& query
     )
     {
-        return {
-            contracts::CodeLease::builtin(),
-            std::make_unique<ProjectView>(dispatcher, std::move(id), query, requests)
-        };
+        return {contracts::CodeLease::builtin(), std::make_unique<ProjectView>(dispatcher, std::move(id), query)};
     }
 }

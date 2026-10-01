@@ -4,7 +4,7 @@
 
 #include <filesystem>
 #include <lux/engine/editor/EditorError.hpp>
-#include <lux/engine/editor/project/AssetCatalog.hpp>
+#include <lux/engine/editor/project/ProjectCatalogModel.hpp>
 #include <lux/engine/editor/project/ProjectManifest.hpp>
 #include <lux/engine/editor/storage/ProjectOpenData.hpp>
 #include <lux/engine/object/LuxObject.hpp>
@@ -22,7 +22,6 @@ namespace lux::editor
     class LUX_EDITOR_STORAGE_PUBLIC ProjectStorage final : public lux::object::LuxObject
     {
     public:
-        object::TSignal<std::uint64_t> catalogChanged{*this};
         object::TSignal<asset::AssetId> assetContentChanged{*this};
         // Storage waiters only schedule collection work; publication never reenters business callbacks.
         void whenPublicationAvailable(process::CompletionWork::Request);
@@ -70,11 +69,19 @@ namespace lux::editor
         [[nodiscard]] std::string_view assetName(asset::AssetId) const noexcept;
         [[nodiscard]] std::span<const AssetCatalogEntry> catalog() const noexcept
         {
-            return catalog_;
+            return catalog_.entries();
         }
         [[nodiscard]] std::uint64_t catalogRevision() const noexcept
         {
-            return catalog_revision_;
+            return catalog_.revision();
+        }
+        [[nodiscard]] project::ProjectCatalogModel& catalogModel() noexcept
+        {
+            return catalog_;
+        }
+        [[nodiscard]] const project::ProjectCatalogModel& catalogModel() const noexcept
+        {
+            return catalog_;
         }
         [[nodiscard]] const AssetCatalogEntry* catalogAsset(asset::AssetId) const noexcept;
         [[nodiscard]] AssetReference reference(asset::AssetId) const noexcept;
@@ -121,12 +128,8 @@ namespace lux::editor
         bool publishing_{};
         std::vector<process::CompletionWork::Request> publication_waiters_;
         std::vector<asset::AssetId> changed_assets_;
-        std::uint64_t notified_catalog_revision_{};
         bool closing_{};
         std::unique_ptr<detail::ProjectWrite> plugin_save_;
-        std::uint64_t instance_{};
-        std::uint64_t catalog_revision_{};
-        std::vector<AssetCatalogEntry> catalog_;
-        std::unordered_map<asset::AssetId, std::size_t> catalog_by_id_;
+        project::ProjectCatalogModel catalog_;
     };
 } // namespace lux::editor

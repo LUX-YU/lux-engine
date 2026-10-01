@@ -1,5 +1,5 @@
 #pragma once
-#include <lux/engine/editor/tasks/TaskQueryPort.hpp>
+#include <lux/engine/editor/tasks/TaskMonitor.hpp>
 #include <lux/engine/editor/views/IViewHost.hpp>
 #include <lux/engine/ui/Element.hpp>
 namespace lux::editor::tasks
@@ -8,14 +8,14 @@ namespace lux::editor::tasks
     class TaskListElement final : public lux::ui::Element
     {
     public:
-        TaskListElement(lux::ui::Pane&, TaskQueryPort);
+        TaskListElement(lux::ui::Pane&, TaskMonitor&);
         TaskListElement(const TaskListElement&) = delete;
         TaskListElement& operator=(const TaskListElement&) = delete;
         TaskListElement(TaskListElement&&) = delete;
         TaskListElement& operator=(TaskListElement&&) = delete;
         [[nodiscard]] std::span<const process::TaskInfo> rows() const noexcept
         {
-            return rows_;
+            return *rows_;
         }
         void requestCancel(process::TaskId);
         [[nodiscard]] std::span<const process::TaskId> rejectedCancellations() const noexcept
@@ -26,15 +26,16 @@ namespace lux::editor::tasks
     private:
         void update() noexcept override;
         void draw() noexcept override;
-        TaskQueryPort query_;
-        std::vector<process::TaskInfo> rows_;
+        TaskMonitor& query_;
+        TaskMonitor::Snapshot rows_;
         std::vector<process::TaskId> cancel_, rejected_;
         std::optional<std::uint64_t> revision_;
+        object::Connection changes_;
     };
     class TaskView final : public lux::ui::Pane
     {
     public:
-        TaskView(object::ObjectDispatcherRef, lux::ui::PaneId, TaskQueryPort);
+        TaskView(object::ObjectDispatcherRef, lux::ui::PaneId, TaskMonitor&);
         TaskView(const TaskView&) = delete;
         TaskView& operator=(const TaskView&) = delete;
         TaskView(TaskView&&) = delete;
@@ -47,5 +48,5 @@ namespace lux::editor::tasks
     private:
         TaskListElement content_;
     };
-    [[nodiscard]] views::DetachedView makeTaskView(object::ObjectDispatcherRef, lux::ui::PaneId, TaskQueryPort);
+    [[nodiscard]] views::DetachedView makeTaskView(object::ObjectDispatcherRef, lux::ui::PaneId, TaskMonitor&);
 }

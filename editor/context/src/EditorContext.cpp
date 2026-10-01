@@ -1,3 +1,4 @@
+#include <lux/engine/editor/tasks/TaskMonitor.hpp>
 #include <lux/engine/RenderContext.hpp>
 #include <lux/engine/editor/detail/EditorContextStartup.hpp>
 #include <lux/engine/editor/detail/TaskResult.hpp>
@@ -105,7 +106,7 @@ namespace lux::editor
         engine::EngineContext& engine;
         object::ObjectMessageQueue& messages;
         process::ExecutionRuntime& execution;
-        std::uint64_t task_revision{};
+        tasks::TaskMonitor task_monitor;
         std::shared_ptr<const void> reflection;
         std::optional<lux::project::PluginManager> plugins;
         std::vector<EditorPlugin> editor_plugins;
@@ -123,7 +124,7 @@ namespace lux::editor
 
         Impl(engine::EngineContext& application, object::ObjectMessageQueue& queue) noexcept
             : engine(application), messages(queue), execution(application.execution()),
-              rendering(*application.renderContext())
+              task_monitor(queue.dispatcherRef(), execution), rendering(*application.renderContext())
         {}
 
         template <class Scheduler, class Work> auto prepare(Scheduler scheduler, Work work)
@@ -267,31 +268,11 @@ namespace lux::editor
 
     EditorContext::EditorContext(lux::ui::Root& root, std::unique_ptr<Impl> impl) noexcept
         : LuxObject(impl->messages.dispatcherRef()), impl_(std::move(impl)), panes_(root, *this)
+    {}
+    EditorContext::~EditorContext() = default;
+    tasks::TaskMonitor& EditorContext::taskMonitor() noexcept
     {
-        impl_->execution.setTaskObserver(
-            this,
-            [](void* owner, std::span<const process::TaskId> ids, bool reset) noexcept {
-                auto& context = *static_cast<EditorContext*>(owner);
-                if (reset)
-                {
-                    ++context.impl_->task_revision;
-                    detail::reportSignalDelivery(context.emit(context.tasksReset), "tasks.reset");
-                }
-                for (auto id : ids)
-                {
-                    ++context.impl_->task_revision;
-                    detail::reportSignalDelivery(context.emit(context.taskChanged, id), "tasks.changed");
-                }
-            }
-        );
-    }
-    EditorContext::~EditorContext()
-    {
-        impl_->execution.setTaskObserver(nullptr, nullptr);
-    }
-    std::uint64_t EditorContext::taskRevision() const noexcept
-    {
-        return impl_->task_revision;
+        return impl_->task_monitor;
     }
     process::ExecutionRuntime& EditorContext::execution() noexcept
     {

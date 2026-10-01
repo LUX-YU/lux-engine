@@ -1,3 +1,5 @@
+#include <lux/engine/editor/detail/SignalDelivery.hpp>
+#include <lux/engine/editor/tasks/TaskMonitor.hpp>
 #include <lux/engine/editor/detail/EditorImpl.hpp>
 #include <algorithm>
 #include <cstdio>
@@ -39,6 +41,7 @@ namespace lux::editor
                 fail({EEditorError::EXECUTION_FAILURE, "editor.tasks", 0, {}, tasks.error()});
             if (exit_requested_)
                 break;
+            detail::reportSignalDelivery(context->taskMonitor().dispatchChanges(), "tasks.changed");
             project_->dispatchEvents();
             static_cast<void>(messages->dispatchPending());
             root->applyPendingChanges();

@@ -45,6 +45,11 @@ namespace lux::editor
         struct EditorContextAccess;
     }
 
+    namespace tasks
+    {
+        class TaskMonitor;
+    }
+
     // One project's shared facilities. Tool models and UI remain with their owners.
     class EditorContext final : public object::LuxObject
     {
@@ -55,9 +60,7 @@ namespace lux::editor
         EditorContext& operator=(EditorContext&&) = delete;
         ~EditorContext() override;
 
-        object::TSignal<process::TaskId> taskChanged{*this};
-        object::TSignal<void> tasksReset{*this};
-        [[nodiscard]] std::uint64_t taskRevision() const noexcept;
+        [[nodiscard]] tasks::TaskMonitor& taskMonitor() noexcept;
 
         process::ExecutionRuntime& execution() noexcept;
         engine::EngineContext& engine() noexcept;

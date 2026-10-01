@@ -1,4 +1,5 @@
 #include <lux/engine/editor/desktop/ViewHost.hpp>
+#include <lux/engine/ui/Root.hpp>
 #include <lux/engine/ui/Element.hpp>
 #include <cassert>
 #include <algorithm>
@@ -68,6 +69,15 @@ namespace
             ++facts_.pane;
         }
         Content body;
+        unsigned close_attempts{};
+        std::optional<views::ViewCloseFailure> close_error;
+        views::ViewCloseResult prepareClose()
+        {
+            ++close_attempts;
+            if (close_error)
+                return cxx::unexpected(*close_error);
+            return {};
+        }
 
     private:
         Facts& facts_;
@@ -168,6 +178,36 @@ namespace
         assert(root->windowRevision() == revision && root->panes().empty());
         assert(view.pane() && !facts.pane && take(host.describeAll()).empty());
     }
+    void closeFailures(object::ObjectDispatcherRef dispatcher)
+    {
+        auto root = take(ui::Root::create(dispatcher));
+        Facts facts;
+        desktop::ViewHost host(*root);
+        auto code = std::make_shared<Code>(facts);
+        auto pane = std::make_unique<Window>(dispatcher, "close-errors", facts);
+        auto& window = *pane;
+        views::DetachedView view{contracts::CodeLease::plugin(code), std::move(pane), +[](ui::Pane& target) {
+                                     return static_cast<Window&>(target).prepareClose();
+                                 }};
+        code.reset();
+        const auto id = take(host.adopt(view, views::ViewRestoreKey{"close-errors"})).id;
+        window.close_error = views::ViewCloseFailure{"test.permission", 37, "Explicit refusal", false};
+        assert(host.close(id));
+        assert(take(host.drain()).pending == 0 && window.close_attempts == 1);
+        const auto saved = take(host.closeFailure(id));
+        assert(saved && saved->domain == "test.permission" && saved->code == 37 && !saved->retryable);
+        for (int i{}; i != 10; ++i)
+            take(host.drain());
+        assert(window.close_attempts == 1 && facts.alive && !facts.pane);
+        window.close_error = views::ViewCloseFailure{"session", 9, "Temporarily reading", true};
+        assert(host.close(id));
+        assert(take(host.drain()).pending == 1 && window.close_attempts == 2);
+        assert(take(host.drain()).pending == 1 && window.close_attempts == 3);
+        window.close_error.reset();
+        assert(take(host.drain()).completed == 1);
+        assert(facts.pane == 1 && facts.element == 1 && facts.code == 1);
+        assert(!host.closeFailure(id));
+    }
     void reuseCapacity(object::ObjectDispatcherRef dispatcher)
     {
         auto root = take(ui::Root::create(dispatcher, {.docking = false}));
@@ -179,7 +219,8 @@ namespace
             auto next = candidate(dispatcher, "reused", facts);
             const auto id = take(host.adopt(next, views::ViewRestoreKey{"reused"})).id;
             assert(id != previous && !next.pane());
-            if (turn) assert(!host.describe(previous) && !host.close(previous));
+            if (turn)
+                assert(!host.describe(previous) && !host.close(previous));
             assert(host.focus(id) && host.show(id) && host.close(id));
             assert(take(host.drain()).completed == 3);
             assert(facts.pane == 1 && facts.element == 1 && facts.code == 1);
@@ -197,5 +238,6 @@ int main()
     reentrant(queue.dispatcherRef());
     failedPrepare(queue.dispatcherRef());
     reuseCapacity(queue.dispatcherRef());
+    closeFailures(queue.dispatcherRef());
     std::puts("PASS P10 real ViewHost ownership, bounded requests, generation, callback batches and prepare failure");
 }

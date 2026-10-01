@@ -11,8 +11,12 @@ namespace lux::editor::views
     class DetachedView final
     {
     public:
-        using PrepareClose = ViewResult<void> (*)(lux::ui::Pane&);
-        DetachedView(contracts::CodeLease code, std::unique_ptr<lux::ui::Pane> pane, PrepareClose prepare_close = nullptr) noexcept
+        using PrepareClose = ViewCloseResult (*)(lux::ui::Pane&);
+        DetachedView(
+            contracts::CodeLease code,
+            std::unique_ptr<lux::ui::Pane> pane,
+            PrepareClose prepare_close = nullptr
+        ) noexcept
             : code_(std::move(code)), pane_(std::move(pane)), prepare_close_(prepare_close)
         {
             if (!code_.valid() || !pane_ || pane_->attachedRoot() || pane_->parent())
@@ -41,9 +45,9 @@ namespace lux::editor::views
         }
         // Called at the host's outer safe point before focus/routing are revoked. BUSY retains the
         // entire mounted view and its pending close. It never releases a Session or task owner.
-        [[nodiscard]] ViewResult<void> prepareClose()
+        [[nodiscard]] ViewCloseResult prepareClose()
         {
-            return prepare_close_ ? prepare_close_(*pane_) : ViewResult<void>{};
+            return prepare_close_ ? prepare_close_(*pane_) : ViewCloseResult{};
         }
 
     private:

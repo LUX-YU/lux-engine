@@ -106,6 +106,10 @@ namespace lux::editor::flowforge
     public:
         explicit FlowCompilationService(process::ExecutionRuntime&, std::size_t capacity = 16);
         ~FlowCompilationService();
+        FlowCompilationService(const FlowCompilationService&) = delete;
+        FlowCompilationService& operator=(const FlowCompilationService&) = delete;
+        FlowCompilationService(FlowCompilationService&&) = delete;
+        FlowCompilationService& operator=(FlowCompilationService&&) = delete;
         [[nodiscard]] FlowCompilationResult<FlowCompileId> start(
             FlowSnapshot,
             FlowCompileEnvironment = FlowCompileEnvironment{},

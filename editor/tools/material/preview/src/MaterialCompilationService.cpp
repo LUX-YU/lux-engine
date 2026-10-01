@@ -1,0 +1,70 @@
+#include <lux/engine/editor/material/MaterialCompilationService.hpp>
+#include <algorithm>
+
+namespace lux::editor::material
+{
+    namespace
+    {
+        auto rejected(EMaterialCompileRequestError error)
+        {
+            return cxx::unexpected(VMaterialCompileFailure{error});
+        }
+    }
+    MaterialCompilationService::MaterialCompilationService(process::ExecutionRuntime& runtime, std::size_t capacity)
+        : runtime_(runtime), capacity_(capacity)
+    {
+        operations_.reserve(capacity);
+    }
+    MaterialCompilationService::~MaterialCompilationService() = default;
+    MaterialCompileResult<MaterialCompileId> MaterialCompilationService::start(
+        MaterialSnapshot snapshot,
+        MaterialCompileSettings settings,
+        std::uint64_t environment,
+        std::uint64_t target
+    )
+    {
+        if (owner_ != std::this_thread::get_id())
+            return rejected(EMaterialCompileRequestError::WRONG_THREAD);
+        if (operations_.size() == capacity_)
+            return rejected(EMaterialCompileRequestError::CAPACITY);
+        auto operation = MaterialCompileOperation::start(runtime_, std::move(snapshot), settings, environment, target);
+        if (!operation)
+            return cxx::unexpected(operation.error());
+        const auto id = (*operation)->id();
+        operations_.push_back(std::move(*operation));
+        return id;
+    }
+    MaterialCompileResult<std::reference_wrapper<const MaterialCompileOperation>> MaterialCompilationService::operation(
+        MaterialCompileId id
+    ) const noexcept
+    {
+        if (owner_ != std::this_thread::get_id())
+            return rejected(EMaterialCompileRequestError::WRONG_THREAD);
+        const auto found = std::ranges::find_if(operations_, [id](const auto& value) { return value->id() == id; });
+        if (found == operations_.end())
+            return rejected(EMaterialCompileRequestError::INVALID_ID);
+        return std::cref(**found);
+    }
+    MaterialCompileResult<void> MaterialCompilationService::acknowledge(MaterialCompileId id)
+    {
+        if (owner_ != std::this_thread::get_id())
+            return rejected(EMaterialCompileRequestError::WRONG_THREAD);
+        const auto found = std::ranges::find_if(operations_, [id](const auto& value) { return value->id() == id; });
+        if (found == operations_.end())
+            return rejected(EMaterialCompileRequestError::INVALID_ID);
+        if (!(*found)->ready())
+            return rejected(EMaterialCompileRequestError::BUSY);
+        operations_.erase(found);
+        return {};
+    }
+    MaterialCompileResult<void> MaterialCompilationService::cancel(MaterialCompileId id) noexcept
+    {
+        if (owner_ != std::this_thread::get_id())
+            return rejected(EMaterialCompileRequestError::WRONG_THREAD);
+        const auto found = std::ranges::find_if(operations_, [id](const auto& value) { return value->id() == id; });
+        if (found == operations_.end())
+            return rejected(EMaterialCompileRequestError::INVALID_ID);
+        (*found)->cancel();
+        return {};
+    }
+}

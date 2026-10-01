@@ -1,4 +1,4 @@
-#include <lux/engine/editor/project/ProjectCatalogAccess.hpp>
+#include <lux/engine/editor/project/ProjectCatalogModel.hpp>
 #include <cstring>
 
 namespace lux::editor::project

@@ -16,8 +16,9 @@ PaneManager 最后构造、最先析构，只拥有一级窗口的 vector<unique
 
 Project、Importer 和资源管理器用 Process CompletionWork 按完成事实推进；主循环没有服务 poll 名单。
 后台捕获固定输入与窄能力，不跨线程查询可变 Context。隐藏窗口不停止共享任务。
-Context 将任务目录变化桥接为 taskChanged/tasksReset，taskRevision 支持遗漏通知后的重查。
-TaskPane 只读取这些事实；编译/加载结果仍定向交付给其 owner。
+Context 拥有本应用 Runtime 对应的 TaskMonitor，后者独占 observer 登记并共享当前 revision 的只读目录。
+主循环在完成事件分发返回后调用 Monitor 的 dispatchChanges；Context 不另存任务 revision 或转发信号。
+TaskPane 和 TaskView 借用同一 Monitor，遗漏通知时按 revision 重查；编译/加载结果仍定向交付给其 owner。
 
 析构先结束所有顶层窗口，再完成 Importer/Project 已接纳任务，最后释放元信息和插件代码。
 借用的 EngineContext 必须仍存活；waitUntil 只收取完成，不绘制 UI、不派发新的业务或替换实例。

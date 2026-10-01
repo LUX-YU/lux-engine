@@ -34,7 +34,14 @@ namespace lux::editor::sessions
     public:
         // Called after Store.prepare; its moved reservation owns hidden-slot rollback.
         [[nodiscard]] static SessionFactoryResult<PreparedSessionInstallation>
-        prepare(SessionStore&, persistence::SaveService&, SessionReservation, contracts::CodeLease, std::unique_ptr<HistoryActions>, std::unique_ptr<persistence::ISaveSource>);
+        prepare(
+            SessionStore&,
+            persistence::SaveService&,
+            SessionReservation,
+            contracts::CodeLease,
+            std::unique_ptr<HistoryActions>,
+            std::unique_ptr<persistence::ISaveSource>
+        );
         ~PreparedSessionInstallation();
         PreparedSessionInstallation(PreparedSessionInstallation&&) noexcept;
         PreparedSessionInstallation& operator=(PreparedSessionInstallation&&) noexcept;

@@ -2,7 +2,7 @@ find_package(node_editor REQUIRED COMPONENTS node_editor)
 generate_visibility_header(ENABLE_MACRO_NAME LUX_EDITOR_FLOWFORGE_LIBRARY
     PUBLIC_MACRO_NAME LUX_EDITOR_FLOWFORGE_PUBLIC DISABLE_DLL_MACRO_NAME LUX_EDITOR_FLOWFORGE_DLL_DISABLE
     GENERATE_FILE_PATH lux/engine/editor/flowforge/visibility.h)
-add_component(COMPONENT_NAME editor_flowforge NAMESPACE lux::engine::editor OUTPUT_NAME lux_engine_editor_flowforge
+add_component(COMPONENT_NAME editor_flowforge STATIC NAMESPACE lux::engine::editor OUTPUT_NAME lux_engine_editor_flowforge
     SOURCE_FILES src/FlowForgeEditor.cpp src/FlowAssets.cpp)
 component_include_directories(editor_flowforge
     BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR}
@@ -41,3 +41,5 @@ component_add_transitive_commands(editor_flowforge
 
 target_link_libraries(editor_flowforge PUBLIC lux::engine::editor::flow_ui)
 component_add_transitive_commands(editor_flowforge "find_package(lux-engine-editor-flow-ui REQUIRED COMPONENTS flow_ui)")
+
+target_compile_definitions(editor_flowforge PUBLIC LUX_EDITOR_FLOWFORGE_DLL_DISABLE)

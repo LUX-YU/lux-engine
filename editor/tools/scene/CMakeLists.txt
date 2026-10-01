@@ -4,7 +4,7 @@ generate_visibility_header(
     DISABLE_DLL_MACRO_NAME LUX_EDITOR_SCENE_DLL_DISABLE
     GENERATE_FILE_PATH lux/engine/editor/scene/visibility.h
 )
-add_component(COMPONENT_NAME editor_scene NAMESPACE lux::engine::editor
+add_component(COMPONENT_NAME editor_scene STATIC NAMESPACE lux::engine::editor
     OUTPUT_NAME lux_engine_editor_scene
     SOURCE_FILES src/SceneSource.cpp src/SceneAssets.cpp src/SceneEditor.cpp src/SceneContent.cpp src/SceneObjectEdits.cpp src/ModelCreation.cpp src/SceneOpening.cpp src/ScenePlayback.cpp
 )
@@ -101,3 +101,5 @@ endif()
 if(LUX_EDITOR_TEST_DESKTOP_GPU)
     target_sources(editor_scene PRIVATE test/SceneEditorTestAccess.cpp)
 endif()
+
+target_compile_definitions(editor_scene PUBLIC LUX_EDITOR_SCENE_DLL_DISABLE)

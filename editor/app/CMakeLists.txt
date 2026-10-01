@@ -1,7 +1,7 @@
 find_package(lux-cxx REQUIRED COMPONENTS arguments)
 generate_visibility_header(ENABLE_MACRO_NAME LUX_EDITOR_APP_LIBRARY PUBLIC_MACRO_NAME LUX_EDITOR_APP_PUBLIC
     DISABLE_DLL_MACRO_NAME LUX_EDITOR_APP_DLL_DISABLE GENERATE_FILE_PATH lux/engine/editor/app/visibility.h)
-add_component(COMPONENT_NAME editor_app NAMESPACE lux::engine::editor OUTPUT_NAME lux_engine_editor_app
+add_component(COMPONENT_NAME editor_app STATIC NAMESPACE lux::engine::editor OUTPUT_NAME lux_engine_editor_app
     SOURCE_FILES src/Editor.cpp src/EditorStartup.cpp src/EditorLoop.cpp src/EditorPlatform.cpp src/EditorMenu.cpp src/EditorWorkspace.cpp src/EditorWorkspaceStorage.cpp)
 component_include_directories(editor_app BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR}
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude ${PROJECT_SOURCE_DIR}/editor/assets/sinclude ${PROJECT_SOURCE_DIR}/editor/storage/sinclude ${PROJECT_SOURCE_DIR}/editor/editing/sinclude ${PROJECT_SOURCE_DIR}/editor/context/sinclude INSTALL_TIME include)
@@ -15,6 +15,10 @@ component_add_transitive_commands(editor_app
     "find_package(lux-engine-editor-context REQUIRED COMPONENTS editor_context)"
     "find_package(lux-engine-editor-assets REQUIRED COMPONENTS editor_assets)"
     "find_package(lux-engine-editor-ui REQUIRED COMPONENTS editor_ui)")
+component_add_transitive_commands(editor_app
+    "find_package(lux-engine-function REQUIRED COMPONENTS input)"
+    "find_package(lux-engine-platform REQUIRED COMPONENTS window)"
+    "find_package(lux-engine-editor-metadata REQUIRED COMPONENTS editor_metadata)")
 lux_engine_install_components(PROJECT_NAME lux-engine-editor-app VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS editor_app)
 add_executable(lux_editor main.cpp product/ProductAssembly.cpp product/ProductCommands.cpp)
@@ -48,7 +52,7 @@ if(LUX_EDITOR_TEST_DESKTOP_GPU)
 endif()
 
 if(LUX_EDITOR_TEST_DESKTOP_GPU AND LUX_EDITOR_BUILD_TOOLCHAIN_TESTS)
-    find_program(EDITOR_TEST_LINKER NAMES lld-link REQUIRED)
+    lux_editor_find_linker(EDITOR_TEST_LINKER)
     foreach(kind material flow)
         if(kind STREQUAL "material")
             set(package material)
@@ -165,3 +169,5 @@ foreach(test IN LISTS editor_app_tests)
     endif()
     set_tests_properties(${test} PROPERTIES LABELS "${labels}")
 endforeach()
+
+target_compile_definitions(editor_app PUBLIC LUX_EDITOR_APP_DLL_DISABLE)

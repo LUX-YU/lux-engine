@@ -169,17 +169,20 @@ namespace lux::editor::extensions
             return cxx::unexpected(ready.error());
         if (impl_->pending.empty())
             return object::SignalDelivery{};
-        const auto command_ready = impl_->commands.canPublish();
-        if (!command_ready)
-            return cxx::unexpected(ContributionFailure{
-                command_ready.error().code == commands::ECommandError::BUSY ? EContributionError::BUSY
-                                                                            : EContributionError::CAPACITY,
-                "commands",
-                static_cast<std::uint64_t>(command_ready.error().code)
-            });
         if (impl_->revision == UINT64_MAX)
             return cxx::unexpected(ContributionFailure{EContributionError::CAPACITY, "revision"});
         Impl::Scope scope{impl_->active};
+        // Acquire the participant's one-use publication permission before any foreign callback. Its
+        // scope is nested inside ours, so abandoned command owners also clean up under both guards.
+        auto publication = impl_->commands.preparePublication(impl_->pending.front().commands());
+        if (!publication)
+            return cxx::unexpected(ContributionFailure{
+                publication.error().code == commands::ECommandError::WRONG_THREAD ? EContributionError::WRONG_THREAD
+                : publication.error().code == commands::ECommandError::BUSY       ? EContributionError::BUSY
+                                                                                  : EContributionError::CAPACITY,
+                "commands",
+                static_cast<std::uint64_t>(publication.error().code)
+            });
         {
             auto candidate = std::move(impl_->pending.front());
             impl_->pending.pop_front();
@@ -223,9 +226,7 @@ namespace lux::editor::extensions
                     });
             }
             // Prepared, non-allocating swaps. Old callbacks cannot run between the two publications.
-            auto previous_commands = impl_->commands.publish(candidate.commands());
-            if (!previous_commands)
-                std::terminate();
+            auto previous_commands = publication->commit();
             auto previous = std::exchange(impl_->current, std::move(candidate));
             ++impl_->revision;
             // Cleanup under scope; destructors can enqueue, but cannot recursively publish.
@@ -242,6 +243,14 @@ namespace lux::editor::extensions
         if (!impl_->current.valid())
             return cxx::unexpected(ContributionFailure{EContributionError::INVALID_ARGUMENT, "contributions.empty"});
         Impl::Scope scope{impl_->active};
+        auto commands = impl_->commands.readBatch();
+        if (!commands)
+            return cxx::unexpected(ContributionFailure{
+                commands.error().code == commands::ECommandError::WRONG_THREAD ? EContributionError::WRONG_THREAD
+                                                                               : EContributionError::BUSY,
+                "commands",
+                static_cast<std::uint64_t>(commands.error().code)
+            });
         auto pinned = impl_->current;
         return callback(pinned);
     }

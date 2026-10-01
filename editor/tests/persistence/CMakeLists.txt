@@ -26,3 +26,7 @@ foreach(model scene material flow)
         set_tests_properties(editor.interaction_reclaim.${model}.${scenario} PROPERTIES LABELS "editor;native;P08;R1")
     endforeach()
 endforeach()
+
+foreach(scenario duplicate invalid busy success completion)
+    add_test(NAME editor.persistence.r11-input-${scenario} COMMAND editor_persistence_models_test "${CMAKE_CURRENT_BINARY_DIR}/files" r11-input-${scenario})
+endforeach()

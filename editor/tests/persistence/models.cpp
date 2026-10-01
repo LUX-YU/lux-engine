@@ -358,6 +358,180 @@ namespace
             assert(writes.complete(work->ticket, disk.publish(*work)));
         service.adoptCompletions();
     }
+
+    class OwnedCleanupSource final : public ISaveSource
+    {
+    public:
+        OwnedCleanupSource(std::unique_ptr<ISaveSource> source, std::function<void()> cleanup)
+            : source_(std::move(source)), cleanup_(std::move(cleanup))
+        {}
+        ~OwnedCleanupSource() override
+        {
+            cleanup_();
+        }
+        PersistenceResult<SaveSourceInfo> describe() const override
+        {
+            return source_->describe();
+        }
+        PersistenceResult<FrozenSave> captureForSave(
+            const SaveSourceInfo& info,
+            const SaveRequest& request,
+            std::size_t allowance
+        ) override
+        {
+            return source_->captureForSave(info, request, allowance);
+        }
+        EAdoption accept(SaveReceipt&& receipt) noexcept override
+        {
+            return source_->accept(std::move(receipt));
+        }
+
+    private:
+        std::unique_ptr<ISaveSource> source_;
+        std::function<void()> cleanup_;
+    };
+    void r11InputCleanup(Fixture& f, std::string_view mode)
+    {
+        f.edit(1);
+        auto& model = *f.material_session;
+        const auto before = model.describe();
+        const auto bytes = take(take(model.read()).encode());
+        const auto history = take(model.historyView()).snapshot;
+        auto runtime = take(process::ExecutionRuntime::create(
+            {.cpu_concurrency = 1,
+             .cpu_queue_capacity = 16,
+             .timer = {16},
+             .blocking = process::BlockingSchedulerConfig{1, 16}}
+        ));
+        EncodingProbe probe;
+        HookSource registered(*f.material_source);
+        f.registrations.clear();
+        std::optional<SaveSourceRegistration> registration{take(f.saves.registerSource(registered))};
+        SaveExecution execution{runtime, f.saves, f.writes, f.disk};
+        std::optional<SaveId> accepted;
+        if (mode == "completion")
+        {
+            registered.frozen_hook = [&](FrozenSave& frozen) {
+                frozen.encoding = {
+                    contracts::CodeLease::builtin(),
+                    std::make_unique<ProbedEncoding>(std::move(frozen.encoding), probe)
+                };
+            };
+            accepted = take(f.saves.requestSave({f.material_id}));
+            assert(execution.submitReady());
+            (void)waitForEncoded(runtime);
+            assert(take(f.saves.status(*accepted)).stage == ESaveStage::ENCODING);
+        }
+        unsigned destroyed{}, released{}, collected{};
+        bool prepare_busy{}, request_busy{}, outer_preserved{};
+        std::optional<SaveId> incorrectly_admitted;
+        auto code = contracts::CodeLease::plugin(std::shared_ptr<const void>(new int{1}, [&](const void* p) {
+            assert(destroyed == 1);
+            ++released;
+            delete static_cast<const int*>(p);
+        }));
+        auto cleanup = [&] {
+            assert(released == 0);
+            ++destroyed;
+            if (accepted)
+                collected = static_cast<unsigned>(take(runtime.collectCompletions()));
+            const auto ready = f.saves.canPrepareSource();
+            prepare_busy = !ready && ready.error().code == EPersistenceError::BUSY;
+            auto request = f.saves.requestSave({f.material_id});
+            request_busy = !request && request.error().code == EPersistenceError::BUSY;
+            if (request)
+                incorrectly_admitted = *request;
+        };
+        auto source = std::make_unique<OwnedCleanupSource>(
+            std::make_unique<em::MaterialSaveSource>(
+                f.store.access<em::MaterialSession>(),
+                take(f.store.key<em::MaterialSession>(f.material_id)),
+                take(f.disk.resolve("material.luxmaterial")),
+                sessions::BindingRevision{1}
+            ),
+            cleanup
+        );
+        if (mode == "busy")
+        {
+            registered.describe_hook = [&] {
+                const auto result = f.saves.prepareSource(f.material_id, std::move(source), std::move(code));
+                assert(!result && result.error().code == EPersistenceError::BUSY);
+                const auto ready = f.saves.canPrepareSource();
+                outer_preserved = !ready && ready.error().code == EPersistenceError::BUSY;
+            };
+            assert(!f.saves.registerSource(registered));
+        }
+        else if (mode == "success")
+        {
+            registration.reset();
+            {
+                auto prepared = take(f.saves.prepareSource(f.material_id, std::move(source), std::move(code)));
+                assert(destroyed == 0 && released == 0);
+                assert(f.saves.canPublish(prepared));
+                auto published = f.saves.publish(std::move(prepared));
+                assert(destroyed == 0 && released == 0);
+                const auto saved = take(f.saves.requestSave({f.material_id}));
+                f.encodeAll();
+                f.publishAll();
+                assert(take(f.saves.status(saved)).outcome->adoption == EAdoption::APPLIED);
+                assert(f.saves.acknowledge(saved) && !model.describe().dirty);
+                // Successful handoff ends the prepare dispatch; ordinary owner destruction isn't a reject callback.
+            }
+            assert(destroyed == 1 && released == 1 && f.saves.canPrepareSource());
+            std::cout << "R11-02 success transfers the last code/source unit, destructor precedes code release PASS\n";
+            return;
+        }
+        else
+        {
+            const bool invalid = mode == "invalid";
+            const auto result = f.saves.prepareSource(
+                invalid ? sessions::SessionId{} : f.material_id,
+                std::move(source),
+                std::move(code)
+            );
+            assert(
+                !result &&
+                result.error().code == (invalid ? EPersistenceError::INVALID_ARGUMENT : EPersistenceError::BUSY)
+            );
+        }
+        const auto after = model.describe();
+        const auto h = take(model.historyView()).snapshot;
+        const bool unchanged =
+            bytes == take(take(model.read()).encode()) && before.id == after.id && before.kind == after.kind &&
+            before.binding == after.binding && before.current == after.current && before.observed == after.observed &&
+            before.dirty == after.dirty && before.admission == after.admission && h.history == history.history &&
+            h.current == history.current && h.revision == history.revision &&
+            h.event_sequence == history.event_sequence && h.entry_count == history.entry_count &&
+            h.cursor == history.cursor && h.charged_retained_bytes == history.charged_retained_bytes &&
+            h.history_metadata_bytes == history.history_metadata_bytes && h.closed == history.closed;
+        const bool completion_received = !accepted || (collected == 1 && probe.calls == 1 &&
+                                                       take(f.saves.status(*accepted)).stage == ESaveStage::READY);
+        std::cout << "R11 input " << mode << " destroyed=" << destroyed << " code_released=" << released
+                  << " prepare_BUSY=" << prepare_busy << " request_BUSY=" << request_busy
+                  << " full_author_history_binding_unchanged=" << unchanged
+                  << " completion_received=" << completion_received << " outer_preserved=" << outer_preserved
+                  << std::endl;
+        // Keep the original runtime failure evidence observable before qualification assertions.
+        assert(destroyed == 1 && released == 1 && unchanged && completion_received);
+        assert(prepare_busy && request_busy && !incorrectly_admitted);
+        assert(mode != "busy" || outer_preserved);
+        assert(f.saves.canPrepareSource());
+        if (accepted)
+        {
+            publishReady(f.saves, f.writes, f.disk);
+            assert(take(f.saves.status(*accepted)).outcome->adoption == EAdoption::APPLIED);
+            assert(f.saves.acknowledge(*accepted));
+            assert(probe.calls == 1 && probe.destroyed == 1 && execution.tasks().join());
+        }
+        const auto resumed = take(f.saves.requestSave({f.material_id}));
+        f.encodeAll();
+        f.publishAll();
+        assert(take(f.saves.status(resumed)).outcome->adoption == EAdoption::APPLIED);
+        assert(f.saves.acknowledge(resumed));
+        assert(
+            !model.describe().dirty && model.undo() && model.describe().dirty && model.redo() && !model.describe().dirty
+        );
+    }
     void r2AcceptCase(Fixture& f, std::string_view mode)
     {
         f.registrations.clear();
@@ -1443,6 +1617,11 @@ int main(int argc, char** argv)
                       std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
     Fixture f(root);
     const std::string_view scenario = argc == 3 ? argv[2] : "models";
+    if (scenario.starts_with("r11-input-"))
+    {
+        r11InputCleanup(f, scenario.substr(10));
+        return 0;
+    }
     if (scenario.starts_with("r2-accept-"))
     {
         r2AcceptCase(f, scenario.substr(10));

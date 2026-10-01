@@ -178,8 +178,18 @@ namespace lux::editor::commands
         std::thread::id owner{std::this_thread::get_id()};
         bool calling{};
         bool dispatching{};
+        bool batch_active{};
         std::uint64_t revision{};
         CommandRegistrySnapshot current;
+        CommandResult<void> canBeginBatch() const noexcept
+        {
+            if (owner != std::this_thread::get_id())
+                return failure(ECommandError::WRONG_THREAD);
+            const bool is_active = calling || dispatching || batch_active;
+            if (is_active)
+                return failure(ECommandError::BUSY);
+            return {};
+        }
         CommandResult<void> canCall() const noexcept
         {
             if (owner != std::this_thread::get_id())
@@ -193,13 +203,51 @@ namespace lux::editor::commands
     CommandRegistry::~CommandRegistry() = default;
     CommandResult<void> CommandRegistry::canPublish() const noexcept
     {
-        if (impl_->owner != std::this_thread::get_id())
-            return failure(ECommandError::WRONG_THREAD);
-        if (impl_->calling || impl_->dispatching)
-            return failure(ECommandError::BUSY);
+        if (const auto ready = impl_->canBeginBatch(); !ready)
+            return cxx::unexpected(ready.error());
         if (impl_->revision == UINT64_MAX)
             return failure(ECommandError::CAPACITY);
         return {};
+    }
+    CommandRegistry::Batch::Batch(CommandRegistry& owner, std::optional<CommandRegistrySnapshot> candidate) noexcept
+        : owner_(&owner), candidate_(std::move(candidate))
+    {
+        owner_->impl_->batch_active = true;
+    }
+    CommandRegistry::Batch::Batch(Batch&& other) noexcept
+        : owner_(std::exchange(other.owner_, nullptr)), candidate_(std::move(other.candidate_))
+    {}
+    CommandRegistry::Batch::~Batch()
+    {
+        // Abandoned candidate destructors run while the participating owner still rejects publication.
+        candidate_.reset();
+        if (owner_)
+            owner_->impl_->batch_active = false;
+    }
+    CommandRegistrySnapshot CommandRegistry::Batch::commit() noexcept
+    {
+        const bool is_invalid = !owner_ || !candidate_;
+        if (is_invalid)
+            std::terminate();
+        if (owner_->impl_->owner != std::this_thread::get_id())
+            std::terminate();
+        auto previous = std::exchange(owner_->impl_->current, std::move(*candidate_));
+        candidate_.reset();
+        ++owner_->impl_->revision;
+        return previous;
+    }
+    CommandResult<CommandRegistry::Batch> CommandRegistry::readBatch() noexcept
+    {
+        if (const auto ready = impl_->canBeginBatch(); !ready)
+            return cxx::unexpected(ready.error());
+        return Batch{*this, std::nullopt};
+    }
+    CommandResult<CommandRegistry::Batch>
+    CommandRegistry::preparePublication(CommandRegistrySnapshot candidate) noexcept
+    {
+        if (const auto ready = canPublish(); !ready)
+            return cxx::unexpected(ready.error());
+        return Batch{*this, std::move(candidate)};
     }
     CommandResult<CommandRegistrySnapshot> CommandRegistry::publish(CommandRegistrySnapshot candidate) noexcept
     {
@@ -218,7 +266,8 @@ namespace lux::editor::commands
         const auto ready = impl_->canCall();
         if (!ready)
             return ready;
-        if (impl_->dispatching)
+        const bool is_active = impl_->dispatching || impl_->batch_active;
+        if (is_active)
             return failure(ECommandError::BUSY);
         impl_->dispatching = true;
         return {};

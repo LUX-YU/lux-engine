@@ -26,3 +26,7 @@ endforeach()
 foreach(scenario r1-revoke r1-recursive r1-chain r1-chain-control r1-callbacks r1-reading r1-conflicts)
     add_test(NAME persistence_consumer.${scenario} COMMAND persistence_consumer "${CMAKE_CURRENT_BINARY_DIR}/files" ${scenario})
 endforeach()
+
+foreach(scenario duplicate invalid busy success completion)
+    add_test(NAME persistence_consumer.r11-input-${scenario} COMMAND persistence_consumer "${CMAKE_CURRENT_BINARY_DIR}/files" r11-input-${scenario})
+endforeach()

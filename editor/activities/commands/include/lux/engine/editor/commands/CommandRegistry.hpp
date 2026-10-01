@@ -70,6 +70,29 @@ namespace lux::editor::commands
     class CommandRegistry final
     {
     public:
+        // Owner-thread scope shared with a compound catalog publisher. Ordinary publication/dispatch
+        // is BUSY throughout callbacks, cleanup and notification; pinned query/execute remain available.
+        // The registry outlives the scope. Only preparePublication supplies a one-use commit permission.
+        class Batch final
+        {
+        public:
+            ~Batch();
+            Batch(Batch&&) noexcept;
+            Batch(const Batch&) = delete;
+            Batch& operator=(const Batch&) = delete;
+            Batch& operator=(Batch&&) = delete;
+            // Prepared non-allocating swap, with no callbacks. Returns old owners for guarded cleanup.
+            // Requires the original owner thread and an unconsumed publication permission.
+            [[nodiscard]] CommandRegistrySnapshot commit() noexcept;
+
+        private:
+            friend class CommandRegistry;
+            Batch(CommandRegistry&, std::optional<CommandRegistrySnapshot>) noexcept;
+            CommandRegistry* owner_;
+            std::optional<CommandRegistrySnapshot> candidate_;
+        };
+        [[nodiscard]] CommandResult<Batch> readBatch() noexcept;
+        [[nodiscard]] CommandResult<Batch> preparePublication(CommandRegistrySnapshot) noexcept;
         CommandRegistry();
         ~CommandRegistry();
         CommandRegistry(const CommandRegistry&) = delete;

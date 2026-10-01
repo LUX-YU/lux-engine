@@ -241,12 +241,14 @@ namespace lux::editor::persistence
             contracts::CodeLease code;
             std::unique_ptr<ISaveSource> source;
         };
-        Input owned{std::move(code), std::move(source)};
+        Input incoming{std::move(code), std::move(source)};
         if (!impl_->onOwner())
             return failed(EPersistenceError::WRONG_THREAD);
         if (impl_->dispatching)
             return failed(EPersistenceError::BUSY);
         const Impl::DispatchScope dispatch{impl_->dispatching};
+        // Every admitted early return destroys the source and its final code pin before dispatch exits.
+        Input owned{std::move(incoming)};
         if (!owned.source)
             return failed(EPersistenceError::INVALID_ARGUMENT);
         auto prepared = impl_->prepare(id, *owned.source, owned.code);

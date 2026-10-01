@@ -24,6 +24,65 @@ namespace
             }
         );
     }
+    void compoundScope()
+    {
+        static_assert(!std::is_copy_constructible_v<CommandRegistry::Batch>);
+        static_assert(!std::is_copy_assignable_v<CommandRegistry::Batch>);
+        static_assert(std::is_nothrow_move_constructible_v<CommandRegistry::Batch>);
+        static_assert(!std::is_move_assignable_v<CommandRegistry::Batch>);
+        int calls{};
+        CommandRegistry registry;
+        CommandDispatcher dispatcher{registry};
+        auto candidate = CommandRegistrySnapshot::create({entry(calls)});
+        assert(candidate && registry.publish(*candidate));
+        auto handle = candidate->find(CommandIdView{"test.command"});
+        assert(handle);
+        CommandInvocation input;
+        {
+            auto acquired = registry.readBatch();
+            assert(acquired);
+            auto scope = std::move(*acquired);
+            assert(!registry.readBatch() && !registry.preparePublication({}) && !registry.publish({}));
+            assert(registry.query(*handle, input.query()) && registry.execute(*handle, input));
+            assert(dispatcher.enqueue(*handle, input));
+            const auto blocked = dispatcher.drain();
+            assert(!blocked && blocked.error().code == ECommandError::BUSY && dispatcher.pending() == 1);
+        }
+        assert(registry.canPublish() && dispatcher.drain() && calls == 2);
+        unsigned cleaned{};
+        {
+            auto code = contracts::CodeLease::plugin(std::shared_ptr<const void>(new int{1}, [&](const void* p) {
+                ++cleaned;
+                auto publish = registry.publish({});
+                assert(!publish && publish.error().code == ECommandError::BUSY);
+                delete static_cast<const int*>(p);
+            }));
+            auto prepared = CommandRegistrySnapshot::create({std::make_shared<CommandEntry>(
+                std::move(code),
+                descriptor(),
+                [](const CommandQuery&) -> CommandResult<CommandState> { return CommandState{true}; },
+                [](const CommandInvocation&) -> CommandResult<DispatchReceipt> {
+                    return DispatchReceipt{ImmediateCompletion{}};
+                }
+            )});
+            assert(prepared);
+            auto batch = registry.preparePublication(std::move(*prepared));
+            assert(batch && cleaned == 0);
+        } // Abandoned candidate cleanup must stay protected, with no revision change.
+        assert(cleaned == 1 && registry.revision() == 1 && registry.canPublish());
+        {
+            auto batch = registry.preparePublication({});
+            assert(batch);
+            auto old = batch->commit();
+            assert(registry.revision() == 2 && old.entries().size() == 1 && !registry.publish({}));
+        }
+        assert(registry.canPublish());
+        std::thread foreign([&] {
+            const auto rejected = registry.readBatch();
+            assert(!rejected && rejected.error().code == ECommandError::WRONG_THREAD);
+        });
+        foreign.join();
+    }
     void pinnedAndCurrent()
     {
         int old_calls{}, new_calls{};
@@ -169,6 +228,7 @@ namespace
 }
 int main()
 {
+    compoundScope();
     pinnedAndCurrent();
     queryLifetime();
     repeatedSnapshotOwnership();

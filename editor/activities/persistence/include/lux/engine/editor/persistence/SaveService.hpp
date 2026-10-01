@@ -23,6 +23,8 @@ namespace lux::editor::persistence
         // Preflight before consuming a completed load. Does not reserve or invoke a source.
         [[nodiscard]] PersistenceResult<void> canPrepareSource() const noexcept;
         // No describe callback: a factory supplies the real reserved identity while its Session is hidden.
+        // Admitted rejection destroys the source under dispatch, before its final code pin. A pre-existing
+        // BUSY scope is never released here; accepted encoding completion remains receivable during cleanup.
         [[nodiscard]] PersistenceResult<PreparedSaveSourceRegistration> prepareSource(
             sessions::SessionId,
             std::unique_ptr<ISaveSource>,

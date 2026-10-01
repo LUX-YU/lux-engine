@@ -42,9 +42,25 @@ namespace lux::editor::contracts
         {
             CodeLease code;
             std::shared_ptr<T> value;
+
+            void operator()(T*) noexcept
+            {
+                value.reset();
+                // The receiving module owns this deleter/control block. Expired weak references
+                // must not retain the defining module after its last actual value has retired.
+                code = CodeLease::builtin();
+            }
         };
-        auto owner = std::make_shared<Owner>(std::move(code), std::move(value));
-        auto* pointer = owner->value.get();
-        return std::shared_ptr<T>(std::move(owner), pointer);
+        while (const auto* previous = std::get_deleter<Owner>(value))
+        {
+            if (!code.sameOwner(previous->code))
+                break;
+            // Keep the entry itself, never a chain of old snapshots' receiving-module wrappers.
+            // The input code pin protects destruction of a wrapper from a different module.
+            auto original = previous->value;
+            value = std::move(original);
+        }
+        auto* pointer = value.get();
+        return std::shared_ptr<T>(pointer, Owner{std::move(code), std::move(value)});
     }
 }

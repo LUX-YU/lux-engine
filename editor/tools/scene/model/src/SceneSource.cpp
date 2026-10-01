@@ -6,6 +6,7 @@
 #include <lux/engine/simulation/ecs/Parent.hpp>
 #include <algorithm>
 #include <unordered_set>
+#include <unordered_map>
 
 namespace lux::editor::scene
 {
@@ -149,14 +150,52 @@ namespace lux::editor::scene
 
         SceneEditResult<void> SceneSourceAccess::validate(const Data& source)
         {
-            for (const auto& object : source.objects)
+            const auto count = source.objects.size();
+            std::unordered_map<world::WorldObjectId, std::size_t, world::WorldObjectIdHash> index;
+            index.reserve(count);
+            for (std::size_t i{}; i != count; ++i)
+                index.emplace(source.objects[i].id, i);
+
+            // Resolve each persistent identity and Parent once. Unresolved references retain the
+            // existing leaf policy; materialization remains responsible for invalid encoded references.
+            std::vector<std::size_t> parents(count, count);
+            for (std::size_t i{}; i != count; ++i)
             {
-                const auto parent_of = [&](world::WorldObjectId id) {
-                    const auto* parent = source.registry.try_get<ecs::Parent>(source.identities.entity(id));
-                    return parent ? source.identities.object(parent->entity) : world::WorldObjectId{};
-                };
-                if (createsParentCycle(object.id, parent_of(object.id), source.objects.size(), parent_of))
-                    return rejected(ESceneEditError::HIERARCHY_CYCLE, object.id);
+                const auto entity = source.identities.entity(source.objects[i].id);
+                const auto* parent = source.registry.try_get<ecs::Parent>(entity);
+                if (!parent)
+                    continue;
+                const auto found = index.find(source.identities.object(parent->entity));
+                if (found != index.end())
+                    parents[i] = found->second;
+            }
+            enum class EVisit : std::uint8_t
+            {
+                UNSEEN,
+                ACTIVE,
+                COMPLETE
+            };
+            std::vector<EVisit> visited(count, EVisit::UNSEEN);
+            for (std::size_t start{}; start != count; ++start)
+            {
+                if (visited[start] != EVisit::UNSEEN)
+                    continue;
+                auto at = start;
+                while (at != count && visited[at] == EVisit::UNSEEN)
+                {
+                    visited[at] = EVisit::ACTIVE;
+                    at = parents[at];
+                }
+                if (at != count && visited[at] == EVisit::ACTIVE)
+                    return rejected(ESceneEditError::HIERARCHY_CYCLE, source.objects[start].id);
+                // Every active node belongs to this walk. Each edge is visited at most twice,
+                // with no recursion or allocation proportional to hierarchy depth.
+                at = start;
+                while (at != count && visited[at] == EVisit::ACTIVE)
+                {
+                    visited[at] = EVisit::COMPLETE;
+                    at = parents[at];
+                }
             }
             return {};
         }
@@ -362,19 +401,23 @@ namespace lux::editor::scene
         const bool is_same_source = target.session == stamp_.session && target.history == stamp_.state.history;
         return is_same_source && source_->data_->identities.entity(target.object) != ecs::NullEntity;
     }
-    SceneEditResult<std::vector<simulation::ecs::ComponentSchemaId>>
-    SceneReadView::components(SceneObjectRef target) const
+    SceneEditResult<std::vector<simulation::ecs::ComponentSchemaId>> SceneReadView::components(SceneObjectRef target
+    ) const
     {
         return gate_.withRead([&]() -> SceneEditResult<std::vector<simulation::ecs::ComponentSchemaId>> {
-            if (!contains(target)) return detail::rejected(ESceneEditError::STALE_OBJECT, target.object);
+            if (!contains(target))
+                return detail::rejected(ESceneEditError::STALE_OBJECT, target.object);
             std::vector<simulation::ecs::ComponentSchemaId> result;
             const auto& data = *source_->data_;
             const auto found = std::ranges::find(data.objects, target.object, &SceneObjectData::id);
-            if (found == data.objects.end()) return detail::rejected(ESceneEditError::STALE_OBJECT, target.object);
-            for (const auto& component : found->components) result.push_back(component.schema);
+            if (found == data.objects.end())
+                return detail::rejected(ESceneEditError::STALE_OBJECT, target.object);
+            for (const auto& component : found->components)
+                result.push_back(component.schema);
             const auto entity = data.identities.entity(target.object);
             for (const auto& schema : data.schemas.all())
-                if (schema.operations.has(data.registry, entity)) result.push_back(schema.id);
+                if (schema.operations.has(data.registry, entity))
+                    result.push_back(schema.id);
             return result;
         });
     }

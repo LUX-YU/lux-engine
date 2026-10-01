@@ -57,8 +57,13 @@ namespace lux::editor::widgets
         GraphCanvas& operator=(const GraphCanvas&) = delete;
         GraphCanvas(GraphCanvas&&) = delete;
         GraphCanvas& operator=(GraphCanvas&&) = delete;
-        // Owner calls only after the preceding gesture has ended. Node-editor retains pan/zoom locally.
-        void setGraph(std::vector<CanvasNode>, std::vector<CanvasLink>);
+        // Call at the owner's maintenance point. On backpressure neither input nor accepted display
+        // is consumed. The owner keeps its display stamp unchanged and retries after input settles.
+        [[nodiscard]] bool setGraph(std::vector<CanvasNode>&&, std::vector<CanvasLink>&&, bool input_idle);
+        [[nodiscard]] std::size_t retainedIds() const noexcept
+        {
+            return ids_.size();
+        }
         [[nodiscard]] std::span<const CanvasNode> nodes() const noexcept
         {
             return nodes_;
@@ -70,8 +75,11 @@ namespace lux::editor::widgets
         void finishEdit(bool cancel = false) noexcept override;
 
     private:
+        friend struct GraphCanvasTestAccess;
         void draw() noexcept override;
         void publish(CanvasEdit) noexcept;
+        [[nodiscard]] NodeCanvas makeCanvas();
+        std::string saved_view_; // Must outlive backend settings callbacks, including destruction.
         NodeCanvas canvas_;
         NodeCanvasIds ids_;
         std::vector<CanvasNode> nodes_;
@@ -79,7 +87,8 @@ namespace lux::editor::widgets
         std::vector<std::uint64_t> selection_;
         std::vector<ax::NodeEditor::NodeId> selected_;
         CanvasMove movement_;
-        bool moving_{};
+        lux::ui::Point draw_origin_;
+        bool moving_{}, drawing_{};
         object::SignalDelivery delivery_;
     };
 }

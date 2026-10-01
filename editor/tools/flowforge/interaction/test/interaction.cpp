@@ -209,9 +209,41 @@ namespace
         assert(gesture.synchronize() && gesture.selection().empty());
         assert(!gesture.begin("closed"));
     }
+    void selectionProvenance()
+    {
+        Fixture f;
+        const auto key = take(f.store.key<FlowSession>(f.id));
+        FlowInteraction interaction(f.store.access<FlowSession>(), key);
+        const auto node = f.node(flow::ENodeOperation::BRANCH).id;
+        assert(interaction.select({node}));
+        const Saved before(f);
+        for (int repeat{}; repeat != 1000; ++repeat)
+            assert(interaction.synchronize());
+        before.unchanged(f);
+        auto read = take(f.session->read());
+        assert(read.withRead([&]() -> FlowEditResult<void> {
+            const auto denied = interaction.synchronize();
+            assert(!denied && denied.error().session == sessions::ESessionError::BUSY);
+            assert(interaction.selection().size() == 1 && interaction.selection().front() == node);
+            return {};
+        }));
+        before.unchanged(f);
+        f.apply(FlowRemoveNodes{{node}, {}});
+        assert(interaction.synchronize() && interaction.selection().empty());
+        assert(f.session->undo());
+        assert(interaction.select({node}) && interaction.synchronize());
+        assert(f.session->redo());
+        assert(interaction.synchronize() && interaction.selection().empty());
+        assert(f.session->undo() && interaction.select({node}));
+        const auto current = f.session->describe().current;
+        auto close = take(f.store.prepareClose(current));
+        assert(f.store.close(close));
+        assert(interaction.synchronize() && interaction.selection().empty());
+    }
 }
 int main()
 {
     interaction();
+    selectionProvenance();
     std::puts("PASS P08 flowforge preview/cancel, one commit, persistent layout, conflict, gate, closed identity");
 }

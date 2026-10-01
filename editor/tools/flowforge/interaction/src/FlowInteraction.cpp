@@ -105,7 +105,7 @@ namespace lux::editor::flowforge
                 if (!(std::ranges::any_of(source.nodes, [&](const auto& node) { return node.id == id; })))
                     return lux::cxx::unexpected(sessions::ESessionError::INVALID_ARGUMENT);
             selection_ = std::move(nodes);
-            selection_history_ = info->current.state.history;
+            selection_source_ = info->current;
             return {};
         });
     }
@@ -120,7 +120,7 @@ namespace lux::editor::flowforge
             if (!cancelled)
                 return cancelled;
         }
-        if (!info || info->current.state.history != selection_history_)
+        if (!info || info->current.state.history != selection_source_.state.history)
         {
             selection_.clear();
             return {};
@@ -131,10 +131,21 @@ namespace lux::editor::flowforge
         auto read = owner->get().read();
         if (!read)
             return lux::cxx::unexpected(read.error());
+        const bool has_valid_selection = selection_.empty() || info->current == selection_source_;
+        if (has_valid_selection)
+        {
+            // The same immutable content still contains these IDs. Acquire the original gate even
+            // when no new frozen source is needed: a cached selection must not turn BUSY into success.
+            return read->withRead([&]() -> FlowEditResult<void> {
+                selection_source_ = info->current;
+                return {};
+            });
+        }
         return read->withRead([&](const lux::flowforge::FlowSource& source) -> FlowEditResult<void> {
             std::erase_if(selection_, [&](auto id) {
                 return !(std::ranges::any_of(source.nodes, [&](const auto& node) { return node.id == id; }));
             });
+            selection_source_ = info->current;
             return {};
         });
     }

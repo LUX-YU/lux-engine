@@ -22,7 +22,10 @@ namespace lux::editor::flowforge
         [[nodiscard]] FlowEditResult<FlowEditReceipt> commit();
         [[nodiscard]] FlowEditResult<void> cancel();
         [[nodiscard]] FlowEditResult<void> synchronize();
-        [[nodiscard]] sessions::TSessionKey<FlowSession> session() const noexcept { return key_; }
+        [[nodiscard]] sessions::TSessionKey<FlowSession> session() const noexcept
+        {
+            return key_;
+        }
         [[nodiscard]] const FlowEditBatch* overlay() const noexcept
         {
             return gesture_ ? &*gesture_ : nullptr;
@@ -38,6 +41,7 @@ namespace lux::editor::flowforge
         sessions::TSessionKey<FlowSession> key_;
         std::optional<FlowEditBatch> gesture_;
         std::vector<lux::flowforge::NodeId> selection_;
-        editing::HistoryId selection_history_;
+        // Validation provenance for selection_, not another author current or an admission token.
+        sessions::ContentStamp selection_source_;
     };
 }

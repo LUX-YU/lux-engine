@@ -12,4 +12,3 @@ component_add_transitive_commands(session_factories
 lux_classify_target(TARGET session_factories LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 lux_engine_install_components(PROJECT_NAME lux-engine-editor-session-factories VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS session_factories)
-

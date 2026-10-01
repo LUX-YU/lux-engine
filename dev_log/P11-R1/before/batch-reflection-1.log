@@ -1,0 +1,2 @@
+R11 batch reflection direct_calls=1 blocked=0 consistent=0
+Assertion failed: attempt.calls && attempt.calls == attempt.blocked && facts_correct, file E:\SyncForder\CodeRepos\lux-engine\.internal\editor-redesign\P11-R1\before\source\contributions.cpp, line 283

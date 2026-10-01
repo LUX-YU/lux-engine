@@ -1,0 +1,72 @@
+[
+  {
+    "path": "cmake/installed-consumers/editor-p11/models/CMakeLists.txt",
+    "deleted": false,
+    "sha256": "03032a630c12362ece8a07fc6534a83b9501b5684146bb17a6aeed4aa59c0441"
+  },
+  {
+    "path": "cmake/installed-consumers/persistence/CMakeLists.txt",
+    "deleted": false,
+    "sha256": "00a37a13b59a842e2715baad79909163ecf4249f1679c4b6bf8ed5ffa73d2171"
+  },
+  {
+    "path": "editor/activities/commands/README.md",
+    "deleted": false,
+    "sha256": "a30616930df4fc47693f35b8bef9095a7d04d617549c6d03b7560cffb842ad4c"
+  },
+  {
+    "path": "editor/activities/commands/include/lux/engine/editor/commands/CommandRegistry.hpp",
+    "deleted": false,
+    "sha256": "40596843bf53ea06b6e897695ff642fcc5bd23244fbcdfad88fd644712e92358"
+  },
+  {
+    "path": "editor/activities/commands/src/CommandRegistry.cpp",
+    "deleted": false,
+    "sha256": "2c5c5b7df1f528d3391af44f86d557f686051199dc6f69f752468bfd2ce6312f"
+  },
+  {
+    "path": "editor/activities/commands/test/commands.cpp",
+    "deleted": false,
+    "sha256": "d753ed4444e9a773d0572c382e27671640ef62a7a75d05586f09c133a5646df2"
+  },
+  {
+    "path": "editor/activities/persistence/include/lux/engine/editor/persistence/SaveService.hpp",
+    "deleted": false,
+    "sha256": "ebcbbabee8a0326b58be8f8b7d24d7e8802591ebed163556e4934e50f01ed480"
+  },
+  {
+    "path": "editor/activities/persistence/src/SaveService.cpp",
+    "deleted": false,
+    "sha256": "1ac9261aae24f714f2e72b54c205f55e4a5118901fa65c5c85cc698dac42d6ca"
+  },
+  {
+    "path": "editor/application/extensions/CMakeLists.txt",
+    "deleted": false,
+    "sha256": "2cde9d4eacfff381e3c5ce177071bfeda9270bc7d2abb95fa5b60c2c6b345651"
+  },
+  {
+    "path": "editor/application/extensions/README.md",
+    "deleted": false,
+    "sha256": "8a394392d443294bb86b06d814d6341b9ac6c4e7bd908c9ca02760ede070ad0a"
+  },
+  {
+    "path": "editor/application/extensions/src/Contributions.cpp",
+    "deleted": false,
+    "sha256": "4de7c8c9a09487739cafe13cbf6faec406a532bb98264bb76dfe8c301220583e"
+  },
+  {
+    "path": "editor/application/extensions/test/contributions.cpp",
+    "deleted": false,
+    "sha256": "4e7e19544edd70e39c9a860f3704ca738a3fa6862b9b98fd724a9f1fedf32e86"
+  },
+  {
+    "path": "editor/tests/persistence/CMakeLists.txt",
+    "deleted": false,
+    "sha256": "e40b3bd4a0e3767543147dbb7645b490e26517c67af2538cd2ba3833288aa1b0"
+  },
+  {
+    "path": "editor/tests/persistence/models.cpp",
+    "deleted": false,
+    "sha256": "0dd6798d6913b08be880f051eff06d5d248cb5edaad9fbea78bb75fb19f0247c"
+  }
+]

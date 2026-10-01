@@ -1,0 +1,69 @@
+
+Microsoft (R) Windows Debugger Version 10.0.17763.132 AMD64
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+CommandLine: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dev/bin/editor_contributions_test.exe reflection
+Symbol search path is: srv*
+Executable search path is: 
+ModLoad: 00007ff7`1d940000 00007ff7`1d9e0000   editor_contributions_test.exe
+ModLoad: 00007ffa`edc80000 00007ffa`edee7000   ntdll.dll
+ModLoad: 00007ffa`ecb10000 00007ffa`ecbdb000   C:\WINDOWS\System32\KERNEL32.DLL
+ModLoad: 00007ffa`eb590000 00007ffa`eb992000   C:\WINDOWS\System32\KERNELBASE.dll
+ModLoad: 00007ffa`e6f50000 00007ffa`e6fef000   C:\WINDOWS\SYSTEM32\apphelp.dll
+ModLoad: 00007ffa`eaff0000 00007ffa`eb13c000   C:\WINDOWS\System32\ucrtbase.dll
+ModLoad: 00007ffa`994a0000 00007ffa`99533000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p11-dev\bin\ui.dll
+ModLoad: 00007ffa`b3430000 00007ffa`b3449000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p11-dev\bin\editor_configuration.dll
+ModLoad: 00007ffa`b3cf0000 00007ffa`b3d12000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p11-dev\bin\lux_engine_edit_sessions.dll
+ModLoad: 00007ffa`b1270000 00007ffa`b1290000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p11-dev\bin\lux_engine_core_object.dll
+ModLoad: 00007ffa`8ccc0000 00007ffa`8cd33000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p11-dev\bin\lux_engine_core_meta.dll
+ModLoad: 00007ffa`c3180000 00007ffa`c321d000   C:\WINDOWS\SYSTEM32\MSVCP140.dll
+ModLoad: 00007ffa`65970000 00007ffa`65afa000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p11-dev\bin\lux_engine_asset.dll
+ModLoad: 00007ffa`c2df0000 00007ffa`c2e1c000   C:\WINDOWS\SYSTEM32\VCRUNTIME140.dll
+ModLoad: 00007ffa`c71c0000 00007ffa`c71cc000   C:\WINDOWS\SYSTEM32\VCRUNTIME140_1.dll
+ModLoad: 00007ffa`af790000 00007ffa`af7c3000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p11-dev\bin\window.dll
+ModLoad: 00007ffa`65800000 00007ffa`65967000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p11-dev\bin\imgui_core.dll
+ModLoad: 00007ffa`aedf0000 00007ffa`aee17000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p11-dev\bin\description.dll
+ModLoad: 00007ffa`ecc70000 00007ffa`ece3f000   C:\WINDOWS\System32\USER32.dll
+ModLoad: 00007ffa`ae7a0000 00007ffa`ae7b6000   C:\WINDOWS\SYSTEM32\MSVCP140_ATOMIC_WAIT.dll
+ModLoad: 00007ffa`eb9a0000 00007ffa`eba5c000   C:\WINDOWS\System32\ADVAPI32.dll
+ModLoad: 00007ffa`eb410000 00007ffa`eb437000   C:\WINDOWS\System32\win32u.dll
+ModLoad: 00007ffa`ece60000 00007ffa`ed5f8000   C:\WINDOWS\System32\SHELL32.dll
+ModLoad: 00007ffa`eaf40000 00007ffa`eafe3000   C:\WINDOWS\System32\msvcp_win.dll
+ModLoad: 00007ffa`ec0e0000 00007ffa`ec10b000   C:\WINDOWS\System32\GDI32.dll
+ModLoad: 00007ffa`eb150000 00007ffa`eb279000   C:\WINDOWS\System32\gdi32full.dll
+ModLoad: 00007ffa`edb00000 00007ffa`edb31000   C:\WINDOWS\System32\IMM32.dll
+ModLoad: 00007ffa`ae210000 00007ffa`ae251000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p11-dev\bin\glfw3.dll
+ModLoad: 00007ffa`c64f0000 00007ffa`c64fa000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p11-dev\bin\nfd.dll
+ModLoad: 00007ffa`eda50000 00007ffa`edaf9000   C:\WINDOWS\System32\msvcrt.dll
+ModLoad: 00007ffa`d0250000 00007ffa`d0305000   C:\WINDOWS\WinSxS\amd64_microsoft.windows.common-controls_6595b64144ccf1df_5.82.26100.8328_none_87eede957a2ccddd\COMCTL32.dll
+ModLoad: 00007ffa`ebf30000 00007ffa`ec0ca000   C:\WINDOWS\System32\ole32.dll
+ModLoad: 00007ffa`ebaf0000 00007ffa`ebe75000   C:\WINDOWS\System32\combase.dll
+ModLoad: 00007ffa`ec130000 00007ffa`ec248000   C:\WINDOWS\System32\RPCRT4.dll
+ModLoad: 00007ffa`ebe80000 00007ffa`ebf29000   C:\WINDOWS\System32\sechost.dll
+(7a50.1d7c): Break instruction exception - code 80000003 (first chance)
+ntdll!LdrpDoDebuggerBreak+0x35:
+00007ffa`edda2239 cc              int     3
+0:000> cdb: Reading initial command 'g; k; q'
+(7a50.1d7c): Access violation - code c0000005 (first chance)
+First chance exceptions are reported before any exception handling.
+This exception may be expected and handled.
+*** WARNING: Unable to verify checksum for editor_contributions_test.exe
+Child-SP          RetAddr           Call Site
+(Inline Function) --------`-------- editor_contributions_test!std::vector<std::unique_ptr<lux::meta::RefClass,std::default_delete<lux::meta::RefClass> >,std::allocator<std::unique_ptr<lux::meta::RefClass,std::default_delete<lux::meta::RefClass> > > >::size
+000000f1`57d0f800 00007ff7`1d968d7e editor_contributions_test!`anonymous namespace'::r11Batch+0xd2a
+000000f1`57d0fe80 00007ff7`1d9ae460 editor_contributions_test!main+0x2e
+(Inline Function) --------`-------- editor_contributions_test!invoke_main+0x22
+000000f1`57d0fec0 00007ffa`ecb3cd87 editor_contributions_test!__scrt_common_main_seh+0x10c
+000000f1`57d0ff00 00007ffa`edd2caec KERNEL32!BaseThreadInitThunk+0x17
+000000f1`57d0ff30 00000000`00000000 ntdll!RtlUserThreadStart+0x2c
+quit:
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\atlmfc.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\concurrency.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\cpp_rest.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\stl.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Data.Json.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Geolocation.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Sensors.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Media.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\windows.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\winrt.natvis'

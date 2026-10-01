@@ -1,0 +1,19 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-1afb8f3f6e58-sdk/p11-models
+    Start 1: installed.p11.models
+1/7 Test #1: installed.p11.models .....................   Passed    0.56 sec
+    Start 2: installed.p11.contributions
+2/7 Test #2: installed.p11.contributions ..............   Passed    0.04 sec
+    Start 3: installed.p11.commands
+3/7 Test #3: installed.p11.commands ...................   Passed    0.03 sec
+    Start 4: installed.p11.contributions.factory
+4/7 Test #4: installed.p11.contributions.factory ......   Passed    0.02 sec
+    Start 5: installed.p11.contributions.reflection
+5/7 Test #5: installed.p11.contributions.reflection ...   Passed    0.02 sec
+    Start 6: installed.p11.contributions.cleanup
+6/7 Test #6: installed.p11.contributions.cleanup ......   Passed    0.01 sec
+    Start 7: installed.p11.contributions.notify
+7/7 Test #7: installed.p11.contributions.notify .......   Passed    0.01 sec
+
+100% tests passed, 0 tests failed out of 7
+
+Total Test time (real) =   0.69 sec

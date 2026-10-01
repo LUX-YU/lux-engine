@@ -1,0 +1,104 @@
+[
+  {
+    "name": "relocated-positive",
+    "argv": [
+      "C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+      "E:\\SyncForder\\CodeRepos\\build\\P11 R1 归档迁移 1afb8f3f6e58\\verify.py",
+      "--source",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-p11",
+      "--archive",
+      "E:\\SyncForder\\CodeRepos\\build\\P11 R1 归档迁移 1afb8f3f6e58"
+    ],
+    "started": "2026-10-01T21:39:02.328082+00:00",
+    "ended": "2026-10-01T21:39:13.143877+00:00",
+    "expected": 0,
+    "exit_code": 0,
+    "log": "relocated-positive.log",
+    "sha256": "a8ff3c1eb68bc89dffff46aa522177023e1191f48fa8e031d5e0f3a50a588aff"
+  },
+  {
+    "name": "missing-real-evidence",
+    "argv": [
+      "C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+      "E:\\SyncForder\\CodeRepos\\build\\P11 R1 归档迁移 1afb8f3f6e58\\verify.py",
+      "--source",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-p11",
+      "--archive",
+      "E:\\SyncForder\\CodeRepos\\build\\P11 R1 归档迁移 1afb8f3f6e58"
+    ],
+    "started": "2026-10-01T21:39:13.149164+00:00",
+    "ended": "2026-10-01T21:39:13.412196+00:00",
+    "expected": 1,
+    "exit_code": 1,
+    "log": "missing-real-evidence.log",
+    "sha256": "547a45b345e22789cf5030d1ff5697b993a44d24d3699e10d702643178024f05"
+  },
+  {
+    "name": "tampered-real-evidence",
+    "argv": [
+      "C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+      "E:\\SyncForder\\CodeRepos\\build\\P11 R1 归档迁移 1afb8f3f6e58\\verify.py",
+      "--source",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-p11",
+      "--archive",
+      "E:\\SyncForder\\CodeRepos\\build\\P11 R1 归档迁移 1afb8f3f6e58"
+    ],
+    "started": "2026-10-01T21:39:13.417503+00:00",
+    "ended": "2026-10-01T21:39:13.685322+00:00",
+    "expected": 1,
+    "exit_code": 1,
+    "log": "tampered-real-evidence.log",
+    "sha256": "255847321446e1af81246839b54cbc1f282d605f543174d3bebd995fd9c5ec92"
+  },
+  {
+    "name": "false-source-sha",
+    "argv": [
+      "C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+      "E:\\SyncForder\\CodeRepos\\build\\P11 R1 归档迁移 1afb8f3f6e58\\verify.py",
+      "--source",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-p11",
+      "--archive",
+      "E:\\SyncForder\\CodeRepos\\build\\P11 R1 归档迁移 1afb8f3f6e58"
+    ],
+    "started": "2026-10-01T21:39:13.694685+00:00",
+    "ended": "2026-10-01T21:39:14.010139+00:00",
+    "expected": 1,
+    "exit_code": 1,
+    "log": "false-source-sha.log",
+    "sha256": "4357254368f875a57f618692fe93461e2a1defdf79e522b934404afe71b945ce"
+  },
+  {
+    "name": "restored-relocated-positive",
+    "argv": [
+      "C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+      "E:\\SyncForder\\CodeRepos\\build\\P11 R1 归档迁移 1afb8f3f6e58\\verify.py",
+      "--source",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-p11",
+      "--archive",
+      "E:\\SyncForder\\CodeRepos\\build\\P11 R1 归档迁移 1afb8f3f6e58"
+    ],
+    "started": "2026-10-01T21:39:14.014148+00:00",
+    "ended": "2026-10-01T21:39:24.498273+00:00",
+    "expected": 0,
+    "exit_code": 0,
+    "log": "restored-relocated-positive.log",
+    "sha256": "a8ff3c1eb68bc89dffff46aa522177023e1191f48fa8e031d5e0f3a50a588aff"
+  },
+  {
+    "name": "canonical-positive",
+    "argv": [
+      "C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-p11\\dev_log\\P11-R1\\verify.py",
+      "--source",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-p11",
+      "--archive",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-p11\\dev_log\\P11-R1"
+    ],
+    "started": "2026-10-01T21:39:24.499275+00:00",
+    "ended": "2026-10-01T21:39:35.035409+00:00",
+    "expected": 0,
+    "exit_code": 0,
+    "log": "canonical-positive.log",
+    "sha256": "a8ff3c1eb68bc89dffff46aa522177023e1191f48fa8e031d5e0f3a50a588aff"
+  }
+]

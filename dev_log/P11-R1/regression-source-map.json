@@ -1,0 +1,648 @@
+{
+  "unchanged": [
+    {
+      "path": "cmake/installed-consumers/common/ControlsTestAccess.hpp",
+      "blob": "07a3d8cf230e99e88bf616ec94af6004c1154be7"
+    },
+    {
+      "path": "cmake/installed-consumers/common/RenderOutputProbe.hpp",
+      "blob": "d12e17b9690071b59c74f2565de413a8408f25fb"
+    },
+    {
+      "path": "cmake/installed-consumers/common/RenderRegistration.hpp",
+      "blob": "5b77588928d73ed1aab244851ff6579f9b4ddbab"
+    },
+    {
+      "path": "cmake/installed-consumers/common/UiDrawPane.hpp",
+      "blob": "404fc2ae0e99a69212442f444005fb31937a9be3"
+    },
+    {
+      "path": "cmake/installed-consumers/common/UiTestContent.hpp",
+      "blob": "04136456c43c6e76772b48d33dec33e3017fefc3"
+    },
+    {
+      "path": "cmake/installed-consumers/desktop-views/CMakeLists.txt",
+      "blob": "8a9d3311c74212983d643f528d9473dec0087a26"
+    },
+    {
+      "path": "cmake/installed-consumers/desktop-views/Inspector.cpp",
+      "blob": "41ee53a5e1f31ac0d5c791942cedfb46804a8dad"
+    },
+    {
+      "path": "cmake/installed-consumers/editor-d2/CMakeLists.txt",
+      "blob": "9cb5056cb8cf9e319fdb83d69f6299976ce81201"
+    },
+    {
+      "path": "cmake/installed-consumers/editor-d2/ComponentFactoryPane.hpp",
+      "blob": "5a1172de4a1597511949a12d4544cb53dc1810be"
+    },
+    {
+      "path": "cmake/installed-consumers/editor-d2/Domain.cpp",
+      "blob": "1a6641b7074a63826d87a044ca8399dd4c1ddd25"
+    },
+    {
+      "path": "cmake/installed-consumers/editor-d2/EditorTestFactory.hpp",
+      "blob": "854461ca8e1d8413a6fa81a5d9e7f13dbbe48b86"
+    },
+    {
+      "path": "cmake/installed-consumers/editor-d2/FiniteCost.hpp",
+      "blob": "93e5fa7b3884b183e6d404d0dd2ad1d991fc1358"
+    },
+    {
+      "path": "cmake/installed-consumers/editor-d2/Gui.cpp",
+      "blob": "90c7d9d82704ff2b5202688c82caa51238291aac"
+    },
+    {
+      "path": "cmake/installed-consumers/editor-d2/GuiGesture.cpp",
+      "blob": "91195220f04e03e092e33e1defe357a8bb824751"
+    },
+    {
+      "path": "cmake/installed-consumers/editor-d2/SceneWorkflow.cpp",
+      "blob": "6e9b785fb3dc33d468365663e580751468893a41"
+    },
+    {
+      "path": "cmake/installed-consumers/editor-d2/TestAssembly.hpp",
+      "blob": "33bb189c62755517e8050ac6fcd16c9a0f0a3b8b"
+    },
+    {
+      "path": "cmake/installed-consumers/editor-d2/TestExit.hpp",
+      "blob": "bf41d028656d50ec7cf6314da6ee39b8123f640e"
+    },
+    {
+      "path": "cmake/installed-consumers/editor-d2/closure/CMakeLists.txt",
+      "blob": "f1005cb48099925c765ee381e9f4036384a908c0"
+    },
+    {
+      "path": "cmake/installed-consumers/editor-d2/include/consumer/Component.hpp",
+      "blob": "9c803d47a9e9cc51e85c0122b3c3ae6eb551e163"
+    },
+    {
+      "path": "cmake/installed-consumers/editor-d2/include/consumer/Domain.hpp",
+      "blob": "15ce249bd6575105c0527741f0e76c646444c732"
+    },
+    {
+      "path": "cmake/installed-consumers/editor-d2/include/consumer/Gui.hpp",
+      "blob": "fed9d2e37c30a900d6b9d62c40f223d597191587"
+    },
+    {
+      "path": "cmake/installed-consumers/editor-d2/main.cpp",
+      "blob": "afd74653870e2f7ecce3138e2f877be1f4f9a635"
+    },
+    {
+      "path": "cmake/installed-consumers/editor-d2/protocol/review_regressions.cpp",
+      "blob": "5f271113ab082535d10ae01b4ca3a63e9767d2e7"
+    },
+    {
+      "path": "cmake/installed-consumers/editor-p11/CMakeLists.txt",
+      "blob": "038236ebdd0133323b2363b960501f2fae1bda90"
+    },
+    {
+      "path": "cmake/installed-consumers/editor-p11/Extension.cpp",
+      "blob": "1576f81cb3ebfa12dd114546734e756e287116fa"
+    },
+    {
+      "path": "cmake/installed-consumers/editor-p11/Probe.hpp",
+      "blob": "5d7f20a2952993868cdfaa0e8fc705ed1369c405"
+    },
+    {
+      "path": "cmake/installed-consumers/editor-p11/Rejected.cpp",
+      "blob": "63441a000ffbe08b59af2b92d2fd75ed31aa857d"
+    },
+    {
+      "path": "cmake/installed-consumers/editor-p11/Runtime.cpp",
+      "blob": "c2319fbd15a11e9e064670da91343b1de8a05ded"
+    },
+    {
+      "path": "cmake/installed-consumers/editor-p11/main.cpp",
+      "blob": "c65eebaf8b437b90e93f89eaf387b21855adf10c"
+    },
+    {
+      "path": "cmake/installed-consumers/editor-p11/runtime/CMakeLists.txt",
+      "blob": "a4e9cc476ad9db1c236d3c9e8f9de0ea6d574400"
+    },
+    {
+      "path": "cmake/installed-consumers/editor-p11/runtime/main.cpp",
+      "blob": "0dba38a2dd9bd6641b34e6b8d94cbf20e5f15a1d"
+    },
+    {
+      "path": "cmake/installed-consumers/editor-sessions/CMakeLists.txt",
+      "blob": "38033f4f63842b003ae1c9b328876db1d046349e"
+    },
+    {
+      "path": "cmake/installed-consumers/flowforge-model/CMakeLists.txt",
+      "blob": "91e6ef7b544b46d8b3f657c4eef5966b42f1129b"
+    },
+    {
+      "path": "cmake/installed-consumers/flowforge-model/main.cpp",
+      "blob": "7166b770435678d33c34894b6d73f287b2d3f008"
+    },
+    {
+      "path": "cmake/installed-consumers/interaction-views/CMakeLists.txt",
+      "blob": "f0167aa85260c01e4ca3c4288aadac943dc5fe20"
+    },
+    {
+      "path": "cmake/installed-consumers/interaction-views/interactions.cpp",
+      "blob": "f8339f734125c504f5b4ff20bbebf0e26fc7e2de"
+    },
+    {
+      "path": "cmake/installed-consumers/layering/CMakeLists.txt",
+      "blob": "00fd2c616e1ce84b63b7f8365ccaa4d890028588"
+    },
+    {
+      "path": "cmake/installed-consumers/layering/layout.cpp",
+      "blob": "75e004933bf4022a6952dda508a56929e87a451a"
+    },
+    {
+      "path": "cmake/installed-consumers/layering/project.cpp",
+      "blob": "6c1c2938594b93cafea5552325ec08014108e174"
+    },
+    {
+      "path": "cmake/installed-consumers/material-model/CMakeLists.txt",
+      "blob": "d85fc89439021d5d3773d63ba278d67a2ac8afdc"
+    },
+    {
+      "path": "cmake/installed-consumers/material-model/main.cpp",
+      "blob": "b072047578d396576717f10821516ca52b7e1c80"
+    },
+    {
+      "path": "cmake/installed-consumers/object-core/CMakeLists.txt",
+      "blob": "c934ba074f3eff5f2133c7a7ecfaf53e56e94cd3"
+    },
+    {
+      "path": "cmake/installed-consumers/object-core/main.cpp",
+      "blob": "77b041f26a26074508a6849c467fc0c0d89f72b5"
+    },
+    {
+      "path": "cmake/installed-consumers/projection-compilation/CMakeLists.txt",
+      "blob": "81c22d4924596ac03100068ec89a4245cc642598"
+    },
+    {
+      "path": "cmake/installed-consumers/projection-compilation/ownership_negative.cpp",
+      "blob": "265149309ce3a665b6e17e123c0be7c42178d418"
+    },
+    {
+      "path": "cmake/installed-consumers/quality/CMakeLists.txt",
+      "blob": "ee5e9b6494f8c83d03de0826e89d9a0139782f25"
+    },
+    {
+      "path": "cmake/installed-consumers/scene-execution/CMakeLists.txt",
+      "blob": "5d9dad17cd2088678fb3741314fc300756ae67f5"
+    },
+    {
+      "path": "cmake/installed-consumers/scene-model/CMakeLists.txt",
+      "blob": "6e238ad3c6fc28de8fb5a0aa20b752ec8f2d9034"
+    },
+    {
+      "path": "cmake/installed-consumers/scene-model/main.cpp",
+      "blob": "60ab86739e0583ce6a6af43ed36645949135db39"
+    },
+    {
+      "path": "cmake/installed-consumers/scene-ui/CMakeLists.txt",
+      "blob": "a301a84f35b8da62525491326f53ae918d99cb2c"
+    },
+    {
+      "path": "cmake/installed-consumers/scene-ui/feature.cpp",
+      "blob": "f3a37e955038f87e6229dfd66df32b6ae675bbde"
+    },
+    {
+      "path": "cmake/installed-consumers/spatial/CMakeLists.txt",
+      "blob": "86436f8a1e6723db75fd82218f2b4ca9256687de"
+    },
+    {
+      "path": "cmake/installed-consumers/spatial/Probe.cpp",
+      "blob": "cd0d3a3222220ce53d211f6c8117c81e6bff6ed2"
+    },
+    {
+      "path": "cmake/installed-consumers/spatial/feature.cpp",
+      "blob": "6a3141b0db4b1cc95c16865bbc9810b42fe6c0bf"
+    },
+    {
+      "path": "cmake/installed-consumers/spatial/include/probe/Probe.hpp",
+      "blob": "842dd83e782dfcc334a7ca6d39f8fd8bc97fcc58"
+    },
+    {
+      "path": "cmake/installed-consumers/spatial/include/probe/visibility.hpp",
+      "blob": "aec36851ca6b739bc47f8d1a489366ed537e05ac"
+    },
+    {
+      "path": "cmake/installed-consumers/spatial/query.cpp",
+      "blob": "567d8f83166563a536ced7e85669c64e3de386d7"
+    },
+    {
+      "path": "cmake/installed-consumers/workspace/CMakeLists.txt",
+      "blob": "dd374384cf0c8d13a5dac7de577f36a713333798"
+    },
+    {
+      "path": "dev_log/P07-R1/spec/LUX_ENGINE_P07_REVIEW_R1_2026-09-29/tests/owner_contract.cpp",
+      "blob": "6d00cb690a148c3d5b48b70979906a436bbbe693"
+    },
+    {
+      "path": "editor/activities/persistence/test/publication.cpp",
+      "blob": "956c177bc5e28e5218d3235896a6edba288d455f"
+    },
+    {
+      "path": "editor/activities/persistence/test/write_coordinator.cpp",
+      "blob": "cb6481db4c3ef94020653178518aff54dba03144"
+    },
+    {
+      "path": "editor/activities/project/test/plugin_publication.cpp",
+      "blob": "df687ad2b411f94d7fa4a5f7cb72339bd0a344d7"
+    },
+    {
+      "path": "editor/activities/project/test/project_creation.cpp",
+      "blob": "9c59a8388d6fe55e3fe85a595f5e936d6c50b5ce"
+    },
+    {
+      "path": "editor/activities/scene/test/editing.cpp",
+      "blob": "4185fecbc2afb595f52fc357b8efed852925fd9e"
+    },
+    {
+      "path": "editor/activities/scene/test/runs.cpp",
+      "blob": "cd5ca472bc68311ea801d2d8daadd6c2bc5a50fe"
+    },
+    {
+      "path": "editor/activities/tasks/test/monitor.cpp",
+      "blob": "d74bb1b6c0fde9a1b2ce2dd08ae0ce46d681b2c8"
+    },
+    {
+      "path": "editor/app/test/baseline_failures.cpp",
+      "blob": "c014d0d077ad08a10585f6704b0cd09896eb3b8e"
+    },
+    {
+      "path": "editor/app/test/context_lifecycle.cpp",
+      "blob": "157e7020327997db6e53b2dcb9614e273cbfaba9"
+    },
+    {
+      "path": "editor/assets/test/asset_save.cpp",
+      "blob": "152db12542f9b1b0f117d43a82d6f9c5754e4f0e"
+    },
+    {
+      "path": "editor/authoring/flow/test/flow_session.cpp",
+      "blob": "f2f804b50b12dd2cfaf7bebb3668bbc5e76475db"
+    },
+    {
+      "path": "editor/authoring/material/test/material_session.cpp",
+      "blob": "a63dd66202645422755fe24c5a62912fbbf6c7e0"
+    },
+    {
+      "path": "editor/authoring/scene/test/hierarchy_benchmark.cpp",
+      "blob": "df7f30e4b5075f7009b4e1e317655264495c3e07"
+    },
+    {
+      "path": "editor/authoring/scene/test/plugin_snapshot.cpp",
+      "blob": "7dce3338ff740c01808901881d57c09396eb5f12"
+    },
+    {
+      "path": "editor/authoring/scene/test/scene_session.cpp",
+      "blob": "16b97aa70ef4eb9bae128fa92489803ad7382312"
+    },
+    {
+      "path": "editor/editing/test/sessions/sessions.cpp",
+      "blob": "9387f79029ebdfd903111580931a05b7ec8151a0"
+    },
+    {
+      "path": "editor/metadata/test/configuration.cpp",
+      "blob": "3100a92eb48a6e06fdcd39fd59e3cc3f5347bf7b"
+    },
+    {
+      "path": "editor/metadata/test/plugin.cpp",
+      "blob": "de26e502e979214d23021487c3579d0a6e827bc1"
+    },
+    {
+      "path": "editor/tests/architecture/CMakeLists.txt",
+      "blob": "8172aa4a14b81f5e0c2144d1c837a1f8222bacb1"
+    },
+    {
+      "path": "editor/tests/architecture/flow_source_native.cpp",
+      "blob": "3767d6408e46f6c7ae0ef49c5be5c17c64c51bf5"
+    },
+    {
+      "path": "editor/tests/architecture/quality.cpp",
+      "blob": "016c5f9688b91b9ab7066f53b8b750d2de210403"
+    },
+    {
+      "path": "editor/tests/architecture/three_sessions.cpp",
+      "blob": "a594f2a15be85ad21b3148b1a40415582483e924"
+    },
+    {
+      "path": "editor/tests/integration/CMakeLists.txt",
+      "blob": "2225bf3a5eab157f4fa00f8c9195778e18b857e1"
+    },
+    {
+      "path": "editor/tests/integration/material_activity/CMakeLists.txt",
+      "blob": "13f0516dcbe3aa96986d12fe60bc29325655071d"
+    },
+    {
+      "path": "editor/tests/integration/material_activity/compilation.cpp",
+      "blob": "b25365200d0cab4d11a212b901e7631549d2bbdd"
+    },
+    {
+      "path": "editor/tests/integration/material_activity/ownership.cpp",
+      "blob": "51ab744ab169d19293e4eb74adcfb790a83b3ee7"
+    },
+    {
+      "path": "editor/tests/integration/projection/CMakeLists.txt",
+      "blob": "8c4561296c19297f5ad4e17fcc34a9dfd58b73cf"
+    },
+    {
+      "path": "editor/tests/integration/projection/projection.cpp",
+      "blob": "ecf80d188699ca4bd6f5feb2baec7d75f5ebe941"
+    },
+    {
+      "path": "editor/tests/integration/scene_views/AuxiliaryViews.hpp",
+      "blob": "a7adfd7c9ff6a53eb1b3c77f934e5d251428736c"
+    },
+    {
+      "path": "editor/tests/integration/scene_views/CMakeLists.txt",
+      "blob": "82fa983a8d2963d242b98c0563cae28acf47528b"
+    },
+    {
+      "path": "editor/tests/integration/scene_views/DraftSources.hpp",
+      "blob": "018f21a72122f7b7cf4a6d09344c1ee17b3d7894"
+    },
+    {
+      "path": "editor/tests/integration/scene_views/NativeDesktop.hpp",
+      "blob": "72bab99c722a9476787d9539b6816eac086870b9"
+    },
+    {
+      "path": "editor/tests/integration/scene_views/views.cpp",
+      "blob": "d80902da1601d508a4b3af4980c9bc2af2da3416"
+    },
+    {
+      "path": "editor/tests/integration/session_factories/CMakeLists.txt",
+      "blob": "538368ad7a42d19dab57d7c4fcb9664f47d4aa14"
+    },
+    {
+      "path": "editor/tests/integration/session_factories/installation.cpp",
+      "blob": "a574f7359cb804456e26e5416f6cae2dfab10f62"
+    },
+    {
+      "path": "editor/tests/integration/tasks/CMakeLists.txt",
+      "blob": "47b38c783efcf3bce75a7f3a919776a56cd03a51"
+    },
+    {
+      "path": "editor/tests/integration/tasks/monitor.cpp",
+      "blob": "4463ec4ab5132b95883b9ebe0a3b6d3dd829d5d0"
+    },
+    {
+      "path": "editor/tests/persistence/interaction_reclaim.cpp",
+      "blob": "92cdb4d3d33ccfc730922c3b2a407fd4533ac84f"
+    },
+    {
+      "path": "editor/tests/workspace/CMakeLists.txt",
+      "blob": "82e92c06765408adb9bdb6dfb096f6923e9770d4"
+    },
+    {
+      "path": "editor/tests/workspace/effects.cpp",
+      "blob": "fc234f5c8c26efb87c66bc285f79fba84614f794"
+    },
+    {
+      "path": "editor/tests/workspace/workspace.cpp",
+      "blob": "c75989115d33d78133e22d31b7fa7921f4ed5bc1"
+    },
+    {
+      "path": "editor/tools/flowforge/test/FlowForgeEditorTestAccess.cpp",
+      "blob": "983f6ece009353de6c39b80e7f2775effcb3ad87"
+    },
+    {
+      "path": "editor/tools/flowforge/test/FlowForgeEditorTestAccess.hpp",
+      "blob": "36a8121e53177aab62629fc27e11f1e970f200fa"
+    },
+    {
+      "path": "editor/tools/flowforge/test/flow_metadata.hpp",
+      "blob": "70374340ea2d04a816bbae65354c450dc1d06756"
+    },
+    {
+      "path": "editor/tools/flowforge/test/flow_protocol.cpp",
+      "blob": "4dae7e2492473c618a30ab5d116e076c22b5860b"
+    },
+    {
+      "path": "editor/tools/material/test/MaterialEditorTestAccess.cpp",
+      "blob": "aa0bcbb98d9d6a3e41c16a24b01ed4d16ac71103"
+    },
+    {
+      "path": "editor/tools/material/test/MaterialEditorTestAccess.hpp",
+      "blob": "b8682d9f5ec6ade8294e4ba83960475c9f5bfea4"
+    },
+    {
+      "path": "editor/tools/material/test/material_protocol.cpp",
+      "blob": "3849b7dfa87c3ecaa8c23bb21bafe93bcc090cb6"
+    },
+    {
+      "path": "editor/tools/scene/test/SceneEditorTestAccess.cpp",
+      "blob": "8842a838b7066486f7d267f7e227c3a0357380c4"
+    },
+    {
+      "path": "editor/tools/scene/test/SceneEditorTestAccess.hpp",
+      "blob": "ab4c070e73c0920c943020976f4719b8f82e2cd4"
+    },
+    {
+      "path": "editor/tools/scene/test/core_protocol.cpp",
+      "blob": "f0ac0b21804b155988fa5e97dd5a337b95cb6bc4"
+    },
+    {
+      "path": "editor/tools/scene/test/entity_checks.hpp",
+      "blob": "5445bd4691ad6cb00a80f997f397444bf116827d"
+    },
+    {
+      "path": "editor/tools/scene/test/fixture.cpp",
+      "blob": "42fea4cdba7c7466b3c88f62cada804dd90a3157"
+    },
+    {
+      "path": "editor/tools/scene/test/menu_checks.hpp",
+      "blob": "82a3603fe07490535121f81a42725d71ee65dc03"
+    },
+    {
+      "path": "editor/tools/scene/test/run_checks.hpp",
+      "blob": "6948308785bcbf41ce6437589a3d1b5fbd4fef63"
+    },
+    {
+      "path": "editor/tools/scene/test/run_system.hpp",
+      "blob": "eb6e7c8035202d6d5e79e7281c993412269284b9"
+    },
+    {
+      "path": "editor/tools/scene/test/scene_save_checks.hpp",
+      "blob": "bf99926d2b47d26ea224c977076ec0230844b113"
+    },
+    {
+      "path": "editor/tools/scene/test/scene_source_checks.hpp",
+      "blob": "6d8506412d07582e9487aa32f6c519bb6879bea0"
+    },
+    {
+      "path": "editor/tools/scene/test/scene_structure_checks.hpp",
+      "blob": "c049d8d97e3c6832c83577479039dc29375879fa"
+    },
+    {
+      "path": "editor/tools/scene/test/workspace_checks.hpp",
+      "blob": "fa452f9609dc59b52357dbbf5ac245c4bcc18c5f"
+    },
+    {
+      "path": "editor/tools/test/ToolTestAccess.hpp",
+      "blob": "f41eef9be47c36943a0dbb66e8f0ef4ab1a8e5c4"
+    },
+    {
+      "path": "editor/ui/test/scene_configuration.cpp",
+      "blob": "5ecb7ba2f08b9123c844b8047f34c8f92644ebfa"
+    },
+    {
+      "path": "editor/ui/test/unified_ui.cpp",
+      "blob": "8072f6db283fec5eb58f27efab489f0180526b67"
+    },
+    {
+      "path": "editor/workbench/desktop/test/host.cpp",
+      "blob": "1d39eba27974fac4cfb6859da6fa102c963373bc"
+    },
+    {
+      "path": "editor/workbench/desktop/test/lifecycle.cpp",
+      "blob": "a889c0830af1254ec41528ca1ebdf9e2e459b29f"
+    },
+    {
+      "path": "editor/workbench/flow/interaction/test/interaction.cpp",
+      "blob": "29d3d858f579dac335413708e7b5fb9d487f964d"
+    },
+    {
+      "path": "editor/workbench/material/interaction/test/interaction.cpp",
+      "blob": "77b2c43db990af6af60b0ac6fca001d243cc79d8"
+    },
+    {
+      "path": "editor/workbench/project/test/catalog.cpp",
+      "blob": "75de6af9bfb23afb776f332bc30ca8c37bc4628f"
+    },
+    {
+      "path": "editor/workbench/scene/interaction/test/interaction.cpp",
+      "blob": "b818a010f329b05bf4e2a4022e444cd99953cc5a"
+    },
+    {
+      "path": "editor/workbench/scene/interaction/test/run_selection.cpp",
+      "blob": "33b1cee6de49dac0694902c24a8d00e9fb2220e6"
+    },
+    {
+      "path": "editor/workbench/viewport/test/highlight.cpp",
+      "blob": "3a7c17492e32e5cde9d5f12941513f9a0b043973"
+    },
+    {
+      "path": "editor/workbench/widgets/test/churn.cpp",
+      "blob": "f2314cf1aa1a1524464135c606c355a352656d3e"
+    },
+    {
+      "path": "engine/context/test/headless.cpp",
+      "blob": "f48eae239501d83da09d015850a3dfe5efdc2c35"
+    },
+    {
+      "path": "engine/process/asset_loading/test/overlay.cpp",
+      "blob": "5a2b63fa23aea0435d2df66a82e9c396c2a63599"
+    },
+    {
+      "path": "engine/process/world_loading/test/partition_decoder.cpp",
+      "blob": "83549b3b3a5b1c8473862efd55318ece19a133c2"
+    },
+    {
+      "path": "engine/scene/builtin_systems/render/test/resources.cpp",
+      "blob": "5a1f554be7b4086f11ffd8496fa6e28a509b0b3c"
+    },
+    {
+      "path": "engine/scene/builtin_systems/render/test/runtime.cpp",
+      "blob": "b4b72e71db2123f379e5fa4ba6ff87bf2860ed7e"
+    },
+    {
+      "path": "engine/scene/builtin_systems/world_loading/test/world_loading.cpp",
+      "blob": "e2379c574575c59beb7331a1fc812bfd0c3675bb"
+    },
+    {
+      "path": "engine/scene/composition/test/driver.cpp",
+      "blob": "0442f1cd165fb3fbdc56a349177f7bb37c906d36"
+    },
+    {
+      "path": "engine/scene/composition/test/runtime.cpp",
+      "blob": "128c8cca1653888b438d24dd46d903be6caa4bac"
+    },
+    {
+      "path": "engine/scene/composition/test/transform.cpp",
+      "blob": "2501022ee4844b30516d16d67aae0280df388480"
+    },
+    {
+      "path": "modules/core/object/test/queue.cpp",
+      "blob": "36e41a4fc1e93e8e93bab01045479818c029c2fb"
+    },
+    {
+      "path": "modules/core/object/test/tree.cpp",
+      "blob": "6cbc197913ee8d81e39ee151de1a5376f34b88af"
+    },
+    {
+      "path": "modules/function/render/features/test/view_binding.cpp",
+      "blob": "129c557fba21fe84bee8aea4dc1bf6e9e9771ae8"
+    },
+    {
+      "path": "modules/function/render/runtime/test/resources.cpp",
+      "blob": "ca0ab58e24467cac10beca7669a036ade7289b5b"
+    },
+    {
+      "path": "modules/function/render/vulkan/test/CMakeLists.txt",
+      "blob": "7ddfa93a903a21767b55767581a3068a0c846de3"
+    },
+    {
+      "path": "modules/function/render/vulkan/test/source_association.cpp",
+      "blob": "0235e41e976ef1daf51108cb64b82b6b4f0e883d"
+    },
+    {
+      "path": "modules/function/ui/test/context.cpp",
+      "blob": "52a036ac05b714f620b539a8f182f25467d7f5ea"
+    },
+    {
+      "path": "modules/function/ui/test/elements.hpp",
+      "blob": "33edde851c030598bea15fc561fee34c2f721518"
+    },
+    {
+      "path": "modules/function/ui/test/input_checks.hpp",
+      "blob": "6490423789695372fb545585d741c287ea11f0b9"
+    },
+    {
+      "path": "modules/function/ui/test/root.cpp",
+      "blob": "0cc0550d0110308719974042595b098670d83608"
+    },
+    {
+      "path": "modules/platform/process/test/arguments.cpp",
+      "blob": "d656e896696c7bb7d1e7be49b6c0e96f108615ce"
+    }
+  ],
+  "changed": [
+    {
+      "path": "cmake/installed-consumers/editor-p11/models/CMakeLists.txt",
+      "before": "930de76ef4340718abb44a5423b4159a59b404a5",
+      "after": "f8c82cff9b0a0520115012fae9a4dd6851b573a1"
+    },
+    {
+      "path": "cmake/installed-consumers/persistence/CMakeLists.txt",
+      "before": "6dbe29c96a92ffc9acb591f9f807e7eaf6a0d3d0",
+      "after": "c79556490ffdf40b1663714be73f38ef4d447464"
+    },
+    {
+      "path": "editor/activities/commands/test/commands.cpp",
+      "before": "cc173ba6d6b07f8b445f13473763a487b24dff89",
+      "after": "902e4240543e73b1b2f358f39cef52cf39a8d8ef"
+    },
+    {
+      "path": "editor/application/extensions/test/contributions.cpp",
+      "before": "d8ebe6dd105d536da4c1d288f057074fae80f495",
+      "after": "a0a27e6e56e8666a2f8d14ebfebd4d8a5161ce81"
+    },
+    {
+      "path": "editor/tests/persistence/CMakeLists.txt",
+      "before": "64fd4cb1f20d07a27c2d6085623302a785df9afb",
+      "after": "bcf56ddb310c9db5475fde60f8d49d369138057e"
+    },
+    {
+      "path": "editor/tests/persistence/models.cpp",
+      "before": "6709ae00be1918fd7ace8f7804d2c41681233dde",
+      "after": "d640265c83fda4f90baad36b221205a44aa14852"
+    }
+  ],
+  "changed_test_rationale": {
+    "cmake/installed-consumers/editor-p11/models/CMakeLists.txt": "Original behaviors/assertions retained; add real R11 cleanup/batch cases or SDK registration. Original main body remains a separately invoked originalCases.",
+    "cmake/installed-consumers/persistence/CMakeLists.txt": "Original behaviors/assertions retained; add real R11 cleanup/batch cases or SDK registration. Original main body remains a separately invoked originalCases.",
+    "editor/activities/commands/test/commands.cpp": "Original behaviors/assertions retained; add real R11 cleanup/batch cases or SDK registration. Original main body remains a separately invoked originalCases.",
+    "editor/application/extensions/test/contributions.cpp": "Original behaviors/assertions retained; add real R11 cleanup/batch cases or SDK registration. Original main body remains a separately invoked originalCases.",
+    "editor/tests/persistence/CMakeLists.txt": "Original behaviors/assertions retained; add real R11 cleanup/batch cases or SDK registration. Original main body remains a separately invoked originalCases.",
+    "editor/tests/persistence/models.cpp": "Original behaviors/assertions retained; add real R11 cleanup/batch cases or SDK registration. Original main body remains a separately invoked originalCases."
+  }
+}

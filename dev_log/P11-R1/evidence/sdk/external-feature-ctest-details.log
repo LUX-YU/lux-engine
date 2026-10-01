@@ -1,0 +1,37 @@
+Start testing: Oct 01 22:34 GMT 夏令时
+----------------------------------------------------------
+1/2 Testing: plugin.external_editor
+1/2 Test: plugin.external_editor
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-1afb8f3f6e58-sdk/external-feature/bin/sample_editor_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-1afb8f3f6e58-sdk/external-feature"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-1afb8f3f6e58-sdk/external-feature
+"plugin.external_editor" start time: Oct 01 22:34 GMT 夏令时
+Output:
+----------------------------------------------------------
+[editor.exit] event=loop_returned code=0 failure=0
+PASS installed plugin supplies an editor, reuse, close events and code retirement
+<end of output>
+Test time =   0.53 sec
+----------------------------------------------------------
+Test Passed.
+"plugin.external_editor" end time: Oct 01 22:34 GMT 夏令时
+"plugin.external_editor" time elapsed: 00:00:00
+----------------------------------------------------------
+
+2/2 Testing: plugin.external_gpu
+2/2 Test: plugin.external_gpu
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-1afb8f3f6e58-sdk/external-feature/bin/sample_external_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-1afb8f3f6e58-sdk/external-feature/share/lux-engine/plugins/catalog.json" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-1afb8f3f6e58-sdk/external-feature"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-1afb8f3f6e58-sdk/external-feature
+"plugin.external_gpu" start time: Oct 01 22:34 GMT 夏令时
+Output:
+----------------------------------------------------------
+Feature cold path: backend registration+poll=4101.8 us, Main adoption=6.8 us
+PASS external GPU triangle + ECS update, format=50; late append, rollback, cancellation, stable op=65578
+<end of output>
+Test time =   0.39 sec
+----------------------------------------------------------
+Test Passed.
+"plugin.external_gpu" end time: Oct 01 22:34 GMT 夏令时
+"plugin.external_gpu" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Oct 01 22:34 GMT 夏令时

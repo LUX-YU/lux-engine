@@ -1,0 +1,62 @@
+[
+  {
+    "name": "header-00",
+    "public_header": "lux/engine/editor/commands/CommandRegistry.hpp",
+    "source": "editor/activities/commands/include/lux/engine/editor/commands/CommandRegistry.hpp",
+    "argv": [
+      "D:\\Development\\Mircosoft\\VisualStudio\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.exe",
+      "/nologo",
+      "/std:c++20",
+      "/Zs",
+      "/EHsc",
+      "/MD",
+      "/utf-8",
+      "/permissive-",
+      "/Zc:__cplusplus",
+      "/DWIN32",
+      "/D_WINDOWS",
+      "-imsvcE:\\SyncForder\\CodeRepos\\install\\P11-1afb8f3f6e58\\include",
+      "-imsvcD:\\Development\\vcpkg\\installed\\x64-windows\\include",
+      "-imsvcD:\\Development\\vcpkg\\installed\\x64-windows\\include\\eigen3",
+      "-imsvcD:\\Development\\vcpkg\\installed\\x64-windows\\include\\stduuid",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\P11-R1\\final\\1afb8f3f6e584075c6a9204e4faa7c406e55e146\\public-headers\\header-00.cpp"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine-p11",
+    "started": "2026-10-01T21:37:05.194905+00:00",
+    "ended": "2026-10-01T21:37:05.565566+00:00",
+    "log": "header-00.log",
+    "exit_code": 0,
+    "implementation_sha": "1afb8f3f6e584075c6a9204e4faa7c406e55e146",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "name": "header-01",
+    "public_header": "lux/engine/editor/persistence/SaveService.hpp",
+    "source": "editor/activities/persistence/include/lux/engine/editor/persistence/SaveService.hpp",
+    "argv": [
+      "D:\\Development\\Mircosoft\\VisualStudio\\VC\\Tools\\Llvm\\x64\\bin\\clang-cl.exe",
+      "/nologo",
+      "/std:c++20",
+      "/Zs",
+      "/EHsc",
+      "/MD",
+      "/utf-8",
+      "/permissive-",
+      "/Zc:__cplusplus",
+      "/DWIN32",
+      "/D_WINDOWS",
+      "-imsvcE:\\SyncForder\\CodeRepos\\install\\P11-1afb8f3f6e58\\include",
+      "-imsvcD:\\Development\\vcpkg\\installed\\x64-windows\\include",
+      "-imsvcD:\\Development\\vcpkg\\installed\\x64-windows\\include\\eigen3",
+      "-imsvcD:\\Development\\vcpkg\\installed\\x64-windows\\include\\stduuid",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\P11-R1\\final\\1afb8f3f6e584075c6a9204e4faa7c406e55e146\\public-headers\\header-01.cpp"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine-p11",
+    "started": "2026-10-01T21:37:05.597715+00:00",
+    "ended": "2026-10-01T21:37:06.301616+00:00",
+    "log": "header-01.log",
+    "exit_code": 0,
+    "implementation_sha": "1afb8f3f6e584075c6a9204e4faa7c406e55e146",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+]

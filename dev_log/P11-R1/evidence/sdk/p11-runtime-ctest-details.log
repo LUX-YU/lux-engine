@@ -1,0 +1,19 @@
+Start testing: Oct 01 22:32 GMT 夏令时
+----------------------------------------------------------
+1/1 Testing: installed.p11.runtime
+1/1 Test: installed.p11.runtime
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-1afb8f3f6e58-sdk/p11-runtime/bin/p11_runtime_consumer.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-1afb8f3f6e58-sdk/p11-runtime/bin/p11_runtime.dll"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-1afb8f3f6e58-sdk/p11-runtime
+"installed.p11.runtime" start time: Oct 01 22:32 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS installed runtime plugin without Editor target/header/ABI
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"installed.p11.runtime" end time: Oct 01 22:32 GMT 夏令时
+"installed.p11.runtime" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Oct 01 22:32 GMT 夏令时

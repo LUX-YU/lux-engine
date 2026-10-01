@@ -1,0 +1,351 @@
+diff --git a/cmake/installed-consumers/persistence/CMakeLists.txt b/cmake/installed-consumers/persistence/CMakeLists.txt
+index 6dbe29c96..c79556490 100644
+--- a/cmake/installed-consumers/persistence/CMakeLists.txt
++++ b/cmake/installed-consumers/persistence/CMakeLists.txt
+@@ -26,3 +26,7 @@ endforeach()
+ foreach(scenario r1-revoke r1-recursive r1-chain r1-chain-control r1-callbacks r1-reading r1-conflicts)
+     add_test(NAME persistence_consumer.${scenario} COMMAND persistence_consumer "${CMAKE_CURRENT_BINARY_DIR}/files" ${scenario})
+ endforeach()
++
++foreach(scenario duplicate invalid busy success completion)
++    add_test(NAME persistence_consumer.r11-input-${scenario} COMMAND persistence_consumer "${CMAKE_CURRENT_BINARY_DIR}/files" r11-input-${scenario})
++endforeach()
+diff --git a/editor/application/extensions/CMakeLists.txt b/editor/application/extensions/CMakeLists.txt
+index 73ba15b10..6ed4dcdfc 100644
+--- a/editor/application/extensions/CMakeLists.txt
++++ b/editor/application/extensions/CMakeLists.txt
+@@ -47,5 +47,8 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
+     target_link_libraries(editor_contributions_test PRIVATE editor_extensions)
+     lux_editor_test_options(editor_contributions_test)
+     add_test(NAME editor.contributions COMMAND editor_contributions_test)
++    foreach(scenario factory reflection cleanup notify)
++        add_test(NAME editor.contributions.r11-${scenario} COMMAND editor_contributions_test ${scenario})
++    endforeach()
+     set_tests_properties(editor.contributions PROPERTIES LABELS "editor;native;P11")
+ endif()
+diff --git a/editor/application/extensions/test/contributions.cpp b/editor/application/extensions/test/contributions.cpp
+index d8ebe6dd1..6aa69ea11 100644
+--- a/editor/application/extensions/test/contributions.cpp
++++ b/editor/application/extensions/test/contributions.cpp
+@@ -38,7 +38,7 @@ namespace
+         Facts& facts_;
+     };
+ }
+-int main()
++int originalCases()
+ {
+     auto messages = take(object::ObjectMessageQueue::create(32));
+     commands::CommandRegistry commands;
+@@ -144,4 +144,149 @@ int main()
+     assert(registry.revision() == revision);
+     std::cout
+         << "PASS immutable batch, bounded publication, cleanup pins, post-publication notification and rejection\n";
++    return 0;
++}
++
++namespace
++{
++    using namespace commands;
++    std::shared_ptr<CommandEntry> command(std::string_view id)
++    {
++        return std::make_shared<CommandEntry>(contracts::CodeLease::builtin(),
++            CommandDescriptor{CommandId{id}, std::string{id}},
++            [](const CommandQuery&) -> CommandResult<CommandState> { return CommandState{true}; },
++            [](const CommandInvocation&) -> CommandResult<DispatchReceipt> { return DispatchReceipt{ImmediateCompletion{}}; });
++    }
++    ContributionSnapshot catalog(std::string_view id)
++    {
++        ContributionDraft draft; draft.commands.push_back(command(id));
++        return take(ContributionSnapshot::prepare(std::move(draft)));
++    }
++    struct PublicationAttempt final
++    {
++        CommandRegistry& commands;
++        CommandRegistrySnapshot candidate;
++        unsigned calls{}, blocked{};
++        void run()
++        {
++            ++calls;
++            auto result = commands.publish(candidate);
++            blocked += !result && result.error().code == ECommandError::BUSY;
++        }
++    };
++    PublicationAttempt* reflection_attempt{};
++    void registerAttempt(meta::ReflectionRegistry&, std::vector<std::pair<std::string_view, meta::RefType*>>&)
++    {
++        reflection_attempt->run();
++    }
++    void r11Batch(std::string_view mode)
++    {
++        auto messages = take(object::ObjectMessageQueue::create(32));
++        CommandRegistry commands;
++        ContributionRegistry registry{messages.dispatcherRef(), commands, 4};
++        PublicationAttempt attempt{commands, take(CommandRegistrySnapshot::create({command("C")}))};
++        ContributionDraft first;
++        first.commands.push_back(command("A"));
++        if (mode == "factory")
++        {
++            first.views.push_back(std::make_shared<views::ViewFactoryEntry>(contracts::CodeLease::builtin(),
++                views::ViewFactoryDescriptor{views::ViewTypeId{"test.batch"}, "Batch", cxx::typeToken<Binding>()},
++                [&](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
++                    auto pinned_command = take(commands.snapshot().find(CommandIdView{"A"}));
++                    attempt.run();
++                    auto recursive = registry.applyPending();
++                    assert(!recursive && recursive.error().code == EContributionError::BUSY);
++                    // An independent registry and pinned query remain usable; only participating publication is held.
++                    CommandRegistry independent;
++                    assert(independent.publish(attempt.candidate));
++                    CommandInvocation invocation;
++                    assert(commands.query(pinned_command, invocation.query()));
++                    return views::DetachedView{contracts::CodeLease::builtin(), std::make_unique<ui::Pane>(
++                        input.dispatcher(), input.paneId(), ui::PaneTypeId{"test.batch"}, "Batch")};
++                }));
++        }
++        if (mode == "cleanup")
++        {
++            first.code.push_back(contracts::CodeLease::plugin(std::shared_ptr<const void>(new int{1}, [&](const void* p) {
++                attempt.run();
++                assert(registry.snapshot().commands().find(CommandIdView{"B"}));
++                auto next = catalog("D"); assert(registry.enqueue(next));
++                delete static_cast<const int*>(p);
++            })));
++        }
++        auto initial = take(ContributionSnapshot::prepare(std::move(first)));
++        assert(registry.enqueue(initial) && registry.applyPending());
++        assert(commands.revision() == 1 && registry.revision() == 1);
++        bool facts_correct{};
++        if (mode == "factory")
++        {
++            auto next = catalog("B"); assert(registry.enqueue(next));
++            auto batch = [&](const ContributionSnapshot& snapshot) -> ContributionResult<void> {
++                views::ViewFactoryInput input{messages.dispatcherRef(), ui::PaneId{"one"}, contracts::CodeLease::builtin(),
++                    cxx::typeToken<Binding>(), std::make_shared<const Binding>(Binding{9})};
++                auto view = take(snapshot.views().prepare(views::ViewTypeId{"test.batch"}, input));
++                assert(!view.pane()->attachedRoot());
++                facts_correct = commands.revision() == 1 && registry.revision() == 1 &&
++                    bool(commands.snapshot().find(CommandIdView{"A"}));
++                return {};
++            };
++            assert(registry.withSnapshot(batch));
++        }
++        else if (mode == "reflection")
++        {
++            ContributionDraft rejected;
++            rejected.commands.push_back(command("B"));
++            rejected.reflection.push_back({contracts::CodeLease::builtin(), registerAttempt});
++            rejected.configurations.push_back(lux::editor::scene::ConfigurationEditor{
++                contracts::CodeLease::builtin(),
++                ConfigurationDescriptor{"r11.invalid", 1, serialization::makePortableValueCodec<int>(),
++                    +[](meta::ReflectionRegistry&) noexcept -> const meta::RefClass* { return nullptr; }},
++                +[](ui::Element&, ui::ElementId, ConfigurationValue&) noexcept -> lux::editor::scene::ConfigurationEditor::CreateResult {
++                    return std::unique_ptr<ui::Element>{};
++                }});
++            auto candidate = take(ContributionSnapshot::prepare(std::move(rejected)));
++            const auto reflection_count = meta::ReflectionRegistry::instance().classes().size();
++            reflection_attempt = &attempt;
++            assert(registry.enqueue(candidate));
++            const auto result = registry.applyPending();
++            reflection_attempt = nullptr;
++            assert(!result && result.error().domain == "configuration.reflection");
++            facts_correct = commands.revision() == 1 && registry.revision() == 1 &&
++                bool(commands.snapshot().find(CommandIdView{"A"})) &&
++                bool(registry.snapshot().commands().find(CommandIdView{"A"})) &&
++                meta::ReflectionRegistry::instance().classes().size() == reflection_count;
++        }
++        else
++        {
++            object::LuxObject receiver{messages.dispatcherRef()};
++            unsigned notifications{};
++            auto connection = take(object::LuxObject::connect(&registry, &ContributionRegistry::changed, &receiver,
++                [&](std::uint64_t revision) noexcept {
++                    ++notifications;
++                    if (mode == "notify")
++                    {
++                        attempt.run();
++                        if (notifications == 1) { auto next = catalog("D"); assert(registry.enqueue(next)); }
++                    }
++                    facts_correct = commands.revision() == revision &&
++                        commands.snapshot().entries()[0] == registry.snapshot().commands().entries()[0];
++                }, object::EDelivery::DIRECT));
++            auto next = catalog("B"); assert(registry.enqueue(next) && registry.applyPending());
++            std::cout << "R11 first publication " << mode << " direct_calls=" << attempt.calls
++                << " blocked=" << attempt.blocked << " consistent=" << facts_correct << std::endl;
++            assert(attempt.blocked == attempt.calls && facts_correct && notifications == 1);
++            assert(registry.applyPending());
++            assert(notifications == 2 && commands.snapshot().find(CommandIdView{"D"}));
++        }
++        std::cout << "R11 batch " << mode << " direct_calls=" << attempt.calls << " blocked=" << attempt.blocked
++            << " consistent=" << facts_correct << std::endl;
++        assert(attempt.calls && attempt.calls == attempt.blocked && facts_correct);
++        assert(commands.canPublish() && commands.publish(attempt.candidate));
++        assert(commands.snapshot().find(CommandIdView{"C"}));
++    }
++}
++int main(int argc, char** argv)
++{
++    if (argc == 2) { r11Batch(argv[1]); return 0; }
++    return originalCases();
+ }
+diff --git a/editor/tests/persistence/CMakeLists.txt b/editor/tests/persistence/CMakeLists.txt
+index 64fd4cb1f..bcf56ddb3 100644
+--- a/editor/tests/persistence/CMakeLists.txt
++++ b/editor/tests/persistence/CMakeLists.txt
+@@ -26,3 +26,7 @@ foreach(model scene material flow)
+         set_tests_properties(editor.interaction_reclaim.${model}.${scenario} PROPERTIES LABELS "editor;native;P08;R1")
+     endforeach()
+ endforeach()
++
++foreach(scenario duplicate invalid busy success completion)
++    add_test(NAME editor.persistence.r11-input-${scenario} COMMAND editor_persistence_models_test "${CMAKE_CURRENT_BINARY_DIR}/files" r11-input-${scenario})
++endforeach()
+diff --git a/editor/tests/persistence/models.cpp b/editor/tests/persistence/models.cpp
+index 6709ae00b..6ca9edb22 100644
+--- a/editor/tests/persistence/models.cpp
++++ b/editor/tests/persistence/models.cpp
+@@ -358,6 +358,134 @@ namespace
+             assert(writes.complete(work->ticket, disk.publish(*work)));
+         service.adoptCompletions();
+     }
++
++    class OwnedCleanupSource final : public ISaveSource
++    {
++    public:
++        OwnedCleanupSource(std::unique_ptr<ISaveSource> source, std::function<void()> cleanup)
++            : source_(std::move(source)), cleanup_(std::move(cleanup)) {}
++        ~OwnedCleanupSource() override { cleanup_(); }
++        PersistenceResult<SaveSourceInfo> describe() const override { return source_->describe(); }
++        PersistenceResult<FrozenSave> captureForSave(
++            const SaveSourceInfo& info, const SaveRequest& request, std::size_t allowance
++        ) override { return source_->captureForSave(info, request, allowance); }
++        EAdoption accept(SaveReceipt&& receipt) noexcept override { return source_->accept(std::move(receipt)); }
++    private:
++        std::unique_ptr<ISaveSource> source_;
++        std::function<void()> cleanup_;
++    };
++    void r11InputCleanup(Fixture& f, std::string_view mode)
++    {
++        f.edit(1);
++        auto& model = *f.material_session;
++        const auto before = model.describe();
++        const auto bytes = take(take(model.read()).encode());
++        const auto history = take(model.historyView()).snapshot;
++        auto runtime = take(process::ExecutionRuntime::create(
++            {.cpu_concurrency = 1, .cpu_queue_capacity = 16, .timer = {16},
++             .blocking = process::BlockingSchedulerConfig{1, 16}}
++        ));
++        EncodingProbe probe;
++        HookSource registered(*f.material_source);
++        f.registrations.clear();
++        std::optional<SaveSourceRegistration> registration{take(f.saves.registerSource(registered))};
++        SaveExecution execution{runtime, f.saves, f.writes, f.disk};
++        std::optional<SaveId> accepted;
++        if (mode == "completion")
++        {
++            registered.frozen_hook = [&](FrozenSave& frozen) {
++                frozen.encoding = {contracts::CodeLease::builtin(),
++                    std::make_unique<ProbedEncoding>(std::move(frozen.encoding), probe)};
++            };
++            accepted = take(f.saves.requestSave({f.material_id}));
++            assert(execution.submitReady());
++            (void)waitForEncoded(runtime);
++            assert(take(f.saves.status(*accepted)).stage == ESaveStage::ENCODING);
++        }
++        unsigned destroyed{}, released{}, collected{};
++        bool prepare_busy{}, request_busy{}, outer_preserved{};
++        std::optional<SaveId> incorrectly_admitted;
++        auto code = contracts::CodeLease::plugin(std::shared_ptr<const void>(new int{1}, [&](const void* p) {
++            assert(destroyed == 1); ++released; delete static_cast<const int*>(p);
++        }));
++        auto cleanup = [&] {
++            assert(released == 0); ++destroyed;
++            if (accepted) collected = static_cast<unsigned>(take(runtime.collectCompletions()));
++            const auto ready = f.saves.canPrepareSource();
++            prepare_busy = !ready && ready.error().code == EPersistenceError::BUSY;
++            auto request = f.saves.requestSave({f.material_id});
++            request_busy = !request && request.error().code == EPersistenceError::BUSY;
++            if (request) incorrectly_admitted = *request;
++        };
++        auto source = std::make_unique<OwnedCleanupSource>(std::make_unique<em::MaterialSaveSource>(
++            f.store.access<em::MaterialSession>(), take(f.store.key<em::MaterialSession>(f.material_id)),
++            take(f.disk.resolve("material.luxmaterial")), sessions::BindingRevision{1}
++        ), cleanup);
++        if (mode == "busy")
++        {
++            registered.describe_hook = [&] {
++                const auto result = f.saves.prepareSource(f.material_id, std::move(source), std::move(code));
++                assert(!result && result.error().code == EPersistenceError::BUSY);
++                const auto ready = f.saves.canPrepareSource();
++                outer_preserved = !ready && ready.error().code == EPersistenceError::BUSY;
++            };
++            assert(!f.saves.registerSource(registered));
++        }
++        else if (mode == "success")
++        {
++            registration.reset();
++            {
++                auto prepared = take(f.saves.prepareSource(f.material_id, std::move(source), std::move(code)));
++                assert(destroyed == 0 && released == 0);
++                assert(f.saves.canPublish(prepared));
++                auto published = f.saves.publish(std::move(prepared));
++                assert(destroyed == 0 && released == 0);
++                // Successful handoff ends the prepare dispatch; ordinary owner destruction isn't a reject callback.
++            }
++            assert(destroyed == 1 && released == 1 && f.saves.canPrepareSource());
++            std::cout << "R11-02 success transfers the last code/source unit, destructor precedes code release PASS\n";
++            return;
++        }
++        else
++        {
++            const bool invalid = mode == "invalid";
++            const auto result = f.saves.prepareSource(invalid ? sessions::SessionId{} : f.material_id,
++                std::move(source), std::move(code));
++            assert(!result && result.error().code == (invalid ? EPersistenceError::INVALID_ARGUMENT : EPersistenceError::BUSY));
++        }
++        const auto after = model.describe();
++        const auto h = take(model.historyView()).snapshot;
++        const bool unchanged = bytes == take(take(model.read()).encode()) && before.id == after.id &&
++            before.kind == after.kind && before.binding == after.binding && before.current == after.current &&
++            before.observed == after.observed && before.dirty == after.dirty && before.admission == after.admission &&
++            h.history == history.history && h.current == history.current && h.revision == history.revision &&
++            h.event_sequence == history.event_sequence && h.entry_count == history.entry_count &&
++            h.cursor == history.cursor && h.charged_retained_bytes == history.charged_retained_bytes &&
++            h.history_metadata_bytes == history.history_metadata_bytes && h.closed == history.closed;
++        const bool completion_received = !accepted || (collected == 1 && probe.calls == 1 &&
++            take(f.saves.status(*accepted)).stage == ESaveStage::READY);
++        std::cout << "R11 input " << mode << " destroyed=" << destroyed << " code_released=" << released
++            << " prepare_BUSY=" << prepare_busy << " request_BUSY=" << request_busy
++            << " full_author_history_binding_unchanged=" << unchanged << " completion_received=" << completion_received
++            << " outer_preserved=" << outer_preserved << std::endl;
++        // Keep the original runtime failure evidence observable before qualification assertions.
++        assert(destroyed == 1 && released == 1 && unchanged && completion_received);
++        assert(prepare_busy && request_busy && !incorrectly_admitted);
++        assert(mode != "busy" || outer_preserved);
++        assert(f.saves.canPrepareSource());
++        if (accepted)
++        {
++            publishReady(f.saves, f.writes, f.disk);
++            assert(take(f.saves.status(*accepted)).outcome->adoption == EAdoption::APPLIED);
++            assert(f.saves.acknowledge(*accepted));
++            assert(probe.calls == 1 && probe.destroyed == 1 && execution.tasks().join());
++        }
++        const auto resumed = take(f.saves.requestSave({f.material_id}));
++        f.encodeAll(); f.publishAll();
++        assert(take(f.saves.status(resumed)).outcome->adoption == EAdoption::APPLIED);
++        assert(f.saves.acknowledge(resumed));
++        assert(!model.describe().dirty && model.undo() && model.describe().dirty && model.redo() && !model.describe().dirty);
++    }
+     void r2AcceptCase(Fixture& f, std::string_view mode)
+     {
+         f.registrations.clear();
+@@ -1443,6 +1571,11 @@ int main(int argc, char** argv)
+                       std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+     Fixture f(root);
+     const std::string_view scenario = argc == 3 ? argv[2] : "models";
++    if (scenario.starts_with("r11-input-"))
++    {
++        r11InputCleanup(f, scenario.substr(10));
++        return 0;
++    }
+     if (scenario.starts_with("r2-accept-"))
+     {
+         r2AcceptCase(f, scenario.substr(10));

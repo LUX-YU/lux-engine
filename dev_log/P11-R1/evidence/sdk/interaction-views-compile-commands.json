@@ -1,0 +1,20 @@
+[
+  {
+    "directory": "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-1afb8f3f6e58-sdk/interaction-views",
+    "command": "D:\\Development\\Mircosoft\\VisualStudio\\VC\\Tools\\MSVC\\14.44.35207\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DENTT_NO_ETO -DLUX_ENGINE_FLOWFORGE_DLL_DISABLE -DSTDEXEC_ENABLE_WINDOWS_THREAD_POOL -external:IE:\\SyncForder\\CodeRepos\\install\\P11-1afb8f3f6e58\\include -external:ID:\\Development\\vcpkg\\installed\\x64-windows\\include -external:ID:\\Development\\vcpkg\\installed\\x64-windows\\include\\stduuid -external:ID:\\Development\\vcpkg\\installed\\x64-windows\\include\\eigen3 -external:W0 /DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD /UNDEBUG /utf-8 /Zc:__cplusplus /Zc:preprocessor /Zc:externConstexpr /FoCMakeFiles\\interaction_consumer.dir\\interactions.cpp.obj /FdCMakeFiles\\interaction_consumer.dir\\ /FS -c E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p11-1afb8f3f6e58-sdk\\interaction-views-source\\interactions.cpp",
+    "file": "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-1afb8f3f6e58-sdk/interaction-views-source/interactions.cpp",
+    "output": "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-1afb8f3f6e58-sdk/interaction-views/CMakeFiles/interaction_consumer.dir/interactions.cpp.obj"
+  },
+  {
+    "directory": "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-1afb8f3f6e58-sdk/interaction-views",
+    "command": "D:\\Development\\Mircosoft\\VisualStudio\\VC\\Tools\\MSVC\\14.44.35207\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -external:IE:\\SyncForder\\CodeRepos\\install\\P11-1afb8f3f6e58\\include -external:ID:\\Development\\vcpkg\\installed\\x64-windows\\include\\eigen3 -external:ID:\\Development\\vcpkg\\installed\\x64-windows\\include -external:ID:\\Development\\vcpkg\\installed\\x64-windows\\include\\stduuid -external:W0 /DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD /UNDEBUG /utf-8 /FoCMakeFiles\\detached_views_consumer.dir\\lifecycle.cpp.obj /FdCMakeFiles\\detached_views_consumer.dir\\ /FS -c E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p11-1afb8f3f6e58-sdk\\interaction-views-source\\lifecycle.cpp",
+    "file": "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-1afb8f3f6e58-sdk/interaction-views-source/lifecycle.cpp",
+    "output": "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-1afb8f3f6e58-sdk/interaction-views/CMakeFiles/detached_views_consumer.dir/lifecycle.cpp.obj"
+  },
+  {
+    "directory": "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-1afb8f3f6e58-sdk/interaction-views",
+    "command": "D:\\Development\\Mircosoft\\VisualStudio\\VC\\Tools\\MSVC\\14.44.35207\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DENTT_NO_ETO -DLUX_ENGINE_FLOWFORGE_DLL_DISABLE -DSTDEXEC_ENABLE_WINDOWS_THREAD_POOL -external:IE:\\SyncForder\\CodeRepos\\install\\P11-1afb8f3f6e58\\include -external:ID:\\Development\\vcpkg\\installed\\x64-windows\\include -external:ID:\\Development\\vcpkg\\installed\\x64-windows\\include\\stduuid -external:ID:\\Development\\vcpkg\\installed\\x64-windows\\include\\eigen3 -external:W0 /DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD /UNDEBUG /utf-8 /Zc:__cplusplus /Zc:preprocessor /Zc:externConstexpr /FoCMakeFiles\\interaction_reclaim_consumer.dir\\interaction_reclaim.cpp.obj /FdCMakeFiles\\interaction_reclaim_consumer.dir\\ /FS -c E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p11-1afb8f3f6e58-sdk\\interaction-views-source\\interaction_reclaim.cpp",
+    "file": "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-1afb8f3f6e58-sdk/interaction-views-source/interaction_reclaim.cpp",
+    "output": "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-1afb8f3f6e58-sdk/interaction-views/CMakeFiles/interaction_reclaim_consumer.dir/interaction_reclaim.cpp.obj"
+  }
+]

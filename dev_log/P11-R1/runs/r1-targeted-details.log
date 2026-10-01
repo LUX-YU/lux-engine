@@ -1,0 +1,189 @@
+Start testing: Oct 01 21:52 GMT 夏令时
+----------------------------------------------------------
+70/222 Testing: editor.commands
+70/222 Test: editor.commands
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dev/bin/editor_commands_test.exe"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dev/editor/activities/commands
+"editor.commands" start time: Oct 01 21:52 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS 10000 shared-entry revisions retain one value without an owner chain
+PASS immutable command entries, pinned/current policy, bounded BUSY FIFO, recursive and foreign calls
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"editor.commands" end time: Oct 01 21:52 GMT 夏令时
+"editor.commands" time elapsed: 00:00:00
+----------------------------------------------------------
+
+93/222 Testing: editor.contributions
+93/222 Test: editor.contributions
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dev/bin/editor_contributions_test.exe"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dev/editor/application/extensions
+"editor.contributions" start time: Oct 01 21:52 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS immutable batch, bounded publication, cleanup pins, post-publication notification and rejection
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"editor.contributions" end time: Oct 01 21:52 GMT 夏令时
+"editor.contributions" time elapsed: 00:00:00
+----------------------------------------------------------
+
+94/222 Testing: editor.contributions.r11-factory
+94/222 Test: editor.contributions.r11-factory
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dev/bin/editor_contributions_test.exe" "factory"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dev/editor/application/extensions
+"editor.contributions.r11-factory" start time: Oct 01 21:52 GMT 夏令时
+Output:
+----------------------------------------------------------
+R11 batch factory direct_calls=1 blocked=1 consistent=1
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"editor.contributions.r11-factory" end time: Oct 01 21:52 GMT 夏令时
+"editor.contributions.r11-factory" time elapsed: 00:00:00
+----------------------------------------------------------
+
+95/222 Testing: editor.contributions.r11-reflection
+95/222 Test: editor.contributions.r11-reflection
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dev/bin/editor_contributions_test.exe" "reflection"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dev/editor/application/extensions
+"editor.contributions.r11-reflection" start time: Oct 01 21:52 GMT 夏令时
+Output:
+----------------------------------------------------------
+R11 batch reflection direct_calls=1 blocked=1 consistent=1
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"editor.contributions.r11-reflection" end time: Oct 01 21:52 GMT 夏令时
+"editor.contributions.r11-reflection" time elapsed: 00:00:00
+----------------------------------------------------------
+
+96/222 Testing: editor.contributions.r11-cleanup
+96/222 Test: editor.contributions.r11-cleanup
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dev/bin/editor_contributions_test.exe" "cleanup"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dev/editor/application/extensions
+"editor.contributions.r11-cleanup" start time: Oct 01 21:52 GMT 夏令时
+Output:
+----------------------------------------------------------
+R11 first publication cleanup direct_calls=1 blocked=1 consistent=1
+R11 batch cleanup direct_calls=1 blocked=1 consistent=1
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"editor.contributions.r11-cleanup" end time: Oct 01 21:52 GMT 夏令时
+"editor.contributions.r11-cleanup" time elapsed: 00:00:00
+----------------------------------------------------------
+
+97/222 Testing: editor.contributions.r11-notify
+97/222 Test: editor.contributions.r11-notify
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dev/bin/editor_contributions_test.exe" "notify"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dev/editor/application/extensions
+"editor.contributions.r11-notify" start time: Oct 01 21:52 GMT 夏令时
+Output:
+----------------------------------------------------------
+R11 first publication notify direct_calls=1 blocked=1 consistent=1
+R11 batch notify direct_calls=2 blocked=2 consistent=1
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"editor.contributions.r11-notify" end time: Oct 01 21:52 GMT 夏令时
+"editor.contributions.r11-notify" time elapsed: 00:00:00
+----------------------------------------------------------
+
+199/222 Testing: editor.persistence.r11-input-duplicate
+199/222 Test: editor.persistence.r11-input-duplicate
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dev/bin/editor_persistence_models_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dev/editor/tests/persistence/files" "r11-input-duplicate"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dev/editor/tests/persistence
+"editor.persistence.r11-input-duplicate" start time: Oct 01 21:52 GMT 夏令时
+Output:
+----------------------------------------------------------
+R11 input duplicate destroyed=1 code_released=1 prepare_BUSY=1 request_BUSY=1 full_author_history_binding_unchanged=1 completion_received=1 outer_preserved=0
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"editor.persistence.r11-input-duplicate" end time: Oct 01 21:52 GMT 夏令时
+"editor.persistence.r11-input-duplicate" time elapsed: 00:00:00
+----------------------------------------------------------
+
+200/222 Testing: editor.persistence.r11-input-invalid
+200/222 Test: editor.persistence.r11-input-invalid
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dev/bin/editor_persistence_models_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dev/editor/tests/persistence/files" "r11-input-invalid"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dev/editor/tests/persistence
+"editor.persistence.r11-input-invalid" start time: Oct 01 21:52 GMT 夏令时
+Output:
+----------------------------------------------------------
+R11 input invalid destroyed=1 code_released=1 prepare_BUSY=1 request_BUSY=1 full_author_history_binding_unchanged=1 completion_received=1 outer_preserved=0
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"editor.persistence.r11-input-invalid" end time: Oct 01 21:52 GMT 夏令时
+"editor.persistence.r11-input-invalid" time elapsed: 00:00:00
+----------------------------------------------------------
+
+201/222 Testing: editor.persistence.r11-input-busy
+201/222 Test: editor.persistence.r11-input-busy
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dev/bin/editor_persistence_models_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dev/editor/tests/persistence/files" "r11-input-busy"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dev/editor/tests/persistence
+"editor.persistence.r11-input-busy" start time: Oct 01 21:52 GMT 夏令时
+Output:
+----------------------------------------------------------
+R11 input busy destroyed=1 code_released=1 prepare_BUSY=1 request_BUSY=1 full_author_history_binding_unchanged=1 completion_received=1 outer_preserved=1
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"editor.persistence.r11-input-busy" end time: Oct 01 21:52 GMT 夏令时
+"editor.persistence.r11-input-busy" time elapsed: 00:00:00
+----------------------------------------------------------
+
+202/222 Testing: editor.persistence.r11-input-success
+202/222 Test: editor.persistence.r11-input-success
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dev/bin/editor_persistence_models_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dev/editor/tests/persistence/files" "r11-input-success"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dev/editor/tests/persistence
+"editor.persistence.r11-input-success" start time: Oct 01 21:52 GMT 夏令时
+Output:
+----------------------------------------------------------
+R11-02 success transfers the last code/source unit, destructor precedes code release PASS
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"editor.persistence.r11-input-success" end time: Oct 01 21:52 GMT 夏令时
+"editor.persistence.r11-input-success" time elapsed: 00:00:00
+----------------------------------------------------------
+
+203/222 Testing: editor.persistence.r11-input-completion
+203/222 Test: editor.persistence.r11-input-completion
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dev/bin/editor_persistence_models_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dev/editor/tests/persistence/files" "r11-input-completion"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dev/editor/tests/persistence
+"editor.persistence.r11-input-completion" start time: Oct 01 21:52 GMT 夏令时
+Output:
+----------------------------------------------------------
+R11 input completion destroyed=1 code_released=1 prepare_BUSY=1 request_BUSY=1 full_author_history_binding_unchanged=1 completion_received=1 outer_preserved=0
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"editor.persistence.r11-input-completion" end time: Oct 01 21:52 GMT 夏令时
+"editor.persistence.r11-input-completion" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Oct 01 21:52 GMT 夏令时
+
+P11 =   0.05 sec*proc
+
+editor =   0.05 sec*proc
+
+native =   0.05 sec*proc
+

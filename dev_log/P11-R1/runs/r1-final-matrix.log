@@ -1,0 +1,47 @@
+Sequential final phase: cold 1afb8f3f6e584075c6a9204e4faa7c406e55e146
+clone 0
+checkout 0
+tracked-snapshot 0
+configure 0
+build 0
+no-work 0
+test-names 0
+Cold build complete; full CTest includes real native input. Awaiting the scheduled input window.
+ctest 0
+C01 1
+C03 0
+C04 1
+install 0
+imports 0
+actual-link-commands 0
+Sequential final phase: cpu 1afb8f3f6e584075c6a9204e4faa7c406e55e146
+cpu-configure 0
+cpu-build 0
+cpu-no-work 0
+cpu-ctest 0
+cpu-test-names 0
+Sequential final phase: player 1afb8f3f6e584075c6a9204e4faa7c406e55e146
+player-configure 0
+player-build 0
+player-no-work 0
+player-ctest 0
+player-test-names 0
+player-imports 0
+Sequential final phase: sdk 1afb8f3f6e584075c6a9204e4faa7c406e55e146
+sdk-all 0
+Sequential final phase: clang 1afb8f3f6e584075c6a9204e4faa7c406e55e146
+clang-configure 0
+clang-build 0
+clang-no-work 0
+clang-ctest 0
+clang-public-headers 0
+Sequential final phase: regenerate 1afb8f3f6e584075c6a9204e4faa7c406e55e146
+regenerate 0
+regenerate-no-work 0
+clone 0
+checkout 0
+before-configure 0
+after-editor-version-configure 0
+verify-changed-source 0
+PASS production CMake identity remains independent of changed Editor contract
+Final matrix completed 1afb8f3f6e584075c6a9204e4faa7c406e55e146

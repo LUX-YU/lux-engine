@@ -1,0 +1,13 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-1afb8f3f6e58-clang
+    Start 1: installed.quality.catalog
+1/4 Test #1: installed.quality.catalog ........   Passed    0.04 sec
+    Start 2: installed.quality.monitor
+2/4 Test #2: installed.quality.monitor ........   Passed    0.07 sec
+    Start 3: installed.quality.canvas
+3/4 Test #3: installed.quality.canvas .........   Passed   23.62 sec
+    Start 4: installed.quality.containers
+4/4 Test #4: installed.quality.containers .....   Passed    0.05 sec
+
+100% tests passed, 0 tests failed out of 4
+
+Total Test time (real) =  23.79 sec

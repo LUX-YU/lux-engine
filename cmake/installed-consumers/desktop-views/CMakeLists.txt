@@ -43,17 +43,17 @@ engine_target_add_imgui_inspector_codegen(NAME desktop_consumer TARGET inspector
     SOURCE_FILE "${CMAKE_CURRENT_SOURCE_DIR}/Inspector.cpp" HEADER "${component_input}"
     LOGICAL_PATH consumer/Component.hpp COMPONENTS consumer::Component)
 # Only maintained test code is copied. All production headers and libraries come from the installed SDK.
-file(READ "${engine_source}/editor/tools/scene/ui/test/views.cpp" source)
+file(READ "${engine_source}/editor/tests/integration/scene_views/views.cpp" source)
 string(REPLACE "../../../../../cmake/installed-consumers/common/ControlsTestAccess.hpp"
     "ControlsTestAccess.hpp" source "${source}")
 file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/views.cpp" "${source}")
 foreach(helper NativeDesktop AuxiliaryViews DraftSources)
-    configure_file("${engine_source}/editor/tools/scene/ui/test/${helper}.hpp"
+    configure_file("${engine_source}/editor/tests/integration/scene_views/${helper}.hpp"
         "${CMAKE_CURRENT_BINARY_DIR}/${helper}.hpp" COPYONLY)
 endforeach()
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/../common/ControlsTestAccess.hpp"
     "${CMAKE_CURRENT_BINARY_DIR}/ControlsTestAccess.hpp" COPYONLY)
-configure_file("${engine_source}/editor/desktop/test/host.cpp" "${CMAKE_CURRENT_BINARY_DIR}/host.cpp" COPYONLY)
+configure_file("${engine_source}/editor/workbench/desktop/test/host.cpp" "${CMAKE_CURRENT_BINARY_DIR}/host.cpp" COPYONLY)
 add_executable(desktop_views "${CMAKE_CURRENT_BINARY_DIR}/views.cpp")
 target_link_libraries(desktop_views PRIVATE lux::engine::editor::scene_ui lux::engine::editor::desktop_shell
     lux::engine::editor::material_ui lux::engine::editor::flow_ui lux::engine::editor::scene_execution

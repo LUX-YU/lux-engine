@@ -28,8 +28,8 @@ def main():
         ("layout-runtime", "layout_model", None, "scene_composition", ""),
         ("layout-ui", "layout_model", None, "ui_fixture", ""),
         ("layout-io", "layout_model", None, "editor_storage", ""),
-        ("recovery-flow", "recovery_model", None, "flowforge_model", ""),
-        ("recovery-transitive-context", "recovery_model", "editor_contracts", "editor_context", ""),
+        ("recovery-flow", "layout_model", None, "flowforge_model", ""),
+        ("recovery-transitive-context", "layout_model", "editor_contracts", "editor_context", ""),
         ("store-context", "workspace_store", None, "editor_context", ""),
         ("store-transitive-context", "workspace_store", "layout_model", "editor_context", ""),
         ("engine-editor", "ui_fixture", None, "workspace_store", ""),
@@ -39,7 +39,7 @@ def main():
         ("layout-storage-header", "layout_model", None, None, "lux/engine/editor/storage/FileArtifactStore.hpp"),
         ("store-old-workspace", "workspace_store", None, None, "lux/engine/editor/WorkspaceRequest.hpp"),
         ("layout-legal", "layout_model", "editor_contracts", None, ""),
-        ("recovery-legal", "recovery_model", "editor_contracts", None, ""),
+        ("recovery-legal", "layout_model", "editor_contracts", None, ""),
         ("store-legal", "workspace_store", "layout_model", None, ""),
     ]
     evidence = []

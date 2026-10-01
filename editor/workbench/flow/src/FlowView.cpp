@@ -1,4 +1,4 @@
-#include <lux/engine/editor/editing/InteractionDelivery.hpp>
+#include <lux/engine/editor/workbench/InteractionDelivery.hpp>
 #include <lux/engine/editor/flowforge/PublishFlowArtifact.hpp>
 #include <lux/engine/editor/flowforge/FlowView.hpp>
 #include <lux/engine/editor/flowforge/FlowNodeControls.hpp>
@@ -117,7 +117,7 @@ namespace lux::editor::flowforge
         };
         std::optional<NodePropertiesDraft> properties_;
         std::optional<std::uint64_t> selected_;
-        using ECanvasStage = editing::detail::EInputDeliveryStage;
+        using ECanvasStage = workbench::detail::EInputDeliveryStage;
         struct CanvasRequest final
         {
             sessions::ContentStamp based_on;
@@ -576,7 +576,7 @@ namespace lux::editor::flowforge
             {
                 auto& pending = canvas_edit_.front();
                 const auto& request = pending.input;
-                auto delivered = editing::detail::deliverInput(
+                auto delivered = workbench::detail::deliverInput(
                     pending.stage,
                     request.committed,
                     [&] { return validate(pending.based_on); },

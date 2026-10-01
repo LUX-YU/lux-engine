@@ -2,7 +2,7 @@
 #include <cstdint>
 #include <type_traits>
 
-namespace lux::editor::editing::detail
+namespace lux::editor::workbench::detail
 {
     enum class EInputDeliveryStage : std::uint8_t
     {

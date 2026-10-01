@@ -1,6 +1,6 @@
 # 共享 Editor UI
 
-editor_ui 仅保留 P12 期限内旧产品的 UI 转换和支持。公共视口由 editor/views/viewport 的 editor_viewport 拥有；新工具与旧转换壳共用唯一实现。
+editor_ui 仅保留 P12 期限内旧产品的 UI 转换和支持。公共视口由 editor/workbench/viewport 的 editor_viewport 拥有；新工具与旧转换壳共用唯一实现。
 它不链接具体 SceneEditor、MaterialEditor 或 FlowForgeEditor。
 SceneEditing/FieldEdit 位于静态库 editor_editing_scene，SceneRegistrations 位于 editor_metadata。
 

@@ -421,17 +421,17 @@
       "id": "Q003"
     },
     {
-      "path": "editor/project/ui/include/lux/engine/editor/project/ProjectCatalogAccess.hpp",
+      "path": "editor/workbench/project/include/lux/engine/editor/project/ProjectCatalogAccess.hpp",
       "deadline": "P10Q",
       "id": "Q004"
     },
     {
-      "path": "editor/tasks/ui/include/lux/engine/editor/tasks/TaskQueryPort.hpp",
+      "path": "editor/workbench/tasks/include/lux/engine/editor/tasks/TaskQueryPort.hpp",
       "deadline": "P10Q",
       "id": "Q005"
     },
     {
-      "path": "editor/tools/scene/ui/include/lux/engine/editor/scene/SceneElement.hpp",
+      "path": "editor/workbench/scene/include/lux/engine/editor/scene/SceneElement.hpp",
       "deadline": "P10Q",
       "id": "Q006"
     }
@@ -583,20 +583,20 @@
     "editor/activities/scene/",
     "editor/activities/material/",
     "editor/activities/flow/",
-    "editor/tools/scene/interaction/",
-    "editor/tools/material/interaction/",
-    "editor/tools/flowforge/interaction/",
-    "editor/views/api/",
-    "editor/widgets/",
+    "editor/workbench/scene/interaction/",
+    "editor/workbench/material/interaction/",
+    "editor/workbench/flow/interaction/",
+    "editor/workbench/desktop/",
+    "editor/workbench/widgets/",
     "editor/authoring/layout/",
     "editor/workspace/recovery/",
     "editor/activities/workspace/",
-    "editor/desktop/",
-    "editor/tools/scene/ui/",
-    "editor/tools/material/ui/",
-    "editor/tools/flowforge/ui/",
-    "editor/tasks/ui/",
-    "editor/project/ui/",
+    "editor/workbench/desktop/",
+    "editor/workbench/scene/",
+    "editor/workbench/material/",
+    "editor/workbench/flow/",
+    "editor/workbench/tasks/",
+    "editor/workbench/project/",
     "editor/commands/",
     "editor/extensions/api/",
     "editor/extensions/host/",
@@ -749,7 +749,6 @@
       "path": "editor/activities/scene",
       "first_phase": "P06",
       "dependencies": [
-        "scene_execution_api",
         "scene_execution_api"
       ],
       "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
@@ -790,7 +789,7 @@
     },
     {
       "name": "scene_interaction",
-      "path": "editor/tools/scene/interaction",
+      "path": "editor/workbench/scene/interaction",
       "first_phase": "P08",
       "dependencies": [
         "scene_model",
@@ -801,7 +800,7 @@
     },
     {
       "name": "material_interaction",
-      "path": "editor/tools/material/interaction",
+      "path": "editor/workbench/material/interaction",
       "first_phase": "P08",
       "dependencies": [
         "material_model"
@@ -811,7 +810,7 @@
     },
     {
       "name": "flowforge_interaction",
-      "path": "editor/tools/flowforge/interaction",
+      "path": "editor/workbench/flow/interaction",
       "first_phase": "P08",
       "dependencies": [
         "flowforge_model"
@@ -821,7 +820,7 @@
     },
     {
       "name": "view_api",
-      "path": "editor/views/api",
+      "path": "editor/workbench/desktop",
       "first_phase": "P08",
       "dependencies": [
         "editor_contracts"
@@ -831,7 +830,7 @@
     },
     {
       "name": "editor_widgets",
-      "path": "editor/widgets",
+      "path": "editor/workbench/widgets",
       "first_phase": "P08",
       "dependencies": [
         "view_api"
@@ -842,16 +841,6 @@
     {
       "name": "layout_model",
       "path": "editor/authoring/layout",
-      "first_phase": "P09",
-      "dependencies": [
-        "editor_contracts"
-      ],
-      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
-      "actual_cmake_target": "layout_model"
-    },
-    {
-      "name": "recovery_model",
-      "path": "editor/workspace/recovery",
       "first_phase": "P09",
       "dependencies": [
         "editor_contracts"
@@ -872,7 +861,7 @@
     },
     {
       "name": "desktop_shell",
-      "path": "editor/desktop",
+      "path": "editor/workbench/desktop",
       "first_phase": "P10",
       "dependencies": [
         "view_api",
@@ -883,7 +872,7 @@
     },
     {
       "name": "scene_ui",
-      "path": "editor/tools/scene/ui",
+      "path": "editor/workbench/scene",
       "first_phase": "P10",
       "dependencies": [
         "view_api",
@@ -898,7 +887,7 @@
     },
     {
       "name": "material_ui",
-      "path": "editor/tools/material/ui",
+      "path": "editor/workbench/material",
       "first_phase": "P10",
       "dependencies": [
         "view_api",
@@ -912,7 +901,7 @@
     },
     {
       "name": "tasks_ui",
-      "path": "editor/tasks/ui",
+      "path": "editor/workbench/tasks",
       "first_phase": "P10",
       "dependencies": [
         "view_api",
@@ -923,7 +912,7 @@
     },
     {
       "name": "project_ui",
-      "path": "editor/project/ui",
+      "path": "editor/workbench/project",
       "first_phase": "P10",
       "dependencies": [
         "view_api",
@@ -977,7 +966,6 @@
         "editor_persistence",
         "view_api",
         "layout_model",
-        "recovery_model",
         "workspace_store",
         "editor_commands",
         "extension_api"
@@ -1064,21 +1052,21 @@
     },
     {
       "name": "view_host",
-      "path": "editor/desktop",
+      "path": "editor/workbench/desktop",
       "first_phase": "P10",
       "dependencies": [],
       "actual_cmake_target": "view_host"
     },
     {
       "name": "flow_ui",
-      "path": "editor/tools/flowforge/ui",
+      "path": "editor/workbench/flow",
       "first_phase": "P10",
       "dependencies": [],
       "actual_cmake_target": "flow_ui"
     },
     {
       "name": "editor_scene_views_test",
-      "path": "editor/tools/scene/ui/test",
+      "path": "editor/tests/integration/scene_views",
       "first_phase": "P10",
       "dependencies": [],
       "actual_cmake_target": "editor_scene_views_test"
@@ -1094,7 +1082,7 @@
     },
     {
       "name": "editor_viewport",
-      "path": "editor/views/viewport",
+      "path": "editor/workbench/viewport",
       "first_phase": "P10Q",
       "dependencies": [
         "view_api"
@@ -4630,16 +4618,16 @@
       "lux/engine/editor/editing/"
     ],
     "test_headers": {
-      "editor/tools/scene/interaction/test/interaction.cpp": [
+      "editor/workbench/scene/interaction/test/interaction.cpp": [
         "../../../../authoring/scene/src/PreparedSceneReload.hpp"
       ],
-      "editor/tools/scene/interaction/test/run_selection.cpp": []
+      "editor/workbench/scene/interaction/test/run_selection.cpp": []
     },
     "files": [
-      "editor/tools/scene/interaction/include/lux/engine/editor/scene/SceneInteraction.hpp",
-      "editor/tools/scene/interaction/src/SceneInteraction.cpp",
-      "editor/tools/scene/interaction/test/interaction.cpp",
-      "editor/tools/scene/interaction/test/run_selection.cpp"
+      "editor/workbench/scene/interaction/include/lux/engine/editor/scene/SceneInteraction.hpp",
+      "editor/workbench/scene/interaction/src/SceneInteraction.cpp",
+      "editor/workbench/scene/interaction/test/interaction.cpp",
+      "editor/workbench/scene/interaction/test/run_selection.cpp"
     ]
   },
   "material_interaction": {
@@ -4720,14 +4708,14 @@
       "lux/engine/material/"
     ],
     "test_headers": {
-      "editor/tools/material/interaction/test/interaction.cpp": [
+      "editor/workbench/material/interaction/test/interaction.cpp": [
         "../../../../authoring/material/src/PreparedMaterialReload.hpp"
       ]
     },
     "files": [
-      "editor/tools/material/interaction/include/lux/engine/editor/material/MaterialInteraction.hpp",
-      "editor/tools/material/interaction/src/MaterialInteraction.cpp",
-      "editor/tools/material/interaction/test/interaction.cpp"
+      "editor/workbench/material/interaction/include/lux/engine/editor/material/MaterialInteraction.hpp",
+      "editor/workbench/material/interaction/src/MaterialInteraction.cpp",
+      "editor/workbench/material/interaction/test/interaction.cpp"
     ]
   },
   "flowforge_interaction": {
@@ -4824,14 +4812,14 @@
       "lux/engine/meta/"
     ],
     "test_headers": {
-      "editor/tools/flowforge/interaction/test/interaction.cpp": [
+      "editor/workbench/flow/interaction/test/interaction.cpp": [
         "../../../../authoring/flow/src/PreparedFlowReload.hpp"
       ]
     },
     "files": [
-      "editor/tools/flowforge/interaction/include/lux/engine/editor/flowforge/FlowInteraction.hpp",
-      "editor/tools/flowforge/interaction/src/FlowInteraction.cpp",
-      "editor/tools/flowforge/interaction/test/interaction.cpp"
+      "editor/workbench/flow/interaction/include/lux/engine/editor/flowforge/FlowInteraction.hpp",
+      "editor/workbench/flow/interaction/src/FlowInteraction.cpp",
+      "editor/workbench/flow/interaction/test/interaction.cpp"
     ]
   },
   "view_api": {
@@ -4928,7 +4916,8 @@
       "optional",
       "string",
       "type_traits",
-      "utility"
+      "utility",
+      "lux/engine/editor/views/ViewError.hpp"
     ],
     "prefixes": [
       "lux/cxx/",
@@ -4938,11 +4927,12 @@
       "lux/engine/object/"
     ],
     "test_headers": {
-      "editor/views/api/test/lifecycle.cpp": []
+      "editor/workbench/desktop/test/lifecycle.cpp": []
     },
     "files": [
-      "editor/views/api/include/lux/engine/editor/views/IViewHost.hpp",
-      "editor/views/api/test/lifecycle.cpp"
+      "editor/workbench/desktop/include/lux/engine/editor/views/IViewHost.hpp",
+      "editor/workbench/desktop/test/lifecycle.cpp",
+      "editor/workbench/desktop/include/lux/engine/editor/views/ViewError.hpp"
     ]
   },
   "layout_model": {
@@ -4991,49 +4981,7 @@
       "editor/authoring/layout/include/lux/engine/editor/workspace/LayoutPlan.hpp",
       "editor/authoring/layout/include/lux/engine/editor/workspace/WorkspaceValues.hpp",
       "editor/authoring/layout/src/LayoutPlan.cpp",
-      "editor/authoring/layout/src/WorkspaceCodec.cpp"
-    ]
-  },
-  "recovery_model": {
-    "direct": [
-      "editor_contracts"
-    ],
-    "closure": {
-      "editor_contracts": {
-        "path": "editor/editing"
-      },
-      "lux::cxx::core": {
-        "imported": true
-      },
-      "lux::cxx::compile_time": {
-        "imported": true
-      }
-    },
-    "headers": [
-      "toml++/toml.hpp",
-      "algorithm",
-      "cmath",
-      "map",
-      "set",
-      "tuple",
-      "sstream",
-      "limits",
-      "span",
-      "vector",
-      "optional",
-      "cstdint",
-      "string",
-      "utility",
-      "lux/engine/editor/views/ViewInfo.hpp",
-      "lux/engine/editor/workspace/WorkspaceValues.hpp",
-      "lux/engine/editor/workspace/DockLayout.hpp",
-      "lux/engine/editor/workspace/LayoutPlan.hpp",
-      "lux/engine/editor/workspace/LayoutCatalog.hpp",
-      "lux/engine/editor/workspace/RecoveryManifest.hpp"
-    ],
-    "prefixes": [],
-    "test_headers": {},
-    "files": [
+      "editor/authoring/layout/src/WorkspaceCodec.cpp",
       "editor/authoring/layout/include/lux/engine/editor/workspace/RecoveryManifest.hpp"
     ]
   },
@@ -5197,7 +5145,7 @@
         "path": "modules/function/ui"
       },
       "view_api": {
-        "path": "editor/views/api"
+        "path": "editor/workbench/desktop"
       },
       "window": {
         "path": "modules/platform/window"
@@ -5240,7 +5188,7 @@
     ],
     "prefixes": [],
     "test_headers": {
-      "editor/desktop/test/host.cpp": [
+      "editor/workbench/desktop/test/host.cpp": [
         "algorithm",
         "cassert",
         "cstdio",
@@ -5249,21 +5197,21 @@
       ]
     },
     "files": [
-      "editor/desktop/include/lux/engine/editor/desktop/DesktopError.hpp",
-      "editor/desktop/include/lux/engine/editor/desktop/DesktopShell.hpp",
-      "editor/desktop/include/lux/engine/editor/desktop/Presentation.hpp",
-      "editor/desktop/include/lux/engine/editor/desktop/ViewHost.hpp",
-      "editor/desktop/include/lux/engine/editor/desktop/WindowInput.hpp",
-      "editor/desktop/include/lux/engine/editor/desktop/WindowOutput.hpp",
-      "editor/desktop/pinclude/lux/engine/editor/desktop/detail/UiFrame.hpp",
-      "editor/desktop/pinclude/lux/engine/editor/desktop/detail/UiRenderSyncStage.hpp",
-      "editor/desktop/src/DesktopShell.cpp",
-      "editor/desktop/src/Presentation.cpp",
-      "editor/desktop/src/UiRenderSyncStage.cpp",
-      "editor/desktop/src/ViewHost.cpp",
-      "editor/desktop/src/WindowInput.cpp",
-      "editor/desktop/src/WindowOutput.cpp",
-      "editor/desktop/test/host.cpp"
+      "editor/workbench/desktop/include/lux/engine/editor/desktop/DesktopError.hpp",
+      "editor/workbench/desktop/include/lux/engine/editor/desktop/DesktopShell.hpp",
+      "editor/workbench/desktop/include/lux/engine/editor/desktop/Presentation.hpp",
+      "editor/workbench/desktop/include/lux/engine/editor/desktop/ViewHost.hpp",
+      "editor/workbench/desktop/include/lux/engine/editor/desktop/WindowInput.hpp",
+      "editor/workbench/desktop/include/lux/engine/editor/desktop/WindowOutput.hpp",
+      "editor/workbench/desktop/pinclude/lux/engine/editor/desktop/detail/UiFrame.hpp",
+      "editor/workbench/desktop/pinclude/lux/engine/editor/desktop/detail/UiRenderSyncStage.hpp",
+      "editor/workbench/desktop/src/DesktopShell.cpp",
+      "editor/workbench/desktop/src/Presentation.cpp",
+      "editor/workbench/desktop/src/UiRenderSyncStage.cpp",
+      "editor/workbench/desktop/src/ViewHost.cpp",
+      "editor/workbench/desktop/src/WindowInput.cpp",
+      "editor/workbench/desktop/src/WindowOutput.cpp",
+      "editor/workbench/desktop/test/host.cpp"
     ]
   },
   "desktop_shell": {
@@ -5573,10 +5521,10 @@
         "path": "modules/function/ui/rendering"
       },
       "view_api": {
-        "path": "editor/views/api"
+        "path": "editor/workbench/desktop"
       },
       "view_host": {
-        "path": "editor/desktop"
+        "path": "editor/workbench/desktop"
       },
       "visual": {
         "path": "engine/domain/simulation/ecs/visual"
@@ -5634,7 +5582,7 @@
     ],
     "prefixes": [],
     "test_headers": {
-      "editor/desktop/test/host.cpp": [
+      "editor/workbench/desktop/test/host.cpp": [
         "algorithm",
         "cassert",
         "cstdio",
@@ -5643,21 +5591,21 @@
       ]
     },
     "files": [
-      "editor/desktop/include/lux/engine/editor/desktop/DesktopError.hpp",
-      "editor/desktop/include/lux/engine/editor/desktop/DesktopShell.hpp",
-      "editor/desktop/include/lux/engine/editor/desktop/Presentation.hpp",
-      "editor/desktop/include/lux/engine/editor/desktop/ViewHost.hpp",
-      "editor/desktop/include/lux/engine/editor/desktop/WindowInput.hpp",
-      "editor/desktop/include/lux/engine/editor/desktop/WindowOutput.hpp",
-      "editor/desktop/pinclude/lux/engine/editor/desktop/detail/UiFrame.hpp",
-      "editor/desktop/pinclude/lux/engine/editor/desktop/detail/UiRenderSyncStage.hpp",
-      "editor/desktop/src/DesktopShell.cpp",
-      "editor/desktop/src/Presentation.cpp",
-      "editor/desktop/src/UiRenderSyncStage.cpp",
-      "editor/desktop/src/ViewHost.cpp",
-      "editor/desktop/src/WindowInput.cpp",
-      "editor/desktop/src/WindowOutput.cpp",
-      "editor/desktop/test/host.cpp"
+      "editor/workbench/desktop/include/lux/engine/editor/desktop/DesktopError.hpp",
+      "editor/workbench/desktop/include/lux/engine/editor/desktop/DesktopShell.hpp",
+      "editor/workbench/desktop/include/lux/engine/editor/desktop/Presentation.hpp",
+      "editor/workbench/desktop/include/lux/engine/editor/desktop/ViewHost.hpp",
+      "editor/workbench/desktop/include/lux/engine/editor/desktop/WindowInput.hpp",
+      "editor/workbench/desktop/include/lux/engine/editor/desktop/WindowOutput.hpp",
+      "editor/workbench/desktop/pinclude/lux/engine/editor/desktop/detail/UiFrame.hpp",
+      "editor/workbench/desktop/pinclude/lux/engine/editor/desktop/detail/UiRenderSyncStage.hpp",
+      "editor/workbench/desktop/src/DesktopShell.cpp",
+      "editor/workbench/desktop/src/Presentation.cpp",
+      "editor/workbench/desktop/src/UiRenderSyncStage.cpp",
+      "editor/workbench/desktop/src/ViewHost.cpp",
+      "editor/workbench/desktop/src/WindowInput.cpp",
+      "editor/workbench/desktop/src/WindowOutput.cpp",
+      "editor/workbench/desktop/test/host.cpp"
     ]
   },
   "editor_widgets": {
@@ -5686,7 +5634,7 @@
         "path": "modules/function/ui"
       },
       "imgui::node_editor": {
-        "path": "editor/widgets"
+        "path": "editor/workbench/widgets"
       },
       "lux::cxx::binary": {
         "path": "."
@@ -5774,7 +5722,7 @@
     ],
     "prefixes": [],
     "test_headers": {
-      "editor/widgets/test/churn.cpp": [
+      "editor/workbench/widgets/test/churn.cpp": [
         "lux/engine/ui/Root.hpp",
         "lux/engine/ui/Layout.hpp",
         "cassert",
@@ -5786,14 +5734,14 @@
       ]
     },
     "files": [
-      "editor/widgets/include/lux/engine/editor/widgets/GraphCanvas.hpp",
-      "editor/widgets/include/lux/engine/editor/widgets/NodeCanvas.hpp",
-      "editor/widgets/include/lux/engine/editor/widgets/NodeCanvasIds.hpp",
-      "editor/widgets/include/lux/engine/editor/widgets/TreeRows.hpp",
-      "editor/widgets/src/GraphCanvas.cpp",
-      "editor/widgets/src/NodeCanvas.cpp",
-      "editor/widgets/src/TreeRows.cpp",
-      "editor/widgets/test/churn.cpp"
+      "editor/workbench/widgets/include/lux/engine/editor/widgets/GraphCanvas.hpp",
+      "editor/workbench/widgets/include/lux/engine/editor/widgets/NodeCanvas.hpp",
+      "editor/workbench/widgets/include/lux/engine/editor/widgets/NodeCanvasIds.hpp",
+      "editor/workbench/widgets/include/lux/engine/editor/widgets/TreeRows.hpp",
+      "editor/workbench/widgets/src/GraphCanvas.cpp",
+      "editor/workbench/widgets/src/NodeCanvas.cpp",
+      "editor/workbench/widgets/src/TreeRows.cpp",
+      "editor/workbench/widgets/test/churn.cpp"
     ]
   },
   "scene_ui": {
@@ -5872,7 +5820,7 @@
         "path": "editor/authoring/project"
       },
       "editor_widgets": {
-        "path": "editor/widgets"
+        "path": "editor/workbench/widgets"
       },
       "gapi": {
         "path": "modules/platform/gapi"
@@ -5893,7 +5841,7 @@
         "imported": true
       },
       "imgui::node_editor": {
-        "path": "editor/widgets"
+        "path": "editor/workbench/widgets"
       },
       "lux::cxx::algorithm": {
         "imported": true
@@ -5941,7 +5889,7 @@
         "path": "engine/project/plugins"
       },
       "project_ui": {
-        "path": "editor/project/ui"
+        "path": "editor/workbench/project"
       },
       "render_client": {
         "path": "modules/function/render/client"
@@ -6067,19 +6015,19 @@
         "path": "editor/activities/scene"
       },
       "scene_fields_camera_ir_generate": {
-        "path": "editor/tools/scene/ui"
+        "path": "editor/workbench/scene"
       },
       "scene_fields_hierarchy_ir_generate": {
-        "path": "editor/tools/scene/ui"
+        "path": "editor/workbench/scene"
       },
       "scene_fields_transform_ir_generate": {
-        "path": "editor/tools/scene/ui"
+        "path": "editor/workbench/scene"
       },
       "scene_fields_visual_ir_generate": {
-        "path": "editor/tools/scene/ui"
+        "path": "editor/workbench/scene"
       },
       "scene_interaction": {
-        "path": "editor/tools/scene/interaction"
+        "path": "editor/workbench/scene/interaction"
       },
       "scene_mesh_query": {
         "path": "engine/scene/builtin_systems/mesh_query"
@@ -6169,7 +6117,7 @@
         "path": "modules/function/ui"
       },
       "view_api": {
-        "path": "editor/views/api"
+        "path": "editor/workbench/desktop"
       },
       "visual": {
         "path": "engine/domain/simulation/ecs/visual"
@@ -6202,7 +6150,7 @@
         "imported": true
       },
       "editor_viewport": {
-        "path": "editor/views/viewport"
+        "path": "editor/workbench/viewport"
       }
     },
     "native_libraries": [
@@ -6306,8 +6254,8 @@
     ],
     "prefixes": [],
     "test_headers": {
-      "editor/tools/scene/ui/test/NativeDesktop.hpp": [],
-      "editor/tools/scene/ui/test/views.cpp": [
+      "editor/tests/integration/scene_views/NativeDesktop.hpp": [],
+      "editor/tests/integration/scene_views/views.cpp": [
         "../../../../../cmake/installed-consumers/common/ControlsTestAccess.hpp",
         "AuxiliaryViews.hpp",
         "NativeDesktop.hpp",
@@ -6366,43 +6314,43 @@
         "lux/engine/flowforge/graph/ArithmeticNode.hpp",
         "imgui_internal.h",
         "DraftSources.hpp",
-        "../../../../authoring/flow/src/PreparedFlowReload.hpp",
-        "../../../../authoring/material/src/MaterialSessionData.hpp",
+        "../../../authoring/flow/src/PreparedFlowReload.hpp",
+        "../../../authoring/material/src/MaterialSessionData.hpp",
         "lux/engine/editor/material/MaterialSession.hpp",
         "lux/engine/editor/sessions/SessionStore.hpp",
         "lux/engine/editor/views/ViewportElement.hpp",
         "source_location"
       ],
-      "editor/tools/scene/ui/test/AuxiliaryViews.hpp": [],
-      "editor/tools/scene/ui/test/DraftSources.hpp": []
+      "editor/tests/integration/scene_views/AuxiliaryViews.hpp": [],
+      "editor/tests/integration/scene_views/DraftSources.hpp": []
     },
     "files": [
-      "editor/tools/scene/ui/codegen/support/FirstPartyInspectorControls.hpp",
-      "editor/tools/scene/ui/codegen/support/InspectorAggregateElements.hpp",
-      "editor/tools/scene/ui/codegen/support/InspectorAlternativeElement.hpp",
-      "editor/tools/scene/ui/codegen/support/InspectorAssociativeElement.hpp",
-      "editor/tools/scene/ui/codegen/support/InspectorControl.hpp",
-      "editor/tools/scene/ui/codegen/support/InspectorElementFields.hpp",
-      "editor/tools/scene/ui/include/lux/engine/editor/scene/InspectorFields.hpp",
-      "editor/tools/scene/ui/include/lux/engine/editor/scene/InspectorView.hpp",
-      "editor/tools/scene/ui/include/lux/engine/editor/scene/OutlinerView.hpp",
-      "editor/tools/scene/ui/include/lux/engine/editor/scene/ResourceView.hpp",
-      "editor/tools/scene/ui/include/lux/engine/editor/scene/SceneConfigurationElement.hpp",
-      "editor/tools/scene/ui/include/lux/engine/editor/scene/SceneConfigurationView.hpp",
-      "editor/tools/scene/ui/include/lux/engine/editor/scene/SceneCreationPoint.hpp",
-      "editor/tools/scene/ui/include/lux/engine/editor/scene/SceneCreationView.hpp",
-      "editor/tools/scene/ui/include/lux/engine/editor/scene/SceneView.hpp",
-      "editor/tools/scene/ui/src/CodegenInput.cpp",
-      "editor/tools/scene/ui/src/ComponentEditors.cpp",
-      "editor/tools/scene/ui/src/InspectorFields.cpp",
-      "editor/tools/scene/ui/src/InspectorView.cpp",
-      "editor/tools/scene/ui/src/OutlinerView.cpp",
-      "editor/tools/scene/ui/src/ResourceView.cpp",
-      "editor/tools/scene/ui/src/SceneConfigurationElement.cpp",
-      "editor/tools/scene/ui/src/SceneConfigurationView.cpp",
-      "editor/tools/scene/ui/src/SceneCreationPoint.cpp",
-      "editor/tools/scene/ui/src/SceneCreationView.cpp",
-      "editor/tools/scene/ui/src/SceneView.cpp"
+      "editor/workbench/scene/codegen/support/FirstPartyInspectorControls.hpp",
+      "editor/workbench/scene/codegen/support/InspectorAggregateElements.hpp",
+      "editor/workbench/scene/codegen/support/InspectorAlternativeElement.hpp",
+      "editor/workbench/scene/codegen/support/InspectorAssociativeElement.hpp",
+      "editor/workbench/scene/codegen/support/InspectorControl.hpp",
+      "editor/workbench/scene/codegen/support/InspectorElementFields.hpp",
+      "editor/workbench/scene/include/lux/engine/editor/scene/InspectorFields.hpp",
+      "editor/workbench/scene/include/lux/engine/editor/scene/InspectorView.hpp",
+      "editor/workbench/scene/include/lux/engine/editor/scene/OutlinerView.hpp",
+      "editor/workbench/scene/include/lux/engine/editor/scene/ResourceView.hpp",
+      "editor/workbench/scene/include/lux/engine/editor/scene/SceneConfigurationElement.hpp",
+      "editor/workbench/scene/include/lux/engine/editor/scene/SceneConfigurationView.hpp",
+      "editor/workbench/scene/include/lux/engine/editor/scene/SceneCreationPoint.hpp",
+      "editor/workbench/scene/include/lux/engine/editor/scene/SceneCreationView.hpp",
+      "editor/workbench/scene/include/lux/engine/editor/scene/SceneView.hpp",
+      "editor/workbench/scene/src/CodegenInput.cpp",
+      "editor/workbench/scene/src/ComponentEditors.cpp",
+      "editor/workbench/scene/src/InspectorFields.cpp",
+      "editor/workbench/scene/src/InspectorView.cpp",
+      "editor/workbench/scene/src/OutlinerView.cpp",
+      "editor/workbench/scene/src/ResourceView.cpp",
+      "editor/workbench/scene/src/SceneConfigurationElement.cpp",
+      "editor/workbench/scene/src/SceneConfigurationView.cpp",
+      "editor/workbench/scene/src/SceneCreationPoint.cpp",
+      "editor/workbench/scene/src/SceneCreationView.cpp",
+      "editor/workbench/scene/src/SceneView.cpp"
     ]
   },
   "material_ui": {
@@ -6479,7 +6427,7 @@
         "path": "editor/authoring/project"
       },
       "editor_widgets": {
-        "path": "editor/widgets"
+        "path": "editor/workbench/widgets"
       },
       "gapi": {
         "path": "modules/platform/gapi"
@@ -6503,7 +6451,7 @@
         "imported": true
       },
       "imgui::node_editor": {
-        "path": "editor/widgets"
+        "path": "editor/workbench/widgets"
       },
       "lux::cxx::algorithm": {
         "imported": true
@@ -6530,7 +6478,7 @@
         "path": "modules/function/material"
       },
       "material_interaction": {
-        "path": "editor/tools/material/interaction"
+        "path": "editor/workbench/material/interaction"
       },
       "material_model": {
         "path": "editor/authoring/material"
@@ -6563,7 +6511,7 @@
         "path": "engine/project/plugins"
       },
       "project_ui": {
-        "path": "editor/project/ui"
+        "path": "editor/workbench/project"
       },
       "render_client": {
         "path": "modules/function/render/client"
@@ -6689,19 +6637,19 @@
         "path": "editor/activities/scene"
       },
       "scene_fields_camera_ir_generate": {
-        "path": "editor/tools/scene/ui"
+        "path": "editor/workbench/scene"
       },
       "scene_fields_hierarchy_ir_generate": {
-        "path": "editor/tools/scene/ui"
+        "path": "editor/workbench/scene"
       },
       "scene_fields_transform_ir_generate": {
-        "path": "editor/tools/scene/ui"
+        "path": "editor/workbench/scene"
       },
       "scene_fields_visual_ir_generate": {
-        "path": "editor/tools/scene/ui"
+        "path": "editor/workbench/scene"
       },
       "scene_interaction": {
-        "path": "editor/tools/scene/interaction"
+        "path": "editor/workbench/scene/interaction"
       },
       "scene_mesh_query": {
         "path": "engine/scene/builtin_systems/mesh_query"
@@ -6800,7 +6748,7 @@
         "path": "modules/function/ui"
       },
       "view_api": {
-        "path": "editor/views/api"
+        "path": "editor/workbench/desktop"
       },
       "visual": {
         "path": "engine/domain/simulation/ecs/visual"
@@ -6833,7 +6781,7 @@
         "imported": true
       },
       "editor_viewport": {
-        "path": "editor/views/viewport"
+        "path": "editor/workbench/viewport"
       }
     },
     "native_libraries": [
@@ -6862,19 +6810,19 @@
       "lux/engine/material/graph/Nodes.hpp",
       "lux/engine/resource/asset/texture/TextureAsset.hpp",
       "lux/engine/ui/Layout.hpp",
-      "lux/engine/editor/editing/InteractionDelivery.hpp",
+      "lux/engine/editor/workbench/InteractionDelivery.hpp",
       "lux/engine/editor/persistence/WriteLane.hpp"
     ],
     "prefixes": [],
     "test_headers": {},
     "project_include_dirs": [
-      "editor/editing/sinclude"
+      "editor/workbench/sinclude"
     ],
     "files": [
-      "editor/tools/material/ui/include/lux/engine/editor/material/MaterialNodeControls.hpp",
-      "editor/tools/material/ui/include/lux/engine/editor/material/MaterialView.hpp",
-      "editor/tools/material/ui/src/MaterialNodeControls.cpp",
-      "editor/tools/material/ui/src/MaterialView.cpp"
+      "editor/workbench/material/include/lux/engine/editor/material/MaterialNodeControls.hpp",
+      "editor/workbench/material/include/lux/engine/editor/material/MaterialView.hpp",
+      "editor/workbench/material/src/MaterialNodeControls.cpp",
+      "editor/workbench/material/src/MaterialView.cpp"
     ]
   },
   "flow_ui": {
@@ -7298,7 +7246,7 @@
         "path": "editor/activities/persistence"
       },
       "editor_widgets": {
-        "path": "editor/widgets"
+        "path": "editor/workbench/widgets"
       },
       "flowforge": {
         "path": "modules/function/flowforge"
@@ -7310,7 +7258,7 @@
         "path": "engine/toolchain/flowforge"
       },
       "flowforge_interaction": {
-        "path": "editor/tools/flowforge/interaction"
+        "path": "editor/workbench/flow/interaction"
       },
       "flowforge_model": {
         "path": "editor/authoring/flow"
@@ -7328,7 +7276,7 @@
         "path": "modules/function/ui"
       },
       "imgui::node_editor": {
-        "path": "editor/widgets"
+        "path": "editor/workbench/widgets"
       },
       "lux::cxx::algorithm": {
         "path": "."
@@ -7397,7 +7345,7 @@
         "path": "modules/function/ui"
       },
       "view_api": {
-        "path": "editor/views/api"
+        "path": "editor/workbench/desktop"
       },
       "window": {
         "path": "modules/platform/window"
@@ -7445,19 +7393,19 @@
       "lux/engine/flowforge/script/ScriptAbilityNode.hpp",
       "lux/engine/flowforge/script/ScriptEventAwaitNode.hpp",
       "lux/engine/ui/Layout.hpp",
-      "lux/engine/editor/editing/InteractionDelivery.hpp",
+      "lux/engine/editor/workbench/InteractionDelivery.hpp",
       "lux/engine/editor/persistence/WriteLane.hpp"
     ],
     "prefixes": [],
     "test_headers": {},
     "project_include_dirs": [
-      "editor/editing/sinclude"
+      "editor/workbench/sinclude"
     ],
     "files": [
-      "editor/tools/flowforge/ui/include/lux/engine/editor/flowforge/FlowNodeControls.hpp",
-      "editor/tools/flowforge/ui/include/lux/engine/editor/flowforge/FlowView.hpp",
-      "editor/tools/flowforge/ui/src/FlowNodeControls.cpp",
-      "editor/tools/flowforge/ui/src/FlowView.cpp"
+      "editor/workbench/flow/include/lux/engine/editor/flowforge/FlowNodeControls.hpp",
+      "editor/workbench/flow/include/lux/engine/editor/flowforge/FlowView.hpp",
+      "editor/workbench/flow/src/FlowNodeControls.cpp",
+      "editor/workbench/flow/src/FlowView.cpp"
     ]
   },
   "tasks_ui": {
@@ -7552,7 +7500,7 @@
         "path": "modules/function/ui"
       },
       "view_api": {
-        "path": "editor/views/api"
+        "path": "editor/workbench/desktop"
       },
       "window": {
         "path": "modules/platform/window"
@@ -7592,9 +7540,9 @@
     },
     "files": [
       "editor/activities/tasks/include/lux/engine/editor/tasks/TaskMonitor.hpp",
-      "editor/tasks/ui/include/lux/engine/editor/tasks/TaskView.hpp",
+      "editor/workbench/tasks/include/lux/engine/editor/tasks/TaskView.hpp",
       "editor/activities/tasks/src/TaskMonitor.cpp",
-      "editor/tasks/ui/src/TaskView.cpp",
+      "editor/workbench/tasks/src/TaskView.cpp",
       "editor/tests/integration/tasks/monitor.cpp"
     ]
   },
@@ -7733,7 +7681,7 @@
         "path": "modules/function/ui"
       },
       "view_api": {
-        "path": "editor/views/api"
+        "path": "editor/workbench/desktop"
       },
       "window": {
         "path": "modules/platform/window"
@@ -7776,7 +7724,7 @@
     ],
     "prefixes": [],
     "test_headers": {
-      "editor/project/ui/test/catalog.cpp": [
+      "editor/workbench/project/test/catalog.cpp": [
         "cassert",
         "lux/engine/editor/desktop/ViewHost.hpp",
         "lux/engine/editor/project/AssetPickerElement.hpp",
@@ -7786,11 +7734,11 @@
       ]
     },
     "files": [
-      "editor/project/ui/include/lux/engine/editor/project/AssetPickerElement.hpp",
-      "editor/project/ui/include/lux/engine/editor/project/ProjectView.hpp",
-      "editor/project/ui/src/AssetPickerElement.cpp",
-      "editor/project/ui/src/ProjectView.cpp",
-      "editor/project/ui/test/catalog.cpp"
+      "editor/workbench/project/include/lux/engine/editor/project/AssetPickerElement.hpp",
+      "editor/workbench/project/include/lux/engine/editor/project/ProjectView.hpp",
+      "editor/workbench/project/src/AssetPickerElement.cpp",
+      "editor/workbench/project/src/ProjectView.cpp",
+      "editor/workbench/project/test/catalog.cpp"
     ]
   },
   "editor_scene_views_test": {
@@ -8229,7 +8177,7 @@
         "path": "modules/resource/description"
       },
       "desktop_shell": {
-        "path": "editor/desktop"
+        "path": "editor/workbench/desktop"
       },
       "domain_system_description": {
         "path": "engine/domain/system/description"
@@ -8262,10 +8210,10 @@
         "path": "editor/authoring/project"
       },
       "editor_widgets": {
-        "path": "editor/widgets"
+        "path": "editor/workbench/widgets"
       },
       "flow_ui": {
-        "path": "editor/tools/flowforge/ui"
+        "path": "editor/workbench/flow"
       },
       "flowforge": {
         "path": "modules/function/flowforge"
@@ -8277,7 +8225,7 @@
         "path": "engine/toolchain/flowforge"
       },
       "flowforge_interaction": {
-        "path": "editor/tools/flowforge/interaction"
+        "path": "editor/workbench/flow/interaction"
       },
       "flowforge_model": {
         "path": "editor/authoring/flow"
@@ -8304,7 +8252,7 @@
         "imported": true
       },
       "imgui::node_editor": {
-        "path": "editor/widgets"
+        "path": "editor/workbench/widgets"
       },
       "imgui::vulkan": {
         "path": "modules/function/ui"
@@ -8346,7 +8294,7 @@
         "path": "modules/function/material"
       },
       "material_interaction": {
-        "path": "editor/tools/material/interaction"
+        "path": "editor/workbench/material/interaction"
       },
       "material_model": {
         "path": "editor/authoring/material"
@@ -8355,7 +8303,7 @@
         "path": "editor/activities/material"
       },
       "material_ui": {
-        "path": "editor/tools/material/ui"
+        "path": "editor/workbench/material"
       },
       "math": {
         "path": "modules/core/math"
@@ -8388,7 +8336,7 @@
         "path": "engine/project/plugins"
       },
       "project_ui": {
-        "path": "editor/project/ui"
+        "path": "editor/workbench/project"
       },
       "render_client": {
         "path": "modules/function/render/client"
@@ -8598,19 +8546,19 @@
         "path": "editor/activities/scene"
       },
       "scene_fields_camera_ir_generate": {
-        "path": "editor/tools/scene/ui"
+        "path": "editor/workbench/scene"
       },
       "scene_fields_hierarchy_ir_generate": {
-        "path": "editor/tools/scene/ui"
+        "path": "editor/workbench/scene"
       },
       "scene_fields_transform_ir_generate": {
-        "path": "editor/tools/scene/ui"
+        "path": "editor/workbench/scene"
       },
       "scene_fields_visual_ir_generate": {
-        "path": "editor/tools/scene/ui"
+        "path": "editor/workbench/scene"
       },
       "scene_interaction": {
-        "path": "editor/tools/scene/interaction"
+        "path": "editor/workbench/scene/interaction"
       },
       "scene_mesh_query": {
         "path": "engine/scene/builtin_systems/mesh_query"
@@ -8640,7 +8588,7 @@
         "path": "engine/scene/builtin_systems/transform"
       },
       "scene_ui": {
-        "path": "editor/tools/scene/ui"
+        "path": "editor/workbench/scene"
       },
       "scene_world_loading": {
         "path": "engine/scene/builtin_systems/world_loading"
@@ -8730,10 +8678,10 @@
         "path": "modules/function/ui/rendering"
       },
       "view_api": {
-        "path": "editor/views/api"
+        "path": "editor/workbench/desktop"
       },
       "view_host": {
-        "path": "editor/desktop"
+        "path": "editor/workbench/desktop"
       },
       "visual": {
         "path": "engine/domain/simulation/ecs/visual"
@@ -8769,7 +8717,7 @@
         "imported": true
       },
       "tasks_ui": {
-        "path": "editor/tasks/ui"
+        "path": "editor/workbench/tasks"
       },
       "editor_file_publication": {
         "path": "editor/activities/persistence"
@@ -8781,7 +8729,7 @@
         "path": "editor/activities/persistence"
       },
       "editor_viewport": {
-        "path": "editor/views/viewport"
+        "path": "editor/workbench/viewport"
       },
       "editor_tasks": {
         "path": "editor/activities/tasks"
@@ -8803,8 +8751,8 @@
     "headers": [],
     "prefixes": [],
     "test_headers": {
-      "editor/tools/scene/ui/test/NativeDesktop.hpp": [],
-      "editor/tools/scene/ui/test/views.cpp": [
+      "editor/tests/integration/scene_views/NativeDesktop.hpp": [],
+      "editor/tests/integration/scene_views/views.cpp": [
         "../../../../../cmake/installed-consumers/common/ControlsTestAccess.hpp",
         "AuxiliaryViews.hpp",
         "NativeDesktop.hpp",
@@ -8863,20 +8811,20 @@
         "lux/engine/flowforge/graph/ArithmeticNode.hpp",
         "imgui_internal.h",
         "DraftSources.hpp",
-        "../../../../authoring/flow/src/PreparedFlowReload.hpp",
-        "../../../../authoring/material/src/MaterialSessionData.hpp",
+        "../../../authoring/flow/src/PreparedFlowReload.hpp",
+        "../../../authoring/material/src/MaterialSessionData.hpp",
         "lux/engine/editor/material/MaterialSession.hpp",
         "lux/engine/editor/sessions/SessionStore.hpp",
         "lux/engine/editor/views/ViewportElement.hpp"
       ],
-      "editor/tools/scene/ui/test/AuxiliaryViews.hpp": [],
-      "editor/tools/scene/ui/test/DraftSources.hpp": []
+      "editor/tests/integration/scene_views/AuxiliaryViews.hpp": [],
+      "editor/tests/integration/scene_views/DraftSources.hpp": []
     },
     "files": [
-      "editor/tools/scene/ui/test/AuxiliaryViews.hpp",
-      "editor/tools/scene/ui/test/DraftSources.hpp",
-      "editor/tools/scene/ui/test/NativeDesktop.hpp",
-      "editor/tools/scene/ui/test/views.cpp"
+      "editor/tests/integration/scene_views/AuxiliaryViews.hpp",
+      "editor/tests/integration/scene_views/DraftSources.hpp",
+      "editor/tests/integration/scene_views/NativeDesktop.hpp",
+      "editor/tests/integration/scene_views/views.cpp"
     ]
   },
   "p10_targets": [
@@ -9448,20 +9396,20 @@
       "comctl32"
     ],
     "test_headers": {
-      "editor/views/viewport/test/highlight.cpp": [
+      "editor/workbench/viewport/test/highlight.cpp": [
         "cassert",
         "iostream"
       ]
     },
     "files": [
-      "editor/views/viewport/include/lux/engine/editor/views/CameraNavigation.hpp",
-      "editor/views/viewport/include/lux/engine/editor/views/ViewportElement.hpp",
-      "editor/views/viewport/include/lux/engine/editor/views/ViewportPresentation.hpp",
-      "editor/views/viewport/src/CameraNavigation.cpp",
-      "editor/views/viewport/src/HighlightRenderer.hpp",
-      "editor/views/viewport/src/ViewportElement.cpp",
-      "editor/views/viewport/src/ViewportPresentation.cpp",
-      "editor/views/viewport/test/highlight.cpp"
+      "editor/workbench/viewport/include/lux/engine/editor/views/CameraNavigation.hpp",
+      "editor/workbench/viewport/include/lux/engine/editor/views/ViewportElement.hpp",
+      "editor/workbench/viewport/include/lux/engine/editor/views/ViewportPresentation.hpp",
+      "editor/workbench/viewport/src/CameraNavigation.cpp",
+      "editor/workbench/viewport/src/HighlightRenderer.hpp",
+      "editor/workbench/viewport/src/ViewportElement.cpp",
+      "editor/workbench/viewport/src/ViewportPresentation.cpp",
+      "editor/workbench/viewport/test/highlight.cpp"
     ]
   },
   "stages": [

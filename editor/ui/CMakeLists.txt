@@ -33,10 +33,10 @@ component_add_transitive_commands(editor_ui
     "find_package(lux-engine-scene-render REQUIRED COMPONENTS scene_render)"
     "find_package(imgui REQUIRED COMPONENTS core)")
 include_component_cmake_scripts(meta)
-include(${PROJECT_SOURCE_DIR}/editor/tools/scene/ui/cmake/engine_editor_imgui_inspector_codegen.cmake)
+include(${PROJECT_SOURCE_DIR}/editor/workbench/scene/cmake/engine_editor_imgui_inspector_codegen.cmake)
 component_add_cmake_scripts(editor_ui
-    ${PROJECT_SOURCE_DIR}/editor/tools/scene/ui/cmake/engine_editor_imgui_inspector_codegen.cmake)
-install(DIRECTORY ${PROJECT_SOURCE_DIR}/editor/tools/scene/ui/codegen/
+    ${PROJECT_SOURCE_DIR}/editor/workbench/scene/cmake/engine_editor_imgui_inspector_codegen.cmake)
+install(DIRECTORY ${PROJECT_SOURCE_DIR}/editor/workbench/scene/codegen/
     DESTINATION share/lux-engine-editor-ui/editor_ui/cmake_scripts/codegen
     PATTERN "__pycache__" EXCLUDE)
 engine_target_add_imgui_inspector_codegen(NAME desktop_transform TARGET editor_ui

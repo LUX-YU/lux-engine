@@ -1,0 +1,21 @@
+if(LUX_EDITOR_TEST_DESKTOP_GPU AND LUX_EDITOR_BUILD_TOOLCHAIN_TESTS)
+    add_executable(editor_scene_views_test views.cpp)
+    target_link_libraries(editor_scene_views_test PRIVATE scene_ui desktop_shell material_ui flow_ui scene_execution tasks_ui editor_persistence_execution editor_file_publication material_persistence
+        lux::engine::scene::scene_transform lux::engine::function::ui_rendering
+        lux::engine::function::render_features imgui::core)
+    lux_editor_test_options(editor_scene_views_test)
+    target_compile_definitions(editor_scene_views_test PRIVATE LUX_P10_R1_NATIVE=1)
+    lux_editor_find_linker(P10_LINKER)
+    add_test(NAME editor.scene_views_gpu COMMAND editor_scene_views_test "${P10_LINKER}" "${CMAKE_BINARY_DIR}")
+    foreach(case literal signature flow-canvas material-canvas flow-queue material-queue material-lifetime lifecycle positive history)
+        add_test(NAME editor.draft_source_${case} COMMAND editor_scene_views_test "${P10_LINKER}" "${CMAKE_BINARY_DIR}" "r1-${case}")
+        set_tests_properties(editor.draft_source_${case} PROPERTIES LABELS "editor;P10;R1;gpu" TIMEOUT 120 RUN_SERIAL TRUE)
+    endforeach()
+    if(WIN32)
+        target_link_libraries(editor_scene_views_test PRIVATE user32)
+        add_test(NAME editor.desktop_native_input COMMAND editor_scene_views_test "${P10_LINKER}" "${CMAKE_BINARY_DIR}" native)
+        set_tests_properties(editor.desktop_native_input PROPERTIES LABELS "editor;P10;desktop;gpu" TIMEOUT 120 RUN_SERIAL TRUE)
+    endif()
+    set_tests_properties(editor.scene_views_gpu PROPERTIES LABELS "editor;P10;gpu" TIMEOUT 120)
+endif()
+

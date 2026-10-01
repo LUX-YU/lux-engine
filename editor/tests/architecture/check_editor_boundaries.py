@@ -234,20 +234,23 @@ def inspect(repo, records, rules, stage, compile_db=None):
         for target in ["scene_interaction", "material_interaction", "flowforge_interaction", "view_api"]:
             check_model(repo, targets, rules, sources, report, target)
         # Factories in the new protocol must receive a dispatcher, never a Root for construction.
+        factory_sources = owned_sources(repo, targets.get("view_api", {}), rules["view_api"])
         for path, source in sources.items():
-            if path.startswith("editor/views/") and "/test/" not in path:
+            if path in factory_sources and "/test/" not in path:
                 if re.search(r"\bRoot\s*&", source) and re.search(r"(?:make_unique<[^>]*(?:Pane|Element)|(?:Pane|Element)\s*[({])", source):
                     report("NEW_ROOTED_FACTORY", path, "P08 factory calls the expiring rooted constructor")
 
     if phase(stage) >= phase("P09"):
-        for target in ["layout_model", "recovery_model", "workspace_store"]:
+        for target in ["layout_model", "workspace_store"]:
             check_model(repo, targets, rules, sources, report, target)
 
     if phase(stage) >= phase("P10"):
         for target in rules["p10_targets"]:
             check_model(repo, targets, rules, sources, report, target)
         for path, source in sources.items():
-            is_factory = path.startswith(("editor/tools/", "editor/project/ui/", "editor/tasks/ui/")) and "/ui/" in path
+            is_factory = (path.startswith("editor/tools/") and "/ui/" in path) or path.startswith((
+                "editor/workbench/scene/", "editor/workbench/material/", "editor/workbench/flow/",
+                "editor/workbench/project/", "editor/workbench/tasks/"))
             if is_factory and "/test/" not in path and re.search(r"\bRoot\s*&", source) and re.search(
                     r"(?:make_unique<[^>]*(?:Pane|Element)|(?:Pane|Element)\s*[({])", source):
                 report("NEW_ROOTED_FACTORY", path, "P10 factories must assemble detached subtrees")
@@ -327,10 +330,15 @@ def inspect(repo, records, rules, stage, compile_db=None):
             if not path.startswith(scopes):
                 continue
             command = unit.get("command", " ".join(unit.get("arguments", []))).replace("\\", "/")
-            # Tool roots also contain the independent UI/model targets. The narrowest owner is
-            # authoritative; declaration order must not give a nested unit its legacy root policy.
-            target = max((t for t in rules["targets"] if path.startswith(t["path"] + "/")),
-                         key=lambda t: len(t["path"]))
+            # Co-located targets have different responsibilities. Resolve the actual compile
+            # target first; a directory cannot establish ownership of a translation unit.
+            compiled = re.search(r"CMakeFiles/([^/]+)\.dir/", command)
+            if not compiled or compiled[1] not in targets:
+                report("UNRESOLVED_COMPILE_OWNER", path, command)
+                continue
+            target = next((t for t in rules["targets"] if t["name"] == compiled[1]), None)
+            if target is None:
+                continue  # Legacy/test TUs do not acquire a formal target's policy by sharing its directory.
             own = target["path"]
             project_dirs = rules.get(target["name"], {}).get("project_include_dirs", [])
             for private in re.findall(r'[^\s";]*(?:/pinclude|/sinclude)[^\s";]*', command):

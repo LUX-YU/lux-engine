@@ -1,5 +1,5 @@
 #include <lux/engine/editor/views/ViewportElement.hpp>
-#include <lux/engine/editor/editing/InteractionDelivery.hpp>
+#include <lux/engine/editor/workbench/InteractionDelivery.hpp>
 #include <lux/engine/editor/material/PublishCompiledMaterial.hpp>
 #include <lux/engine/editor/material/MaterialView.hpp>
 #include <lux/engine/editor/material/MaterialNodeControls.hpp>
@@ -124,7 +124,7 @@ namespace lux::editor::material
         std::optional<NodePropertiesDraft> draft_;
         lux::material::NodeId selected_node_;
         std::optional<std::uint64_t> selection_request_;
-        using ECanvasStage = editing::detail::EInputDeliveryStage;
+        using ECanvasStage = workbench::detail::EInputDeliveryStage;
         struct CanvasRequest final
         {
             sessions::ContentStamp based_on;
@@ -631,7 +631,7 @@ namespace lux::editor::material
             {
                 auto& pending = canvas_request_.front();
                 const auto& request = pending.input;
-                auto delivered = editing::detail::deliverInput(
+                auto delivered = workbench::detail::deliverInput(
                     pending.stage,
                     request.committed,
                     [&] { return validate(pending.based_on); },

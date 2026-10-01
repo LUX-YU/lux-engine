@@ -15,4 +15,4 @@ lux_classify_target(TARGET material_ui LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 lux_engine_install_components(PROJECT_NAME lux-engine-editor-material-ui VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS material_ui)
 
-target_include_directories(material_ui PRIVATE ${PROJECT_SOURCE_DIR}/editor/editing/sinclude)
+target_include_directories(material_ui PRIVATE ${PROJECT_SOURCE_DIR}/editor/workbench/sinclude)

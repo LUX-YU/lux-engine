@@ -4,7 +4,7 @@ from pathlib import Path
 import unittest
 
 spec = importlib.util.spec_from_file_location(
-    "inspector_generator", Path(__file__).parents[2] / "tools/scene/ui/codegen/inspector_codegen.py")
+    "inspector_generator", Path(__file__).parents[2] / "workbench/scene/codegen/inspector_codegen.py")
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 

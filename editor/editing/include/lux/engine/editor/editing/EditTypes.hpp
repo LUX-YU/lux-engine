@@ -3,7 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <lux/cxx/compile_time/expected.hpp>
-#include <lux/engine/editor/editing_visibility.h>
+#include <lux/engine/editor/editing/history_visibility.h>
 #include <string_view>
 
 namespace lux::editor::editing

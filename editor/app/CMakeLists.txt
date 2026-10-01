@@ -4,7 +4,7 @@ generate_visibility_header(ENABLE_MACRO_NAME LUX_EDITOR_APP_LIBRARY PUBLIC_MACRO
 add_component(COMPONENT_NAME editor_app STATIC NAMESPACE lux::engine::editor OUTPUT_NAME lux_engine_editor_app
     SOURCE_FILES src/Editor.cpp src/EditorStartup.cpp src/EditorLoop.cpp src/EditorPlatform.cpp src/EditorMenu.cpp src/EditorWorkspace.cpp src/EditorWorkspaceStorage.cpp)
 component_include_directories(editor_app BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR}
-    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude ${PROJECT_SOURCE_DIR}/editor/assets/sinclude ${PROJECT_SOURCE_DIR}/editor/storage/sinclude ${PROJECT_SOURCE_DIR}/editor/editing/sinclude ${PROJECT_SOURCE_DIR}/editor/context/sinclude INSTALL_TIME include)
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude ${PROJECT_SOURCE_DIR}/editor/assets/sinclude ${PROJECT_SOURCE_DIR}/editor/activities/project/sinclude ${PROJECT_SOURCE_DIR}/editor/activities/sinclude ${PROJECT_SOURCE_DIR}/editor/context/sinclude INSTALL_TIME include)
 target_compile_definitions(editor_app PRIVATE LUX_EDITOR_APP_LIBRARY)
 lux_classify_target(TARGET editor_app LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 target_link_libraries(editor_app PUBLIC lux::engine::engine_context_render lux::engine::editor::editor_context lux::engine::editor::editor_assets lux::engine::editor::editor_ui
@@ -36,7 +36,7 @@ if(LUX_EDITOR_TEST_DESKTOP_GPU)
     add_executable(editor_baseline_failures test/baseline_failures.cpp)
     target_include_directories(editor_baseline_failures PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
         ${PROJECT_SOURCE_DIR}/editor/context/sinclude ${PROJECT_SOURCE_DIR}/editor/assets/sinclude
-        ${PROJECT_SOURCE_DIR}/editor/storage/sinclude ${PROJECT_SOURCE_DIR}/editor/editing/sinclude)
+        ${PROJECT_SOURCE_DIR}/editor/activities/project/sinclude ${PROJECT_SOURCE_DIR}/editor/activities/sinclude)
     target_link_libraries(editor_baseline_failures PRIVATE editor_app)
     lux_editor_test_options(editor_baseline_failures)
     add_executable(editor_context_lifecycle test/context_lifecycle.cpp)
@@ -76,7 +76,7 @@ endif()
 if(LUX_EDITOR_TEST_DESKTOP_GPU)
     add_executable(editor_review_regressions ${PROJECT_SOURCE_DIR}/cmake/installed-consumers/editor-d2/protocol/review_regressions.cpp)
     target_include_directories(editor_review_regressions PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
-        ${PROJECT_SOURCE_DIR}/editor/context/sinclude ${PROJECT_SOURCE_DIR}/editor/assets/sinclude ${PROJECT_SOURCE_DIR}/editor/storage/sinclude ${PROJECT_SOURCE_DIR}/editor/editing/sinclude)
+        ${PROJECT_SOURCE_DIR}/editor/context/sinclude ${PROJECT_SOURCE_DIR}/editor/assets/sinclude ${PROJECT_SOURCE_DIR}/editor/activities/project/sinclude ${PROJECT_SOURCE_DIR}/editor/activities/sinclude)
     target_link_libraries(editor_review_regressions PRIVATE editor_app editor_material editor_scene editor_flowforge)
     if(MSVC)
         target_compile_options(editor_review_regressions PRIVATE /UNDEBUG /utf-8)
@@ -92,7 +92,7 @@ endif()
 if(LUX_EDITOR_TEST_DESKTOP_GPU)
     add_executable(editor_core_protocol ../tools/scene/test/core_protocol.cpp)
     target_include_directories(editor_core_protocol PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/pinclude ${PROJECT_SOURCE_DIR}/editor/assets/sinclude ${PROJECT_SOURCE_DIR}/editor/storage/sinclude ${PROJECT_SOURCE_DIR}/editor/editing/sinclude
+        ${CMAKE_CURRENT_SOURCE_DIR}/pinclude ${PROJECT_SOURCE_DIR}/editor/assets/sinclude ${PROJECT_SOURCE_DIR}/editor/activities/project/sinclude ${PROJECT_SOURCE_DIR}/editor/activities/sinclude
         ${PROJECT_SOURCE_DIR}/editor/context/include ${PROJECT_SOURCE_DIR}/editor/context/sinclude
         ${PROJECT_SOURCE_DIR}/cmake/installed-consumers/editor-d2
         ${PROJECT_SOURCE_DIR}/cmake/installed-consumers/common
@@ -155,7 +155,7 @@ find_package(tomlplusplus CONFIG REQUIRED)
 target_include_directories(editor_app PRIVATE $<TARGET_PROPERTY:tomlplusplus::tomlplusplus,INTERFACE_INCLUDE_DIRECTORIES>)
 target_compile_definitions(editor_app PRIVATE TOML_HEADER_ONLY=1 TOML_EXCEPTIONS=0)
 
-target_include_directories(lux_editor PRIVATE ${PROJECT_SOURCE_DIR}/editor/editing/sinclude $<TARGET_PROPERTY:tomlplusplus::tomlplusplus,INTERFACE_INCLUDE_DIRECTORIES>)
+target_include_directories(lux_editor PRIVATE ${PROJECT_SOURCE_DIR}/editor/activities/sinclude $<TARGET_PROPERTY:tomlplusplus::tomlplusplus,INTERFACE_INCLUDE_DIRECTORIES>)
 target_compile_definitions(lux_editor PRIVATE TOML_HEADER_ONLY=1 TOML_EXCEPTIONS=0 "LUX_EDITOR_VERSION=\"${PROJECT_VERSION}\"")
 
 get_property(editor_app_tests DIRECTORY PROPERTY TESTS)

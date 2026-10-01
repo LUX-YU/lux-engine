@@ -41,4 +41,4 @@ CMake 消费者使用 `find_package(lux-engine-project-plugins REQUIRED COMPONEN
 实际 Vulkan 插件示例安装到 `share/lux-engine/examples/external-feature`，只链接公开 Runtime SDK。
 
 编辑器的 `.luxproject` 格式是 version 2，启用项保存身份、版本和可选项目相对描述路径；空 plugins 是明确的空选择。
-它属于 editor/project 的项目描述；带发布事务的 ProjectStorage 留在 editor/storage，不迁入游戏层。
+它属于 editor/project 的项目描述；带发布事务的 ProjectStorage 留在 editor/activities/project，不迁入游戏层。

@@ -330,7 +330,7 @@
       "id": "P07_OLD_2"
     },
     {
-      "path": "editor/storage/include/lux/engine/editor/storage/AssetCatalog.hpp",
+      "path": "editor/activities/project/include/lux/engine/editor/storage/AssetCatalog.hpp",
       "deadline": "P10"
     },
     {
@@ -574,15 +574,15 @@
     "editor/authoring/scene/",
     "editor/authoring/material/",
     "editor/authoring/flow/",
-    "editor/persistence/",
-    "editor/tools/scene/persistence/",
-    "editor/tools/material/persistence/",
-    "editor/tools/flowforge/persistence/",
-    "editor/tools/scene/execution/api/",
-    "editor/tools/scene/execution/",
-    "editor/tools/scene/projection/",
-    "editor/tools/material/preview/",
-    "editor/tools/flowforge/compilation/",
+    "editor/activities/persistence/",
+    "editor/activities/scene/",
+    "editor/activities/material/",
+    "editor/activities/flow/",
+    "editor/activities/scene/",
+    "editor/activities/scene/",
+    "editor/activities/scene/",
+    "editor/activities/material/",
+    "editor/activities/flow/",
     "editor/tools/scene/interaction/",
     "editor/tools/material/interaction/",
     "editor/tools/flowforge/interaction/",
@@ -590,7 +590,7 @@
     "editor/widgets/",
     "editor/authoring/layout/",
     "editor/workspace/recovery/",
-    "editor/workspace/storage/",
+    "editor/activities/workspace/",
     "editor/desktop/",
     "editor/tools/scene/ui/",
     "editor/tools/material/ui/",
@@ -682,7 +682,7 @@
     },
     {
       "name": "editor_persistence",
-      "path": "editor/persistence",
+      "path": "editor/activities/persistence",
       "first_phase": "P05",
       "dependencies": [
         "editor_contracts",
@@ -693,7 +693,7 @@
     },
     {
       "name": "editor_persistence_execution",
-      "path": "editor/persistence",
+      "path": "editor/activities/persistence",
       "first_phase": "P05",
       "dependencies": [
         "editor_persistence"
@@ -703,7 +703,7 @@
     },
     {
       "name": "scene_persistence",
-      "path": "editor/tools/scene/persistence",
+      "path": "editor/activities/scene",
       "first_phase": "P05",
       "dependencies": [
         "scene_model",
@@ -714,7 +714,7 @@
     },
     {
       "name": "material_persistence",
-      "path": "editor/tools/material/persistence",
+      "path": "editor/activities/material",
       "first_phase": "P05",
       "dependencies": [
         "material_model",
@@ -725,7 +725,7 @@
     },
     {
       "name": "flowforge_persistence",
-      "path": "editor/tools/flowforge/persistence",
+      "path": "editor/activities/flow",
       "first_phase": "P05",
       "dependencies": [
         "flowforge_model",
@@ -736,7 +736,7 @@
     },
     {
       "name": "scene_execution_api",
-      "path": "editor/tools/scene/execution/api",
+      "path": "editor/activities/scene",
       "first_phase": "P06",
       "dependencies": [
         "scene_model"
@@ -746,7 +746,7 @@
     },
     {
       "name": "scene_execution",
-      "path": "editor/tools/scene/execution",
+      "path": "editor/activities/scene",
       "first_phase": "P06",
       "dependencies": [
         "scene_execution_api",
@@ -757,7 +757,7 @@
     },
     {
       "name": "scene_projection",
-      "path": "editor/tools/scene/projection",
+      "path": "editor/activities/scene",
       "first_phase": "P07",
       "dependencies": [
         "scene_model"
@@ -767,7 +767,7 @@
     },
     {
       "name": "material_preview",
-      "path": "editor/tools/material/preview",
+      "path": "editor/activities/material",
       "first_phase": "P07",
       "dependencies": [
         "editor_persistence",
@@ -779,7 +779,7 @@
     },
     {
       "name": "flowforge_compilation",
-      "path": "editor/tools/flowforge/compilation",
+      "path": "editor/activities/flow",
       "first_phase": "P07",
       "dependencies": [
         "editor_persistence",
@@ -861,7 +861,7 @@
     },
     {
       "name": "workspace_store",
-      "path": "editor/workspace/storage",
+      "path": "editor/activities/workspace",
       "first_phase": "P09",
       "dependencies": [
         "layout_model",
@@ -1085,7 +1085,7 @@
     },
     {
       "name": "editor_file_publication",
-      "path": "editor/storage",
+      "path": "editor/activities/persistence",
       "first_phase": "P10Q",
       "dependencies": [
         "editor_persistence"
@@ -1152,7 +1152,7 @@
         "lux/engine/editor/editing/EditHistory.hpp",
         "lux/engine/editor/editing/EditTypes.hpp",
         "lux/engine/editor/editing/EditOperation.hpp",
-        "lux/engine/editor/editing_visibility.h"
+        "lux/engine/editor/editing/history_visibility.h"
       ],
       "files": [
         "editor/editing/include/lux/engine/editor/editing/EditHistory.hpp",
@@ -1853,21 +1853,21 @@
       "lux/engine/editor/sessions/"
     ],
     "exclude_files": [
-      "editor/persistence/src/SaveExecution.cpp",
-      "editor/persistence/include/lux/engine/editor/persistence/SaveExecution.hpp"
+      "editor/activities/persistence/src/SaveExecution.cpp",
+      "editor/activities/persistence/include/lux/engine/editor/persistence/SaveExecution.hpp"
     ],
     "files": [
-      "editor/persistence/include/lux/engine/editor/persistence/ArtifactStore.hpp",
-      "editor/persistence/include/lux/engine/editor/persistence/EncodeJob.hpp",
-      "editor/persistence/include/lux/engine/editor/persistence/SaveService.hpp",
-      "editor/persistence/include/lux/engine/editor/persistence/SaveSource.hpp",
-      "editor/persistence/include/lux/engine/editor/persistence/SaveTypes.hpp",
-      "editor/persistence/include/lux/engine/editor/persistence/WriteCoordinator.hpp",
-      "editor/persistence/include/lux/engine/editor/persistence/WriteLane.hpp",
-      "editor/persistence/src/EncodeJob.cpp",
-      "editor/persistence/src/SaveService.cpp",
-      "editor/persistence/src/WriteCoordinator.cpp",
-      "editor/persistence/test/write_coordinator.cpp"
+      "editor/activities/persistence/include/lux/engine/editor/persistence/ArtifactStore.hpp",
+      "editor/activities/persistence/include/lux/engine/editor/persistence/EncodeJob.hpp",
+      "editor/activities/persistence/include/lux/engine/editor/persistence/SaveService.hpp",
+      "editor/activities/persistence/include/lux/engine/editor/persistence/SaveSource.hpp",
+      "editor/activities/persistence/include/lux/engine/editor/persistence/SaveTypes.hpp",
+      "editor/activities/persistence/include/lux/engine/editor/persistence/WriteCoordinator.hpp",
+      "editor/activities/persistence/include/lux/engine/editor/persistence/WriteLane.hpp",
+      "editor/activities/persistence/src/EncodeJob.cpp",
+      "editor/activities/persistence/src/SaveService.cpp",
+      "editor/activities/persistence/src/WriteCoordinator.cpp",
+      "editor/activities/persistence/test/write_coordinator.cpp"
     ]
   },
   "scene_persistence": {
@@ -1916,7 +1916,7 @@
         "path": "editor/editing"
       },
       "editor_persistence": {
-        "path": "editor/persistence"
+        "path": "editor/activities/persistence"
       },
       "hierarchy": {
         "path": "engine/domain/simulation/ecs/hierarchy"
@@ -2105,10 +2105,10 @@
       "lux/engine/world/"
     ],
     "files": [
-      "editor/tools/scene/persistence/include/lux/engine/editor/scene/SceneCodec.hpp",
-      "editor/tools/scene/persistence/include/lux/engine/editor/scene/SceneSaveSource.hpp",
-      "editor/tools/scene/persistence/src/SceneCodec.cpp",
-      "editor/tools/scene/persistence/src/SceneSaveSource.cpp"
+      "editor/activities/scene/include/lux/engine/editor/scene/SceneCodec.hpp",
+      "editor/activities/scene/include/lux/engine/editor/scene/SceneSaveSource.hpp",
+      "editor/activities/scene/src/SceneCodec.cpp",
+      "editor/activities/scene/src/SceneSaveSource.cpp"
     ]
   },
   "material_persistence": {
@@ -2133,7 +2133,7 @@
         "path": "editor/editing"
       },
       "editor_persistence": {
-        "path": "editor/persistence"
+        "path": "editor/activities/persistence"
       },
       "graph": {
         "path": "modules/function/graph"
@@ -2233,10 +2233,10 @@
       "lux/engine/material/graph/"
     ],
     "files": [
-      "editor/tools/material/persistence/include/lux/engine/editor/material/MaterialCodec.hpp",
-      "editor/tools/material/persistence/include/lux/engine/editor/material/MaterialSaveSource.hpp",
-      "editor/tools/material/persistence/src/MaterialCodec.cpp",
-      "editor/tools/material/persistence/src/MaterialSaveSource.cpp"
+      "editor/activities/material/include/lux/engine/editor/material/MaterialCodec.hpp",
+      "editor/activities/material/include/lux/engine/editor/material/MaterialSaveSource.hpp",
+      "editor/activities/material/src/MaterialCodec.cpp",
+      "editor/activities/material/src/MaterialSaveSource.cpp"
     ]
   },
   "flowforge_persistence": {
@@ -2261,7 +2261,7 @@
         "path": "editor/editing"
       },
       "editor_persistence": {
-        "path": "editor/persistence"
+        "path": "editor/activities/persistence"
       },
       "flowforge": {
         "path": "modules/function/flowforge"
@@ -2379,10 +2379,10 @@
       "lux/engine/meta/"
     ],
     "files": [
-      "editor/tools/flowforge/persistence/include/lux/engine/editor/flowforge/FlowCodec.hpp",
-      "editor/tools/flowforge/persistence/include/lux/engine/editor/flowforge/FlowSaveSource.hpp",
-      "editor/tools/flowforge/persistence/src/FlowCodec.cpp",
-      "editor/tools/flowforge/persistence/src/FlowSaveSource.cpp"
+      "editor/activities/flow/include/lux/engine/editor/flowforge/FlowCodec.hpp",
+      "editor/activities/flow/include/lux/engine/editor/flowforge/FlowSaveSource.hpp",
+      "editor/activities/flow/src/FlowCodec.cpp",
+      "editor/activities/flow/src/FlowSaveSource.cpp"
     ]
   },
   "scene_execution_api": {
@@ -2620,8 +2620,8 @@
       "lux/engine/function/render/client/core/"
     ],
     "files": [
-      "editor/tools/scene/execution/api/include/lux/engine/editor/scene/RunInspectAccess.hpp",
-      "editor/tools/scene/execution/api/include/lux/engine/editor/scene/RunTypes.hpp"
+      "editor/activities/scene/include/lux/engine/editor/scene/RunInspectAccess.hpp",
+      "editor/activities/scene/include/lux/engine/editor/scene/RunTypes.hpp"
     ]
   },
   "scene_execution": {
@@ -2685,7 +2685,7 @@
         "path": "editor/editing"
       },
       "editor_editing_scene": {
-        "path": "editor/editing/scene"
+        "path": "editor/activities/scene"
       },
       "gapi": {
         "path": "modules/platform/gapi"
@@ -2862,7 +2862,7 @@
         "path": "engine/scene/description"
       },
       "scene_execution_api": {
-        "path": "editor/tools/scene/execution/api"
+        "path": "editor/activities/scene"
       },
       "scene_mesh_query": {
         "path": "engine/scene/builtin_systems/mesh_query"
@@ -3012,11 +3012,11 @@
       "lux/engine/function/render/client/core/"
     ],
     "files": [
-      "editor/tools/scene/execution/include/lux/engine/editor/scene/RunController.hpp",
-      "editor/tools/scene/execution/include/lux/engine/editor/scene/RunStore.hpp",
-      "editor/tools/scene/execution/src/RunDebugEdits.hpp",
-      "editor/tools/scene/execution/src/RunStore.cpp",
-      "editor/tools/scene/execution/test/runs.cpp"
+      "editor/activities/scene/include/lux/engine/editor/scene/RunController.hpp",
+      "editor/activities/scene/include/lux/engine/editor/scene/RunStore.hpp",
+      "editor/activities/scene/src/RunDebugEdits.hpp",
+      "editor/activities/scene/src/RunStore.cpp",
+      "editor/activities/scene/test/runs.cpp"
     ]
   },
   "scene_projection": {
@@ -3405,16 +3405,16 @@
       "lux/engine/system/"
     ],
     "test_headers": {
-      "editor/tools/scene/projection/test/highlight.cpp": [
+      "editor/tests/integration/projection/highlight.cpp": [
         "lux/engine/editor/views/ViewportPresentation.hpp"
       ]
     },
     "files": [
-      "editor/tools/scene/projection/include/lux/engine/editor/scene/ResourceStatus.hpp",
-      "editor/tools/scene/projection/include/lux/engine/editor/scene/SceneProjection.hpp",
-      "editor/tools/scene/projection/src/ResourceStatus.cpp",
-      "editor/tools/scene/projection/src/SceneProjection.cpp",
-      "editor/tools/scene/projection/test/projection.cpp"
+      "editor/activities/scene/include/lux/engine/editor/scene/ResourceStatus.hpp",
+      "editor/activities/scene/include/lux/engine/editor/scene/SceneProjection.hpp",
+      "editor/activities/scene/src/ResourceStatus.cpp",
+      "editor/activities/scene/src/SceneProjection.cpp",
+      "editor/tests/integration/projection/projection.cpp"
     ]
   },
   "material_preview": {
@@ -3485,7 +3485,7 @@
         "path": "editor/editing"
       },
       "editor_persistence": {
-        "path": "editor/persistence"
+        "path": "editor/activities/persistence"
       },
       "gapi": {
         "path": "modules/platform/gapi"
@@ -3680,7 +3680,7 @@
         "path": "engine/scene/builtin_systems/world_loading"
       },
       "scene_projection": {
-        "path": "editor/tools/scene/projection"
+        "path": "editor/activities/scene"
       },
       "scene_render": {
         "path": "engine/scene/builtin_systems/render"
@@ -3847,21 +3847,21 @@
       "lux/engine/editor/io/"
     ],
     "test_headers": {
-      "editor/tools/material/preview/test/compilation.cpp": [
+      "editor/tests/integration/material_activity/compilation.cpp": [
         "lux/engine/editor/storage/FileArtifactStore.hpp"
       ]
     },
     "files": [
-      "editor/tools/material/preview/include/lux/engine/editor/material/MaterialCompilation.hpp",
-      "editor/tools/material/preview/include/lux/engine/editor/material/MaterialCompilationService.hpp",
-      "editor/tools/material/preview/include/lux/engine/editor/material/MaterialPreviewStore.hpp",
-      "editor/tools/material/preview/include/lux/engine/editor/material/PublishCompiledMaterial.hpp",
-      "editor/tools/material/preview/src/MaterialCompilation.cpp",
-      "editor/tools/material/preview/src/MaterialCompilationService.cpp",
-      "editor/tools/material/preview/src/MaterialPreviewStore.cpp",
-      "editor/tools/material/preview/src/PublishCompiledMaterial.cpp",
-      "editor/tools/material/preview/test/compilation.cpp",
-      "editor/tools/material/preview/test/ownership.cpp"
+      "editor/activities/material/include/lux/engine/editor/material/MaterialCompilation.hpp",
+      "editor/activities/material/include/lux/engine/editor/material/MaterialCompilationService.hpp",
+      "editor/activities/material/include/lux/engine/editor/material/MaterialPreviewStore.hpp",
+      "editor/activities/material/include/lux/engine/editor/material/PublishCompiledMaterial.hpp",
+      "editor/activities/material/src/MaterialCompilation.cpp",
+      "editor/activities/material/src/MaterialCompilationService.cpp",
+      "editor/activities/material/src/MaterialPreviewStore.cpp",
+      "editor/activities/material/src/PublishCompiledMaterial.cpp",
+      "editor/tests/integration/material_activity/compilation.cpp",
+      "editor/tests/integration/material_activity/ownership.cpp"
     ]
   },
   "flowforge_compilation": {
@@ -4278,7 +4278,7 @@
         "path": "editor/editing"
       },
       "editor_persistence": {
-        "path": "editor/persistence"
+        "path": "editor/activities/persistence"
       },
       "flowforge": {
         "path": "modules/function/flowforge"
@@ -4410,10 +4410,10 @@
       "lux/engine/function/script/"
     ],
     "files": [
-      "editor/tools/flowforge/compilation/include/lux/engine/editor/flowforge/FlowCompilationService.hpp",
-      "editor/tools/flowforge/compilation/include/lux/engine/editor/flowforge/PublishFlowArtifact.hpp",
-      "editor/tools/flowforge/compilation/src/FlowCompilationService.cpp",
-      "editor/tools/flowforge/compilation/src/PublishFlowArtifact.cpp"
+      "editor/activities/flow/include/lux/engine/editor/flowforge/FlowCompilationService.hpp",
+      "editor/activities/flow/include/lux/engine/editor/flowforge/PublishFlowArtifact.hpp",
+      "editor/activities/flow/src/FlowCompilationService.cpp",
+      "editor/activities/flow/src/PublishFlowArtifact.cpp"
     ]
   },
   "scene_interaction": {
@@ -4519,7 +4519,7 @@
         "path": "engine/scene/description"
       },
       "scene_execution_api": {
-        "path": "editor/tools/scene/execution/api"
+        "path": "editor/activities/scene"
       },
       "scene_model": {
         "path": "editor/authoring/scene"
@@ -5072,10 +5072,10 @@
         "path": "editor/authoring/layout"
       },
       "editor_persistence": {
-        "path": "editor/persistence"
+        "path": "editor/activities/persistence"
       },
       "editor_file_publication": {
-        "path": "editor/storage"
+        "path": "editor/activities/persistence"
       },
       "lux::cxx::algorithm": {
         "imported": true
@@ -5110,9 +5110,9 @@
     ],
     "test_headers": {},
     "files": [
-      "editor/workspace/storage/include/lux/engine/editor/workspace/WorkspaceStore.hpp",
-      "editor/workspace/storage/src/LegacyWorkspaceImporter.cpp",
-      "editor/workspace/storage/src/WorkspaceStore.cpp"
+      "editor/activities/workspace/include/lux/engine/editor/workspace/WorkspaceStore.hpp",
+      "editor/activities/workspace/src/LegacyWorkspaceImporter.cpp",
+      "editor/activities/workspace/src/WorkspaceStore.cpp"
     ]
   },
   "view_host": {
@@ -6064,7 +6064,7 @@
         "path": "engine/scene/description"
       },
       "scene_execution_api": {
-        "path": "editor/tools/scene/execution/api"
+        "path": "editor/activities/scene"
       },
       "scene_fields_camera_ir_generate": {
         "path": "editor/tools/scene/ui"
@@ -6091,7 +6091,7 @@
         "path": "engine/scene/builtin_systems/world_loading"
       },
       "scene_projection": {
-        "path": "editor/tools/scene/projection"
+        "path": "editor/activities/scene"
       },
       "scene_render": {
         "path": "engine/scene/builtin_systems/render"
@@ -6473,7 +6473,7 @@
         "path": "editor/editing"
       },
       "editor_persistence": {
-        "path": "editor/persistence"
+        "path": "editor/activities/persistence"
       },
       "editor_project": {
         "path": "editor/authoring/project"
@@ -6536,7 +6536,7 @@
         "path": "editor/authoring/material"
       },
       "material_preview": {
-        "path": "editor/tools/material/preview"
+        "path": "editor/activities/material"
       },
       "math": {
         "path": "modules/core/math"
@@ -6686,7 +6686,7 @@
         "path": "engine/scene/description"
       },
       "scene_execution_api": {
-        "path": "editor/tools/scene/execution/api"
+        "path": "editor/activities/scene"
       },
       "scene_fields_camera_ir_generate": {
         "path": "editor/tools/scene/ui"
@@ -6713,7 +6713,7 @@
         "path": "engine/scene/builtin_systems/world_loading"
       },
       "scene_projection": {
-        "path": "editor/tools/scene/projection"
+        "path": "editor/activities/scene"
       },
       "scene_render": {
         "path": "engine/scene/builtin_systems/render"
@@ -7295,7 +7295,7 @@
         "path": "editor/editing"
       },
       "editor_persistence": {
-        "path": "editor/persistence"
+        "path": "editor/activities/persistence"
       },
       "editor_widgets": {
         "path": "editor/widgets"
@@ -7304,7 +7304,7 @@
         "path": "modules/function/flowforge"
       },
       "flowforge_compilation": {
-        "path": "editor/tools/flowforge/compilation"
+        "path": "editor/activities/flow"
       },
       "flowforge_compiler": {
         "path": "engine/toolchain/flowforge"
@@ -7463,8 +7463,8 @@
   "tasks_ui": {
     "direct": [
       "imgui::core",
-      "process_execution",
-      "view_api"
+      "view_api",
+      "editor_tasks"
     ],
     "closure": {
       "Eigen3::Eigen": {
@@ -7556,6 +7556,9 @@
       },
       "window": {
         "path": "modules/platform/window"
+      },
+      "editor_tasks": {
+        "path": "editor/activities/tasks"
       }
     },
     "native_libraries": [
@@ -7576,7 +7579,7 @@
     ],
     "prefixes": [],
     "test_headers": {
-      "editor/tasks/ui/test/monitor.cpp": [
+      "editor/tests/integration/tasks/monitor.cpp": [
         "lux/engine/editor/desktop/ViewHost.hpp",
         "cassert",
         "chrono",
@@ -7588,11 +7591,11 @@
       ]
     },
     "files": [
-      "editor/tasks/ui/include/lux/engine/editor/tasks/TaskMonitor.hpp",
+      "editor/activities/tasks/include/lux/engine/editor/tasks/TaskMonitor.hpp",
       "editor/tasks/ui/include/lux/engine/editor/tasks/TaskView.hpp",
-      "editor/tasks/ui/src/TaskMonitor.cpp",
+      "editor/activities/tasks/src/TaskMonitor.cpp",
       "editor/tasks/ui/src/TaskView.cpp",
-      "editor/tasks/ui/test/monitor.cpp"
+      "editor/tests/integration/tasks/monitor.cpp"
     ]
   },
   "project_ui": {
@@ -8250,10 +8253,10 @@
         "path": "editor/editing"
       },
       "editor_editing_scene": {
-        "path": "editor/editing/scene"
+        "path": "editor/activities/scene"
       },
       "editor_persistence": {
-        "path": "editor/persistence"
+        "path": "editor/activities/persistence"
       },
       "editor_project": {
         "path": "editor/authoring/project"
@@ -8268,7 +8271,7 @@
         "path": "modules/function/flowforge"
       },
       "flowforge_compilation": {
-        "path": "editor/tools/flowforge/compilation"
+        "path": "editor/activities/flow"
       },
       "flowforge_compiler": {
         "path": "engine/toolchain/flowforge"
@@ -8349,7 +8352,7 @@
         "path": "editor/authoring/material"
       },
       "material_preview": {
-        "path": "editor/tools/material/preview"
+        "path": "editor/activities/material"
       },
       "material_ui": {
         "path": "editor/tools/material/ui"
@@ -8589,10 +8592,10 @@
         "path": "engine/scene/description"
       },
       "scene_execution": {
-        "path": "editor/tools/scene/execution"
+        "path": "editor/activities/scene"
       },
       "scene_execution_api": {
-        "path": "editor/tools/scene/execution/api"
+        "path": "editor/activities/scene"
       },
       "scene_fields_camera_ir_generate": {
         "path": "editor/tools/scene/ui"
@@ -8619,7 +8622,7 @@
         "path": "engine/scene/builtin_systems/world_loading"
       },
       "scene_projection": {
-        "path": "editor/tools/scene/projection"
+        "path": "editor/activities/scene"
       },
       "scene_render": {
         "path": "engine/scene/builtin_systems/render"
@@ -8769,16 +8772,19 @@
         "path": "editor/tasks/ui"
       },
       "editor_file_publication": {
-        "path": "editor/storage"
+        "path": "editor/activities/persistence"
       },
       "material_persistence": {
-        "path": "editor/tools/material/persistence"
+        "path": "editor/activities/material"
       },
       "editor_persistence_execution": {
-        "path": "editor/persistence"
+        "path": "editor/activities/persistence"
       },
       "editor_viewport": {
         "path": "editor/views/viewport"
+      },
+      "editor_tasks": {
+        "path": "editor/activities/tasks"
       }
     },
     "native_libraries": [
@@ -8910,7 +8916,7 @@
         "path": "editor/editing"
       },
       "editor_persistence": {
-        "path": "editor/persistence"
+        "path": "editor/activities/persistence"
       },
       "identity": {
         "path": "modules/resource/identity"
@@ -8990,8 +8996,8 @@
       "lux/engine/process/"
     ],
     "files": [
-      "editor/persistence/src/SaveExecution.cpp",
-      "editor/persistence/include/lux/engine/editor/persistence/SaveExecution.hpp"
+      "editor/activities/persistence/src/SaveExecution.cpp",
+      "editor/activities/persistence/include/lux/engine/editor/persistence/SaveExecution.hpp"
     ]
   },
   "editor_file_publication": {
@@ -9029,7 +9035,7 @@
         "imported": true
       },
       "editor_persistence": {
-        "path": "editor/persistence"
+        "path": "editor/activities/persistence"
       },
       "lux::cxx::algorithm": {
         "imported": true
@@ -9093,11 +9099,11 @@
       "lux/engine/editor/sessions/"
     ],
     "files": [
-      "editor/storage/src/FilePublication.cpp",
-      "editor/storage/src/FileArtifactStore.cpp",
-      "editor/storage/include/lux/engine/editor/storage/FilePublication.hpp",
-      "editor/storage/include/lux/engine/editor/storage/FileArtifactStore.hpp",
-      "editor/storage/test/publication.cpp"
+      "editor/activities/persistence/src/FilePublication.cpp",
+      "editor/activities/persistence/src/FileArtifactStore.cpp",
+      "editor/activities/persistence/include/lux/engine/editor/storage/FilePublication.hpp",
+      "editor/activities/persistence/include/lux/engine/editor/storage/FileArtifactStore.hpp",
+      "editor/activities/persistence/test/publication.cpp"
     ]
   },
   "editor_viewport": {

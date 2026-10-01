@@ -3,10 +3,10 @@ add_component(COMPONENT_NAME editor_context NAMESPACE lux::engine::editor STATIC
 lux_classify_target(TARGET editor_context LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 component_include_directories(editor_context
     BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include
-    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/sinclude ${PROJECT_SOURCE_DIR}/editor/assets/sinclude ${PROJECT_SOURCE_DIR}/editor/storage/sinclude ${PROJECT_SOURCE_DIR}/editor/editing/sinclude)
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/sinclude ${PROJECT_SOURCE_DIR}/editor/assets/sinclude ${PROJECT_SOURCE_DIR}/editor/activities/project/sinclude ${PROJECT_SOURCE_DIR}/editor/activities/sinclude)
 target_link_libraries(editor_context PUBLIC lux::engine::engine_context_render lux::engine::editor::editor_assets
     lux::engine::editor::editor_metadata lux::engine::core::object lux::engine::function::ui
-    lux::engine::scene::scene_render lux::engine::editor::tasks_ui)
+    lux::engine::scene::scene_render lux::engine::editor::editor_tasks)
 component_add_transitive_commands(editor_context
     "find_package(lux-engine-core REQUIRED COMPONENTS object)"
     "find_package(lux-engine-function REQUIRED COMPONENTS ui)"
@@ -14,6 +14,6 @@ component_add_transitive_commands(editor_context
     "find_package(lux-engine-editor-assets REQUIRED COMPONENTS editor_assets)"
     "find_package(lux-engine-editor-metadata REQUIRED COMPONENTS editor_metadata)"
     "find_package(lux-engine-scene-render REQUIRED COMPONENTS scene_render)"
-    "find_package(lux-engine-editor-tasks-ui REQUIRED COMPONENTS tasks_ui)")
+    "find_package(lux-engine-editor-tasks REQUIRED COMPONENTS editor_tasks)")
 lux_engine_install_components(PROJECT_NAME lux-engine-editor-context VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS editor_context)

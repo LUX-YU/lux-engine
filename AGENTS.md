@@ -16,7 +16,7 @@
 lux 是一个项目簇；lux-engine 是其中的游戏引擎——`modules/` 提供可被外部项目
 复用的基础应用功能，`engine/` 提供游戏与编辑器共用的引擎功能，顶层 `editor/` 提供编辑器产品。
 依赖方向为 `editor -> engine -> modules`，Editor 可以直接使用 modules，底层不得反向链接 Editor。
-项目描述归 `editor/project`，存储与发布归 `editor/storage`，资产工作流归 `editor/assets`；
+项目描述归 `editor/project`，存储与发布归 `editor/activities/project`，资产工作流归 `editor/assets`；
 具体工具归 `editor/tools`，共用 UI 归 `editor/ui`，项目创建产品归 `editor/launcher`。
 编译与执行入口见
 `.vscode/launch.json` 与 `.vscode/settings.json`。

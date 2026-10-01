@@ -42,7 +42,7 @@ def main():
     if args.model == "material":
         locations.pop("scene_model"); locations.pop("scene_asset")
         locations.update({model: "editor/authoring/material", pure: "modules/function/material",
-            "compiler_fixture": "engine/toolchain/material_compiler", "storage_fixture": "editor/storage"})
+            "compiler_fixture": "engine/toolchain/material_compiler", "storage_fixture": "editor/activities/project"})
         cases = [(name, dest, "lux/engine/material/graph/MaterialSource.hpp" if name == "legal-cpu" else header,
             transitive, imported) for name, dest, header, transitive, imported in cases]
         cases.extend([("compiler", "compiler_fixture", "", True, False),
@@ -55,7 +55,7 @@ def main():
         pure = "flowforge"
         locations.pop("scene_model"); locations.pop("scene_asset")
         locations.update({model: "editor/authoring/flow", pure: "modules/function/flowforge",
-            "compiler_fixture": "engine/toolchain/flowforge", "storage_fixture": "editor/storage",
+            "compiler_fixture": "engine/toolchain/flowforge", "storage_fixture": "editor/activities/project",
             "script_runtime_fixture": "engine/domain/script"})
         cases = [(name, dest, "lux/engine/flowforge/graph/FlowSource.hpp" if name == "legal-cpu" else header,
             transitive, imported) for name, dest, header, transitive, imported in cases]

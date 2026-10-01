@@ -6,7 +6,7 @@ add_component(COMPONENT_NAME editor_flowforge STATIC NAMESPACE lux::engine::edit
     SOURCE_FILES src/FlowForgeEditor.cpp src/FlowAssets.cpp)
 component_include_directories(editor_flowforge
     BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR}
-    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude ${PROJECT_SOURCE_DIR}/editor/assets/sinclude ${PROJECT_SOURCE_DIR}/editor/transition ${PROJECT_SOURCE_DIR}/editor/storage/sinclude ${PROJECT_SOURCE_DIR}/editor/editing/sinclude INSTALL_TIME include)
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude ${PROJECT_SOURCE_DIR}/editor/assets/sinclude ${PROJECT_SOURCE_DIR}/editor/transition ${PROJECT_SOURCE_DIR}/editor/activities/project/sinclude ${PROJECT_SOURCE_DIR}/editor/activities/sinclude INSTALL_TIME include)
 target_compile_definitions(editor_flowforge PRIVATE LUX_EDITOR_FLOWFORGE_LIBRARY)
 target_link_libraries(editor_flowforge PUBLIC lux::engine::editor::editor_assets lux::engine::function::flowforge
     PRIVATE lux::engine::editor::flowforge_compilation lux::engine::editor::editor_context lux::engine::flowforge::flowforge_compiler)

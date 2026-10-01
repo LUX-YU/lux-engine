@@ -2,7 +2,7 @@ add_component(COMPONENT_NAME editor_launcher NAMESPACE lux::engine::editor
     STATIC SOURCE_FILES src/ProjectCreationPane.cpp src/LaunchEditor.cpp)
 component_include_directories(editor_launcher
     BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include
-    PRIVATE ${PROJECT_SOURCE_DIR}/editor/editing/sinclude INSTALL_TIME include)
+    PRIVATE ${PROJECT_SOURCE_DIR}/editor/activities/sinclude INSTALL_TIME include)
 lux_classify_target(TARGET editor_launcher LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 target_link_libraries(editor_launcher PUBLIC lux::engine::editor::editor_ui
     lux::engine::editor::editor_storage PRIVATE lux::engine::platform::platform_process lux::engine::scene::scene_asset)

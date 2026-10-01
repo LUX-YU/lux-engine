@@ -21,7 +21,7 @@ def main():
     repo = args.source.resolve()
     rules = json.loads((repo / "editor/tests/architecture/rules.json").read_text())
     locations = {x["name"]: x["path"] for x in rules["targets"]}
-    locations.update(editor_storage="editor/storage", editor_context="editor/context", ui_fixture="modules/function/ui", process_execution="engine/process/execution")
+    locations.update(editor_storage="editor/activities/project", editor_context="editor/context", ui_fixture="modules/function/ui", process_execution="engine/process/execution")
     locations.update(scene_composition="engine/scene/composition", render_runtime="modules/function/render/runtime")
     cases = [
         ("scene-author-interaction", "scene_model", None, "scene_interaction", ""),
@@ -74,7 +74,7 @@ def main():
             ("harness-legal", "editor_scene_views_test", "scene_ui", None, ""),
         ]
         locations.update(editor_ui="editor/ui", editor_flowforge="editor/tools/flowforge",
-                         scene_execution="editor/tools/scene/execution", p10_imported_bridge="external/p10")
+                         scene_execution="editor/activities/scene", p10_imported_bridge="external/p10")
     if args.stage == "P10Q":
         cases.extend([
             ("viewport-model", "editor_viewport", None, "scene_model", ""),

@@ -14,7 +14,7 @@ generate_visibility_header(
     ENABLE_MACRO_NAME LUX_EDIT_HISTORY_LIBRARY
     PUBLIC_MACRO_NAME LUX_EDIT_HISTORY_PUBLIC
     DISABLE_DLL_MACRO_NAME LUX_EDIT_HISTORY_DLL_DISABLE
-    GENERATE_FILE_PATH lux/engine/editor/editing_visibility.h
+    GENERATE_FILE_PATH lux/engine/editor/editing/history_visibility.h
 )
 add_component(
     COMPONENT_NAME edit_history

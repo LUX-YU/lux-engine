@@ -8,7 +8,7 @@ ProjectBuilder 只生成创建配置：项目身份、名称、插件选择以�
 最小项目仅需 Project.luxproject；Content 由用户按内容包组织，Beginner 是可选初始包。
 源相对路径与 /Project 下的资产 VFS 路径分别保存，不互相推导。
 
-磁盘读写由 editor/storage 的 createProject / ProjectStorage 完成。
+磁盘读写由 editor/activities/project 的 createProject / ProjectStorage 完成。
 AssetImporter 位于 editor/assets，由 EditorContext 持有并借用同一 ProjectStorage。
 AssetImporter 使用 engine/toolchain 编译器；其它引擎消费者可以直接调用这些编译器，不需要 Editor。
 

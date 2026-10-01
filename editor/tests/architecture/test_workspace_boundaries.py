@@ -20,7 +20,7 @@ def main():
     repo = args.source.resolve()
     rules = json.loads((repo / "editor/tests/architecture/rules.json").read_text())
     locations = {x["name"]: x["path"] for x in rules["targets"]}
-    locations.update(editor_storage="editor/storage", editor_context="editor/context", ui_fixture="modules/function/ui", process_execution="engine/process/execution")
+    locations.update(editor_storage="editor/activities/project", editor_context="editor/context", ui_fixture="modules/function/ui", process_execution="engine/process/execution")
     locations.update(scene_composition="engine/scene/composition", render_runtime="modules/function/render/runtime")
     cases = [
         ("layout-scene", "layout_model", None, "scene_model", ""),

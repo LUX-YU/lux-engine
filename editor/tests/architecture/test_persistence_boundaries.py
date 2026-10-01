@@ -65,7 +65,7 @@ def main():
             (root / "CMakeLists.txt").write_text(top + edges + tail)
             # Execution shares a directory with the pure coordinator, but owns only these files.
             # Exercise its real public boundary instead of an unowned synthetic header.
-            probe = root / ("editor/persistence/include/lux/engine/editor/persistence/SaveExecution.hpp"
+            probe = root / ("editor/activities/persistence/include/lux/engine/editor/persistence/SaveExecution.hpp"
                             if target == "editor_persistence_execution" else locations[target] + "/probe.hpp")
             probe.parent.mkdir(parents=True, exist_ok=True)
             probe.write_text(f"#include <{header}>\n" if header else "")

@@ -6,7 +6,7 @@ add_component(COMPONENT_NAME editor_ui NAMESPACE lux::engine::editor OUTPUT_NAME
     SOURCE_FILES src/TaskPane.cpp ../transition/LegacySceneConfiguration.cpp src/SpatialInteraction3D.cpp ../transition/LegacyComponentEditors.cpp ../transition/LegacyCodegenInput.cpp)
 component_include_directories(editor_ui
     BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR}
-    PRIVATE ${PROJECT_SOURCE_DIR}/editor/transition ${CMAKE_CURRENT_SOURCE_DIR}/pinclude ${CMAKE_CURRENT_SOURCE_DIR}/sinclude ${PROJECT_SOURCE_DIR}/editor/assets/sinclude ${PROJECT_SOURCE_DIR}/editor/storage/sinclude ${PROJECT_SOURCE_DIR}/editor/editing/sinclude
+    PRIVATE ${PROJECT_SOURCE_DIR}/editor/transition ${CMAKE_CURRENT_SOURCE_DIR}/pinclude ${CMAKE_CURRENT_SOURCE_DIR}/sinclude ${PROJECT_SOURCE_DIR}/editor/assets/sinclude ${PROJECT_SOURCE_DIR}/editor/activities/project/sinclude ${PROJECT_SOURCE_DIR}/editor/activities/sinclude
     INSTALL_TIME include)
 lux_classify_target(TARGET editor_ui LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 target_compile_definitions(editor_ui PRIVATE LUX_EDITOR_UI_LIBRARY)

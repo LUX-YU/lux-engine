@@ -1,6 +1,6 @@
 #pragma once
 #include <lux/engine/editor/editing/EditTypes.hpp>
-#include <lux/engine/editor/editing_visibility.h>
+#include <lux/engine/editor/editing/history_visibility.h>
 #include <memory>
 namespace lux::editor::editing
 {

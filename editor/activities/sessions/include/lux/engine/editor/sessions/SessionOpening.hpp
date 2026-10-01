@@ -48,6 +48,8 @@ namespace lux::editor::sessions
         SessionOpening(SessionOpening&&) = delete;
         SessionOpening& operator=(SessionOpening&&) = delete;
         [[nodiscard]] SessionFactoryResult<OpenAssetId> open(OpenAssetRequest, const SessionFactorySnapshot&);
+        // New in-memory content uses the same installation and role owner; no encode/read/decode round trip.
+        [[nodiscard]] SessionFactoryResult<OpenAssetId> create(std::uint64_t project_instance, PreparedSessionData);
         [[nodiscard]] SessionFactoryResult<OpenAssetStatus> status(OpenAssetId) const;
         [[nodiscard]] SessionFactoryResult<void> cancel(OpenAssetId);
         [[nodiscard]] SessionFactoryResult<void> acknowledge(OpenAssetId);

@@ -113,6 +113,12 @@ namespace lux::ui
         [[nodiscard]] bool capturePointer(Element&) noexcept;
         void releasePointer(Element&) noexcept;
 
+        // Preparation is side-effect free. Commit only transfers owned values; ImGui adopts them before
+        // the next window draw. It does not open a view or resolve a content identity.
+        [[nodiscard]] lux::cxx::expected<PreparedDockTree, EDockError> prepareDockTree(DockTree) const;
+        void commitDockTree(PreparedDockTree&&) noexcept;
+        [[nodiscard]] DockTree captureDockTree() const;
+
         void setDockLayout(DockLayout);
         void resetDockLayout(DockLayout = {});
         void clearDockLayout() noexcept;

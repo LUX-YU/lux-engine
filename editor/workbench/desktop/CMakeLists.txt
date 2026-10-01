@@ -1,9 +1,10 @@
 add_interface_component(COMPONENT_NAME view_api NAMESPACE lux::engine::editor)
 component_include_directories(view_api BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
-target_link_libraries(view_api INTERFACE lux::engine::function::ui lux::engine::editor::editor_contracts)
+target_link_libraries(view_api INTERFACE lux::engine::function::ui lux::engine::editor::editor_contracts lux::engine::editor::layout_model)
 component_add_transitive_commands(view_api
     "find_package(lux-engine-function REQUIRED COMPONENTS ui)"
-    "find_package(lux-engine-editor-contracts REQUIRED COMPONENTS editor_contracts)")
+    "find_package(lux-engine-editor-contracts REQUIRED COMPONENTS editor_contracts)"
+    "find_package(lux-engine-editor-layout REQUIRED COMPONENTS layout_model)")
 lux_classify_target(TARGET view_api LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 lux_engine_install_components(PROJECT_NAME lux-engine-editor-view-api VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS view_api)

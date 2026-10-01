@@ -196,7 +196,8 @@ namespace lux::editor::sessions
         auto blob = owned.input_.source.open(owned.input_.asset);
         if (!blob)
             return cxx::unexpected(SessionFactoryFailure{
-                ESessionFactoryError::IO,
+                blob.error() == asset::EAssetStorageError::CONTENT_CHANGED ? ESessionFactoryError::STALE_CONTENT
+                                                                           : ESessionFactoryError::IO,
                 "asset.storage",
                 static_cast<std::uint64_t>(blob.error())
             });

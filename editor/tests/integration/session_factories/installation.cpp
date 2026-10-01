@@ -568,6 +568,34 @@ namespace
         turn();
         for (auto id : ids)
             assert(!opening.find(id));
+        // New sources enter the same installation directory directly, without a VFS task or encoding pass.
+        std::array<PreparedSessionData, 3> new_sources{
+            es::prepareSceneSession(take(es::SceneCodec::decode(read(root / SourceFiles::names[0]))), {}, {}, {}),
+            em::prepareMaterialSession(take(em::MaterialCodec::decode(read(root / SourceFiles::names[1]))), {}, {}),
+            ef::prepareFlowSession(take(ef::FlowCodec::decode(read(root / SourceFiles::names[2]))), {}, {}, {})
+        };
+        for (std::size_t i{}; i < new_sources.size(); ++i)
+        {
+            const auto created = take(opening.create(17, std::move(new_sources[i])));
+            assert(take(opening.status(created)).stage == EOpenAssetStage::PREPARING);
+            assert(opening.update());
+            const auto done = take(opening.status(created));
+            assert(done.stage == EOpenAssetStage::PUBLISHED && opening.find(done.session));
+            const auto current = take(store.describe(done.session));
+            assert(!current.binding && current.dirty);
+            assert(opening.acknowledge(created));
+        }
+        const auto unbound = take(SaveAllOperation::begin(store, saves));
+        assert(unbound.entries().size() == 3);
+        for (const auto& entry : unbound.entries())
+            assert(entry.failure && !entry.save && !entry.already_clean);
+        decisions.clear();
+        for (auto id : take(store.snapshotIds()))
+            decisions.push_back({take(store.describe(id)).current, ECloseChoice::DISCARD});
+        auto discard_new = take(CloseSessionsOperation::begin(store, saves, decisions));
+        auto new_permits = take(discard_new.prepare());
+        assert(store.close(new_permits));
+        turn();
         opening.requestStop();
         assert(opening.settled());
         std::cout

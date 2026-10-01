@@ -259,7 +259,7 @@ namespace lux::editor::scene
             [](lux::ui::Pane& pane) -> views::ViewCloseResult {
                 auto closed = static_cast<SceneConfigurationView&>(pane).prepareClose();
                 if (!closed)
-                    return cxx::unexpected(views::ViewCloseFailure{
+                    return cxx::unexpected(views::ViewPreparationFailure{
                         closed.error().domain,
                         closed.error().reason,
                         closed.error().message,

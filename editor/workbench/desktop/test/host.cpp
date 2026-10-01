@@ -5,13 +5,16 @@
 #include <algorithm>
 #include <cstdio>
 #include <array>
+#include <source_location>
 
 using namespace lux;
 using namespace lux::editor;
 namespace
 {
-    template <class T> auto take(T value)
+    template <class T> auto take(T value, std::source_location location = std::source_location::current())
     {
+        if (!value)
+            std::fprintf(stderr, "Failed result at %s:%u\n", location.file_name(), location.line());
         assert(value);
         return std::move(*value);
     }
@@ -71,7 +74,7 @@ namespace
         }
         Content body;
         unsigned close_attempts{};
-        std::optional<views::ViewCloseFailure> close_error;
+        std::optional<views::ViewPreparationFailure> close_error;
         views::ViewCloseResult prepareClose()
         {
             ++close_attempts;
@@ -121,6 +124,13 @@ namespace
         // Native close intent survives a full external request queue.
         assert(host.show(next) && host.focus(next));
         root->panes().front()->requestClose();
+        take(host.drain());
+        assert(second.pane == 0 && take(host.closeIntents()) == std::vector{next});
+        assert(host.dismissCloseIntent(next));
+        assert(take(host.closeIntents()).empty() && host.describe(next));
+        root->panes().front()->requestClose();
+        assert(take(host.closeIntents()) == std::vector{next});
+        assert(host.close(next)); // Product policy explicitly approved closing this view.
         take(host.drain());
         assert(second.pane == 1 && second.code == 1);
         auto c = candidate(dispatcher, "third", third);
@@ -192,7 +202,7 @@ namespace
                                  }};
         code.reset();
         const auto id = take(host.adopt(view, views::ViewRestoreKey{"close-errors"})).id;
-        window.close_error = views::ViewCloseFailure{"test.permission", 37, "Explicit refusal", false};
+        window.close_error = views::ViewPreparationFailure{"test.permission", 37, "Explicit refusal", false};
         assert(host.close(id));
         assert(take(host.drain()).pending == 0 && window.close_attempts == 1);
         const auto saved = take(host.closeFailure(id));
@@ -200,7 +210,7 @@ namespace
         for (int i{}; i != 10; ++i)
             take(host.drain());
         assert(window.close_attempts == 1 && facts.alive && !facts.pane);
-        window.close_error = views::ViewCloseFailure{"session", 9, "Temporarily reading", true};
+        window.close_error = views::ViewPreparationFailure{"session", 9, "Temporarily reading", true};
         assert(host.close(id));
         assert(take(host.drain()).pending == 1 && window.close_attempts == 2);
         assert(take(host.drain()).pending == 1 && window.close_attempts == 3);
@@ -248,7 +258,7 @@ namespace
         auto prepared = take(host.prepareBatch(candidates, states));
         assert(!candidates[0].owner.pane() && !candidates[1].owner.pane());
         assert(take(host.describeAll()).size() == 1 && !window->visible());
-        const std::vector new_ids(prepared.created().begin(), prepared.created().end());
+        const std::vector new_ids(prepared.viewIds().begin(), prepared.viewIds().end());
         unsigned notices{};
         auto connected = take(object::LuxObject::connect(
             root.get(),
@@ -286,6 +296,153 @@ namespace
         }
         assert(rejected.pane == 1 && rejected.element == 1 && rejected.code == 1);
     }
+    void atomicClose(object::ObjectDispatcherRef dispatcher)
+    {
+        auto root = take(ui::Root::create(dispatcher));
+        Facts first, second;
+        desktop::ViewHost host(*root, {2, 8});
+        auto make = [&](const char* name, Facts& facts) {
+            auto code = std::make_shared<Code>(facts);
+            return views::DetachedView{
+                contracts::CodeLease::plugin(code),
+                std::make_unique<Window>(dispatcher, name, facts),
+                +[](ui::Pane& pane) { return static_cast<Window&>(pane).prepareClose(); }
+            };
+        };
+        auto a = make("close-a", first), b = make("close-b", second);
+        auto* window = static_cast<Window*>(b.pane());
+        const auto one = take(host.adopt(a, views::ViewRestoreKey{"close-a"})).id;
+        const auto two = take(host.adopt(b, views::ViewRestoreKey{"close-b"})).id;
+        const std::array ids{one, two};
+        const auto windows = root->windowRevision();
+        window->close_error = views::ViewPreparationFailure{"session", 1, "Reading", true};
+        assert(!host.prepareClose(ids));
+        assert(first.pane == 0 && second.pane == 0 && take(host.describeAll()).size() == 2);
+        assert(root->windowRevision() == windows);
+        window->close_error.reset();
+        auto prepared = take(host.prepareClose(ids));
+        assert(first.pane == 0 && second.pane == 0 && take(host.describeAll()).size() == 2);
+        unsigned detached{};
+        auto observer = take(object::LuxObject::connect(
+            root.get(),
+            &ui::Root::attachmentChanged,
+            [&](const ui::AttachmentChanged& change) noexcept {
+                if (change.mounted)
+                    return;
+                ++detached;
+                assert(!root->findPane(ui::PaneIdView{"close-a"}) && !root->findPane(ui::PaneIdView{"close-b"}));
+                assert(first.pane == 0 && second.pane == 0 && first.alive && second.alive);
+                assert(!host.close(one) && !host.close(two)); // Both identities retired before notification.
+            }
+        ));
+        assert(host.commit(prepared));
+        assert(detached == 2 && first.code == 1 && second.code == 1);
+        assert(take(host.describeAll()).empty() && !host.commit(prepared));
+    }
+    void layoutAtomicity(object::ObjectDispatcherRef dispatcher)
+    {
+        auto root = take(ui::Root::create(dispatcher));
+        desktop::ViewHost host(*root, {8, 32});
+        auto make = [&](std::string name) {
+            return views::DetachedView{
+                contracts::CodeLease::builtin(),
+                std::make_unique<ui::Pane>(dispatcher, ui::PaneId{name}, ui::PaneTypeId{"layout.test"}, name)
+            };
+        };
+        auto first = make("existing");
+        auto* original = first.pane();
+        const auto existing = take(host.adopt(first, views::ViewRestoreKey{"existing"})).id;
+        auto extra = make("extra");
+        const auto extra_id = take(host.adopt(extra, views::ViewRestoreKey{"extra"})).id;
+        assert(host.hide(existing));
+        take(host.drain());
+        workspace::DockLayout layout;
+        layout.id.value = "12345678123456781234567812345678";
+        layout.label = "P12 atomic workbench";
+        for (std::uint32_t i = 1; i <= 3; ++i)
+            layout.slots.push_back(
+                {{i},
+                 views::ViewRestoreKey{
+                     i == 1   ? "existing"
+                     : i == 2 ? "new-a"
+                              : "new-b"
+                 },
+                 views::ViewTypeId{"layout.test"},
+                 true,
+                 {1, {}}}
+            );
+        layout.dock.nodes = {
+            {1, workspace::EDockSplit::HORIZONTAL, 2, 3, .5, {}},
+            {2, workspace::EDockSplit::LEAF, 0, 0, .5, {{1}, {2}}},
+            {3, workspace::EDockSplit::LEAF, 0, 0, .5, {{3}}}
+        };
+        layout.dock.roots.push_back({1, 0, 0, 1000, 700, false});
+        bool reject_second = true;
+        unsigned inputs{}, creations{};
+        auto entry = std::make_shared<views::ViewFactoryEntry>(
+            contracts::CodeLease::builtin(),
+            views::ViewFactoryDescriptor{views::ViewTypeId{"layout.test"}, "Layout test", cxx::typeToken<int>()},
+            [&](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
+                ++creations;
+                assert(*static_cast<const int*>(input.binding()) == 0); // Unbound, not a recovered asset locator.
+                if (reject_second && creations == 2)
+                    return cxx::unexpected(views::ViewFactoryFailure{
+                        views::EViewFactoryError::CONSTRUCT,
+                        "test.second.factory",
+                        7,
+                        "Deliberate second factory failure"
+                    });
+                return make(std::string(input.paneId().name()));
+            }
+        );
+        auto factories = take(views::ViewFactorySnapshot::create({entry}));
+        const auto input = [&](views::ViewTypeId, ui::PaneId id) -> views::ViewFactoryResult<views::ViewFactoryInput> {
+            ++inputs;
+            return views::ViewFactoryInput{
+                dispatcher,
+                std::move(id),
+                contracts::CodeLease::builtin(),
+                cxx::typeToken<int>(),
+                std::make_shared<const int>(0)
+            };
+        };
+        auto bytes = root->captureDockState();
+        const std::vector before(bytes.bytes().begin(), bytes.bytes().end());
+        auto malformed = layout;
+        malformed.dock.nodes.front().second = 99;
+        auto invalid = host.prepareLayout(std::move(malformed), factories, input);
+        assert(!invalid && !inputs && !creations && !original->visible());
+        assert(take(host.describeAll()).size() == 2);
+        auto after = root->captureDockState();
+        assert(std::ranges::equal(before, after.bytes()));
+        auto refused = host.prepareLayout(layout, factories, input);
+        assert(!refused && refused.error().domain == "test.second.factory" && creations == 2);
+        assert(!original->visible() && take(host.describeAll()).size() == 2);
+        after = root->captureDockState();
+        assert(std::ranges::equal(before, after.bytes()));
+        reject_second = false;
+        auto prepared = take(host.prepareLayout(layout, factories, input));
+        assert(!original->visible() && take(host.describeAll()).size() == 2);
+        assert(host.commit(prepared));
+        assert(original->visible() && take(host.describeAll()).size() == 4 && host.describe(extra_id));
+        auto structure = root->captureDockTree();
+        assert(structure.nodes.size() == 4 && structure.surfaces.size() == 2);
+        assert(take(host.captureLayout({"abcdef1234567890abcdef1234567890"}, "Before drawing")).slots.size() == 4);
+        ui::DrawData draw;
+        assert(root->update({{1000, 700}, .016F}, &draw));
+        assert(root->update({{1000, 700}, .016F}, &draw));
+        structure = root->captureDockTree();
+        unsigned windows{};
+        for (const auto& node : structure.nodes)
+            windows += static_cast<unsigned>(node.windows.size());
+        assert(windows == 4 && host.describe(extra_id));
+        // Captured actual docking is structurally valid and can be prepared without changing the current UI.
+        assert(root->prepareDockTree(std::move(structure)));
+        const auto captured = take(host.captureLayout({"abcdef1234567890abcdef1234567890"}, "Captured layout"));
+        assert(captured.slots.size() == 4 && captured.id.value == "abcdef1234567890abcdef1234567890");
+        assert(workspace::ValidatedLayout::validate(captured));
+        std::puts("PASS P12 C01 full layout preflight, factory rollback, complete batch and retained extra view");
+    }
     void batchFailure(object::ObjectDispatcherRef dispatcher)
     {
         auto root = take(ui::Root::create(dispatcher, {.attachment_capacity = 3}));
@@ -315,5 +472,7 @@ int main()
     closeFailures(queue.dispatcherRef());
     batchOwnership(queue.dispatcherRef());
     batchFailure(queue.dispatcherRef());
+    layoutAtomicity(queue.dispatcherRef());
+    atomicClose(queue.dispatcherRef());
     std::puts("PASS P10 real ViewHost ownership, bounded requests, generation, callback batches and prepare failure");
 }

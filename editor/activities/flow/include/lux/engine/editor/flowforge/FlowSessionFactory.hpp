@@ -4,6 +4,13 @@
 
 namespace lux::editor::flowforge
 {
+    [[nodiscard]] sessions::PreparedSessionData prepareFlowSession(
+        PreparedFlowData data,
+        [[nodiscard]] sessions::SourceBinding binding,
+        std::optional<persistence::WriteTarget> target,
+        lux::flowforge::FlowSourceEnvironment environment,
+        contracts::CodeLease code = contracts::CodeLease::builtin()
+    );
     [[nodiscard]] std::shared_ptr<sessions::SessionFactoryEntry> makeFlowSessionFactory(
         lux::flowforge::FlowSourceEnvironment environment,
         contracts::CodeLease code = contracts::CodeLease::builtin()

@@ -1,5 +1,7 @@
 #include <lux/engine/editor/storage/ProjectCreation.hpp>
 #include <lux/engine/editor/storage/ProjectOpenData.hpp>
+#include <lux/engine/editor/storage/ProjectStorage.hpp>
+#include <lux/engine/object/ObjectDispatcher.hpp>
 #include <lux/engine/editor/project/ProjectBuilder.hpp>
 #include <lux/engine/scene/ScenePackage.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
@@ -156,6 +158,30 @@ int main(int argc, char** argv)
         assert(input.read(reinterpret_cast<char*>(bytes->data()), bytes->size()));
         auto decoded = scene::decodeScenePackage(cxx::SharedBytes<>::fromOwner(bytes, *bytes));
         assert(decoded && decoded->scene->id() == id(2) && decoded->partitions.size() == 1);
+        input.close();
+        auto messages = object::ObjectMessageQueue::create(16);
+        assert(messages);
+        process::TaskScope tasks{*execution};
+        asset::AssetVfs assets;
+        auto storage = ProjectStorage::open(*opened, assets, *execution->blocking(), tasks, messages->dispatcherRef());
+        assert(storage);
+        auto captured = (*storage)->captureSource(id(2), 1024 * 1024, projectContentDigest(*bytes));
+        assert(captured && captured->open(id(2)));
+        {
+            std::ofstream replacement(path, std::ios::binary | std::ios::app);
+            replacement << "changed after capture";
+            assert(replacement.good());
+        }
+        const auto changed = captured->open(id(2));
+        assert(!changed && changed.error() == asset::EAssetStorageError::CONTENT_CHANGED);
+        (*storage)->requestClose();
+        await([&] {
+            const auto closed = (*storage)->advanceClose();
+            assert(closed);
+            return *closed;
+        });
+        storage->reset();
+        assert(tasks.join());
     }
     execution->requestStop();
     assert(execution->join());

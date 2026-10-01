@@ -17,9 +17,10 @@ namespace lux::editor::detail
     {
         auto read = stdexec::then(
             stdexec::schedule(*execution.blocking()),
-            [view = project.captureSource(entry.id, Codec::max_bytes),
+            [view =
+                 project
+                     .captureSource(entry.id, Codec::max_bytes, std::string(project.sourceDigest(entry.source_path))),
              id = entry.id,
-             digest = std::string(project.sourceDigest(entry.source_path)),
              reporter]() noexcept -> EditorResult<lux::cxx::SharedBytes<>> {
                 reporter.setPhase("Read source");
                 if (reporter.stopToken().stop_requested())
@@ -27,6 +28,12 @@ namespace lux::editor::detail
                 if (!view)
                     return lux::cxx::unexpected(view.error());
                 auto bytes = view->open(id);
+                if (!bytes && bytes.error() == asset::EAssetStorageError::CONTENT_CHANGED)
+                    return lux::cxx::unexpected(EditorFailure{
+                        EEditorError::SOURCE_FAILURE,
+                        "asset.source.conflict",
+                        static_cast<std::uint64_t>(EProjectPublicationError::CONFLICT)
+                    });
                 if (!bytes)
                     return lux::cxx::unexpected(EditorFailure{
                         EEditorError::SOURCE_FAILURE,
@@ -34,12 +41,6 @@ namespace lux::editor::detail
                         static_cast<std::uint64_t>(bytes.error()),
                         {},
                         bytes.error()
-                    });
-                if (projectContentDigest(bytes->bytes.view()) != digest)
-                    return lux::cxx::unexpected(EditorFailure{
-                        EEditorError::SOURCE_FAILURE,
-                        "asset.source.conflict",
-                        static_cast<std::uint64_t>(EProjectPublicationError::CONFLICT)
                     });
                 return std::move(bytes->bytes);
             }

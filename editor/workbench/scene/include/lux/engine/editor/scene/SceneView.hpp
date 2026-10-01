@@ -80,6 +80,8 @@ namespace lux::editor::scene
         [[nodiscard]] SceneViewResult<void> rebind(VSceneViewBinding);
         [[nodiscard]] const VSceneViewBinding& binding() const noexcept;
         [[nodiscard]] const SceneViewState& state() const noexcept;
+        [[nodiscard]] views::ViewCaptureResult captureState() const;
+        [[nodiscard]] views::ViewStateResult prepareState(std::uint32_t, std::span<const std::byte>);
         [[nodiscard]] SceneViewResult<void> navigate(const lux::editor::views::CameraMotion&);
         [[nodiscard]] SceneViewResult<void> pick(Eigen::Vector2d position, Eigen::Vector2d extent);
         [[nodiscard]] SceneViewResult<void> undo();

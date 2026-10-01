@@ -4,6 +4,32 @@
 #include <lux/engine/editor/detail/PrepareSession.hpp>
 namespace lux::editor::material
 {
+    sessions::PreparedSessionData prepareMaterialSession(
+        PreparedMaterialData data,
+        sessions::SourceBinding binding,
+        std::optional<persistence::WriteTarget> target,
+        contracts::CodeLease code
+    )
+    {
+        using namespace sessions;
+        return PreparedSessionData{
+            code,
+            [code, data = std::move(data), binding = std::move(binding), target = std::move(target)](
+                SessionStore& store,
+                persistence::SaveService& saves
+            ) mutable -> SessionFactoryResult<PreparedSessionInstallation> {
+                auto construct = [&](SessionId id) { return std::move(data).createSession(id, binding, code); };
+                return sessions::detail::prepareSession<MaterialSession, MaterialSaveSource>(
+                    store,
+                    saves,
+                    {"lux.editor.material"},
+                    code,
+                    target,
+                    construct
+                );
+            }
+        };
+    }
     std::shared_ptr<sessions::SessionFactoryEntry> makeMaterialSessionFactory(contracts::CodeLease code)
     {
         using namespace sessions;
@@ -53,23 +79,7 @@ namespace lux::editor::material
                                 );
                         }
                     };
-                return PreparedSessionData{
-                    code,
-                    [code, data = std::move(*decoded), binding = input.binding, target = input.target](
-                        SessionStore& store,
-                        persistence::SaveService& saves
-                    ) mutable -> SessionFactoryResult<PreparedSessionInstallation> {
-                        auto construct = [&](SessionId id) { return std::move(data).createSession(id, binding, code); };
-                        return sessions::detail::prepareSession<MaterialSession, MaterialSaveSource>(
-                            store,
-                            saves,
-                            {"lux.editor.material"},
-                            code,
-                            target,
-                            construct
-                        );
-                    }
-                };
+                return prepareMaterialSession(std::move(*decoded), input.binding, input.target, code);
             }
         );
     }

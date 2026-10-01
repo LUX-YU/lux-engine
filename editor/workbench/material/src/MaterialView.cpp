@@ -1,4 +1,5 @@
 #include <lux/engine/editor/views/ViewportElement.hpp>
+#include <lux/engine/editor/detail/ViewportStateCodec.hpp>
 #include <lux/engine/editor/workbench/InteractionDelivery.hpp>
 #include <lux/engine/editor/material/PublishCompiledMaterial.hpp>
 #include <lux/engine/editor/material/MaterialView.hpp>
@@ -399,7 +400,7 @@ namespace lux::editor::material
         } properties_;
         std::array<object::Connection, 3> connections_;
         lux::editor::views::CameraMotion motion_;
-        bool motion_pending_{};
+        bool motion_pending_{}, camera_pending_{};
         Impl(MaterialView& view, MaterialViewServices services, MaterialViewState state)
             : view_(view), services_(services), state_(state),
               layout_(view, lux::ui::ElementId{"content"}, lux::ui::ELayoutType::HORIZONTAL),
@@ -616,6 +617,13 @@ namespace lux::editor::material
                 motion_ = {};
                 motion_pending_ = false;
             }
+            if (camera_pending_ && viewport_.bound())
+            {
+                auto changed = viewport_.presentation().setCameraPose(state_.camera.transform, state_.camera.camera);
+                if (!changed)
+                    return rejected(changed.error());
+                camera_pending_ = false;
+            }
             auto sync = binding_->interaction->synchronize();
             if (!sync)
                 return rejected(sync.error());
@@ -809,6 +817,31 @@ namespace lux::editor::material
     {
         return impl_->state_;
     }
+    views::ViewCaptureResult MaterialView::captureState() const
+    {
+        workspace::VersionedViewState result;
+        serialization::BinaryWriter writer(result.bytes);
+        views::detail::writeViewportState(writer, impl_->state_.camera, impl_->state_.extent);
+        return result;
+    }
+    views::ViewStateResult MaterialView::prepareState(std::uint32_t schema, std::span<const std::byte> bytes)
+    {
+        if (schema != 1)
+            return cxx::unexpected(views::ViewPreparationFailure{"material.view.state", schema, "Unknown schema", false}
+            );
+        if (bytes.empty())
+            return cxx::move_only_function<void()>{};
+        serialization::BinaryReader reader(bytes);
+        MaterialViewState candidate;
+        if (!views::detail::readViewportState(reader, candidate.camera, candidate.extent) || reader.remaining())
+            return cxx::unexpected(
+                views::ViewPreparationFailure{"material.view.state", schema, "Invalid camera state", false}
+            );
+        return cxx::move_only_function<void()>{[this, candidate]() noexcept {
+            impl_->state_ = candidate;
+            impl_->camera_pending_ = true;
+        }};
+    }
     const MaterialViewResult<void>& MaterialView::status() const noexcept
     {
         return impl_->status_;
@@ -944,30 +977,36 @@ namespace lux::editor::material
         auto created = MaterialView::create(dispatcher, std::move(id), services, binding, state);
         if (!created)
             return cxx::unexpected(created.error());
+        const auto cancel = +[](lux::ui::Pane& pane) -> views::ViewCloseResult {
+            auto ended = static_cast<MaterialView&>(pane).cancelEdit();
+            if (!ended)
+            {
+                const auto* edit = std::get_if<MaterialEditError>(&ended.error());
+                const bool is_session = edit && edit->code == EMaterialEditError::SESSION;
+                const auto* view = std::get_if<views::EViewError>(&ended.error());
+                const auto code = is_session ? static_cast<std::uint64_t>(edit->session)
+                                  : edit     ? static_cast<std::uint64_t>(edit->code)
+                                             : static_cast<std::uint64_t>(*view);
+                return cxx::unexpected(views::ViewPreparationFailure{
+                    is_session ? "session"
+                    : edit     ? "material.edit"
+                               : "view",
+                    code,
+                    "Interaction could not be ended",
+                    temporary(ended.error())
+                });
+            }
+            return {};
+        };
         return views::DetachedView{
             contracts::CodeLease::builtin(),
             std::move(*created),
-            +[](lux::ui::Pane& pane) -> views::ViewCloseResult {
-                auto ended = static_cast<MaterialView&>(pane).cancelEdit();
-                if (!ended)
-                {
-                    const auto* edit = std::get_if<MaterialEditError>(&ended.error());
-                    const bool is_session = edit && edit->code == EMaterialEditError::SESSION;
-                    const auto* view = std::get_if<views::EViewError>(&ended.error());
-                    const auto code = is_session ? static_cast<std::uint64_t>(edit->session)
-                                      : edit     ? static_cast<std::uint64_t>(edit->code)
-                                                 : static_cast<std::uint64_t>(*view);
-                    return cxx::unexpected(views::ViewCloseFailure{
-                        is_session ? "session"
-                        : edit     ? "material.edit"
-                                   : "view",
-                        code,
-                        "Interaction could not be ended",
-                        temporary(ended.error())
-                    });
-                }
-                return {};
-            }
+            cancel,
+            cancel,
+            +[](lux::ui::Pane& pane, std::uint32_t schema, std::span<const std::byte> bytes) {
+                return static_cast<MaterialView&>(pane).prepareState(schema, bytes);
+            },
+            +[](const lux::ui::Pane& pane) { return static_cast<const MaterialView&>(pane).captureState(); }
         };
     }
 }

@@ -1,6 +1,7 @@
 #include <lux/engine/editor/workbench/InteractionDelivery.hpp>
 #include <lux/engine/editor/flowforge/PublishFlowArtifact.hpp>
 #include <lux/engine/editor/flowforge/FlowView.hpp>
+#include <lux/engine/serialization/BinaryReader.hpp>
 #include <lux/engine/editor/flowforge/FlowNodeControls.hpp>
 #include <lux/engine/editor/widgets/GraphCanvas.hpp>
 #include <lux/engine/ui/Layout.hpp>
@@ -752,6 +753,53 @@ namespace lux::editor::flowforge
             return rejected(views::EViewError::INVALID_ID);
         return accepted(impl_->binding_->interaction->commit());
     }
+    views::ViewCaptureResult FlowView::captureState() const
+    {
+        workspace::VersionedViewState result;
+        serialization::BinaryWriter writer(result.bytes);
+        const auto path = impl_->state_.linker.executable.u8string();
+        if (path.size() > 32768)
+            return cxx::unexpected(views::ViewPreparationFailure{"flow.view.state", 1, "Linker path too long", false});
+        (void)writer.writeUnsigned(impl_->state_.linker.version);
+        (void)writer.writeUnsigned(static_cast<std::uint32_t>(path.size()));
+        (void)writer.writeBytes(std::as_bytes(std::span(path)));
+        return result;
+    }
+    views::ViewStateResult FlowView::prepareState(std::uint32_t schema, std::span<const std::byte> bytes)
+    {
+        const auto invalid = [&] {
+            return cxx::unexpected(
+                views::ViewPreparationFailure{"flow.view.state", schema, "Invalid linker settings", false}
+            );
+        };
+        if (schema != 1)
+            return invalid();
+        if (bytes.empty())
+            return cxx::move_only_function<void()>{};
+        serialization::BinaryReader reader(bytes);
+        const auto version = reader.readUnsigned<std::uint64_t>();
+        const auto size = reader.readUnsigned<std::uint32_t>();
+        if (!version || !*version || !size || *size > 32768 || *size != reader.remaining())
+            return invalid();
+        std::string path(reinterpret_cast<const char*>(bytes.data() + reader.offset()), *size);
+        if (path.find('\0') != std::string::npos)
+            return invalid();
+        // External layout bytes cross the platform path codec here. Invalid native conversion
+        // is a preparation failure; the accepted view and its linker remain unchanged.
+        try
+        {
+            FlowViewState candidate{{std::filesystem::u8path(path), *version}};
+            return cxx::move_only_function<void()>{[this, candidate = std::move(candidate), path = std::move(path)](
+                                                   ) mutable noexcept {
+                impl_->state_ = std::move(candidate);
+                impl_->properties_ui_.linker_ = std::move(path);
+            }};
+        }
+        catch (const std::filesystem::filesystem_error&)
+        {
+            return invalid();
+        }
+    }
     FlowViewResult<void> FlowView::cancelEdit()
     {
         if (impl_->binding_)
@@ -847,30 +895,36 @@ namespace lux::editor::flowforge
         auto created = FlowView::create(dispatcher, std::move(id), services, binding, std::move(state));
         if (!created)
             return cxx::unexpected(created.error());
+        const auto cancel = +[](lux::ui::Pane& pane) -> views::ViewCloseResult {
+            auto ended = static_cast<FlowView&>(pane).cancelEdit();
+            if (!ended)
+            {
+                const auto* edit = std::get_if<FlowEditError>(&ended.error());
+                const bool is_session = edit && edit->code == EFlowEditError::SESSION;
+                const auto* view = std::get_if<views::EViewError>(&ended.error());
+                const auto code = is_session ? static_cast<std::uint64_t>(edit->session)
+                                  : edit     ? static_cast<std::uint64_t>(edit->code)
+                                             : static_cast<std::uint64_t>(*view);
+                return cxx::unexpected(views::ViewPreparationFailure{
+                    is_session ? "session"
+                    : edit     ? "flowforge.edit"
+                               : "view",
+                    code,
+                    "Interaction could not be ended",
+                    temporary(ended.error())
+                });
+            }
+            return {};
+        };
         return views::DetachedView{
             contracts::CodeLease::builtin(),
             std::move(*created),
-            +[](lux::ui::Pane& pane) -> views::ViewCloseResult {
-                auto ended = static_cast<FlowView&>(pane).cancelEdit();
-                if (!ended)
-                {
-                    const auto* edit = std::get_if<FlowEditError>(&ended.error());
-                    const bool is_session = edit && edit->code == EFlowEditError::SESSION;
-                    const auto* view = std::get_if<views::EViewError>(&ended.error());
-                    const auto code = is_session ? static_cast<std::uint64_t>(edit->session)
-                                      : edit     ? static_cast<std::uint64_t>(edit->code)
-                                                 : static_cast<std::uint64_t>(*view);
-                    return cxx::unexpected(views::ViewCloseFailure{
-                        is_session ? "session"
-                        : edit     ? "flowforge.edit"
-                                   : "view",
-                        code,
-                        "Interaction could not be ended",
-                        temporary(ended.error())
-                    });
-                }
-                return {};
-            }
+            cancel,
+            cancel,
+            +[](lux::ui::Pane& pane, std::uint32_t schema, std::span<const std::byte> bytes) {
+                return static_cast<FlowView&>(pane).prepareState(schema, bytes);
+            },
+            +[](const lux::ui::Pane& pane) { return static_cast<const FlowView&>(pane).captureState(); }
         };
     }
 }

@@ -11,5 +11,6 @@ namespace lux::asset
         CORRUPT_IMAGE,
         UNSUPPORTED,
         LIMIT_EXCEEDED,
+        CONTENT_CHANGED,
     };
 } // namespace lux::asset

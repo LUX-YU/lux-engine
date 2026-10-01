@@ -1,6 +1,10 @@
 #pragma once
 #include <optional>
 #include <lux/engine/editor/views/IViewHost.hpp>
+#include <lux/engine/ui/Docking.hpp>
+#include <lux/engine/editor/workspace/LayoutPlan.hpp>
+#include <lux/engine/editor/views/ViewFactory.hpp>
+#include <lux/cxx/core/function_ref.hpp>
 
 namespace lux::editor::desktop
 {
@@ -22,6 +26,7 @@ namespace lux::editor::desktop
     {
         views::ViewRestoreKey restore_key;
         views::DetachedView owner;
+        std::optional<bool> visible;
     };
     struct ViewVisibility final
     {
@@ -36,7 +41,7 @@ namespace lux::editor::desktop
         PreparedViewBatch& operator=(PreparedViewBatch&&) noexcept;
         PreparedViewBatch(const PreparedViewBatch&) = delete;
         PreparedViewBatch& operator=(const PreparedViewBatch&) = delete;
-        [[nodiscard]] std::span<const views::ViewId> created() const noexcept;
+        [[nodiscard]] std::span<const views::ViewId> viewIds() const noexcept;
 
     private:
         friend class ViewHost;
@@ -64,12 +69,30 @@ namespace lux::editor::desktop
         // A successful preparation owns them; abandoning it releases nodes before their code pins.
         [[nodiscard]] views::ViewResult<PreparedViewBatch> prepareBatch(
             std::span<ViewCandidate>,
-            std::span<const ViewVisibility> existing = {}
+            std::span<const ViewVisibility> existing = {},
+            std::optional<lux::ui::PreparedDockTree> docking = {}
         );
         [[nodiscard]] views::ViewResult<object::SignalDelivery> commit(PreparedViewBatch&);
+        [[nodiscard]] cxx::
+            expected<PreparedViewBatch, views::ViewPreparationFailure> prepareClose(std::span<const views::ViewId>);
+        // Native close is an unapproved user intent. Only the application decides last-view/content policy.
+        [[nodiscard]] views::ViewResult<std::vector<views::ViewId>> closeIntents() const;
+        [[nodiscard]] views::ViewResult<void> dismissCloseIntent(views::ViewId) noexcept;
+        using LayoutInput =
+            cxx::function_ref<views::ViewFactoryResult<views::ViewFactoryInput>(views::ViewTypeId, lux::ui::PaneId)>;
+        // Factories receive unbound typed inputs, never an asset locator decoded from opaque layout state.
+        [[nodiscard]] cxx::expected<PreparedViewBatch, views::ViewPreparationFailure> prepareLayout(
+            workspace::DockLayout,
+            const views::ViewFactorySnapshot&,
+            LayoutInput
+        );
+        [[nodiscard]] cxx::expected<workspace::DockLayout, views::ViewPreparationFailure> captureLayout(
+            workspace::LayoutId,
+            std::string label
+        ) const;
         [[nodiscard]] views::ViewResult<views::ViewInfo> describe(views::ViewId) const override;
         [[nodiscard]] views::ViewResult<std::vector<views::ViewInfo>> describeAll() const;
-        [[nodiscard]] views::ViewResult<std::optional<views::ViewCloseFailure>> closeFailure(views::ViewId) const;
+        [[nodiscard]] views::ViewResult<std::optional<views::ViewPreparationFailure>> closeFailure(views::ViewId) const;
         [[nodiscard]] views::ViewResult<void> close(views::ViewId) noexcept override;
         [[nodiscard]] views::ViewResult<void> show(views::ViewId) noexcept override;
         [[nodiscard]] views::ViewResult<void> hide(views::ViewId) noexcept;

@@ -436,7 +436,7 @@ namespace lux::editor::scene
             +[](lux::ui::Pane& pane) -> views::ViewCloseResult {
                 auto cleared = static_cast<InspectorView&>(pane).prepareClose();
                 if (!cleared)
-                    return cxx::unexpected(views::ViewCloseFailure{
+                    return cxx::unexpected(views::ViewPreparationFailure{
                         cleared.error().code == ESceneEditError::SESSION ? "session" : "scene.edit",
                         cleared.error().code == ESceneEditError::SESSION
                             ? static_cast<std::uint64_t>(cleared.error().session)

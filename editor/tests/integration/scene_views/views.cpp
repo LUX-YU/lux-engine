@@ -182,6 +182,20 @@ namespace
         assert(value);
         return std::move(*value);
     }
+    void viewConfiguration(views::DetachedView& view)
+    {
+        const auto original = take(view.captureState());
+        assert(original.schema == 1 && !original.bytes.empty());
+        assert(!view.prepareState(99, original.bytes));
+        auto truncated = original.bytes;
+        truncated.pop_back();
+        assert(!view.prepareState(original.schema, truncated));
+        assert(take(view.captureState()) == original);
+        auto prepared = take(view.prepareState(original.schema, original.bytes));
+        assert(take(view.captureState()) == original);
+        prepared.apply();
+        assert(take(view.captureState()) == original);
+    }
     uuids::uuid uuid(std::string_view name)
     {
         return uuids::uuid_name_generator(*uuids::uuid::from_string("01234567-89ab-cdef-0123-456789abcdef"))(name);
@@ -533,6 +547,8 @@ namespace
         auto info = f.info("running", run_group);
         info.binding = author::RunningSceneBinding{run, &run_group};
         auto running = take(registered_views::scene(f.messages.dispatcherRef(), services, info));
+        viewConfiguration(author_candidate);
+        viewConfiguration(running);
         auto* a = static_cast<author::SceneView*>(author_candidate.pane());
         auto* b = static_cast<author::SceneView*>(running.pane());
         const auto aid = take(f.desktop->views().adopt(author_candidate, views::ViewRestoreKey{"author-run-pair"})).id;
@@ -634,6 +650,7 @@ namespace
             ef::FlowViewState{{"P10-deliberately-missing-linker.exe"}}
         ));
         auto* view = static_cast<ef::FlowView*>(detached.pane());
+        viewConfiguration(detached);
         const auto id = take(f.desktop->views().adopt(detached, views::ViewRestoreKey{"flow"})).id;
         const auto initial = author->describe();
         const auto encoded = take(take(author->read()).encode());
@@ -802,6 +819,7 @@ namespace
             state
         ));
         auto* view = static_cast<em::MaterialView*>(detached.pane());
+        viewConfiguration(detached);
         const auto id = take(f.desktop->views().adopt(detached, views::ViewRestoreKey{"material"})).id;
         const auto encoded = take(take(author->read()).encode());
         const auto initial = author->describe();

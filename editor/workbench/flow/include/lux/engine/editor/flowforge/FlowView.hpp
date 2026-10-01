@@ -62,6 +62,8 @@ namespace lux::editor::flowforge
         [[nodiscard]] const std::optional<FlowViewBinding>& binding() const noexcept;
         [[nodiscard]] const FlowViewResult<void>& status() const noexcept;
         [[nodiscard]] FlowCompileId compilation() const noexcept;
+        [[nodiscard]] views::ViewCaptureResult captureState() const;
+        [[nodiscard]] views::ViewStateResult prepareState(std::uint32_t, std::span<const std::byte>);
 
     private:
         FlowView(object::ObjectDispatcherRef, lux::ui::PaneId, FlowViewServices, FlowViewState);

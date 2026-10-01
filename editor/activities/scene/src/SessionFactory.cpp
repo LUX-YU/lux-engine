@@ -4,6 +4,33 @@
 #include <lux/engine/editor/detail/PrepareSession.hpp>
 namespace lux::editor::scene
 {
+    sessions::PreparedSessionData prepareSceneSession(
+        PreparedSceneData data,
+        sessions::SourceBinding binding,
+        std::optional<persistence::WriteTarget> target,
+        simulation::ecs::ComponentSchemaSet schemas,
+        contracts::CodeLease code
+    )
+    {
+        using namespace sessions;
+        return PreparedSessionData{
+            code,
+            [code, schemas, data = std::move(data), binding = std::move(binding), target = std::move(target)](
+                SessionStore& store,
+                persistence::SaveService& saves
+            ) mutable -> SessionFactoryResult<PreparedSessionInstallation> {
+                auto construct = [&](SessionId id) { return std::move(data).createSession(id, binding, schemas); };
+                return sessions::detail::prepareSession<SceneSession, SceneSaveSource>(
+                    store,
+                    saves,
+                    {"lux.editor.scene"},
+                    code,
+                    target,
+                    construct
+                );
+            }
+        };
+    }
     std::shared_ptr<sessions::SessionFactoryEntry> makeSceneSessionFactory(
         simulation::ecs::ComponentSchemaSet schemas,
         contracts::CodeLease code
@@ -58,25 +85,7 @@ namespace lux::editor::scene
                                 );
                         }
                     };
-                return PreparedSessionData{
-                    code,
-                    [code, schemas, data = std::move(*decoded), binding = input.binding, target = input.target](
-                        SessionStore& store,
-                        persistence::SaveService& saves
-                    ) mutable -> SessionFactoryResult<PreparedSessionInstallation> {
-                        auto construct = [&](SessionId id) {
-                            return std::move(data).createSession(id, binding, schemas);
-                        };
-                        return sessions::detail::prepareSession<SceneSession, SceneSaveSource>(
-                            store,
-                            saves,
-                            {"lux.editor.scene"},
-                            code,
-                            target,
-                            construct
-                        );
-                    }
-                };
+                return prepareSceneSession(std::move(*decoded), input.binding, input.target, schemas, code);
             }
         );
     }

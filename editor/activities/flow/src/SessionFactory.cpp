@@ -4,6 +4,33 @@
 #include <lux/engine/editor/detail/PrepareSession.hpp>
 namespace lux::editor::flowforge
 {
+    sessions::PreparedSessionData prepareFlowSession(
+        PreparedFlowData data,
+        sessions::SourceBinding binding,
+        std::optional<persistence::WriteTarget> target,
+        lux::flowforge::FlowSourceEnvironment environment,
+        contracts::CodeLease code
+    )
+    {
+        using namespace sessions;
+        return PreparedSessionData{
+            code,
+            [code, environment, data = std::move(data), binding = std::move(binding), target = std::move(target)](
+                SessionStore& store,
+                persistence::SaveService& saves
+            ) mutable -> SessionFactoryResult<PreparedSessionInstallation> {
+                auto construct = [&](SessionId id) { return std::move(data).createSession(id, binding, environment); };
+                return sessions::detail::prepareSession<FlowSession, FlowSaveSource>(
+                    store,
+                    saves,
+                    {"lux.editor.flowforge"},
+                    code,
+                    target,
+                    construct
+                );
+            }
+        };
+    }
     std::shared_ptr<sessions::SessionFactoryEntry> makeFlowSessionFactory(
         lux::flowforge::FlowSourceEnvironment environment,
         contracts::CodeLease code
@@ -70,25 +97,7 @@ namespace lux::editor::flowforge
                             );
                         }
                     };
-                return PreparedSessionData{
-                    code,
-                    [code, environment, data = std::move(*decoded), binding = input.binding, target = input.target](
-                        SessionStore& store,
-                        persistence::SaveService& saves
-                    ) mutable -> SessionFactoryResult<PreparedSessionInstallation> {
-                        auto construct = [&](SessionId id) {
-                            return std::move(data).createSession(id, binding, environment);
-                        };
-                        return sessions::detail::prepareSession<FlowSession, FlowSaveSource>(
-                            store,
-                            saves,
-                            {"lux.editor.flowforge"},
-                            code,
-                            target,
-                            construct
-                        );
-                    }
-                };
+                return prepareFlowSession(std::move(*decoded), input.binding, input.target, environment, code);
             }
         );
     }

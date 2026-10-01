@@ -13,13 +13,13 @@ namespace lux::editor::views
         BUSY
     };
     template <class T> using ViewResult = lux::cxx::expected<T, EViewError>;
-    struct ViewCloseFailure final
+    struct ViewPreparationFailure final
     {
         std::string domain;
         std::uint64_t code{};
         std::string message;
         bool retryable{};
     };
-    using ViewCloseResult = lux::cxx::expected<void, ViewCloseFailure>;
+    using ViewCloseResult = lux::cxx::expected<void, ViewPreparationFailure>;
 
 }

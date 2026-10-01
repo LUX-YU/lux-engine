@@ -1,4 +1,5 @@
 #include <lux/engine/editor/scene/SceneView.hpp>
+#include <lux/engine/editor/detail/ViewportStateCodec.hpp>
 #include <lux/engine/editor/views/ViewportElement.hpp>
 #include <lux/engine/scene/WorldResidency.hpp>
 #include <lux/engine/object/ObjectEvent.hpp>
@@ -60,7 +61,7 @@ namespace lux::editor::scene
         SceneViewResult<void> status_;
         EControl control_{};
         lux::editor::views::CameraMotion motion_;
-        bool motion_pending_{};
+        bool motion_pending_{}, camera_pending_{};
 
         Impl(SceneView& view, SceneViewServices services, SceneViewState state, system::SystemInstanceId system)
             : view_(view), services_(services), state_(std::move(state)), system_(system),
@@ -303,6 +304,13 @@ namespace lux::editor::scene
             }
             if (!viewport_.bound())
                 return {};
+            if (camera_pending_)
+            {
+                auto changed = viewport_.presentation().setCameraPose(state_.camera.transform, state_.camera.camera);
+                if (!changed)
+                    return rejected(changed.error());
+                camera_pending_ = false;
+            }
             if (motion_pending_)
             {
                 auto moved = navigate(motion_);
@@ -407,6 +415,34 @@ namespace lux::editor::scene
     {
         return impl_->state_;
     }
+    views::ViewCaptureResult SceneView::captureState() const
+    {
+        workspace::VersionedViewState result;
+        serialization::BinaryWriter writer(result.bytes);
+        views::detail::writeViewportState(writer, impl_->state_.camera, impl_->state_.extent);
+        (void)writer.writeFloat(impl_->state_.work_plane_height);
+        return result;
+    }
+    views::ViewStateResult SceneView::prepareState(std::uint32_t schema, std::span<const std::byte> bytes)
+    {
+        if (schema != 1)
+            return cxx::unexpected(views::ViewPreparationFailure{"scene.view.state", schema, "Unknown schema", false});
+        if (bytes.empty())
+            return cxx::move_only_function<void()>{};
+        serialization::BinaryReader reader(bytes);
+        SceneViewState candidate;
+        const bool viewport = views::detail::readViewportState(reader, candidate.camera, candidate.extent);
+        const auto plane = reader.readFloat<float>();
+        if (!viewport || !plane || !std::isfinite(*plane) || reader.remaining())
+            return cxx::unexpected(
+                views::ViewPreparationFailure{"scene.view.state", schema, "Invalid camera state", false}
+            );
+        candidate.work_plane_height = *plane;
+        return cxx::move_only_function<void()>{[this, candidate]() noexcept {
+            impl_->state_ = candidate;
+            impl_->camera_pending_ = true;
+        }};
+    }
     SceneViewResult<void> SceneView::rebind(VSceneViewBinding binding)
     {
         return impl_->rebind(std::move(binding));
@@ -488,30 +524,35 @@ namespace lux::editor::scene
         auto view = SceneView::create(dispatcher, services, std::move(info));
         if (!view)
             return cxx::unexpected(view.error());
+        const auto cancel = +[](lux::ui::Pane& pane) -> views::ViewCloseResult {
+            auto& scene = static_cast<SceneView&>(pane);
+            if (std::holds_alternative<UnboundSceneBinding>(scene.binding()))
+                return {};
+            auto ended = scene.cancelEdit();
+            if (!ended)
+            {
+                const auto* error = std::get_if<SceneEditError>(&ended.error().cause);
+                const bool is_session = error->code == ESceneEditError::SESSION;
+                const bool retryable = error->code == ESceneEditError::BUSY ||
+                                       (is_session && error->session == sessions::ESessionError::BUSY);
+                return cxx::unexpected(views::ViewPreparationFailure{
+                    is_session ? "session" : "scene.edit",
+                    is_session ? static_cast<std::uint64_t>(error->session) : static_cast<std::uint64_t>(error->code),
+                    "Scene interaction could not be ended",
+                    retryable
+                });
+            }
+            return {};
+        };
         return views::DetachedView{
             contracts::CodeLease::builtin(),
             std::move(*view),
-            +[](lux::ui::Pane& pane) -> views::ViewCloseResult {
-                auto& scene = static_cast<SceneView&>(pane);
-                if (std::holds_alternative<UnboundSceneBinding>(scene.binding()))
-                    return {};
-                auto ended = scene.cancelEdit();
-                if (!ended)
-                {
-                    const auto* error = std::get_if<SceneEditError>(&ended.error().cause);
-                    const bool is_session = error->code == ESceneEditError::SESSION;
-                    const bool retryable = error->code == ESceneEditError::BUSY ||
-                                           (is_session && error->session == sessions::ESessionError::BUSY);
-                    return cxx::unexpected(views::ViewCloseFailure{
-                        is_session ? "session" : "scene.edit",
-                        is_session ? static_cast<std::uint64_t>(error->session)
-                                   : static_cast<std::uint64_t>(error->code),
-                        "Scene interaction could not be ended",
-                        retryable
-                    });
-                }
-                return {};
-            }
+            cancel,
+            cancel,
+            +[](lux::ui::Pane& pane, std::uint32_t schema, std::span<const std::byte> bytes) {
+                return static_cast<SceneView&>(pane).prepareState(schema, bytes);
+            },
+            +[](const lux::ui::Pane& pane) { return static_cast<const SceneView&>(pane).captureState(); }
         };
     }
 }

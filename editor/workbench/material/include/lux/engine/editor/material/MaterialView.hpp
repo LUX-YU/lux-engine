@@ -80,6 +80,8 @@ namespace lux::editor::material
         [[nodiscard]] MaterialViewResult<void> navigate(const lux::editor::views::CameraMotion&);
         [[nodiscard]] const std::optional<MaterialViewBinding>& binding() const noexcept;
         [[nodiscard]] const MaterialViewState& state() const noexcept;
+        [[nodiscard]] views::ViewCaptureResult captureState() const;
+        [[nodiscard]] views::ViewStateResult prepareState(std::uint32_t, std::span<const std::byte>);
         [[nodiscard]] const MaterialViewResult<void>& status() const noexcept;
         [[nodiscard]] render::RTextureHandle image() const noexcept;
 

@@ -4,6 +4,12 @@
 
 namespace lux::editor::material
 {
+    [[nodiscard]] sessions::PreparedSessionData prepareMaterialSession(
+        PreparedMaterialData data,
+        [[nodiscard]] sessions::SourceBinding binding,
+        std::optional<persistence::WriteTarget> target,
+        contracts::CodeLease code = contracts::CodeLease::builtin()
+    );
     [[nodiscard]] std::shared_ptr<sessions::SessionFactoryEntry> makeMaterialSessionFactory(
         contracts::CodeLease code = contracts::CodeLease::builtin()
     );

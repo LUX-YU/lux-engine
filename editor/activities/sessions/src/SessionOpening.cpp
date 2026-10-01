@@ -112,6 +112,29 @@ namespace lux::editor::sessions
         : impl_(std::make_unique<Impl>(runtime, store, saves, capacity))
     {}
     SessionOpening::~SessionOpening() = default;
+    SessionFactoryResult<OpenAssetId> SessionOpening::create(std::uint64_t project_instance, PreparedSessionData input)
+    {
+        if (auto entered = impl_->enter(); !entered)
+            return cxx::unexpected(entered.error());
+        Impl::Dispatch dispatch{impl_->dispatching};
+        auto owned = std::move(input);
+        if (impl_->stopping)
+            return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::CLOSED, "create"});
+        if (!project_instance)
+            return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::INVALID_ARGUMENT, "create"});
+        const bool capacity = impl_->waiters.size() == impl_->capacity || impl_->works.size() == impl_->capacity ||
+                              impl_->roles.size() == impl_->capacity || impl_->next == UINT64_MAX;
+        if (capacity)
+            return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::CAPACITY, "create"});
+        const OpenAssetId id{impl_->next++};
+        auto work = std::make_shared<Impl::Work>();
+        work->key = {project_instance, {}, {}, {}, 0};
+        work->status.stage = EOpenAssetStage::PREPARING;
+        work->result.emplace(std::move(owned));
+        impl_->works.push_back(work);
+        impl_->waiters.push_back({id, std::move(work)});
+        return id;
+    }
     SessionFactoryResult<OpenAssetId> SessionOpening::open(
         OpenAssetRequest input,
         const SessionFactorySnapshot& factories
@@ -156,8 +179,7 @@ namespace lux::editor::sessions
         work->key = key;
         for (const auto& role : impl_->roles)
         {
-            const bool same_domain =
-                role.key.project == key.project && role.key.kind == key.kind && role.key.copy == key.copy;
+            const bool same_domain = role.key.project == key.project && role.key.copy == key.copy;
             if (!same_domain)
                 continue;
             auto current = impl_->store.describe(role.session.id());
@@ -167,7 +189,7 @@ namespace lux::editor::sessions
                     continue;
                 return cxx::unexpected(factoryFailure(current.error()));
             }
-            if (current->binding && current->binding->asset == key.asset &&
+            if (current->kind == key.kind && current->binding && current->binding->asset == key.asset &&
                 (current->binding->location == key.location ||
                  (role.key == key && current->binding == request.input.binding)))
             {

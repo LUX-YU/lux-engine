@@ -7,13 +7,17 @@ namespace lux::editor
 {
     namespace
     {
-        // A fixed source location in a VFS view. File contents are checked by the
-        // loading operation against its captured publication digest after reading.
+        // A fixed source location and version. A delayed first read cannot silently adopt a newer file.
         class SourceProvider final : public asset::IAssetProvider
         {
         public:
-            SourceProvider(std::filesystem::path root, ProjectAssetEntry entry, std::size_t limit)
-                : root_(std::move(root)), entry_(std::move(entry)), limit_(limit)
+            SourceProvider(
+                std::filesystem::path root,
+                ProjectAssetEntry entry,
+                std::size_t limit,
+                std::string expected_digest
+            )
+                : root_(std::move(root)), entry_(std::move(entry)), limit_(limit), digest_(std::move(expected_digest))
             {}
 
             std::optional<asset::AssetId> resolve(std::string_view path) const override
@@ -60,6 +64,8 @@ namespace lux::editor
                 if (!file.read(reinterpret_cast<char*>(bytes->data()), static_cast<std::streamsize>(size)) ||
                     file.peek() != std::char_traits<char>::eof() || file.bad())
                     return lux::cxx::unexpected(Error::IO_FAILURE);
+                if (projectContentDigest(*bytes) != digest_)
+                    return lux::cxx::unexpected(Error::CONTENT_CHANGED);
                 return asset::AssetBlob::fromShared(lux::cxx::SharedBytes<>::fromOwner(bytes, *bytes));
             }
 
@@ -67,19 +73,25 @@ namespace lux::editor
             std::filesystem::path root_;
             ProjectAssetEntry entry_;
             std::size_t limit_;
+            std::string digest_;
         };
     }
 
-    EditorResult<asset::AssetVfsView> ProjectStorage::captureSource(asset::AssetId id, std::size_t max_bytes)
-        const noexcept
+    EditorResult<asset::AssetVfsView> ProjectStorage::captureSource(
+        asset::AssetId id,
+        std::size_t max_bytes,
+        std::string expected_digest
+    ) const noexcept
     {
         const auto* entry = asset(id);
-        if (closing_ || !entry || !max_bytes)
+        if (closing_ || !entry || !max_bytes || expected_digest.empty())
             return lux::cxx::unexpected(
                 EditorFailure{closing_ ? EEditorError::CLOSING : EEditorError::INVALID_ARGUMENT, "source.capture"}
             );
         asset::AssetVfs sources;
-        const auto mount = sources.mount({"/sources", std::make_shared<SourceProvider>(root_, *entry, max_bytes), 0});
+        const auto mount = sources.mount(
+            {"/sources", std::make_shared<SourceProvider>(root_, *entry, max_bytes, std::move(expected_digest)), 0}
+        );
         if (mount == asset::kInvalidMountId)
             return lux::cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "source.mount"});
         return sources.view().capture();

@@ -53,9 +53,12 @@ namespace lux::editor
         [[nodiscard]] const ProjectAssetEntry* asset(asset::AssetId) const noexcept;
         [[nodiscard]] process::asset_loading::AssetReadPort assetReads() const noexcept;
         [[nodiscard]] EditorResult<process::asset_loading::AssetReadPort> captureAssetReads();
-        // Author source bytes, distinct from the immutable cooked asset read port.
-        [[nodiscard]] EditorResult<asset::AssetVfsView> captureSource(asset::AssetId, std::size_t max_bytes)
-            const noexcept;
+        // Author source bytes, distinct from cooked assets. The captured file digest is checked on every read.
+        [[nodiscard]] EditorResult<asset::AssetVfsView> captureSource(
+            asset::AssetId,
+            std::size_t max_bytes,
+            std::string expected_digest
+        ) const noexcept;
         [[nodiscard]] process::TaskScope& tasks() noexcept
         {
             return tasks_;

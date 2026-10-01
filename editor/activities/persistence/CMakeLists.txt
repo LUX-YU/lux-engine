@@ -1,7 +1,7 @@
 add_component(COMPONENT_NAME editor_persistence NAMESPACE lux::engine::editor STATIC
     SOURCE_FILES src/WriteCoordinator.cpp src/SaveService.cpp src/EncodeJob.cpp)
 component_include_directories(editor_persistence
-    BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
+    BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
 target_link_libraries(editor_persistence PUBLIC lux::engine::editor::edit_sessions lux::cxx::memory)
 component_add_transitive_commands(editor_persistence
     "find_package(lux-engine-edit-sessions REQUIRED COMPONENTS edit_sessions)"
@@ -10,7 +10,7 @@ lux_classify_target(TARGET editor_persistence LAYER EDITOR PRODUCT EDITOR ROLE L
 add_component(COMPONENT_NAME editor_persistence_execution NAMESPACE lux::engine::editor STATIC
     SOURCE_FILES src/SaveExecution.cpp)
 component_include_directories(editor_persistence_execution
-    BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
+    BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
 target_link_libraries(editor_persistence_execution PUBLIC editor_persistence lux::engine::process::process_execution)
 component_add_transitive_commands(editor_persistence_execution
     "find_package(lux-engine-editor-persistence REQUIRED COMPONENTS editor_persistence)"
@@ -29,7 +29,7 @@ endif()
 add_component(COMPONENT_NAME editor_file_publication NAMESPACE lux::engine::editor STATIC
     SOURCE_FILES src/FilePublication.cpp src/FileArtifactStore.cpp)
 component_include_directories(editor_file_publication
-    BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
+    BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
 target_link_libraries(editor_file_publication PUBLIC lux::cxx::compile_time lux::engine::editor::editor_persistence PRIVATE lux::cxx::algorithm)
 component_add_transitive_commands(editor_file_publication
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time algorithm)"
@@ -46,3 +46,19 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     add_test(NAME editor.persistence.real_files COMMAND editor_publication_test "${CMAKE_CURRENT_BINARY_DIR}/test-files")
     set_tests_properties(editor.persistence.real_files PROPERTIES LABELS "editor;native;P05")
 endif()
+
+# Exact SDK ownership: sibling providers share a build include root, never an install manifest.
+install(FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/storage/FileArtifactStore.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/storage/FilePublication.hpp
+    DESTINATION include/lux/engine/editor/storage COMPONENT lux_engine_editor_file_publication)
+install(FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/persistence/ArtifactStore.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/persistence/EncodeJob.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/persistence/SaveExecution.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/persistence/SaveService.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/persistence/SaveSource.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/persistence/SaveTypes.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/persistence/WriteCoordinator.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/persistence/WriteLane.hpp
+    DESTINATION include/lux/engine/editor/persistence COMPONENT lux_engine_editor_persistence)

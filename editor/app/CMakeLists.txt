@@ -27,7 +27,7 @@ target_link_libraries(lux_editor PRIVATE lux::engine::platform::platform_process
     lux::engine::platform::window
     lux::engine::editor::editor_scene lux::engine::editor::editor_material
     lux::engine::editor::editor_flowforge lux::engine::editor::editor_project_tools
-    lux::engine::editor::editor_settings lux::engine::editor::editor_launcher lux::cxx::arguments)
+    lux::engine::editor::editor_settings lux::engine::editor::editor_launcher lux::engine::editor::editor_launch lux::cxx::arguments)
 install(TARGETS lux_editor RUNTIME DESTINATION bin)
 
 if(LUX_EDITOR_TEST_DESKTOP_GPU)

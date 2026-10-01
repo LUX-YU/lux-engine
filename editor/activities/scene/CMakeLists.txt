@@ -1,7 +1,7 @@
 add_component(COMPONENT_NAME scene_persistence NAMESPACE lux::engine::editor STATIC
     SOURCE_FILES src/SceneSaveSource.cpp src/SceneCodec.cpp)
 component_include_directories(scene_persistence
-    BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
+    BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
 target_link_libraries(scene_persistence PUBLIC lux::engine::editor::scene_model lux::engine::editor::editor_persistence)
 component_add_transitive_commands(scene_persistence
     "find_package(lux-engine-editor-scene-model REQUIRED COMPONENTS scene_model)"
@@ -14,7 +14,7 @@ add_component(COMPONENT_NAME editor_editing_scene NAMESPACE lux::engine::editor 
     SOURCE_FILES src/SceneEditing.cpp src/ComponentEdit.cpp)
 lux_classify_target(TARGET editor_editing_scene LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 component_include_directories(editor_editing_scene
-    BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
+    BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
 target_link_libraries(editor_editing_scene PUBLIC
     lux::engine::editor::scene_model
     lux::engine::scene::scene_composition
@@ -47,7 +47,7 @@ endif()
 
 add_interface_component(COMPONENT_NAME scene_execution_api NAMESPACE lux::engine::editor)
 component_include_directories(scene_execution_api
-    BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
+    BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
 target_link_libraries(scene_execution_api INTERFACE lux::engine::editor::scene_model
     lux::engine::scene::scene_composition lux::engine::function::render_client)
 component_add_transitive_commands(scene_execution_api
@@ -60,7 +60,7 @@ lux_classify_target(TARGET scene_execution_api LAYER EDITOR PRODUCT EDITOR ROLE 
 
 add_component(COMPONENT_NAME scene_execution NAMESPACE lux::engine::editor STATIC SOURCE_FILES src/RunStore.cpp)
 component_include_directories(scene_execution
-    BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
+    BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
 target_link_libraries(scene_execution PUBLIC lux::engine::editor::scene_execution_api
     lux::engine::editor::editor_editing_scene lux::engine::scene::scene_render
     lux::engine::scene::scene_world_loading lux::engine::process::world_loading)
@@ -84,7 +84,7 @@ endif()
 
 add_component(COMPONENT_NAME scene_projection NAMESPACE lux::engine::editor STATIC
     SOURCE_FILES src/ResourceStatus.cpp src/SceneProjection.cpp)
-component_include_directories(scene_projection BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
+component_include_directories(scene_projection BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
 target_link_libraries(scene_projection PUBLIC lux::engine::editor::scene_model
     lux::engine::scene::scene_composition lux::engine::scene::scene_render
     lux::engine::scene::scene_world_loading lux::engine::process::world_loading)
@@ -98,3 +98,24 @@ lux_classify_target(TARGET scene_projection LAYER EDITOR PRODUCT EDITOR ROLE LIB
 lux_engine_install_components(PROJECT_NAME lux-engine-editor-scene-projection VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS scene_projection)
 
+
+# Exact SDK ownership: sibling providers share a build include root, never an install manifest.
+install(FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/activities/scene/FieldEdit.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/activities/scene/SceneEdit.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/activities/scene/SceneEditing.hpp
+    DESTINATION include/lux/engine/editor/activities/scene COMPONENT lux_engine_editor_editing_scene)
+install(FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/scene/RunController.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/scene/RunInspectAccess.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/scene/RunStore.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/scene/RunTypes.hpp
+    DESTINATION include/lux/engine/editor/scene COMPONENT lux_engine_editor_scene_execution)
+install(FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/scene/SceneCodec.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/scene/SceneSaveSource.hpp
+    DESTINATION include/lux/engine/editor/scene COMPONENT lux_engine_editor_scene_persistence)
+install(FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/scene/ResourceStatus.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/scene/SceneProjection.hpp
+    DESTINATION include/lux/engine/editor/scene COMPONENT lux_engine_editor_scene_projection)

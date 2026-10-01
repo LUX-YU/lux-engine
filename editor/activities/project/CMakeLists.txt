@@ -4,7 +4,7 @@ generate_visibility_header(ENABLE_MACRO_NAME LUX_EDITOR_STORAGE_LIBRARY
 add_component(COMPONENT_NAME editor_storage NAMESPACE lux::engine::editor STATIC
     SOURCE_FILES src/ProjectStorage.cpp src/ProjectOpenData.cpp src/ProjectAssetSource.cpp src/ProjectPublication.cpp src/ProjectCreation.cpp)
 component_include_directories(editor_storage
-    BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR}
+    BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR}
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude ${CMAKE_CURRENT_SOURCE_DIR}/sinclude
         ${PROJECT_SOURCE_DIR}/editor/activities/sinclude
     INSTALL_TIME include)
@@ -73,7 +73,7 @@ generate_visibility_header(ENABLE_MACRO_NAME LUX_EDITOR_ASSETS_LIBRARY
     GENERATE_FILE_PATH lux/engine/editor/assets/visibility.h)
 add_component(COMPONENT_NAME editor_assets NAMESPACE lux::engine::editor STATIC SOURCE_FILES src/AssetImporter.cpp)
 component_include_directories(editor_assets
-    BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR}
+    BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR}
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/sinclude
         ${PROJECT_SOURCE_DIR}/editor/activities/sinclude INSTALL_TIME include)
 target_compile_definitions(editor_assets PUBLIC LUX_EDITOR_ASSETS_DLL_DISABLE)
@@ -87,3 +87,18 @@ component_add_transitive_commands(editor_assets
 lux_classify_target(TARGET editor_assets LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 lux_engine_install_components(PROJECT_NAME lux-engine-editor-assets VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS editor_assets)
+
+# Exact SDK ownership: sibling providers share a build include root, never an install manifest.
+install(FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/assets/AssetImporter.hpp
+    DESTINATION include/lux/engine/editor/assets COMPONENT lux_engine_editor_assets)
+install(FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/storage/ProjectCreation.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/storage/ProjectOpenData.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/storage/ProjectPublication.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/storage/ProjectStorage.hpp
+    DESTINATION include/lux/engine/editor/storage COMPONENT lux_engine_editor_storage)
+install(FILES ${LUX_GENERATE_HEADER_DIR}/lux/engine/editor/storage/visibility.h
+    DESTINATION include/lux/engine/editor/storage COMPONENT lux_engine_editor_storage)
+install(FILES ${LUX_GENERATE_HEADER_DIR}/lux/engine/editor/assets/visibility.h
+    DESTINATION include/lux/engine/editor/assets COMPONENT lux_engine_editor_assets)

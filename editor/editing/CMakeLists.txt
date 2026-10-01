@@ -1,6 +1,6 @@
 add_interface_component(COMPONENT_NAME editor_contracts NAMESPACE lux::engine::editor)
 component_include_directories(editor_contracts
-    BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
+    BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
 find_package(lux-cxx REQUIRED COMPONENTS core compile_time)
 target_link_libraries(editor_contracts INTERFACE lux::cxx::core lux::cxx::compile_time)
 component_add_transitive_commands(editor_contracts "find_package(lux-cxx REQUIRED COMPONENTS core compile_time)")
@@ -24,7 +24,7 @@ add_component(
 )
 component_include_directories(
     edit_history
-    BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR}
+    BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR}
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
     INSTALL_TIME include
 )
@@ -48,7 +48,7 @@ generate_visibility_header(ENABLE_MACRO_NAME LUX_EDIT_SESSIONS_LIBRARY
 add_component(COMPONENT_NAME edit_sessions NAMESPACE lux::engine::editor OUTPUT_NAME lux_engine_edit_sessions
     SOURCE_FILES src/sessions/PersistenceCheckpoint.cpp src/sessions/SessionState.cpp src/sessions/SessionStore.cpp)
 component_include_directories(edit_sessions
-    BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR} INSTALL_TIME include)
+    BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR} INSTALL_TIME include)
 target_compile_definitions(edit_sessions PRIVATE LUX_EDIT_SESSIONS_LIBRARY)
 target_link_libraries(edit_sessions PUBLIC lux::engine::editor::edit_history lux::engine::editor::editor_contracts
     lux::engine::resource::identity PRIVATE lux::cxx::container)
@@ -95,7 +95,7 @@ add_component(
 )
 component_include_directories(
     editor_editing
-    BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR}
+    BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR}
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude
     INSTALL_TIME include
 )
@@ -114,3 +114,44 @@ lux_engine_install_components(
     COMPONENTS editor_editing
 )
 
+
+# Exact SDK ownership: sibling providers share a build include root, never an install manifest.
+install(FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/editing/EditHistory.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/editing/EditOperation.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/editing/EditTypes.hpp
+    DESTINATION include/lux/engine/editor/editing COMPONENT lux_engine_edit_history)
+install(FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/sessions/ContentStamp.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/sessions/IEditSession.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/sessions/PersistenceCheckpoint.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/sessions/SessionId.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/sessions/SessionPermits.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/sessions/SessionState.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/sessions/SessionStore.hpp
+    DESTINATION include/lux/engine/editor/sessions COMPONENT lux_engine_edit_sessions)
+install(FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/EditorError.hpp
+    DESTINATION include/lux/engine/editor COMPONENT lux_engine_editor_contracts)
+install(FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/contracts/CodeLease.hpp
+    DESTINATION include/lux/engine/editor/contracts COMPONENT lux_engine_editor_contracts)
+install(FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/views/ViewInfo.hpp
+    DESTINATION include/lux/engine/editor/views COMPONENT lux_engine_editor_contracts)
+install(FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/AssetEditing.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/AssetOpenRequest.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/AssetSave.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/CloseRequest.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/CloseStatus.hpp
+    DESTINATION include/lux/engine/editor COMPONENT lux_engine_editor_editing)
+install(FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/editing/EditHistoryTarget.hpp
+    DESTINATION include/lux/engine/editor/editing COMPONENT lux_engine_editor_editing)
+install(FILES ${LUX_GENERATE_HEADER_DIR}/lux/engine/editor/editing/history_visibility.h
+    DESTINATION include/lux/engine/editor/editing COMPONENT lux_engine_edit_history)
+install(FILES ${LUX_GENERATE_HEADER_DIR}/lux/engine/editor/sessions/visibility.h
+    DESTINATION include/lux/engine/editor/sessions COMPONENT lux_engine_edit_sessions)
+install(FILES ${LUX_GENERATE_HEADER_DIR}/lux/engine/editor/editing/visibility.h
+    DESTINATION include/lux/engine/editor/editing COMPONENT lux_engine_editor_editing)

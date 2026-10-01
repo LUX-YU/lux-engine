@@ -153,7 +153,7 @@ def check_model(repo, targets, rules, sources, report, name):
                 report(prefix + "_FORBIDDEN_INCLUDE", path, header)
 
 
-def inspect(repo, records, rules, stage, compile_db=None):
+def inspect(repo, records, rules, stage, compile_db=None, layering_mode=None, compiler_dependencies=None):
     findings = []
 
     def report(rule, path, detail):
@@ -345,6 +345,9 @@ def inspect(repo, records, rules, stage, compile_db=None):
                 allowed_project = any(private.rstrip("/").endswith("/" + directory) for directory in project_dirs)
                 if "/" + own + "/" not in private and not allowed_project:
                     report("PRIVATE_COMPILE_INCLUDE", path, private)
+    if layering_mode is not None:
+        import editor_layering
+        editor_layering.check(repo, records, sources, rules, layering_mode, report, compiler_dependencies)
     return findings
 
 
@@ -355,10 +358,12 @@ def main():
     parser.add_argument("--stage", default="P00", choices=STAGES)
     parser.add_argument("--rules", type=Path, default=Path(__file__).with_name("rules.json"))
     parser.add_argument("--compile-db", type=Path)
+    parser.add_argument("--layering-mode", choices=("CONSTRUCTION", "STRICT"))
+    parser.add_argument("--compiler-dependencies", type=Path)
     args = parser.parse_args()
     try:
         findings = inspect(args.repo.resolve(), json.loads(args.graph.read_text(encoding="utf-8")),
-                           json.loads(args.rules.read_text(encoding="utf-8")), args.stage, args.compile_db)
+                           json.loads(args.rules.read_text(encoding="utf-8")), args.stage, args.compile_db, args.layering_mode, args.compiler_dependencies)
         print(json.dumps({"status": "FAIL" if findings else "PASS", "findings": findings}, ensure_ascii=False))
         return int(bool(findings))
     except (OSError, ValueError, KeyError, TypeError, subprocess.CalledProcessError) as error:

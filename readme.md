@@ -7,7 +7,8 @@ C++20 engine libraries, offline asset tools, and a Vulkan editor.
 - `engine/process/`: asynchronous execution and loading.
 - `engine/scene/`: World/Simulation composition and optional scene systems.
 - `engine/toolchain/`: asset compilation, script generation, and packaging.
-- `editor/`: editor product, project services, editing tools and UI.
+- `editor/`: editing, authoring, activities, workbench and application layers; see the
+  [formal providers and retained product boundary](editor/README.md).
 - `examples/`: external consumers of the public SDK.
 - `cmake/`: build, dependency, and installation support.
 

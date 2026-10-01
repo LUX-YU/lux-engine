@@ -10,7 +10,8 @@ set_tests_properties(editor.architecture_negative PROPERTIES LABELS "editor;nati
 add_test(NAME editor.architecture_current
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/check_editor_boundaries.py"
         --repo "${PROJECT_SOURCE_DIR}" --graph "${CMAKE_BINARY_DIR}/editor-architecture/targets.json"
-        --compile-db "${CMAKE_BINARY_DIR}/compile_commands.json" --stage "${LUX_EDITOR_MIGRATION_STAGE}")
+        --compile-db "${CMAKE_BINARY_DIR}/compile_commands.json" --stage "${LUX_EDITOR_MIGRATION_STAGE}"
+        --layering-mode "${LUX_EDITOR_LAYERING_MODE}")
 set_tests_properties(editor.architecture_current PROPERTIES LABELS "editor;native;architecture")
 add_executable(editor_flow_source_native flow_source_native.cpp)
 target_link_libraries(editor_flow_source_native PRIVATE lux::engine::function::flowforge)
@@ -87,4 +88,15 @@ if(MSVC)
         COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_delivery_constraints.py"
             --build "${CMAKE_BINARY_DIR}")
     set_tests_properties(editor.layering.delivery_constraints PROPERTIES LABELS "editor;native;editor_layering" TIMEOUT 120)
+endif()
+
+add_test(NAME editor.layering.boundaries
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_layering_boundaries.py"
+        --source "${PROJECT_SOURCE_DIR}" --build "${CMAKE_BINARY_DIR}" --cmake "${CMAKE_COMMAND}")
+set_tests_properties(editor.layering.boundaries PROPERTIES LABELS "editor;native;editor_layering" TIMEOUT 240)
+if(MSVC)
+    add_test(NAME editor.layering.compiler_providers
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_layering_compiler.py"
+            --source "${PROJECT_SOURCE_DIR}" --build "${CMAKE_BINARY_DIR}")
+    set_tests_properties(editor.layering.compiler_providers PROPERTIES LABELS "editor;native;editor_layering" TIMEOUT 240)
 endif()

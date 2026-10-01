@@ -1,9 +1,24 @@
 #pragma once
+#include <concepts>
+#include <functional>
+#include <lux/cxx/compile_time/expected.hpp>
 #include <cstdint>
 #include <type_traits>
 
 namespace lux::editor::workbench::detail
 {
+    template <class R>
+    concept VoidDeliveryResult =
+        std::default_initializable<R> && std::move_constructible<R> && requires(R& result, const R& observed) {
+            typename R::error_type;
+            requires std::same_as<R, lux::cxx::expected<void, typename R::error_type>>;
+            { static_cast<bool>(observed) } -> std::same_as<bool>;
+            { result.error() } -> std::same_as<typename R::error_type&>;
+        };
+
+    template <class F, class R>
+    concept DeliveryAction = std::invocable<F&> && std::same_as<std::invoke_result_t<F&>, R>;
+
     enum class EInputDeliveryStage : std::uint8_t
     {
         BEGIN,
@@ -16,6 +31,11 @@ namespace lux::editor::workbench::detail
     // Synchronous, borrowed actions only. The concrete owner retains its immutable source stamp,
     // typed payload and bounded queue. A failed phase retains both payload and the exact phase.
     template <class Validate, class Cancel, class Begin, class Preview, class Commit>
+        requires std::invocable<Validate&> && VoidDeliveryResult<std::invoke_result_t<Validate&>> &&
+                 DeliveryAction<Cancel, std::invoke_result_t<Validate&>> &&
+                 DeliveryAction<Begin, std::invoke_result_t<Validate&>> &&
+                 DeliveryAction<Preview, std::invoke_result_t<Validate&>> &&
+                 DeliveryAction<Commit, std::invoke_result_t<Validate&>>
     auto deliverInput(
         EInputDeliveryStage& stage,
         bool commit,
@@ -28,29 +48,29 @@ namespace lux::editor::workbench::detail
     {
         using Result = std::invoke_result_t<Validate&>;
         if (stage != EInputDeliveryStage::CANCEL && stage != EInputDeliveryStage::COMPLETE)
-            if (auto result = validate(); !result)
+            if (auto result = std::invoke(validate); !result)
                 return result;
         if (stage == EInputDeliveryStage::CANCEL)
         {
-            if (auto result = cancel(); !result)
+            if (auto result = std::invoke(cancel); !result)
                 return result;
             stage = EInputDeliveryStage::COMPLETE;
         }
         if (stage == EInputDeliveryStage::BEGIN)
         {
-            if (auto result = begin(); !result)
+            if (auto result = std::invoke(begin); !result)
                 return result;
             stage = EInputDeliveryStage::PREVIEW;
         }
         if (stage == EInputDeliveryStage::PREVIEW)
         {
-            if (auto result = preview(); !result)
+            if (auto result = std::invoke(preview); !result)
                 return result;
             stage = commit ? EInputDeliveryStage::COMMIT : EInputDeliveryStage::COMPLETE;
         }
         if (stage == EInputDeliveryStage::COMMIT)
         {
-            if (auto result = finish(); !result)
+            if (auto result = std::invoke(finish); !result)
                 return result;
             stage = EInputDeliveryStage::COMPLETE;
         }

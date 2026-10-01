@@ -1119,12 +1119,14 @@
       ],
       "public_headers": [
         "lux/engine/editor/views/ViewInfo.hpp",
-        "lux/engine/editor/EditorError.hpp"
+        "lux/engine/editor/EditorError.hpp",
+        "lux/engine/editor/CloseStatus.hpp"
       ],
       "files": [
         "editor/editing/include/lux/engine/editor/contracts/CodeLease.hpp",
         "editor/editing/include/lux/engine/editor/views/ViewInfo.hpp",
-        "editor/editing/include/lux/engine/editor/EditorError.hpp"
+        "editor/editing/include/lux/engine/editor/EditorError.hpp",
+        "editor/editing/include/lux/engine/editor/CloseStatus.hpp"
       ]
     },
     "edit_history": {

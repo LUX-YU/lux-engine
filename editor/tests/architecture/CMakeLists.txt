@@ -81,3 +81,10 @@ set_tests_properties(editor.quality.boundaries PROPERTIES LABELS "editor;native;
 add_test(NAME editor.quality.evidence
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_quality_evidence.py")
 set_tests_properties(editor.quality.evidence PROPERTIES LABELS "editor;native;P10Q")
+
+if(MSVC)
+    add_test(NAME editor.layering.delivery_constraints
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_delivery_constraints.py"
+            --build "${CMAKE_BINARY_DIR}")
+    set_tests_properties(editor.layering.delivery_constraints PROPERTIES LABELS "editor;native;editor_layering" TIMEOUT 120)
+endif()

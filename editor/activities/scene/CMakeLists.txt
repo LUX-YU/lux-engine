@@ -101,10 +101,10 @@ lux_engine_install_components(PROJECT_NAME lux-engine-editor-scene-projection VE
 
 # Exact SDK ownership: sibling providers share a build include root, never an install manifest.
 install(FILES
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/activities/scene/FieldEdit.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/activities/scene/SceneEdit.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/activities/scene/SceneEditing.hpp
-    DESTINATION include/lux/engine/editor/activities/scene COMPONENT lux_engine_editor_editing_scene)
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/editing/scene/FieldEdit.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/editing/scene/SceneEdit.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/editing/scene/SceneEditing.hpp
+    DESTINATION include/lux/engine/editor/editing/scene COMPONENT lux_engine_editor_editing_scene)
 install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/scene/RunController.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/scene/RunInspectAccess.hpp

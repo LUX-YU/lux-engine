@@ -132,6 +132,7 @@ install(FILES
     DESTINATION include/lux/engine/editor/sessions COMPONENT lux_engine_edit_sessions)
 install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/EditorError.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/CloseStatus.hpp
     DESTINATION include/lux/engine/editor COMPONENT lux_engine_editor_contracts)
 install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/contracts/CodeLease.hpp
@@ -144,7 +145,6 @@ install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/AssetOpenRequest.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/AssetSave.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/CloseRequest.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/CloseStatus.hpp
     DESTINATION include/lux/engine/editor COMPONENT lux_engine_editor_editing)
 install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/editing/EditHistoryTarget.hpp

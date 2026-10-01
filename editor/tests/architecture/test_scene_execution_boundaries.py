@@ -52,9 +52,13 @@ def main():
             for value in targets:
                 folder = root / locations[value]
                 folder.mkdir(parents=True, exist_ok=True)
-                (folder / "dummy.cpp").write_text("int " + value + "_fixture;\n")
-                (folder / "CMakeLists.txt").write_text(f"add_library({value} STATIC dummy.cpp)\nadd_library(fixture::{value} ALIAS {value})\n")
-                top += f"add_subdirectory({locations[value]})\n"
+                (folder / (value + ".cpp")).write_text("int " + value + "_fixture;\n")
+                cmake_file = folder / "CMakeLists.txt"
+                previous = cmake_file.read_text() if cmake_file.exists() else ""
+                cmake_file.write_text(previous + f"add_library({value} STATIC {value}.cpp)\nadd_library(fixture::{value} ALIAS {value})\n")
+                entry = f"add_subdirectory({locations[value]})\n"
+                if entry not in top:
+                    top += entry
             edges = ""
             if intermediate:
                 edges += f"target_link_libraries({target} PRIVATE fixture::{intermediate})\n"
@@ -64,6 +68,8 @@ def main():
             (root / "CMakeLists.txt").write_text(top + edges + tail)
             probe = root / locations[target] / "probe.hpp"
             probe.write_text(f"#include <{header}>\n" if header else "")
+            provider = root / locations[target] / "CMakeLists.txt"
+            provider.write_text(provider.read_text() + f'target_sources({target} PRIVATE "{probe.as_posix()}")\n')
             build = root / "build"
             result = run([args.cmake, "-S", root, "-B", build, "-G", "Ninja"])
             output = result.stdout + result.stderr

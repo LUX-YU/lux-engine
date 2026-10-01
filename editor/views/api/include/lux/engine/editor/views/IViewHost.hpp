@@ -1,5 +1,5 @@
 #pragma once
-#include <lux/engine/editor/views/ViewInfo.hpp>
+#include <lux/engine/editor/views/ViewError.hpp>
 #include <lux/engine/editor/contracts/CodeLease.hpp>
 #include <lux/engine/ui/Pane.hpp>
 #include <utility>

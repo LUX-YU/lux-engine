@@ -124,6 +124,8 @@ def main():
             (root / "CMakeLists.txt").write_text(top + edges + tail)
             probe = root / locations[target] / "probe.hpp"
             probe.write_text('auto build(ui::Root& root) { return std::make_unique<ui::Pane>(root, ui::PaneId{"bad"}, ui::PaneTypeId{"test"}, "bad"); }\n' if header == "ROOTED_FACTORY" else f"#include <{header}>\n" if header else "")
+            provider = root / locations[target] / "CMakeLists.txt"
+            provider.write_text(provider.read_text() + f'target_sources({target} PRIVATE "{probe.as_posix()}")\n')
             build = root / "build"
             result = run([args.cmake, "-S", root, "-B", build, "-G", "Ninja"])
             output = result.stdout + result.stderr

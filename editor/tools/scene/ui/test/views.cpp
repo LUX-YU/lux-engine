@@ -24,8 +24,8 @@
 #include <lux/engine/flowforge/graph/ArithmeticNode.hpp>
 #include <imgui_internal.h>
 #ifdef LUX_P10_R1_NATIVE
-#include "../../../flowforge/model/src/PreparedFlowReload.hpp"
-#include "../../../material/model/src/MaterialSessionData.hpp"
+#include "../../../../authoring/flow/src/PreparedFlowReload.hpp"
+#include "../../../../authoring/material/src/MaterialSessionData.hpp"
 #endif
 #include <lux/engine/flowforge/graph/ControlNode.hpp>
 #include <lux/engine/flowforge/graph/FunctionalNode.hpp>

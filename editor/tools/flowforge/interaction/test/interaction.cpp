@@ -1,4 +1,4 @@
-#include "../../model/src/PreparedFlowReload.hpp"
+#include "../../../../authoring/flow/src/PreparedFlowReload.hpp"
 #include <lux/engine/editor/flowforge/FlowInteraction.hpp>
 #include <lux/engine/editor/sessions/SessionStore.hpp>
 #include <lux/engine/editor/flowforge/FlowSession.hpp>

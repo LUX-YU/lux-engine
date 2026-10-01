@@ -80,7 +80,7 @@ function(lux_editor_check_architecture)
         endif()
         list(APPEND visited "${target}")
         set(record "{\"name\":\"${target}\"")
-        foreach(property SOURCE_DIR TYPE IMPORTED SOURCES INCLUDE_DIRECTORIES INTERFACE_INCLUDE_DIRECTORIES
+        foreach(property SOURCE_DIR TYPE IMPORTED SOURCES INTERFACE_SOURCES INCLUDE_DIRECTORIES INTERFACE_INCLUDE_DIRECTORIES
                          LINK_LIBRARIES INTERFACE_LINK_LIBRARIES MANUALLY_ADDED_DEPENDENCIES)
             get_target_property(value ${target} ${property})
             if(value STREQUAL "value-NOTFOUND")

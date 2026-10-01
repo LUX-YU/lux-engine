@@ -29,8 +29,8 @@ def foundation_cases(args):
         ("unknown", "edit_sessions", "unresolved_library", "FOUNDATION_UNRESOLVED_DEPENDENCY", "", False),
     ]
     locations = {
-        "editor_contracts": "editor/contracts", "edit_history": "editor/editing/history",
-        "edit_sessions": "editor/editing/sessions", "scene_composition": "engine/scene/composition",
+        "editor_contracts": "editor/editing", "edit_history": "editor/editing",
+        "edit_sessions": "editor/editing", "scene_composition": "engine/scene/composition",
         "ui_fixture": "modules/function/ui", "editor_context": "editor/context",
         "identity": "modules/resource/identity",
     }
@@ -46,7 +46,9 @@ def foundation_cases(args):
             for target, path in locations.items():
                 directory = root / path
                 directory.mkdir(parents=True, exist_ok=True)
-                (directory / "CMakeLists.txt").write_text(
+                cmake_file = directory / "CMakeLists.txt"
+                previous = cmake_file.read_text() if cmake_file.exists() else ""
+                cmake_file.write_text(previous +
                     f"add_library({target} INTERFACE)\nadd_library(fixture::{target} ALIAS {target})\n",
                     encoding="utf-8")
             top = ('cmake_minimum_required(VERSION 3.22)\nproject(foundation LANGUAGES NONE)\n'
@@ -54,7 +56,7 @@ def foundation_cases(args):
             top += ('add_library(stduuid INTERFACE IMPORTED)\n'
                     'add_library(lux::cxx::container INTERFACE IMPORTED)\n'
                     'add_library(lux::cxx::compile_time INTERFACE IMPORTED)\n')
-            top += "".join(f"add_subdirectory({p})\n" for p in locations.values())
+            top += "".join(f"add_subdirectory({p})\n" for p in dict.fromkeys(locations.values()))
             if name == "legal-external":
                 top += ('target_link_libraries(identity INTERFACE stduuid)\n'
                         'target_link_libraries(edit_history INTERFACE editor_contracts lux::cxx::compile_time)\n'
@@ -79,6 +81,7 @@ def foundation_cases(args):
                 cmake.write_text(original + text, encoding="utf-8")
             header = root / locations[source] / "probe.hpp"
             header.write_text(f"#include <{include}>\n" if include else "", encoding="utf-8")
+            cmake.write_text(cmake.read_text() + f'target_sources({source} INTERFACE "${{CMAKE_CURRENT_SOURCE_DIR}}/probe.hpp")\n', encoding="utf-8")
             build = root / "build"
             result = run([args.cmake, "-S", root, "-B", build])
             text = result.stdout + result.stderr
@@ -129,7 +132,7 @@ def main():
              "ENGINE_DEPENDS_ON_EDITOR", ""),
             ("editor/workflows", "editor_workflows", "editor/bootstrap", "editor_bootstrap",
              "WORKFLOWS_DEPEND_ON_BOOTSTRAP", ""),
-            ("editor/tools/scene/model", "scene_model", "modules/function/ui", "ui_fixture",
+            ("editor/authoring/scene", "scene_model", "modules/function/ui", "ui_fixture",
              "MODEL_DEPENDS_ON_UI", '#include <lux/engine/ui/Pane.hpp>\n'),
         ]
         for index, (src, target, dest, dependency, rule, header) in enumerate(cases):
@@ -168,13 +171,13 @@ def main():
         assert any(x["rule"] == "EXPIRED_PATH" for x in inspect(root, [], rules, "P01"))
         assert not any(x["rule"] == "EXPIRED_PATH" for x in inspect(root, [], rules, "P00"))
         old.unlink()
-        private = root / "editor/tools/scene/model/Private.hpp"
+        private = root / "editor/authoring/scene/Private.hpp"
         private.write_text('#include "../../pinclude/Private.hpp"\n', encoding="utf-8")
         assert any(x["rule"] == "PRIVATE_INCLUDE" for x in inspect(root, [], rules, "P00"))
         private.unlink()
         print("PASS expiry and private header checks")
 
-        history = root / "editor/editing/history/probe.hpp"
+        history = root / "editor/editing/include/lux/engine/editor/editing/EditHistory.hpp"
         history.parent.mkdir(parents=True, exist_ok=True)
         history.write_text("struct History { void beginSave(); };\n", encoding="utf-8")
         assert any(x["rule"] == "HISTORY_PERSISTENCE_API" for x in inspect(root, [], rules, "P01"))

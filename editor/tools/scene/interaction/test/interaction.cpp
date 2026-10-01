@@ -1,4 +1,4 @@
-#include "../../model/src/PreparedSceneReload.hpp"
+#include "../../../../authoring/scene/src/PreparedSceneReload.hpp"
 #include <lux/engine/editor/scene/SceneInteraction.hpp>
 #include <lux/engine/editor/sessions/SessionStore.hpp>
 #include <lux/engine/editor/scene/SceneSession.hpp>

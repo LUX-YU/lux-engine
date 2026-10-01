@@ -20,7 +20,7 @@ def main():
     args = parser.parse_args()
     args.source = args.source.resolve()
     locations = {
-        "scene_model": "editor/tools/scene/model", "scene_asset": "engine/scene/asset",
+        "scene_model": "editor/authoring/scene", "scene_asset": "engine/scene/asset",
         "scene_composition": "engine/scene/composition", "ui_fixture": "modules/function/ui",
         "editor_context": "editor/context",
     }
@@ -41,7 +41,7 @@ def main():
     pure = "material_graph" if args.model == "material" else "scene_asset"
     if args.model == "material":
         locations.pop("scene_model"); locations.pop("scene_asset")
-        locations.update({model: "editor/tools/material/model", pure: "modules/function/material",
+        locations.update({model: "editor/authoring/material", pure: "modules/function/material",
             "compiler_fixture": "engine/toolchain/material_compiler", "storage_fixture": "editor/storage"})
         cases = [(name, dest, "lux/engine/material/graph/MaterialSource.hpp" if name == "legal-cpu" else header,
             transitive, imported) for name, dest, header, transitive, imported in cases]
@@ -54,7 +54,7 @@ def main():
     if args.model == "flowforge":
         pure = "flowforge"
         locations.pop("scene_model"); locations.pop("scene_asset")
-        locations.update({model: "editor/tools/flowforge/model", pure: "modules/function/flowforge",
+        locations.update({model: "editor/authoring/flow", pure: "modules/function/flowforge",
             "compiler_fixture": "engine/toolchain/flowforge", "storage_fixture": "editor/storage",
             "script_runtime_fixture": "engine/domain/script"})
         cases = [(name, dest, "lux/engine/flowforge/graph/FlowSource.hpp" if name == "legal-cpu" else header,
@@ -115,6 +115,8 @@ def main():
             (root / "CMakeLists.txt").write_text(top + edge + tail)
             probe = root / locations[model] / "probe.hpp"
             probe.write_text(f"#include <{header}>\n" if header else "")
+            provider = root / locations[model] / "CMakeLists.txt"
+            provider.write_text(provider.read_text() + f'target_sources({model} INTERFACE "${{CMAKE_CURRENT_SOURCE_DIR}}/probe.hpp")\n')
             build = root / "build"
             result = run([args.cmake, "-S", root, "-B", build])
             text = result.stdout + result.stderr

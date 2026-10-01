@@ -16,6 +16,20 @@ def phase(value):
     return STAGES.index(value)
 
 
+def owned_sources(repo, node, policy):
+    owned = set(policy.get("files", []))
+    for key in ("SOURCES", "INTERFACE_SOURCES"):
+        for item in filter(None, node.get(key, "").split(";")):
+            if "$<" in item:
+                continue  # Resolved compiler dependencies are inspected by the layering qualification.
+            path = Path(item)
+            if not path.is_absolute():
+                path = Path(node["SOURCE_DIR"]) / path
+            if path.resolve().is_relative_to(repo.resolve()):
+                owned.add(path.resolve().relative_to(repo.resolve()).as_posix())
+    return owned
+
+
 def check_foundations(repo, targets, rules, sources, report):
     foundations = rules["foundation_targets"]
     definitions = {x["name"]: x for x in rules["targets"]}
@@ -75,8 +89,12 @@ def check_foundations(repo, targets, rules, sources, report):
             prefixes.extend(external[dependency]["include_prefixes"])
             headers.update(external[dependency]["include_headers"])
         scope = definitions[name]["path"] + "/"
+        owned = owned_sources(repo, targets.get(name, {}), policy)
         for path, source in sources.items():
-            if not path.startswith(scope):
+            if "files" in policy:
+                if path not in owned:
+                    continue
+            elif not path.startswith(scope):
                 continue
             for match in re.finditer(r'^\s*#\s*include\s*([<"])([^>"\n]+)', source, re.M):
                 delimiter, header = match.groups()
@@ -121,10 +139,11 @@ def check_model(repo, targets, rules, sources, report, name):
                 report(prefix + "_DIRECT_DEPENDENCY", name, detail)
             pending.append((dependency, path))
     scope = model_path + "/"
+    owned = owned_sources(repo, targets.get(name, {}), policy)
     for path, source in sources.items():
         if not path.startswith(scope):
             continue
-        if path in policy.get("exclude_files", []) or ("files" in policy and path not in policy["files"]):
+        if path in policy.get("exclude_files", []) or ("files" in policy and path not in owned):
             continue
         for delimiter, header in re.findall(r'^\s*#\s*include\s*([<"])([^>"\n]+)', source, re.M):
             local = delimiter == '"' and (repo / path).parent.joinpath(header).resolve().is_relative_to(
@@ -179,11 +198,11 @@ def inspect(repo, records, rules, stage, compile_db=None):
             if not path.endswith((".hpp", ".cpp", ".h", ".cc")):
                 continue
             # The sole intentional occurrence checks absence through a requires expression.
-            if path == "editor/editing/sessions/test/sessions.cpp":
+            if path == "editor/editing/test/sessions/sessions.cpp":
                 source = source.replace("value.beginSave();", "")
             if retired.search(source):
                 report("HISTORY_PERSISTENCE_API", path, "P01 retired persistence declaration or call")
-            if path.startswith("editor/editing/history/") and re.search(r'\b(saved|save_pending|clean|pending|request)\b', source):
+            if path in rules["foundation_targets"]["edit_history"]["files"] and re.search(r'\b(saved|save_pending|clean|pending|request)\b', source):
                 report("HISTORY_PERSISTENCE_STATE", path, "Persistence state must not live in history")
 
     if phase(stage) >= phase("P01"):

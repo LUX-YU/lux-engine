@@ -18,9 +18,9 @@
 #include <thread>
 
 #ifdef LUX_NATIVE_INTERACTION_RECLAIM
-#include "../../tools/scene/model/src/PreparedSceneReload.hpp"
-#include "../../tools/material/model/src/PreparedMaterialReload.hpp"
-#include "../../tools/flowforge/model/src/PreparedFlowReload.hpp"
+#include "../../authoring/scene/src/PreparedSceneReload.hpp"
+#include "../../authoring/material/src/PreparedMaterialReload.hpp"
+#include "../../authoring/flow/src/PreparedFlowReload.hpp"
 #endif
 
 namespace

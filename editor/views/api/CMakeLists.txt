@@ -1,5 +1,6 @@
 add_interface_component(COMPONENT_NAME view_api NAMESPACE lux::engine::editor)
-component_include_directories(view_api BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
+component_include_directories(view_api BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${PROJECT_SOURCE_DIR}/editor/workbench/desktop/include INSTALL_TIME include)
 target_link_libraries(view_api INTERFACE lux::engine::function::ui lux::engine::editor::editor_contracts)
 component_add_transitive_commands(view_api
     "find_package(lux-engine-function REQUIRED COMPONENTS ui)"

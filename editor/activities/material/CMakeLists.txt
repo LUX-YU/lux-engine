@@ -6,6 +6,10 @@ target_link_libraries(material_persistence PUBLIC lux::engine::editor::material_
 component_add_transitive_commands(material_persistence
     "find_package(lux-engine-editor-material-model REQUIRED COMPONENTS material_model)"
     "find_package(lux-engine-editor-persistence REQUIRED COMPONENTS editor_persistence)")
+target_link_libraries(material_persistence PUBLIC lux::engine::editor::session_factories)
+target_include_directories(material_persistence PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../sessions/sinclude)
+component_add_transitive_commands(material_persistence
+    "find_package(lux-engine-editor-session-factories REQUIRED COMPONENTS session_factories)")
 lux_classify_target(TARGET material_persistence LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 lux_engine_install_components(PROJECT_NAME lux-engine-editor-material-persistence VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS material_persistence)
@@ -44,8 +48,5 @@ install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/material/PublishCompiledMaterial.hpp
     DESTINATION include/lux/engine/editor/material COMPONENT lux_engine_editor_material_preview)
 
-target_link_libraries(material_persistence PUBLIC lux::engine::editor::session_factories)
-target_include_directories(material_persistence PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../sessions/sinclude)
-component_add_transitive_commands(material_persistence "find_package(lux-engine-editor-session-factories REQUIRED COMPONENTS session_factories)")
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/material/MaterialSessionFactory.hpp
     DESTINATION include/lux/engine/editor/material COMPONENT lux_engine_editor_material_persistence)

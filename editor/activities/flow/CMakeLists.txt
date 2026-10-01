@@ -6,6 +6,10 @@ target_link_libraries(flowforge_persistence PUBLIC lux::engine::editor::flowforg
 component_add_transitive_commands(flowforge_persistence
     "find_package(lux-engine-editor-flowforge-model REQUIRED COMPONENTS flowforge_model)"
     "find_package(lux-engine-editor-persistence REQUIRED COMPONENTS editor_persistence)")
+target_link_libraries(flowforge_persistence PUBLIC lux::engine::editor::session_factories)
+target_include_directories(flowforge_persistence PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../sessions/sinclude)
+component_add_transitive_commands(flowforge_persistence
+    "find_package(lux-engine-editor-session-factories REQUIRED COMPONENTS session_factories)")
 lux_classify_target(TARGET flowforge_persistence LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 lux_engine_install_components(PROJECT_NAME lux-engine-editor-flowforge-persistence VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS flowforge_persistence)
@@ -34,8 +38,5 @@ install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/flowforge/FlowSaveSource.hpp
     DESTINATION include/lux/engine/editor/flowforge COMPONENT lux_engine_editor_flowforge_persistence)
 
-target_link_libraries(flowforge_persistence PUBLIC lux::engine::editor::session_factories)
-target_include_directories(flowforge_persistence PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../sessions/sinclude)
-component_add_transitive_commands(flowforge_persistence "find_package(lux-engine-editor-session-factories REQUIRED COMPONENTS session_factories)")
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/flowforge/FlowSessionFactory.hpp
     DESTINATION include/lux/engine/editor/flowforge COMPONENT lux_engine_editor_flowforge_persistence)

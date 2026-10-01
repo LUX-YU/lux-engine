@@ -6,6 +6,10 @@ target_link_libraries(scene_persistence PUBLIC lux::engine::editor::scene_model 
 component_add_transitive_commands(scene_persistence
     "find_package(lux-engine-editor-scene-model REQUIRED COMPONENTS scene_model)"
     "find_package(lux-engine-editor-persistence REQUIRED COMPONENTS editor_persistence)")
+target_link_libraries(scene_persistence PUBLIC lux::engine::editor::session_factories)
+target_include_directories(scene_persistence PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../sessions/sinclude)
+component_add_transitive_commands(scene_persistence
+    "find_package(lux-engine-editor-session-factories REQUIRED COMPONENTS session_factories)")
 lux_classify_target(TARGET scene_persistence LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 lux_engine_install_components(PROJECT_NAME lux-engine-editor-scene-persistence VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS scene_persistence)
@@ -120,8 +124,5 @@ install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/scene/SceneProjection.hpp
     DESTINATION include/lux/engine/editor/scene COMPONENT lux_engine_editor_scene_projection)
 
-target_link_libraries(scene_persistence PUBLIC lux::engine::editor::session_factories)
-target_include_directories(scene_persistence PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../sessions/sinclude)
-component_add_transitive_commands(scene_persistence "find_package(lux-engine-editor-session-factories REQUIRED COMPONENTS session_factories)")
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/scene/SceneSessionFactory.hpp
     DESTINATION include/lux/engine/editor/scene COMPONENT lux_engine_editor_scene_persistence)

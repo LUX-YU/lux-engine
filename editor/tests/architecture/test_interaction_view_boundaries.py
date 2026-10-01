@@ -31,6 +31,7 @@ def main():
         ("material-transitive-context", "material_interaction", "material_model", "editor_context", ""),
         ("flow-transitive-ui", "flowforge_interaction", "flowforge_model", "ui_fixture", ""),
         ("scene-ui", "scene_interaction", None, "ui_fixture", ""),
+        ("scene-run-transitive-render-runtime", "scene_interaction", "scene_execution_api", "render_runtime", ""),
         ("view-scene", "view_api", None, "scene_model", ""),
         ("view-storage", "view_api", None, "editor_storage", ""),
         ("view-render", "view_api", None, "render_runtime", ""),

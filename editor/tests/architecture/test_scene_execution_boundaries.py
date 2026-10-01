@@ -22,6 +22,7 @@ def main():
     locations = {x["name"]: x["path"] for x in rules["targets"]}
     locations.update(editor_context="editor/context", ui_fixture="modules/function/ui", process_execution="engine/process/execution")
     locations.update(scene_composition="engine/scene/composition", render_runtime="modules/function/render/runtime")
+    locations.update(render_client="modules/function/render/client")
     cases = [
         ("runtime-editor", "scene_composition", None, "editor_context", ""),
         ("runtime-transitive-editor", "scene_composition", "render_runtime", "editor_context", ""),
@@ -30,6 +31,9 @@ def main():
         ("run-old-editor", "scene_execution", None, None, "lux/engine/editor/scene/SceneEditor.hpp"),
         ("run-private-bridge", "scene_execution", None, None, "SceneRunCaptureAccess.hpp"),
         ("api-ui", "scene_execution_api", None, "ui_fixture", ""),
+        ("api-render-runtime", "scene_execution_api", None, "render_runtime", ""),
+        ("api-client-transitive-runtime", "scene_execution_api", "render_client", "render_runtime", ""),
+        ("api-client-legal", "scene_execution_api", "render_client", None, ""),
         ("author-runtime", "scene_model", None, "scene_composition", ""),
         ("author-run", "scene_model", None, "scene_execution", ""),
         ("run-legal", "scene_execution", "scene_execution_api", None, ""),

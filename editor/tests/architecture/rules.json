@@ -2297,7 +2297,8 @@
   "scene_execution_api": {
     "direct": [
       "scene_composition",
-      "scene_model"
+      "scene_model",
+      "render_client"
     ],
     "closure": {
       "Eigen3::Eigen": {
@@ -2473,6 +2474,12 @@
       },
       "world_storage": {
         "path": "engine/domain/world/storage"
+      },
+      "render_client": {
+        "path": "modules/function/render/client"
+      },
+      "lux::cxx::concurrent": {
+        "imported": true
       }
     },
     "native_libraries": [
@@ -4464,6 +4471,12 @@
       },
       "world_storage": {
         "path": "engine/domain/world/storage"
+      },
+      "render_client": {
+        "path": "modules/function/render/client"
+      },
+      "lux::cxx::concurrent": {
+        "imported": true
       }
     },
     "native_libraries": [],

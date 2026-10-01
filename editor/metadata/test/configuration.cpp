@@ -1,4 +1,5 @@
-#include <lux/engine/editor/metadata/ConfigurationValue.hpp>
+#include <lux/engine/editor/configuration/ConfigurationValue.hpp>
+#include <lux/engine/editor/metadata/EditorPluginExports.hpp>
 #include <lux/engine/meta/TypeStaticInfo.hpp>
 #include <lux/engine/ui/Root.hpp>
 #include <lux/engine/ui/Pane.hpp>
@@ -111,8 +112,14 @@ int main()
                 return std::make_unique<ConfigurationElement>(parent, std::move(id), value);
             }
         };
-        auto first = editor::ConfigurationValue::create(registration, code);
-        auto second = editor::ConfigurationValue::create(registration, code);
+        auto first = editor::ConfigurationValue::create(
+            {registration.schema_name, registration.schema_version, registration.codec, registration.reflection},
+            code
+        );
+        auto second = editor::ConfigurationValue::create(
+            {registration.schema_name, registration.schema_version, registration.codec, registration.reflection},
+            code
+        );
         assert(first && second);
         auto& typed = *static_cast<Configuration*>(first->data());
         auto messages_created = object::ObjectMessageQueue::create(64);
@@ -123,7 +130,7 @@ int main()
         ui::Pane pane(**context, ui::PaneId{"configuration"}, ui::PaneTypeId{"test"}, "Configuration");
         ui::Layout layout(pane, ui::ElementId{"content"}, ui::ELayoutType::VERTICAL);
         pane.setContent(layout);
-        auto created = first->createElement(layout, ui::ElementId{"configuration"});
+        auto created = registration.create(layout, ui::ElementId{"configuration"}, *first);
         assert(created);
         auto& element = static_cast<ConfigurationElement&>(**created);
         ui::DrawData snapshot;

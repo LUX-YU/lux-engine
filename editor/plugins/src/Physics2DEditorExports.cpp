@@ -1,7 +1,7 @@
 #include <lux/engine/editor/metadata/EditorPluginExports.hpp>
 #include <lux/engine/physics2d/Physics2DSystem.hpp>
 #include <lux/engine/editor/plugins/physics2d_visibility.h>
-#include <lux/engine/editor/metadata/ConfigurationValue.hpp>
+#include <lux/engine/editor/configuration/ConfigurationValue.hpp>
 #include <lux/engine/ui/Controls.hpp>
 #include <lux/engine/ui/Layout.hpp>
 #include <array>

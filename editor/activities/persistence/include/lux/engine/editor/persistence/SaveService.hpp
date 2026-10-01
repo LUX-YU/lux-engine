@@ -20,6 +20,18 @@ namespace lux::editor::persistence
             ISaveSource& source,
             contracts::CodeLease code = contracts::CodeLease::builtin()
         );
+        // Preflight before consuming a completed load. Does not reserve or invoke a source.
+        [[nodiscard]] PersistenceResult<void> canPrepareSource() const noexcept;
+        // No describe callback: a factory supplies the real reserved identity while its Session is hidden.
+        [[nodiscard]] PersistenceResult<PreparedSaveSourceRegistration> prepareSource(
+            sessions::SessionId,
+            std::unique_ptr<ISaveSource>,
+            contracts::CodeLease = contracts::CodeLease::builtin()
+        );
+        [[nodiscard]] PersistenceResult<void> canPublish(const PreparedSaveSourceRegistration&) const noexcept;
+        // Requires a successful canPublish with no intervening callback/mutation, on the same owner.
+        // This commit only changes prepared visibility; it allocates nothing and calls no source.
+        [[nodiscard]] SaveSourceRegistration publish(PreparedSaveSourceRegistration&&) noexcept;
         [[nodiscard]] PersistenceResult<SaveId> requestSave(SaveRequest request);
         [[nodiscard]] PersistenceResult<SaveStatus> status(SaveId id) const;
         [[nodiscard]] PersistenceResult<ECancelResult> requestCancel(SaveId id);

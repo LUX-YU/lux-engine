@@ -14,7 +14,7 @@
 #include <lux/engine/editor/ui/PublicationControls.hpp>
 #include <lux/engine/editor/ui/AssetActions.hpp>
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
-#include <lux/engine/editor/metadata/EditorReflection.hpp>
+#include <lux/engine/editor/configuration/EditorReflection.hpp>
 #include <lux/engine/flowforge/graph/ArithmeticNode.hpp>
 #include <lux/engine/flowforge/graph/ControlNode.hpp>
 #include <lux/engine/flowforge/graph/FunctionalNode.hpp>
@@ -34,7 +34,6 @@ namespace lux::editor::flowforge
         using widgets::CanvasDelete;
         using widgets::CanvasScope;
         using widgets::createCanvas;
-
 
     } // namespace
 
@@ -71,7 +70,6 @@ namespace lux::editor::flowforge
             auto literal = lux::flowforge::captureFlowLiteral(value);
             return literal ? flowScalar(*literal) : VScalar{std::monostate{}};
         }
-
 
         struct FunctionDraft final
         {

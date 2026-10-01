@@ -1,0 +1,23 @@
+#pragma once
+#include <lux/engine/editor/configuration/ConfigurationValue.hpp>
+#include <lux/engine/editor/scene/SceneConfigurationElement.hpp>
+#include <lux/engine/editor/contracts/CodeLease.hpp>
+#include <lux/engine/editor/EditorError.hpp>
+
+namespace lux::editor::scene
+{
+    struct ConfigurationEditor final
+    {
+        using CreateResult = EditorResult<std::unique_ptr<lux::ui::Element>>;
+        using Create = CreateResult (*)(lux::ui::Element&, lux::ui::ElementId, ConfigurationValue&) noexcept;
+        contracts::CodeLease code{contracts::CodeLease::builtin()};
+        ConfigurationDescriptor value;
+        Create create{};
+    };
+    [[nodiscard]] SceneConfigurationResult<ConfigurationControl> makeConfigurationControl(
+        const ConfigurationEditor&,
+        lux::ui::Element&,
+        lux::ui::ElementId,
+        std::optional<std::span<const std::byte>> initial = {}
+    );
+}

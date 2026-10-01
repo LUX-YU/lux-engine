@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/editor/metadata/ConfigurationValue.hpp>
+#include <lux/engine/editor/scene/ConfigurationEditor.hpp>
 #include <lux/engine/ui/Controls.hpp>
 #include <lux/engine/ui/Layout.hpp>
 #include <functional>
@@ -208,15 +208,16 @@ namespace lux::editor::detail
         std::vector<object::Connection> connections_;
     };
 
-    template <class Configuration> ConfigurationEditorRegistration configurationEditor(const char* schema)
+    template <class Configuration> scene::ConfigurationEditor configurationEditor(const char* schema)
     {
         return {
-            schema,
-            1,
-            serialization::makePortableValueCodec<Configuration>(),
-            +[](meta::ReflectionRegistry& registry) noexcept {
-                return registry.findClass(lux::cxx::typeToken<Configuration>().name());
-            },
+            contracts::CodeLease::builtin(),
+            {schema,
+             1,
+             serialization::makePortableValueCodec<Configuration>(),
+             +[](meta::ReflectionRegistry& registry) noexcept {
+                 return registry.findClass(lux::cxx::typeToken<Configuration>().name());
+             }},
             +[](lux::ui::Element& parent, lux::ui::ElementId id, ConfigurationValue& value
              ) noexcept -> EditorResult<std::unique_ptr<lux::ui::Element>> {
                 try

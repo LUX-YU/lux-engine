@@ -34,4 +34,17 @@ namespace lux::editor::contracts
         bool builtin_;
         std::shared_ptr<const void> owner_;
     };
+    // Call at the receiving module boundary. The returned alias owns the incoming control block,
+    // then its defining code; even an expired weak alias can be destroyed after that code unloads.
+    template <class T> [[nodiscard]] std::shared_ptr<T> pinCodeOwner(CodeLease code, std::shared_ptr<T> value)
+    {
+        struct Owner final
+        {
+            CodeLease code;
+            std::shared_ptr<T> value;
+        };
+        auto owner = std::make_shared<Owner>(std::move(code), std::move(value));
+        auto* pointer = owner->value.get();
+        return std::shared_ptr<T>(std::move(owner), pointer);
+    }
 }

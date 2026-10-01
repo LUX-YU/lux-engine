@@ -70,6 +70,8 @@ def check(repo, records, sources, rules, mode, report, compiler_dependencies=Non
             return "task_monitor_ui_dependency"
         if layer == "E2" and dest in ("E3", "E4"):
             return "activity_workbench_dependency"
+        if owner in ("editor_commands", "session_factories") and caps.intersection(("GUI", "GPU")):
+            return "activity_ui_dependency"
         if owner == "editor_persistence" and (dependency in policy["concrete_save_providers"] or
                 caps.intersection(("PROCESS", "TOOLCHAIN", "GPU", "GUI", "PLATFORM"))):
             return "persistence_policy_concrete_source"

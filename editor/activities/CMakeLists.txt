@@ -1,4 +1,6 @@
 add_subdirectory(persistence)
+add_subdirectory(commands)
+add_subdirectory(sessions)
 add_subdirectory(scene)
 add_subdirectory(material)
 add_subdirectory(flow)

@@ -47,8 +47,11 @@ namespace lux::editor::persistence
     struct SaveSourceRegistration::State final
     {
         contracts::CodeLease code;
+        std::unique_ptr<ISaveSource> owned_source;
         ISaveSource* source;
         sessions::SessionId session;
+        const void* service;
+        bool published{};
     };
     SaveSourceRegistration::SaveSourceRegistration(std::shared_ptr<State> state) noexcept : state_(std::move(state)) {}
     SaveSourceRegistration::~SaveSourceRegistration()
@@ -58,6 +61,27 @@ namespace lux::editor::persistence
     }
     SaveSourceRegistration::SaveSourceRegistration(SaveSourceRegistration&&) noexcept = default;
     SaveSourceRegistration& SaveSourceRegistration::operator=(SaveSourceRegistration&& other) noexcept
+    {
+        if (this != &other)
+        {
+            if (state_)
+                state_->source = nullptr;
+            state_ = std::move(other.state_);
+        }
+        return *this;
+    }
+    PreparedSaveSourceRegistration::PreparedSaveSourceRegistration(std::shared_ptr<SaveSourceRegistration::State> state
+    ) noexcept
+        : state_(std::move(state))
+    {}
+    PreparedSaveSourceRegistration::~PreparedSaveSourceRegistration()
+    {
+        if (state_)
+            state_->source = nullptr;
+    }
+    PreparedSaveSourceRegistration::PreparedSaveSourceRegistration(PreparedSaveSourceRegistration&&) noexcept = default;
+    PreparedSaveSourceRegistration& PreparedSaveSourceRegistration::operator=(PreparedSaveSourceRegistration&& other
+    ) noexcept
     {
         if (this != &other)
         {
@@ -102,7 +126,20 @@ namespace lux::editor::persistence
         bool dispatching{};
         std::vector<std::weak_ptr<SaveSourceRegistration::State>> sources;
         std::vector<std::unique_ptr<Operation>> operations;
-        Impl(WriteCoordinator& value, SaveLimits policy) : coordinator(value), limits(policy) {}
+        // The service's creating module owns allocation/deallocation code for the weak registration
+        // directory. A plugin may call prepareSource through its static SDK copy, then unload while
+        // expired weak records remain; their control block must not have a plugin-local vtable.
+        using AllocateSource = std::shared_ptr<
+            SaveSourceRegistration::State> (*)(contracts::CodeLease, ISaveSource*, sessions::SessionId, const void*);
+        AllocateSource allocate_source;
+        Impl(WriteCoordinator& value, SaveLimits policy)
+            : coordinator(value), limits(policy), allocate_source(+[](contracts::CodeLease code,
+                                                                      ISaveSource* source,
+                                                                      sessions::SessionId id,
+                                                                      const void* service) {
+                  return std::make_shared<SaveSourceRegistration::State>(std::move(code), nullptr, source, id, service);
+              })
+        {}
         bool onOwner() const noexcept
         {
             return owner == std::this_thread::get_id();
@@ -111,12 +148,31 @@ namespace lux::editor::persistence
         {
             return std::ranges::find_if(operations, [id](const auto& value) { return value->id == id; });
         }
-        std::shared_ptr<SaveSourceRegistration::State> source(sessions::SessionId id)
+        std::shared_ptr<SaveSourceRegistration::State> source(sessions::SessionId id, bool include_prepared = false)
         {
             for (const auto& weak : sources)
-                if (auto found = weak.lock(); found && found->session == id && found->source)
+                if (auto found = weak.lock();
+                    found && found->session == id && found->source && (include_prepared || found->published))
                     return found;
             return {};
+        }
+        PersistenceResult<PreparedSaveSourceRegistration> prepare(
+            sessions::SessionId id,
+            ISaveSource& source_value,
+            contracts::CodeLease code
+        )
+        {
+            if (!id.valid() || !code.valid())
+                return failed(EPersistenceError::INVALID_ARGUMENT);
+            if (source(id, true))
+                return failed(EPersistenceError::BUSY);
+            std::erase_if(sources, [](const auto& weak) {
+                auto value = weak.lock();
+                return !value || !value->source;
+            });
+            auto entry = allocate_source(std::move(code), &source_value, id, this);
+            sources.push_back(entry);
+            return PreparedSaveSourceRegistration{std::move(entry)};
         }
         void releaseSnapshot(Operation& op)
         {
@@ -159,15 +215,63 @@ namespace lux::editor::persistence
             !info->content.session.valid() || !info->content.state.valid() || info->binding.value == 0;
         if (invalid_identity)
             return failed(EPersistenceError::INVALID_ARGUMENT);
-        if (impl_->source(info->content.session))
+        auto prepared = impl_->prepare(info->content.session, source, std::move(code));
+        if (!prepared)
+            return lux::cxx::unexpected(prepared.error());
+        prepared->state_->published = true;
+        return SaveSourceRegistration{std::move(prepared->state_)};
+    }
+    PersistenceResult<void> SaveService::canPrepareSource() const noexcept
+    {
+        if (!impl_->onOwner())
+            return failed(EPersistenceError::WRONG_THREAD);
+        if (impl_->dispatching)
             return failed(EPersistenceError::BUSY);
-        std::erase_if(impl_->sources, [](const auto& weak) {
-            auto v = weak.lock();
-            return !v || !v->source;
-        });
-        auto entry = std::make_shared<SaveSourceRegistration::State>(std::move(code), &source, info->content.session);
-        impl_->sources.push_back(entry);
-        return SaveSourceRegistration{std::move(entry)};
+        return {};
+    }
+    PersistenceResult<PreparedSaveSourceRegistration> SaveService::prepareSource(
+        sessions::SessionId id,
+        std::unique_ptr<ISaveSource> source,
+        contracts::CodeLease code
+    )
+    {
+        // External code pin encloses rejection cleanup as well as the entire source destructor.
+        struct Input final
+        {
+            contracts::CodeLease code;
+            std::unique_ptr<ISaveSource> source;
+        };
+        Input owned{std::move(code), std::move(source)};
+        if (!impl_->onOwner())
+            return failed(EPersistenceError::WRONG_THREAD);
+        if (impl_->dispatching)
+            return failed(EPersistenceError::BUSY);
+        const Impl::DispatchScope dispatch{impl_->dispatching};
+        if (!owned.source)
+            return failed(EPersistenceError::INVALID_ARGUMENT);
+        auto prepared = impl_->prepare(id, *owned.source, owned.code);
+        if (prepared)
+            prepared->state_->owned_source = std::move(owned.source);
+        return prepared;
+    }
+    PersistenceResult<void> SaveService::canPublish(const PreparedSaveSourceRegistration& prepared) const noexcept
+    {
+        if (!impl_->onOwner())
+            return failed(EPersistenceError::WRONG_THREAD);
+        if (impl_->dispatching)
+            return failed(EPersistenceError::BUSY);
+        const auto& state = prepared.state_;
+        const bool invalid = !state || state->service != impl_.get() || !state->source || state->published;
+        if (invalid)
+            return failed(EPersistenceError::INVALID_ARGUMENT);
+        return {};
+    }
+    SaveSourceRegistration SaveService::publish(PreparedSaveSourceRegistration&& prepared) noexcept
+    {
+        if (!canPublish(prepared))
+            std::terminate();
+        prepared.state_->published = true;
+        return SaveSourceRegistration{std::move(prepared.state_)};
     }
     PersistenceResult<SaveId> SaveService::requestSave(SaveRequest request)
     {

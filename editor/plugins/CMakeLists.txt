@@ -26,7 +26,7 @@ component_include_directories(render_feature_meta
     BUILD_TIME_EXPORT ${_feature_root}/include ${LUX_GENERATE_HEADER_DIR}
     INSTALL_TIME include)
 target_compile_definitions(render_feature_meta PRIVATE LUX_RENDER_FEATURE_META_LIBRARY)
-target_link_libraries(render_feature_meta PRIVATE render_feature_client lux::engine::core::meta
+target_link_libraries(render_feature_meta PRIVATE lux::engine::editor::scene_ui render_feature_client lux::engine::core::meta
     lux::engine::editor::editor_metadata lux::engine::function::ui)
 lux_classify_target(TARGET render_feature_meta LAYER EDITOR PRODUCT EDITOR ROLE PLUGIN)
 component_add_transitive_commands(render_feature_meta

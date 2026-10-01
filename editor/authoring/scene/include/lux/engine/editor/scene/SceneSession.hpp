@@ -32,6 +32,8 @@ namespace lux::editor::scene
         SceneSession(const SceneSession&) = delete;
         SceneSession& operator=(const SceneSession&) = delete;
         [[nodiscard]] sessions::SessionInfo describe() const override;
+        // Synchronous history observation; labels are borrowed until the next domain mutation.
+        [[nodiscard]] editing::EditResult<editing::HistoryView> historyView() const noexcept;
         [[nodiscard]] SceneEditResult<SceneReadView> read() const noexcept;
         [[nodiscard]] SceneEditResult<SceneEditReceipt> apply(SceneEditBatch batch);
         [[nodiscard]] SceneEditResult<SceneEditReceipt> undo();

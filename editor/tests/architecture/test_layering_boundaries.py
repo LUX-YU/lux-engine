@@ -17,6 +17,7 @@ def main():
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--build", type=Path, required=True)
     parser.add_argument("--cmake", default="cmake")
+    parser.add_argument("--p11", action="store_true")
     args = parser.parse_args()
     repo = args.source.resolve()
     base_rules = json.loads((repo / "editor/tests/architecture/rules.json").read_text())
@@ -37,10 +38,20 @@ def main():
         ("N13", "scene_ui", "editor_scene_meta", "generated_provider_mismatch", "generated"),
         ("N14", "editor_contracts", "lux::cxx::core", "unclassified_dependency", "unknown"),
     ]
-    folder = args.build / "layering-boundaries"
+    if args.p11:
+        cases = [
+            ("N11-01-context", "editor_commands", "editor_context", "new_legacy_dependency", "include"),
+            ("N11-01-ui", "editor_commands", "ui", "activity_ui_dependency", "include"),
+            ("N11-02", "session_factories", "view_host", "activity_workbench_dependency", "include"),
+            ("N11-03", "material_persistence", "editor_extensions", "activity_workbench_dependency", "transitive"),
+            ("N11-04", "editor_extensions", "session_factories", "private_support_dependency", "private"),
+            ("N11-05", "material_model", "process_execution", "authoring_outer_dependency", "link"),
+        ]
+    folder_name = "p11-boundaries" if args.p11 else "layering-boundaries"
+    folder = args.build / folder_name
     suffix = 1
     while folder.exists():
-        folder = args.build / f"layering-boundaries-{suffix}"
+        folder = args.build / f"{folder_name}-{suffix}"
         suffix += 1
     folder.mkdir()
     results = []
@@ -87,6 +98,8 @@ def main():
         for location, text in declarations.items():
             (root / location / "CMakeLists.txt").write_text("".join(text))
         include = root / classification[dependency]["path"] / "include/layering/Foreign.hpp" if kind in ("include", "template") else None
+        if kind == "private":
+            include = root / "editor/activities/sessions/sinclude/lux/engine/editor/detail/PrepareSession.hpp"
         if include:
             include.parent.mkdir(parents=True, exist_ok=True)
             include.write_text("#pragma once\nstruct ForeignValue {};\n")
@@ -97,6 +110,8 @@ def main():
                'set(CMAKE_CXX_STANDARD 20)\nset(CMAKE_CXX_EXTENSIONS OFF)\n'
                'set(LUX_EDITOR_MIGRATION_STAGE P10Q CACHE STRING "")\n'
                'set(LUX_EDITOR_LAYERING_MODE STRICT CACHE STRING "")\n')
+        if args.p11:
+            top = top.replace("STAGE P10Q", "STAGE P11")
         top += "".join(f"add_subdirectory({p})\n" for p in declarations)
         legal_edges = f"target_link_libraries({owner} PRIVATE {dependency})\n" if kind == "unknown" else ""
         if kind == "generated":
@@ -114,7 +129,8 @@ def main():
         positive_build = run([args.cmake, "--build", build, "--target", "all", "-j", "4", "--", "-k", "0"]) if positive.returncode == 0 else positive
         changed = ""
         if include:
-            unit.write_text(f"#include <layering/Foreign.hpp>\n" +
+            include_name = "lux/engine/editor/detail/PrepareSession.hpp" if kind == "private" else "layering/Foreign.hpp"
+            unit.write_text(f"#include <{include_name}>\n" +
                            ("template<class T> int size() { return sizeof(T); }\nint instantiation = size<ForeignValue>();\n" if kind == "template" else original))
             changed = f'target_include_directories({owner} PRIVATE "{include.parent.parent.as_posix()}")\n'
         elif kind == "transitive":

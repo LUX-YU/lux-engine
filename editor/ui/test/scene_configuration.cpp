@@ -1,6 +1,6 @@
 #include <lux/engine/editor/ui/SceneConfigurationElement.hpp>
 #include <lux/engine/editor/metadata/EditorPlugin.hpp>
-#include <lux/engine/editor/metadata/EditorReflection.hpp>
+#include <lux/engine/editor/configuration/EditorReflection.hpp>
 #include <lux/engine/project/PluginManager.hpp>
 #include <lux/engine/scene/ScenePackage.hpp>
 #include <lux/engine/scene/RenderSystemConfiguration.hpp>

@@ -70,6 +70,10 @@ namespace lux::editor::scene
         change_bytes += bytes;
         changes.push_back(std::move(change));
     }
+    editing::EditResult<editing::HistoryView> SceneSession::historyView() const noexcept
+    {
+        return impl_->history->view();
+    }
     sessions::SessionInfo SceneSession::describe() const
     {
         const auto content = impl_->content();

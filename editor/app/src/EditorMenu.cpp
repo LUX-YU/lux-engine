@@ -239,15 +239,15 @@ namespace lux::editor
         command.result = Result::DISABLED;
         if (!available)
             return;
-        // A command may replace the registry; the invocation keeps the old code and callable alive.
+        // Query and execution both retain the callable and its code through callback cleanup.
+        const auto registration = *found;
         if (!execute)
         {
-            const auto queried = found->invoke(*context, command);
+            const auto queried = registration.invoke(*context, command);
             if (!queried)
                 command.enabled = false;
             return;
         }
-        const auto registration = *found;
         const auto result = registration.invoke(*context, command);
         command.result = result ? Result::EXECUTED : Result::FAILED;
         if (!result)

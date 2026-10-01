@@ -12,8 +12,9 @@ if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/LuxPluginSdk.cmake")
     endif()
 else()
     file(GLOB_RECURSE _lux_sdk_headers CONFIGURE_DEPENDS
-        "${PROJECT_SOURCE_DIR}/modules/*.hpp" "${PROJECT_SOURCE_DIR}/engine/*.hpp"
-        "${PROJECT_SOURCE_DIR}/editor/*.hpp")
+        "${PROJECT_SOURCE_DIR}/modules/*.hpp" "${PROJECT_SOURCE_DIR}/engine/*.hpp")
+    # Runtime plugins must not be invalidated by an Editor-only C++ interface change.
+    # EditorExtensionAbi carries the independent formal Editor contract and toolchain fingerprint.
     # The depth of a component varies (function/ui, scene/builtin_systems/render,
     # editor/tools/scene). A wildcard before /include only matches one level.
     list(FILTER _lux_sdk_headers INCLUDE REGEX "/include/[^;]+\\.hpp$")

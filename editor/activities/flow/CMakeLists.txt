@@ -1,5 +1,5 @@
 add_component(COMPONENT_NAME flowforge_persistence NAMESPACE lux::engine::editor STATIC
-    SOURCE_FILES src/FlowSaveSource.cpp src/FlowCodec.cpp)
+    SOURCE_FILES src/FlowSaveSource.cpp src/FlowCodec.cpp src/SessionFactory.cpp)
 component_include_directories(flowforge_persistence
     BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
 target_link_libraries(flowforge_persistence PUBLIC lux::engine::editor::flowforge_model lux::engine::editor::editor_persistence)
@@ -32,4 +32,10 @@ install(FILES
 install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/flowforge/FlowCodec.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/flowforge/FlowSaveSource.hpp
+    DESTINATION include/lux/engine/editor/flowforge COMPONENT lux_engine_editor_flowforge_persistence)
+
+target_link_libraries(flowforge_persistence PUBLIC lux::engine::editor::session_factories)
+target_include_directories(flowforge_persistence PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../sessions/sinclude)
+component_add_transitive_commands(flowforge_persistence "find_package(lux-engine-editor-session-factories REQUIRED COMPONENTS session_factories)")
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/flowforge/FlowSessionFactory.hpp
     DESTINATION include/lux/engine/editor/flowforge COMPONENT lux_engine_editor_flowforge_persistence)

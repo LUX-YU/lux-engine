@@ -16,7 +16,8 @@
 #include <lux/engine/scene/SceneDescriptionBuilder.hpp>
 #include <lux/engine/scene/WorldLoadingSystem.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
-#include <lux/engine/editor/metadata/ConfigurationValue.hpp>
+#include <lux/engine/editor/configuration/ConfigurationValue.hpp>
+#include <lux/engine/editor/metadata/EditorPluginExports.hpp>
 #include <lux/engine/ui/Layout.hpp>
 #include <lux/engine/function/render/features/postprocess/TonemapOperation.hpp>
 #include <thread>
@@ -104,9 +105,13 @@ int main(int argc, char** argv)
             std::size_t checked{};
             for (const auto& registration : context.configurationEditors())
             {
-                auto value = ConfigurationValue::create(registration, registration.code_lifetime);
+                auto value = ConfigurationValue::create(
+                    {registration.schema_name, registration.schema_version, registration.codec, registration.reflection
+                    },
+                    registration.code_lifetime
+                );
                 assert(value);
-                auto controls = value->createElement(fields, lux::ui::ElementId{registration.schema_name});
+                auto controls = registration.create(fields, lux::ui::ElementId{registration.schema_name}, *value);
                 if (!controls)
                     std::fprintf(
                         stderr,

@@ -1,5 +1,5 @@
 add_component(COMPONENT_NAME scene_persistence NAMESPACE lux::engine::editor STATIC
-    SOURCE_FILES src/SceneSaveSource.cpp src/SceneCodec.cpp)
+    SOURCE_FILES src/SceneSaveSource.cpp src/SceneCodec.cpp src/SessionFactory.cpp)
 component_include_directories(scene_persistence
     BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
 target_link_libraries(scene_persistence PUBLIC lux::engine::editor::scene_model lux::engine::editor::editor_persistence)
@@ -119,3 +119,9 @@ install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/scene/ResourceStatus.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/scene/SceneProjection.hpp
     DESTINATION include/lux/engine/editor/scene COMPONENT lux_engine_editor_scene_projection)
+
+target_link_libraries(scene_persistence PUBLIC lux::engine::editor::session_factories)
+target_include_directories(scene_persistence PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../sessions/sinclude)
+component_add_transitive_commands(scene_persistence "find_package(lux-engine-editor-session-factories REQUIRED COMPONENTS session_factories)")
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/scene/SceneSessionFactory.hpp
+    DESTINATION include/lux/engine/editor/scene COMPONENT lux_engine_editor_scene_persistence)

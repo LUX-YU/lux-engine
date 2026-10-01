@@ -43,6 +43,8 @@ namespace lux::editor::sessions
         {
             return reserve(std::move(kind), lux::cxx::typeToken<T>(), std::move(code));
         }
+        // Read-only preflight for owner-stage factories. Valid only until the next callback/mutation.
+        [[nodiscard]] SessionResult<void> canReserve() const noexcept;
         // Failure keeps the candidate with its caller; the reservation still pins its code.
         template <class T>
             requires std::derived_from<T, IEditSession>
@@ -64,6 +66,14 @@ namespace lux::editor::sessions
                 return lux::cxx::unexpected(checked.error());
             return TSessionKey<T>{id};
         }
+        template <class T>
+        [[nodiscard]] SessionResult<TSessionKey<T>> key(const SessionReservation& reservation) const noexcept
+        {
+            auto checked = reservedKey(reservation, lux::cxx::typeToken<T>());
+            if (!checked)
+                return lux::cxx::unexpected(checked.error());
+            return TSessionKey<T>{*checked};
+        }
         template <class T> [[nodiscard]] TSessionAccess<T> access() noexcept
         {
             return TSessionAccess<T>{*this};
@@ -84,6 +94,8 @@ namespace lux::editor::sessions
         [[nodiscard]] SessionResult<void> prepare(const SessionReservation&, lux::cxx::TypeToken, const IEditSession&);
         void install(SessionId id, std::unique_ptr<IEditSession> candidate) noexcept;
         [[nodiscard]] SessionResult<IEditSession*> find(SessionId, lux::cxx::TypeToken = {}) const noexcept;
+        [[nodiscard]] SessionResult<SessionId> reservedKey(const SessionReservation&, lux::cxx::TypeToken)
+            const noexcept;
         void abandon(SessionId id) noexcept;
         struct Impl;
         std::unique_ptr<Impl> impl_;

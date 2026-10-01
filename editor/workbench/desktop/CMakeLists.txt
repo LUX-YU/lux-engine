@@ -16,7 +16,7 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     set_tests_properties(editor.detached_views PROPERTIES LABELS "editor;native;P08" TIMEOUT 60 RUN_SERIAL TRUE)
 endif()
 
-add_component(COMPONENT_NAME view_host NAMESPACE lux::engine::editor STATIC SOURCE_FILES src/ViewHost.cpp)
+add_component(COMPONENT_NAME view_host NAMESPACE lux::engine::editor STATIC SOURCE_FILES src/ViewHost.cpp src/ViewFactory.cpp)
 component_include_directories(view_host BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
 target_link_libraries(view_host PUBLIC lux::engine::editor::view_api lux::engine::editor::layout_model)
 component_add_transitive_commands(view_host
@@ -24,13 +24,14 @@ component_add_transitive_commands(view_host
     "find_package(lux-engine-editor-layout REQUIRED COMPONENTS layout_model)")
 lux_classify_target(TARGET view_host LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 add_component(COMPONENT_NAME desktop_shell NAMESPACE lux::engine::editor STATIC
-    SOURCE_FILES src/DesktopShell.cpp src/WindowInput.cpp src/WindowOutput.cpp src/Presentation.cpp src/UiRenderSyncStage.cpp)
+    SOURCE_FILES src/CommandMenu.cpp src/DesktopShell.cpp src/WindowInput.cpp src/WindowOutput.cpp src/Presentation.cpp src/UiRenderSyncStage.cpp)
 component_include_directories(desktop_shell BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude INSTALL_TIME include)
 component_add_internal_dependencies(desktop_shell view_host)
-target_link_libraries(desktop_shell PUBLIC lux::engine::scene::scene_render
+target_link_libraries(desktop_shell PUBLIC lux::engine::editor::editor_commands lux::engine::scene::scene_render
     lux::engine::function::ui_rendering lux::engine::function::input lux::engine::platform::window)
 component_add_transitive_commands(desktop_shell
+    "find_package(lux-engine-editor-commands REQUIRED COMPONENTS editor_commands)"
     "find_package(lux-engine-scene-render REQUIRED COMPONENTS scene_render)"
     "find_package(lux-engine-function REQUIRED COMPONENTS ui_rendering input)"
     "find_package(lux-engine-platform REQUIRED COMPONENTS window)")
@@ -48,6 +49,7 @@ endif()
 
 # Exact SDK ownership: sibling providers share a build include root, never an install manifest.
 install(FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/desktop/CommandMenu.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/desktop/DesktopError.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/desktop/DesktopShell.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/desktop/Presentation.hpp
@@ -59,3 +61,6 @@ install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/views/IViewHost.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/views/ViewError.hpp
     DESTINATION include/lux/engine/editor/views COMPONENT lux_engine_editor_view_api)
+
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/views/ViewFactory.hpp
+    DESTINATION include/lux/engine/editor/views COMPONENT lux_engine_editor_desktop)

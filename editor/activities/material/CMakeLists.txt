@@ -1,5 +1,5 @@
 add_component(COMPONENT_NAME material_persistence NAMESPACE lux::engine::editor STATIC
-    SOURCE_FILES src/MaterialSaveSource.cpp src/MaterialCodec.cpp)
+    SOURCE_FILES src/MaterialSaveSource.cpp src/MaterialCodec.cpp src/SessionFactory.cpp)
 component_include_directories(material_persistence
     BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
 target_link_libraries(material_persistence PUBLIC lux::engine::editor::material_model lux::engine::editor::editor_persistence)
@@ -43,3 +43,9 @@ install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/material/MaterialPreviewStore.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/material/PublishCompiledMaterial.hpp
     DESTINATION include/lux/engine/editor/material COMPONENT lux_engine_editor_material_preview)
+
+target_link_libraries(material_persistence PUBLIC lux::engine::editor::session_factories)
+target_include_directories(material_persistence PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../sessions/sinclude)
+component_add_transitive_commands(material_persistence "find_package(lux-engine-editor-session-factories REQUIRED COMPONENTS session_factories)")
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/material/MaterialSessionFactory.hpp
+    DESTINATION include/lux/engine/editor/material COMPONENT lux_engine_editor_material_persistence)

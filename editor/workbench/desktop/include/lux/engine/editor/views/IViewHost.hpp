@@ -43,6 +43,10 @@ namespace lux::editor::views
         {
             return pane_.get();
         }
+        [[nodiscard]] bool usesCode(const contracts::CodeLease& code) const noexcept
+        {
+            return code_.sameOwner(code);
+        }
         // Called at the host's outer safe point before focus/routing are revoked. BUSY retains the
         // entire mounted view and its pending close. It never releases a Session or task owner.
         [[nodiscard]] ViewCloseResult prepareClose()

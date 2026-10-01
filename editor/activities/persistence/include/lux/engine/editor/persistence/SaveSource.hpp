@@ -17,8 +17,10 @@ namespace lux::editor::persistence
         [[nodiscard]] virtual EAdoption accept(SaveReceipt&&) noexcept = 0;
     };
     class SaveService;
+    class PreparedSaveSourceRegistration;
     // Revocation cuts off future role calls immediately, including between describe and capture.
-    // The adapter must outlive any callback already on the stack; the token does not own it.
+    // registerSource borrows an adapter that must outlive active callbacks. prepareSource owns its adapter;
+    // revocation disables calls while active dispatch/operations retain the source and its external code pin.
     class SaveSourceRegistration final
     {
     public:
@@ -30,8 +32,25 @@ namespace lux::editor::persistence
 
     private:
         friend class SaveService;
+        friend class PreparedSaveSourceRegistration;
         struct State;
         explicit SaveSourceRegistration(std::shared_ptr<State> state) noexcept;
         std::shared_ptr<State> state_;
+    };
+    // Hidden role reservation. Abandonment revokes without invoking the source.
+    // Move assignment clears the previous reservation under its previous code owner.
+    class PreparedSaveSourceRegistration final
+    {
+    public:
+        ~PreparedSaveSourceRegistration();
+        PreparedSaveSourceRegistration(PreparedSaveSourceRegistration&&) noexcept;
+        PreparedSaveSourceRegistration& operator=(PreparedSaveSourceRegistration&&) noexcept;
+        PreparedSaveSourceRegistration(const PreparedSaveSourceRegistration&) = delete;
+        PreparedSaveSourceRegistration& operator=(const PreparedSaveSourceRegistration&) = delete;
+
+    private:
+        friend class SaveService;
+        explicit PreparedSaveSourceRegistration(std::shared_ptr<SaveSourceRegistration::State>) noexcept;
+        std::shared_ptr<SaveSourceRegistration::State> state_;
     };
 }

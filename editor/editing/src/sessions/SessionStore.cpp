@@ -97,6 +97,14 @@ namespace lux::editor::sessions
         impl_->reclaiming = true;
         impl_->slots.clear();
     }
+    SessionResult<void> SessionStore::canReserve() const noexcept
+    {
+        if (auto admitted = impl_->canMutate(); !admitted)
+            return admitted;
+        if (impl_->slots.size() >= impl_->capacity)
+            return lux::cxx::unexpected(ESessionError::CAPACITY);
+        return {};
+    }
     SessionResult<SessionReservation> SessionStore::reserve(
         SessionKindId kind,
         lux::cxx::TypeToken type,
@@ -169,6 +177,18 @@ namespace lux::editor::sessions
         (*result)->stage = ESlotStage::PUBLISHED;
         ++impl_->published;
         reservation.store_ = nullptr;
+        return reservation.id();
+    }
+    SessionResult<SessionId> SessionStore::reservedKey(const SessionReservation& reservation, lux::cxx::TypeToken type)
+        const noexcept
+    {
+        if (reservation.store_ != this)
+            return lux::cxx::unexpected(ESessionError::WRONG_STORE);
+        auto slot = impl_->slot(reservation.id());
+        if (!slot)
+            return lux::cxx::unexpected(slot.error());
+        if ((*slot)->type != type)
+            return lux::cxx::unexpected(ESessionError::WRONG_TYPE);
         return reservation.id();
     }
     void SessionStore::abandon(SessionId id) noexcept

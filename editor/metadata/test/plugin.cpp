@@ -1,6 +1,6 @@
 #include <lux/engine/project/PluginCatalog.hpp>
 #include <lux/engine/project/PluginLibrary.hpp>
-#include <lux/engine/editor/metadata/ConfigurationValue.hpp>
+#include <lux/engine/editor/configuration/ConfigurationValue.hpp>
 #include <lux/engine/editor/metadata/EditorPlugin.hpp>
 #include <lux/engine/project/PluginManager.hpp>
 #include <lux/engine/simulation/Simulation.hpp>
@@ -212,7 +212,11 @@ int main(int argc, char** argv)
         std::printf("Plugin tool registration+adoption=%.1f us\n", microseconds(Clock::now() - adoption_started));
         std::weak_ptr<const void> editor_code = library->code;
         {
-            auto value = editor::ConfigurationValue::create(configuration, library->code);
+            auto value = editor::ConfigurationValue::create(
+                {configuration.schema_name, configuration.schema_version, configuration.codec, configuration.reflection
+                },
+                library->code
+            );
             assert(value);
             std::vector<std::byte> bytes;
             assert(value->encode(bytes) && !bytes.empty());

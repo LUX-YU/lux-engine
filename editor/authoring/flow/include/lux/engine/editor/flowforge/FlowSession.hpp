@@ -30,6 +30,8 @@ namespace lux::editor::flowforge
         FlowSession(const FlowSession&) = delete;
         FlowSession& operator=(const FlowSession&) = delete;
         [[nodiscard]] sessions::SessionInfo describe() const override;
+        // Synchronous history observation; labels are borrowed until the next domain mutation.
+        [[nodiscard]] editing::EditResult<editing::HistoryView> historyView() const noexcept;
         [[nodiscard]] FlowEditResult<FlowReadView> read() const noexcept;
         [[nodiscard]] FlowEditResult<FlowEditReceipt> apply(FlowEditBatch batch);
         [[nodiscard]] FlowEditResult<FlowEditReceipt> undo();

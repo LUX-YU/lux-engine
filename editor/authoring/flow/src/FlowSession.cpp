@@ -45,6 +45,10 @@ namespace lux::editor::flowforge
                 return lux::cxx::unexpected(FlowEditError{loaded.error()});
         return std::unique_ptr<FlowSession>(new FlowSession(std::move(impl)));
     }
+    editing::EditResult<editing::HistoryView> FlowSession::historyView() const noexcept
+    {
+        return impl_->history->view();
+    }
     sessions::SessionInfo FlowSession::describe() const
     {
         const auto content = currentContent();

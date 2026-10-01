@@ -1,0 +1,13 @@
+#include <lux/engine/dynamic_library/LibraryExport.hpp>
+#if defined(_WIN32)
+#define PROBE_EXPORT __declspec(dllexport)
+#else
+#define PROBE_EXPORT __attribute__((visibility("default")))
+#endif
+extern "C" PROBE_EXPORT const lux::engine::platform::LibraryExportIdentity* lux_plugin_identity_v1() noexcept
+{
+    static const lux::engine::platform::LibraryExportIdentity identity{
+        sizeof(identity), 1, "qualification.p11", 1, "@LUX_PLUGIN_SDK_ABI@", "p11-installed", "p11-declarations"
+    };
+    return &identity;
+}

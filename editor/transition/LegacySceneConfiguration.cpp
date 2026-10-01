@@ -1,6 +1,6 @@
 #include <lux/engine/editor/ui/SceneConfigurationElement.hpp>
 #include <lux/engine/editor/scene/SceneConfigurationElement.hpp>
-#include <lux/engine/editor/metadata/ConfigurationValue.hpp>
+#include <lux/engine/editor/configuration/ConfigurationValue.hpp>
 #include <algorithm>
 
 namespace lux::editor::ui
@@ -63,7 +63,10 @@ namespace lux::editor::ui
                 });
                 if (found == configurations.end())
                     return scene::ConfigurationControl{};
-                auto value = ConfigurationValue::create(*found, found->code_lifetime);
+                auto value = ConfigurationValue::create(
+                    {found->schema_name, found->schema_version, found->codec, found->reflection},
+                    found->code_lifetime
+                );
                 if (!value)
                     return rejected(value.error());
                 auto owner = std::make_shared<ConfigurationValue>(std::move(*value));
@@ -73,7 +76,7 @@ namespace lux::editor::ui
                     if (!decoded)
                         return rejected(decoded.error());
                 }
-                auto content = owner->createElement(parent, lux::ui::ElementId{"configuration"});
+                auto content = found->create(parent, lux::ui::ElementId{"configuration"}, *owner);
                 if (!content)
                     return rejected(content.error());
                 return scene::ConfigurationControl{

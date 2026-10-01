@@ -52,6 +52,10 @@ namespace lux::editor::material
         return detail::rejected(EMaterialEditError::CALLBACK);
     }
 
+    editing::EditResult<editing::HistoryView> MaterialSession::historyView() const noexcept
+    {
+        return impl_->history->view();
+    }
     sessions::SessionInfo MaterialSession::describe() const
     {
         const auto content = currentContent();

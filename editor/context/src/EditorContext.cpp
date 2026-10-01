@@ -5,7 +5,7 @@
 #include <lux/engine/editor/detail/SignalDelivery.hpp>
 #include <lux/engine/editor/assets/AssetImporter.hpp>
 #include <lux/engine/editor/metadata/EditorPlugin.hpp>
-#include <lux/engine/editor/metadata/EditorReflection.hpp>
+#include <lux/engine/editor/configuration/EditorReflection.hpp>
 #include <lux/engine/editor/metadata/SceneRegistrations.hpp>
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
 #include <lux/engine/project/PluginManager.hpp>

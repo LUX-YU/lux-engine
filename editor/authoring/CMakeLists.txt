@@ -1,3 +1,4 @@
+add_subdirectory(configuration)
 add_subdirectory(scene)
 add_subdirectory(material)
 add_subdirectory(flow)

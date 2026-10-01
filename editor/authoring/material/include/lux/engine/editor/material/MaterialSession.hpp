@@ -29,6 +29,8 @@ namespace lux::editor::material
         MaterialSession(const MaterialSession&) = delete;
         MaterialSession& operator=(const MaterialSession&) = delete;
         [[nodiscard]] sessions::SessionInfo describe() const override;
+        // Synchronous history observation; labels are borrowed until the next domain mutation.
+        [[nodiscard]] editing::EditResult<editing::HistoryView> historyView() const noexcept;
         [[nodiscard]] MaterialEditResult<MaterialReadView> read() const noexcept;
         [[nodiscard]] MaterialEditResult<MaterialEditReceipt> apply(MaterialEditBatch batch);
         [[nodiscard]] MaterialEditResult<MaterialEditReceipt> undo();

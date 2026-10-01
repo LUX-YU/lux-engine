@@ -1,3 +1,5 @@
+#include <lux/engine/editor/extensions/BuiltinContributions.hpp>
+#include <lux/engine/object/ObjectEvent.hpp>
 #include <lux/engine/editor/storage/FileArtifactStore.hpp>
 #include <lux/engine/editor/persistence/SaveExecution.hpp>
 #include <lux/engine/editor/material/MaterialSaveSource.hpp>
@@ -65,6 +67,78 @@
 #include <source_location>
 #include <thread>
 
+namespace registered_views
+{
+    using namespace lux::editor;
+    template <class Value>
+    views::ViewFactoryResult<views::DetachedView> prepare(
+        lux::object::ObjectDispatcherRef dispatcher,
+        lux::ui::PaneId id,
+        std::shared_ptr<views::ViewFactoryEntry> entry,
+        Value value
+    )
+    {
+        auto snapshot = views::ViewFactorySnapshot::create({entry});
+        if (!snapshot)
+            return lux::cxx::unexpected(snapshot.error());
+        const views::ViewFactoryInput input{
+            dispatcher,
+            std::move(id),
+            contracts::CodeLease::builtin(),
+            lux::cxx::typeToken<Value>(),
+            std::make_shared<const Value>(std::move(value))
+        };
+        return snapshot->prepare(entry->descriptor().type, input);
+    }
+    auto scene(
+        lux::object::ObjectDispatcherRef dispatcher,
+        scene::SceneViewServices services,
+        scene::SceneViewCreateInfo info
+    )
+    {
+        return prepare(
+            dispatcher,
+            std::move(info.id),
+            extensions::builtinSceneViewFactory(services),
+            extensions::SceneViewInput{
+                std::move(info.binding),
+                std::move(info.state),
+                info.render_system,
+                std::move(info.title)
+            }
+        );
+    }
+    auto material(
+        lux::object::ObjectDispatcherRef dispatcher,
+        lux::ui::PaneId id,
+        material::MaterialViewServices services,
+        std::optional<material::MaterialViewBinding> binding,
+        material::MaterialViewState state
+    )
+    {
+        return prepare(
+            dispatcher,
+            std::move(id),
+            extensions::builtinMaterialViewFactory(services),
+            extensions::MaterialViewInput{std::move(binding), std::move(state)}
+        );
+    }
+    auto flow(
+        lux::object::ObjectDispatcherRef dispatcher,
+        lux::ui::PaneId id,
+        flowforge::FlowViewServices services,
+        std::optional<flowforge::FlowViewBinding> binding,
+        flowforge::FlowViewState state
+    )
+    {
+        return prepare(
+            dispatcher,
+            std::move(id),
+            extensions::builtinFlowViewFactory(services),
+            extensions::FlowViewInput{std::move(binding), std::move(state)}
+        );
+    }
+}
 namespace
 {
     using namespace lux;
@@ -123,6 +197,8 @@ namespace
         std::unique_ptr<author::ScenePresentationHub> hub;
         sessions::SessionStore store{4};
         object::ObjectMessageQueue messages{take(object::ObjectMessageQueue::create(256))};
+        editor::commands::CommandRegistry commands;
+        editor::commands::CommandDispatcher dispatcher{commands};
         std::unique_ptr<desktop::DesktopShell> desktop;
         author::ProjectionEnvironment environment;
         std::optional<sessions::TSessionKey<author::SceneSession>> key;
@@ -451,10 +527,11 @@ namespace
         author::SceneInteractionGroup author_group(f.store.access<author::SceneSession>(), *f.key, {20});
         author::SceneInteractionGroup run_group(f.store.access<author::SceneSession>(), *f.key, {21}, runs.inspect());
         auto author_candidate =
-            take(author::makeSceneView(f.messages.dispatcherRef(), services, f.info("author-run-pair", author_group)));
+            take(registered_views::scene(f.messages.dispatcherRef(), services, f.info("author-run-pair", author_group))
+            );
         auto info = f.info("running", run_group);
         info.binding = author::RunningSceneBinding{run, &run_group};
-        auto running = take(author::makeSceneView(f.messages.dispatcherRef(), services, info));
+        auto running = take(registered_views::scene(f.messages.dispatcherRef(), services, info));
         auto* a = static_cast<author::SceneView*>(author_candidate.pane());
         auto* b = static_cast<author::SceneView*>(running.pane());
         const auto aid = take(f.desktop->views().adopt(author_candidate, views::ViewRestoreKey{"author-run-pair"})).id;
@@ -548,7 +625,7 @@ namespace
         ef::FlowCompilationService compilation(f.execution);
         ef::FlowViewServices
             services{f.store.access<ef::FlowSession>(), compilation, {}, f.writes, f.disk, "derived.flow"};
-        auto detached = take(ef::makeFlowView(
+        auto detached = take(registered_views::flow(
             f.messages.dispatcherRef(),
             ui::PaneId{"flow"},
             services,
@@ -580,7 +657,7 @@ namespace
         assert(take(f.desktop->views().drain()).completed == 1);
         assert(!interaction.overlay() && !f.desktop->views().describe(id));
         assert(author->describe().current == initial.current && take(take(author->read()).encode()) == encoded);
-        auto reopened = take(ef::makeFlowView(
+        auto reopened = take(registered_views::flow(
             f.messages.dispatcherRef(),
             ui::PaneId{"flow"},
             services,
@@ -706,7 +783,7 @@ namespace
         auto save_registration = take(f.saves.registerSource(save_source));
         em::MaterialViewState state;
         state.camera.transform.translation = {0, 0, 3.5};
-        auto detached = take(em::makeMaterialView(
+        auto detached = take(registered_views::material(
             f.messages.dispatcherRef(),
             ui::PaneId{"material"},
             {f.store.access<em::MaterialSession>(),
@@ -1009,11 +1086,11 @@ namespace
         auto info = f.info("mesh-left", left);
         info.binding = author::EditedSceneBinding{key, &left};
         info.state.camera.transform.translation = {0, 0, 4};
-        auto first = take(author::makeSceneView(f.messages.dispatcherRef(), services, info));
+        auto first = take(registered_views::scene(f.messages.dispatcherRef(), services, info));
         info.id = ui::PaneId{"mesh-right"};
         info.title = "Mesh right";
         info.binding = author::EditedSceneBinding{key, &right};
-        auto second = take(author::makeSceneView(f.messages.dispatcherRef(), services, info));
+        auto second = take(registered_views::scene(f.messages.dispatcherRef(), services, info));
         auto* a = static_cast<author::SceneView*>(first.pane());
         auto* b = static_cast<author::SceneView*>(second.pane());
         const auto aid = take(f.desktop->views().adopt(first, views::ViewRestoreKey{"mesh-left"})).id;
@@ -1079,6 +1156,9 @@ namespace
         const auto left_cleared = pixels(*a), right_selected = pixels(*b);
         assert(left_cleared == left_plain && right_selected != right_plain);
         assert(session->describe().current == before.current);
+        const auto command_results = f.desktop->commands()->takeCompletions();
+        assert(command_results.size() == 1 && command_results.front().result);
+        assert(f.commands.publish({}));
         const auto receipt = take(f.resources->viewReceipt(a->viewport()));
         assert(f.desktop->views().close(aid));
         f.wait([&] {
@@ -1241,8 +1321,8 @@ int main(int argc, char** argv)
     Fixture f;
     author::SceneInteractionGroup first_group(f.store.access<author::SceneSession>(), *f.key, {1});
     author::SceneInteractionGroup second_group(f.store.access<author::SceneSession>(), *f.key, {2});
-    auto first = take(author::makeSceneView(f.messages.dispatcherRef(), f.services(), f.info("one", first_group)));
-    auto second = take(author::makeSceneView(f.messages.dispatcherRef(), f.services(), f.info("two", second_group)));
+    auto first = take(registered_views::scene(f.messages.dispatcherRef(), f.services(), f.info("one", first_group)));
+    auto second = take(registered_views::scene(f.messages.dispatcherRef(), f.services(), f.info("two", second_group)));
     auto* a = static_cast<author::SceneView*>(first.pane());
     auto* b = static_cast<author::SceneView*>(second.pane());
     assert(!a->attachedRoot() && !b->attachedRoot());
@@ -1276,7 +1356,37 @@ int main(int argc, char** argv)
         return a->projectedContent() == committed && b->projectedContent() == committed && a->image().isValid() &&
                b->image().isValid();
     });
-    assert(b->undo());
+    // The actual DesktopShell menu submits a pinned view command; execution still enters the
+    // same SceneView/domain undo path that this dual-viewport regression has always observed.
+    using namespace editor::commands;
+    auto undo = std::make_shared<CommandEntry>(
+        contracts::CodeLease::builtin(),
+        CommandDescriptor{CommandId{"p11.undo"}, "Undo", "Edit", "Ctrl+Z", ECommandScope::VIEW},
+        [&](const CommandQuery& input) -> CommandResult<CommandState> {
+            if (std::get<views::ViewId>(input.target) != id_b || !f.desktop->views().describe(id_b))
+                return cxx::unexpected(CommandFailure{ECommandError::STALE_TARGET, "scene.view"});
+            return CommandState{take(f.session->historyView()).can_undo};
+        },
+        [&](const CommandInvocation&) -> CommandResult<DispatchReceipt> {
+            assert(b->undo());
+            return DispatchReceipt{ImmediateCompletion{}};
+        }
+    );
+    assert(f.commands.publish(take(CommandRegistrySnapshot::create({undo}))));
+    assert(f.desktop->installCommands(
+        f.commands,
+        f.dispatcher,
+        [&](const CommandDescriptor&, const ui::Pane*, const ui::Element*) -> CommandResult<CommandInvocation> {
+            return CommandInvocation{id_b};
+        }
+    ));
+    f.frame();
+    ui::MenuRequest open_menu;
+    assert(object::sendEvent(f.desktop->root(), open_menu));
+    ui::MenuRequest
+        invoke{ui::EMenuAction::COMMAND, {}, {}, {ui::CommandIdView{"p11.undo"}, ui::ECommandPhase::EXECUTE}};
+    assert(object::sendEvent(f.desktop->root(), invoke));
+    assert(f.dispatcher.pending() == 1);
     f.wait([&] {
         return a->projectedContent() == before.current && b->projectedContent() == before.current &&
                a->image().isValid() && b->image().isValid();
@@ -1286,7 +1396,7 @@ int main(int argc, char** argv)
     f.wait([&] { return !f.desktop->views().describe(id_a); });
     assert(f.session->describe().current == before.current && b->image().isValid());
     f.wait([&] { return receipt.status().status.state == lux::scene::EViewState::CLOSED; });
-    auto third = take(author::makeSceneView(f.messages.dispatcherRef(), f.services(), f.info("three", first_group)));
+    auto third = take(registered_views::scene(f.messages.dispatcherRef(), f.services(), f.info("three", first_group)));
     const auto id_c = take(f.desktop->views().adopt(third, views::ViewRestoreKey{"three"})).id;
     assert(id_c != id_a && !f.desktop->views().describe(id_a));
     assert(f.desktop->views().close(id_b) && f.desktop->views().close(id_c));

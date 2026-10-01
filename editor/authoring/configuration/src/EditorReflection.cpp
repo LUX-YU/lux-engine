@@ -1,4 +1,4 @@
-#include <lux/engine/editor/metadata/EditorReflection.hpp>
+#include <lux/engine/editor/configuration/EditorReflection.hpp>
 #include <lux/engine/meta/Meta.hpp>
 
 namespace lux::editor

@@ -2,6 +2,7 @@
 #include <lux/engine/editor/desktop/Presentation.hpp>
 #include <lux/engine/editor/desktop/ViewHost.hpp>
 #include <optional>
+#include <lux/engine/editor/desktop/CommandMenu.hpp>
 
 namespace lux::input
 {
@@ -29,6 +30,12 @@ namespace lux::editor::desktop
         DesktopShell& operator=(const DesktopShell&) = delete;
         DesktopShell(DesktopShell&&) = delete;
         DesktopShell& operator=(DesktopShell&&) = delete;
+        [[nodiscard]] commands::CommandResult<void> installCommands(
+            commands::CommandRegistry&,
+            commands::CommandDispatcher&,
+            CommandMenu::Capture
+        );
+        [[nodiscard]] CommandMenu* commands() noexcept;
         [[nodiscard]] lux::ui::Root& root() noexcept;
         [[nodiscard]] ViewHost& views() noexcept;
         [[nodiscard]] Presentation& presentation() noexcept;

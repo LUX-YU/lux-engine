@@ -1,7 +1,7 @@
 #include <lux/engine/editor/launcher/ProjectCreationPane.hpp>
 #include <lux/engine/editor/ui/SceneConfigurationElement.hpp>
 #include <lux/engine/editor/metadata/EditorPlugin.hpp>
-#include <lux/engine/editor/metadata/EditorReflection.hpp>
+#include <lux/engine/editor/configuration/EditorReflection.hpp>
 #include <lux/engine/editor/project/ProjectBuilder.hpp>
 #include <lux/engine/editor/storage/ProjectCreation.hpp>
 #include <lux/engine/editor/detail/TaskResult.hpp>

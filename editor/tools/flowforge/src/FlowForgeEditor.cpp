@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <lux/engine/editor/detail/AssetSave.hpp>
-#include <lux/engine/editor/metadata/EditorReflection.hpp>
+#include <lux/engine/editor/configuration/EditorReflection.hpp>
 #include <lux/engine/meta/Meta.hpp>
 #include <lux/engine/editor/flowforge/FlowForgeEditor.hpp>
 #include <lux/engine/flowforge/graph/ArithmeticNode.hpp>

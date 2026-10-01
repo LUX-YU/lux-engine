@@ -1,0 +1,19 @@
+/mnt/data/LUX_ENGINE_P10Q_LAYERING_CONSTRUCTION_2026-10-01/examples/concept_smoke.cpp:33:11: error: no matching function for call to 'deliverInput'
+   33 |     (void)d::deliverInput(stage,true,good,good,good,wrong,good);
+      |           ^~~~~~~~~~~~~~~
+/mnt/data/LUX_ENGINE_P10Q_LAYERING_CONSTRUCTION_2026-10-01/examples/InteractionDelivery.example.hpp:41:10: note: candidate template ignored: constraints not satisfied [with Validate = (lambda at /mnt/data/LUX_ENGINE_P10Q_LAYERING_CONSTRUCTION_2026-10-01/examples/concept_smoke.cpp:26:17) &, Cancel = (lambda at /mnt/data/LUX_ENGINE_P10Q_LAYERING_CONSTRUCTION_2026-10-01/examples/concept_smoke.cpp:26:17) &, Begin = (lambda at /mnt/data/LUX_ENGINE_P10Q_LAYERING_CONSTRUCTION_2026-10-01/examples/concept_smoke.cpp:26:17) &, Preview = (lambda at /mnt/data/LUX_ENGINE_P10Q_LAYERING_CONSTRUCTION_2026-10-01/examples/concept_smoke.cpp:32:18) &, Commit = (lambda at /mnt/data/LUX_ENGINE_P10Q_LAYERING_CONSTRUCTION_2026-10-01/examples/concept_smoke.cpp:26:17) &]
+   41 |     auto deliverInput(
+      |          ^
+/mnt/data/LUX_ENGINE_P10Q_LAYERING_CONSTRUCTION_2026-10-01/examples/InteractionDelivery.example.hpp:39:9: note: because 'DeliveryAction<(lambda at /mnt/data/LUX_ENGINE_P10Q_LAYERING_CONSTRUCTION_2026-10-01/examples/concept_smoke.cpp:32:18) &, std::invoke_result_t<(lambda at /mnt/data/LUX_ENGINE_P10Q_LAYERING_CONSTRUCTION_2026-10-01/examples/concept_smoke.cpp:26:17) &> >' evaluated to false
+   39 |         DeliveryAction<Preview, std::invoke_result_t<Validate&>> &&
+      |         ^
+/mnt/data/LUX_ENGINE_P10Q_LAYERING_CONSTRUCTION_2026-10-01/examples/InteractionDelivery.example.hpp:26:9: note: because 'std::same_as<std::invoke_result_t<(lambda at /mnt/data/LUX_ENGINE_P10Q_LAYERING_CONSTRUCTION_2026-10-01/examples/concept_smoke.cpp:32:18) &>, Result>' evaluated to false
+   26 |         std::same_as<std::invoke_result_t<F&>, R>;
+      |         ^
+/usr/lib/gcc/x86_64-linux-gnu/14/../../../../include/c++/14/concepts:63:9: note: because '__detail::__same_as<OtherResult, Result>' evaluated to false
+   63 |       = __detail::__same_as<_Tp, _Up> && __detail::__same_as<_Up, _Tp>;
+      |         ^
+/usr/lib/gcc/x86_64-linux-gnu/14/../../../../include/c++/14/concepts:57:27: note: because 'std::is_same_v<OtherResult, Result>' evaluated to false
+   57 |       concept __same_as = std::is_same_v<_Tp, _Up>;
+      |                           ^
+1 error generated.

@@ -1,0 +1,11 @@
+{
+  "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5",
+  "original_head": "f7c27f9375cbf8dd8af37b30a6027a460de26213",
+  "original_branch": "codex/editor-redesign-v4",
+  "original_status": "M editor/project/src/ProjectBuilder.cpp",
+  "main": "2bb33ff1a1f11025cf404e074c0e9b259239d8a4",
+  "project_builder_sha256": "ccac49618140d014236c9f23b55fc15d31c96e94b44395dee39fd67d35ab1f5c",
+  "tracked_migration": "editor/project/src/ProjectBuilder.cpp -> editor/authoring/project/src/ProjectBuilder.cpp",
+  "relocated_patch_check": "PASS (not applied)",
+  "old_dev_log_diff": []
+}

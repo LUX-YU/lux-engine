@@ -1,0 +1,60 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p10q-structure-dev
+      Start  70: editor.scene.editing
+ 1/23 Test  #70: editor.scene.editing ....................   Passed    0.02 sec
+      Start  71: editor.scene_execution.isolation
+ 2/23 Test  #71: editor.scene_execution.isolation ........   Passed    0.03 sec
+      Start  72: editor.scene_execution.controls
+ 3/23 Test  #72: editor.scene_execution.controls .........   Passed    0.12 sec
+      Start  73: editor.scene_execution.failure
+ 4/23 Test  #73: editor.scene_execution.failure ..........   Passed    0.03 sec
+      Start  74: editor.scene_execution.completion
+ 5/23 Test  #74: editor.scene_execution.completion .......   Passed    0.03 sec
+      Start  75: editor.scene_execution.r1-queued
+ 6/23 Test  #75: editor.scene_execution.r1-queued ........   Passed    0.04 sec
+      Start  76: editor.scene_execution.r1-mixed
+ 7/23 Test  #76: editor.scene_execution.r1-mixed .........   Passed    0.03 sec
+      Start  77: editor.scene_execution.r1-failed
+ 8/23 Test  #77: editor.scene_execution.r1-failed ........   Passed    0.03 sec
+      Start  78: editor.scene_execution.r1-callback
+ 9/23 Test  #78: editor.scene_execution.r1-callback ......   Passed    0.03 sec
+      Start  79: editor.scene_execution.r1-capacity
+10/23 Test  #79: editor.scene_execution.r1-capacity ......   Passed    0.08 sec
+      Start  80: editor.project_creation
+11/23 Test  #80: editor.project_creation .................   Passed    0.07 sec
+      Start 115: editor.draft_source_literal
+12/23 Test #115: editor.draft_source_literal .............   Passed    0.61 sec
+      Start 116: editor.draft_source_signature
+13/23 Test #116: editor.draft_source_signature ...........   Passed    0.59 sec
+      Start 117: editor.draft_source_flow-canvas
+14/23 Test #117: editor.draft_source_flow-canvas .........   Passed    0.39 sec
+      Start 118: editor.draft_source_material-canvas
+15/23 Test #118: editor.draft_source_material-canvas .....   Passed    0.36 sec
+      Start 119: editor.draft_source_flow-queue
+16/23 Test #119: editor.draft_source_flow-queue ..........   Passed    0.36 sec
+      Start 120: editor.draft_source_material-queue
+17/23 Test #120: editor.draft_source_material-queue ......   Passed    0.34 sec
+      Start 121: editor.draft_source_material-lifetime
+18/23 Test #121: editor.draft_source_material-lifetime ...   Passed    0.39 sec
+      Start 122: editor.draft_source_lifecycle
+19/23 Test #122: editor.draft_source_lifecycle ...........   Passed    0.57 sec
+      Start 123: editor.draft_source_positive
+20/23 Test #123: editor.draft_source_positive ............   Passed    0.47 sec
+      Start 124: editor.draft_source_history
+21/23 Test #124: editor.draft_source_history .............   Passed    0.57 sec
+      Start 134: editor.scene_execution_boundaries
+22/23 Test #134: editor.scene_execution_boundaries .......   Passed   24.17 sec
+      Start 142: editor.layering.delivery_constraints
+23/23 Test #142: editor.layering.delivery_constraints ....   Passed    1.52 sec
+
+100% tests passed, 0 tests failed out of 23
+
+Label Time Summary:
+P06                =  24.58 sec*proc (10 tests)
+P10                =   4.64 sec*proc (10 tests)
+R1                 =   4.64 sec*proc (10 tests)
+editor             =  30.84 sec*proc (23 tests)
+editor_layering    =   1.52 sec*proc (1 test)
+gpu                =   4.64 sec*proc (10 tests)
+native             =  26.20 sec*proc (13 tests)
+
+Total Test time (real) =  31.16 sec

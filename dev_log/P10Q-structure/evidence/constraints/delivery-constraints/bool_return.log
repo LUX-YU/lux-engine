@@ -1,0 +1,7 @@
+bool_return.cpp
+E:/SyncForder/CodeRepos/build/RelWithDebInfo/p10q-structure-e72e9f7f931c/delivery-constraints/bool_return.cpp(11): error C2672: 'deliverInput': no matching overloaded function found
+E:\SyncForder\CodeRepos\build\p10q-structure-clean-e72e9f7f931c\editor\workbench\sinclude\lux/engine/editor/workbench/InteractionDelivery.hpp(39): note: could be '_Select_invoke_traits<Validate&,>::type lux::editor::workbench::detail::deliverInput(lux::editor::workbench::detail::EInputDeliveryStage &,bool,Validate &&,Cancel &&,Begin &&,Preview &&,Commit &&)'
+E:/SyncForder/CodeRepos/build/RelWithDebInfo/p10q-structure-e72e9f7f931c/delivery-constraints/bool_return.cpp(11): note: the associated constraints are not satisfied
+E:\SyncForder\CodeRepos\build\p10q-structure-clean-e72e9f7f931c\editor\workbench\sinclude\lux/engine/editor/workbench/InteractionDelivery.hpp(35): note: the concept 'lux::editor::workbench::detail::DeliveryAction<check::<lambda_1>&,tl::expected<void,EError>>' evaluated to false
+E:\SyncForder\CodeRepos\build\p10q-structure-clean-e72e9f7f931c\editor\workbench\sinclude\lux/engine/editor/workbench/InteractionDelivery.hpp(20): note: the concept 'std::same_as<bool,tl::expected<void,EError>>' evaluated to false
+E:\SyncForder\CodeRepos\build\p10q-structure-clean-e72e9f7f931c\editor\workbench\sinclude\lux/engine/editor/workbench/InteractionDelivery.hpp(20): note: 'bool' and 'tl::expected<void,EError>' are different types

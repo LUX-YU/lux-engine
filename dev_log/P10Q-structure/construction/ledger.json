@@ -1,0 +1,219 @@
+{
+  "scope": "P10Q-structure",
+  "mode": "STRICT",
+  "batch": "L6_COMPLETE",
+  "status": "PASS",
+  "implementation_checkout": "E:\\SyncForder\\CodeRepos\\lux-engine-p10q-structure",
+  "file_plan": "audit/file-plan.json",
+  "targets": "targets-before.json",
+  "tests": "tests-before.json",
+  "decisions": [
+    {
+      "id": "D01",
+      "decision": "ProjectBuilder is E1 pure config; user bytes excluded and patch relocated separately."
+    },
+    {
+      "id": "D02",
+      "decision": "ViewInfo remains E0; close errors move to actual view_api E3 provider."
+    },
+    {
+      "id": "D03",
+      "decision": "InteractionDelivery goes to workbench private; shared only by two graph tools."
+    },
+    {
+      "id": "D04",
+      "decision": "PersistenceAccess author gate/checkpoint remains E1; SaveSource is E2."
+    },
+    {
+      "id": "D05",
+      "decision": "Legacy product targets retained only for current named consumers until P11/P12."
+    },
+    {
+      "id": "D06",
+      "decision": "Keep existing binaries; real TaskMonitor and launch splits add STATIC targets."
+    },
+    {
+      "id": "D07",
+      "decision": "No FrozenEncoder template: domain encoding work differs; wrappers are not a shared algorithm."
+    },
+    {
+      "id": "D08",
+      "decision": "Extract single pure partition decoder into world_storage, remove scene_asset Process edge; async transport reuses decoder."
+    },
+    {
+      "id": "D09",
+      "decision": "RunStore actually uses SceneEditing; promote this one runtime Registry editing algorithm to E2, not a new bridge."
+    },
+    {
+      "id": "D10",
+      "decision": "Co-located target headers must retain exact install ownership. Before final SDK qualification, replace directory-wide header export for merged providers with exact install(FILES) groups using existing package components; preserve CMake 3.22 and logical/generated header names."
+    },
+    {
+      "id": "D11",
+      "decision": "RecoveryManifest belongs to actual layout_model; remove phantom recovery_model rule and exercise the same negative cases on the real target."
+    },
+    {
+      "id": "D12",
+      "decision": "CloseStatus is an existing pure shared value used by formal AssetImporter. Its sole declaration stays at the logical path but ownership/install move from old editing adapter to editor_contracts."
+    }
+  ],
+  "scope_amendment": {
+    "Linux": "NOT_RUN_NONBLOCKING",
+    "system_IME": "NOT_RUN",
+    "old_50k_samples": "DO_NOT_RESUME",
+    "C01": "original FAIL/P09-P12",
+    "C03": "original FAIL/P11",
+    "C04": "original FAIL/P12"
+  },
+  "next": "WAIT_FOR_P10Q_REVIEW; P11 not authorized",
+  "verification": [
+    {
+      "batch": "L0",
+      "status": "PASS",
+      "evidence": [
+        "baseline.json",
+        "file-plan.json",
+        "targets-before.json",
+        "tests-before.json",
+        "protected/ProjectBuilder.patch"
+      ],
+      "notes": "40 archive hashes; 518 tracked Editor files; 204 baseline tests. Decisions D08/D09 refine actual closure beyond attachment seed."
+    },
+    {
+      "batch": "L1",
+      "status": "PASS_DEVELOPMENT",
+      "evidence": [
+        "runs/L1-decoder-tests.log",
+        "runs/L1-decoder-no-work.log",
+        "runs/L1-authoring-tests.log",
+        "runs/L1-authoring-no-work.log"
+      ],
+      "notes": "20 decoder/Scene tests and 103 authoring/identity/workspace/negative regressions; full build. Final clean SDK remains L6."
+    },
+    {
+      "batch": "L2",
+      "status": "PASS_DEVELOPMENT",
+      "evidence": [
+        "runs/L2-activities-tests.log",
+        "runs/L2-serial-confirm-no-work.log",
+        "runs/L2-final-monitor.log"
+      ],
+      "notes": "Full all build; 70 regressions, CPU-only monitor. Two final-format build invocations briefly overlapped; neither is no-work proof. Serial-confirm log is authoritative."
+    },
+    {
+      "batch": "L3",
+      "status": "PASS_DEVELOPMENT",
+      "evidence": [
+        "runs/L3-workbench-build.log",
+        "runs/L3-workbench-no-work.log",
+        "runs/L3-workbench-tests.log",
+        "runs/L3-boundary-recheck.log"
+      ],
+      "notes": "35 selected regressions; two checker failures fixed and rerun without reducing rejection semantics."
+    },
+    {
+      "batch": "L4/L5",
+      "status": "PASS_DEVELOPMENT",
+      "evidence": [
+        "runs/L4-L5-closure-build.log",
+        "runs/L4-L5-closure-no-work.log",
+        "runs/L4-L5-constraints.log"
+      ],
+      "notes": "Real tool instantiations, four negative concepts, ten real UI draft scenarios. Logical path audit then found four SDK fallbacks; corrected and rebuilt, final qualification pending."
+    },
+    {
+      "batch": "L6 development",
+      "status": "PASS_DEVELOPMENT",
+      "evidence": [
+        "runs/L6-strict-build.log",
+        "runs/L6-strict-no-work.log",
+        "runs/L6-strict-negatives.log"
+      ],
+      "notes": "Strict actual providers and N01-N14 plus compiler dependencies passed. Final clean attempt fb3e2760 intentionally interrupted to complete lost README protocol consolidation; not counted as cold build failure/pass."
+    },
+    {
+      "batch": "L6 preflight",
+      "status": "ONE_FAILURE_CORRECTED",
+      "evidence": [
+        "runs/L6-final-cold-2.log",
+        "runs/L6-codegen-path-recheck.log",
+        "runs/L6-sdk-preflight.log",
+        "runs/L6-sdk-preflight-clang.log"
+      ],
+      "notes": "All build/no-work passed; 208/209 tests passed, one stale generator test path corrected retaining four assertions. Four installed minimal consumers and all changed public headers passed preflight. Final SHA rerun required."
+    },
+    {
+      "batch": "L6 final Editor",
+      "status": "PASS",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5",
+      "evidence": [
+        "final/e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5/build.log",
+        "final/e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5/no-work.log",
+        "final/e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5/ctest.log",
+        "final/e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5/install.log"
+      ],
+      "notes": "Clean tracked checkout; P10Q+STRICT; 209/209; all 204 baseline names and original assertions preserved. Real dual GPU/native input passed. C01/C03/C04 reproduced exit1. Remaining CPU/PLAYER/SDK/clang/regeneration/portable archive pending."
+    },
+    {
+      "batch": "L6 final complete",
+      "status": "PASS",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5",
+      "evidence": [
+        "final/e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5/commands.json",
+        "final/e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5/sdk/commands.json",
+        "final/e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5/public-headers/commands.json",
+        "archive-probes/results.json",
+        "audit/protected-final.json"
+      ],
+      "notes": "Editor 209/209, CPU 183/183, PLAYER 12/12; 21 installed groups; 115 standalone clang-cl public headers; actual GPU/native input; real dependency and compilation negatives; exact generation/no-work. Portable archive positive, missing and tampered real log rejection, restored and canonical positives. Original scope amendments and old failures unchanged."
+    }
+  ],
+  "implementation_commits": [
+    {
+      "sha": "1a23ee83d8e06120e00ab8f69e142450352eb3fb",
+      "scope": "refactor(world): share pure partition decoding with async transport"
+    },
+    {
+      "sha": "0003ce967a33af0d87d75c022ed85702b0eb5656",
+      "scope": "refactor(editor): consolidate pure editing and authoring providers"
+    },
+    {
+      "sha": "53a64c186dd01fe32777e4ea69a6339478ac6a00",
+      "scope": "refactor(editor): consolidate activities and isolate task observation"
+    },
+    {
+      "sha": "f1e90f796f1c94ef9ed5ecd0aaddba6af2272c2e",
+      "scope": "refactor(editor): consolidate workbench providers and generated inspectors"
+    },
+    {
+      "sha": "d268d4b3c542b5f40d556e0957e37429a4e3c8a7",
+      "scope": "refactor(editor): isolate process launch and exact package header ownership"
+    },
+    {
+      "sha": "5e6dc689097bd373a44481772dae439f95b56872",
+      "scope": "refactor(editor): constrain shared input delivery and preserve logical SDK paths"
+    },
+    {
+      "sha": "fb3e2760244c9e0c6b45ca2f67533da773953a0e",
+      "scope": "P10Q-structure L6: qualify actual layer providers and installed closures"
+    },
+    {
+      "sha": "52b281ee5abda5c05bef1d7c807786c847222b1c",
+      "scope": "P10Q-structure: preserve domain contracts when merging provider documentation"
+    },
+    {
+      "sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5",
+      "scope": "P10Q-structure: resolve legacy generator test through its formal provider"
+    }
+  ],
+  "qualification_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5",
+  "final_evidence": "dev_log/P10Q-structure/receipt.json",
+  "stop_after": "P10Q",
+  "continuation_authorized": false,
+  "archive_verification": {
+    "status": "PASS",
+    "evidence": "archive-probes/results.json",
+    "source": "fixed Git implementation objects",
+    "evidence_paths": "relative to portable archive"
+  }
+}

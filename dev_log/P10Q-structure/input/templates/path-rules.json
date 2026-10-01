@@ -1,0 +1,717 @@
+{
+  "version": 1,
+  "reference_commit": "f7c27f9375cbf8dd8af37b30a6027a460de26213",
+  "status": "PROPOSAL_REQUIRES_L0_REVIEW",
+  "rules": [
+    {
+      "id": "F01",
+      "source": "editor/editing/history/include/",
+      "match": "prefix",
+      "destination": "editor/editing/include/",
+      "layer": "E0",
+      "batch": "L1",
+      "action": "MOVE",
+      "note": "唯一正式历史公开头"
+    },
+    {
+      "id": "F02",
+      "source": "editor/editing/history/src/",
+      "match": "prefix",
+      "destination": "editor/editing/src/history/",
+      "layer": "E0",
+      "batch": "L1",
+      "action": "MOVE",
+      "note": "原算法逐文件迁入"
+    },
+    {
+      "id": "F03",
+      "source": "editor/editing/history/CMakeLists.txt",
+      "match": "exact",
+      "destination": "editor/editing/CMakeLists.txt",
+      "layer": "E0",
+      "batch": "L1",
+      "action": "MERGE",
+      "note": "保留edit_history实际目标，不创建转发target"
+    },
+    {
+      "id": "F04",
+      "source": "editor/editing/sessions/include/",
+      "match": "prefix",
+      "destination": "editor/editing/include/",
+      "layer": "E0",
+      "batch": "L1",
+      "action": "MOVE",
+      "note": "Session/Stamp/Permits唯一公开定义"
+    },
+    {
+      "id": "F05",
+      "source": "editor/editing/sessions/src/",
+      "match": "prefix",
+      "destination": "editor/editing/src/sessions/",
+      "layer": "E0",
+      "batch": "L1",
+      "action": "MOVE",
+      "note": "Store/State/checkpoint不换算法"
+    },
+    {
+      "id": "F06",
+      "source": "editor/editing/sessions/test/",
+      "match": "prefix",
+      "destination": "editor/editing/test/sessions/",
+      "layer": "TEST",
+      "batch": "L1",
+      "action": "MOVE_EDIT",
+      "note": "scope_compile及SDK路径同步"
+    },
+    {
+      "id": "F07",
+      "source": "editor/editing/sessions/CMakeLists.txt",
+      "match": "exact",
+      "destination": "editor/editing/CMakeLists.txt",
+      "layer": "E0",
+      "batch": "L1",
+      "action": "MERGE",
+      "note": "原session目标和共享状态保持"
+    },
+    {
+      "id": "F08",
+      "source": "editor/contracts/include/lux/engine/editor/views/ViewInfo.hpp",
+      "match": "exact",
+      "destination": "editor/editing/include/lux/engine/editor/views/ViewInfo.hpp",
+      "layer": "E0+E3",
+      "batch": "L1",
+      "action": "SPLIT",
+      "note": "纯观察留E0；UI错误到workbench/desktop/include/.../views/ViewError.hpp"
+    },
+    {
+      "id": "F09",
+      "source": "editor/contracts/",
+      "match": "prefix",
+      "destination": "editor/editing/",
+      "layer": "REVIEW",
+      "batch": "L1",
+      "action": "REVIEW_REQUIRED",
+      "note": "必须逐文件排除UI-only；不整目录覆盖"
+    },
+    {
+      "id": "F10",
+      "source": "editor/editing/sinclude/lux/engine/editor/editing/InteractionDelivery.hpp",
+      "match": "exact",
+      "destination": "editor/workbench/sinclude/lux/engine/editor/workbench/InteractionDelivery.hpp",
+      "layer": "E3",
+      "batch": "L3+L5",
+      "action": "MOVE_EDIT",
+      "note": "namespace改workbench::detail；双工具PRIVATE消费"
+    },
+    {
+      "id": "F11",
+      "source": "editor/editing/include/lux/engine/editor/EditorError.hpp",
+      "match": "exact",
+      "destination": "editor/editing/include/lux/engine/editor/EditorError.hpp",
+      "layer": "E0",
+      "batch": "L1",
+      "action": "KEEP_RECLASSIFY",
+      "note": "纯错误定义真实provider，不要求consumer链接旧editor_editing"
+    },
+    {
+      "id": "F12",
+      "source": "editor/editing/scene/",
+      "match": "prefix",
+      "destination": null,
+      "layer": "TEMPORARY",
+      "batch": "L0",
+      "action": "REVIEW_REQUIRED",
+      "note": "旧Registry适配按消费者到P12；不可认证E0"
+    },
+    {
+      "id": "F13",
+      "source": "editor/editing/include/",
+      "match": "prefix",
+      "destination": null,
+      "layer": "REVIEW",
+      "batch": "L0",
+      "action": "REVIEW_REQUIRED",
+      "note": "除已列纯头外识别旧AssetSave/Close/EditHistoryTarget"
+    },
+    {
+      "id": "F14",
+      "source": "editor/editing/src/",
+      "match": "prefix",
+      "destination": null,
+      "layer": "REVIEW",
+      "batch": "L0",
+      "action": "REVIEW_REQUIRED",
+      "note": "原EditHistoryTarget及历史桥不混进E0"
+    },
+    {
+      "id": "F15",
+      "source": "editor/editing/sinclude/",
+      "match": "prefix",
+      "destination": null,
+      "layer": "REVIEW",
+      "batch": "L0",
+      "action": "REVIEW_REQUIRED",
+      "note": "SignalDelivery/TaskResult按实际consumer归属，不默认新common"
+    },
+    {
+      "id": "F16",
+      "source": "editor/tools/scene/model/",
+      "match": "prefix",
+      "destination": "editor/authoring/scene/",
+      "layer": "E1",
+      "batch": "L1",
+      "action": "MOVE_EDIT",
+      "note": "PersistenceAccess按作者状态语义保留"
+    },
+    {
+      "id": "F17",
+      "source": "editor/tools/material/model/",
+      "match": "prefix",
+      "destination": "editor/authoring/material/",
+      "layer": "E1",
+      "batch": "L1",
+      "action": "MOVE_EDIT",
+      "note": "原MaterialSource/图/快照不重写"
+    },
+    {
+      "id": "F18",
+      "source": "editor/tools/flowforge/model/",
+      "match": "prefix",
+      "destination": "editor/authoring/flow/",
+      "layer": "E1",
+      "batch": "L1",
+      "action": "MOVE_EDIT",
+      "note": "物理flow；逻辑flowforge/schema保留"
+    },
+    {
+      "id": "F19",
+      "source": "editor/project/ui/",
+      "match": "prefix",
+      "destination": "editor/workbench/project/",
+      "layer": "E3",
+      "batch": "L3",
+      "action": "MOVE_EDIT",
+      "note": "纯UI；CatalogModel不跟随"
+    },
+    {
+      "id": "F20",
+      "source": "editor/project/src/ProjectBuilder.cpp",
+      "match": "exact",
+      "destination": "editor/authoring/project/src/ProjectBuilder.cpp",
+      "layer": "E1",
+      "batch": "L1",
+      "action": "PROTECTED_MOVE",
+      "note": "D01纯Builder；用户未提交bytes单独保护"
+    },
+    {
+      "id": "F21",
+      "source": "editor/project/",
+      "match": "prefix",
+      "destination": "editor/authoring/project/",
+      "layer": "E1",
+      "batch": "L1",
+      "action": "MOVE_EDIT",
+      "note": "仅真实纯Manifest/Builder/Catalog；混合副作用另分"
+    },
+    {
+      "id": "F22",
+      "source": "editor/workspace/layout/",
+      "match": "prefix",
+      "destination": "editor/authoring/layout/",
+      "layer": "E1",
+      "batch": "L1",
+      "action": "MOVE_EDIT",
+      "note": "纯Layout/Recovery/Preferences/plan"
+    },
+    {
+      "id": "F23",
+      "source": "editor/persistence/",
+      "match": "prefix",
+      "destination": "editor/activities/persistence/",
+      "layer": "E2",
+      "batch": "L2",
+      "action": "MOVE_EDIT",
+      "note": "core/execution继续实际两个边界"
+    },
+    {
+      "id": "F24",
+      "source": "editor/storage/src/FileArtifactStore.cpp",
+      "match": "exact",
+      "destination": "editor/activities/persistence/src/FileArtifactStore.cpp",
+      "layer": "E2",
+      "batch": "L2",
+      "action": "MOVE_EDIT",
+      "note": "真实文件后端不叫compatibility"
+    },
+    {
+      "id": "F25",
+      "source": "editor/storage/src/FilePublication.cpp",
+      "match": "exact",
+      "destination": "editor/activities/persistence/src/FilePublication.cpp",
+      "layer": "E2",
+      "batch": "L2",
+      "action": "MOVE_EDIT",
+      "note": "唯一平台文件发布算法"
+    },
+    {
+      "id": "F26",
+      "source": "editor/storage/include/lux/engine/editor/storage/FileArtifactStore.hpp",
+      "match": "exact",
+      "destination": "editor/activities/persistence/include/lux/engine/editor/storage/FileArtifactStore.hpp",
+      "layer": "E2",
+      "batch": "L2",
+      "action": "MOVE_EDIT",
+      "note": "逻辑include可保留"
+    },
+    {
+      "id": "F27",
+      "source": "editor/storage/include/lux/engine/editor/storage/FilePublication.hpp",
+      "match": "exact",
+      "destination": "editor/activities/persistence/include/lux/engine/editor/storage/FilePublication.hpp",
+      "layer": "E2",
+      "batch": "L2",
+      "action": "MOVE_EDIT",
+      "note": "实际后端契约唯一"
+    },
+    {
+      "id": "F28",
+      "source": "editor/storage/",
+      "match": "prefix",
+      "destination": "editor/activities/project/",
+      "layer": "E2",
+      "batch": "L2",
+      "action": "REVIEW_REQUIRED",
+      "note": "逐文件；ProjectStorage/Creation/Publication，CMake拆两主题"
+    },
+    {
+      "id": "F29",
+      "source": "editor/assets/",
+      "match": "prefix",
+      "destination": "editor/activities/project/",
+      "layer": "REVIEW",
+      "batch": "L2",
+      "action": "REVIEW_REQUIRED",
+      "note": "源读取导入归E2；旧TAssetSave不可整包迁入"
+    },
+    {
+      "id": "F30",
+      "source": "editor/tools/scene/persistence/",
+      "match": "prefix",
+      "destination": "editor/activities/scene/",
+      "layer": "E2",
+      "batch": "L2",
+      "action": "MOVE_EDIT",
+      "note": "实际角色target保持，不并入通用保存core"
+    },
+    {
+      "id": "F31",
+      "source": "editor/tools/material/persistence/",
+      "match": "prefix",
+      "destination": "editor/activities/material/",
+      "layer": "E2",
+      "batch": "L2",
+      "action": "MOVE_EDIT",
+      "note": "具体源格式及采用"
+    },
+    {
+      "id": "F32",
+      "source": "editor/tools/flowforge/persistence/",
+      "match": "prefix",
+      "destination": "editor/activities/flow/",
+      "layer": "E2",
+      "batch": "L2",
+      "action": "MOVE_EDIT",
+      "note": "固定源编码/采用"
+    },
+    {
+      "id": "F33",
+      "source": "editor/tools/scene/execution/api/include/",
+      "match": "prefix",
+      "destination": "editor/activities/scene/include/",
+      "layer": "E2",
+      "batch": "L2",
+      "action": "MOVE_EDIT",
+      "note": "纯RunInspect/API实际闭包保持"
+    },
+    {
+      "id": "F34",
+      "source": "editor/tools/scene/execution/",
+      "match": "prefix",
+      "destination": "editor/activities/scene/",
+      "layer": "E2",
+      "batch": "L2",
+      "action": "MOVE_EDIT",
+      "note": "RunStore与Controller原实现"
+    },
+    {
+      "id": "F35",
+      "source": "editor/tools/scene/projection/test/",
+      "match": "prefix",
+      "destination": "editor/tests/integration/projection/",
+      "layer": "TEST",
+      "batch": "L2",
+      "action": "MOVE_EDIT",
+      "note": "组合viewport为测试依赖；生产不倒灌"
+    },
+    {
+      "id": "F36",
+      "source": "editor/tools/scene/projection/",
+      "match": "prefix",
+      "destination": "editor/activities/scene/",
+      "layer": "E2",
+      "batch": "L2",
+      "action": "MOVE_EDIT",
+      "note": "SceneProjection/Hub/ResourceStatus；多个CMake要合并审查"
+    },
+    {
+      "id": "F37",
+      "source": "editor/tools/material/preview/test/",
+      "match": "prefix",
+      "destination": "editor/tests/integration/material_activity/",
+      "layer": "TEST",
+      "batch": "L2",
+      "action": "MOVE_EDIT",
+      "note": "编译/预览真实fixture整合后配置"
+    },
+    {
+      "id": "F38",
+      "source": "editor/tools/material/preview/",
+      "match": "prefix",
+      "destination": "editor/activities/material/",
+      "layer": "E2",
+      "batch": "L2",
+      "action": "MOVE_EDIT",
+      "note": "compile/preview保留不同真实闭包"
+    },
+    {
+      "id": "F39",
+      "source": "editor/tools/flowforge/compilation/",
+      "match": "prefix",
+      "destination": "editor/activities/flow/",
+      "layer": "E2",
+      "batch": "L2",
+      "action": "MOVE_EDIT",
+      "note": "固定编译对象重试"
+    },
+    {
+      "id": "F40",
+      "source": "editor/workspace/storage/",
+      "match": "prefix",
+      "destination": "editor/activities/workspace/",
+      "layer": "E2",
+      "batch": "L2",
+      "action": "MOVE_EDIT",
+      "note": "只文件/迁移，不调用ViewHost"
+    },
+    {
+      "id": "F41",
+      "source": "editor/tasks/ui/include/lux/engine/editor/tasks/TaskMonitor.hpp",
+      "match": "exact",
+      "destination": "editor/activities/tasks/include/lux/engine/editor/tasks/TaskMonitor.hpp",
+      "layer": "E2",
+      "batch": "L2",
+      "action": "MOVE_EDIT",
+      "note": "新增真实CPU target editor_tasks"
+    },
+    {
+      "id": "F42",
+      "source": "editor/tasks/ui/src/TaskMonitor.cpp",
+      "match": "exact",
+      "destination": "editor/activities/tasks/src/TaskMonitor.cpp",
+      "layer": "E2",
+      "batch": "L2",
+      "action": "MOVE_EDIT",
+      "note": "不再编进tasks_ui"
+    },
+    {
+      "id": "F43",
+      "source": "editor/tasks/ui/test/monitor.cpp",
+      "match": "exact",
+      "destination": "editor/activities/tasks/test/monitor.cpp",
+      "layer": "TEST",
+      "batch": "L2",
+      "action": "SPLIT",
+      "note": "纯observer测试留E2；含View的段移integration"
+    },
+    {
+      "id": "F44",
+      "source": "editor/tasks/ui/",
+      "match": "prefix",
+      "destination": "editor/workbench/tasks/",
+      "layer": "E3",
+      "batch": "L3",
+      "action": "MOVE_EDIT",
+      "note": "剩余TaskView；包仍是真UI而非旧alias"
+    },
+    {
+      "id": "F45",
+      "source": "editor/views/api/include/",
+      "match": "prefix",
+      "destination": "editor/workbench/desktop/include/",
+      "layer": "E3",
+      "batch": "L3",
+      "action": "MOVE_EDIT",
+      "note": "View契约与Host同主题；view_api目标保留"
+    },
+    {
+      "id": "F46",
+      "source": "editor/views/api/",
+      "match": "prefix",
+      "destination": "editor/workbench/desktop/",
+      "layer": "E3",
+      "batch": "L3",
+      "action": "MOVE_EDIT",
+      "note": "CMake和README需合并非覆盖"
+    },
+    {
+      "id": "F47",
+      "source": "editor/views/viewport/",
+      "match": "prefix",
+      "destination": "editor/workbench/viewport/",
+      "layer": "E3",
+      "batch": "L3",
+      "action": "MOVE_EDIT",
+      "note": "ViewportElement等不带Scene作者"
+    },
+    {
+      "id": "F48",
+      "source": "editor/widgets/",
+      "match": "prefix",
+      "destination": "editor/workbench/widgets/",
+      "layer": "E3",
+      "batch": "L3",
+      "action": "MOVE_EDIT",
+      "note": "原node-editor backend保留"
+    },
+    {
+      "id": "F49",
+      "source": "editor/desktop/",
+      "match": "prefix",
+      "destination": "editor/workbench/desktop/",
+      "layer": "E3",
+      "batch": "L3",
+      "action": "MOVE_EDIT",
+      "note": "Host/Shell唯一实现"
+    },
+    {
+      "id": "F50",
+      "source": "editor/tools/scene/interaction/",
+      "match": "prefix",
+      "destination": "editor/workbench/scene/interaction/",
+      "layer": "E3-CPU",
+      "batch": "L3",
+      "action": "MOVE_EDIT",
+      "note": "CPU target不能加GUI"
+    },
+    {
+      "id": "F51",
+      "source": "editor/tools/material/interaction/",
+      "match": "prefix",
+      "destination": "editor/workbench/material/interaction/",
+      "layer": "E3-CPU",
+      "batch": "L3",
+      "action": "MOVE_EDIT",
+      "note": "CPU target保持"
+    },
+    {
+      "id": "F52",
+      "source": "editor/tools/flowforge/interaction/",
+      "match": "prefix",
+      "destination": "editor/workbench/flow/interaction/",
+      "layer": "E3-CPU",
+      "batch": "L3",
+      "action": "MOVE_EDIT",
+      "note": "完整ContentStamp选择来源保持"
+    },
+    {
+      "id": "F53",
+      "source": "editor/tools/scene/ui/test/",
+      "match": "prefix",
+      "destination": "editor/tests/integration/scene_views/",
+      "layer": "TEST",
+      "batch": "L3",
+      "action": "MOVE_EDIT",
+      "note": "跨工具/桌面/SDK fixture最后配置"
+    },
+    {
+      "id": "F54",
+      "source": "editor/tools/scene/ui/",
+      "match": "prefix",
+      "destination": "editor/workbench/scene/",
+      "layer": "E3",
+      "batch": "L3",
+      "action": "MOVE_EDIT",
+      "note": "代码生成器/support同步"
+    },
+    {
+      "id": "F55",
+      "source": "editor/tools/material/ui/",
+      "match": "prefix",
+      "destination": "editor/workbench/material/",
+      "layer": "E3",
+      "batch": "L3",
+      "action": "MOVE_EDIT",
+      "note": "草稿/queue原语义保持"
+    },
+    {
+      "id": "F56",
+      "source": "editor/tools/flowforge/ui/",
+      "match": "prefix",
+      "destination": "editor/workbench/flow/",
+      "layer": "E3",
+      "batch": "L3",
+      "action": "MOVE_EDIT",
+      "note": "逻辑namespace/include不机械改名"
+    },
+    {
+      "id": "F57",
+      "source": "editor/tools/settings/",
+      "match": "prefix",
+      "destination": "editor/workbench/settings/",
+      "layer": "REVIEW",
+      "batch": "L4",
+      "action": "REVIEW_REQUIRED",
+      "note": "只迁无Context的真实UI；旧接线暂留"
+    },
+    {
+      "id": "F58",
+      "source": "editor/metadata/",
+      "match": "prefix",
+      "destination": null,
+      "layer": "REVIEW",
+      "batch": "L4",
+      "action": "REVIEW_REQUIRED",
+      "note": "纯值/工厂/注册/装载四分，旧P11登记暂留"
+    },
+    {
+      "id": "F59",
+      "source": "editor/plugins/",
+      "match": "prefix",
+      "destination": null,
+      "layer": "REVIEW",
+      "batch": "L4",
+      "action": "REVIEW_REQUIRED",
+      "note": "贡献归相应层，安装归application/extensions"
+    },
+    {
+      "id": "F60",
+      "source": "editor/app/",
+      "match": "prefix",
+      "destination": null,
+      "layer": "TEMPORARY",
+      "batch": "L4",
+      "action": "REVIEW_REQUIRED",
+      "note": "已可分离装配归application；旧EditorImpl到P12"
+    },
+    {
+      "id": "F61",
+      "source": "editor/launcher/",
+      "match": "prefix",
+      "destination": null,
+      "layer": "TEMPORARY",
+      "batch": "L4",
+      "action": "REVIEW_REQUIRED",
+      "note": "真实新launch可迁；旧产品流程到P12"
+    },
+    {
+      "id": "F62",
+      "source": "editor/context/",
+      "match": "prefix",
+      "destination": null,
+      "layer": "TEMPORARY",
+      "batch": "L4",
+      "action": "REVIEW_REQUIRED",
+      "note": "不改名成新的Context"
+    },
+    {
+      "id": "F63",
+      "source": "editor/ui/",
+      "match": "prefix",
+      "destination": null,
+      "layer": "TEMPORARY",
+      "batch": "L4",
+      "action": "REVIEW_REQUIRED",
+      "note": "旧产品UI，未引用原体删除；不搬永久legacy"
+    },
+    {
+      "id": "F64",
+      "source": "editor/transition/",
+      "match": "prefix",
+      "destination": null,
+      "layer": "TEMPORARY",
+      "batch": "L4",
+      "action": "REVIEW_REQUIRED",
+      "note": "按消费者删除，禁止新增"
+    },
+    {
+      "id": "F65",
+      "source": "editor/tools/",
+      "match": "prefix",
+      "destination": null,
+      "layer": "TEMPORARY",
+      "batch": "L4",
+      "action": "REVIEW_REQUIRED",
+      "note": "剩余三大旧Editor/旧项目UI，只旧consumer"
+    },
+    {
+      "id": "F66",
+      "source": "editor/tests/",
+      "match": "prefix",
+      "destination": "editor/tests/",
+      "layer": "TEST",
+      "batch": "L6",
+      "action": "KEEP_EDIT",
+      "note": "归属/路径/negative fixtures更新；历史日志不改"
+    },
+    {
+      "id": "F67",
+      "source": "editor/CMakeLists.txt",
+      "match": "exact",
+      "destination": "editor/CMakeLists.txt",
+      "layer": "BUILD",
+      "batch": "L4",
+      "action": "REWRITE",
+      "note": "新五层配置+显式暂留旧岛"
+    },
+    {
+      "id": "F68",
+      "source": "editor/README.md",
+      "match": "exact",
+      "destination": "editor/README.md",
+      "layer": "DOC",
+      "batch": "L4",
+      "action": "REWRITE",
+      "note": "现状/目标/旧产品区分"
+    },
+    {
+      "id": "F69",
+      "source": "editor/editing/CMakeLists.txt",
+      "match": "exact",
+      "destination": "editor/editing/CMakeLists.txt",
+      "layer": "BUILD",
+      "batch": "L1",
+      "action": "REWRITE",
+      "note": "E0实际目标与暂留旧目标明确区分"
+    },
+    {
+      "id": "F70",
+      "source": "editor/editing/README.md",
+      "match": "exact",
+      "destination": "editor/editing/README.md",
+      "layer": "DOC",
+      "batch": "L1",
+      "action": "REWRITE",
+      "note": "新语义，旧业务不是正式内核"
+    },
+    {
+      "id": "F71",
+      "source": "editor/",
+      "match": "prefix",
+      "destination": null,
+      "layer": "REVIEW",
+      "batch": "L0",
+      "action": "REVIEW_REQUIRED",
+      "note": "所有未匹配tracked文件必须人工裁定，不忽略"
+    }
+  ]
+}

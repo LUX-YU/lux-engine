@@ -1,0 +1,258 @@
+[
+  {
+    "name": "clone",
+    "argv": [
+      "git",
+      "clone",
+      "--no-hardlinks",
+      "--no-checkout",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-p10q-structure",
+      "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-52b281ee5abd"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine-p10q-structure",
+    "exit_code": 0,
+    "log": "clone.log",
+    "sha256": "9d699197d311beab121b80894a1949d37bdc5e59870c7fe82316bdf175a797ff",
+    "implementation_sha": "52b281ee5abda5c05bef1d7c807786c847222b1c"
+  },
+  {
+    "name": "checkout",
+    "argv": [
+      "git",
+      "checkout",
+      "--detach",
+      "52b281ee5abda5c05bef1d7c807786c847222b1c"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-52b281ee5abd",
+    "exit_code": 0,
+    "log": "checkout.log",
+    "sha256": "61a6cbba39684de9a4ac635b5e942b5085e0db0c36aa50b98caf9b12effc8b38",
+    "implementation_sha": "52b281ee5abda5c05bef1d7c807786c847222b1c"
+  },
+  {
+    "name": "tracked-snapshot",
+    "argv": [
+      "cmake",
+      "-DLUX_SOURCE_DIR=E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-52b281ee5abd",
+      "-P",
+      "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-52b281ee5abd\\cmake\\ValidateTrackedSnapshot.cmake"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-52b281ee5abd",
+    "exit_code": 0,
+    "log": "tracked-snapshot.log",
+    "sha256": "28e134e520118570cf747e42bbbd37fa477970fac7afdf334e86b4217d9046b9",
+    "implementation_sha": "52b281ee5abda5c05bef1d7c807786c847222b1c"
+  },
+  {
+    "name": "configure",
+    "argv": [
+      "cmake",
+      "-S",
+      "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-52b281ee5abd",
+      "-B",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-52b281ee5abd",
+      "-G",
+      "Ninja",
+      "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+      "-DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/P10Q-structure-52b281ee5abd",
+      "-DCMAKE_INSTALL_PREFIX=E:/SyncForder/CodeRepos/install/P10Q-structure-52b281ee5abd",
+      "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+      "-DVCPKG_TARGET_TRIPLET=x64-windows",
+      "-DBUILD_TESTING=ON",
+      "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+      "-DLuxLua55_DIR=E:/SyncForder/CodeRepos/install/o/v4/lua55/lib/cmake/LuxLua55",
+      "-DPython3_EXECUTABLE=C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+      "-DLUX_EDITOR_MIGRATION_STAGE=P10Q",
+      "-DLUX_EDITOR_LAYERING_MODE=STRICT",
+      "-DLUX_BUILD_COMPONENT_LUA_META=OFF",
+      "-DLUX_BUILD_PHYSICS2D=ON",
+      "-DLUX_BUILD_PACKED_RENDER_CONTENT=ON",
+      "-DLUX_EDITOR_BUILD_NATIVE_TESTS=ON",
+      "-DLUX_EDITOR_BUILD_DESKTOP_TESTS=ON",
+      "-DLUX_EDITOR_BUILD_GPU_TESTS=ON",
+      "-DLUX_EDITOR_BUILD_TOOLCHAIN_TESTS=ON",
+      "-DLUX_EDITOR_BUILD_INSTALLED_TESTS=ON",
+      "-DLUX_BUILD_PROFILE=EDITOR"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-52b281ee5abd",
+    "exit_code": 0,
+    "log": "configure.log",
+    "sha256": "258cfe461205f4c786f19b7d60d3b7014b826b86fb803908faf0a7fc4ca9186f",
+    "implementation_sha": "52b281ee5abda5c05bef1d7c807786c847222b1c"
+  },
+  {
+    "name": "build",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-52b281ee5abd",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-52b281ee5abd",
+    "exit_code": 0,
+    "log": "build.log",
+    "sha256": "ea3fc486b512e3e1a7a1d6eb942abf4395cf81ba5cc5899317df31bf2ef0eb98",
+    "implementation_sha": "52b281ee5abda5c05bef1d7c807786c847222b1c"
+  },
+  {
+    "name": "no-work",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-52b281ee5abd",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-52b281ee5abd",
+    "exit_code": 0,
+    "log": "no-work.log",
+    "sha256": "7716162f3cd3b99cf3b8a8dd6decf324e08c7e941aae7e730baba5e4fc8c075b",
+    "implementation_sha": "52b281ee5abda5c05bef1d7c807786c847222b1c"
+  },
+  {
+    "name": "test-names",
+    "argv": [
+      "ctest",
+      "--test-dir",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-52b281ee5abd",
+      "--show-only=json-v1"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-52b281ee5abd",
+    "exit_code": 0,
+    "log": "test-names.log",
+    "sha256": "64d19207f92a15a243cb4508e4648f7035f7e43ebd490af68c6e469ec4932ce5",
+    "implementation_sha": "52b281ee5abda5c05bef1d7c807786c847222b1c"
+  },
+  {
+    "name": "ctest",
+    "argv": [
+      "ctest",
+      "--test-dir",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-52b281ee5abd",
+      "--output-on-failure",
+      "-j",
+      "1"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-52b281ee5abd",
+    "exit_code": 8,
+    "log": "ctest.log",
+    "sha256": "1b5785ed506e25828d09a9a20e806925e83225fb5a2e26c5c0fa5c547b10afc4",
+    "implementation_sha": "52b281ee5abda5c05bef1d7c807786c847222b1c"
+  },
+  {
+    "name": "clang-configure",
+    "argv": [
+      "cmake",
+      "-S",
+      "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-52b281ee5abd\\cmake\\installed-consumers\\quality",
+      "-B",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-52b281ee5abd-clang",
+      "-G",
+      "Ninja",
+      "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+      "-DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/P10Q-structure-52b281ee5abd",
+      "-DCMAKE_INSTALL_PREFIX=E:/SyncForder/CodeRepos/install/P10Q-structure-52b281ee5abd",
+      "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+      "-DVCPKG_TARGET_TRIPLET=x64-windows",
+      "-DBUILD_TESTING=ON",
+      "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+      "-DLuxLua55_DIR=E:/SyncForder/CodeRepos/install/o/v4/lua55/lib/cmake/LuxLua55",
+      "-DPython3_EXECUTABLE=C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+      "-DLUX_EDITOR_MIGRATION_STAGE=P10Q",
+      "-DLUX_EDITOR_LAYERING_MODE=STRICT",
+      "-DLUX_BUILD_COMPONENT_LUA_META=OFF",
+      "-DLUX_BUILD_PHYSICS2D=ON",
+      "-DLUX_BUILD_PACKED_RENDER_CONTENT=ON",
+      "-DLUX_EDITOR_BUILD_NATIVE_TESTS=ON",
+      "-DLUX_EDITOR_BUILD_DESKTOP_TESTS=ON",
+      "-DLUX_EDITOR_BUILD_GPU_TESTS=ON",
+      "-DLUX_EDITOR_BUILD_TOOLCHAIN_TESTS=ON",
+      "-DLUX_EDITOR_BUILD_INSTALLED_TESTS=ON",
+      "-DCMAKE_CXX_COMPILER=D:/Development/Mircosoft/VisualStudio/VC/Tools/Llvm/x64/bin/clang-cl.exe"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-52b281ee5abd",
+    "exit_code": 0,
+    "log": "clang-configure.log",
+    "sha256": "009bedef6c54ef76efb82167e4e9078551cd54419848503d199321d818e500b5",
+    "implementation_sha": "52b281ee5abda5c05bef1d7c807786c847222b1c"
+  },
+  {
+    "name": "clang-build",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-52b281ee5abd-clang",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-52b281ee5abd",
+    "exit_code": 0,
+    "log": "clang-build.log",
+    "sha256": "0a224e80773bf6621e90456342636fa84fb7c264e429a82372d8e951379b20a3",
+    "implementation_sha": "52b281ee5abda5c05bef1d7c807786c847222b1c"
+  },
+  {
+    "name": "clang-no-work",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-52b281ee5abd-clang",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-52b281ee5abd",
+    "exit_code": 0,
+    "log": "clang-no-work.log",
+    "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6",
+    "implementation_sha": "52b281ee5abda5c05bef1d7c807786c847222b1c"
+  },
+  {
+    "name": "clang-ctest",
+    "argv": [
+      "ctest",
+      "--test-dir",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-52b281ee5abd-clang",
+      "--output-on-failure",
+      "-j",
+      "1"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-52b281ee5abd",
+    "exit_code": 0,
+    "log": "clang-ctest.log",
+    "sha256": "fc0c8645aafa9910b05e01aefdfca9f986aad2dea265d19bcd4fb9948daf5c67",
+    "implementation_sha": "52b281ee5abda5c05bef1d7c807786c847222b1c"
+  },
+  {
+    "name": "clang-public-headers",
+    "argv": [
+      "C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\layering\\check_headers.py"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-52b281ee5abd",
+    "exit_code": 0,
+    "log": "clang-public-headers.log",
+    "sha256": "f2e0b17326f3dd6e192a0c550d8ee39b4abe178fac6d96d02b4cc8b5afc0b395",
+    "implementation_sha": "52b281ee5abda5c05bef1d7c807786c847222b1c"
+  }
+]

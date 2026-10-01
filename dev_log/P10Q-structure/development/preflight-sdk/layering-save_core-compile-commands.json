@@ -1,0 +1,8 @@
+[
+  {
+    "directory": "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p10q-structure-52b281ee5abd-preflight/layering-save_core",
+    "command": "D:\\Development\\Mircosoft\\VisualStudio\\VC\\Tools\\MSVC\\14.44.35207\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -external:IE:\\SyncForder\\CodeRepos\\install\\P10Q-structure-52b281ee5abd\\include -external:ID:\\Development\\vcpkg\\installed\\x64-windows\\include -external:ID:\\Development\\vcpkg\\installed\\x64-windows\\include\\stduuid -external:W0 /DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD /UNDEBUG /utf-8 /permissive- /Zc:__cplusplus /FoCMakeFiles\\layering_consumer.dir\\main.cpp.obj /FdCMakeFiles\\layering_consumer.dir\\ /FS -c E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-52b281ee5abd-preflight\\layering-save_core\\main.cpp",
+    "file": "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p10q-structure-52b281ee5abd-preflight/layering-save_core/main.cpp",
+    "output": "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p10q-structure-52b281ee5abd-preflight/layering-save_core/CMakeFiles/layering_consumer.dir/main.cpp.obj"
+  }
+]

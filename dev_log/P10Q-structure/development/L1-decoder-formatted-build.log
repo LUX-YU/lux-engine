@@ -1,0 +1,8 @@
+[0/2] Re-checking globbed directories...
+[1/48] Building CXX object engine\domain\world\storage\CMakeFiles\world_storage.dir\src\WorldPartitionDecoder.cpp.obj
+[2/48] Building CXX object engine\process\world_loading\CMakeFiles\process_world_loading.dir\src\WorldPartitionLoad.cpp.obj
+[3/48] Building CXX object engine\process\world_loading\CMakeFiles\world_partition_decoder_test.dir\test\partition_decoder.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[4/48] Linking CXX shared library bin\lux_engine_world_storage.dll
+[5/36] Linking CXX shared library bin\lux_engine_process_world_loading.dll
+[6/6] Linking CXX executable bin\world_partition_decoder_test.exe

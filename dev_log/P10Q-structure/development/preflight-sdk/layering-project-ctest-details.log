@@ -1,0 +1,18 @@
+Start testing: Oct 01 11:39 GMT 夏令时
+----------------------------------------------------------
+1/1 Testing: installed.layering.PROJECT
+1/1 Test: installed.layering.PROJECT
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p10q-structure-52b281ee5abd-preflight/layering-project/layering_consumer.exe"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p10q-structure-52b281ee5abd-preflight/layering-project
+"installed.layering.PROJECT" start time: Oct 01 11:39 GMT 夏令时
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   0.10 sec
+----------------------------------------------------------
+Test Passed.
+"installed.layering.PROJECT" end time: Oct 01 11:39 GMT 夏令时
+"installed.layering.PROJECT" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Oct 01 11:39 GMT 夏令时

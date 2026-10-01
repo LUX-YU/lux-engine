@@ -1,0 +1,48 @@
+{
+  "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5",
+  "actual": [
+    {
+      "name": "edit_history",
+      "TYPE": "SHARED_LIBRARY",
+      "SOURCE_DIR": "E:/SyncForder/CodeRepos/build/p10q-structure-clean-e72e9f7f931c/editor/editing",
+      "edges": "LINK_LIBRARIES:lux::cxx::compile_time;LINK_LIBRARIES:editor_contracts;INTERFACE_LINK_LIBRARIES:lux::cxx::compile_time;INTERFACE_LINK_LIBRARIES:editor_contracts"
+    },
+    {
+      "name": "edit_sessions",
+      "TYPE": "SHARED_LIBRARY",
+      "SOURCE_DIR": "E:/SyncForder/CodeRepos/build/p10q-structure-clean-e72e9f7f931c/editor/editing",
+      "edges": "LINK_LIBRARIES:edit_history;LINK_LIBRARIES:editor_contracts;LINK_LIBRARIES:identity;LINK_LIBRARIES:lux::cxx::container;INTERFACE_LINK_LIBRARIES:edit_history;INTERFACE_LINK_LIBRARIES:editor_contracts;INTERFACE_LINK_LIBRARIES:identity"
+    },
+    {
+      "name": "editor_tasks",
+      "TYPE": "STATIC_LIBRARY",
+      "SOURCE_DIR": "E:/SyncForder/CodeRepos/build/p10q-structure-clean-e72e9f7f931c/editor/activities/tasks",
+      "edges": "LINK_LIBRARIES:object;LINK_LIBRARIES:process_execution;INTERFACE_LINK_LIBRARIES:object;INTERFACE_LINK_LIBRARIES:process_execution"
+    },
+    {
+      "name": "tasks_ui",
+      "TYPE": "STATIC_LIBRARY",
+      "SOURCE_DIR": "E:/SyncForder/CodeRepos/build/p10q-structure-clean-e72e9f7f931c/editor/workbench/tasks",
+      "edges": "LINK_LIBRARIES:view_api;LINK_LIBRARIES:editor_tasks;LINK_LIBRARIES:imgui::core;INTERFACE_LINK_LIBRARIES:view_api;INTERFACE_LINK_LIBRARIES:editor_tasks;INTERFACE_LINK_LIBRARIES:imgui::core"
+    },
+    {
+      "name": "editor_launch",
+      "TYPE": "STATIC_LIBRARY",
+      "SOURCE_DIR": "E:/SyncForder/CodeRepos/build/p10q-structure-clean-e72e9f7f931c/editor/application/launch",
+      "edges": "LINK_LIBRARIES:editor_contracts;LINK_LIBRARIES:platform_process;INTERFACE_LINK_LIBRARIES:editor_contracts;INTERFACE_LINK_LIBRARIES:platform_process"
+    },
+    {
+      "name": "editor_metadata",
+      "TYPE": "SHARED_LIBRARY",
+      "SOURCE_DIR": "E:/SyncForder/CodeRepos/build/p10q-structure-clean-e72e9f7f931c/editor/metadata",
+      "edges": "LINK_LIBRARIES:project_plugin_rendering;LINK_LIBRARIES:ui;LINK_LIBRARIES:editor_editing;LINK_LIBRARIES:project_plugins;LINK_LIBRARIES:meta;LINK_LIBRARIES:system;LINK_LIBRARIES:simulation_composition;LINK_LIBRARIES:schema;LINK_LIBRARIES:scene_system;LINK_LIBRARIES:scene_render;INTERFACE_LINK_LIBRARIES:ui;INTERFACE_LINK_LIBRARIES:editor_editing;INTERFACE_LINK_LIBRARIES:project_plugins;INTERFACE_LINK_LIBRARIES:meta;INTERFACE_LINK_LIBRARIES:system;INTERFACE_LINK_LIBRARIES:simulation_composition;INTERFACE_LINK_LIBRARIES:schema;INTERFACE_LINK_LIBRARIES:scene_system;INTERFACE_LINK_LIBRARIES:scene_render"
+    },
+    {
+      "name": "editor_launcher",
+      "TYPE": "STATIC_LIBRARY",
+      "SOURCE_DIR": "E:/SyncForder/CodeRepos/build/p10q-structure-clean-e72e9f7f931c/editor/launcher",
+      "edges": "LINK_LIBRARIES:editor_ui;LINK_LIBRARIES:editor_storage;LINK_LIBRARIES:editor_launch;LINK_LIBRARIES:scene_asset;INTERFACE_LINK_LIBRARIES:editor_ui;INTERFACE_LINK_LIBRARIES:editor_storage;INTERFACE_LINK_LIBRARIES:editor_launch;INTERFACE_LINK_LIBRARIES:scene_asset"
+    }
+  ],
+  "reason": "History/session identity and metadata shared state retain SHARED. TaskMonitor and launch are new real STATIC providers. Existing tasks_ui and editor_launcher retain actual implementation, not forwarding aliases."
+}

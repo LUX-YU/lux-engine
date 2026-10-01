@@ -1,0 +1,23 @@
+[0/2] Re-checking globbed directories...
+[1/21] Generate Editor-only ImGui Inspector: scene_fields_transform
+Editor Inspector: 2 component implementation(s); no runtime target output
+[2/21] Building CXX object editor\workbench\scene\CMakeFiles\scene_ui.dir\src\CodegenInput.cpp.obj
+[3/21] Building CXX object editor\workbench\scene\CMakeFiles\scene_ui.dir\src\ComponentEditors.cpp.obj
+[4/21] Building CXX object editor\workbench\scene\CMakeFiles\scene_ui.dir\inspector_gen\scene_fields_transform\lux__simulation__ecs__Transform2D_038ea190.inspector.generated.cpp.obj
+[5/21] Building CXX object editor\workbench\scene\CMakeFiles\scene_ui.dir\inspector_gen\scene_fields_transform\lux__simulation__ecs__Transform3D_b831b8b5.inspector.generated.cpp.obj
+[6/21] Linking CXX static library lib\scene_ui.lib
+[7/21] Linking CXX shared library bin\lux_engine_editor_ui.dll
+[8/21] Linking CXX executable bin\editor_scene_views_test.exe
+[9/21] Linking CXX executable bin\editor_ui_presentation.exe
+[10/21] Linking CXX executable bin\editor_scene_fixture.exe
+[11/21] Linking CXX executable bin\editor_scene_configuration.exe
+[12/21] Linking CXX executable bin\lux_launcher.exe
+[13/21] Linking CXX executable bin\lux_editor.exe
+[14/21] Linking CXX executable bin\editor_baseline_failures.exe
+[15/21] Linking CXX executable bin\editor_context_lifecycle.exe
+[16/21] Linking CXX executable bin\editor_material_protocol.exe
+[17/21] Linking CXX executable bin\editor_flow_protocol.exe
+[18/21] Linking CXX shared library bin\consumer_gui.dll
+[19/21] Linking CXX executable bin\editor_review_regressions.exe
+[20/21] Linking CXX executable bin\editor_core_protocol.exe
+[21/21] Linking CXX executable bin\consumer_protocol.exe

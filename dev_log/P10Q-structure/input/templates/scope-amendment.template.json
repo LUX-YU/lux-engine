@@ -1,0 +1,31 @@
+{
+  "status": "SCOPE_TEMPLATE_NOT_TEST_EVIDENCE",
+  "applies_to": "P10Q-structure and subsequent user-approved development scope",
+  "historical_receipts_mutated": false,
+  "decisions": [
+    {
+      "subject": "old 50k chain timing",
+      "retained_warmups": 10,
+      "retained_complete_samples": 66,
+      "original_plan_samples": 100,
+      "complete_remaining_required": false,
+      "claim": "Original partial samples remain partial; algorithm/short correctness evidence may be accepted under amended scope."
+    },
+    {
+      "subject": "Linux",
+      "runtime_status": "NOT_RUN",
+      "required_now": false,
+      "required_now_instead": [
+        "C++20/source portability review",
+        "platform API and linker branch review",
+        "Windows actual qualification"
+      ],
+      "claim": "No Linux support claim without real qualification."
+    },
+    {
+      "subject": "system IME",
+      "status": "NOT_RUN unless actually executed",
+      "claim": "Unicode input/native keyboard is not IME candidate/composition/commit evidence."
+    }
+  ]
+}

@@ -1,0 +1,2743 @@
+{
+  "phase": "P10Q-structure",
+  "migration_stage": "P10Q",
+  "layering_mode": "STRICT",
+  "input_sha": "f7c27f9375cbf8dd8af37b30a6027a460de26213",
+  "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5",
+  "status": "PASS",
+  "stop_after": "P10Q",
+  "continuation_authorized": false,
+  "commands": [
+    {
+      "name": "clone",
+      "argv": [
+        "git",
+        "clone",
+        "--no-hardlinks",
+        "--no-checkout",
+        "E:\\SyncForder\\CodeRepos\\lux-engine-p10q-structure",
+        "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine-p10q-structure",
+      "exit_code": 0,
+      "log": "logs/clone.log",
+      "sha256": "b6297c190c28369dddb61ce907742555c68bd46f6f7fdec279cf22a5f9944d36",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "checkout",
+      "argv": [
+        "git",
+        "checkout",
+        "--detach",
+        "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c",
+      "exit_code": 0,
+      "log": "logs/checkout.log",
+      "sha256": "060a234c5002949298988f8cccd3723318616642dc11726a10f596ed82e2d061",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "tracked-snapshot",
+      "argv": [
+        "cmake",
+        "-DLUX_SOURCE_DIR=E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c",
+        "-P",
+        "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c\\cmake\\ValidateTrackedSnapshot.cmake"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c",
+      "exit_code": 0,
+      "log": "logs/tracked-snapshot.log",
+      "sha256": "68486d95b633393af38c968edc159a435e5e92e8b64b5814713dd6d3d71367d8",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "configure",
+      "argv": [
+        "cmake",
+        "-S",
+        "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c",
+        "-B",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c",
+        "-G",
+        "Ninja",
+        "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+        "-DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/P10Q-structure-e72e9f7f931c",
+        "-DCMAKE_INSTALL_PREFIX=E:/SyncForder/CodeRepos/install/P10Q-structure-e72e9f7f931c",
+        "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        "-DVCPKG_TARGET_TRIPLET=x64-windows",
+        "-DBUILD_TESTING=ON",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+        "-DLuxLua55_DIR=E:/SyncForder/CodeRepos/install/o/v4/lua55/lib/cmake/LuxLua55",
+        "-DPython3_EXECUTABLE=C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+        "-DLUX_EDITOR_MIGRATION_STAGE=P10Q",
+        "-DLUX_EDITOR_LAYERING_MODE=STRICT",
+        "-DLUX_BUILD_COMPONENT_LUA_META=OFF",
+        "-DLUX_BUILD_PHYSICS2D=ON",
+        "-DLUX_BUILD_PACKED_RENDER_CONTENT=ON",
+        "-DLUX_EDITOR_BUILD_NATIVE_TESTS=ON",
+        "-DLUX_EDITOR_BUILD_DESKTOP_TESTS=ON",
+        "-DLUX_EDITOR_BUILD_GPU_TESTS=ON",
+        "-DLUX_EDITOR_BUILD_TOOLCHAIN_TESTS=ON",
+        "-DLUX_EDITOR_BUILD_INSTALLED_TESTS=ON",
+        "-DLUX_BUILD_PROFILE=EDITOR"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c",
+      "exit_code": 0,
+      "log": "logs/configure.log",
+      "sha256": "0cb758a3488e454651d9aa031b4e70cff51a28919d4873004523310e9c273395",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "build",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c",
+      "exit_code": 0,
+      "log": "logs/build.log",
+      "sha256": "93920ae195fa597ded63afda492b2c7c25bb5bcfa468ff271c1f6ce9dce97e6a",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "no-work",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c",
+      "exit_code": 0,
+      "log": "logs/no-work.log",
+      "sha256": "7716162f3cd3b99cf3b8a8dd6decf324e08c7e941aae7e730baba5e4fc8c075b",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "test-names",
+      "argv": [
+        "ctest",
+        "--test-dir",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c",
+        "--show-only=json-v1"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c",
+      "exit_code": 0,
+      "log": "logs/test-names.log",
+      "sha256": "f99dd3984949b570ed6841d4a19793d958c12e1f4518fedb481495fd2973be34",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "ctest",
+      "argv": [
+        "ctest",
+        "--test-dir",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c",
+        "--output-on-failure",
+        "-j",
+        "1"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c",
+      "exit_code": 0,
+      "log": "logs/ctest.log",
+      "sha256": "6458ab24a3b0abb148f719e05192aaa1422f19965bb28d8c387caa3a4534ecdb",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "C01",
+      "argv": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c\\bin\\editor_baseline_failures.exe",
+        "C01",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c",
+        "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\layering\\final\\e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5\\probes"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c\\bin",
+      "exit_code": 1,
+      "log": "logs/C01.log",
+      "sha256": "0dbfe595f0e021e51634fce2ac4ea94333d7b45abfe32ae13d4c70503ce2fa37",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "C03",
+      "argv": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c\\bin\\editor_baseline_failures.exe",
+        "C03",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c",
+        "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\layering\\final\\e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5\\probes"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c\\bin",
+      "exit_code": 1,
+      "log": "logs/C03.log",
+      "sha256": "81b8ef88867808a3afa6c3d8a498aaa0bbe254c88b1722b5afadced874960159",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "C04",
+      "argv": [
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c\\bin\\editor_baseline_failures.exe",
+        "C04",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c",
+        "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\layering\\final\\e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5\\probes"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c\\bin",
+      "exit_code": 1,
+      "log": "logs/C04.log",
+      "sha256": "e86c1b07b3a1db340e031ce7be7c470acc68e192ef35f894aaab33e9bb6f2e66",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "install",
+      "argv": [
+        "cmake",
+        "--install",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c",
+        "--prefix",
+        "E:\\SyncForder\\CodeRepos\\install\\P10Q-structure-e72e9f7f931c"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c",
+      "exit_code": 0,
+      "log": "logs/install.log",
+      "sha256": "75784a10944cf5aa5e93907f89360a25168271b3d041d2352735dfc8cc0527e6",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "imports",
+      "argv": [
+        "dumpbin",
+        "/dependents",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c\\bin\\lux_editor.exe"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c",
+      "exit_code": 0,
+      "log": "logs/imports.log",
+      "sha256": "40c61586f4b9b589d0807c52a162526c32b9e331d11f18fb96158c09261ae093",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "actual-link-commands",
+      "argv": [
+        "ninja",
+        "-C",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c",
+        "-t",
+        "commands"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c",
+      "exit_code": 0,
+      "log": "logs/actual-link-commands.log",
+      "sha256": "8399b0c78edbcd8ab185e85ef17d32add0a0c58b68a9a9c107b1014f726f4f1c",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "cpu-configure",
+      "argv": [
+        "cmake",
+        "-S",
+        "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c",
+        "-B",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-cpu",
+        "-G",
+        "Ninja",
+        "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+        "-DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/P10Q-structure-e72e9f7f931c",
+        "-DCMAKE_INSTALL_PREFIX=E:/SyncForder/CodeRepos/install/P10Q-structure-e72e9f7f931c",
+        "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        "-DVCPKG_TARGET_TRIPLET=x64-windows",
+        "-DBUILD_TESTING=ON",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+        "-DLuxLua55_DIR=E:/SyncForder/CodeRepos/install/o/v4/lua55/lib/cmake/LuxLua55",
+        "-DPython3_EXECUTABLE=C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+        "-DLUX_EDITOR_MIGRATION_STAGE=P10Q",
+        "-DLUX_EDITOR_LAYERING_MODE=STRICT",
+        "-DLUX_BUILD_COMPONENT_LUA_META=OFF",
+        "-DLUX_BUILD_PHYSICS2D=ON",
+        "-DLUX_BUILD_PACKED_RENDER_CONTENT=ON",
+        "-DLUX_EDITOR_BUILD_NATIVE_TESTS=ON",
+        "-DLUX_EDITOR_BUILD_DESKTOP_TESTS=ON",
+        "-DLUX_EDITOR_BUILD_GPU_TESTS=ON",
+        "-DLUX_EDITOR_BUILD_TOOLCHAIN_TESTS=ON",
+        "-DLUX_EDITOR_BUILD_INSTALLED_TESTS=ON",
+        "-DLUX_BUILD_PROFILE=EDITOR",
+        "-DLUX_EDITOR_BUILD_GPU_TESTS=OFF",
+        "-DLUX_EDITOR_BUILD_DESKTOP_TESTS=OFF",
+        "-DLUX_EDITOR_BUILD_TOOLCHAIN_TESTS=OFF",
+        "-DLUX_EDITOR_BUILD_INSTALLED_TESTS=OFF",
+        "-DLUX_EDITOR_BUILD_NATIVE_TESTS=ON"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c",
+      "exit_code": 0,
+      "log": "logs/cpu-configure.log",
+      "sha256": "7947b947f1402a8fb8e5242e4f8e057c8e6b98dd270064f2318c5180dedfa034",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "cpu-build",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-cpu",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c",
+      "exit_code": 0,
+      "log": "logs/cpu-build.log",
+      "sha256": "ed8a3a1deeefb19ce8abd89d6b9512654fd84c246d243974f39b5d03c6d71bf5",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "cpu-no-work",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-cpu",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c",
+      "exit_code": 0,
+      "log": "logs/cpu-no-work.log",
+      "sha256": "7716162f3cd3b99cf3b8a8dd6decf324e08c7e941aae7e730baba5e4fc8c075b",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "cpu-ctest",
+      "argv": [
+        "ctest",
+        "--test-dir",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-cpu",
+        "--output-on-failure",
+        "-j",
+        "1"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c",
+      "exit_code": 0,
+      "log": "logs/cpu-ctest.log",
+      "sha256": "10862e21c1c6bc4f28e91b8d83c9ca5e45a8561cc4b5a74f0e684d9de728d065",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "cpu-test-names",
+      "argv": [
+        "ctest",
+        "--test-dir",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-cpu",
+        "--show-only=json-v1"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c",
+      "exit_code": 0,
+      "log": "logs/cpu-test-names.log",
+      "sha256": "ac91fbb750335a340360d0e5a85cfcc6cb11a2a5662d67e878af0b9260e4362b",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "player-configure",
+      "argv": [
+        "cmake",
+        "-S",
+        "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c",
+        "-B",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-player",
+        "-G",
+        "Ninja",
+        "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+        "-DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/P10Q-structure-e72e9f7f931c",
+        "-DCMAKE_INSTALL_PREFIX=E:/SyncForder/CodeRepos/install/P10Q-structure-e72e9f7f931c",
+        "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        "-DVCPKG_TARGET_TRIPLET=x64-windows",
+        "-DBUILD_TESTING=ON",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+        "-DLuxLua55_DIR=E:/SyncForder/CodeRepos/install/o/v4/lua55/lib/cmake/LuxLua55",
+        "-DPython3_EXECUTABLE=C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+        "-DLUX_EDITOR_MIGRATION_STAGE=P10Q",
+        "-DLUX_EDITOR_LAYERING_MODE=STRICT",
+        "-DLUX_BUILD_COMPONENT_LUA_META=OFF",
+        "-DLUX_BUILD_PHYSICS2D=ON",
+        "-DLUX_BUILD_PACKED_RENDER_CONTENT=ON",
+        "-DLUX_EDITOR_BUILD_NATIVE_TESTS=ON",
+        "-DLUX_EDITOR_BUILD_DESKTOP_TESTS=ON",
+        "-DLUX_EDITOR_BUILD_GPU_TESTS=ON",
+        "-DLUX_EDITOR_BUILD_TOOLCHAIN_TESTS=ON",
+        "-DLUX_EDITOR_BUILD_INSTALLED_TESTS=ON",
+        "-DLUX_BUILD_PROFILE=PLAYER"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c",
+      "exit_code": 0,
+      "log": "logs/player-configure.log",
+      "sha256": "baf703b46a34c0df50536353d31cdffd6fd8843bfa26a58617a190d5447f844c",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "player-build",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-player",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c",
+      "exit_code": 0,
+      "log": "logs/player-build.log",
+      "sha256": "198a97a2280f0964a352d36ff9ec5e33336a6a38f691bb5fe66d6fdca34b4fc2",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "player-no-work",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-player",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c",
+      "exit_code": 0,
+      "log": "logs/player-no-work.log",
+      "sha256": "7716162f3cd3b99cf3b8a8dd6decf324e08c7e941aae7e730baba5e4fc8c075b",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "player-ctest",
+      "argv": [
+        "ctest",
+        "--test-dir",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-player",
+        "--output-on-failure",
+        "-j",
+        "1"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c",
+      "exit_code": 0,
+      "log": "logs/player-ctest.log",
+      "sha256": "c49eeef2c8f72ed84118929b29344f9f743c26fafdbd0933e6e844e010a3fa39",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "player-test-names",
+      "argv": [
+        "ctest",
+        "--test-dir",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-player",
+        "--show-only=json-v1"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c",
+      "exit_code": 0,
+      "log": "logs/player-test-names.log",
+      "sha256": "805b651c1e7910ce523a5fd4c76bbbaf552907b44e16f3ac676509a510328dce",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "player-imports",
+      "argv": [
+        "dumpbin",
+        "/dependents",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-player\\bin\\engine_headless_test.exe"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c",
+      "exit_code": 0,
+      "log": "logs/player-imports.log",
+      "sha256": "37ec024f3716895da0b527af6ec67644407be92387b57093f84479af17bd2ffc",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "sdk-all",
+      "argv": [
+        "C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+        "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\layering\\run_sdk.py",
+        "--source",
+        "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c",
+        "--prefix",
+        "E:\\SyncForder\\CodeRepos\\install\\P10Q-structure-e72e9f7f931c",
+        "--output",
+        "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\layering\\final\\e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5\\sdk",
+        "--build-root",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c",
+      "exit_code": 0,
+      "log": "logs/sdk-all.log",
+      "sha256": "7905d37530795f0ef56d4cd5f0f21fca073f48be4aad18b31ab3394c7174ff11",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "clang-configure",
+      "argv": [
+        "cmake",
+        "-S",
+        "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c\\cmake\\installed-consumers\\quality",
+        "-B",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-clang",
+        "-G",
+        "Ninja",
+        "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+        "-DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/P10Q-structure-e72e9f7f931c",
+        "-DCMAKE_INSTALL_PREFIX=E:/SyncForder/CodeRepos/install/P10Q-structure-e72e9f7f931c",
+        "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        "-DVCPKG_TARGET_TRIPLET=x64-windows",
+        "-DBUILD_TESTING=ON",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+        "-DLuxLua55_DIR=E:/SyncForder/CodeRepos/install/o/v4/lua55/lib/cmake/LuxLua55",
+        "-DPython3_EXECUTABLE=C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+        "-DLUX_EDITOR_MIGRATION_STAGE=P10Q",
+        "-DLUX_EDITOR_LAYERING_MODE=STRICT",
+        "-DLUX_BUILD_COMPONENT_LUA_META=OFF",
+        "-DLUX_BUILD_PHYSICS2D=ON",
+        "-DLUX_BUILD_PACKED_RENDER_CONTENT=ON",
+        "-DLUX_EDITOR_BUILD_NATIVE_TESTS=ON",
+        "-DLUX_EDITOR_BUILD_DESKTOP_TESTS=ON",
+        "-DLUX_EDITOR_BUILD_GPU_TESTS=ON",
+        "-DLUX_EDITOR_BUILD_TOOLCHAIN_TESTS=ON",
+        "-DLUX_EDITOR_BUILD_INSTALLED_TESTS=ON",
+        "-DCMAKE_CXX_COMPILER=D:/Development/Mircosoft/VisualStudio/VC/Tools/Llvm/x64/bin/clang-cl.exe"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c",
+      "exit_code": 0,
+      "log": "logs/clang-configure.log",
+      "sha256": "fba0cece2a35a54e8ddade0b712434c4ad91d808cf9ddb8507d1c399dd4e15ff",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "clang-build",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-clang",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c",
+      "exit_code": 0,
+      "log": "logs/clang-build.log",
+      "sha256": "0a224e80773bf6621e90456342636fa84fb7c264e429a82372d8e951379b20a3",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "clang-no-work",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-clang",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c",
+      "exit_code": 0,
+      "log": "logs/clang-no-work.log",
+      "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "clang-ctest",
+      "argv": [
+        "ctest",
+        "--test-dir",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-clang",
+        "--output-on-failure",
+        "-j",
+        "1"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c",
+      "exit_code": 0,
+      "log": "logs/clang-ctest.log",
+      "sha256": "3d472e8d5ef04cb3f7533a1b860f9fa8ac5e819fb0d5c39606a37d2a163755e3",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "clang-public-headers",
+      "argv": [
+        "C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+        "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\layering\\check_headers.py"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c",
+      "exit_code": 0,
+      "log": "logs/clang-public-headers.log",
+      "sha256": "f2e0b17326f3dd6e192a0c550d8ee39b4abe178fac6d96d02b4cc8b5afc0b395",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "regenerate",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c",
+      "exit_code": 0,
+      "log": "logs/regenerate.log",
+      "sha256": "49f5b4bd261f00e06d99d72762d5152a229ebaecbe899fbbe91413597193cd64",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "regenerate-no-work",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "cwd": "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c",
+      "exit_code": 0,
+      "log": "logs/regenerate-no-work.log",
+      "sha256": "7716162f3cd3b99cf3b8a8dd6decf324e08c7e941aae7e730baba5e4fc8c075b",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "quality-configure",
+      "argv": [
+        "cmake",
+        "-S",
+        "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c\\cmake\\installed-consumers\\quality",
+        "-B",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\quality",
+        "-G",
+        "Ninja",
+        "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+        "-DCMAKE_CXX_STANDARD=20",
+        "-DCMAKE_CXX_EXTENSIONS=OFF",
+        "-DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/P10Q-structure-e72e9f7f931c",
+        "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        "-DVCPKG_TARGET_TRIPLET=x64-windows",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/quality-configure.log",
+      "sha256": "82849731fa65bb42c11ab290aaf1f746d0a48539ceac4c4a6c9f1d3210594d67",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "quality-build",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\quality",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/quality-build.log",
+      "sha256": "688db3f1832ea6d4efc919ada30a57aba465e6f584ec30630eebf8829aea590e",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "quality-no-work",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\quality",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/quality-no-work.log",
+      "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "quality-ctest",
+      "argv": [
+        "ctest",
+        "--test-dir",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\quality",
+        "--output-on-failure",
+        "-j",
+        "1"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/quality-ctest.log",
+      "sha256": "48e623a4bef1e9533d1a7ea1a7df976e1c19c3cad81b81cbc4cb62b7dd0bbd79",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "sessions-configure",
+      "argv": [
+        "cmake",
+        "-S",
+        "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c\\cmake\\installed-consumers\\editor-sessions",
+        "-B",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\sessions",
+        "-G",
+        "Ninja",
+        "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+        "-DCMAKE_CXX_STANDARD=20",
+        "-DCMAKE_CXX_EXTENSIONS=OFF",
+        "-DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/P10Q-structure-e72e9f7f931c",
+        "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        "-DVCPKG_TARGET_TRIPLET=x64-windows",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/sessions-configure.log",
+      "sha256": "1cbbb90fbedf8682333fc601e2b5d0653e891af06323ad1a4afcd79aa1fe87a4",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "sessions-build",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\sessions",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/sessions-build.log",
+      "sha256": "0eb128dfd2c27c9e966bb4c9e577e6e356d7122adac419e04fb4bdc1d4fefa95",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "sessions-no-work",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\sessions",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/sessions-no-work.log",
+      "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "sessions-ctest",
+      "argv": [
+        "ctest",
+        "--test-dir",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\sessions",
+        "--output-on-failure",
+        "-j",
+        "1"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/sessions-ctest.log",
+      "sha256": "72edc343cc3068ffddfcd26cc02ebe8579fb49ba6c9a6cfaff866959c2ec1f00",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "editor-d2-configure",
+      "argv": [
+        "cmake",
+        "-S",
+        "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c\\cmake\\installed-consumers\\editor-d2",
+        "-B",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\editor-d2",
+        "-G",
+        "Ninja",
+        "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+        "-DCMAKE_CXX_STANDARD=20",
+        "-DCMAKE_CXX_EXTENSIONS=OFF",
+        "-DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/P10Q-structure-e72e9f7f931c",
+        "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        "-DVCPKG_TARGET_TRIPLET=x64-windows",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/editor-d2-configure.log",
+      "sha256": "123943a69ec3172cdee44d4c4f56bd45c76974dd2ffbac33108a6de11b3c6dc8",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "editor-d2-build",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\editor-d2",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/editor-d2-build.log",
+      "sha256": "2a259649a26c37c8f4113aec0556248a1d9047ce5368f5ca231ff566c0c4bfbd",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "editor-d2-no-work",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\editor-d2",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/editor-d2-no-work.log",
+      "sha256": "7716162f3cd3b99cf3b8a8dd6decf324e08c7e941aae7e730baba5e4fc8c075b",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "editor-d2-ctest",
+      "argv": [
+        "ctest",
+        "--test-dir",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\editor-d2",
+        "--output-on-failure",
+        "-j",
+        "1"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/editor-d2-ctest.log",
+      "sha256": "580fd7c822b3375cc7ae287a377f66b6a7b32468b3888bff10e805e1b9a50d1c",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "external-feature-configure",
+      "argv": [
+        "cmake",
+        "-S",
+        "E:\\SyncForder\\CodeRepos\\install\\P10Q-structure-e72e9f7f931c\\share\\lux-engine\\examples\\external-feature",
+        "-B",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\external-feature",
+        "-G",
+        "Ninja",
+        "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+        "-DCMAKE_CXX_STANDARD=20",
+        "-DCMAKE_CXX_EXTENSIONS=OFF",
+        "-DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/P10Q-structure-e72e9f7f931c",
+        "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        "-DVCPKG_TARGET_TRIPLET=x64-windows",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+        "-DLUX_PLUGIN_CMAKE_DIR=E:/SyncForder/CodeRepos/install/P10Q-structure-e72e9f7f931c/share/lux-engine/plugins",
+        "-DLUX_SAMPLE_EDITOR=ON"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/external-feature-configure.log",
+      "sha256": "2f6bf33477d288db00893b7b45d27922ae2f95109b98a2fe39ee78c7d588361c",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "external-feature-build",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\external-feature",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/external-feature-build.log",
+      "sha256": "47094ae1cd21d8ed17eb476e2107adbb30f43d6545ce75c0e35ebecfe6d87948",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "external-feature-no-work",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\external-feature",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/external-feature-no-work.log",
+      "sha256": "7716162f3cd3b99cf3b8a8dd6decf324e08c7e941aae7e730baba5e4fc8c075b",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "external-feature-ctest",
+      "argv": [
+        "ctest",
+        "--test-dir",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\external-feature",
+        "--output-on-failure",
+        "-j",
+        "1"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/external-feature-ctest.log",
+      "sha256": "52ca13a67a7f9c6cf5e42b49a7f79344eb338e4c07425e8ed8f4486c59e0e934",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "scene-ui-configure",
+      "argv": [
+        "cmake",
+        "-S",
+        "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c\\cmake\\installed-consumers\\scene-ui",
+        "-B",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\scene-ui",
+        "-G",
+        "Ninja",
+        "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+        "-DCMAKE_CXX_STANDARD=20",
+        "-DCMAKE_CXX_EXTENSIONS=OFF",
+        "-DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/P10Q-structure-e72e9f7f931c",
+        "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        "-DVCPKG_TARGET_TRIPLET=x64-windows",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+        "-DCONSUMER_MODE=CPU_UI"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/scene-ui-configure.log",
+      "sha256": "8324ee62968799fc4c6d5af75b76b8572b3b3bfebe4960127b6e855b9c615fc0",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "scene-ui-build",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\scene-ui",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/scene-ui-build.log",
+      "sha256": "edf6ea66f2c875c41a4cf9e8600d06ed5a24b9adc279b7b39be11e7871d1c45b",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "scene-ui-no-work",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\scene-ui",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/scene-ui-no-work.log",
+      "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "scene-ui-ctest",
+      "argv": [
+        "ctest",
+        "--test-dir",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\scene-ui",
+        "--output-on-failure",
+        "-j",
+        "1"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/scene-ui-ctest.log",
+      "sha256": "0e30bb54d0256708ab739bd1ca16160d300a3dd6e6c824ca71b594e60a72f776",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "views-ui-configure",
+      "argv": [
+        "cmake",
+        "-S",
+        "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c\\cmake\\installed-consumers\\scene-ui",
+        "-B",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\views-ui",
+        "-G",
+        "Ninja",
+        "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+        "-DCMAKE_CXX_STANDARD=20",
+        "-DCMAKE_CXX_EXTENSIONS=OFF",
+        "-DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/P10Q-structure-e72e9f7f931c",
+        "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        "-DVCPKG_TARGET_TRIPLET=x64-windows",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+        "-DCONSUMER_MODE=CPU_UI"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/views-ui-configure.log",
+      "sha256": "60f81861757b662e55529c8488f26d02f62d4cf75ffc8c7ba273e29faa6f4b57",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "views-ui-build",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\views-ui",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/views-ui-build.log",
+      "sha256": "edf6ea66f2c875c41a4cf9e8600d06ed5a24b9adc279b7b39be11e7871d1c45b",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "views-ui-no-work",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\views-ui",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/views-ui-no-work.log",
+      "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "views-ui-ctest",
+      "argv": [
+        "ctest",
+        "--test-dir",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\views-ui",
+        "--output-on-failure",
+        "-j",
+        "1"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/views-ui-ctest.log",
+      "sha256": "c4a839dd047478b8cfcd5ae752eba15dfc1c08d525b94702060d8bac2fe23b7a",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "scene-model-configure",
+      "argv": [
+        "cmake",
+        "-S",
+        "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c\\cmake\\installed-consumers\\scene-model",
+        "-B",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\scene-model",
+        "-G",
+        "Ninja",
+        "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+        "-DCMAKE_CXX_STANDARD=20",
+        "-DCMAKE_CXX_EXTENSIONS=OFF",
+        "-DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/P10Q-structure-e72e9f7f931c",
+        "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        "-DVCPKG_TARGET_TRIPLET=x64-windows",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/scene-model-configure.log",
+      "sha256": "3e225b99ee6ab86f29f458c345c787899c975090637201d7435bfe9eba768122",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "scene-model-build",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\scene-model",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/scene-model-build.log",
+      "sha256": "e23a1e7536176d3d3c660ef54e3ca634bc5c7f6f26f9a89f005d8abec4573180",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "scene-model-no-work",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\scene-model",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/scene-model-no-work.log",
+      "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "scene-model-ctest",
+      "argv": [
+        "ctest",
+        "--test-dir",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\scene-model",
+        "--output-on-failure",
+        "-j",
+        "1"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/scene-model-ctest.log",
+      "sha256": "aecb157cb078753b6792048c2b47ceea884478ce6fb54caf8f359c84acc437f0",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "material-model-configure",
+      "argv": [
+        "cmake",
+        "-S",
+        "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c\\cmake\\installed-consumers\\material-model",
+        "-B",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\material-model",
+        "-G",
+        "Ninja",
+        "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+        "-DCMAKE_CXX_STANDARD=20",
+        "-DCMAKE_CXX_EXTENSIONS=OFF",
+        "-DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/P10Q-structure-e72e9f7f931c",
+        "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        "-DVCPKG_TARGET_TRIPLET=x64-windows",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/material-model-configure.log",
+      "sha256": "a029c9d072c991543febfe50e1ff2a46457140feff3348cae3bee7593cbe9e69",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "material-model-build",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\material-model",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/material-model-build.log",
+      "sha256": "44dcd0f4b7b97b742eadf9b0aa1ee50b55f078b72eb3f189a4e3935177f51f6f",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "material-model-no-work",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\material-model",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/material-model-no-work.log",
+      "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "material-model-ctest",
+      "argv": [
+        "ctest",
+        "--test-dir",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\material-model",
+        "--output-on-failure",
+        "-j",
+        "1"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/material-model-ctest.log",
+      "sha256": "118eaa17e9718979cd0ad34c7748984134042f038229d60ec5ebf9ea1d25d4dc",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "flowforge-model-configure",
+      "argv": [
+        "cmake",
+        "-S",
+        "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c\\cmake\\installed-consumers\\flowforge-model",
+        "-B",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\flowforge-model",
+        "-G",
+        "Ninja",
+        "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+        "-DCMAKE_CXX_STANDARD=20",
+        "-DCMAKE_CXX_EXTENSIONS=OFF",
+        "-DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/P10Q-structure-e72e9f7f931c",
+        "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        "-DVCPKG_TARGET_TRIPLET=x64-windows",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/flowforge-model-configure.log",
+      "sha256": "cb3052b0db9df591e25ad8d5a99365d7285fe7564d9eebf0de860ba3c366046c",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "flowforge-model-build",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\flowforge-model",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/flowforge-model-build.log",
+      "sha256": "6d72ff4cfeb271ae57b4d577eadf76013750be83a6a0687268d89d5ac4932af6",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "flowforge-model-no-work",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\flowforge-model",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/flowforge-model-no-work.log",
+      "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "flowforge-model-ctest",
+      "argv": [
+        "ctest",
+        "--test-dir",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\flowforge-model",
+        "--output-on-failure",
+        "-j",
+        "1"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/flowforge-model-ctest.log",
+      "sha256": "0b25309a7a298830c3399d5ca75a06aa43875e7ddf11f542002289d6d3394deb",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "persistence-configure",
+      "argv": [
+        "cmake",
+        "-S",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\persistence-source",
+        "-B",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\persistence",
+        "-G",
+        "Ninja",
+        "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+        "-DCMAKE_CXX_STANDARD=20",
+        "-DCMAKE_CXX_EXTENSIONS=OFF",
+        "-DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/P10Q-structure-e72e9f7f931c",
+        "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        "-DVCPKG_TARGET_TRIPLET=x64-windows",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/persistence-configure.log",
+      "sha256": "bec9521f0061f2e60e52a160af5976eab40e249186717c511fd1c072a5ad632b",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "persistence-build",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\persistence",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/persistence-build.log",
+      "sha256": "4aa0db63a3eb05992389bf23124b7aa9dbb06435e8c8acb59614915843b46240",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "persistence-no-work",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\persistence",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/persistence-no-work.log",
+      "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "persistence-ctest",
+      "argv": [
+        "ctest",
+        "--test-dir",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\persistence",
+        "--output-on-failure",
+        "-j",
+        "1"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/persistence-ctest.log",
+      "sha256": "56e9cfbc1a12cb321187dec2636b79047c4286564f8dc6798de3d1e692ee7023",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "scene-execution-configure",
+      "argv": [
+        "cmake",
+        "-S",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\scene-execution-source",
+        "-B",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\scene-execution",
+        "-G",
+        "Ninja",
+        "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+        "-DCMAKE_CXX_STANDARD=20",
+        "-DCMAKE_CXX_EXTENSIONS=OFF",
+        "-DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/P10Q-structure-e72e9f7f931c",
+        "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        "-DVCPKG_TARGET_TRIPLET=x64-windows",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/scene-execution-configure.log",
+      "sha256": "e6c8743ecfe01b980f62bd11de4333069e0884d52c1ff92103c3884bb213c1c2",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "scene-execution-build",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\scene-execution",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/scene-execution-build.log",
+      "sha256": "1a593dbebc503d5a3fd8f68de18088bf2946830e788842eb2284fa6152590ba3",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "scene-execution-no-work",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\scene-execution",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/scene-execution-no-work.log",
+      "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "scene-execution-ctest",
+      "argv": [
+        "ctest",
+        "--test-dir",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\scene-execution",
+        "--output-on-failure",
+        "-j",
+        "1"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/scene-execution-ctest.log",
+      "sha256": "2a08b78f169a5be13f9607861e671fea0d797996dad01f486d4586319cc0d949",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "projection-compilation-configure",
+      "argv": [
+        "cmake",
+        "-S",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\projection-compilation-source",
+        "-B",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\projection-compilation",
+        "-G",
+        "Ninja",
+        "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+        "-DCMAKE_CXX_STANDARD=20",
+        "-DCMAKE_CXX_EXTENSIONS=OFF",
+        "-DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/P10Q-structure-e72e9f7f931c",
+        "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        "-DVCPKG_TARGET_TRIPLET=x64-windows",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/projection-compilation-configure.log",
+      "sha256": "7110e8f782be709cbd5eda0da366e8e9e810b4e12b18cd4f0c8cfa552245951c",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "projection-compilation-build",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\projection-compilation",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/projection-compilation-build.log",
+      "sha256": "47f581aa58036e0abb5dbcf0165f76a0e4e11d339b3f2ae2cc0caaf771289c54",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "projection-compilation-no-work",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\projection-compilation",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/projection-compilation-no-work.log",
+      "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "projection-compilation-ctest",
+      "argv": [
+        "ctest",
+        "--test-dir",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\projection-compilation",
+        "--output-on-failure",
+        "-j",
+        "1"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/projection-compilation-ctest.log",
+      "sha256": "ebc5fcee275b4eade445ffa787fe0e9daea1b21278c0b99e11a2964086172bb7",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "interaction-views-configure",
+      "argv": [
+        "cmake",
+        "-S",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\interaction-views-source",
+        "-B",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\interaction-views",
+        "-G",
+        "Ninja",
+        "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+        "-DCMAKE_CXX_STANDARD=20",
+        "-DCMAKE_CXX_EXTENSIONS=OFF",
+        "-DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/P10Q-structure-e72e9f7f931c",
+        "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        "-DVCPKG_TARGET_TRIPLET=x64-windows",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/interaction-views-configure.log",
+      "sha256": "50bfb1b7a3b288b8bc6b0949592ad0f11db87cee26aa3919d9eaa56c9c5ed39d",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "interaction-views-build",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\interaction-views",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/interaction-views-build.log",
+      "sha256": "c4aa42fa3056b6e968788e579a3028155b8f43a0e2842b21ea27bc91a5ad4213",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "interaction-views-no-work",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\interaction-views",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/interaction-views-no-work.log",
+      "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "interaction-views-ctest",
+      "argv": [
+        "ctest",
+        "--test-dir",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\interaction-views",
+        "--output-on-failure",
+        "-j",
+        "1"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/interaction-views-ctest.log",
+      "sha256": "0772168992ab0ecf9e42f04eff874f7f9badcdb761f3bcc9c656e1fe6db9172a",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "workspace-configure",
+      "argv": [
+        "cmake",
+        "-S",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\workspace-source",
+        "-B",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\workspace",
+        "-G",
+        "Ninja",
+        "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+        "-DCMAKE_CXX_STANDARD=20",
+        "-DCMAKE_CXX_EXTENSIONS=OFF",
+        "-DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/P10Q-structure-e72e9f7f931c",
+        "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        "-DVCPKG_TARGET_TRIPLET=x64-windows",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/workspace-configure.log",
+      "sha256": "66c088f3a3104156beb09eef6cefa63b858bfa1475153206c1c7ad0d7abec6fa",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "workspace-build",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\workspace",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/workspace-build.log",
+      "sha256": "0b45267a7460393d67388f9144102b6d7a628c4397b73dbe152ef07e70432d28",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "workspace-no-work",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\workspace",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/workspace-no-work.log",
+      "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "workspace-ctest",
+      "argv": [
+        "ctest",
+        "--test-dir",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\workspace",
+        "--output-on-failure",
+        "-j",
+        "1"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/workspace-ctest.log",
+      "sha256": "64a0a7a2c32559529438433b9633858a5521860612f09db2f0de25c608618126",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "desktop-views-configure",
+      "argv": [
+        "cmake",
+        "-S",
+        "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c\\cmake\\installed-consumers\\desktop-views",
+        "-B",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\desktop-views",
+        "-G",
+        "Ninja",
+        "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+        "-DCMAKE_CXX_STANDARD=20",
+        "-DCMAKE_CXX_EXTENSIONS=OFF",
+        "-DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/P10Q-structure-e72e9f7f931c",
+        "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        "-DVCPKG_TARGET_TRIPLET=x64-windows",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/desktop-views-configure.log",
+      "sha256": "2fe7992762aa4efac02aaa80ccd3bbdb4c4e2fcf7eac30d00e6f55e943381bdb",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "desktop-views-build",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\desktop-views",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/desktop-views-build.log",
+      "sha256": "3b5d9cc0a87883b9a6eedc708cfdfa7b73b170fc1a804e1e3fff0e9d59818078",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "desktop-views-no-work",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\desktop-views",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/desktop-views-no-work.log",
+      "sha256": "7716162f3cd3b99cf3b8a8dd6decf324e08c7e941aae7e730baba5e4fc8c075b",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "desktop-views-ctest",
+      "argv": [
+        "ctest",
+        "--test-dir",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\desktop-views",
+        "--output-on-failure",
+        "-j",
+        "1"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/desktop-views-ctest.log",
+      "sha256": "b35618b5490e53456419c5e5c0af6e178897ffba8bf72a9b618a29633814147b",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "layering-tasks-configure",
+      "argv": [
+        "cmake",
+        "-S",
+        "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c\\cmake\\installed-consumers\\layering",
+        "-B",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\layering-tasks",
+        "-G",
+        "Ninja",
+        "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+        "-DCMAKE_CXX_STANDARD=20",
+        "-DCMAKE_CXX_EXTENSIONS=OFF",
+        "-DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/P10Q-structure-e72e9f7f931c",
+        "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        "-DVCPKG_TARGET_TRIPLET=x64-windows",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+        "-DCONSUMER_MODE=TASKS"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/layering-tasks-configure.log",
+      "sha256": "8513460f6d11ba62cd4dff091caf37559a286b4f12746197284822d98d4156d8",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "layering-tasks-build",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\layering-tasks",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/layering-tasks-build.log",
+      "sha256": "3d8ad280dd00c083a270f448319de13430c284d7c60b09496d64ff496375773c",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "layering-tasks-no-work",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\layering-tasks",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/layering-tasks-no-work.log",
+      "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "layering-tasks-ctest",
+      "argv": [
+        "ctest",
+        "--test-dir",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\layering-tasks",
+        "--output-on-failure",
+        "-j",
+        "1"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/layering-tasks-ctest.log",
+      "sha256": "9070e7b736cad7b524551498e7489118aab31f65a5984637f2b8c45d25f1fb49",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "layering-save_core-configure",
+      "argv": [
+        "cmake",
+        "-S",
+        "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c\\cmake\\installed-consumers\\layering",
+        "-B",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\layering-save_core",
+        "-G",
+        "Ninja",
+        "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+        "-DCMAKE_CXX_STANDARD=20",
+        "-DCMAKE_CXX_EXTENSIONS=OFF",
+        "-DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/P10Q-structure-e72e9f7f931c",
+        "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        "-DVCPKG_TARGET_TRIPLET=x64-windows",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+        "-DCONSUMER_MODE=SAVE_CORE"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/layering-save_core-configure.log",
+      "sha256": "ae7c092d3f31a3b9f802fc51a91334712ec4d108b971776c2065b8ad03e8e921",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "layering-save_core-build",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\layering-save_core",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/layering-save_core-build.log",
+      "sha256": "3d8ad280dd00c083a270f448319de13430c284d7c60b09496d64ff496375773c",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "layering-save_core-no-work",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\layering-save_core",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/layering-save_core-no-work.log",
+      "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "layering-save_core-ctest",
+      "argv": [
+        "ctest",
+        "--test-dir",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\layering-save_core",
+        "--output-on-failure",
+        "-j",
+        "1"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/layering-save_core-ctest.log",
+      "sha256": "bedeb937e3e8998a3c8484eac713d3e698ea21cc3ef560e294fe54d6545cf4bf",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "layering-project-configure",
+      "argv": [
+        "cmake",
+        "-S",
+        "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c\\cmake\\installed-consumers\\layering",
+        "-B",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\layering-project",
+        "-G",
+        "Ninja",
+        "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+        "-DCMAKE_CXX_STANDARD=20",
+        "-DCMAKE_CXX_EXTENSIONS=OFF",
+        "-DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/P10Q-structure-e72e9f7f931c",
+        "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        "-DVCPKG_TARGET_TRIPLET=x64-windows",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+        "-DCONSUMER_MODE=PROJECT"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/layering-project-configure.log",
+      "sha256": "e98c4f040e9de7b5c7c98e919f6c66c25f355f0abb1d89600276054041480681",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "layering-project-build",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\layering-project",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/layering-project-build.log",
+      "sha256": "3d8ad280dd00c083a270f448319de13430c284d7c60b09496d64ff496375773c",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "layering-project-no-work",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\layering-project",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/layering-project-no-work.log",
+      "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "layering-project-ctest",
+      "argv": [
+        "ctest",
+        "--test-dir",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\layering-project",
+        "--output-on-failure",
+        "-j",
+        "1"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/layering-project-ctest.log",
+      "sha256": "f0769c82ca267a0b4c888b0b010898cf0707df56f5865b7f8e599b1c4c5b602a",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "layering-layout-configure",
+      "argv": [
+        "cmake",
+        "-S",
+        "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c\\cmake\\installed-consumers\\layering",
+        "-B",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\layering-layout",
+        "-G",
+        "Ninja",
+        "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+        "-DCMAKE_CXX_STANDARD=20",
+        "-DCMAKE_CXX_EXTENSIONS=OFF",
+        "-DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/P10Q-structure-e72e9f7f931c",
+        "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        "-DVCPKG_TARGET_TRIPLET=x64-windows",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+        "-DCONSUMER_MODE=LAYOUT"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/layering-layout-configure.log",
+      "sha256": "233c17d6860ca7f1fad1920623a2489f9f802be7eadcb7cd4e4c11df2ac00e45",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "layering-layout-build",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\layering-layout",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/layering-layout-build.log",
+      "sha256": "3d8ad280dd00c083a270f448319de13430c284d7c60b09496d64ff496375773c",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "layering-layout-no-work",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\layering-layout",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/layering-layout-no-work.log",
+      "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "layering-layout-ctest",
+      "argv": [
+        "ctest",
+        "--test-dir",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\layering-layout",
+        "--output-on-failure",
+        "-j",
+        "1"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/layering-layout-ctest.log",
+      "sha256": "69e54048e4772fcc4bbf78e2bfbb50fc0180ea55d983c1a297d3e3853a78e756",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "gpu-ui-configure",
+      "argv": [
+        "cmake",
+        "-S",
+        "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c\\cmake\\installed-consumers\\scene-ui",
+        "-B",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\gpu-ui",
+        "-G",
+        "Ninja",
+        "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+        "-DCMAKE_CXX_STANDARD=20",
+        "-DCMAKE_CXX_EXTENSIONS=OFF",
+        "-DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/P10Q-structure-e72e9f7f931c",
+        "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        "-DVCPKG_TARGET_TRIPLET=x64-windows",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+        "-DCONSUMER_MODE=GPU_UI"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/gpu-ui-configure.log",
+      "sha256": "976d40eb287168911456a474c583c947c1cbff0ca63a2df472619ac17481e96b",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "gpu-ui-build",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\gpu-ui",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/gpu-ui-build.log",
+      "sha256": "95e95626631f83d20362ae43d7c8aeab5c6524f6195a73860cace13bb52709f9",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "gpu-ui-no-work",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\gpu-ui",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/gpu-ui-no-work.log",
+      "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "gpu-ui-ctest",
+      "argv": [
+        "ctest",
+        "--test-dir",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\gpu-ui",
+        "--output-on-failure",
+        "-j",
+        "1"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/gpu-ui-ctest.log",
+      "sha256": "0e19855916a0b7115bcc37ad4cc35a023b67bf2b2421fa2727b4b1117e9aeaf9",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "editor-scene-pane-configure",
+      "argv": [
+        "cmake",
+        "-S",
+        "E:\\SyncForder\\CodeRepos\\build\\p10q-structure-clean-e72e9f7f931c\\cmake\\installed-consumers\\scene-ui",
+        "-B",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\editor-scene-pane",
+        "-G",
+        "Ninja",
+        "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+        "-DCMAKE_CXX_STANDARD=20",
+        "-DCMAKE_CXX_EXTENSIONS=OFF",
+        "-DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/P10Q-structure-e72e9f7f931c",
+        "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+        "-DVCPKG_TARGET_TRIPLET=x64-windows",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+        "-DCONSUMER_MODE=EDITOR_SCENE_PANE"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/editor-scene-pane-configure.log",
+      "sha256": "21bf64faab74f56fe83926d4c7bac80fa5960fdeb4ec6119f8024f846f55b52e",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "editor-scene-pane-build",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\editor-scene-pane",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/editor-scene-pane-build.log",
+      "sha256": "19b288e47fb7d1bf33a9f6045eaad5ee9f5f19d8824e3a05368ab68b0b1ab50c",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "editor-scene-pane-no-work",
+      "argv": [
+        "cmake",
+        "--build",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\editor-scene-pane",
+        "--target",
+        "all",
+        "-j",
+        "4",
+        "--",
+        "-k",
+        "0"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/editor-scene-pane-no-work.log",
+      "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    },
+    {
+      "name": "editor-scene-pane-ctest",
+      "argv": [
+        "ctest",
+        "--test-dir",
+        "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p10q-structure-e72e9f7f931c-sdk\\editor-scene-pane",
+        "--output-on-failure",
+        "-j",
+        "1"
+      ],
+      "exit_code": 0,
+      "log": "logs/sdk/editor-scene-pane-ctest.log",
+      "sha256": "ee53a5bda7f5a02c07fa544ab37783d6f961e593d376b7b4948e84f25507ad8c",
+      "implementation_sha": "e72e9f7f931c5825dcd6c2c5a5b40dd66ccf62a5"
+    }
+  ],
+  "consumer_groups": [
+    "sessions",
+    "editor-d2",
+    "external-feature",
+    "scene-ui",
+    "views-ui",
+    "scene-model",
+    "material-model",
+    "flowforge-model",
+    "persistence",
+    "scene-execution",
+    "projection-compilation",
+    "interaction-views",
+    "workspace",
+    "desktop-views",
+    "quality",
+    "layering-tasks",
+    "layering-save_core",
+    "layering-project",
+    "layering-layout",
+    "gpu-ui",
+    "editor-scene-pane"
+  ],
+  "coverage": [
+    {
+      "id": "XL01",
+      "status": "PASS",
+      "observations": "Original ProjectBuilder bytes/hash unchanged; tracked body identical at new path, user patch separately mapped; main and history snapshots unchanged.",
+      "tests": [
+        "platform.process_arguments"
+      ],
+      "evidence": [
+        "baseline.json",
+        "protected/ProjectBuilder-relocated.patch",
+        "files.json"
+      ]
+    },
+    {
+      "id": "XL02",
+      "status": "PASS",
+      "observations": "Scene/Material/Flow share sole SessionStore/History; generation reuse/currentContent gates and code destruction preserved.",
+      "tests": [
+        "editor.sessions",
+        "editor.sessions_close_throw",
+        "editor.sessions_close_contract",
+        "editor.sessions_scope_compile",
+        "editor.three_actual_sessions"
+      ],
+      "evidence": [
+        "logs/ctest-details.log",
+        "behavior-map.json"
+      ]
+    },
+    {
+      "id": "XL03",
+      "status": "PASS",
+      "observations": "Three original standalone model SDK consumers edit/freeze/undo/redo using pure closure; installed link manifests recorded.",
+      "tests": [
+        "editor.scene_model.content",
+        "editor.material_model.content",
+        "editor.flowforge_model.content"
+      ],
+      "evidence": [
+        "logs/ctest-details.log",
+        "behavior-map.json",
+        "evidence/install_manifest.txt",
+        "evidence/public-headers/commands.json"
+      ]
+    },
+    {
+      "id": "XL04",
+      "status": "PASS",
+      "observations": "Original atomic mixed remove/recreate, field, node, signature and wiring tests unchanged.",
+      "tests": [
+        "editor.scene_model.atomic",
+        "editor.scene_model.mixed-1",
+        "editor.scene_model.mixed-2",
+        "editor.scene_model.mixed-3",
+        "editor.scene_model.mixed-4",
+        "editor.material_model.mixed-replace",
+        "editor.material_model.mixed-recreate",
+        "editor.flowforge_model.mixed-signature",
+        "editor.flowforge_model.mixed-recreate"
+      ],
+      "evidence": [
+        "logs/ctest-details.log",
+        "behavior-map.json"
+      ]
+    },
+    {
+      "id": "XL05",
+      "status": "PASS",
+      "observations": "Flow ID high water/sentinel; reload cleanup and READ gate callbacks retain original assertions.",
+      "tests": [
+        "editor.scene_model.read-5",
+        "editor.scene_model.read-6",
+        "editor.scene_model.read-7",
+        "editor.scene_model.read-8",
+        "editor.material_model.reading",
+        "editor.material_model.reload-unbound",
+        "editor.material_model.reload-unbound-lease",
+        "editor.material_model.reload-closing-lease",
+        "editor.material_model.reload-reading-lease",
+        "editor.material_model.reload-outcomes",
+        "editor.flowforge_model.reload-unbound",
+        "editor.flowforge_model.reload-unbound-external",
+        "editor.flowforge_model.reload-reading",
+        "editor.flowforge_model.reload-closing",
+        "editor.flowforge_model.reload-identity",
+        "editor.flowforge_model.reload-success",
+        "editor.flowforge_model.input-stale",
+        "editor.flowforge_model.input-reading",
+        "editor.flowforge_model.input-closing",
+        "editor.flowforge_model.ids-undo-branch",
+        "editor.flowforge_model.ids-candidate-seed",
+        "editor.flowforge_model.ids-signature",
+        "editor.flowforge_model.ids-restore",
+        "editor.flowforge_model.ids-failure",
+        "editor.flowforge_model.ids-exhaustion"
+      ],
+      "evidence": [
+        "logs/ctest-details.log",
+        "behavior-map.json"
+      ]
+    },
+    {
+      "id": "XL06",
+      "status": "PASS",
+      "observations": "Pure ProjectBuilder and Layout installed consumers exercise valid/invalid values with no Process; ProjectCatalog shared snapshots regressions retained.",
+      "tests": [
+        "editor.project_creation",
+        "editor.project_views",
+        "editor.workspace.validation",
+        "editor.workspace.opaque",
+        "editor.workspace.effects"
+      ],
+      "evidence": [
+        "logs/ctest-details.log",
+        "behavior-map.json",
+        "evidence/install_manifest.txt",
+        "evidence/public-headers/commands.json"
+      ]
+    },
+    {
+      "id": "XL07",
+      "status": "PASS",
+      "observations": "Minimal SAVE_CORE consumer imports only persistence and pure contracts; typed model save roles remain separate activities.",
+      "tests": [
+        "editor.persistence.models",
+        "editor.persistence.execution",
+        "editor.persistence.decoded"
+      ],
+      "evidence": [
+        "logs/ctest-details.log",
+        "behavior-map.json",
+        "evidence/install_manifest.txt",
+        "evidence/public-headers/commands.json"
+      ]
+    },
+    {
+      "id": "XL08",
+      "status": "PASS",
+      "observations": "Original concurrent save, SaveAs identity/history, ExportCopy and late stale adoption checks unchanged.",
+      "tests": [
+        "editor.persistence.save-as",
+        "editor.persistence.close",
+        "editor.persistence.close-key",
+        "editor.persistence.receipts",
+        "editor.persistence.identities"
+      ],
+      "evidence": [
+        "logs/ctest-details.log",
+        "behavior-map.json"
+      ]
+    },
+    {
+      "id": "XL09",
+      "status": "PASS",
+      "observations": "Original role self-revocation/recursive ack/accept-time completion collection tests run through real sources/TaskScope.",
+      "tests": [
+        "editor.persistence.r2-accept-success",
+        "editor.persistence.r2-accept-error",
+        "editor.persistence.r2-accept-cancel",
+        "editor.persistence.r2-accept-drain",
+        "editor.persistence.r2-admission",
+        "editor.persistence.r1-revoke",
+        "editor.persistence.r1-recursive",
+        "editor.persistence.r1-chain",
+        "editor.persistence.r1-chain-control",
+        "editor.persistence.r1-callbacks",
+        "editor.persistence.r1-reading",
+        "editor.persistence.r1-conflicts"
+      ],
+      "evidence": [
+        "logs/ctest-details.log",
+        "behavior-map.json"
+      ]
+    },
+    {
+      "id": "XL10",
+      "status": "PASS",
+      "observations": "Write FIFO, Unknown, version succession and SharedBytes owner/limit regressions pass; no byte transport redesign.",
+      "tests": [
+        "editor.persistence.write_coordinator",
+        "editor.persistence.real_files",
+        "editor.persistence.unknown",
+        "editor.persistence.order",
+        "editor.persistence.capacity",
+        "editor.persistence.conflict",
+        "editor.persistence.measure"
+      ],
+      "evidence": [
+        "logs/ctest-details.log",
+        "behavior-map.json"
+      ]
+    },
+    {
+      "id": "XL11",
+      "status": "PASS",
+      "observations": "Run tests drive actual SceneRuntime and inspect completed/cancelled/failed step results after heavy instance reclaim.",
+      "tests": [
+        "editor.scene_execution.isolation",
+        "editor.scene_execution.controls",
+        "editor.scene_execution.failure",
+        "editor.scene_execution.completion",
+        "editor.scene_execution.r1-queued",
+        "editor.scene_execution.r1-mixed",
+        "editor.scene_execution.r1-failed",
+        "editor.scene_execution.r1-callback",
+        "editor.scene_execution.r1-capacity"
+      ],
+      "evidence": [
+        "logs/ctest-details.log",
+        "behavior-map.json"
+      ]
+    },
+    {
+      "id": "XL12",
+      "status": "PASS",
+      "observations": "Material real compilation; Flow fixed product retry; operation eight negative compiles, pointer transfer and outcome ownership retained.",
+      "tests": [
+        "editor.compilation.actual_publish",
+        "editor.compilation.ownership_material",
+        "editor.compilation.ownership_flow"
+      ],
+      "evidence": [
+        "logs/ctest-details.log",
+        "behavior-map.json"
+      ]
+    },
+    {
+      "id": "XL13",
+      "status": "PASS",
+      "observations": "CPU TaskMonitor actual ExecutionRuntime installed consumer; multiple subscribers, FULL/CLOSED/resync and disconnected subscriber without cancellation. Existing TaskView multi-consumer test preserved.",
+      "tests": [
+        "editor.tasks.monitor_cpu",
+        "editor.tasks.monitor"
+      ],
+      "evidence": [
+        "logs/ctest-details.log",
+        "behavior-map.json",
+        "evidence/install_manifest.txt",
+        "evidence/public-headers/commands.json"
+      ]
+    },
+    {
+      "id": "XL14",
+      "status": "PASS",
+      "observations": "Real file Workspace selected-only recovery/import and shared coordinator write/remove/marker tests preserved.",
+      "tests": [
+        "editor.workspace.validation",
+        "editor.workspace.opaque",
+        "editor.workspace.rename",
+        "editor.workspace.remove",
+        "editor.workspace.ordering",
+        "editor.workspace.unknown",
+        "editor.workspace.aliases",
+        "editor.workspace.reads",
+        "editor.workspace.catalog",
+        "editor.workspace.migration",
+        "editor.workspace.collision",
+        "editor.workspace.budgets",
+        "editor.workspace.r1-alpha",
+        "editor.workspace.r1-beta",
+        "editor.workspace.r1-extras",
+        "editor.workspace.r1-selection",
+        "editor.workspace.r1-resume",
+        "editor.workspace.r1-control",
+        "editor.workspace.effects"
+      ],
+      "evidence": [
+        "logs/ctest-details.log",
+        "behavior-map.json"
+      ]
+    },
+    {
+      "id": "XL15",
+      "status": "PASS",
+      "observations": "Viewport shared by Scene/Material; widget node IDs churn and renderer view-local highlight regressions pass.",
+      "tests": [
+        "editor.projection.highlight_backend",
+        "editor.canvas.churn",
+        "render.features.view_binding"
+      ],
+      "evidence": [
+        "logs/ctest-details.log",
+        "behavior-map.json"
+      ]
+    },
+    {
+      "id": "XL16",
+      "status": "PASS",
+      "observations": "Three CPU interaction tests and real Store cleanup BUSY/selection-only regressions preserved.",
+      "tests": [
+        "editor.scene_interaction",
+        "editor.interaction_run_identity",
+        "editor.material_interaction",
+        "editor.flowforge_interaction",
+        "editor.interaction_reclaim.scene.sync",
+        "editor.interaction_reclaim.scene.cancel",
+        "editor.interaction_reclaim.scene.selection",
+        "editor.interaction_reclaim.scene.stale",
+        "editor.interaction_reclaim.scene.gate",
+        "editor.interaction_reclaim.scene.thread",
+        "editor.interaction_reclaim.scene.reload",
+        "editor.interaction_reclaim.material.sync",
+        "editor.interaction_reclaim.material.cancel",
+        "editor.interaction_reclaim.material.selection",
+        "editor.interaction_reclaim.material.stale",
+        "editor.interaction_reclaim.material.gate",
+        "editor.interaction_reclaim.material.thread",
+        "editor.interaction_reclaim.material.reload",
+        "editor.interaction_reclaim.flow.sync",
+        "editor.interaction_reclaim.flow.cancel",
+        "editor.interaction_reclaim.flow.selection",
+        "editor.interaction_reclaim.flow.stale",
+        "editor.interaction_reclaim.flow.gate",
+        "editor.interaction_reclaim.flow.thread",
+        "editor.interaction_reclaim.flow.reload"
+      ],
+      "evidence": [
+        "logs/ctest-details.log",
+        "behavior-map.json"
+      ]
+    },
+    {
+      "id": "XL17",
+      "status": "PASS",
+      "observations": "Ten original real Flow draft/Material+Flow queued-source scenarios use formal UI cache and signals, not hand-injected expected stamps.",
+      "tests": [
+        "editor.draft_source_literal",
+        "editor.draft_source_signature",
+        "editor.draft_source_flow-canvas",
+        "editor.draft_source_material-canvas",
+        "editor.draft_source_flow-queue",
+        "editor.draft_source_material-queue",
+        "editor.draft_source_material-lifetime",
+        "editor.draft_source_lifecycle",
+        "editor.draft_source_positive",
+        "editor.draft_source_history"
+      ],
+      "evidence": [
+        "logs/ctest-details.log",
+        "behavior-map.json"
+      ]
+    },
+    {
+      "id": "XL18",
+      "status": "PASS",
+      "observations": "Real detached Root/Pane mount/unmount, code lifetime, callback next batch and permanent close refusal tests unchanged.",
+      "tests": [
+        "ui.root",
+        "editor.detached_views",
+        "editor.view_host"
+      ],
+      "evidence": [
+        "logs/ctest-details.log",
+        "behavior-map.json"
+      ]
+    },
+    {
+      "id": "XL19",
+      "status": "PASS",
+      "observations": "Formal SceneView actual dual viewport GPU and Windows native input; old two explicit installed GPU modes separately exercised; system IME NOT_RUN.",
+      "tests": [
+        "editor.scene_views_gpu",
+        "editor.desktop_native_input"
+      ],
+      "evidence": [
+        "logs/ctest-details.log",
+        "behavior-map.json",
+        "logs/sdk/gpu-ui-ctest-details.log",
+        "logs/sdk/editor-scene-pane-ctest-details.log"
+      ]
+    },
+    {
+      "id": "XL20",
+      "status": "PASS",
+      "observations": "Two actual tool instantiations and four constrained compilation negatives; no added public template API.",
+      "tests": [
+        "editor.layering.delivery_constraints"
+      ],
+      "evidence": [
+        "logs/ctest-details.log",
+        "behavior-map.json",
+        "evidence/layering-negatives/results.json",
+        "evidence/compiler/results.json"
+      ]
+    },
+    {
+      "id": "XL21",
+      "status": "PASS",
+      "observations": "Existing dynamic roles/factories and shared identity DSOs retained; runtime ownership regressions unchanged.",
+      "tests": [
+        "editor.view_host",
+        "editor.compilation.ownership_material",
+        "editor.compilation.ownership_flow",
+        "editor.three_actual_sessions",
+        "editor.persistence.r1-revoke",
+        "editor.persistence.r1-recursive",
+        "editor.persistence.r1-chain",
+        "editor.persistence.r1-chain-control",
+        "editor.persistence.r1-callbacks",
+        "editor.persistence.r1-reading",
+        "editor.persistence.r1-conflicts"
+      ],
+      "evidence": [
+        "logs/ctest-details.log",
+        "behavior-map.json"
+      ]
+    },
+    {
+      "id": "XL22",
+      "status": "PASS",
+      "observations": "Fresh dependency-only SDK; standalone changed public headers parsed under clang-cl C++20; designated generation outputs removed/rebuilt; second build no work.",
+      "tests": [
+        "editor.inspector_codegen",
+        "editor.component_elements",
+        "editor.layering.compiler_providers"
+      ],
+      "evidence": [
+        "logs/ctest-details.log",
+        "behavior-map.json",
+        "evidence/install_manifest.txt",
+        "evidence/public-headers/commands.json"
+      ]
+    },
+    {
+      "id": "XL23",
+      "status": "PASS",
+      "observations": "Actual CMake/provider/compiler dependencies plus N01-N14 positive/reject/repair fixtures; unknown and transitive/LINK_ONLY/generated/template cases rejected.",
+      "tests": [
+        "editor.architecture_current",
+        "editor.layering.boundaries",
+        "editor.layering.compiler_providers"
+      ],
+      "evidence": [
+        "logs/ctest-details.log",
+        "behavior-map.json",
+        "evidence/layering-negatives/results.json",
+        "evidence/compiler/results.json"
+      ]
+    },
+    {
+      "id": "XL24",
+      "status": "PASS",
+      "observations": "518-file plan reconciled with Git blobs and current target/header providers; replaced physical paths absent, split legacy AssetSource/AssetSave remains registered until P12.",
+      "tests": [
+        "editor.architecture_current"
+      ],
+      "evidence": [
+        "logs/ctest-details.log",
+        "behavior-map.json",
+        "file-plan.json",
+        "retained-product.json"
+      ]
+    }
+  ],
+  "known_failures": {
+    "C01": {
+      "status": "FAIL",
+      "owner": "P12 full Workspace product application (P09 pure plans separate)"
+    },
+    "C03": {
+      "status": "FAIL",
+      "owner": "P11 dynamic contributions/code lifetime"
+    },
+    "C04": {
+      "status": "FAIL",
+      "owner": "P12 product teardown completion"
+    }
+  }
+}

@@ -1,0 +1,25 @@
+-- Configuring incomplete, errors occurred!
+CMake Error at E:/SyncForder/CodeRepos/build/p10q-structure-clean-e72e9f7f931c/cmake/EditorArchitectureChecks.cmake:167 (message):
+  Editor migration boundary check failed:
+
+  {"status": "FAIL", "findings": [{"rule":
+  "EDITOR_PERSISTENCE_FORBIDDEN_DEPENDENCY", "path": "editor_persistence",
+  "detail": "editor_persistence -> scene_persistence (LINK_LIBRARIES)"},
+  {"rule": "EDITOR_PERSISTENCE_DIRECT_DEPENDENCY", "path":
+  "editor_persistence", "detail": "editor_persistence -> scene_persistence
+  (LINK_LIBRARIES)"}, {"rule": "EDITOR_PERSISTENCE_FORBIDDEN_DEPENDENCY",
+  "path": "editor_persistence", "detail": "editor_persistence ->
+  scene_persistence (INTERFACE_LINK_LIBRARIES)"}, {"rule":
+  "EDITOR_PERSISTENCE_DIRECT_DEPENDENCY", "path": "editor_persistence",
+  "detail": "editor_persistence -> scene_persistence
+  (INTERFACE_LINK_LIBRARIES)"}, {"rule":
+  "persistence_policy_concrete_source", "path": "editor_persistence",
+  "detail": "editor_persistence -> scene_persistence (LINK_LIBRARIES)"},
+  {"rule": "persistence_policy_concrete_source", "path":
+  "editor_persistence", "detail": "editor_persistence -> scene_persistence
+  (INTERFACE_LINK_LIBRARIES)"}]}
+
+Call Stack (most recent call first):
+  CMakeLists.txt:11 (lux_editor_check_architecture)
+
+

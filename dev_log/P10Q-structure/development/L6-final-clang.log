@@ -1,0 +1,5 @@
+clang-configure 0
+clang-build 0
+clang-no-work 0
+clang-ctest 0
+clang-public-headers 0

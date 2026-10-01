@@ -1,0 +1,103 @@
+tracked-snapshot verified same-commit evidence
+configure 0
+build 1
+2d_frag_embed.hpp
+[574/1384] [embed_builtin_shaders] grid/grid.frag -> grid_grid_frag_embed.hpp
+[575/1384] [embed_builtin_shaders] grid/grid.vert -> grid_grid_vert_embed.hpp
+[576/1384] [embed_builtin_shaders] highlight/highlight_blur.frag -> highlight_highlight_blur_frag_embed.hpp
+[577/1384] [embed_builtin_shaders] highlight/highlight_composite.frag -> highlight_highlight_composite_frag_embed.hpp
+[578/1384] [embed_builtin_shaders] highlight/highlight_mask.frag -> highlight_highlight_mask_frag_embed.hpp
+[579/1384] [embed_builtin_shaders] highlight/highlight_mask.vert -> highlight_highlight_mask_vert_embed.hpp
+[580/1384] [embed_builtin_shaders] highlight/highlight_mask.vert.paged -> highlight_highlight_mask_vert_paged_embed.hpp
+[581/1384] [embed_builtin_shaders] hzb/downsample.comp -> hzb_downsample_comp_embed.hpp
+[582/1384] [embed_builtin_shaders] point_cloud/pointcloud_culling.comp -> point_cloud_pointcloud_culling_comp_embed.hpp
+[583/1384] [embed_builtin_shaders] point_cloud/pointcloud_lod.vert -> point_cloud_pointcloud_lod_vert_embed.hpp
+[584/1384] [embed_builtin_shaders] point_cloud/pointcloud_simple.frag -> point_cloud_pointcloud_simple_frag_embed.hpp
+[585/1384] [embed_builtin_shaders] point_cloud/pointcloud_simple.vert -> point_cloud_pointcloud_simple_vert_embed.hpp
+[586/1384] [embed_builtin_shaders] point_cloud/pointcloud_splat.frag -> point_cloud_pointcloud_splat_frag_embed.hpp
+[587/1384] [embed_builtin_shaders] postprocess/fog.frag -> postprocess_fog_frag_embed.hpp
+[588/1384] [embed_builtin_shaders] postprocess/linear_depth.frag -> postprocess_linear_depth_frag_embed.hpp
+[589/1384] [embed_builtin_shaders] postprocess/ssao.frag -> postprocess_ssao_frag_embed.hpp
+[590/1384] [embed_builtin_shaders] postprocess/tonemap.frag -> postprocess_tonemap_frag_embed.hpp
+[591/1384] [embed_builtin_shaders] postprocess/tonemap.vert -> postprocess_tonemap_vert_embed.hpp
+[592/1384] [embed_builtin_shaders] render_cluster/candidate_expand.comp -> render_cluster_candidate_expand_comp_embed.hpp
+[593/1384] [embed_builtin_shaders] render_cluster/cluster_cull.comp -> render_cluster_cluster_cull_comp_embed.hpp
+[594/1384] [embed_builtin_shaders] render_cluster/pick.frag -> render_cluster_pick_frag_embed.hpp
+[595/1384] [embed_builtin_shaders] render_cluster/pick.vert -> render_cluster_pick_vert_embed.hpp
+[596/1384] [embed_builtin_shaders] shadow/mesh_shadow_vp.vert -> shadow_mesh_shadow_vp_vert_embed.hpp
+[597/1384] [embed_builtin_shaders] shadow/mesh_shadow_vp.vert.paged -> shadow_mesh_shadow_vp_vert_paged_embed.hpp
+[598/1384] [embed_builtin_shaders] shadow/shadow_depth.frag -> shadow_shadow_depth_frag_embed.hpp
+[599/1384] [embed_builtin_shaders] shadow/shadow_depth_vp.vert -> shadow_shadow_depth_vp_vert_embed.hpp
+[600/1384] [embed_builtin_shaders] shadow/shadow_depth_vp.vert.paged -> shadow_shadow_depth_vp_vert_paged_embed.hpp
+[601/1384] [embed_builtin_shaders] shadow/shadow_evsm_blur_h.comp -> shadow_shadow_evsm_blur_h_comp_embed.hpp
+[602/1384] [embed_builtin_shaders] shadow/shadow_evsm_blur_v.comp -> shadow_shadow_evsm_blur_v_comp_embed.hpp
+[603/1384] [embed_builtin_shaders] shadow/shadow_evsm_caster.frag -> shadow_shadow_evsm_caster_frag_embed.hpp
+[604/1384] [embed_builtin_shaders] skinning/skin_compute.comp -> skinning_skin_compute_comp_embed.hpp
+[605/1384] [embed_builtin_shaders] skybox/skybox_cubemap.frag -> skybox_skybox_cubemap_frag_embed.hpp
+[606/1384] [embed_builtin_shaders] skybox/skybox_equirect.frag -> skybox_skybox_equirect_frag_embed.hpp
+[607/1384] [embed_builtin_shaders] skybox/skybox.vert -> skybox_skybox_vert_embed.hpp
+[608/1384] [embed_builtin_shaders] streaming_feedback/streaming_composite.frag -> streaming_feedback_streaming_composite_frag_embed.hpp
+[609/1384] [embed_builtin_shaders] streaming_feedback/streaming_mask.frag -> streaming_feedback_streaming_mask_frag_embed.hpp
+[610/1384] [embed_builtin_shaders] terrain/patch.frag -> terrain_patch_frag_embed.hpp
+[611/1384] [embed_builtin_shaders] terrain/patch_select.comp -> terrain_patch_select_comp_embed.hpp
+[612/1384] [embed_builtin_shaders] terrain/patch.vert -> terrain_patch_vert_embed.hpp
+[613/1384] [embed_builtin_shaders] trajectory/trajectory_line.frag -> trajectory_trajectory_line_frag_embed.hpp
+[614/1384] [embed_builtin_shaders] trajectory/trajectory_line.vert -> trajectory_trajectory_line_vert_embed.hpp
+[615/1384] [embed_builtin_shaders] water/water.frag -> water_water_frag_embed.hpp
+[616/1384] Building CXX object modules\function\render\runtime\CMakeFiles\render_runtime.dir\src\RenderRuntime.cpp.obj
+[617/1384] Generating ../../../../assets/textures/hazy_nebulae_1.luxasset
+packed texture bytes=44740096 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p10q-structure-fb3e2760244c/assets/textures/hazy_nebulae_1.luxasset
+[618/1384] Generating ../../../../assets/textures/ringed_gas_giant_planet.luxasset
+packed texture bytes=44740096 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p10q-structure-fb3e2760244c/assets/textures/ringed_gas_giant_planet.luxasset
+
+[619/1384] Generating ../../../../assets/textures/plain_starfield_1.luxasset
+packed texture bytes=44740096 target=E:/SyncForder/CodeRepos/build/RelWithDebInfo/p10q-structure-fb3e2760244c/assets/textures/plain_starfield_1.luxasset
+
+[620/1384] Building CXX object modules\function\script\lua\CMakeFiles\script_lua.dir\src\Lua.cpp.obj
+[621/1384] Building CXX object modules\function\script\lua\CMakeFiles\script_lua.dir\src\LuaVm.cpp.obj
+[622/1384] Building C object modules\function\script\lua\CMakeFiles\script_lua.dir\src\LuaBoundary.c.obj
+[623/1384] Building CXX object modules\function\render\runtime\CMakeFiles\render_runtime.dir\src\RendererThread.cpp.obj
+[624/1384] Building CXX object modules\function\script\lua\CMakeFiles\script_lua.dir\src\LuaValue.cpp.obj
+[625/1384] Building CXX object modules\function\render\runtime\CMakeFiles\render_runtime_resource_test.dir\test\resources.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[626/1384] Building CXX object modules\function\script\artifact\CMakeFiles\script_artifact.dir\src\ScriptArtifact.cpp.obj
+[627/1384] Linking CXX shared library bin\lux_engine_function_script_lua.dll
+[628/1384] Linking CXX shared library bin\render_runtime.dll
+[629/1384] Building CXX object modules\function\script\native\CMakeFiles\script_native.dir\src\NativeModule.cpp.obj
+[630/1384] Linking CXX shared library bin\lux_engine_function_script_artifact.dll
+[631/1384] Building CXX object modules\function\ui\CMakeFiles\ui_imgui_backend.dir\src\DragDrop.cpp.obj
+[632/1384] Building CXX object modules\function\ui\CMakeFiles\ui_imgui_backend.dir\src\DrawData.cpp.obj
+[633/1384] Building CXX object modules\function\ui\CMakeFiles\ui_imgui_backend.dir\src\Table.cpp.obj
+[634/1384] Building CXX object modules\function\ui\CMakeFiles\ui_imgui_backend.dir\src\Layout.cpp.obj
+[635/1384] Linking CXX shared library bin\lux_engine_function_script_native.dll
+[636/1384] Linking CXX executable bin\render_runtime_resource_test.exe
+[637/1384] Building CXX object modules\function\ui\CMakeFiles\ui_imgui_backend.dir\src\ImageElement.cpp.obj
+[638/1384] Building CXX object modules\function\ui\CMakeFiles\ui_imgui_backend.dir\src\Controls.cpp.obj
+[639/1384] Building CXX object modules\function\ui\CMakeFiles\ui.dir\src\Pane.cpp.obj
+[640/1384] Building CXX object modules\function\ui\CMakeFiles\ui.dir\src\Theme.cpp.obj
+[641/1384] Building CXX object modules\function\ui\CMakeFiles\ui_imgui_backend.dir\src\Root.cpp.obj
+[642/1384] Building CXX object modules\function\ui\CMakeFiles\ui.dir\src\Element.cpp.obj
+[643/1384] [lux_target_add_codegen] ui_render_ops_UiRenderOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+
+[644/1384] Building CXX object engine\domain\spatial\spatial3d\CMakeFiles\spatial3d_index.dir\src\Spatial3DPartitionIndex.cpp.obj
+[645/1384] Building CXX object modules\function\ui\CMakeFiles\ui_root_test.dir\test\root.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[646/1384] Linking CXX shared library bin\ui.dll
+[647/1384] Building CXX object modules\function\ui\rendering\CMakeFiles\ui_rendering.dir\src\VulkanBackend.cpp.obj
+[648/1384] Building CXX object modules\function\ui\rendering\CMakeFiles\ui_rendering.dir\src\RenderClient.cpp.obj
+[649/1384] Building CXX object modules\function\ui\rendering\CMakeFiles\ui_rendering.dir\comm_gen\lux\engine\ui\rendering\genops\UiRenderOperation.metadata.cpp.obj
+[650/1384] Building CXX object modules\function\ui\rendering\CMakeFiles\ui_rendering.dir\comm_gen\lux\engine\ui\rendering\genops\UiRenderOperation.client.ops.cpp.obj
+[651/1384] Linking CXX executable bin\ui_root_test.exe
+[652/1384] Building CXX object modules\function\ui\rendering\CMakeFiles\ui_rendering.dir\src\RenderFeature.cpp.obj
+[653/1384] Building CXX object engine\domain\spatial\spatial2d\CMakeFiles\spatial2d_index.dir\src\Spatial2DPartitionIndex.cpp.obj
+[654/1384] Linking CXX shared library bin\lux_engine_spatial3d_index.dll
+[655/1384] Building CXX object engine\domain\world\partition\CMakeFiles\world_partition.dir\src\WorldPartitionFailureInjection.cpp.obj
+[656/1384] Building CXX object engine\domain\world\description\CMakeFiles\world_description.dir\src\WorldDataSchemaId.cpp.obj
+[657/1384] Building CXX object engine\domain\world\partition\CMakeFiles\world_partition.dir\src\WorldPartition.cpp.obj
+[658/1384] Linking CXX shared library bin\lux_engine_spatial2d_index.dll
+[659/1384] Building CXX object modules\function\ui\rendering\CMakeFiles\ui_rendering.dir\comm_gen\lux\engine\ui\rendering\genops\UiRenderOperation.ops.cpp.obj
+[660/1384] Building CXX object engine\domain\world\description\CMakeFiles\world_description.dir\src\WorldDescription.cpp.obj
+[661/1384] Building CXX object engine\domain\world\description\CMakeFiles\world_description.dir\src\WorldDescriptionFailureInjection.cpp.obj
+[662/1384] Linking CXX shared library bin\lux_engine_world_partition.dll
+[663/1384] Building CXX obj

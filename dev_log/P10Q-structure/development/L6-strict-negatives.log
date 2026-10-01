@@ -1,0 +1,19 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p10q-structure-dev
+    Start 128: editor.architecture_current
+1/4 Test #128: editor.architecture_current ............   Passed    7.17 sec
+    Start 142: editor.layering.delivery_constraints
+2/4 Test #142: editor.layering.delivery_constraints ...   Passed    1.52 sec
+    Start 143: editor.layering.boundaries
+3/4 Test #143: editor.layering.boundaries .............   Passed   39.26 sec
+    Start 144: editor.layering.compiler_providers
+4/4 Test #144: editor.layering.compiler_providers .....   Passed   22.37 sec
+
+100% tests passed, 0 tests failed out of 4
+
+Label Time Summary:
+architecture       =   7.17 sec*proc (1 test)
+editor             =  70.32 sec*proc (4 tests)
+editor_layering    =  63.15 sec*proc (3 tests)
+native             =  70.32 sec*proc (4 tests)
+
+Total Test time (real) =  70.37 sec

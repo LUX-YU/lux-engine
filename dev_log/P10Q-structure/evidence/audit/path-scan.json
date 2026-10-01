@@ -1,0 +1,12 @@
+[
+  {
+    "path": "editor/tests/architecture/validate_layering_evidence.py",
+    "line": 27,
+    "text": "    assert git(\"show\", base + \":editor/project/src/ProjectBuilder.cpp\") == git("
+  },
+  {
+    "path": "editor/tests/architecture/validate_quality_evidence.py",
+    "line": 40,
+    "text": "    assert 'editor/project/src/ProjectBuilder.cpp' not in changed"
+  }
+]

@@ -1,0 +1,20 @@
+/mnt/data/LUX_ENGINE_P10Q_LAYERING_CONSTRUCTION_2026-10-01/examples/concept_smoke.cpp: In function ‘int main()’:
+/mnt/data/LUX_ENGINE_P10Q_LAYERING_CONSTRUCTION_2026-10-01/examples/concept_smoke.cpp:35:26: error: no matching function for call to ‘deliverInput(lux::editor::workbench::detail::EInputDeliveryStage&, bool, main()::<lambda()>&, main()::<lambda()>&, RvalueOnly, main()::<lambda()>&, main()::<lambda()>&)’
+   35 |     (void)d::deliverInput(stage,true,good,good,RvalueOnly{},good,good);
+      |           ~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from /mnt/data/LUX_ENGINE_P10Q_LAYERING_CONSTRUCTION_2026-10-01/examples/concept_smoke.cpp:2:
+/mnt/data/LUX_ENGINE_P10Q_LAYERING_CONSTRUCTION_2026-10-01/examples/InteractionDelivery.example.hpp:41:10: note: candidate: ‘template<class Validate, class Cancel, class Begin, class Preview, class Commit>  requires (invocable<Validate&>) && (VoidDeliveryResult<typename std::invoke_result<F&>::type>) && (DeliveryAction<Cancel, typename std::invoke_result<F&>::type>) && (DeliveryAction<Begin, typename std::invoke_result<F&>::type>) && (DeliveryAction<Preview, typename std::invoke_result<F&>::type>) && (DeliveryAction<Commit, typename std::invoke_result<F&>::type>) std::invoke_result_t<F&> lux::editor::workbench::detail::deliverInput(EInputDeliveryStage&, bool, Validate&&, Cancel&&, Begin&&, Preview&&, Commit&&)’
+   41 |     auto deliverInput(
+      |          ^~~~~~~~~~~~
+/mnt/data/LUX_ENGINE_P10Q_LAYERING_CONSTRUCTION_2026-10-01/examples/InteractionDelivery.example.hpp:41:10: note:   template argument deduction/substitution failed:
+/mnt/data/LUX_ENGINE_P10Q_LAYERING_CONSTRUCTION_2026-10-01/examples/InteractionDelivery.example.hpp:41:10: note: constraints not satisfied
+In file included from /mnt/data/LUX_ENGINE_P10Q_LAYERING_CONSTRUCTION_2026-10-01/examples/InteractionDelivery.example.hpp:2:
+/usr/include/c++/14/concepts: In substitution of ‘template<class Validate, class Cancel, class Begin, class Preview, class Commit>  requires (invocable<Validate&>) && (VoidDeliveryResult<typename std::invoke_result<F&>::type>) && (DeliveryAction<Cancel, typename std::invoke_result<F&>::type>) && (DeliveryAction<Begin, typename std::invoke_result<F&>::type>) && (DeliveryAction<Preview, typename std::invoke_result<F&>::type>) && (DeliveryAction<Commit, typename std::invoke_result<F&>::type>) std::invoke_result_t<F&> lux::editor::workbench::detail::deliverInput(EInputDeliveryStage&, bool, Validate&&, Cancel&&, Begin&&, Preview&&, Commit&&) [with Validate = main()::<lambda()>&; Cancel = main()::<lambda()>&; Begin = RvalueOnly; Preview = main()::<lambda()>&; Commit = main()::<lambda()>&]’:
+/mnt/data/LUX_ENGINE_P10Q_LAYERING_CONSTRUCTION_2026-10-01/examples/concept_smoke.cpp:35:26:   required from here
+   35 |     (void)d::deliverInput(stage,true,good,good,RvalueOnly{},good,good);
+      |           ~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/usr/include/c++/14/concepts:360:13:   required for the satisfaction of ‘invocable<F&>’ [with F = RvalueOnly]
+/mnt/data/LUX_ENGINE_P10Q_LAYERING_CONSTRUCTION_2026-10-01/examples/InteractionDelivery.example.hpp:24:13:   required for the satisfaction of ‘DeliveryAction<Begin, typename std::invoke_result<F&>::type>’ [with Begin = RvalueOnly; Validate = main::._anon_62&]
+/usr/include/c++/14/concepts:360:25: note: the expression ‘is_invocable_v<_Fn, _Args ...> [with _Fn = RvalueOnly&; _Args = {}]’ evaluated to ‘false’
+  360 |     concept invocable = is_invocable_v<_Fn, _Args...>;
+      |                         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -1,0 +1,7 @@
+nonvoid_result.cpp
+E:/SyncForder/CodeRepos/build/RelWithDebInfo/p10q-structure-e72e9f7f931c/delivery-constraints/nonvoid_result.cpp(11): error C2672: 'deliverInput': no matching overloaded function found
+E:\SyncForder\CodeRepos\build\p10q-structure-clean-e72e9f7f931c\editor\workbench\sinclude\lux/engine/editor/workbench/InteractionDelivery.hpp(39): note: could be '_Select_invoke_traits<Validate&,>::type lux::editor::workbench::detail::deliverInput(lux::editor::workbench::detail::EInputDeliveryStage &,bool,Validate &&,Cancel &&,Begin &&,Preview &&,Commit &&)'
+E:/SyncForder/CodeRepos/build/RelWithDebInfo/p10q-structure-e72e9f7f931c/delivery-constraints/nonvoid_result.cpp(11): note: the associated constraints are not satisfied
+E:\SyncForder\CodeRepos\build\p10q-structure-clean-e72e9f7f931c\editor\workbench\sinclude\lux/engine/editor/workbench/InteractionDelivery.hpp(34): note: the concept 'lux::editor::workbench::detail::VoidDeliveryResult<tl::expected<int,EError>>' evaluated to false
+E:\SyncForder\CodeRepos\build\p10q-structure-clean-e72e9f7f931c\editor\workbench\sinclude\lux/engine/editor/workbench/InteractionDelivery.hpp(14): note: the concept 'std::same_as<tl::expected<int,EError>,tl::expected<void,EError>>' evaluated to false
+E:\SyncForder\CodeRepos\build\p10q-structure-clean-e72e9f7f931c\editor\workbench\sinclude\lux/engine/editor/workbench/InteractionDelivery.hpp(14): note: 'tl::expected<int,EError>' and 'tl::expected<void,EError>' are different types

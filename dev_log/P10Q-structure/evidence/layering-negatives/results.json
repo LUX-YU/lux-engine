@@ -1,0 +1,388 @@
+[
+  {
+    "id": "N01",
+    "passed": true,
+    "expected_rule": "authoring_outer_dependency",
+    "phases": {
+      "positive": {
+        "exit_code": 0,
+        "log": "N01/positive.log"
+      },
+      "positive-build": {
+        "exit_code": 0,
+        "log": "N01/positive-build.log"
+      },
+      "negative": {
+        "exit_code": 1,
+        "log": "N01/negative.log"
+      },
+      "repaired": {
+        "exit_code": 0,
+        "log": "N01/repaired.log"
+      },
+      "repaired-build": {
+        "exit_code": 0,
+        "log": "N01/repaired-build.log"
+      }
+    }
+  },
+  {
+    "id": "N02",
+    "passed": true,
+    "expected_rule": "editing_domain_dependency",
+    "phases": {
+      "positive": {
+        "exit_code": 0,
+        "log": "N02/positive.log"
+      },
+      "positive-build": {
+        "exit_code": 0,
+        "log": "N02/positive-build.log"
+      },
+      "negative": {
+        "exit_code": 1,
+        "log": "N02/negative.log"
+      },
+      "repaired": {
+        "exit_code": 0,
+        "log": "N02/repaired.log"
+      },
+      "repaired-build": {
+        "exit_code": 0,
+        "log": "N02/repaired-build.log"
+      }
+    }
+  },
+  {
+    "id": "N03",
+    "passed": true,
+    "expected_rule": "persistence_policy_concrete_source",
+    "phases": {
+      "positive": {
+        "exit_code": 0,
+        "log": "N03/positive.log"
+      },
+      "positive-build": {
+        "exit_code": 0,
+        "log": "N03/positive-build.log"
+      },
+      "negative": {
+        "exit_code": 1,
+        "log": "N03/negative.log"
+      },
+      "repaired": {
+        "exit_code": 0,
+        "log": "N03/repaired.log"
+      },
+      "repaired-build": {
+        "exit_code": 0,
+        "log": "N03/repaired-build.log"
+      }
+    }
+  },
+  {
+    "id": "N04",
+    "passed": true,
+    "expected_rule": "activity_workbench_dependency",
+    "phases": {
+      "positive": {
+        "exit_code": 0,
+        "log": "N04/positive.log"
+      },
+      "positive-build": {
+        "exit_code": 0,
+        "log": "N04/positive-build.log"
+      },
+      "negative": {
+        "exit_code": 1,
+        "log": "N04/negative.log"
+      },
+      "repaired": {
+        "exit_code": 0,
+        "log": "N04/repaired.log"
+      },
+      "repaired-build": {
+        "exit_code": 0,
+        "log": "N04/repaired-build.log"
+      }
+    }
+  },
+  {
+    "id": "N05",
+    "passed": true,
+    "expected_rule": "widget_authoring_dependency",
+    "phases": {
+      "positive": {
+        "exit_code": 0,
+        "log": "N05/positive.log"
+      },
+      "positive-build": {
+        "exit_code": 0,
+        "log": "N05/positive-build.log"
+      },
+      "negative": {
+        "exit_code": 1,
+        "log": "N05/negative.log"
+      },
+      "repaired": {
+        "exit_code": 0,
+        "log": "N05/repaired.log"
+      },
+      "repaired-build": {
+        "exit_code": 0,
+        "log": "N05/repaired-build.log"
+      }
+    }
+  },
+  {
+    "id": "N06",
+    "passed": true,
+    "expected_rule": "task_monitor_ui_dependency",
+    "phases": {
+      "positive": {
+        "exit_code": 0,
+        "log": "N06/positive.log"
+      },
+      "positive-build": {
+        "exit_code": 0,
+        "log": "N06/positive-build.log"
+      },
+      "negative": {
+        "exit_code": 1,
+        "log": "N06/negative.log"
+      },
+      "repaired": {
+        "exit_code": 0,
+        "log": "N06/repaired.log"
+      },
+      "repaired-build": {
+        "exit_code": 0,
+        "log": "N06/repaired-build.log"
+      }
+    }
+  },
+  {
+    "id": "N07",
+    "passed": true,
+    "expected_rule": "cross_tool_ui_dependency",
+    "phases": {
+      "positive": {
+        "exit_code": 0,
+        "log": "N07/positive.log"
+      },
+      "positive-build": {
+        "exit_code": 0,
+        "log": "N07/positive-build.log"
+      },
+      "negative": {
+        "exit_code": 1,
+        "log": "N07/negative.log"
+      },
+      "repaired": {
+        "exit_code": 0,
+        "log": "N07/repaired.log"
+      },
+      "repaired-build": {
+        "exit_code": 0,
+        "log": "N07/repaired-build.log"
+      }
+    }
+  },
+  {
+    "id": "N08",
+    "passed": true,
+    "expected_rule": "interaction_capability_leak",
+    "phases": {
+      "positive": {
+        "exit_code": 0,
+        "log": "N08/positive.log"
+      },
+      "positive-build": {
+        "exit_code": 0,
+        "log": "N08/positive-build.log"
+      },
+      "negative": {
+        "exit_code": 1,
+        "log": "N08/negative.log"
+      },
+      "repaired": {
+        "exit_code": 0,
+        "log": "N08/repaired.log"
+      },
+      "repaired-build": {
+        "exit_code": 0,
+        "log": "N08/repaired-build.log"
+      }
+    }
+  },
+  {
+    "id": "N09",
+    "passed": true,
+    "expected_rule": "product_reverse_dependency",
+    "phases": {
+      "positive": {
+        "exit_code": 0,
+        "log": "N09/positive.log"
+      },
+      "positive-build": {
+        "exit_code": 0,
+        "log": "N09/positive-build.log"
+      },
+      "negative": {
+        "exit_code": 1,
+        "log": "N09/negative.log"
+      },
+      "repaired": {
+        "exit_code": 0,
+        "log": "N09/repaired.log"
+      },
+      "repaired-build": {
+        "exit_code": 0,
+        "log": "N09/repaired-build.log"
+      }
+    }
+  },
+  {
+    "id": "N10",
+    "passed": true,
+    "expected_rule": "authoring_outer_dependency",
+    "phases": {
+      "positive": {
+        "exit_code": 0,
+        "log": "N10/positive.log"
+      },
+      "positive-build": {
+        "exit_code": 0,
+        "log": "N10/positive-build.log"
+      },
+      "negative": {
+        "exit_code": 1,
+        "log": "N10/negative.log"
+      },
+      "repaired": {
+        "exit_code": 0,
+        "log": "N10/repaired.log"
+      },
+      "repaired-build": {
+        "exit_code": 0,
+        "log": "N10/repaired-build.log"
+      }
+    }
+  },
+  {
+    "id": "N11",
+    "passed": true,
+    "expected_rule": "policy_instantiation_leak",
+    "phases": {
+      "positive": {
+        "exit_code": 0,
+        "log": "N11/positive.log"
+      },
+      "positive-build": {
+        "exit_code": 0,
+        "log": "N11/positive-build.log"
+      },
+      "negative": {
+        "exit_code": 1,
+        "log": "N11/negative.log"
+      },
+      "repaired": {
+        "exit_code": 0,
+        "log": "N11/repaired.log"
+      },
+      "repaired-build": {
+        "exit_code": 0,
+        "log": "N11/repaired-build.log"
+      }
+    }
+  },
+  {
+    "id": "N12",
+    "passed": true,
+    "expected_rule": "new_legacy_dependency",
+    "phases": {
+      "positive": {
+        "exit_code": 0,
+        "log": "N12/positive.log"
+      },
+      "positive-build": {
+        "exit_code": 0,
+        "log": "N12/positive-build.log"
+      },
+      "negative": {
+        "exit_code": 1,
+        "log": "N12/negative.log"
+      },
+      "repaired": {
+        "exit_code": 0,
+        "log": "N12/repaired.log"
+      },
+      "repaired-build": {
+        "exit_code": 0,
+        "log": "N12/repaired-build.log"
+      }
+    }
+  },
+  {
+    "id": "N13",
+    "passed": true,
+    "expected_rule": "generated_provider_mismatch",
+    "phases": {
+      "positive": {
+        "exit_code": 0,
+        "log": "N13/positive.log"
+      },
+      "positive-build": {
+        "exit_code": 0,
+        "log": "N13/positive-build.log"
+      },
+      "negative": {
+        "exit_code": 1,
+        "log": "N13/negative.log"
+      },
+      "repaired": {
+        "exit_code": 0,
+        "log": "N13/repaired.log"
+      },
+      "repaired-build": {
+        "exit_code": 0,
+        "log": "N13/repaired-build.log"
+      }
+    }
+  },
+  {
+    "id": "N14",
+    "passed": true,
+    "expected_rule": "unclassified_dependency",
+    "phases": {
+      "positive": {
+        "exit_code": 0,
+        "log": "N14/positive.log"
+      },
+      "positive-build": {
+        "exit_code": 0,
+        "log": "N14/positive-build.log"
+      },
+      "negative": {
+        "exit_code": 1,
+        "log": "N14/negative.log"
+      },
+      "repaired": {
+        "exit_code": 0,
+        "log": "N14/repaired.log"
+      },
+      "repaired-build": {
+        "exit_code": 0,
+        "log": "N14/repaired-build.log"
+      },
+      "unclassified-target": {
+        "exit_code": 1,
+        "log": "N14/unclassified-target.log"
+      },
+      "unresolved-import": {
+        "exit_code": 1,
+        "log": "N14/unresolved-import.log"
+      }
+    }
+  }
+]

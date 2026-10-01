@@ -1,0 +1,14 @@
+-- Configuring incomplete, errors occurred!
+CMake Error at E:/SyncForder/CodeRepos/build/p10q-structure-clean-e72e9f7f931c/cmake/EditorArchitectureChecks.cmake:167 (message):
+  Editor migration boundary check failed:
+
+  {"status": "FAIL", "findings": [{"rule": "task_monitor_ui_dependency",
+  "path": "editor_tasks", "detail": "editor_tasks -> tasks_ui
+  (LINK_LIBRARIES)"}, {"rule": "task_monitor_ui_dependency", "path":
+  "editor_tasks", "detail": "editor_tasks -> tasks_ui
+  (INTERFACE_LINK_LIBRARIES)"}]}
+
+Call Stack (most recent call first):
+  CMakeLists.txt:11 (lux_editor_check_architecture)
+
+

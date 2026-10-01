@@ -1,0 +1,149 @@
+[
+  {
+    "path": "AGENTS.md",
+    "responsibility": "Build/provider/install/SDK qualification and continuous rules",
+    "verification": "STRICT configure, actual compile/link/provider negatives and fresh SDK groups",
+    "old_blob": "daa1b76dec6a47a90906bd4352389e797ac58d36",
+    "new_blob": "f830cb0c5f6de41dcb6679cd05d75d59f29c3ac9"
+  },
+  {
+    "path": "CMakeLists.txt",
+    "responsibility": "Build/provider/install/SDK qualification and continuous rules",
+    "verification": "STRICT configure, actual compile/link/provider negatives and fresh SDK groups",
+    "old_blob": "053f2b56148ce8cd37fc749f96dda77386807189",
+    "new_blob": "ce7731fac59b844e18e5a5822971cf8362dc5588"
+  },
+  {
+    "path": "cmake/EditorArchitectureChecks.cmake",
+    "responsibility": "Build/provider/install/SDK qualification and continuous rules",
+    "verification": "STRICT configure, actual compile/link/provider negatives and fresh SDK groups",
+    "old_blob": "c8c66e3b331cf0c32334a93e37bb43873340553e",
+    "new_blob": "d5af4bb2425477587474f9aea30469577fe0437c"
+  },
+  {
+    "path": "cmake/installed-consumers/desktop-views/CMakeLists.txt",
+    "responsibility": "Build/provider/install/SDK qualification and continuous rules",
+    "verification": "STRICT configure, actual compile/link/provider negatives and fresh SDK groups",
+    "old_blob": "f442388a5a4b71262811b42b15e0a7c50f7427e9",
+    "new_blob": "4db710e8e2cb437c21b8cea74cc0bced3e4ce386"
+  },
+  {
+    "path": "cmake/installed-consumers/editor-sessions/CMakeLists.txt",
+    "responsibility": "Build/provider/install/SDK qualification and continuous rules",
+    "verification": "STRICT configure, actual compile/link/provider negatives and fresh SDK groups",
+    "old_blob": "4ce3b68cf0aede82079a4d00e21eb1fea5d4d63d",
+    "new_blob": "38033f4f63842b003ae1c9b328876db1d046349e"
+  },
+  {
+    "path": "cmake/installed-consumers/layering/CMakeLists.txt",
+    "responsibility": "Build/provider/install/SDK qualification and continuous rules",
+    "verification": "STRICT configure, actual compile/link/provider negatives and fresh SDK groups",
+    "old_blob": "f7c27f9375cbf8dd8af37b30a6027a460de26213:cmake/installed-consumers/layering/CMakeLists.txt",
+    "new_blob": "00fd2c616e1ce84b63b7f8365ccaa4d890028588"
+  },
+  {
+    "path": "cmake/installed-consumers/layering/layout.cpp",
+    "responsibility": "Build/provider/install/SDK qualification and continuous rules",
+    "verification": "STRICT configure, actual compile/link/provider negatives and fresh SDK groups",
+    "old_blob": "f7c27f9375cbf8dd8af37b30a6027a460de26213:cmake/installed-consumers/layering/layout.cpp",
+    "new_blob": "75e004933bf4022a6952dda508a56929e87a451a"
+  },
+  {
+    "path": "cmake/installed-consumers/layering/project.cpp",
+    "responsibility": "Build/provider/install/SDK qualification and continuous rules",
+    "verification": "STRICT configure, actual compile/link/provider negatives and fresh SDK groups",
+    "old_blob": "f7c27f9375cbf8dd8af37b30a6027a460de26213:cmake/installed-consumers/layering/project.cpp",
+    "new_blob": "6c1c2938594b93cafea5552325ec08014108e174"
+  },
+  {
+    "path": "cmake/installed-consumers/quality/CMakeLists.txt",
+    "responsibility": "Build/provider/install/SDK qualification and continuous rules",
+    "verification": "STRICT configure, actual compile/link/provider negatives and fresh SDK groups",
+    "old_blob": "ea05de7c0ea7522cf15bdcb4596d4defcd89f581",
+    "new_blob": "ee5e9b6494f8c83d03de0826e89d9a0139782f25"
+  },
+  {
+    "path": "engine/domain/world/storage/CMakeLists.txt",
+    "responsibility": "Pure decode kernel and async transport reuse",
+    "verification": "world.partition_decoder_parity + original world/scene/model SDK tests",
+    "old_blob": "246f052c5d336dadaf4c25440ae0a27b183786c9",
+    "new_blob": "189749b4a98a80fc864f6bcd4344e33e98e91082"
+  },
+  {
+    "path": "engine/domain/world/storage/include/lux/engine/world/WorldStorageCodec.hpp",
+    "responsibility": "Pure decode kernel and async transport reuse",
+    "verification": "world.partition_decoder_parity + original world/scene/model SDK tests",
+    "old_blob": "22ee70b01119c756bcb51e1dd4754a8fbdf7864f",
+    "new_blob": "cbf80631adc11f7a4f4adfd276b6d0a311fdab0e"
+  },
+  {
+    "path": "engine/domain/world/storage/sinclude/lux/engine/world/storage/detail/WorldPartitionDecoder.hpp",
+    "responsibility": "Pure decode kernel and async transport reuse",
+    "verification": "world.partition_decoder_parity + original world/scene/model SDK tests",
+    "old_blob": "f7c27f9375cbf8dd8af37b30a6027a460de26213:engine/domain/world/storage/sinclude/lux/engine/world/storage/detail/WorldPartitionDecoder.hpp",
+    "new_blob": "e5301f178cbbc899940698923bc906ea4add50a3"
+  },
+  {
+    "path": "engine/domain/world/storage/src/WorldPartitionDecoder.cpp",
+    "responsibility": "Pure decode kernel and async transport reuse",
+    "verification": "world.partition_decoder_parity + original world/scene/model SDK tests",
+    "old_blob": "f7c27f9375cbf8dd8af37b30a6027a460de26213:engine/domain/world/storage/src/WorldPartitionDecoder.cpp",
+    "new_blob": "6d69efb2dcbfb956216646ee52e1bc4f58b286cf"
+  },
+  {
+    "path": "engine/process/world_loading/CMakeLists.txt",
+    "responsibility": "Pure decode kernel and async transport reuse",
+    "verification": "world.partition_decoder_parity + original world/scene/model SDK tests",
+    "old_blob": "6b27cedfe0b01704e6db4f6b1e0a6f33dc61e6df",
+    "new_blob": "60e9bdc38cfc3bc3972a471e04cea0dc304b12e2"
+  },
+  {
+    "path": "engine/process/world_loading/src/WorldPartitionLoad.cpp",
+    "responsibility": "Pure decode kernel and async transport reuse",
+    "verification": "world.partition_decoder_parity + original world/scene/model SDK tests",
+    "old_blob": "9a80e8035d28ec4a08d67e83ea88253e55f8234c",
+    "new_blob": "fdcdfa4d52753e91c9f9b9b6f2ab77ec607b920f"
+  },
+  {
+    "path": "engine/process/world_loading/test/partition_decoder.cpp",
+    "responsibility": "Pure decode kernel and async transport reuse",
+    "verification": "world.partition_decoder_parity + original world/scene/model SDK tests",
+    "old_blob": "f7c27f9375cbf8dd8af37b30a6027a460de26213:engine/process/world_loading/test/partition_decoder.cpp",
+    "new_blob": "83549b3b3a5b1c8473862efd55318ece19a133c2"
+  },
+  {
+    "path": "engine/project/plugins/README.md",
+    "responsibility": "Pure decode kernel and async transport reuse",
+    "verification": "world.partition_decoder_parity + original world/scene/model SDK tests",
+    "old_blob": "35f6f786272a39905d694fad74d14bab87a90036",
+    "new_blob": "9db30f3557fb3e860f0a4b05cd4779e5fef44f42"
+  },
+  {
+    "path": "engine/scene/asset/CMakeLists.txt",
+    "responsibility": "Pure decode kernel and async transport reuse",
+    "verification": "world.partition_decoder_parity + original world/scene/model SDK tests",
+    "old_blob": "eb4ee0acb7b9f86b16b8b5eaa2fe3e6e640389c7",
+    "new_blob": "f3c7aab2ed338aa4eccca69b667f84b1c1988410"
+  },
+  {
+    "path": "engine/scene/asset/include/lux/engine/scene/ScenePackage.hpp",
+    "responsibility": "Pure decode kernel and async transport reuse",
+    "verification": "world.partition_decoder_parity + original world/scene/model SDK tests",
+    "old_blob": "a4dffc598bcad7021f9f4fea2d59df8f1f052abf",
+    "new_blob": "e3d53797aa5389105c1fecc4a877891ed6eb622f"
+  },
+  {
+    "path": "engine/scene/asset/src/ScenePackage.cpp",
+    "responsibility": "Pure decode kernel and async transport reuse",
+    "verification": "world.partition_decoder_parity + original world/scene/model SDK tests",
+    "old_blob": "6fbfe54712202379e696d232e6a29d16fef3b652",
+    "new_blob": "ee9deac99ff576581b6194e417f8a63a16e76564"
+  },
+  {
+    "path": "readme.md",
+    "responsibility": "Build/provider/install/SDK qualification and continuous rules",
+    "verification": "STRICT configure, actual compile/link/provider negatives and fresh SDK groups",
+    "old_blob": "e3b1b1afcd065dcb3877c60c6ca16bad631f50b7",
+    "new_blob": "2bc8c2ba63a01097bd56aaf5289aa398666c8196"
+  }
+]

@@ -1,0 +1,16 @@
+/mnt/data/LUX_ENGINE_P10Q_LAYERING_CONSTRUCTION_2026-10-01/examples/concept_smoke.cpp:35:11: error: no matching function for call to 'deliverInput'
+   35 |     (void)d::deliverInput(stage,true,good,good,RvalueOnly{},good,good);
+      |           ^~~~~~~~~~~~~~~
+/mnt/data/LUX_ENGINE_P10Q_LAYERING_CONSTRUCTION_2026-10-01/examples/InteractionDelivery.example.hpp:41:10: note: candidate template ignored: constraints not satisfied [with Validate = (lambda at /mnt/data/LUX_ENGINE_P10Q_LAYERING_CONSTRUCTION_2026-10-01/examples/concept_smoke.cpp:26:17) &, Cancel = (lambda at /mnt/data/LUX_ENGINE_P10Q_LAYERING_CONSTRUCTION_2026-10-01/examples/concept_smoke.cpp:26:17) &, Begin = RvalueOnly, Preview = (lambda at /mnt/data/LUX_ENGINE_P10Q_LAYERING_CONSTRUCTION_2026-10-01/examples/concept_smoke.cpp:26:17) &, Commit = (lambda at /mnt/data/LUX_ENGINE_P10Q_LAYERING_CONSTRUCTION_2026-10-01/examples/concept_smoke.cpp:26:17) &]
+   41 |     auto deliverInput(
+      |          ^
+/mnt/data/LUX_ENGINE_P10Q_LAYERING_CONSTRUCTION_2026-10-01/examples/InteractionDelivery.example.hpp:38:9: note: because 'DeliveryAction<RvalueOnly, std::invoke_result_t<(lambda at /mnt/data/LUX_ENGINE_P10Q_LAYERING_CONSTRUCTION_2026-10-01/examples/concept_smoke.cpp:26:17) &> >' evaluated to false
+   38 |         DeliveryAction<Begin, std::invoke_result_t<Validate&>> &&
+      |         ^
+/mnt/data/LUX_ENGINE_P10Q_LAYERING_CONSTRUCTION_2026-10-01/examples/InteractionDelivery.example.hpp:25:9: note: because 'RvalueOnly &' does not satisfy 'invocable'
+   25 |         std::invocable<F&> &&
+      |         ^
+/usr/lib/gcc/x86_64-linux-gnu/14/../../../../include/c++/14/concepts:360:25: note: because 'is_invocable_v<RvalueOnly &>' evaluated to false
+  360 |     concept invocable = is_invocable_v<_Fn, _Args...>;
+      |                         ^
+1 error generated.

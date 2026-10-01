@@ -1,0 +1,45 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p10q-structure-e72e9f7f931c-sdk/interaction-views
+      Start  1: installed.interactions
+ 1/20 Test  #1: installed.interactions .............................   Passed    0.04 sec
+      Start  2: installed.detached_views
+ 2/20 Test  #2: installed.detached_views ...........................   Passed    0.03 sec
+      Start  3: installed.interaction_reclaim.scene.sync
+ 3/20 Test  #3: installed.interaction_reclaim.scene.sync ...........   Passed    0.04 sec
+      Start  4: installed.interaction_reclaim.scene.cancel
+ 4/20 Test  #4: installed.interaction_reclaim.scene.cancel .........   Passed    0.02 sec
+      Start  5: installed.interaction_reclaim.scene.selection
+ 5/20 Test  #5: installed.interaction_reclaim.scene.selection ......   Passed    0.02 sec
+      Start  6: installed.interaction_reclaim.scene.stale
+ 6/20 Test  #6: installed.interaction_reclaim.scene.stale ..........   Passed    0.02 sec
+      Start  7: installed.interaction_reclaim.scene.gate
+ 7/20 Test  #7: installed.interaction_reclaim.scene.gate ...........   Passed    0.02 sec
+      Start  8: installed.interaction_reclaim.scene.thread
+ 8/20 Test  #8: installed.interaction_reclaim.scene.thread .........   Passed    0.02 sec
+      Start  9: installed.interaction_reclaim.material.sync
+ 9/20 Test  #9: installed.interaction_reclaim.material.sync ........   Passed    0.02 sec
+      Start 10: installed.interaction_reclaim.material.cancel
+10/20 Test #10: installed.interaction_reclaim.material.cancel ......   Passed    0.02 sec
+      Start 11: installed.interaction_reclaim.material.selection
+11/20 Test #11: installed.interaction_reclaim.material.selection ...   Passed    0.02 sec
+      Start 12: installed.interaction_reclaim.material.stale
+12/20 Test #12: installed.interaction_reclaim.material.stale .......   Passed    0.02 sec
+      Start 13: installed.interaction_reclaim.material.gate
+13/20 Test #13: installed.interaction_reclaim.material.gate ........   Passed    0.02 sec
+      Start 14: installed.interaction_reclaim.material.thread
+14/20 Test #14: installed.interaction_reclaim.material.thread ......   Passed    0.02 sec
+      Start 15: installed.interaction_reclaim.flow.sync
+15/20 Test #15: installed.interaction_reclaim.flow.sync ............   Passed    0.02 sec
+      Start 16: installed.interaction_reclaim.flow.cancel
+16/20 Test #16: installed.interaction_reclaim.flow.cancel ..........   Passed    0.02 sec
+      Start 17: installed.interaction_reclaim.flow.selection
+17/20 Test #17: installed.interaction_reclaim.flow.selection .......   Passed    0.02 sec
+      Start 18: installed.interaction_reclaim.flow.stale
+18/20 Test #18: installed.interaction_reclaim.flow.stale ...........   Passed    0.02 sec
+      Start 19: installed.interaction_reclaim.flow.gate
+19/20 Test #19: installed.interaction_reclaim.flow.gate ............   Passed    0.02 sec
+      Start 20: installed.interaction_reclaim.flow.thread
+20/20 Test #20: installed.interaction_reclaim.flow.thread ..........   Passed    0.02 sec
+
+100% tests passed, 0 tests failed out of 20
+
+Total Test time (real) =   0.44 sec

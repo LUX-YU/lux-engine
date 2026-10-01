@@ -1,0 +1,19 @@
+/mnt/data/LUX_ENGINE_P10Q_LAYERING_CONSTRUCTION_2026-10-01/examples/concept_smoke.cpp:38:11: error: no matching function for call to 'deliverInput'
+   38 |     (void)d::deliverInput(stage,true,wrong,wrong,wrong,wrong,wrong);
+      |           ^~~~~~~~~~~~~~~
+/mnt/data/LUX_ENGINE_P10Q_LAYERING_CONSTRUCTION_2026-10-01/examples/InteractionDelivery.example.hpp:41:10: note: candidate template ignored: constraints not satisfied [with Validate = (lambda at /mnt/data/LUX_ENGINE_P10Q_LAYERING_CONSTRUCTION_2026-10-01/examples/concept_smoke.cpp:37:18) &, Cancel = (lambda at /mnt/data/LUX_ENGINE_P10Q_LAYERING_CONSTRUCTION_2026-10-01/examples/concept_smoke.cpp:37:18) &, Begin = (lambda at /mnt/data/LUX_ENGINE_P10Q_LAYERING_CONSTRUCTION_2026-10-01/examples/concept_smoke.cpp:37:18) &, Preview = (lambda at /mnt/data/LUX_ENGINE_P10Q_LAYERING_CONSTRUCTION_2026-10-01/examples/concept_smoke.cpp:37:18) &, Commit = (lambda at /mnt/data/LUX_ENGINE_P10Q_LAYERING_CONSTRUCTION_2026-10-01/examples/concept_smoke.cpp:37:18) &]
+   41 |     auto deliverInput(
+      |          ^
+/mnt/data/LUX_ENGINE_P10Q_LAYERING_CONSTRUCTION_2026-10-01/examples/InteractionDelivery.example.hpp:36:9: note: because 'std::invoke_result_t<(lambda at /mnt/data/LUX_ENGINE_P10Q_LAYERING_CONSTRUCTION_2026-10-01/examples/concept_smoke.cpp:37:18) &>' (aka 'NonVoidResult') does not satisfy 'VoidDeliveryResult'
+   36 |         VoidDeliveryResult<std::invoke_result_t<Validate&>> &&
+      |         ^
+/mnt/data/LUX_ENGINE_P10Q_LAYERING_CONSTRUCTION_2026-10-01/examples/InteractionDelivery.example.hpp:18:22: note: because 'std::same_as<typename NonVoidResult::value_type, void>' evaluated to false
+   18 |             requires std::same_as<typename R::value_type, void>;
+      |                      ^
+/usr/lib/gcc/x86_64-linux-gnu/14/../../../../include/c++/14/concepts:63:9: note: because '__detail::__same_as<int, void>' evaluated to false
+   63 |       = __detail::__same_as<_Tp, _Up> && __detail::__same_as<_Up, _Tp>;
+      |         ^
+/usr/lib/gcc/x86_64-linux-gnu/14/../../../../include/c++/14/concepts:57:27: note: because 'std::is_same_v<int, void>' evaluated to false
+   57 |       concept __same_as = std::is_same_v<_Tp, _Up>;
+      |                           ^
+1 error generated.

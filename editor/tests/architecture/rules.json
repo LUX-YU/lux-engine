@@ -419,6 +419,36 @@
     {
       "path": "editor/ui/sinclude/lux/engine/editor/ui/NodeCanvasIds.hpp",
       "deadline": "P10"
+    },
+    {
+      "path": "editor/adapters/project_io",
+      "deadline": "P10Q",
+      "id": "Q001"
+    },
+    {
+      "path": "editor/transition/ProjectCatalogAdapter.hpp",
+      "deadline": "P10Q",
+      "id": "Q002"
+    },
+    {
+      "path": "editor/transition/ProjectCatalogAdapter.cpp",
+      "deadline": "P10Q",
+      "id": "Q003"
+    },
+    {
+      "path": "editor/project/ui/include/lux/engine/editor/project/ProjectCatalogAccess.hpp",
+      "deadline": "P10Q",
+      "id": "Q004"
+    },
+    {
+      "path": "editor/tasks/ui/include/lux/engine/editor/tasks/TaskQueryPort.hpp",
+      "deadline": "P10Q",
+      "id": "Q005"
+    },
+    {
+      "path": "editor/tools/scene/ui/include/lux/engine/editor/scene/SceneElement.hpp",
+      "deadline": "P10Q",
+      "id": "Q006"
     }
   ],
   "forbidden_definitions": [
@@ -560,7 +590,6 @@
     "editor/tools/material/model/",
     "editor/tools/flowforge/model/",
     "editor/persistence/",
-    "editor/adapters/project_io/",
     "editor/tools/scene/persistence/",
     "editor/tools/material/persistence/",
     "editor/tools/flowforge/persistence/",
@@ -600,9 +629,7 @@
     "editor/transition/FlowCompilationAccess.hpp",
     "editor/transition/LegacyCodegenInput.cpp",
     "editor/transition/LegacyComponentEditors.cpp",
-    "editor/transition/LegacySceneConfiguration.cpp",
-    "editor/transition/ProjectCatalogAdapter.cpp",
-    "editor/transition/ProjectCatalogAdapter.hpp"
+    "editor/transition/LegacySceneConfiguration.cpp"
   ],
   "note": "\u6587\u672c\u68c0\u67e5\uff0c\u4e0d\u626b\u63cf\u6ce8\u91ca\u8bed\u4e49\u3001\u4e0d\u7b49\u540c AST\uff1b\u5b9e\u9645P00\u8d26\u672c\u9700\u6269\u5145\u3002\u65b0scope\u9ed8\u8ba4\u4e0d\u542b\u7f16\u8f91\u5668\u65e7tools/src\uff1b\u65e7\u534f\u8bae\u5b57\u7b26\u4e32\u6570\u636e\u4e0d\u7981\u6b62\u3002",
   "targets": [
@@ -680,14 +707,14 @@
       "actual_cmake_target": "editor_persistence"
     },
     {
-      "name": "project_io",
-      "path": "editor/adapters/project_io",
+      "name": "editor_persistence_execution",
+      "path": "editor/persistence",
       "first_phase": "P05",
       "dependencies": [
         "editor_persistence"
       ],
       "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
-      "actual_cmake_target": "project_io"
+      "actual_cmake_target": "editor_persistence_execution"
     },
     {
       "name": "scene_persistence",
@@ -899,20 +926,6 @@
       "actual_cmake_target": "material_ui"
     },
     {
-      "name": "flowforge_ui",
-      "path": "editor/tools/flowforge/ui",
-      "first_phase": "P10",
-      "dependencies": [
-        "view_api",
-        "editor_widgets",
-        "flowforge_model",
-        "flowforge_interaction",
-        "flowforge_compilation"
-      ],
-      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
-      "actual_cmake_target": null
-    },
-    {
       "name": "tasks_ui",
       "path": "editor/tasks/ui",
       "first_phase": "P10",
@@ -930,7 +943,7 @@
       "dependencies": [
         "view_api",
         "editor_widgets",
-        "project_io"
+        "editor_persistence_execution"
       ],
       "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
       "actual_cmake_target": "project_ui"
@@ -1044,7 +1057,7 @@
         "desktop_shell",
         "editor_workflows",
         "editor_extensions",
-        "project_io",
+        "editor_persistence_execution",
         "scene_tool",
         "material_tool",
         "flowforge_tool",
@@ -1084,6 +1097,24 @@
       "first_phase": "P10",
       "dependencies": [],
       "actual_cmake_target": "editor_scene_views_test"
+    },
+    {
+      "name": "editor_file_publication",
+      "path": "editor/storage",
+      "first_phase": "P10Q",
+      "dependencies": [
+        "editor_persistence"
+      ],
+      "actual_cmake_target": "editor_file_publication"
+    },
+    {
+      "name": "editor_viewport",
+      "path": "editor/views/viewport",
+      "first_phase": "P10Q",
+      "dependencies": [
+        "view_api"
+      ],
+      "actual_cmake_target": "editor_viewport"
     }
   ],
   "legacy_targets": [
@@ -1399,7 +1430,6 @@
       "lux/engine/editor/scene/SceneEdit.hpp",
       "lux/engine/editor/scene/SceneObjectRef.hpp",
       "lux/engine/editor/scene/SceneSession.hpp",
-      "lux/engine/editor/scene/SceneSessionAccess.hpp",
       "lux/engine/editor/scene/SceneSnapshot.hpp",
       "lux/engine/editor/scene/SceneSource.hpp",
       "lux/engine/scene/Camera.hpp",
@@ -1437,7 +1467,13 @@
       "lux/engine/resource/asset/",
       "lux/cxx/compile_time/",
       "Eigen/"
-    ]
+    ],
+    "test_headers": {
+      "editor/tools/scene/model/test/hierarchy_benchmark.cpp": [
+        "chrono",
+        "numeric"
+      ]
+    }
   },
   "material_model": {
     "direct": [
@@ -1536,7 +1572,6 @@
       "lux/engine/editor/editing/EditTypes.hpp",
       "lux/engine/editor/material/MaterialEdit.hpp",
       "lux/engine/editor/material/MaterialSession.hpp",
-      "lux/engine/editor/material/MaterialSessionAccess.hpp",
       "lux/engine/editor/material/MaterialSnapshot.hpp",
       "lux/engine/editor/material/MaterialPersistenceAccess.hpp"
     ],
@@ -1660,7 +1695,6 @@
       "lux/engine/editor/flowforge/FlowAuthoringSource.hpp",
       "lux/engine/editor/flowforge/FlowEdit.hpp",
       "lux/engine/editor/flowforge/FlowSession.hpp",
-      "lux/engine/editor/flowforge/FlowSessionAccess.hpp",
       "lux/engine/editor/flowforge/FlowSnapshot.hpp",
       "lux/engine/editor/flowforge/FlowPersistenceAccess.hpp"
     ],
@@ -1675,7 +1709,8 @@
   },
   "editor_persistence": {
     "direct": [
-      "edit_sessions"
+      "edit_sessions",
+      "lux::cxx::memory"
     ],
     "closure": {
       "edit_history": {
@@ -1700,6 +1735,9 @@
         "imported": true
       },
       "lux::cxx::core": {
+        "imported": true
+      },
+      "lux::cxx::memory": {
         "imported": true
       }
     },
@@ -1746,118 +1784,17 @@
       "utility",
       "variant",
       "vector",
-      "lux/cxx/compile_time/expected.hpp"
+      "lux/cxx/compile_time/expected.hpp",
+      "lux/cxx/memory/SharedBytes.hpp"
     ],
     "prefixes": [
       "lux/engine/editor/contracts/",
       "lux/engine/editor/persistence/",
       "lux/engine/editor/sessions/"
-    ]
-  },
-  "project_io": {
-    "direct": [
-      "editor_file_publication",
-      "editor_persistence",
-      "process_execution"
     ],
-    "closure": {
-      "STDEXEC::stdexec": {
-        "imported": true
-      },
-      "Threads::Threads": {
-        "imported": true
-      },
-      "async_port": {
-        "path": "modules/core/async_port"
-      },
-      "edit_history": {
-        "path": "editor/editing/history"
-      },
-      "edit_sessions": {
-        "path": "editor/editing/sessions"
-      },
-      "editor_contracts": {
-        "path": "editor/contracts"
-      },
-      "editor_file_publication": {
-        "path": "editor/storage"
-      },
-      "editor_persistence": {
-        "path": "editor/persistence"
-      },
-      "identity": {
-        "path": "modules/resource/identity"
-      },
-      "lux::cxx::algorithm": {
-        "imported": true
-      },
-      "lux::cxx::compile_time": {
-        "imported": true
-      },
-      "lux::cxx::container": {
-        "imported": true
-      },
-      "process_execution": {
-        "path": "engine/process/execution"
-      },
-      "stduuid": {
-        "imported": true
-      },
-      "lux::cxx::core": {
-        "imported": true
-      }
-    },
-    "headers": [
-      "Windows.h",
-      "algorithm",
-      "array",
-      "atomic",
-      "bit",
-      "cassert",
-      "charconv",
-      "chrono",
-      "cmath",
-      "compare",
-      "concepts",
-      "cstddef",
-      "cstdint",
-      "cstdio",
-      "cstdlib",
-      "cstring",
-      "exception",
-      "filesystem",
-      "fstream",
-      "functional",
-      "iostream",
-      "limits",
-      "lux/engine/editor/storage/FilePublication.hpp",
-      "map",
-      "memory",
-      "new",
-      "numbers",
-      "optional",
-      "random",
-      "ranges",
-      "span",
-      "stdexcept",
-      "stop_token",
-      "string",
-      "string_view",
-      "thread",
-      "tuple",
-      "type_traits",
-      "unordered_map",
-      "unordered_set",
-      "utility",
-      "variant",
-      "vector"
-    ],
-    "prefixes": [
-      "lux/engine/editor/contracts/",
-      "lux/engine/editor/io/",
-      "lux/engine/editor/persistence/",
-      "lux/engine/editor/sessions/",
-      "lux/engine/process/"
+    "exclude_files": [
+      "editor/persistence/src/SaveExecution.cpp",
+      "editor/persistence/include/lux/engine/editor/persistence/SaveExecution.hpp"
     ]
   },
   "scene_persistence": {
@@ -2055,7 +1992,6 @@
       "lux/engine/editor/scene/ScenePersistenceAccess.hpp",
       "lux/engine/editor/scene/SceneSaveSource.hpp",
       "lux/engine/editor/scene/SceneSession.hpp",
-      "lux/engine/editor/scene/SceneSessionAccess.hpp",
       "lux/engine/editor/scene/SceneSnapshot.hpp",
       "lux/engine/editor/scene/SceneSource.hpp",
       "lux/engine/scene/Camera.hpp",
@@ -2188,7 +2124,6 @@
       "lux/engine/editor/material/MaterialPersistenceAccess.hpp",
       "lux/engine/editor/material/MaterialSaveSource.hpp",
       "lux/engine/editor/material/MaterialSession.hpp",
-      "lux/engine/editor/material/MaterialSessionAccess.hpp",
       "lux/engine/editor/material/MaterialSnapshot.hpp",
       "map",
       "memory",
@@ -2327,7 +2262,6 @@
       "lux/engine/editor/flowforge/FlowPersistenceAccess.hpp",
       "lux/engine/editor/flowforge/FlowSaveSource.hpp",
       "lux/engine/editor/flowforge/FlowSession.hpp",
-      "lux/engine/editor/flowforge/FlowSessionAccess.hpp",
       "lux/engine/editor/flowforge/FlowSnapshot.hpp",
       "map",
       "memory",
@@ -2959,7 +2893,8 @@
       "concepts",
       "compare",
       "lux/engine/resource/identity/AssetId.hpp",
-      "source_location"
+      "source_location",
+      "lux/engine/editor/sessions/SessionStore.hpp"
     ],
     "prefixes": [
       "lux/cxx/",
@@ -3341,7 +3276,8 @@
       "utility",
       "variant",
       "vector",
-      "any"
+      "any",
+      "lux/engine/editor/sessions/SessionStore.hpp"
     ],
     "prefixes": [
       "lux/cxx/",
@@ -3358,7 +3294,12 @@
       "lux/engine/render/",
       "lux/engine/resource/",
       "lux/engine/system/"
-    ]
+    ],
+    "test_headers": {
+      "editor/tools/scene/projection/test/highlight.cpp": [
+        "lux/engine/editor/views/ViewportPresentation.hpp"
+      ]
+    }
   },
   "material_preview": {
     "direct": [
@@ -3737,12 +3678,13 @@
     ],
     "headers": [
       "algorithm",
+      "any",
       "array",
       "atomic",
       "cassert",
       "chrono",
-      "cstdint",
       "cstddef",
+      "cstdint",
       "cstdio",
       "cstdlib",
       "filesystem",
@@ -3750,6 +3692,8 @@
       "functional",
       "iostream",
       "limits",
+      "lux/cxx/memory/SharedBytes.hpp",
+      "lux/engine/editor/material/MaterialCompilationService.hpp",
       "memory",
       "numbers",
       "optional",
@@ -3762,8 +3706,7 @@
       "type_traits",
       "utility",
       "variant",
-      "vector",
-      "any"
+      "vector"
     ],
     "prefixes": [
       "lux/cxx/",
@@ -3786,7 +3729,12 @@
       "lux/engine/editor/flowforge/",
       "lux/engine/flowforge/",
       "lux/engine/editor/io/"
-    ]
+    ],
+    "test_headers": {
+      "editor/tools/material/preview/test/compilation.cpp": [
+        "lux/engine/editor/storage/FileArtifactStore.hpp"
+      ]
+    }
   },
   "flowforge_compilation": {
     "direct": [
@@ -4528,7 +4476,8 @@
       "optional",
       "source_location",
       "span",
-      "thread"
+      "thread",
+      "lux/engine/editor/sessions/SessionStore.hpp"
     ],
     "prefixes": [
       "lux/cxx/",
@@ -4957,6 +4906,9 @@
         "path": "editor/storage"
       },
       "lux::cxx::algorithm": {
+        "imported": true
+      },
+      "lux::cxx::memory": {
         "imported": true
       }
     },
@@ -5500,7 +5452,8 @@
   "editor_widgets": {
     "direct": [
       "imgui::node_editor",
-      "ui"
+      "ui",
+      "nlohmann_json::nlohmann_json"
     ],
     "closure": {
       "Eigen3::Eigen": {
@@ -5577,6 +5530,9 @@
       },
       "window": {
         "path": "modules/platform/window"
+      },
+      "nlohmann_json::nlohmann_json": {
+        "imported": true
       }
     },
     "native_libraries": [
@@ -5598,10 +5554,26 @@
       "span",
       "unordered_map",
       "variant",
-      "vector"
+      "vector",
+      "nlohmann/json.hpp",
+      "limits",
+      "exception",
+      "cstring",
+      "lux/engine/ui/Root.hpp"
     ],
     "prefixes": [],
-    "test_headers": {}
+    "test_headers": {
+      "editor/widgets/test/churn.cpp": [
+        "lux/engine/ui/Root.hpp",
+        "lux/engine/ui/Layout.hpp",
+        "cassert",
+        "cstdio",
+        "limits",
+        "lux/engine/ui/Pane.hpp",
+        "cmath",
+        "chrono"
+      ]
+    }
   },
   "scene_ui": {
     "direct": [
@@ -5617,29 +5589,30 @@
       "scene_mesh_query",
       "scene_projection",
       "scene_transform",
-      "view_api"
+      "view_api",
+      "editor_viewport"
     ],
     "closure": {
       "Eigen3::Eigen": {
-        "path": "."
+        "imported": true
       },
       "EnTT::EnTT": {
-        "path": "."
+        "imported": true
       },
       "GPUOpen::VulkanMemoryAllocator": {
-        "path": "."
+        "imported": true
       },
       "STDEXEC::stdexec": {
-        "path": "engine/process/execution"
+        "imported": true
       },
       "Threads::Threads": {
-        "path": "."
+        "imported": true
       },
       "Vulkan::Headers": {
-        "path": "."
+        "imported": true
       },
       "Vulkan::Vulkan": {
-        "path": "."
+        "imported": true
       },
       "asset": {
         "path": "modules/resource/asset"
@@ -5684,7 +5657,7 @@
         "path": "modules/platform/gapi"
       },
       "glfw": {
-        "path": "."
+        "imported": true
       },
       "hierarchy": {
         "path": "engine/domain/simulation/ecs/hierarchy"
@@ -5696,37 +5669,37 @@
         "path": "modules/resource/identity"
       },
       "imgui::core": {
-        "path": "modules/function/ui"
+        "imported": true
       },
       "imgui::node_editor": {
         "path": "editor/widgets"
       },
       "lux::cxx::algorithm": {
-        "path": "."
+        "imported": true
       },
       "lux::cxx::binary": {
-        "path": "."
+        "imported": true
       },
       "lux::cxx::compile_time": {
-        "path": "."
+        "imported": true
       },
       "lux::cxx::concurrent": {
-        "path": "modules/function/render/client"
+        "imported": true
       },
       "lux::cxx::container": {
-        "path": "modules/core/meta"
+        "imported": true
       },
       "lux::cxx::core": {
-        "path": "."
+        "imported": true
       },
       "lux::cxx::memory": {
-        "path": "."
+        "imported": true
       },
       "math": {
         "path": "modules/core/math"
       },
       "nfd::nfd": {
-        "path": "."
+        "imported": true
       },
       "object": {
         "path": "modules/core/object"
@@ -5951,7 +5924,7 @@
         "path": "engine/domain/simulation/ecs/snapshot"
       },
       "stduuid": {
-        "path": "."
+        "imported": true
       },
       "system": {
         "path": "engine/domain/simulation/system"
@@ -6006,6 +5979,9 @@
       },
       "nlohmann_json::nlohmann_json": {
         "imported": true
+      },
+      "editor_viewport": {
+        "path": "editor/views/viewport"
       }
     },
     "native_libraries": [
@@ -6030,8 +6006,7 @@
       "iterator",
       "lux/engine/description/Visual.hpp",
       "lux/engine/editor/project/AssetPickerElement.hpp",
-      "lux/engine/editor/project/ProjectCatalogAccess.hpp",
-      "lux/engine/editor/scene/CameraNavigation.hpp",
+      "lux/engine/editor/project/ProjectCatalogModel.hpp",
       "lux/engine/editor/scene/InspectorFields.hpp",
       "lux/engine/editor/scene/InspectorView.hpp",
       "lux/engine/editor/scene/OutlinerView.hpp",
@@ -6040,15 +6015,17 @@
       "lux/engine/editor/scene/SceneAlgorithms.hpp",
       "lux/engine/editor/scene/SceneConfigurationElement.hpp",
       "lux/engine/editor/scene/SceneConfigurationView.hpp",
+      "lux/engine/editor/scene/SceneCreationPoint.hpp",
       "lux/engine/editor/scene/SceneCreationView.hpp",
       "lux/engine/editor/scene/SceneEdit.hpp",
-      "lux/engine/editor/scene/SceneElement.hpp",
       "lux/engine/editor/scene/SceneInteraction.hpp",
       "lux/engine/editor/scene/SceneProjection.hpp",
-      "lux/engine/editor/scene/SceneSessionAccess.hpp",
       "lux/engine/editor/scene/SceneView.hpp",
-      "lux/engine/editor/scene/ViewportPresentation.hpp",
+      "lux/engine/editor/sessions/SessionStore.hpp",
+      "lux/engine/editor/views/CameraNavigation.hpp",
       "lux/engine/editor/views/IViewHost.hpp",
+      "lux/engine/editor/views/ViewportElement.hpp",
+      "lux/engine/editor/views/ViewportPresentation.hpp",
       "lux/engine/editor/widgets/TreeRows.hpp",
       "lux/engine/function/render/client/core/RenderFeatureRegistration.hpp",
       "lux/engine/math/Picking.hpp",
@@ -6101,7 +6078,10 @@
       "unordered_map",
       "unordered_set",
       "utility",
-      "variant"
+      "variant",
+      "lux/engine/editor/scene/SceneSession.hpp",
+      "lux/cxx/core/function_ref.hpp",
+      "lux/cxx/core/move_only_function.hpp"
     ],
     "prefixes": [],
     "test_headers": {
@@ -6118,11 +6098,10 @@
         "lux/engine/editor/desktop/DesktopShell.hpp",
         "lux/engine/editor/flowforge/FlowView.hpp",
         "lux/engine/editor/flowforge/PublishFlowArtifact.hpp",
-        "lux/engine/editor/io/ProjectArtifactStore.hpp",
-        "lux/engine/editor/io/SaveExecution.hpp",
+        "lux/engine/editor/storage/FileArtifactStore.hpp",
+        "lux/engine/editor/persistence/SaveExecution.hpp",
         "lux/engine/editor/material/MaterialCodec.hpp",
         "lux/engine/editor/material/MaterialSaveSource.hpp",
-        "lux/engine/editor/material/MaterialSessionAccess.hpp",
         "lux/engine/editor/material/MaterialView.hpp",
         "lux/engine/editor/material/PublishCompiledMaterial.hpp",
         "lux/engine/editor/project/AssetPickerElement.hpp",
@@ -6167,7 +6146,11 @@
         "imgui_internal.h",
         "DraftSources.hpp",
         "../../../flowforge/model/src/PreparedFlowReload.hpp",
-        "../../../material/model/src/MaterialSessionData.hpp"
+        "../../../material/model/src/MaterialSessionData.hpp",
+        "lux/engine/editor/material/MaterialSession.hpp",
+        "lux/engine/editor/sessions/SessionStore.hpp",
+        "lux/engine/editor/views/ViewportElement.hpp",
+        "source_location"
       ],
       "editor/tools/scene/ui/test/AuxiliaryViews.hpp": [],
       "editor/tools/scene/ui/test/DraftSources.hpp": []
@@ -6180,29 +6163,29 @@
       "material_interaction",
       "material_preview",
       "project_ui",
-      "scene_ui"
+      "editor_viewport"
     ],
     "closure": {
       "Eigen3::Eigen": {
-        "path": "."
+        "imported": true
       },
       "EnTT::EnTT": {
-        "path": "."
+        "imported": true
       },
       "GPUOpen::VulkanMemoryAllocator": {
-        "path": "."
+        "imported": true
       },
       "STDEXEC::stdexec": {
-        "path": "engine/process/execution"
+        "imported": true
       },
       "Threads::Threads": {
-        "path": "."
+        "imported": true
       },
       "Vulkan::Headers": {
-        "path": "."
+        "imported": true
       },
       "Vulkan::Vulkan": {
-        "path": "."
+        "imported": true
       },
       "Vulkan::shaderc_combined": {
         "path": "."
@@ -6253,7 +6236,7 @@
         "path": "modules/platform/gapi"
       },
       "glfw": {
-        "path": "."
+        "imported": true
       },
       "graph": {
         "path": "modules/function/graph"
@@ -6268,31 +6251,31 @@
         "path": "modules/resource/identity"
       },
       "imgui::core": {
-        "path": "modules/function/ui"
+        "imported": true
       },
       "imgui::node_editor": {
         "path": "editor/widgets"
       },
       "lux::cxx::algorithm": {
-        "path": "."
+        "imported": true
       },
       "lux::cxx::binary": {
-        "path": "."
+        "imported": true
       },
       "lux::cxx::compile_time": {
-        "path": "."
+        "imported": true
       },
       "lux::cxx::concurrent": {
-        "path": "modules/function/render/client"
+        "imported": true
       },
       "lux::cxx::container": {
-        "path": "modules/core/meta"
+        "imported": true
       },
       "lux::cxx::core": {
-        "path": "."
+        "imported": true
       },
       "lux::cxx::memory": {
-        "path": "."
+        "imported": true
       },
       "material_graph": {
         "path": "modules/function/material"
@@ -6310,7 +6293,7 @@
         "path": "modules/core/math"
       },
       "nfd::nfd": {
-        "path": "."
+        "imported": true
       },
       "object": {
         "path": "modules/core/object"
@@ -6498,9 +6481,6 @@
       "scene_transform_configuration_codegen_generate": {
         "path": "engine/scene/builtin_systems/transform"
       },
-      "scene_ui": {
-        "path": "editor/tools/scene/ui"
-      },
       "scene_world_loading": {
         "path": "engine/scene/builtin_systems/world_loading"
       },
@@ -6541,7 +6521,7 @@
         "path": "."
       },
       "stduuid": {
-        "path": "."
+        "imported": true
       },
       "system": {
         "path": "engine/domain/simulation/system"
@@ -6602,6 +6582,9 @@
       },
       "nlohmann_json::nlohmann_json": {
         "imported": true
+      },
+      "editor_viewport": {
+        "path": "editor/views/viewport"
       }
     },
     "native_libraries": [
@@ -6612,23 +6595,32 @@
       "deque",
       "imgui.h",
       "imgui_stdlib.h",
+      "lux/engine/editor/material/MaterialCompilationService.hpp",
       "lux/engine/editor/material/MaterialInteraction.hpp",
       "lux/engine/editor/material/MaterialNodeControls.hpp",
       "lux/engine/editor/material/MaterialPreviewStore.hpp",
       "lux/engine/editor/material/MaterialView.hpp",
+      "lux/engine/editor/material/PublishCompiledMaterial.hpp",
+      "lux/engine/editor/persistence/WriteCoordinator.hpp",
       "lux/engine/editor/project/AssetPickerElement.hpp",
-      "lux/engine/editor/project/ProjectCatalogAccess.hpp",
-      "lux/engine/editor/scene/CameraNavigation.hpp",
-      "lux/engine/editor/scene/SceneElement.hpp",
+      "lux/engine/editor/project/ProjectCatalogModel.hpp",
+      "lux/engine/editor/sessions/SessionStore.hpp",
+      "lux/engine/editor/views/CameraNavigation.hpp",
       "lux/engine/editor/views/IViewHost.hpp",
+      "lux/engine/editor/views/ViewportElement.hpp",
       "lux/engine/editor/widgets/GraphCanvas.hpp",
       "lux/engine/material/graph/MaterialGraph.hpp",
       "lux/engine/material/graph/Nodes.hpp",
       "lux/engine/resource/asset/texture/TextureAsset.hpp",
-      "lux/engine/ui/Layout.hpp"
+      "lux/engine/ui/Layout.hpp",
+      "lux/engine/editor/editing/InteractionDelivery.hpp",
+      "lux/engine/editor/persistence/WriteLane.hpp"
     ],
     "prefixes": [],
-    "test_headers": {}
+    "test_headers": {},
+    "project_include_dirs": [
+      "editor/editing/sinclude"
+    ]
   },
   "flow_ui": {
     "direct": [
@@ -7102,7 +7094,7 @@
         "path": "."
       },
       "lux::cxx::memory": {
-        "path": "."
+        "imported": true
       },
       "lux::cxx::reflection_runtime": {
         "path": "."
@@ -7157,6 +7149,9 @@
       },
       "zstd::libzstd_shared": {
         "path": "."
+      },
+      "nlohmann_json::nlohmann_json": {
+        "imported": true
       }
     },
     "native_libraries": [
@@ -7181,7 +7176,10 @@
       "lux/engine/editor/flowforge/FlowInteraction.hpp",
       "lux/engine/editor/flowforge/FlowNodeControls.hpp",
       "lux/engine/editor/flowforge/FlowView.hpp",
+      "lux/engine/editor/flowforge/PublishFlowArtifact.hpp",
       "lux/engine/editor/persistence/ArtifactStore.hpp",
+      "lux/engine/editor/persistence/WriteCoordinator.hpp",
+      "lux/engine/editor/sessions/SessionStore.hpp",
       "lux/engine/editor/views/IViewHost.hpp",
       "lux/engine/editor/widgets/GraphCanvas.hpp",
       "lux/engine/flowforge/graph/ArithmeticNode.hpp",
@@ -7191,10 +7189,15 @@
       "lux/engine/flowforge/graph/ObjectNode.hpp",
       "lux/engine/flowforge/script/ScriptAbilityNode.hpp",
       "lux/engine/flowforge/script/ScriptEventAwaitNode.hpp",
-      "lux/engine/ui/Layout.hpp"
+      "lux/engine/ui/Layout.hpp",
+      "lux/engine/editor/editing/InteractionDelivery.hpp",
+      "lux/engine/editor/persistence/WriteLane.hpp"
     ],
     "prefixes": [],
-    "test_headers": {}
+    "test_headers": {},
+    "project_include_dirs": [
+      "editor/editing/sinclude"
+    ]
   },
   "tasks_ui": {
     "direct": [
@@ -7300,14 +7303,29 @@
     "headers": [
       "algorithm",
       "imgui.h",
-      "lux/engine/editor/tasks/TaskQueryPort.hpp",
+      "lux/engine/editor/tasks/TaskMonitor.hpp",
       "lux/engine/editor/tasks/TaskView.hpp",
       "lux/engine/editor/views/IViewHost.hpp",
       "lux/engine/process/ExecutionRuntime.hpp",
-      "lux/engine/ui/Element.hpp"
+      "lux/engine/ui/Element.hpp",
+      "lux/engine/object/LuxObject.hpp",
+      "lux/engine/process/TaskInfo.hpp",
+      "vector",
+      "memory"
     ],
     "prefixes": [],
-    "test_headers": {}
+    "test_headers": {
+      "editor/tasks/ui/test/monitor.cpp": [
+        "lux/engine/editor/desktop/ViewHost.hpp",
+        "cassert",
+        "chrono",
+        "thread",
+        "type_traits",
+        "cstdio",
+        "algorithm",
+        "lux/engine/ui/Root.hpp"
+      ]
+    }
   },
   "project_ui": {
     "direct": [
@@ -7476,7 +7494,7 @@
       "lux/cxx/compile_time/expected.hpp",
       "lux/engine/editor/project/AssetCatalog.hpp",
       "lux/engine/editor/project/AssetPickerElement.hpp",
-      "lux/engine/editor/project/ProjectCatalogAccess.hpp",
+      "lux/engine/editor/project/ProjectCatalogModel.hpp",
       "lux/engine/editor/project/ProjectView.hpp",
       "lux/engine/editor/views/IViewHost.hpp",
       "lux/engine/ui/Controls.hpp",
@@ -7492,7 +7510,8 @@
         "lux/engine/editor/desktop/ViewHost.hpp",
         "lux/engine/editor/project/AssetPickerElement.hpp",
         "lux/engine/editor/project/ProjectView.hpp",
-        "lux/engine/ui/Layout.hpp"
+        "lux/engine/ui/Layout.hpp",
+        "lux/engine/ui/Root.hpp"
       ]
     }
   },
@@ -7509,8 +7528,9 @@
       "ui_rendering",
       "user32",
       "tasks_ui",
-      "project_io",
-      "material_persistence"
+      "material_persistence",
+      "editor_persistence_execution",
+      "editor_file_publication"
     ],
     "closure": {
       "Eigen3::Eigen": {
@@ -8473,14 +8493,17 @@
       "tasks_ui": {
         "path": "editor/tasks/ui"
       },
-      "project_io": {
-        "path": "editor/adapters/project_io"
-      },
       "editor_file_publication": {
         "path": "editor/storage"
       },
       "material_persistence": {
         "path": "editor/tools/material/persistence"
+      },
+      "editor_persistence_execution": {
+        "path": "editor/persistence"
+      },
+      "editor_viewport": {
+        "path": "editor/views/viewport"
       }
     },
     "native_libraries": [
@@ -8512,11 +8535,10 @@
         "lux/engine/editor/desktop/DesktopShell.hpp",
         "lux/engine/editor/flowforge/FlowView.hpp",
         "lux/engine/editor/flowforge/PublishFlowArtifact.hpp",
-        "lux/engine/editor/io/ProjectArtifactStore.hpp",
-        "lux/engine/editor/io/SaveExecution.hpp",
+        "lux/engine/editor/storage/FileArtifactStore.hpp",
+        "lux/engine/editor/persistence/SaveExecution.hpp",
         "lux/engine/editor/material/MaterialCodec.hpp",
         "lux/engine/editor/material/MaterialSaveSource.hpp",
-        "lux/engine/editor/material/MaterialSessionAccess.hpp",
         "lux/engine/editor/material/MaterialView.hpp",
         "lux/engine/editor/material/PublishCompiledMaterial.hpp",
         "lux/engine/editor/project/AssetPickerElement.hpp",
@@ -8561,7 +8583,10 @@
         "imgui_internal.h",
         "DraftSources.hpp",
         "../../../flowforge/model/src/PreparedFlowReload.hpp",
-        "../../../material/model/src/MaterialSessionData.hpp"
+        "../../../material/model/src/MaterialSessionData.hpp",
+        "lux/engine/editor/material/MaterialSession.hpp",
+        "lux/engine/editor/sessions/SessionStore.hpp",
+        "lux/engine/editor/views/ViewportElement.hpp"
       ],
       "editor/tools/scene/ui/test/AuxiliaryViews.hpp": [],
       "editor/tools/scene/ui/test/DraftSources.hpp": []
@@ -8576,6 +8601,587 @@
     "flow_ui",
     "tasks_ui",
     "project_ui",
-    "editor_scene_views_test"
+    "editor_scene_views_test",
+    "editor_viewport"
+  ],
+  "editor_persistence_execution": {
+    "direct": [
+      "editor_persistence",
+      "process_execution"
+    ],
+    "closure": {
+      "STDEXEC::stdexec": {
+        "imported": true
+      },
+      "Threads::Threads": {
+        "imported": true
+      },
+      "async_port": {
+        "path": "modules/core/async_port"
+      },
+      "edit_history": {
+        "path": "editor/editing/history"
+      },
+      "edit_sessions": {
+        "path": "editor/editing/sessions"
+      },
+      "editor_contracts": {
+        "path": "editor/contracts"
+      },
+      "editor_persistence": {
+        "path": "editor/persistence"
+      },
+      "identity": {
+        "path": "modules/resource/identity"
+      },
+      "lux::cxx::algorithm": {
+        "imported": true
+      },
+      "lux::cxx::compile_time": {
+        "imported": true
+      },
+      "lux::cxx::container": {
+        "imported": true
+      },
+      "process_execution": {
+        "path": "engine/process/execution"
+      },
+      "stduuid": {
+        "imported": true
+      },
+      "lux::cxx::core": {
+        "imported": true
+      },
+      "lux::cxx::memory": {
+        "imported": true
+      }
+    },
+    "headers": [
+      "Windows.h",
+      "algorithm",
+      "array",
+      "atomic",
+      "bit",
+      "cassert",
+      "charconv",
+      "chrono",
+      "cmath",
+      "compare",
+      "concepts",
+      "cstddef",
+      "cstdint",
+      "cstdio",
+      "cstdlib",
+      "cstring",
+      "exception",
+      "filesystem",
+      "fstream",
+      "functional",
+      "iostream",
+      "limits",
+      "lux/engine/editor/storage/FilePublication.hpp",
+      "map",
+      "memory",
+      "new",
+      "numbers",
+      "optional",
+      "random",
+      "ranges",
+      "span",
+      "stdexcept",
+      "stop_token",
+      "string",
+      "string_view",
+      "thread",
+      "tuple",
+      "type_traits",
+      "unordered_map",
+      "unordered_set",
+      "utility",
+      "variant",
+      "vector"
+    ],
+    "prefixes": [
+      "lux/engine/editor/contracts/",
+      "lux/engine/editor/persistence/",
+      "lux/engine/editor/persistence/",
+      "lux/engine/editor/sessions/",
+      "lux/engine/process/"
+    ],
+    "files": [
+      "editor/persistence/src/SaveExecution.cpp",
+      "editor/persistence/include/lux/engine/editor/persistence/SaveExecution.hpp"
+    ]
+  },
+  "editor_file_publication": {
+    "direct": [
+      "lux::cxx::compile_time",
+      "lux::cxx::algorithm",
+      "editor_persistence"
+    ],
+    "closure": {
+      "edit_history": {
+        "path": "editor/editing/history"
+      },
+      "edit_sessions": {
+        "path": "editor/editing/sessions"
+      },
+      "editor_contracts": {
+        "path": "editor/contracts"
+      },
+      "identity": {
+        "path": "modules/resource/identity"
+      },
+      "lux::cxx::compile_time": {
+        "imported": true
+      },
+      "lux::cxx::container": {
+        "imported": true
+      },
+      "stduuid": {
+        "imported": true
+      },
+      "lux::cxx::core": {
+        "imported": true
+      },
+      "lux::cxx::memory": {
+        "imported": true
+      },
+      "editor_persistence": {
+        "path": "editor/persistence"
+      },
+      "lux::cxx::algorithm": {
+        "imported": true
+      }
+    },
+    "headers": [
+      "Windows.h",
+      "algorithm",
+      "array",
+      "atomic",
+      "bit",
+      "cassert",
+      "charconv",
+      "chrono",
+      "cmath",
+      "compare",
+      "concepts",
+      "cstddef",
+      "cstdint",
+      "cstdio",
+      "cstdlib",
+      "cstring",
+      "exception",
+      "filesystem",
+      "fstream",
+      "functional",
+      "iostream",
+      "limits",
+      "map",
+      "memory",
+      "new",
+      "numbers",
+      "optional",
+      "random",
+      "ranges",
+      "span",
+      "stdexcept",
+      "stop_token",
+      "string",
+      "string_view",
+      "thread",
+      "tuple",
+      "type_traits",
+      "unordered_map",
+      "unordered_set",
+      "utility",
+      "variant",
+      "vector",
+      "lux/cxx/compile_time/expected.hpp",
+      "lux/cxx/memory/SharedBytes.hpp",
+      "lux/engine/editor/storage/FilePublication.hpp",
+      "lux/engine/editor/storage/FileArtifactStore.hpp",
+      "lux/cxx/algorithm/hash.hpp",
+      "lux/cxx/algorithm/Sha256.hpp",
+      "fcntl.h",
+      "unistd.h"
+    ],
+    "prefixes": [
+      "lux/engine/editor/contracts/",
+      "lux/engine/editor/persistence/",
+      "lux/engine/editor/sessions/"
+    ],
+    "files": [
+      "editor/storage/src/FilePublication.cpp",
+      "editor/storage/src/FileArtifactStore.cpp",
+      "editor/storage/include/lux/engine/editor/storage/FilePublication.hpp",
+      "editor/storage/include/lux/engine/editor/storage/FileArtifactStore.hpp",
+      "editor/storage/test/publication.cpp"
+    ]
+  },
+  "editor_viewport": {
+    "direct": [
+      "scene_composition",
+      "scene_render",
+      "ui",
+      "imgui::core"
+    ],
+    "closure": {
+      "scene_composition": {
+        "path": "engine/scene/composition"
+      },
+      "scene_render": {
+        "path": "engine/scene/builtin_systems/render"
+      },
+      "ui": {
+        "path": "modules/function/ui"
+      },
+      "imgui::core": {
+        "imported": true
+      },
+      "ui_imgui_backend": {
+        "path": "modules/function/ui"
+      },
+      "lux::cxx::core": {
+        "imported": true
+      },
+      "lux::cxx::compile_time": {
+        "imported": true
+      },
+      "object": {
+        "path": "modules/core/object"
+      },
+      "render_client": {
+        "path": "modules/function/render/client"
+      },
+      "lux::cxx::container": {
+        "imported": true
+      },
+      "lux::cxx::concurrent": {
+        "imported": true
+      },
+      "lux::cxx::memory": {
+        "imported": true
+      },
+      "math": {
+        "path": "modules/core/math"
+      },
+      "serialization": {
+        "path": "modules/core/serialization"
+      },
+      "description": {
+        "path": "modules/resource/description"
+      },
+      "script_core": {
+        "path": "modules/function/script/core"
+      },
+      "identity": {
+        "path": "modules/resource/identity"
+      },
+      "stduuid": {
+        "imported": true
+      },
+      "semantic": {
+        "path": "modules/core/semantic"
+      },
+      "lux::cxx::binary": {
+        "imported": true
+      },
+      "Eigen3::Eigen": {
+        "imported": true
+      },
+      "type_info": {
+        "path": "modules/core/type_info"
+      },
+      "window": {
+        "path": "modules/platform/window"
+      },
+      "Vulkan::Headers": {
+        "imported": true
+      },
+      "glfw": {
+        "imported": true
+      },
+      "nfd::nfd": {
+        "imported": true
+      },
+      "render_feature_client": {
+        "path": "modules/function/render"
+      },
+      "render_runtime": {
+        "path": "modules/function/render/runtime"
+      },
+      "scene_camera": {
+        "path": "engine/scene/components/camera"
+      },
+      "core": {
+        "path": "engine/domain/simulation/ecs/core"
+      },
+      "transform": {
+        "path": "engine/domain/simulation/ecs/transform"
+      },
+      "visual": {
+        "path": "engine/domain/simulation/ecs/visual"
+      },
+      "asset": {
+        "path": "modules/resource/asset"
+      },
+      "scene_mesh_query": {
+        "path": "engine/scene/builtin_systems/mesh_query"
+      },
+      "process_asset_loading": {
+        "path": "engine/process/asset_loading"
+      },
+      "EnTT::EnTT": {
+        "imported": true
+      },
+      "scene_render_configuration_codegen_generate": {
+        "path": "engine/scene/builtin_systems/render"
+      },
+      "process_execution": {
+        "path": "engine/process/execution"
+      },
+      "async_port": {
+        "path": "modules/core/async_port"
+      },
+      "STDEXEC::stdexec": {
+        "imported": true
+      },
+      "Threads::Threads": {
+        "imported": true
+      },
+      "lux::cxx::algorithm": {
+        "imported": true
+      },
+      "schema": {
+        "path": "engine/domain/simulation/ecs/schema"
+      },
+      "snapshot": {
+        "path": "engine/domain/simulation/ecs/snapshot"
+      },
+      "visual_component_codegen_generate": {
+        "path": "engine/domain/simulation/ecs/visual"
+      },
+      "world_identity": {
+        "path": "engine/domain/world/identity"
+      },
+      "hierarchy": {
+        "path": "engine/domain/simulation/ecs/hierarchy"
+      },
+      "transform_component_codegen_generate": {
+        "path": "engine/domain/simulation/ecs/transform"
+      },
+      "hierarchy_component_codegen_generate": {
+        "path": "engine/domain/simulation/ecs/hierarchy"
+      },
+      "scene_camera_component_codegen_generate": {
+        "path": "engine/scene/components/camera"
+      },
+      "render_vulkan": {
+        "path": "modules/function/render/vulkan"
+      },
+      "render_graph": {
+        "path": "modules/function/render/graph"
+      },
+      "gapi": {
+        "path": "modules/platform/gapi"
+      },
+      "GPUOpen::VulkanMemoryAllocator": {
+        "imported": true
+      },
+      "Vulkan::Vulkan": {
+        "imported": true
+      },
+      "render_comm_ops_Canvas2DOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_DeferredGBufferOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_DeferredLightingOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_DepthPrepassOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_FogOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_ForwardMeshOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_Grid2DOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_Grid3DOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_HighlightOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_HzbOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_LightOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_LineListOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_LinearDepthOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_MaterialOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_MeshShadowOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_MeshStackOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_PointCloudOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_RenderClusterOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_ShadowMapOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_SkinningOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_SkyboxOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_SpatialCullOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_SsaoOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_StreamingFeedbackOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_TerrainOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_TonemapOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_TrajectoryOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_TriOverlayOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_ViewCameraOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "render_comm_ops_WaterOperation_comm_codegen_generate": {
+        "path": "modules/function/render"
+      },
+      "world_description": {
+        "path": "engine/domain/world/description"
+      },
+      "simulation_composition": {
+        "path": "engine/domain/simulation/composition"
+      },
+      "scene_description": {
+        "path": "engine/scene/description"
+      },
+      "scene_system": {
+        "path": "engine/scene/system"
+      },
+      "domain_system_description": {
+        "path": "engine/domain/system/description"
+      },
+      "domain_system_identity": {
+        "path": "engine/domain/system/identity"
+      },
+      "simulation_description": {
+        "path": "engine/domain/simulation/description"
+      },
+      "system": {
+        "path": "engine/domain/simulation/system"
+      },
+      "ecs_task": {
+        "path": "engine/domain/simulation/ecs/task"
+      },
+      "task": {
+        "path": "modules/core/task"
+      },
+      "simulation_scripting_core": {
+        "path": "engine/domain/simulation/scripting/core"
+      },
+      "script_artifact": {
+        "path": "modules/function/script/artifact"
+      },
+      "world_partition": {
+        "path": "engine/domain/world/partition"
+      },
+      "partition_identity": {
+        "path": "engine/domain/partition/identity"
+      }
+    },
+    "headers": [
+      "Eigen/LU",
+      "algorithm",
+      "cmath",
+      "imgui.h",
+      "lux/engine/editor/views/CameraNavigation.hpp",
+      "lux/engine/editor/views/ViewportElement.hpp",
+      "lux/engine/editor/views/ViewportPresentation.hpp",
+      "lux/engine/function/render/features/genops/Grid3DOperation.ops.hpp",
+      "lux/engine/function/render/features/genops/HighlightOperation.ops.hpp",
+      "lux/engine/math/Picking.hpp",
+      "lux/engine/math/Ray.hpp",
+      "lux/engine/object/ObjectEvent.hpp",
+      "lux/engine/scene/Camera.hpp",
+      "lux/engine/scene/RenderAssets.hpp",
+      "lux/engine/scene/RenderResources.hpp",
+      "lux/engine/scene/RenderSceneState.hpp",
+      "lux/engine/scene/RenderViewRequest.hpp",
+      "lux/engine/scene/SceneRuntime.hpp",
+      "lux/engine/simulation/ecs/Parent.hpp",
+      "lux/engine/simulation/ecs/Transform.hpp",
+      "lux/engine/simulation/ecs/Visual.hpp",
+      "lux/engine/system/SystemInstanceId.hpp",
+      "lux/engine/ui/ImageElement.hpp",
+      "lux/engine/ui/Pane.hpp",
+      "lux/engine/ui/Root.hpp",
+      "numbers",
+      "stop_token",
+      "string_view",
+      "utility"
+    ],
+    "prefixes": [],
+    "native_libraries": [
+      "comctl32"
+    ],
+    "test_headers": {
+      "editor/views/viewport/test/highlight.cpp": [
+        "cassert",
+        "iostream"
+      ]
+    }
+  },
+  "stages": [
+    "P00",
+    "P01",
+    "P02",
+    "P03",
+    "P04",
+    "P05",
+    "P06",
+    "P07",
+    "P08",
+    "P09",
+    "P10",
+    "P10Q",
+    "P11",
+    "P12",
+    "P13"
   ]
 }

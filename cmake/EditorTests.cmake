@@ -1,6 +1,20 @@
 include_guard(GLOBAL)
 include(CMakeDependentOption)
-set(LUX_EDITOR_MIGRATION_STAGE P01 CACHE STRING "Current V4 Editor migration gate (P00..P13)")
+set(LUX_EDITOR_MIGRATION_STAGE P01 CACHE STRING "Current V4 Editor migration gate (P00..P10, P10Q, P11..P13)")
+
+# One explicit order shared with source and evidence validators. Unknown stages never fall back.
+file(READ "${CMAKE_CURRENT_LIST_DIR}/../editor/tests/architecture/rules.json" _editor_rules)
+string(JSON _stage_count LENGTH "${_editor_rules}" stages)
+math(EXPR _stage_last "${_stage_count} - 1")
+set(LUX_EDITOR_MIGRATION_STAGES "")
+foreach(index RANGE ${_stage_last})
+    string(JSON stage GET "${_editor_rules}" stages ${index})
+    list(APPEND LUX_EDITOR_MIGRATION_STAGES "${stage}")
+endforeach()
+set_property(CACHE LUX_EDITOR_MIGRATION_STAGE PROPERTY STRINGS ${LUX_EDITOR_MIGRATION_STAGES})
+if(NOT LUX_EDITOR_MIGRATION_STAGE IN_LIST LUX_EDITOR_MIGRATION_STAGES)
+    message(FATAL_ERROR "Unknown Editor migration stage: ${LUX_EDITOR_MIGRATION_STAGE}")
+endif()
 
 # Test requirements, not product feature switches. Multiple requirements are conjunctive.
 foreach(group NATIVE DESKTOP GPU TOOLCHAIN INSTALLED)
@@ -29,4 +43,16 @@ function(lux_editor_test_options target)
     else()
         target_compile_options(${target} PRIVATE -UNDEBUG)
     endif()
+endfunction()
+
+# Linker flavor must match the target object format. AOT additionally verifies the actual bytes/triple.
+function(lux_editor_find_linker output)
+    if(WIN32)
+        find_program(${output} NAMES lld-link REQUIRED)
+    elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        find_program(${output} NAMES ld.lld ld REQUIRED)
+    else()
+        message(FATAL_ERROR "Flow AOT tests do not support target ${CMAKE_SYSTEM_NAME}")
+    endif()
+    set(${output} "${${output}}" PARENT_SCOPE)
 endfunction()

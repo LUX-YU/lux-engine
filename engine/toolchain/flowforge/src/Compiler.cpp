@@ -1,3 +1,4 @@
+#include <llvm/TargetParser/Triple.h>
 #include <lux/engine/flowforge/Compiler.hpp>
 #include <exception>
 
@@ -443,7 +444,7 @@ namespace lux::flowforge
             object->state_align,
             std::move(object->state_defaults)
         };
-        return FlowForgeObject{std::move(object->object), std::move(description)};
+        return FlowForgeObject{std::move(object->object), std::move(description), std::move(object->target_triple)};
     }
 
     FlowForgeResult<lux::script::ScriptArtifact> linkFlowForgeObject(
@@ -451,7 +452,7 @@ namespace lux::flowforge
         const std::filesystem::path& linker
     ) noexcept
     {
-        if (object.object.empty() || object.description.module_name.empty())
+        if (object.object.empty() || object.description.module_name.empty() || object.target_triple.empty())
         {
             return lux::cxx::unexpected(FlowForgeFailure{.code = EFlowForgeError::INVALID_DESCRIPTION});
         }
@@ -460,10 +461,12 @@ namespace lux::flowforge
         {
             return lux::cxx::unexpected(std::move(temporary.error()));
         }
-        const auto module_path = temporary->path() / "flowforge-script.dll";
+        const llvm::Triple triple(object.target_triple);
+        const auto module_path =
+            temporary->path() / (triple.isOSBinFormatCOFF() ? "flowforge-script.dll" : "flowforge-script.so");
         FlowForgeCompileOptions options;
         options.linker = linker;
-        auto linked = linkSharedLibrary(object.object, module_path, options);
+        auto linked = linkSharedLibrary(object.object, module_path, options, object.target_triple);
         if (!linked)
         {
             return lux::cxx::unexpected(std::move(linked.error()));

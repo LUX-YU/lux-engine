@@ -21,7 +21,7 @@ endfunction()
 
 function(lux_editor_check_architecture)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
-    set(LUX_EDITOR_MIGRATION_STAGE P01 CACHE STRING "Current V4 Editor migration gate (P00..P13)")
+    include("${CMAKE_CURRENT_FUNCTION_LIST_DIR}/EditorTests.cmake")
     # identity's directory-local imported UUID target is otherwise invisible here.
     # Read the same already-selected package in this inspection scope; never infer an
     # unknown leaf or search for a different package to make a boundary check pass.
@@ -66,6 +66,9 @@ function(lux_editor_check_architecture)
     if(TARGET flowforge_compiler)
         find_package(LLVM CONFIG REQUIRED PATHS "${LLVM_DIR}" NO_DEFAULT_PATH)
         find_package(MLIR CONFIG REQUIRED PATHS "${MLIR_DIR}" NO_DEFAULT_PATH)
+    endif()
+    if(TARGET editor_widgets AND nlohmann_json_DIR)
+        find_package(nlohmann_json CONFIG REQUIRED PATHS "${nlohmann_json_DIR}" NO_DEFAULT_PATH)
     endif()
     lux_editor_collect_targets("${PROJECT_SOURCE_DIR}" targets)
     set(records "")

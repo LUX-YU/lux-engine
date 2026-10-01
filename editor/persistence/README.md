@@ -81,3 +81,9 @@ contract. Closing a Session alone does not cancel or erase an accepted physical 
 The old `TAssetSave`, old tool IO/UI adapters and `SceneSaveCapture::copied` remain limited to the old
 product until P12. New targets do not include or link them. This stage does not migrate P07/P09/P11/P12
 producers or promise ordering against legacy/external writers that bypass the shared coordinator.
+
+P10Q keeps two STATIC components in this package: `editor_persistence` owns pure save/publication
+coordination; `editor_persistence_execution` owns SaveExecution and its Process TaskScope binding.
+The latter is optional for synchronous persistence consumers. Both source saves and derived products
+borrow one WriteCoordinator. Frozen payloads use owning SharedBytes and count their full logical size
+per accepted record, including Unknown quarantine. File IO belongs to storage::FileArtifactStore.

@@ -66,3 +66,18 @@ add_test(NAME editor.desktop_view_boundaries
         --stage P10 --source "${PROJECT_SOURCE_DIR}" --cmake "${CMAKE_COMMAND}"
         --evidence "${CMAKE_CURRENT_BINARY_DIR}/desktop-view-boundaries.json")
 set_tests_properties(editor.desktop_view_boundaries PROPERTIES LABELS "editor;native;P10" TIMEOUT 240)
+
+add_executable(editor_quality_test quality.cpp)
+target_link_libraries(editor_quality_test PRIVATE editor_persistence lux::cxx::container)
+lux_editor_test_options(editor_quality_test)
+add_test(NAME editor.quality.containers COMMAND editor_quality_test)
+set_tests_properties(editor.quality.containers PROPERTIES LABELS "editor;native;P10Q")
+add_test(NAME editor.quality.boundaries
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_interaction_view_boundaries.py"
+        --stage P10Q --source "${PROJECT_SOURCE_DIR}" --cmake "${CMAKE_COMMAND}"
+        --evidence "${CMAKE_CURRENT_BINARY_DIR}/quality-boundaries.json")
+set_tests_properties(editor.quality.boundaries PROPERTIES LABELS "editor;native;P10Q" TIMEOUT 300)
+
+add_test(NAME editor.quality.evidence
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_quality_evidence.py")
+set_tests_properties(editor.quality.evidence PROPERTIES LABELS "editor;native;P10Q")

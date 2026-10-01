@@ -5,6 +5,7 @@
 #include <lux/engine/editor/desktop/ViewHost.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include <lux/engine/object/ObjectDispatcher.hpp>
+#include <lux/engine/ui/Root.hpp>
 #include "ControlsTestAccess.hpp"
 #include <cassert>
 #include <cstdio>

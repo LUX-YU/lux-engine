@@ -36,7 +36,7 @@ def main():
         ("layout-root", "layout_model", None, None, "lux/engine/ui/Root.hpp"),
         ("layout-pane", "layout_model", None, None, "lux/engine/ui/Pane.hpp"),
         ("layout-store-header", "layout_model", None, None, "lux/engine/editor/workspace/WorkspaceStore.hpp"),
-        ("layout-storage-header", "layout_model", None, None, "lux/engine/editor/io/ProjectArtifactStore.hpp"),
+        ("layout-storage-header", "layout_model", None, None, "lux/engine/editor/storage/FileArtifactStore.hpp"),
         ("store-old-workspace", "workspace_store", None, None, "lux/engine/editor/WorkspaceRequest.hpp"),
         ("layout-legal", "layout_model", "editor_contracts", None, ""),
         ("recovery-legal", "recovery_model", "editor_contracts", None, ""),

@@ -10,6 +10,6 @@ Compilation/resource failures retain the last successful resources and report a 
 resource-accepted and recorded/sampled output are different facts. PreviewStore owns one existing Runtime lease;
 ViewportPresentation owns the view. Neither creates a second Runtime or drives frames. Calls are owner-thread only.
 
-PublishCompiledMaterialOperation reserves the same WriteCoordinator used by source saves and submits the already
+publishCompiledMaterial reserves the same WriteCoordinator used by source saves and submits the already
 encoded artifact. Expected destination version and FIFO remain authoritative. There is no Session pointer or
 checkpoint adoption. A source change does not silently relabel an old compiled artifact.

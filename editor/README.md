@@ -48,7 +48,7 @@ Scene、Material、FlowForge 的资源与行为已归入各自 Impl；公开类�
 | `editing` | 内容历史、保存票据、业务错误和通用 Undo／Redo 协议 |
 | `tools/scene` | SceneEditor 业务、Inspector/Outliner/ResourcePane 和场景内容 |
 | `tools/material`、`tools/flowforge` | 各自模型、历史、异步请求与局部 UI |
-| `ui` | 共用 SceneElement、空间交互、组件 Element 生成器、Presentation；设置/项目窗口归 tools/settings、tools/project |
+| `ui` | 共用 ViewportElement、空间交互、组件 Element 生成器、Presentation；设置/项目窗口归 tools/settings、tools/project |
 | `metadata` | 编辑器元信息、组件/配置 UI 工厂登记、Editor 插件接纳 |
 | `plugins` | 内置运行模块配套的编辑器元信息和配置 UI 实现；不装入游戏 |
 | `modules/function/render/runtime` | 共享 RenderRuntime、View、图像引用与后端退休（位于 modules 层） |
@@ -68,7 +68,7 @@ Pane 保存窗口状态；具体 Editor Pane 拥有业务内容与历史，其 E
 ## Scene 编辑的核心边界
 
 - WorldObjectId 属于持久内容；运行时访问与空间查询使用 Entity。
-- 编辑实例与 Run 隔离，SceneEditor 内容中的 SceneElement 切换显示。
+- 编辑实例与 Run 隔离，SceneEditor 内容中的 ViewportElement 切换显示。
 - CameraMan 是编辑器临时实体，使用通用 Camera 组件，不导出到游戏。
 - 鼠标选择、拖放放置、工作平面和内容 Undo 属于编辑器。
 - 射线检测是运行时能力，供 Editor 和脚本共用。

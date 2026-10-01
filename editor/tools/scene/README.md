@@ -1,6 +1,6 @@
 # Scene Editor：空间交互、相机与内容历史
 
-SceneEditor 本身是稳定的 Pane，持有编辑/试玩 SceneInstanceId、内容历史与已接纳请求；实例和 Driver 由 SceneRuntime 拥有，SceneElement 通过 Runtime＋ID，通过 Resources、系统 ID 和相机 Entity 写视口请求；不借用 RenderSystem。本文描述长期职责与当前支持范围。
+SceneEditor 本身是稳定的 Pane，持有编辑/试玩 SceneInstanceId、内容历史与已接纳请求；实例和 Driver 由 SceneRuntime 拥有，ViewportElement 通过 Runtime＋ID，通过 Resources、系统 ID 和相机 Entity 写视口请求；不借用 RenderSystem。本文描述长期职责与当前支持范围。
 
 ## 当前归属
 
@@ -50,12 +50,12 @@ SceneEntityRef 已删除；SelectionNotice 分别携带场景 ID 和 Entity。�
 
 ## 相机与空间视口
 
-`SpatialInteraction` 是冷注册的开放接口；首个实现 `SpatialInteraction3D` 支持透视和正交。SceneElement 不保存位置或投影副本。尚未提供二维实现，不兼容的 World 显示限制。
+`SpatialInteraction` 是冷注册的开放接口；首个实现 `SpatialInteraction3D` 支持透视和正交。ViewportElement 不保存位置或投影副本。尚未提供二维实现，不兼容的 World 显示限制。
 
 对象关系如下：
 
 ```text
-SceneElement：外观、输入归属、图像展示
+ViewportElement：外观、输入归属、图像展示
   → 与 World 能力兼容的具体空间视口
       → CameraMan Entity 的 Camera／Transform3D 组件
       → 对应运行时空间查询
@@ -84,7 +84,7 @@ CameraMan 的“不可删除”是业务权限约束，不是永远泄漏的实�
 
 ## 编辑与 Play
 
-默认同一 SceneElement 完成切换：
+默认同一 ViewportElement 完成切换：
 
 ```text
 编辑：CameraMan 观察作者世界
@@ -94,7 +94,7 @@ Stop：恢复作者世界、CameraMan 和编辑选择
 
 运行世界没有有效用户 Camera 时，场景区清为黑色并显示编辑器提示；不能把 CameraMan 静默变成游戏默认相机。自由观察运行世界若要提供，应是显式调试模式。
 
-没有 RenderSystem 的场景仍可打开，编辑器 UI 不消失；SceneElement 说明没有场景渲染能力，不私自修改用户的 SceneDescription。
+没有 RenderSystem 的场景仍可打开，编辑器 UI 不消失；ViewportElement 说明没有场景渲染能力，不私自修改用户的 SceneDescription。
 
 作者与 Run 隔离并由 Main 推进；Play 使用唯一 primary Camera，零个或多个均明确提示并清除输出。通过“Create game camera”把当前视角创建为普通作者实体，产生一条内容历史。
 

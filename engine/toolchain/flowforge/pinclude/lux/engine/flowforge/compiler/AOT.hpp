@@ -40,8 +40,9 @@ namespace lux::flowforge
 
     struct AotArtifact
     {
-        std::vector<std::byte> object; ///< native object (COFF) bytes
+        std::vector<std::byte> object; ///< native object (COFF/ELF) bytes
         std::string module_name;
+        std::string target_triple;
         std::vector<std::string> imports; ///< host symbols bind_host resolves
         std::vector<lux::rdesc::ScriptFunction> exports;
 
@@ -68,12 +69,13 @@ namespace lux::flowforge
         const SuspensionAnalysis& suspension_analysis
     ) noexcept;
 
-    /// Writes artifact.object next to out_dll (same stem, ".obj") and links
-    /// it into a shared library at out_dll. Cook-time only — spawns the
+    /// Writes COFF (.obj) or ELF (.o) beside the output and links a freestanding shared library.
+    /// The fixed target triple and actual object format must agree. Cook-time only — spawns the
     /// linker as an external process.
     [[nodiscard]] FlowForgeResult<void> linkSharedLibrary(
         std::span<const std::byte> object,
-        const std::filesystem::path& out_dll,
-        const FlowForgeCompileOptions& options
+        const std::filesystem::path& output,
+        const FlowForgeCompileOptions& options,
+        std::string_view target_triple
     ) noexcept;
 }

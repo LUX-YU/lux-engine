@@ -3,7 +3,8 @@ project(workspace_consumer LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(lux-engine-editor-workspace-store REQUIRED COMPONENTS workspace_store)
-find_package(lux-engine-editor-project-io REQUIRED COMPONENTS project_io)
+find_package(lux-engine-editor-persistence REQUIRED COMPONENTS editor_persistence_execution)
+find_package(lux-engine-editor-file-publication REQUIRED COMPONENTS editor_file_publication)
 find_package(lux-engine-editor-file-publication REQUIRED COMPONENTS editor_file_publication)
 find_package(lux-engine-editor-material-model REQUIRED COMPONENTS material_model)
 find_package(lux-engine-editor-view-api REQUIRED COMPONENTS view_api)
@@ -13,7 +14,7 @@ if(TARGET lux::engine::editor::editor_context OR TARGET lux::engine::editor::edi
 endif()
 add_executable(workspace_consumer workspace.cpp)
 target_link_libraries(workspace_consumer PRIVATE lux::engine::editor::workspace_store
-    lux::engine::editor::project_io lux::engine::editor::editor_file_publication)
+    lux::engine::editor::editor_persistence_execution lux::engine::editor::editor_file_publication lux::engine::editor::editor_file_publication)
 add_executable(layout_effects_consumer effects.cpp)
 target_link_libraries(layout_effects_consumer PRIVATE lux::engine::editor::layout_model
     lux::engine::editor::material_model lux::engine::editor::view_api)

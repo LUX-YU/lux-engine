@@ -71,6 +71,7 @@ namespace lux::flowforge
     {
         std::vector<std::byte> object;
         lux::rdesc::Script description;
+        std::string target_triple; // Fixed with the object bytes; retries cannot change their ABI.
     };
 
     [[nodiscard]] LUX_ENGINE_FLOWFORGE_COMPILER_PUBLIC FlowForgeResult<FlowForgeObject>

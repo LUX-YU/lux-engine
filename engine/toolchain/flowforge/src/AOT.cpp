@@ -20,8 +20,7 @@
 //   5. A static lux_script_module_desc (function table = the wrappers,
 //      names = event display names) + lux_script_get_module() returning
 //      it. get_module and bind_host are dllexport'ed; nothing else is.
-//   6. TargetMachine -> COFF object bytes; linkSharedLibrary runs lld-link
-//      (or link.exe) out of process: /DLL /NOENTRY /NODEFAULTLIB.
+//   6. TargetMachine -> fixed COFF/ELF bytes; the matching linker emits a freestanding DLL/shared object.
 //===========================================================================
 #include "lux/engine/flowforge/compiler/AOT.hpp"
 #include <exception>
@@ -47,6 +46,7 @@
 #include <mlir/ExecutionEngine/OptUtils.h>
 
 #include <llvm/ADT/SmallVector.h>
+#include <llvm/BinaryFormat/Magic.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Dominators.h>
@@ -1606,20 +1606,30 @@ namespace lux::flowforge
             return true;
         }
 
-        std::string findLinker(const FlowForgeCompileOptions& options)
+        std::string findLinker(const FlowForgeCompileOptions& options, const llvm::Triple& triple)
         {
             if (!options.linker.empty())
                 return options.linker.string();
             if (const char* env = std::getenv("LUX_FLOWFORGE_LINKER"); env && *env)
                 return env;
+            if (triple.isOSBinFormatCOFF())
+            {
 #ifdef LUX_FLOWFORGE_LLD_LINK
-            if (llvm::sys::fs::exists(LUX_FLOWFORGE_LLD_LINK))
-                return LUX_FLOWFORGE_LLD_LINK;
+                if (llvm::sys::fs::exists(LUX_FLOWFORGE_LLD_LINK))
+                    return LUX_FLOWFORGE_LLD_LINK;
 #endif
-            if (auto p = llvm::sys::findProgramByName("lld-link"))
-                return *p;
-            if (auto p = llvm::sys::findProgramByName("link"))
-                return *p;
+                if (auto p = llvm::sys::findProgramByName("lld-link"))
+                    return *p;
+                if (auto p = llvm::sys::findProgramByName("link"))
+                    return *p;
+            }
+            else
+            {
+                if (auto p = llvm::sys::findProgramByName("ld.lld"))
+                    return *p;
+                if (auto p = llvm::sys::findProgramByName("ld"))
+                    return *p;
+            }
             return {};
         }
     } // anonymous namespace
@@ -1708,6 +1718,7 @@ namespace lux::flowforge
         llvm::InitializeNativeTarget();
         llvm::InitializeNativeTargetAsmPrinter();
         const std::string triple_str = llvm::sys::getDefaultTargetTriple();
+        artifact_out.target_triple = triple_str;
         std::string lookup_err;
         const llvm::Target* target = llvm::TargetRegistry::lookupTarget(triple_str, lookup_err);
         if (!target)
@@ -1835,6 +1846,7 @@ namespace lux::flowforge
         std::span<const std::byte> object,
         const std::filesystem::path& out_dll,
         const FlowForgeCompileOptions& options,
+        std::string_view target_triple,
         std::string* error_out
     )
     {
@@ -1846,19 +1858,33 @@ namespace lux::flowforge
         if (object.empty())
             return fail("artifact has no object bytes");
 
-        const std::string linker = findLinker(options);
+        const llvm::Triple triple{std::string(target_triple)};
+        const bool coff = triple.isOSWindows() && triple.isOSBinFormatCOFF();
+        const bool elf = triple.isOSLinux() && triple.isOSBinFormatELF();
+        if (!coff && !elf)
+            return fail("unsupported object target: " + std::string(target_triple));
+        const auto format =
+            llvm::identify_magic(llvm::StringRef(reinterpret_cast<const char*>(object.data()), object.size()));
+        const bool wrong_format =
+            coff ? format != llvm::file_magic::coff_object : format != llvm::file_magic::elf_relocatable;
+        if (wrong_format)
+            return fail("object bytes do not match their fixed target triple");
+        const std::string linker = findLinker(options, triple);
         if (linker.empty())
-            return fail("no linker found (set LUX_FLOWFORGE_LINKER or put "
-                        "lld-link / link on PATH)");
-        const bool msvc_style =
-            linker.find("lld-link") != std::string::npos || linker.find("link") != std::string::npos;
-        if (!msvc_style)
-            return fail("unsupported linker flavor: " + linker);
+            return fail(coff ? "no COFF linker found (lld-link / link)" : "no ELF linker found (ld.lld / ld)");
+        // stem removes .lld too, so inspect the filename before removing .exe.
+        auto flavor = std::filesystem::path(linker).filename().string();
+        if (flavor.ends_with(".exe"))
+            flavor.resize(flavor.size() - 4);
+        const bool is_coff_driver = flavor == "lld-link" || flavor == "link";
+        const bool is_elf_driver = flavor == "ld.lld" || flavor == "ld" || flavor == "ld.gold";
+        if (coff ? !is_coff_driver : !is_elf_driver)
+            return fail("linker flavor does not match object target: " + linker);
 
         std::error_code ec;
         std::filesystem::create_directories(out_dll.parent_path(), ec);
         std::filesystem::path obj_path = out_dll;
-        obj_path.replace_extension(".obj");
+        obj_path.replace_extension(coff ? ".obj" : ".o");
         {
             std::ofstream os(obj_path, std::ios::binary | std::ios::trunc);
             if (!os)
@@ -1871,13 +1897,36 @@ namespace lux::flowforge
             }
         }
 
-        // Generated code is freestanding (no CRT): imports come through
-        // bind_host slots, so the DLL needs neither an entry point nor a
-        // default runtime library.
-        const std::string out_arg = "/OUT:" + out_dll.string();
+        // Both backends are freestanding. Imports are supplied by the Script ABI's host slots.
+        const std::string out_arg = coff ? "/OUT:" + out_dll.string() : out_dll.string();
         const std::string obj_arg = obj_path.string();
-        llvm::SmallVector<llvm::StringRef, 8>
-            args{linker, "/DLL", "/NOENTRY", "/NODEFAULTLIB", "/Brepro", out_arg, obj_arg};
+        std::string export_arg;
+        llvm::SmallVector<llvm::StringRef, 12> args;
+        if (coff)
+            args = {linker, "/DLL", "/NOENTRY", "/NODEFAULTLIB", "/Brepro", out_arg, obj_arg};
+        else
+        {
+            auto exports = out_dll;
+            exports.replace_extension(".exports");
+            std::ofstream symbols(exports, std::ios::binary | std::ios::trunc);
+            symbols << "{ global: lux_script_get_module; lux_script_bind_host; local: *; };\n";
+            symbols.close();
+            if (!symbols)
+                return fail("cannot write " + exports.string());
+            export_arg = "--version-script=" + exports.string();
+            args = {
+                linker,
+                "-shared",
+                "--no-undefined",
+                "-z",
+                "noexecstack",
+                "--build-id=sha1",
+                export_arg,
+                "-o",
+                out_arg,
+                obj_arg
+            };
+        }
 
         std::string exec_err;
         const int rc = llvm::sys::ExecuteAndWait(
@@ -1952,13 +2001,14 @@ namespace lux::flowforge
     FlowForgeResult<void> linkSharedLibrary(
         std::span<const std::byte> object,
         const std::filesystem::path& out_dll,
-        const FlowForgeCompileOptions& options
+        const FlowForgeCompileOptions& options,
+        std::string_view target_triple
     ) noexcept
     {
         try
         {
             std::string message;
-            if (!linkSharedLibraryImpl(object, out_dll, options, &message))
+            if (!linkSharedLibraryImpl(object, out_dll, options, target_triple, &message))
             {
                 return lux::cxx::unexpected(
                     FlowForgeFailure{.code = EFlowForgeError::LINK_FAILED, .message = std::move(message)}

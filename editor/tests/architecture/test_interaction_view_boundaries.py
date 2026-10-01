@@ -13,7 +13,7 @@ def run(args):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--stage", choices=["P08", "P10"], default="P08")
+    parser.add_argument("--stage", choices=["P08", "P10", "P10Q"], default="P08")
     parser.add_argument("--source", required=True, type=Path)
     parser.add_argument("--cmake", default="cmake")
     parser.add_argument("--evidence", required=True, type=Path)
@@ -44,7 +44,7 @@ def main():
         ("flow-legal", "flowforge_interaction", "flowforge_model", None, ""),
         ("view-legal", "view_api", "editor_contracts", None, ""),
     ]
-    if args.stage == "P10":
+    if args.stage in ("P10", "P10Q"):
         cases = [
             ("host-scene-owner", "view_host", None, "scene_model", ""),
             ("host-run-owner", "view_host", None, "scene_execution", ""),
@@ -74,6 +74,16 @@ def main():
         ]
         locations.update(editor_ui="editor/ui", editor_flowforge="editor/tools/flowforge",
                          scene_execution="editor/tools/scene/execution", p10_imported_bridge="external/p10")
+    if args.stage == "P10Q":
+        cases.extend([
+            ("viewport-model", "editor_viewport", None, "scene_model", ""),
+            ("viewport-inspector", "editor_viewport", None, "scene_ui", ""),
+            ("viewport-context", "editor_viewport", None, "editor_context", ""),
+            ("material-scene-ui", "material_ui", None, "scene_ui", ""),
+            ("material-old-editing-header", "material_ui", None, None, "lux/engine/editor/EditorError.hpp"),
+            ("tasks-desktop-production-header", "tasks_ui", None, None, "lux/engine/editor/desktop/ViewHost.hpp"),
+            ("viewport-legal", "editor_viewport", None, None, ""),
+        ])
     evidence = []
     for name, target, intermediate, forbidden, header in cases:
         with tempfile.TemporaryDirectory(prefix="lux-p08-boundary-") as directory:

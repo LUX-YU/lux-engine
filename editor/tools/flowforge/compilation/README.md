@@ -13,6 +13,6 @@ FlowCompileEnvironment copies catalog arrays and retains their code owner. Neste
 remain covered by the environment's explicit owner contract (or static builtin lifetime). All service calls are
 on its owner thread. ExecutionRuntime must survive cancellation/terminal delivery.
 
-PublishFlowArtifactOperation shares the existing WriteCoordinator and SaveExecution. It publishes fixed bytes
+publishFlowArtifact shares the existing WriteCoordinator and SaveExecution. It publishes fixed bytes
 against an explicit expected target version and never marks author source clean. Legacy UI conversion bridges
 are private, consumer-limited, and expire at P12.

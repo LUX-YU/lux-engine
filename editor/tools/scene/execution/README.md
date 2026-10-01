@@ -9,7 +9,7 @@ StartRunId addresses preparation; it is not a RunId. There is no implicit ApplyR
 ## One owner at each boundary
 
 - The application EngineContext owns the actual SceneRuntime; EditorLoop/Launcher are the sole frame
-  callers. SceneElement only borrows an instance and maintains its view. RunStore.update receives facts.
+  callers. ViewportElement only borrows an instance and maintains its view. RunStore.update receives facts.
 - SceneRuntime owns instances, clocks, drivers and fixed-capacity step records. Each lease destructor
   only marks preallocated retirement state and wakes the owner. It cannot wait or erase a record.
 - Requesting retirement immediately rejects new Registry borrows. Clock/receipt diagnostics remain

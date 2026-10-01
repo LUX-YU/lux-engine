@@ -9,7 +9,8 @@ find_package(lux-engine-editor-scene-ui REQUIRED COMPONENTS scene_ui)
 find_package(lux-engine-editor-material-ui REQUIRED COMPONENTS material_ui)
 find_package(lux-engine-editor-flow-ui REQUIRED COMPONENTS flow_ui)
 find_package(lux-engine-editor-tasks-ui REQUIRED COMPONENTS tasks_ui)
-find_package(lux-engine-editor-project-io REQUIRED COMPONENTS project_io)
+find_package(lux-engine-editor-persistence REQUIRED COMPONENTS editor_persistence_execution)
+find_package(lux-engine-editor-file-publication REQUIRED COMPONENTS editor_file_publication)
 find_package(lux-engine-editor-material-persistence REQUIRED COMPONENTS material_persistence)
 find_package(lux-engine-editor-scene-execution REQUIRED COMPONENTS scene_execution)
 find_package(lux-engine-function REQUIRED COMPONENTS render_features ui_rendering)
@@ -56,7 +57,7 @@ configure_file("${engine_source}/editor/desktop/test/host.cpp" "${CMAKE_CURRENT_
 add_executable(desktop_views "${CMAKE_CURRENT_BINARY_DIR}/views.cpp")
 target_link_libraries(desktop_views PRIVATE lux::engine::editor::scene_ui lux::engine::editor::desktop_shell
     lux::engine::editor::material_ui lux::engine::editor::flow_ui lux::engine::editor::scene_execution
-    lux::engine::editor::tasks_ui lux::engine::editor::project_io lux::engine::editor::material_persistence
+    lux::engine::editor::tasks_ui lux::engine::editor::editor_persistence_execution lux::engine::editor::editor_file_publication lux::engine::editor::material_persistence
     lux::engine::scene::scene_transform lux::engine::function::render_features
     lux::engine::function::ui_rendering imgui::core)
 add_executable(view_host "${CMAKE_CURRENT_BINARY_DIR}/host.cpp")
@@ -68,7 +69,13 @@ foreach(target desktop_views view_host inspector_fields)
         target_compile_options(${target} PRIVATE -UNDEBUG)
     endif()
 endforeach()
-find_program(P10_LINKER NAMES lld-link REQUIRED)
+if(WIN32)
+    find_program(P10_LINKER NAMES lld-link REQUIRED)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    find_program(P10_LINKER NAMES ld.lld ld REQUIRED)
+else()
+    message(FATAL_ERROR "This Flow AOT consumer requires a qualified COFF or ELF host")
+endif()
 get_target_property(scene_ui_includes lux::engine::editor::scene_ui INTERFACE_INCLUDE_DIRECTORIES)
 list(GET scene_ui_includes 0 sdk_include)
 get_filename_component(sdk_prefix "${sdk_include}" DIRECTORY)

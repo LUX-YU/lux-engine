@@ -1,10 +1,10 @@
 # 共享 Editor UI
 
-editor_ui 拥有 SceneElement、空间交互、Inspector 支持与生成器，以及 Presentation。
+editor_ui 仅保留 P12 期限内旧产品的 UI 转换和支持。公共视口由 editor/views/viewport 的 editor_viewport 拥有；新工具与旧转换壳共用唯一实现。
 它不链接具体 SceneEditor、MaterialEditor 或 FlowForgeEditor。
 SceneEditing/FieldEdit 位于静态库 editor_editing_scene，SceneRegistrations 位于 editor_metadata。
 
-SceneElement 是 Element，必须位于 Pane 内容树中。借用 SceneRuntime、SceneInstanceId 和 RenderResources，
+ViewportElement 是 Element，必须位于 Pane 内容树中。借用 SceneRuntime、SceneInstanceId 和 RenderResources，
 绑定明确的 SystemInstanceId 与相机 Entity，通过 RenderViewRequest/Result 维护视口；不借用 RenderSystem，
 不执行 SceneDriver，也不拥有内容历史。每次访问重新验证 ID；可写 Registry 仅在安全点取得。
 请求采用、发布和实际输出代次一致且已有 producer 证据后才换图，等待时保留旧图。
@@ -12,7 +12,7 @@ SceneElement 是 Element，必须位于 Pane 内容树中。借用 SceneRuntime�
 内部 ImageElement 使用统一 TextureHandle，按最终矩形和 framebuffer scale 请求离屏尺寸。
 
 图像发布、共享资产和 GPU 退役继续由 RenderResources/RenderSystem/RenderRuntime 承担。
-关闭 SceneElement 不停止共享 Renderer，也不能把一次 poll COMPLETE 当成 GPU 已退役。
+关闭 ViewportElement 不停止共享 Renderer，也不能把一次 poll COMPLETE 当成 GPU 已退役。
 
 InspectorPane 属于 SceneEditor 的私有 UI，不由本包导出。本包提供组件 Element 工厂及生成支持，
 可以由消费者自己的 Pane/Layout 直接装配；工厂显式借用 SceneEditing 与 Entity。
@@ -33,7 +33,7 @@ tryAcquireDrawData 只提供可写槽位，不承担收集。RenderFrame 的 Dra
 析构撤销原生视口需求、销毁 UI 场景，收取必要回执后才允许宿主销毁原生窗口。
 应用级图形集成使用 EngineContext 的 RenderContext；独立测试可显式构造 SceneRuntime/RenderRuntime/Resources。
 makeRenderConfiguration 返回正式 portable 字体配置，RenderSystem 使用已有 codec 转为 attach 输入。
-SceneElement 与编辑绑定已迁移 Runtime＋ID；多个显示组件不会增加该实例的 Simulation 步数。
+ViewportElement 与编辑绑定已迁移 Runtime＋ID；多个显示组件不会增加该实例的 Simulation 步数。
 宿主在 Root.update 前后执行 applyPendingChanges。工具实例/History 的采用和私有视口子树装配在该外层安全点完成；
 update 只登记这些结构意图。无可写 DrawData 时仍执行维护与采用；ExecutionRuntime 的析构等待不排空这些 UI 动作。
 资产激活、菜单及文件选择归实际 Editor/UI owner，不经过 Presentation。

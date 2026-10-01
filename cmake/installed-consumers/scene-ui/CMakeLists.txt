@@ -71,7 +71,7 @@ elseif(CONSUMER_MODE STREQUAL "EDITOR_SCENE_PANE")
     find_package(lux-engine-function REQUIRED COMPONENTS render_features)
     find_package(lux-engine-platform REQUIRED COMPONENTS window)
     if(TARGET lux::engine::editor::editor_scene OR TARGET lux::engine::editor::editor_material)
-        message(FATAL_ERROR "Public SceneElement imported a concrete editor")
+        message(FATAL_ERROR "Public ViewportElement imported a concrete editor")
     endif()
     consumer(scene_panes "${engine_source}/editor/ui/test/unified_ui.cpp"
         lux::engine::editor::editor_ui lux::engine::platform::window lux::engine::function::render_features)

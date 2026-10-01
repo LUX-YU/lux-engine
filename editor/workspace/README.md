@@ -6,7 +6,7 @@ existing P08 identity value, now published by `editor_contracts` at the same pub
 headers have their own responsibility directory and share the layout library rather than adding a tiny library.
 
 `workspace_store` borrows the application's P05 WriteCoordinator and IArtifactStore. Production uses the
-existing ProjectArtifactStore. It does not construct a coordinator, drain someone else's ready work or own
+existing FileArtifactStore. It does not construct a coordinator, drain someone else's ready work or own
 an extra queue. `saveLayout`, `renameLayout`, `removeLayout`, `writePreferences` and `writeRecovery` return
 accepted WriteTickets. The publication owner takes ready queries, publishes through its backend, calls
 complete (including Unknown), reconciles and acknowledges using the original P05 contract. Accepted results
@@ -41,7 +41,7 @@ produce an explicitly incomplete catalog; directory failures return an error. No
 All physical targets use the existing root-contained canonical path key; different logical addresses cannot
 bypass a lane. Hard links remain unsupported. WriteCoordinator has one additional payload-free REMOVE action.
 Removal waits for predecessor retirement, including Unknown; a confirmed predecessor edge may update its
-expected version. External versions still conflict. Only ProjectArtifactStore physically removes the file at
+expected version. External versions still conflict. Only FileArtifactStore physically removes the file at
 the publication boundary. Removal reports the `missing` version and unconfirmed directory durability, never
 claims a flushed file for an unlink. A subsequent explicit new save can recreate a deleted layout; an earlier
 pending save cannot run after that lane's deletion.

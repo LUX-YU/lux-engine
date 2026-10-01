@@ -10,6 +10,11 @@ import re
 import subprocess
 import sys
 
+STAGES = tuple(json.loads(Path(__file__).with_name("rules.json").read_text())["stages"])
+
+def phase(value):
+    return STAGES.index(value)
+
 
 def check_foundations(repo, targets, rules, sources, report):
     foundations = rules["foundation_targets"]
@@ -119,6 +124,8 @@ def check_model(repo, targets, rules, sources, report, name):
     for path, source in sources.items():
         if not path.startswith(scope):
             continue
+        if path in policy.get("exclude_files", []) or ("files" in policy and path not in policy["files"]):
+            continue
         for delimiter, header in re.findall(r'^\s*#\s*include\s*([<"])([^>"\n]+)', source, re.M):
             local = delimiter == '"' and (repo / path).parent.joinpath(header).resolve().is_relative_to(
                 (repo / scope).resolve())
@@ -141,7 +148,7 @@ def inspect(repo, records, rules, stage, compile_db=None):
     # The executable name is reused at P12; its current app target is not a new module.
     for name, debt in rules.get("reused_targets", {}).items():
         current = targets.get(name)
-        if current and stage < debt["deadline"] and relative(current["SOURCE_DIR"]) == debt["source"]:
+        if current and phase(stage) < phase(debt["deadline"]) and relative(current["SOURCE_DIR"]) == debt["source"]:
             new_targets.discard(name)
     paths = subprocess.check_output(
         ["git", "-C", str(repo), "ls-files", "-c", "-o", "--exclude-standard", "-z"]
@@ -157,15 +164,15 @@ def inspect(repo, records, rules, stage, compile_db=None):
             if not name.startswith("dev_log/"):
                 sources[name] = path.read_text(encoding="utf-8-sig")
     for rule in rules["expired_paths"]:
-        if stage >= rule["deadline"] and (repo / rule["path"]).exists():
+        if phase(stage) >= phase(rule["deadline"]) and (repo / rule["path"]).exists():
             report("EXPIRED_PATH", rule["path"], rule["deadline"])
     for rule in rules["forbidden_definitions"]:
-        if stage >= rule["deadline"]:
+        if phase(stage) >= phase(rule["deadline"]):
             for path, source in sources.items():
                 if re.search(rule["pattern"], source):
                     report(rule["id"], path, rule["description"])
 
-    if stage >= "P01":
+    if phase(stage) >= phase("P01"):
         retired = re.compile(r'\b(beginSave|finishSave|ESaveOutcome|initially_saved|SAVE_STARTED|'
                              r'SAVE_IN_PROGRESS|STALE_SAVE|SaveTicket)\b')
         for path, source in sources.items():
@@ -179,32 +186,32 @@ def inspect(repo, records, rules, stage, compile_db=None):
             if path.startswith("editor/editing/history/") and re.search(r'\b(saved|save_pending|clean|pending|request)\b', source):
                 report("HISTORY_PERSISTENCE_STATE", path, "Persistence state must not live in history")
 
-    if stage >= "P01":
+    if phase(stage) >= phase("P01"):
         check_foundations(repo, targets, rules, sources, report)
-    if stage >= "P02":
+    if phase(stage) >= phase("P02"):
         check_model(repo, targets, rules, sources, report, "scene_model")
-    if stage >= "P03":
+    if phase(stage) >= phase("P03"):
         check_model(repo, targets, rules, sources, report, "material_model")
 
-    if stage >= "P04":
+    if phase(stage) >= phase("P04"):
         check_model(repo, targets, rules, sources, report, "flowforge_model")
 
-    if stage >= "P05":
-        for target in ["editor_persistence", "project_io", "scene_persistence", "material_persistence", "flowforge_persistence"]:
+    if phase(stage) >= phase("P05"):
+        for target in ["editor_persistence", "editor_persistence_execution", "editor_file_publication", "scene_persistence", "material_persistence", "flowforge_persistence"]:
             check_model(repo, targets, rules, sources, report, target)
 
-    if stage >= "P06":
+    if phase(stage) >= phase("P06"):
         for target in ["scene_execution_api", "scene_execution"]:
             check_model(repo, targets, rules, sources, report, target)
         header = "engine/scene/composition/include/lux/engine/scene/SceneRuntime.hpp"
         if re.search(r'\b(valid|invalid|getSceneRegistry|getClock|destroy|tick)\s*\(|\bTickResult\b', sources.get(header, "")):
             report("OLD_RUNTIME_API", header, "P06 expired declaration or compatibility alias")
 
-    if stage >= "P07":
+    if phase(stage) >= phase("P07"):
         for target in ["scene_projection", "material_preview", "flowforge_compilation"]:
             check_model(repo, targets, rules, sources, report, target)
 
-    if stage >= "P08":
+    if phase(stage) >= phase("P08"):
         for target in ["scene_interaction", "material_interaction", "flowforge_interaction", "view_api"]:
             check_model(repo, targets, rules, sources, report, target)
         # Factories in the new protocol must receive a dispatcher, never a Root for construction.
@@ -213,11 +220,11 @@ def inspect(repo, records, rules, stage, compile_db=None):
                 if re.search(r"\bRoot\s*&", source) and re.search(r"(?:make_unique<[^>]*(?:Pane|Element)|(?:Pane|Element)\s*[({])", source):
                     report("NEW_ROOTED_FACTORY", path, "P08 factory calls the expiring rooted constructor")
 
-    if stage >= "P09":
+    if phase(stage) >= phase("P09"):
         for target in ["layout_model", "recovery_model", "workspace_store"]:
             check_model(repo, targets, rules, sources, report, target)
 
-    if stage >= "P10":
+    if phase(stage) >= phase("P10"):
         for target in rules["p10_targets"]:
             check_model(repo, targets, rules, sources, report, target)
         for path, source in sources.items():
@@ -230,7 +237,7 @@ def inspect(repo, records, rules, stage, compile_db=None):
     forbidden_headers = set(rules["new_scope_forbidden_include"])
     for path, source in sources.items():
         if path.startswith(rules["transition_root"]):
-            if stage >= rules["transition_delete_by"] or path not in rules["transition_allowlist"]:
+            if phase(stage) >= phase(rules["transition_delete_by"]) or path not in rules["transition_allowlist"]:
                 report("TRANSITION_NOT_ALLOWED", path, stage)
         if not path.startswith(scopes):
             continue
@@ -256,7 +263,9 @@ def inspect(repo, records, rules, stage, compile_db=None):
                         continue  # Actual resolved flags are checked from the compile database too.
                     private = "/sinclude" in include or "/pinclude" in include
                     own = include.startswith(record["SOURCE_DIR"].rstrip("/") + "/")
-                    if private and (not own or key.startswith("INTERFACE")):
+                    project_private = any(Path(include).resolve() == (repo / path).resolve()
+                        for path in rules.get(name, {}).get("project_include_dirs", []))
+                    if private and (key.startswith("INTERFACE") or not (own or project_private)):
                         report("PRIVATE_INCLUDE", name, include)
         if not source_dir.startswith(("engine/", "modules/")) and name not in new_targets:
             continue
@@ -299,9 +308,15 @@ def inspect(repo, records, rules, stage, compile_db=None):
             if not path.startswith(scopes):
                 continue
             command = unit.get("command", " ".join(unit.get("arguments", []))).replace("\\", "/")
-            own = next(t["path"] for t in rules["targets"] if path.startswith(t["path"] + "/"))
+            # Tool roots also contain the independent UI/model targets. The narrowest owner is
+            # authoritative; declaration order must not give a nested unit its legacy root policy.
+            target = max((t for t in rules["targets"] if path.startswith(t["path"] + "/")),
+                         key=lambda t: len(t["path"]))
+            own = target["path"]
+            project_dirs = rules.get(target["name"], {}).get("project_include_dirs", [])
             for private in re.findall(r'[^\s";]*(?:/pinclude|/sinclude)[^\s";]*', command):
-                if "/" + own + "/" not in private:
+                allowed_project = any(private.rstrip("/").endswith("/" + directory) for directory in project_dirs)
+                if "/" + own + "/" not in private and not allowed_project:
                     report("PRIVATE_COMPILE_INCLUDE", path, private)
     return findings
 
@@ -310,7 +325,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", type=Path, required=True)
     parser.add_argument("--graph", type=Path, required=True)
-    parser.add_argument("--stage", default="P00", choices=[f"P{i:02}" for i in range(14)])
+    parser.add_argument("--stage", default="P00", choices=STAGES)
     parser.add_argument("--rules", type=Path, default=Path(__file__).with_name("rules.json"))
     parser.add_argument("--compile-db", type=Path)
     args = parser.parse_args()

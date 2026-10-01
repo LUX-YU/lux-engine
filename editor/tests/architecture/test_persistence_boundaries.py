@@ -25,8 +25,8 @@ def main():
         ("core-model", "editor_persistence", None, "material_model", ""),
         ("core-transitive-ui", "editor_persistence", "edit_sessions", "ui_fixture", ""),
         ("core-context-header", "editor_persistence", None, None, "lux/engine/editor/EditorContext.hpp"),
-        ("io-transitive-context", "project_io", "process_execution", "editor_context", ""),
-        ("io-old-storage", "project_io", None, None, "lux/engine/editor/ProjectStorage.hpp"),
+        ("io-transitive-context", "editor_persistence_execution", "process_execution", "editor_context", ""),
+        ("io-old-storage", "editor_persistence_execution", None, None, "lux/engine/editor/ProjectStorage.hpp"),
     ]
     for model in ["scene", "material", "flowforge"]:
         cases.extend([
@@ -59,7 +59,11 @@ def main():
                 edges += f'target_link_libraries({intermediate or target} PRIVATE "$<LINK_ONLY:fixture::{forbidden}>")\n'
             tail = f'include("{repo.as_posix()}/cmake/EditorArchitectureChecks.cmake")\nlux_editor_check_architecture()\n'
             (root / "CMakeLists.txt").write_text(top + edges + tail)
-            probe = root / locations[target] / "probe.hpp"
+            # Execution shares a directory with the pure coordinator, but owns only these files.
+            # Exercise its real public boundary instead of an unowned synthetic header.
+            probe = root / ("editor/persistence/include/lux/engine/editor/persistence/SaveExecution.hpp"
+                            if target == "editor_persistence_execution" else locations[target] + "/probe.hpp")
+            probe.parent.mkdir(parents=True, exist_ok=True)
             probe.write_text(f"#include <{header}>\n" if header else "")
             build = root / "build"
             result = run([args.cmake, "-S", root, "-B", build, "-G", "Ninja"])

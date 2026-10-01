@@ -7,12 +7,13 @@ endforeach()
 foreach(scenario r2-accept-success r2-accept-error r2-accept-cancel r2-accept-drain r2-admission)
     add_test(NAME persistence_consumer.${scenario} COMMAND persistence_consumer "${CMAKE_CURRENT_BINARY_DIR}/files" ${scenario})
 endforeach()
-find_package(lux-engine-editor-project-io REQUIRED COMPONENTS project_io)
+find_package(lux-engine-editor-persistence REQUIRED COMPONENTS editor_persistence_execution)
+find_package(lux-engine-editor-file-publication REQUIRED COMPONENTS editor_file_publication)
 # The qualification script copies the public-API behavioral consumer here before configuring.
 # This project has no source/build-tree include or link search path.
 add_executable(persistence_consumer main.cpp)
 target_link_libraries(persistence_consumer PRIVATE lux::engine::editor::scene_persistence
-    lux::engine::editor::material_persistence lux::engine::editor::flowforge_persistence lux::engine::editor::project_io)
+    lux::engine::editor::material_persistence lux::engine::editor::flowforge_persistence lux::engine::editor::editor_persistence_execution lux::engine::editor::editor_file_publication)
 if(MSVC)
     target_compile_options(persistence_consumer PRIVATE /UNDEBUG /Zc:__cplusplus /permissive- /utf-8)
 else()

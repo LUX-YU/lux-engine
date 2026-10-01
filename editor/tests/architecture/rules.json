@@ -8856,7 +8856,9 @@
       "uuid",
       "ws2_32"
     ],
-    "headers": [],
+    "headers": [
+      "lux/engine/object/ObjectEvent.hpp"
+    ],
     "prefixes": [],
     "test_headers": {
       "editor/tests/integration/scene_views/NativeDesktop.hpp": [],

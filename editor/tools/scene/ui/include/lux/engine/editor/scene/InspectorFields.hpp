@@ -1,8 +1,9 @@
 #pragma once
 #include <lux/engine/editor/scene/SceneInteraction.hpp>
-#include <lux/engine/editor/project/ProjectCatalogAccess.hpp>
+#include <lux/engine/editor/project/ProjectCatalogModel.hpp>
 #include <lux/engine/ui/Controls.hpp>
-#include <functional>
+#include <lux/cxx/core/function_ref.hpp>
+#include <lux/cxx/core/move_only_function.hpp>
 
 namespace lux::editor::scene
 {
@@ -19,7 +20,7 @@ namespace lux::editor::scene
             SceneInteractionGroup&,
             Target,
             simulation::ecs::ComponentSchema,
-            project::ProjectCatalogAccess = {}
+            project::ProjectCatalogModel* = {}
         );
         ~InspectorFields() noexcept;
         InspectorFields(const InspectorFields&) = delete;
@@ -31,7 +32,7 @@ namespace lux::editor::scene
         [[nodiscard]] Status update();
         [[nodiscard]] Status cancel();
         [[nodiscard]] Status release();
-        [[nodiscard]] Status withRead(const std::function<Status()>&);
+        [[nodiscard]] Status withRead(cxx::function_ref<Status()>);
         [[nodiscard]] const Status& status() const noexcept
         {
             return status_;
@@ -62,11 +63,11 @@ namespace lux::editor::scene
         {
             read_only_ = value;
         }
-        [[nodiscard]] project::ProjectCatalogAccess assetCatalog() const noexcept
+        [[nodiscard]] project::ProjectCatalogModel* assetCatalog() const noexcept
         {
             return catalog_;
         }
-        [[nodiscard]] project::ProjectCatalogAccess catalogAccess() const noexcept
+        [[nodiscard]] project::ProjectCatalogModel* catalogAccess() const noexcept
         {
             return catalog_;
         }
@@ -80,7 +81,7 @@ namespace lux::editor::scene
             static_cast<void>(reject(ESceneEditError::INVALID_FIELD));
         }
         [[nodiscard]] bool finish();
-        bool queueEdit(std::function<bool()> edit);
+        bool queueEdit(cxx::move_only_function<bool()> edit);
         template <class Value> bool changed(Value& value, const Value& before, bool modified)
         {
             if (read_only_)
@@ -119,7 +120,7 @@ namespace lux::editor::scene
             }
             if (change.changed)
             {
-                status_ = withRead([&]() -> Status {
+                auto read_action = [&]() -> Status {
                     auto* cached = const_cast<Component*>(read<Component>(target));
                     if (!cached || !access(*cached))
                         return cxx::unexpected(SceneEditError{ESceneEditError::INVALID_FIELD});
@@ -142,7 +143,8 @@ namespace lux::editor::scene
                     }
                     ++version_;
                     return {};
-                });
+                };
+                status_ = withRead(read_action);
                 if (!status_)
                     return false;
             }
@@ -156,7 +158,7 @@ namespace lux::editor::scene
             if (active())
                 return reject(ESceneEditError::BUSY);
             // Container values and custom copy callbacks remain under the same author read gate.
-            status_ = withRead([&]() -> Status {
+            auto read_action = [&]() -> Status {
                 const auto* cached = read<Component>(target);
                 if (!cached || !access(*cached))
                     return cxx::unexpected(SceneEditError{ESceneEditError::INVALID_FIELD});
@@ -173,7 +175,8 @@ namespace lux::editor::scene
                 label_ = label;
                 commit_ = true;
                 return {};
-            });
+            };
+            status_ = withRead(read_action);
             return status_.has_value();
         }
 
@@ -187,12 +190,12 @@ namespace lux::editor::scene
         SceneInteractionGroup& interaction_;
         Target target_;
         simulation::ecs::ComponentSchema schema_;
-        project::ProjectCatalogAccess catalog_;
+        project::ProjectCatalogModel* catalog_;
         std::unique_ptr<simulation::ecs::Registry> display_;
         simulation::ecs::Entity entity_{simulation::ecs::NullEntity};
         std::optional<sessions::ContentStamp> content_;
         std::vector<VSceneEdit> pending_;
-        std::function<bool()> structural_;
+        cxx::move_only_function<bool()> structural_;
         std::string field_, label_, message_;
         std::uint64_t version_{};
         bool begun_{}, commit_{}, read_only_{};

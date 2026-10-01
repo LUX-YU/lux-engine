@@ -19,7 +19,7 @@ namespace lux::editor::scene
         SceneInteractionGroup& interaction,
         Target target,
         simulation::ecs::ComponentSchema schema,
-        project::ProjectCatalogAccess catalog
+        project::ProjectCatalogModel* catalog
     )
         : sessions_(sessions), interaction_(interaction), target_(target), schema_(std::move(schema)), catalog_(catalog)
     {}
@@ -28,7 +28,7 @@ namespace lux::editor::scene
         if (!release())
             std::terminate();
     }
-    InspectorFields::Status InspectorFields::withRead(const std::function<Status()>& action)
+    InspectorFields::Status InspectorFields::withRead(cxx::function_ref<Status()> action)
     {
         auto session = sessions_.read(interaction_.session());
         if (!session)
@@ -157,10 +157,11 @@ namespace lux::editor::scene
         {
             if (!structural_())
                 return status_;
-            auto cleared = withRead([&]() -> Status {
+            auto read_action = [&]() -> Status {
                 structural_ = {};
                 return {};
-            });
+            };
+            auto cleared = withRead(read_action);
             if (!cleared)
                 return cleared;
         }
@@ -206,7 +207,7 @@ namespace lux::editor::scene
         status_ = update();
         return status_.has_value();
     }
-    bool InspectorFields::queueEdit(std::function<bool()> edit)
+    bool InspectorFields::queueEdit(cxx::move_only_function<bool()> edit)
     {
         if (structural_)
             return reject(ESceneEditError::BUSY);
@@ -221,7 +222,7 @@ namespace lux::editor::scene
             if (!cancelled)
                 return cancelled;
         }
-        auto cleared = withRead([&]() -> Status {
+        auto read_action = [&]() -> Status {
             pending_.clear();
             structural_ = {};
             field_.clear();
@@ -230,7 +231,8 @@ namespace lux::editor::scene
             commit_ = false;
             content_.reset();
             return {};
-        });
+        };
+        auto cleared = withRead(read_action);
         if (!cleared)
         {
             if (!stale(cleared.error()))

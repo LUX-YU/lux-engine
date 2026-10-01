@@ -1,0 +1,135 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install",
+			"__install_export_header_dirs",
+			"lux_engine_install_components"
+		],
+		"files" : 
+		[
+			"E:/SyncForder/CodeRepos/install/P11-3bbc7312a3d1/share/lux-cmake-toolset/component/install_components.cmake",
+			"cmake/InstallComponents.cmake",
+			"editor/workbench/material/interaction/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 6,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 2
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 64,
+				"parent" : 1
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 3,
+			"component" : "lux_engine_editor_material_interaction",
+			"destination" : ".",
+			"paths" : 
+			[
+				"editor/workbench/material/interaction/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 4,
+			"component" : "lux_engine_editor_material_interaction",
+			"destination" : "share/lux-engine-editor-material-interaction/material_interaction",
+			"exportName" : "material_interaction",
+			"exportTargets" : 
+			[
+				{
+					"id" : "material_interaction::@c751d71414e998ec0962",
+					"index" : 148
+				}
+			],
+			"paths" : 
+			[
+				"editor/workbench/material/interaction/CMakeFiles/Export/9f8ebb960c3cb28d26073d2fbacbc1fb/lux-engine-editor-material-interaction-material_interaction-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 5,
+			"component" : "lux_engine_editor_material_interaction",
+			"destination" : "share/lux-engine-editor-material-interaction/material_interaction",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/workbench/material/interaction/lux-engine-editor-material-interaction-material_interaction-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 6,
+			"component" : "lux_engine_editor_material_interaction",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/material_interaction.lib"
+			],
+			"targetId" : "material_interaction::@c751d71414e998ec0962",
+			"targetIndex" : 148,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 7,
+			"component" : "lux_engine_editor_material_interaction",
+			"destination" : "share/lux-engine-editor-material-interaction",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/workbench/material/interaction/lux-engine-editor-material-interaction-config.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/workbench/material/interaction/lux-engine-editor-material-interaction-config-version.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/workbench/material/interaction/lux-engine-editor-material-interaction-available-components.cmake"
+			],
+			"type" : "file"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "editor/workbench/material/interaction",
+		"source" : "editor/workbench/material/interaction"
+	}
+}

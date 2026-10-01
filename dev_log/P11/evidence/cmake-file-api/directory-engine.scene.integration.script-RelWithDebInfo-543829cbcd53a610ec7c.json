@@ -1,0 +1,149 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install",
+			"__install_export_header_dirs",
+			"lux_engine_install_components"
+		],
+		"files" : 
+		[
+			"E:/SyncForder/CodeRepos/install/P11-3bbc7312a3d1/share/lux-cmake-toolset/component/install_components.cmake",
+			"cmake/InstallComponents.cmake",
+			"engine/scene/integration/script/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 36,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 2
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 64,
+				"parent" : 1
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 3,
+			"component" : "lux_engine_scene_script_runtime",
+			"destination" : ".",
+			"paths" : 
+			[
+				"engine/scene/integration/script/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 4,
+			"component" : "lux_engine_scene_script_runtime",
+			"destination" : "share/lux-engine-scene-script-runtime/scene_script_runtime",
+			"exportName" : "scene_script_runtime",
+			"exportTargets" : 
+			[
+				{
+					"id" : "scene_script_runtime::@58c33dd8f002647c3e23",
+					"index" : 399
+				}
+			],
+			"paths" : 
+			[
+				"engine/scene/integration/script/CMakeFiles/Export/dd943a1dc0e7fde085fa9ebd369e1110/lux-engine-scene-script-runtime-scene_script_runtime-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 5,
+			"component" : "lux_engine_scene_script_runtime",
+			"destination" : "share/lux-engine-scene-script-runtime/scene_script_runtime",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/engine/scene/integration/script/lux-engine-scene-script-runtime-scene_script_runtime-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 6,
+			"component" : "lux_engine_scene_script_runtime",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/lux_engine_scene_script_runtime.lib"
+			],
+			"targetId" : "scene_script_runtime::@58c33dd8f002647c3e23",
+			"targetIndex" : 399,
+			"targetIsImportLibrary" : true,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 6,
+			"component" : "lux_engine_scene_script_runtime",
+			"destination" : "bin",
+			"paths" : 
+			[
+				"bin/lux_engine_scene_script_runtime.dll"
+			],
+			"targetId" : "scene_script_runtime::@58c33dd8f002647c3e23",
+			"targetIndex" : 399,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 7,
+			"component" : "lux_engine_scene_script_runtime",
+			"destination" : "share/lux-engine-scene-script-runtime",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/engine/scene/integration/script/lux-engine-scene-script-runtime-config.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/engine/scene/integration/script/lux-engine-scene-script-runtime-config-version.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/engine/scene/integration/script/lux-engine-scene-script-runtime-available-components.cmake"
+			],
+			"type" : "file"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "engine/scene/integration/script",
+		"source" : "engine/scene/integration/script"
+	}
+}

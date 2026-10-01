@@ -1,0 +1,152 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install",
+			"__install_export_header_dirs",
+			"lux_engine_install_components"
+		],
+		"files" : 
+		[
+			"E:/SyncForder/CodeRepos/install/P11-3bbc7312a3d1/share/lux-cmake-toolset/component/install_components.cmake",
+			"cmake/InstallComponents.cmake",
+			"editor/application/extensions/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 41,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 2
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 64,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 2,
+				"line" : 43,
+				"parent" : 0
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 3,
+			"component" : "lux_engine_editor_extensions",
+			"destination" : ".",
+			"paths" : 
+			[
+				"editor/application/extensions/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 4,
+			"component" : "lux_engine_editor_extensions",
+			"destination" : "share/lux-engine-editor-extensions/editor_extensions",
+			"exportName" : "editor_extensions",
+			"exportTargets" : 
+			[
+				{
+					"id" : "editor_extensions::@7d4524ea74d5c4118a54",
+					"index" : 57
+				}
+			],
+			"paths" : 
+			[
+				"editor/application/extensions/CMakeFiles/Export/db9a42518bb95a8d28e1c4f43e9f20b4/lux-engine-editor-extensions-editor_extensions-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 5,
+			"component" : "lux_engine_editor_extensions",
+			"destination" : "share/lux-engine-editor-extensions/editor_extensions",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/application/extensions/lux-engine-editor-extensions-editor_extensions-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 6,
+			"component" : "lux_engine_editor_extensions",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/editor_extensions.lib"
+			],
+			"targetId" : "editor_extensions::@7d4524ea74d5c4118a54",
+			"targetIndex" : 57,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 7,
+			"component" : "lux_engine_editor_extensions",
+			"destination" : "share/lux-engine-editor-extensions",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/application/extensions/lux-engine-editor-extensions-config.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/application/extensions/lux-engine-editor-extensions-config-version.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/application/extensions/lux-engine-editor-extensions-available-components.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 8,
+			"component" : "lux_engine_editor_extensions",
+			"destination" : "include/lux/engine/editor/extensions",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/gen/include/lux/engine/editor/extensions/EditorExtensionAbi.hpp"
+			],
+			"type" : "file"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "editor/application/extensions",
+		"source" : "editor/application/extensions"
+	}
+}

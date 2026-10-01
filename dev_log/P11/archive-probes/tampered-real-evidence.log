@@ -1,0 +1,10 @@
+Traceback (most recent call last):
+  File "E:\SyncForder\CodeRepos\build\P11 归档迁移 3bbc7312a3d1\verify.py", line 100, in <module>
+    check(a.source.resolve(),a.archive)
+  File "E:\SyncForder\CodeRepos\build\P11 归档迁移 3bbc7312a3d1\verify.py", line 22, in check
+    for name in mapping:data(name)
+                        ^^^^^^^^^^
+  File "E:\SyncForder\CodeRepos\build\P11 归档迁移 3bbc7312a3d1\verify.py", line 20, in data
+    b=p.read_bytes();assert hashlib.sha256(b).hexdigest()==mapping[name],name
+                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: logs/ctest.log

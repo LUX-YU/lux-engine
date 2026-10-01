@@ -1,0 +1,101 @@
+{
+	"backtrace" : 5,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"add_custom_target",
+			"lux_target_add_codegen",
+			"engine_add_comm_ops",
+			"include"
+		],
+		"files" : 
+		[
+			"E:/SyncForder/CodeRepos/install/P11-3bbc7312a3d1/share/lux-cxx/reflection_generator/cmake_scripts/meta.cmake",
+			"modules/function/render/cmake/engine_render_codegen.cmake",
+			"modules/function/render/features/cmake/feature_client.cmake",
+			"modules/function/render/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 3
+			},
+			{
+				"command" : 3,
+				"file" : 3,
+				"line" : 2,
+				"parent" : 0
+			},
+			{
+				"file" : 2,
+				"parent" : 1
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 33,
+				"parent" : 2
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 243,
+				"parent" : 3
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 377,
+				"parent" : 4
+			}
+		]
+	},
+	"id" : "render_comm_ops_ForwardMeshOperation_comm_codegen_generate::@2609240a746559cdd999",
+	"name" : "render_comm_ops_ForwardMeshOperation_comm_codegen_generate",
+	"paths" : 
+	{
+		"build" : "modules/function/render",
+		"source" : "modules/function/render"
+	},
+	"sourceGroups" : 
+	[
+		{
+			"name" : "",
+			"sourceIndexes" : 
+			[
+				0
+			]
+		},
+		{
+			"name" : "CMake Rules",
+			"sourceIndexes" : 
+			[
+				1,
+				2
+			]
+		}
+	],
+	"sources" : 
+	[
+		{
+			"backtrace" : 5,
+			"isGenerated" : true,
+			"path" : "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/modules/function/render/CMakeFiles/render_comm_ops_ForwardMeshOperation_comm_codegen_generate",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 0,
+			"isGenerated" : true,
+			"path" : "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/modules/function/render/CMakeFiles/render_comm_ops_ForwardMeshOperation_comm_codegen_generate.rule",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 0,
+			"isGenerated" : true,
+			"path" : "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/modules/function/render/comm_gen/lux/engine/function/render/features/genops/ForwardMeshOperation.ops.hpp.rule",
+			"sourceGroupIndex" : 1
+		}
+	],
+	"type" : "UTILITY"
+}

@@ -1,0 +1,676 @@
+{
+	"archive" : 
+	{
+		"commandFragments" : 
+		[
+			{
+				"fragment" : "/machine:x64",
+				"role" : "flags"
+			}
+		]
+	},
+	"artifacts" : 
+	[
+		{
+			"path" : "lib/desktop_shell.lib"
+		}
+	],
+	"backtrace" : 3,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"_add_library",
+			"add_library",
+			"add_component",
+			"install",
+			"lux_engine_install_components",
+			"target_link_libraries",
+			"component_add_internal_dependencies",
+			"add_compile_options",
+			"target_include_directories",
+			"__component_set_include_directories",
+			"component_include_directories"
+		],
+		"files" : 
+		[
+			"D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+			"E:/SyncForder/CodeRepos/install/P11-3bbc7312a3d1/share/lux-cmake-toolset/component/component.cmake",
+			"editor/workbench/desktop/CMakeLists.txt",
+			"cmake/InstallComponents.cmake",
+			"E:/SyncForder/CodeRepos/install/P11-3bbc7312a3d1/share/lux-cmake-toolset/component/component_dependencies.cmake",
+			"CMakeLists.txt",
+			"E:/SyncForder/CodeRepos/install/P11-3bbc7312a3d1/share/lux-cmake-toolset/component/component_include_directories.cmake"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 26,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 99,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 653,
+				"parent" : 2
+			},
+			{
+				"command" : 4,
+				"file" : 2,
+				"line" : 39,
+				"parent" : 0
+			},
+			{
+				"command" : 3,
+				"file" : 3,
+				"line" : 54,
+				"parent" : 4
+			},
+			{
+				"command" : 6,
+				"file" : 2,
+				"line" : 30,
+				"parent" : 0
+			},
+			{
+				"command" : 5,
+				"file" : 4,
+				"line" : 23,
+				"parent" : 6
+			},
+			{
+				"command" : 5,
+				"file" : 2,
+				"line" : 31,
+				"parent" : 0
+			},
+			{
+				"file" : 5
+			},
+			{
+				"command" : 7,
+				"file" : 5,
+				"line" : 25,
+				"parent" : 9
+			},
+			{
+				"command" : 10,
+				"file" : 2,
+				"line" : 28,
+				"parent" : 0
+			},
+			{
+				"command" : 9,
+				"file" : 6,
+				"line" : 71,
+				"parent" : 11
+			},
+			{
+				"command" : 8,
+				"file" : 6,
+				"line" : 25,
+				"parent" : 12
+			},
+			{
+				"command" : 9,
+				"file" : 6,
+				"line" : 79,
+				"parent" : 11
+			},
+			{
+				"command" : 8,
+				"file" : 6,
+				"line" : 29,
+				"parent" : 14
+			}
+		]
+	},
+	"compileGroups" : 
+	[
+		{
+			"compileCommandFragments" : 
+			[
+				{
+					"fragment" : "/DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD"
+				},
+				{
+					"backtrace" : 10,
+					"fragment" : "/utf-8"
+				},
+				{
+					"backtrace" : 10,
+					"fragment" : "/permissive-"
+				},
+				{
+					"backtrace" : 10,
+					"fragment" : "/Zc:__cplusplus"
+				},
+				{
+					"backtrace" : 10,
+					"fragment" : "/Zc:preprocessor"
+				},
+				{
+					"backtrace" : 8,
+					"fragment" : "/Zc:externConstexpr"
+				}
+			],
+			"defines" : 
+			[
+				{
+					"backtrace" : 8,
+					"define" : "ENTT_NO_ETO"
+				},
+				{
+					"backtrace" : 8,
+					"define" : "STDEXEC_ENABLE_WINDOWS_THREAD_POOL"
+				},
+				{
+					"backtrace" : 8,
+					"define" : "__PLATFORM_WIN32__"
+				},
+				{
+					"backtrace" : 8,
+					"define" : "__TRAY_ENABLED__"
+				}
+			],
+			"includes" : 
+			[
+				{
+					"backtrace" : 13,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/workbench/desktop/include"
+				},
+				{
+					"backtrace" : 15,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/workbench/desktop/pinclude"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/modules/function/ui/include"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/gen/include"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/modules/core/object/include"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/modules/function/render/client/include"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/modules/core/math/include"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/modules/core/serialization/include"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/modules/core/type_info/include"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/modules/resource/description/include"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/modules/function/script/core/include"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/modules/core/semantic/include"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/modules/resource/identity/include"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/editing/include"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/authoring/layout/include"
+				},
+				{
+					"backtrace" : 8,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/activities/commands/include"
+				},
+				{
+					"backtrace" : 8,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/scene/builtin_systems/render/include"
+				},
+				{
+					"backtrace" : 8,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/modules/function/render/features/cmake/../include"
+				},
+				{
+					"backtrace" : 8,
+					"path" : "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/modules/function/render/comm_gen"
+				},
+				{
+					"backtrace" : 8,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/modules/function/render/runtime/include"
+				},
+				{
+					"backtrace" : 8,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/scene/components/camera/include"
+				},
+				{
+					"backtrace" : 8,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/domain/simulation/ecs/schema/include"
+				},
+				{
+					"backtrace" : 8,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/domain/simulation/ecs/core/include"
+				},
+				{
+					"backtrace" : 8,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/domain/world/identity/include"
+				},
+				{
+					"backtrace" : 8,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/scene/composition/include"
+				},
+				{
+					"backtrace" : 8,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/domain/world/description/include"
+				},
+				{
+					"backtrace" : 8,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/domain/world/partition/include"
+				},
+				{
+					"backtrace" : 8,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/domain/partition/identity/include"
+				},
+				{
+					"backtrace" : 8,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/domain/simulation/composition/include"
+				},
+				{
+					"backtrace" : 8,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/domain/simulation/description/include"
+				},
+				{
+					"backtrace" : 8,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/domain/system/identity/include"
+				},
+				{
+					"backtrace" : 8,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/domain/system/description/include"
+				},
+				{
+					"backtrace" : 8,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/domain/simulation/system/include"
+				},
+				{
+					"backtrace" : 8,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/domain/simulation/ecs/task/include"
+				},
+				{
+					"backtrace" : 8,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/modules/core/task/include"
+				},
+				{
+					"backtrace" : 8,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/domain/simulation/scripting/core/include"
+				},
+				{
+					"backtrace" : 8,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/modules/function/script/artifact/include"
+				},
+				{
+					"backtrace" : 8,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/modules/resource/asset/include"
+				},
+				{
+					"backtrace" : 8,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/scene/description/include"
+				},
+				{
+					"backtrace" : 8,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/scene/system/include"
+				},
+				{
+					"backtrace" : 8,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/process/execution/include"
+				},
+				{
+					"backtrace" : 8,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/modules/core/async_port/include"
+				},
+				{
+					"backtrace" : 8,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/domain/simulation/ecs/transform/include"
+				},
+				{
+					"backtrace" : 8,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/domain/simulation/ecs/snapshot/include"
+				},
+				{
+					"backtrace" : 8,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/domain/simulation/ecs/hierarchy/include"
+				},
+				{
+					"backtrace" : 8,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/domain/simulation/ecs/visual/include"
+				},
+				{
+					"backtrace" : 8,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/scene/builtin_systems/mesh_query/include"
+				},
+				{
+					"backtrace" : 8,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/process/asset_loading/include"
+				},
+				{
+					"backtrace" : 8,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/modules/function/ui/rendering/include"
+				},
+				{
+					"backtrace" : 8,
+					"path" : "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/modules/function/ui/rendering/comm_gen"
+				},
+				{
+					"backtrace" : 8,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/modules/function/input/include"
+				},
+				{
+					"backtrace" : 8,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/modules/platform/window/include"
+				},
+				{
+					"backtrace" : 7,
+					"isSystem" : true,
+					"path" : "E:/SyncForder/CodeRepos/install/P11-3bbc7312a3d1/include"
+				},
+				{
+					"backtrace" : 7,
+					"isSystem" : true,
+					"path" : "D:/Development/vcpkg/installed/x64-windows/include/eigen3"
+				},
+				{
+					"backtrace" : 7,
+					"isSystem" : true,
+					"path" : "D:/Development/vcpkg/installed/x64-windows/include"
+				},
+				{
+					"backtrace" : 7,
+					"isSystem" : true,
+					"path" : "D:/Development/vcpkg/installed/x64-windows/include/stduuid"
+				}
+			],
+			"language" : "CXX",
+			"languageStandard" : 
+			{
+				"backtraces" : 
+				[
+					7,
+					7,
+					8
+				],
+				"standard" : "20"
+			},
+			"sourceIndexes" : 
+			[
+				0,
+				1,
+				2,
+				3,
+				4,
+				5
+			]
+		}
+	],
+	"dependencies" : 
+	[
+		{
+			"backtrace" : 7,
+			"id" : "script_core::@023ad226eeb1dfda479d"
+		},
+		{
+			"backtrace" : 7,
+			"id" : "object::@3f64c795d72938f03de3"
+		},
+		{
+			"backtrace" : 7,
+			"id" : "serialization::@f3d74b591e1fe7bce8e4"
+		},
+		{
+			"backtrace" : 8,
+			"id" : "task::@a744d1e69ed1d016bf33"
+		},
+		{
+			"backtrace" : 7,
+			"id" : "description::@7b719127e839b48d783c"
+		},
+		{
+			"backtrace" : 8,
+			"id" : "asset::@f166380fe378b4529061"
+		},
+		{
+			"backtrace" : 8,
+			"id" : "window::@bf63d16995680a47d1c7"
+		},
+		{
+			"backtrace" : 8,
+			"id" : "input::@f391e7d37075f1ab801f"
+		},
+		{
+			"backtrace" : 8,
+			"id" : "render_feature_client::@2609240a746559cdd999"
+		},
+		{
+			"backtrace" : 8,
+			"id" : "render_runtime::@3ae72fd365b4f844e41a"
+		},
+		{
+			"backtrace" : 8,
+			"id" : "script_artifact::@6f6baf858afc44774b73"
+		},
+		{
+			"backtrace" : 7,
+			"id" : "ui::@744f77519ad4bbba6e0c"
+		},
+		{
+			"backtrace" : 8,
+			"id" : "ui_rendering::@acd468146784c6e2a607"
+		},
+		{
+			"backtrace" : 7,
+			"id" : "render_client::@286ca0d662065846abce"
+		},
+		{
+			"backtrace" : 8,
+			"id" : "world_description::@7b5a068d3155bc794235"
+		},
+		{
+			"backtrace" : 8,
+			"id" : "domain_system_identity::@8abaa8f9c34049f562d6"
+		},
+		{
+			"backtrace" : 8,
+			"id" : "domain_system_description::@818797bdb0d364f70801"
+		},
+		{
+			"backtrace" : 8,
+			"id" : "simulation_description::@16f04bd09344fd38a478"
+		},
+		{
+			"backtrace" : 8,
+			"id" : "core::@a1d6ad1aaaa1edf8dea2"
+		},
+		{
+			"backtrace" : 8,
+			"id" : "schema::@187f79f90f03b4c383fe"
+		},
+		{
+			"backtrace" : 8,
+			"id" : "system::@fb57201a0f01b24d4dc5"
+		},
+		{
+			"backtrace" : 8,
+			"id" : "snapshot::@86be79d033cd538a5c0c"
+		},
+		{
+			"backtrace" : 8,
+			"id" : "world_partition::@b2bf7258a6f54d64eb47"
+		},
+		{
+			"backtrace" : 8,
+			"id" : "scene_description::@b521ca423a5f32fb134d"
+		},
+		{
+			"backtrace" : 8,
+			"id" : "scene_composition::@b5238a990fe5d6742dbe"
+		},
+		{
+			"backtrace" : 8,
+			"id" : "simulation_composition::@0f0ae8ba3480bc9a566a"
+		},
+		{
+			"backtrace" : 8,
+			"id" : "transform::@71f4d9a52806caffce99"
+		},
+		{
+			"backtrace" : 8,
+			"id" : "hierarchy::@b994b6ea6b99d505d4d9"
+		},
+		{
+			"backtrace" : 8,
+			"id" : "visual::@d5d51b856f9def0240f8"
+		},
+		{
+			"backtrace" : 8,
+			"id" : "process_execution::@7d9faf53d58f8d22d002"
+		},
+		{
+			"backtrace" : 8,
+			"id" : "process_asset_loading::@389202a59089a91e47ad"
+		},
+		{
+			"backtrace" : 8,
+			"id" : "edit_sessions::@80f09fafaae80a9309ab"
+		},
+		{
+			"backtrace" : 8,
+			"id" : "edit_history::@80f09fafaae80a9309ab"
+		},
+		{
+			"backtrace" : 8,
+			"id" : "scene_mesh_query::@18c5cf92ebd161cc3658"
+		},
+		{
+			"backtrace" : 8,
+			"id" : "scene_camera::@9971a90ed4b5c5aeb023"
+		},
+		{
+			"backtrace" : 8,
+			"id" : "scene_render::@a1398ed24068bb3cf327"
+		},
+		{
+			"backtrace" : 7,
+			"id" : "layout_model::@1f730f15664d75f61532"
+		},
+		{
+			"backtrace" : 8,
+			"id" : "editor_commands::@554362bfd8948d349368"
+		},
+		{
+			"backtrace" : 7,
+			"id" : "view_host::@88052dbb842e9ea35b88"
+		}
+	],
+	"id" : "desktop_shell::@88052dbb842e9ea35b88",
+	"install" : 
+	{
+		"destinations" : 
+		[
+			{
+				"backtrace" : 5,
+				"path" : "lib"
+			}
+		],
+		"prefix" : 
+		{
+			"path" : "E:/SyncForder/CodeRepos/install/P11-3bbc7312a3d1"
+		}
+	},
+	"name" : "desktop_shell",
+	"nameOnDisk" : "desktop_shell.lib",
+	"paths" : 
+	{
+		"build" : "editor/workbench/desktop",
+		"source" : "editor/workbench/desktop"
+	},
+	"sourceGroups" : 
+	[
+		{
+			"name" : "Source Files",
+			"sourceIndexes" : 
+			[
+				0,
+				1,
+				2,
+				3,
+				4,
+				5
+			]
+		}
+	],
+	"sources" : 
+	[
+		{
+			"backtrace" : 3,
+			"compileGroupIndex" : 0,
+			"path" : "editor/workbench/desktop/src/CommandMenu.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 3,
+			"compileGroupIndex" : 0,
+			"path" : "editor/workbench/desktop/src/DesktopShell.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 3,
+			"compileGroupIndex" : 0,
+			"path" : "editor/workbench/desktop/src/WindowInput.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 3,
+			"compileGroupIndex" : 0,
+			"path" : "editor/workbench/desktop/src/WindowOutput.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 3,
+			"compileGroupIndex" : 0,
+			"path" : "editor/workbench/desktop/src/Presentation.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 3,
+			"compileGroupIndex" : 0,
+			"path" : "editor/workbench/desktop/src/UiRenderSyncStage.cpp",
+			"sourceGroupIndex" : 0
+		}
+	],
+	"type" : "STATIC_LIBRARY"
+}

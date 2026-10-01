@@ -1,0 +1,38 @@
+diff --git a/editor/activities/commands/test/commands.cpp b/editor/activities/commands/test/commands.cpp
+index 71e97cac8..cc173ba6d 100644
+--- a/editor/activities/commands/test/commands.cpp
++++ b/editor/activities/commands/test/commands.cpp
+@@ -109,6 +109,25 @@ namespace
+         assert(registry.query(*external, input.query()));
+         assert(released && !early && nested_busy && publication_busy);
+     }
++    void repeatedSnapshotOwnership()
++    {
++        int calls{};
++        auto original = entry(calls);
++        auto snapshot = *CommandRegistrySnapshot::create({original});
++        for (std::size_t index{}; index < 10000; ++index)
++        {
++            std::weak_ptr<CommandEntry> previous = snapshot.entries().front();
++            auto next = CommandRegistrySnapshot::create({snapshot.entries().front()});
++            assert(next && next->entries().front().get() == original.get());
++            snapshot = std::move(*next);
++            // A shared entry is not a reason to retain every previous receiving-module wrapper.
++            assert(previous.expired());
++        }
++        CommandRegistry registry;
++        CommandInvocation input;
++        assert(registry.query(*snapshot.find(CommandIdView{"test.command"}), input.query()));
++        std::puts("PASS 10000 shared-entry revisions retain one value without an owner chain");
++    }
+     void busyAndReentry()
+     {
+         CommandRegistry registry;
+@@ -152,6 +171,7 @@ int main()
+ {
+     pinnedAndCurrent();
+     queryLifetime();
++    repeatedSnapshotOwnership();
+     busyAndReentry();
+     std::puts("PASS immutable command entries, pinned/current policy, bounded BUSY FIFO, recursive and foreign calls");
+ }

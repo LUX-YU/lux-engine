@@ -1,0 +1,74 @@
+{
+  "implementation_sha": "3bbc7312a3d130a76f2c1807a9e3bca0d413e7ee",
+  "fresh_prefix": "E:\\SyncForder\\CodeRepos\\install\\P11-3bbc7312a3d1",
+  "old_installed_headers_absent": [
+    "lux/engine/editor/metadata/ConfigurationValue.hpp",
+    "lux/engine/editor/metadata/EditorReflection.hpp"
+  ],
+  "new_providers": [
+    {
+      "name": "editor_configuration",
+      "SOURCE_DIR": "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/authoring/configuration",
+      "BINARY_DIR": "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/authoring/configuration",
+      "TYPE": "SHARED_LIBRARY",
+      "IMPORTED": "FALSE",
+      "SOURCES": "src/ConfigurationValue.cpp;src/EditorReflection.cpp",
+      "INTERFACE_SOURCES": "",
+      "INCLUDE_DIRECTORIES": "$<BUILD_INTERFACE:E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/authoring/configuration/include;E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/gen/include>;$<INSTALL_INTERFACE:include>",
+      "INTERFACE_INCLUDE_DIRECTORIES": "$<BUILD_INTERFACE:E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/authoring/configuration/include;E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/gen/include>;$<INSTALL_INTERFACE:include>",
+      "LINK_LIBRARIES": "lux::engine::core::meta;lux::engine::core::serialization",
+      "INTERFACE_LINK_LIBRARIES": "lux::engine::core::meta;lux::engine::core::serialization",
+      "MANUALLY_ADDED_DEPENDENCIES": "",
+      "edges": "LINK_LIBRARIES:meta;LINK_LIBRARIES:serialization;INTERFACE_LINK_LIBRARIES:meta;INTERFACE_LINK_LIBRARIES:serialization"
+    },
+    {
+      "name": "editor_commands",
+      "SOURCE_DIR": "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/activities/commands",
+      "BINARY_DIR": "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/activities/commands",
+      "TYPE": "STATIC_LIBRARY",
+      "IMPORTED": "FALSE",
+      "SOURCES": "src/CommandRegistry.cpp;src/CommandDispatcher.cpp",
+      "INTERFACE_SOURCES": "",
+      "INCLUDE_DIRECTORIES": "$<BUILD_INTERFACE:E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/activities/commands/include>;$<INSTALL_INTERFACE:include>",
+      "INTERFACE_INCLUDE_DIRECTORIES": "$<BUILD_INTERFACE:E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/activities/commands/include>;$<INSTALL_INTERFACE:include>",
+      "LINK_LIBRARIES": "editor_contracts;edit_sessions;lux::cxx::core;lux::cxx::compile_time",
+      "INTERFACE_LINK_LIBRARIES": "editor_contracts;edit_sessions;lux::cxx::core;lux::cxx::compile_time",
+      "MANUALLY_ADDED_DEPENDENCIES": "",
+      "edges": "LINK_LIBRARIES:editor_contracts;LINK_LIBRARIES:edit_sessions;LINK_LIBRARIES:lux::cxx::core;LINK_LIBRARIES:lux::cxx::compile_time;INTERFACE_LINK_LIBRARIES:editor_contracts;INTERFACE_LINK_LIBRARIES:edit_sessions;INTERFACE_LINK_LIBRARIES:lux::cxx::core;INTERFACE_LINK_LIBRARIES:lux::cxx::compile_time"
+    },
+    {
+      "name": "session_factories",
+      "SOURCE_DIR": "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/activities/sessions",
+      "BINARY_DIR": "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/activities/sessions",
+      "TYPE": "STATIC_LIBRARY",
+      "IMPORTED": "FALSE",
+      "SOURCES": "src/SessionInstallation.cpp;src/SessionFactory.cpp",
+      "INTERFACE_SOURCES": "",
+      "INCLUDE_DIRECTORIES": "$<BUILD_INTERFACE:E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/activities/sessions/include>;$<INSTALL_INTERFACE:include>",
+      "INTERFACE_INCLUDE_DIRECTORIES": "$<BUILD_INTERFACE:E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/activities/sessions/include>;$<INSTALL_INTERFACE:include>",
+      "LINK_LIBRARIES": "lux::engine::editor::editor_persistence;lux::engine::editor::edit_sessions;lux::engine::resource::asset;lux::cxx::core",
+      "INTERFACE_LINK_LIBRARIES": "lux::engine::editor::editor_persistence;lux::engine::editor::edit_sessions;lux::engine::resource::asset;lux::cxx::core",
+      "MANUALLY_ADDED_DEPENDENCIES": "",
+      "edges": "LINK_LIBRARIES:editor_persistence;LINK_LIBRARIES:edit_sessions;LINK_LIBRARIES:asset;LINK_LIBRARIES:lux::cxx::core;INTERFACE_LINK_LIBRARIES:editor_persistence;INTERFACE_LINK_LIBRARIES:edit_sessions;INTERFACE_LINK_LIBRARIES:asset;INTERFACE_LINK_LIBRARIES:lux::cxx::core"
+    },
+    {
+      "name": "editor_extensions",
+      "SOURCE_DIR": "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/application/extensions",
+      "BINARY_DIR": "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/application/extensions",
+      "TYPE": "STATIC_LIBRARY",
+      "IMPORTED": "FALSE",
+      "SOURCES": "src/Contributions.cpp;src/EditorExtension.cpp;src/BuiltinContributions.cpp",
+      "INTERFACE_SOURCES": "",
+      "INCLUDE_DIRECTORIES": "$<BUILD_INTERFACE:E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/application/extensions/include;E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/gen/include>;$<INSTALL_INTERFACE:include>",
+      "INTERFACE_INCLUDE_DIRECTORIES": "$<BUILD_INTERFACE:E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/application/extensions/include;E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/gen/include>;$<INSTALL_INTERFACE:include>",
+      "LINK_LIBRARIES": "lux::engine::editor::editor_commands;lux::engine::editor::session_factories;lux::engine::editor::view_host;lux::engine::editor::scene_ui;lux::engine::editor::scene_persistence;lux::engine::editor::material_persistence;lux::engine::editor::flowforge_persistence;lux::engine::editor::material_ui;lux::engine::editor::flow_ui;lux::engine::project::project_plugins",
+      "INTERFACE_LINK_LIBRARIES": "lux::engine::editor::editor_commands;lux::engine::editor::session_factories;lux::engine::editor::view_host;lux::engine::editor::scene_ui;lux::engine::editor::scene_persistence;lux::engine::editor::material_persistence;lux::engine::editor::flowforge_persistence;lux::engine::editor::material_ui;lux::engine::editor::flow_ui;lux::engine::project::project_plugins",
+      "MANUALLY_ADDED_DEPENDENCIES": "",
+      "edges": "LINK_LIBRARIES:editor_commands;LINK_LIBRARIES:session_factories;LINK_LIBRARIES:view_host;LINK_LIBRARIES:scene_ui;LINK_LIBRARIES:scene_persistence;LINK_LIBRARIES:material_persistence;LINK_LIBRARIES:flowforge_persistence;LINK_LIBRARIES:material_ui;LINK_LIBRARIES:flow_ui;LINK_LIBRARIES:project_plugins;INTERFACE_LINK_LIBRARIES:editor_commands;INTERFACE_LINK_LIBRARIES:session_factories;INTERFACE_LINK_LIBRARIES:view_host;INTERFACE_LINK_LIBRARIES:scene_ui;INTERFACE_LINK_LIBRARIES:scene_persistence;INTERFACE_LINK_LIBRARIES:material_persistence;INTERFACE_LINK_LIBRARIES:flowforge_persistence;INTERFACE_LINK_LIBRARIES:material_ui;INTERFACE_LINK_LIBRARIES:flow_ui;INTERFACE_LINK_LIBRARIES:project_plugins"
+    }
+  ],
+  "retained_sources": 55,
+  "moved_originals": 5,
+  "actual_install_entries": 11538,
+  "remaining_product": "editor/app -> lux_editor, product switch only P12"
+}

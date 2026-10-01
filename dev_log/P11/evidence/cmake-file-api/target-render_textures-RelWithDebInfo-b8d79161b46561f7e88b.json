@@ -1,0 +1,50 @@
+{
+	"backtrace" : 3,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"add_custom_target",
+			"add_asset",
+			"add_texture_asset"
+		],
+		"files" : 
+		[
+			"modules/resource/asset/cmake/add_asset.cmake",
+			"modules/function/render/features/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 1
+			},
+			{
+				"command" : 2,
+				"file" : 1,
+				"line" : 730,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 0,
+				"line" : 101,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 40,
+				"parent" : 2
+			}
+		]
+	},
+	"id" : "render_textures::@a4379987959f75cb1921",
+	"name" : "render_textures",
+	"paths" : 
+	{
+		"build" : "modules/function/render/features",
+		"source" : "modules/function/render/features"
+	},
+	"sources" : [],
+	"type" : "UTILITY"
+}

@@ -1,0 +1,117 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install",
+			"__install_export_header_dirs",
+			"lux_engine_install_components"
+		],
+		"files" : 
+		[
+			"E:/SyncForder/CodeRepos/install/P11-3bbc7312a3d1/share/lux-cmake-toolset/component/install_components.cmake",
+			"cmake/InstallComponents.cmake",
+			"engine/scene/system/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 28,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 2
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 64,
+				"parent" : 1
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 3,
+			"component" : "lux_engine_scene_system",
+			"destination" : ".",
+			"paths" : 
+			[
+				"engine/scene/system/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 4,
+			"component" : "lux_engine_scene_system",
+			"destination" : "share/lux-engine-scene-system/scene_system",
+			"exportName" : "scene_system",
+			"exportTargets" : 
+			[
+				{
+					"id" : "scene_system::@c5e215834b6236035757",
+					"index" : 0
+				}
+			],
+			"paths" : 
+			[
+				"engine/scene/system/CMakeFiles/Export/f83e4ed43a1719fbd36c20f6e672d7df/lux-engine-scene-system-scene_system-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 5,
+			"component" : "lux_engine_scene_system",
+			"destination" : "share/lux-engine-scene-system/scene_system",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/engine/scene/system/lux-engine-scene-system-scene_system-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 6,
+			"component" : "lux_engine_scene_system",
+			"destination" : "share/lux-engine-scene-system",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/engine/scene/system/lux-engine-scene-system-config.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/engine/scene/system/lux-engine-scene-system-config-version.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/engine/scene/system/lux-engine-scene-system-available-components.cmake"
+			],
+			"type" : "file"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "engine/scene/system",
+		"source" : "engine/scene/system"
+	}
+}

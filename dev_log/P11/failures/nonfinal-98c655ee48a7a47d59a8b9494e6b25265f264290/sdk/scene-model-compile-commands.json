@@ -1,0 +1,8 @@
+[
+  {
+    "directory": "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-98c655ee48a7-sdk/scene-model",
+    "command": "D:\\Development\\Mircosoft\\VisualStudio\\VC\\Tools\\MSVC\\14.44.35207\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DENTT_NO_ETO -external:IE:\\SyncForder\\CodeRepos\\install\\P11-98c655ee48a7\\include -external:ID:\\Development\\vcpkg\\installed\\x64-windows\\include -external:ID:\\Development\\vcpkg\\installed\\x64-windows\\include\\stduuid -external:ID:\\Development\\vcpkg\\installed\\x64-windows\\include\\eigen3 -external:W0 /DWIN32 /D_WINDOWS /EHsc /O2 /Ob1 /DNDEBUG -std:c++20 -MD -Zi /UNDEBUG /utf-8 /Zc:__cplusplus /Zc:preprocessor /FoCMakeFiles\\scene_model_consumer.dir\\main.cpp.obj /FdCMakeFiles\\scene_model_consumer.dir\\ /FS -c E:\\SyncForder\\CodeRepos\\build\\p11-clean-98c655ee48a7\\cmake\\installed-consumers\\scene-model\\main.cpp",
+    "file": "E:/SyncForder/CodeRepos/build/p11-clean-98c655ee48a7/cmake/installed-consumers/scene-model/main.cpp",
+    "output": "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-98c655ee48a7-sdk/scene-model/CMakeFiles/scene_model_consumer.dir/main.cpp.obj"
+  }
+]

@@ -1,0 +1,27 @@
+Start testing: Oct 01 17:16 GMT 夏令时
+----------------------------------------------------------
+1/1 Testing: installed.layering.SAVE_CORE
+1/1 Test: installed.layering.SAVE_CORE
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dependency-sdk/layering-save_core/layering_consumer.exe"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dependency-sdk/layering-save_core
+"installed.layering.SAVE_CORE" start time: Oct 01 17:16 GMT 夏令时
+Output:
+----------------------------------------------------------
+X05-01 reverse ready + older state intent: PASS
+X05-02 failure hole: PASS
+X05-03 active late writer quarantines one lane until retirement and verification: PASS
+X05-06 distinct copy cannot inherit writer version: PASS
+X05-09 bounded tickets and bytes: PASS
+XQ23 SharedBytes: no copy, source released, logical budget per ticket, Unknown and cancellation PASS
+R05-05 ack during RESERVED/READY/published, verified consumed premise and reverse encode PASS
+R05-07 consumed proof constrained by origin/binding/chain; external edits still conflict PASS
+R05-08 64 bounded cycles: failure/cancel holes, Unknown quarantine, early ack and all records freed PASS
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"installed.layering.SAVE_CORE" end time: Oct 01 17:16 GMT 夏令时
+"installed.layering.SAVE_CORE" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Oct 01 17:16 GMT 夏令时

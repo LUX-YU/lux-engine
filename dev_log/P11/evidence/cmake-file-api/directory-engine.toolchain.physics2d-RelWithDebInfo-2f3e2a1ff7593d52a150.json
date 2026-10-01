@@ -1,0 +1,43 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install"
+		],
+		"files" : 
+		[
+			"engine/toolchain/physics2d/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 9,
+				"parent" : 0
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 1,
+			"component" : "lux_sdk",
+			"destination" : "share/lux-engine-physics2d/schema",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/engine/domain/simulation/builtin_systems/physics2d/generated/physics2d_simulation/script_abilities/schema/PhysicsQuery2D.ability.schema.json"
+			],
+			"type" : "file"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "engine/toolchain/physics2d",
+		"source" : "engine/toolchain/physics2d"
+	}
+}

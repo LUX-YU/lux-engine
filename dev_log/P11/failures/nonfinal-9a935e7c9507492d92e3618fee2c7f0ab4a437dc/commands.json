@@ -1,0 +1,266 @@
+[
+  {
+    "name": "clone",
+    "argv": [
+      "git",
+      "clone",
+      "--no-hardlinks",
+      "--no-checkout",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-p11",
+      "E:\\SyncForder\\CodeRepos\\build\\p11-clean-9a935e7c9507"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine-p11",
+    "exit_code": 0,
+    "log": "clone.log",
+    "sha256": "5760382d66d57a5ce7a407eec4c97f88316655d2af9e68204ee04e3dbe7a95fe",
+    "implementation_sha": "9a935e7c9507492d92e3618fee2c7f0ab4a437dc",
+    "started": "2026-10-01T14:32:13.659846+00:00",
+    "ended": "2026-10-01T14:32:14.820557+00:00"
+  },
+  {
+    "name": "checkout",
+    "argv": [
+      "git",
+      "checkout",
+      "--detach",
+      "9a935e7c9507492d92e3618fee2c7f0ab4a437dc"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\build\\p11-clean-9a935e7c9507",
+    "exit_code": 0,
+    "log": "checkout.log",
+    "sha256": "d5c9267c2b5cd96aa71b0b2f39c6abb0432a6fa98cb25bffc45abf2cd7cab1f3",
+    "implementation_sha": "9a935e7c9507492d92e3618fee2c7f0ab4a437dc",
+    "started": "2026-10-01T14:32:14.825118+00:00",
+    "ended": "2026-10-01T14:32:22.274600+00:00"
+  },
+  {
+    "name": "tracked-snapshot",
+    "argv": [
+      "cmake",
+      "-DLUX_SOURCE_DIR=E:\\SyncForder\\CodeRepos\\build\\p11-clean-9a935e7c9507",
+      "-P",
+      "E:\\SyncForder\\CodeRepos\\build\\p11-clean-9a935e7c9507\\cmake\\ValidateTrackedSnapshot.cmake"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\build\\p11-clean-9a935e7c9507",
+    "exit_code": 0,
+    "log": "tracked-snapshot.log",
+    "sha256": "01fee04cea13107ae1e3ac7659e890af87cb5ad4e0e6c0813c30383857611292",
+    "implementation_sha": "9a935e7c9507492d92e3618fee2c7f0ab4a437dc",
+    "started": "2026-10-01T14:32:22.305979+00:00",
+    "ended": "2026-10-01T14:32:23.523944+00:00"
+  },
+  {
+    "name": "configure",
+    "argv": [
+      "cmake",
+      "-S",
+      "E:\\SyncForder\\CodeRepos\\build\\p11-clean-9a935e7c9507",
+      "-B",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p11-9a935e7c9507",
+      "-G",
+      "Ninja",
+      "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+      "-DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/P11-9a935e7c9507",
+      "-DCMAKE_INSTALL_PREFIX=E:/SyncForder/CodeRepos/install/P11-9a935e7c9507",
+      "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+      "-DVCPKG_TARGET_TRIPLET=x64-windows",
+      "-DBUILD_TESTING=ON",
+      "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+      "-DLuxLua55_DIR=E:/SyncForder/CodeRepos/install/o/v4/lua55/lib/cmake/LuxLua55",
+      "-DPython3_EXECUTABLE=C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+      "-DLUX_EDITOR_MIGRATION_STAGE=P11",
+      "-DLUX_EDITOR_LAYERING_MODE=STRICT",
+      "-DLUX_BUILD_COMPONENT_LUA_META=OFF",
+      "-DLUX_BUILD_PHYSICS2D=ON",
+      "-DLUX_BUILD_PACKED_RENDER_CONTENT=ON",
+      "-DLUX_EDITOR_BUILD_NATIVE_TESTS=ON",
+      "-DLUX_EDITOR_BUILD_DESKTOP_TESTS=ON",
+      "-DLUX_EDITOR_BUILD_GPU_TESTS=ON",
+      "-DLUX_EDITOR_BUILD_TOOLCHAIN_TESTS=ON",
+      "-DLUX_EDITOR_BUILD_INSTALLED_TESTS=ON",
+      "-DLUX_BUILD_PROFILE=EDITOR"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\build\\p11-clean-9a935e7c9507",
+    "exit_code": 0,
+    "log": "configure.log",
+    "sha256": "c656e1efa5a08c53a962279869d53a94e51e984ef3ad0b691e13c96430ec4642",
+    "implementation_sha": "9a935e7c9507492d92e3618fee2c7f0ab4a437dc",
+    "started": "2026-10-01T14:32:23.677637+00:00",
+    "ended": "2026-10-01T14:33:07.273496+00:00"
+  },
+  {
+    "name": "build",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p11-9a935e7c9507",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\build\\p11-clean-9a935e7c9507",
+    "exit_code": 0,
+    "log": "build.log",
+    "sha256": "e36073479d6088819120ff1d7447829f626424c351f0c1ec4012fee404ec2b8e",
+    "implementation_sha": "9a935e7c9507492d92e3618fee2c7f0ab4a437dc",
+    "started": "2026-10-01T14:33:07.278716+00:00",
+    "ended": "2026-10-01T14:45:20.583605+00:00"
+  },
+  {
+    "name": "no-work",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p11-9a935e7c9507",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\build\\p11-clean-9a935e7c9507",
+    "exit_code": 0,
+    "log": "no-work.log",
+    "sha256": "7716162f3cd3b99cf3b8a8dd6decf324e08c7e941aae7e730baba5e4fc8c075b",
+    "implementation_sha": "9a935e7c9507492d92e3618fee2c7f0ab4a437dc",
+    "started": "2026-10-01T14:45:20.588426+00:00",
+    "ended": "2026-10-01T14:45:20.908810+00:00"
+  },
+  {
+    "name": "test-names",
+    "argv": [
+      "ctest",
+      "--test-dir",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p11-9a935e7c9507",
+      "--show-only=json-v1"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\build\\p11-clean-9a935e7c9507",
+    "exit_code": 0,
+    "log": "test-names.log",
+    "sha256": "35e8aff49aa8e3f2aeaedc234fd17f1342ab0d9b8f2c7c87cc03cdd4e58fbb6e",
+    "implementation_sha": "9a935e7c9507492d92e3618fee2c7f0ab4a437dc",
+    "started": "2026-10-01T14:45:20.913029+00:00",
+    "ended": "2026-10-01T14:45:21.602177+00:00"
+  },
+  {
+    "name": "ctest",
+    "argv": [
+      "ctest",
+      "--test-dir",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p11-9a935e7c9507",
+      "--output-on-failure",
+      "-j",
+      "1"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\build\\p11-clean-9a935e7c9507",
+    "exit_code": 0,
+    "log": "ctest.log",
+    "sha256": "b30bc16308b776bc9cef6bce7b5304b481e5ce7c2490497b3e4c06e888d45686",
+    "implementation_sha": "9a935e7c9507492d92e3618fee2c7f0ab4a437dc",
+    "started": "2026-10-01T14:45:21.612223+00:00",
+    "ended": "2026-10-01T14:54:37.055046+00:00"
+  },
+  {
+    "name": "C01",
+    "argv": [
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p11-9a935e7c9507\\bin\\editor_baseline_failures.exe",
+      "C01",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p11-9a935e7c9507",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\P11\\final\\9a935e7c9507492d92e3618fee2c7f0ab4a437dc\\probes"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p11-9a935e7c9507\\bin",
+    "exit_code": 1,
+    "log": "C01.log",
+    "sha256": "0dbfe595f0e021e51634fce2ac4ea94333d7b45abfe32ae13d4c70503ce2fa37",
+    "implementation_sha": "9a935e7c9507492d92e3618fee2c7f0ab4a437dc",
+    "started": "2026-10-01T14:54:37.060385+00:00",
+    "ended": "2026-10-01T14:54:37.407555+00:00"
+  },
+  {
+    "name": "C03",
+    "argv": [
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p11-9a935e7c9507\\bin\\editor_baseline_failures.exe",
+      "C03",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p11-9a935e7c9507",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\P11\\final\\9a935e7c9507492d92e3618fee2c7f0ab4a437dc\\probes"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p11-9a935e7c9507\\bin",
+    "exit_code": 0,
+    "log": "C03.log",
+    "sha256": "a7d6484393695f54e4eeef07878432940cb5491c715e91f13ef9665c92247129",
+    "implementation_sha": "9a935e7c9507492d92e3618fee2c7f0ab4a437dc",
+    "started": "2026-10-01T14:54:37.412034+00:00",
+    "ended": "2026-10-01T14:54:37.837494+00:00"
+  },
+  {
+    "name": "C04",
+    "argv": [
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p11-9a935e7c9507\\bin\\editor_baseline_failures.exe",
+      "C04",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p11-9a935e7c9507",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\P11\\final\\9a935e7c9507492d92e3618fee2c7f0ab4a437dc\\probes"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p11-9a935e7c9507\\bin",
+    "exit_code": 1,
+    "log": "C04.log",
+    "sha256": "e86c1b07b3a1db340e031ce7be7c470acc68e192ef35f894aaab33e9bb6f2e66",
+    "implementation_sha": "9a935e7c9507492d92e3618fee2c7f0ab4a437dc",
+    "started": "2026-10-01T14:54:37.841568+00:00",
+    "ended": "2026-10-01T14:54:38.137313+00:00"
+  },
+  {
+    "name": "install",
+    "argv": [
+      "cmake",
+      "--install",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p11-9a935e7c9507",
+      "--prefix",
+      "E:\\SyncForder\\CodeRepos\\install\\P11-9a935e7c9507"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\build\\p11-clean-9a935e7c9507",
+    "exit_code": 0,
+    "log": "install.log",
+    "sha256": "0b9ea7e6a773f87b2cf3c188b6f0a1a82244dd6a7a7ae88e74bc369917893751",
+    "implementation_sha": "9a935e7c9507492d92e3618fee2c7f0ab4a437dc",
+    "started": "2026-10-01T14:54:38.143350+00:00",
+    "ended": "2026-10-01T14:54:55.818255+00:00"
+  },
+  {
+    "name": "imports",
+    "argv": [
+      "dumpbin",
+      "/dependents",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p11-9a935e7c9507\\bin\\lux_editor.exe"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\build\\p11-clean-9a935e7c9507",
+    "exit_code": 0,
+    "log": "imports.log",
+    "sha256": "014f570a824988c572c77decf4ce35a8fa17b9d764666dd48da45d72876d61e1",
+    "implementation_sha": "9a935e7c9507492d92e3618fee2c7f0ab4a437dc",
+    "started": "2026-10-01T14:54:55.824583+00:00",
+    "ended": "2026-10-01T14:54:55.854524+00:00"
+  },
+  {
+    "name": "actual-link-commands",
+    "argv": [
+      "ninja",
+      "-C",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p11-9a935e7c9507",
+      "-t",
+      "commands"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\build\\p11-clean-9a935e7c9507",
+    "exit_code": 0,
+    "log": "actual-link-commands.log",
+    "sha256": "f9b6f5ec06cf4d94da88f1d2fa330723e9c15a874fe37c3d42b3437bb820dd35",
+    "implementation_sha": "9a935e7c9507492d92e3618fee2c7f0ab4a437dc",
+    "started": "2026-10-01T14:54:55.863208+00:00",
+    "ended": "2026-10-01T14:54:55.921706+00:00"
+  }
+]

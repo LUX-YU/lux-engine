@@ -1,0 +1,34 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-98c655ee48a7-player
+      Start  1: platform.process_arguments
+ 1/12 Test  #1: platform.process_arguments .......   Passed    0.14 sec
+      Start  2: object.tree
+ 2/12 Test  #2: object.tree ......................   Passed    0.02 sec
+      Start  3: object.queue
+ 3/12 Test  #3: object.queue .....................   Passed    0.04 sec
+      Start  4: render.runtime_resources
+ 4/12 Test  #4: render.runtime_resources .........   Passed    0.44 sec
+      Start  5: ui.root
+ 5/12 Test  #5: ui.root ..........................   Passed    0.04 sec
+      Start  6: world.partition_decoder_parity
+ 6/12 Test  #6: world.partition_decoder_parity ...   Passed    0.03 sec
+      Start  7: process.asset_read_overlay
+ 7/12 Test  #7: process.asset_read_overlay .......   Passed    0.04 sec
+      Start  8: scene.driver
+ 8/12 Test  #8: scene.driver .....................   Passed    0.04 sec
+      Start  9: scene.runtime
+ 9/12 Test  #9: scene.runtime ....................   Passed    0.09 sec
+      Start 10: scene.render_resources
+10/12 Test #10: scene.render_resources ...........   Passed    0.48 sec
+      Start 11: scene.world_loading
+11/12 Test #11: scene.world_loading ..............   Passed    0.15 sec
+      Start 12: engine.headless_context
+12/12 Test #12: engine.headless_context ..........   Passed    0.15 sec
+
+100% tests passed, 0 tests failed out of 12
+
+Label Time Summary:
+P10Q               =   0.03 sec*proc (1 test)
+editor_layering    =   0.03 sec*proc (1 test)
+native             =   0.03 sec*proc (1 test)
+
+Total Test time (real) =   2.04 sec

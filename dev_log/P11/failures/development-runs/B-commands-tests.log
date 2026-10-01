@@ -1,0 +1,12 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dev
+    Start 70: editor.commands
+1/1 Test #70: editor.commands ..................   Passed    0.03 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Label Time Summary:
+P11       =   0.03 sec*proc (1 test)
+editor    =   0.03 sec*proc (1 test)
+native    =   0.03 sec*proc (1 test)
+
+Total Test time (real) =   0.66 sec

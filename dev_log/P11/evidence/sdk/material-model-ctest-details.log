@@ -1,0 +1,18 @@
+Start testing: Oct 01 18:06 GMT 夏令时
+----------------------------------------------------------
+1/1 Testing: material_model_consumer
+1/1 Test: material_model_consumer
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1-sdk/material-model/material_model_consumer.exe"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1-sdk/material-model
+"material_model_consumer" start time: Oct 01 18:06 GMT 夏令时
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"material_model_consumer" end time: Oct 01 18:06 GMT 夏令时
+"material_model_consumer" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Oct 01 18:06 GMT 夏令时

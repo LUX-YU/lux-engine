@@ -1,0 +1,149 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install",
+			"__install_export_header_dirs",
+			"lux_engine_install_components"
+		],
+		"files" : 
+		[
+			"E:/SyncForder/CodeRepos/install/P11-3bbc7312a3d1/share/lux-cmake-toolset/component/install_components.cmake",
+			"cmake/InstallComponents.cmake",
+			"engine/scene/builtin_systems/mesh_query/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 22,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 2
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 64,
+				"parent" : 1
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 3,
+			"component" : "lux_engine_scene_mesh_query",
+			"destination" : ".",
+			"paths" : 
+			[
+				"engine/scene/builtin_systems/mesh_query/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 4,
+			"component" : "lux_engine_scene_mesh_query",
+			"destination" : "share/lux-engine-scene-mesh-query/scene_mesh_query",
+			"exportName" : "scene_mesh_query",
+			"exportTargets" : 
+			[
+				{
+					"id" : "scene_mesh_query::@18c5cf92ebd161cc3658",
+					"index" : 384
+				}
+			],
+			"paths" : 
+			[
+				"engine/scene/builtin_systems/mesh_query/CMakeFiles/Export/24f24ad46c811fe3757d962511c3951d/lux-engine-scene-mesh-query-scene_mesh_query-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 5,
+			"component" : "lux_engine_scene_mesh_query",
+			"destination" : "share/lux-engine-scene-mesh-query/scene_mesh_query",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/engine/scene/builtin_systems/mesh_query/lux-engine-scene-mesh-query-scene_mesh_query-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 6,
+			"component" : "lux_engine_scene_mesh_query",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/lux_engine_scene_mesh_query.lib"
+			],
+			"targetId" : "scene_mesh_query::@18c5cf92ebd161cc3658",
+			"targetIndex" : 384,
+			"targetIsImportLibrary" : true,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 6,
+			"component" : "lux_engine_scene_mesh_query",
+			"destination" : "bin",
+			"paths" : 
+			[
+				"bin/lux_engine_scene_mesh_query.dll"
+			],
+			"targetId" : "scene_mesh_query::@18c5cf92ebd161cc3658",
+			"targetIndex" : 384,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 7,
+			"component" : "lux_engine_scene_mesh_query",
+			"destination" : "share/lux-engine-scene-mesh-query",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/engine/scene/builtin_systems/mesh_query/lux-engine-scene-mesh-query-config.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/engine/scene/builtin_systems/mesh_query/lux-engine-scene-mesh-query-config-version.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/engine/scene/builtin_systems/mesh_query/lux-engine-scene-mesh-query-available-components.cmake"
+			],
+			"type" : "file"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "engine/scene/builtin_systems/mesh_query",
+		"source" : "engine/scene/builtin_systems/mesh_query"
+	}
+}

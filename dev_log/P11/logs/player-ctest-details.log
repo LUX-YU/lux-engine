@@ -1,0 +1,217 @@
+Start testing: Oct 01 18:03 GMT 夏令时
+----------------------------------------------------------
+1/12 Testing: platform.process_arguments
+1/12 Test: platform.process_arguments
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1-player/bin/platform_process_arguments.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1-player/modules/platform/process/arguments"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1-player/modules/platform/process
+"platform.process_arguments" start time: Oct 01 18:03 GMT 夏令时
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   0.11 sec
+----------------------------------------------------------
+Test Passed.
+"platform.process_arguments" end time: Oct 01 18:03 GMT 夏令时
+"platform.process_arguments" time elapsed: 00:00:00
+----------------------------------------------------------
+
+2/12 Testing: object.tree
+2/12 Test: object.tree
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1-player/bin/object_tree_test.exe"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1-player/modules/core/object
+"object.tree" start time: Oct 01 18:03 GMT 夏令时
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"object.tree" end time: Oct 01 18:03 GMT 夏令时
+"object.tree" time elapsed: 00:00:00
+----------------------------------------------------------
+
+3/12 Testing: object.queue
+3/12 Test: object.queue
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1-player/bin/object_queue_test.exe"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1-player/modules/core/object
+"object.queue" start time: Oct 01 18:03 GMT 夏令时
+Output:
+----------------------------------------------------------
+Queue MPSC: peak=64 posted=1200 inline=1200 full=1003
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"object.queue" end time: Oct 01 18:03 GMT 夏令时
+"object.queue" time elapsed: 00:00:00
+----------------------------------------------------------
+
+4/12 Testing: render.runtime_resources
+4/12 Test: render.runtime_resources
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1-player/bin/render_runtime_resource_test.exe"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1-player/modules/function/render/runtime
+"render.runtime_resources" start time: Oct 01 18:03 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS upload reply-ring backpressure and idle transport retirement
+<end of output>
+Test time =   0.43 sec
+----------------------------------------------------------
+Test Passed.
+"render.runtime_resources" end time: Oct 01 18:03 GMT 夏令时
+"render.runtime_resources" time elapsed: 00:00:00
+----------------------------------------------------------
+
+5/12 Testing: ui.root
+5/12 Test: ui.root
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1-player/bin/ui_root_test.exe"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1-player/modules/function/ui
+"ui.root" start time: Oct 01 18:03 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS Root tree drawing, independent maintenance, RAII, capture and context isolation
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"ui.root" end time: Oct 01 18:03 GMT 夏令时
+"ui.root" time elapsed: 00:00:00
+----------------------------------------------------------
+
+6/12 Testing: world.partition_decoder_parity
+6/12 Test: world.partition_decoder_parity
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1-player/bin/world_partition_decoder_test.exe"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1-player/engine/process/world_loading
+"world.partition_decoder_parity" start time: Oct 01 18:03 GMT 夏令时
+Output:
+----------------------------------------------------------
+Pure/async partition parity: multi-volume, extents, opaque payload, limits, cancellation, corruption OK
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"world.partition_decoder_parity" end time: Oct 01 18:03 GMT 夏令时
+"world.partition_decoder_parity" time elapsed: 00:00:00
+----------------------------------------------------------
+
+7/12 Testing: process.asset_read_overlay
+7/12 Test: process.asset_read_overlay
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1-player/bin/asset_read_overlay_test.exe"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1-player/engine/process/asset_loading
+"process.asset_read_overlay" start time: Oct 01 18:03 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS immutable asset overlays: byte transport, CPU decode, independent versions, fallback, retained bytes
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"process.asset_read_overlay" end time: Oct 01 18:03 GMT 夏令时
+"process.asset_read_overlay" time elapsed: 00:00:00
+----------------------------------------------------------
+
+8/12 Testing: scene.driver
+8/12 Test: scene.driver
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1-player/bin/scene_driver_test.exe"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1-player/engine/scene/composition
+"scene.driver" start time: Oct 01 18:03 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS SceneDriver: explicit time, same-time execution, deferred admission, paused synchronization, publication backpressure, failure and independent instances
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"scene.driver" end time: Oct 01 18:03 GMT 夏令时
+"scene.driver" time elapsed: 00:00:00
+----------------------------------------------------------
+
+9/12 Testing: scene.runtime
+9/12 Test: scene.runtime
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1-player/bin/scene_runtime_test.exe"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1-player/engine/scene/composition
+"scene.runtime" start time: Oct 01 18:03 GMT 夏令时
+Output:
+----------------------------------------------------------
+MEASURE SceneRuntime paused_turns=10000 elapsed_us=1238.8 business_tasks=0
+PASS X06-04 callback lease release is deferred, in-flight drain, outer guard and one destruction
+PASS R06-R1 result receipt identity/thread checks and copied failure code lifetime after reclamation
+PASS SceneRuntime: identity, sealed construction, multi-scene clocks, pause, failure, RAII timer
+<end of output>
+Test time =   0.08 sec
+----------------------------------------------------------
+Test Passed.
+"scene.runtime" end time: Oct 01 18:03 GMT 夏令时
+"scene.runtime" time elapsed: 00:00:00
+----------------------------------------------------------
+
+10/12 Testing: scene.render_resources
+10/12 Test: scene.render_resources
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1-player/bin/scene_render_resources_test.exe"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1-player/engine/scene/builtin_systems/render
+"scene.render_resources" start time: Oct 01 18:03 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS bounded font codec, malformed input strong guarantee, existing scene configuration bytes
+PASS request cancellation retires a view using completions only
+PASS transient request entities retire at maintenance, before or after adoption
+PASS real Program backpressure: three retries keep unpublished request, then ordered adoption
+stable paused request tick mean ns=203
+PASS RenderContext / Runtime request adoption, revisions, local failure, paused clock, RAII: 151 ms
+PASS actual Vulkan Scene/View creation, late owner release, unproduced image refusal, Feature failure, independent Scene, Program use retirement; no draw submitted
+<end of output>
+Test time =   0.49 sec
+----------------------------------------------------------
+Test Passed.
+"scene.render_resources" end time: Oct 01 18:03 GMT 夏令时
+"scene.render_resources" time elapsed: 00:00:00
+----------------------------------------------------------
+
+11/12 Testing: scene.world_loading
+11/12 Test: scene.world_loading
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1-player/bin/scene_world_loading_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1-player/engine/scene/builtin_systems/world_loading/fixture"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1-player/engine/scene/builtin_systems/world_loading
+"scene.world_loading" start time: Oct 01 18:03 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS materialization: missing cross-partition reference and late decode failure before any Registry event; retry, inline budget, typed reference traversal
+PASS residency: initial adoption, atomic preparation, membership, foreign Registry, retention lifetime
+PASS Observer: actual Process blocking IO, overlapping demand dedup, no static reread, cross-partition retention, dirty/external lifetime, unload
+PASS required partition failure: original missing object, Main Driver MAINTENANCE, clock=0
+PASS Observer: complete-set capacity/recovery, destructor before IO completion, source generation replacement
+PASS Observer: original IO/codec failures, no partial installation, same-set source retry
+PASS WorldLoading: CPU-only SceneRuntime integration; no Renderer, Camera, Editor or temporary Registry
+<end of output>
+Test time =   0.16 sec
+----------------------------------------------------------
+Test Passed.
+"scene.world_loading" end time: Oct 01 18:03 GMT 夏令时
+"scene.world_loading" time elapsed: 00:00:00
+----------------------------------------------------------
+
+12/12 Testing: engine.headless_context
+12/12 Test: engine.headless_context
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1-player/bin/engine_headless_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1-player/share/lux-engine/plugins/catalog.json" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1-player"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1-player/engine/project/plugins
+"engine.headless_context" start time: Oct 01 18:03 GMT 夏令时
+Output:
+----------------------------------------------------------
+TASK BASELINE samples=512 cold_ns=7300 admission_ns=181 collect_ns=45 dispatch_ns=47 moves_per_value=9 copies=0
+TASK HEAP live admission_blocks=3 admission_bytes=344 collection_blocks=0 collection_bytes=0 dispatch_blocks=-1 release_total_blocks=0 release_total_bytes=0
+TASK WAIT wall_us=65932 cpu_us=0
+<end of output>
+Test time =   0.13 sec
+----------------------------------------------------------
+Test Passed.
+"engine.headless_context" end time: Oct 01 18:03 GMT 夏令时
+"engine.headless_context" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Oct 01 18:03 GMT 夏令时
+
+P10Q =   0.03 sec*proc
+
+editor_layering =   0.03 sec*proc
+
+native =   0.03 sec*proc
+

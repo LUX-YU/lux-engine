@@ -1,0 +1,106 @@
+{
+	"backtrace" : 1,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"add_custom_target",
+			"add_dependencies",
+			"add_custom_command",
+			"lux_materialize_script_ability_schemas"
+		],
+		"files" : 
+		[
+			"engine/toolchain/physics2d/CMakeLists.txt",
+			"modules/function/script/core/cmake/engine_script_ability_codegen.cmake"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 6,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 0,
+				"line" : 7,
+				"parent" : 0
+			},
+			{
+				"command" : 3,
+				"file" : 0,
+				"line" : 3,
+				"parent" : 0
+			},
+			{
+				"command" : 2,
+				"file" : 1,
+				"line" : 153,
+				"parent" : 3
+			}
+		]
+	},
+	"dependencies" : 
+	[
+		{
+			"backtrace" : 2,
+			"id" : "physics2d_simulation_script_ability_schemas::@094c04e6a25107f9576f"
+		},
+		{
+			"backtrace" : 4,
+			"id" : "physics2d_simulation_script_ability_schema_0::@094c04e6a25107f9576f"
+		}
+	],
+	"id" : "physics2d_installed_schemas::@094c04e6a25107f9576f",
+	"name" : "physics2d_installed_schemas",
+	"paths" : 
+	{
+		"build" : "engine/toolchain/physics2d",
+		"source" : "engine/toolchain/physics2d"
+	},
+	"sourceGroups" : 
+	[
+		{
+			"name" : "",
+			"sourceIndexes" : 
+			[
+				0
+			]
+		},
+		{
+			"name" : "CMake Rules",
+			"sourceIndexes" : 
+			[
+				1,
+				2
+			]
+		}
+	],
+	"sources" : 
+	[
+		{
+			"backtrace" : 1,
+			"isGenerated" : true,
+			"path" : "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/engine/toolchain/physics2d/CMakeFiles/physics2d_installed_schemas",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 0,
+			"isGenerated" : true,
+			"path" : "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/engine/toolchain/physics2d/CMakeFiles/physics2d_installed_schemas.rule",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 0,
+			"isGenerated" : true,
+			"path" : "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/engine/domain/simulation/builtin_systems/physics2d/generated/physics2d_simulation/script_abilities/schema/PhysicsQuery2D.ability.schema.json.rule",
+			"sourceGroupIndex" : 1
+		}
+	],
+	"type" : "UTILITY"
+}

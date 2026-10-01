@@ -1,0 +1,233 @@
+Start testing: Oct 01 17:16 GMT 夏令时
+----------------------------------------------------------
+1/13 Testing: installed.desktop.host
+1/13 Test: installed.desktop.host
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dependency-sdk/desktop-views/bin/view_host.exe"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dependency-sdk/desktop-views
+"installed.desktop.host" start time: Oct 01 17:16 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS P10 real ViewHost ownership, bounded requests, generation, callback batches and prepare failure
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"installed.desktop.host" end time: Oct 01 17:16 GMT 夏令时
+"installed.desktop.host" time elapsed: 00:00:00
+----------------------------------------------------------
+
+2/13 Testing: installed.desktop.inspector_codegen
+2/13 Test: installed.desktop.inspector_codegen
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dependency-sdk/desktop-views/bin/inspector_fields.exe"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dependency-sdk/desktop-views
+"installed.desktop.inspector_codegen" start time: Oct 01 17:16 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS SDK generated nested/container Inspector Elements, scalar preview/commit, set insertion, exact author encoding, Undo/Redo, close without legacy UI
+<end of output>
+Test time =   0.06 sec
+----------------------------------------------------------
+Test Passed.
+"installed.desktop.inspector_codegen" end time: Oct 01 17:16 GMT 夏令时
+"installed.desktop.inspector_codegen" time elapsed: 00:00:00
+----------------------------------------------------------
+
+3/13 Testing: installed.desktop.real_views
+3/13 Test: installed.desktop.real_views
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dependency-sdk/desktop-views/bin/desktop_views.exe" "D:/Development/vcpkg/installed/x64-windows/tools/llvm/lld-link.exe" "E:/SyncForder/CodeRepos/install/P11-dev"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dependency-sdk/desktop-views
+"installed.desktop.real_views" start time: Oct 01 17:16 GMT 夏令时
+Output:
+----------------------------------------------------------
+P10 actual services: timer cancellation after view close; catalog BUSY/IO/permission preserves rows; saved Material decoded through asset-open request; picker revision/type/project checked.
+P10 dual SceneView GPU readback: failed material read -> ResourceView retry -> ready after close; actual mesh pick, left/right highlight isolation and retirement verified.
+P10 DEV SceneView GPU: shared author edit/undo, independent cameras, failed rebind gesture, close/reopen; frames=905 validation_errors=0
+<end of output>
+Test time =   1.72 sec
+----------------------------------------------------------
+Test Passed.
+"installed.desktop.real_views" end time: Oct 01 17:16 GMT 夏令时
+"installed.desktop.real_views" time elapsed: 00:00:01
+----------------------------------------------------------
+
+4/13 Testing: installed.desktop.native_input
+4/13 Test: installed.desktop.native_input
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dependency-sdk/desktop-views/bin/desktop_views.exe" "D:/Development/vcpkg/installed/x64-windows/tools/llvm/lld-link.exe" "E:/SyncForder/CodeRepos/install/P11-dev" "native"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dependency-sdk/desktop-views
+"installed.desktop.native_input" start time: Oct 01 17:16 GMT 夏令时
+Output:
+----------------------------------------------------------
+native activation: foreground=1 visible=1
+native button: flags=4 right=0 down=0
+native button: flags=16 right=1 down=0
+native click target: foreground=1 hit_test=1
+native button: flags=2 right=0 down=1
+native drag: point=(329.5,140.5) sampled=(329.0,140.0) editing=1 foreground=1
+native moved: overlay=1 editing=1 left=1
+native button: flags=4 right=0 down=0
+native click target: foreground=1 hit_test=1
+native button: flags=8 right=1 down=1
+native button: flags=16 right=1 down=0
+native click target: foreground=1 hit_test=1
+native button: flags=2 right=0 down=1
+native button: flags=4 right=0 down=0
+native TextEdit value='ab' focus=1 composing=0
+native click target: foreground=1 hit_test=1
+native button: flags=2 right=0 down=1
+native button: flags=4 right=0 down=0
+P10 native desktop: OS mouse drag -> generated Inspector preview/commit/undo; captured lux::editor::views::ViewportElement navigates outside its rectangle and closes while held; OS keyboard -> TextEdit; DIRECT close releases focus after callback; system IME candidate/commit NOT tested; validation_errors=0
+<end of output>
+Test time =   2.13 sec
+----------------------------------------------------------
+Test Passed.
+"installed.desktop.native_input" end time: Oct 01 17:16 GMT 夏令时
+"installed.desktop.native_input" time elapsed: 00:00:02
+----------------------------------------------------------
+
+5/13 Testing: installed.desktop.draft_source_literal
+5/13 Test: installed.desktop.draft_source_literal
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dependency-sdk/desktop-views/bin/desktop_views.exe" "D:/Development/vcpkg/installed/x64-windows/tools/llvm/lld-link.exe" "E:/SyncForder/CodeRepos/install/P11-dev" "r1-literal"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dependency-sdk/desktop-views
+"installed.desktop.draft_source_literal" start time: Oct 01 17:16 GMT 夏令时
+Output:
+----------------------------------------------------------
+P10 R1 r1-literal: real cached property/canvas input; S0!=S1=1 source_and_history_preserved=1 stale=1
+R10-R1-06 actual Revert/edit/Apply one-history Undo/Redo PASS
+<end of output>
+Test time =   0.59 sec
+----------------------------------------------------------
+Test Passed.
+"installed.desktop.draft_source_literal" end time: Oct 01 17:16 GMT 夏令时
+"installed.desktop.draft_source_literal" time elapsed: 00:00:00
+----------------------------------------------------------
+
+6/13 Testing: installed.desktop.draft_source_signature
+6/13 Test: installed.desktop.draft_source_signature
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dependency-sdk/desktop-views/bin/desktop_views.exe" "D:/Development/vcpkg/installed/x64-windows/tools/llvm/lld-link.exe" "E:/SyncForder/CodeRepos/install/P11-dev" "r1-signature"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dependency-sdk/desktop-views
+"installed.desktop.draft_source_signature" start time: Oct 01 17:16 GMT 夏令时
+Output:
+----------------------------------------------------------
+P10 R1 r1-signature: real cached property/canvas input; S0!=S1=1 source_and_history_preserved=1 stale=1
+R10-R1-06 actual Revert/edit/Apply one-history Undo/Redo PASS
+<end of output>
+Test time =   0.56 sec
+----------------------------------------------------------
+Test Passed.
+"installed.desktop.draft_source_signature" end time: Oct 01 17:16 GMT 夏令时
+"installed.desktop.draft_source_signature" time elapsed: 00:00:00
+----------------------------------------------------------
+
+7/13 Testing: installed.desktop.draft_source_flow-canvas
+7/13 Test: installed.desktop.draft_source_flow-canvas
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dependency-sdk/desktop-views/bin/desktop_views.exe" "D:/Development/vcpkg/installed/x64-windows/tools/llvm/lld-link.exe" "E:/SyncForder/CodeRepos/install/P11-dev" "r1-flow-canvas"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dependency-sdk/desktop-views
+"installed.desktop.draft_source_flow-canvas" start time: Oct 01 17:16 GMT 夏令时
+Output:
+----------------------------------------------------------
+P10 R1 r1-flow-canvas: real cached property/canvas input; S0!=S1=1 source_and_history_preserved=1 stale=1
+<end of output>
+Test time =   0.34 sec
+----------------------------------------------------------
+Test Passed.
+"installed.desktop.draft_source_flow-canvas" end time: Oct 01 17:16 GMT 夏令时
+"installed.desktop.draft_source_flow-canvas" time elapsed: 00:00:00
+----------------------------------------------------------
+
+8/13 Testing: installed.desktop.draft_source_material-canvas
+8/13 Test: installed.desktop.draft_source_material-canvas
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dependency-sdk/desktop-views/bin/desktop_views.exe" "D:/Development/vcpkg/installed/x64-windows/tools/llvm/lld-link.exe" "E:/SyncForder/CodeRepos/install/P11-dev" "r1-material-canvas"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dependency-sdk/desktop-views
+"installed.desktop.draft_source_material-canvas" start time: Oct 01 17:16 GMT 夏令时
+Output:
+----------------------------------------------------------
+P10 R1 material-canvas: actual GraphCanvas signal -> queued BEGIN; source_and_history_preserved=1 stale=1
+<end of output>
+Test time =   0.35 sec
+----------------------------------------------------------
+Test Passed.
+"installed.desktop.draft_source_material-canvas" end time: Oct 01 17:16 GMT 夏令时
+"installed.desktop.draft_source_material-canvas" time elapsed: 00:00:00
+----------------------------------------------------------
+
+9/13 Testing: installed.desktop.draft_source_flow-queue
+9/13 Test: installed.desktop.draft_source_flow-queue
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dependency-sdk/desktop-views/bin/desktop_views.exe" "D:/Development/vcpkg/installed/x64-windows/tools/llvm/lld-link.exe" "E:/SyncForder/CodeRepos/install/P11-dev" "r1-flow-queue"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dependency-sdk/desktop-views
+"installed.desktop.draft_source_flow-queue" start time: Oct 01 17:16 GMT 夏令时
+Output:
+----------------------------------------------------------
+R10-R1-05/06 BUSY stable pointer/source/stage, one history, capacity/cancel/retry PASS
+<end of output>
+Test time =   0.34 sec
+----------------------------------------------------------
+Test Passed.
+"installed.desktop.draft_source_flow-queue" end time: Oct 01 17:16 GMT 夏令时
+"installed.desktop.draft_source_flow-queue" time elapsed: 00:00:00
+----------------------------------------------------------
+
+10/13 Testing: installed.desktop.draft_source_material-queue
+10/13 Test: installed.desktop.draft_source_material-queue
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dependency-sdk/desktop-views/bin/desktop_views.exe" "D:/Development/vcpkg/installed/x64-windows/tools/llvm/lld-link.exe" "E:/SyncForder/CodeRepos/install/P11-dev" "r1-material-queue"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dependency-sdk/desktop-views
+"installed.desktop.draft_source_material-queue" start time: Oct 01 17:16 GMT 夏令时
+Output:
+----------------------------------------------------------
+R10-R1-05/06 BUSY stable pointer/source/stage, one history, capacity/cancel/retry PASS
+<end of output>
+Test time =   0.34 sec
+----------------------------------------------------------
+Test Passed.
+"installed.desktop.draft_source_material-queue" end time: Oct 01 17:16 GMT 夏令时
+"installed.desktop.draft_source_material-queue" time elapsed: 00:00:00
+----------------------------------------------------------
+
+11/13 Testing: installed.desktop.draft_source_material-lifetime
+11/13 Test: installed.desktop.draft_source_material-lifetime
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dependency-sdk/desktop-views/bin/desktop_views.exe" "D:/Development/vcpkg/installed/x64-windows/tools/llvm/lld-link.exe" "E:/SyncForder/CodeRepos/install/P11-dev" "r1-material-lifetime"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dependency-sdk/desktop-views
+"installed.desktop.draft_source_material-lifetime" start time: Oct 01 17:16 GMT 夏令时
+Output:
+----------------------------------------------------------
+R10-R1-05 dynamic node draft: BUSY retains/code alive/disposal under original gate PASS
+<end of output>
+Test time =   0.34 sec
+----------------------------------------------------------
+Test Passed.
+"installed.desktop.draft_source_material-lifetime" end time: Oct 01 17:16 GMT 夏令时
+"installed.desktop.draft_source_material-lifetime" time elapsed: 00:00:00
+----------------------------------------------------------
+
+12/13 Testing: installed.desktop.draft_source_lifecycle
+12/13 Test: installed.desktop.draft_source_lifecycle
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dependency-sdk/desktop-views/bin/desktop_views.exe" "D:/Development/vcpkg/installed/x64-windows/tools/llvm/lld-link.exe" "E:/SyncForder/CodeRepos/install/P11-dev" "r1-lifecycle"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dependency-sdk/desktop-views
+"installed.desktop.draft_source_lifecycle" start time: Oct 01 17:16 GMT 夏令时
+Output:
+----------------------------------------------------------
+R10-R1-03 failed BUSY rebind preserves; old generation rejected; new binding same IDs recaptured PASS
+<end of output>
+Test time =   0.54 sec
+----------------------------------------------------------
+Test Passed.
+"installed.desktop.draft_source_lifecycle" end time: Oct 01 17:16 GMT 夏令时
+"installed.desktop.draft_source_lifecycle" time elapsed: 00:00:00
+----------------------------------------------------------
+
+13/13 Testing: installed.desktop.draft_source_positive
+13/13 Test: installed.desktop.draft_source_positive
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dependency-sdk/desktop-views/bin/desktop_views.exe" "D:/Development/vcpkg/installed/x64-windows/tools/llvm/lld-link.exe" "E:/SyncForder/CodeRepos/install/P11-dev" "r1-positive"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dependency-sdk/desktop-views
+"installed.desktop.draft_source_positive" start time: Oct 01 17:16 GMT 夏令时
+Output:
+----------------------------------------------------------
+R10-R1-01 positive actual property Apply/Undo/Redo PASS
+<end of output>
+Test time =   0.44 sec
+----------------------------------------------------------
+Test Passed.
+"installed.desktop.draft_source_positive" end time: Oct 01 17:16 GMT 夏令时
+"installed.desktop.draft_source_positive" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Oct 01 17:16 GMT 夏令时

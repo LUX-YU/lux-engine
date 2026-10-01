@@ -1,0 +1,191 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install",
+			"__install_assets",
+			"lux_engine_install_components",
+			"__install_export_header_dirs"
+		],
+		"files" : 
+		[
+			"editor/ui/CMakeLists.txt",
+			"E:/SyncForder/CodeRepos/install/P11-3bbc7312a3d1/share/lux-cmake-toolset/component/install_components.cmake",
+			"cmake/InstallComponents.cmake"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 39,
+				"parent" : 0
+			},
+			{
+				"command" : 2,
+				"file" : 0,
+				"line" : 67,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 2,
+				"line" : 24,
+				"parent" : 2
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 32,
+				"parent" : 3
+			},
+			{
+				"command" : 3,
+				"file" : 2,
+				"line" : 25,
+				"parent" : 2
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 49,
+				"parent" : 5
+			},
+			{
+				"command" : 0,
+				"file" : 2,
+				"line" : 47,
+				"parent" : 2
+			},
+			{
+				"command" : 0,
+				"file" : 2,
+				"line" : 52,
+				"parent" : 2
+			},
+			{
+				"command" : 0,
+				"file" : 2,
+				"line" : 54,
+				"parent" : 2
+			},
+			{
+				"command" : 0,
+				"file" : 2,
+				"line" : 64,
+				"parent" : 2
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 1,
+			"component" : "Unspecified",
+			"destination" : "share/lux-engine-editor-ui/editor_ui/cmake_scripts/codegen",
+			"paths" : 
+			[
+				{
+					"from" : "editor/workbench/scene/codegen",
+					"to" : "."
+				}
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 4,
+			"component" : "lux_engine_editor_ui",
+			"destination" : "share/lux-engine-editor-ui/editor_ui/cmake_scripts",
+			"paths" : 
+			[
+				"editor/workbench/scene/cmake/engine_editor_imgui_inspector_codegen.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 6,
+			"component" : "lux_engine_editor_ui",
+			"destination" : ".",
+			"paths" : 
+			[
+				"editor/ui/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 7,
+			"component" : "lux_engine_editor_ui",
+			"destination" : "share/lux-engine-editor-ui/editor_ui",
+			"exportName" : "editor_ui",
+			"exportTargets" : 
+			[
+				{
+					"id" : "editor_ui::@c1b41ed8eff32b58ca55",
+					"index" : 114
+				}
+			],
+			"paths" : 
+			[
+				"editor/ui/CMakeFiles/Export/ff5612782b6c58b2c1512edb9907679c/lux-engine-editor-ui-editor_ui-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 8,
+			"component" : "lux_engine_editor_ui",
+			"destination" : "share/lux-engine-editor-ui/editor_ui",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/ui/lux-engine-editor-ui-editor_ui-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 9,
+			"component" : "lux_engine_editor_ui",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/lux_engine_editor_ui.lib"
+			],
+			"targetId" : "editor_ui::@c1b41ed8eff32b58ca55",
+			"targetIndex" : 114,
+			"targetIsImportLibrary" : true,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 9,
+			"component" : "lux_engine_editor_ui",
+			"destination" : "bin",
+			"paths" : 
+			[
+				"bin/lux_engine_editor_ui.dll"
+			],
+			"targetId" : "editor_ui::@c1b41ed8eff32b58ca55",
+			"targetIndex" : 114,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 10,
+			"component" : "lux_engine_editor_ui",
+			"destination" : "share/lux-engine-editor-ui",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/ui/lux-engine-editor-ui-config.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/ui/lux-engine-editor-ui-config-version.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/ui/lux-engine-editor-ui-available-components.cmake"
+			],
+			"type" : "file"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "editor/ui",
+		"source" : "editor/ui"
+	}
+}

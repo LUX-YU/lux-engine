@@ -1,0 +1,149 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install",
+			"__install_export_header_dirs",
+			"lux_engine_install_components"
+		],
+		"files" : 
+		[
+			"E:/SyncForder/CodeRepos/install/P11-3bbc7312a3d1/share/lux-cmake-toolset/component/install_components.cmake",
+			"cmake/InstallComponents.cmake",
+			"engine/domain/world/description/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 44,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 2
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 64,
+				"parent" : 1
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 3,
+			"component" : "lux_engine_world_description",
+			"destination" : ".",
+			"paths" : 
+			[
+				"engine/domain/world/description/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 4,
+			"component" : "lux_engine_world_description",
+			"destination" : "share/lux-engine-world-description/world_description",
+			"exportName" : "world_description",
+			"exportTargets" : 
+			[
+				{
+					"id" : "world_description::@7b5a068d3155bc794235",
+					"index" : 454
+				}
+			],
+			"paths" : 
+			[
+				"engine/domain/world/description/CMakeFiles/Export/27c5e0225aa7a586efc54072deecdd58/lux-engine-world-description-world_description-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 5,
+			"component" : "lux_engine_world_description",
+			"destination" : "share/lux-engine-world-description/world_description",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/engine/domain/world/description/lux-engine-world-description-world_description-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 6,
+			"component" : "lux_engine_world_description",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/lux_engine_world_description.lib"
+			],
+			"targetId" : "world_description::@7b5a068d3155bc794235",
+			"targetIndex" : 454,
+			"targetIsImportLibrary" : true,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 6,
+			"component" : "lux_engine_world_description",
+			"destination" : "bin",
+			"paths" : 
+			[
+				"bin/lux_engine_world_description.dll"
+			],
+			"targetId" : "world_description::@7b5a068d3155bc794235",
+			"targetIndex" : 454,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 7,
+			"component" : "lux_engine_world_description",
+			"destination" : "share/lux-engine-world-description",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/engine/domain/world/description/lux-engine-world-description-config.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/engine/domain/world/description/lux-engine-world-description-config-version.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/engine/domain/world/description/lux-engine-world-description-available-components.cmake"
+			],
+			"type" : "file"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "engine/domain/world/description",
+		"source" : "engine/domain/world/description"
+	}
+}

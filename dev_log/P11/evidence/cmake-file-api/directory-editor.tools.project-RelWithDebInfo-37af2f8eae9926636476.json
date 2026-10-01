@@ -1,0 +1,135 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install",
+			"__install_export_header_dirs",
+			"lux_engine_install_components"
+		],
+		"files" : 
+		[
+			"E:/SyncForder/CodeRepos/install/P11-3bbc7312a3d1/share/lux-cmake-toolset/component/install_components.cmake",
+			"cmake/InstallComponents.cmake",
+			"editor/tools/project/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 9,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 2
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 64,
+				"parent" : 1
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 3,
+			"component" : "lux_engine_editor_project_tools",
+			"destination" : ".",
+			"paths" : 
+			[
+				"editor/tools/project/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 4,
+			"component" : "lux_engine_editor_project_tools",
+			"destination" : "share/lux-engine-editor-project-tools/editor_project_tools",
+			"exportName" : "editor_project_tools",
+			"exportTargets" : 
+			[
+				{
+					"id" : "editor_project_tools::@286f0b265511c5cf6ea5",
+					"index" : 85
+				}
+			],
+			"paths" : 
+			[
+				"editor/tools/project/CMakeFiles/Export/07b09196a9510e9397f7c7a1f150552c/lux-engine-editor-project-tools-editor_project_tools-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 5,
+			"component" : "lux_engine_editor_project_tools",
+			"destination" : "share/lux-engine-editor-project-tools/editor_project_tools",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/tools/project/lux-engine-editor-project-tools-editor_project_tools-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 6,
+			"component" : "lux_engine_editor_project_tools",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/editor_project_tools.lib"
+			],
+			"targetId" : "editor_project_tools::@286f0b265511c5cf6ea5",
+			"targetIndex" : 85,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 7,
+			"component" : "lux_engine_editor_project_tools",
+			"destination" : "share/lux-engine-editor-project-tools",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/tools/project/lux-engine-editor-project-tools-config.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/tools/project/lux-engine-editor-project-tools-config-version.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/tools/project/lux-engine-editor-project-tools-available-components.cmake"
+			],
+			"type" : "file"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "editor/tools/project",
+		"source" : "editor/tools/project"
+	}
+}

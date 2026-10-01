@@ -1,0 +1,35 @@
+---- Importing lux-cxx-core
+---- Importing lux-cxx-compile_time
+---- Importing lux-cxx-container
+---- Importing lux-cxx-binary
+---- Importing lux-cxx-algorithm
+---- Importing lux-cxx-memory
+---- Importing lux-cxx-concurrent
+---- Importing lux-cxx-reflection_runtime
+---- Importing imgui-core
+---- Importing node_editor-node_editor
+-- Configuring done (0.8s)
+-- Generating done (0.1s)
+-- Build files have been written to: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-sdk-dev
+[0/1] Re-running CMake...
+[1/14] Building CXX object CMakeFiles\p11_reject_6.dir\Rejected.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[2/14] Building CXX object CMakeFiles\p11_reject_8.dir\Rejected.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[3/14] Building CXX object CMakeFiles\p11_reject_7.dir\Rejected.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[4/14] Building CXX object CMakeFiles\p11_extension.dir\Extension.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[5/14] Linking CXX shared library bin\p11_reject_6.dll
+[6/14] Linking CXX shared library bin\p11_reject_8.dll
+[7/14] Linking CXX shared library bin\p11_reject_7.dll
+[8/14] Linking CXX shared library bin\p11_extension.dll
+[9/14] Building CXX object CMakeFiles\p11_reject_9.dir\Rejected.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[10/14] Building CXX object CMakeFiles\p11_reject_10.dir\Rejected.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[11/14] Linking CXX shared library bin\p11_reject_9.dll
+[12/14] Linking CXX shared library bin\p11_reject_10.dll
+[13/14] Building CXX object CMakeFiles\p11_consumer.dir\main.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[14/14] Linking CXX executable bin\p11_consumer.exe

@@ -1,0 +1,22 @@
+Start testing: Oct 01 17:04 GMT 夏令时
+----------------------------------------------------------
+1/1 Testing: installed.editor_sessions
+1/1 Test: installed.editor_sessions
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-98c655ee48a7-sdk/sessions/sessions_consumer.exe"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-98c655ee48a7-sdk/sessions
+"installed.editor_sessions" start time: Oct 01 17:04 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS X01-R1-04: describe exception restores callback admission
+PASS X01-R1-05: published close destroys history, source, then code
+PASS X01-R1-02: close describe calls before=1 after=1 long_binding=32768
+PASS X01-R1-01: close describe calls before=1 after=1 long_binding=32768
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"installed.editor_sessions" end time: Oct 01 17:04 GMT 夏令时
+"installed.editor_sessions" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Oct 01 17:04 GMT 夏令时

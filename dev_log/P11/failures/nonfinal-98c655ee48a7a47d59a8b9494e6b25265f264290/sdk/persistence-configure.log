@@ -1,0 +1,28 @@
+-- The CXX compiler identification is MSVC 19.44.35228.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: D:/Development/Mircosoft/VisualStudio/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+---- Importing lux-cxx-core
+---- Importing lux-cxx-compile_time
+---- Importing lux-cxx-algorithm
+---- Importing lux-cxx-memory
+---- Importing lux-cxx-binary
+CMake Error at D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake:908 (_find_package):
+  Found package configuration file:
+
+    E:/SyncForder/CodeRepos/install/P11-98c655ee48a7/share/lux-engine-editor-scene-persistence/lux-engine-editor-scene-persistence-config.cmake
+
+  but it set lux-engine-editor-scene-persistence_FOUND to FALSE so package
+  "lux-engine-editor-scene-persistence" is considered to be NOT FOUND.
+  Reason given by package:
+
+  The following imported targets are referenced, but are missing:
+  lux::engine::editor::session_factories
+
+Call Stack (most recent call first):
+  CMakeLists.txt:5 (find_package)
+
+
+-- Configuring incomplete, errors occurred!

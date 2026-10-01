@@ -1,0 +1,149 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install",
+			"__install_export_header_dirs",
+			"lux_engine_install_components"
+		],
+		"files" : 
+		[
+			"E:/SyncForder/CodeRepos/install/P11-3bbc7312a3d1/share/lux-cmake-toolset/component/install_components.cmake",
+			"cmake/InstallComponents.cmake",
+			"engine/domain/world/storage/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 54,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 2
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 64,
+				"parent" : 1
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 3,
+			"component" : "lux_engine_world_storage",
+			"destination" : ".",
+			"paths" : 
+			[
+				"engine/domain/world/storage/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 4,
+			"component" : "lux_engine_world_storage",
+			"destination" : "share/lux-engine-world-storage/world_storage",
+			"exportName" : "world_storage",
+			"exportTargets" : 
+			[
+				{
+					"id" : "world_storage::@a3e8a7fef1bb9389b4da",
+					"index" : 459
+				}
+			],
+			"paths" : 
+			[
+				"engine/domain/world/storage/CMakeFiles/Export/2012ca016456294fda6e911c4005ee9f/lux-engine-world-storage-world_storage-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 5,
+			"component" : "lux_engine_world_storage",
+			"destination" : "share/lux-engine-world-storage/world_storage",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/engine/domain/world/storage/lux-engine-world-storage-world_storage-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 6,
+			"component" : "lux_engine_world_storage",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/lux_engine_world_storage.lib"
+			],
+			"targetId" : "world_storage::@a3e8a7fef1bb9389b4da",
+			"targetIndex" : 459,
+			"targetIsImportLibrary" : true,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 6,
+			"component" : "lux_engine_world_storage",
+			"destination" : "bin",
+			"paths" : 
+			[
+				"bin/lux_engine_world_storage.dll"
+			],
+			"targetId" : "world_storage::@a3e8a7fef1bb9389b4da",
+			"targetIndex" : 459,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 7,
+			"component" : "lux_engine_world_storage",
+			"destination" : "share/lux-engine-world-storage",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/engine/domain/world/storage/lux-engine-world-storage-config.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/engine/domain/world/storage/lux-engine-world-storage-config-version.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/engine/domain/world/storage/lux-engine-world-storage-available-components.cmake"
+			],
+			"type" : "file"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "engine/domain/world/storage",
+		"source" : "engine/domain/world/storage"
+	}
+}

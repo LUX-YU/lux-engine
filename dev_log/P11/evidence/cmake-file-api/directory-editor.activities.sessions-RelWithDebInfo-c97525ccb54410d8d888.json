@@ -1,0 +1,135 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install",
+			"__install_export_header_dirs",
+			"lux_engine_install_components"
+		],
+		"files" : 
+		[
+			"E:/SyncForder/CodeRepos/install/P11-3bbc7312a3d1/share/lux-cmake-toolset/component/install_components.cmake",
+			"cmake/InstallComponents.cmake",
+			"editor/activities/sessions/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 13,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 2
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 64,
+				"parent" : 1
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 3,
+			"component" : "lux_engine_editor_session_factories",
+			"destination" : ".",
+			"paths" : 
+			[
+				"editor/activities/sessions/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 4,
+			"component" : "lux_engine_editor_session_factories",
+			"destination" : "share/lux-engine-editor-session-factories/session_factories",
+			"exportName" : "session_factories",
+			"exportTargets" : 
+			[
+				{
+					"id" : "session_factories::@db90c3d6a5eada47f2db",
+					"index" : 413
+				}
+			],
+			"paths" : 
+			[
+				"editor/activities/sessions/CMakeFiles/Export/13b297a7ad3f31c0940bc2b6e0e96cc7/lux-engine-editor-session-factories-session_factories-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 5,
+			"component" : "lux_engine_editor_session_factories",
+			"destination" : "share/lux-engine-editor-session-factories/session_factories",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/activities/sessions/lux-engine-editor-session-factories-session_factories-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 6,
+			"component" : "lux_engine_editor_session_factories",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/session_factories.lib"
+			],
+			"targetId" : "session_factories::@db90c3d6a5eada47f2db",
+			"targetIndex" : 413,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 7,
+			"component" : "lux_engine_editor_session_factories",
+			"destination" : "share/lux-engine-editor-session-factories",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/activities/sessions/lux-engine-editor-session-factories-config.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/activities/sessions/lux-engine-editor-session-factories-config-version.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/activities/sessions/lux-engine-editor-session-factories-available-components.cmake"
+			],
+			"type" : "file"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "editor/activities/sessions",
+		"source" : "editor/activities/sessions"
+	}
+}

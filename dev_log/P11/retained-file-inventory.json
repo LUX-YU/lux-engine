@@ -1,0 +1,4928 @@
+{
+  "implementation_sha": "3bbc7312a3d130a76f2c1807a9e3bca0d413e7ee",
+  "scope": "Actual tracked nine roots plus formally located RETAINED-provider files; source-map contains the P11 per-symbol dispositions. Not an independent mutable ledger.",
+  "files": [
+    {
+      "path": "editor/app/CMakeLists.txt",
+      "blob": "eb15a4c8e2af8d0a70060ffdaf37f247575297da",
+      "providers": [
+        "editor_app",
+        "lux_editor",
+        "editor_baseline_failures",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_domain",
+        "consumer_schema",
+        "consumer_schema_generate",
+        "consumer_gui",
+        "consumer_ir",
+        "consumer_ir_generate",
+        "consumer_protocol"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "lux_editor",
+        "editor_baseline_failures",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_domain",
+        "consumer_gui",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-E/F/G actual installed executable switch"
+    },
+    {
+      "path": "editor/app/README.md",
+      "blob": "7bfd2b8b8a28df06b7a529faa7d450321ff701fd",
+      "providers": [
+        "editor_app",
+        "lux_editor",
+        "editor_baseline_failures",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_domain",
+        "consumer_schema",
+        "consumer_schema_generate",
+        "consumer_gui",
+        "consumer_ir",
+        "consumer_ir_generate",
+        "consumer_protocol"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "lux_editor",
+        "editor_baseline_failures",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_domain",
+        "consumer_gui",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-E/F/G actual installed executable switch"
+    },
+    {
+      "path": "editor/app/include/lux/engine/editor/Editor.hpp",
+      "blob": "47286b248b747731351ca39c4fb4b302e0bd193e",
+      "providers": [
+        "editor_app",
+        "lux_editor",
+        "editor_baseline_failures",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_domain",
+        "consumer_schema",
+        "consumer_schema_generate",
+        "consumer_gui",
+        "consumer_ir",
+        "consumer_ir_generate",
+        "consumer_protocol"
+      ],
+      "logical_include": "lux/engine/editor/Editor.hpp",
+      "include_consumers": [
+        "cmake/installed-consumers/editor-d2/EditorTestFactory.hpp",
+        "cmake/installed-consumers/editor-d2/SceneWorkflow.cpp",
+        "cmake/installed-consumers/editor-d2/TestExit.hpp",
+        "cmake/installed-consumers/editor-d2/protocol/review_regressions.cpp",
+        "editor/app/main.cpp",
+        "editor/app/pinclude/lux/engine/editor/detail/EditorImpl.hpp",
+        "editor/app/test/context_lifecycle.cpp",
+        "editor/tools/flowforge/test/flow_protocol.cpp",
+        "editor/tools/material/test/material_protocol.cpp",
+        "editor/tools/scene/test/entity_checks.hpp",
+        "examples/render-plugin/ExternalEditorTest.cpp"
+      ],
+      "target_consumers": [
+        "lux_editor",
+        "editor_baseline_failures",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_domain",
+        "consumer_gui",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "Editor",
+        "EditorConfig",
+        "EditorContext",
+        "EditorTestAccess",
+        "EditorTestFactory",
+        "Impl"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-E/F/G actual installed executable switch"
+    },
+    {
+      "path": "editor/app/include/lux/engine/editor/WindowSpec.hpp",
+      "blob": "cfb42622e4a8eca58b712b2bdbbbc1c1d7cc85d1",
+      "providers": [
+        "editor_app",
+        "lux_editor",
+        "editor_baseline_failures",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_domain",
+        "consumer_schema",
+        "consumer_schema_generate",
+        "consumer_gui",
+        "consumer_ir",
+        "consumer_ir_generate",
+        "consumer_protocol"
+      ],
+      "logical_include": "lux/engine/editor/WindowSpec.hpp",
+      "include_consumers": [
+        "editor/app/include/lux/engine/editor/Editor.hpp"
+      ],
+      "target_consumers": [
+        "lux_editor",
+        "editor_baseline_failures",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_domain",
+        "consumer_gui",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "WindowFontSpec",
+        "WindowSpec"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-E/F/G actual installed executable switch"
+    },
+    {
+      "path": "editor/app/main.cpp",
+      "blob": "fa815717d2d6988941c60839f02764a4ea227f30",
+      "providers": [
+        "lux_editor"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-E/F/G actual installed executable switch"
+    },
+    {
+      "path": "editor/app/pinclude/lux/engine/editor/detail/EditorImpl.hpp",
+      "blob": "2352232b6787be32bd62f4bfc09d3af2e154c8fa",
+      "providers": [
+        "editor_app",
+        "lux_editor",
+        "editor_baseline_failures",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_domain",
+        "consumer_schema",
+        "consumer_schema_generate",
+        "consumer_gui",
+        "consumer_ir",
+        "consumer_ir_generate",
+        "consumer_protocol"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "editor/app/pinclude/lux/engine/editor/detail/EditorTestAccess.hpp",
+        "editor/app/src/Editor.cpp",
+        "editor/app/src/EditorLoop.cpp",
+        "editor/app/src/EditorMenu.cpp",
+        "editor/app/src/EditorPlatform.cpp",
+        "editor/app/src/EditorStartup.cpp",
+        "editor/app/src/EditorWorkspace.cpp"
+      ],
+      "target_consumers": [
+        "lux_editor",
+        "editor_baseline_failures",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_domain",
+        "consumer_gui",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "CloseIntent",
+        "Editor",
+        "MenuCall"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-E/F/G actual installed executable switch"
+    },
+    {
+      "path": "editor/app/pinclude/lux/engine/editor/detail/EditorTestAccess.hpp",
+      "blob": "5c6bd6b1b12fd27812003881b11704e3a0ac3135",
+      "providers": [
+        "editor_app",
+        "lux_editor",
+        "editor_baseline_failures",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_domain",
+        "consumer_schema",
+        "consumer_schema_generate",
+        "consumer_gui",
+        "consumer_ir",
+        "consumer_ir_generate",
+        "consumer_protocol"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "cmake/installed-consumers/editor-d2/protocol/review_regressions.cpp",
+        "editor/app/src/EditorMenu.cpp",
+        "editor/app/src/EditorTestAccess.cpp",
+        "editor/app/test/baseline_failures.cpp",
+        "editor/tools/scene/test/core_protocol.cpp",
+        "editor/tools/scene/test/menu_checks.hpp"
+      ],
+      "target_consumers": [
+        "lux_editor",
+        "editor_baseline_failures",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_domain",
+        "consumer_gui",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "EditorTestAccess"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-E/F/G actual installed executable switch"
+    },
+    {
+      "path": "editor/app/pinclude/lux/engine/editor/detail/EditorWorkspace.hpp",
+      "blob": "96bffb2d210f59c9fbdd303ba40dd8d4f49acefc",
+      "providers": [
+        "editor_app",
+        "lux_editor",
+        "editor_baseline_failures",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_domain",
+        "consumer_schema",
+        "consumer_schema_generate",
+        "consumer_gui",
+        "consumer_ir",
+        "consumer_ir_generate",
+        "consumer_protocol"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "editor/app/pinclude/lux/engine/editor/detail/EditorImpl.hpp",
+        "editor/app/src/EditorWorkspaceStorage.cpp"
+      ],
+      "target_consumers": [
+        "lux_editor",
+        "editor_baseline_failures",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_domain",
+        "consumer_gui",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "WorkspaceData"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-E/F/G actual installed executable switch"
+    },
+    {
+      "path": "editor/app/product/ProductAssembly.cpp",
+      "blob": "e9f408641e0610fe0738acbb36e58b24ff062fa6",
+      "providers": [
+        "lux_editor"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [],
+      "declared_types": [
+        "Tool",
+        "ToolType"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-E/F/G actual installed executable switch"
+    },
+    {
+      "path": "editor/app/product/ProductAssembly.hpp",
+      "blob": "1f9a51325bc49adc5906341610ef1cd1165cbe6b",
+      "providers": [
+        "editor_app",
+        "lux_editor",
+        "editor_baseline_failures",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_domain",
+        "consumer_schema",
+        "consumer_schema_generate",
+        "consumer_gui",
+        "consumer_ir",
+        "consumer_ir_generate",
+        "consumer_protocol"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "editor/app/main.cpp",
+        "editor/app/product/ProductAssembly.cpp"
+      ],
+      "target_consumers": [
+        "lux_editor",
+        "editor_baseline_failures",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_domain",
+        "consumer_gui",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "EditorContext",
+        "Root"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-E/F/G actual installed executable switch"
+    },
+    {
+      "path": "editor/app/product/ProductCommands.cpp",
+      "blob": "808f59e04ca3fa6fe3ad226095d34695547142cf",
+      "providers": [
+        "lux_editor"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [],
+      "declared_types": [
+        "ProjectCommands",
+        "Tool"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-E/F/G actual installed executable switch"
+    },
+    {
+      "path": "editor/app/product/ProductCommands.hpp",
+      "blob": "880d474621d841221d314c5a21914edd80d283ff",
+      "providers": [
+        "editor_app",
+        "lux_editor",
+        "editor_baseline_failures",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_domain",
+        "consumer_schema",
+        "consumer_schema_generate",
+        "consumer_gui",
+        "consumer_ir",
+        "consumer_ir_generate",
+        "consumer_protocol"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "editor/app/product/ProductAssembly.cpp",
+        "editor/app/product/ProductCommands.cpp"
+      ],
+      "target_consumers": [
+        "lux_editor",
+        "editor_baseline_failures",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_domain",
+        "consumer_gui",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "EditorContext"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-E/F/G actual installed executable switch"
+    },
+    {
+      "path": "editor/app/src/Editor.cpp",
+      "blob": "fdc71d2c685538014428ed6e1e9cfab737ff6931",
+      "providers": [
+        "editor_app"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "lux_editor",
+        "editor_baseline_failures",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-E/F/G actual installed executable switch"
+    },
+    {
+      "path": "editor/app/src/EditorLoop.cpp",
+      "blob": "65a9c36bf6f6ed9ee88ba81f878f5428087e698e",
+      "providers": [
+        "editor_app"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "lux_editor",
+        "editor_baseline_failures",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-E/F/G actual installed executable switch"
+    },
+    {
+      "path": "editor/app/src/EditorMenu.cpp",
+      "blob": "af7fecae4b8c56009267d07e5e8404e673ebd321",
+      "providers": [
+        "editor_app"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "lux_editor",
+        "editor_baseline_failures",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-E/F/G actual installed executable switch"
+    },
+    {
+      "path": "editor/app/src/EditorPlatform.cpp",
+      "blob": "56ec3221b6d176a89a22d859691b0f2d1847e6b1",
+      "providers": [
+        "editor_app"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "lux_editor",
+        "editor_baseline_failures",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-E/F/G actual installed executable switch"
+    },
+    {
+      "path": "editor/app/src/EditorStartup.cpp",
+      "blob": "7ef35d6042cd22ae87eac8bd75c50e54b76ca788",
+      "providers": [
+        "editor_app"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "lux_editor",
+        "editor_baseline_failures",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-E/F/G actual installed executable switch"
+    },
+    {
+      "path": "editor/app/src/EditorTestAccess.cpp",
+      "blob": "9b1f0ad17cb4b1b951a843b61c93feb186b254bd",
+      "providers": [
+        "editor_app"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "lux_editor",
+        "editor_baseline_failures",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-E/F/G actual installed executable switch"
+    },
+    {
+      "path": "editor/app/src/EditorWorkspace.cpp",
+      "blob": "56a92e3d6d9c122c99b61764d47a0aa001218285",
+      "providers": [
+        "editor_app"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "lux_editor",
+        "editor_baseline_failures",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-E/F/G actual installed executable switch"
+    },
+    {
+      "path": "editor/app/src/EditorWorkspaceStorage.cpp",
+      "blob": "1b144097f2376b9bb063b3312a699719b051e21c",
+      "providers": [
+        "editor_app"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "lux_editor",
+        "editor_baseline_failures",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-E/F/G actual installed executable switch"
+    },
+    {
+      "path": "editor/app/test/baseline_failures.cpp",
+      "blob": "c014d0d077ad08a10585f6704b0cd09896eb3b8e",
+      "providers": [
+        "editor_baseline_failures"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [],
+      "declared_types": [
+        "CodePin",
+        "QueryFacts"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-E/F/G actual installed executable switch"
+    },
+    {
+      "path": "editor/app/test/context_lifecycle.cpp",
+      "blob": "157e7020327997db6e53b2dcb9614e273cbfaba9",
+      "providers": [
+        "editor_context_lifecycle"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [],
+      "declared_types": [
+        "ExtraPane"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-E/F/G actual installed executable switch"
+    },
+    {
+      "path": "editor/assets/CMakeLists.txt",
+      "blob": "66aaa58d3f09a991a7b0ce88dde7616f6e7f9219",
+      "providers": [
+        "editor_asset_save_test"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-G equivalent formal persistence tests"
+    },
+    {
+      "path": "editor/assets/README.md",
+      "blob": "45fdbd0c6638597cbc435881b591f458a3196939",
+      "providers": [
+        "editor_asset_save_test"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-G equivalent formal persistence tests"
+    },
+    {
+      "path": "editor/assets/sinclude/lux/engine/editor/detail/AssetSave.hpp",
+      "blob": "5b493fb924ecaac26276b6881bf44f674ab9dfc8",
+      "providers": [
+        "editor_asset_save_test"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "editor/assets/test/asset_save.cpp",
+        "editor/tools/flowforge/include/lux/engine/editor/flowforge/FlowForgeEditor.hpp",
+        "editor/tools/flowforge/pinclude/lux/engine/editor/flowforge/FlowForgeEditorImpl.hpp",
+        "editor/tools/flowforge/src/FlowForgeEditor.cpp",
+        "editor/tools/material/include/lux/engine/editor/material/MaterialEditor.hpp",
+        "editor/tools/material/pinclude/lux/engine/editor/material/MaterialEditorImpl.hpp",
+        "editor/tools/material/src/MaterialEditor.cpp",
+        "editor/tools/scene/include/lux/engine/editor/scene/SceneEditor.hpp",
+        "editor/tools/scene/pinclude/lux/engine/editor/scene/detail/SceneEditorImpl.hpp",
+        "editor/ui/sinclude/lux/engine/editor/ui/AssetActions.hpp",
+        "editor/ui/sinclude/lux/engine/editor/ui/PublicationControls.hpp"
+      ],
+      "target_consumers": [],
+      "declared_types": [
+        "AssetSaveTarget",
+        "Capture",
+        "Encode",
+        "Encoded",
+        "Encoder",
+        "Encoding",
+        "Idle",
+        "SavedCapture",
+        "TAssetSave",
+        "TCompiledCapture"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-G equivalent formal persistence tests"
+    },
+    {
+      "path": "editor/assets/sinclude/lux/engine/editor/detail/AssetSource.hpp",
+      "blob": "03a52159574d222baf60629904e7b8c7f2bf05e8",
+      "providers": [
+        "editor_asset_save_test"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "editor/assets/test/asset_save.cpp",
+        "editor/tools/flowforge/pinclude/lux/engine/editor/flowforge/FlowForgeEditorImpl.hpp",
+        "editor/tools/material/pinclude/lux/engine/editor/material/MaterialEditorImpl.hpp",
+        "editor/tools/scene/pinclude/lux/engine/editor/scene/detail/SceneEditorImpl.hpp"
+      ],
+      "target_consumers": [],
+      "declared_types": [
+        "Codec"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-G equivalent formal persistence tests"
+    },
+    {
+      "path": "editor/assets/test/asset_save.cpp",
+      "blob": "152db12542f9b1b0f117d43a82d6f9c5754e4f0e",
+      "providers": [
+        "editor_asset_save_test"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [],
+      "declared_types": [
+        "Codec",
+        "Encoder"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-G equivalent formal persistence tests"
+    },
+    {
+      "path": "editor/context/CMakeLists.txt",
+      "blob": "84d41c8cfef3d82357a11df4729bccb71ecd76e1",
+      "providers": [
+        "editor_context"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "editor_ui",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_project_tools",
+        "editor_settings",
+        "editor_app"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-B/C/D/F application ownership and formal Host"
+    },
+    {
+      "path": "editor/context/README.md",
+      "blob": "073a301adca35fafce19f46190a037f3e7c179ce",
+      "providers": [
+        "editor_context"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "editor_ui",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_project_tools",
+        "editor_settings",
+        "editor_app"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-B/C/D/F application ownership and formal Host"
+    },
+    {
+      "path": "editor/context/include/lux/engine/editor/EditorContext.hpp",
+      "blob": "3ce62b80f93b06b09e379250bb8f9bdb19072e1f",
+      "providers": [
+        "editor_context"
+      ],
+      "logical_include": "lux/engine/editor/EditorContext.hpp",
+      "include_consumers": [
+        "cmake/installed-consumers/editor-d2/SceneWorkflow.cpp",
+        "cmake/installed-consumers/editor-d2/TestAssembly.hpp",
+        "cmake/installed-consumers/editor-d2/protocol/review_regressions.cpp",
+        "editor/app/pinclude/lux/engine/editor/detail/EditorImpl.hpp",
+        "editor/app/product/ProductAssembly.cpp",
+        "editor/app/product/ProductCommands.cpp",
+        "editor/app/test/context_lifecycle.cpp",
+        "editor/context/sinclude/lux/engine/editor/detail/EditorContextStartup.hpp",
+        "editor/tools/flowforge/pinclude/lux/engine/editor/flowforge/FlowForgeEditorImpl.hpp",
+        "editor/tools/flowforge/test/flow_protocol.cpp",
+        "editor/tools/material/pinclude/lux/engine/editor/material/MaterialEditorImpl.hpp",
+        "editor/tools/material/test/material_protocol.cpp",
+        "editor/tools/project/include/lux/engine/editor/project/ProjectPane.hpp",
+        "editor/tools/scene/pinclude/lux/engine/editor/scene/detail/SceneEditorImpl.hpp",
+        "editor/tools/scene/src/ui/SceneCreationPane.cpp",
+        "editor/tools/settings/pinclude/lux/engine/editor/settings/detail/PluginSettingsElement.hpp",
+        "editor/ui/src/TaskPane.cpp",
+        "examples/render-plugin/ExternalEditorTest.cpp"
+      ],
+      "target_consumers": [
+        "editor_ui",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_project_tools",
+        "editor_settings",
+        "editor_app"
+      ],
+      "declared_types": [
+        "AssetImporter",
+        "ComponentEditorRegistry",
+        "ConfigurationEditorRegistration",
+        "EditorContext",
+        "EditorContextAccess",
+        "EngineContext",
+        "ExecutionRuntime",
+        "Impl",
+        "PluginManager",
+        "ProjectStorage",
+        "RenderResources",
+        "RenderRuntime",
+        "SceneRegistrations",
+        "TaskMonitor",
+        "detail"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/C/D/F application ownership and formal Host"
+    },
+    {
+      "path": "editor/context/include/lux/engine/editor/PaneManager.hpp",
+      "blob": "9967b9fe4ae68dd67b7cd1256bfae73da923060f",
+      "providers": [
+        "editor_context"
+      ],
+      "logical_include": "lux/engine/editor/PaneManager.hpp",
+      "include_consumers": [
+        "editor/context/include/lux/engine/editor/EditorContext.hpp",
+        "editor/context/src/PaneManager.cpp",
+        "examples/render-plugin/ExternalEditor.cpp"
+      ],
+      "target_consumers": [
+        "editor_ui",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_project_tools",
+        "editor_settings",
+        "editor_app"
+      ],
+      "declared_types": [
+        "EditorContext",
+        "PaneManager"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/C/D/F application ownership and formal Host"
+    },
+    {
+      "path": "editor/context/include/lux/engine/editor/WorkspaceRequest.hpp",
+      "blob": "9a3cc34c7a8bb4f8de0d74cecf6074a05d6e2367",
+      "providers": [
+        "editor_context"
+      ],
+      "logical_include": "lux/engine/editor/WorkspaceRequest.hpp",
+      "include_consumers": [
+        "editor/app/pinclude/lux/engine/editor/detail/EditorWorkspace.hpp",
+        "editor/tools/scene/test/workspace_checks.hpp",
+        "editor/tools/settings/src/SettingPane.cpp"
+      ],
+      "target_consumers": [
+        "editor_ui",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_project_tools",
+        "editor_settings",
+        "editor_app"
+      ],
+      "declared_types": [
+        "EWorkspaceAction",
+        "WorkspaceRequest"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/C/D/F application ownership and formal Host"
+    },
+    {
+      "path": "editor/context/sinclude/lux/engine/editor/detail/EditorContextStartup.hpp",
+      "blob": "9f1b674b8b907f10aa9a774f6ac5fa0e537ba5c1",
+      "providers": [
+        "editor_context"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "editor/app/src/EditorStartup.cpp",
+        "editor/context/src/EditorContext.cpp"
+      ],
+      "target_consumers": [
+        "editor_ui",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_project_tools",
+        "editor_settings",
+        "editor_app"
+      ],
+      "declared_types": [
+        "EditorContextAccess",
+        "EditorContextCreateInfo"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/C/D/F application ownership and formal Host"
+    },
+    {
+      "path": "editor/context/src/EditorContext.cpp",
+      "blob": "ae1a3c22e8f87507b03ae03b6ed3c407f3579215",
+      "providers": [
+        "editor_context"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "editor_ui",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_project_tools",
+        "editor_settings",
+        "editor_app"
+      ],
+      "declared_types": [
+        "EditorContext",
+        "Scheduler",
+        "Work"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/C/D/F application ownership and formal Host"
+    },
+    {
+      "path": "editor/context/src/PaneManager.cpp",
+      "blob": "96b94a98e638def2617b2f9551a6010bb6efc4e4",
+      "providers": [
+        "editor_context"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "editor_ui",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_project_tools",
+        "editor_settings",
+        "editor_app"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-B/C/D/F application ownership and formal Host"
+    },
+    {
+      "path": "editor/editing/include/lux/engine/editor/AssetEditing.hpp",
+      "blob": "2bbc5c0d8c5a563249876b2f1ad9a9422beb4bd9",
+      "providers": [
+        "editor_editing"
+      ],
+      "logical_include": "lux/engine/editor/AssetEditing.hpp",
+      "include_consumers": [
+        "editor/tools/flowforge/include/lux/engine/editor/flowforge/FlowForgeEditor.hpp",
+        "editor/tools/material/include/lux/engine/editor/material/MaterialEditor.hpp",
+        "editor/tools/scene/include/lux/engine/editor/scene/SceneEditor.hpp",
+        "editor/ui/include/lux/engine/editor/ui/CloseReview.hpp",
+        "editor/ui/sinclude/lux/engine/editor/ui/AssetActions.hpp"
+      ],
+      "target_consumers": [
+        "editor_metadata",
+        "editor_asset_save_test"
+      ],
+      "declared_types": [
+        "AssetEditStatus",
+        "EAssetChange",
+        "EAssetChangeDecision",
+        "EAssetEditPhase"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-F/G remove old protocol only; keep formal History/Session/activities implementations"
+    },
+    {
+      "path": "editor/editing/include/lux/engine/editor/AssetOpenRequest.hpp",
+      "blob": "75952808b154f4b2cd4eb3626953e34288c75ac7",
+      "providers": [
+        "editor_editing"
+      ],
+      "logical_include": "lux/engine/editor/AssetOpenRequest.hpp",
+      "include_consumers": [
+        "editor/app/pinclude/lux/engine/editor/detail/EditorImpl.hpp",
+        "editor/tools/project/src/ProjectPane.cpp",
+        "editor/tools/scene/src/ui/ResourcePane.cpp",
+        "editor/tools/scene/test/core_protocol.cpp"
+      ],
+      "target_consumers": [
+        "editor_metadata",
+        "editor_asset_save_test"
+      ],
+      "declared_types": [
+        "AssetOpenRequest"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-F/G remove old protocol only; keep formal History/Session/activities implementations"
+    },
+    {
+      "path": "editor/editing/include/lux/engine/editor/AssetSave.hpp",
+      "blob": "ee7d6906a403103200fc7a3fa57fac2f81fadb51",
+      "providers": [
+        "editor_editing"
+      ],
+      "logical_include": "lux/engine/editor/AssetSave.hpp",
+      "include_consumers": [
+        "editor/assets/sinclude/lux/engine/editor/detail/AssetSave.hpp",
+        "editor/tools/flowforge/include/lux/engine/editor/flowforge/FlowForgeEditor.hpp",
+        "editor/tools/material/include/lux/engine/editor/material/MaterialEditor.hpp",
+        "editor/tools/scene/include/lux/engine/editor/scene/SceneEditor.hpp",
+        "editor/ui/sinclude/lux/engine/editor/ui/AssetActions.hpp",
+        "editor/ui/sinclude/lux/engine/editor/ui/PublicationControls.hpp"
+      ],
+      "target_consumers": [
+        "editor_metadata",
+        "editor_asset_save_test"
+      ],
+      "declared_types": [
+        "ESaveStage",
+        "SaveAbandoned",
+        "SavePending",
+        "SaveRequestId",
+        "SaveRetryable",
+        "SaveSucceeded"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-F/G remove old protocol only; keep formal History/Session/activities implementations"
+    },
+    {
+      "path": "editor/editing/include/lux/engine/editor/CloseRequest.hpp",
+      "blob": "3c71dc647ce0cc69561aa4f22b4eaf80133e3fc1",
+      "providers": [
+        "editor_editing"
+      ],
+      "logical_include": "lux/engine/editor/CloseRequest.hpp",
+      "include_consumers": [
+        "editor/app/pinclude/lux/engine/editor/detail/EditorImpl.hpp",
+        "editor/app/test/context_lifecycle.cpp",
+        "editor/ui/include/lux/engine/editor/ui/CloseReview.hpp",
+        "examples/render-plugin/ExternalEditor.cpp"
+      ],
+      "target_consumers": [
+        "editor_metadata",
+        "editor_asset_save_test"
+      ],
+      "declared_types": [
+        "CloseDecision",
+        "CloseRequest",
+        "ECloseAction",
+        "ECloseDecision",
+        "EClosePurpose",
+        "Pane",
+        "PaneCloseRequest"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-F/G remove old protocol only; keep formal History/Session/activities implementations"
+    },
+    {
+      "path": "editor/editing/include/lux/engine/editor/editing/EditHistoryTarget.hpp",
+      "blob": "8a661d88395a0bc969cec5de2f55aa91783d0029",
+      "providers": [
+        "editor_editing"
+      ],
+      "logical_include": "lux/engine/editor/editing/EditHistoryTarget.hpp",
+      "include_consumers": [
+        "editor/app/pinclude/lux/engine/editor/detail/EditorTestAccess.hpp",
+        "editor/editing/src/EditHistoryTarget.cpp",
+        "editor/tools/flowforge/include/lux/engine/editor/flowforge/FlowForgeEditor.hpp",
+        "editor/tools/material/include/lux/engine/editor/material/MaterialEditor.hpp",
+        "editor/tools/scene/include/lux/engine/editor/scene/SceneEditor.hpp",
+        "editor/ui/include/lux/engine/editor/ui/HistoryCommand.hpp"
+      ],
+      "target_consumers": [
+        "editor_metadata",
+        "editor_asset_save_test"
+      ],
+      "declared_types": [
+        "EHistoryAction",
+        "EHistoryActionAvailability",
+        "EHistoryTargetOutcome",
+        "EditHistoryTarget",
+        "HistoryTargetResult",
+        "HistoryTargetView"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-F/G remove old protocol only; keep formal History/Session/activities implementations"
+    },
+    {
+      "path": "editor/editing/src/EditHistoryTarget.cpp",
+      "blob": "e7d1df92266e49be2f1aa9a24b14cf0079bd647d",
+      "providers": [
+        "editor_editing"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "editor_metadata",
+        "editor_asset_save_test"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-F/G remove old protocol only; keep formal History/Session/activities implementations"
+    },
+    {
+      "path": "editor/launcher/CMakeLists.txt",
+      "blob": "5d0edec14df0af90d5afe43c6eb4fc8023a99ca0",
+      "providers": [
+        "editor_launcher",
+        "lux_launcher"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "lux_launcher",
+        "lux_editor",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-D/F formal launcher composition"
+    },
+    {
+      "path": "editor/launcher/README.md",
+      "blob": "4554922f8193bef77bfec4754dfc5dcc879ef1ec",
+      "providers": [
+        "editor_launcher",
+        "lux_launcher"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "lux_launcher",
+        "lux_editor",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-D/F formal launcher composition"
+    },
+    {
+      "path": "editor/launcher/include/lux/engine/editor/launcher/ProjectCreationPane.hpp",
+      "blob": "521f5b2a2a77a8b0fef1f3f0a0bd5a3879fe7608",
+      "providers": [
+        "editor_launcher",
+        "lux_launcher"
+      ],
+      "logical_include": "lux/engine/editor/launcher/ProjectCreationPane.hpp",
+      "include_consumers": [
+        "cmake/installed-consumers/editor-d2/TestAssembly.hpp",
+        "editor/app/product/ProductAssembly.cpp",
+        "editor/app/test/context_lifecycle.cpp",
+        "editor/launcher/main.cpp",
+        "editor/launcher/src/ProjectCreationPane.cpp"
+      ],
+      "target_consumers": [
+        "lux_launcher",
+        "lux_editor",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "Impl",
+        "ProjectCreationPane"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-D/F formal launcher composition"
+    },
+    {
+      "path": "editor/launcher/main.cpp",
+      "blob": "12d277e03684e19691eb85d02efa5b3fe39ea600",
+      "providers": [
+        "lux_launcher"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [],
+      "declared_types": [
+        "Launcher",
+        "LauncherRoot"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-D/F formal launcher composition"
+    },
+    {
+      "path": "editor/launcher/src/ProjectCreationPane.cpp",
+      "blob": "b7f8316e5e8abeb72c1ee3dc952067ee4e13d77a",
+      "providers": [
+        "editor_launcher"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "lux_launcher",
+        "lux_editor",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "BuildProject",
+        "EAction",
+        "EPhase",
+        "Factory",
+        "LoadPlugins",
+        "ProjectCreationPane",
+        "ReadCatalog",
+        "Waiting"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-D/F formal launcher composition"
+    },
+    {
+      "path": "editor/metadata/CMakeLists.txt",
+      "blob": "2dd45f29b03dae92d0337f54b939f83ace8cfd85",
+      "providers": [
+        "editor_metadata",
+        "plugin_configuration_test",
+        "plugin_library_test"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "plugin_configuration_test",
+        "plugin_library_test",
+        "scene_render_meta",
+        "render_feature_meta",
+        "physics2d_editor",
+        "editor_context",
+        "editor_ui",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_app"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-F/G formal registration and SDK switch"
+    },
+    {
+      "path": "editor/metadata/README.md",
+      "blob": "9dbc0f7e56dc0878b8f27d7410ac64b8a5001cb2",
+      "providers": [
+        "editor_metadata",
+        "plugin_configuration_test",
+        "plugin_library_test"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "plugin_configuration_test",
+        "plugin_library_test",
+        "scene_render_meta",
+        "render_feature_meta",
+        "physics2d_editor",
+        "editor_context",
+        "editor_ui",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_app"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-F/G formal registration and SDK switch"
+    },
+    {
+      "path": "editor/metadata/include/lux/engine/editor/metadata/AssetEditorRegistration.hpp",
+      "blob": "3c067b76127d6716623d5906592c2972be55b9f2",
+      "providers": [
+        "editor_metadata"
+      ],
+      "logical_include": "lux/engine/editor/metadata/AssetEditorRegistration.hpp",
+      "include_consumers": [
+        "editor/context/include/lux/engine/editor/EditorContext.hpp",
+        "editor/metadata/include/lux/engine/editor/metadata/EditorPluginExports.hpp",
+        "editor/tools/flowforge/src/FlowForgeEditor.cpp",
+        "editor/tools/material/src/MaterialEditor.cpp",
+        "editor/tools/scene/src/SceneEditor.cpp"
+      ],
+      "target_consumers": [
+        "plugin_configuration_test",
+        "plugin_library_test",
+        "scene_render_meta",
+        "render_feature_meta",
+        "physics2d_editor",
+        "editor_context",
+        "editor_ui",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_app"
+      ],
+      "declared_types": [
+        "AssetEditorQuery",
+        "AssetEditorRegistration",
+        "ProjectAssetEntry"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-F/G formal registration and SDK switch"
+    },
+    {
+      "path": "editor/metadata/include/lux/engine/editor/metadata/CommandRegistration.hpp",
+      "blob": "6bffa29cef2ce5b454d2ce8f34be78ae1cbb7bda",
+      "providers": [
+        "editor_metadata"
+      ],
+      "logical_include": "lux/engine/editor/metadata/CommandRegistration.hpp",
+      "include_consumers": [
+        "editor/app/test/baseline_failures.cpp",
+        "editor/context/include/lux/engine/editor/EditorContext.hpp",
+        "editor/metadata/include/lux/engine/editor/metadata/EditorPluginExports.hpp"
+      ],
+      "target_consumers": [
+        "plugin_configuration_test",
+        "plugin_library_test",
+        "scene_render_meta",
+        "render_feature_meta",
+        "physics2d_editor",
+        "editor_context",
+        "editor_ui",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_app"
+      ],
+      "declared_types": [
+        "CommandRegistration",
+        "EditorContext"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-F/G formal registration and SDK switch"
+    },
+    {
+      "path": "editor/metadata/include/lux/engine/editor/metadata/ComponentEditorRegistry.hpp",
+      "blob": "c935ad203434b128ef5b6a82cd778a216b7dd775",
+      "providers": [
+        "editor_metadata"
+      ],
+      "logical_include": "lux/engine/editor/metadata/ComponentEditorRegistry.hpp",
+      "include_consumers": [
+        "editor/context/sinclude/lux/engine/editor/detail/EditorContextStartup.hpp",
+        "editor/metadata/include/lux/engine/editor/metadata/EditorPluginExports.hpp",
+        "editor/metadata/src/ComponentEditorRegistry.cpp",
+        "editor/tools/scene/pinclude/lux/engine/editor/ui/scene/InspectorElement.hpp",
+        "editor/ui/include/lux/engine/editor/ui/ComponentEditors.hpp"
+      ],
+      "target_consumers": [
+        "plugin_configuration_test",
+        "plugin_library_test",
+        "scene_render_meta",
+        "render_feature_meta",
+        "physics2d_editor",
+        "editor_context",
+        "editor_ui",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_app"
+      ],
+      "declared_types": [
+        "ComponentEditorRegistration",
+        "ComponentEditorRegistry",
+        "Element",
+        "ElementIdTag",
+        "Impl",
+        "InspectorInteraction",
+        "SceneEditing"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-F/G formal registration and SDK switch"
+    },
+    {
+      "path": "editor/metadata/include/lux/engine/editor/metadata/EditorPlugin.hpp",
+      "blob": "5b862ae724f3a481be9ea84e569231c35fcc5d1d",
+      "providers": [
+        "editor_metadata"
+      ],
+      "logical_include": "lux/engine/editor/metadata/EditorPlugin.hpp",
+      "include_consumers": [
+        "editor/context/src/EditorContext.cpp",
+        "editor/launcher/src/ProjectCreationPane.cpp",
+        "editor/metadata/src/EditorPlugin.cpp",
+        "editor/metadata/test/plugin.cpp",
+        "editor/ui/test/scene_configuration.cpp"
+      ],
+      "target_consumers": [
+        "plugin_configuration_test",
+        "plugin_library_test",
+        "scene_render_meta",
+        "render_feature_meta",
+        "physics2d_editor",
+        "editor_context",
+        "editor_ui",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_app"
+      ],
+      "declared_types": [
+        "EditorPlugin"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-F/G formal registration and SDK switch"
+    },
+    {
+      "path": "editor/metadata/include/lux/engine/editor/metadata/EditorPluginExports.hpp",
+      "blob": "984533be8d931a980584908d9b2a5aa304756ee5",
+      "providers": [
+        "editor_metadata"
+      ],
+      "logical_include": "lux/engine/editor/metadata/EditorPluginExports.hpp",
+      "include_consumers": [
+        "editor/metadata/include/lux/engine/editor/metadata/EditorPlugin.hpp",
+        "editor/metadata/test/configuration.cpp",
+        "editor/plugins/src/Physics2DEditorExports.cpp",
+        "editor/plugins/src/RenderFeatureEditorExports.cpp",
+        "editor/plugins/src/RenderSystemEditorExports.cpp",
+        "editor/tools/scene/test/core_protocol.cpp",
+        "editor/ui/include/lux/engine/editor/ui/SceneConfigurationElement.hpp",
+        "examples/render-plugin/ExternalEditor.cpp"
+      ],
+      "target_consumers": [
+        "plugin_configuration_test",
+        "plugin_library_test",
+        "scene_render_meta",
+        "render_feature_meta",
+        "physics2d_editor",
+        "editor_context",
+        "editor_ui",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_app"
+      ],
+      "declared_types": [
+        "ConfigurationEditorRegistration",
+        "ConfigurationValue",
+        "EditorPluginExports",
+        "belongs"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-F/G formal registration and SDK switch"
+    },
+    {
+      "path": "editor/metadata/include/lux/engine/editor/metadata/PaneRegistration.hpp",
+      "blob": "cc66fc8810e3831f166b4c6dce68c3ee85dad96e",
+      "providers": [
+        "editor_metadata"
+      ],
+      "logical_include": "lux/engine/editor/metadata/PaneRegistration.hpp",
+      "include_consumers": [
+        "editor/context/include/lux/engine/editor/PaneManager.hpp",
+        "editor/metadata/include/lux/engine/editor/metadata/AssetEditorRegistration.hpp"
+      ],
+      "target_consumers": [
+        "plugin_configuration_test",
+        "plugin_library_test",
+        "scene_render_meta",
+        "render_feature_meta",
+        "physics2d_editor",
+        "editor_context",
+        "editor_ui",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_app"
+      ],
+      "declared_types": [
+        "Pane",
+        "PaneManager",
+        "PaneRegistration"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-F/G formal registration and SDK switch"
+    },
+    {
+      "path": "editor/metadata/include/lux/engine/editor/metadata/PaneState.hpp",
+      "blob": "7c93a9d9bbb81d9895fd3e6896dc26c628ed00cd",
+      "providers": [
+        "editor_metadata"
+      ],
+      "logical_include": "lux/engine/editor/metadata/PaneState.hpp",
+      "include_consumers": [
+        "editor/app/pinclude/lux/engine/editor/detail/EditorWorkspace.hpp",
+        "editor/app/src/EditorMenu.cpp",
+        "editor/metadata/include/lux/engine/editor/metadata/PaneRegistration.hpp",
+        "editor/tools/scene/test/workspace_checks.hpp"
+      ],
+      "target_consumers": [
+        "plugin_configuration_test",
+        "plugin_library_test",
+        "scene_render_meta",
+        "render_feature_meta",
+        "physics2d_editor",
+        "editor_context",
+        "editor_ui",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_app"
+      ],
+      "declared_types": [
+        "FinishEditingRequest",
+        "PaneState"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-F/G formal registration and SDK switch"
+    },
+    {
+      "path": "editor/metadata/include/lux/engine/editor/metadata/SceneRegistrations.hpp",
+      "blob": "1cd6785bdc9c5c0463024271c9970b50d745fe62",
+      "providers": [
+        "editor_metadata"
+      ],
+      "logical_include": "lux/engine/editor/metadata/SceneRegistrations.hpp",
+      "include_consumers": [
+        "editor/context/src/EditorContext.cpp",
+        "editor/metadata/src/SceneRegistrations.cpp",
+        "editor/tools/material/pinclude/lux/engine/editor/material/MaterialEditorImpl.hpp",
+        "editor/tools/material/test/MaterialEditorTestAccess.hpp",
+        "editor/tools/scene/pinclude/lux/engine/editor/scene/detail/SceneEditorImpl.hpp",
+        "editor/tools/scene/src/SceneOpening.cpp",
+        "editor/tools/scene/test/SceneEditorTestAccess.hpp",
+        "editor/ui/include/lux/engine/editor/ui/SceneConfigurationElement.hpp"
+      ],
+      "target_consumers": [
+        "plugin_configuration_test",
+        "plugin_library_test",
+        "scene_render_meta",
+        "render_feature_meta",
+        "physics2d_editor",
+        "editor_context",
+        "editor_ui",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_app"
+      ],
+      "declared_types": [
+        "PluginLibrary",
+        "SceneRegistrations"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-F/G formal registration and SDK switch"
+    },
+    {
+      "path": "editor/metadata/src/ComponentEditorRegistry.cpp",
+      "blob": "c25bf515d6bdb7efb10eea2ebe1987513ef0176c",
+      "providers": [
+        "editor_metadata"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "plugin_configuration_test",
+        "plugin_library_test",
+        "scene_render_meta",
+        "render_feature_meta",
+        "physics2d_editor",
+        "editor_context",
+        "editor_ui",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_app"
+      ],
+      "declared_types": [
+        "ComponentEditorRegistry"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-F/G formal registration and SDK switch"
+    },
+    {
+      "path": "editor/metadata/src/EditorPlugin.cpp",
+      "blob": "6b0a88f6495997f039852e5f02bc46c63916fcc6",
+      "providers": [
+        "editor_metadata"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "plugin_configuration_test",
+        "plugin_library_test",
+        "scene_render_meta",
+        "render_feature_meta",
+        "physics2d_editor",
+        "editor_context",
+        "editor_ui",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_app"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-F/G formal registration and SDK switch"
+    },
+    {
+      "path": "editor/metadata/src/SceneRegistrations.cpp",
+      "blob": "cf5e074d15e268fa3965a2080b48a728ba882b86",
+      "providers": [
+        "editor_metadata"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "plugin_configuration_test",
+        "plugin_library_test",
+        "scene_render_meta",
+        "render_feature_meta",
+        "physics2d_editor",
+        "editor_context",
+        "editor_ui",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_app"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-F/G formal registration and SDK switch"
+    },
+    {
+      "path": "editor/metadata/test/configuration.cpp",
+      "blob": "3100a92eb48a6e06fdcd39fd59e3cc3f5347bf7b",
+      "providers": [
+        "plugin_configuration_test"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [],
+      "declared_types": [
+        "Configuration",
+        "ConfigurationElement",
+        "TTypeStaticInfo"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-F/G formal registration and SDK switch"
+    },
+    {
+      "path": "editor/metadata/test/plugin.cpp",
+      "blob": "de26e502e979214d23021487c3579d0a6e827bc1",
+      "providers": [
+        "plugin_library_test"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-F/G formal registration and SDK switch"
+    },
+    {
+      "path": "editor/plugins/CMakeLists.txt",
+      "blob": "3df705af56c4611744eb3f7cc7a4c061caff5408",
+      "providers": [
+        "scene_render_meta",
+        "scene_runtime_render_configuration_meta",
+        "scene_runtime_render_configuration_meta_generate",
+        "render_feature_meta",
+        "render_feature_client_grid3_d_operation_meta",
+        "render_feature_client_grid2_d_operation_meta",
+        "render_feature_client_line_list_operation_meta",
+        "render_feature_client_tri_overlay_operation_meta",
+        "render_feature_client_trajectory_operation_meta",
+        "render_feature_client_skybox_operation_meta",
+        "render_feature_client_skinning_operation_meta",
+        "render_feature_client_point_cloud_operation_meta",
+        "render_feature_client_tonemap_operation_meta",
+        "render_feature_client_shadow_map_operation_meta",
+        "render_feature_client_view_camera_operation_meta",
+        "render_feature_client_light_operation_meta",
+        "render_feature_client_mesh_stack_operation_meta",
+        "render_feature_client_material_operation_meta",
+        "render_feature_client_deferred_g_buffer_operation_meta",
+        "render_feature_client_deferred_lighting_operation_meta",
+        "render_feature_client_depth_prepass_operation_meta",
+        "render_feature_client_forward_mesh_operation_meta",
+        "render_feature_client_highlight_operation_meta",
+        "render_feature_client_streaming_feedback_operation_meta",
+        "render_feature_client_hzb_operation_meta",
+        "render_feature_client_linear_depth_operation_meta",
+        "render_feature_client_ssao_operation_meta",
+        "render_feature_client_fog_operation_meta",
+        "render_feature_client_canvas2_d_operation_meta",
+        "render_feature_client_mesh_shadow_operation_meta",
+        "render_feature_client_spatial_cull_operation_meta",
+        "render_feature_client_render_cluster_operation_meta",
+        "render_feature_client_terrain_operation_meta",
+        "render_feature_client_water_operation_meta",
+        "render_feature_client_tonemap_params_meta",
+        "render_feature_client_spatial_cull_params_meta",
+        "render_feature_client_shadow_quality_params_meta",
+        "render_feature_client_grid3_d_operation_meta_generate",
+        "render_feature_client_grid2_d_operation_meta_generate",
+        "render_feature_client_line_list_operation_meta_generate",
+        "render_feature_client_tri_overlay_operation_meta_generate",
+        "render_feature_client_trajectory_operation_meta_generate",
+        "render_feature_client_skybox_operation_meta_generate",
+        "render_feature_client_skinning_operation_meta_generate",
+        "render_feature_client_point_cloud_operation_meta_generate",
+        "render_feature_client_tonemap_operation_meta_generate",
+        "render_feature_client_shadow_map_operation_meta_generate",
+        "render_feature_client_view_camera_operation_meta_generate",
+        "render_feature_client_light_operation_meta_generate",
+        "render_feature_client_mesh_stack_operation_meta_generate",
+        "render_feature_client_material_operation_meta_generate",
+        "render_feature_client_deferred_g_buffer_operation_meta_generate",
+        "render_feature_client_deferred_lighting_operation_meta_generate",
+        "render_feature_client_depth_prepass_operation_meta_generate",
+        "render_feature_client_forward_mesh_operation_meta_generate",
+        "render_feature_client_highlight_operation_meta_generate",
+        "render_feature_client_streaming_feedback_operation_meta_generate",
+        "render_feature_client_hzb_operation_meta_generate",
+        "render_feature_client_linear_depth_operation_meta_generate",
+        "render_feature_client_ssao_operation_meta_generate",
+        "render_feature_client_fog_operation_meta_generate",
+        "render_feature_client_canvas2_d_operation_meta_generate",
+        "render_feature_client_mesh_shadow_operation_meta_generate",
+        "render_feature_client_spatial_cull_operation_meta_generate",
+        "render_feature_client_render_cluster_operation_meta_generate",
+        "render_feature_client_terrain_operation_meta_generate",
+        "render_feature_client_water_operation_meta_generate",
+        "render_feature_client_tonemap_params_meta_generate",
+        "render_feature_client_spatial_cull_params_meta_generate",
+        "render_feature_client_shadow_quality_params_meta_generate",
+        "physics2d_editor",
+        "physics2d_editor_configuration",
+        "physics2d_editor_configuration_generate"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "plugin_library_test",
+        "scene_render_meta",
+        "render_feature_meta",
+        "physics2d_editor",
+        "editor_core_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-F/G V7 sidecars and generated providers"
+    },
+    {
+      "path": "editor/plugins/README.md",
+      "blob": "27b1649c2eae88303b867e107b96e6df99ed6126",
+      "providers": [
+        "scene_render_meta",
+        "scene_runtime_render_configuration_meta",
+        "scene_runtime_render_configuration_meta_generate",
+        "render_feature_meta",
+        "render_feature_client_grid3_d_operation_meta",
+        "render_feature_client_grid2_d_operation_meta",
+        "render_feature_client_line_list_operation_meta",
+        "render_feature_client_tri_overlay_operation_meta",
+        "render_feature_client_trajectory_operation_meta",
+        "render_feature_client_skybox_operation_meta",
+        "render_feature_client_skinning_operation_meta",
+        "render_feature_client_point_cloud_operation_meta",
+        "render_feature_client_tonemap_operation_meta",
+        "render_feature_client_shadow_map_operation_meta",
+        "render_feature_client_view_camera_operation_meta",
+        "render_feature_client_light_operation_meta",
+        "render_feature_client_mesh_stack_operation_meta",
+        "render_feature_client_material_operation_meta",
+        "render_feature_client_deferred_g_buffer_operation_meta",
+        "render_feature_client_deferred_lighting_operation_meta",
+        "render_feature_client_depth_prepass_operation_meta",
+        "render_feature_client_forward_mesh_operation_meta",
+        "render_feature_client_highlight_operation_meta",
+        "render_feature_client_streaming_feedback_operation_meta",
+        "render_feature_client_hzb_operation_meta",
+        "render_feature_client_linear_depth_operation_meta",
+        "render_feature_client_ssao_operation_meta",
+        "render_feature_client_fog_operation_meta",
+        "render_feature_client_canvas2_d_operation_meta",
+        "render_feature_client_mesh_shadow_operation_meta",
+        "render_feature_client_spatial_cull_operation_meta",
+        "render_feature_client_render_cluster_operation_meta",
+        "render_feature_client_terrain_operation_meta",
+        "render_feature_client_water_operation_meta",
+        "render_feature_client_tonemap_params_meta",
+        "render_feature_client_spatial_cull_params_meta",
+        "render_feature_client_shadow_quality_params_meta",
+        "render_feature_client_grid3_d_operation_meta_generate",
+        "render_feature_client_grid2_d_operation_meta_generate",
+        "render_feature_client_line_list_operation_meta_generate",
+        "render_feature_client_tri_overlay_operation_meta_generate",
+        "render_feature_client_trajectory_operation_meta_generate",
+        "render_feature_client_skybox_operation_meta_generate",
+        "render_feature_client_skinning_operation_meta_generate",
+        "render_feature_client_point_cloud_operation_meta_generate",
+        "render_feature_client_tonemap_operation_meta_generate",
+        "render_feature_client_shadow_map_operation_meta_generate",
+        "render_feature_client_view_camera_operation_meta_generate",
+        "render_feature_client_light_operation_meta_generate",
+        "render_feature_client_mesh_stack_operation_meta_generate",
+        "render_feature_client_material_operation_meta_generate",
+        "render_feature_client_deferred_g_buffer_operation_meta_generate",
+        "render_feature_client_deferred_lighting_operation_meta_generate",
+        "render_feature_client_depth_prepass_operation_meta_generate",
+        "render_feature_client_forward_mesh_operation_meta_generate",
+        "render_feature_client_highlight_operation_meta_generate",
+        "render_feature_client_streaming_feedback_operation_meta_generate",
+        "render_feature_client_hzb_operation_meta_generate",
+        "render_feature_client_linear_depth_operation_meta_generate",
+        "render_feature_client_ssao_operation_meta_generate",
+        "render_feature_client_fog_operation_meta_generate",
+        "render_feature_client_canvas2_d_operation_meta_generate",
+        "render_feature_client_mesh_shadow_operation_meta_generate",
+        "render_feature_client_spatial_cull_operation_meta_generate",
+        "render_feature_client_render_cluster_operation_meta_generate",
+        "render_feature_client_terrain_operation_meta_generate",
+        "render_feature_client_water_operation_meta_generate",
+        "render_feature_client_tonemap_params_meta_generate",
+        "render_feature_client_spatial_cull_params_meta_generate",
+        "render_feature_client_shadow_quality_params_meta_generate",
+        "physics2d_editor",
+        "physics2d_editor_configuration",
+        "physics2d_editor_configuration_generate"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "plugin_library_test",
+        "scene_render_meta",
+        "render_feature_meta",
+        "physics2d_editor",
+        "editor_core_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-F/G V7 sidecars and generated providers"
+    },
+    {
+      "path": "editor/plugins/src/Physics2DEditorExports.cpp",
+      "blob": "3ec4442fa8973876eb9537b298eacbdba5f5193d",
+      "providers": [
+        "physics2d_editor"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "plugin_library_test"
+      ],
+      "declared_types": [
+        "PhysicsConfigurationElement"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-F/G V7 sidecars and generated providers"
+    },
+    {
+      "path": "editor/plugins/src/RenderFeatureEditorExports.cpp",
+      "blob": "fa854d2237cdaf6d647665db8806edc2db6fd506",
+      "providers": [
+        "render_feature_meta"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "editor_core_protocol"
+      ],
+      "declared_types": [
+        "T"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-F/G V7 sidecars and generated providers"
+    },
+    {
+      "path": "editor/plugins/src/RenderSystemEditorExports.cpp",
+      "blob": "e3b2178bef64a04bee4a0966304a91e54bd5d360",
+      "providers": [
+        "scene_render_meta"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "editor_core_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-F/G V7 sidecars and generated providers"
+    },
+    {
+      "path": "editor/tools/CMakeLists.txt",
+      "blob": "b0949480aac47eb13dae362969cff379a44d388e",
+      "providers": [
+        "editor_material",
+        "editor_material_meta",
+        "editor_material_meta_generate",
+        "editor_flowforge",
+        "editor_flow_meta",
+        "editor_flow_meta_generate",
+        "editor_scene",
+        "editor_scene_meta",
+        "editor_scene_meta_generate",
+        "editor_scene_transform_meta",
+        "editor_scene_transform_meta_generate",
+        "editor_scene_fixture",
+        "editor_project_tools",
+        "editor_settings"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/flowforge/CMakeLists.txt",
+      "blob": "d228cc5cacb5cbc5b746e76e92171c1e8295d4f5",
+      "providers": [
+        "editor_flowforge",
+        "editor_flow_meta",
+        "editor_flow_meta_generate"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "editor_flowforge",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/flowforge/include/lux/engine/editor/flowforge/FlowForgeEditor.hpp",
+      "blob": "36f776252b4103c66a3a3740a1b875e394ae344d",
+      "providers": [
+        "editor_flowforge",
+        "editor_flow_meta",
+        "editor_flow_meta_generate"
+      ],
+      "logical_include": "lux/engine/editor/flowforge/FlowForgeEditor.hpp",
+      "include_consumers": [
+        "cmake/installed-consumers/editor-d2/TestAssembly.hpp",
+        "cmake/installed-consumers/editor-d2/TestExit.hpp",
+        "editor/app/product/ProductAssembly.cpp",
+        "editor/app/product/ProductCommands.cpp",
+        "editor/tools/flowforge/pinclude/lux/engine/editor/flowforge/FlowForgeEditorImpl.hpp",
+        "editor/tools/flowforge/src/FlowForgeEditor.cpp",
+        "editor/tools/flowforge/src/ui/FlowForgeElements.cpp",
+        "editor/tools/flowforge/test/FlowForgeEditorTestAccess.hpp",
+        "editor/tools/flowforge/test/flow_protocol.cpp"
+      ],
+      "target_consumers": [
+        "editor_flowforge",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "EFlowCompileStage",
+        "EditorContext",
+        "FlowCompileFailed",
+        "FlowCompilePending",
+        "FlowCompileSucceeded",
+        "FlowForgeEditor",
+        "FlowForgeEditorTestAccess",
+        "Impl",
+        "ScriptArtifact"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/flowforge/pinclude/lux/engine/editor/flowforge/FlowForgeEditorImpl.hpp",
+      "blob": "6dc5e92d4162e73106903f7e4b8a2f65458af37b",
+      "providers": [
+        "editor_flowforge",
+        "editor_flow_meta",
+        "editor_flow_meta_generate"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "editor/tools/flowforge/src/FlowAssets.cpp",
+        "editor/tools/flowforge/src/FlowForgeEditor.cpp",
+        "editor/tools/flowforge/src/ui/FlowForgeElements.cpp",
+        "editor/tools/flowforge/test/FlowForgeEditorTestAccess.cpp"
+      ],
+      "target_consumers": [
+        "editor_flowforge",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "ContentElement",
+        "FlowForgeEditor",
+        "FlowForgeEditorTestAccess",
+        "FlowSourceCodec",
+        "GraphElement"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/flowforge/src/FlowAssets.cpp",
+      "blob": "64eab683a6ff79c0a74f7f431f2c89bc1edd2de8",
+      "providers": [
+        "editor_flowforge"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/flowforge/src/FlowForgeEditor.cpp",
+      "blob": "253d9363d9315718b42d380a839388e401edcffe",
+      "providers": [
+        "editor_flowforge"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "BusyGuard",
+        "Selection"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/flowforge/src/ui/FlowForgeElements.cpp",
+      "blob": "d319a7ee2923bd1dec8e56755a9faba6946cee97",
+      "providers": [
+        "editor_flowforge"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "EAction",
+        "ExportsDraft",
+        "FlowForgeEditor",
+        "FunctionDraft",
+        "LiteralField",
+        "Position",
+        "Result",
+        "VariableDraft"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/flowforge/test/FlowForgeEditorTestAccess.cpp",
+      "blob": "983f6ece009353de6c39b80e7f2775effcb3ad87",
+      "providers": [
+        "editor_flowforge"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/flowforge/test/FlowForgeEditorTestAccess.hpp",
+      "blob": "36a8121e53177aab62629fc27e11f1e970f200fa",
+      "providers": [
+        "editor_flowforge",
+        "editor_flow_meta",
+        "editor_flow_meta_generate"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "editor/tools/flowforge/test/FlowForgeEditorTestAccess.cpp",
+        "editor/tools/test/ToolTestAccess.hpp"
+      ],
+      "target_consumers": [
+        "editor_flowforge",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "FlowForgeEditorTestAccess"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/flowforge/test/flow_metadata.hpp",
+      "blob": "70374340ea2d04a816bbae65354c450dc1d06756",
+      "providers": [
+        "editor_flowforge",
+        "editor_flow_meta",
+        "editor_flow_meta_generate"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "editor/tools/flowforge/test/flow_protocol.cpp",
+        "editor/tools/scene/test/core_protocol.cpp"
+      ],
+      "target_consumers": [
+        "editor_flowforge",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "MetadataOwner",
+        "NativeRecord"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/flowforge/test/flow_protocol.cpp",
+      "blob": "4dae7e2492473c618a30ab5d116e076c22b5860b",
+      "providers": [
+        "editor_flow_protocol"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [],
+      "declared_types": [
+        "CompileReceiver",
+        "Evidence",
+        "Probe"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/material/CMakeLists.txt",
+      "blob": "6a9b228a386fc234558a16ca9547b70e7f5fb013",
+      "providers": [
+        "editor_material",
+        "editor_material_meta",
+        "editor_material_meta_generate"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "editor_material",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/material/include/lux/engine/editor/material/MaterialEditor.hpp",
+      "blob": "4884b658d1e0acae161b67c88e9475c20bdf471e",
+      "providers": [
+        "editor_material",
+        "editor_material_meta",
+        "editor_material_meta_generate"
+      ],
+      "logical_include": "lux/engine/editor/material/MaterialEditor.hpp",
+      "include_consumers": [
+        "cmake/installed-consumers/editor-d2/TestAssembly.hpp",
+        "cmake/installed-consumers/editor-d2/TestExit.hpp",
+        "cmake/installed-consumers/editor-d2/protocol/review_regressions.cpp",
+        "editor/app/product/ProductAssembly.cpp",
+        "editor/app/product/ProductCommands.cpp",
+        "editor/tools/material/pinclude/lux/engine/editor/material/MaterialEditorImpl.hpp",
+        "editor/tools/material/src/MaterialEditor.cpp",
+        "editor/tools/material/src/ui/MaterialElements.cpp",
+        "editor/tools/material/test/MaterialEditorTestAccess.hpp",
+        "editor/tools/material/test/material_protocol.cpp"
+      ],
+      "target_consumers": [
+        "editor_material",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "EditorContext",
+        "Impl",
+        "MaterialCompileFailed",
+        "MaterialCompilePending",
+        "MaterialCompileSucceeded",
+        "MaterialDescription",
+        "MaterialEditor",
+        "MaterialEditorTestAccess",
+        "MaterialPreviewElement",
+        "ui"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/material/pinclude/lux/engine/editor/material/MaterialEditorImpl.hpp",
+      "blob": "55b923e9c7157522823b87af4c1b2b8d282941cb",
+      "providers": [
+        "editor_material",
+        "editor_material_meta",
+        "editor_material_meta_generate"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "editor/tools/material/pinclude/lux/engine/editor/ui/material/MaterialPreviewElement.hpp",
+        "editor/tools/material/src/MaterialAssets.cpp",
+        "editor/tools/material/src/MaterialEditor.cpp",
+        "editor/tools/material/src/MaterialPreview.cpp",
+        "editor/tools/material/src/ui/MaterialElements.cpp",
+        "editor/tools/material/test/MaterialEditorTestAccess.cpp"
+      ],
+      "target_consumers": [
+        "editor_material",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "Content",
+        "GraphElement",
+        "MaterialEditor",
+        "MaterialEditorTestAccess",
+        "MaterialSourceCodec",
+        "ui"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/material/pinclude/lux/engine/editor/ui/material/MaterialPreviewElement.hpp",
+      "blob": "c326552c3cf4bd9da6d354c57bb7ce2bb85ba017",
+      "providers": [
+        "editor_material",
+        "editor_material_meta",
+        "editor_material_meta_generate"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "editor/tools/material/src/ui/MaterialElements.cpp",
+        "editor/tools/material/src/ui/MaterialPreviewElement.cpp"
+      ],
+      "target_consumers": [
+        "editor_material",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "MaterialPreviewElement"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/material/src/MaterialAssets.cpp",
+      "blob": "9c687b84310bdebe9105fa2535b0b33f08dac6f5",
+      "providers": [
+        "editor_material"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/material/src/MaterialEditor.cpp",
+      "blob": "55593494ab507f80ff0f24e37c6163e78b56e317",
+      "providers": [
+        "editor_material"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "BusyGuard"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/material/src/MaterialPreview.cpp",
+      "blob": "5d9398961373eccd906b9a335efdbf466aa071f0",
+      "providers": [
+        "editor_material"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/material/src/ui/MaterialElements.cpp",
+      "blob": "a82dd61a4059031062a663f3a8e27268bdf50969",
+      "providers": [
+        "editor_material"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "ConstantGesture",
+        "EAction",
+        "Idle",
+        "MaterialEditor",
+        "NodeDraft",
+        "Position",
+        "Result",
+        "Slot",
+        "TSlotDraft",
+        "TexturePicker"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/material/src/ui/MaterialPreviewElement.cpp",
+      "blob": "e30c6247188150290ae97e27bdabf6f65fe13f28",
+      "providers": [
+        "editor_material"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/material/test/MaterialEditorTestAccess.cpp",
+      "blob": "aa0bcbb98d9d6a3e41c16a24b01ed4d16ac71103",
+      "providers": [
+        "editor_material"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/material/test/MaterialEditorTestAccess.hpp",
+      "blob": "b8682d9f5ec6ade8294e4ba83960475c9f5bfea4",
+      "providers": [
+        "editor_material",
+        "editor_material_meta",
+        "editor_material_meta_generate"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "editor/tools/material/test/MaterialEditorTestAccess.cpp",
+        "editor/tools/test/ToolTestAccess.hpp"
+      ],
+      "target_consumers": [
+        "editor_material",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "MaterialEditorTestAccess"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/material/test/material_protocol.cpp",
+      "blob": "3849b7dfa87c3ecaa8c23bb21bafe93bcc090cb6",
+      "providers": [
+        "editor_material_protocol"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [],
+      "declared_types": [
+        "Evidence",
+        "Probe"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/project/CMakeLists.txt",
+      "blob": "5e026c6f79b48ed918e97a12e837159c17c94ba7",
+      "providers": [
+        "editor_project_tools"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/project/include/lux/engine/editor/project/ProjectPane.hpp",
+      "blob": "7a96eed1795ab24d950356975ef082231a93c91d",
+      "providers": [
+        "editor_project_tools"
+      ],
+      "logical_include": "lux/engine/editor/project/ProjectPane.hpp",
+      "include_consumers": [
+        "cmake/installed-consumers/editor-d2/TestAssembly.hpp",
+        "editor/app/product/ProductAssembly.cpp",
+        "editor/tools/project/src/ProjectPane.cpp"
+      ],
+      "target_consumers": [
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "Content",
+        "ProjectPane"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/project/src/ProjectPane.cpp",
+      "blob": "37f68fa8b5d3e44e8a55fcb5eb29194bef6d6fc4",
+      "providers": [
+        "editor_project_tools"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/scene/CMakeLists.txt",
+      "blob": "c4e0c63cb9affd01a15d80ea43f8647c501f8b6d",
+      "providers": [
+        "editor_scene",
+        "editor_scene_meta",
+        "editor_scene_meta_generate",
+        "editor_scene_transform_meta",
+        "editor_scene_transform_meta_generate",
+        "editor_scene_fixture"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "editor_scene",
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/scene/README.md",
+      "blob": "a0bf8c51dfc4318f9a08c4b96ad28c4a583effd2",
+      "providers": [
+        "editor_scene",
+        "editor_scene_meta",
+        "editor_scene_meta_generate",
+        "editor_scene_transform_meta",
+        "editor_scene_transform_meta_generate",
+        "editor_scene_fixture"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "editor_scene",
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/scene/include/lux/engine/editor/scene/SceneEditor.hpp",
+      "blob": "03924cf9e31e0f901c6b136aab87563f21caf1e6",
+      "providers": [
+        "editor_scene",
+        "editor_scene_meta",
+        "editor_scene_meta_generate",
+        "editor_scene_transform_meta",
+        "editor_scene_transform_meta_generate",
+        "editor_scene_fixture"
+      ],
+      "logical_include": "lux/engine/editor/scene/SceneEditor.hpp",
+      "include_consumers": [
+        "cmake/installed-consumers/editor-d2/SceneWorkflow.cpp",
+        "cmake/installed-consumers/editor-d2/TestAssembly.hpp",
+        "cmake/installed-consumers/editor-d2/TestExit.hpp",
+        "editor/app/product/ProductAssembly.cpp",
+        "editor/app/product/ProductCommands.cpp",
+        "editor/tools/scene/pinclude/lux/engine/editor/scene/detail/SceneEditorImpl.hpp",
+        "editor/tools/scene/src/SceneObjectEdits.cpp",
+        "editor/tools/scene/src/ui/SceneCreationPane.cpp",
+        "editor/tools/scene/test/SceneEditorTestAccess.hpp",
+        "editor/tools/scene/test/entity_checks.hpp",
+        "editor/tools/scene/test/run_checks.hpp",
+        "editor/tools/scene/test/scene_structure_checks.hpp"
+      ],
+      "target_consumers": [
+        "editor_scene",
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "EditorContext",
+        "Impl",
+        "InspectorPane",
+        "ModelCreationCancelled",
+        "ModelCreationId",
+        "ModelCreationPending",
+        "ModelCreationSucceeded",
+        "OutlinerElement",
+        "OutlinerPane",
+        "ResourceElement",
+        "ResourcePane",
+        "SceneContentElement",
+        "SceneDescription",
+        "SceneEditor",
+        "SceneEditorTestAccess",
+        "SceneResourceSnapshot",
+        "SelectionNotice",
+        "SimulationDescription",
+        "ui"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/scene/include/lux/engine/editor/scene/ScenePlayback.hpp",
+      "blob": "6ae8e6480ea16a3521b6bd234336e31b1c6df54f",
+      "providers": [
+        "editor_scene",
+        "editor_scene_meta",
+        "editor_scene_meta_generate",
+        "editor_scene_transform_meta",
+        "editor_scene_transform_meta_generate",
+        "editor_scene_fixture"
+      ],
+      "logical_include": "lux/engine/editor/scene/ScenePlayback.hpp",
+      "include_consumers": [
+        "editor/tools/scene/include/lux/engine/editor/scene/SceneEditor.hpp"
+      ],
+      "target_consumers": [
+        "editor_scene",
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "EPlaybackState",
+        "ERunPhase",
+        "RunCompletedPhases",
+        "RunStatus"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/scene/pinclude/lux/engine/editor/scene/detail/EditorEntity.hpp",
+      "blob": "c9c7c96973210ef4d6176ff5623cfe0180fc13ce",
+      "providers": [
+        "editor_scene",
+        "editor_scene_meta",
+        "editor_scene_meta_generate",
+        "editor_scene_transform_meta",
+        "editor_scene_transform_meta_generate",
+        "editor_scene_fixture"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "editor/tools/scene/pinclude/lux/engine/editor/scene/detail/SceneEditorImpl.hpp",
+        "editor/tools/scene/src/SceneObjectEdits.cpp",
+        "editor/tools/scene/src/ui/OutlinerPane.cpp"
+      ],
+      "target_consumers": [
+        "editor_scene",
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "EditorEntity"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/scene/pinclude/lux/engine/editor/scene/detail/ModelCreation.hpp",
+      "blob": "f491fee430513b7756ab80b411126a5c3bc50d5b",
+      "providers": [
+        "editor_scene",
+        "editor_scene_meta",
+        "editor_scene_meta_generate",
+        "editor_scene_transform_meta",
+        "editor_scene_transform_meta_generate",
+        "editor_scene_fixture"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "editor/tools/scene/pinclude/lux/engine/editor/scene/detail/SceneEditorImpl.hpp",
+        "editor/tools/scene/src/ModelCreation.cpp"
+      ],
+      "target_consumers": [
+        "editor_scene",
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/scene/pinclude/lux/engine/editor/scene/detail/SceneContent.hpp",
+      "blob": "35f3e0b04f5d2ef6df24171c75983bb93d9e52a3",
+      "providers": [
+        "editor_scene",
+        "editor_scene_meta",
+        "editor_scene_meta_generate",
+        "editor_scene_transform_meta",
+        "editor_scene_transform_meta_generate",
+        "editor_scene_fixture"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "editor/tools/scene/pinclude/lux/engine/editor/scene/detail/ModelCreation.hpp",
+        "editor/tools/scene/pinclude/lux/engine/editor/scene/detail/SceneEditorImpl.hpp",
+        "editor/tools/scene/src/SceneContent.cpp"
+      ],
+      "target_consumers": [
+        "editor_scene",
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "Component",
+        "ObjectComponent",
+        "ObjectContent",
+        "SceneContent"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/scene/pinclude/lux/engine/editor/scene/detail/SceneEditorImpl.hpp",
+      "blob": "4073c5abb70bf47220d0df34982c19de811f5c5b",
+      "providers": [
+        "editor_scene",
+        "editor_scene_meta",
+        "editor_scene_meta_generate",
+        "editor_scene_transform_meta",
+        "editor_scene_transform_meta_generate",
+        "editor_scene_fixture"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "editor/tools/scene/pinclude/lux/engine/editor/ui/scene/OutlinerPane.hpp",
+        "editor/tools/scene/pinclude/lux/engine/editor/ui/scene/ResourcePane.hpp",
+        "editor/tools/scene/pinclude/lux/engine/editor/ui/scene/SceneContentElement.hpp",
+        "editor/tools/scene/src/SceneAssets.cpp",
+        "editor/tools/scene/src/SceneEditor.cpp",
+        "editor/tools/scene/src/SceneObjectEdits.cpp",
+        "editor/tools/scene/src/ScenePlayback.cpp",
+        "editor/tools/scene/src/ui/SceneUi.cpp",
+        "editor/tools/scene/test/SceneEditorTestAccess.cpp"
+      ],
+      "target_consumers": [
+        "editor_scene",
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "EditingGuard",
+        "ObjectEdit",
+        "ParentEdit",
+        "Placement",
+        "SceneContentElement",
+        "SceneEditor",
+        "SceneEditorTestAccess",
+        "SceneEncoder",
+        "SceneSaveCapture",
+        "SceneSourceCodec",
+        "ui"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/scene/pinclude/lux/engine/editor/scene/detail/SceneOpening.hpp",
+      "blob": "40501899e2720a48f478790de06fd4f3a15fb4ae",
+      "providers": [
+        "editor_scene",
+        "editor_scene_meta",
+        "editor_scene_meta_generate",
+        "editor_scene_transform_meta",
+        "editor_scene_transform_meta_generate",
+        "editor_scene_fixture"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "editor/tools/scene/pinclude/lux/engine/editor/scene/detail/SceneContent.hpp",
+        "editor/tools/scene/pinclude/lux/engine/editor/scene/detail/SceneEditorImpl.hpp",
+        "editor/tools/scene/src/SceneOpening.cpp"
+      ],
+      "target_consumers": [
+        "editor_scene",
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "ProjectStorage",
+        "SceneRegistrations"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/scene/pinclude/lux/engine/editor/scene/detail/SceneSource.hpp",
+      "blob": "12bd86500f29de54fd7060fa869049a9dbf3ea2f",
+      "providers": [
+        "editor_scene",
+        "editor_scene_meta",
+        "editor_scene_meta_generate",
+        "editor_scene_transform_meta",
+        "editor_scene_transform_meta_generate",
+        "editor_scene_fixture"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "editor/activities/scene/include/lux/engine/editor/editing/scene/SceneEdit.hpp",
+        "editor/authoring/scene/include/lux/engine/editor/scene/SceneAlgorithms.hpp",
+        "editor/authoring/scene/include/lux/engine/editor/scene/SceneSnapshot.hpp",
+        "editor/tools/scene/pinclude/lux/engine/editor/scene/detail/SceneEditorImpl.hpp",
+        "editor/tools/scene/src/SceneSource.cpp"
+      ],
+      "target_consumers": [
+        "editor_scene",
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/scene/pinclude/lux/engine/editor/ui/scene/InspectorElement.hpp",
+      "blob": "00f7d822076e58555f2bb48b6b715831be556c43",
+      "providers": [
+        "editor_scene",
+        "editor_scene_meta",
+        "editor_scene_meta_generate",
+        "editor_scene_transform_meta",
+        "editor_scene_transform_meta_generate",
+        "editor_scene_fixture"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "editor/tools/scene/pinclude/lux/engine/editor/ui/scene/InspectorPane.hpp",
+        "editor/tools/scene/src/ui/InspectorElement.cpp"
+      ],
+      "target_consumers": [
+        "editor_scene",
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "ComponentRow",
+        "InspectorElement"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/scene/pinclude/lux/engine/editor/ui/scene/InspectorPane.hpp",
+      "blob": "9f8b73627655a1e0076fcede3dd2a35d80f2748f",
+      "providers": [
+        "editor_scene",
+        "editor_scene_meta",
+        "editor_scene_meta_generate",
+        "editor_scene_transform_meta",
+        "editor_scene_transform_meta_generate",
+        "editor_scene_fixture"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "editor/tools/scene/src/SceneAssets.cpp",
+        "editor/tools/scene/src/SceneEditor.cpp",
+        "editor/tools/scene/src/ScenePlayback.cpp",
+        "editor/tools/scene/src/ui/InspectorPane.cpp",
+        "editor/tools/scene/src/ui/SceneUi.cpp"
+      ],
+      "target_consumers": [
+        "editor_scene",
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "InspectorPane"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/scene/pinclude/lux/engine/editor/ui/scene/OutlinerPane.hpp",
+      "blob": "ccc77ccfa0c4abd5039b591b211df2ee650d0550",
+      "providers": [
+        "editor_scene",
+        "editor_scene_meta",
+        "editor_scene_meta_generate",
+        "editor_scene_transform_meta",
+        "editor_scene_transform_meta_generate",
+        "editor_scene_fixture"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "editor/tools/scene/src/SceneEditor.cpp",
+        "editor/tools/scene/src/ui/OutlinerPane.cpp",
+        "editor/tools/scene/src/ui/SceneUi.cpp"
+      ],
+      "target_consumers": [
+        "editor_scene",
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "ObjectRow",
+        "OutlinerElement",
+        "OutlinerPane"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/scene/pinclude/lux/engine/editor/ui/scene/ResourcePane.hpp",
+      "blob": "7d365d99fbf001b489bb00175da5a06d358bb82e",
+      "providers": [
+        "editor_scene",
+        "editor_scene_meta",
+        "editor_scene_meta_generate",
+        "editor_scene_transform_meta",
+        "editor_scene_transform_meta_generate",
+        "editor_scene_fixture"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "editor/tools/scene/src/SceneEditor.cpp",
+        "editor/tools/scene/src/ui/ResourcePane.cpp",
+        "editor/tools/scene/src/ui/SceneUi.cpp"
+      ],
+      "target_consumers": [
+        "editor_scene",
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "ResourceElement",
+        "ResourcePane"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/scene/pinclude/lux/engine/editor/ui/scene/SceneContentElement.hpp",
+      "blob": "bb07730d968c3cdcd35ed4a9aed915d29f3a9c9c",
+      "providers": [
+        "editor_scene",
+        "editor_scene_meta",
+        "editor_scene_meta_generate",
+        "editor_scene_transform_meta",
+        "editor_scene_transform_meta_generate",
+        "editor_scene_fixture"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "editor/tools/scene/src/SceneAssets.cpp",
+        "editor/tools/scene/src/SceneEditor.cpp",
+        "editor/tools/scene/src/ui/SceneContentElement.cpp",
+        "editor/tools/scene/src/ui/SceneUi.cpp"
+      ],
+      "target_consumers": [
+        "editor_scene",
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "Create",
+        "DetailAction",
+        "Details",
+        "EControl",
+        "EDetailAction",
+        "Pick",
+        "SceneContentElement"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/scene/pinclude/lux/engine/editor/ui/scene/SceneCreationPane.hpp",
+      "blob": "3db12bf8575c99b6065908e6e054c1bd8f04768c",
+      "providers": [
+        "editor_scene",
+        "editor_scene_meta",
+        "editor_scene_meta_generate",
+        "editor_scene_transform_meta",
+        "editor_scene_transform_meta_generate",
+        "editor_scene_fixture"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "editor/tools/scene/src/SceneAssets.cpp",
+        "editor/tools/scene/src/ui/SceneCreationPane.cpp"
+      ],
+      "target_consumers": [
+        "editor_scene",
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "EditorContext",
+        "SceneEditor"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/scene/pinclude/lux/engine/editor/ui/scene/UiMeasurement.hpp",
+      "blob": "b61faade32c3a43de60cc5b72a596327311bcecd",
+      "providers": [
+        "editor_scene",
+        "editor_scene_meta",
+        "editor_scene_meta_generate",
+        "editor_scene_transform_meta",
+        "editor_scene_transform_meta_generate",
+        "editor_scene_fixture"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "editor/tools/scene/src/ui/OutlinerPane.cpp"
+      ],
+      "target_consumers": [
+        "editor_scene",
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "UiMeasurement"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/scene/src/ModelCreation.cpp",
+      "blob": "c733fc27efe968c34937b3c5fa6ce550d05817ea",
+      "providers": [
+        "editor_scene"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/scene/src/SceneAssets.cpp",
+      "blob": "27fa0297eaf1afeeba51cce094e7101c5510cbf9",
+      "providers": [
+        "editor_scene"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/scene/src/SceneContent.cpp",
+      "blob": "97883fef1f64c8b7bdfa31daedba870278e31780",
+      "providers": [
+        "editor_scene"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/scene/src/SceneEditor.cpp",
+      "blob": "bb9683546bc616519c9019b8fdd5bc1c8e36aeb6",
+      "providers": [
+        "editor_scene"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/scene/src/SceneObjectEdits.cpp",
+      "blob": "f34d8d4638131e3e1bbd36ae840b6c7642f3f5c5",
+      "providers": [
+        "editor_scene"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "Plan",
+        "SceneEditor"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/scene/src/SceneOpening.cpp",
+      "blob": "ab140bbeb9e1546cad1a288fc1a62b20083facff",
+      "providers": [
+        "editor_scene"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/scene/src/ScenePlayback.cpp",
+      "blob": "0655f1315cd5b93bd984a2e2f680a283b1e591fc",
+      "providers": [
+        "editor_scene"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/scene/src/SceneSource.cpp",
+      "blob": "be76d89416a011548560b9543ce0881df3722368",
+      "providers": [
+        "editor_scene"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/scene/src/ui/InspectorElement.cpp",
+      "blob": "271a7683e81b04de843d4e914ddda5a0d722d3aa",
+      "providers": [
+        "editor_scene"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/scene/src/ui/InspectorPane.cpp",
+      "blob": "1d698dfaec6d795d3f10e63665de9868b286c785",
+      "providers": [
+        "editor_scene"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/scene/src/ui/OutlinerPane.cpp",
+      "blob": "020be05239354fdabbea8025e5d4affbcb0f0ad2",
+      "providers": [
+        "editor_scene"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/scene/src/ui/ResourcePane.cpp",
+      "blob": "77f9da837365210b144ce05427233493cb657ca7",
+      "providers": [
+        "editor_scene"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/scene/src/ui/SceneContentElement.cpp",
+      "blob": "6463f332b336e8bcf4d8338924a7815f0dcdf98a",
+      "providers": [
+        "editor_scene"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/scene/src/ui/SceneCreationPane.cpp",
+      "blob": "10944d73357625c8a38458ddee4a475e6aba8ae3",
+      "providers": [
+        "editor_scene"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "CreationPane"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/scene/src/ui/SceneUi.cpp",
+      "blob": "0e88d921a34502b3def3b63c78f73f6a78751cf5",
+      "providers": [
+        "editor_scene"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/scene/test/SceneEditorTestAccess.cpp",
+      "blob": "8842a838b7066486f7d267f7e227c3a0357380c4",
+      "providers": [
+        "editor_scene"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/scene/test/SceneEditorTestAccess.hpp",
+      "blob": "ab4c070e73c0920c943020976f4719b8f82e2cd4",
+      "providers": [
+        "editor_scene",
+        "editor_scene_meta",
+        "editor_scene_meta_generate",
+        "editor_scene_transform_meta",
+        "editor_scene_transform_meta_generate",
+        "editor_scene_fixture"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "editor/tools/scene/test/SceneEditorTestAccess.cpp",
+        "editor/tools/test/ToolTestAccess.hpp"
+      ],
+      "target_consumers": [
+        "editor_scene",
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "Access",
+        "Component",
+        "SceneEditorTestAccess",
+        "Value"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/scene/test/core_protocol.cpp",
+      "blob": "f0ac0b21804b155988fa5e97dd5a337b95cb6bc4",
+      "providers": [
+        "editor_core_protocol"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/scene/test/entity_checks.hpp",
+      "blob": "5445bd4691ad6cb00a80f997f397444bf116827d",
+      "providers": [
+        "editor_scene",
+        "editor_scene_meta",
+        "editor_scene_meta_generate",
+        "editor_scene_transform_meta",
+        "editor_scene_transform_meta_generate",
+        "editor_scene_fixture"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "editor/tools/scene/test/core_protocol.cpp",
+        "editor/tools/scene/test/run_checks.hpp",
+        "editor/tools/scene/test/scene_save_checks.hpp",
+        "editor/tools/scene/test/scene_structure_checks.hpp"
+      ],
+      "target_consumers": [
+        "editor_scene",
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "TestObjectRow"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/scene/test/fixture.cpp",
+      "blob": "42fea4cdba7c7466b3c88f62cada804dd90a3157",
+      "providers": [
+        "editor_scene_fixture"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [],
+      "declared_types": [
+        "Asset",
+        "T"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/scene/test/menu_checks.hpp",
+      "blob": "82a3603fe07490535121f81a42725d71ee65dc03",
+      "providers": [
+        "editor_scene",
+        "editor_scene_meta",
+        "editor_scene_meta_generate",
+        "editor_scene_transform_meta",
+        "editor_scene_transform_meta_generate",
+        "editor_scene_fixture"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "editor/tools/scene/test/run_checks.hpp"
+      ],
+      "target_consumers": [
+        "editor_scene",
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/scene/test/run_checks.hpp",
+      "blob": "6948308785bcbf41ce6437589a3d1b5fbd4fef63",
+      "providers": [
+        "editor_scene",
+        "editor_scene_meta",
+        "editor_scene_meta_generate",
+        "editor_scene_transform_meta",
+        "editor_scene_transform_meta_generate",
+        "editor_scene_fixture"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "editor/tools/scene/test/core_protocol.cpp"
+      ],
+      "target_consumers": [
+        "editor_scene",
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "CpuRunChecks",
+        "RunFailureChecks",
+        "RunImageProbe",
+        "ScenePlaybackChecks"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/scene/test/run_system.hpp",
+      "blob": "eb6e7c8035202d6d5e79e7281c993412269284b9",
+      "providers": [
+        "editor_scene",
+        "editor_scene_meta",
+        "editor_scene_meta_generate",
+        "editor_scene_transform_meta",
+        "editor_scene_transform_meta_generate",
+        "editor_scene_fixture"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "editor/tools/scene/test/fixture.cpp"
+      ],
+      "target_consumers": [
+        "editor_scene",
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "Motion"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/scene/test/scene_save_checks.hpp",
+      "blob": "bf99926d2b47d26ea224c977076ec0230844b113",
+      "providers": [
+        "editor_scene",
+        "editor_scene_meta",
+        "editor_scene_meta_generate",
+        "editor_scene_transform_meta",
+        "editor_scene_transform_meta_generate",
+        "editor_scene_fixture"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "editor/tools/scene/test/core_protocol.cpp"
+      ],
+      "target_consumers": [
+        "editor_scene",
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "SceneSaveChecks"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/scene/test/scene_source_checks.hpp",
+      "blob": "6d8506412d07582e9487aa32f6c519bb6879bea0",
+      "providers": [
+        "editor_scene",
+        "editor_scene_meta",
+        "editor_scene_meta_generate",
+        "editor_scene_transform_meta",
+        "editor_scene_transform_meta_generate",
+        "editor_scene_fixture"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "editor/tools/scene/test/fixture.cpp"
+      ],
+      "target_consumers": [
+        "editor_scene",
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "Opaque",
+        "Receiver",
+        "SceneSourceChecks",
+        "VolumeReader"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/scene/test/scene_structure_checks.hpp",
+      "blob": "c049d8d97e3c6832c83577479039dc29375879fa",
+      "providers": [
+        "editor_scene",
+        "editor_scene_meta",
+        "editor_scene_meta_generate",
+        "editor_scene_transform_meta",
+        "editor_scene_transform_meta_generate",
+        "editor_scene_fixture"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "editor/tools/scene/test/scene_save_checks.hpp"
+      ],
+      "target_consumers": [
+        "editor_scene",
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/scene/test/workspace_checks.hpp",
+      "blob": "fa452f9609dc59b52357dbbf5ac245c4bcc18c5f",
+      "providers": [
+        "editor_scene",
+        "editor_scene_meta",
+        "editor_scene_meta_generate",
+        "editor_scene_transform_meta",
+        "editor_scene_transform_meta_generate",
+        "editor_scene_fixture"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "editor/tools/scene/test/core_protocol.cpp"
+      ],
+      "target_consumers": [
+        "editor_scene",
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "Until",
+        "Window"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/settings/CMakeLists.txt",
+      "blob": "e1e54cf2716e04870a6da60c68e3919e7aecf6b6",
+      "providers": [
+        "editor_settings"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/settings/include/lux/engine/editor/settings/SettingPane.hpp",
+      "blob": "428a68233f50020bf4c97e976f8daa45b0dfd250",
+      "providers": [
+        "editor_settings"
+      ],
+      "logical_include": "lux/engine/editor/settings/SettingPane.hpp",
+      "include_consumers": [
+        "cmake/installed-consumers/editor-d2/TestAssembly.hpp",
+        "editor/app/product/ProductAssembly.cpp",
+        "editor/tools/settings/src/SettingPane.cpp"
+      ],
+      "target_consumers": [
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "Content",
+        "EditorContext",
+        "SettingPane"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/settings/pinclude/lux/engine/editor/settings/detail/PluginSettingsElement.hpp",
+      "blob": "754e7d8475509c564e66fddce59787daae7ce55b",
+      "providers": [
+        "editor_settings"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "editor/tools/settings/src/PluginSettingsElement.cpp",
+        "editor/tools/settings/src/SettingPane.cpp"
+      ],
+      "target_consumers": [
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "PluginSettingsElement"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/settings/src/PluginSettingsElement.cpp",
+      "blob": "f31a8aee8935df48b4e7b0609c7dd382f0f20411",
+      "providers": [
+        "editor_settings"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/settings/src/SettingPane.cpp",
+      "blob": "2d57ef897bd3de604680fb401bbaf76fb858d209",
+      "providers": [
+        "editor_settings"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "SettingPane"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/tools/test/ToolTestAccess.hpp",
+      "blob": "f41eef9be47c36943a0dbb66e8f0ef4ab1a8e5c4",
+      "providers": [
+        "consumer_protocol",
+        "editor_core_protocol",
+        "editor_flow_protocol",
+        "editor_material_protocol",
+        "editor_review_regressions",
+        "editor_scene",
+        "editor_scene_fixture",
+        "editor_scene_meta",
+        "editor_scene_meta_generate",
+        "editor_scene_transform_meta",
+        "editor_scene_transform_meta_generate"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "cmake/installed-consumers/editor-d2/SceneWorkflow.cpp",
+        "cmake/installed-consumers/editor-d2/protocol/review_regressions.cpp",
+        "editor/tools/flowforge/test/flow_protocol.cpp",
+        "editor/tools/material/test/material_protocol.cpp",
+        "editor/tools/scene/test/core_protocol.cpp",
+        "editor/tools/scene/test/entity_checks.hpp",
+        "editor/tools/scene/test/run_checks.hpp",
+        "editor/tools/scene/test/scene_save_checks.hpp",
+        "editor/tools/scene/test/scene_structure_checks.hpp"
+      ],
+      "target_consumers": [
+        "editor_scene",
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-B/D/G formal three tools/settings/project views"
+    },
+    {
+      "path": "editor/transition/FlowCompilationAccess.hpp",
+      "blob": "9727b36f573805d9606721d19dd2f655a73eaab8",
+      "providers": [
+        "editor_flow_meta",
+        "editor_flow_meta_generate",
+        "editor_flowforge"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "editor/tools/flowforge/pinclude/lux/engine/editor/flowforge/FlowForgeEditorImpl.hpp"
+      ],
+      "target_consumers": [
+        "editor_flowforge",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "FlowCompilationAccess",
+        "FlowEncoder"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/F/G delete final private adapters"
+    },
+    {
+      "path": "editor/transition/LegacyCodegenInput.cpp",
+      "blob": "3a8226c22996fc042bbeef4b473b5212592ff57a",
+      "providers": [
+        "editor_ui"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "editor_ui_presentation",
+        "editor_scene_configuration",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_project_tools",
+        "editor_settings",
+        "editor_launcher",
+        "editor_app",
+        "consumer_gui"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-B/F/G delete final private adapters"
+    },
+    {
+      "path": "editor/transition/LegacyComponentEditors.cpp",
+      "blob": "b357c26364685c7474fb3bf9c02c44b6e30fc6e6",
+      "providers": [
+        "editor_ui"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "editor_ui_presentation",
+        "editor_scene_configuration",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_project_tools",
+        "editor_settings",
+        "editor_launcher",
+        "editor_app",
+        "consumer_gui"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-B/F/G delete final private adapters"
+    },
+    {
+      "path": "editor/transition/LegacyPersistenceState.cpp",
+      "blob": "d000aa920b263429e5c21d6aeaa0179724ecdb48",
+      "providers": [
+        "editor_editing"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "editor_metadata",
+        "editor_asset_save_test"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-B/F/G delete final private adapters"
+    },
+    {
+      "path": "editor/transition/LegacyPersistenceState.hpp",
+      "blob": "bb6e3996e7b02416085ff679b2785616db0855d2",
+      "providers": [
+        "editor_asset_save_test",
+        "editor_editing",
+        "editor_flow_meta",
+        "editor_flow_meta_generate",
+        "editor_flow_source_native",
+        "editor_flowforge",
+        "editor_material",
+        "editor_material_meta",
+        "editor_material_meta_generate",
+        "editor_quality_test",
+        "editor_scene",
+        "editor_scene_fixture",
+        "editor_scene_meta",
+        "editor_scene_meta_generate",
+        "editor_scene_transform_meta",
+        "editor_scene_transform_meta_generate",
+        "editor_three_sessions_test"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "editor/assets/sinclude/lux/engine/editor/detail/AssetSave.hpp",
+        "editor/tests/architecture/test_editor_boundaries.py",
+        "editor/tools/flowforge/pinclude/lux/engine/editor/flowforge/FlowForgeEditorImpl.hpp",
+        "editor/tools/material/pinclude/lux/engine/editor/material/MaterialEditorImpl.hpp",
+        "editor/tools/scene/pinclude/lux/engine/editor/scene/detail/SceneEditorImpl.hpp",
+        "editor/transition/LegacyPersistenceState.cpp"
+      ],
+      "target_consumers": [
+        "editor_metadata",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol",
+        "editor_asset_save_test"
+      ],
+      "declared_types": [
+        "ELegacyPersistenceError",
+        "ELegacyPersistenceOutcome",
+        "LegacyPersistenceState",
+        "LegacySaveTicket",
+        "T"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/F/G delete final private adapters"
+    },
+    {
+      "path": "editor/transition/LegacySceneConfiguration.cpp",
+      "blob": "9bec16fa43e73bd40dbb040b39a69eb62a8668b5",
+      "providers": [
+        "editor_ui"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "editor_ui_presentation",
+        "editor_scene_configuration",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_project_tools",
+        "editor_settings",
+        "editor_launcher",
+        "editor_app",
+        "consumer_gui"
+      ],
+      "declared_types": [
+        "Failure",
+        "SceneConfigurationElement"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/F/G delete final private adapters"
+    },
+    {
+      "path": "editor/transition/MaterialCompilationAccess.hpp",
+      "blob": "4151fff4288d0b6e1b3ab5a9454a4aa9df3f76eb",
+      "providers": [
+        "editor_material",
+        "editor_material_meta",
+        "editor_material_meta_generate"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "editor/tools/material/pinclude/lux/engine/editor/material/MaterialEditorImpl.hpp"
+      ],
+      "target_consumers": [
+        "editor_material",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "MaterialCompilationAccess",
+        "MaterialEncoder"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/F/G delete final private adapters"
+    },
+    {
+      "path": "editor/transition/SceneRunCaptureAccess.hpp",
+      "blob": "e6bca4da1be41490dea9265b2ab3bfc381e19ce1",
+      "providers": [
+        "editor_scene"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "editor/tools/scene/src/ScenePlayback.cpp"
+      ],
+      "target_consumers": [
+        "editor_scene_fixture",
+        "lux_editor",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ],
+      "declared_types": [
+        "SceneRunCaptureAccess"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-B/F/G delete final private adapters"
+    },
+    {
+      "path": "editor/ui/CMakeLists.txt",
+      "blob": "b1e2834024a938dcc695f0c0925197ddaef40c69",
+      "providers": [
+        "editor_ui",
+        "desktop_transform_ir",
+        "desktop_transform_ir_generate",
+        "desktop_hierarchy_ir",
+        "desktop_hierarchy_ir_generate",
+        "desktop_visual_ir",
+        "desktop_visual_ir_generate",
+        "desktop_camera_ir",
+        "desktop_camera_ir_generate",
+        "editor_ui_presentation",
+        "editor_scene_configuration"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "editor_ui",
+        "editor_ui_presentation",
+        "editor_scene_configuration",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_project_tools",
+        "editor_settings",
+        "editor_launcher",
+        "editor_app",
+        "consumer_gui"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-D/G last legacy UI consumers"
+    },
+    {
+      "path": "editor/ui/README.md",
+      "blob": "0a435f0f1726c4c078b1b4568e70b57303931038",
+      "providers": [
+        "editor_ui",
+        "desktop_transform_ir",
+        "desktop_transform_ir_generate",
+        "desktop_hierarchy_ir",
+        "desktop_hierarchy_ir_generate",
+        "desktop_visual_ir",
+        "desktop_visual_ir_generate",
+        "desktop_camera_ir",
+        "desktop_camera_ir_generate",
+        "editor_ui_presentation",
+        "editor_scene_configuration"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "editor_ui",
+        "editor_ui_presentation",
+        "editor_scene_configuration",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_project_tools",
+        "editor_settings",
+        "editor_launcher",
+        "editor_app",
+        "consumer_gui"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-D/G last legacy UI consumers"
+    },
+    {
+      "path": "editor/ui/include/lux/engine/editor/ui/CloseReview.hpp",
+      "blob": "8bb5ebf72bd54bf27a52fc9ebf4d49e2c69ea873",
+      "providers": [
+        "editor_ui",
+        "desktop_transform_ir",
+        "desktop_transform_ir_generate",
+        "desktop_hierarchy_ir",
+        "desktop_hierarchy_ir_generate",
+        "desktop_visual_ir",
+        "desktop_visual_ir_generate",
+        "desktop_camera_ir",
+        "desktop_camera_ir_generate",
+        "editor_ui_presentation",
+        "editor_scene_configuration"
+      ],
+      "logical_include": "lux/engine/editor/ui/CloseReview.hpp",
+      "include_consumers": [
+        "editor/tools/flowforge/pinclude/lux/engine/editor/flowforge/FlowForgeEditorImpl.hpp",
+        "editor/tools/material/pinclude/lux/engine/editor/material/MaterialEditorImpl.hpp",
+        "editor/tools/scene/pinclude/lux/engine/editor/scene/detail/SceneEditorImpl.hpp"
+      ],
+      "target_consumers": [
+        "editor_ui",
+        "editor_ui_presentation",
+        "editor_scene_configuration",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_project_tools",
+        "editor_settings",
+        "editor_launcher",
+        "editor_app",
+        "consumer_gui"
+      ],
+      "declared_types": [
+        "Tool"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-D/G last legacy UI consumers"
+    },
+    {
+      "path": "editor/ui/include/lux/engine/editor/ui/ComponentEditors.hpp",
+      "blob": "244afe76da5cbad552f1813525f07fc590747e9c",
+      "providers": [
+        "editor_ui",
+        "desktop_transform_ir",
+        "desktop_transform_ir_generate",
+        "desktop_hierarchy_ir",
+        "desktop_hierarchy_ir_generate",
+        "desktop_visual_ir",
+        "desktop_visual_ir_generate",
+        "desktop_camera_ir",
+        "desktop_camera_ir_generate",
+        "editor_ui_presentation",
+        "editor_scene_configuration"
+      ],
+      "logical_include": "lux/engine/editor/ui/ComponentEditors.hpp",
+      "include_consumers": [
+        "cmake/installed-consumers/editor-d2/ComponentFactoryPane.hpp",
+        "cmake/installed-consumers/editor-d2/include/consumer/Gui.hpp",
+        "editor/app/src/EditorStartup.cpp",
+        "editor/tools/scene/pinclude/lux/engine/editor/scene/detail/SceneEditorImpl.hpp",
+        "editor/tools/scene/test/SceneEditorTestAccess.hpp",
+        "editor/transition/LegacyCodegenInput.cpp",
+        "editor/transition/LegacyComponentEditors.cpp",
+        "editor/workbench/scene/codegen/inspector_codegen.py"
+      ],
+      "target_consumers": [
+        "editor_ui",
+        "editor_ui_presentation",
+        "editor_scene_configuration",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_project_tools",
+        "editor_settings",
+        "editor_launcher",
+        "editor_app",
+        "consumer_gui"
+      ],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-D/G last legacy UI consumers"
+    },
+    {
+      "path": "editor/ui/include/lux/engine/editor/ui/HistoryCommand.hpp",
+      "blob": "8c43b7e92f930169b0b0ec435eda551c70188475",
+      "providers": [
+        "editor_ui",
+        "desktop_transform_ir",
+        "desktop_transform_ir_generate",
+        "desktop_hierarchy_ir",
+        "desktop_hierarchy_ir_generate",
+        "desktop_visual_ir",
+        "desktop_visual_ir_generate",
+        "desktop_camera_ir",
+        "desktop_camera_ir_generate",
+        "editor_ui_presentation",
+        "editor_scene_configuration"
+      ],
+      "logical_include": "lux/engine/editor/ui/HistoryCommand.hpp",
+      "include_consumers": [
+        "editor/app/pinclude/lux/engine/editor/detail/EditorImpl.hpp",
+        "editor/ui/sinclude/lux/engine/editor/ui/HistoryCommands.hpp"
+      ],
+      "target_consumers": [
+        "editor_ui",
+        "editor_ui_presentation",
+        "editor_scene_configuration",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_project_tools",
+        "editor_settings",
+        "editor_launcher",
+        "editor_app",
+        "consumer_gui"
+      ],
+      "declared_types": [
+        "HistoryCommand"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-D/G last legacy UI consumers"
+    },
+    {
+      "path": "editor/ui/include/lux/engine/editor/ui/InspectorInteraction.hpp",
+      "blob": "0e7a69d9eb6833b3a3edb85c477616c0e17294b1",
+      "providers": [
+        "editor_ui",
+        "desktop_transform_ir",
+        "desktop_transform_ir_generate",
+        "desktop_hierarchy_ir",
+        "desktop_hierarchy_ir_generate",
+        "desktop_visual_ir",
+        "desktop_visual_ir_generate",
+        "desktop_camera_ir",
+        "desktop_camera_ir_generate",
+        "editor_ui_presentation",
+        "editor_scene_configuration"
+      ],
+      "logical_include": "lux/engine/editor/ui/InspectorInteraction.hpp",
+      "include_consumers": [
+        "cmake/installed-consumers/editor-d2/ComponentFactoryPane.hpp",
+        "editor/tools/scene/pinclude/lux/engine/editor/ui/scene/InspectorElement.hpp",
+        "editor/workbench/scene/codegen/inspector_codegen.py"
+      ],
+      "target_consumers": [
+        "editor_ui",
+        "editor_ui_presentation",
+        "editor_scene_configuration",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_project_tools",
+        "editor_settings",
+        "editor_launcher",
+        "editor_app",
+        "consumer_gui"
+      ],
+      "declared_types": [
+        "Access",
+        "Component",
+        "Gesture",
+        "InspectorInteraction",
+        "Mutation",
+        "ProjectStorage",
+        "Value"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-D/G last legacy UI consumers"
+    },
+    {
+      "path": "editor/ui/include/lux/engine/editor/ui/SaveAllRequest.hpp",
+      "blob": "733cc526a6d56f7fd4454842c69259b66cf36547",
+      "providers": [
+        "editor_ui",
+        "desktop_transform_ir",
+        "desktop_transform_ir_generate",
+        "desktop_hierarchy_ir",
+        "desktop_hierarchy_ir_generate",
+        "desktop_visual_ir",
+        "desktop_visual_ir_generate",
+        "desktop_camera_ir",
+        "desktop_camera_ir_generate",
+        "editor_ui_presentation",
+        "editor_scene_configuration"
+      ],
+      "logical_include": "lux/engine/editor/ui/SaveAllRequest.hpp",
+      "include_consumers": [
+        "editor/app/src/EditorMenu.cpp",
+        "editor/ui/sinclude/lux/engine/editor/ui/AssetActions.hpp"
+      ],
+      "target_consumers": [
+        "editor_ui",
+        "editor_ui_presentation",
+        "editor_scene_configuration",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_project_tools",
+        "editor_settings",
+        "editor_launcher",
+        "editor_app",
+        "consumer_gui"
+      ],
+      "declared_types": [
+        "SaveAllRequest"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-D/G last legacy UI consumers"
+    },
+    {
+      "path": "editor/ui/include/lux/engine/editor/ui/SceneConfigurationElement.hpp",
+      "blob": "7be4afc6c54a64ec557cbc72c1c4cbdc11b0d48f",
+      "providers": [
+        "editor_ui",
+        "desktop_transform_ir",
+        "desktop_transform_ir_generate",
+        "desktop_hierarchy_ir",
+        "desktop_hierarchy_ir_generate",
+        "desktop_visual_ir",
+        "desktop_visual_ir_generate",
+        "desktop_camera_ir",
+        "desktop_camera_ir_generate",
+        "editor_ui_presentation",
+        "editor_scene_configuration"
+      ],
+      "logical_include": "lux/engine/editor/ui/SceneConfigurationElement.hpp",
+      "include_consumers": [
+        "editor/launcher/src/ProjectCreationPane.cpp",
+        "editor/tools/scene/src/ui/SceneCreationPane.cpp",
+        "editor/transition/LegacySceneConfiguration.cpp",
+        "editor/ui/test/scene_configuration.cpp"
+      ],
+      "target_consumers": [
+        "editor_ui",
+        "editor_ui_presentation",
+        "editor_scene_configuration",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_project_tools",
+        "editor_settings",
+        "editor_launcher",
+        "editor_app",
+        "consumer_gui"
+      ],
+      "declared_types": [
+        "ESceneConfigurationStage",
+        "ESceneContentPreset",
+        "Impl",
+        "SceneConfiguration",
+        "SceneConfigurationElement",
+        "SceneProviderOption"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-D/G last legacy UI consumers"
+    },
+    {
+      "path": "editor/ui/include/lux/engine/editor/ui/SpatialInteraction.hpp",
+      "blob": "b171e1feb6b540a9e365349374cc488047f179a9",
+      "providers": [
+        "editor_ui",
+        "desktop_transform_ir",
+        "desktop_transform_ir_generate",
+        "desktop_hierarchy_ir",
+        "desktop_hierarchy_ir_generate",
+        "desktop_visual_ir",
+        "desktop_visual_ir_generate",
+        "desktop_camera_ir",
+        "desktop_camera_ir_generate",
+        "editor_ui_presentation",
+        "editor_scene_configuration"
+      ],
+      "logical_include": "lux/engine/editor/ui/SpatialInteraction.hpp",
+      "include_consumers": [
+        "editor/tools/material/pinclude/lux/engine/editor/ui/material/MaterialPreviewElement.hpp",
+        "editor/tools/scene/pinclude/lux/engine/editor/scene/detail/SceneEditorImpl.hpp",
+        "editor/tools/scene/pinclude/lux/engine/editor/ui/scene/SceneContentElement.hpp",
+        "editor/tools/scene/test/SceneEditorTestAccess.hpp",
+        "editor/ui/src/SpatialInteraction3D.cpp"
+      ],
+      "target_consumers": [
+        "editor_ui",
+        "editor_ui_presentation",
+        "editor_scene_configuration",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_project_tools",
+        "editor_settings",
+        "editor_launcher",
+        "editor_app",
+        "consumer_gui"
+      ],
+      "declared_types": [
+        "RayHit3D",
+        "SpatialInteraction",
+        "SpatialInteractionRegistration"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-D/G last legacy UI consumers"
+    },
+    {
+      "path": "editor/ui/include/lux/engine/editor/ui/TaskPane.hpp",
+      "blob": "cd5bdba556e5b7c9a9c1be01281663bfb83994e1",
+      "providers": [
+        "editor_ui",
+        "desktop_transform_ir",
+        "desktop_transform_ir_generate",
+        "desktop_hierarchy_ir",
+        "desktop_hierarchy_ir_generate",
+        "desktop_visual_ir",
+        "desktop_visual_ir_generate",
+        "desktop_camera_ir",
+        "desktop_camera_ir_generate",
+        "editor_ui_presentation",
+        "editor_scene_configuration"
+      ],
+      "logical_include": "lux/engine/editor/ui/TaskPane.hpp",
+      "include_consumers": [
+        "cmake/installed-consumers/editor-d2/TestAssembly.hpp",
+        "editor/app/product/ProductAssembly.cpp",
+        "editor/app/test/context_lifecycle.cpp",
+        "editor/ui/src/TaskPane.cpp"
+      ],
+      "target_consumers": [
+        "editor_ui",
+        "editor_ui_presentation",
+        "editor_scene_configuration",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_project_tools",
+        "editor_settings",
+        "editor_launcher",
+        "editor_app",
+        "consumer_gui"
+      ],
+      "declared_types": [
+        "EditorContext",
+        "Impl",
+        "TaskPane"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-D/G last legacy UI consumers"
+    },
+    {
+      "path": "editor/ui/sinclude/lux/engine/editor/ui/AssetActions.hpp",
+      "blob": "9395eb5d0b4cdbf1bc76545057d5bf0a358ae5c7",
+      "providers": [
+        "editor_ui",
+        "desktop_transform_ir",
+        "desktop_transform_ir_generate",
+        "desktop_hierarchy_ir",
+        "desktop_hierarchy_ir_generate",
+        "desktop_visual_ir",
+        "desktop_visual_ir_generate",
+        "desktop_camera_ir",
+        "desktop_camera_ir_generate",
+        "editor_ui_presentation",
+        "editor_scene_configuration"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "editor/tools/flowforge/src/ui/FlowForgeElements.cpp",
+        "editor/tools/material/src/ui/MaterialElements.cpp",
+        "editor/tools/scene/pinclude/lux/engine/editor/ui/scene/SceneContentElement.hpp"
+      ],
+      "target_consumers": [
+        "editor_ui",
+        "editor_ui_presentation",
+        "editor_scene_configuration",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_project_tools",
+        "editor_settings",
+        "editor_launcher",
+        "editor_app",
+        "consumer_gui"
+      ],
+      "declared_types": [
+        "EAction",
+        "TAssetActions",
+        "Tool"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-D/G last legacy UI consumers"
+    },
+    {
+      "path": "editor/ui/sinclude/lux/engine/editor/ui/HistoryCommands.hpp",
+      "blob": "d0c3a31777a8a91682336ebcfb07231f6fe73bf0",
+      "providers": [
+        "editor_ui",
+        "desktop_transform_ir",
+        "desktop_transform_ir_generate",
+        "desktop_hierarchy_ir",
+        "desktop_hierarchy_ir_generate",
+        "desktop_visual_ir",
+        "desktop_visual_ir_generate",
+        "desktop_camera_ir",
+        "desktop_camera_ir_generate",
+        "editor_ui_presentation",
+        "editor_scene_configuration"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "editor/tools/flowforge/src/FlowForgeEditor.cpp",
+        "editor/tools/material/src/MaterialEditor.cpp",
+        "editor/tools/scene/src/SceneEditor.cpp"
+      ],
+      "target_consumers": [
+        "editor_ui",
+        "editor_ui_presentation",
+        "editor_scene_configuration",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_project_tools",
+        "editor_settings",
+        "editor_launcher",
+        "editor_app",
+        "consumer_gui"
+      ],
+      "declared_types": [
+        "Tool"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-D/G last legacy UI consumers"
+    },
+    {
+      "path": "editor/ui/sinclude/lux/engine/editor/ui/PublicationControls.hpp",
+      "blob": "067d3f96c5ff853c7c62bf6ee219490d9a05a1f5",
+      "providers": [
+        "editor_ui",
+        "desktop_transform_ir",
+        "desktop_transform_ir_generate",
+        "desktop_hierarchy_ir",
+        "desktop_hierarchy_ir_generate",
+        "desktop_visual_ir",
+        "desktop_visual_ir_generate",
+        "desktop_camera_ir",
+        "desktop_camera_ir_generate",
+        "editor_ui_presentation",
+        "editor_scene_configuration"
+      ],
+      "logical_include": null,
+      "include_consumers": [
+        "editor/tools/flowforge/src/ui/FlowForgeElements.cpp",
+        "editor/tools/material/src/ui/MaterialElements.cpp"
+      ],
+      "target_consumers": [
+        "editor_ui",
+        "editor_ui_presentation",
+        "editor_scene_configuration",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_project_tools",
+        "editor_settings",
+        "editor_launcher",
+        "editor_app",
+        "consumer_gui"
+      ],
+      "declared_types": [
+        "TPublicationControls",
+        "Tool"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-D/G last legacy UI consumers"
+    },
+    {
+      "path": "editor/ui/src/SpatialInteraction3D.cpp",
+      "blob": "306540c6ef8798e804d5e7e9a6e4948f23dd859a",
+      "providers": [
+        "editor_ui"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "editor_ui_presentation",
+        "editor_scene_configuration",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_project_tools",
+        "editor_settings",
+        "editor_launcher",
+        "editor_app",
+        "consumer_gui"
+      ],
+      "declared_types": [
+        "SpatialInteraction3D",
+        "T"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-D/G last legacy UI consumers"
+    },
+    {
+      "path": "editor/ui/src/TaskPane.cpp",
+      "blob": "d088a2ced8e07ad0aa2bf553f8ea864456b2b73a",
+      "providers": [
+        "editor_ui"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "editor_ui_presentation",
+        "editor_scene_configuration",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_project_tools",
+        "editor_settings",
+        "editor_launcher",
+        "editor_app",
+        "consumer_gui"
+      ],
+      "declared_types": [
+        "TaskPane"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-D/G last legacy UI consumers"
+    },
+    {
+      "path": "editor/ui/test/inspector_codegen.py",
+      "blob": "61a2b411ba8e4976f906477ce9a3efc74d9adf7a",
+      "providers": [
+        "editor_ui",
+        "desktop_transform_ir",
+        "desktop_transform_ir_generate",
+        "desktop_hierarchy_ir",
+        "desktop_hierarchy_ir_generate",
+        "desktop_visual_ir",
+        "desktop_visual_ir_generate",
+        "desktop_camera_ir",
+        "desktop_camera_ir_generate",
+        "editor_ui_presentation",
+        "editor_scene_configuration"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [
+        "editor_ui",
+        "editor_ui_presentation",
+        "editor_scene_configuration",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_project_tools",
+        "editor_settings",
+        "editor_launcher",
+        "editor_app",
+        "consumer_gui"
+      ],
+      "declared_types": [
+        "GeneratorTests"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-D/G last legacy UI consumers"
+    },
+    {
+      "path": "editor/ui/test/scene_configuration.cpp",
+      "blob": "5ecb7ba2f08b9123c844b8047f34c8f92644ebfa",
+      "providers": [
+        "editor_scene_configuration"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [],
+      "declared_types": [],
+      "deadline": "P12",
+      "replacement": "P12-D/G last legacy UI consumers"
+    },
+    {
+      "path": "editor/ui/test/unified_ui.cpp",
+      "blob": "8072f6db283fec5eb58f27efab489f0180526b67",
+      "providers": [
+        "editor_ui_presentation"
+      ],
+      "logical_include": null,
+      "include_consumers": [],
+      "target_consumers": [],
+      "declared_types": [
+        "Parent",
+        "ProbePane",
+        "TestRoot"
+      ],
+      "deadline": "P12",
+      "replacement": "P12-D/G last legacy UI consumers"
+    }
+  ]
+}

@@ -1,0 +1,153 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install",
+			"__install_export_header_dirs",
+			"lux_engine_install_components"
+		],
+		"files" : 
+		[
+			"engine/toolchain/shader/CMakeLists.txt",
+			"E:/SyncForder/CodeRepos/install/P11-3bbc7312a3d1/share/lux-cmake-toolset/component/install_components.cmake",
+			"cmake/InstallComponents.cmake"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 58,
+				"parent" : 0
+			},
+			{
+				"command" : 2,
+				"file" : 0,
+				"line" : 63,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 2,
+				"line" : 25,
+				"parent" : 2
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 49,
+				"parent" : 3
+			},
+			{
+				"command" : 0,
+				"file" : 2,
+				"line" : 47,
+				"parent" : 2
+			},
+			{
+				"command" : 0,
+				"file" : 2,
+				"line" : 52,
+				"parent" : 2
+			},
+			{
+				"command" : 0,
+				"file" : 2,
+				"line" : 54,
+				"parent" : 2
+			},
+			{
+				"command" : 0,
+				"file" : 2,
+				"line" : 64,
+				"parent" : 2
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 1,
+			"component" : "lux_toolchain",
+			"destination" : "bin",
+			"paths" : 
+			[
+				"bin/lux_shader_emitter.exe"
+			],
+			"targetId" : "lux_shader_emitter::@bf079b9d6e7cefd0c819",
+			"targetIndex" : 146,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 4,
+			"component" : "lux_engine_toolchain_shader",
+			"destination" : ".",
+			"paths" : 
+			[
+				"engine/toolchain/shader/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 5,
+			"component" : "lux_engine_toolchain_shader",
+			"destination" : "share/lux-engine-toolchain-shader/toolchain_shader_emitter",
+			"exportName" : "toolchain_shader_emitter",
+			"exportTargets" : 
+			[
+				{
+					"id" : "toolchain_shader_emitter::@bf079b9d6e7cefd0c819",
+					"index" : 435
+				}
+			],
+			"paths" : 
+			[
+				"engine/toolchain/shader/CMakeFiles/Export/7b8c5fb9bac44b44394e2aa4514fadce/lux-engine-toolchain-shader-toolchain_shader_emitter-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 6,
+			"component" : "lux_engine_toolchain_shader",
+			"destination" : "share/lux-engine-toolchain-shader/toolchain_shader_emitter",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/engine/toolchain/shader/lux-engine-toolchain-shader-toolchain_shader_emitter-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 7,
+			"component" : "lux_engine_toolchain_shader",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/lux_engine_toolchain_shader_emitter.lib"
+			],
+			"targetId" : "toolchain_shader_emitter::@bf079b9d6e7cefd0c819",
+			"targetIndex" : 435,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 8,
+			"component" : "lux_engine_toolchain_shader",
+			"destination" : "share/lux-engine-toolchain-shader",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/engine/toolchain/shader/lux-engine-toolchain-shader-config.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/engine/toolchain/shader/lux-engine-toolchain-shader-config-version.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/engine/toolchain/shader/lux-engine-toolchain-shader-available-components.cmake"
+			],
+			"type" : "file"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "engine/toolchain/shader",
+		"source" : "engine/toolchain/shader"
+	}
+}

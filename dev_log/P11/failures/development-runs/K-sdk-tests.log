@@ -1,0 +1,12 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-sdk-dev
+    Start 1: installed.p11.extension
+1/1 Test #1: installed.p11.extension ..........***Exception: SegFault  2.62 sec
+
+
+0% tests passed, 1 tests failed out of 1
+
+Total Test time (real) =   2.62 sec
+
+The following tests FAILED:
+	  1 - installed.p11.extension (SEGFAULT)
+Errors while running CTest

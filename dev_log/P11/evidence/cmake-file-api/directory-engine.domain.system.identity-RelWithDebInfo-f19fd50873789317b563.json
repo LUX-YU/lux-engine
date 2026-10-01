@@ -1,0 +1,149 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install",
+			"__install_export_header_dirs",
+			"lux_engine_install_components"
+		],
+		"files" : 
+		[
+			"E:/SyncForder/CodeRepos/install/P11-3bbc7312a3d1/share/lux-cmake-toolset/component/install_components.cmake",
+			"cmake/InstallComponents.cmake",
+			"engine/domain/system/identity/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 28,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 2
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 64,
+				"parent" : 1
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 3,
+			"component" : "lux_engine_domain_system_identity",
+			"destination" : ".",
+			"paths" : 
+			[
+				"engine/domain/system/identity/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 4,
+			"component" : "lux_engine_domain_system_identity",
+			"destination" : "share/lux-engine-domain-system-identity/domain_system_identity",
+			"exportName" : "domain_system_identity",
+			"exportTargets" : 
+			[
+				{
+					"id" : "domain_system_identity::@8abaa8f9c34049f562d6",
+					"index" : 36
+				}
+			],
+			"paths" : 
+			[
+				"engine/domain/system/identity/CMakeFiles/Export/6c80a52d23cc0f614ca7b7a7b6b9bd01/lux-engine-domain-system-identity-domain_system_identity-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 5,
+			"component" : "lux_engine_domain_system_identity",
+			"destination" : "share/lux-engine-domain-system-identity/domain_system_identity",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/engine/domain/system/identity/lux-engine-domain-system-identity-domain_system_identity-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 6,
+			"component" : "lux_engine_domain_system_identity",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/lux_engine_domain_system_identity.lib"
+			],
+			"targetId" : "domain_system_identity::@8abaa8f9c34049f562d6",
+			"targetIndex" : 36,
+			"targetIsImportLibrary" : true,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 6,
+			"component" : "lux_engine_domain_system_identity",
+			"destination" : "bin",
+			"paths" : 
+			[
+				"bin/lux_engine_domain_system_identity.dll"
+			],
+			"targetId" : "domain_system_identity::@8abaa8f9c34049f562d6",
+			"targetIndex" : 36,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 7,
+			"component" : "lux_engine_domain_system_identity",
+			"destination" : "share/lux-engine-domain-system-identity",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/engine/domain/system/identity/lux-engine-domain-system-identity-config.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/engine/domain/system/identity/lux-engine-domain-system-identity-config-version.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/engine/domain/system/identity/lux-engine-domain-system-identity-available-components.cmake"
+			],
+			"type" : "file"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "engine/domain/system/identity",
+		"source" : "engine/domain/system/identity"
+	}
+}

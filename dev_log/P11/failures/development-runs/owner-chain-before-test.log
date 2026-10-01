@@ -1,0 +1,20 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dev
+    Start 70: editor.commands
+1/1 Test #70: editor.commands ..................Exit code 0xc0000409
+***Exception:   2.91 sec
+Assertion failed: previous.expired(), file E:\SyncForder\CodeRepos\lux-engine-p11\editor\activities\commands\test\commands.cpp, line 124
+
+
+0% tests passed, 1 tests failed out of 1
+
+Label Time Summary:
+P11       =   2.91 sec*proc (1 test)
+editor    =   2.91 sec*proc (1 test)
+native    =   2.91 sec*proc (1 test)
+
+Total Test time (real) =   3.51 sec
+
+The following tests FAILED:
+	 70 - editor.commands (Exit code 0xc0000409
+)           P11 editor native
+Errors while running CTest

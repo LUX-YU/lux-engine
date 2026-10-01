@@ -1,0 +1,55 @@
+{
+	"backtrace" : 4,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"add_custom_target",
+			"_find_package",
+			"find_package"
+		],
+		"files" : 
+		[
+			"D:/Development/vcpkg/installed/x64-windows/share/llvm/LLVMConfig.cmake",
+			"D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+			"engine/toolchain/flowforge/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 39,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 908,
+				"parent" : 1
+			},
+			{
+				"file" : 0,
+				"parent" : 2
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 266,
+				"parent" : 3
+			}
+		]
+	},
+	"id" : "acc_gen::@cc5ba2351c5c06732301",
+	"name" : "acc_gen",
+	"paths" : 
+	{
+		"build" : "engine/toolchain/flowforge",
+		"source" : "engine/toolchain/flowforge"
+	},
+	"sources" : [],
+	"type" : "UTILITY"
+}

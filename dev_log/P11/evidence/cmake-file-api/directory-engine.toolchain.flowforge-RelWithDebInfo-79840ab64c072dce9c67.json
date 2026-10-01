@@ -1,0 +1,149 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install",
+			"__install_export_header_dirs",
+			"lux_engine_install_components"
+		],
+		"files" : 
+		[
+			"E:/SyncForder/CodeRepos/install/P11-3bbc7312a3d1/share/lux-cmake-toolset/component/install_components.cmake",
+			"cmake/InstallComponents.cmake",
+			"engine/toolchain/flowforge/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 58,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 2
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 64,
+				"parent" : 1
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 3,
+			"component" : "lux_engine_flowforge_compiler",
+			"destination" : ".",
+			"paths" : 
+			[
+				"engine/toolchain/flowforge/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 4,
+			"component" : "lux_engine_flowforge_compiler",
+			"destination" : "share/lux-engine-flowforge-compiler/flowforge_compiler",
+			"exportName" : "flowforge_compiler",
+			"exportTargets" : 
+			[
+				{
+					"id" : "flowforge_compiler::@cc5ba2351c5c06732301",
+					"index" : 129
+				}
+			],
+			"paths" : 
+			[
+				"engine/toolchain/flowforge/CMakeFiles/Export/1d4f0ec519f7c33b732e5c14046f92e9/lux-engine-flowforge-compiler-flowforge_compiler-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 5,
+			"component" : "lux_engine_flowforge_compiler",
+			"destination" : "share/lux-engine-flowforge-compiler/flowforge_compiler",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/engine/toolchain/flowforge/lux-engine-flowforge-compiler-flowforge_compiler-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 6,
+			"component" : "lux_engine_flowforge_compiler",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/lux_engine_flowforge_compiler.lib"
+			],
+			"targetId" : "flowforge_compiler::@cc5ba2351c5c06732301",
+			"targetIndex" : 129,
+			"targetIsImportLibrary" : true,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 6,
+			"component" : "lux_engine_flowforge_compiler",
+			"destination" : "bin",
+			"paths" : 
+			[
+				"bin/lux_engine_flowforge_compiler.dll"
+			],
+			"targetId" : "flowforge_compiler::@cc5ba2351c5c06732301",
+			"targetIndex" : 129,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 7,
+			"component" : "lux_engine_flowforge_compiler",
+			"destination" : "share/lux-engine-flowforge-compiler",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/engine/toolchain/flowforge/lux-engine-flowforge-compiler-config.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/engine/toolchain/flowforge/lux-engine-flowforge-compiler-config-version.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/engine/toolchain/flowforge/lux-engine-flowforge-compiler-available-components.cmake"
+			],
+			"type" : "file"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "engine/toolchain/flowforge",
+		"source" : "engine/toolchain/flowforge"
+	}
+}

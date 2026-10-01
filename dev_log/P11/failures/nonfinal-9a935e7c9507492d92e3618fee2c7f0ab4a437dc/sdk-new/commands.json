@@ -1,0 +1,171 @@
+[
+  {
+    "name": "p11-runtime-configure",
+    "argv": [
+      "cmake",
+      "-S",
+      "E:\\SyncForder\\CodeRepos\\build\\p11-clean-9a935e7c9507\\cmake\\installed-consumers\\editor-p11\\runtime",
+      "-B",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p11-9a935e7c9507-sdk-new\\p11-runtime",
+      "-G",
+      "Ninja",
+      "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+      "-DCMAKE_CXX_STANDARD=20",
+      "-DCMAKE_CXX_EXTENSIONS=OFF",
+      "-DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/P11-9a935e7c9507",
+      "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+      "-DVCPKG_TARGET_TRIPLET=x64-windows",
+      "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+      "-DSDK_PREFIX=E:/SyncForder/CodeRepos/install/P11-9a935e7c9507"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\build\\p11-clean-9a935e7c9507",
+    "started": "2026-10-01T14:55:19.789679+00:00",
+    "ended": "2026-10-01T14:55:24.903014+00:00",
+    "exit_code": 0,
+    "log": "p11-runtime-configure.log",
+    "sha256": "6756f11c46cff684de14250fccfab16f18c63f3c3cfcdabc61ebe716a491f08f"
+  },
+  {
+    "name": "p11-runtime-build",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p11-9a935e7c9507-sdk-new\\p11-runtime",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\build\\p11-clean-9a935e7c9507",
+    "started": "2026-10-01T14:55:24.907441+00:00",
+    "ended": "2026-10-01T14:55:29.537707+00:00",
+    "exit_code": 0,
+    "log": "p11-runtime-build.log",
+    "sha256": "ece6af2183afbb4cfb4ddabd46e934b4371e9c1944467d9c26a71d1f083f523e"
+  },
+  {
+    "name": "p11-runtime-no-work",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p11-9a935e7c9507-sdk-new\\p11-runtime",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\build\\p11-clean-9a935e7c9507",
+    "started": "2026-10-01T14:55:29.541732+00:00",
+    "ended": "2026-10-01T14:55:29.587134+00:00",
+    "exit_code": 0,
+    "log": "p11-runtime-no-work.log",
+    "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6"
+  },
+  {
+    "name": "p11-runtime-ctest",
+    "argv": [
+      "ctest",
+      "--test-dir",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p11-9a935e7c9507-sdk-new\\p11-runtime",
+      "--output-on-failure",
+      "-j",
+      "1"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\build\\p11-clean-9a935e7c9507",
+    "started": "2026-10-01T14:55:29.591205+00:00",
+    "ended": "2026-10-01T14:55:29.713860+00:00",
+    "exit_code": 0,
+    "log": "p11-runtime-ctest.log",
+    "sha256": "2f8334ec10cfffab1df3cfaad08bd192c0963ab7a672b15a88a155df1d56286a"
+  },
+  {
+    "name": "p11-models-configure",
+    "argv": [
+      "cmake",
+      "-S",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p11-9a935e7c9507-sdk-new\\p11-models-source",
+      "-B",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p11-9a935e7c9507-sdk-new\\p11-models",
+      "-G",
+      "Ninja",
+      "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+      "-DCMAKE_CXX_STANDARD=20",
+      "-DCMAKE_CXX_EXTENSIONS=OFF",
+      "-DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/P11-9a935e7c9507",
+      "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+      "-DVCPKG_TARGET_TRIPLET=x64-windows",
+      "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\build\\p11-clean-9a935e7c9507",
+    "started": "2026-10-01T14:55:29.724651+00:00",
+    "ended": "2026-10-01T14:55:35.498943+00:00",
+    "exit_code": 0,
+    "log": "p11-models-configure.log",
+    "sha256": "2c9c07feddadc9410a421144851ca8e21c2022aaccf82e638066d32c3f4d22f5"
+  },
+  {
+    "name": "p11-models-build",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p11-9a935e7c9507-sdk-new\\p11-models",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\build\\p11-clean-9a935e7c9507",
+    "started": "2026-10-01T14:55:35.503247+00:00",
+    "ended": "2026-10-01T14:55:50.562243+00:00",
+    "exit_code": 0,
+    "log": "p11-models-build.log",
+    "sha256": "b4e36e3366fa0d4646a920ca2eaeb766eaa788d6bcb882599c231102f4d0a975"
+  },
+  {
+    "name": "p11-models-no-work",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p11-9a935e7c9507-sdk-new\\p11-models",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\build\\p11-clean-9a935e7c9507",
+    "started": "2026-10-01T14:55:50.567593+00:00",
+    "ended": "2026-10-01T14:55:50.626531+00:00",
+    "exit_code": 0,
+    "log": "p11-models-no-work.log",
+    "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6"
+  },
+  {
+    "name": "p11-models-ctest",
+    "argv": [
+      "ctest",
+      "--test-dir",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p11-9a935e7c9507-sdk-new\\p11-models",
+      "--output-on-failure",
+      "-j",
+      "1"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\build\\p11-clean-9a935e7c9507",
+    "started": "2026-10-01T14:55:50.627543+00:00",
+    "ended": "2026-10-01T14:55:51.220355+00:00",
+    "exit_code": 0,
+    "log": "p11-models-ctest.log",
+    "sha256": "c2609a06fcb2fefc1a9f5410b3186f8bf0ef803ba04a1045958017e00e2c5a25"
+  }
+]

@@ -1,0 +1,149 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install",
+			"__install_export_header_dirs",
+			"lux_engine_install_components"
+		],
+		"files" : 
+		[
+			"E:/SyncForder/CodeRepos/install/P11-3bbc7312a3d1/share/lux-cmake-toolset/component/install_components.cmake",
+			"cmake/InstallComponents.cmake",
+			"engine/domain/spatial/spatial2d/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 38,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 2
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 64,
+				"parent" : 1
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 3,
+			"component" : "lux_engine_domain_spatial2d",
+			"destination" : ".",
+			"paths" : 
+			[
+				"engine/domain/spatial/spatial2d/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 4,
+			"component" : "lux_engine_domain_spatial2d",
+			"destination" : "share/lux-engine-domain-spatial2d/spatial2d_index",
+			"exportName" : "spatial2d_index",
+			"exportTargets" : 
+			[
+				{
+					"id" : "spatial2d_index::@8bd008eed98ecf8f5b32",
+					"index" : 425
+				}
+			],
+			"paths" : 
+			[
+				"engine/domain/spatial/spatial2d/CMakeFiles/Export/6c79d309271a9fd1069541fbff429de1/lux-engine-domain-spatial2d-spatial2d_index-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 5,
+			"component" : "lux_engine_domain_spatial2d",
+			"destination" : "share/lux-engine-domain-spatial2d/spatial2d_index",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/engine/domain/spatial/spatial2d/lux-engine-domain-spatial2d-spatial2d_index-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 6,
+			"component" : "lux_engine_domain_spatial2d",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/lux_engine_spatial2d_index.lib"
+			],
+			"targetId" : "spatial2d_index::@8bd008eed98ecf8f5b32",
+			"targetIndex" : 425,
+			"targetIsImportLibrary" : true,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 6,
+			"component" : "lux_engine_domain_spatial2d",
+			"destination" : "bin",
+			"paths" : 
+			[
+				"bin/lux_engine_spatial2d_index.dll"
+			],
+			"targetId" : "spatial2d_index::@8bd008eed98ecf8f5b32",
+			"targetIndex" : 425,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 7,
+			"component" : "lux_engine_domain_spatial2d",
+			"destination" : "share/lux-engine-domain-spatial2d",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/engine/domain/spatial/spatial2d/lux-engine-domain-spatial2d-config.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/engine/domain/spatial/spatial2d/lux-engine-domain-spatial2d-config-version.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/engine/domain/spatial/spatial2d/lux-engine-domain-spatial2d-available-components.cmake"
+			],
+			"type" : "file"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "engine/domain/spatial/spatial2d",
+		"source" : "engine/domain/spatial/spatial2d"
+	}
+}

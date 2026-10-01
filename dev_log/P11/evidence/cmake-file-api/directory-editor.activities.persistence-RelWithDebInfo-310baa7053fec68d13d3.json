@@ -1,0 +1,291 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install",
+			"lux_engine_install_components"
+		],
+		"files" : 
+		[
+			"cmake/InstallComponents.cmake",
+			"editor/activities/persistence/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 19,
+				"parent" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 64,
+				"parent" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 38,
+				"parent" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 47,
+				"parent" : 9
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 52,
+				"parent" : 9
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 54,
+				"parent" : 9
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 64,
+				"parent" : 9
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 51,
+				"parent" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 55,
+				"parent" : 0
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 2,
+			"component" : "lux_engine_editor_persistence",
+			"destination" : "share/lux-engine-editor-persistence/editor_persistence",
+			"exportName" : "editor_persistence",
+			"exportTargets" : 
+			[
+				{
+					"id" : "editor_persistence::@8e90a241f17365e37f57",
+					"index" : 79
+				}
+			],
+			"paths" : 
+			[
+				"editor/activities/persistence/CMakeFiles/Export/ec99f0e33aff438ac93d072d92c608f0/lux-engine-editor-persistence-editor_persistence-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 3,
+			"component" : "lux_engine_editor_persistence",
+			"destination" : "share/lux-engine-editor-persistence/editor_persistence",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/activities/persistence/lux-engine-editor-persistence-editor_persistence-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 4,
+			"component" : "lux_engine_editor_persistence",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/editor_persistence.lib"
+			],
+			"targetId" : "editor_persistence::@8e90a241f17365e37f57",
+			"targetIndex" : 79,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 5,
+			"component" : "lux_engine_editor_persistence",
+			"destination" : "share/lux-engine-editor-persistence/editor_persistence_execution",
+			"exportName" : "editor_persistence_execution",
+			"exportTargets" : 
+			[
+				{
+					"id" : "editor_persistence_execution::@8e90a241f17365e37f57",
+					"index" : 80
+				}
+			],
+			"paths" : 
+			[
+				"editor/activities/persistence/CMakeFiles/Export/eb505cdf3901a07a051343c92aaa49d1/lux-engine-editor-persistence-editor_persistence_execution-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 6,
+			"component" : "lux_engine_editor_persistence",
+			"destination" : "share/lux-engine-editor-persistence/editor_persistence_execution",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/activities/persistence/lux-engine-editor-persistence-editor_persistence_execution-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 7,
+			"component" : "lux_engine_editor_persistence",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/editor_persistence_execution.lib"
+			],
+			"targetId" : "editor_persistence_execution::@8e90a241f17365e37f57",
+			"targetIndex" : 80,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 8,
+			"component" : "lux_engine_editor_persistence",
+			"destination" : "share/lux-engine-editor-persistence",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/activities/persistence/lux-engine-editor-persistence-config.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/activities/persistence/lux-engine-editor-persistence-config-version.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/activities/persistence/lux-engine-editor-persistence-available-components.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 10,
+			"component" : "lux_engine_editor_file_publication",
+			"destination" : "share/lux-engine-editor-file-publication/editor_file_publication",
+			"exportName" : "editor_file_publication",
+			"exportTargets" : 
+			[
+				{
+					"id" : "editor_file_publication::@8e90a241f17365e37f57",
+					"index" : 58
+				}
+			],
+			"paths" : 
+			[
+				"editor/activities/persistence/CMakeFiles/Export/256ed521f5ab1c264f2992417b357e34/lux-engine-editor-file-publication-editor_file_publication-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 11,
+			"component" : "lux_engine_editor_file_publication",
+			"destination" : "share/lux-engine-editor-file-publication/editor_file_publication",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/activities/persistence/lux-engine-editor-file-publication-editor_file_publication-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 12,
+			"component" : "lux_engine_editor_file_publication",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/editor_file_publication.lib"
+			],
+			"targetId" : "editor_file_publication::@8e90a241f17365e37f57",
+			"targetIndex" : 58,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 13,
+			"component" : "lux_engine_editor_file_publication",
+			"destination" : "share/lux-engine-editor-file-publication",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/activities/persistence/lux-engine-editor-file-publication-config.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/activities/persistence/lux-engine-editor-file-publication-config-version.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/activities/persistence/lux-engine-editor-file-publication-available-components.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 14,
+			"component" : "lux_engine_editor_file_publication",
+			"destination" : "include/lux/engine/editor/storage",
+			"paths" : 
+			[
+				"editor/activities/persistence/include/lux/engine/editor/storage/FileArtifactStore.hpp",
+				"editor/activities/persistence/include/lux/engine/editor/storage/FilePublication.hpp"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 15,
+			"component" : "lux_engine_editor_persistence",
+			"destination" : "include/lux/engine/editor/persistence",
+			"paths" : 
+			[
+				"editor/activities/persistence/include/lux/engine/editor/persistence/ArtifactStore.hpp",
+				"editor/activities/persistence/include/lux/engine/editor/persistence/EncodeJob.hpp",
+				"editor/activities/persistence/include/lux/engine/editor/persistence/SaveExecution.hpp",
+				"editor/activities/persistence/include/lux/engine/editor/persistence/SaveService.hpp",
+				"editor/activities/persistence/include/lux/engine/editor/persistence/SaveSource.hpp",
+				"editor/activities/persistence/include/lux/engine/editor/persistence/SaveTypes.hpp",
+				"editor/activities/persistence/include/lux/engine/editor/persistence/WriteCoordinator.hpp",
+				"editor/activities/persistence/include/lux/engine/editor/persistence/WriteLane.hpp"
+			],
+			"type" : "file"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "editor/activities/persistence",
+		"source" : "editor/activities/persistence"
+	}
+}

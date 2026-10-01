@@ -1,0 +1,1179 @@
+{
+	"archive" : 
+	{
+		"commandFragments" : 
+		[
+			{
+				"fragment" : "/machine:x64",
+				"role" : "flags"
+			}
+		]
+	},
+	"artifacts" : 
+	[
+		{
+			"path" : "lib/lux_engine_editor_flowforge.lib"
+		}
+	],
+	"backtrace" : 3,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"_add_library",
+			"add_library",
+			"add_component",
+			"install",
+			"lux_engine_install_components",
+			"target_link_libraries",
+			"add_dependencies",
+			"lux_target_add_codegen",
+			"engine_target_add_type_runtime_info",
+			"add_compile_options",
+			"target_compile_definitions",
+			"target_include_directories",
+			"__component_set_include_directories",
+			"component_include_directories",
+			"target_sources"
+		],
+		"files" : 
+		[
+			"D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+			"E:/SyncForder/CodeRepos/install/P11-3bbc7312a3d1/share/lux-cmake-toolset/component/component.cmake",
+			"editor/tools/flowforge/CMakeLists.txt",
+			"cmake/InstallComponents.cmake",
+			"E:/SyncForder/CodeRepos/install/P11-3bbc7312a3d1/share/lux-cxx/reflection_generator/cmake_scripts/meta.cmake",
+			"modules/core/meta/cmake/engine_type_runtime_info.cmake",
+			"CMakeLists.txt",
+			"E:/SyncForder/CodeRepos/install/P11-3bbc7312a3d1/share/lux-cmake-toolset/component/component_include_directories.cmake"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 5,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 99,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 653,
+				"parent" : 2
+			},
+			{
+				"command" : 4,
+				"file" : 2,
+				"line" : 31,
+				"parent" : 0
+			},
+			{
+				"command" : 3,
+				"file" : 3,
+				"line" : 54,
+				"parent" : 4
+			},
+			{
+				"command" : 5,
+				"file" : 2,
+				"line" : 11,
+				"parent" : 0
+			},
+			{
+				"command" : 5,
+				"file" : 2,
+				"line" : 27,
+				"parent" : 0
+			},
+			{
+				"command" : 5,
+				"file" : 2,
+				"line" : 42,
+				"parent" : 0
+			},
+			{
+				"command" : 8,
+				"file" : 2,
+				"line" : 20,
+				"parent" : 0
+			},
+			{
+				"command" : 7,
+				"file" : 5,
+				"line" : 186,
+				"parent" : 9
+			},
+			{
+				"command" : 6,
+				"file" : 4,
+				"line" : 378,
+				"parent" : 10
+			},
+			{
+				"file" : 6
+			},
+			{
+				"command" : 9,
+				"file" : 6,
+				"line" : 25,
+				"parent" : 12
+			},
+			{
+				"command" : 10,
+				"file" : 2,
+				"line" : 45,
+				"parent" : 0
+			},
+			{
+				"command" : 10,
+				"file" : 2,
+				"line" : 10,
+				"parent" : 0
+			},
+			{
+				"command" : 13,
+				"file" : 2,
+				"line" : 7,
+				"parent" : 0
+			},
+			{
+				"command" : 12,
+				"file" : 7,
+				"line" : 67,
+				"parent" : 16
+			},
+			{
+				"command" : 11,
+				"file" : 7,
+				"line" : 25,
+				"parent" : 17
+			},
+			{
+				"command" : 12,
+				"file" : 7,
+				"line" : 79,
+				"parent" : 16
+			},
+			{
+				"command" : 11,
+				"file" : 7,
+				"line" : 29,
+				"parent" : 19
+			},
+			{
+				"command" : 11,
+				"file" : 4,
+				"line" : 386,
+				"parent" : 10
+			},
+			{
+				"command" : 13,
+				"file" : 2,
+				"line" : 24,
+				"parent" : 0
+			},
+			{
+				"command" : 12,
+				"file" : 7,
+				"line" : 79,
+				"parent" : 22
+			},
+			{
+				"command" : 11,
+				"file" : 7,
+				"line" : 29,
+				"parent" : 23
+			},
+			{
+				"command" : 14,
+				"file" : 4,
+				"line" : 380,
+				"parent" : 10
+			},
+			{
+				"command" : 14,
+				"file" : 2,
+				"line" : 22,
+				"parent" : 0
+			},
+			{
+				"command" : 14,
+				"file" : 2,
+				"line" : 35,
+				"parent" : 0
+			}
+		]
+	},
+	"compileGroups" : 
+	[
+		{
+			"compileCommandFragments" : 
+			[
+				{
+					"fragment" : "/DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD"
+				},
+				{
+					"backtrace" : 13,
+					"fragment" : "/utf-8"
+				},
+				{
+					"backtrace" : 13,
+					"fragment" : "/permissive-"
+				},
+				{
+					"backtrace" : 13,
+					"fragment" : "/Zc:__cplusplus"
+				},
+				{
+					"backtrace" : 13,
+					"fragment" : "/Zc:preprocessor"
+				},
+				{
+					"backtrace" : 6,
+					"fragment" : "/Zc:externConstexpr"
+				}
+			],
+			"defines" : 
+			[
+				{
+					"backtrace" : 6,
+					"define" : "ENTT_NO_ETO"
+				},
+				{
+					"backtrace" : 7,
+					"define" : "IMGUI_SHARED_CORE"
+				},
+				{
+					"backtrace" : 6,
+					"define" : "LUX_EDITOR_ASSETS_DLL_DISABLE"
+				},
+				{
+					"backtrace" : 14,
+					"define" : "LUX_EDITOR_FLOWFORGE_DLL_DISABLE"
+				},
+				{
+					"backtrace" : 15,
+					"define" : "LUX_EDITOR_FLOWFORGE_LIBRARY"
+				},
+				{
+					"backtrace" : 6,
+					"define" : "LUX_EDITOR_PROJECT_DLL_DISABLE"
+				},
+				{
+					"backtrace" : 6,
+					"define" : "LUX_EDITOR_STORAGE_DLL_DISABLE"
+				},
+				{
+					"backtrace" : 6,
+					"define" : "LUX_ENGINE_FLOWFORGE_DLL_DISABLE"
+				},
+				{
+					"backtrace" : 6,
+					"define" : "LUX_ENGINE_MATERIAL_COOKER_DLL_DISABLE"
+				},
+				{
+					"backtrace" : 6,
+					"define" : "LUX_ENGINE_TOOLCHAIN_MODEL_DLL_DISABLE"
+				},
+				{
+					"backtrace" : 6,
+					"define" : "LUX_ENGINE_TOOLCHAIN_TEXTURE_DLL_DISABLE"
+				},
+				{
+					"backtrace" : 6,
+					"define" : "STDEXEC_ENABLE_WINDOWS_THREAD_POOL"
+				},
+				{
+					"backtrace" : 7,
+					"define" : "__PLATFORM_WIN32__"
+				},
+				{
+					"backtrace" : 7,
+					"define" : "__TRAY_ENABLED__"
+				}
+			],
+			"includes" : 
+			[
+				{
+					"backtrace" : 18,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/tools/flowforge/include"
+				},
+				{
+					"backtrace" : 18,
+					"path" : "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/gen/include"
+				},
+				{
+					"backtrace" : 20,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/tools/flowforge/pinclude"
+				},
+				{
+					"backtrace" : 20,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/assets/sinclude"
+				},
+				{
+					"backtrace" : 20,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/transition"
+				},
+				{
+					"backtrace" : 20,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/activities/project/sinclude"
+				},
+				{
+					"backtrace" : 20,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/activities/sinclude"
+				},
+				{
+					"backtrace" : 21,
+					"path" : "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/tools/flowforge/meta_gen"
+				},
+				{
+					"backtrace" : 24,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/ui/sinclude"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/activities/project/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/authoring/project/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/modules/resource/identity/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/modules/core/object/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/editing/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/modules/core/log/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/modules/core/meta/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/modules/core/type_info/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/process/execution/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/modules/core/async_port/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/process/asset_loading/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/modules/resource/asset/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/modules/resource/description/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/modules/core/math/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/modules/function/script/core/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/modules/core/semantic/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/toolchain/asset/model/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/toolchain/material/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/modules/function/material/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/modules/function/graph/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/toolchain/asset/texture/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/modules/function/flowforge/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/activities/flow/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/activities/persistence/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/authoring/flow/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/toolchain/flowforge/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/modules/function/script/artifact/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/context/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/context/rendering/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/context/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/scene/composition/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/domain/world/description/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/domain/world/partition/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/domain/world/identity/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/domain/partition/identity/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/domain/simulation/composition/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/domain/simulation/description/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/domain/system/identity/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/domain/system/description/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/domain/simulation/system/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/modules/core/serialization/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/domain/simulation/ecs/core/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/domain/simulation/ecs/task/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/modules/core/task/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/domain/simulation/scripting/core/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/scene/description/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/scene/system/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/domain/simulation/ecs/schema/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/modules/function/render/runtime/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/modules/function/render/client/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/scene/builtin_systems/render/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/modules/function/render/features/cmake/../include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/modules/function/render/comm_gen"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/scene/components/camera/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/domain/simulation/ecs/transform/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/domain/simulation/ecs/snapshot/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/domain/simulation/ecs/hierarchy/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/domain/simulation/ecs/visual/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/scene/builtin_systems/mesh_query/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/metadata/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/authoring/configuration/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/modules/function/ui/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/project/plugins/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/modules/platform/dynamic_library/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/activities/tasks/include"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/ui/include"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/workbench/project/include"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/workbench/desktop/include"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/workbench/widgets/include"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/workbench/tasks/include"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/workbench/scene/include"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/workbench/viewport/include"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/activities/scene/include"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/authoring/scene/include"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/scene/asset/include"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/domain/world/asset/include"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/domain/simulation/asset/include"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/domain/world/storage/include"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/scene/integration/world_materialization/include"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/scene/builtin_systems/world_loading/include"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/engine/process/world_loading/include"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/workbench/scene/interaction/include"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/authoring/layout/include"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/activities/commands/include"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/modules/function/ui/rendering/include"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/modules/function/ui/rendering/comm_gen"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/modules/function/input/include"
+				},
+				{
+					"backtrace" : 7,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/modules/platform/window/include"
+				},
+				{
+					"backtrace" : 8,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/workbench/flow/include"
+				},
+				{
+					"backtrace" : 8,
+					"path" : "E:/SyncForder/CodeRepos/build/p11-clean-3bbc7312a3d1/editor/workbench/flow/interaction/include"
+				},
+				{
+					"backtrace" : 6,
+					"isSystem" : true,
+					"path" : "D:/Development/vcpkg/installed/x64-windows/include"
+				},
+				{
+					"backtrace" : 6,
+					"isSystem" : true,
+					"path" : "D:/Development/vcpkg/installed/x64-windows/include/stduuid"
+				},
+				{
+					"backtrace" : 6,
+					"isSystem" : true,
+					"path" : "E:/SyncForder/CodeRepos/install/P11-3bbc7312a3d1/include"
+				},
+				{
+					"backtrace" : 6,
+					"isSystem" : true,
+					"path" : "D:/Development/vcpkg/installed/x64-windows/include/eigen3"
+				}
+			],
+			"language" : "CXX",
+			"languageStandard" : 
+			{
+				"backtraces" : 
+				[
+					6,
+					6,
+					6
+				],
+				"standard" : "20"
+			},
+			"sourceIndexes" : 
+			[
+				0,
+				1,
+				2,
+				3,
+				4
+			]
+		}
+	],
+	"dependencies" : 
+	[
+		{
+			"backtrace" : 6,
+			"id" : "script_core::@023ad226eeb1dfda479d"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "meta::@48360a740c97bcb8cc30"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "object::@3f64c795d72938f03de3"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "serialization::@f3d74b591e1fe7bce8e4"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "log::@76211867b20e47e8b1d2"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "task::@a744d1e69ed1d016bf33"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "description::@7b719127e839b48d783c"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "asset::@f166380fe378b4529061"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "material_graph::@8d185533eb6252911024"
+		},
+		{
+			"backtrace" : 7,
+			"id" : "window::@bf63d16995680a47d1c7"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "dynamic_library::@17926f360554c679ac00"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "toolchain_material_compiler::@f630d307355ef18b3721"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "toolchain_material_cooker::@f630d307355ef18b3721"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "toolchain_texture_cooker::@63de48eec8d9d48176aa"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "toolchain_model_cooker::@d6a32ad6cbeaec4bb8d3"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "graph::@5661790dfa04b0db40a7"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "flowforge::@01a5a9daa526672cfac5"
+		},
+		{
+			"backtrace" : 7,
+			"id" : "input::@f391e7d37075f1ab801f"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "render_feature_client::@2609240a746559cdd999"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "render_runtime::@3ae72fd365b4f844e41a"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "script_artifact::@6f6baf858afc44774b73"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "ui::@744f77519ad4bbba6e0c"
+		},
+		{
+			"backtrace" : 7,
+			"id" : "ui_rendering::@acd468146784c6e2a607"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "render_client::@286ca0d662065846abce"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "world_description::@7b5a068d3155bc794235"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "world_storage::@a3e8a7fef1bb9389b4da"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "world_asset::@f2c87c8d3f11d681617c"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "domain_system_identity::@8abaa8f9c34049f562d6"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "domain_system_description::@818797bdb0d364f70801"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "simulation_description::@16f04bd09344fd38a478"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "simulation_asset::@cccd20810dfaf5f762a3"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "core::@a1d6ad1aaaa1edf8dea2"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "schema::@187f79f90f03b4c383fe"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "system::@fb57201a0f01b24d4dc5"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "snapshot::@86be79d033cd538a5c0c"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "world_partition::@b2bf7258a6f54d64eb47"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "scene_description::@b521ca423a5f32fb134d"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "scene_composition::@b5238a990fe5d6742dbe"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "scene_asset::@ac0feaa506c8c1254603"
+		},
+		{
+			"backtrace" : 7,
+			"id" : "scene_world_materialization::@899e763dcf783829eb82"
+		},
+		{
+			"backtrace" : 7,
+			"id" : "scene_transform::@5f4777d37b076b800592"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "simulation_composition::@0f0ae8ba3480bc9a566a"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "transform::@71f4d9a52806caffce99"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "hierarchy::@b994b6ea6b99d505d4d9"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "visual::@d5d51b856f9def0240f8"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "process_execution::@7d9faf53d58f8d22d002"
+		},
+		{
+			"backtrace" : 7,
+			"id" : "process_world_loading::@990706392003bc2c2392"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "process_asset_loading::@389202a59089a91e47ad"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "engine_context::@719b21a8e1200fa53142"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "project_plugins::@fec646640f59547ea209"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "engine_context_render::@797d05ff33a20d45d116"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "flowforge_compiler::@cc5ba2351c5c06732301"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "edit_sessions::@80f09fafaae80a9309ab"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "editor_editing::@80f09fafaae80a9309ab"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "edit_history::@80f09fafaae80a9309ab"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "editor_configuration::@07e3ba29d5ed9fd6901f"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "scene_mesh_query::@18c5cf92ebd161cc3658"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "scene_camera::@9971a90ed4b5c5aeb023"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "scene_render::@a1398ed24068bb3cf327"
+		},
+		{
+			"backtrace" : 7,
+			"id" : "scene_world_loading::@e94b32764bc1932b0cb1"
+		},
+		{
+			"backtrace" : 7,
+			"id" : "scene_model::@f7d8f94b87546c6dde97"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "flowforge_model::@26f35bf441d30e98c4bf"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "editor_project::@83a71b58a356bc1b752b"
+		},
+		{
+			"backtrace" : 7,
+			"id" : "layout_model::@1f730f15664d75f61532"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "editor_persistence::@8e90a241f17365e37f57"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "editor_file_publication::@8e90a241f17365e37f57"
+		},
+		{
+			"backtrace" : 7,
+			"id" : "editor_commands::@554362bfd8948d349368"
+		},
+		{
+			"backtrace" : 7,
+			"id" : "editor_editing_scene::@efe5ffcc8c5e214af691"
+		},
+		{
+			"backtrace" : 7,
+			"id" : "scene_projection::@efe5ffcc8c5e214af691"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "flowforge_compilation::@f7e1fad29a037a0b0b0c"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "editor_storage::@fac0bde835747e57d716"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "editor_assets::@fac0bde835747e57d716"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "editor_tasks::@97829350ef4963de6f0e"
+		},
+		{
+			"backtrace" : 7,
+			"id" : "view_host::@88052dbb842e9ea35b88"
+		},
+		{
+			"backtrace" : 7,
+			"id" : "desktop_shell::@88052dbb842e9ea35b88"
+		},
+		{
+			"backtrace" : 7,
+			"id" : "editor_viewport::@0c1f4824f6bf9de68839"
+		},
+		{
+			"backtrace" : 7,
+			"id" : "editor_widgets::@4462ec1ca791039d4f7c"
+		},
+		{
+			"backtrace" : 7,
+			"id" : "scene_interaction::@191448a813858845479e"
+		},
+		{
+			"backtrace" : 8,
+			"id" : "flowforge_interaction::@99a767b90e50f11debbc"
+		},
+		{
+			"backtrace" : 7,
+			"id" : "project_ui::@7bd5465c724e330bf0de"
+		},
+		{
+			"backtrace" : 7,
+			"id" : "scene_ui::@9dd902d70e901be41f75"
+		},
+		{
+			"backtrace" : 7,
+			"id" : "tasks_ui::@d419c5665d8371805592"
+		},
+		{
+			"backtrace" : 8,
+			"id" : "flow_ui::@e50ba2811c1a7ef06048"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "editor_metadata::@2b0d29ff3d15ac775361"
+		},
+		{
+			"backtrace" : 11,
+			"id" : "editor_flow_meta_generate::@2b6cb9e87fbb3718d63b"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "editor_context::@633a76962ce464f92ca7"
+		},
+		{
+			"backtrace" : 7,
+			"id" : "editor_ui::@c1b41ed8eff32b58ca55"
+		}
+	],
+	"id" : "editor_flowforge::@2b6cb9e87fbb3718d63b",
+	"install" : 
+	{
+		"destinations" : 
+		[
+			{
+				"backtrace" : 5,
+				"path" : "lib"
+			}
+		],
+		"prefix" : 
+		{
+			"path" : "E:/SyncForder/CodeRepos/install/P11-3bbc7312a3d1"
+		}
+	},
+	"name" : "editor_flowforge",
+	"nameOnDisk" : "lux_engine_editor_flowforge.lib",
+	"paths" : 
+	{
+		"build" : "editor/tools/flowforge",
+		"source" : "editor/tools/flowforge"
+	},
+	"sourceGroups" : 
+	[
+		{
+			"name" : "Source Files",
+			"sourceIndexes" : 
+			[
+				0,
+				1,
+				2,
+				3,
+				4
+			]
+		},
+		{
+			"name" : "CMake Rules",
+			"sourceIndexes" : 
+			[
+				5
+			]
+		}
+	],
+	"sources" : 
+	[
+		{
+			"backtrace" : 3,
+			"compileGroupIndex" : 0,
+			"path" : "editor/tools/flowforge/src/FlowForgeEditor.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 3,
+			"compileGroupIndex" : 0,
+			"path" : "editor/tools/flowforge/src/FlowAssets.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 25,
+			"compileGroupIndex" : 0,
+			"isGenerated" : true,
+			"path" : "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/tools/flowforge/meta_gen/FlowForgeEditor.meta.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 26,
+			"compileGroupIndex" : 0,
+			"path" : "editor/tools/flowforge/src/ui/FlowForgeElements.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 27,
+			"compileGroupIndex" : 0,
+			"path" : "editor/tools/flowforge/test/FlowForgeEditorTestAccess.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 0,
+			"isGenerated" : true,
+			"path" : "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/tools/flowforge/meta_gen/FlowForgeEditor.meta.cpp.rule",
+			"sourceGroupIndex" : 1
+		}
+	],
+	"type" : "STATIC_LIBRARY"
+}

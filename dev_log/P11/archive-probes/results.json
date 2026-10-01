@@ -1,0 +1,104 @@
+[
+  {
+    "name": "relocated-positive",
+    "argv": [
+      "C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+      "E:\\SyncForder\\CodeRepos\\build\\P11 归档迁移 3bbc7312a3d1\\verify.py",
+      "--source",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-p11",
+      "--archive",
+      "E:\\SyncForder\\CodeRepos\\build\\P11 归档迁移 3bbc7312a3d1"
+    ],
+    "started": "2026-10-01T17:13:40.092719+00:00",
+    "ended": "2026-10-01T17:14:01.565434+00:00",
+    "expected": 0,
+    "exit_code": 0,
+    "log": "relocated-positive.log",
+    "sha256": "e64420e7d4bd65c49485d9ba5d5c0e0d1257ed5f21738a20b2f567c44f0f0dd4"
+  },
+  {
+    "name": "missing-real-evidence",
+    "argv": [
+      "C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+      "E:\\SyncForder\\CodeRepos\\build\\P11 归档迁移 3bbc7312a3d1\\verify.py",
+      "--source",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-p11",
+      "--archive",
+      "E:\\SyncForder\\CodeRepos\\build\\P11 归档迁移 3bbc7312a3d1"
+    ],
+    "started": "2026-10-01T17:14:01.571453+00:00",
+    "ended": "2026-10-01T17:14:02.083250+00:00",
+    "expected": 1,
+    "exit_code": 1,
+    "log": "missing-real-evidence.log",
+    "sha256": "3145453056b5a8d8fa1c9406057ff69a3632ef1b1bd6b894893a0274a10047b3"
+  },
+  {
+    "name": "tampered-real-evidence",
+    "argv": [
+      "C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+      "E:\\SyncForder\\CodeRepos\\build\\P11 归档迁移 3bbc7312a3d1\\verify.py",
+      "--source",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-p11",
+      "--archive",
+      "E:\\SyncForder\\CodeRepos\\build\\P11 归档迁移 3bbc7312a3d1"
+    ],
+    "started": "2026-10-01T17:14:02.088071+00:00",
+    "ended": "2026-10-01T17:14:02.604517+00:00",
+    "expected": 1,
+    "exit_code": 1,
+    "log": "tampered-real-evidence.log",
+    "sha256": "3f15f5ca4ae7ebb8712738e7779a026da0679a81edf41b82d86cbd2c55f37703"
+  },
+  {
+    "name": "false-source-sha",
+    "argv": [
+      "C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+      "E:\\SyncForder\\CodeRepos\\build\\P11 归档迁移 3bbc7312a3d1\\verify.py",
+      "--source",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-p11",
+      "--archive",
+      "E:\\SyncForder\\CodeRepos\\build\\P11 归档迁移 3bbc7312a3d1"
+    ],
+    "started": "2026-10-01T17:14:02.616059+00:00",
+    "ended": "2026-10-01T17:14:03.177323+00:00",
+    "expected": 1,
+    "exit_code": 1,
+    "log": "false-source-sha.log",
+    "sha256": "a3cafbd353b8fb1e6e5f3c8132207d69dadc0579f754fb5d670ae016ce91d4b1"
+  },
+  {
+    "name": "restored-relocated-positive",
+    "argv": [
+      "C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+      "E:\\SyncForder\\CodeRepos\\build\\P11 归档迁移 3bbc7312a3d1\\verify.py",
+      "--source",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-p11",
+      "--archive",
+      "E:\\SyncForder\\CodeRepos\\build\\P11 归档迁移 3bbc7312a3d1"
+    ],
+    "started": "2026-10-01T17:14:03.183283+00:00",
+    "ended": "2026-10-01T17:14:22.451564+00:00",
+    "expected": 0,
+    "exit_code": 0,
+    "log": "restored-relocated-positive.log",
+    "sha256": "e64420e7d4bd65c49485d9ba5d5c0e0d1257ed5f21738a20b2f567c44f0f0dd4"
+  },
+  {
+    "name": "canonical-positive",
+    "argv": [
+      "C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-p11\\dev_log\\P11\\verify.py",
+      "--source",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-p11",
+      "--archive",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-p11\\dev_log\\P11"
+    ],
+    "started": "2026-10-01T17:14:22.452566+00:00",
+    "ended": "2026-10-01T17:14:42.235348+00:00",
+    "expected": 0,
+    "exit_code": 0,
+    "log": "canonical-positive.log",
+    "sha256": "e64420e7d4bd65c49485d9ba5d5c0e0d1257ed5f21738a20b2f567c44f0f0dd4"
+  }
+]

@@ -1,0 +1,138 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install",
+			"__install_export_header_dirs",
+			"lux_engine_install_components"
+		],
+		"files" : 
+		[
+			"E:/SyncForder/CodeRepos/install/P11-3bbc7312a3d1/share/lux-cmake-toolset/component/install_components.cmake",
+			"cmake/InstallComponents.cmake",
+			"editor/tools/flowforge/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 31,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 2
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 64,
+				"parent" : 1
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 3,
+			"component" : "lux_engine_editor_flowforge",
+			"destination" : ".",
+			"paths" : 
+			[
+				"editor/tools/flowforge/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/gen/include",
+				"editor/tools/flowforge/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 4,
+			"component" : "lux_engine_editor_flowforge",
+			"destination" : "share/lux-engine-editor-flowforge/editor_flowforge",
+			"exportName" : "editor_flowforge",
+			"exportTargets" : 
+			[
+				{
+					"id" : "editor_flowforge::@2b6cb9e87fbb3718d63b",
+					"index" : 63
+				}
+			],
+			"paths" : 
+			[
+				"editor/tools/flowforge/CMakeFiles/Export/8a53751ed6c55da18ab29fcfc98f7bad/lux-engine-editor-flowforge-editor_flowforge-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 5,
+			"component" : "lux_engine_editor_flowforge",
+			"destination" : "share/lux-engine-editor-flowforge/editor_flowforge",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/tools/flowforge/lux-engine-editor-flowforge-editor_flowforge-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 6,
+			"component" : "lux_engine_editor_flowforge",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/lux_engine_editor_flowforge.lib"
+			],
+			"targetId" : "editor_flowforge::@2b6cb9e87fbb3718d63b",
+			"targetIndex" : 63,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 7,
+			"component" : "lux_engine_editor_flowforge",
+			"destination" : "share/lux-engine-editor-flowforge",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/tools/flowforge/lux-engine-editor-flowforge-config.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/tools/flowforge/lux-engine-editor-flowforge-config-version.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/tools/flowforge/lux-engine-editor-flowforge-available-components.cmake"
+			],
+			"type" : "file"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "editor/tools/flowforge",
+		"source" : "editor/tools/flowforge"
+	}
+}

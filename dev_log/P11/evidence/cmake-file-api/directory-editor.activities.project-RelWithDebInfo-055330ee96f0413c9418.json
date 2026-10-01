@@ -1,0 +1,260 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install",
+			"lux_engine_install_components"
+		],
+		"files" : 
+		[
+			"cmake/InstallComponents.cmake",
+			"editor/activities/project/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 42,
+				"parent" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 64,
+				"parent" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 88,
+				"parent" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 47,
+				"parent" : 6
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 52,
+				"parent" : 6
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 54,
+				"parent" : 6
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 64,
+				"parent" : 6
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 92,
+				"parent" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 95,
+				"parent" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 101,
+				"parent" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 103,
+				"parent" : 0
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 2,
+			"component" : "lux_engine_editor_storage",
+			"destination" : "share/lux-engine-editor-storage/editor_storage",
+			"exportName" : "editor_storage",
+			"exportTargets" : 
+			[
+				{
+					"id" : "editor_storage::@fac0bde835747e57d716",
+					"index" : 107
+				}
+			],
+			"paths" : 
+			[
+				"editor/activities/project/CMakeFiles/Export/3becf26c6028108dc9474fa09da7118e/lux-engine-editor-storage-editor_storage-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 3,
+			"component" : "lux_engine_editor_storage",
+			"destination" : "share/lux-engine-editor-storage/editor_storage",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/activities/project/lux-engine-editor-storage-editor_storage-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 4,
+			"component" : "lux_engine_editor_storage",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/editor_storage.lib"
+			],
+			"targetId" : "editor_storage::@fac0bde835747e57d716",
+			"targetIndex" : 107,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 5,
+			"component" : "lux_engine_editor_storage",
+			"destination" : "share/lux-engine-editor-storage",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/activities/project/lux-engine-editor-storage-config.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/activities/project/lux-engine-editor-storage-config-version.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/activities/project/lux-engine-editor-storage-available-components.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 7,
+			"component" : "lux_engine_editor_assets",
+			"destination" : "share/lux-engine-editor-assets/editor_assets",
+			"exportName" : "editor_assets",
+			"exportTargets" : 
+			[
+				{
+					"id" : "editor_assets::@fac0bde835747e57d716",
+					"index" : 42
+				}
+			],
+			"paths" : 
+			[
+				"editor/activities/project/CMakeFiles/Export/20ee63635c1fb906a32ebb099e47ffae/lux-engine-editor-assets-editor_assets-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 8,
+			"component" : "lux_engine_editor_assets",
+			"destination" : "share/lux-engine-editor-assets/editor_assets",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/activities/project/lux-engine-editor-assets-editor_assets-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 9,
+			"component" : "lux_engine_editor_assets",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/editor_assets.lib"
+			],
+			"targetId" : "editor_assets::@fac0bde835747e57d716",
+			"targetIndex" : 42,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 10,
+			"component" : "lux_engine_editor_assets",
+			"destination" : "share/lux-engine-editor-assets",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/activities/project/lux-engine-editor-assets-config.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/activities/project/lux-engine-editor-assets-config-version.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/activities/project/lux-engine-editor-assets-available-components.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 11,
+			"component" : "lux_engine_editor_assets",
+			"destination" : "include/lux/engine/editor/assets",
+			"paths" : 
+			[
+				"editor/activities/project/include/lux/engine/editor/assets/AssetImporter.hpp"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 12,
+			"component" : "lux_engine_editor_storage",
+			"destination" : "include/lux/engine/editor/storage",
+			"paths" : 
+			[
+				"editor/activities/project/include/lux/engine/editor/storage/ProjectCreation.hpp",
+				"editor/activities/project/include/lux/engine/editor/storage/ProjectOpenData.hpp",
+				"editor/activities/project/include/lux/engine/editor/storage/ProjectPublication.hpp",
+				"editor/activities/project/include/lux/engine/editor/storage/ProjectStorage.hpp"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 13,
+			"component" : "lux_engine_editor_storage",
+			"destination" : "include/lux/engine/editor/storage",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/gen/include/lux/engine/editor/storage/visibility.h"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 14,
+			"component" : "lux_engine_editor_assets",
+			"destination" : "include/lux/engine/editor/assets",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/gen/include/lux/engine/editor/assets/visibility.h"
+			],
+			"type" : "file"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "editor/activities/project",
+		"source" : "editor/activities/project"
+	}
+}

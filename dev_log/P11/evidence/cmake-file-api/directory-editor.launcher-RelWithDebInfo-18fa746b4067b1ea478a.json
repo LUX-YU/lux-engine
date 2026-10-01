@@ -1,0 +1,153 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install",
+			"__install_export_header_dirs",
+			"lux_engine_install_components"
+		],
+		"files" : 
+		[
+			"E:/SyncForder/CodeRepos/install/P11-3bbc7312a3d1/share/lux-cmake-toolset/component/install_components.cmake",
+			"cmake/InstallComponents.cmake",
+			"editor/launcher/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 14,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 2
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 64,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 2,
+				"line" : 21,
+				"parent" : 0
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 3,
+			"component" : "lux_engine_editor_launcher",
+			"destination" : ".",
+			"paths" : 
+			[
+				"editor/launcher/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 4,
+			"component" : "lux_engine_editor_launcher",
+			"destination" : "share/lux-engine-editor-launcher/editor_launcher",
+			"exportName" : "editor_launcher",
+			"exportTargets" : 
+			[
+				{
+					"id" : "editor_launcher::@87fe0a4f5e6494785c99",
+					"index" : 70
+				}
+			],
+			"paths" : 
+			[
+				"editor/launcher/CMakeFiles/Export/280c3369b505471d8a9c4c9593d01926/lux-engine-editor-launcher-editor_launcher-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 5,
+			"component" : "lux_engine_editor_launcher",
+			"destination" : "share/lux-engine-editor-launcher/editor_launcher",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/launcher/lux-engine-editor-launcher-editor_launcher-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 6,
+			"component" : "lux_engine_editor_launcher",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/editor_launcher.lib"
+			],
+			"targetId" : "editor_launcher::@87fe0a4f5e6494785c99",
+			"targetIndex" : 70,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 7,
+			"component" : "lux_engine_editor_launcher",
+			"destination" : "share/lux-engine-editor-launcher",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/launcher/lux-engine-editor-launcher-config.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/launcher/lux-engine-editor-launcher-config-version.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1/editor/launcher/lux-engine-editor-launcher-available-components.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 8,
+			"component" : "Unspecified",
+			"destination" : "bin",
+			"paths" : 
+			[
+				"bin/lux_launcher.exe"
+			],
+			"targetId" : "lux_launcher::@87fe0a4f5e6494785c99",
+			"targetIndex" : 143,
+			"type" : "target"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "editor/launcher",
+		"source" : "editor/launcher"
+	}
+}

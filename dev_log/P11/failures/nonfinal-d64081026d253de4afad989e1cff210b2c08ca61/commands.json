@@ -1,0 +1,91 @@
+[
+  {
+    "name": "clone",
+    "argv": [
+      "git",
+      "clone",
+      "--no-hardlinks",
+      "--no-checkout",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-p11",
+      "E:\\SyncForder\\CodeRepos\\build\\p11-clean-d64081026d25"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine-p11",
+    "exit_code": 0,
+    "log": "clone.log",
+    "sha256": "f5874c77a536cb199fc8581e0aa67c4717b9f57d0fff7200a751a3c16084b82e",
+    "implementation_sha": "d64081026d253de4afad989e1cff210b2c08ca61",
+    "started": "2026-10-01T14:56:15.866569+00:00",
+    "ended": "2026-10-01T14:56:17.071104+00:00"
+  },
+  {
+    "name": "checkout",
+    "argv": [
+      "git",
+      "checkout",
+      "--detach",
+      "d64081026d253de4afad989e1cff210b2c08ca61"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\build\\p11-clean-d64081026d25",
+    "exit_code": 0,
+    "log": "checkout.log",
+    "sha256": "10d33d77aaf598dfe181e225d68acd85ea183dce66c816da3d4168762dac0a1b",
+    "implementation_sha": "d64081026d253de4afad989e1cff210b2c08ca61",
+    "started": "2026-10-01T14:56:17.075419+00:00",
+    "ended": "2026-10-01T14:56:25.804387+00:00"
+  },
+  {
+    "name": "tracked-snapshot",
+    "argv": [
+      "cmake",
+      "-DLUX_SOURCE_DIR=E:\\SyncForder\\CodeRepos\\build\\p11-clean-d64081026d25",
+      "-P",
+      "E:\\SyncForder\\CodeRepos\\build\\p11-clean-d64081026d25\\cmake\\ValidateTrackedSnapshot.cmake"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\build\\p11-clean-d64081026d25",
+    "exit_code": 0,
+    "log": "tracked-snapshot.log",
+    "sha256": "3ebafbfacf2cc471e8bf057e8f520d083d7e58930aa8a90b4054934f9956931f",
+    "implementation_sha": "d64081026d253de4afad989e1cff210b2c08ca61",
+    "started": "2026-10-01T14:56:25.845846+00:00",
+    "ended": "2026-10-01T14:56:31.719842+00:00"
+  },
+  {
+    "name": "configure",
+    "argv": [
+      "cmake",
+      "-S",
+      "E:\\SyncForder\\CodeRepos\\build\\p11-clean-d64081026d25",
+      "-B",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p11-d64081026d25",
+      "-G",
+      "Ninja",
+      "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+      "-DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/P11-d64081026d25",
+      "-DCMAKE_INSTALL_PREFIX=E:/SyncForder/CodeRepos/install/P11-d64081026d25",
+      "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+      "-DVCPKG_TARGET_TRIPLET=x64-windows",
+      "-DBUILD_TESTING=ON",
+      "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+      "-DLuxLua55_DIR=E:/SyncForder/CodeRepos/install/o/v4/lua55/lib/cmake/LuxLua55",
+      "-DPython3_EXECUTABLE=C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+      "-DLUX_EDITOR_MIGRATION_STAGE=P11",
+      "-DLUX_EDITOR_LAYERING_MODE=STRICT",
+      "-DLUX_BUILD_COMPONENT_LUA_META=OFF",
+      "-DLUX_BUILD_PHYSICS2D=ON",
+      "-DLUX_BUILD_PACKED_RENDER_CONTENT=ON",
+      "-DLUX_EDITOR_BUILD_NATIVE_TESTS=ON",
+      "-DLUX_EDITOR_BUILD_DESKTOP_TESTS=ON",
+      "-DLUX_EDITOR_BUILD_GPU_TESTS=ON",
+      "-DLUX_EDITOR_BUILD_TOOLCHAIN_TESTS=ON",
+      "-DLUX_EDITOR_BUILD_INSTALLED_TESTS=ON",
+      "-DLUX_BUILD_PROFILE=EDITOR"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\build\\p11-clean-d64081026d25",
+    "exit_code": 0,
+    "log": "configure.log",
+    "sha256": "5e60aa6ff6f2540462986cc357b34ebc13035f10e29e7078e9dd6d812f450422",
+    "implementation_sha": "d64081026d253de4afad989e1cff210b2c08ca61",
+    "started": "2026-10-01T14:56:31.893374+00:00",
+    "ended": "2026-10-01T14:57:14.657450+00:00"
+  }
+]

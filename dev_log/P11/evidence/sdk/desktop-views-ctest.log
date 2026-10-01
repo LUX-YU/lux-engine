@@ -1,0 +1,31 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1-sdk/desktop-views
+      Start  1: installed.desktop.host
+ 1/13 Test  #1: installed.desktop.host .............................   Passed    0.04 sec
+      Start  2: installed.desktop.inspector_codegen
+ 2/13 Test  #2: installed.desktop.inspector_codegen ................   Passed    0.05 sec
+      Start  3: installed.desktop.real_views
+ 3/13 Test  #3: installed.desktop.real_views .......................   Passed    1.74 sec
+      Start  4: installed.desktop.native_input
+ 4/13 Test  #4: installed.desktop.native_input .....................   Passed    2.14 sec
+      Start  5: installed.desktop.draft_source_literal
+ 5/13 Test  #5: installed.desktop.draft_source_literal .............   Passed    0.59 sec
+      Start  6: installed.desktop.draft_source_signature
+ 6/13 Test  #6: installed.desktop.draft_source_signature ...........   Passed    0.57 sec
+      Start  7: installed.desktop.draft_source_flow-canvas
+ 7/13 Test  #7: installed.desktop.draft_source_flow-canvas .........   Passed    0.37 sec
+      Start  8: installed.desktop.draft_source_material-canvas
+ 8/13 Test  #8: installed.desktop.draft_source_material-canvas .....   Passed    0.34 sec
+      Start  9: installed.desktop.draft_source_flow-queue
+ 9/13 Test  #9: installed.desktop.draft_source_flow-queue ..........   Passed    0.35 sec
+      Start 10: installed.desktop.draft_source_material-queue
+10/13 Test #10: installed.desktop.draft_source_material-queue ......   Passed    0.33 sec
+      Start 11: installed.desktop.draft_source_material-lifetime
+11/13 Test #11: installed.desktop.draft_source_material-lifetime ...   Passed    0.32 sec
+      Start 12: installed.desktop.draft_source_lifecycle
+12/13 Test #12: installed.desktop.draft_source_lifecycle ...........   Passed    0.59 sec
+      Start 13: installed.desktop.draft_source_positive
+13/13 Test #13: installed.desktop.draft_source_positive ............   Passed    0.45 sec
+
+100% tests passed, 0 tests failed out of 13
+
+Total Test time (real) =   7.90 sec

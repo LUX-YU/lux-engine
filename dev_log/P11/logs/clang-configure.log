@@ -1,0 +1,45 @@
+-- The CXX compiler identification is Clang 19.1.5 with MSVC-like command-line
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: D:/Development/Mircosoft/VisualStudio/VC/Tools/Llvm/x64/bin/clang-cl.exe - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+---- Importing lux-cxx-core
+---- Importing lux-cxx-compile_time
+---- Importing lux-cxx-memory
+---- Importing lux-cxx-container
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Failed
+-- Looking for pthread_create in pthreads
+-- Looking for pthread_create in pthreads - not found
+-- Looking for pthread_create in pthread
+-- Looking for pthread_create in pthread - not found
+-- Found Threads: TRUE
+-- Found stdexec: D:/Development/vcpkg/installed/x64-windows/share/stdexec/stdexec-config.cmake (found version "0.10.0")
+---- Importing lux-cxx-algorithm
+---- Importing lux-cxx-binary
+---- Importing lux-cxx-concurrent
+---- Importing imgui-core
+---- Importing node_editor-node_editor
+-- Found nlohmann_json: D:/Development/vcpkg/installed/x64-windows/share/nlohmann_json/nlohmann_jsonConfig.cmake (found version "3.12.0")
+-- Configuring done (6.2s)
+-- Generating done (0.1s)
+CMake Warning:
+  Manually-specified variables were not used by the project:
+
+    BUILD_TESTING
+    LUX_BUILD_COMPONENT_LUA_META
+    LUX_BUILD_PACKED_RENDER_CONTENT
+    LUX_BUILD_PHYSICS2D
+    LUX_EDITOR_BUILD_DESKTOP_TESTS
+    LUX_EDITOR_BUILD_GPU_TESTS
+    LUX_EDITOR_BUILD_INSTALLED_TESTS
+    LUX_EDITOR_BUILD_NATIVE_TESTS
+    LUX_EDITOR_BUILD_TOOLCHAIN_TESTS
+    LUX_EDITOR_LAYERING_MODE
+    LUX_EDITOR_MIGRATION_STAGE
+    LuxLua55_DIR
+    Python3_EXECUTABLE
+
+
+-- Build files have been written to: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1-clang

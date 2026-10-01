@@ -1,0 +1,63 @@
+{
+	"backtrace" : 5,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"add_custom_target",
+			"lux_add_codegen_job",
+			"engine_add_comm_ops",
+			"include"
+		],
+		"files" : 
+		[
+			"E:/SyncForder/CodeRepos/install/P11-3bbc7312a3d1/share/lux-cxx/reflection_generator/cmake_scripts/meta.cmake",
+			"modules/function/render/cmake/engine_render_codegen.cmake",
+			"modules/function/render/features/cmake/feature_client.cmake",
+			"modules/function/render/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 3
+			},
+			{
+				"command" : 3,
+				"file" : 3,
+				"line" : 2,
+				"parent" : 0
+			},
+			{
+				"file" : 2,
+				"parent" : 1
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 33,
+				"parent" : 2
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 169,
+				"parent" : 3
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 91,
+				"parent" : 4
+			}
+		]
+	},
+	"id" : "render_comm_ops_TerrainOperation_comm_codegen::@2609240a746559cdd999",
+	"name" : "render_comm_ops_TerrainOperation_comm_codegen",
+	"paths" : 
+	{
+		"build" : "modules/function/render",
+		"source" : "modules/function/render"
+	},
+	"sources" : [],
+	"type" : "UTILITY"
+}

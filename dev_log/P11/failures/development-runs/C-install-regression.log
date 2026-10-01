@@ -1,0 +1,83 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-dev
+      Start  13: editor.sessions
+ 1/34 Test  #13: editor.sessions ........................   Passed    0.03 sec
+      Start  14: editor.sessions_close_throw
+ 2/34 Test  #14: editor.sessions_close_throw ............   Passed    0.01 sec
+      Start  15: editor.sessions_close_contract
+ 3/34 Test  #15: editor.sessions_close_contract .........   Passed    0.01 sec
+      Start  16: editor.sessions_scope_compile
+ 4/34 Test  #16: editor.sessions_scope_compile ..........   Passed    2.24 sec
+      Start  68: editor.persistence.write_coordinator
+ 5/34 Test  #68: editor.persistence.write_coordinator ...   Passed    0.02 sec
+      Start  69: editor.persistence.real_files
+ 6/34 Test  #69: editor.persistence.real_files ..........   Passed    0.05 sec
+      Start  70: editor.commands
+ 7/34 Test  #70: editor.commands ........................   Passed    0.02 sec
+      Start 127: editor.sessions.installation
+ 8/34 Test #127: editor.sessions.installation ...........   Passed    0.13 sec
+      Start 135: editor.persistence_boundaries
+ 9/34 Test #135: editor.persistence_boundaries ..........   Passed   31.70 sec
+      Start 147: editor.persistence.models
+10/34 Test #147: editor.persistence.models ..............   Passed    0.07 sec
+      Start 148: editor.persistence.save-as
+11/34 Test #148: editor.persistence.save-as .............   Passed    0.08 sec
+      Start 149: editor.persistence.unknown
+12/34 Test #149: editor.persistence.unknown .............   Passed    0.04 sec
+      Start 150: editor.persistence.order
+13/34 Test #150: editor.persistence.order ...............   Passed    0.05 sec
+      Start 151: editor.persistence.close
+14/34 Test #151: editor.persistence.close ...............   Passed    0.04 sec
+      Start 152: editor.persistence.close-key
+15/34 Test #152: editor.persistence.close-key ...........   Passed    0.04 sec
+      Start 153: editor.persistence.capacity
+16/34 Test #153: editor.persistence.capacity ............   Passed    0.02 sec
+      Start 154: editor.persistence.execution
+17/34 Test #154: editor.persistence.execution ...........   Passed    0.03 sec
+      Start 155: editor.persistence.decoded
+18/34 Test #155: editor.persistence.decoded .............   Passed    0.03 sec
+      Start 156: editor.persistence.receipts
+19/34 Test #156: editor.persistence.receipts ............   Passed    0.06 sec
+      Start 157: editor.persistence.identities
+20/34 Test #157: editor.persistence.identities ..........   Passed    0.03 sec
+      Start 158: editor.persistence.conflict
+21/34 Test #158: editor.persistence.conflict ............   Passed    0.03 sec
+      Start 159: editor.persistence.measure
+22/34 Test #159: editor.persistence.measure .............   Passed    0.33 sec
+      Start 160: editor.persistence.r2-accept-success
+23/34 Test #160: editor.persistence.r2-accept-success ...   Passed    0.04 sec
+      Start 161: editor.persistence.r2-accept-error
+24/34 Test #161: editor.persistence.r2-accept-error .....   Passed    0.07 sec
+      Start 162: editor.persistence.r2-accept-cancel
+25/34 Test #162: editor.persistence.r2-accept-cancel ....   Passed    0.04 sec
+      Start 163: editor.persistence.r2-accept-drain
+26/34 Test #163: editor.persistence.r2-accept-drain .....   Passed    0.04 sec
+      Start 164: editor.persistence.r2-admission
+27/34 Test #164: editor.persistence.r2-admission ........   Passed    1.39 sec
+      Start 165: editor.persistence.r1-revoke
+28/34 Test #165: editor.persistence.r1-revoke ...........   Passed    0.03 sec
+      Start 166: editor.persistence.r1-recursive
+29/34 Test #166: editor.persistence.r1-recursive ........   Passed    0.03 sec
+      Start 167: editor.persistence.r1-chain
+30/34 Test #167: editor.persistence.r1-chain ............   Passed    0.08 sec
+      Start 168: editor.persistence.r1-chain-control
+31/34 Test #168: editor.persistence.r1-chain-control ....   Passed    0.08 sec
+      Start 169: editor.persistence.r1-callbacks
+32/34 Test #169: editor.persistence.r1-callbacks ........   Passed    0.03 sec
+      Start 170: editor.persistence.r1-reading
+33/34 Test #170: editor.persistence.r1-reading ..........   Passed    0.04 sec
+      Start 171: editor.persistence.r1-conflicts
+34/34 Test #171: editor.persistence.r1-conflicts ........   Passed    0.05 sec
+
+100% tests passed, 0 tests failed out of 34
+
+Label Time Summary:
+P01       =   2.27 sec*proc (2 tests)
+P01-R1    =   0.02 sec*proc (2 tests)
+P05       =  34.53 sec*proc (28 tests)
+P05-R1    =   0.33 sec*proc (7 tests)
+P05-R2    =   1.57 sec*proc (5 tests)
+P11       =   0.15 sec*proc (2 tests)
+editor    =  36.98 sec*proc (34 tests)
+native    =  36.98 sec*proc (34 tests)
+
+Total Test time (real) =  37.04 sec

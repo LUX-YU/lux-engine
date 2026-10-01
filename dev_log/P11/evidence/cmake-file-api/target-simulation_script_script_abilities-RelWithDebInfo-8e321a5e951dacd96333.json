@@ -1,0 +1,51 @@
+{
+	"backtrace" : 3,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"add_custom_target",
+			"lux_add_codegen_job",
+			"lux_script_abilities"
+		],
+		"files" : 
+		[
+			"E:/SyncForder/CodeRepos/install/P11-3bbc7312a3d1/share/lux-cxx/reflection_generator/cmake_scripts/meta.cmake",
+			"modules/function/script/core/cmake/engine_script_ability_codegen.cmake",
+			"engine/domain/simulation/builtin_systems/script/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 75,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 46,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 91,
+				"parent" : 2
+			}
+		]
+	},
+	"id" : "simulation_script_script_abilities::@347a8c359f37025215ca",
+	"name" : "simulation_script_script_abilities",
+	"paths" : 
+	{
+		"build" : "engine/domain/simulation/builtin_systems/script",
+		"source" : "engine/domain/simulation/builtin_systems/script"
+	},
+	"sources" : [],
+	"type" : "UTILITY"
+}

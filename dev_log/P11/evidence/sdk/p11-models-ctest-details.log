@@ -1,0 +1,21 @@
+Start testing: Oct 01 18:04 GMT 夏令时
+----------------------------------------------------------
+1/1 Testing: installed.p11.models
+1/1 Test: installed.p11.models
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1-sdk/p11-models/bin/p11_models.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1-sdk/p11-models/sources"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1-sdk/p11-models
+"installed.p11.models" start time: Oct 01 18:04 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS eight real decode/installation/role/publication boundaries and closed notification
+PASS real model strict source conflict and owned original selection
+PASS real three-model worker read/decode, owner installation, hidden rollback, undo/redo, IO and close
+<end of output>
+Test time =   0.55 sec
+----------------------------------------------------------
+Test Passed.
+"installed.p11.models" end time: Oct 01 18:04 GMT 夏令时
+"installed.p11.models" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Oct 01 18:04 GMT 夏令时

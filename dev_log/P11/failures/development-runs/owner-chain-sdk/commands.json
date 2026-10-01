@@ -1,0 +1,113 @@
+[
+  {
+    "name": "p11-configure-attempt-1",
+    "argv": [
+      "cmake",
+      "-S",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-p11\\cmake\\installed-consumers\\editor-p11",
+      "-B",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p11-owner-chain-sdk\\p11",
+      "-G",
+      "Ninja",
+      "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+      "-DCMAKE_CXX_STANDARD=20",
+      "-DCMAKE_CXX_EXTENSIONS=OFF",
+      "-DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/P11-dev",
+      "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+      "-DVCPKG_TARGET_TRIPLET=x64-windows",
+      "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+      "-DSDK_PREFIX=E:/SyncForder/CodeRepos/install/P11-dev"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine-p11",
+    "started": "2026-10-01T15:13:15.880216+00:00",
+    "ended": "2026-10-01T15:13:20.790774+00:00",
+    "exit_code": 1,
+    "log": "p11-configure.log",
+    "sha256": "36d0432af03bcca4f934eade4632eada4af584ee605d11d0fe7262fe0fc206fb"
+  },
+  {
+    "name": "p11-configure",
+    "argv": [
+      "cmake",
+      "-S",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-p11\\cmake\\installed-consumers\\editor-p11",
+      "-B",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p11-owner-chain-sdk\\p11",
+      "-G",
+      "Ninja",
+      "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+      "-DCMAKE_CXX_STANDARD=20",
+      "-DCMAKE_CXX_EXTENSIONS=OFF",
+      "-DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/P11-dev",
+      "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+      "-DVCPKG_TARGET_TRIPLET=x64-windows",
+      "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+      "-DSDK_PREFIX=E:/SyncForder/CodeRepos/install/P11-dev"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine-p11",
+    "started": "2026-10-01T15:13:47.175091+00:00",
+    "ended": "2026-10-01T15:13:51.672098+00:00",
+    "exit_code": 0,
+    "log": "p11-configure-1.log",
+    "sha256": "1271091aaa930f24b50d58d0e42f3e477bcbeb4c10332bd9d12a57c6462b35a3"
+  },
+  {
+    "name": "p11-build",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p11-owner-chain-sdk\\p11",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine-p11",
+    "started": "2026-10-01T15:13:51.676328+00:00",
+    "ended": "2026-10-01T15:14:16.073797+00:00",
+    "exit_code": 0,
+    "log": "p11-build.log",
+    "sha256": "054e0b105f9c5ba2819919ebeecef72b4d097e0fee51f18f6b98e92a4f6fcb1e"
+  },
+  {
+    "name": "p11-no-work",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p11-owner-chain-sdk\\p11",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine-p11",
+    "started": "2026-10-01T15:14:16.077803+00:00",
+    "ended": "2026-10-01T15:14:16.185352+00:00",
+    "exit_code": 0,
+    "log": "p11-no-work.log",
+    "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6"
+  },
+  {
+    "name": "p11-ctest",
+    "argv": [
+      "ctest",
+      "--test-dir",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p11-owner-chain-sdk\\p11",
+      "--output-on-failure",
+      "-j",
+      "1"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine-p11",
+    "started": "2026-10-01T15:14:16.189564+00:00",
+    "ended": "2026-10-01T15:14:16.417013+00:00",
+    "exit_code": 0,
+    "log": "p11-ctest.log",
+    "sha256": "e79db90372437f84b6d665448def992966ab997ee3abf40fa265765be9940936"
+  }
+]

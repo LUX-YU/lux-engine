@@ -1,0 +1,1700 @@
+{
+  "removed": [
+    {
+      "path": "editor/metadata/include/lux/engine/editor/metadata/ConfigurationValue.hpp",
+      "blob": "8fa69d54a4194bd4a82d8c8d237ddac1ecd425e5",
+      "logical_include": "lux/engine/editor/metadata/ConfigurationValue.hpp",
+      "providers": [
+        "editor_configuration"
+      ],
+      "include_consumers": [],
+      "action": "MOVED_ORIGINAL_DELETED",
+      "deadline": null,
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "ConfigurationValue",
+      "last_product_consumer": "old editor metadata/V6 tables and metadata regression consumers",
+      "replacement_step": "P12-F/G: remove final old registration consumers and corresponding target/package; retain engine runtime exports",
+      "final_path": "editor/authoring/configuration/include/lux/engine/editor/configuration/ConfigurationValue.hpp",
+      "declared_symbols": [
+        "ConfigurationValue"
+      ],
+      "target_consumers": [
+        "scene_ui",
+        "editor_metadata"
+      ]
+    },
+    {
+      "path": "editor/metadata/include/lux/engine/editor/metadata/EditorReflection.hpp",
+      "blob": "aeee3b89283706dbcb6a08a41ef02c4d9bc0cc6e",
+      "logical_include": "lux/engine/editor/metadata/EditorReflection.hpp",
+      "providers": [
+        "editor_configuration"
+      ],
+      "include_consumers": [],
+      "action": "MOVED_ORIGINAL_DELETED",
+      "deadline": null,
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "EditorReflection",
+      "last_product_consumer": "old editor metadata/V6 tables and metadata regression consumers",
+      "replacement_step": "P12-F/G: remove final old registration consumers and corresponding target/package; retain engine runtime exports",
+      "final_path": "editor/authoring/configuration/include/lux/engine/editor/configuration/EditorReflection.hpp",
+      "declared_symbols": [],
+      "target_consumers": [
+        "scene_ui",
+        "editor_metadata"
+      ]
+    },
+    {
+      "path": "editor/metadata/src/ConfigurationValue.cpp",
+      "blob": "202ff209107f8af1851fe7a291b875e9580d2e35",
+      "logical_include": null,
+      "providers": [
+        "editor_configuration"
+      ],
+      "include_consumers": [],
+      "action": "MOVED_ORIGINAL_DELETED",
+      "deadline": null,
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "ConfigurationValue",
+      "last_product_consumer": "old editor metadata/V6 tables and metadata regression consumers",
+      "replacement_step": "P12-F/G: remove final old registration consumers and corresponding target/package; retain engine runtime exports",
+      "final_path": "editor/authoring/configuration/src/ConfigurationValue.cpp",
+      "declared_symbols": [],
+      "target_consumers": [
+        "scene_ui",
+        "editor_metadata"
+      ]
+    },
+    {
+      "path": "editor/metadata/src/EditorReflection.cpp",
+      "blob": "96cb3b274c5dbe610a29b3b261ae519285468fd2",
+      "logical_include": null,
+      "providers": [
+        "editor_configuration"
+      ],
+      "include_consumers": [],
+      "action": "MOVED_ORIGINAL_DELETED",
+      "deadline": null,
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "EditorReflection",
+      "last_product_consumer": "old editor metadata/V6 tables and metadata regression consumers",
+      "replacement_step": "P12-F/G: remove final old registration consumers and corresponding target/package; retain engine runtime exports",
+      "final_path": "editor/authoring/configuration/src/EditorReflection.cpp",
+      "declared_symbols": [
+        "Lifetime"
+      ],
+      "target_consumers": [
+        "scene_ui",
+        "editor_metadata"
+      ]
+    },
+    {
+      "path": "editor/plugins/src/ConfigurationForm.hpp",
+      "blob": "97b09c3071ca1e890839ae76acc00729261ae6e1",
+      "logical_include": null,
+      "providers": [
+        "scene_ui"
+      ],
+      "include_consumers": [],
+      "action": "MOVED_ORIGINAL_DELETED",
+      "deadline": null,
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "ConfigurationForm / configurationEditor<T>",
+      "last_product_consumer": "render_feature_meta V6 table field conversion",
+      "replacement_step": "P11-D: moved one form/codec algorithm; P12-F deletes only private V6 field-layout conversion",
+      "final_path": "editor/workbench/scene/include/lux/engine/editor/scene/ConfigurationForm.hpp",
+      "declared_symbols": [
+        "Accessor",
+        "Callback",
+        "Configuration",
+        "ConfigurationForm",
+        "Control",
+        "Read",
+        "Value",
+        "Write"
+      ],
+      "target_consumers": [
+        "editor_extensions",
+        "render_feature_meta",
+        "editor_ui",
+        "editor_scene_views_test"
+      ]
+    }
+  ],
+  "p12_last_consumers": [
+    {
+      "path": "editor/app/CMakeLists.txt",
+      "blob": "eb15a4c8e2af8d0a70060ffdaf37f247575297da",
+      "logical_include": null,
+      "providers": [
+        "editor_app",
+        "lux_editor",
+        "editor_baseline_failures",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_domain",
+        "consumer_schema",
+        "consumer_schema_generate",
+        "consumer_gui",
+        "consumer_ir",
+        "consumer_ir_generate",
+        "consumer_protocol"
+      ],
+      "include_consumers": [],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "CMakeLists.txt",
+      "last_product_consumer": "lux_editor/editor_app and old protocol test executables",
+      "replacement_step": "P12-E/F/G: replace actual executable with DesktopShell/ViewHost + application open/exit; migrate same tests then delete",
+      "final_path": "editor/app/CMakeLists.txt",
+      "declared_symbols": [],
+      "target_consumers": [
+        "lux_editor",
+        "editor_baseline_failures",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_domain",
+        "consumer_gui",
+        "consumer_protocol"
+      ]
+    },
+    {
+      "path": "editor/app/README.md",
+      "blob": "7bfd2b8b8a28df06b7a529faa7d450321ff701fd",
+      "logical_include": null,
+      "providers": [
+        "editor_app"
+      ],
+      "include_consumers": [],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "README.md",
+      "last_product_consumer": "lux_editor/editor_app and old protocol test executables",
+      "replacement_step": "P12-E/F/G: replace actual executable with DesktopShell/ViewHost + application open/exit; migrate same tests then delete",
+      "final_path": "editor/app/README.md",
+      "declared_symbols": [],
+      "target_consumers": [
+        "lux_editor",
+        "editor_baseline_failures",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ]
+    },
+    {
+      "path": "editor/app/include/lux/engine/editor/Editor.hpp",
+      "blob": "47286b248b747731351ca39c4fb4b302e0bd193e",
+      "logical_include": "lux/engine/editor/Editor.hpp",
+      "providers": [
+        "editor_app"
+      ],
+      "include_consumers": [
+        "cmake/installed-consumers/editor-d2/EditorTestFactory.hpp",
+        "cmake/installed-consumers/editor-d2/SceneWorkflow.cpp",
+        "cmake/installed-consumers/editor-d2/TestExit.hpp",
+        "cmake/installed-consumers/editor-d2/closure/CMakeLists.txt",
+        "cmake/installed-consumers/editor-d2/protocol/review_regressions.cpp",
+        "editor/app/main.cpp",
+        "editor/app/pinclude/lux/engine/editor/detail/EditorImpl.hpp",
+        "editor/app/test/context_lifecycle.cpp",
+        "editor/tools/flowforge/test/flow_protocol.cpp",
+        "editor/tools/material/test/material_protocol.cpp",
+        "editor/tools/scene/test/entity_checks.hpp",
+        "examples/render-plugin/ExternalEditorTest.cpp"
+      ],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "Editor",
+      "last_product_consumer": "lux_editor/editor_app and old protocol test executables",
+      "replacement_step": "P12-E/F/G: replace actual executable with DesktopShell/ViewHost + application open/exit; migrate same tests then delete",
+      "final_path": "editor/app/include/lux/engine/editor/Editor.hpp",
+      "declared_symbols": [
+        "Editor",
+        "EditorConfig",
+        "EditorContext",
+        "EditorTestAccess",
+        "EditorTestFactory",
+        "Impl"
+      ],
+      "target_consumers": [
+        "lux_editor",
+        "editor_baseline_failures",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ]
+    },
+    {
+      "path": "editor/app/include/lux/engine/editor/WindowSpec.hpp",
+      "blob": "cfb42622e4a8eca58b712b2bdbbbc1c1d7cc85d1",
+      "logical_include": "lux/engine/editor/WindowSpec.hpp",
+      "providers": [
+        "editor_app"
+      ],
+      "include_consumers": [
+        "editor/app/include/lux/engine/editor/Editor.hpp"
+      ],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "WindowSpec",
+      "last_product_consumer": "lux_editor/editor_app and old protocol test executables",
+      "replacement_step": "P12-E/F/G: replace actual executable with DesktopShell/ViewHost + application open/exit; migrate same tests then delete",
+      "final_path": "editor/app/include/lux/engine/editor/WindowSpec.hpp",
+      "declared_symbols": [
+        "WindowFontSpec",
+        "WindowSpec"
+      ],
+      "target_consumers": [
+        "lux_editor",
+        "editor_baseline_failures",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ]
+    },
+    {
+      "path": "editor/app/main.cpp",
+      "blob": "fa815717d2d6988941c60839f02764a4ea227f30",
+      "logical_include": null,
+      "providers": [
+        "lux_editor"
+      ],
+      "include_consumers": [],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "main",
+      "last_product_consumer": "lux_editor/editor_app and old protocol test executables",
+      "replacement_step": "P12-E/F/G: replace actual executable with DesktopShell/ViewHost + application open/exit; migrate same tests then delete",
+      "final_path": "editor/app/main.cpp",
+      "declared_symbols": [],
+      "target_consumers": []
+    },
+    {
+      "path": "editor/app/pinclude/lux/engine/editor/detail/EditorImpl.hpp",
+      "blob": "2352232b6787be32bd62f4bfc09d3af2e154c8fa",
+      "logical_include": null,
+      "providers": [
+        "editor_app"
+      ],
+      "include_consumers": [],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "EditorImpl",
+      "last_product_consumer": "lux_editor/editor_app and old protocol test executables",
+      "replacement_step": "P12-E/F/G: replace actual executable with DesktopShell/ViewHost + application open/exit; migrate same tests then delete",
+      "final_path": "editor/app/pinclude/lux/engine/editor/detail/EditorImpl.hpp",
+      "declared_symbols": [
+        "CloseIntent",
+        "Editor",
+        "MenuCall"
+      ],
+      "target_consumers": [
+        "lux_editor",
+        "editor_baseline_failures",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ]
+    },
+    {
+      "path": "editor/app/pinclude/lux/engine/editor/detail/EditorTestAccess.hpp",
+      "blob": "5c6bd6b1b12fd27812003881b11704e3a0ac3135",
+      "logical_include": null,
+      "providers": [
+        "editor_app"
+      ],
+      "include_consumers": [],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "EditorTestAccess",
+      "last_product_consumer": "lux_editor/editor_app and old protocol test executables",
+      "replacement_step": "P12-E/F/G: replace actual executable with DesktopShell/ViewHost + application open/exit; migrate same tests then delete",
+      "final_path": "editor/app/pinclude/lux/engine/editor/detail/EditorTestAccess.hpp",
+      "declared_symbols": [
+        "EditorTestAccess"
+      ],
+      "target_consumers": [
+        "lux_editor",
+        "editor_baseline_failures",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ]
+    },
+    {
+      "path": "editor/app/pinclude/lux/engine/editor/detail/EditorWorkspace.hpp",
+      "blob": "96bffb2d210f59c9fbdd303ba40dd8d4f49acefc",
+      "logical_include": null,
+      "providers": [
+        "editor_app"
+      ],
+      "include_consumers": [],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "EditorWorkspace",
+      "last_product_consumer": "lux_editor/editor_app and old protocol test executables",
+      "replacement_step": "P12-E/F/G: replace actual executable with DesktopShell/ViewHost + application open/exit; migrate same tests then delete",
+      "final_path": "editor/app/pinclude/lux/engine/editor/detail/EditorWorkspace.hpp",
+      "declared_symbols": [
+        "WorkspaceData"
+      ],
+      "target_consumers": [
+        "lux_editor",
+        "editor_baseline_failures",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ]
+    },
+    {
+      "path": "editor/app/product/ProductAssembly.cpp",
+      "blob": "e9f408641e0610fe0738acbb36e58b24ff062fa6",
+      "logical_include": null,
+      "providers": [
+        "lux_editor"
+      ],
+      "include_consumers": [],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "productAssembly/product pane/asset registration",
+      "last_product_consumer": "old lux_editor executable only",
+      "replacement_step": "P12-D/F: formal builtin content/view contributions and application services; delete old assembly",
+      "final_path": "editor/app/product/ProductAssembly.cpp",
+      "declared_symbols": [
+        "Tool",
+        "ToolType"
+      ],
+      "target_consumers": []
+    },
+    {
+      "path": "editor/app/product/ProductAssembly.hpp",
+      "blob": "1f9a51325bc49adc5906341610ef1cd1165cbe6b",
+      "logical_include": null,
+      "providers": [
+        "editor_app"
+      ],
+      "include_consumers": [],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "ProductAssembly",
+      "last_product_consumer": "lux_editor/editor_app and old protocol test executables",
+      "replacement_step": "P12-E/F/G: replace actual executable with DesktopShell/ViewHost + application open/exit; migrate same tests then delete",
+      "final_path": "editor/app/product/ProductAssembly.hpp",
+      "declared_symbols": [
+        "EditorContext",
+        "Root"
+      ],
+      "target_consumers": [
+        "lux_editor",
+        "editor_baseline_failures",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ]
+    },
+    {
+      "path": "editor/app/product/ProductCommands.cpp",
+      "blob": "808f59e04ca3fa6fe3ad226095d34695547142cf",
+      "logical_include": null,
+      "providers": [
+        "lux_editor"
+      ],
+      "include_consumers": [],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "ProjectCommands/rememberProject/newAsset/productCommands",
+      "last_product_consumer": "old lux_editor executable only",
+      "replacement_step": "P12-B/D/E: explicit OpenAndShow, project commands, recent-project persistence and Exit; remove old Context closures",
+      "final_path": "editor/app/product/ProductCommands.cpp",
+      "declared_symbols": [
+        "ProjectCommands",
+        "Tool"
+      ],
+      "target_consumers": []
+    },
+    {
+      "path": "editor/app/product/ProductCommands.hpp",
+      "blob": "880d474621d841221d314c5a21914edd80d283ff",
+      "logical_include": null,
+      "providers": [
+        "editor_app"
+      ],
+      "include_consumers": [],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "ProductCommands",
+      "last_product_consumer": "lux_editor/editor_app and old protocol test executables",
+      "replacement_step": "P12-E/F/G: replace actual executable with DesktopShell/ViewHost + application open/exit; migrate same tests then delete",
+      "final_path": "editor/app/product/ProductCommands.hpp",
+      "declared_symbols": [
+        "EditorContext"
+      ],
+      "target_consumers": [
+        "lux_editor",
+        "editor_baseline_failures",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ]
+    },
+    {
+      "path": "editor/app/src/Editor.cpp",
+      "blob": "fdc71d2c685538014428ed6e1e9cfab737ff6931",
+      "logical_include": null,
+      "providers": [
+        "editor_app"
+      ],
+      "include_consumers": [],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "Editor",
+      "last_product_consumer": "lux_editor/editor_app and old protocol test executables",
+      "replacement_step": "P12-E/F/G: replace actual executable with DesktopShell/ViewHost + application open/exit; migrate same tests then delete",
+      "final_path": "editor/app/src/Editor.cpp",
+      "declared_symbols": [],
+      "target_consumers": [
+        "lux_editor",
+        "editor_baseline_failures",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ]
+    },
+    {
+      "path": "editor/app/src/EditorLoop.cpp",
+      "blob": "65a9c36bf6f6ed9ee88ba81f878f5428087e698e",
+      "logical_include": null,
+      "providers": [
+        "editor_app"
+      ],
+      "include_consumers": [],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "EditorLoop",
+      "last_product_consumer": "lux_editor/editor_app and old protocol test executables",
+      "replacement_step": "P12-E/F/G: replace actual executable with DesktopShell/ViewHost + application open/exit; migrate same tests then delete",
+      "final_path": "editor/app/src/EditorLoop.cpp",
+      "declared_symbols": [],
+      "target_consumers": [
+        "lux_editor",
+        "editor_baseline_failures",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ]
+    },
+    {
+      "path": "editor/app/src/EditorMenu.cpp",
+      "blob": "e45ec66b2ddceaf5c16bdf790220d5948651d531",
+      "logical_include": null,
+      "providers": [
+        "editor_app"
+      ],
+      "include_consumers": [],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "Editor::Impl::menu/openMenu/executeMenuCommand",
+      "last_product_consumer": "old lux_editor and baseline C03 probe",
+      "replacement_step": "P11-F local registration pin fixes live C03; P12-E/F delete entire old menu after formal Shell switch",
+      "final_path": "editor/app/src/EditorMenu.cpp",
+      "declared_symbols": [],
+      "target_consumers": [
+        "lux_editor",
+        "editor_baseline_failures",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ]
+    },
+    {
+      "path": "editor/app/src/EditorPlatform.cpp",
+      "blob": "56ec3221b6d176a89a22d859691b0f2d1847e6b1",
+      "logical_include": null,
+      "providers": [
+        "editor_app"
+      ],
+      "include_consumers": [],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "EditorPlatform",
+      "last_product_consumer": "lux_editor/editor_app and old protocol test executables",
+      "replacement_step": "P12-E/F/G: replace actual executable with DesktopShell/ViewHost + application open/exit; migrate same tests then delete",
+      "final_path": "editor/app/src/EditorPlatform.cpp",
+      "declared_symbols": [],
+      "target_consumers": [
+        "lux_editor",
+        "editor_baseline_failures",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ]
+    },
+    {
+      "path": "editor/app/src/EditorStartup.cpp",
+      "blob": "7ef35d6042cd22ae87eac8bd75c50e54b76ca788",
+      "logical_include": null,
+      "providers": [
+        "editor_app"
+      ],
+      "include_consumers": [],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "EditorStartup",
+      "last_product_consumer": "lux_editor/editor_app and old protocol test executables",
+      "replacement_step": "P12-E/F/G: replace actual executable with DesktopShell/ViewHost + application open/exit; migrate same tests then delete",
+      "final_path": "editor/app/src/EditorStartup.cpp",
+      "declared_symbols": [],
+      "target_consumers": [
+        "lux_editor",
+        "editor_baseline_failures",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ]
+    },
+    {
+      "path": "editor/app/src/EditorTestAccess.cpp",
+      "blob": "9b1f0ad17cb4b1b951a843b61c93feb186b254bd",
+      "logical_include": null,
+      "providers": [
+        "editor_app"
+      ],
+      "include_consumers": [],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "EditorTestAccess",
+      "last_product_consumer": "lux_editor/editor_app and old protocol test executables",
+      "replacement_step": "P12-E/F/G: replace actual executable with DesktopShell/ViewHost + application open/exit; migrate same tests then delete",
+      "final_path": "editor/app/src/EditorTestAccess.cpp",
+      "declared_symbols": [],
+      "target_consumers": [
+        "lux_editor",
+        "editor_baseline_failures",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ]
+    },
+    {
+      "path": "editor/app/src/EditorWorkspace.cpp",
+      "blob": "56a92e3d6d9c122c99b61764d47a0aa001218285",
+      "logical_include": null,
+      "providers": [
+        "editor_app"
+      ],
+      "include_consumers": [],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "EditorWorkspace",
+      "last_product_consumer": "lux_editor/editor_app and old protocol test executables",
+      "replacement_step": "P12-E/F/G: replace actual executable with DesktopShell/ViewHost + application open/exit; migrate same tests then delete",
+      "final_path": "editor/app/src/EditorWorkspace.cpp",
+      "declared_symbols": [],
+      "target_consumers": [
+        "lux_editor",
+        "editor_baseline_failures",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ]
+    },
+    {
+      "path": "editor/app/src/EditorWorkspaceStorage.cpp",
+      "blob": "1b144097f2376b9bb063b3312a699719b051e21c",
+      "logical_include": null,
+      "providers": [
+        "editor_app"
+      ],
+      "include_consumers": [],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "EditorWorkspaceStorage",
+      "last_product_consumer": "lux_editor/editor_app and old protocol test executables",
+      "replacement_step": "P12-E/F/G: replace actual executable with DesktopShell/ViewHost + application open/exit; migrate same tests then delete",
+      "final_path": "editor/app/src/EditorWorkspaceStorage.cpp",
+      "declared_symbols": [],
+      "target_consumers": [
+        "lux_editor",
+        "editor_baseline_failures",
+        "editor_context_lifecycle",
+        "editor_material_protocol",
+        "editor_flow_protocol",
+        "editor_review_regressions",
+        "editor_core_protocol",
+        "consumer_protocol"
+      ]
+    },
+    {
+      "path": "editor/app/test/baseline_failures.cpp",
+      "blob": "c014d0d077ad08a10585f6704b0cd09896eb3b8e",
+      "logical_include": null,
+      "providers": [
+        "editor_baseline_failures"
+      ],
+      "include_consumers": [],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "baseline_failures",
+      "last_product_consumer": "lux_editor/editor_app and old protocol test executables",
+      "replacement_step": "P12-E/F/G: replace actual executable with DesktopShell/ViewHost + application open/exit; migrate same tests then delete",
+      "final_path": "editor/app/test/baseline_failures.cpp",
+      "declared_symbols": [
+        "CodePin",
+        "QueryFacts"
+      ],
+      "target_consumers": []
+    },
+    {
+      "path": "editor/app/test/context_lifecycle.cpp",
+      "blob": "157e7020327997db6e53b2dcb9614e273cbfaba9",
+      "logical_include": null,
+      "providers": [
+        "editor_context_lifecycle"
+      ],
+      "include_consumers": [],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "context_lifecycle",
+      "last_product_consumer": "lux_editor/editor_app and old protocol test executables",
+      "replacement_step": "P12-E/F/G: replace actual executable with DesktopShell/ViewHost + application open/exit; migrate same tests then delete",
+      "final_path": "editor/app/test/context_lifecycle.cpp",
+      "declared_symbols": [
+        "ExtraPane"
+      ],
+      "target_consumers": []
+    },
+    {
+      "path": "editor/context/CMakeLists.txt",
+      "blob": "84d41c8cfef3d82357a11df4729bccb71ecd76e1",
+      "logical_include": null,
+      "providers": [
+        "editor_context"
+      ],
+      "include_consumers": [],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "CMakeLists.txt",
+      "last_product_consumer": "Editor/old tools/launcher/settings (EditorContext and PaneManager product protocol)",
+      "replacement_step": "P12-B/C/D/F: formal activities own content, ViewHost owns windows, Workspace formal plan; delete old Context/PaneManager",
+      "final_path": "editor/context/CMakeLists.txt",
+      "declared_symbols": [],
+      "target_consumers": [
+        "editor_ui",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_project_tools",
+        "editor_settings",
+        "editor_app"
+      ]
+    },
+    {
+      "path": "editor/context/README.md",
+      "blob": "073a301adca35fafce19f46190a037f3e7c179ce",
+      "logical_include": null,
+      "providers": [
+        "editor_context"
+      ],
+      "include_consumers": [],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "README.md",
+      "last_product_consumer": "Editor/old tools/launcher/settings (EditorContext and PaneManager product protocol)",
+      "replacement_step": "P12-B/C/D/F: formal activities own content, ViewHost owns windows, Workspace formal plan; delete old Context/PaneManager",
+      "final_path": "editor/context/README.md",
+      "declared_symbols": [],
+      "target_consumers": [
+        "editor_ui",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_project_tools",
+        "editor_settings",
+        "editor_app"
+      ]
+    },
+    {
+      "path": "editor/context/include/lux/engine/editor/EditorContext.hpp",
+      "blob": "3ce62b80f93b06b09e379250bb8f9bdb19072e1f",
+      "logical_include": "lux/engine/editor/EditorContext.hpp",
+      "providers": [
+        "editor_context"
+      ],
+      "include_consumers": [
+        "cmake/installed-consumers/editor-d2/SceneWorkflow.cpp",
+        "cmake/installed-consumers/editor-d2/TestAssembly.hpp",
+        "cmake/installed-consumers/editor-d2/protocol/review_regressions.cpp",
+        "dev_log/P10Q/logs/public-headers/header-00.cpp",
+        "editor/app/pinclude/lux/engine/editor/detail/EditorImpl.hpp",
+        "editor/app/product/ProductAssembly.cpp",
+        "editor/app/product/ProductCommands.cpp",
+        "editor/app/test/context_lifecycle.cpp",
+        "editor/context/sinclude/lux/engine/editor/detail/EditorContextStartup.hpp",
+        "editor/tools/flowforge/pinclude/lux/engine/editor/flowforge/FlowForgeEditorImpl.hpp",
+        "editor/tools/flowforge/test/flow_protocol.cpp",
+        "editor/tools/material/pinclude/lux/engine/editor/material/MaterialEditorImpl.hpp",
+        "editor/tools/material/test/material_protocol.cpp",
+        "editor/tools/project/include/lux/engine/editor/project/ProjectPane.hpp",
+        "editor/tools/scene/pinclude/lux/engine/editor/scene/detail/SceneEditorImpl.hpp",
+        "editor/tools/scene/src/ui/SceneCreationPane.cpp",
+        "editor/tools/settings/pinclude/lux/engine/editor/settings/detail/PluginSettingsElement.hpp",
+        "editor/ui/src/TaskPane.cpp",
+        "examples/render-plugin/ExternalEditorTest.cpp"
+      ],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "EditorContext",
+      "last_product_consumer": "Editor/old tools/launcher/settings (EditorContext and PaneManager product protocol)",
+      "replacement_step": "P12-B/C/D/F: formal activities own content, ViewHost owns windows, Workspace formal plan; delete old Context/PaneManager",
+      "final_path": "editor/context/include/lux/engine/editor/EditorContext.hpp",
+      "declared_symbols": [
+        "AssetImporter",
+        "ComponentEditorRegistry",
+        "ConfigurationEditorRegistration",
+        "EditorContext",
+        "EditorContextAccess",
+        "EngineContext",
+        "ExecutionRuntime",
+        "Impl",
+        "PluginManager",
+        "ProjectStorage",
+        "RenderResources",
+        "RenderRuntime",
+        "SceneRegistrations",
+        "TaskMonitor",
+        "detail"
+      ],
+      "target_consumers": [
+        "editor_ui",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_project_tools",
+        "editor_settings",
+        "editor_app"
+      ]
+    },
+    {
+      "path": "editor/context/include/lux/engine/editor/PaneManager.hpp",
+      "blob": "9967b9fe4ae68dd67b7cd1256bfae73da923060f",
+      "logical_include": "lux/engine/editor/PaneManager.hpp",
+      "providers": [
+        "editor_context"
+      ],
+      "include_consumers": [
+        "editor/context/include/lux/engine/editor/EditorContext.hpp",
+        "editor/context/src/PaneManager.cpp",
+        "examples/render-plugin/ExternalEditor.cpp"
+      ],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "PaneManager",
+      "last_product_consumer": "Editor/old tools/launcher/settings (EditorContext and PaneManager product protocol)",
+      "replacement_step": "P12-B/C/D/F: formal activities own content, ViewHost owns windows, Workspace formal plan; delete old Context/PaneManager",
+      "final_path": "editor/context/include/lux/engine/editor/PaneManager.hpp",
+      "declared_symbols": [
+        "EditorContext",
+        "PaneManager"
+      ],
+      "target_consumers": [
+        "editor_ui",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_project_tools",
+        "editor_settings",
+        "editor_app"
+      ]
+    },
+    {
+      "path": "editor/context/include/lux/engine/editor/WorkspaceRequest.hpp",
+      "blob": "9a3cc34c7a8bb4f8de0d74cecf6074a05d6e2367",
+      "logical_include": "lux/engine/editor/WorkspaceRequest.hpp",
+      "providers": [
+        "editor_context"
+      ],
+      "include_consumers": [
+        "editor/app/pinclude/lux/engine/editor/detail/EditorWorkspace.hpp",
+        "editor/tools/scene/test/workspace_checks.hpp",
+        "editor/tools/settings/src/SettingPane.cpp"
+      ],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "WorkspaceRequest",
+      "last_product_consumer": "Editor/old tools/launcher/settings (EditorContext and PaneManager product protocol)",
+      "replacement_step": "P12-B/C/D/F: formal activities own content, ViewHost owns windows, Workspace formal plan; delete old Context/PaneManager",
+      "final_path": "editor/context/include/lux/engine/editor/WorkspaceRequest.hpp",
+      "declared_symbols": [
+        "EWorkspaceAction",
+        "WorkspaceRequest"
+      ],
+      "target_consumers": [
+        "editor_ui",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_project_tools",
+        "editor_settings",
+        "editor_app"
+      ]
+    },
+    {
+      "path": "editor/context/sinclude/lux/engine/editor/detail/EditorContextStartup.hpp",
+      "blob": "9f1b674b8b907f10aa9a774f6ac5fa0e537ba5c1",
+      "logical_include": null,
+      "providers": [
+        "editor_context"
+      ],
+      "include_consumers": [],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "EditorContextStartup",
+      "last_product_consumer": "Editor/old tools/launcher/settings (EditorContext and PaneManager product protocol)",
+      "replacement_step": "P12-B/C/D/F: formal activities own content, ViewHost owns windows, Workspace formal plan; delete old Context/PaneManager",
+      "final_path": "editor/context/sinclude/lux/engine/editor/detail/EditorContextStartup.hpp",
+      "declared_symbols": [
+        "EditorContextAccess",
+        "EditorContextCreateInfo"
+      ],
+      "target_consumers": [
+        "editor_ui",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_project_tools",
+        "editor_settings",
+        "editor_app"
+      ]
+    },
+    {
+      "path": "editor/context/src/EditorContext.cpp",
+      "blob": "9969a31903049693256bf051a7b5a8462e9c2d0b",
+      "logical_include": null,
+      "providers": [
+        "editor_context"
+      ],
+      "include_consumers": [],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "EditorContext",
+      "last_product_consumer": "Editor/old tools/launcher/settings (EditorContext and PaneManager product protocol)",
+      "replacement_step": "P12-B/C/D/F: formal activities own content, ViewHost owns windows, Workspace formal plan; delete old Context/PaneManager",
+      "final_path": "editor/context/src/EditorContext.cpp",
+      "declared_symbols": [
+        "EditorContext",
+        "Scheduler",
+        "Work"
+      ],
+      "target_consumers": [
+        "editor_ui",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_project_tools",
+        "editor_settings",
+        "editor_app"
+      ]
+    },
+    {
+      "path": "editor/context/src/PaneManager.cpp",
+      "blob": "96b94a98e638def2617b2f9551a6010bb6efc4e4",
+      "logical_include": null,
+      "providers": [
+        "editor_context"
+      ],
+      "include_consumers": [],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "PaneManager",
+      "last_product_consumer": "Editor/old tools/launcher/settings (EditorContext and PaneManager product protocol)",
+      "replacement_step": "P12-B/C/D/F: formal activities own content, ViewHost owns windows, Workspace formal plan; delete old Context/PaneManager",
+      "final_path": "editor/context/src/PaneManager.cpp",
+      "declared_symbols": [],
+      "target_consumers": [
+        "editor_ui",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_project_tools",
+        "editor_settings",
+        "editor_app"
+      ]
+    },
+    {
+      "path": "editor/metadata/CMakeLists.txt",
+      "blob": "dde2754f03a64ca1a9be7162f3bf52e86eeb5734",
+      "logical_include": null,
+      "providers": [
+        "editor_metadata",
+        "plugin_configuration_test",
+        "plugin_library_test"
+      ],
+      "include_consumers": [],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "CMakeLists.txt",
+      "last_product_consumer": "old editor metadata/V6 tables and metadata regression consumers",
+      "replacement_step": "P12-F/G: remove final old registration consumers and corresponding target/package; retain engine runtime exports",
+      "final_path": "editor/metadata/CMakeLists.txt",
+      "declared_symbols": [],
+      "target_consumers": [
+        "plugin_configuration_test",
+        "plugin_library_test",
+        "scene_render_meta",
+        "render_feature_meta",
+        "physics2d_editor",
+        "editor_context",
+        "editor_ui",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_app"
+      ]
+    },
+    {
+      "path": "editor/metadata/README.md",
+      "blob": "9dbc0f7e56dc0878b8f27d7410ac64b8a5001cb2",
+      "logical_include": null,
+      "providers": [
+        "editor_metadata"
+      ],
+      "include_consumers": [],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "README.md",
+      "last_product_consumer": "old editor metadata/V6 tables and metadata regression consumers",
+      "replacement_step": "P12-F/G: remove final old registration consumers and corresponding target/package; retain engine runtime exports",
+      "final_path": "editor/metadata/README.md",
+      "declared_symbols": [],
+      "target_consumers": [
+        "plugin_configuration_test",
+        "plugin_library_test",
+        "scene_render_meta",
+        "render_feature_meta",
+        "physics2d_editor",
+        "editor_context",
+        "editor_ui",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_app"
+      ]
+    },
+    {
+      "path": "editor/metadata/include/lux/engine/editor/metadata/AssetEditorRegistration.hpp",
+      "blob": "3c067b76127d6716623d5906592c2972be55b9f2",
+      "logical_include": "lux/engine/editor/metadata/AssetEditorRegistration.hpp",
+      "providers": [
+        "editor_metadata"
+      ],
+      "include_consumers": [
+        "editor/context/include/lux/engine/editor/EditorContext.hpp",
+        "editor/metadata/include/lux/engine/editor/metadata/EditorPluginExports.hpp",
+        "editor/tools/flowforge/src/FlowForgeEditor.cpp",
+        "editor/tools/material/src/MaterialEditor.cpp",
+        "editor/tools/scene/src/SceneEditor.cpp"
+      ],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "AssetEditorRegistration / OpenRequest / LoadRequest",
+      "last_product_consumer": "EditorContext::openAsset, old SceneEditor/MaterialEditor/FlowForgeEditor factory registration",
+      "replacement_step": "P12-B: OpenAndShow uses SessionFactorySnapshot + ViewFactorySnapshot; then remove old types",
+      "final_path": "editor/metadata/include/lux/engine/editor/metadata/AssetEditorRegistration.hpp",
+      "declared_symbols": [
+        "AssetEditorQuery",
+        "AssetEditorRegistration",
+        "ProjectAssetEntry"
+      ],
+      "target_consumers": [
+        "plugin_configuration_test",
+        "plugin_library_test",
+        "scene_render_meta",
+        "render_feature_meta",
+        "physics2d_editor",
+        "editor_context",
+        "editor_ui",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_app"
+      ]
+    },
+    {
+      "path": "editor/metadata/include/lux/engine/editor/metadata/CommandRegistration.hpp",
+      "blob": "6bffa29cef2ce5b454d2ce8f34be78ae1cbb7bda",
+      "logical_include": "lux/engine/editor/metadata/CommandRegistration.hpp",
+      "providers": [
+        "editor_metadata"
+      ],
+      "include_consumers": [
+        "editor/app/test/baseline_failures.cpp",
+        "editor/context/include/lux/engine/editor/EditorContext.hpp",
+        "editor/metadata/include/lux/engine/editor/metadata/EditorPluginExports.hpp"
+      ],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "CommandRegistration::invoke / ECommandPhase",
+      "last_product_consumer": "EditorContext::setCommands, EditorMenu, ProductCommands",
+      "replacement_step": "P12-E/F: switch old executable to CommandRegistry/CommandMenu; delete invoke table",
+      "final_path": "editor/metadata/include/lux/engine/editor/metadata/CommandRegistration.hpp",
+      "declared_symbols": [
+        "CommandRegistration",
+        "EditorContext"
+      ],
+      "target_consumers": [
+        "plugin_configuration_test",
+        "plugin_library_test",
+        "scene_render_meta",
+        "render_feature_meta",
+        "physics2d_editor",
+        "editor_context",
+        "editor_ui",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_app"
+      ]
+    },
+    {
+      "path": "editor/metadata/include/lux/engine/editor/metadata/ComponentEditorRegistry.hpp",
+      "blob": "c935ad203434b128ef5b6a82cd778a216b7dd775",
+      "logical_include": "lux/engine/editor/metadata/ComponentEditorRegistry.hpp",
+      "providers": [
+        "editor_metadata"
+      ],
+      "include_consumers": [
+        "editor/context/sinclude/lux/engine/editor/detail/EditorContextStartup.hpp",
+        "editor/metadata/include/lux/engine/editor/metadata/EditorPluginExports.hpp",
+        "editor/metadata/src/ComponentEditorRegistry.cpp",
+        "editor/tools/scene/pinclude/lux/engine/editor/ui/scene/InspectorElement.hpp",
+        "editor/ui/include/lux/engine/editor/ui/ComponentEditors.hpp"
+      ],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "ComponentEditorRegistration / ComponentEditorRegistry",
+      "last_product_consumer": "EditorContext::initialize, old InspectorPane / generated legacy inspection factories",
+      "replacement_step": "P12-D/G: use formal InspectorComponent + InspectorFields everywhere; delete Registry",
+      "final_path": "editor/metadata/include/lux/engine/editor/metadata/ComponentEditorRegistry.hpp",
+      "declared_symbols": [
+        "ComponentEditorRegistration",
+        "ComponentEditorRegistry",
+        "Element",
+        "ElementIdTag",
+        "Impl",
+        "InspectorInteraction",
+        "SceneEditing"
+      ],
+      "target_consumers": [
+        "plugin_configuration_test",
+        "plugin_library_test",
+        "scene_render_meta",
+        "render_feature_meta",
+        "physics2d_editor",
+        "editor_context",
+        "editor_ui",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_app"
+      ]
+    },
+    {
+      "path": "editor/metadata/include/lux/engine/editor/metadata/EditorPlugin.hpp",
+      "blob": "5b862ae724f3a481be9ea84e569231c35fcc5d1d",
+      "logical_include": "lux/engine/editor/metadata/EditorPlugin.hpp",
+      "providers": [
+        "editor_metadata"
+      ],
+      "include_consumers": [
+        "editor/context/src/EditorContext.cpp",
+        "editor/launcher/src/ProjectCreationPane.cpp",
+        "editor/metadata/src/EditorPlugin.cpp",
+        "editor/metadata/test/plugin.cpp",
+        "editor/ui/test/scene_configuration.cpp"
+      ],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "EditorPlugin/loadEditorPlugins",
+      "last_product_consumer": "EditorContext startup/updatePlugins, metadata plugin regression",
+      "replacement_step": "P12-E/F: application loads EditorExtension V7 only; remove V6 loader",
+      "final_path": "editor/metadata/include/lux/engine/editor/metadata/EditorPlugin.hpp",
+      "declared_symbols": [
+        "EditorPlugin"
+      ],
+      "target_consumers": [
+        "plugin_configuration_test",
+        "plugin_library_test",
+        "scene_render_meta",
+        "render_feature_meta",
+        "physics2d_editor",
+        "editor_context",
+        "editor_ui",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_app"
+      ]
+    },
+    {
+      "path": "editor/metadata/include/lux/engine/editor/metadata/EditorPluginExports.hpp",
+      "blob": "984533be8d931a980584908d9b2a5aa304756ee5",
+      "logical_include": "lux/engine/editor/metadata/EditorPluginExports.hpp",
+      "providers": [
+        "editor_metadata"
+      ],
+      "include_consumers": [
+        "editor/metadata/include/lux/engine/editor/metadata/EditorPlugin.hpp",
+        "editor/metadata/test/configuration.cpp",
+        "editor/plugins/src/Physics2DEditorExports.cpp",
+        "editor/plugins/src/RenderFeatureEditorExports.cpp",
+        "editor/plugins/src/RenderSystemEditorExports.cpp",
+        "editor/tools/scene/test/core_protocol.cpp",
+        "editor/ui/include/lux/engine/editor/ui/SceneConfigurationElement.hpp",
+        "examples/render-plugin/ExternalEditor.cpp"
+      ],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "ConfigurationEditorRegistration / EditorPluginExports V6 fields",
+      "last_product_consumer": "EditorContext; three old editor sidecars; old installed external-feature test",
+      "replacement_step": "P12-F/G: switch sidecars/export and legacy consumers, delete V6 production header/symbol",
+      "final_path": "editor/metadata/include/lux/engine/editor/metadata/EditorPluginExports.hpp",
+      "declared_symbols": [
+        "ConfigurationEditorRegistration",
+        "ConfigurationValue",
+        "EditorPluginExports",
+        "belongs"
+      ],
+      "target_consumers": [
+        "plugin_configuration_test",
+        "plugin_library_test",
+        "scene_render_meta",
+        "render_feature_meta",
+        "physics2d_editor",
+        "editor_context",
+        "editor_ui",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_app"
+      ]
+    },
+    {
+      "path": "editor/metadata/include/lux/engine/editor/metadata/PaneRegistration.hpp",
+      "blob": "cc66fc8810e3831f166b4c6dce68c3ee85dad96e",
+      "logical_include": "lux/engine/editor/metadata/PaneRegistration.hpp",
+      "providers": [
+        "editor_metadata"
+      ],
+      "include_consumers": [
+        "editor/context/include/lux/engine/editor/PaneManager.hpp",
+        "editor/metadata/include/lux/engine/editor/metadata/AssetEditorRegistration.hpp"
+      ],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "PaneRegistration",
+      "last_product_consumer": "PaneManager, ProductAssembly and settings/asset picker construction",
+      "replacement_step": "P12-D/F: ViewFactorySnapshot + ViewHost; delete old registry",
+      "final_path": "editor/metadata/include/lux/engine/editor/metadata/PaneRegistration.hpp",
+      "declared_symbols": [
+        "Pane",
+        "PaneManager",
+        "PaneRegistration"
+      ],
+      "target_consumers": [
+        "plugin_configuration_test",
+        "plugin_library_test",
+        "scene_render_meta",
+        "render_feature_meta",
+        "physics2d_editor",
+        "editor_context",
+        "editor_ui",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_app"
+      ]
+    },
+    {
+      "path": "editor/metadata/include/lux/engine/editor/metadata/PaneState.hpp",
+      "blob": "7c93a9d9bbb81d9895fd3e6896dc26c628ed00cd",
+      "logical_include": "lux/engine/editor/metadata/PaneState.hpp",
+      "providers": [
+        "editor_metadata"
+      ],
+      "include_consumers": [
+        "editor/app/pinclude/lux/engine/editor/detail/EditorWorkspace.hpp",
+        "editor/app/src/EditorMenu.cpp",
+        "editor/metadata/include/lux/engine/editor/metadata/PaneRegistration.hpp",
+        "editor/tools/scene/test/workspace_checks.hpp"
+      ],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "PaneState",
+      "last_product_consumer": "old Workspace/PaneManager/settings layout persistence",
+      "replacement_step": "P12-C/G: formal Layout/Recovery + ViewHost bindings replace old view metadata",
+      "final_path": "editor/metadata/include/lux/engine/editor/metadata/PaneState.hpp",
+      "declared_symbols": [
+        "FinishEditingRequest",
+        "PaneState"
+      ],
+      "target_consumers": [
+        "plugin_configuration_test",
+        "plugin_library_test",
+        "scene_render_meta",
+        "render_feature_meta",
+        "physics2d_editor",
+        "editor_context",
+        "editor_ui",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_app"
+      ]
+    },
+    {
+      "path": "editor/metadata/include/lux/engine/editor/metadata/SceneRegistrations.hpp",
+      "blob": "1cd6785bdc9c5c0463024271c9970b50d745fe62",
+      "logical_include": "lux/engine/editor/metadata/SceneRegistrations.hpp",
+      "providers": [
+        "editor_metadata"
+      ],
+      "include_consumers": [
+        "editor/context/src/EditorContext.cpp",
+        "editor/metadata/src/SceneRegistrations.cpp",
+        "editor/tools/material/pinclude/lux/engine/editor/material/MaterialEditorImpl.hpp",
+        "editor/tools/material/test/MaterialEditorTestAccess.hpp",
+        "editor/tools/scene/pinclude/lux/engine/editor/scene/detail/SceneEditorImpl.hpp",
+        "editor/tools/scene/src/SceneOpening.cpp",
+        "editor/tools/scene/test/SceneEditorTestAccess.hpp",
+        "editor/ui/include/lux/engine/editor/ui/SceneConfigurationElement.hpp"
+      ],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "SceneRegistrations / sceneRegistrations",
+      "last_product_consumer": "EditorContext, old SceneEditor, ProjectCreationPane",
+      "replacement_step": "P12-E/F: application assembles runtime registrations from engine PluginLibrary; no new inner dependency on this old aggregate",
+      "final_path": "editor/metadata/include/lux/engine/editor/metadata/SceneRegistrations.hpp",
+      "declared_symbols": [
+        "PluginLibrary",
+        "SceneRegistrations"
+      ],
+      "target_consumers": [
+        "plugin_configuration_test",
+        "plugin_library_test",
+        "scene_render_meta",
+        "render_feature_meta",
+        "physics2d_editor",
+        "editor_context",
+        "editor_ui",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_app"
+      ]
+    },
+    {
+      "path": "editor/metadata/src/ComponentEditorRegistry.cpp",
+      "blob": "c25bf515d6bdb7efb10eea2ebe1987513ef0176c",
+      "logical_include": null,
+      "providers": [
+        "editor_metadata"
+      ],
+      "include_consumers": [],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "ComponentEditorRegistry::create/find",
+      "last_product_consumer": "EditorContext and old SceneEditor editing/Inspector consumers",
+      "replacement_step": "P12-D/G: finish formal Inspector consumers, remove legacy schema-to-Registry editing wrapper",
+      "final_path": "editor/metadata/src/ComponentEditorRegistry.cpp",
+      "declared_symbols": [
+        "ComponentEditorRegistry"
+      ],
+      "target_consumers": [
+        "plugin_configuration_test",
+        "plugin_library_test",
+        "scene_render_meta",
+        "render_feature_meta",
+        "physics2d_editor",
+        "editor_context",
+        "editor_ui",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_app"
+      ]
+    },
+    {
+      "path": "editor/metadata/src/EditorPlugin.cpp",
+      "blob": "6b0a88f6495997f039852e5f02bc46c63916fcc6",
+      "logical_include": null,
+      "providers": [
+        "editor_metadata"
+      ],
+      "include_consumers": [],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "loadEditorPlugins/V6 validation",
+      "last_product_consumer": "EditorContext startup/updatePlugins",
+      "replacement_step": "P12-E/F: delete V6 loader after product switch; V6 remains rejection test only",
+      "final_path": "editor/metadata/src/EditorPlugin.cpp",
+      "declared_symbols": [],
+      "target_consumers": [
+        "plugin_configuration_test",
+        "plugin_library_test",
+        "scene_render_meta",
+        "render_feature_meta",
+        "physics2d_editor",
+        "editor_context",
+        "editor_ui",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_app"
+      ]
+    },
+    {
+      "path": "editor/metadata/src/SceneRegistrations.cpp",
+      "blob": "cf5e074d15e268fa3965a2080b48a728ba882b86",
+      "logical_include": null,
+      "providers": [
+        "editor_metadata"
+      ],
+      "include_consumers": [],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "sceneRegistrations schema/system/render assembly",
+      "last_product_consumer": "EditorContext and ProjectCreationPane",
+      "replacement_step": "P12-E/F: move sole assembly body to application alongside PluginLibrary composition; delete old aggregate and metadata provider",
+      "final_path": "editor/metadata/src/SceneRegistrations.cpp",
+      "declared_symbols": [],
+      "target_consumers": [
+        "plugin_configuration_test",
+        "plugin_library_test",
+        "scene_render_meta",
+        "render_feature_meta",
+        "physics2d_editor",
+        "editor_context",
+        "editor_ui",
+        "editor_material",
+        "editor_flowforge",
+        "editor_scene",
+        "editor_app"
+      ]
+    },
+    {
+      "path": "editor/metadata/test/configuration.cpp",
+      "blob": "fb39064d88ee660460d0381800d7d958424bf837",
+      "logical_include": null,
+      "providers": [
+        "plugin_configuration_test"
+      ],
+      "include_consumers": [],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "configuration",
+      "last_product_consumer": "old editor metadata/V6 tables and metadata regression consumers",
+      "replacement_step": "P12-F/G: remove final old registration consumers and corresponding target/package; retain engine runtime exports",
+      "final_path": "editor/metadata/test/configuration.cpp",
+      "declared_symbols": [
+        "Configuration",
+        "ConfigurationElement",
+        "TTypeStaticInfo"
+      ],
+      "target_consumers": []
+    },
+    {
+      "path": "editor/metadata/test/plugin.cpp",
+      "blob": "46aa6966ff986676fbcdb016b7e42feefa84b052",
+      "logical_include": null,
+      "providers": [
+        "plugin_library_test"
+      ],
+      "include_consumers": [],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "plugin",
+      "last_product_consumer": "old editor metadata/V6 tables and metadata regression consumers",
+      "replacement_step": "P12-F/G: remove final old registration consumers and corresponding target/package; retain engine runtime exports",
+      "final_path": "editor/metadata/test/plugin.cpp",
+      "declared_symbols": [],
+      "target_consumers": []
+    },
+    {
+      "path": "editor/plugins/CMakeLists.txt",
+      "blob": "e3abf03e862496e8e63f83dcc82a39b7fb38594a",
+      "logical_include": null,
+      "providers": [
+        "scene_render_meta",
+        "scene_runtime_render_configuration_meta",
+        "scene_runtime_render_configuration_meta_generate",
+        "render_feature_meta",
+        "render_feature_client_grid3_d_operation_meta",
+        "render_feature_client_grid2_d_operation_meta",
+        "render_feature_client_line_list_operation_meta",
+        "render_feature_client_tri_overlay_operation_meta",
+        "render_feature_client_trajectory_operation_meta",
+        "render_feature_client_skybox_operation_meta",
+        "render_feature_client_skinning_operation_meta",
+        "render_feature_client_point_cloud_operation_meta",
+        "render_feature_client_tonemap_operation_meta",
+        "render_feature_client_shadow_map_operation_meta",
+        "render_feature_client_view_camera_operation_meta",
+        "render_feature_client_light_operation_meta",
+        "render_feature_client_mesh_stack_operation_meta",
+        "render_feature_client_material_operation_meta",
+        "render_feature_client_deferred_g_buffer_operation_meta",
+        "render_feature_client_deferred_lighting_operation_meta",
+        "render_feature_client_depth_prepass_operation_meta",
+        "render_feature_client_forward_mesh_operation_meta",
+        "render_feature_client_highlight_operation_meta",
+        "render_feature_client_streaming_feedback_operation_meta",
+        "render_feature_client_hzb_operation_meta",
+        "render_feature_client_linear_depth_operation_meta",
+        "render_feature_client_ssao_operation_meta",
+        "render_feature_client_fog_operation_meta",
+        "render_feature_client_canvas2_d_operation_meta",
+        "render_feature_client_mesh_shadow_operation_meta",
+        "render_feature_client_spatial_cull_operation_meta",
+        "render_feature_client_render_cluster_operation_meta",
+        "render_feature_client_terrain_operation_meta",
+        "render_feature_client_water_operation_meta",
+        "render_feature_client_tonemap_params_meta",
+        "render_feature_client_spatial_cull_params_meta",
+        "render_feature_client_shadow_quality_params_meta",
+        "render_feature_client_grid3_d_operation_meta_generate",
+        "render_feature_client_grid2_d_operation_meta_generate",
+        "render_feature_client_line_list_operation_meta_generate",
+        "render_feature_client_tri_overlay_operation_meta_generate",
+        "render_feature_client_trajectory_operation_meta_generate",
+        "render_feature_client_skybox_operation_meta_generate",
+        "render_feature_client_skinning_operation_meta_generate",
+        "render_feature_client_point_cloud_operation_meta_generate",
+        "render_feature_client_tonemap_operation_meta_generate",
+        "render_feature_client_shadow_map_operation_meta_generate",
+        "render_feature_client_view_camera_operation_meta_generate",
+        "render_feature_client_light_operation_meta_generate",
+        "render_feature_client_mesh_stack_operation_meta_generate",
+        "render_feature_client_material_operation_meta_generate",
+        "render_feature_client_deferred_g_buffer_operation_meta_generate",
+        "render_feature_client_deferred_lighting_operation_meta_generate",
+        "render_feature_client_depth_prepass_operation_meta_generate",
+        "render_feature_client_forward_mesh_operation_meta_generate",
+        "render_feature_client_highlight_operation_meta_generate",
+        "render_feature_client_streaming_feedback_operation_meta_generate",
+        "render_feature_client_hzb_operation_meta_generate",
+        "render_feature_client_linear_depth_operation_meta_generate",
+        "render_feature_client_ssao_operation_meta_generate",
+        "render_feature_client_fog_operation_meta_generate",
+        "render_feature_client_canvas2_d_operation_meta_generate",
+        "render_feature_client_mesh_shadow_operation_meta_generate",
+        "render_feature_client_spatial_cull_operation_meta_generate",
+        "render_feature_client_render_cluster_operation_meta_generate",
+        "render_feature_client_terrain_operation_meta_generate",
+        "render_feature_client_water_operation_meta_generate",
+        "render_feature_client_tonemap_params_meta_generate",
+        "render_feature_client_spatial_cull_params_meta_generate",
+        "render_feature_client_shadow_quality_params_meta_generate",
+        "physics2d_editor",
+        "physics2d_editor_configuration",
+        "physics2d_editor_configuration_generate"
+      ],
+      "include_consumers": [],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "CMakeLists.txt",
+      "last_product_consumer": "three old sidecar targets and plugin registration generators",
+      "replacement_step": "P12-F/G: switch sidecars to formal contributions and generated providers; remove old target/package outputs",
+      "final_path": "editor/plugins/CMakeLists.txt",
+      "declared_symbols": [],
+      "target_consumers": [
+        "plugin_library_test",
+        "scene_render_meta",
+        "render_feature_meta",
+        "physics2d_editor",
+        "editor_core_protocol"
+      ]
+    },
+    {
+      "path": "editor/plugins/README.md",
+      "blob": "27b1649c2eae88303b867e107b96e6df99ed6126",
+      "logical_include": null,
+      "providers": [
+        "scene_render_meta",
+        "render_feature_meta",
+        "physics2d_editor"
+      ],
+      "include_consumers": [],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "README.md",
+      "last_product_consumer": "three old sidecar targets and plugin registration generators",
+      "replacement_step": "P12-F/G: switch sidecars to formal contributions and generated providers; remove old target/package outputs",
+      "final_path": "editor/plugins/README.md",
+      "declared_symbols": [],
+      "target_consumers": [
+        "plugin_library_test",
+        "editor_core_protocol"
+      ]
+    },
+    {
+      "path": "editor/plugins/src/Physics2DEditorExports.cpp",
+      "blob": "727c10573702756e8ace040fceb1972a86c03a90",
+      "logical_include": null,
+      "providers": [
+        "physics2d_editor"
+      ],
+      "include_consumers": [],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "PhysicsConfigurationElement / createConfiguration / V6 export",
+      "last_product_consumer": "physics2d_editor sidecar loaded only by old EditorContext",
+      "replacement_step": "P12-D/F: move specific physics configuration UI into formal workbench provider; reuse engine physics codec and migrate sidecar ABI",
+      "final_path": "editor/plugins/src/Physics2DEditorExports.cpp",
+      "declared_symbols": [
+        "PhysicsConfigurationElement"
+      ],
+      "target_consumers": [
+        "plugin_library_test"
+      ]
+    },
+    {
+      "path": "editor/plugins/src/RenderFeatureEditorExports.cpp",
+      "blob": "c56847002ac783cc5c65c4e308ce0623677c7cb5",
+      "logical_include": null,
+      "providers": [
+        "render_feature_meta"
+      ],
+      "include_consumers": [],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "legacyConfigurationEditor<T> / V6 export",
+      "last_product_consumer": "render_feature_meta -> old EditorContext/ProjectCreationPane",
+      "replacement_step": "P12-F: replace field-layout conversion/export with formal ConfigurationEditor contributions; shared form already unique",
+      "final_path": "editor/plugins/src/RenderFeatureEditorExports.cpp",
+      "declared_symbols": [],
+      "target_consumers": [
+        "editor_core_protocol"
+      ]
+    },
+    {
+      "path": "editor/plugins/src/RenderSystemEditorExports.cpp",
+      "blob": "e3b2178bef64a04bee4a0966304a91e54bd5d360",
+      "logical_include": null,
+      "providers": [
+        "scene_render_meta"
+      ],
+      "include_consumers": [],
+      "action": "RETAINED_PRODUCT_OR_TEST",
+      "deadline": "P12",
+      "status": "P11 implemented; retained rows remain solely P12 product consumers",
+      "symbol_scope": "V6 render-system configuration export",
+      "last_product_consumer": "scene_render_meta sidecar loaded only by old EditorContext",
+      "replacement_step": "P12-F: formal contribution table and existing SceneConfigurationElement; delete V6 definition",
+      "final_path": "editor/plugins/src/RenderSystemEditorExports.cpp",
+      "declared_symbols": [],
+      "target_consumers": [
+        "editor_core_protocol"
+      ]
+    }
+  ]
+}

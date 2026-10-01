@@ -1,0 +1,14 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : [],
+		"files" : [],
+		"nodes" : []
+	},
+	"installers" : [],
+	"paths" : 
+	{
+		"build" : "engine/domain/simulation/scripting/lua",
+		"source" : "engine/domain/simulation/scripting/lua"
+	}
+}

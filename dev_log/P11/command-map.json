@@ -1,0 +1,200 @@
+[
+  {
+    "old_id": "lux.asset.save",
+    "label": "Save",
+    "menu": "File",
+    "shortcut": "Ctrl+S",
+    "query": "Pure availability on fixed target; no mutation",
+    "execute_target": "original SessionId; Save freezes at actual admission; history through installed role",
+    "formal": "lux.editor.save",
+    "owner": "activities: SaveService / InstalledSession / concrete Session",
+    "phase": "P11"
+  },
+  {
+    "old_id": "lux.edit.undo",
+    "label": "Undo",
+    "menu": "Edit",
+    "shortcut": "Ctrl+Z",
+    "query": "Pure availability on fixed target; no mutation",
+    "execute_target": "original SessionId; Save freezes at actual admission; history through installed role",
+    "formal": "lux.editor.undo",
+    "owner": "activities: SaveService / InstalledSession / concrete Session",
+    "phase": "P11"
+  },
+  {
+    "old_id": "lux.edit.redo",
+    "label": "Redo",
+    "menu": "Edit",
+    "shortcut": "Ctrl+Y",
+    "query": "Pure availability on fixed target; no mutation",
+    "execute_target": "original SessionId; Save freezes at actual admission; history through installed role",
+    "formal": "lux.editor.redo",
+    "owner": "activities: SaveService / InstalledSession / concrete Session",
+    "phase": "P11"
+  },
+  {
+    "old_id": "lux.asset.save-as",
+    "label": "Save As",
+    "menu": "File",
+    "shortcut": "Ctrl+Shift+S",
+    "query": "Pure availability on fixed target; no mutation",
+    "execute_target": "fixed SessionId + prepared target",
+    "formal": "P12-B: target chooser + existing SaveService rebind",
+    "owner": "old executable last consumer; no Unsupported placeholder added to formal menu",
+    "phase": "P12"
+  },
+  {
+    "old_id": "lux.asset.save-all",
+    "label": "Save All",
+    "menu": "File",
+    "shortcut": "",
+    "query": "Pure availability on fixed target; no mutation",
+    "execute_target": "fixed accepted content IDs",
+    "formal": "P12-B/E: application bounded SaveAll",
+    "owner": "old executable last consumer; no Unsupported placeholder added to formal menu",
+    "phase": "P12"
+  },
+  {
+    "old_id": "lux.window.close",
+    "label": "Close Window",
+    "menu": "File",
+    "shortcut": "Ctrl+W",
+    "query": "Pure availability on fixed target; no mutation",
+    "execute_target": "complete ViewId generation",
+    "formal": "P12-D/E: ViewHost close + explicit last content decision",
+    "owner": "old executable last consumer; no Unsupported placeholder added to formal menu",
+    "phase": "P12"
+  },
+  {
+    "old_id": "lux.application.exit",
+    "label": "Exit",
+    "menu": "File",
+    "shortcut": "",
+    "query": "Pure availability on fixed target; no mutation",
+    "execute_target": "application close decision",
+    "formal": "P12-E: application exit draining",
+    "owner": "old executable last consumer; no Unsupported placeholder added to formal menu",
+    "phase": "P12"
+  },
+  {
+    "old_id": "lux.edit.cut/copy/paste/delete/select-all",
+    "label": "Selection operations",
+    "menu": "Edit",
+    "shortcut": "",
+    "query": "Pure availability on fixed target; no mutation",
+    "execute_target": "original domain selection; no fallback focus",
+    "formal": "P12-D: concrete interaction and clipboard semantics",
+    "owner": "old executable last consumer; no Unsupported placeholder added to formal menu",
+    "phase": "P12"
+  },
+  {
+    "old_id": "lux.window.create/<type>",
+    "label": "Open Window",
+    "menu": "Window",
+    "shortcut": "",
+    "query": "Pure availability on fixed target; no mutation",
+    "execute_target": "fixed ViewType + typed initial binding",
+    "formal": "P12-D: ViewFactorySnapshot and Host",
+    "owner": "old executable last consumer; no Unsupported placeholder added to formal menu",
+    "phase": "P12"
+  },
+  {
+    "old_id": "lux.window.show/<id>",
+    "label": "Show Window",
+    "menu": "Window",
+    "shortcut": "",
+    "query": "Pure availability on fixed target; no mutation",
+    "execute_target": "fixed ViewId",
+    "formal": "P12-D: Host show/focus",
+    "owner": "old executable last consumer; no Unsupported placeholder added to formal menu",
+    "phase": "P12"
+  },
+  {
+    "old_id": "lux.workspace.default/apply/<name>",
+    "label": "Layouts",
+    "menu": "Window",
+    "shortcut": "",
+    "query": "Pure availability on fixed target; no mutation",
+    "execute_target": "stable LayoutId plan + explicit provider snapshot",
+    "formal": "P12-C: workspace load/apply",
+    "owner": "old executable last consumer; no Unsupported placeholder added to formal menu",
+    "phase": "P12"
+  },
+  {
+    "old_id": "lux.product.refresh/default",
+    "label": "Refresh/open initial scene",
+    "menu": "",
+    "shortcut": "",
+    "query": "Pure availability on fixed target; no mutation",
+    "execute_target": "project identity + fixed initial locator",
+    "formal": "P12-B/F: explicit application startup",
+    "owner": "old executable last consumer; no Unsupported placeholder added to formal menu",
+    "phase": "P12"
+  },
+  {
+    "old_id": "lux.product.new-project",
+    "label": "New Project",
+    "menu": "File",
+    "shortcut": "",
+    "query": "Pure availability on fixed target; no mutation",
+    "execute_target": "new project config",
+    "formal": "P12-F: formal project creation view",
+    "owner": "old executable last consumer; no Unsupported placeholder added to formal menu",
+    "phase": "P12"
+  },
+  {
+    "old_id": "lux.product.open-project/recent/<n>",
+    "label": "Open/Recent Projects",
+    "menu": "File",
+    "shortcut": "",
+    "query": "Pure availability on fixed target; no mutation",
+    "execute_target": "owned project path, not index into changing list",
+    "formal": "P12-B/F: process launch and recent preferences",
+    "owner": "old executable last consumer; no Unsupported placeholder added to formal menu",
+    "phase": "P12"
+  },
+  {
+    "old_id": "lux.product.new-scene/new-material/new-flow",
+    "label": "New Asset",
+    "menu": "File/New Asset",
+    "shortcut": "",
+    "query": "Pure availability on fixed target; no mutation",
+    "execute_target": "new typed source factory",
+    "formal": "P12-B/D: creation workflows",
+    "owner": "old executable last consumer; no Unsupported placeholder added to formal menu",
+    "phase": "P12"
+  },
+  {
+    "old_id": "lux.product.settings",
+    "label": "Settings / Layouts",
+    "menu": "Edit",
+    "shortcut": "",
+    "query": "Pure availability on fixed target; no mutation",
+    "execute_target": "typed settings view",
+    "formal": "P12-D: workbench settings",
+    "owner": "old executable last consumer; no Unsupported placeholder added to formal menu",
+    "phase": "P12"
+  },
+  {
+    "old_id": "lux.product.open-asset",
+    "label": "Open Asset",
+    "menu": "File",
+    "shortcut": "",
+    "query": "Pure availability on fixed target; no mutation",
+    "execute_target": "fixed AssetReference",
+    "formal": "P12-B: OpenAndShow composition",
+    "owner": "old executable last consumer; no Unsupported placeholder added to formal menu",
+    "phase": "P12"
+  },
+  {
+    "old_id": "lux.product.about",
+    "label": "Version",
+    "menu": "Help",
+    "shortcut": "",
+    "query": "Pure availability on fixed target; no mutation",
+    "execute_target": "pure display",
+    "formal": "P12-F: application product info",
+    "owner": "old executable last consumer; no Unsupported placeholder added to formal menu",
+    "phase": "P12"
+  }
+]

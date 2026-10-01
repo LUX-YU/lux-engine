@@ -1,0 +1,18 @@
+Start testing: Oct 01 18:06 GMT 夏令时
+----------------------------------------------------------
+1/1 Testing: installed.cpu_context
+1/1 Test: installed.cpu_context
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1-sdk/views-ui/bin/context.exe"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p11-3bbc7312a3d1-sdk/views-ui
+"installed.cpu_context" start time: Oct 01 18:06 GMT 夏令时
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"installed.cpu_context" end time: Oct 01 18:06 GMT 夏令时
+"installed.cpu_context" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Oct 01 18:06 GMT 夏令时

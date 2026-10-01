@@ -1,3 +1,4 @@
+#include <lux/engine/editor/material/PreparedMaterialReload.hpp>
 #include <lux/engine/editor/material/MaterialSessionFactory.hpp>
 #include <lux/engine/editor/material/MaterialSaveSource.hpp>
 #include <lux/engine/editor/detail/PrepareSession.hpp>
@@ -21,6 +22,37 @@ namespace lux::editor::material
                         static_cast<std::uint64_t>(decoded.error().code),
                         decoded.error().detail
                     });
+                if (input.reload)
+                    return PreparedSessionData{
+                        code,
+                        *input.reload,
+                        [code,
+                         data = std::move(*decoded),
+                         expected = *input.reload,
+                         binding = input.binding,
+                         target =
+                             input.target](SessionStore& store) mutable -> SessionFactoryResult<PreparedSessionReload> {
+                            auto construct = [&](MaterialSession& session
+                                             ) -> MaterialEditResult<PreparedMaterialReload> {
+                                return PreparedMaterialReload::prepare(
+                                    session,
+                                    std::move(data.source),
+                                    code,
+                                    expected,
+                                    binding
+                                );
+                            };
+                            return sessions::detail::
+                                prepareReload<MaterialSession, MaterialSaveSource, MaterialPersistenceAccess>(
+                                    store,
+                                    expected,
+                                    binding,
+                                    target,
+                                    code,
+                                    construct
+                                );
+                        }
+                    };
                 return PreparedSessionData{
                     code,
                     [code, data = std::move(*decoded), binding = input.binding, target = input.target](

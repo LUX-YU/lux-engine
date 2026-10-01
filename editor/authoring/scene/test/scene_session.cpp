@@ -1,3 +1,4 @@
+#include "../src/SceneSessionData.hpp"
 #include <lux/engine/editor/sessions/SessionStore.hpp>
 #include <lux/engine/editor/scene/SceneSession.hpp>
 #include <lux/engine/editor/scene/SceneAlgorithms.hpp>
@@ -6,7 +7,7 @@
 #include <lux/engine/simulation/ecs/TransformSchema.hpp>
 #include <lux/engine/simulation/ecs/HierarchySchema.hpp>
 #include <lux/engine/simulation/ecs/VisualSchema.hpp>
-#include "../src/PreparedSceneReload.hpp"
+#include <lux/engine/editor/scene/PreparedSceneReload.hpp>
 #include <cassert>
 #include <cstdio>
 #include <cstring>
@@ -426,9 +427,9 @@ namespace
         b.create("same");
         const auto other_package = package(a.metadata, "different-root");
         assert(other_package.scene->id() != a.input.scene->id());
-        assert(!detail::PreparedSceneReload::prepare(*a.session, take(SceneSource::create(other_package, a.metadata))));
+        assert(!PreparedSceneReload::prepare(*a.session, take(SceneSource::create(other_package, a.metadata))));
         auto source = take(SceneSource::create(a.input, a.metadata));
-        auto reload = take(detail::PreparedSceneReload::prepare(*a.session, std::move(source)));
+        auto reload = take(PreparedSceneReload::prepare(*a.session, std::move(source)));
         const auto old = a.ref(object("same"));
         auto wrong = b.batch();
         wrong.edits.push_back(SceneEraseObject{old});
@@ -456,13 +457,12 @@ namespace
         assert(take(f.session->changesSince(initial)).status == ESceneChanges::RESET_REQUIRED);
         assert(take(f.session->changesSince(recent)).objects.size() == 2);
         auto source = take(SceneSource::create(f.input, f.metadata));
-        auto reload = take(detail::PreparedSceneReload::prepare(*f.session, std::move(source)));
+        auto reload = take(PreparedSceneReload::prepare(*f.session, std::move(source)));
         assert(reload.adopt(*f.session));
         assert(take(f.session->changesSince(recent)).status == ESceneChanges::RESET_REQUIRED);
         assert(!f.session->describe().dirty);
         const auto baseline = f.session->describe();
-        auto prepared =
-            take(detail::PreparedSceneReload::prepare(*f.session, take(SceneSource::create(f.input, f.metadata))));
+        auto prepared = take(PreparedSceneReload::prepare(*f.session, take(SceneSource::create(f.input, f.metadata))));
         f.create("d");
         assert(!prepared.adopt(*f.session));
         assert(f.session->describe().current != baseline.current);

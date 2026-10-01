@@ -1,3 +1,6 @@
+#include "../../authoring/flow/src/FlowSessionData.hpp"
+#include "../../authoring/material/src/MaterialSessionData.hpp"
+#include "../../authoring/scene/src/SceneSessionData.hpp"
 #include <lux/engine/editor/scene/SceneInteraction.hpp>
 #include <lux/engine/editor/material/MaterialInteraction.hpp>
 #include <lux/engine/editor/flowforge/FlowInteraction.hpp>
@@ -18,9 +21,9 @@
 #include <thread>
 
 #ifdef LUX_NATIVE_INTERACTION_RECLAIM
-#include "../../authoring/scene/src/PreparedSceneReload.hpp"
-#include "../../authoring/material/src/PreparedMaterialReload.hpp"
-#include "../../authoring/flow/src/PreparedFlowReload.hpp"
+#include <lux/engine/editor/scene/PreparedSceneReload.hpp>
+#include <lux/engine/editor/material/PreparedMaterialReload.hpp>
+#include <lux/engine/editor/flowforge/PreparedFlowReload.hpp>
 #endif
 
 namespace
@@ -142,7 +145,7 @@ namespace
         {
             lux::material::MaterialSource source{root, "reloaded material", {}};
             (void)source.graph.addNode(std::make_unique<lux::material::ConstantNode>());
-            auto candidate = take(em::detail::PreparedMaterialReload::prepare(s, std::move(source)));
+            auto candidate = take(em::PreparedMaterialReload::prepare(s, std::move(source)));
             assert(candidate.adopt(s));
         }
 #endif
@@ -211,7 +214,7 @@ namespace
         {
             ef::FlowAuthoringSource source{root, "reloaded flow", {}};
             (void)source.graph.addNodes(std::make_unique<lux::flowforge::StartNode>());
-            auto candidate = take(ef::detail::PreparedFlowReload::prepare(s, std::move(source)));
+            auto candidate = take(ef::PreparedFlowReload::prepare(s, std::move(source)));
             assert(candidate.adopt(s));
         }
 #endif
@@ -305,7 +308,7 @@ namespace
             auto package = take(es::buildSceneSnapshotPackage(take(s.capture())));
             auto source =
                 take(es::SceneSource::create(package, es::detail::SceneSourceAccess::data(data(s).source).schemas));
-            auto candidate = take(es::detail::PreparedSceneReload::prepare(s, std::move(source)));
+            auto candidate = take(es::PreparedSceneReload::prepare(s, std::move(source)));
             assert(candidate.adopt(s));
         }
 #endif

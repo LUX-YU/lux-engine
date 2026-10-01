@@ -1,6 +1,7 @@
 #pragma once
 #include <vector>
 #include <cstdint>
+#include <lux/engine/ui/Attachment.hpp>
 namespace lux::ui
 {
     class Root;
@@ -17,9 +18,11 @@ namespace lux::ui
         struct AttachmentState final
         {
             Root* root{};
-            Pane* pane{};
+            std::vector<Pane*> roots;
             std::vector<AttachmentNode> nodes;
-            std::uint64_t revision{};
+            std::vector<WindowVisibility> visibility;
+            std::vector<Pane*> visibility_changed;
+            std::uint64_t revision{}, window_revision{};
             bool mount{}, valid{true};
         };
     }

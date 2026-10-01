@@ -12,6 +12,7 @@
 #include <lux/engine/ui/Ids.hpp>
 #include <lux/engine/ui/Menu.hpp>
 #include <lux/engine/ui/Attachment.hpp>
+#include <lux/cxx/core/function_ref.hpp>
 
 namespace lux::window
 {
@@ -70,7 +71,15 @@ namespace lux::ui
         using AttachmentResult = lux::cxx::expected<PreparedAttachment, EAttachmentError>;
         [[nodiscard]] AttachmentResult prepareMount(Pane&);
         [[nodiscard]] AttachmentResult prepareDetach(Pane&);
+        [[nodiscard]] AttachmentResult prepareMount(std::span<Pane* const>, std::span<const WindowVisibility> = {});
+        [[nodiscard]] AttachmentResult prepareDetach(std::span<Pane* const>);
         [[nodiscard]] lux::cxx::expected<AttachmentCommit, EAttachmentError> commit(PreparedAttachment&) noexcept;
+        // The host transfers already-prepared local state after all links change, before any notification.
+        // This synchronous callback must not allocate, dispatch, call providers or mutate the object tree.
+        [[nodiscard]] lux::cxx::expected<AttachmentCommit, EAttachmentError> commit(
+            PreparedAttachment&,
+            cxx::function_ref<void()> adopt
+        ) noexcept;
         object::TSignal<AttachmentChanged> attachmentChanged{*this};
 
         using ChangeCallback = void (*)(object::LuxObject&) noexcept;
@@ -129,7 +138,11 @@ namespace lux::ui
         void paneLabelChanged() noexcept;
         void unregisterElement(Element&, bool notify = true) noexcept;
         [[nodiscard]] bool attachmentSafe() const noexcept;
-        [[nodiscard]] AttachmentResult prepareAttachment(Pane&, bool mount);
+        [[nodiscard]] AttachmentResult prepareAttachment(
+            std::span<Pane* const>,
+            bool mount,
+            std::span<const WindowVisibility> = {}
+        );
         void abandonAttachment(detail::AttachmentState&) noexcept;
         bool allowsGenericChildren() const noexcept override
         {

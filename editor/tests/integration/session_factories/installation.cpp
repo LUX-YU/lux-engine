@@ -1,4 +1,7 @@
 #include <lux/engine/editor/scene/SceneSessionFactory.hpp>
+#include <lux/engine/editor/sessions/SessionOperations.hpp>
+#include <lux/engine/editor/sessions/SessionOpening.hpp>
+#include <lux/engine/editor/sessions/ReloadSessionOperation.hpp>
 #include <lux/engine/editor/material/MaterialSessionFactory.hpp>
 #include <lux/engine/editor/material/MaterialSaveSource.hpp>
 #include <lux/engine/editor/flowforge/FlowSessionFactory.hpp>
@@ -386,10 +389,194 @@ namespace
         assert(admitted && tasks.join() && result);
         return std::move(*result);
     }
+
+    void contentOperations(
+        process::ExecutionRuntime& runtime,
+        const SessionFactorySnapshot& factories,
+        asset::AssetVfs& vfs,
+        storage::FileArtifactStore& disk,
+        const std::filesystem::path& root
+    )
+    {
+        SessionStore store{8};
+        WriteCoordinator writes;
+        SaveService saves{writes};
+        SessionOpening opening{runtime, store, saves, 8};
+        SaveExecution execution{runtime, saves, writes, disk};
+        const std::array<SessionKindId, 3> kinds{
+            {{"lux.editor.scene"}, {"lux.editor.material"}, {"lux.editor.flowforge"}}
+        };
+        auto input = [&](std::size_t i) {
+            return SessionLoadInput{
+                vfs.view().capture(),
+                identity(SourceFiles::names[i]),
+                BoundSource{identity(SourceFiles::names[i]), SourceFiles::names[i]},
+                take(disk.resolve(SourceFiles::names[i]))
+            };
+        };
+        auto turn = [&] {
+            assert(runtime.collectCompletions());
+            assert(opening.update());
+            assert(execution.submitReady());
+            saves.adoptCompletions();
+            std::this_thread::sleep_for(std::chrono::milliseconds{1});
+        };
+        std::array<SessionId, 3> ids;
+        for (std::size_t i{}; i < 3; ++i)
+        {
+            OpenAssetRequest request{17, kinds[i], input(i)};
+            const auto first = take(opening.open(request, factories));
+            const auto second = take(opening.open(request, factories));
+            assert(first != second && opening.cancel(first));
+            for (unsigned n{}; n < 10000 && take(opening.status(second)).stage != EOpenAssetStage::PUBLISHED; ++n)
+                turn();
+            const auto published = take(opening.status(second));
+            assert(published.stage == EOpenAssetStage::PUBLISHED && !published.reused);
+            ids[i] = published.session;
+            assert(store.size() == i + 1 && opening.find(ids[i]));
+            // Cancellation of one waiter does not delete the other's published content or erase its fact.
+            const auto cancelled = take(opening.status(first));
+            assert(cancelled.cancellation_requested && cancelled.session == ids[i]);
+            assert(opening.acknowledge(first) && opening.acknowledge(second));
+            const auto again = take(opening.open(request, factories));
+            assert(take(opening.status(again)).reused && take(opening.status(again)).session == ids[i]);
+            assert(opening.acknowledge(again));
+            turn();
+        }
+        auto frozen_set = take(SaveAllOperation::begin(store, saves));
+        assert(frozen_set.entries().size() == 3);
+        const auto copy = take(opening.open({17, kinds[1], input(1), 42}, factories));
+        for (unsigned n{}; n < 10000 && take(opening.status(copy)).stage != EOpenAssetStage::PUBLISHED; ++n)
+            turn();
+        const auto copy_id = take(opening.status(copy)).session;
+        assert(copy_id != ids[1] && store.size() == 4 && frozen_set.entries().size() == 3);
+        assert(opening.find(copy_id)->close(take(store.describe(copy_id)).current));
+        assert(opening.acknowledge(copy));
+        turn();
+        assert(!opening.find(copy_id) && store.size() == 3);
+
+        for (std::size_t i{}; i < 3; ++i)
+        {
+            const auto before = take(store.describe(ids[i]));
+            auto request = input(i);
+            request.reload = before.current;
+            auto reload =
+                take(ReloadSessionOperation::start(runtime, store, writes, take(factories.find(kinds[i])), request));
+            // Completion while CLOSING is transient, not a failed/consumed reload candidate.
+            {
+                auto closing = take(store.prepareClose(before.current));
+                for (unsigned n{}; n < 20; ++n)
+                {
+                    turn();
+                    reload->update(*opening.find(ids[i]));
+                }
+                assert(!reload->outcome() && take(store.describe(ids[i])).current == before.current);
+            }
+            for (unsigned n{}; n < 10000 && !reload->outcome(); ++n)
+            {
+                turn();
+                reload->update(*opening.find(ids[i]));
+            }
+            assert(reload->outcome() && *reload->outcome());
+            const auto after = take(store.describe(ids[i]));
+            assert(after.id == before.id && after.current.state.history != before.current.state.history);
+            assert(!after.dirty && after.binding == before.binding);
+            assert(!take(opening.find(ids[i])->queryHistory()).can_undo);
+        }
+        // A writer admitted and acknowledged during decode still invalidates the source read.
+        {
+            auto request = input(1);
+            const auto before = take(store.describe(ids[1]));
+            request.reload = before.current;
+            auto reload =
+                take(ReloadSessionOperation::start(runtime, store, writes, take(factories.find(kinds[1])), request));
+            auto write = take(writes.reserve(*request.target, {}));
+            assert(writes.cancelBeforePublish(write, {EPersistenceError::CANCELLED}));
+            assert(writes.acknowledge(write));
+            for (unsigned n{}; n < 10000 && !reload->outcome(); ++n)
+            {
+                turn();
+                reload->update(*opening.find(ids[1]));
+            }
+            assert(reload->outcome() && !*reload->outcome());
+            assert(reload->outcome()->error().code == ESessionFactoryError::STALE_CONTENT);
+            const auto after = take(store.describe(ids[1]));
+            assert(after.current == before.current && after.observed == before.observed && after.dirty == before.dirty);
+        }
+        // A real external source replacement changes the target version. Reload must install the new role
+        // target as well as the source; the next ordinary Save must not conflict with its own loaded version.
+        {
+            auto decoded = take(em::MaterialCodec::decode(read(root / SourceFiles::names[1])));
+            decoded.source.name = "external material";
+            const auto encoded = take(lux::material::encodeMaterialSource(decoded.source));
+            write(root / SourceFiles::names[1], std::as_bytes(std::span(encoded)));
+            auto request = input(1);
+            request.reload = take(store.describe(ids[1])).current;
+            auto reload =
+                take(ReloadSessionOperation::start(runtime, store, writes, take(factories.find(kinds[1])), request));
+            for (unsigned n{}; n < 10000 && !reload->outcome(); ++n)
+            {
+                turn();
+                reload->update(*opening.find(ids[1]));
+            }
+            assert(reload->outcome() && *reload->outcome());
+        }
+        auto& scene = take(store.access<es::SceneSession>().edit(take(store.key<es::SceneSession>(ids[0])))).get();
+        es::SceneEditBatch object{scene.describe().current, "P12 object", {}};
+        object.edits.emplace_back(es::SceneCreateObject{
+            {{identity("P12 object").uuid()},
+             {0},
+             {{simulation::ecs::componentSchemaId("test.unknown"), 1, {std::byte{7}}}}}
+        });
+        assert(scene.apply(std::move(object)));
+        auto& material =
+            take(store.access<em::MaterialSession>().edit(take(store.key<em::MaterialSession>(ids[1])))).get();
+        em::MaterialEditBatch renamed{material.describe().current, "P12 material", {}};
+        renamed.edits.emplace_back(em::MaterialRename{"P12 saved material"});
+        assert(material.apply(std::move(renamed)));
+        auto& flow = take(store.access<ef::FlowSession>().edit(take(store.key<ef::FlowSession>(ids[2])))).get();
+        ef::FlowEditBatch flow_edit{flow.describe().current, "P12 flow", {}};
+        flow_edit.edits.emplace_back(ef::FlowRename{"P12 saved flow"});
+        assert(flow.apply(std::move(flow_edit)));
+        auto all = take(SaveAllOperation::begin(store, saves));
+        assert(all.entries().size() == 3);
+        for (const auto& entry : all.entries())
+            assert(entry.save && !entry.failure && !entry.already_clean);
+        for (unsigned n{}; n < 10000; ++n)
+        {
+            turn();
+            if (std::ranges::all_of(all.entries(), [&](const auto& e) {
+                    return take(saves.status(*e.save)).stage == ESaveStage::TERMINAL;
+                }))
+                break;
+        }
+        for (const auto& entry : all.entries())
+        {
+            auto result = take(saves.status(*entry.save));
+            assert(result.outcome && std::holds_alternative<CommitReceipt>(result.outcome->publication));
+            assert(result.outcome->adoption == EAdoption::APPLIED && !take(store.describe(entry.session)).dirty);
+            assert(saves.acknowledge(*entry.save));
+        }
+        assert(take(em::MaterialCodec::decode(read(root / SourceFiles::names[1]))).source.name == "P12 saved material");
+        std::vector<SessionCloseDecision> decisions;
+        for (auto id : take(store.snapshotIds()))
+            decisions.push_back({take(store.describe(id)).current, ECloseChoice::SAVE});
+        auto closing = take(CloseSessionsOperation::begin(store, saves, decisions));
+        auto permits = take(closing.prepare());
+        assert(permits.size() == 3 && store.size() == 3);
+        assert(store.close(permits) && store.size() == 0);
+        turn();
+        for (auto id : ids)
+            assert(!opening.find(id));
+        opening.requestStop();
+        assert(opening.settled());
+        std::cout
+            << "PASS P12 real content open dedup/cancel/reuse/copy, reload/gate/write-race, SaveAll and atomic close\n";
+    }
 }
 int main(int argc, char** argv)
 {
-    assert(argc == 2);
+    assert(argc == 2 || argc == 3);
     const auto root =
         std::filesystem::path(argv[1]) / std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
     std::filesystem::create_directories(root);
@@ -430,6 +617,11 @@ int main(int argc, char** argv)
     ));
     asset::AssetVfs vfs;
     assert(vfs.mount({"/sources", std::make_shared<SourceFiles>(root)}));
+    if (argc == 3)
+    {
+        contentOperations(runtime, factories, vfs, disk, root);
+        return 0;
+    }
     std::vector<InstalledSession> installed;
     for (std::size_t i{}; i < 3; ++i)
     {
@@ -712,6 +904,60 @@ int main(int argc, char** argv)
         assert(
             take(store.describe(entry.id())).current == original.current && std::filesystem::exists(root / new_path)
         );
+    }
+    // P12: the fixed content set includes all three real models, without a ViewHost enumeration.
+    {
+        auto all = take(SaveAllOperation::begin(store, saves));
+        assert(all.entries().size() == 3);
+        for (const auto& item : all.entries())
+            assert(item.already_clean && !item.save && !item.failure);
+        std::vector<SessionCloseDecision> decisions;
+        for (const auto id : take(store.snapshotIds()))
+            decisions.push_back({take(store.describe(id)).current, ECloseChoice::DISCARD});
+        auto cancelled = decisions;
+        cancelled.back().choice = ECloseChoice::CANCEL;
+        assert(!CloseSessionsOperation::begin(store, saves, std::move(cancelled)) && store.size() == 3);
+        auto closing = take(CloseSessionsOperation::begin(store, saves, decisions));
+        // A newer source is not authorized by the earlier Discard. No preceding content may disappear.
+        ef::FlowEditBatch changed{flow.describe().current, "after close review", {}};
+        changed.edits.emplace_back(ef::FlowRename{"newer than review"});
+        assert(flow.apply(std::move(changed)));
+        const auto stale = closing.prepare();
+        assert(!stale && stale.error().code == ESessionFactoryError::STALE_CONTENT && store.size() == 3);
+        for (auto id : take(store.snapshotIds()))
+            assert(take(store.describe(id)).admission == EEditAdmission::AVAILABLE);
+        assert(flow.undo());
+        // All permits are prepared before any removal. Abandoning them leaves all sessions open.
+        {
+            auto prepared = take(closing.prepare());
+            assert(prepared.size() == 3 && store.size() == 3);
+            for (auto id : take(store.snapshotIds()))
+                assert(take(store.describe(id)).admission == EEditAdmission::CLOSING);
+        }
+        assert(store.size() == 3);
+        std::cout << "PASS P12 fixed three-session set, cancel, stale discard and group close preparation\n";
+    }
+    {
+        const auto target = take(disk.resolve("reload-observation"));
+        auto observed = take(writes.observeIdle(target.key));
+        assert(observed.validate());
+        const auto ticket = take(writes.reserve(target, {}));
+        assert(writes.provideEncoded(ticket, EncodedArtifact{std::vector<std::byte>{std::byte{42}}}));
+        assert(!observed.validate() && !writes.observeIdle(target.key));
+        const auto work = take(writes.takeReady());
+        assert(work && work->ticket == ticket);
+        assert(writes.complete(ticket, disk.publish(*work)));
+        assert(writes.acknowledge(ticket));
+        // Acknowledgement cannot erase the fact that a writer entered during the source read.
+        const auto changed = observed.validate();
+        assert(!changed && changed.error().code == EPersistenceError::CONFLICT);
+        auto current = take(writes.observeIdle(target.key));
+        assert(current.validate());
+        WriteCoordinator bounded{{1, 1024}};
+        auto only = take(bounded.observeIdle({"one"}));
+        const auto full = bounded.observeIdle({"two"});
+        assert(!full && full.error().code == EPersistenceError::CAPACITY);
+        std::cout << "PASS P12 bounded target observation survives publication acknowledgement\n";
     }
     for (auto& entry : installed)
     {

@@ -8,6 +8,11 @@ namespace lux::ui
 {
     class Root;
     class Pane;
+    struct WindowVisibility final
+    {
+        Pane* pane{};
+        bool visible{};
+    };
     namespace detail
     {
         struct AttachmentState;

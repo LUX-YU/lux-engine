@@ -1,4 +1,5 @@
-#include "../../../../authoring/scene/src/PreparedSceneReload.hpp"
+#include "../../../../authoring/scene/src/SceneSessionData.hpp"
+#include <lux/engine/editor/scene/PreparedSceneReload.hpp>
 #include <lux/engine/editor/scene/SceneInteraction.hpp>
 #include <lux/engine/editor/sessions/SessionStore.hpp>
 #include <lux/engine/editor/scene/SceneSession.hpp>
@@ -170,10 +171,9 @@ namespace
         f.create("reload-target");
         const auto old_ref = f.ref(object("reload-target"));
         assert(gesture.select({{old_ref}}));
-        auto reloaded = take(lux::editor::scene::detail::PreparedSceneReload::prepare(
-            *f.session,
-            take(SceneSource::create(f.input, f.metadata))
-        ));
+        auto reloaded = take(
+            lux::editor::scene::PreparedSceneReload::prepare(*f.session, take(SceneSource::create(f.input, f.metadata)))
+        );
         assert(reloaded.adopt(*f.session));
         assert(gesture.synchronize() && gesture.selection().objects.empty());
         f.create("reload-target");

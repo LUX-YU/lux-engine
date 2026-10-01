@@ -5,6 +5,8 @@
 #include <lux/cxx/compile_time/TypeToken.hpp>
 #include <concepts>
 #include <memory>
+#include <span>
+#include <vector>
 
 namespace lux::editor::sessions
 {
@@ -79,8 +81,12 @@ namespace lux::editor::sessions
             return TSessionAccess<T>{*this};
         }
         [[nodiscard]] SessionResult<SessionInfo> describe(SessionId id) const;
+        // An owning, fixed published set. Hidden preparations are excluded; each later use checks generation.
+        [[nodiscard]] SessionResult<std::vector<SessionId>> snapshotIds() const;
         [[nodiscard]] SessionResult<ClosePermit> prepareClose(ContentStamp expected) noexcept;
         [[nodiscard]] SessionResult<void> close(ClosePermit& permit) noexcept;
+        // Validate every permit before consuming any. Cleanup callbacks observe the existing reclaiming gate.
+        [[nodiscard]] SessionResult<void> close(std::span<ClosePermit> permits) noexcept;
         [[nodiscard]] std::size_t size() const noexcept;
 
     private:

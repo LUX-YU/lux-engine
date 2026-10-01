@@ -59,7 +59,7 @@ cursors return RESET_REQUIRED, including whole-history replacement. Observed
 version is not dirty state. Untitled sessions have no checkpoint; a bound loaded
 source begins at a clean checkpoint. Undo can return to that exact baseline.
 
-PreparedSceneReload is private and not installed. It prepares a matching source
+PreparedSceneReload is an installed domain preparation capability; activities own IO and final review. It prepares a matching source
 and fresh history before adoption; a stale candidate leaves the session untouched.
 It implements no file IO, Save As, dialogs or public mark-clean/replace-source API.
 

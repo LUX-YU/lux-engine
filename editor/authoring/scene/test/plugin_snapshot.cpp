@@ -1,8 +1,9 @@
+#include "../src/SceneSessionData.hpp"
 #include <lux/engine/editor/scene/SceneSession.hpp>
 #include <lux/engine/editor/scene/SceneAlgorithms.hpp>
 #include <lux/engine/simulation/ecs/TransformSchema.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
-#include "../src/PreparedSceneReload.hpp"
+#include <lux/engine/editor/scene/PreparedSceneReload.hpp>
 #include <lux/engine/editor/sessions/SessionStore.hpp>
 #include <functional>
 #include <stdexcept>
@@ -174,7 +175,6 @@ void pluginSnapshot()
     std::puts("X02-03/Q11 deep encoded snapshot isolates shared plugin node; deleters precede code release PASS");
 }
 
-
 void codecReadRegression(int scenario)
 {
     const auto take = []<class T>(T result) {
@@ -187,19 +187,22 @@ void codecReadRegression(int scenario)
             values.push_back(component);
     auto metadata = take(ecs::ComponentSchemaSet::build(std::move(values)));
     const asset::AssetId root{*uuids::uuid::from_string("11111111-2222-3333-4444-555555555555")};
-    const std::array ids{
-        world::worldDataSchemaId("test.plugin.node"), world::worldDataSchemaId("lux.ecs.Transform3D")
-    };
+    const std::array ids{world::worldDataSchemaId("test.plugin.node"), world::worldDataSchemaId("lux.ecs.Transform3D")};
     auto simulation = take(std::move(simulation::SimulationDescriptionBuilder{}).build());
     auto description = take(std::move(lux::scene::SceneDescriptionBuilder{}).buildResolved());
     auto package = take(lux::scene::createScenePackage(
-        root, "codec reentry", ids,
-        std::make_shared<const simulation::SimulationDescription>(std::move(simulation)), description
+        root,
+        "codec reentry",
+        ids,
+        std::make_shared<const simulation::SimulationDescription>(std::move(simulation)),
+        description
     ));
     sessions::SessionStore store{2};
     auto reservation = take(store.reserve<SceneSession>({"lux.editor.scene"}, contracts::CodeLease::builtin()));
     auto candidate = take(SceneSession::create(
-        reservation.id(), sessions::BoundSource{root, "codec.scene"}, take(SceneSource::create(package, metadata))
+        reservation.id(),
+        sessions::BoundSource{root, "codec.scene"},
+        take(SceneSource::create(package, metadata))
     ));
     auto& session = *candidate;
     assert(store.prepare(reservation, candidate) && store.publish(reservation));
@@ -212,9 +215,9 @@ void codecReadRegression(int scenario)
     std::memcpy(bytes.data(), &value, sizeof(value));
     SceneEditBatch create{session.describe().current, "create codec test", {}};
     create.edits.push_back(SceneCreateObject{{plugin, {0}, {{plugin_schema, 1, bytes}}}});
-    create.edits.push_back(SceneCreateObject{{spatial, {0}, {
-        take(encodeSceneValue(ecs::Transform3D{}, metadata, ecs::WorldEntityMap{}, 4096))
-    }}});
+    create.edits.push_back(SceneCreateObject{
+        {spatial, {0}, {take(encodeSceneValue(ecs::Transform3D{}, metadata, ecs::WorldEntityMap{}, 4096))}}
+    });
     assert(session.apply(std::move(create)));
     const auto baseline = session.describe();
     const auto frozen = take(session.capture());
@@ -224,7 +227,8 @@ void codecReadRegression(int scenario)
     const auto edit = [&] {
         SceneEditBatch batch{session.describe().current, "nested field", {}};
         batch.edits.push_back(SceneSetField::make<ecs::Transform3D>(
-            {ref(spatial), transform_schema, "translation"}, Eigen::Vector3d{9, 8, 7}
+            {ref(spatial), transform_schema, "translation"},
+            Eigen::Vector3d{9, 8, 7}
         ));
         return session.apply(std::move(batch));
     };
@@ -246,16 +250,23 @@ void codecReadRegression(int scenario)
         encoding_hook = [&] {
             auto nested = edit();
             rejected = busy(nested);
-            std::printf("R02-0%d nested_apply=%d error=%u session_error=%u\n", scenario, bool(nested),
-                        nested ? 0u : static_cast<unsigned>(nested.error().code),
-                        nested ? 0u : static_cast<unsigned>(nested.error().session));
+            std::printf(
+                "R02-0%d nested_apply=%d error=%u session_error=%u\n",
+                scenario,
+                bool(nested),
+                nested ? 0u : static_cast<unsigned>(nested.error().code),
+                nested ? 0u : static_cast<unsigned>(nested.error().session)
+            );
         };
         if (scenario == 5)
         {
             auto snapshot = take(session.capture());
-            std::printf("snapshot_stamp_unchanged=%d live_stamp_unchanged=%d snapshot_payload_unchanged=%d\n",
-                        snapshot.content() == baseline.current, session.describe().current == baseline.current,
-                        std::ranges::equal(snapshot.objects(), frozen.objects()));
+            std::printf(
+                "snapshot_stamp_unchanged=%d live_stamp_unchanged=%d snapshot_payload_unchanged=%d\n",
+                snapshot.content() == baseline.current,
+                session.describe().current == baseline.current,
+                std::ranges::equal(snapshot.objects(), frozen.objects())
+            );
             std::fflush(stdout);
             assert(rejected);
             assert(snapshot.content() == baseline.current && snapshot.cursor() == frozen.cursor());
@@ -286,21 +297,33 @@ void codecReadRegression(int scenario)
         unchanged();
         encoding_hook = [] { throw std::runtime_error("test codec"); };
         bool caught{};
-        try { (void)session.capture(); }
-        catch (const std::runtime_error&) { caught = true; }
+        try
+        {
+            (void)session.capture();
+        }
+        catch (const std::runtime_error&)
+        {
+            caught = true;
+        }
         assert(caught);
         unchanged();
         encoding_hook = [] { throw std::runtime_error("test component codec"); };
         caught = false;
-        try { (void)take(session.read()).component(ref(plugin), plugin_schema); }
-        catch (const std::runtime_error&) { caught = true; }
+        try
+        {
+            (void)take(session.read()).component(ref(plugin), plugin_schema);
+        }
+        catch (const std::runtime_error&)
+        {
+            caught = true;
+        }
         assert(caught);
         unchanged();
         assert(edit());
     }
     else if (scenario == 7)
     {
-        auto reload = take(detail::PreparedSceneReload::prepare(session, take(SceneSource::create(package, metadata))));
+        auto reload = take(PreparedSceneReload::prepare(session, take(SceneSource::create(package, metadata))));
         encoding_hook = [&] {
             auto close = store.prepareClose(baseline.current);
             assert(!close && close.error() == sessions::ESessionError::BUSY);

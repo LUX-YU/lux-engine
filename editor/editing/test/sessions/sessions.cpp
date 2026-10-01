@@ -420,6 +420,49 @@ namespace
         }
         assert((order == std::vector<int>{1, 2, 3}) && store.size() == 0);
     }
+    void closeSet()
+    {
+        SessionStore store{3};
+        std::vector<FakeSession*> models;
+        std::vector<SessionId> ids;
+        for (int i{}; i < 2; ++i)
+        {
+            auto reserved = store.reserve<FakeSession>({"test.fake"}, contracts::CodeLease::builtin());
+            auto model = std::make_unique<FakeSession>(reserved->id());
+            models.push_back(model.get());
+            ids.push_back(reserved->id());
+            assert(store.prepare(*reserved, model) && store.publish(*reserved));
+        }
+        const auto frozen_ids = store.snapshotIds();
+        assert(frozen_ids && *frozen_ids == ids);
+        auto hidden = store.reserve<FakeSession>({"test.fake"}, contracts::CodeLease::builtin());
+        assert(hidden && store.snapshotIds() == frozen_ids);
+        std::vector<ClosePermit> permits;
+        for (const auto* model : models)
+            permits.push_back(std::move(*store.prepareClose(model->stamp())));
+        models.back()->changeContent(); // Producer fault: all permits must be checked before A is removed.
+        assert(store.close(permits).error() == ESessionError::STALE_CONTENT);
+        assert(store.size() == 2 && store.snapshotIds() == frozen_ids);
+        for (auto* model : models)
+            assert(model->state().admission() == EEditAdmission::CLOSING);
+        permits.clear();
+        for (auto* model : models)
+        {
+            assert(model->state().admission() == EEditAdmission::AVAILABLE);
+            model->rejectDescribe(true); // Final commit uses the private, allocation-free content stamp.
+            permits.push_back(std::move(*store.prepareClose(model->stamp())));
+        }
+        assert(store.close(permits) && store.size() == 0 && store.snapshotIds()->empty());
+        assert(!store.close(permits));
+        assert(*frozen_ids == ids); // The owned observation survives reclamation.
+        auto next = store.reserve<FakeSession>({"test.fake"}, contracts::CodeLease::builtin());
+        assert(next && next->id() != ids.front() && next->id() != ids.back());
+        bool wrong_thread{};
+        std::thread thread([&] { wrong_thread = store.snapshotIds().error() == ESessionError::WRONG_THREAD; });
+        thread.join();
+        assert(wrong_thread);
+        std::puts("PASS P12 Store close set: no partial removal, hidden slots excluded, owned IDs, private stamps");
+    }
 }
 int main(int argc, char** argv)
 {
@@ -437,6 +480,7 @@ int main(int argc, char** argv)
     candidatesAndCode();
     descriptionExceptionRecovery();
     publishedCodeLifetime();
+    closeSet();
     if (!closeContent(false))
         return 1;
     return closeContent(true) ? 0 : 1;

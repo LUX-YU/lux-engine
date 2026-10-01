@@ -2,6 +2,7 @@
 
 #include <lux/engine/editor/persistence/SaveSource.hpp>
 #include <lux/engine/editor/persistence/WriteCoordinator.hpp>
+#include <lux/cxx/core/function_ref.hpp>
 
 namespace lux::editor::persistence
 {
@@ -34,6 +35,15 @@ namespace lux::editor::persistence
         // Requires a successful canPublish with no intervening callback/mutation, on the same owner.
         // This commit only changes prepared visibility; it allocates nothing and calls no source.
         [[nodiscard]] SaveSourceRegistration publish(PreparedSaveSourceRegistration&&) noexcept;
+        // Reload commit: prepare the replacement role first, then run the domain's checked owner swap.
+        // commit is synchronous, does not invoke extension callbacks, and leaves its domain unchanged on failure.
+        // BUSY keeps the input with its caller. Admitted rejection/old-role cleanup stays under dispatch.
+        [[nodiscard]] PersistenceResult<void> replaceSource(
+            SaveSourceRegistration&,
+            std::unique_ptr<ISaveSource>&,
+            contracts::CodeLease,
+            cxx::function_ref<PersistenceResult<void>()> commit
+        );
         [[nodiscard]] PersistenceResult<SaveId> requestSave(SaveRequest request);
         [[nodiscard]] PersistenceResult<SaveStatus> status(SaveId id) const;
         [[nodiscard]] PersistenceResult<ECancelResult> requestCancel(SaveId id);

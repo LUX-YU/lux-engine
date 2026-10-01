@@ -464,7 +464,7 @@ namespace draft_test
                     lux::flowforge::ENodeOperation::ADD,
                     meta::builtin_ref_type_ptr<double>()
                 ));
-                auto candidate = take(ef::detail::PreparedFlowReload::prepare(*session, std::move(replacement)));
+                auto candidate = take(ef::PreparedFlowReload::prepare(*session, std::move(replacement)));
                 assert(candidate.adopt(*session));
                 assert(session->describe().current.state.history != s0.current.state.history);
                 assert(take(session->capture()).source().nodes.front().id == id);

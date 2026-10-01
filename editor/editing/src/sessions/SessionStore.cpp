@@ -234,23 +234,49 @@ namespace lux::editor::sessions
     }
     SessionResult<void> SessionStore::close(ClosePermit& permit) noexcept
     {
+        return close(std::span{&permit, 1});
+    }
+    SessionResult<std::vector<SessionId>> SessionStore::snapshotIds() const
+    {
         if (auto admitted = impl_->canMutate(); !admitted)
             return lux::cxx::unexpected(admitted.error());
-        auto found = find(permit.stamp_.session);
-        if (!found)
-            return lux::cxx::unexpected(found.error());
-        const bool is_wrong_permit = !permit.gate_ || permit.owner_ != *found;
-        if (is_wrong_permit)
-            return lux::cxx::unexpected(ESessionError::STALE_CONTENT);
+        std::vector<SessionId> ids;
+        ids.reserve(impl_->published);
+        CallbackScope callback{impl_->callback_depth};
+        for (const auto& slot : impl_->slots)
+            if (slot.stage == ESlotStage::PUBLISHED)
+                ids.push_back(slot.session->currentContent().session);
+        return ids;
+    }
+    SessionResult<void> SessionStore::close(std::span<ClosePermit> permits) noexcept
+    {
+        if (auto admitted = impl_->canMutate(); !admitted)
+            return lux::cxx::unexpected(admitted.error());
         {
             CallbackScope callback{impl_->callback_depth};
-            if ((*found)->currentContent() != permit.stamp_)
-                return lux::cxx::unexpected(ESessionError::STALE_CONTENT);
+            for (std::size_t i{}; i < permits.size(); ++i)
+            {
+                const auto& permit = permits[i];
+                auto found = find(permit.stamp_.session);
+                if (!found)
+                    return lux::cxx::unexpected(found.error());
+                const bool is_wrong_permit = !permit.gate_ || permit.owner_ != *found;
+                if (is_wrong_permit)
+                    return lux::cxx::unexpected(ESessionError::STALE_CONTENT);
+                if ((*found)->currentContent() != permit.stamp_)
+                    return lux::cxx::unexpected(ESessionError::STALE_CONTENT);
+                for (std::size_t j{}; j < i; ++j)
+                    if (permits[j].stamp_.session == permit.stamp_.session)
+                        return lux::cxx::unexpected(ESessionError::INVALID_ARGUMENT);
+            }
         }
-        permit.release();
+        // No callbacks between final validation and logical removal. Release every gate before its owner dies.
         impl_->reclaiming = true;
-        --impl_->published;
-        impl_->slots.erase({permit.stamp_.session.slot, permit.stamp_.session.generation});
+        for (auto& permit : permits)
+            permit.release();
+        impl_->published -= permits.size();
+        for (const auto& permit : permits)
+            impl_->slots.erase({permit.stamp_.session.slot, permit.stamp_.session.generation});
         impl_->reclaiming = false;
         return {};
     }

@@ -42,12 +42,34 @@ namespace lux::editor::desktop
             bool& active_;
         };
     }
+    struct PreparedViewBatch::Data final
+    {
+        std::uint64_t domain{}, revision{};
+        std::vector<views::ViewId> ids;
+        std::vector<ViewCandidate> candidates;
+        std::vector<object::Connection> connections;
+        std::optional<lux::ui::PreparedAttachment> attachment;
+    };
+    PreparedViewBatch::PreparedViewBatch(std::unique_ptr<Data> data) noexcept : data_(std::move(data)) {}
+    PreparedViewBatch::~PreparedViewBatch() = default;
+    PreparedViewBatch::PreparedViewBatch(PreparedViewBatch&&) noexcept = default;
+    PreparedViewBatch& PreparedViewBatch::operator=(PreparedViewBatch&& other) noexcept
+    {
+        PreparedViewBatch previous(std::move(other));
+        data_.swap(previous.data_);
+        return *this;
+    }
+    std::span<const views::ViewId> PreparedViewBatch::created() const noexcept
+    {
+        return data_ ? std::span<const views::ViewId>{data_->ids} : std::span<const views::ViewId>{};
+    }
     struct ViewHost::Impl final
     {
         enum class EAction : std::uint8_t
         {
             CLOSE,
             SHOW,
+            HIDE,
             FOCUS
         };
         struct Slot final
@@ -72,6 +94,7 @@ namespace lux::editor::desktop
         std::vector<Request> requests_, batch_;
         std::vector<views::ViewId> close_batch_;
         std::size_t in_flight_{};
+        std::uint64_t revision_{};
         bool dispatching_{}, closing_{};
 
         Impl(lux::ui::Root& root, ViewHostLimits limits) : root_(root), limits_(limits), slots_(limits.views)
@@ -127,48 +150,110 @@ namespace lux::editor::desktop
                 pane.focused()
             };
         }
-        views::ViewResult<ViewAdoption> adopt(views::DetachedView& candidate, views::ViewRestoreKey restore_key)
+        views::ViewResult<PreparedViewBatch> prepareBatch(
+            std::span<ViewCandidate> candidates,
+            std::span<const ViewVisibility> visibility
+        )
         {
             if (closing_)
                 return cxx::unexpected(views::EViewError::CLOSED);
             if (busy())
                 return cxx::unexpected(views::EViewError::BUSY);
-            if (!candidate.pane() || !restore_key.isValid())
-                return cxx::unexpected(views::EViewError::NOT_ATTACHED);
-            for (const auto& slot : slots_)
-                if (slot.owner && slot.restore_key == restore_key &&
-                    slot.owner->pane()->type() == candidate.pane()->type())
+            Dispatch guard(dispatching_);
+            auto data = std::make_unique<PreparedViewBatch::Data>();
+            data->domain = domain_;
+            data->revision = revision_;
+            data->ids.reserve(candidates.size());
+            data->candidates.reserve(candidates.size());
+            data->connections.reserve(candidates.size());
+            std::vector<lux::ui::Pane*> panes;
+            std::vector<lux::ui::WindowVisibility> states;
+            panes.reserve(candidates.size());
+            states.reserve(visibility.size());
+            for (const auto& state : visibility)
+            {
+                auto* slot = find(state.id);
+                if (!slot)
                     return cxx::unexpected(views::EViewError::INVALID_ID);
-            auto found = std::ranges::find_if(slots_, [](const Slot& slot) {
-                return !slot.owner && slot.generation != UINT64_MAX;
-            });
-            if (found == slots_.end())
-                return cxx::unexpected(views::EViewError::CAPACITY);
-            auto prepared = root_.prepareMount(*candidate.pane());
+                states.push_back({slot->owner->pane(), state.visible});
+            }
+            std::size_t next_slot{};
+            for (const auto& candidate : candidates)
+            {
+                if (!candidate.owner.pane() || !candidate.restore_key.isValid())
+                    return cxx::unexpected(views::EViewError::NOT_ATTACHED);
+                const auto duplicate = [&](const views::ViewRestoreKey& key, const lux::ui::Pane& pane) {
+                    return key == candidate.restore_key && pane.type() == candidate.owner.pane()->type();
+                };
+                for (const auto& slot : slots_)
+                    if (slot.owner && duplicate(slot.restore_key, *slot.owner->pane()))
+                        return cxx::unexpected(views::EViewError::INVALID_ID);
+                for (const auto& prior : candidates.first(panes.size()))
+                    if (duplicate(prior.restore_key, *prior.owner.pane()))
+                        return cxx::unexpected(views::EViewError::INVALID_ID);
+                while (next_slot < slots_.size() &&
+                       (slots_[next_slot].owner || slots_[next_slot].generation == UINT64_MAX))
+                    ++next_slot;
+                if (next_slot == slots_.size())
+                    return cxx::unexpected(views::EViewError::CAPACITY);
+                auto& slot = slots_[next_slot];
+                const views::ViewId id{domain_, static_cast<std::uint32_t>(next_slot++), slot.generation + 1};
+                auto connected = object::LuxObject::connect(
+                    candidate.owner.pane(),
+                    &lux::ui::Pane::closeRequested,
+                    [&slot, id]() noexcept {
+                        if (slot.owner && slot.generation == id.generation)
+                            slot.close_requested = true;
+                    }
+                );
+                if (!connected)
+                    return cxx::unexpected(views::EViewError::CAPACITY);
+                data->connections.push_back(std::move(*connected));
+                data->ids.push_back(id);
+                panes.push_back(candidate.owner.pane());
+            }
+            auto prepared = root_.prepareMount(panes, states);
             if (!prepared)
                 return cxx::unexpected(attachmentError(prepared.error()));
-            auto& slot = *found;
-            auto connected =
-                object::LuxObject::connect(candidate.pane(), &lux::ui::Pane::closeRequested, [&slot]() noexcept {
-                    slot.close_requested = true;
-                });
-            if (!connected)
-                return cxx::unexpected(views::EViewError::CAPACITY);
+            data->attachment.emplace(std::move(*prepared));
+            // No callbacks or allocation remain. Input ownership changes only after the entire batch prepares.
+            for (auto& candidate : candidates)
+                data->candidates.push_back(std::move(candidate));
+            return PreparedViewBatch{std::move(data)};
+        }
+        views::ViewResult<object::SignalDelivery> commit(PreparedViewBatch& prepared)
+        {
+            if (closing_)
+                return cxx::unexpected(views::EViewError::CLOSED);
+            if (busy())
+                return cxx::unexpected(views::EViewError::BUSY);
+            auto* data = prepared.data_.get();
+            const bool stale = !data || data->domain != domain_ || data->revision != revision_ || !data->attachment;
+            if (stale)
+                return cxx::unexpected(views::EViewError::INVALID_ID);
             Dispatch guard(dispatching_);
-            ++slot.generation;
-            slot.restore_key = restore_key;
-            slot.owner.emplace(std::move(candidate));
-            slot.close_connection = std::move(*connected);
-            auto committed = root_.commit(*prepared);
+            const auto adopt = [&]() noexcept {
+                for (std::size_t i{}; i < data->ids.size(); ++i)
+                {
+                    auto& slot = slots_[data->ids[i].slot];
+                    slot.generation = data->ids[i].generation;
+                    slot.restore_key = std::move(data->candidates[i].restore_key);
+                    slot.owner.emplace(std::move(data->candidates[i].owner));
+                    slot.close_connection = std::move(data->connections[i]);
+                    slot.close_requested = false;
+                    slot.close_failure.reset();
+                }
+                ++revision_;
+            };
+            // Consume before dispatch. A notification may move or destroy the public preparation.
+            auto active = std::move(prepared.data_);
+            auto committed = root_.commit(*active->attachment, adopt);
             if (!committed)
             {
-                slot.close_connection.disconnect();
-                candidate = std::move(*slot.owner);
-                slot.owner.reset();
-                slot.close_requested = false;
+                prepared.data_ = std::move(active);
                 return cxx::unexpected(attachmentError(committed.error()));
             }
-            return ViewAdoption{identity(slot), committed->notifications};
+            return committed->notifications;
         }
         views::ViewResult<void> request(views::ViewId id, EAction action) noexcept
         {
@@ -201,6 +286,7 @@ namespace lux::editor::desktop
             append(report.notifications, committed->notifications);
             slot.close_connection.disconnect();
             slot.owner.reset();
+            ++revision_;
             slot.close_requested = false;
             ++report.completed;
             return true;
@@ -228,9 +314,9 @@ namespace lux::editor::desktop
                     if (!detach(*slot, report))
                         slot->close_requested = !slot->close_failure || slot->close_failure->retryable;
                 }
-                else if (request.action == EAction::SHOW)
+                else if (request.action == EAction::SHOW || request.action == EAction::HIDE)
                 {
-                    slot->owner->pane()->setVisible(true);
+                    slot->owner->pane()->setVisible(request.action == EAction::SHOW);
                     ++report.completed;
                 }
                 else if (root_.requestFocus(*slot->owner->pane()))
@@ -254,7 +340,36 @@ namespace lux::editor::desktop
     ViewHost::~ViewHost() noexcept = default;
     views::ViewResult<ViewAdoption> ViewHost::adopt(views::DetachedView& candidate, views::ViewRestoreKey key)
     {
-        return impl_->adopt(candidate, key);
+        ViewCandidate input{std::move(key), std::move(candidate)};
+        auto prepared = impl_->prepareBatch(std::span{&input, 1}, {});
+        if (!prepared)
+        {
+            candidate = std::move(input.owner);
+            return cxx::unexpected(prepared.error());
+        }
+        const auto id = prepared->created().front();
+        auto committed = impl_->commit(*prepared);
+        if (!committed)
+        {
+            candidate = std::move(prepared->data_->candidates.front().owner);
+            return cxx::unexpected(committed.error());
+        }
+        return ViewAdoption{id, *committed};
+    }
+    views::ViewResult<PreparedViewBatch> ViewHost::prepareBatch(
+        std::span<ViewCandidate> candidates,
+        std::span<const ViewVisibility> visibility
+    )
+    {
+        return impl_->prepareBatch(candidates, visibility);
+    }
+    views::ViewResult<object::SignalDelivery> ViewHost::commit(PreparedViewBatch& prepared)
+    {
+        return impl_->commit(prepared);
+    }
+    views::ViewResult<void> ViewHost::hide(views::ViewId id) noexcept
+    {
+        return impl_->request(id, Impl::EAction::HIDE);
     }
     views::ViewResult<views::ViewInfo> ViewHost::describe(views::ViewId id) const
     {

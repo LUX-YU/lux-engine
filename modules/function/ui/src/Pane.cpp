@@ -52,7 +52,9 @@ namespace lux::ui
         invalidatePreparation();
         if (preparation_)
         {
-            preparation_->pane = nullptr;
+            for (auto*& pane : preparation_->roots)
+                if (pane == this)
+                    pane = nullptr;
             preparation_ = nullptr;
         }
         if (root_)
@@ -84,6 +86,7 @@ namespace lux::ui
     {
         if (title_ == title)
             return;
+        invalidatePreparation();
         title_ = std::move(title);
         rebuildWindowLabel();
         if (root_)
@@ -94,7 +97,10 @@ namespace lux::ui
     {
         if (visible_ == visible)
             return;
+        invalidatePreparation();
         visible_ = visible;
+        if (root_)
+            root_->paneLabelChanged();
         static_cast<void>(emit(visibilityChanged, PaneVisibilityChanged{visible_}));
     }
 

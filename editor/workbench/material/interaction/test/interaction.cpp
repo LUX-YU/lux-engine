@@ -1,4 +1,5 @@
-#include "../../../../authoring/material/src/PreparedMaterialReload.hpp"
+#include "../../../../authoring/material/src/MaterialSessionData.hpp"
+#include <lux/engine/editor/material/PreparedMaterialReload.hpp>
 #include <lux/engine/editor/material/MaterialInteraction.hpp>
 #include <lux/engine/editor/sessions/SessionStore.hpp>
 #include <lux/engine/editor/material/MaterialSession.hpp>

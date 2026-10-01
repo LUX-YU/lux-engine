@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <limits>
 #include <thread>
+#include <utility>
 
 namespace lux::editor::persistence
 {
@@ -43,11 +44,14 @@ namespace lux::editor::persistence
             std::string chain_base;
             std::string version;
             std::uint64_t chain_begin{};
+            std::uint64_t revision{};
+            std::size_t readers{};
         };
         const std::thread::id owner{std::this_thread::get_id()};
         WriteLimits limits;
         std::uint64_t next{1};
         std::size_t bytes{};
+        std::size_t readers{};
         std::vector<Record> records;
         std::vector<Lane> lanes;
         explicit Impl(WriteLimits value) : limits(value) {}
@@ -107,6 +111,80 @@ namespace lux::editor::persistence
     };
     WriteCoordinator::WriteCoordinator(WriteLimits limits) : impl_(std::make_unique<Impl>(limits)) {}
     WriteCoordinator::~WriteCoordinator() = default;
+    WriteObservation::WriteObservation(WriteCoordinator& owner, WriteTargetKey key, std::uint64_t revision) noexcept
+        : owner_(&owner), key_(std::move(key)), revision_(revision)
+    {}
+    WriteObservation::~WriteObservation() noexcept
+    {
+        if (owner_)
+            owner_->release(*this);
+    }
+    WriteObservation::WriteObservation(WriteObservation&& other) noexcept
+        : owner_(std::exchange(other.owner_, nullptr)), key_(std::move(other.key_)), revision_(other.revision_)
+    {}
+    WriteObservation& WriteObservation::operator=(WriteObservation&& other) noexcept
+    {
+        if (this != &other)
+        {
+            WriteObservation previous(std::move(*this));
+            owner_ = std::exchange(other.owner_, nullptr);
+            key_ = std::move(other.key_);
+            revision_ = other.revision_;
+        }
+        return *this;
+    }
+    PersistenceResult<void> WriteObservation::validate() const
+    {
+        return owner_ ? owner_->validate(*this) : failed(EPersistenceError::INVALID_ARGUMENT);
+    }
+    PersistenceResult<WriteObservation> WriteCoordinator::observeIdle(WriteTargetKey key)
+    {
+        if (!impl_->onOwner())
+            return failed(EPersistenceError::WRONG_THREAD);
+        if (key.value.empty())
+            return failed(EPersistenceError::INVALID_ARGUMENT);
+        if (impl_->readers == impl_->limits.tickets)
+            return failed(EPersistenceError::CAPACITY);
+        const bool has_writer = std::ranges::any_of(impl_->records, [&](const auto& record) {
+            return record.work.target.key == key && record.stage != EWriteStage::TERMINAL;
+        });
+        if (has_writer)
+            return failed(EPersistenceError::WRITER_ACTIVE);
+        auto lane = impl_->lane(key);
+        if (lane == impl_->lanes.end())
+        {
+            impl_->lanes.push_back({key});
+            lane = std::prev(impl_->lanes.end());
+        }
+        ++impl_->readers;
+        ++lane->readers;
+        return WriteObservation{*this, std::move(key), lane->revision};
+    }
+    PersistenceResult<void> WriteCoordinator::validate(const WriteObservation& observation) const
+    {
+        if (!impl_->onOwner())
+            return failed(EPersistenceError::WRONG_THREAD);
+        const auto lane = impl_->lane(observation.key_);
+        const bool is_changed = lane == impl_->lanes.end() || lane->revision != observation.revision_;
+        if (is_changed)
+            return failed(EPersistenceError::CONFLICT);
+        return {};
+    }
+    void WriteCoordinator::release(const WriteObservation& observation) noexcept
+    {
+        if (!impl_->onOwner())
+            std::terminate();
+        const auto lane = impl_->lane(observation.key_);
+        if (lane == impl_->lanes.end() || !lane->readers)
+            std::terminate();
+        --impl_->readers;
+        --lane->readers;
+        const bool has_record = std::ranges::any_of(impl_->records, [&](const auto& record) {
+            return record.work.target.key == observation.key_;
+        });
+        if (!lane->readers && !has_record)
+            impl_->lanes.erase(lane);
+    }
     PersistenceResult<WriteTicket> WriteCoordinator::reserve(WriteTarget target, WriteOrigin origin)
     {
         if (!impl_->onOwner())
@@ -118,6 +196,8 @@ namespace lux::editor::persistence
         if (impl_->lane(target.key) == impl_->lanes.end())
             impl_->lanes.push_back({target.key});
         const WriteTicket ticket{impl_->next++};
+        // The unique admission number cannot wrap; observers retain this fact, not historical receipts.
+        impl_->lane(target.key)->revision = ticket.value;
         impl_->records.push_back({ticket, origin, {ticket, std::move(target), {}, {}}});
         return ticket;
     }
@@ -257,7 +337,19 @@ namespace lux::editor::persistence
         const auto key = found->work.target.key;
         impl_->records.erase(found);
         if (std::ranges::none_of(impl_->records, [&](const auto& item) { return item.work.target.key == key; }))
-            impl_->lanes.erase(impl_->lane(key));
+        {
+            const auto lane = impl_->lane(key);
+            if (!lane->readers)
+                impl_->lanes.erase(lane);
+            else
+            {
+                // Observation must not extend the save chain's receipt lifetime.
+                lane->last_writer.reset();
+                lane->chain_base.clear();
+                lane->version.clear();
+                lane->chain_begin = 0;
+            }
+        }
         return {};
     }
     std::size_t WriteCoordinator::size() const noexcept

@@ -7,7 +7,6 @@ namespace lux::editor::flowforge
     namespace detail
     {
         struct FlowSessionAccess;
-        class PreparedFlowReload;
     }
     struct FlowSessionLimits final
     {
@@ -41,7 +40,6 @@ namespace lux::editor::flowforge
     private:
         friend class FlowPersistenceAccess;
         friend struct detail::FlowSessionAccess;
-        friend class detail::PreparedFlowReload;
         struct Impl;
         explicit FlowSession(std::unique_ptr<Impl> impl) noexcept;
         [[nodiscard]] sessions::ContentStamp currentContent() const noexcept override;

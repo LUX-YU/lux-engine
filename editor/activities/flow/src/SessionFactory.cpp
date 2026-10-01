@@ -1,3 +1,4 @@
+#include <lux/engine/editor/flowforge/PreparedFlowReload.hpp>
 #include <lux/engine/editor/flowforge/FlowSessionFactory.hpp>
 #include <lux/engine/editor/flowforge/FlowSaveSource.hpp>
 #include <lux/engine/editor/detail/PrepareSession.hpp>
@@ -24,6 +25,51 @@ namespace lux::editor::flowforge
                         static_cast<std::uint64_t>(decoded.error().code),
                         decoded.error().detail
                     });
+                if (input.reload)
+                    return PreparedSessionData{
+                        code,
+                        *input.reload,
+                        [environment,
+                         code,
+                         data = std::move(*decoded),
+                         expected = *input.reload,
+                         binding = input.binding,
+                         target =
+                             input.target](SessionStore& store) mutable -> SessionFactoryResult<PreparedSessionReload> {
+                            auto construct = [&](FlowSession& session) -> FlowEditResult<PreparedFlowReload> {
+                                auto view = session.read();
+                                if (!view)
+                                    return cxx::unexpected(view.error());
+                                auto source = view->withRead([&]() -> FlowEditResult<FlowAuthoringSource> {
+                                    auto graph = lux::flowforge::materializeFlowSource(data.source, environment);
+                                    if (!graph)
+                                    {
+                                        FlowEditError failure;
+                                        failure.source = std::move(graph.error());
+                                        return cxx::unexpected(std::move(failure));
+                                    }
+                                    return FlowAuthoringSource{data.source.id, data.source.name, std::move(*graph)};
+                                });
+                                if (!source)
+                                    return cxx::unexpected(source.error());
+                                return PreparedFlowReload::prepare(
+                                    session,
+                                    std::move(*source),
+                                    environment,
+                                    expected,
+                                    binding
+                                );
+                            };
+                            return sessions::detail::prepareReload<FlowSession, FlowSaveSource, FlowPersistenceAccess>(
+                                store,
+                                expected,
+                                binding,
+                                target,
+                                code,
+                                construct
+                            );
+                        }
+                    };
                 return PreparedSessionData{
                     code,
                     [code, environment, data = std::move(*decoded), binding = input.binding, target = input.target](

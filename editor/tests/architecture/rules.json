@@ -1452,7 +1452,8 @@
       "variant",
       "vector",
       "lux/engine/editor/scene/SceneEditError.hpp",
-      "lux/engine/editor/scene/ScenePersistenceAccess.hpp"
+      "lux/engine/editor/scene/ScenePersistenceAccess.hpp",
+      "lux/engine/editor/scene/PreparedSceneReload.hpp"
     ],
     "prefixes": [
       "lux/engine/editor/sessions/",
@@ -1480,7 +1481,6 @@
       "editor/authoring/scene/include/lux/engine/editor/scene/SceneSession.hpp",
       "editor/authoring/scene/include/lux/engine/editor/scene/SceneSnapshot.hpp",
       "editor/authoring/scene/include/lux/engine/editor/scene/SceneSource.hpp",
-      "editor/authoring/scene/src/PreparedSceneReload.hpp",
       "editor/authoring/scene/src/SceneAlgorithms.cpp",
       "editor/authoring/scene/src/ScenePersistenceAccess.cpp",
       "editor/authoring/scene/src/SceneSession.cpp",
@@ -1494,7 +1494,9 @@
       "editor/authoring/scene/src/edits/SceneObjectEdit.cpp",
       "editor/authoring/scene/test/hierarchy_benchmark.cpp",
       "editor/authoring/scene/test/plugin_snapshot.cpp",
-      "editor/authoring/scene/test/scene_session.cpp"
+      "editor/authoring/scene/test/scene_session.cpp",
+      "editor/authoring/scene/include/lux/engine/editor/scene/PreparedSceneReload.hpp",
+      "editor/authoring/scene/src/PreparedSceneReload.cpp"
     ]
   },
   "material_model": {
@@ -1595,7 +1597,8 @@
       "lux/engine/editor/material/MaterialEdit.hpp",
       "lux/engine/editor/material/MaterialSession.hpp",
       "lux/engine/editor/material/MaterialSnapshot.hpp",
-      "lux/engine/editor/material/MaterialPersistenceAccess.hpp"
+      "lux/engine/editor/material/MaterialPersistenceAccess.hpp",
+      "lux/engine/editor/material/PreparedMaterialReload.hpp"
     ],
     "prefixes": [
       "lux/engine/editor/sessions/",
@@ -1611,11 +1614,12 @@
       "editor/authoring/material/src/MaterialPersistenceAccess.cpp",
       "editor/authoring/material/src/MaterialSession.cpp",
       "editor/authoring/material/src/MaterialSessionData.hpp",
-      "editor/authoring/material/src/PreparedMaterialReload.hpp",
       "editor/authoring/material/src/edits/MaterialEditPreparation.hpp",
       "editor/authoring/material/src/edits/MaterialGraphEdit.cpp",
       "editor/authoring/material/src/edits/MaterialValueEdit.cpp",
-      "editor/authoring/material/test/material_session.cpp"
+      "editor/authoring/material/test/material_session.cpp",
+      "editor/authoring/material/include/lux/engine/editor/material/PreparedMaterialReload.hpp",
+      "editor/authoring/material/src/PreparedMaterialReload.cpp"
     ]
   },
   "flowforge_model": {
@@ -1732,7 +1736,8 @@
       "lux/engine/editor/flowforge/FlowEdit.hpp",
       "lux/engine/editor/flowforge/FlowSession.hpp",
       "lux/engine/editor/flowforge/FlowSnapshot.hpp",
-      "lux/engine/editor/flowforge/FlowPersistenceAccess.hpp"
+      "lux/engine/editor/flowforge/FlowPersistenceAccess.hpp",
+      "lux/engine/editor/flowforge/PreparedFlowReload.hpp"
     ],
     "prefixes": [
       "lux/engine/editor/sessions/",
@@ -1751,10 +1756,11 @@
       "editor/authoring/flow/src/FlowPersistenceAccess.cpp",
       "editor/authoring/flow/src/FlowSession.cpp",
       "editor/authoring/flow/src/FlowSessionData.hpp",
-      "editor/authoring/flow/src/PreparedFlowReload.hpp",
       "editor/authoring/flow/src/edits/FlowEditPreparation.hpp",
       "editor/authoring/flow/src/edits/FlowGraphEdit.cpp",
-      "editor/authoring/flow/test/flow_session.cpp"
+      "editor/authoring/flow/test/flow_session.cpp",
+      "editor/authoring/flow/include/lux/engine/editor/flowforge/PreparedFlowReload.hpp",
+      "editor/authoring/flow/src/PreparedFlowReload.cpp"
     ]
   },
   "editor_persistence": {
@@ -1835,7 +1841,8 @@
       "variant",
       "vector",
       "lux/cxx/compile_time/expected.hpp",
-      "lux/cxx/memory/SharedBytes.hpp"
+      "lux/cxx/memory/SharedBytes.hpp",
+      "lux/cxx/core/function_ref.hpp"
     ],
     "prefixes": [
       "lux/engine/editor/contracts/",
@@ -2087,7 +2094,8 @@
       "variant",
       "vector",
       "lux/engine/editor/scene/SceneSessionFactory.hpp",
-      "lux/engine/editor/detail/PrepareSession.hpp"
+      "lux/engine/editor/detail/PrepareSession.hpp",
+      "lux/engine/editor/scene/PreparedSceneReload.hpp"
     ],
     "prefixes": [
       "Eigen/",
@@ -2240,7 +2248,8 @@
       "variant",
       "vector",
       "lux/engine/editor/material/MaterialSessionFactory.hpp",
-      "lux/engine/editor/detail/PrepareSession.hpp"
+      "lux/engine/editor/detail/PrepareSession.hpp",
+      "lux/engine/editor/material/PreparedMaterialReload.hpp"
     ],
     "prefixes": [
       "lux/cxx/compile_time/",
@@ -2396,7 +2405,8 @@
       "variant",
       "vector",
       "lux/engine/editor/flowforge/FlowSessionFactory.hpp",
-      "lux/engine/editor/detail/PrepareSession.hpp"
+      "lux/engine/editor/detail/PrepareSession.hpp",
+      "lux/engine/editor/flowforge/PreparedFlowReload.hpp"
     ],
     "prefixes": [
       "lux/cxx/compile_time/",
@@ -4660,7 +4670,8 @@
     ],
     "test_headers": {
       "editor/workbench/scene/interaction/test/interaction.cpp": [
-        "../../../../authoring/scene/src/PreparedSceneReload.hpp"
+        "lux/engine/editor/scene/PreparedSceneReload.hpp",
+        "../../../../authoring/scene/src/SceneSessionData.hpp"
       ],
       "editor/workbench/scene/interaction/test/run_selection.cpp": []
     },
@@ -4750,7 +4761,8 @@
     ],
     "test_headers": {
       "editor/workbench/material/interaction/test/interaction.cpp": [
-        "../../../../authoring/material/src/PreparedMaterialReload.hpp"
+        "lux/engine/editor/material/PreparedMaterialReload.hpp",
+        "../../../../authoring/material/src/MaterialSessionData.hpp"
       ]
     },
     "files": [
@@ -4854,7 +4866,8 @@
     ],
     "test_headers": {
       "editor/workbench/flow/interaction/test/interaction.cpp": [
-        "../../../../authoring/flow/src/PreparedFlowReload.hpp"
+        "lux/engine/editor/flowforge/PreparedFlowReload.hpp",
+        "../../../../authoring/flow/src/FlowSessionData.hpp"
       ]
     },
     "files": [
@@ -5242,7 +5255,8 @@
         "cassert",
         "cstdio",
         "lux/engine/editor/desktop/ViewHost.hpp",
-        "lux/engine/ui/Element.hpp"
+        "lux/engine/ui/Element.hpp",
+        "array"
       ]
     },
     "files": [
@@ -5654,7 +5668,8 @@
         "cassert",
         "cstdio",
         "lux/engine/editor/desktop/ViewHost.hpp",
-        "lux/engine/ui/Element.hpp"
+        "lux/engine/ui/Element.hpp",
+        "array"
       ]
     },
     "files": [
@@ -6333,7 +6348,8 @@
       "lux/engine/editor/configuration/ConfigurationValue.hpp",
       "lux/engine/editor/scene/ConfigurationEditor.hpp",
       "lux/engine/editor/scene/ConfigurationForm.hpp",
-      "lux/engine/editor/EditorError.hpp"
+      "lux/engine/editor/EditorError.hpp",
+      "lux/engine/editor/scene/PreparedSceneReload.hpp"
     ],
     "prefixes": [],
     "test_headers": {
@@ -6397,7 +6413,7 @@
         "lux/engine/flowforge/graph/ArithmeticNode.hpp",
         "imgui_internal.h",
         "DraftSources.hpp",
-        "../../../authoring/flow/src/PreparedFlowReload.hpp",
+        "lux/engine/editor/flowforge/PreparedFlowReload.hpp",
         "../../../authoring/material/src/MaterialSessionData.hpp",
         "lux/engine/editor/material/MaterialSession.hpp",
         "lux/engine/editor/sessions/SessionStore.hpp",
@@ -8857,7 +8873,8 @@
       "ws2_32"
     ],
     "headers": [
-      "lux/engine/object/ObjectEvent.hpp"
+      "lux/engine/object/ObjectEvent.hpp",
+      "lux/engine/editor/flowforge/PreparedFlowReload.hpp"
     ],
     "prefixes": [],
     "test_headers": {
@@ -8921,12 +8938,13 @@
         "lux/engine/flowforge/graph/ArithmeticNode.hpp",
         "imgui_internal.h",
         "DraftSources.hpp",
-        "../../../authoring/flow/src/PreparedFlowReload.hpp",
+        "lux/engine/editor/flowforge/PreparedFlowReload.hpp",
         "../../../authoring/material/src/MaterialSessionData.hpp",
         "lux/engine/editor/material/MaterialSession.hpp",
         "lux/engine/editor/sessions/SessionStore.hpp",
         "lux/engine/editor/views/ViewportElement.hpp",
-        "lux/engine/editor/extensions/BuiltinContributions.hpp"
+        "lux/engine/editor/extensions/BuiltinContributions.hpp",
+        "../../../authoring/flow/src/FlowSessionData.hpp"
       ],
       "editor/tests/integration/scene_views/AuxiliaryViews.hpp": [],
       "editor/tests/integration/scene_views/DraftSources.hpp": []
@@ -15211,6 +15229,15 @@
         "layer": "TEST",
         "role": "TEST",
         "capabilities": []
+      },
+      "session_execution": {
+        "layer": "E2",
+        "role": "PROVIDER",
+        "capabilities": [
+          "CPU",
+          "PROCESS"
+        ],
+        "path": "editor/activities/sessions"
       }
     },
     "files": {
@@ -15548,9 +15575,6 @@
       "editor/authoring/flow/src/FlowSessionData.hpp": [
         "flowforge_model"
       ],
-      "editor/authoring/flow/src/PreparedFlowReload.hpp": [
-        "flowforge_model"
-      ],
       "editor/authoring/flow/src/edits/FlowEditPreparation.hpp": [
         "flowforge_model"
       ],
@@ -15600,9 +15624,6 @@
         "material_model"
       ],
       "editor/authoring/material/src/MaterialSessionData.hpp": [
-        "material_model"
-      ],
-      "editor/authoring/material/src/PreparedMaterialReload.hpp": [
         "material_model"
       ],
       "editor/authoring/material/src/edits/MaterialEditPreparation.hpp": [
@@ -15669,9 +15690,6 @@
         "scene_model"
       ],
       "editor/authoring/scene/include/lux/engine/editor/scene/SceneSource.hpp": [
-        "scene_model"
-      ],
-      "editor/authoring/scene/src/PreparedSceneReload.hpp": [
         "scene_model"
       ],
       "editor/authoring/scene/src/SceneAlgorithms.cpp": [
@@ -17584,6 +17602,42 @@
       ],
       "editor/application/extensions/test/contributions.cpp": [
         "editor_contributions_test"
+      ],
+      "editor/authoring/scene/include/lux/engine/editor/scene/PreparedSceneReload.hpp": [
+        "scene_model"
+      ],
+      "editor/authoring/scene/src/PreparedSceneReload.cpp": [
+        "scene_model"
+      ],
+      "editor/authoring/material/include/lux/engine/editor/material/PreparedMaterialReload.hpp": [
+        "material_model"
+      ],
+      "editor/authoring/material/src/PreparedMaterialReload.cpp": [
+        "material_model"
+      ],
+      "editor/authoring/flow/include/lux/engine/editor/flowforge/PreparedFlowReload.hpp": [
+        "flowforge_model"
+      ],
+      "editor/authoring/flow/src/PreparedFlowReload.cpp": [
+        "flowforge_model"
+      ],
+      "editor/activities/sessions/include/lux/engine/editor/sessions/SessionOperations.hpp": [
+        "session_factories"
+      ],
+      "editor/activities/sessions/src/SessionOperations.cpp": [
+        "session_factories"
+      ],
+      "editor/activities/sessions/include/lux/engine/editor/sessions/SessionOpening.hpp": [
+        "session_execution"
+      ],
+      "editor/activities/sessions/src/SessionOpening.cpp": [
+        "session_execution"
+      ],
+      "editor/activities/sessions/include/lux/engine/editor/sessions/ReloadSessionOperation.hpp": [
+        "session_execution"
+      ],
+      "editor/activities/sessions/src/ReloadSessionOperation.cpp": [
+        "session_execution"
       ]
     },
     "native_libraries": [

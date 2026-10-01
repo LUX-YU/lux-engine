@@ -5,6 +5,26 @@
 
 namespace lux::editor::persistence
 {
+    class WriteCoordinator;
+    // Bounded observation of one physical lane. It does not block writers and must precede its
+    // coordinator's destruction. A later admission invalidates the observation even after acknowledgement.
+    class WriteObservation final
+    {
+    public:
+        ~WriteObservation() noexcept;
+        WriteObservation(WriteObservation&&) noexcept;
+        WriteObservation& operator=(WriteObservation&&) noexcept;
+        WriteObservation(const WriteObservation&) = delete;
+        WriteObservation& operator=(const WriteObservation&) = delete;
+        [[nodiscard]] PersistenceResult<void> validate() const;
+
+    private:
+        friend class WriteCoordinator;
+        WriteObservation(WriteCoordinator&, WriteTargetKey, std::uint64_t) noexcept;
+        WriteCoordinator* owner_{};
+        WriteTargetKey key_;
+        std::uint64_t revision_{};
+    };
     enum class EWriteStage : std::uint8_t
     {
         RESERVED,
@@ -32,6 +52,8 @@ namespace lux::editor::persistence
         WriteCoordinator(const WriteCoordinator&) = delete;
         WriteCoordinator& operator=(const WriteCoordinator&) = delete;
         [[nodiscard]] PersistenceResult<WriteTicket> reserve(WriteTarget target, WriteOrigin origin);
+        // Requires an idle target; UNKNOWN is still a writer. Used across asynchronous source reads.
+        [[nodiscard]] PersistenceResult<WriteObservation> observeIdle(WriteTargetKey);
         [[nodiscard]] PersistenceResult<void> provideEncoded(WriteTicket ticket, EncodedArtifact artifact);
         // Removal is a publication in the same bounded FIFO lane, with no encoded payload.
         [[nodiscard]] PersistenceResult<void> provideRemoval(WriteTicket ticket);
@@ -44,6 +66,9 @@ namespace lux::editor::persistence
         [[nodiscard]] std::size_t size() const noexcept;
 
     private:
+        friend class WriteObservation;
+        [[nodiscard]] PersistenceResult<void> validate(const WriteObservation&) const;
+        void release(const WriteObservation&) noexcept;
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };

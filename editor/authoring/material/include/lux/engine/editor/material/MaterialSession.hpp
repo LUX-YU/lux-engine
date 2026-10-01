@@ -8,7 +8,6 @@ namespace lux::editor::material
     namespace detail
     {
         struct MaterialSessionAccess;
-        class PreparedMaterialReload;
     }
     struct MaterialSessionLimits final
     {
@@ -40,7 +39,6 @@ namespace lux::editor::material
     private:
         friend class MaterialPersistenceAccess;
         friend struct detail::MaterialSessionAccess;
-        friend class detail::PreparedMaterialReload;
         struct Impl;
         explicit MaterialSession(std::unique_ptr<Impl> impl) noexcept;
         [[nodiscard]] sessions::ContentStamp currentContent() const noexcept override;

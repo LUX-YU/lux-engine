@@ -275,6 +275,51 @@ namespace lux::editor::persistence
         prepared.state_->published = true;
         return SaveSourceRegistration{std::move(prepared.state_)};
     }
+    PersistenceResult<void> SaveService::replaceSource(
+        SaveSourceRegistration& registration,
+        std::unique_ptr<ISaveSource>& source,
+        contracts::CodeLease code,
+        cxx::function_ref<PersistenceResult<void>()> commit
+    )
+    {
+        if (!impl_->onOwner())
+            return failed(EPersistenceError::WRONG_THREAD);
+        if (impl_->dispatching)
+            return failed(EPersistenceError::BUSY);
+        const Impl::DispatchScope dispatch{impl_->dispatching};
+        const auto previous = registration.state_;
+        const bool invalid = !previous || previous->service != impl_.get() || !previous->published ||
+                             !previous->source || !source || !code.valid();
+        if (invalid)
+            return failed(EPersistenceError::STALE_SOURCE);
+        const bool has_pending = std::ranges::any_of(impl_->operations, [&](const auto& operation) {
+            const bool unsettled =
+                operation->stage != ESaveStage::TERMINAL ||
+                (operation->outcome && std::holds_alternative<PublicationUnknown>(operation->outcome->publication));
+            return operation->request.session == previous->session && unsettled;
+        });
+        if (has_pending)
+            return failed(EPersistenceError::BUSY);
+        // All allocation precedes the no-callback domain commit. The original role remains active on failure.
+        auto next = impl_->allocate_source(std::move(code), source.get(), previous->session, impl_.get());
+        impl_->sources.reserve(impl_->sources.size() + 1);
+        auto committed = commit();
+        if (!committed)
+            return committed;
+        // The commit contract forbids releasing/replacing this token or invoking arbitrary callbacks.
+        if (registration.state_ != previous || !previous->source)
+            std::terminate();
+        next->owned_source = std::move(source);
+        next->published = true;
+        previous->source = nullptr;
+        registration.state_ = std::move(next);
+        std::erase_if(impl_->sources, [](const auto& weak) {
+            const auto state = weak.lock();
+            return !state || !state->source;
+        });
+        impl_->sources.push_back(registration.state_);
+        return {};
+    }
     PersistenceResult<SaveId> SaveService::requestSave(SaveRequest request)
     {
         if (!impl_->onOwner())

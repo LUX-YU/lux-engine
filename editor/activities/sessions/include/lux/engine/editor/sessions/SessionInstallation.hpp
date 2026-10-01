@@ -8,6 +8,7 @@ namespace lux::editor::sessions
         struct SessionInstallationData;
     }
     class PreparedSessionInstallation;
+    class PreparedSessionReload;
     // Only role owners/tokens. The author object belongs exclusively to SessionStore.
     // Destroying this role bundle revokes roles, not content. close() explicitly closes content.
     class InstalledSession final
@@ -23,6 +24,8 @@ namespace lux::editor::sessions
         [[nodiscard]] SessionFactoryResult<ContentStamp> undo();
         [[nodiscard]] SessionFactoryResult<ContentStamp> redo();
         [[nodiscard]] SessionResult<void> close(ContentStamp);
+        [[nodiscard]] SessionFactoryResult<ContentStamp>
+        reload(PreparedSessionReload&, const persistence::WriteObservation&);
 
     private:
         friend class PreparedSessionInstallation;
@@ -34,14 +37,7 @@ namespace lux::editor::sessions
     public:
         // Called after Store.prepare; its moved reservation owns hidden-slot rollback.
         [[nodiscard]] static SessionFactoryResult<PreparedSessionInstallation>
-        prepare(
-            SessionStore&,
-            persistence::SaveService&,
-            SessionReservation,
-            contracts::CodeLease,
-            std::unique_ptr<HistoryActions>,
-            std::unique_ptr<persistence::ISaveSource>
-        );
+        prepare(SessionStore&, persistence::SaveService&, SessionReservation, contracts::CodeLease, std::unique_ptr<HistoryActions>, std::unique_ptr<persistence::ISaveSource>);
         ~PreparedSessionInstallation();
         PreparedSessionInstallation(PreparedSessionInstallation&&) noexcept;
         PreparedSessionInstallation& operator=(PreparedSessionInstallation&&) noexcept;

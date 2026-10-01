@@ -40,7 +40,7 @@ honor the independent clone contract; this does not add a new serialized plugin 
 Code owners are deduplicated by shared ownership identity and conservatively retained for the
 source/history lifetime (until reload/close); each snapshot keeps its own owners. A lease inside
 a plugin-defined node would expire too soon for the returning destructor and is not used.
-PreparedMaterialReload is private, not installed; it adopts a complete candidate and new History
+PreparedMaterialReload is an installed domain preparation capability; it adopts a complete candidate and new History
 atomically while retaining SessionId. It provides no IO or public mark-clean/replace-source path.
 
 The native cases test full encoded graphs and history/checkpoint state on rejection, mixed

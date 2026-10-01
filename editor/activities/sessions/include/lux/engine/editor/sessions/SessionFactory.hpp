@@ -18,13 +18,35 @@ namespace lux::editor::sessions
         SourceBinding binding;
         std::optional<persistence::WriteTarget> target;
         std::size_t max_bytes{64 * 1024 * 1024};
+        std::optional<ContentStamp> reload;
+    };
+    class PreparedSessionReload final
+    {
+    public:
+        // Only the already prepared, checked domain swap; no extension/user callbacks in this function.
+        using Adopt = cxx::move_only_function<SessionFactoryResult<ContentStamp>(SessionStore&)>;
+        PreparedSessionReload(contracts::CodeLease, SessionId, Adopt, std::unique_ptr<persistence::ISaveSource>);
+        ~PreparedSessionReload();
+        PreparedSessionReload(PreparedSessionReload&&) noexcept;
+        PreparedSessionReload& operator=(PreparedSessionReload&&) noexcept;
+        PreparedSessionReload(const PreparedSessionReload&) = delete;
+        PreparedSessionReload& operator=(const PreparedSessionReload&) = delete;
+
+    private:
+        friend class InstalledSession;
+        contracts::CodeLease code_;
+        SessionId session_;
+        Adopt adopt_;
+        std::unique_ptr<persistence::ISaveSource> source_;
     };
     class PreparedSessionData final
     {
     public:
         using Prepare = cxx::move_only_function<
             SessionFactoryResult<PreparedSessionInstallation>(SessionStore&, persistence::SaveService&)>;
+        using Reload = cxx::move_only_function<SessionFactoryResult<PreparedSessionReload>(SessionStore&)>;
         PreparedSessionData(contracts::CodeLease, Prepare);
+        PreparedSessionData(contracts::CodeLease, ContentStamp, Reload);
         ~PreparedSessionData();
         PreparedSessionData(PreparedSessionData&&) noexcept;
         PreparedSessionData& operator=(PreparedSessionData&&) noexcept;
@@ -33,6 +55,7 @@ namespace lux::editor::sessions
         // One use after admission; BUSY/WRONG_THREAD/capacity preflight keeps this result intact for retry.
         [[nodiscard]] SessionFactoryResult<PreparedSessionInstallation>
         prepare(SessionStore&, persistence::SaveService&) &&;
+        [[nodiscard]] SessionFactoryResult<PreparedSessionReload> prepareReload(SessionStore&) &&;
         [[nodiscard]] bool usesCode(const contracts::CodeLease&) const noexcept;
 
     private:

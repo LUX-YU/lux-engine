@@ -1,3 +1,4 @@
+#include <lux/engine/editor/scene/PreparedSceneReload.hpp>
 #include <lux/engine/editor/scene/SceneSessionFactory.hpp>
 #include <lux/engine/editor/scene/SceneSaveSource.hpp>
 #include <lux/engine/editor/detail/PrepareSession.hpp>
@@ -24,6 +25,39 @@ namespace lux::editor::scene
                         static_cast<std::uint64_t>(decoded.error().code),
                         decoded.error().detail
                     });
+                if (input.reload)
+                    return PreparedSessionData{
+                        code,
+                        *input.reload,
+                        [schemas,
+                         code,
+                         data = std::move(*decoded),
+                         expected = *input.reload,
+                         binding = input.binding,
+                         target =
+                             input.target](SessionStore& store) mutable -> SessionFactoryResult<PreparedSessionReload> {
+                            auto construct = [&](SceneSession& session) -> SceneEditResult<PreparedSceneReload> {
+                                auto view = session.read();
+                                if (!view)
+                                    return cxx::unexpected(view.error());
+                                auto source = view->withRead([&](const SceneReadView&) -> SceneEditResult<SceneSource> {
+                                    return SceneSource::create(data.source, schemas);
+                                });
+                                if (!source)
+                                    return cxx::unexpected(source.error());
+                                return PreparedSceneReload::prepare(session, std::move(*source), expected, binding);
+                            };
+                            return sessions::detail::
+                                prepareReload<SceneSession, SceneSaveSource, ScenePersistenceAccess>(
+                                    store,
+                                    expected,
+                                    binding,
+                                    target,
+                                    code,
+                                    construct
+                                );
+                        }
+                    };
                 return PreparedSessionData{
                     code,
                     [code, schemas, data = std::move(*decoded), binding = input.binding, target = input.target](

@@ -18,6 +18,32 @@ namespace lux::editor::desktop
         std::size_t completed{}, stale{}, focus_refused{}, pending{};
         object::SignalDelivery notifications;
     };
+    struct ViewCandidate final
+    {
+        views::ViewRestoreKey restore_key;
+        views::DetachedView owner;
+    };
+    struct ViewVisibility final
+    {
+        views::ViewId id;
+        bool visible{};
+    };
+    class PreparedViewBatch final
+    {
+    public:
+        ~PreparedViewBatch();
+        PreparedViewBatch(PreparedViewBatch&&) noexcept;
+        PreparedViewBatch& operator=(PreparedViewBatch&&) noexcept;
+        PreparedViewBatch(const PreparedViewBatch&) = delete;
+        PreparedViewBatch& operator=(const PreparedViewBatch&) = delete;
+        [[nodiscard]] std::span<const views::ViewId> created() const noexcept;
+
+    private:
+        friend class ViewHost;
+        struct Data;
+        explicit PreparedViewBatch(std::unique_ptr<Data>) noexcept;
+        std::unique_ptr<Data> data_;
+    };
 
     // Single owner-thread controller. Root borrows the tree; only these slots own its top-level Panes.
     // Root and dispatcher outlive the host. Adoption/drain/destruction require an outer UI safe point.
@@ -34,11 +60,19 @@ namespace lux::editor::desktop
         // Preparation failure leaves candidate untouched. During Root notifications describe/adopt/drain
         // report BUSY; identity requests are queued and cannot destroy a callback's current object.
         [[nodiscard]] views::ViewResult<ViewAdoption> adopt(views::DetachedView&, views::ViewRestoreKey);
+        // All candidates stay detached until commit. Preparation failure leaves input owners unchanged.
+        // A successful preparation owns them; abandoning it releases nodes before their code pins.
+        [[nodiscard]] views::ViewResult<PreparedViewBatch> prepareBatch(
+            std::span<ViewCandidate>,
+            std::span<const ViewVisibility> existing = {}
+        );
+        [[nodiscard]] views::ViewResult<object::SignalDelivery> commit(PreparedViewBatch&);
         [[nodiscard]] views::ViewResult<views::ViewInfo> describe(views::ViewId) const override;
         [[nodiscard]] views::ViewResult<std::vector<views::ViewInfo>> describeAll() const;
         [[nodiscard]] views::ViewResult<std::optional<views::ViewCloseFailure>> closeFailure(views::ViewId) const;
         [[nodiscard]] views::ViewResult<void> close(views::ViewId) noexcept override;
         [[nodiscard]] views::ViewResult<void> show(views::ViewId) noexcept override;
+        [[nodiscard]] views::ViewResult<void> hide(views::ViewId) noexcept;
         [[nodiscard]] views::ViewResult<void> focus(views::ViewId) noexcept override;
         [[nodiscard]] views::ViewResult<ViewDrain> drain();
 

@@ -4,6 +4,7 @@
 #include <cassert>
 #include <algorithm>
 #include <cstdio>
+#include <array>
 
 using namespace lux;
 using namespace lux::editor;
@@ -228,6 +229,79 @@ namespace
             previous = id;
         }
     }
+    void batchOwnership(object::ObjectDispatcherRef dispatcher)
+    {
+        auto root = take(ui::Root::create(dispatcher, {.docking = false}));
+        Facts existing, first, second, rejected;
+        desktop::ViewHost host(*root, {3, 16});
+        auto initial = candidate(dispatcher, "batch-existing", existing);
+        auto* window = initial.pane();
+        auto id = take(host.adopt(initial, views::ViewRestoreKey{"batch-existing"})).id;
+        assert(host.hide(id));
+        take(host.drain());
+        assert(!window->visible());
+        std::array candidates{
+            desktop::ViewCandidate{views::ViewRestoreKey{"batch-first"}, candidate(dispatcher, "batch-first", first)},
+            desktop::ViewCandidate{views::ViewRestoreKey{"batch-second"}, candidate(dispatcher, "batch-second", second)}
+        };
+        std::array states{desktop::ViewVisibility{id, true}};
+        auto prepared = take(host.prepareBatch(candidates, states));
+        assert(!candidates[0].owner.pane() && !candidates[1].owner.pane());
+        assert(take(host.describeAll()).size() == 1 && !window->visible());
+        const std::vector new_ids(prepared.created().begin(), prepared.created().end());
+        unsigned notices{};
+        auto connected = take(object::LuxObject::connect(
+            root.get(),
+            &ui::Root::attachmentChanged,
+            [&](const ui::AttachmentChanged& change) noexcept {
+                if (!change.mounted)
+                    return;
+                ++notices;
+                assert(root->findPane(ui::PaneIdView{"batch-first"}));
+                assert(root->findPane(ui::PaneIdView{"batch-second"}));
+                assert(window->visible());
+                assert(!host.describeAll());
+                assert(host.hide(id)); // Notification requests belong to the next drain.
+            }
+        ));
+        assert(host.commit(prepared));
+        assert(notices == 2 && window->visible() && take(host.describeAll()).size() == 3);
+        assert(!host.commit(prepared));
+        take(host.drain());
+        assert(!window->visible());
+        connected.disconnect();
+        assert(host.close(new_ids[0]) && host.close(new_ids[1]));
+        take(host.drain());
+        assert(first.code == 1 && second.code == 1);
+        {
+            std::array next{
+                desktop::ViewCandidate{views::ViewRestoreKey{"abandoned"}, candidate(dispatcher, "abandoned", rejected)}
+            };
+            auto pending = take(host.prepareBatch(next, states));
+            // Changing an observed existing window invalidates preparation before any candidate mounts.
+            window->setVisible(true);
+            window->setVisible(false);
+            assert(!host.commit(pending));
+            assert(take(host.describeAll()).size() == 1 && !window->visible() && !rejected.pane);
+        }
+        assert(rejected.pane == 1 && rejected.element == 1 && rejected.code == 1);
+    }
+    void batchFailure(object::ObjectDispatcherRef dispatcher)
+    {
+        auto root = take(ui::Root::create(dispatcher, {.attachment_capacity = 3}));
+        Facts first, second;
+        desktop::ViewHost host(*root);
+        std::array candidates{
+            desktop::ViewCandidate{views::ViewRestoreKey{"a"}, candidate(dispatcher, "a", first)},
+            desktop::ViewCandidate{views::ViewRestoreKey{"b"}, candidate(dispatcher, "b", second)}
+        };
+        const auto revision = root->windowRevision();
+        auto failed = host.prepareBatch(candidates);
+        assert(!failed && failed.error() == views::EViewError::CAPACITY);
+        assert(root->windowRevision() == revision && root->panes().empty());
+        assert(candidates[0].owner.pane() && candidates[1].owner.pane());
+        assert(!first.pane && !second.pane && take(host.describeAll()).empty());
+    }
 }
 int main()
 {
@@ -239,5 +313,7 @@ int main()
     failedPrepare(queue.dispatcherRef());
     reuseCapacity(queue.dispatcherRef());
     closeFailures(queue.dispatcherRef());
+    batchOwnership(queue.dispatcherRef());
+    batchFailure(queue.dispatcherRef());
     std::puts("PASS P10 real ViewHost ownership, bounded requests, generation, callback batches and prepare failure");
 }

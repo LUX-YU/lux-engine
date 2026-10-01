@@ -75,6 +75,62 @@ namespace lux::editor::sessions::detail
         TSessionAccess<T> access_;
         TSessionKey<T> key_;
     };
+    template <class Error> SessionFactoryFailure reloadFailure(const Error& error)
+    {
+        if (error.code == decltype(error.code)::SESSION)
+            return factoryFailure(error.session);
+        if (error.code == decltype(error.code)::STALE_CONTENT)
+            return factoryFailure(ESessionError::STALE_CONTENT);
+        return {ESessionFactoryError::CONSTRUCT, "author.reload", static_cast<std::uint64_t>(error.code)};
+    }
+    template <AuthorSession T, class SaveSource, class PersistenceAccess, class Construct>
+        requires std::invocable<Construct&, T&>
+    SessionFactoryResult<PreparedSessionReload> prepareReload(
+        SessionStore& store,
+        ContentStamp expected,
+        const SourceBinding& binding,
+        std::optional<persistence::WriteTarget> target,
+        contracts::CodeLease code,
+        Construct& construct
+    )
+    {
+        auto key = store.key<T>(expected.session);
+        if (!key)
+            return cxx::unexpected(factoryFailure(key.error()));
+        auto model = store.access<T>().edit(*key);
+        if (!model)
+            return cxx::unexpected(factoryFailure(model.error()));
+        const auto current = model->get().describe();
+        if (current.admission != EEditAdmission::AVAILABLE)
+            return cxx::unexpected(factoryFailure(ESessionError::BUSY));
+        auto candidate = construct(model->get());
+        if (!candidate)
+            return cxx::unexpected(reloadFailure(candidate.error()));
+        auto persistence = PersistenceAccess::inspect(model->get());
+        if (!persistence)
+            return cxx::unexpected(factoryFailure(persistence.error()));
+        if (persistence->content != expected || persistence->source != binding)
+            return cxx::unexpected(factoryFailure(ESessionError::STALE_CONTENT));
+        auto source = std::make_unique<SaveSource>(store.access<T>(), *key, std::move(target), persistence->revision);
+        return PreparedSessionReload{
+            std::move(code),
+            expected.session,
+            [key = *key,
+             candidate = std::move(*candidate)](SessionStore& owner) mutable -> SessionFactoryResult<ContentStamp> {
+                auto model = owner.access<T>().edit(key);
+                if (!model)
+                    return cxx::unexpected(factoryFailure(model.error()));
+                auto adopted = candidate.adopt(model->get());
+                if (!adopted)
+                    return cxx::unexpected(reloadFailure(adopted.error()));
+                auto history = model->get().historyView();
+                if (!history)
+                    std::terminate(); // The successful swap installed a complete History; no callback intervenes.
+                return ContentStamp{key.id(), history->snapshot.current};
+            },
+            std::move(source)
+        };
+    }
     template <AuthorSession T, class SaveSource, class Construct>
         requires std::invocable<Construct&, SessionId>
     SessionFactoryResult<PreparedSessionInstallation> prepareSession(

@@ -1,7 +1,8 @@
+#include "../src/MaterialSessionData.hpp"
 #include <lux/engine/editor/sessions/SessionStore.hpp>
 #include <lux/engine/editor/material/MaterialSession.hpp>
 #include <lux/engine/material/graph/Nodes.hpp>
-#include "../src/PreparedMaterialReload.hpp"
+#include <lux/engine/editor/material/PreparedMaterialReload.hpp>
 #include <cassert>
 #include <cstdio>
 #include <functional>
@@ -397,7 +398,7 @@ namespace
         input.graph.addNode(std::make_unique<PluginConstant>(code));
         Fixture f(std::move(input), contracts::CodeLease::plugin(code));
         const Saved saved(f);
-        auto candidate = take(lux::editor::material::detail::PreparedMaterialReload::prepare(*f.session, source()));
+        auto candidate = take(lux::editor::material::PreparedMaterialReload::prepare(*f.session, source()));
         const auto check = [&] {
             auto edit = f.batch();
             edit.edits.push_back(MaterialRename{"nested"});
@@ -449,7 +450,7 @@ namespace
         batch.edits.push_back(MaterialRename{"after read"});
         assert(f.session->apply(std::move(batch)));
         assert(!candidate.adopt(*f.session));
-        candidate = take(lux::editor::material::detail::PreparedMaterialReload::prepare(*f.session, source()));
+        candidate = take(lux::editor::material::PreparedMaterialReload::prepare(*f.session, source()));
         const auto old = f.session->describe().current;
         assert(candidate.adopt(*f.session));
         assert(
@@ -493,11 +494,8 @@ namespace
             if (!result)
                 assert(result.error().session == sessions::ESessionError::BUSY);
         };
-        const auto result = lux::editor::material::detail::PreparedMaterialReload::prepare(
-            *f.session,
-            std::move(input),
-            std::move(lease)
-        );
+        const auto result =
+            lux::editor::material::PreparedMaterialReload::prepare(*f.session, std::move(input), std::move(lease));
         std::printf(
             "unbound last_lease=%d rejected=%d nested_edit=%d callback_admission=%u destroyed=%zu "
             "alive=%zu released_early=%d released_with_nodes=%d released=%d\n",
@@ -547,11 +545,8 @@ namespace
                 nested_edit = bool(result);
                 assert(!result && result.error().session == sessions::ESessionError::BUSY);
             };
-            const auto result = lux::editor::material::detail::PreparedMaterialReload::prepare(
-                *f.session,
-                std::move(input),
-                std::move(lease)
-            );
+            const auto result =
+                lux::editor::material::PreparedMaterialReload::prepare(*f.session, std::move(input), std::move(lease));
             std::printf(
                 "busy outer=%u rejected=%d gate_unchanged=%d nested_edit=%d destroyed=%zu "
                 "alive=%zu released_early=%d released_with_nodes=%d released=%d\n",
@@ -621,11 +616,8 @@ namespace
                     check();
                     throw std::runtime_error("reload input clone failure");
                 };
-            const auto result = lux::editor::material::detail::PreparedMaterialReload::prepare(
-                *f.session,
-                std::move(input),
-                std::move(lease)
-            );
+            const auto result =
+                lux::editor::material::PreparedMaterialReload::prepare(*f.session, std::move(input), std::move(lease));
             std::printf(
                 "bound %s rejected=%d callback_ran=%d alive=%zu released_early=%d released_with_nodes=%d released=%d\n",
                 throws ? "clone-exception" : "wrong-asset",
@@ -670,11 +662,9 @@ namespace
             destroyed_input = true;
             check();
         };
-        auto prepared = take(lux::editor::material::detail::PreparedMaterialReload::prepare(
-            *f.session,
-            std::move(input),
-            std::move(lease)
-        ));
+        auto prepared =
+            take(lux::editor::material::PreparedMaterialReload::prepare(*f.session, std::move(input), std::move(lease))
+            );
         saved.report(f);
         assert(clone_ran && destroyed_input && alive == 1 && !released);
         assert(prepared.adopt(*f.session));

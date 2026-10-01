@@ -14,7 +14,6 @@ namespace lux::editor::scene
     };
     namespace detail
     {
-        class PreparedSceneReload;
         struct SceneSessionAccess;
     }
 
@@ -44,7 +43,6 @@ namespace lux::editor::scene
     private:
         friend class ScenePersistenceAccess;
         friend struct detail::SceneSessionAccess;
-        friend class detail::PreparedSceneReload;
         struct Impl;
         explicit SceneSession(std::unique_ptr<Impl> impl) noexcept;
         [[nodiscard]] sessions::ContentStamp currentContent() const noexcept override;

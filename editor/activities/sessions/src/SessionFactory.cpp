@@ -1,13 +1,19 @@
 #include <lux/engine/editor/sessions/SessionFactory.hpp>
+#include <variant>
 namespace lux::editor::sessions
 {
     struct PreparedSessionData::Data final
     {
         contracts::CodeLease code;
-        Prepare prepare;
+        using VPreparation = std::variant<Prepare, Reload>;
+        VPreparation preparation;
+        std::optional<ContentStamp> reload;
     };
     PreparedSessionData::PreparedSessionData(contracts::CodeLease code, Prepare prepare)
         : data_(std::make_unique<Data>(std::move(code), std::move(prepare)))
+    {}
+    PreparedSessionData::PreparedSessionData(contracts::CodeLease code, ContentStamp expected, Reload reload)
+        : data_(std::make_unique<Data>(std::move(code), std::move(reload), expected))
     {}
     PreparedSessionData::~PreparedSessionData() = default;
     PreparedSessionData::PreparedSessionData(PreparedSessionData&&) noexcept = default;
@@ -32,14 +38,15 @@ namespace lux::editor::sessions
                 save_ready.error().detail
             });
         auto owned = std::move(data_);
-        if (!owned || !owned->code.valid() || !owned->prepare)
+        auto* prepare = owned ? std::get_if<Prepare>(&owned->preparation) : nullptr;
+        if (!owned || !owned->code.valid() || !prepare || !*prepare)
             return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::INVALID_ARGUMENT, "prepared.data"});
         auto invoke = [&]() -> SessionFactoryResult<PreparedSessionInstallation> {
             if (owned->code.sameOwner(contracts::CodeLease::builtin()))
-                return owned->prepare(store, saves);
+                return (*prepare)(store, saves);
             try
             {
-                return owned->prepare(store, saves);
+                return (*prepare)(store, saves);
             }
             catch (const std::bad_alloc&)
             {
@@ -55,6 +62,64 @@ namespace lux::editor::sessions
         if (result && !result->usesCode(owned->code))
             return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::ROLE, "installation.code"});
         return result;
+    }
+    SessionFactoryResult<PreparedSessionReload> PreparedSessionData::prepareReload(SessionStore& store) &&
+    {
+        // Store reentry is temporary: keep the accepted decode result intact until owner admission.
+        if (!data_ || !data_->code.valid() || !data_->reload)
+            return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::INVALID_ARGUMENT, "reload.data"});
+        const auto ready = store.describe(data_->reload->session);
+        if (!ready)
+            return cxx::unexpected(factoryFailure(ready.error()));
+        if (ready->admission != EEditAdmission::AVAILABLE)
+            return cxx::unexpected(factoryFailure(ESessionError::BUSY));
+        auto* reload = std::get_if<Reload>(&data_->preparation);
+        if (!reload || !*reload)
+            return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::INVALID_ARGUMENT, "reload.unsupported"});
+        // The domain callback checks its original stamp/gate before consuming the owned source.
+        // On BUSY it leaves its input intact, so no encoder/decoder is rerun on retry.
+        auto invoke = [&]() -> SessionFactoryResult<PreparedSessionReload> {
+            if (data_->code.sameOwner(contracts::CodeLease::builtin()))
+                return (*reload)(store);
+            try
+            {
+                return (*reload)(store);
+            }
+            catch (const std::bad_alloc&)
+            {
+                std::terminate();
+            }
+            catch (...)
+            {
+                return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::CALLBACK, "plugin.reload"});
+            }
+        };
+        auto result = invoke();
+        if (result || result.error().code != ESessionFactoryError::BUSY)
+            data_.reset();
+        return result;
+    }
+    PreparedSessionReload::PreparedSessionReload(
+        contracts::CodeLease code,
+        SessionId session,
+        Adopt adopt,
+        std::unique_ptr<persistence::ISaveSource> source
+    )
+        : code_(std::move(code)), session_(session), adopt_(std::move(adopt)), source_(std::move(source))
+    {}
+    PreparedSessionReload::~PreparedSessionReload() = default;
+    PreparedSessionReload::PreparedSessionReload(PreparedSessionReload&&) noexcept = default;
+    PreparedSessionReload& PreparedSessionReload::operator=(PreparedSessionReload&& other) noexcept
+    {
+        if (this != &other)
+        {
+            PreparedSessionReload previous(std::move(*this));
+            code_ = std::move(other.code_);
+            session_ = other.session_;
+            adopt_ = std::move(other.adopt_);
+            source_ = std::move(other.source_);
+        }
+        return *this;
     }
     bool PreparedSessionData::usesCode(const contracts::CodeLease& code) const noexcept
     {

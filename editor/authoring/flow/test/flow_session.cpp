@@ -1,10 +1,11 @@
+#include "../src/FlowSessionData.hpp"
 #include <lux/engine/editor/sessions/SessionStore.hpp>
 #include <lux/engine/editor/flowforge/FlowSession.hpp>
 #include <lux/engine/flowforge/graph/ControlNode.hpp>
 #include <lux/engine/flowforge/graph/FunctionalNode.hpp>
 #include <lux/engine/flowforge/graph/ObjectNode.hpp>
 #include <lux/engine/meta/Meta.hpp>
-#include "../src/PreparedFlowReload.hpp"
+#include <lux/engine/editor/flowforge/PreparedFlowReload.hpp>
 #include <array>
 #include <cassert>
 #include <cstdio>
@@ -873,7 +874,8 @@ namespace
         if (!external_owner)
             owner.reset();
         const auto reject = [&]() -> FlowEditResult<void> {
-            auto prepared = access::PreparedFlowReload::prepare(*f.session, std::move(input), std::move(env));
+            auto prepared =
+                lux::editor::flowforge::PreparedFlowReload::prepare(*f.session, std::move(input), std::move(env));
             assert(!prepared);
             return {};
         };
@@ -981,12 +983,12 @@ namespace
         Saved before(f);
         auto replacement = source();
         replacement.name = "reloaded";
-        auto prepared = take(access::PreparedFlowReload::prepare(*f.session, std::move(replacement)));
+        auto prepared = take(lux::editor::flowforge::PreparedFlowReload::prepare(*f.session, std::move(replacement)));
         before.unchanged(f);
         assert(prepared.adopt(*f.session));
         assert(!f.session->describe().dirty && f.history().entry_count == 0);
         assert(take(f.session->capture()).source().name == "reloaded");
-        prepared = take(access::PreparedFlowReload::prepare(*f.session, source()));
+        prepared = take(lux::editor::flowforge::PreparedFlowReload::prepare(*f.session, source()));
         f.apply(FlowRename{"newer"});
         Saved newer(f);
         assert(!prepared.adopt(*f.session));

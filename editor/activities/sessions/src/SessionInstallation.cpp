@@ -1,4 +1,6 @@
 #include <lux/engine/editor/sessions/SessionInstallation.hpp>
+#include <lux/engine/editor/sessions/SessionFactory.hpp>
+#include <lux/engine/editor/sessions/SessionOperations.hpp>
 namespace lux::editor::sessions
 {
     SessionFactoryFailure factoryFailure(ESessionError error)
@@ -121,6 +123,33 @@ namespace lux::editor::sessions
         if (closed)
             data_.reset();
         return closed;
+    }
+    SessionFactoryResult<ContentStamp> InstalledSession::reload(
+        PreparedSessionReload& candidate,
+        const persistence::WriteObservation& observation
+    )
+    {
+        const auto code = data_ ? data_->code : contracts::CodeLease::builtin();
+        const auto pinned = data_;
+        const bool invalid = !pinned || pinned->id != candidate.session_ || !pinned->registration || !candidate.adopt_;
+        if (invalid)
+            return cxx::unexpected(factoryFailure(ESessionError::STALE_SESSION));
+        std::optional<SessionFactoryResult<ContentStamp>> adopted;
+        auto commit = [&]() -> persistence::PersistenceResult<void> {
+            auto unchanged = observation.validate();
+            if (!unchanged)
+                return unchanged;
+            adopted.emplace(candidate.adopt_(pinned->store));
+            if (!*adopted)
+                return cxx::unexpected(persistence::PersistenceFailure{persistence::EPersistenceError::STALE_SOURCE});
+            return {};
+        };
+        auto replaced = pinned->saves.replaceSource(*pinned->registration, candidate.source_, candidate.code_, commit);
+        if (adopted && !*adopted)
+            return std::move(*adopted);
+        if (!replaced)
+            return cxx::unexpected(factoryFailure(replaced.error()));
+        return std::move(*adopted);
     }
     PreparedSessionInstallation::PreparedSessionInstallation(std::shared_ptr<detail::SessionInstallationData> data
     ) noexcept

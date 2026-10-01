@@ -898,8 +898,10 @@ namespace lux::ui
             return;
         if (state_->root)
             state_->root->abandonAttachment(*state_);
-        else if (state_->pane && state_->pane->preparation_ == state_.get())
-            state_->pane->preparation_ = nullptr;
+        else
+            for (auto* pane : state_->roots)
+                if (pane && pane->preparation_ == state_.get())
+                    pane->preparation_ = nullptr;
     }
     PreparedAttachment::PreparedAttachment(PreparedAttachment&&) noexcept = default;
     PreparedAttachment& PreparedAttachment::operator=(PreparedAttachment&& other) noexcept
@@ -913,10 +915,10 @@ namespace lux::ui
         requireOwner();
         if (impl_->preparation == &state)
             impl_->preparation = nullptr;
-        if (state.pane && state.pane->preparation_ == &state)
-            state.pane->preparation_ = nullptr;
+        for (auto* pane : state.roots)
+            if (pane && pane->preparation_ == &state)
+                pane->preparation_ = nullptr;
         state.root = nullptr;
-        state.pane = nullptr;
         state.valid = false;
     }
     bool Root::attachmentSafe() const noexcept
@@ -926,25 +928,53 @@ namespace lux::ui
     }
     Root::AttachmentResult Root::prepareMount(Pane& pane)
     {
-        return prepareAttachment(pane, true);
+        auto* value = &pane;
+        return prepareMount(std::span<Pane* const>{&value, 1});
     }
     Root::AttachmentResult Root::prepareDetach(Pane& pane)
     {
-        return prepareAttachment(pane, false);
+        auto* value = &pane;
+        return prepareDetach(std::span<Pane* const>{&value, 1});
     }
-    Root::AttachmentResult Root::prepareAttachment(Pane& pane, bool mount)
+    Root::AttachmentResult Root::prepareMount(
+        std::span<Pane* const> panes,
+        std::span<const WindowVisibility> visibility
+    )
     {
-        if (!isOnAffinityThread() || !pane.isOnAffinityThread())
+        return prepareAttachment(panes, true, visibility);
+    }
+    Root::AttachmentResult Root::prepareDetach(std::span<Pane* const> panes)
+    {
+        return prepareAttachment(panes, false);
+    }
+    Root::AttachmentResult Root::prepareAttachment(
+        std::span<Pane* const> panes,
+        bool mount,
+        std::span<const WindowVisibility> visibility
+    )
+    {
+        if (!isOnAffinityThread())
             return lux::cxx::unexpected(EAttachmentError::WRONG_THREAD);
-        if (!attachmentSafe() || impl_->preparation || pane.preparation_)
+        if (!attachmentSafe() || impl_->preparation)
             return lux::cxx::unexpected(EAttachmentError::BUSY);
-        if (pane.dispatcherRef() != dispatcherRef())
-            return lux::cxx::unexpected(EAttachmentError::WRONG_DISPATCHER);
-        if (mount && (pane.attachedRoot() || pane.parent()))
-            return lux::cxx::unexpected(EAttachmentError::ALREADY_ATTACHED);
-        if (!mount && (pane.attachedRoot() != this || pane.parent() != this))
-            return lux::cxx::unexpected(EAttachmentError::NOT_ATTACHED);
         auto prepared = std::make_unique<detail::AttachmentState>();
+        prepared->roots.reserve(panes.size());
+        for (auto* pane : panes)
+        {
+            if (!pane || std::ranges::find(prepared->roots, pane) != prepared->roots.end())
+                return lux::cxx::unexpected(EAttachmentError::INVALID_TREE);
+            if (!pane->isOnAffinityThread())
+                return lux::cxx::unexpected(EAttachmentError::WRONG_THREAD);
+            if (pane->preparation_)
+                return lux::cxx::unexpected(EAttachmentError::BUSY);
+            if (pane->dispatcherRef() != dispatcherRef())
+                return lux::cxx::unexpected(EAttachmentError::WRONG_DISPATCHER);
+            if (mount && (pane->attachedRoot() || pane->parent()))
+                return lux::cxx::unexpected(EAttachmentError::ALREADY_ATTACHED);
+            if (!mount && (pane->attachedRoot() != this || pane->parent() != this))
+                return lux::cxx::unexpected(EAttachmentError::NOT_ATTACHED);
+            prepared->roots.push_back(pane);
+        }
         std::size_t windows{};
         bool invalid{};
         const auto visit = [&](auto&& self, object::LuxObject& node) -> void {
@@ -968,9 +998,25 @@ namespace lux::ui
             for (auto* child = node.firstChild(); child; child = child->nextSibling())
                 self(self, *child);
         };
-        visit(visit, pane);
+        for (auto* pane : panes)
+            visit(visit, *pane);
         if (invalid)
             return lux::cxx::unexpected(EAttachmentError::INVALID_TREE);
+        prepared->visibility.reserve(visibility.size());
+        prepared->visibility_changed.reserve(visibility.size());
+        for (const auto& value : visibility)
+        {
+            if (!value.pane)
+                return lux::cxx::unexpected(EAttachmentError::INVALID_TREE);
+            const bool is_existing = value.pane->attachedRoot() == this;
+            const bool is_candidate =
+                std::ranges::any_of(prepared->nodes, [&](const auto& node) { return node.pane == value.pane; });
+            const bool is_duplicate =
+                std::ranges::any_of(prepared->visibility, [&](const auto& prior) { return prior.pane == value.pane; });
+            if ((!is_existing && !is_candidate) || is_duplicate)
+                return lux::cxx::unexpected(EAttachmentError::INVALID_TREE);
+            prepared->visibility.push_back(value);
+        }
         if (mount)
         {
             std::vector<PaneIdView> names;
@@ -993,33 +1039,43 @@ namespace lux::ui
             impl_->windows.reserve(impl_->windows.size() + windows);
         }
         prepared->root = this;
-        prepared->pane = &pane;
         prepared->revision = impl_->structure_revision;
+        prepared->window_revision = impl_->window_revision;
         prepared->mount = mount;
         impl_->preparation = prepared.get();
-        pane.preparation_ = prepared.get();
+        for (auto* pane : panes)
+            pane->preparation_ = prepared.get();
         return PreparedAttachment{std::move(prepared)};
     }
     lux::cxx::expected<AttachmentCommit, EAttachmentError> Root::commit(PreparedAttachment& token) noexcept
+    {
+        const auto adopt = []() noexcept {};
+        return commit(token, adopt);
+    }
+    lux::cxx::expected<AttachmentCommit, EAttachmentError> Root::commit(
+        PreparedAttachment& token,
+        cxx::function_ref<void()> adopt
+    ) noexcept
     {
         if (!isOnAffinityThread())
             return lux::cxx::unexpected(EAttachmentError::WRONG_THREAD);
         if (!attachmentSafe())
             return lux::cxx::unexpected(EAttachmentError::BUSY);
         auto* state = token.state_.get();
-        const bool stale = !state || state->root != this || !state->pane || !state->valid ||
-                           state->revision != impl_->structure_revision;
+        const bool stale = !state || state->root != this || !state->valid ||
+                           state->revision != impl_->structure_revision ||
+                           state->window_revision != impl_->window_revision;
         if (stale)
             return lux::cxx::unexpected(EAttachmentError::STALE_PREPARATION);
         // Consume the public token before notifications. Callers may release or replace it in a callback.
         auto committed = std::move(token.state_);
-        auto& pane = *state->pane;
         const bool mount = state->mount;
         // Clear preparation before changing links. No callbacks or allocations until every link is adopted.
         abandonAttachment(*state);
         if (mount)
         {
-            pane.attachTo(*this);
+            for (auto* pane : state->roots)
+                pane->attachTo(*this);
             for (auto node : state->nodes)
             {
                 if (node.pane)
@@ -1038,11 +1094,20 @@ namespace lux::ui
                     unregisterPane(*node.pane, false);
                 else
                     unregisterElement(*node.element, false);
-            pane.detachFromParent();
+            for (auto* pane : state->roots)
+                pane->detachFromParent();
             for (auto node : state->nodes)
                 if (node.pane)
                     node.pane->root_ = nullptr;
         }
+        for (auto value : state->visibility)
+            if (value.pane->visible_ != value.visible)
+            {
+                value.pane->visible_ = value.visible;
+                state->visibility_changed.push_back(value.pane);
+                ++impl_->window_revision;
+            }
+        adopt();
         AttachmentCommit result{mount, {}};
         const auto append = [&](object::SignalDelivery delivered) {
             result.notifications.direct += delivered.direct;
@@ -1051,12 +1116,17 @@ namespace lux::ui
             result.notifications.closed += delivered.closed;
         };
         // A notification cannot mutate/destroy this subtree, even after it has left Root's routing chain.
-        pane.beginTreeVisit();
+        for (auto* pane : state->roots)
+            pane->beginTreeVisit();
         if (!mount)
             for (auto node : state->nodes)
                 append(emit(objectRemoved, node.pane ? static_cast<object::LuxObject*>(node.pane) : node.element));
-        append(emit(attachmentChanged, AttachmentChanged{pane.id(), mount}));
-        pane.endTreeVisit();
+        for (auto* pane : state->roots)
+            append(emit(attachmentChanged, AttachmentChanged{pane->id(), mount}));
+        for (auto* pane : state->visibility_changed)
+            append(pane->emit(pane->visibilityChanged, PaneVisibilityChanged{pane->visible_}));
+        for (auto* pane : state->roots)
+            pane->endTreeVisit();
         return result;
     }
 

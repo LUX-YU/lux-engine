@@ -10,13 +10,13 @@ component_include_directories(editor_metadata
     BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR}
     INSTALL_TIME include)
 target_compile_definitions(editor_metadata PRIVATE LUX_EDITOR_METADATA_LIBRARY "LUX_PLUGIN_SDK_ABI=\"${LUX_PLUGIN_SDK_ABI}\"")
-target_link_libraries(editor_metadata PRIVATE lux::engine::function::ui
-    lux::engine::project::project_plugin_rendering
-    PUBLIC lux::engine::editor::editor_editing lux::engine::project::project_plugins lux::engine::core::meta
+target_link_libraries(editor_metadata PRIVATE lux::engine::project::project_plugin_rendering
+    PUBLIC lux::engine::function::ui lux::engine::editor::editor_editing lux::engine::project::project_plugins lux::engine::core::meta
         lux::engine::simulation::system lux::engine::simulation::simulation_composition lux::engine::simulation::ecs::schema
         lux::engine::scene::scene_system lux::engine::scene::scene_render
     )
 component_add_transitive_commands(editor_metadata
+    "find_package(lux-engine-function REQUIRED COMPONENTS ui)"
     "find_package(lux-engine-project-plugin-rendering REQUIRED COMPONENTS project_plugin_rendering)"
     "find_package(lux-engine-editor-editing REQUIRED COMPONENTS editor_editing)"
     "find_package(lux-engine-project-plugins REQUIRED COMPONENTS project_plugins)"

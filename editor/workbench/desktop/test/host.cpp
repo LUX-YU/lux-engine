@@ -92,6 +92,65 @@ namespace
         auto code = std::make_shared<Code>(facts);
         return {contracts::CodeLease::plugin(code), std::make_unique<Window>(dispatcher, id, facts)};
     }
+    void contentAssociations(object::ObjectDispatcherRef dispatcher)
+    {
+        auto root = take(ui::Root::create(dispatcher));
+        desktop::ViewHost host(*root);
+        struct Comparison final : ui::Pane
+        {
+            Comparison(object::ObjectDispatcherRef dispatcher, desktop::ViewHost& host)
+                : Pane(dispatcher, ui::PaneId{"compare"}, ui::PaneTypeId{"comparison"}, "Comparison"), host_(host) {}
+            views::ViewContent content_;
+            views::ViewId id_;
+            desktop::ViewHost& host_;
+            bool busy_{};
+            unsigned changes_{};
+        };
+        auto pane = std::make_unique<Comparison>(dispatcher, host);
+        auto* comparison = pane.get();
+        views::DetachedView view{
+            contracts::CodeLease::builtin(), std::move(pane), nullptr, nullptr, nullptr, nullptr,
+            +[](const ui::Pane& pane) noexcept {
+                const auto& comparison = static_cast<const Comparison&>(pane);
+                // Capturing plugin metadata is also a callback boundary: owner destruction is forbidden.
+                const auto nested = comparison.host_.drain();
+                assert(!nested && nested.error() == views::EViewError::BUSY);
+                return comparison.content_;
+            },
+            +[](ui::Pane& pane, const views::ViewContent& content) -> views::ViewCloseResult {
+                auto& comparison = static_cast<Comparison&>(pane);
+                const auto nested = comparison.host_.rebindContent(comparison.id_, {});
+                assert(!nested && nested.error().retryable);
+                if (comparison.busy_)
+                    return cxx::unexpected(views::ViewPreparationFailure{"comparison", 7, "Reading", true});
+                comparison.content_ = content;
+                ++comparison.changes_;
+                return {};
+            }
+        };
+        const auto id = take(host.adopt(view, views::ViewRestoreKey{"comparison"})).id;
+        comparison->id_ = id;
+        assert(take(host.describe(id)).content.sessions.empty());
+        const sessions::SessionId a{9, 0, 1}, b{9, 1, 3};
+        const views::ViewContent pair{{a, b}, b};
+        assert(host.rebindContent(id, pair) && take(host.describe(id)).content == pair);
+        comparison->busy_ = true;
+        const auto failed = host.rebindContent(id, {{a}, a});
+        assert(!failed && failed.error().code == 7 && failed.error().retryable);
+        assert(take(host.describe(id)).content == pair && comparison->changes_ == 1);
+        comparison->busy_ = false;
+        assert(!host.rebindContent(id, {{a, a}, a}));
+        assert(!host.rebindContent(id, {{a}, b}));
+        assert(comparison->changes_ == 1 && take(host.describe(id)).content == pair);
+        assert(host.rebindContent(id, {{a}, a}));
+        assert(host.rebindContent(id, {}));
+        assert(take(host.describe(id)).content.sessions.empty());
+        assert(host.close(id));
+        take(host.drain());
+        const auto stale = host.rebindContent(id, pair);
+        assert(!stale && !stale.error().retryable);
+        std::puts("PASS EC1 real Host zero/one/multiple content identities, primary, callback gate and stale view");
+    }
     void ownership(object::ObjectDispatcherRef dispatcher)
     {
         auto root = take(ui::Root::create(dispatcher, {.docking = false}));
@@ -538,6 +597,7 @@ int main()
     static_assert(!std::is_copy_constructible_v<desktop::ViewHost>);
     static_assert(!std::is_move_constructible_v<desktop::ViewHost>);
     auto queue = take(object::ObjectMessageQueue::create(32));
+    contentAssociations(queue.dispatcherRef());
     ownership(queue.dispatcherRef());
     reentrant(queue.dispatcherRef());
     failedPrepare(queue.dispatcherRef());

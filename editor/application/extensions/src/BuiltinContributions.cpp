@@ -40,7 +40,9 @@ namespace lux::editor::extensions
         }
         template <class Error> views::ViewFactoryFailure viewFailure(const Error& error)
         {
-            if constexpr (requires { error.index(); })
+            if constexpr (std::same_as<Error, views::ViewFactoryFailure>)
+                return error;
+            else if constexpr (requires { error.index(); })
                 return std::visit([](const auto& value) { return viewFailure(value); }, error);
             else if constexpr (requires { error.cause; })
                 return viewFailure(error.cause);
@@ -50,6 +52,15 @@ namespace lux::editor::extensions
                     views::EViewFactoryError::CONSTRUCT,
                     std::string(cxx::typeToken<Error>().name())
                 };
+                if constexpr (requires { error.retryable; })
+                    if (error.retryable)
+                        result.code = views::EViewFactoryError::BUSY;
+                if constexpr (requires { error.session; error.code == decltype(error.code)::SESSION; })
+                    if (error.code == decltype(error.code)::SESSION)
+                        return viewFailure(error.session);
+                if constexpr (requires { error == Error::BUSY; })
+                    if (error == Error::BUSY)
+                        result.code = views::EViewFactoryError::BUSY;
                 if constexpr (std::is_enum_v<Error>)
                     result.domain_code = static_cast<std::uint64_t>(error);
                 else if constexpr (requires { error.code; })
@@ -178,44 +189,62 @@ namespace lux::editor::extensions
     }
     std::shared_ptr<views::ViewFactoryEntry> builtinSceneViewFactory(scene::SceneViewServices scene)
     {
-        return viewFactory<SceneViewInput>(
-            views::ViewTypeId{"lux.editor.scene.view"},
-            "Scene",
-            {"lux.editor.scene"},
-            [scene](const views::ViewFactoryInput& input, const SceneViewInput& value) {
-                return scene::makeSceneView(
-                    input.dispatcher(),
-                    scene,
-                    {input.paneId(), value.title, value.binding, value.state, value.render_system}
-                );
+        return viewFactory<views::ContentViewInput>(
+            views::ViewTypeId{"lux.editor.scene.view"}, "Scene", {"lux.editor.scene"},
+            [scene](const views::ViewFactoryInput& input, const views::ContentViewInput& value)
+                -> views::ViewFactoryResult<views::DetachedView> {
+                scene::SceneViewCreateInfo info;
+                info.id = input.paneId();
+                info.title = value.title.empty() ? "Scene" : value.title;
+                info.state.camera.transform.translation = {0, 3, 8};
+                auto view = scene::makeSceneView(input.dispatcher(), scene, std::move(info));
+                if (!view)
+                    return cxx::unexpected(viewFailure(view.error()));
+                auto bound = view->rebindContent(value.content);
+                if (!bound)
+                    return cxx::unexpected(views::ViewFactoryFailure{
+                        views::EViewFactoryError::CONSTRUCT, bound.error().domain, bound.error().code, bound.error().message
+                    });
+                return std::move(*view);
             }
         );
     }
-    std::shared_ptr<views::ViewFactoryEntry> builtinMaterialViewFactory(material::MaterialViewServices material)
+    std::shared_ptr<views::ViewFactoryEntry> builtinMaterialViewFactory(
+        sessions::TSessionAccess<material::MaterialSession> sessions,
+        lux::scene::SceneRuntime& runtime,
+        material::MaterialCompilationService& compilation,
+        const scene::ProjectionEnvironment& environment,
+        std::span<const render::RenderFeatureRegistration> features,
+        project::ProjectCatalogModel* assets
+    )
     {
-        return viewFactory<MaterialViewInput>(
-            views::ViewTypeId{"lux.editor.material"},
-            "Material",
-            {"lux.editor.material"},
-            [material](const views::ViewFactoryInput& input, const MaterialViewInput& value) {
-                return material::makeMaterialView(
-                    input.dispatcher(),
-                    input.paneId(),
-                    material,
-                    value.binding,
-                    value.state
+        return viewFactory<views::ContentViewInput>(
+            views::ViewTypeId{"lux.editor.material"}, "Material", {"lux.editor.material"},
+            [sessions, &runtime, &compilation, &environment, features, assets](
+                const views::ViewFactoryInput& input, const views::ContentViewInput& value
+            ) {
+                return material::makeMaterialContentView(
+                    input.dispatcher(), input.paneId(), sessions, runtime, compilation, environment,
+                    features, assets, value.content
                 );
             }
         );
     }
     std::shared_ptr<views::ViewFactoryEntry> builtinFlowViewFactory(flowforge::FlowViewServices flow)
     {
-        return viewFactory<FlowViewInput>(
-            views::ViewTypeId{"lux.editor.flowforge"},
-            "FlowForge",
-            {"lux.editor.flowforge"},
-            [flow](const views::ViewFactoryInput& input, const FlowViewInput& value) {
-                return flowforge::makeFlowView(input.dispatcher(), input.paneId(), flow, value.binding, value.state);
+        return viewFactory<views::ContentViewInput>(
+            views::ViewTypeId{"lux.editor.flowforge"}, "FlowForge", {"lux.editor.flowforge"},
+            [flow](const views::ViewFactoryInput& input, const views::ContentViewInput& value)
+                -> views::ViewFactoryResult<views::DetachedView> {
+                auto view = flowforge::makeFlowView(input.dispatcher(), input.paneId(), flow);
+                if (!view)
+                    return cxx::unexpected(viewFailure(view.error()));
+                auto bound = view->rebindContent(value.content);
+                if (!bound)
+                    return cxx::unexpected(views::ViewFactoryFailure{
+                        views::EViewFactoryError::CONSTRUCT, bound.error().domain, bound.error().code, bound.error().message
+                    });
+                return std::move(*view);
             }
         );
     }

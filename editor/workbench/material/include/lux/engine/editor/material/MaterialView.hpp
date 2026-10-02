@@ -66,6 +66,7 @@ namespace lux::editor::material
         MaterialView(MaterialView&&) = delete;
         MaterialView& operator=(MaterialView&&) = delete;
         [[nodiscard]] MaterialViewResult<void> rebind(std::optional<MaterialViewBinding>);
+        [[nodiscard]] MaterialViewResult<void> rebindContent(const views::ViewContent&);
         [[nodiscard]] MaterialViewResult<void> beginEdit(std::string);
         [[nodiscard]] MaterialViewResult<void> previewEdit(std::vector<VMaterialEdit>&);
         [[nodiscard]] MaterialViewResult<void> commitEdit();
@@ -84,8 +85,20 @@ namespace lux::editor::material
         [[nodiscard]] views::ViewStateResult prepareState(std::uint32_t, std::span<const std::byte>);
         [[nodiscard]] const MaterialViewResult<void>& status() const noexcept;
         [[nodiscard]] render::RTextureHandle image() const noexcept;
+        [[nodiscard]] MaterialPreviewStatus previewStatus() const;
 
     private:
+        friend MaterialViewResult<views::DetachedView> makeMaterialContentView(
+        object::ObjectDispatcherRef,
+        lux::ui::PaneId,
+        sessions::TSessionAccess<MaterialSession>,
+        lux::scene::SceneRuntime&,
+        MaterialCompilationService&,
+        const scene::ProjectionEnvironment&,
+        std::span<const render::RenderFeatureRegistration>,
+        project::ProjectCatalogModel*,
+        const views::ViewContent&
+        );
         MaterialView(object::ObjectDispatcherRef, lux::ui::PaneId, MaterialViewServices, MaterialViewState);
         void update() noexcept override;
         struct Impl;
@@ -98,4 +111,18 @@ namespace lux::editor::material
         std::optional<MaterialViewBinding> = {},
         MaterialViewState = {}
     );
+    // A complete content view owns its interaction and preview target. Low-level makeMaterialView
+    // remains available for explicitly borrowed tools using an independently owned preview target.
+    [[nodiscard]] MaterialViewResult<views::DetachedView> makeMaterialContentView(
+        object::ObjectDispatcherRef,
+        lux::ui::PaneId,
+        sessions::TSessionAccess<MaterialSession>,
+        lux::scene::SceneRuntime&,
+        MaterialCompilationService&,
+        const scene::ProjectionEnvironment&,
+        std::span<const render::RenderFeatureRegistration>,
+        project::ProjectCatalogModel*,
+        const views::ViewContent&
+    );
+
 }

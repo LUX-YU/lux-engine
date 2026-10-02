@@ -110,6 +110,10 @@ namespace lux::editor::sessions
     template <class T> class TSessionAccess final
     {
     public:
+        [[nodiscard]] SessionResult<TSessionKey<T>> key(SessionId id) const noexcept
+        {
+            return store_.template key<T>(id);
+        }
         [[nodiscard]] SessionResult<SessionInfo> describe(TSessionKey<T> key) const
         {
             auto found = read(key);

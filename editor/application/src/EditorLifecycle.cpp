@@ -563,9 +563,6 @@ namespace lux::editor::application
         else if (phase_ == EApplicationPhase::DRAINING)
             if (auto received = opening_.update(); !received)
                 receive(applicationFailure("open.drain", received.error()));
-        for (auto& content : content_views_)
-            if (content.preview)
-                content.preview->update();
         if (desktop_)
         {
             auto frame = config_.offscreen

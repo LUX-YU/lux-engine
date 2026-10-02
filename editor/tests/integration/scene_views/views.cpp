@@ -93,23 +93,36 @@ namespace registered_views
         };
         return snapshot->prepare(entry->descriptor().type, input);
     }
+    // These fixtures deliberately borrow an explicit interaction to inspect its gesture lifetime.
+    // Production content factories instead construct the complete owner from ContentViewInput.
+    template <class Create>
+    auto fixtureFactory(views::ViewTypeId type, Create create)
+    {
+        return std::make_shared<views::ViewFactoryEntry>(
+            contracts::CodeLease::builtin(),
+            views::ViewFactoryDescriptor{std::move(type), "Borrowed fixture", lux::cxx::typeToken<std::monostate>()},
+            [create = std::move(create)](const views::ViewFactoryInput& input) mutable
+                -> views::ViewFactoryResult<views::DetachedView> {
+                auto view = create(input);
+                if (!view)
+                    return lux::cxx::unexpected(views::ViewFactoryFailure{views::EViewFactoryError::CONSTRUCT, "fixture"});
+                return std::move(*view);
+            }
+        );
+    }
     auto scene(
         lux::object::ObjectDispatcherRef dispatcher,
         scene::SceneViewServices services,
         scene::SceneViewCreateInfo info
     )
     {
-        return prepare(
-            dispatcher,
-            std::move(info.id),
-            extensions::builtinSceneViewFactory(services),
-            extensions::SceneViewInput{
-                std::move(info.binding),
-                std::move(info.state),
-                info.render_system,
-                std::move(info.title)
+        const auto id = info.id;
+        return prepare(dispatcher, id, fixtureFactory(
+            views::ViewTypeId{"lux.editor.scene.view"},
+            [services, info = std::move(info)](const views::ViewFactoryInput& input) mutable {
+                return scene::makeSceneView(input.dispatcher(), services, std::move(info));
             }
-        );
+        ), std::monostate{});
     }
     auto material(
         lux::object::ObjectDispatcherRef dispatcher,
@@ -119,12 +132,12 @@ namespace registered_views
         material::MaterialViewState state
     )
     {
-        return prepare(
-            dispatcher,
-            std::move(id),
-            extensions::builtinMaterialViewFactory(services),
-            extensions::MaterialViewInput{std::move(binding), std::move(state)}
-        );
+        return prepare(dispatcher, id, fixtureFactory(
+            views::ViewTypeId{"lux.editor.material"},
+            [services, binding, state](const views::ViewFactoryInput& input) {
+                return material::makeMaterialView(input.dispatcher(), input.paneId(), services, binding, state);
+            }
+        ), std::monostate{});
     }
     auto flow(
         lux::object::ObjectDispatcherRef dispatcher,
@@ -134,13 +147,14 @@ namespace registered_views
         flowforge::FlowViewState state
     )
     {
-        return prepare(
-            dispatcher,
-            std::move(id),
-            extensions::builtinFlowViewFactory(services),
-            extensions::FlowViewInput{std::move(binding), std::move(state)}
-        );
+        return prepare(dispatcher, id, fixtureFactory(
+            views::ViewTypeId{"lux.editor.flowforge"},
+            [services, binding, state](const views::ViewFactoryInput& input) {
+                return flowforge::makeFlowView(input.dispatcher(), input.paneId(), services, binding, state);
+            }
+        ), std::monostate{});
     }
+
 }
 namespace
 {

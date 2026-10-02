@@ -152,7 +152,8 @@ namespace lux::editor::desktop
                 slot.restore_key,
                 std::string(pane.title()),
                 pane.visible(),
-                pane.focused()
+                pane.focused(),
+                slot.owner->content()
             };
         }
         views::ViewResult<PreparedViewBatch> prepareBatch(
@@ -703,6 +704,7 @@ namespace lux::editor::desktop
         const auto* slot = impl_->find(id);
         if (!slot)
             return cxx::unexpected(views::EViewError::INVALID_ID);
+        Dispatch guard(impl_->dispatching_);
         return impl_->info(*slot);
     }
     views::ViewResult<void> ViewHost::withView(views::ViewId id, cxx::function_ref<void(lux::ui::Pane&)> visit)
@@ -716,10 +718,31 @@ namespace lux::editor::desktop
         visit(*slot->owner->pane());
         return {};
     }
+    views::ViewCloseResult ViewHost::rebindContent(views::ViewId id, const views::ViewContent& content)
+    {
+        if (impl_->busy())
+            return cxx::unexpected(views::ViewPreparationFailure{"view.busy", 0, "Binding is busy", true});
+        auto* slot = impl_->find(id);
+        if (!slot)
+            return cxx::unexpected(views::ViewPreparationFailure{"view.stale", 0, "View no longer exists", false});
+        Dispatch guard(impl_->dispatching_);
+        return slot->owner->rebindContent(content);
+    }
+    views::ViewCloseResult ViewHost::cancelPreview(views::ViewId id)
+    {
+        if (impl_->busy())
+            return cxx::unexpected(views::ViewPreparationFailure{"view.busy", 0, "Preview is busy", true});
+        auto* slot = impl_->find(id);
+        if (!slot)
+            return cxx::unexpected(views::ViewPreparationFailure{"view.stale", 0, "View no longer exists", false});
+        Dispatch guard(impl_->dispatching_);
+        return slot->owner->cancelPreview();
+    }
     views::ViewResult<std::vector<views::ViewInfo>> ViewHost::describeAll() const
     {
         if (impl_->busy())
             return cxx::unexpected(views::EViewError::BUSY);
+        Dispatch guard(impl_->dispatching_);
         std::vector<views::ViewInfo> result;
         result.reserve(impl_->slots_.size());
         for (const auto& slot : impl_->slots_)

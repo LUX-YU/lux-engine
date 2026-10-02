@@ -15,7 +15,8 @@ namespace lux::editor::views
         CAPACITY,
         CONSTRUCT,
         CALLBACK,
-        AMBIGUOUS
+        AMBIGUOUS,
+        BUSY
     };
     struct ViewFactoryFailure final
     {
@@ -25,6 +26,11 @@ namespace lux::editor::views
         std::string detail;
     };
     template <class T> using ViewFactoryResult = cxx::expected<T, ViewFactoryFailure>;
+    struct ContentViewInput final
+    {
+        ViewContent content;
+        std::string title;
+    };
     // Standalone tool windows use typeToken<std::monostate>() and an owned monostate input.
     // The application can expose these in its Window menu without knowing plugin-specific services.
     struct ViewFactoryDescriptor final

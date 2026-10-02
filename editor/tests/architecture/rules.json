@@ -1150,12 +1150,14 @@
       ],
       "public_headers": [
         "lux/engine/editor/views/ViewInfo.hpp",
-        "lux/engine/editor/EditorError.hpp"
+        "lux/engine/editor/EditorError.hpp",
+        "lux/engine/editor/sessions/SessionId.hpp"
       ],
       "files": [
         "editor/editing/include/lux/engine/editor/contracts/CodeLease.hpp",
         "editor/editing/include/lux/engine/editor/views/ViewInfo.hpp",
-        "editor/editing/include/lux/engine/editor/EditorError.hpp"
+        "editor/editing/include/lux/engine/editor/EditorError.hpp",
+        "editor/editing/include/lux/engine/editor/sessions/SessionId.hpp"
       ]
     },
     "edit_history": {
@@ -6470,7 +6472,8 @@
       "lux/engine/editor/scene/RunInspectorView.hpp",
       "lux/engine/editor/editing/scene/FieldEdit.hpp",
       "lux/engine/editor/scene/ModelPlacement.hpp",
-      "lux/engine/editor/scene/InspectorComponent.hpp"
+      "lux/engine/editor/scene/InspectorComponent.hpp",
+      "lux/engine/editor/workbench/ViewPreparation.hpp"
     ],
     "prefixes": [],
     "test_headers": {
@@ -7049,7 +7052,8 @@
       "lux/engine/editor/detail/ViewportStateCodec.hpp",
       "lux/engine/render/RendererConfig.hpp",
       "lux/engine/serialization/BinaryReader.hpp",
-      "cmath"
+      "cmath",
+      "lux/engine/editor/workbench/ViewPreparation.hpp"
     ],
     "prefixes": [],
     "test_headers": {},
@@ -7640,7 +7644,8 @@
       "lux/engine/ui/Layout.hpp",
       "lux/engine/editor/workbench/InteractionDelivery.hpp",
       "lux/engine/editor/persistence/WriteLane.hpp",
-      "lux/engine/serialization/BinaryReader.hpp"
+      "lux/engine/serialization/BinaryReader.hpp",
+      "lux/engine/editor/workbench/ViewPreparation.hpp"
     ],
     "prefixes": [],
     "test_headers": {},
@@ -17869,6 +17874,14 @@
         "consumers": [
           "scene_ui",
           "material_ui"
+        ]
+      },
+      "editor/workbench/sinclude/lux/engine/editor/workbench/ViewPreparation.hpp": {
+        "layer": "E3",
+        "consumers": [
+          "scene_ui",
+          "material_ui",
+          "flow_ui"
         ]
       }
     },

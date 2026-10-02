@@ -101,6 +101,9 @@ namespace lux::editor::desktop
         // Synchronous owner-thread borrow only. Structural requests are deferred until it returns.
         // A caller checks pane.type() before a concrete cast and never retains the reference.
         [[nodiscard]] views::ViewResult<void> withView(views::ViewId, cxx::function_ref<void(lux::ui::Pane&)> visit);
+        // Owner-thread safe point. Binding failure keeps the previous association and view state.
+        [[nodiscard]] views::ViewCloseResult rebindContent(views::ViewId, const views::ViewContent&);
+        [[nodiscard]] views::ViewCloseResult cancelPreview(views::ViewId);
         [[nodiscard]] views::ViewResult<std::vector<views::ViewInfo>> describeAll() const;
         [[nodiscard]] views::ViewResult<std::optional<views::ViewPreparationFailure>> closeFailure(views::ViewId) const;
         [[nodiscard]] views::ViewResult<void> close(views::ViewId) noexcept override;

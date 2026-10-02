@@ -1,5 +1,6 @@
 #include <lux/engine/editor/workbench/InteractionDelivery.hpp>
 #include <lux/engine/editor/flowforge/FlowView.hpp>
+#include <lux/engine/editor/workbench/ViewPreparation.hpp>
 #include <lux/engine/serialization/BinaryReader.hpp>
 #include <lux/engine/editor/flowforge/FlowNodeControls.hpp>
 #include <lux/engine/editor/widgets/GraphCanvas.hpp>
@@ -106,6 +107,7 @@ namespace lux::editor::flowforge
         };
         FlowView& view_;
         FlowViewServices services_;
+        std::unique_ptr<FlowInteraction> interaction_;
         FlowViewState state_;
         std::optional<FlowViewBinding> binding_;
         FlowViewResult<void> status_;
@@ -734,6 +736,30 @@ namespace lux::editor::flowforge
     {
         return impl_->compile_;
     }
+    FlowViewResult<void> FlowView::rebindContent(const views::ViewContent& content)
+    {
+        const bool is_single = content.sessions.size() == 1 && content.primary == content.sessions.front();
+        const bool is_invalid = !content.valid() || (!content.sessions.empty() && !is_single);
+        if (is_invalid)
+            return rejected(views::EViewError::INVALID_ID);
+        if (impl_->binding_ && is_single && impl_->binding_->session.id() == *content.primary)
+            return {};
+        std::unique_ptr<FlowInteraction> interaction;
+        std::optional<FlowViewBinding> binding;
+        if (is_single)
+        {
+            auto key = impl_->services_.sessions.key(*content.primary);
+            if (!key)
+                return rejected(FlowEditError{key.error()});
+            interaction = std::make_unique<FlowInteraction>(impl_->services_.sessions, *key);
+            binding.emplace(*key, interaction.get());
+        }
+        auto adopted = rebind(binding);
+        if (!adopted)
+            return adopted;
+        impl_->interaction_ = std::move(interaction);
+        return {};
+    }
     FlowViewResult<void> FlowView::beginEdit(std::string label)
     {
         if (!impl_->binding_)
@@ -920,7 +946,17 @@ namespace lux::editor::flowforge
             +[](lux::ui::Pane& pane, std::uint32_t schema, std::span<const std::byte> bytes) {
                 return static_cast<FlowView&>(pane).prepareState(schema, bytes);
             },
-            +[](const lux::ui::Pane& pane) { return static_cast<const FlowView&>(pane).captureState(); }
+            +[](const lux::ui::Pane& pane) { return static_cast<const FlowView&>(pane).captureState(); },
+            +[](const lux::ui::Pane& pane) noexcept -> views::ViewContent {
+                const auto& binding = static_cast<const FlowView&>(pane).binding();
+                return binding ? views::ViewContent{{binding->session.id()}, binding->session.id()} : views::ViewContent{};
+            },
+            +[](lux::ui::Pane& pane, const views::ViewContent& content) -> views::ViewCloseResult {
+                auto adopted = static_cast<FlowView&>(pane).rebindContent(content);
+                if (adopted)
+                    return {};
+                return cxx::unexpected(workbench::detail::viewPreparationFailure(adopted.error(), temporary(adopted.error())));
+            }
         };
     }
 }

@@ -159,7 +159,7 @@ namespace lux::editor::application
             {
                 std::optional<EditorResult<views::ViewId>> displayed;
                 auto prepare = [&](const extensions::ContributionSnapshot&) -> extensions::ContributionResult<void> {
-                    displayed.emplace(makeContentView(status->session, true, recovery_->catalog, item.entry.restore_key)
+                    displayed.emplace(makeContentView(status->session, true, recovery_->catalog, item.entry.restore_key, recoveryType(item.entry.type))
                     );
                     return {};
                 };

@@ -601,13 +601,11 @@ int main(int argc, char** argv)
     {
         if (std::chrono::steady_clock::now() >= preview_deadline)
         {
-            for (auto& content : impl.content_views_)
-                if (content.view == material_view)
-                {
-                    const auto state = content.preview->status();
-                    std::cerr << "Preview: prepared=" << bool(state.prepared) << " accepted=" << bool(state.accepted)
-                              << " stale=" << state.stale << " diagnostic=" << state.diagnostic << '\n';
-                }
+            material_action([&](lux::editor::material::MaterialView& view) {
+                const auto state = view.previewStatus();
+                std::cerr << "Preview: prepared=" << bool(state.prepared) << " accepted=" << bool(state.accepted)
+                          << " stale=" << state.stale << " diagnostic=" << state.diagnostic << '\n';
+            });
             assert(false && "Actual material preview did not become visible");
         }
         assert(app->update());

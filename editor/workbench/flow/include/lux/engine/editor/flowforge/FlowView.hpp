@@ -47,6 +47,7 @@ namespace lux::editor::flowforge
         FlowView(FlowView&&) = delete;
         FlowView& operator=(FlowView&&) = delete;
         [[nodiscard]] FlowViewResult<void> rebind(std::optional<FlowViewBinding>);
+        [[nodiscard]] FlowViewResult<void> rebindContent(const views::ViewContent&);
         [[nodiscard]] FlowViewResult<void> beginEdit(std::string);
         [[nodiscard]] FlowViewResult<void> previewEdit(std::vector<VFlowEdit>&);
         [[nodiscard]] FlowViewResult<void> commitEdit();

@@ -1,4 +1,6 @@
 #include <lux/engine/editor/scene/SceneView.hpp>
+#include <lux/engine/editor/workbench/ViewPreparation.hpp>
+#include <lux/engine/scene/RenderSystem.hpp>
 #include <lux/engine/editor/scene/SceneCreationPoint.hpp>
 #include <lux/engine/editor/project/ProjectCatalogModel.hpp>
 #include <lux/engine/editor/detail/ViewportStateCodec.hpp>
@@ -94,6 +96,7 @@ namespace lux::editor::scene
         };
         SceneView& view_;
         SceneViewServices services_;
+        std::shared_ptr<SceneInteractionGroup> interaction_;
         VSceneViewBinding binding_{UnboundSceneBinding{}};
         SceneViewState state_;
         system::SystemInstanceId system_;
@@ -165,14 +168,15 @@ namespace lux::editor::scene
                 controls_[3] = std::move(*picked);
         }
         SceneViewResult<std::unique_ptr<lux::editor::views::ViewportPresentation>> preparePresentation(
-            lux::scene::SceneInstanceId instance
+            lux::scene::SceneInstanceId instance,
+            std::optional<system::SystemInstanceId> requested_system = {}
         )
         {
             auto prepared = lux::editor::views::ViewportPresentation::create(
                 services_.runtime,
                 instance,
                 services_.resources,
-                system_,
+                requested_system.value_or(system_),
                 state_.camera.transform,
                 state_.camera.camera,
                 lux::scene::ViewConfig{.extent = state_.extent}
@@ -181,7 +185,10 @@ namespace lux::editor::scene
                 return rejected(prepared.error());
             return std::move(*prepared);
         }
-        SceneViewResult<void> rebind(VSceneViewBinding binding)
+        SceneViewResult<void> rebind(
+            VSceneViewBinding binding,
+            std::optional<system::SystemInstanceId> requested_system = {}
+        )
         {
             if (!view_.isOnAffinityThread() || object::LuxObject::isDispatching())
                 return rejected(views::EViewError::BUSY);
@@ -223,7 +230,7 @@ namespace lux::editor::scene
             std::unique_ptr<lux::editor::views::ViewportPresentation> presentation;
             if (instance.valid())
             {
-                auto prepared = preparePresentation(instance);
+                auto prepared = preparePresentation(instance, requested_system);
                 if (!prepared)
                     return rejected(prepared.error());
                 presentation = std::move(*prepared);
@@ -243,6 +250,8 @@ namespace lux::editor::scene
             viewport_.setPresentation(std::move(presentation), state_.extent);
             presented_ = instance;
             binding_ = std::move(binding);
+            if (requested_system)
+                system_ = *requested_system;
             status_ = {};
             return {};
         }
@@ -593,6 +602,58 @@ namespace lux::editor::scene
     {
         return impl_->history(true);
     }
+    const std::shared_ptr<SceneInteractionGroup>& SceneView::interactionOwner() const noexcept
+    {
+        return impl_->interaction_;
+    }
+    SceneViewResult<void> SceneView::rebindContent(const views::ViewContent& content)
+    {
+        const bool is_single = content.sessions.size() == 1 && content.primary == content.sessions.front();
+        const bool is_invalid = !content.valid() || (!content.sessions.empty() && !is_single);
+        if (is_invalid)
+            return rejected(views::EViewError::INVALID_ID);
+        if (const auto* current = std::get_if<EditedSceneBinding>(&impl_->binding_);
+            current && is_single && current->session.id() == *content.primary)
+            return {};
+        std::shared_ptr<SceneInteractionGroup> group;
+        VSceneViewBinding binding{UnboundSceneBinding{}};
+        std::optional<system::SystemInstanceId> render_system;
+        if (is_single)
+        {
+            auto key = impl_->services_.sessions.key(*content.primary);
+            if (!key)
+                return rejected(SceneEditError{key.error()});
+            auto session = impl_->services_.sessions.read(*key);
+            if (!session)
+                return rejected(SceneEditError{session.error()});
+            auto view = session->get().read();
+            if (!view)
+                return rejected(view.error());
+            auto selected = view->withRead([&](const auto& read) -> SceneEditResult<void> {
+                const auto& description = read.configuration().scene->data();
+                for (std::size_t i{}; i < description.systemCount(); ++i)
+                    if (const auto system = description.systemAt(i);
+                        system.type() == lux::scene::builtinRenderSystemRegistration().type)
+                    {
+                        if (render_system)
+                            return cxx::unexpected(SceneEditError{sessions::ESessionError::INVALID_ARGUMENT});
+                        render_system = system.instanceId();
+                    }
+                return {};
+            });
+            if (!selected)
+                return rejected(selected.error());
+            group = std::make_shared<SceneInteractionGroup>(
+                impl_->services_.sessions, *key, InteractionGroupId{id().hash()}, impl_->services_.runs
+            );
+            binding = EditedSceneBinding{*key, group.get()};
+        }
+        auto adopted = impl_->rebind(std::move(binding), render_system);
+        if (!adopted)
+            return adopted;
+        impl_->interaction_ = std::move(group);
+        return {};
+    }
     SceneViewResult<void> SceneView::beginEdit(std::string label)
     {
         auto* author = std::get_if<EditedSceneBinding>(&impl_->binding_);
@@ -686,7 +747,20 @@ namespace lux::editor::scene
             +[](lux::ui::Pane& pane, std::uint32_t schema, std::span<const std::byte> bytes) {
                 return static_cast<SceneView&>(pane).prepareState(schema, bytes);
             },
-            +[](const lux::ui::Pane& pane) { return static_cast<const SceneView&>(pane).captureState(); }
+            +[](const lux::ui::Pane& pane) { return static_cast<const SceneView&>(pane).captureState(); },
+            +[](const lux::ui::Pane& pane) noexcept -> views::ViewContent {
+                const auto& binding = static_cast<const SceneView&>(pane).binding();
+                const auto* author = std::get_if<EditedSceneBinding>(&binding);
+                return author ? views::ViewContent{{author->session.id()}, author->session.id()} : views::ViewContent{};
+            },
+            +[](lux::ui::Pane& pane, const views::ViewContent& content) -> views::ViewCloseResult {
+                auto bound = static_cast<SceneView&>(pane).rebindContent(content);
+                if (bound)
+                    return {};
+                return cxx::unexpected(workbench::detail::viewPreparationFailure(
+                    bound.error(), workbench::detail::isRetryableViewFailure(bound.error())
+                ));
+            }
         };
     }
 }

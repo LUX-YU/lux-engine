@@ -2,6 +2,7 @@
 #include <lux/engine/editor/detail/ViewportStateCodec.hpp>
 #include <lux/engine/editor/workbench/InteractionDelivery.hpp>
 #include <lux/engine/editor/material/MaterialView.hpp>
+#include <lux/engine/editor/workbench/ViewPreparation.hpp>
 #include <lux/engine/editor/material/MaterialNodeControls.hpp>
 #include <lux/engine/editor/project/AssetPickerElement.hpp>
 #include <lux/engine/editor/widgets/GraphCanvas.hpp>
@@ -110,6 +111,8 @@ namespace lux::editor::material
             REVERT_NODE
         };
         MaterialView& view_;
+        std::unique_ptr<MaterialPreviewStore> preview_owner_;
+        std::unique_ptr<MaterialInteraction> interaction_;
         MaterialViewServices services_;
         MaterialCompileId compile_;
         lux::scene::RenderAssetInput compile_assets_;
@@ -873,6 +876,30 @@ namespace lux::editor::material
     {
         return impl_->viewport_.image().image();
     }
+    MaterialViewResult<void> MaterialView::rebindContent(const views::ViewContent& content)
+    {
+        const bool is_single = content.sessions.size() == 1 && content.primary == content.sessions.front();
+        const bool is_invalid = !content.valid() || (!content.sessions.empty() && !is_single);
+        if (is_invalid)
+            return rejected(views::EViewError::INVALID_ID);
+        if (impl_->binding_ && is_single && impl_->binding_->session.id() == *content.primary)
+            return {};
+        std::unique_ptr<MaterialInteraction> interaction;
+        std::optional<MaterialViewBinding> binding;
+        if (is_single)
+        {
+            auto key = impl_->services_.sessions.key(*content.primary);
+            if (!key)
+                return rejected(MaterialEditError{key.error()});
+            interaction = std::make_unique<MaterialInteraction>(impl_->services_.sessions, *key);
+            binding.emplace(*key, interaction.get());
+        }
+        auto adopted = rebind(binding);
+        if (!adopted)
+            return adopted;
+        impl_->interaction_ = std::move(interaction);
+        return {};
+    }
     MaterialViewResult<void> MaterialView::beginEdit(std::string label)
     {
         if (!impl_->binding_)
@@ -982,8 +1009,14 @@ namespace lux::editor::material
         impl_->state_.camera = *next;
         return {};
     }
+    MaterialPreviewStatus MaterialView::previewStatus() const
+    {
+        return impl_->services_.preview.status();
+    }
     void MaterialView::update() noexcept
     {
+        if (impl_->preview_owner_)
+            impl_->preview_owner_->update();
         if (auto result = impl_->maintain(); !result)
             impl_->status_ = cxx::unexpected(result.error());
     }
@@ -1031,7 +1064,52 @@ namespace lux::editor::material
             +[](lux::ui::Pane& pane, std::uint32_t schema, std::span<const std::byte> bytes) {
                 return static_cast<MaterialView&>(pane).prepareState(schema, bytes);
             },
-            +[](const lux::ui::Pane& pane) { return static_cast<const MaterialView&>(pane).captureState(); }
+            +[](const lux::ui::Pane& pane) { return static_cast<const MaterialView&>(pane).captureState(); },
+            +[](const lux::ui::Pane& pane) noexcept -> views::ViewContent {
+                const auto& binding = static_cast<const MaterialView&>(pane).binding();
+                return binding ? views::ViewContent{{binding->session.id()}, binding->session.id()} : views::ViewContent{};
+            },
+            +[](lux::ui::Pane& pane, const views::ViewContent& content) -> views::ViewCloseResult {
+                auto adopted = static_cast<MaterialView&>(pane).rebindContent(content);
+                if (adopted)
+                    return {};
+                return cxx::unexpected(workbench::detail::viewPreparationFailure(adopted.error(), temporary(adopted.error())));
+            }
         };
     }
+    MaterialViewResult<views::DetachedView> makeMaterialContentView(
+        object::ObjectDispatcherRef dispatcher,
+        lux::ui::PaneId id,
+        sessions::TSessionAccess<MaterialSession> sessions,
+        lux::scene::SceneRuntime& runtime,
+        MaterialCompilationService& compilation,
+        const scene::ProjectionEnvironment& environment,
+        std::span<const render::RenderFeatureRegistration> features,
+        project::ProjectCatalogModel* assets,
+        const views::ViewContent& content
+    )
+    {
+        if (!environment.renderer || !environment.resources)
+            return rejected(views::EViewError::NOT_ATTACHED);
+        auto preview = std::make_unique<MaterialPreviewStore>(
+            runtime, MaterialPreviewEnvironment{environment, {features.begin(), features.end()}}
+        );
+        MaterialViewState state;
+        state.camera.transform.translation = {0, 0, 3.5F};
+        auto candidate = makeMaterialView(
+            dispatcher, std::move(id),
+            {sessions, runtime, *environment.resources, *environment.renderer, *preview, compilation,
+             environment, assets, {2}},
+            {}, state
+        );
+        if (!candidate)
+            return candidate;
+        auto& view = static_cast<MaterialView&>(*candidate->pane());
+        view.impl_->preview_owner_ = std::move(preview);
+        auto bound = view.rebindContent(content);
+        if (!bound)
+            return cxx::unexpected(bound.error());
+        return candidate;
+    }
+
 }

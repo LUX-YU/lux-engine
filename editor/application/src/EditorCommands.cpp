@@ -72,62 +72,12 @@ namespace lux::editor::application
             extensions::builtinSessionCommands({sessions_, saves_}, [this](auto id) { return opening_.find(id); });
 
         draft.views.push_back(extensions::builtinSceneViewFactory(sceneServices()));
-        draft.views.push_back(std::make_shared<views::ViewFactoryEntry>(
-            contracts::CodeLease::builtin(),
-            views::ViewFactoryDescriptor{
-                views::ViewTypeId{"lux.editor.material"},
-                "Material",
-                cxx::typeToken<MaterialViewAssembly>(),
-                1,
-                {{"lux.editor.material"}}
-            },
-            [this](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
-                const auto& value = *static_cast<const MaterialViewAssembly*>(input.binding());
-                if (!value.preview)
-                    return cxx::unexpected(
-                        views::ViewFactoryFailure{views::EViewFactoryError::INVALID_ARGUMENT, "material.preview"}
-                    );
-                auto& render = *engine_->renderContext();
-                auto view = material::makeMaterialView(
-                    input.dispatcher(),
-                    input.paneId(),
-                    {sessions_.access<material::MaterialSession>(),
-                     engine_->sceneRuntime(),
-                     render.resources(),
-                     render.runtime(),
-                     *value.preview,
-                     material_compilation_,
-                     environment_,
-                     &project_->catalogModel(),
-                     {2}},
-                    value.binding
-                );
-                if (!view)
-                    return cxx::unexpected(constructionFailure("material.view", view.error()));
-                return std::move(*view);
-            }
+        draft.views.push_back(extensions::builtinMaterialViewFactory(
+            sessions_.access<material::MaterialSession>(), engine_->sceneRuntime(), material_compilation_,
+            environment_, registrations_.features, &project_->catalogModel()
         ));
-        draft.views.push_back(std::make_shared<views::ViewFactoryEntry>(
-            contracts::CodeLease::builtin(),
-            views::ViewFactoryDescriptor{
-                views::ViewTypeId{"lux.editor.flowforge"},
-                "FlowForge",
-                cxx::typeToken<FlowViewAssembly>(),
-                1,
-                {{"lux.editor.flowforge"}}
-            },
-            [this](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
-                const auto& value = *static_cast<const FlowViewAssembly*>(input.binding());
-                auto view = flowforge::makeFlowView(
-                    input.dispatcher(),
-                    input.paneId(),
-                    {sessions_.access<flowforge::FlowSession>(), flow_compilation_, flow_environment_},
-                    value.binding
-                );
-                if (!view)
-                    return cxx::unexpected(constructionFailure("flow.view", view.error()));
-                return std::move(*view);
-            }
+        draft.views.push_back(extensions::builtinFlowViewFactory(
+            {sessions_.access<flowforge::FlowSession>(), flow_compilation_, flow_environment_}
         ));
         auto exit = std::make_shared<commands::CommandEntry>(
             contracts::CodeLease::builtin(),

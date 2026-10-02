@@ -19,24 +19,14 @@ namespace lux::editor::extensions
         simulation::ecs::ComponentSchemaSet,
         lux::flowforge::FlowSourceEnvironment
     );
-    struct SceneViewInput final
-    {
-        scene::VSceneViewBinding binding{scene::UnboundSceneBinding{}};
-        scene::SceneViewState state;
-        system::SystemInstanceId render_system;
-        std::string title{"Scene"};
-    };
-    struct MaterialViewInput final
-    {
-        std::optional<material::MaterialViewBinding> binding;
-        material::MaterialViewState state;
-    };
-    struct FlowViewInput final
-    {
-        std::optional<flowforge::FlowViewBinding> binding;
-        flowforge::FlowViewState state;
-    };
     [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> builtinSceneViewFactory(scene::SceneViewServices);
-    [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> builtinMaterialViewFactory(material::MaterialViewServices);
+    [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> builtinMaterialViewFactory(
+        sessions::TSessionAccess<material::MaterialSession>,
+        lux::scene::SceneRuntime&,
+        material::MaterialCompilationService&,
+        const scene::ProjectionEnvironment&,
+        std::span<const render::RenderFeatureRegistration>,
+        project::ProjectCatalogModel*
+    );
     [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> builtinFlowViewFactory(flowforge::FlowViewServices);
 }

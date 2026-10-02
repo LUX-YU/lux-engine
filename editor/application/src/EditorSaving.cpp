@@ -102,28 +102,16 @@ namespace lux::editor::application
     }
     EditorResult<void> EditorApplication::Impl::cancelContentPreview(sessions::SessionId id)
     {
-        for (auto& view : content_views_)
+        auto views = desktop_->views().describeAll();
+        if (!views)
+            return applicationFailure("save.views", views.error());
+        for (const auto& view : *views)
         {
-            if (view.session != id)
+            if (std::ranges::find(view.content.sessions, id) == view.content.sessions.end())
                 continue;
-            if (view.scene)
-            {
-                auto ended = view.scene->cancel();
-                if (!ended)
-                    return applicationFailure("save.scene.preview", ended.error());
-            }
-            if (view.material)
-            {
-                auto ended = view.material->cancel();
-                if (!ended)
-                    return applicationFailure("save.material.preview", ended.error());
-            }
-            if (view.flow)
-            {
-                auto ended = view.flow->cancel();
-                if (!ended)
-                    return applicationFailure("save.flow.preview", ended.error());
-            }
+            auto ended = desktop_->views().cancelPreview(view.id);
+            if (!ended)
+                return applicationFailure("save.preview", ended.error());
         }
         return {};
     }

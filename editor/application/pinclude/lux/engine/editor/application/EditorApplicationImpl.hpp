@@ -47,6 +47,9 @@ namespace lux::editor::application
             if (cause.session == sessions::ESessionError::BUSY)
                 code = EEditorError::BUSY;
         }
+        if constexpr (requires { cause.retryable; })
+            if (cause.retryable)
+                code = EEditorError::BUSY;
         return cxx::unexpected(EditorFailure{code, std::move(domain), 0, {}, cause});
     }
     struct EditorApplication::Impl final
@@ -70,9 +73,6 @@ namespace lux::editor::application
             sessions::SessionId session;
             views::ViewId view;
             std::shared_ptr<scene::SceneInteractionGroup> scene;
-            std::unique_ptr<material::MaterialInteraction> material;
-            std::unique_ptr<flowforge::FlowInteraction> flow;
-            std::unique_ptr<material::MaterialPreviewStore> preview;
             std::optional<scene::RunId> run;
             views::ViewId source_view;
             object::Connection model_drop;
@@ -226,15 +226,6 @@ namespace lux::editor::application
             views::ViewId view;
             sessions::ContentStamp content;
             views::ViewId question;
-        };
-        struct MaterialViewAssembly final
-        {
-            std::optional<material::MaterialViewBinding> binding;
-            material::MaterialPreviewStore* preview{};
-        };
-        struct FlowViewAssembly final
-        {
-            std::optional<flowforge::FlowViewBinding> binding;
         };
         struct RefreshWorkspace final
         {
@@ -532,7 +523,8 @@ namespace lux::editor::application
             sessions::SessionId,
             bool another_view,
             const extensions::ContributionSnapshot&,
-            std::optional<views::ViewRestoreKey> = {}
+            std::optional<views::ViewRestoreKey> = {},
+            std::optional<views::ViewTypeId> = {}
         );
         [[nodiscard]] EditorResult<void> update();
         [[nodiscard]] EditorResult<void> receiveOpenResults();

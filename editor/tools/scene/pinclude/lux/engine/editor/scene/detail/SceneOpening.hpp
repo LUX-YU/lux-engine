@@ -1,4 +1,8 @@
 #pragma once
+namespace lux::project
+{
+    struct SceneRegistrations;
+}
 #include <lux/engine/scene/SceneCapture.hpp>
 #include <lux/engine/scene/SceneRuntime.hpp>
 #include <lux/engine/editor/EditorError.hpp>
@@ -6,7 +10,6 @@
 namespace lux::editor
 {
     class ProjectStorage;
-    struct SceneRegistrations;
 }
 namespace lux::editor::scene
 {
@@ -15,7 +18,7 @@ namespace lux::editor::scene
         [[nodiscard]] EditorResult<lux::scene::SceneInstanceLease> instantiateScenePackage(
             lux::scene::SceneRuntime&,
             const lux::scene::ScenePackage&,
-            const SceneRegistrations&,
+            const lux::project::SceneRegistrations&,
             process::ExecutionRuntime&,
             lux::render::RenderRuntime&,
             lux::scene::RenderResources&,

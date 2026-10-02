@@ -10,7 +10,7 @@
 #include <lux/engine/simulation/ecs/Transform.hpp>
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
 #include <lux/engine/editor/editing/scene/FieldEdit.hpp>
-#include <lux/engine/editor/metadata/SceneRegistrations.hpp>
+#include <lux/engine/project/PluginRendering.hpp>
 #include <lux/engine/function/render/client/core/RenderSceneId.hpp>
 #include <lux/engine/object/LuxObject.hpp>
 #include <lux/engine/resource/asset/model/ModelAsset.hpp>

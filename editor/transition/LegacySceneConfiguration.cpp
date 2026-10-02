@@ -34,7 +34,7 @@ namespace lux::editor::ui
         Impl(
             SceneConfigurationElement& owner,
             const lux::project::PluginCatalog& catalog,
-            const SceneRegistrations& registrations,
+            const lux::project::SceneRegistrations& registrations,
             std::span<const ConfigurationEditorRegistration> configurations,
             std::span<const SceneProviderOption> providers,
             EditorResult<void>& status
@@ -102,7 +102,7 @@ namespace lux::editor::ui
         lux::ui::Element& parent,
         lux::ui::ElementId id,
         const lux::project::PluginCatalog& catalog,
-        const SceneRegistrations& registrations,
+        const lux::project::SceneRegistrations& registrations,
         std::span<const ConfigurationEditorRegistration> configurations,
         std::span<const SceneProviderOption> providers,
         EditorResult<void>& status

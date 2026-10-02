@@ -570,14 +570,14 @@ namespace
             renderer_ = &context.renderRuntime();
             runtime_ = &context.execution();
             project_ = &context.project();
-            auto metadata = sceneRegistrations(consumer::schemas(), context.plugins().libraries());
+            auto metadata = lux::project::readSceneRegistrations(consumer::schemas(), context.plugins().libraries());
             assert(metadata);
             auto bindings = ui::componentEditors();
             bindings.push_back(consumer::binding());
             auto editors = ComponentEditorRegistry::create(metadata->components, std::move(bindings));
             assert(editors);
             // Test setup only, before a tool or generated component editor borrows the fixed catalog.
-            const_cast<SceneRegistrations&>(context.sceneRegistrations()) = std::move(*metadata);
+            const_cast<lux::project::SceneRegistrations&>(context.sceneRegistrations()) = std::move(*metadata);
             const_cast<ComponentEditorRegistry&>(context.componentEditors()) = std::move(*editors);
             auto tool = EditorTestFactory::show<scene::SceneEditor>(*editor_);
             assert(tool);

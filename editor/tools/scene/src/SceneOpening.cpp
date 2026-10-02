@@ -1,12 +1,12 @@
 #include <lux/engine/editor/scene/detail/SceneOpening.hpp>
-#include <lux/engine/editor/metadata/SceneRegistrations.hpp>
+#include <lux/engine/project/PluginRendering.hpp>
 #include <lux/engine/editor/scene/SceneProjection.hpp>
 namespace lux::editor::scene
 {
     EditorResult<lux::scene::SceneInstanceLease> detail::instantiateScenePackage(
         lux::scene::SceneRuntime& runtime,
         const lux::scene::ScenePackage& source,
-        const SceneRegistrations& metadata,
+        const lux::project::SceneRegistrations& metadata,
         process::ExecutionRuntime& execution,
         render::RenderRuntime& renderer,
         lux::scene::RenderResources& resources,

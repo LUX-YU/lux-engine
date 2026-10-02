@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/editor/ui/visibility.h>
-#include <lux/engine/editor/metadata/SceneRegistrations.hpp>
+#include <lux/engine/project/PluginRendering.hpp>
 #include <lux/engine/editor/metadata/EditorPluginExports.hpp>
 #include <lux/engine/scene/SceneDescription.hpp>
 #include <lux/engine/world/WorldDataSchemaId.hpp>
@@ -49,7 +49,7 @@ namespace lux::editor::ui
             lux::ui::Element& parent,
             lux::ui::ElementId,
             const lux::project::PluginCatalog&,
-            const SceneRegistrations&,
+            const lux::project::SceneRegistrations&,
             std::span<const ConfigurationEditorRegistration>,
             std::span<const SceneProviderOption>,
             EditorResult<void>& status

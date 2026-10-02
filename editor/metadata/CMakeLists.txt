@@ -4,14 +4,13 @@ generate_visibility_header(
     GENERATE_FILE_PATH lux/engine/editor/metadata/visibility.h
 )
 add_component(COMPONENT_NAME editor_metadata NAMESPACE lux::engine::editor
-    SOURCE_FILES src/ComponentEditorRegistry.cpp src/SceneRegistrations.cpp src/EditorPlugin.cpp)
+    SOURCE_FILES src/ComponentEditorRegistry.cpp src/EditorPlugin.cpp)
 lux_classify_target(TARGET editor_metadata LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 component_include_directories(editor_metadata
     BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR}
     INSTALL_TIME include)
 target_compile_definitions(editor_metadata PRIVATE LUX_EDITOR_METADATA_LIBRARY "LUX_PLUGIN_SDK_ABI=\"${LUX_PLUGIN_SDK_ABI}\"")
-target_link_libraries(editor_metadata PRIVATE lux::engine::project::project_plugin_rendering
-    PUBLIC lux::engine::editor::editor_configuration lux::engine::function::ui lux::engine::editor::editor_editing lux::engine::project::project_plugins lux::engine::core::meta
+target_link_libraries(editor_metadata PUBLIC lux::engine::project::project_plugin_rendering lux::engine::editor::editor_configuration lux::engine::function::ui lux::engine::editor::editor_editing lux::engine::project::project_plugins lux::engine::core::meta
         lux::engine::simulation::system lux::engine::simulation::simulation_composition lux::engine::simulation::ecs::schema
         lux::engine::scene::scene_system lux::engine::scene::scene_render
     )

@@ -1,4 +1,8 @@
 #pragma once
+namespace lux::project
+{
+    struct SceneRegistrations;
+}
 
 #include <lux/engine/editor/PaneManager.hpp>
 #include <lux/engine/editor/metadata/AssetEditorRegistration.hpp>
@@ -37,7 +41,6 @@ namespace lux::editor::assets
 namespace lux::editor
 {
     class ProjectStorage;
-    struct SceneRegistrations;
     class ComponentEditorRegistry;
     struct ConfigurationEditorRegistration;
     namespace detail
@@ -69,7 +72,7 @@ namespace lux::editor
         render::RenderRuntime& renderRuntime() noexcept;
         lux::scene::RenderResources& renderResources() noexcept;
         const lux::project::PluginManager& plugins() const noexcept;
-        const SceneRegistrations& sceneRegistrations() const noexcept;
+        const lux::project::SceneRegistrations& sceneRegistrations() const noexcept;
         const ComponentEditorRegistry& componentEditors() const noexcept;
         std::span<const ConfigurationEditorRegistration> configurationEditors() const noexcept;
         PaneManager& panes() noexcept;

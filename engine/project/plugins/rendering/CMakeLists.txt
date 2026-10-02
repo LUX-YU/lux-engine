@@ -9,3 +9,16 @@ component_add_transitive_commands(project_plugin_rendering
 lux_classify_target(TARGET project_plugin_rendering LAYER SCENE PRODUCT SHARED ROLE LIBRARY)
 lux_engine_install_components(PROJECT_NAME lux-engine-project-plugin-rendering VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::project COMPONENTS project_plugin_rendering)
+
+if(BUILD_TESTING)
+    add_executable(plugin_scene_registrations_test test/scene_registrations.cpp)
+    target_link_libraries(plugin_scene_registrations_test PRIVATE project_plugin_rendering)
+    if(MSVC)
+        target_compile_options(plugin_scene_registrations_test PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(plugin_scene_registrations_test PRIVATE -UNDEBUG)
+    endif()
+    add_test(NAME plugin.scene_registrations COMMAND plugin_scene_registrations_test
+        "${CMAKE_BINARY_DIR}/share/lux-engine/plugins/catalog.json" "${CMAKE_BINARY_DIR}")
+    set_tests_properties(plugin.scene_registrations PROPERTIES LABELS "native;P12" TIMEOUT 30)
+endif()

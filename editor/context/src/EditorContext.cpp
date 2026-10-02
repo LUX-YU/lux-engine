@@ -6,7 +6,7 @@
 #include <lux/engine/editor/assets/AssetImporter.hpp>
 #include <lux/engine/editor/metadata/EditorPlugin.hpp>
 #include <lux/engine/editor/configuration/EditorReflection.hpp>
-#include <lux/engine/editor/metadata/SceneRegistrations.hpp>
+#include <lux/engine/project/PluginRendering.hpp>
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
 #include <lux/engine/project/PluginManager.hpp>
 #include <lux/engine/scene/RenderResources.hpp>
@@ -112,7 +112,7 @@ namespace lux::editor
         std::vector<EditorPlugin> editor_plugins;
         process::TaskScope project_tasks{execution};
         std::unique_ptr<ProjectStorage> project;
-        SceneRegistrations registrations;
+        lux::project::SceneRegistrations registrations;
         ComponentEditorRegistry component_editors;
         std::vector<ConfigurationEditorRegistration> configuration_editors;
         std::filesystem::path installation;
@@ -232,7 +232,7 @@ namespace lux::editor
             auto registered_assets = context.setAssetEditors(std::move(asset_editors));
             if (!registered_assets)
                 return registered_assets;
-            auto scene_types = lux::editor::sceneRegistrations({}, plugins->libraries());
+            auto scene_types = lux::project::readSceneRegistrations({}, plugins->libraries());
             if (!scene_types)
                 return lux::cxx::unexpected(pluginFailure(scene_types.error()));
             registrations = std::move(*scene_types);
@@ -302,7 +302,7 @@ namespace lux::editor
     {
         return *impl_->plugins;
     }
-    const SceneRegistrations& EditorContext::sceneRegistrations() const noexcept
+    const lux::project::SceneRegistrations& EditorContext::sceneRegistrations() const noexcept
     {
         return impl_->registrations;
     }

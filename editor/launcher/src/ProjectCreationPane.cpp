@@ -154,7 +154,7 @@ namespace lux::editor
         std::shared_ptr<const void> reflection;
         std::optional<lux::project::PluginCatalog> catalog;
         std::optional<LoadedPlugins> plugins;
-        SceneRegistrations registrations;
+        lux::project::SceneRegistrations registrations;
         std::vector<ConfigurationEditorRegistration> configuration_editors;
         lux::ui::Layout layout, fields;
         lux::ui::Label heading, name_label;
@@ -355,7 +355,7 @@ namespace lux::editor
                     configurations.push_back(std::move(entry));
                 }
             }
-            auto types = sceneRegistrations({}, value.first.libraries());
+            auto types = lux::project::readSceneRegistrations({}, value.first.libraries());
             if (!types)
                 return lux::cxx::unexpected(pluginError(types.error()));
             auto validated = draft.prepareCommit();

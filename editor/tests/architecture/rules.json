@@ -15328,6 +15328,14 @@
           "PROCESS"
         ],
         "path": "editor/activities/sessions"
+      },
+      "plugin_scene_registrations_test": {
+        "layer": "TEST",
+        "role": "TEST",
+        "capabilities": [
+          "CPU",
+          "GPU"
+        ]
       }
     },
     "files": {
@@ -15947,16 +15955,10 @@
       "editor/metadata/include/lux/engine/editor/metadata/PaneState.hpp": [
         "editor_metadata"
       ],
-      "editor/metadata/include/lux/engine/editor/metadata/SceneRegistrations.hpp": [
-        "editor_metadata"
-      ],
       "editor/metadata/src/ComponentEditorRegistry.cpp": [
         "editor_metadata"
       ],
       "editor/metadata/src/EditorPlugin.cpp": [
-        "editor_metadata"
-      ],
-      "editor/metadata/src/SceneRegistrations.cpp": [
         "editor_metadata"
       ],
       "editor/metadata/test/configuration.cpp": [

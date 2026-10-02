@@ -3,7 +3,7 @@
 #include <lux/engine/ui/Root.hpp>
 #include <lux/engine/ui/Element.hpp>
 #include <lux/engine/object/LuxObject.hpp>
-#include <lux/engine/editor/metadata/SceneRegistrations.hpp>
+#include <lux/engine/project/PluginRendering.hpp>
 #include <lux/engine/scene/RenderResources.hpp>
 #include <lux/engine/scene/SceneInstanceId.hpp>
 #include <lux/engine/simulation/ecs/Transform.hpp>

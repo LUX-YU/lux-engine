@@ -64,7 +64,7 @@ int main(int argc, char** argv)
         if (extension.exports)
             assert(second.appendOnce(extension.exports->register_types, extension.code));
     assert(second.commit());
-    auto registrations = editor::sceneRegistrations({}, manager->libraries());
+    auto registrations = lux::project::readSceneRegistrations({}, manager->libraries());
     assert(registrations);
     auto queue = object::ObjectMessageQueue::create(64);
     assert(queue);

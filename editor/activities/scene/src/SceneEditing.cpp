@@ -1,3 +1,4 @@
+#include <lux/engine/editor/editing/EditExecutor.hpp>
 #include <lux/engine/editor/editing/scene/SceneEditing.hpp>
 #include <lux/engine/scene/SceneRuntime.hpp>
 #include <lux/engine/scene/Camera.hpp>
@@ -378,7 +379,7 @@ namespace lux::editor::scene
             return lux::cxx::unexpected(editing::makeEditFailure(editing::EEditError::BUSY));
         }
         EditingGuard guard(busy_);
-        return history_.execute(operation);
+        return editing::EditExecutor{}.execute(history_, operation);
     }
 
     editing::EditResult<FieldEditToken> SceneEditing::adoptFieldEdit(
@@ -463,7 +464,7 @@ namespace lux::editor::scene
         {
             return lux::cxx::unexpected(captured.error());
         }
-        auto result = history_.execute(field_edit->operation);
+        auto result = editing::EditExecutor{}.execute(history_, field_edit->operation);
         if (result)
         {
             field_edit_.emplace<std::monostate>();

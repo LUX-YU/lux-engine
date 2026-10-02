@@ -7,6 +7,20 @@ but retain their binary identity owners and separate installed packages.
 ViewInfo is a pure observation; window errors and close preparation belong to view_api.
 EditorError is a pure value supplied by editor_contracts.
 
+## History storage and execution (EC1)
+
+`EditHistory` owns the sole log, state identity, cursor, limits, owner thread and phase.
+`EditExecutor` is a stateless synchronous value in the same `edit_history` binary. It performs
+execute/undo/redo/clear/close; the log no longer exposes mutation functions. Two executors operating
+on one log share that log's gate, including preparation, publication and reclamation. The executor
+does not own another cursor, queue or history and does not schedule background work.
+
+The original algorithm retains its ordering: prepare without model mutation; apply and adopt history;
+publish consistent facts; reclaim prepared/retired owners before releasing admission. A failed prepare
+keeps the caller's operation, and NO_CHANGE leaves the redo branch and state identity unchanged.
+Explicit close notifies once; log destruction silently releases retained operations under its original
+owner-thread invariant. Models continue to own their log and source in the established destruction order.
+
 ## Edit sessions (P01)
 
 `SessionStore` exclusively owns published `IEditSession` objects. It is an owner-thread collection;

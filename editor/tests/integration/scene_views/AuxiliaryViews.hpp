@@ -73,7 +73,7 @@ void auxiliaryViews(Fixture& f)
     ));
     const auto project_id = take(f.desktop->views().adopt(project, views::ViewRestoreKey{"project"})).id;
     const auto reference = catalog.reference(catalog.entries().front().id);
-    assert(browser->catalog().assets.size() == 1 && browser->requestOpen(reference));
+    assert(browser->catalog().assets().size() == 1 && browser->requestOpen(reference));
     assert(opens == 1 && opened->source.name == "P10 material");
     for (auto failure :
          {editor::project::EProjectQueryError::BUSY,
@@ -81,7 +81,7 @@ void auxiliaryViews(Fixture& f)
           editor::project::EProjectQueryError::IO})
     {
         catalog.setFailure(failure);
-        assert(!browser->refresh() && browser->catalog().assets.size() == 1);
+        assert(!browser->refresh() && browser->catalog().assets().size() == 1);
         assert(!browser->requestOpen(reference) && opens == 1);
     }
     catalog.setFailure({});
@@ -112,7 +112,7 @@ void auxiliaryViews(Fixture& f)
     assert(catalog.replace("Actual saved material", std::move(replacement)));
     const auto current = catalog.reference(reference.asset);
     assert(!control->select(current) && control->value() == reference.asset);
-    assert(browser->refresh() && browser->catalog().version == take(catalog.version()));
+    assert(browser->refresh() && browser->catalog().version() == take(catalog.version()));
     f.frame();
     assert(f.desktop->views().close(picker_id) && f.desktop->views().close(project_id));
     f.wait([&] { return !f.desktop->views().describe(project_id) && !f.desktop->views().describe(picker_id); });

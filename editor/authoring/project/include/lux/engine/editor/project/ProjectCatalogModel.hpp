@@ -31,33 +31,24 @@ namespace lux::editor::project
         friend bool operator==(ProjectCatalogVersion, ProjectCatalogVersion) = default;
     };
 
-    // The views below borrow storage pinned by owner_. Copies never copy catalog rows or its index.
+    // Immutable owning catalog version. Copies share rows and their index; moved-from snapshots are empty.
     class LUX_EDITOR_PROJECT_PUBLIC ProjectCatalogSnapshot final
     {
     public:
         ProjectCatalogSnapshot() = default;
         ProjectCatalogSnapshot(const ProjectCatalogSnapshot&) = default;
         ProjectCatalogSnapshot& operator=(const ProjectCatalogSnapshot&) = default;
-        ProjectCatalogSnapshot(ProjectCatalogSnapshot&& other) noexcept
-            : version(std::exchange(other.version, {})), name(std::exchange(other.name, {})),
-              assets(std::exchange(other.assets, {})), owner_(std::move(other.owner_))
-        {}
-        ProjectCatalogSnapshot& operator=(ProjectCatalogSnapshot&& other) noexcept
-        {
-            if (this == &other)
-                return *this;
-            version = std::exchange(other.version, {});
-            name = std::exchange(other.name, {});
-            assets = std::exchange(other.assets, {});
-            owner_ = std::move(other.owner_);
-            return *this;
-        }
-        ProjectCatalogVersion version;
-        std::string_view name;
-        std::span<const AssetCatalogEntry> assets;
+        ProjectCatalogSnapshot(ProjectCatalogSnapshot&&) noexcept = default;
+        ProjectCatalogSnapshot& operator=(ProjectCatalogSnapshot&&) noexcept = default;
+        [[nodiscard]] ProjectCatalogVersion version() const noexcept;
+        [[nodiscard]] std::string_view name() const noexcept;
+        [[nodiscard]] std::span<const AssetCatalogEntry> assets() const noexcept;
+        // The result is borrowed from this frozen version, not the mutable Model's latest version.
+        [[nodiscard]] const AssetCatalogEntry* find(asset::AssetId) const noexcept;
         [[nodiscard]] AssetReference reference(asset::AssetId id) const noexcept
         {
-            return {version.instance, version.revision, id};
+            const auto current = version();
+            return {current.instance, current.revision, id};
         }
 
     private:

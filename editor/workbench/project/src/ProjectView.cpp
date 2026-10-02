@@ -23,9 +23,9 @@ namespace lux::editor::project
                 if (state.failure)
                     ImGui::TextUnformatted("Catalog request failed; retaining the previous entries.");
                 // The list is a display projection; opening/dragging keeps the exact revision shown here.
-                for (std::size_t index{}; index < state.catalog.assets.size(); ++index)
+                for (std::size_t index{}; index < state.catalog.assets().size(); ++index)
                 {
-                    const auto& row = state.catalog.assets[index];
+                    const auto& row = state.catalog.assets()[index];
                     if (!filter.empty() && row.path.find(filter) == std::string::npos)
                         continue;
                     ImGui::PushID(static_cast<int>(index));
@@ -64,7 +64,7 @@ namespace lux::editor::project
             auto version = query.version();
             if (!version)
                 return lux::cxx::unexpected(version.error());
-            if (*version == catalog.version)
+            if (*version == catalog.version())
                 return {};
             auto read = query.snapshot();
             if (!read)
@@ -121,7 +121,7 @@ namespace lux::editor::project
     {
         const auto revision = impl_->query.version();
         const bool needs_refresh =
-            impl_->refresh_requested || !revision || *revision != impl_->catalog.version || impl_->failure;
+            impl_->refresh_requested || !revision || *revision != impl_->catalog.version() || impl_->failure;
         if (needs_refresh)
         {
             impl_->refresh_requested = false;

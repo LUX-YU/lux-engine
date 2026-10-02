@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/editor/editing/EditExecutor.hpp>
 
 #include <lux/engine/editor/editing/scene/SceneEditing.hpp>
 
@@ -21,7 +22,7 @@ namespace lux::editor::scene
         ~RunDebugEdits()
         {
             // History mementos may borrow editing; destroy them before editing itself.
-            static_cast<void>(history->close());
+            static_cast<void>(editing::EditExecutor{}.close(*history));
             history.reset();
         }
     };

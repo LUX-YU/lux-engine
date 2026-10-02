@@ -20,7 +20,7 @@ add_component(
     COMPONENT_NAME edit_history
     NAMESPACE lux::engine::editor
     OUTPUT_NAME lux_engine_edit_history
-    SOURCE_FILES src/history/EditTypes.cpp src/history/EditHistory.cpp
+    SOURCE_FILES src/history/EditTypes.cpp src/history/EditHistory.cpp src/history/EditExecutor.cpp
 )
 component_include_directories(
     edit_history
@@ -79,6 +79,7 @@ endif()
 
 # Exact SDK ownership: sibling providers share a build include root, never an install manifest.
 install(FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/editing/EditExecutor.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/editing/EditHistory.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/editing/EditOperation.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/editing/EditTypes.hpp

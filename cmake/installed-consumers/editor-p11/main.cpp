@@ -190,7 +190,7 @@ int main(int argc, char** argv)
             sessions::BoundSource{assetId(), "input.luxmaterial"},
             take(disk.resolve("input.luxmaterial"))
         };
-        std::optional<sessions::PreparedSessionData> completed;
+        std::optional<sessions::SessionPreparation> completed;
         const auto owner = std::this_thread::get_id();
         assert(tasks.submit(
             {.name = "External decode"},
@@ -202,7 +202,7 @@ int main(int argc, char** argv)
                     [job = std::move(job), stop = reporter.stopToken()]() mutable { return std::move(job).run(stop); }
                 );
             },
-            [&](process::TTaskResult<sessions::PreparedSessionData, sessions::SessionFactoryFailure>&& value) noexcept {
+            [&](process::TTaskResult<sessions::SessionPreparation, sessions::SessionFactoryFailure>&& value) noexcept {
                 assert(std::this_thread::get_id() == owner && value);
                 completed.emplace(std::move(*value));
             }

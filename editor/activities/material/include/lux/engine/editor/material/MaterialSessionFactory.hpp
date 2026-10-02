@@ -4,7 +4,7 @@
 
 namespace lux::editor::material
 {
-    [[nodiscard]] sessions::PreparedSessionData prepareMaterialSession(
+    [[nodiscard]] sessions::SessionPreparation prepareMaterialSession(
         PreparedMaterialData data,
         [[nodiscard]] sessions::SourceBinding binding,
         std::optional<persistence::WriteTarget> target,

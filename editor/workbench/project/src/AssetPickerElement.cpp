@@ -64,7 +64,7 @@ namespace lux::editor::project
             error_ = version.error();
             return lux::cxx::unexpected(version.error());
         }
-        if (*version == catalog_.version)
+        if (*version == catalog_.version())
         {
             error_.reset();
             return {};
@@ -84,7 +84,7 @@ namespace lux::editor::project
         if (!query_)
             return;
         const auto revision = query_->version();
-        const bool needs_refresh = refresh_requested_ || !revision || *revision != catalog_.version || error_;
+        const bool needs_refresh = refresh_requested_ || !revision || *revision != catalog_.version() || error_;
         if (needs_refresh)
         {
             refresh_requested_ = false;
@@ -98,8 +98,8 @@ namespace lux::editor::project
     }
     void AssetPickerElement::draw() noexcept
     {
-        const auto found = std::ranges::find(catalog_.assets, value_, &AssetCatalogEntry::id);
-        const std::string_view name = found != catalog_.assets.end() ? found->path
+        const auto found = std::ranges::find(catalog_.assets(), value_, &AssetCatalogEntry::id);
+        const std::string_view name = found != catalog_.assets().end() ? found->path
                                       : value_.isNull()              ? "None"
                                                                      : "Missing asset";
         ImGui::BeginDisabled(!query_ || !required_magic_);
@@ -136,9 +136,9 @@ namespace lux::editor::project
         {
             if (ImGui::Selectable("None", value_.isNull()))
                 adopt({});
-            for (std::size_t index{}; index < catalog_.assets.size(); ++index)
+            for (std::size_t index{}; index < catalog_.assets().size(); ++index)
             {
-                const auto& row = catalog_.assets[index];
+                const auto& row = catalog_.assets()[index];
                 if (row.magic != required_magic_)
                     continue;
                 ImGui::PushID(static_cast<int>(index));

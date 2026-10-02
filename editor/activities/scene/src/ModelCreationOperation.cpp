@@ -101,7 +101,7 @@ namespace lux::editor::scene
             auto version = catalog_.version();
             if (!version)
                 return rejected(version.error());
-            if (*version != snapshot_.version)
+            if (*version != snapshot_.version())
                 return fail({project::VProjectQueryFailure{EAssetReferenceError::STALE_CATALOG}});
             auto session = sessions_.edit(placement_.target);
             if (!session)
@@ -116,7 +116,7 @@ namespace lux::editor::scene
             for (const auto& primitive : model->data().primitives)
             {
                 const auto exists = [&](asset::AssetId id, std::uint32_t magic) {
-                    return std::ranges::any_of(snapshot_.assets, [&](const auto& entry) {
+                    return std::ranges::any_of(snapshot_.assets(), [&](const auto& entry) {
                         return entry.id == id && entry.magic == magic;
                     });
                 };
@@ -155,7 +155,7 @@ namespace lux::editor::scene
             version = catalog_.version();
             if (!version)
                 return rejected(version.error());
-            if (*version != snapshot_.version)
+            if (*version != snapshot_.version())
                 return fail({project::VProjectQueryFailure{EAssetReferenceError::STALE_CATALOG}});
             SceneEditBatch batch{placement_.based_on, "Insert model", {}};
             batch.edits.reserve(objects->size());

@@ -19,7 +19,7 @@ namespace lux::editor::editing
         PreparedEdit() noexcept = default;
 
     private:
-        friend class EditHistory;
+        friend class EditExecutor;
         // Preparation resolves every normal business rejection. Commit performs no I/O or fallible
         // business calls. ECS allocation and internal dirty/index notifications are permitted under
         // the host's allocation policy; the host must hide intermediate content from public queries.

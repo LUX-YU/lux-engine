@@ -93,7 +93,12 @@ namespace lux::editor::scene
         lux::ui::Label message_;
         std::array<object::Connection, 3> connections_;
         bool cancel_requested_{};
-        std::optional<bool> structure_request_;
+        enum class EComponentAction : std::uint8_t
+        {
+            ADD,
+            REMOVE
+        };
+        std::optional<EComponentAction> structure_request_;
         std::vector<std::unique_ptr<Component>> entries_;
         SceneEditResult<void> status_;
         Impl(
@@ -115,11 +120,11 @@ namespace lux::editor::scene
             view.setContent(layout_);
             auto add = object::LuxObject::connect(&add_, &lux::ui::Button::activated, [this]() noexcept {
                 if (!structure_request_)
-                    structure_request_ = true;
+                    structure_request_ = EComponentAction::ADD;
             });
             auto remove = object::LuxObject::connect(&remove_, &lux::ui::Button::activated, [this]() noexcept {
                 if (!structure_request_)
-                    structure_request_ = false;
+                    structure_request_ = EComponentAction::REMOVE;
             });
             auto cancel = object::LuxObject::connect(&cancel_, &lux::ui::Button::activated, [this]() noexcept {
                 cancel_requested_ = true;
@@ -312,7 +317,7 @@ namespace lux::editor::scene
             {
                 const auto index = component_choice_.value();
                 if (index >= 0 && static_cast<std::size_t>(index) < schemas_.all().size())
-                    status_ = changeComponent(schemas_.all()[index].id, *structure_request_);
+                    status_ = changeComponent(schemas_.all()[index].id, *structure_request_ == EComponentAction::ADD);
                 else
                     status_ = cxx::unexpected(SceneEditError{ESceneEditError::MISSING_SCHEMA});
                 if (!status_)

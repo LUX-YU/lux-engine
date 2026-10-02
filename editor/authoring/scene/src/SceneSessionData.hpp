@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/editor/editing/EditOperation.hpp>
 
 #include "SceneSourceData.hpp"
 #include <lux/engine/editor/scene/SceneSession.hpp>

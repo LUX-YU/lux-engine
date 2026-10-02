@@ -1,3 +1,4 @@
+#include <lux/engine/editor/editing/EditExecutor.hpp>
 #include <lux/engine/editor/scene/RunController.hpp>
 #include <lux/engine/editor/scene/ModelCreationOperation.hpp>
 #include <lux/engine/process/asset_loading/AssetReadOverlay.hpp>
@@ -311,9 +312,9 @@ namespace
             [](auto& value) { return &value.translation; },
             Eigen::Vector3d{20, 0, 0}
         ));
-        assert(take(f.runs.debugHistory(id)).get().undo());
+        assert(editing::EditExecutor{}.undo(take(f.runs.debugHistory(id)).get()));
         assert(first.get<ecs::Transform3D>(ref.entity).translation.x() == 10);
-        assert(take(f.runs.debugHistory(id)).get().redo());
+        assert(editing::EditExecutor{}.redo(take(f.runs.debugHistory(id)).get()));
         f.frame();
         assert(
             take(f.runs.inspect().borrow(id)).get().get<ecs::WorldTransform3D>(ref.entity).value.translation().x() == 20

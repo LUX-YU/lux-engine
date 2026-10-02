@@ -1,3 +1,4 @@
+#include <lux/engine/editor/editing/EditExecutor.hpp>
 #include <lux/engine/editor/editing/scene/FieldEdit.hpp>
 #include <lux/engine/scene/SceneDescriptionBuilder.hpp>
 #include <lux/engine/scene/SceneRuntime.hpp>
@@ -92,12 +93,12 @@ int main()
     assert(editing.addComponent(*add_target, transform_type));
     assert(registry.get<ecs::Transform3D>(empty_entity).translation.isZero());
     assert(!editing.addComponent(*editing.writeTarget(empty_reference), transform_type));
-    assert((*history)->undo());
+    assert(editor::editing::EditExecutor{}.undo(**history));
     assert(!registry.all_of<ecs::Transform3D>(empty_entity));
     assert(editing.componentChanges().empty());
-    assert((*history)->redo());
+    assert(editor::editing::EditExecutor{}.redo(**history));
     assert(registry.get<ecs::Transform3D>(empty_entity).scale == Eigen::Vector3d::Ones());
-    assert((*history)->undo());
+    assert(editor::editing::EditExecutor{}.undo(**history));
     assert(!editing.addComponent(*add_target, transform_type)); // Same state, different revision.
     const auto reference = entity;
     assert(editing.component(reference, cxx::typeToken<ecs::Transform3D>()));
@@ -111,16 +112,16 @@ int main()
     assert(editing.componentChanges().size() == 1);
     const auto edit_version = editing.componentVersion(reference, cxx::typeToken<ecs::Transform3D>());
     assert(edit_version != 0);
-    assert((*history)->undo());
+    assert(editor::editing::EditExecutor{}.undo(**history));
     assert(editing.componentVersion(reference, cxx::typeToken<ecs::Transform3D>()) > edit_version);
     assert(registry.get<ecs::Transform3D>(entity).translation.isZero());
     assert((*history)->view()->snapshot.current == before);
-    assert((*history)->redo());
+    assert(editor::editing::EditExecutor{}.redo(**history));
     PublicationGate::blocked = true;
     assert((*runtime)->resumeSimulation(instance));
     assert((*runtime)->driveFrame());
     assert(!(*runtime)->borrowInstance(instance));
-    const auto blocked_undo = (*history)->undo();
+    const auto blocked_undo = editor::editing::EditExecutor{}.undo(**history);
     assert(!blocked_undo && blocked_undo.error().code == editor::editing::EEditError::BUSY);
     assert(registry.get<ecs::Transform3D>(entity).translation == Eigen::Vector3d(1, 2, 3));
     assert((*runtime)->pauseSimulation(instance));
@@ -157,7 +158,7 @@ int main()
     assert(!editing.component(replacement, transform_type));
     const auto expired = editing.writeTarget(replacement);
     assert(!expired && expired.error().code == editor::editing::EEditError::STALE_TARGET);
-    assert((*history)->close());
+    assert(editor::editing::EditExecutor{}.close(**history));
     editing.close();
     assert(!editing.fieldEditWritable(*token));
     std::cout

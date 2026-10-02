@@ -181,7 +181,7 @@ namespace lux::editor::editing
         [[nodiscard]] std::size_t remaining() const noexcept;
 
     private:
-        friend class EditHistory;
+        friend class EditExecutor;
         explicit EditPreparationBudget(std::size_t limit) noexcept;
         std::size_t limit_{}, used_{};
     };

@@ -1,3 +1,4 @@
+#include <lux/engine/editor/editing/EditExecutor.hpp>
 #include "SceneSessionData.hpp"
 
 namespace lux::editor::scene
@@ -109,7 +110,7 @@ namespace lux::editor::scene
             auto operation = detail::makeSceneEdit(*impl_, std::move(batch));
             if (!operation)
                 return lux::cxx::unexpected(operation.error());
-            auto result = impl_->history->execute(*operation);
+            auto result = editing::EditExecutor{}.execute(*impl_->history, *operation);
             if (!result)
                 return lux::cxx::unexpected(detail::historyFailure(result.error()));
             return SceneEditReceipt{result->effect, currentContent(), impl_->cursor()};
@@ -118,7 +119,7 @@ namespace lux::editor::scene
     SceneEditResult<SceneEditReceipt> SceneSession::Impl::replay(bool forward)
     {
         return state.gate().withEdit([&](sessions::EditScope&) -> SceneEditResult<SceneEditReceipt> {
-            auto result = forward ? history->redo() : history->undo();
+            auto result = forward ? editing::EditExecutor{}.redo(*history) : editing::EditExecutor{}.undo(*history);
             if (!result)
                 return lux::cxx::unexpected(detail::historyFailure(result.error()));
             return SceneEditReceipt{result->effect, content(), cursor()};

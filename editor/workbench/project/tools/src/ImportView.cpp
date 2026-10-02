@@ -37,7 +37,7 @@ namespace lux::editor::project
                 if (ImGui::Button("Import model"))
                     data.intent = EAction::IMPORT;
                 ImGui::SeparatorText("Reimport a model");
-                for (const auto& row : data.catalog.assets)
+                for (const auto& row : data.catalog.assets())
                 {
                     if (row.magic != asset::ModelAsset::primary_magic)
                         continue;
@@ -133,7 +133,7 @@ namespace lux::editor::project
         auto version = impl_->model.version();
         if (!version)
             impl_->failure = EditorFailure{EEditorError::SOURCE_FAILURE, "import.catalog", 0, {}, version.error()};
-        else if (*version != impl_->catalog.version)
+        else if (*version != impl_->catalog.version())
         {
             auto catalog = impl_->model.snapshot();
             if (catalog)

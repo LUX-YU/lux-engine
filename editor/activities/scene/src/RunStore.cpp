@@ -1,3 +1,4 @@
+#include <lux/engine/editor/editing/EditExecutor.hpp>
 #include <lux/engine/editor/scene/RunController.hpp>
 #include "RunDebugEdits.hpp"
 #include <lux/engine/process/TaskScope.hpp>
@@ -105,7 +106,7 @@ namespace lux::editor::scene
                 return finished;
             if (debug)
             {
-                const auto closed = debug->history->close();
+                const auto closed = editing::EditExecutor{}.close(*debug->history);
                 if (!closed)
                     return rejected(closed.error());
                 debug.reset();
@@ -187,7 +188,7 @@ namespace lux::editor::scene
                 return lux::cxx::unexpected(finished.error());
             if (run.debug)
             {
-                auto closed = run.debug->history->close();
+                auto closed = editing::EditExecutor{}.close(*run.debug->history);
                 if (!closed)
                     return rejected(closed.error());
                 run.debug->editing.close();

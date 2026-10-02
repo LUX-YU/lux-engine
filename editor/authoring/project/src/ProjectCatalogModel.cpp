@@ -13,8 +13,27 @@ namespace lux::editor::project
         std::unordered_map<asset::AssetId, std::size_t> by_id;
     };
     ProjectCatalogSnapshot::ProjectCatalogSnapshot(std::shared_ptr<const Data> data) noexcept
-        : version(data->version), name(data->name), assets(data->assets), owner_(std::move(data))
+        : owner_(std::move(data))
     {}
+    ProjectCatalogVersion ProjectCatalogSnapshot::version() const noexcept
+    {
+        return owner_ ? owner_->version : ProjectCatalogVersion{};
+    }
+    std::string_view ProjectCatalogSnapshot::name() const noexcept
+    {
+        return owner_ ? std::string_view{owner_->name} : std::string_view{};
+    }
+    std::span<const AssetCatalogEntry> ProjectCatalogSnapshot::assets() const noexcept
+    {
+        return owner_ ? std::span<const AssetCatalogEntry>{owner_->assets} : std::span<const AssetCatalogEntry>{};
+    }
+    const AssetCatalogEntry* ProjectCatalogSnapshot::find(asset::AssetId id) const noexcept
+    {
+        if (!owner_)
+            return nullptr;
+        const auto found = owner_->by_id.find(id);
+        return found == owner_->by_id.end() ? nullptr : &owner_->assets[found->second];
+    }
     ProjectCatalogModel::ProjectCatalogModel(object::ObjectDispatcherRef dispatcher, std::uint64_t instance)
         : LuxObject(std::move(dispatcher)),
           snapshot_(

@@ -1,3 +1,4 @@
+#include <lux/engine/editor/editing/EditExecutor.hpp>
 #include "FlowSessionData.hpp"
 #include <algorithm>
 
@@ -106,7 +107,7 @@ namespace lux::editor::flowforge
             );
             if (!prepared)
                 return lux::cxx::unexpected(detail::historyFailure(prepared.error()));
-            auto result = impl_->history->execute(prepared->operation);
+            auto result = editing::EditExecutor{}.execute(*impl_->history, prepared->operation);
             if (!result)
                 return lux::cxx::unexpected(detail::historyFailure(result.error()));
             FlowEditIds inserted;
@@ -121,7 +122,7 @@ namespace lux::editor::flowforge
     FlowEditResult<FlowEditReceipt> FlowSession::Impl::replay(bool forward)
     {
         return state.gate().withEdit([&](sessions::EditScope&) -> FlowEditResult<FlowEditReceipt> {
-            auto result = forward ? history->redo() : history->undo();
+            auto result = forward ? editing::EditExecutor{}.redo(*history) : editing::EditExecutor{}.undo(*history);
             if (!result)
                 return lux::cxx::unexpected(detail::historyFailure(result.error()));
             return FlowEditReceipt{result->effect, content(), state.observed(), {}};

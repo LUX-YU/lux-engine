@@ -4,7 +4,7 @@
 #include <lux/engine/editor/detail/PrepareSession.hpp>
 namespace lux::editor::flowforge
 {
-    sessions::PreparedSessionData prepareFlowSession(
+    sessions::SessionPreparation prepareFlowSession(
         PreparedFlowData data,
         sessions::SourceBinding binding,
         std::optional<persistence::WriteTarget> target,
@@ -13,7 +13,7 @@ namespace lux::editor::flowforge
     )
     {
         using namespace sessions;
-        return PreparedSessionData{
+        return SessionPreparation{
             code,
             [code, environment, data = std::move(data), binding = std::move(binding), target = std::move(target)](
                 SessionStore& store,
@@ -41,7 +41,7 @@ namespace lux::editor::flowforge
             code,
             SessionKindDescriptor{{"lux.editor.flowforge"}, "Flow", {"luxflow"}},
             [environment, code](const SessionLoadInput& input, std::span<const std::byte> bytes, std::stop_token stop)
-                -> SessionFactoryResult<PreparedSessionData> {
+                -> SessionFactoryResult<SessionPreparation> {
                 auto decoded = FlowCodec::decode(bytes, stop);
                 if (!decoded)
                     return cxx::unexpected(SessionFactoryFailure{
@@ -53,7 +53,7 @@ namespace lux::editor::flowforge
                         decoded.error().detail
                     });
                 if (input.reload)
-                    return PreparedSessionData{
+                    return SessionPreparation{
                         code,
                         *input.reload,
                         [environment,

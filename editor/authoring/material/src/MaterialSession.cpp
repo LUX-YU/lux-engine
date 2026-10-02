@@ -1,3 +1,4 @@
+#include <lux/engine/editor/editing/EditExecutor.hpp>
 #include "MaterialSessionData.hpp"
 
 namespace lux::editor::material
@@ -123,7 +124,7 @@ namespace lux::editor::material
             );
             if (!prepared)
                 return lux::cxx::unexpected(prepared.error());
-            auto result = impl_->history->execute(prepared->operation);
+            auto result = editing::EditExecutor{}.execute(*impl_->history, prepared->operation);
             if (!result)
                 return lux::cxx::unexpected(detail::historyFailure(result.error()));
             if (result->effect == editing::EEditEffect::CHANGE)
@@ -139,7 +140,7 @@ namespace lux::editor::material
     MaterialEditResult<MaterialEditReceipt> MaterialSession::Impl::replay(bool forward)
     {
         return state.gate().withEdit([&](sessions::EditScope&) -> MaterialEditResult<MaterialEditReceipt> {
-            auto result = forward ? history->redo() : history->undo();
+            auto result = forward ? editing::EditExecutor{}.redo(*history) : editing::EditExecutor{}.undo(*history);
             if (!result)
                 return lux::cxx::unexpected(detail::historyFailure(result.error()));
             return MaterialEditReceipt{result->effect, content(), state.observed(), {}};

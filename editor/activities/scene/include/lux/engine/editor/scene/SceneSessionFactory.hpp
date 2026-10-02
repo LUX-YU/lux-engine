@@ -4,7 +4,7 @@
 
 namespace lux::editor::scene
 {
-    [[nodiscard]] sessions::PreparedSessionData prepareSceneSession(
+    [[nodiscard]] sessions::SessionPreparation prepareSceneSession(
         PreparedSceneData data,
         [[nodiscard]] sessions::SourceBinding binding,
         std::optional<persistence::WriteTarget> target,

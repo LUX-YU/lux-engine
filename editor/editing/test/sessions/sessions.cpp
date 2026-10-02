@@ -1,3 +1,4 @@
+#include <lux/engine/editor/editing/EditExecutor.hpp>
 #include <lux/engine/editor/sessions/SessionStore.hpp>
 #include <lux/engine/editor/editing/EditHistory.hpp>
 #include <cassert>
@@ -108,7 +109,7 @@ namespace
         editing::EditOperationPtr operation =
             std::make_unique<Operation>(history.view()->snapshot.current, model, value);
         auto* before = operation.get();
-        auto result = history.execute(operation);
+        auto result = editing::EditExecutor{}.execute(history, operation);
         if (!result)
             assert(operation.get() == before);
         return result;
@@ -304,9 +305,17 @@ namespace
         checkpoint.loaded(baseline, {});
         assert(edit(*edits, source, 1));
         assert(!checkpoint.clean(edits->view()->snapshot.current, {}));
-        assert(edits->undo() && source.value == 0);
+        assert(editing::EditExecutor{}.undo(*edits) && source.value == 0);
         assert(checkpoint.clean(edits->view()->snapshot.current, {}));
-        assert(edits->redo() && source.value == 1);
+        const auto undone = edits->view()->snapshot;
+        source.no_change = true;
+        assert(edit(*edits, source, 99)->effect == editing::EEditEffect::NO_CHANGE);
+        const auto unchanged = edits->view()->snapshot;
+        assert(unchanged.current == undone.current && unchanged.revision == undone.revision);
+        assert(unchanged.event_sequence == undone.event_sequence && unchanged.cursor == undone.cursor);
+        assert(unchanged.entry_count == undone.entry_count && edits->view()->can_redo && source.value == 0);
+        source.no_change = false;
+        assert(editing::EditExecutor{}.redo(*edits) && source.value == 1);
         assert(edit(*edits, source, 0)); // Same bytes, different history state, still dirty.
         assert(!checkpoint.clean(edits->view()->snapshot.current, {}));
         const auto current = edits->view()->snapshot.current;
@@ -314,7 +323,7 @@ namespace
         assert(!checkpoint.accept(current, {}, {current, {}, {2}}));
         assert(checkpoint.accept(current, {}, {current, {}, {4}}));
         assert(checkpoint.clean(current, {}));
-        assert(edits->clear() && checkpoint.clean(edits->view()->snapshot.current, {}));
+        assert(editing::EditExecutor{}.clear(*edits) && checkpoint.clean(edits->view()->snapshot.current, {}));
         const auto replacement = history();
         assert(!checkpoint.accept(replacement->view()->snapshot.current, {}, {current, {}, {5}}));
         assert(!checkpoint.accept(current, {2}, {current, {1}, {5}}));
@@ -329,7 +338,7 @@ namespace
         assert(edits->view()->snapshot.current == before.current);
         auto limited = history(1);
         assert(!edit(*limited, source, 4) && source.value == 0);
-        assert(edits->close());
+        assert(editing::EditExecutor{}.close(*edits));
     }
     void slotsAndPermits()
     {
@@ -464,8 +473,11 @@ namespace
         std::puts("PASS P12 Store close set: no partial removal, hidden slots excluded, owned IDs, private stamps");
     }
 }
+#include "executor.hpp"
+
 int main(int argc, char** argv)
 {
+    executorContracts();
     std::set_terminate([] {
         std::fputs("FAIL close crossed noexcept through complete describe; terminate\n", stderr);
         std::fflush(stderr);

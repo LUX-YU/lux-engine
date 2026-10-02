@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/editor/editing/EditOperation.hpp>
 #include <lux/engine/editor/editing/EditHistory.hpp>
 #include <lux/engine/editor/material/MaterialSession.hpp>
 #include "edits/MaterialEditPreparation.hpp"

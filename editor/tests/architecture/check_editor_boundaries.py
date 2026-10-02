@@ -82,6 +82,9 @@ def check_foundations(repo, targets, rules, sources, report):
 
         prefixes = []
         headers = set(rules["foundation_standard_headers"])
+        # Private implementation sharing is allowed only for this provider, never inherited
+        # by another foundation through its public dependency closure.
+        headers.update(policy.get("private_headers", []))
         for dependency in internal | {name}:
             prefixes.extend(foundations[dependency]["public_prefixes"])
             headers.update(foundations[dependency]["public_headers"])

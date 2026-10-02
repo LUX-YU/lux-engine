@@ -4,7 +4,7 @@
 #include <lux/engine/editor/detail/PrepareSession.hpp>
 namespace lux::editor::scene
 {
-    sessions::PreparedSessionData prepareSceneSession(
+    sessions::SessionPreparation prepareSceneSession(
         PreparedSceneData data,
         sessions::SourceBinding binding,
         std::optional<persistence::WriteTarget> target,
@@ -13,7 +13,7 @@ namespace lux::editor::scene
     )
     {
         using namespace sessions;
-        return PreparedSessionData{
+        return SessionPreparation{
             code,
             [code, schemas, data = std::move(data), binding = std::move(binding), target = std::move(target)](
                 SessionStore& store,
@@ -41,7 +41,7 @@ namespace lux::editor::scene
             code,
             SessionKindDescriptor{{"lux.editor.scene"}, "Scene", {"luxscene"}},
             [schemas, code](const SessionLoadInput& input, std::span<const std::byte> bytes, std::stop_token stop)
-                -> SessionFactoryResult<PreparedSessionData> {
+                -> SessionFactoryResult<SessionPreparation> {
                 auto decoded = SceneCodec::decode(bytes, stop);
                 if (!decoded)
                     return cxx::unexpected(SessionFactoryFailure{
@@ -53,7 +53,7 @@ namespace lux::editor::scene
                         decoded.error().detail
                     });
                 if (input.reload)
-                    return PreparedSessionData{
+                    return SessionPreparation{
                         code,
                         *input.reload,
                         [schemas,

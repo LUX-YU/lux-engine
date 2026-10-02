@@ -20,7 +20,7 @@ namespace lux::editor::sessions
         {
             Key key;
             process::TaskId task;
-            std::optional<SessionFactoryResult<PreparedSessionData>> result;
+            std::optional<SessionFactoryResult<SessionPreparation>> result;
             std::optional<PreparedSessionInstallation> prepared;
             OpenAssetStatus status;
         };
@@ -112,7 +112,7 @@ namespace lux::editor::sessions
         : impl_(std::make_unique<Impl>(runtime, store, saves, capacity))
     {}
     SessionOpening::~SessionOpening() = default;
-    SessionFactoryResult<OpenAssetId> SessionOpening::create(std::uint64_t project_instance, PreparedSessionData input)
+    SessionFactoryResult<OpenAssetId> SessionOpening::create(std::uint64_t project_instance, SessionPreparation input)
     {
         if (auto entered = impl_->enter(); !entered)
             return cxx::unexpected(entered.error());
@@ -215,7 +215,7 @@ namespace lux::editor::sessions
                     [job = std::move(job), stop = reporter.stopToken()]() mutable { return std::move(job).run(stop); }
                 );
             },
-            [work](process::TTaskResult<PreparedSessionData, SessionFactoryFailure>&& completed) noexcept {
+            [work](process::TTaskResult<SessionPreparation, SessionFactoryFailure>&& completed) noexcept {
                 // Accepted facts are received regardless of business dispatch/admission; never call a factory here.
                 if (completed)
                     work->result.emplace(std::move(*completed));

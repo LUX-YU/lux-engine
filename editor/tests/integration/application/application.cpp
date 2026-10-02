@@ -300,7 +300,7 @@ int main(int argc, char** argv)
     assert(impl.desktop_->views().describeAll()->size() == views->size());
     assert(app->applyLayout(*before_layout));
     std::cout << "C01: malformed product layout preserves hidden state, count and exact dock encoding\n";
-    using WorkspaceAction = std::remove_reference_t<decltype(impl)>::EWorkspaceIntent;
+    using ApplicationImpl = std::remove_reference_t<decltype(impl)>;
     const auto settle_workspace = [&] {
         const auto limit = std::chrono::steady_clock::now() + std::chrono::seconds(15);
         while (std::ranges::any_of(impl.workspace_publications_, [](const auto& item) { return !item.result; }))
@@ -314,19 +314,19 @@ int main(int argc, char** argv)
     };
     assert(app->execute(commands::CommandId{"lux.editor.workspace"}));
     assert(app->update());
-    assert(impl.executeWorkspaceIntent({WorkspaceAction::SAVE_LAYOUT, {}, "Quality workspace"}));
+    assert(impl.executeWorkspaceIntent(ApplicationImpl::SaveLayout{"Quality workspace"}));
     settle_workspace();
     assert(impl.layout_catalog_.layouts.size() == 1);
     const auto stored_id = impl.layout_catalog_.layouts.front().id;
     auto stored = impl.workspace_.readLayout(stored_id);
     assert(stored && stored->value.label == "Quality workspace");
-    assert(impl.executeWorkspaceIntent({WorkspaceAction::RENAME_LAYOUT, stored_id, "Renamed"}));
+    assert(impl.executeWorkspaceIntent(ApplicationImpl::RenameLayout{stored_id, "Renamed"}));
     settle_workspace();
     auto renamed = impl.workspace_.readLayout(stored_id);
     assert(renamed && renamed->value.id == stored_id && renamed->value.label == "Renamed");
     assert(renamed->target.key == stored->target.key);
     assert(impl.desktop_->views().show(views->front().id));
-    assert(impl.executeWorkspaceIntent({WorkspaceAction::APPLY_LAYOUT, stored_id}));
+    assert(impl.executeWorkspaceIntent(ApplicationImpl::ApplyLayout{stored_id}));
     assert(!impl.desktop_->views().describe(views->front().id)->visible);
     settle_workspace();
     assert(impl.workspace_.readPreferences()->value.selected_layout == stored_id);
@@ -338,7 +338,7 @@ int main(int argc, char** argv)
         output << "bad = [";
     }
     assert(impl.desktop_->views().show(views->front().id));
-    auto applied_with_bad_preferences = impl.executeWorkspaceIntent({WorkspaceAction::APPLY_LAYOUT, stored_id});
+    auto applied_with_bad_preferences = impl.executeWorkspaceIntent(ApplicationImpl::ApplyLayout{stored_id});
     assert(
         !applied_with_bad_preferences &&
         applied_with_bad_preferences.error().domain == "workspace.applied.preferences-read"
@@ -348,7 +348,7 @@ int main(int argc, char** argv)
         std::ofstream output(preferences_file, std::ios::binary | std::ios::trunc);
         output.write(reinterpret_cast<const char*>(preferences_before->data()), preferences_before->size());
     }
-    assert(impl.executeWorkspaceIntent({WorkspaceAction::REMOVE_LAYOUT, stored_id}));
+    assert(impl.executeWorkspaceIntent(ApplicationImpl::RemoveLayout{stored_id}));
     settle_workspace();
     assert(impl.layout_catalog_.layouts.empty());
     for (auto ticket : [&] {
@@ -357,7 +357,7 @@ int main(int argc, char** argv)
                  ids.push_back(report.ticket);
              return ids;
          }())
-        assert(impl.executeWorkspaceIntent({WorkspaceAction::ACKNOWLEDGE, {}, {}, ticket}));
+        assert(impl.executeWorkspaceIntent(ApplicationImpl::AcknowledgeWorkspace{ticket}));
     assert(impl.workspace_publications_.empty());
     std::cout << "Workspace UI uses stable layout IDs and one publication coordinator; preference failure preserves UI "
                  "commit\n";
@@ -449,7 +449,7 @@ int main(int argc, char** argv)
     assert(app->acknowledgeOpen(*reopened));
     std::cout << "Real Save As preserves author history, publishes source/catalog and reopens the same Session\n";
     // Layouts prepare unbound windows. Only the independent recovery manifest opens author content.
-    auto unbound_capture = impl.executeWorkspaceIntent({WorkspaceAction::CAPTURE_RECOVERY});
+    auto unbound_capture = impl.executeWorkspaceIntent(ApplicationImpl::CaptureRecovery{});
     assert(!unbound_capture && unbound_capture.error().domain == "recovery.unbound");
     assert(!impl.workspace_.readRecovery()); // Unsaved Flow prevented any partial manifest publication.
     const auto material_window = *impl.desktop_->views().describe(material_view);
@@ -494,7 +494,7 @@ int main(int argc, char** argv)
     settle_workspace();
     auto recovery_before = workspace::encodeRecovery(impl.workspace_.readRecovery()->value);
     assert(recovery_before);
-    assert(impl.executeWorkspaceIntent({WorkspaceAction::RESTORE_RECOVERY}));
+    assert(impl.executeWorkspaceIntent(ApplicationImpl::RestoreRecovery{}));
     auto while_catalog_busy = [&](const extensions::ContributionSnapshot&) -> extensions::ContributionResult<void> {
         assert(impl.settleRecovery());
         assert(!impl.recovery_->items.front().opening && !impl.recovery_->items.front().failure);
@@ -791,8 +791,7 @@ int main(int argc, char** argv)
         assert(author->get().describe().current == model_source);
         assert(author->get().redo());
     }
-    impl.result_intent_ = std::remove_reference_t<decltype(impl)>::ResultIntent{
-        std::remove_reference_t<decltype(impl)>::EResultAction::ACK_MODEL,
+    impl.result_intent_ = std::remove_reference_t<decltype(impl)>::AcknowledgeModel{
         impl.model_placements_.front().id
     };
     assert(app->update() && impl.model_placements_.empty());
@@ -907,9 +906,7 @@ int main(int argc, char** argv)
     const auto& drive_failure = std::get<lux::scene::SceneDriveFailure>(retained->values.front().cause);
     assert(retained->values.front().scene == failed_instance);
     assert(std::any_cast<int>(std::get<lux::scene::SceneExecutionFailure>(drive_failure.cause).cause) == 731);
-    impl.result_intent_ = std::remove_reference_t<decltype(impl)>::ResultIntent{
-        std::remove_reference_t<decltype(impl)>::EResultAction::ACK_MAINTENANCE,
-        std::uint64_t{}
+    impl.result_intent_ = std::remove_reference_t<decltype(impl)>::AcknowledgeMaintenance{
     };
     assert(app->update() && !impl.maintenance_failure_);
     std::cout << "Scene failure keeps an owning diagnostic and independent save completion; empty selection clears "

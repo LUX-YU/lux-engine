@@ -9,7 +9,7 @@ namespace lux::editor::sessions
         SessionStore& store;
         ContentStamp expected;
         persistence::WriteObservation writes;
-        std::optional<SessionFactoryResult<PreparedSessionData>> loaded;
+        std::optional<SessionFactoryResult<SessionPreparation>> loaded;
         std::optional<PreparedSessionReload> prepared;
         std::optional<SessionFactoryResult<ContentStamp>> result;
         bool cancelled{};
@@ -66,7 +66,7 @@ namespace lux::editor::sessions
                     [job = std::move(job), stop = reporter.stopToken()]() mutable { return std::move(job).run(stop); }
                 );
             },
-            [receiving](process::TTaskResult<PreparedSessionData, SessionFactoryFailure>&& result) noexcept {
+            [receiving](process::TTaskResult<SessionPreparation, SessionFactoryFailure>&& result) noexcept {
                 if (result)
                     receiving->loaded.emplace(std::move(*result));
                 else if (auto* error = result.error().domainFailure())

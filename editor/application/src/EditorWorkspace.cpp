@@ -97,7 +97,7 @@ namespace lux::editor::application
             return applicationFailure("layout.catalog", entered.error());
         return result;
     }
-    EditorResult<void> EditorApplication::Impl::executeWorkspaceIntent(const WorkspaceIntent& intent)
+    EditorResult<void> EditorApplication::Impl::executeWorkspaceIntent(const VWorkspaceIntent& request)
     {
         using namespace workspace;
         using namespace persistence;
@@ -108,87 +108,97 @@ namespace lux::editor::application
             layout_catalog_ = std::move(*catalog); // Partial catalogs retain their per-file diagnostics.
             return {};
         };
-        if (intent.action == EWorkspaceIntent::REFRESH)
-            return refresh();
-        if (intent.action == EWorkspaceIntent::ACKNOWLEDGE)
-        {
-            std::erase_if(workspace_publications_, [&](const auto& report) {
-                return report.ticket == intent.ticket && report.result.has_value() &&
-                       migration_ticket_ != report.ticket;
-            });
-            return {};
-        }
-        if (intent.action == EWorkspaceIntent::RECONCILE)
-        {
-            auto reconciled = writes_.reconcile(intent.ticket, files_);
-            return reconciled ? EditorResult<void>{} : applicationFailure("workspace.reconcile", reconciled.error());
-        }
-        if (phase_ != EApplicationPhase::RUNNING || workspace_publications_.size() >= 16)
-            return cxx::unexpected(EditorFailure{EEditorError::BUSY, "workspace.admission"});
-        if (intent.action == EWorkspaceIntent::CAPTURE_RECOVERY)
-            return captureRecovery();
-        if (intent.action == EWorkspaceIntent::RESTORE_RECOVERY)
-            return restoreRecovery();
-        if (intent.action == EWorkspaceIntent::MIGRATE)
-        {
-            if (migration_ticket_)
-                return cxx::unexpected(EditorFailure{EEditorError::BUSY, "workspace.migration.pending"});
-            auto input = workspace_.prepareLegacyMigration();
-            if (!input)
-                return applicationFailure("workspace.migration.read", input.error());
-            migration_ = std::move(*input);
-            migration_failure_.reset();
-            migration_complete_ = false;
-            return {};
-        }
-        WorkspaceResult<WriteTicket> publication = cxx::unexpected(WorkspaceFailure{EWorkspaceError::INVALID_DATA});
-        std::string label;
-        switch (intent.action)
-        {
-        case EWorkspaceIntent::SAVE_LAYOUT: {
-            std::mt19937 random{std::random_device{}()};
-            workspace::LayoutId id{uuids::to_string(uuids::uuid_random_generator{random}())};
-            std::erase(id.value, '-');
-            auto layout = desktop_->views().captureLayout(id, intent.label);
-            if (!layout)
-                return applicationFailure("workspace.capture", layout.error());
-            publication = workspace_.saveLayout(*layout, "missing");
-            label = "Save layout: " + intent.label;
-            break;
-        }
-        case EWorkspaceIntent::APPLY_LAYOUT: {
-            auto layout = workspace_.readLayout(intent.layout);
-            if (!layout)
-                return applicationFailure("workspace.read", layout.error());
-            auto applied = applyLayout(std::move(layout->value));
-            if (!applied)
-                return applied;
-            // UI commit is a fact. Preferences are a separate write, with their own retained result.
-            auto previous = workspace_.readPreferences();
-            if (!previous && previous.error().code != EWorkspaceError::NOT_FOUND)
-                return applicationFailure("workspace.applied.preferences-read", previous.error());
-            auto preferences = previous ? std::move(previous->value) : UserPreferences{};
-            const auto version = previous ? previous->target.expected_version : "missing";
-            preferences.selected_layout = intent.layout;
-            publication = workspace_.writePreferences(preferences, version);
-            label = "Applied layout; persist selection";
-            break;
-        }
-        case EWorkspaceIntent::RENAME_LAYOUT:
-            publication = workspace_.renameLayout(intent.layout, intent.label);
-            label = "Rename layout: " + intent.label;
-            break;
-        case EWorkspaceIntent::REMOVE_LAYOUT:
-            publication = workspace_.removeLayout(intent.layout);
-            label = "Delete layout: " + intent.layout.value;
-            break;
-        default:
-            return cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "workspace.action"});
-        }
-        if (!publication)
-            return applicationFailure("workspace.publication", publication.error());
-        workspace_publications_.push_back({std::move(label), *publication});
-        return {};
+        return std::visit([&](const auto& intent) -> EditorResult<void> {
+            using Intent = std::decay_t<decltype(intent)>;
+            if constexpr (std::same_as<Intent, RefreshWorkspace>)
+                return refresh();
+            else if constexpr (std::same_as<Intent, AcknowledgeWorkspace>)
+            {
+                std::erase_if(workspace_publications_, [&](const auto& report) {
+                    return report.ticket == intent.ticket && report.result.has_value() &&
+                           migration_ticket_ != report.ticket;
+                });
+                return {};
+            }
+            else if constexpr (std::same_as<Intent, ReconcileWorkspace>)
+            {
+                auto reconciled = writes_.reconcile(intent.ticket, files_);
+                return reconciled ? EditorResult<void>{} : applicationFailure("workspace.reconcile", reconciled.error());
+            }
+            else
+            {
+                const bool is_stopping = phase_ != EApplicationPhase::RUNNING;
+                const bool is_full = workspace_publications_.size() >= 16;
+                if (is_stopping || is_full)
+                    return cxx::unexpected(EditorFailure{EEditorError::BUSY, "workspace.admission"});
+                if constexpr (std::same_as<Intent, CaptureRecovery>)
+                    return captureRecovery();
+                else if constexpr (std::same_as<Intent, RestoreRecovery>)
+                    return restoreRecovery();
+                else if constexpr (std::same_as<Intent, MigrateWorkspace>)
+                {
+                    if (migration_ticket_)
+                        return cxx::unexpected(EditorFailure{EEditorError::BUSY, "workspace.migration.pending"});
+                    auto input = workspace_.prepareLegacyMigration();
+                    if (!input)
+                        return applicationFailure("workspace.migration.read", input.error());
+                    migration_ = std::move(*input);
+                    migration_failure_.reset();
+                    migration_complete_ = false;
+                    return {};
+                }
+                else
+                {
+                    WorkspaceResult<WriteTicket> publication = cxx::unexpected(WorkspaceFailure{EWorkspaceError::INVALID_DATA});
+                    std::string label;
+                    if constexpr (std::same_as<Intent, SaveLayout>)
+                    {
+                        std::mt19937 random{std::random_device{}()};
+                        workspace::LayoutId id{uuids::to_string(uuids::uuid_random_generator{random}())};
+                        std::erase(id.value, '-');
+                        auto layout = desktop_->views().captureLayout(id, intent.label);
+                        if (!layout)
+                            return applicationFailure("workspace.capture", layout.error());
+                        publication = workspace_.saveLayout(*layout, "missing");
+                        label = "Save layout: " + intent.label;
+                    }
+                    else if constexpr (std::same_as<Intent, ApplyLayout>)
+                    {
+                        auto layout = workspace_.readLayout(intent.layout);
+                        if (!layout)
+                            return applicationFailure("workspace.read", layout.error());
+                        auto applied = applyLayout(std::move(layout->value));
+                        if (!applied)
+                            return applied;
+                        // UI commit is a fact. Preferences are a separate write, with their own retained result.
+                        auto previous = workspace_.readPreferences();
+                        if (!previous && previous.error().code != EWorkspaceError::NOT_FOUND)
+                            return applicationFailure("workspace.applied.preferences-read", previous.error());
+                        auto preferences = previous ? std::move(previous->value) : UserPreferences{};
+                        const auto version = previous ? previous->target.expected_version : "missing";
+                        preferences.selected_layout = intent.layout;
+                        publication = workspace_.writePreferences(preferences, version);
+                        label = "Applied layout; persist selection";
+                    }
+                    else if constexpr (std::same_as<Intent, RenameLayout>)
+                    {
+                        publication = workspace_.renameLayout(intent.layout, intent.label);
+                        label = "Rename layout: " + intent.label;
+                    }
+                    else if constexpr (std::same_as<Intent, RemoveLayout>)
+                    {
+                        publication = workspace_.removeLayout(intent.layout);
+                        label = "Delete layout: " + intent.layout.value;
+                    }
+                    else
+                        static_assert(sizeof(Intent) == 0, "Every workspace action requires an explicit receiver");
+                    if (!publication)
+                        return applicationFailure("workspace.publication", publication.error());
+                    workspace_publications_.push_back({std::move(label), *publication});
+                    return {};
+                }
+            }
+        }, request);
     }
     EditorResult<void> EditorApplication::Impl::settleWorkspace()
     {
@@ -239,16 +249,16 @@ namespace lux::editor::application
                 }
                 void draw() noexcept override
                 {
-                    auto button = [&](const char* label, WorkspaceIntent intent) {
+                    auto button = [&](const char* label, VWorkspaceIntent intent) {
                         ImGui::BeginDisabled(app_.workspace_intent_.has_value());
                         if (ImGui::Button(label))
                             app_.workspace_intent_ = std::move(intent);
                         ImGui::EndDisabled();
                     };
                     ImGui::InputText("Layout label", &label_);
-                    button("Save current layout as new", {EWorkspaceIntent::SAVE_LAYOUT, {}, label_});
+                    button("Save current layout as new", SaveLayout{label_});
                     ImGui::SameLine();
-                    button("Refresh directory", {EWorkspaceIntent::REFRESH});
+                    button("Refresh directory", RefreshWorkspace{});
                     if (app_.workspace_failure_)
                         ImGui::TextWrapped(
                             "%s: %s",
@@ -261,17 +271,17 @@ namespace lux::editor::application
                     {
                         ImGui::PushID(layout.id.value.c_str());
                         ImGui::SeparatorText(layout.label.c_str());
-                        button("Apply", {EWorkspaceIntent::APPLY_LAYOUT, layout.id});
+                        button("Apply", ApplyLayout{layout.id});
                         ImGui::SameLine();
-                        button("Rename to label", {EWorkspaceIntent::RENAME_LAYOUT, layout.id, label_});
+                        button("Rename to label", RenameLayout{layout.id, label_});
                         ImGui::SameLine();
-                        button("Delete", {EWorkspaceIntent::REMOVE_LAYOUT, layout.id});
+                        button("Delete", RemoveLayout{layout.id});
                         ImGui::PopID();
                     }
                     ImGui::SeparatorText("Content recovery (independent of layouts)");
-                    button("Record current locations", {EWorkspaceIntent::CAPTURE_RECOVERY});
-                    button("Restore recorded content", {EWorkspaceIntent::RESTORE_RECOVERY});
-                    button("Import old workspace data", {EWorkspaceIntent::MIGRATE});
+                    button("Record current locations", CaptureRecovery{});
+                    button("Restore recorded content", RestoreRecovery{});
+                    button("Import old workspace data", MigrateWorkspace{});
                     if (app_.migration_)
                     {
                         for (const auto& diagnostic : app_.migration_->diagnostics)
@@ -341,7 +351,7 @@ namespace lux::editor::application
                                     "Directory refresh failed: %s",
                                     report.catalog_failure->detail.c_str()
                                 );
-                            button("Acknowledge", {EWorkspaceIntent::ACKNOWLEDGE, {}, {}, report.ticket});
+                            button("Acknowledge", AcknowledgeWorkspace{report.ticket});
                         }
                         else
                         {
@@ -349,7 +359,7 @@ namespace lux::editor::application
                             if (current && current->stage == persistence::EWriteStage::UNKNOWN)
                             {
                                 ImGui::TextUnformatted("Unknown publication; target remains reserved.");
-                                button("Reconcile", {EWorkspaceIntent::RECONCILE, {}, {}, report.ticket});
+                                button("Reconcile", ReconcileWorkspace{report.ticket});
                             }
                             else
                                 ImGui::TextUnformatted("Publication pending");
@@ -363,7 +373,7 @@ namespace lux::editor::application
             {
                 if (!initialized_ && !content_.app_.workspace_intent_)
                 {
-                    content_.app_.workspace_intent_ = WorkspaceIntent{EWorkspaceIntent::REFRESH};
+                    content_.app_.workspace_intent_ = RefreshWorkspace{};
                     initialized_ = true;
                 }
             }

@@ -1,14 +1,11 @@
 #pragma once
-#include <lux/engine/editor/editing/EditOperation.hpp>
+#include <lux/engine/editor/editing/EditTypes.hpp>
 #include <lux/engine/editor/editing/history_visibility.h>
 #include <memory>
 namespace lux::editor::editing
 {
-    namespace detail
-    {
-    }
     // Owner-thread history. Queries borrow labels until mutation; snapshots own only scalar state.
-    // Mutations reject reentry, including preparation, publication and resource reclamation.
+    // EditExecutor is the sole mutation entry. The log owns its gate, including reclamation.
     class LUX_EDIT_HISTORY_PUBLIC EditHistory final
     {
     public:
@@ -22,18 +19,8 @@ namespace lux::editor::editing
         [[nodiscard]] HistoryId id() const noexcept;
         [[nodiscard]] EditResult<HistoryView> view() const noexcept;
         [[nodiscard]] EditResult<HistoryEntryView> entry(std::size_t index) const noexcept;
-        // Failure preserves the caller's pointer and memento. CHANGE transfers ownership;
-        // NO_CHANGE destroys the input under the gate without changing history or redo.
-        [[nodiscard]] EditResult<ApplyResult> execute(EditOperationPtr& operation) noexcept;
-        [[nodiscard]] EditResult<ApplyResult> undo() noexcept;
-        [[nodiscard]] EditResult<ApplyResult> redo() noexcept;
-        [[nodiscard]] EditResult<void> clear() noexcept;
-        // Explicit close notifies once. The observer/model/code must survive this call.
-        // Destruction releases resources silently and requires owner-thread, non-busy access.
-        [[nodiscard]] EditResult<void> close() noexcept;
-
     private:
-        [[nodiscard]] EditResult<ApplyResult> replay(EApplyKind kind) noexcept;
+        friend class EditExecutor;
         struct Impl;
         explicit EditHistory(std::unique_ptr<Impl> impl) noexcept;
         std::unique_ptr<Impl> impl_;

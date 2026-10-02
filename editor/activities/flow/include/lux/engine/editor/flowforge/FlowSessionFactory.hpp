@@ -4,7 +4,7 @@
 
 namespace lux::editor::flowforge
 {
-    [[nodiscard]] sessions::PreparedSessionData prepareFlowSession(
+    [[nodiscard]] sessions::SessionPreparation prepareFlowSession(
         PreparedFlowData data,
         [[nodiscard]] sessions::SourceBinding binding,
         std::optional<persistence::WriteTarget> target,

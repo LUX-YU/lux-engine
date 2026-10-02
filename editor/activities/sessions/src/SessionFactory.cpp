@@ -2,23 +2,23 @@
 #include <variant>
 namespace lux::editor::sessions
 {
-    struct PreparedSessionData::Data final
+    struct SessionPreparation::Data final
     {
         contracts::CodeLease code;
         using VPreparation = std::variant<Prepare, Reload>;
         VPreparation preparation;
         std::optional<ContentStamp> reload;
     };
-    PreparedSessionData::PreparedSessionData(contracts::CodeLease code, Prepare prepare)
+    SessionPreparation::SessionPreparation(contracts::CodeLease code, Prepare prepare)
         : data_(std::make_unique<Data>(std::move(code), std::move(prepare)))
     {}
-    PreparedSessionData::PreparedSessionData(contracts::CodeLease code, ContentStamp expected, Reload reload)
+    SessionPreparation::SessionPreparation(contracts::CodeLease code, ContentStamp expected, Reload reload)
         : data_(std::make_unique<Data>(std::move(code), std::move(reload), expected))
     {}
-    PreparedSessionData::~PreparedSessionData() = default;
-    PreparedSessionData::PreparedSessionData(PreparedSessionData&&) noexcept = default;
-    PreparedSessionData& PreparedSessionData::operator=(PreparedSessionData&&) noexcept = default;
-    SessionFactoryResult<PreparedSessionInstallation> PreparedSessionData::prepare(
+    SessionPreparation::~SessionPreparation() = default;
+    SessionPreparation::SessionPreparation(SessionPreparation&&) noexcept = default;
+    SessionPreparation& SessionPreparation::operator=(SessionPreparation&&) noexcept = default;
+    SessionFactoryResult<PreparedSessionInstallation> SessionPreparation::prepare(
         SessionStore& store,
         persistence::SaveService& saves
     ) &&
@@ -63,7 +63,7 @@ namespace lux::editor::sessions
             return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::ROLE, "installation.code"});
         return result;
     }
-    SessionFactoryResult<PreparedSessionReload> PreparedSessionData::prepareReload(SessionStore& store) &&
+    SessionFactoryResult<PreparedSessionReload> SessionPreparation::prepareReload(SessionStore& store) &&
     {
         // Store reentry is temporary: keep the accepted decode result intact until owner admission.
         if (!data_ || !data_->code.valid() || !data_->reload)
@@ -121,7 +121,7 @@ namespace lux::editor::sessions
         }
         return *this;
     }
-    bool PreparedSessionData::usesCode(const contracts::CodeLease& code) const noexcept
+    bool SessionPreparation::usesCode(const contracts::CodeLease& code) const noexcept
     {
         return data_ && data_->code.sameOwner(code);
     }
@@ -184,7 +184,7 @@ namespace lux::editor::sessions
     SessionLoadJob::SessionLoadJob(std::shared_ptr<SessionFactoryEntry> entry, SessionLoadInput input)
         : entry_(std::move(entry)), input_(std::move(input))
     {}
-    SessionFactoryResult<PreparedSessionData> SessionLoadJob::run(std::stop_token stop) &&
+    SessionFactoryResult<SessionPreparation> SessionLoadJob::run(std::stop_token stop) &&
     {
         auto owned = std::move(*this);
         const bool invalid =
@@ -205,7 +205,7 @@ namespace lux::editor::sessions
             return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::CAPACITY, "load.bytes"});
         if (stop.stop_requested())
             return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::CANCELLED, "load"});
-        auto invoke = [&]() -> SessionFactoryResult<PreparedSessionData> {
+        auto invoke = [&]() -> SessionFactoryResult<SessionPreparation> {
             if (owned.entry_->code_.sameOwner(contracts::CodeLease::builtin()))
                 return owned.entry_->decode_(owned.input_, blob->bytes.view(), stop);
             try

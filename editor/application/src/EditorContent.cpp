@@ -5,7 +5,7 @@
 
 namespace lux::editor::application
 {
-    EditorResult<sessions::OpenAssetId> EditorApplication::Impl::createContent(sessions::PreparedSessionData data)
+    EditorResult<sessions::OpenAssetId> EditorApplication::Impl::createContent(sessions::SessionPreparation data)
     {
         if (phase_ != EApplicationPhase::RUNNING)
             return cxx::unexpected(EditorFailure{EEditorError::CLOSING, "content.create"});

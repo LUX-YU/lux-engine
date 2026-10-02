@@ -124,7 +124,7 @@ namespace
     class ReentrantSource final : public ISaveSource
     {
     public:
-        ReentrantSource(ISaveSource& source, SessionStore& store, SaveService& saves, PreparedSessionData& ready)
+        ReentrantSource(ISaveSource& source, SessionStore& store, SaveService& saves, SessionPreparation& ready)
             : source_(source), store_(store), saves_(saves), ready_(ready)
         {}
         PersistenceResult<SaveSourceInfo> describe() const override
@@ -151,7 +151,7 @@ namespace
         ISaveSource& source_;
         SessionStore& store_;
         SaveService& saves_;
-        PreparedSessionData& ready_;
+        SessionPreparation& ready_;
     };
     // Real material roles exercise each public preparation boundary; no alternate author/history model.
     class MaterialHistory final : public HistoryActions
@@ -357,14 +357,14 @@ namespace
         }
         std::cout << "PASS eight real decode/installation/role/publication boundaries and closed notification\n";
     }
-    SessionFactoryResult<PreparedSessionData> load(
+    SessionFactoryResult<SessionPreparation> load(
         process::ExecutionRuntime& runtime,
         std::shared_ptr<SessionFactoryEntry> factory,
         SessionLoadInput input
     )
     {
         const auto owner = std::this_thread::get_id();
-        std::optional<SessionFactoryResult<PreparedSessionData>> result;
+        std::optional<SessionFactoryResult<SessionPreparation>> result;
         process::TaskScope tasks{runtime};
         auto admitted = tasks.submit(
             {.name = "Read/decode session source"},
@@ -376,7 +376,7 @@ namespace
                     [job = std::move(job), stop = reporter.stopToken()]() mutable { return std::move(job).run(stop); }
                 );
             },
-            [&](process::TTaskResult<PreparedSessionData, SessionFactoryFailure>&& completed) noexcept {
+            [&](process::TTaskResult<SessionPreparation, SessionFactoryFailure>&& completed) noexcept {
                 assert(std::this_thread::get_id() == owner);
                 if (completed)
                     result.emplace(std::move(*completed));
@@ -581,7 +581,7 @@ namespace
         assert(late_reload->outcome()->error().code == ESessionFactoryError::STALE_SESSION);
         assert(store.size() == 0);
         // New sources enter the same installation directory directly, without a VFS task or encoding pass.
-        std::array<PreparedSessionData, 3> new_sources{
+        std::array<SessionPreparation, 3> new_sources{
             es::prepareSceneSession(take(es::SceneCodec::decode(read(root / SourceFiles::names[0]))), {}, {}, {}),
             em::prepareMaterialSession(take(em::MaterialCodec::decode(read(root / SourceFiles::names[1]))), {}, {}),
             ef::prepareFlowSession(take(ef::FlowCodec::decode(read(root / SourceFiles::names[2]))), {}, {}, {})

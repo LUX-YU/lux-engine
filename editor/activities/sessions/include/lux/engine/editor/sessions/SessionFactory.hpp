@@ -39,19 +39,19 @@ namespace lux::editor::sessions
         Adopt adopt_;
         std::unique_ptr<persistence::ISaveSource> source_;
     };
-    class PreparedSessionData final
+    class SessionPreparation final
     {
     public:
         using Prepare = cxx::move_only_function<
             SessionFactoryResult<PreparedSessionInstallation>(SessionStore&, persistence::SaveService&)>;
         using Reload = cxx::move_only_function<SessionFactoryResult<PreparedSessionReload>(SessionStore&)>;
-        PreparedSessionData(contracts::CodeLease, Prepare);
-        PreparedSessionData(contracts::CodeLease, ContentStamp, Reload);
-        ~PreparedSessionData();
-        PreparedSessionData(PreparedSessionData&&) noexcept;
-        PreparedSessionData& operator=(PreparedSessionData&&) noexcept;
-        PreparedSessionData(const PreparedSessionData&) = delete;
-        PreparedSessionData& operator=(const PreparedSessionData&) = delete;
+        SessionPreparation(contracts::CodeLease, Prepare);
+        SessionPreparation(contracts::CodeLease, ContentStamp, Reload);
+        ~SessionPreparation();
+        SessionPreparation(SessionPreparation&&) noexcept;
+        SessionPreparation& operator=(SessionPreparation&&) noexcept;
+        SessionPreparation(const SessionPreparation&) = delete;
+        SessionPreparation& operator=(const SessionPreparation&) = delete;
         // One use after admission; BUSY/WRONG_THREAD/capacity preflight keeps this result intact for retry.
         [[nodiscard]] SessionFactoryResult<PreparedSessionInstallation>
         prepare(SessionStore&, persistence::SaveService&) &&;
@@ -66,7 +66,7 @@ namespace lux::editor::sessions
     {
     public:
         using Decode = cxx::move_only_function<SessionFactoryResult<
-            PreparedSessionData>(const SessionLoadInput&, std::span<const std::byte>, std::stop_token)>;
+            SessionPreparation>(const SessionLoadInput&, std::span<const std::byte>, std::stop_token)>;
         SessionFactoryEntry(contracts::CodeLease, SessionKindDescriptor, Decode);
         ~SessionFactoryEntry();
         SessionFactoryEntry(const SessionFactoryEntry&) = delete;
@@ -101,7 +101,7 @@ namespace lux::editor::sessions
         std::shared_ptr<const Data> data_;
     };
     // Submit run() through the existing Process blocking scheduler. It owns only input/entry/code.
-    // Completion carries PreparedSessionData back to the owner; no Session or UI is made on the worker.
+    // Completion carries SessionPreparation back to the owner; no Session or UI is made on the worker.
     class SessionLoadJob final
     {
     public:
@@ -110,7 +110,7 @@ namespace lux::editor::sessions
         SessionLoadJob& operator=(const SessionLoadJob&) = delete;
         SessionLoadJob(SessionLoadJob&&) noexcept = default;
         SessionLoadJob& operator=(SessionLoadJob&&) = delete;
-        [[nodiscard]] SessionFactoryResult<PreparedSessionData> run(std::stop_token = {}) &&;
+        [[nodiscard]] SessionFactoryResult<SessionPreparation> run(std::stop_token = {}) &&;
 
     private:
         std::shared_ptr<SessionFactoryEntry> entry_;

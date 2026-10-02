@@ -1,3 +1,4 @@
+#include <lux/engine/editor/flowforge/PublishFlowArtifact.hpp>
 #include <lux/engine/editor/workbench/InteractionDelivery.hpp>
 #include <lux/engine/editor/flowforge/FlowView.hpp>
 #include <lux/engine/editor/workbench/ViewPreparation.hpp>
@@ -898,7 +899,10 @@ namespace lux::editor::flowforge
         auto compiled = operation->get().result();
         if (!compiled)
             return rejected(compiled.error());
-        auto sent = emit(publishRequested, std::move(*compiled));
+        auto artifact = captureFlowArtifact(std::move(*compiled));
+        if (!artifact)
+            return rejected(artifact.error());
+        auto sent = emit(publishRequested, *artifact);
         if (!sent.complete())
             return rejected(views::EViewError::BUSY);
         return {};

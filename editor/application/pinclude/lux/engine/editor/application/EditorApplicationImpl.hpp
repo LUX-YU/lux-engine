@@ -87,8 +87,6 @@ namespace lux::editor::application
             std::optional<EditorFailure> failure;
             bool cancel_requested{};
         };
-        using VCompiledSource = std::
-            variant<std::shared_ptr<const material::CompiledMaterial>, std::shared_ptr<const flowforge::CompiledFlow>>;
         struct CompiledPackage final
         {
             cxx::SharedBytes<> bytes;
@@ -97,7 +95,7 @@ namespace lux::editor::application
         struct ArtifactPresentation final
         {
             std::uint64_t id;
-            VCompiledSource source;
+            persistence::DerivedArtifact source;
             ProjectAssetEntry asset;
             std::optional<persistence::WriteTicket> ticket;
             std::optional<persistence::PersistenceResult<CompiledPackage>> encoded;
@@ -505,7 +503,7 @@ namespace lux::editor::application
         [[nodiscard]] EditorResult<void> askSave(commands::SessionTarget, persistence::ESaveMode);
         [[nodiscard]] EditorResult<void> receiveSaveAnswer();
         [[nodiscard]] EditorResult<void> settleSaves();
-        void receiveArtifact(VCompiledSource);
+        void receiveArtifact(persistence::DerivedArtifact);
         [[nodiscard]] EditorResult<void> settleArtifacts();
         [[nodiscard]] EditorResult<void> rememberSave(persistence::SaveId);
         [[nodiscard]] EditorResult<void> cancelContentPreview(sessions::SessionId);

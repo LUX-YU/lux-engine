@@ -1,3 +1,4 @@
+#include <lux/engine/editor/material/PublishCompiledMaterial.hpp>
 #include <lux/engine/editor/views/ViewportElement.hpp>
 #include <lux/engine/editor/detail/ViewportStateCodec.hpp>
 #include <lux/engine/editor/workbench/InteractionDelivery.hpp>
@@ -995,7 +996,10 @@ namespace lux::editor::material
         auto compiled = operation->get().result();
         if (!compiled)
             return rejected(compiled.error());
-        auto sent = emit(publishRequested, std::move(*compiled));
+        auto artifact = captureMaterialArtifact(std::move(*compiled));
+        if (!artifact)
+            return rejected(artifact.error());
+        auto sent = emit(publishRequested, *artifact);
         if (!sent.complete())
             return rejected(views::EViewError::BUSY);
         return {};

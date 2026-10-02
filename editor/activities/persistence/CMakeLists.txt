@@ -1,5 +1,5 @@
 add_component(COMPONENT_NAME editor_persistence NAMESPACE lux::engine::editor STATIC
-    SOURCE_FILES src/WriteCoordinator.cpp src/SaveService.cpp src/EncodeJob.cpp)
+    SOURCE_FILES src/WriteCoordinator.cpp src/SaveService.cpp src/EncodeJob.cpp src/DerivedArtifact.cpp)
 component_include_directories(editor_persistence
     BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
 target_link_libraries(editor_persistence PUBLIC lux::engine::editor::edit_sessions lux::cxx::memory)
@@ -55,6 +55,7 @@ install(FILES
     DESTINATION include/lux/engine/editor/storage COMPONENT lux_engine_editor_file_publication)
 install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/persistence/ArtifactStore.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/persistence/DerivedArtifact.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/persistence/EncodeJob.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/persistence/SaveExecution.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/persistence/SaveService.hpp

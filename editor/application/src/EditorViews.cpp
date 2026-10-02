@@ -250,8 +250,8 @@ namespace lux::editor::application
             auto connection = object::LuxObject::connect(
                 static_cast<material::MaterialView*>(&pane),
                 &material::MaterialView::publishRequested,
-                [this](std::shared_ptr<const material::CompiledMaterial> compiled) noexcept {
-                    receiveArtifact(std::move(compiled));
+                [this](const persistence::DerivedArtifact& compiled) noexcept {
+                    receiveArtifact(compiled);
                 }
             );
             if (!connection)
@@ -263,8 +263,8 @@ namespace lux::editor::application
             auto connection = object::LuxObject::connect(
                 static_cast<flowforge::FlowView*>(&pane),
                 &flowforge::FlowView::publishRequested,
-                [this](std::shared_ptr<const flowforge::CompiledFlow> compiled) noexcept {
-                    receiveArtifact(std::move(compiled));
+                [this](const persistence::DerivedArtifact& compiled) noexcept {
+                    receiveArtifact(compiled);
                 }
             );
             if (!connection)

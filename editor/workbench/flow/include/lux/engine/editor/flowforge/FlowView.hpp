@@ -1,7 +1,7 @@
 #pragma once
 #include <lux/engine/editor/flowforge/FlowInteraction.hpp>
 #include <lux/engine/editor/flowforge/FlowCompilationService.hpp>
-#include <lux/engine/editor/persistence/WriteLane.hpp>
+#include <lux/engine/editor/persistence/DerivedArtifact.hpp>
 #include <lux/engine/editor/views/IViewHost.hpp>
 
 namespace lux::editor::persistence
@@ -57,7 +57,7 @@ namespace lux::editor::flowforge
         [[nodiscard]] FlowViewResult<FlowCompileId> compile();
         [[nodiscard]] FlowViewResult<void> retryLink(LinkSettings);
         // This is a user intention. Admission and publication results belong to its explicit receiver.
-        object::TSignal<std::shared_ptr<const CompiledFlow>> publishRequested{*this};
+        object::TSignal<persistence::DerivedArtifact> publishRequested{*this};
         [[nodiscard]] FlowViewResult<void> requestPublication();
         [[nodiscard]] const std::optional<FlowViewBinding>& binding() const noexcept;
         [[nodiscard]] const FlowViewResult<void>& status() const noexcept;

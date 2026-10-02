@@ -1882,7 +1882,9 @@
       "vector",
       "lux/cxx/compile_time/expected.hpp",
       "lux/cxx/memory/SharedBytes.hpp",
-      "lux/cxx/core/function_ref.hpp"
+      "lux/cxx/core/function_ref.hpp",
+      "lux/engine/resource/identity/AssetId.hpp",
+      "lux/engine/resource/asset/AssetTypeId.hpp"
     ],
     "prefixes": [
       "lux/engine/editor/contracts/",
@@ -1904,7 +1906,9 @@
       "editor/activities/persistence/src/EncodeJob.cpp",
       "editor/activities/persistence/src/SaveService.cpp",
       "editor/activities/persistence/src/WriteCoordinator.cpp",
-      "editor/activities/persistence/test/write_coordinator.cpp"
+      "editor/activities/persistence/test/write_coordinator.cpp",
+      "editor/activities/persistence/include/lux/engine/editor/persistence/DerivedArtifact.hpp",
+      "editor/activities/persistence/src/DerivedArtifact.cpp"
     ]
   },
   "scene_persistence": {
@@ -3923,7 +3927,9 @@
       "type_traits",
       "utility",
       "variant",
-      "vector"
+      "vector",
+      "lux/engine/editor/persistence/DerivedArtifact.hpp",
+      "lux/engine/material/graph/MaterialSource.hpp"
     ],
     "prefixes": [
       "lux/cxx/",
@@ -4486,7 +4492,9 @@
       "utility",
       "variant",
       "vector",
-      "any"
+      "any",
+      "lux/engine/editor/persistence/DerivedArtifact.hpp",
+      "lux/engine/flowforge/graph/FlowSource.hpp"
     ],
     "prefixes": [
       "lux/cxx/",
@@ -7053,7 +7061,8 @@
       "lux/engine/render/RendererConfig.hpp",
       "lux/engine/serialization/BinaryReader.hpp",
       "cmath",
-      "lux/engine/editor/workbench/ViewPreparation.hpp"
+      "lux/engine/editor/workbench/ViewPreparation.hpp",
+      "lux/engine/editor/persistence/DerivedArtifact.hpp"
     ],
     "prefixes": [],
     "test_headers": {},
@@ -7636,7 +7645,6 @@
       "lux/engine/editor/widgets/GraphCanvas.hpp",
       "lux/engine/flowforge/graph/ArithmeticNode.hpp",
       "lux/engine/flowforge/graph/ControlNode.hpp",
-      "lux/engine/flowforge/graph/FlowSource.hpp",
       "lux/engine/flowforge/graph/FunctionalNode.hpp",
       "lux/engine/flowforge/graph/ObjectNode.hpp",
       "lux/engine/flowforge/script/ScriptAbilityNode.hpp",
@@ -7645,7 +7653,9 @@
       "lux/engine/editor/workbench/InteractionDelivery.hpp",
       "lux/engine/editor/persistence/WriteLane.hpp",
       "lux/engine/serialization/BinaryReader.hpp",
-      "lux/engine/editor/workbench/ViewPreparation.hpp"
+      "lux/engine/editor/workbench/ViewPreparation.hpp",
+      "lux/engine/editor/persistence/DerivedArtifact.hpp",
+      "lux/engine/flowforge/graph/FlowSource.hpp"
     ],
     "prefixes": [],
     "test_headers": {},
@@ -17796,6 +17806,12 @@
       ],
       "editor/workbench/scene/api/CMakeLists.txt": [
         "scene_control_api"
+      ],
+      "editor/activities/persistence/include/lux/engine/editor/persistence/DerivedArtifact.hpp": [
+        "editor_persistence"
+      ],
+      "editor/activities/persistence/src/DerivedArtifact.cpp": [
+        "editor_persistence"
       ]
     },
     "native_libraries": [

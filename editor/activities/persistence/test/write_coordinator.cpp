@@ -1,7 +1,9 @@
 #include <lux/engine/editor/persistence/WriteCoordinator.hpp>
+#include <lux/engine/editor/persistence/DerivedArtifact.hpp>
 #include <cassert>
 #include <iostream>
 #include <map>
+#include <optional>
 #include <span>
 #include <stdexcept>
 
@@ -80,6 +82,66 @@ namespace
         assert(coordinator.acknowledge(a) && coordinator.size() == 0);
         std::cout
             << "XQ23 SharedBytes: no copy, source released, logical budget per ticket, Unknown and cancellation PASS\n";
+    }
+    void artifactOwnership()
+    {
+        using namespace lux::editor;
+        struct Source final : IArtifactSource
+        {
+            std::weak_ptr<const int> code;
+            bool& destroyed;
+            bool throws{};
+            Source(std::weak_ptr<const int> lease, bool& result) : code(lease), destroyed(result) {}
+            ~Source() override
+            {
+                assert(!code.expired());
+                destroyed = true;
+            }
+            PersistenceResult<EncodedArtifact> encode(std::stop_token) const override
+            {
+                assert(!code.expired());
+                if (throws)
+                    throw std::runtime_error("foreign artifact encoding");
+                return bytes("source");
+            }
+        };
+        auto code = std::make_shared<const int>(1);
+        std::weak_ptr<const int> code_lifetime = code;
+        bool destroyed{};
+        auto source = std::make_shared<Source>(code, destroyed);
+        auto input = bytes("artifact");
+        const auto* original = input.bytes.data();
+        DerivedArtifactInfo info{
+            {{1, 0, 1}, {}},
+            lux::asset::AssetId{*uuids::uuid::from_string("12345678-1234-1234-1234-123456789abc")},
+            "test.artifact", 1, 7
+        };
+        std::optional<DerivedArtifact> value(
+            std::in_place, contracts::CodeLease::plugin(code), info, input.bytes, source
+        );
+        auto copied = *value;
+        assert(copied.valid() && copied.bytes().data() == original);
+        std::stop_source cancelled;
+        cancelled.request_stop();
+        auto stopped = copied.encodeSource(cancelled.get_token());
+        assert(!stopped && stopped.error().code == EPersistenceError::CANCELLED);
+        source->throws = true;
+        auto rejected = copied.encodeSource({});
+        assert(!rejected && rejected.error().code == EPersistenceError::ENCODE);
+        source->throws = false;
+        auto encoded = copied.encodeSource({});
+        assert(encoded && encoded->bytes.size() == 6);
+        source.reset();
+        code.reset();
+        input = {};
+        value.reset();
+        auto replacement = DerivedArtifact{contracts::CodeLease::builtin(), {}, {}, {}};
+        copied = std::move(replacement);
+        assert(destroyed && !code_lifetime.expired()); // The exported bytes still own their defining code.
+        encoded = EncodedArtifact{};
+        assert(code_lifetime.expired());
+        std::cout << "EC1 derived artifact: frozen bytes, copy/replacement, cancellation, "
+                     "foreign error and code pin PASS\n";
     }
     void acknowledgedChains()
     {
@@ -247,6 +309,7 @@ int main()
     assert(bounded.acknowledge(ticket));
     assert(bounded.size() == 0 && bounded.reserve({{"bounded"}, "missing"}, origin));
     std::cout << "X05-09 bounded tickets and bytes: PASS\n";
+    artifactOwnership();
     sharedByteLifetime();
     acknowledgedChains();
     brokenChains();

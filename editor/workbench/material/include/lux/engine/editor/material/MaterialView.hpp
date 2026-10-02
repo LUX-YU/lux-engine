@@ -2,7 +2,7 @@
 #include <lux/engine/editor/material/MaterialInteraction.hpp>
 #include <lux/engine/editor/material/MaterialPreviewStore.hpp>
 #include <lux/engine/editor/material/MaterialCompilationService.hpp>
-#include <lux/engine/editor/persistence/WriteLane.hpp>
+#include <lux/engine/editor/persistence/DerivedArtifact.hpp>
 #include <lux/engine/editor/views/CameraNavigation.hpp>
 #include <lux/engine/editor/views/IViewHost.hpp>
 
@@ -75,7 +75,7 @@ namespace lux::editor::material
         [[nodiscard]] MaterialViewResult<void> redo();
         [[nodiscard]] MaterialViewResult<MaterialCompileId> compile();
         // This is a user intention. Admission and publication results belong to its explicit receiver.
-        object::TSignal<std::shared_ptr<const CompiledMaterial>> publishRequested{*this};
+        object::TSignal<persistence::DerivedArtifact> publishRequested{*this};
         [[nodiscard]] MaterialViewResult<void> requestPublication();
         [[nodiscard]] MaterialCompileId compilation() const noexcept;
         [[nodiscard]] MaterialViewResult<void> navigate(const lux::editor::views::CameraMotion&);

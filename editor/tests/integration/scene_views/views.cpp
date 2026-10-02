@@ -938,9 +938,15 @@ namespace
         auto publish_connection = take(object::LuxObject::connect(
             view,
             &ef::FlowView::publishRequested,
-            [&](std::shared_ptr<const ef::CompiledFlow> result) noexcept {
-                published_ticket =
-                    take(ef::publishFlowArtifact(f.writes, take(f.disk.resolve("derived.flow")), std::move(result)));
+            [&](const persistence::DerivedArtifact& result) noexcept {
+                assert(result.valid() && result.info().content == published_author.current);
+                assert(result.info().type() == script::ScriptArtifactAsset::asset_type);
+                const auto encoded_source = take(result.encodeSource({}));
+                const auto expected_source = take(lux::flowforge::encodeFlowSource(*take(completed.result())->source));
+                assert(std::ranges::equal(encoded_source.bytes.view(), std::as_bytes(std::span(expected_source))));
+                published_ticket = take(persistence::publishEncodedArtifact(
+                    f.writes, take(f.disk.resolve("derived.flow")), {result.bytes()}
+                ));
             }
         ));
         assert(view->requestPublication() && published_ticket);
@@ -1055,10 +1061,15 @@ namespace
         auto publish_connection = take(object::LuxObject::connect(
             view,
             &em::MaterialView::publishRequested,
-            [&](std::shared_ptr<const em::CompiledMaterial> result) noexcept {
-                published_ticket = take(
-                    em::publishCompiledMaterial(f.writes, take(f.disk.resolve("derived.material")), std::move(result))
-                );
+            [&](const persistence::DerivedArtifact& result) noexcept {
+                assert(result.valid() && result.info().content == unsaved.current);
+                assert(result.info().type() == asset::MaterialAsset::asset_type);
+                const auto encoded_source = take(result.encodeSource({}));
+                const auto expected_source = take(lux::material::encodeMaterialSource(*compiled->source));
+                assert(std::ranges::equal(encoded_source.bytes.view(), std::as_bytes(std::span(expected_source))));
+                published_ticket = take(persistence::publishEncodedArtifact(
+                    f.writes, take(f.disk.resolve("derived.material")), {result.bytes()}
+                ));
             }
         ));
         assert(view->requestPublication() && published_ticket);

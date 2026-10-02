@@ -1,18 +1,13 @@
 #include <lux/engine/editor/application/EditorApplicationImpl.hpp>
 #include <lux/engine/resource/asset/storage/pak/PakArchive.hpp>
-#include <lux/engine/editor/material/MaterialCodec.hpp>
-#include <lux/engine/editor/flowforge/FlowCodec.hpp>
 #include <algorithm>
 #include <random>
 
 namespace lux::editor::application
 {
-    void EditorApplication::Impl::receiveArtifact(VCompiledSource source)
+    void EditorApplication::Impl::receiveArtifact(persistence::DerivedArtifact source)
     {
-        const bool invalid = std::visit(
-            [](const auto& value) { return !value || !value->source || !value->artifact || value->bytes.empty(); },
-            source
-        );
+        const bool invalid = !source.valid();
         if (invalid)
         {
             result_failure_ = EditorFailure{EEditorError::INVALID_ARGUMENT, "artifact.input"};
@@ -47,7 +42,7 @@ namespace lux::editor::application
                     entry.settled = true;
                     continue;
                 }
-                const auto source = std::visit([](const auto& value) { return value->key.content; }, entry.source);
+                const auto source = entry.source.info().content;
                 auto current = sessions_.describe(source.session);
                 if (!current)
                 {
@@ -62,7 +57,7 @@ namespace lux::editor::application
                     entry.failure = applicationFailure("artifact.binding", EPersistenceError::UNBOUND).value();
                 else
                 {
-                    const auto identity = std::visit([](const auto& value) { return value->source->id; }, entry.source);
+                    const auto identity = entry.source.info().source_asset;
                     const auto* asset = project_->asset(current->binding->asset);
                     if (!asset || identity != asset->id)
                         entry.failure = applicationFailure("artifact.binding", EPersistenceError::STALE_SOURCE).value();
@@ -111,47 +106,22 @@ namespace lux::editor::application
                             [source = std::move(source), reporter]() -> PersistenceResult<CompiledPackage> {
                                 if (reporter.stopToken().stop_requested())
                                     return cxx::unexpected(PersistenceFailure{EPersistenceError::CANCELLED});
-                                return std::visit(
-                                    [](const auto& compiled) -> PersistenceResult<CompiledPackage> {
-                                        if (!compiled || !compiled->source || !compiled->artifact ||
-                                            compiled->bytes.empty())
-                                            return cxx::unexpected(
-                                                PersistenceFailure{EPersistenceError::INVALID_ARGUMENT}
-                                            );
-                                        auto encoded_source = [&] {
-                                            if constexpr (std::same_as<
-                                                              typename std::decay_t<decltype(compiled)>::element_type,
-                                                              const material::CompiledMaterial>)
-                                                return lux::material::encodeMaterialSource(*compiled->source);
-                                            else
-                                                return lux::flowforge::encodeFlowSource(*compiled->source);
-                                        }();
-                                        if (!encoded_source)
-                                            return cxx::unexpected(PersistenceFailure{
-                                                EPersistenceError::ENCODE,
-                                                encoded_source.error().field
-                                            });
-                                        const auto digest =
-                                            projectContentDigest(std::as_bytes(std::span(*encoded_source)));
-                                        using Asset = std::remove_cvref_t<decltype(*compiled->artifact)>;
-                                        auto bytes = asset::encodePak(
-                                            {{compiled->source->id,
-                                              Asset::primary_magic,
-                                              uuids::to_string(compiled->source->id.uuid()),
-                                              {},
-                                              compiled->bytes}},
-                                            256U * 1024U * 1024U,
-                                            "/Project"
-                                        );
-                                        if (!bytes)
-                                            return cxx::unexpected(
-                                                PersistenceFailure{EPersistenceError::ENCODE, bytes.error()}
-                                            );
-                                        auto frozen = EncodedArtifact{std::move(*bytes)};
-                                        return CompiledPackage{std::move(frozen.bytes), digest};
-                                    },
-                                    source
+                                auto encoded_source = source.encodeSource(reporter.stopToken());
+                                if (!encoded_source)
+                                    return cxx::unexpected(std::move(encoded_source.error()));
+                                const auto digest = projectContentDigest(encoded_source->bytes.view());
+                                const auto& info = source.info();
+                                auto bytes = asset::encodePak(
+                                    {{info.source_asset, info.primary_magic,
+                                      uuids::to_string(info.source_asset.uuid()), {}, source.bytes()}},
+                                    256U * 1024U * 1024U, "/Project"
                                 );
+                                if (!bytes)
+                                    return cxx::unexpected(PersistenceFailure{
+                                        EPersistenceError::ENCODE, bytes.error()
+                                    });
+                                auto frozen = EncodedArtifact{std::move(*bytes)};
+                                return CompiledPackage{std::move(frozen.bytes), digest};
                             }
                         );
                     },

@@ -249,7 +249,9 @@ namespace lux::editor::scene
     }
     RunResult<void> RunInspectorView::prepareClose()
     {
-        return impl_->clear();
+        // Preparation may be abandoned when another view refuses the same batch.
+        // End the draft now; keep the binding/controls until ownership actually retires.
+        return impl_->cancel();
     }
     std::optional<RunningObjectRef> RunInspectorView::target() const noexcept
     {

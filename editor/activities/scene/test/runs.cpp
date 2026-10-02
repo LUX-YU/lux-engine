@@ -1,4 +1,7 @@
 #include <lux/engine/editor/scene/RunController.hpp>
+#include <lux/engine/editor/scene/ModelCreationOperation.hpp>
+#include <lux/engine/process/asset_loading/AssetReadOverlay.hpp>
+#include <lux/engine/object/ObjectDispatcher.hpp>
 #include <lux/engine/editor/sessions/SessionStore.hpp>
 #include <lux/engine/editor/scene/SceneSession.hpp>
 #include <lux/engine/editor/scene/SceneAlgorithms.hpp>
@@ -9,6 +12,9 @@
 #include <lux/engine/scene/SceneSystemInstaller.hpp>
 #include <lux/engine/simulation/ecs/TransformSchema.hpp>
 #include <lux/engine/simulation/ecs/HierarchySchema.hpp>
+#include <lux/engine/simulation/ecs/VisualSchema.hpp>
+#include <lux/engine/resource/asset/material/MaterialAssets.hpp>
+#include <lux/engine/resource/asset/mesh/MeshAsset.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include <cassert>
 #include <cstdio>
@@ -146,10 +152,11 @@ namespace
         sessions::SessionId author_id;
         world::WorldObjectId object{uuid("object")};
 
-        explicit Fixture(std::size_t capacity = 4) : runs(*runtime, execution, capacity)
+        explicit Fixture(std::size_t capacity = 4, SceneSessionLimits limits = {}) : runs(*runtime, execution, capacity)
         {
             std::vector<ecs::ComponentSchema> types;
-            for (auto group : {ecs::transformComponentSchemas(), ecs::hierarchyComponentSchemas()})
+            for (auto group :
+                 {ecs::transformComponentSchemas(), ecs::hierarchyComponentSchemas(), ecs::visualComponentSchemas()})
                 for (auto schema : group)
                     if (schema.snapshot == ecs::EComponentSnapshotPolicy::COPY)
                         types.push_back(std::move(schema));
@@ -197,7 +204,8 @@ namespace
             auto session = take(SceneSession::create(
                 author_id,
                 sessions::BoundSource{package.scene->id(), "scene.lux"},
-                std::move(source)
+                std::move(source),
+                limits
             ));
             author = session.get();
             assert(authors.prepare(reservation, session) && authors.publish(reservation));
@@ -637,6 +645,127 @@ namespace
         assert(Probe::destroyed == destroyed + 64);
         std::puts("PASS R06-R1-05 64 generations, 32 slots, single/aggregate acknowledgement, no heavy retention");
     }
+    void modelInsertion()
+    {
+        Fixture f;
+        object::ObjectMessageQueue queue{take(object::ObjectMessageQueue::create(64))};
+        project::ProjectCatalogModel catalog{queue.dispatcherRef(), 42};
+        const asset::AssetId model_id{uuid("model-insertion")};
+        const asset::AssetId mesh_id{uuid("model-mesh")}, material_id{uuid("model-material")};
+        const std::vector<AssetCatalogEntry> entries{
+            {model_id, model_id, asset::ModelAsset::primary_magic, "Content/test"},
+            {mesh_id, model_id, asset::MeshAsset::primary_magic, "Content/test"},
+            {material_id, model_id, asset::MaterialAsset::primary_magic, "Content/test"}
+        };
+        assert(catalog.replace("models", entries));
+        auto description = std::make_shared<rdesc::ModelDescription>();
+        description->primitives.push_back({mesh_id, material_id});
+        description->nodes.resize(3);
+        description->nodes[2].primitives.push_back(0);
+        description->nodes[0].children.push_back(1);
+        description->nodes[1].children.push_back(2);
+        auto model = take(asset::ModelAsset::create({model_id, asset::ModelAsset::asset_type}, description));
+        auto bytes = std::make_shared<const std::vector<std::byte>>(
+            take(asset::TAssetSerDeser<asset::ModelAsset>::encode(*model, asset::AssetEncodeLimits{1024 * 1024}))
+        );
+        auto port = take(process::asset_loading::makeAssetReadOverlay(
+            {{model_id, {cxx::SharedBytes<>::fromOwner(bytes, *bytes)}}},
+            {}
+        ));
+        auto access = f.authors.access<SceneSession>();
+        auto key = take(f.authors.key<SceneSession>(f.author_id));
+        const auto start = [&] {
+            return take(ModelCreationOperation::start(
+                f.execution,
+                access,
+                catalog,
+                port,
+                f.schemas,
+                {key, f.author->describe().current, catalog.reference(model_id), {2, 3, 4}, {0}}
+            ));
+        };
+        auto operation = start();
+        const auto initial = take(f.author->capture());
+        f.until([&] { return operation->stage() != EModelCreationStage::READING; });
+        assert(operation->stage() == EModelCreationStage::READY);
+        assert(f.author->describe().current == initial.content());
+        const auto guarded = take(f.author->read()).withRead([&](const SceneReadView&) -> SceneEditResult<void> {
+            auto rejected = operation->commit();
+            assert(!rejected && operation->stage() == EModelCreationStage::READY);
+            return {};
+        });
+        assert(guarded);
+        const auto receipt = take(operation->commit());
+        assert(operation->stage() == EModelCreationStage::INSERTED);
+        assert(take(f.author->capture()).objects().size() == initial.objects().size() + 3);
+        assert(take(operation->commit()).content == receipt.content);
+        assert(f.author->undo());
+        assert(take(f.author->capture()).objects().size() == initial.objects().size());
+        assert(f.author->redo());
+        auto stale = start();
+        f.until([&] { return stale->stage() != EModelCreationStage::READING; });
+        assert(f.author->undo());
+        const auto before_stale = f.author->describe();
+        assert(!stale->commit() && stale->stage() == EModelCreationStage::FAILED);
+        assert(f.author->describe().current == before_stale.current);
+        assert(f.author->describe().observed == before_stale.observed);
+        auto cancelled = start();
+        cancelled->cancel();
+        assert(!cancelled->commit() && cancelled->stage() == EModelCreationStage::CANCELLED);
+        auto catalogue = start();
+        f.until([&] { return catalogue->stage() != EModelCreationStage::READING; });
+        catalog.setFailure(project::EProjectQueryError::BUSY);
+        assert(!catalogue->commit() && catalogue->stage() == EModelCreationStage::READY);
+        catalog.setFailure({});
+        assert(catalog.replace("new version", entries));
+        assert(!catalogue->commit() && catalogue->stage() == EModelCreationStage::FAILED);
+        {
+            SceneSessionLimits limits;
+            limits.history.max_staging_bytes = 4096;
+            Fixture bounded{4, limits};
+            auto large = std::make_shared<rdesc::ModelDescription>(*description);
+            large->nodes.resize(128);
+            for (std::uint32_t i = 3; i != large->nodes.size(); ++i)
+                large->nodes[0].children.push_back(i);
+            auto source = take(asset::ModelAsset::create({model_id, asset::ModelAsset::asset_type}, large));
+            auto image = std::make_shared<const std::vector<std::byte>>(
+                take(asset::TAssetSerDeser<asset::ModelAsset>::encode(*source, asset::AssetEncodeLimits{1024 * 1024}))
+            );
+            auto reads = take(process::asset_loading::makeAssetReadOverlay(
+                {{model_id, {cxx::SharedBytes<>::fromOwner(image, *image)}}},
+                {}
+            ));
+            auto insertion = take(ModelCreationOperation::start(
+                bounded.execution,
+                bounded.authors.access<SceneSession>(),
+                catalog,
+                reads,
+                bounded.schemas,
+                {take(bounded.authors.key<SceneSession>(bounded.author_id)),
+                 bounded.author->describe().current,
+                 catalog.reference(model_id),
+                 {0, 0, 0},
+                 {0}}
+            ));
+            bounded.until([&] { return insertion->stage() != EModelCreationStage::READING; });
+            const auto before = bounded.author->describe();
+            const auto objects = take(bounded.author->capture()).objects().size();
+            assert(!insertion->commit() && insertion->stage() == EModelCreationStage::FAILED);
+            assert(bounded.author->describe().current == before.current);
+            assert(bounded.author->describe().observed == before.observed);
+            assert(take(bounded.author->capture()).objects().size() == objects);
+        }
+        auto closed = start();
+        f.until([&] { return closed->stage() != EModelCreationStage::READING; });
+        auto permit = take(f.authors.prepareClose(f.author->describe().current));
+        assert(f.authors.close(permit));
+        f.author = nullptr;
+        assert(!closed->commit() && closed->stage() == EModelCreationStage::FAILED);
+        assert(f.authors.size() == 0);
+        cancelled.reset(); // The accepted read result is still drained even with no view/session.
+        std::puts("PASS X12-07 real model decode, one batch/undo, BUSY retry, stale/cancel/catalog/closed no insertion"
+        );
+    }
     void completion()
     {
         Fixture f;
@@ -685,7 +814,9 @@ namespace
 int main(int argc, char** argv)
 {
     const std::string_view mode = argc > 1 ? argv[1] : "isolation";
-    if (mode == "isolation")
+    if (mode == "model-insertion")
+        modelInsertion();
+    else if (mode == "isolation")
         isolation();
     else if (mode == "controls")
         controls();

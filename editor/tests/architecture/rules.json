@@ -2666,6 +2666,8 @@
   "scene_execution": {
     "direct": [
       "editor_editing_scene",
+      "editor_project",
+      "process_asset_loading",
       "process_world_loading",
       "scene_execution_api",
       "scene_render",
@@ -3001,6 +3003,12 @@
       },
       "world_storage": {
         "path": "engine/domain/world/storage"
+      },
+      "editor_project": {
+        "path": "editor/authoring/project"
+      },
+      "object": {
+        "path": "modules/core/object"
       }
     },
     "native_libraries": [
@@ -3012,6 +3020,8 @@
       "atomic",
       "bit",
       "cassert",
+      "compare",
+      "concepts",
       "cstddef",
       "cstdint",
       "cstdio",
@@ -3020,9 +3030,17 @@
       "exception",
       "functional",
       "limits",
+      "lux/engine/editor/project/ProjectCatalogModel.hpp",
+      "lux/engine/editor/scene/ModelCreationOperation.hpp",
+      "lux/engine/editor/sessions/SessionStore.hpp",
+      "lux/engine/resource/asset/material/MaterialAssets.hpp",
+      "lux/engine/resource/asset/mesh/MeshAsset.hpp",
+      "lux/engine/resource/asset/model/ModelAsset.hpp",
+      "lux/engine/resource/identity/AssetId.hpp",
       "memory",
       "new",
       "optional",
+      "source_location",
       "span",
       "stdexcept",
       "string",
@@ -3031,11 +3049,7 @@
       "type_traits",
       "utility",
       "vector",
-      "concepts",
-      "compare",
-      "lux/engine/resource/identity/AssetId.hpp",
-      "source_location",
-      "lux/engine/editor/sessions/SessionStore.hpp"
+      "lux/engine/object/ObjectDispatcher.hpp"
     ],
     "prefixes": [
       "lux/cxx/",
@@ -3055,7 +3069,9 @@
       "editor/activities/scene/include/lux/engine/editor/scene/RunStore.hpp",
       "editor/activities/scene/src/RunDebugEdits.hpp",
       "editor/activities/scene/src/RunStore.cpp",
-      "editor/activities/scene/test/runs.cpp"
+      "editor/activities/scene/test/runs.cpp",
+      "editor/activities/scene/include/lux/engine/editor/scene/ModelCreationOperation.hpp",
+      "editor/activities/scene/src/ModelCreationOperation.cpp"
     ]
   },
   "scene_projection": {
@@ -17710,6 +17726,12 @@
       ],
       "editor/workbench/scene/src/RunInspectorView.cpp": [
         "scene_ui"
+      ],
+      "editor/activities/scene/include/lux/engine/editor/scene/ModelCreationOperation.hpp": [
+        "scene_execution"
+      ],
+      "editor/activities/scene/src/ModelCreationOperation.cpp": [
+        "scene_execution"
       ]
     },
     "native_libraries": [

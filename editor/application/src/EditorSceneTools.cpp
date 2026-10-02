@@ -232,6 +232,12 @@ namespace lux::editor::application
                 const auto* target = std::get_if<scene::SceneObjectRef>(&selection.front());
                 if (!target)
                     return cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "inspector.author"});
+                // This private entry is called by CommandRegistry::execute, whose active dispatch
+                // already excludes compound contribution publication. Pin its immutable catalog;
+                // acquiring a second command batch would reject this command itself.
+                const auto snapshot = contributions_.snapshot();
+                auto components = scene::sceneInspectorComponents();
+                components.insert(components.end(), snapshot.components().begin(), snapshot.components().end());
                 auto built = scene::makeInspectorView(
                     messages_.dispatcherRef(),
                     pane,
@@ -239,7 +245,7 @@ namespace lux::editor::application
                     std::get<scene::EditedSceneBinding>(binding),
                     *target,
                     registrations_.components,
-                    scene::sceneInspectorComponents(),
+                    std::move(components),
                     &project_->catalogModel()
                 );
                 if (!built)
@@ -302,6 +308,19 @@ namespace lux::editor::application
                 continue;
             const auto& selected = record.scene->selection().objects;
             std::optional<EditorFailure> error;
+            std::optional<scene::ResourceViewBinding> resource;
+            // Complete this borrow before entering the auxiliary view: Host callbacks cannot nest.
+            auto source = [&](lux::ui::Pane& pane) {
+                if (pane.type() == lux::ui::PaneTypeId{"lux.editor.scene.view"})
+                {
+                    auto& viewport = static_cast<scene::SceneView&>(pane);
+                    if (viewport.presentedInstance().valid())
+                        resource = scene::ResourceViewBinding{viewport.presentedInstance(), viewport.renderSystem()};
+                }
+            };
+            auto observed = desktop_->views().withView(record.source_view, source);
+            if (!observed)
+                return applicationFailure("scene.tool.source", observed.error());
             auto synchronize = [&](lux::ui::Pane& pane) {
                 if (pane.type() == lux::ui::PaneTypeId{"lux.editor.inspector"})
                 {
@@ -338,6 +357,12 @@ namespace lux::editor::application
                         if (!bound)
                             error = applicationFailure("run-inspector.rebind", bound.error()).value();
                     }
+                }
+                else if (pane.type() == lux::ui::PaneTypeId{"lux.editor.resources"})
+                {
+                    auto rebound = static_cast<scene::ResourceView&>(pane).rebind(resource);
+                    if (!rebound)
+                        error = applicationFailure("resources.rebind", rebound.error()).value();
                 }
             };
             auto read = desktop_->views().withView(record.view, synchronize);

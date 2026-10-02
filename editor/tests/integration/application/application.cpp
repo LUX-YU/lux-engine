@@ -3,6 +3,7 @@
 #include <lux/engine/editor/desktop/DesktopTestAccess.hpp>
 #include <lux/engine/editor/scene/OutlinerView.hpp>
 #include <lux/engine/editor/scene/InspectorView.hpp>
+#include <lux/engine/editor/scene/ResourceView.hpp>
 #include <lux/engine/scene/SceneSystemInstaller.hpp>
 #include <lux/engine/resource/asset/model/ModelAsset.hpp>
 #include <lux/engine/resource/asset/mesh/MeshAsset.hpp>
@@ -493,6 +494,13 @@ int main(int argc, char** argv)
     const auto model_source = impl.sessions_.describe(scene_id)->current;
     for (int frame = 0; frame < 32; ++frame)
         assert(app->update());
+    assert(app->execute(commands::CommandId{"lux.editor.scene.resources"}, commands::CommandInvocation{scene_view}));
+    auto resource_views = impl.desktop_->views().describeAll();
+    assert(resource_views);
+    auto resources = std::ranges::find_if(*resource_views, [](const auto& view) {
+        return view.type == views::ViewTypeId{"lux.editor.resources"};
+    });
+    assert(resources != resource_views->end());
     auto drop_model = [&](ui::Pane& pane) {
         auto requested = static_cast<lux::editor::scene::SceneView&>(pane)
                              .dropModel(impl.project_->catalogModel().reference(model_id), {320, 420}, {640, 480});
@@ -532,6 +540,19 @@ int main(int argc, char** argv)
     };
     assert(app->update() && impl.model_placements_.empty());
     std::cout << "Actual SceneView drop reads project pak through Process and commits one undoable model batch\n";
+    for (int frame = 0; frame < 8; ++frame)
+        assert(app->update());
+    lux::scene::SceneInstanceId presented;
+    auto read_instance = [&](ui::Pane& pane) {
+        presented = static_cast<lux::editor::scene::SceneView&>(pane).presentedInstance();
+    };
+    assert(impl.desktop_->views().withView(scene_view, read_instance));
+    assert(presented.valid());
+    auto read_resources = [&](ui::Pane& pane) {
+        assert(static_cast<lux::editor::scene::ResourceView&>(pane).snapshot().instance == presented);
+    };
+    assert(impl.desktop_->views().withView(resources->id, read_resources));
+
     assert(app->execute(commands::CommandId{"lux.editor.scene.outliner"}, commands::CommandInvocation{scene_view}));
     auto all_views = impl.desktop_->views().describeAll();
     assert(all_views);

@@ -52,3 +52,5 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     endforeach()
     set_tests_properties(editor.contributions PROPERTIES LABELS "editor;native;P11")
 endif()
+
+add_subdirectory(builtin)

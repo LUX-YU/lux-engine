@@ -23,6 +23,7 @@ namespace lux::editor::application
                 {info->current, info->dirty ? sessions::ECloseChoice::CANCEL : sessions::ECloseChoice::DISCARD}
             );
         }
+        close_run_decisions_.clear();
         close_application_ = true;
         close_decisions_ = std::move(decisions);
         phase_ = EApplicationPhase::REVIEWING;
@@ -74,6 +75,8 @@ namespace lux::editor::application
             if (response->choice == desktop::EReviewChoice::CANCEL)
             {
                 review_content_.reset();
+                review_run_.reset();
+                close_run_decisions_.clear();
                 if (closing_)
                     for (const auto& saved : closing_->saves())
                         if (saved.save && std::ranges::find(pending_saves_, *saved.save) == pending_saves_.end())
@@ -84,13 +87,24 @@ namespace lux::editor::application
                 phase_ = EApplicationPhase::RUNNING;
                 return {};
             }
-            auto decision =
-                std::ranges::find(close_decisions_, *review_content_, &sessions::SessionCloseDecision::content);
-            if (decision == close_decisions_.end())
-                return cxx::unexpected(EditorFailure{EEditorError::STALE_REQUEST, "exit.answer"});
-            decision->choice = response->choice == desktop::EReviewChoice::SAVE ? sessions::ECloseChoice::SAVE
-                                                                                : sessions::ECloseChoice::DISCARD;
-            review_content_.reset();
+            if (review_run_)
+            {
+                const auto decision = std::ranges::find(close_run_decisions_, *review_run_, &RunCloseDecision::run);
+                if (decision == close_run_decisions_.end())
+                    return cxx::unexpected(EditorFailure{EEditorError::STALE_REQUEST, "close.run.answer"});
+                decision->choice = response->choice;
+                review_run_.reset();
+            }
+            else
+            {
+                auto decision =
+                    std::ranges::find(close_decisions_, *review_content_, &sessions::SessionCloseDecision::content);
+                if (decision == close_decisions_.end())
+                    return cxx::unexpected(EditorFailure{EEditorError::STALE_REQUEST, "exit.answer"});
+                decision->choice = response->choice == desktop::EReviewChoice::SAVE ? sessions::ECloseChoice::SAVE
+                                                                                    : sessions::ECloseChoice::DISCARD;
+                review_content_.reset();
+            }
         }
         for (const auto& decision : close_decisions_)
             if (decision.choice == sessions::ECloseChoice::CANCEL)
@@ -115,6 +129,28 @@ namespace lux::editor::application
                 review_content_ = decision.content;
                 return {};
             }
+        for (const auto& decision : close_run_decisions_)
+            if (!decision.choice)
+            {
+                auto question = desktop::ReviewView::create(
+                    messages_.dispatcherRef(),
+                    lux::ui::PaneId{"exit-review"},
+                    {next_review_++,
+                     "Frozen Run still exists",
+                     "The Run owns a frozen capture. Keep it independently of the author content, or stop it?",
+                     {desktop::EReviewChoice::KEEP_RUN, desktop::EReviewChoice::STOP_RUN, desktop::EReviewChoice::CANCEL
+                     }}
+                );
+                if (!question)
+                    return applicationFailure("close.run.question", question.error());
+                views::DetachedView candidate{contracts::CodeLease::builtin(), std::move(*question)};
+                auto shown = adopt(candidate, "exit-review");
+                if (!shown)
+                    return cxx::unexpected(shown.error());
+                review_ = *shown;
+                review_run_ = decision.run;
+                return {};
+            }
         if (!closing_)
         {
             auto close = sessions::CloseSessionsOperation::begin(sessions_, saves_, close_decisions_);
@@ -134,7 +170,12 @@ namespace lux::editor::application
                 content != content_views_.end() && std::ranges::any_of(close_decisions_, [&](const auto& decision) {
                     return decision.content.session == content->session;
                 });
-            if (close_application_ || closes_content)
+            const bool stops_run =
+                content != content_views_.end() && content->run &&
+                std::ranges::any_of(close_run_decisions_, [&](const auto& decision) {
+                    return decision.run == *content->run && decision.choice == desktop::EReviewChoice::STOP_RUN;
+                });
+            if (close_application_ || closes_content || stops_run)
                 ids.push_back(view.id);
         }
         auto closing_views = desktop_->views().prepareClose(ids);
@@ -168,15 +209,24 @@ namespace lux::editor::application
         closing_.reset();
         std::erase_if(content_views_, [&](const auto& view) { return std::ranges::find(ids, view.view) != ids.end(); });
         close_decisions_.clear();
+        for (const auto& decision : close_run_decisions_)
+            if (decision.choice == desktop::EReviewChoice::STOP_RUN)
+            {
+                auto run = std::ranges::find(run_presentations_, std::optional{decision.run}, &RunPresentation::run);
+                if (run != run_presentations_.end())
+                    run->stop_requested = true;
+            }
+        close_run_decisions_.clear();
         if (!close_application_)
         {
             phase_ = EApplicationPhase::RUNNING;
             return {};
         }
+        // The irreversible handoff has completed. Failures from now on cannot return to review.
+        phase_ = EApplicationPhase::DRAINING;
         opening_.requestStop();
         project_->requestClose();
         desktop_->presentation().stopFrames();
-        phase_ = EApplicationPhase::DRAINING;
         return {};
     }
     EditorResult<void> EditorApplication::Impl::settleOperations()
@@ -243,7 +293,7 @@ namespace lux::editor::application
             i = pending_saves_.erase(i);
         }
         if (phase_ == EApplicationPhase::DRAINING && materials->empty() && flows->empty() && pending_saves_.empty() &&
-            opening_.settled())
+            opening_.settled() && run_presentations_.empty())
         {
             auto closed = project_->advanceClose();
             if (!closed)
@@ -335,6 +385,11 @@ namespace lux::editor::application
             return applicationFailure("scene.execution", *driven);
         if (auto maintained = runs_.update(); !maintained)
             return applicationFailure("run.receive", maintained.error());
+        if (auto maintained = maintainRuns(); !maintained)
+            log::error("application.run", "{}", maintained.error().domain);
+        if (desktop_)
+            if (auto synchronized = synchronizeSceneTools(); !synchronized)
+                log::error("application.inspector", "{}", synchronized.error().domain);
         projections_.collectReleased();
         return settleOperations();
     }

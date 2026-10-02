@@ -57,7 +57,11 @@ namespace lux::editor::application
             running,
             [this](const commands::CommandInvocation& invocation
             ) -> commands::CommandResult<commands::DispatchReceipt> {
-                auto result = show(std::get<commands::SessionTarget>(invocation.target()).id, true);
+                auto result = makeContentView(
+                    std::get<commands::SessionTarget>(invocation.target()).id,
+                    true,
+                    contributions_.snapshot()
+                );
                 if (!result)
                     return cxx::unexpected(commands::CommandFailure{
                         commands::ECommandError::DOMAIN_FAILURE,

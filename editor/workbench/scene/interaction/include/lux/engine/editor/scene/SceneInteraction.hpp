@@ -28,6 +28,12 @@ namespace lux::editor::scene
             InteractionGroupId id,
             std::optional<RunInspectAccess> runs = {}
         ) noexcept;
+        // A frozen Run has an independent lifetime: no author Session borrow is retained.
+        SceneInteractionGroup(RunInspectAccess, RunId, InteractionGroupId) noexcept;
+        [[nodiscard]] std::optional<RunId> run() const noexcept
+        {
+            return run_;
+        }
         ~SceneInteractionGroup() noexcept;
         SceneInteractionGroup(const SceneInteractionGroup&) = delete;
         SceneInteractionGroup& operator=(const SceneInteractionGroup&) = delete;
@@ -46,7 +52,10 @@ namespace lux::editor::scene
         {
             return id_;
         }
-        [[nodiscard]] sessions::TSessionKey<SceneSession> session() const noexcept { return key_; }
+        [[nodiscard]] std::optional<sessions::TSessionKey<SceneSession>> session() const noexcept
+        {
+            return key_;
+        }
         [[nodiscard]] SceneEditResult<void> select(SceneSelection selection);
         [[nodiscard]] const SceneSelection& selection() const noexcept
         {
@@ -54,11 +63,12 @@ namespace lux::editor::scene
         }
 
     private:
-        sessions::TSessionAccess<SceneSession> access_;
-        sessions::TSessionKey<SceneSession> key_;
+        std::optional<sessions::TSessionAccess<SceneSession>> access_;
+        std::optional<sessions::TSessionKey<SceneSession>> key_;
         std::optional<SceneEditBatch> gesture_;
         InteractionGroupId id_;
         std::optional<RunInspectAccess> runs_;
+        std::optional<RunId> run_;
         SceneSelection selection_;
     };
 }

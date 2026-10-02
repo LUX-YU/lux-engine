@@ -1,6 +1,6 @@
-#include <lux/engine/editor/metadata/EditorPluginExports.hpp>
+#include <lux/engine/editor/extensions/EditorExtension.hpp>
 #include <lux/engine/physics2d/Physics2DSystem.hpp>
-#include <lux/engine/editor/plugins/physics2d_visibility.h>
+#include <lux/engine/editor/extensions/builtin/physics2d_visibility.h>
 #include <lux/engine/editor/configuration/ConfigurationValue.hpp>
 #include <lux/engine/ui/Controls.hpp>
 #include <lux/engine/ui/Layout.hpp>
@@ -142,24 +142,30 @@ namespace
     }
 }
 
-extern "C" LUX_PHYSICS2D_EDITOR_PUBLIC const lux::editor::EditorPluginExports* lux_editor_exports_v6() noexcept
+extern "C" LUX_PHYSICS2D_EDITOR_PUBLIC const lux::editor::extensions::EditorExtensionExports* lux_editor_exports_v7(
+) noexcept
 {
-    static const auto& system = lux::physics2d::physics2DSystemRegistrations().front();
-    static const lux::editor::ConfigurationEditorRegistration configuration{
-        "lux.physics2d.Configuration",
-        1,
-        system.configuration,
-        +[](lux::meta::ReflectionRegistry& registry) noexcept {
-            return registry.findClass(lux::cxx::typeToken<lux::physics2d::Physics2DSystemConfiguration>().name());
-        },
-        &createConfiguration
-    };
-    static const lux::editor::EditorPluginExports exports{
-        sizeof(lux::editor::EditorPluginExports),
-        lux::editor::kEditorPluginInterfaceVersion,
-        &lux_physics2d_configuration_meta,
-        &configuration,
-        1
+    using namespace lux::editor;
+    static const extensions::EditorExtensionExports exports{
+        .counts = {.configurations = 1, .reflection = 1},
+        .contribute = +[](extensions::ContributionDraft& draft,
+                          contracts::CodeLease code) -> extensions::ContributionResult<void> {
+            draft.reflection.push_back({code, &lux_physics2d_configuration_meta});
+            const auto& system = lux::physics2d::physics2DSystemRegistrations().front();
+            draft.configurations.push_back(
+                {code,
+                 {"lux.physics2d.Configuration",
+                  1,
+                  system.configuration,
+                  +[](lux::meta::ReflectionRegistry& registry) noexcept {
+                      return registry.findClass(
+                          lux::cxx::typeToken<lux::physics2d::Physics2DSystemConfiguration>().name()
+                      );
+                  }},
+                 &createConfiguration}
+            );
+            return {};
+        }
     };
     return &exports;
 }

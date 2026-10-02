@@ -7,7 +7,7 @@ namespace lux::editor::scene
     struct SceneCreationRequests final
     {
         // The application creates/adopts the new Session. Rejection does not consume the form.
-        std::function<views::ViewResult<void>(const SceneCreationConfiguration&)> create;
+        std::function<SceneConfigurationResult<void>(const SceneCreationConfiguration&)> create;
     };
     class SceneCreationView final : public lux::ui::Pane
     {

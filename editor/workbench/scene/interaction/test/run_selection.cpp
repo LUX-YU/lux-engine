@@ -302,12 +302,19 @@ namespace
         assert(group.select({{author, second_ref}}));
         assert(f.author->describe().current == author_before.current);
         assert(f.author->describe().dirty == author_before.dirty);
-        f.stop(second);
+        SceneInteractionGroup frozen(inspect, second, {9});
+        assert(frozen.select({{second_ref}}));
+        assert(!frozen.select({{author}}));
         assert(group.synchronize());
         auto permit = take(f.authors.prepareClose(f.author->describe().current));
         assert(f.authors.close(permit));
         assert(group.synchronize() && group.selection().objects.empty());
         assert(!group.select({{author}}));
+        assert(frozen.synchronize() && frozen.selection().objects.size() == 1);
+        assert(frozen.select({{second_ref}}));
+        assert(!frozen.begin("author edit is unavailable"));
+        f.stop(second);
+        assert(frozen.synchronize() && frozen.selection().objects.empty());
     }
 }
 int main()

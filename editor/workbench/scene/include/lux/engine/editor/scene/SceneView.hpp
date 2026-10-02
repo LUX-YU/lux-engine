@@ -94,6 +94,7 @@ namespace lux::editor::scene
         [[nodiscard]] lux::scene::SceneInstanceId presentedInstance() const noexcept;
         [[nodiscard]] lux::scene::RenderResourceId viewport() const noexcept;
         [[nodiscard]] render::RTextureHandle image() const noexcept;
+        [[nodiscard]] system::SystemInstanceId renderSystem() const noexcept;
         [[nodiscard]] const SceneViewResult<void>& status() const noexcept;
 
     private:

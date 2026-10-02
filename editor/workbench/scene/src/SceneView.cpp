@@ -160,7 +160,11 @@ namespace lux::editor::scene
                 auto run = services_.runs->describe(running->run);
                 if (!run)
                     return rejected(run.error());
-                if (running->interaction->session().id() != run->provenance.content.session)
+                const bool wrong_group = running->interaction->run() ? *running->interaction->run() != running->run
+                                                                     : !running->interaction->session() ||
+                                                                           running->interaction->session()->id() !=
+                                                                               run->provenance.content.session;
+                if (wrong_group)
                     return rejected(views::EViewError::INVALID_ID);
                 if (run->state == ERunState::STOPPED || run->state == ERunState::STOPPING)
                     return rejected(RunFailure{ERunError::STOPPED});
@@ -497,6 +501,10 @@ namespace lux::editor::scene
     lux::scene::RenderResourceId SceneView::viewport() const noexcept
     {
         return impl_->viewport_.view();
+    }
+    system::SystemInstanceId SceneView::renderSystem() const noexcept
+    {
+        return impl_->system_;
     }
     render::RTextureHandle SceneView::image() const noexcept
     {

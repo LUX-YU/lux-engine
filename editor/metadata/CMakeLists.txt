@@ -30,31 +30,3 @@ component_add_transitive_commands(editor_metadata
 lux_engine_install_components(PROJECT_NAME lux-engine-editor-metadata VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS editor_metadata)
 
-if(LUX_EDITOR_BUILD_NATIVE_TESTS)
-    add_executable(plugin_configuration_test test/configuration.cpp)
-    target_link_libraries(plugin_configuration_test PRIVATE editor_metadata lux::engine::function::ui imgui::core)
-
-    if(MSVC)
-        target_compile_options(plugin_configuration_test PRIVATE /UNDEBUG /utf-8)
-    else()
-        target_compile_options(plugin_configuration_test PRIVATE -UNDEBUG)
-    endif()
-    add_test(NAME plugin.configuration COMMAND plugin_configuration_test )
-    set_tests_properties(plugin.configuration PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE LABELS "editor;native")
-
-    if(TARGET physics2d_simulation)
-    add_executable(plugin_library_test test/plugin.cpp)
-    target_link_libraries(plugin_library_test PRIVATE editor_metadata lux::engine::simulation::simulation_composition)
-
-    if(MSVC)
-        target_compile_options(plugin_library_test PRIVATE /UNDEBUG /utf-8)
-    else()
-        target_compile_options(plugin_library_test PRIVATE -UNDEBUG)
-    endif()
-    add_test(NAME plugin.physics2d COMMAND plugin_library_test "${CMAKE_BINARY_DIR}/share/lux-engine/plugins/catalog.json" "${CMAKE_BINARY_DIR}")
-    set_tests_properties(plugin.physics2d PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE LABELS "editor;native")
-
-        add_dependencies(plugin_library_test physics2d_simulation builtin_runtime_plugin lux_plugin_capabilities)
-    endif()
-endif()
-

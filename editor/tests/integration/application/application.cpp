@@ -1,5 +1,6 @@
 #include <lux/engine/editor/application/EditorApplicationImpl.hpp>
 #include <lux/engine/editor/desktop/DesktopTestAccess.hpp>
+#include <lux/engine/editor/scene/OutlinerView.hpp>
 #include <cassert>
 #include <fstream>
 #include <iostream>
@@ -26,7 +27,7 @@ int main(int argc, char** argv)
         std::filesystem::path{argv[2]} / std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
     std::filesystem::create_directories(root);
     const auto id = asset::AssetId{*uuids::uuid::from_string("57279371-1b9c-40d6-b55d-a1a12065d932")};
-    const auto manifest = encodeProjectManifest({id, "Application", {}, {}, {}});
+    const auto manifest = encodeProjectManifest({id, "Application", {}, {}, {{"lux.builtin.scene_render", 1, {}}}});
     assert(manifest);
     const auto file = root / "Project.luxproject";
     {
@@ -37,6 +38,9 @@ int main(int argc, char** argv)
     EditorApplicationConfig config{file, argv[1], "Application qualification", 640, 480, true};
     desktop::testing::rejectNextMenuConnection();
     auto rejected = EditorApplication::create(config);
+    if (!rejected)
+        std::cerr << "Application construction: " << rejected.error().domain << ": " << rejected.error().message
+                  << '\n';
     assert(!rejected && rejected.error().domain == "object.connect");
     const auto* cause = std::any_cast<commands::CommandFailure>(&rejected.error().cause);
     assert(
@@ -103,7 +107,11 @@ int main(int argc, char** argv)
     const auto material_id = create_content("lux.editor.new.material");
     const auto flow_id = create_content("lux.editor.new.flow");
     assert(impl.sessions_.size() == 2);
-    assert(app->show(material_id, true)); // A second view is not a second working copy.
+    assert(app->execute(
+        commands::CommandId{"lux.editor.another-view"},
+        commands::CommandInvocation{commands::SessionTarget{material_id, impl.sessions_.describe(material_id)->current}}
+    ));
+    // The real command creates a second view under its existing dispatch protection, not a working copy.
     assert(impl.sessions_.size() == 2);
     const auto material_before = impl.sessions_.describe(material_id)->current;
     const auto flow_before = impl.sessions_.describe(flow_id)->current;
@@ -157,6 +165,103 @@ int main(int argc, char** argv)
     assert(!impl.sessions_.describe(flow_id) && !impl.desktop_->views().describe(flow_view_id));
     assert(impl.sessions_.describe(material_id)->current == material_before);
     std::cout << "Last-view Cancel/Keep/Close use real modals; closing one content preserves another\n";
+
+    auto new_scene = app->execute(commands::CommandId{"lux.editor.new.scene"});
+    if (!new_scene)
+        std::cerr << "New Scene: " << new_scene.error().domain << ": " << new_scene.error().detail << '\n';
+    assert(new_scene);
+    auto windows = impl.desktop_->views().describeAll();
+    assert(windows);
+    auto creation = std::ranges::find_if(*windows, [](const auto& view) {
+        return view.type == views::ViewTypeId{"lux.editor.scene.creation"};
+    });
+    assert(creation != windows->end());
+    auto configure_scene = [&](ui::Pane& pane) {
+        auto& form = static_cast<lux::editor::scene::SceneCreationView&>(pane);
+        const auto preset =
+            form.configuration().applyPreset(lux::editor::scene::ESceneContentPreset::THREE_DIMENSIONAL);
+        if (!preset)
+            std::cerr << preset.error().domain << ": " << preset.error().message << '\n';
+        assert(preset);
+        form.requestCreate();
+    };
+    assert(impl.desktop_->views().withView(creation->id, configure_scene));
+    sessions::SessionId scene_id;
+    const auto scene_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
+    while (!scene_id.valid())
+    {
+        assert(std::chrono::steady_clock::now() < scene_deadline);
+        auto updated = app->update();
+        if (!updated)
+            std::cerr << updated.error().domain << '\n';
+        assert(updated);
+        for (const auto& record : impl.content_views_)
+            if (record.scene && !record.run)
+                scene_id = record.session;
+    }
+    auto scene_record = std::ranges::find(
+        impl.content_views_,
+        scene_id,
+        &std::remove_reference_t<decltype(impl)>::ContentView::session
+    );
+    assert(scene_record != impl.content_views_.end());
+    const auto scene_view = scene_record->view;
+    assert(app->execute(commands::CommandId{"lux.editor.scene.outliner"}, commands::CommandInvocation{scene_view}));
+    auto all_views = impl.desktop_->views().describeAll();
+    assert(all_views);
+    auto outliner = std::ranges::find_if(*all_views, [](const auto& view) {
+        return view.type == views::ViewTypeId{"lux.editor.outliner"};
+    });
+    assert(outliner != all_views->end());
+    const world::WorldObjectId object{*uuids::uuid::from_string("49606a4d-f15c-4e2f-a6e7-a25efb3f6a10")};
+    auto create_object = [&](ui::Pane& pane) {
+        assert(static_cast<lux::editor::scene::OutlinerView&>(pane)
+                   .createObject(object, {0}, lux::editor::scene::EObjectSpace::SPACE_3D));
+    };
+    assert(impl.desktop_->views().withView(outliner->id, create_object));
+    const auto run_source = impl.sessions_.describe(scene_id)->current;
+    assert(app->execute(
+        commands::CommandId{"lux.editor.play"},
+        commands::CommandInvocation{commands::SessionTarget{scene_id, run_source}}
+    ));
+    while (impl.run_presentations_.empty() || !impl.run_presentations_.front().run)
+    {
+        assert(std::chrono::steady_clock::now() < scene_deadline);
+        auto updated = app->update();
+        if (!updated)
+            std::cerr << updated.error().domain << '\n';
+        assert(updated);
+    }
+    const auto run = *impl.run_presentations_.front().run;
+    assert(!impl.run_presentations_.front().failure);
+    auto run_record = std::ranges::find_if(impl.content_views_, [&](const auto& view) { return view.run == run; });
+    assert(run_record != impl.content_views_.end());
+    const auto run_view = run_record->view;
+    assert(app->execute(commands::CommandId{"lux.editor.scene.pause"}, commands::CommandInvocation{run_view}));
+    while (impl.runs_.info(run)->pause_pending)
+    {
+        assert(app->update());
+    }
+    assert(app->execute(commands::CommandId{"lux.editor.scene.step"}, commands::CommandInvocation{run_view}));
+    const auto step = impl.run_presentations_.front().steps.front();
+    for (int frame = 0; frame < 16; ++frame)
+        assert(app->update());
+    assert(impl.runs_.stepStatus(step)); // Completion has not been silently acknowledged by an update.
+    assert(impl.requestClose(impl.sessions_.describe(scene_id)->current));
+    assert(app->update() && impl.review_);
+    answer(desktop::EReviewChoice::DISCARD);
+    assert(app->update() && impl.review_ && impl.review_run_ == run);
+    answer(desktop::EReviewChoice::KEEP_RUN);
+    assert(app->update() && app->phase() == EApplicationPhase::RUNNING);
+    assert(!impl.sessions_.describe(scene_id) && impl.runs_.info(run));
+    assert(impl.desktop_->views().describe(run_view));
+    assert(impl.run_presentations_.front().interaction->synchronize());
+    assert(app->execute(commands::CommandId{"lux.editor.scene.outliner"}, commands::CommandInvocation{run_view}));
+    assert(app->execute(commands::CommandId{"lux.editor.scene.resume"}, commands::CommandInvocation{run_view}));
+    for (int frame = 0; frame < 4; ++frame)
+        assert(app->update());
+    assert(impl.runs_.info(run)->provenance.content == run_source);
+    std::cout << "Formal scene form, Outliner, frozen Play/Pause/Step/Resume and Keep Run after author close\n";
 
     assert(app->requestExit());
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);

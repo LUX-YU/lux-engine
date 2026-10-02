@@ -16,7 +16,14 @@ namespace lux::editor::extensions
         if (runtime.identity() != description.identity)
             return fail(lux::project::EPluginError::MODULE_MISMATCH, "runtime");
         if (!description.editor_library)
-            return fail(lux::project::EPluginError::MISSING_EXPORT, "editor.library");
+        {
+            // A selected runtime-only dependency still participates in the ordered identity/pin set.
+            // It contributes no Editor behavior; this does not waive any declared Editor dependency.
+            EditorExtension result;
+            result.identity_ = description.identity;
+            result.code_ = runtime.runtimeCode();
+            return result;
+        }
         std::vector<std::shared_ptr<const void>> pins{runtime.runtimeCode()};
         for (const auto& identity : description.dependencies)
         {
@@ -55,9 +62,11 @@ namespace lux::editor::extensions
         // External pin encloses callbacks, error construction and complete draft destruction on rejection.
         const auto pinned = code_;
         const auto* table = exports_;
-        if (!pinned || !table)
+        if (!pinned)
             return cxx::unexpected(ContributionFailure{EContributionError::INVALID_ARGUMENT, "extension"});
         ContributionDraft draft;
+        if (!table)
+            return draft;
         try
         {
             auto result = table->contribute(draft, contracts::CodeLease::plugin(pinned));

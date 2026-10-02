@@ -129,6 +129,7 @@ namespace lux::editor::application
         );
         draft.commands.push_back(std::move(exit));
         installContentCommands(draft);
+        installSceneCommands(draft);
         draft.views.push_back(std::make_shared<views::ViewFactoryEntry>(
             contracts::CodeLease::builtin(),
             views::ViewFactoryDescriptor{

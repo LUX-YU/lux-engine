@@ -143,6 +143,22 @@ namespace lux::editor::application
     }
     EditorResult<views::ViewId> EditorApplication::Impl::show(sessions::SessionId id, bool another_view)
     {
+        std::optional<EditorResult<views::ViewId>> result;
+        auto prepare = [&](const extensions::ContributionSnapshot& snapshot) -> extensions::ContributionResult<void> {
+            result.emplace(makeContentView(id, another_view, snapshot));
+            return {};
+        };
+        auto guarded = contributions_.withSnapshot(prepare);
+        if (!guarded)
+            return applicationFailure("show.catalog", guarded.error());
+        return std::move(*result);
+    }
+    EditorResult<views::ViewId> EditorApplication::Impl::makeContentView(
+        sessions::SessionId id,
+        bool another_view,
+        const extensions::ContributionSnapshot& snapshot
+    )
+    {
         auto info = sessions_.describe(id);
         if (!info)
             return applicationFailure("show.session", info.error());
@@ -249,26 +265,13 @@ namespace lux::editor::application
         }
         else
             return cxx::unexpected(EditorFailure{EEditorError::MISSING_PROVIDER, "show.kind"});
-        std::optional<EditorFailure> failure;
-        auto create_view = [&](const auto& snapshot) -> extensions::ContributionResult<void> {
-            auto view = snapshot.views().prepare(type, *input);
-            if (!view)
-                failure = applicationFailure("view.factory", view.error()).value();
-            else
-            {
-                auto adopted = adopt(*view, name);
-                if (!adopted)
-                    failure = std::move(adopted.error());
-                else
-                    owner.view = *adopted;
-            }
-            return {};
-        };
-        auto created = contributions_.withSnapshot(create_view);
-        if (!created)
-            return applicationFailure("view.catalog", created.error());
-        if (failure)
-            return cxx::unexpected(std::move(*failure));
+        auto view = snapshot.views().prepare(type, *input);
+        if (!view)
+            return applicationFailure("view.factory", view.error());
+        auto adopted = adopt(*view, name);
+        if (!adopted)
+            return cxx::unexpected(adopted.error());
+        owner.view = *adopted;
         const auto published = owner.view;
         content_views_.push_back(std::move(owner));
         return published;

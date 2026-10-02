@@ -22,6 +22,10 @@ namespace lux::editor::application
         close_decisions_ = {
             {expected, current->dirty ? sessions::ECloseChoice::CANCEL : sessions::ECloseChoice::DISCARD}
         };
+        close_run_decisions_.clear();
+        for (const auto& run : run_presentations_)
+            if (run.source.session == expected.session && run.run && !run.stopping)
+                close_run_decisions_.push_back({*run.run, {}});
         close_application_ = false;
         phase_ = EApplicationPhase::REVIEWING;
         return {};
@@ -136,25 +140,20 @@ namespace lux::editor::application
                     return applicationFailure("tool.focus", focused.error());
                 return view.id;
             }
-        std::optional<EditorResult<views::ViewId>> result;
-        auto create = [&](const extensions::ContributionSnapshot& snapshot) -> extensions::ContributionResult<void> {
-            views::ViewFactoryInput input{
-                messages_.dispatcherRef(),
-                lux::ui::PaneId{type.name()},
-                contracts::CodeLease::builtin(),
-                cxx::typeToken<EmptyViewInput>(),
-                std::make_shared<const EmptyViewInput>()
-            };
-            auto candidate = snapshot.views().prepare(type, input);
-            if (!candidate)
-                result.emplace(applicationFailure("tool.factory", candidate.error()));
-            else
-                result.emplace(adopt(*candidate, std::string(type.name())));
-            return {};
+        // This private entry runs inside CommandRegistry::execute. That owner's dispatch already
+        // excludes compound contribution publication. Pin the immutable factory catalog; attempting
+        // to acquire a second CommandRegistry batch here would reject our own command as BUSY.
+        const auto snapshot = contributions_.snapshot();
+        views::ViewFactoryInput input{
+            messages_.dispatcherRef(),
+            lux::ui::PaneId{type.name()},
+            contracts::CodeLease::builtin(),
+            cxx::typeToken<EmptyViewInput>(),
+            std::make_shared<const EmptyViewInput>()
         };
-        auto entered = contributions_.withSnapshot(create);
-        if (!entered)
-            return applicationFailure("tool.catalog", entered.error());
-        return std::move(*result);
+        auto candidate = snapshot.views().prepare(type, input);
+        if (!candidate)
+            return applicationFailure("tool.factory", candidate.error());
+        return adopt(*candidate, std::string(type.name()));
     }
 }

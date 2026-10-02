@@ -4,6 +4,22 @@
 
 namespace lux::editor::scene
 {
+    namespace
+    {
+        SceneEditError selectionFailure(const RunFailure& failure) noexcept
+        {
+            if (const auto* error = std::get_if<ERunError>(&failure.cause))
+            {
+                if (*error == ERunError::BUSY)
+                    return SceneEditError{ESceneEditError::BUSY};
+                if (*error == ERunError::WRONG_THREAD)
+                    return SceneEditError{ESceneEditError::WRONG_THREAD};
+                if (*error == ERunError::INVALID_ID)
+                    return SceneEditError{ESceneEditError::STALE_OBJECT};
+            }
+            return SceneEditError{ESceneEditError::INVALID_SOURCE};
+        }
+    }
     SceneInteractionGroup::SceneInteractionGroup(
         sessions::TSessionAccess<SceneSession> access,
         sessions::TSessionKey<SceneSession> key,
@@ -12,6 +28,9 @@ namespace lux::editor::scene
     ) noexcept
         : access_(access), key_(key), id_(id), runs_(runs)
     {}
+    SceneInteractionGroup::SceneInteractionGroup(RunInspectAccess runs, RunId run, InteractionGroupId id) noexcept
+        : id_(id), runs_(runs), run_(run)
+    {}
     SceneInteractionGroup::~SceneInteractionGroup() noexcept
     {
         if (gesture_ && !cancel())
@@ -19,9 +38,11 @@ namespace lux::editor::scene
     }
     SceneEditResult<void> SceneInteractionGroup::begin(std::string label)
     {
+        if (!access_)
+            return lux::cxx::unexpected(sessions::ESessionError::INVALID_ARGUMENT);
         if (gesture_)
             return lux::cxx::unexpected(sessions::ESessionError::BUSY);
-        auto info = access_.describe(key_);
+        auto info = access_->describe(*key_);
         if (!info)
             return lux::cxx::unexpected(info.error());
         if (info->admission != sessions::EEditAdmission::AVAILABLE)
@@ -33,12 +54,12 @@ namespace lux::editor::scene
     {
         if (!gesture_)
             return lux::cxx::unexpected(sessions::ESessionError::NOT_PREPARED);
-        auto info = access_.describe(key_);
+        auto info = access_->describe(*key_);
         if (!info)
             return lux::cxx::unexpected(info.error());
         if (info->current != gesture_->expected)
             return lux::cxx::unexpected(sessions::ESessionError::STALE_CONTENT);
-        auto owner = access_.read(key_);
+        auto owner = access_->read(*key_);
         if (!owner)
             return lux::cxx::unexpected(owner.error());
         auto read = owner->get().read();
@@ -54,14 +75,14 @@ namespace lux::editor::scene
     {
         if (!gesture_)
             return lux::cxx::unexpected(sessions::ESessionError::NOT_PREPARED);
-        auto info = access_.describe(key_);
+        auto info = access_->describe(*key_);
         if (!info)
             return lux::cxx::unexpected(info.error());
         if (info->admission != sessions::EEditAdmission::AVAILABLE)
             return lux::cxx::unexpected(sessions::ESessionError::BUSY);
         if (info->current != gesture_->expected)
             return lux::cxx::unexpected(sessions::ESessionError::STALE_CONTENT);
-        auto owner = access_.edit(key_);
+        auto owner = access_->edit(*key_);
         if (!owner)
             return lux::cxx::unexpected(owner.error());
         auto batch = std::move(*gesture_);
@@ -72,7 +93,7 @@ namespace lux::editor::scene
     {
         if (!gesture_)
             return {};
-        auto owner = access_.read(key_);
+        auto owner = access_->read(*key_);
         if (!owner)
         {
             if (owner.error() != sessions::ESessionError::STALE_SESSION)
@@ -93,7 +114,23 @@ namespace lux::editor::scene
     }
     SceneEditResult<void> SceneInteractionGroup::select(SceneSelection selection)
     {
-        auto owner = access_.read(key_);
+        if (run_)
+        {
+            auto described = runs_->describe(*run_);
+            if (!described)
+            {
+                return lux::cxx::unexpected(selectionFailure(described.error()));
+            }
+            for (const auto& target : selection.objects)
+            {
+                const auto* ref = std::get_if<RunningObjectRef>(&target);
+                if (!ref || ref->run != *run_ || !runs_->contains(*ref))
+                    return lux::cxx::unexpected(SceneEditError{ESceneEditError::STALE_OBJECT});
+            }
+            selection_ = std::move(selection);
+            return {};
+        }
+        auto owner = access_->read(*key_);
         if (!owner)
             return lux::cxx::unexpected(owner.error());
         auto read = owner->get().read();
@@ -118,7 +155,24 @@ namespace lux::editor::scene
     }
     SceneEditResult<void> SceneInteractionGroup::synchronize()
     {
-        auto info = access_.describe(key_);
+        if (run_)
+        {
+            auto described = runs_->describe(*run_);
+            if (!described)
+            {
+                const auto* error = std::get_if<ERunError>(&described.error().cause);
+                if (!error || *error != ERunError::INVALID_ID)
+                    return lux::cxx::unexpected(selectionFailure(described.error()));
+                selection_.objects.clear();
+                return {};
+            }
+            std::erase_if(selection_.objects, [&](const auto& target) {
+                const auto* ref = std::get_if<RunningObjectRef>(&target);
+                return !ref || !runs_->contains(*ref);
+            });
+            return {};
+        }
+        auto info = access_->describe(*key_);
         if (!info && info.error() != sessions::ESessionError::STALE_SESSION)
             return lux::cxx::unexpected(info.error());
         if (!info || (gesture_ && info->current != gesture_->expected))
@@ -132,7 +186,7 @@ namespace lux::editor::scene
             selection_.objects.clear();
             return {};
         }
-        auto owner = access_.read(key_);
+        auto owner = access_->read(*key_);
         if (!owner)
             return lux::cxx::unexpected(owner.error());
         auto read = owner->get().read();

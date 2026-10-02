@@ -1432,10 +1432,13 @@ namespace
         const auto before = f.session->describe();
         std::size_t requests{};
         author::SceneCreationRequests sink{
-            [&](const author::SceneCreationConfiguration& config) -> views::ViewResult<void> {
+            [&](const author::SceneCreationConfiguration& config) -> author::SceneConfigurationResult<void> {
                 ++requests;
                 if (requests == 1)
-                    return cxx::unexpected(views::EViewError::BUSY);
+                    return cxx::unexpected(author::SceneConfigurationFailure{
+                        author::ESceneConfigurationError::BUSY,
+                        "scene.create.admission"
+                    });
                 auto package = take(lux::scene::createScenePackage(
                     asset::AssetId{uuid("created-by-form")},
                     config.name,

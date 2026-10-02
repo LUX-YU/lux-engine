@@ -68,8 +68,12 @@ namespace lux::editor::scene
             }
             if (pending_)
             {
-                auto accepted = requests_.create ? requests_.create(*pending_)
-                                                 : views::ViewResult<void>{cxx::unexpected(views::EViewError::CLOSED)};
+                auto accepted = requests_.create
+                                    ? requests_.create(*pending_)
+                                    : SceneConfigurationResult<void>{cxx::unexpected(SceneConfigurationFailure{
+                                          ESceneConfigurationError::MISSING_PROVIDER,
+                                          "scene.creation.request"
+                                      })};
                 if (accepted)
                 {
                     pending_.reset();
@@ -77,12 +81,8 @@ namespace lux::editor::scene
                 }
                 else
                 {
-                    status_ = cxx::unexpected(SceneConfigurationFailure{
-                        ESceneConfigurationError::CONTROL_FAILURE,
-                        "scene.creation.request",
-                        static_cast<std::uint64_t>(accepted.error())
-                    });
-                    if (accepted.error() != views::EViewError::BUSY)
+                    status_ = cxx::unexpected(accepted.error());
+                    if (accepted.error().code != ESceneConfigurationError::BUSY)
                         pending_.reset();
                 }
             }

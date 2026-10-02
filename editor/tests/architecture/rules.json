@@ -12468,7 +12468,7 @@
         "capabilities": [
           "CPU"
         ],
-        "path": "editor/metadata"
+        "path": "editor/application/extensions/builtin"
       },
       "plugin_library_test": {
         "layer": "TEST",
@@ -12476,813 +12476,810 @@
         "capabilities": [
           "CPU"
         ],
-        "path": "editor/metadata"
+        "path": "editor/application/extensions/builtin"
       },
       "scene_render_meta": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": [
-          "editor_core_protocol"
-        ]
+        "path": "editor/application/extensions/builtin"
       },
       "scene_runtime_render_configuration_meta": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": []
+        "path": "editor/application/extensions/builtin"
       },
       "scene_runtime_render_configuration_meta_generate": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": [
-          "scene_render_meta"
-        ]
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_meta": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": [
-          "editor_core_protocol"
-        ]
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_grid3_d_operation_meta": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": []
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_grid2_d_operation_meta": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": []
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_line_list_operation_meta": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": []
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_tri_overlay_operation_meta": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": []
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_trajectory_operation_meta": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": []
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_skybox_operation_meta": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": []
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_skinning_operation_meta": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": []
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_point_cloud_operation_meta": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": []
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_tonemap_operation_meta": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": []
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_shadow_map_operation_meta": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": []
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_view_camera_operation_meta": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": []
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_light_operation_meta": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": []
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_mesh_stack_operation_meta": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": []
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_material_operation_meta": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": []
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_deferred_g_buffer_operation_meta": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": []
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_deferred_lighting_operation_meta": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": []
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_depth_prepass_operation_meta": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": []
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_forward_mesh_operation_meta": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": []
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_highlight_operation_meta": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": []
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_streaming_feedback_operation_meta": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": []
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_hzb_operation_meta": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": []
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_linear_depth_operation_meta": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": []
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_ssao_operation_meta": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": []
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_fog_operation_meta": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": []
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_canvas2_d_operation_meta": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": []
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_mesh_shadow_operation_meta": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": []
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_spatial_cull_operation_meta": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": []
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_render_cluster_operation_meta": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": []
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_terrain_operation_meta": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": []
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_water_operation_meta": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": []
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_tonemap_params_meta": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": []
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_spatial_cull_params_meta": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": []
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_shadow_quality_params_meta": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": []
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_grid3_d_operation_meta_generate": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": [
-          "render_feature_meta"
-        ]
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_grid2_d_operation_meta_generate": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": [
-          "render_feature_meta"
-        ]
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_line_list_operation_meta_generate": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": [
-          "render_feature_meta"
-        ]
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_tri_overlay_operation_meta_generate": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": [
-          "render_feature_meta"
-        ]
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_trajectory_operation_meta_generate": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": [
-          "render_feature_meta"
-        ]
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_skybox_operation_meta_generate": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": [
-          "render_feature_meta"
-        ]
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_skinning_operation_meta_generate": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": [
-          "render_feature_meta"
-        ]
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_point_cloud_operation_meta_generate": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": [
-          "render_feature_meta"
-        ]
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_tonemap_operation_meta_generate": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": [
-          "render_feature_meta"
-        ]
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_shadow_map_operation_meta_generate": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": [
-          "render_feature_meta"
-        ]
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_view_camera_operation_meta_generate": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": [
-          "render_feature_meta"
-        ]
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_light_operation_meta_generate": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": [
-          "render_feature_meta"
-        ]
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_mesh_stack_operation_meta_generate": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": [
-          "render_feature_meta"
-        ]
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_material_operation_meta_generate": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": [
-          "render_feature_meta"
-        ]
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_deferred_g_buffer_operation_meta_generate": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": [
-          "render_feature_meta"
-        ]
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_deferred_lighting_operation_meta_generate": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": [
-          "render_feature_meta"
-        ]
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_depth_prepass_operation_meta_generate": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": [
-          "render_feature_meta"
-        ]
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_forward_mesh_operation_meta_generate": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": [
-          "render_feature_meta"
-        ]
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_highlight_operation_meta_generate": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": [
-          "render_feature_meta"
-        ]
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_streaming_feedback_operation_meta_generate": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": [
-          "render_feature_meta"
-        ]
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_hzb_operation_meta_generate": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": [
-          "render_feature_meta"
-        ]
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_linear_depth_operation_meta_generate": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": [
-          "render_feature_meta"
-        ]
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_ssao_operation_meta_generate": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": [
-          "render_feature_meta"
-        ]
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_fog_operation_meta_generate": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": [
-          "render_feature_meta"
-        ]
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_canvas2_d_operation_meta_generate": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": [
-          "render_feature_meta"
-        ]
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_mesh_shadow_operation_meta_generate": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": [
-          "render_feature_meta"
-        ]
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_spatial_cull_operation_meta_generate": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": [
-          "render_feature_meta"
-        ]
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_render_cluster_operation_meta_generate": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": [
-          "render_feature_meta"
-        ]
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_terrain_operation_meta_generate": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": [
-          "render_feature_meta"
-        ]
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_water_operation_meta_generate": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": [
-          "render_feature_meta"
-        ]
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_tonemap_params_meta_generate": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": [
-          "render_feature_meta"
-        ]
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_spatial_cull_params_meta_generate": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": [
-          "render_feature_meta"
-        ]
+        "path": "editor/application/extensions/builtin"
       },
       "render_feature_client_shadow_quality_params_meta_generate": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": [
-          "render_feature_meta"
-        ]
+        "path": "editor/application/extensions/builtin"
       },
       "physics2d_editor": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": [
-          "plugin_library_test"
-        ]
+        "path": "editor/application/extensions/builtin"
       },
       "physics2d_editor_configuration": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": []
+        "path": "editor/application/extensions/builtin"
       },
       "physics2d_editor_configuration_generate": {
-        "layer": "RETAINED",
+        "layer": "E4",
         "role": "PROVIDER",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
         ],
-        "path": "editor/plugins",
-        "deadline": "P11",
-        "consumers": [
-          "physics2d_editor"
-        ]
+        "path": "editor/application/extensions/builtin"
       },
       "editor_context": {
         "layer": "RETAINED",
@@ -15979,21 +15976,6 @@
       "editor/metadata/src/EditorPlugin.cpp": [
         "editor_metadata"
       ],
-      "editor/metadata/test/configuration.cpp": [
-        "plugin_configuration_test"
-      ],
-      "editor/metadata/test/plugin.cpp": [
-        "plugin_library_test"
-      ],
-      "editor/plugins/src/Physics2DEditorExports.cpp": [
-        "physics2d_editor"
-      ],
-      "editor/plugins/src/RenderFeatureEditorExports.cpp": [
-        "render_feature_meta"
-      ],
-      "editor/plugins/src/RenderSystemEditorExports.cpp": [
-        "scene_render_meta"
-      ],
       "editor/tests/architecture/flow_source_native.cpp": [
         "editor_flow_source_native"
       ],
@@ -17808,6 +17790,24 @@
       ],
       "editor/application/src/EditorViewClosure.cpp": [
         "editor_bootstrap"
+      ],
+      "editor/application/src/EditorSceneTools.cpp": [
+        "editor_bootstrap"
+      ],
+      "editor/application/extensions/builtin/src/Physics2DEditorExports.cpp": [
+        "physics2d_editor"
+      ],
+      "editor/application/extensions/builtin/src/RenderFeatureEditorExports.cpp": [
+        "render_feature_meta"
+      ],
+      "editor/application/extensions/builtin/src/RenderSystemEditorExports.cpp": [
+        "scene_render_meta"
+      ],
+      "editor/application/extensions/builtin/test/configuration.cpp": [
+        "plugin_configuration_test"
+      ],
+      "editor/application/extensions/builtin/test/plugin.cpp": [
+        "plugin_library_test"
       ]
     },
     "native_libraries": [

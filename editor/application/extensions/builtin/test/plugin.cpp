@@ -1,7 +1,7 @@
 #include <lux/engine/project/PluginCatalog.hpp>
 #include <lux/engine/project/PluginLibrary.hpp>
 #include <lux/engine/editor/configuration/ConfigurationValue.hpp>
-#include <lux/engine/editor/metadata/EditorPlugin.hpp>
+#include <lux/engine/editor/extensions/EditorExtension.hpp>
 #include <lux/engine/project/PluginManager.hpp>
 #include <lux/engine/simulation/Simulation.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
@@ -178,7 +178,7 @@ int main(int argc, char** argv)
     if (description->editor_library)
     {
         meta::ReflectionRegistry::initRegistry();
-        std::vector<editor::EditorPlugin> editor_dependencies;
+        std::vector<editor::extensions::EditorExtension> editor_dependencies;
         for (const auto* dependency : *order)
         {
             if (dependency->identity == description->identity)
@@ -187,43 +187,53 @@ int main(int argc, char** argv)
                 return value->identity() == dependency->identity;
             });
             assert(runtime != dependencies.end());
-            auto extension = editor::loadEditorPlugin(*dependency, **runtime, editor_dependencies);
+            auto extension = editor::extensions::EditorExtension::load(*dependency, **runtime, editor_dependencies);
             assert(extension);
             editor_dependencies.push_back(std::move(*extension));
         }
         auto runtime = lux::project::PluginLibrary::load(*description, dependencies);
         assert(runtime);
-        auto library = editor::loadEditorPlugin(*description, **runtime, editor_dependencies);
-        assert(library && library->exports);
-        const auto* exports = library->exports;
-        assert(exports->configuration_count == 1);
-        const auto& configuration = exports->configurations[0];
+        auto absent_dependency = editor::extensions::EditorExtension::load(*description, **runtime);
+        assert(!absent_dependency && absent_dependency.error().code == lux::project::EPluginError::MISSING_DEPENDENCY);
+        assert(!editor_dependencies.empty());
+        auto empty = editor_dependencies.front().contributions();
+        assert(empty && empty->reflection.empty() && empty->configurations.empty());
+        auto library = editor::extensions::EditorExtension::load(*description, **runtime, editor_dependencies);
+        assert(library);
+        auto contributions = library->contributions();
+        assert(contributions && contributions->configurations.size() == 1 && contributions->reflection.size() == 1);
+        const auto& configuration = contributions->configurations[0].value;
+        const auto register_types = contributions->reflection[0].register_types;
         assert(!configuration.reflection(meta::ReflectionRegistry::instance()));
         {
             auto discarded = meta::ReflectionRegistry::beginDraft();
-            assert(discarded.append(exports->register_types, library->code));
+            assert(discarded.append(register_types, library->code()));
             assert(discarded.prepareCommit());
         }
         assert(!configuration.reflection(meta::ReflectionRegistry::instance()));
         auto draft = meta::ReflectionRegistry::beginDraft();
         const auto adoption_started = Clock::now();
-        assert(draft.append(exports->register_types, library->code));
+        assert(draft.append(register_types, library->code()));
         assert(draft.commit());
         std::printf("Plugin tool registration+adoption=%.1f us\n", microseconds(Clock::now() - adoption_started));
-        std::weak_ptr<const void> editor_code = library->code;
+        std::weak_ptr<const void> editor_code = library->code();
         {
             auto value = editor::ConfigurationValue::create(
                 {configuration.schema_name, configuration.schema_version, configuration.codec, configuration.reflection
                 },
-                library->code
+                library->code()
             );
             assert(value);
             std::vector<std::byte> bytes;
             assert(value->encode(bytes) && !bytes.empty());
             assert(value->decode(bytes));
             auto duplicate = meta::ReflectionRegistry::beginDraft();
-            assert(!duplicate.append(exports->register_types, library->code));
-            library->code.reset();
+            assert(!duplicate.append(register_types, library->code()));
+            contributions = cxx::unexpected(editor::extensions::ContributionFailure{
+                editor::extensions::EContributionError::INVALID_ARGUMENT,
+                "test.release"
+            });
+            library = cxx::unexpected(lux::project::PluginFailure{});
             assert(!editor_code.expired());
         }
         assert(!editor_code.expired());

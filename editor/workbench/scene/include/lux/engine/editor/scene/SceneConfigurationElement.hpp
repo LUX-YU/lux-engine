@@ -20,7 +20,8 @@ namespace lux::editor::scene
     {
         INVALID_ARGUMENT,
         MISSING_PROVIDER,
-        CONTROL_FAILURE
+        CONTROL_FAILURE,
+        BUSY
     };
     struct SceneConfigurationFailure final
     {

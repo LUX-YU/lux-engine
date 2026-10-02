@@ -17,6 +17,7 @@
 #include <lux/engine/editor/desktop/DesktopShell.hpp>
 #include <lux/engine/editor/desktop/ReviewView.hpp>
 #include <lux/engine/editor/scene/RunController.hpp>
+#include <lux/engine/editor/scene/SceneCreationView.hpp>
 #include <lux/engine/editor/tasks/TaskMonitor.hpp>
 #include <lux/engine/editor/workspace/WorkspaceStore.hpp>
 #include <lux/engine/project/PluginRendering.hpp>
@@ -41,10 +42,28 @@ namespace lux::editor::application
         {
             sessions::SessionId session;
             views::ViewId view;
-            std::unique_ptr<scene::SceneInteractionGroup> scene;
+            std::shared_ptr<scene::SceneInteractionGroup> scene;
             std::unique_ptr<material::MaterialInteraction> material;
             std::unique_ptr<flowforge::FlowInteraction> flow;
             std::unique_ptr<material::MaterialPreviewStore> preview;
+            std::optional<scene::RunId> run;
+            views::ViewId source_view;
+        };
+        struct RunPresentation final
+        {
+            sessions::ContentStamp source;
+            std::unique_ptr<scene::StartRunOperation> preparing;
+            std::optional<scene::RunId> run;
+            std::shared_ptr<scene::SceneInteractionGroup> interaction;
+            std::optional<scene::StopTicket> stopping;
+            bool stop_requested{};
+            std::vector<scene::StepTicket> steps;
+            std::optional<EditorFailure> failure;
+        };
+        struct RunCloseDecision final
+        {
+            scene::RunId run;
+            std::optional<desktop::EReviewChoice> choice;
         };
         struct LastViewQuestion final
         {
@@ -110,6 +129,7 @@ namespace lux::editor::application
         extensions::ContributionRegistry contributions_;
         workspace::WorkspaceStore workspace_;
         std::vector<ContentView> content_views_;
+        std::vector<RunPresentation> run_presentations_;
         std::vector<OpenPresentation> opens_;
         std::vector<AssetReference> open_intents_;
         std::vector<persistence::SaveId> pending_saves_;
@@ -121,6 +141,8 @@ namespace lux::editor::application
         bool close_application_{};
         std::optional<views::ViewId> review_;
         std::optional<sessions::ContentStamp> review_content_;
+        std::optional<scene::RunId> review_run_;
+        std::vector<RunCloseDecision> close_run_decisions_;
         std::uint64_t next_view_{1}, next_review_{1};
         EApplicationPhase phase_{EApplicationPhase::RUNNING};
         bool dispatching_{};
@@ -149,7 +171,16 @@ namespace lux::editor::application
         [[nodiscard]] EditorResult<sessions::OpenAssetId> open(AssetReference);
         [[nodiscard]] EditorResult<sessions::OpenAssetId> createContent(sessions::PreparedSessionData);
         void installContentCommands(extensions::ContributionDraft&);
+        void installSceneCommands(extensions::ContributionDraft&);
+        [[nodiscard]] scene::SceneConfigurationInputs sceneConfigurationInputs();
+        [[nodiscard]] EditorResult<scene::StartRunId> play(commands::SessionTarget);
+        [[nodiscard]] EditorResult<void> maintainRuns();
+        [[nodiscard]] EditorResult<void> stopRun(scene::RunId);
+        [[nodiscard]] EditorResult<views::ViewId> showSceneTool(views::ViewId, std::string_view);
+        [[nodiscard]] EditorResult<void> synchronizeSceneTools();
         [[nodiscard]] EditorResult<views::ViewId> show(sessions::SessionId, bool another_view);
+        [[nodiscard]] EditorResult<views::ViewId>
+        makeContentView(sessions::SessionId, bool another_view, const extensions::ContributionSnapshot&);
         [[nodiscard]] EditorResult<void> update();
         [[nodiscard]] EditorResult<void> receiveOpenResults();
         [[nodiscard]] EditorResult<void> reviewClose();

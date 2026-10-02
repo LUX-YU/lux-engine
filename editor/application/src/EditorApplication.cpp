@@ -102,8 +102,6 @@ namespace lux::editor::application
         for (const auto& runtime : plugins_.libraries())
         {
             const auto* description = plugins_.catalog().find(runtime->identity().id);
-            if (!description->editor_library)
-                continue;
             auto extension = extensions::EditorExtension::load(*description, *runtime, extensions_);
             if (!extension)
                 return applicationFailure("editor.extension", extension.error());

@@ -10,7 +10,6 @@ add_subdirectory(application)
 # Existing product only: contribution protocols expire at P11, product conversion at P12.
 # No formal provider above may depend on these implementations.
 add_subdirectory(metadata)
-add_subdirectory(plugins)
 add_subdirectory(context)
 add_subdirectory(ui)
 add_subdirectory(tools)

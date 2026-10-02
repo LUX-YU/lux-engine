@@ -30,7 +30,10 @@ namespace lux::editor::scene
     }
     InspectorFields::Status InspectorFields::withRead(cxx::function_ref<Status()> action)
     {
-        auto session = sessions_.read(interaction_.session());
+        const auto key = interaction_.session();
+        if (!key)
+            return rejected(ESceneEditError::INVALID_OBJECT);
+        auto session = sessions_.read(*key);
         if (!session)
             return cxx::unexpected(SceneEditError{session.error()});
         auto read = session->get().read();
@@ -64,7 +67,10 @@ namespace lux::editor::scene
     }
     InspectorFields::Status InspectorFields::refresh()
     {
-        auto session = sessions_.read(interaction_.session());
+        const auto key = interaction_.session();
+        if (!key)
+            return rejected(ESceneEditError::INVALID_OBJECT);
+        auto session = sessions_.read(*key);
         if (!session)
             return cxx::unexpected(SceneEditError{session.error()});
         const auto stamp = session->get().describe().current;

@@ -139,7 +139,11 @@ namespace lux::editor::scene
                     return rejected(info.error());
                 result.instance = info->instance;
                 result.structure = info->structure_revision;
-                if (info->provenance.content.session != running->interaction->session().id())
+                const bool wrong_group = running->interaction->run() ? *running->interaction->run() != running->run
+                                                                     : !running->interaction->session() ||
+                                                                           info->provenance.content.session !=
+                                                                               running->interaction->session()->id();
+                if (wrong_group)
                     return rejected(views::EViewError::INVALID_ID);
                 auto read = runs_->borrow(running->run);
                 if (!read)

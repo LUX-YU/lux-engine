@@ -22,7 +22,7 @@ if(TARGET physics2d_simulation)
     set(_physics_editor_sources)
     if(TARGET physics2d_editor)
         set(_physics_editor EDITOR_TARGET physics2d_editor)
-        set(_physics_editor_sources ${PROJECT_SOURCE_DIR}/editor/plugins/src/Physics2DEditorExports.cpp)
+        set(_physics_editor_sources ${PROJECT_SOURCE_DIR}/editor/application/extensions/builtin/src/Physics2DEditorExports.cpp)
     endif()
     lux_add_plugin_exports(TARGET physics2d_simulation ${_physics_editor} MODULE_ID lux.builtin.physics2d
         DESCRIPTION "${_physics_binary}/physics2d.declaration.json"

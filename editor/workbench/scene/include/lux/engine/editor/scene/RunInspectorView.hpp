@@ -31,6 +31,7 @@ namespace lux::editor::scene
         RunInspectorView(RunInspectorView&&) = delete;
         RunInspectorView& operator=(RunInspectorView&&) = delete;
         [[nodiscard]] RunResult<void> rebind(RunningObjectRef);
+        [[nodiscard]] RunResult<void> clearTarget();
         [[nodiscard]] RunResult<void> finishEditing();
         [[nodiscard]] RunResult<void> cancelEditing();
         [[nodiscard]] RunResult<void> prepareClose();

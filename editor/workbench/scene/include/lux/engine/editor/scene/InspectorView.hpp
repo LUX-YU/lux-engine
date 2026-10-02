@@ -31,6 +31,7 @@ namespace lux::editor::scene
         InspectorView(InspectorView&&) = delete;
         InspectorView& operator=(InspectorView&&) = delete;
         [[nodiscard]] SceneEditResult<void> rebind(EditedSceneBinding, SceneObjectRef);
+        [[nodiscard]] SceneEditResult<void> clearTarget();
         [[nodiscard]] SceneEditResult<void> finishEditing();
         [[nodiscard]] SceneEditResult<void> addComponent(const simulation::ecs::ComponentSchemaId&);
         [[nodiscard]] SceneEditResult<void> removeComponent(const simulation::ecs::ComponentSchemaId&);

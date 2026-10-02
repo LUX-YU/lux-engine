@@ -82,6 +82,10 @@ namespace lux::editor::application
                     );
                     if (!destination)
                     {
+                        const auto* session_error = std::any_cast<sessions::ESessionError>(&destination.error().cause);
+                        if (destination.error().code == EEditorError::BUSY ||
+                            (session_error && *session_error == sessions::ESessionError::BUSY))
+                            return {};
                         auto reject = [&](lux::ui::Pane& pane) {
                             static_cast<desktop::ReviewView&>(pane).rejectAnswer(
                                 destination.error().domain + ": " + destination.error().message +
@@ -224,6 +228,47 @@ namespace lux::editor::application
             if (close_application_ || closes_content || stops_run)
                 ids.push_back(view.id);
         }
+        // Resolve every already accepted publication before the irreversible window handoff.
+        // Unknown needs an explicit user reconciliation while the Results view is still available.
+        const auto ready_save = [&](persistence::SaveId id) -> EditorResult<bool> {
+            auto report = std::ranges::find(save_reports_, id, &SavePresentation::id);
+            if (report != save_reports_.end() && report->result)
+                return true;
+            auto status = saves_.status(id);
+            if (!status)
+                return applicationFailure("close.save.status", status.error());
+            const auto ticket =
+                report != save_reports_.end() && report->catalog_ticket ? *report->catalog_ticket : status->ticket;
+            auto written = writes_.status(ticket);
+            if (!written)
+                return applicationFailure("close.publication.status", written.error());
+            if (written->stage == persistence::EWriteStage::UNKNOWN)
+                return cxx::unexpected(EditorFailure{
+                    EEditorError::SOURCE_FAILURE,
+                    "close.publication.unknown",
+                    0,
+                    "Cancel closing and reconcile the retained publication in Operation Results."
+                });
+            return status->stage == persistence::ESaveStage::TERMINAL &&
+                   (report == save_reports_.end() || report->result.has_value());
+        };
+        for (auto id : pending_saves_)
+        {
+            auto ready = ready_save(id);
+            if (!ready)
+                return cxx::unexpected(ready.error());
+            if (!*ready)
+                return {};
+        }
+        for (const auto& entry : closing_->saves())
+            if (entry.save)
+            {
+                auto ready = ready_save(*entry.save);
+                if (!ready)
+                    return cxx::unexpected(ready.error());
+                if (!*ready)
+                    return {};
+            }
         auto closing_views = desktop_->views().prepareClose(ids);
         if (!closing_views)
         {
@@ -232,12 +277,27 @@ namespace lux::editor::application
             return applicationFailure("exit.views.prepare", closing_views.error());
         }
         auto permits = closing_->prepare();
+        for (const auto& entry : closing_->saves())
+            if (entry.save)
+            {
+                if (auto remembered = rememberSave(*entry.save); !remembered)
+                    return remembered;
+                if (std::ranges::find(pending_saves_, *entry.save) == pending_saves_.end())
+                    pending_saves_.push_back(*entry.save);
+            }
         if (!permits)
         {
             if (permits.error().code == sessions::ESessionFactoryError::BUSY)
                 return {};
             return applicationFailure("exit.content.prepare", permits.error());
         }
+        for (const auto& entry : closing_->saves())
+            if (entry.save)
+            {
+                const auto report = std::ranges::find(save_reports_, *entry.save, &SavePresentation::id);
+                if (report == save_reports_.end() || !report->result)
+                    return {}; // Keep the UI until this source's catalog publication is settled too.
+            }
         if (close_application_)
             phase_ = EApplicationPhase::COMMITTING_EXIT;
         for (const auto& save : closing_->saves())
@@ -283,6 +343,12 @@ namespace lux::editor::application
     }
     EditorResult<void> EditorApplication::Impl::settleOperations()
     {
+        EditorResult<void> outcome;
+        const auto receive = [&](EditorResult<void> result) {
+            if (!result && outcome)
+                outcome = std::move(result);
+        };
+        bool view_operations_known = true;
         for (auto& reload : reloads_)
             if (reload.operation)
             {
@@ -308,50 +374,63 @@ namespace lux::editor::application
                 };
                 auto used = desktop_->views().withView(record.view, read_operation);
                 if (!used && used.error() != views::EViewError::INVALID_ID)
-                    return applicationFailure("compilation.view", used.error());
+                {
+                    view_operations_known = false;
+                    receive(applicationFailure("compilation.view", used.error()));
+                }
             }
         auto materials = material_compilation_.snapshotIds();
         if (!materials)
-            return applicationFailure("material.operations", materials.error());
-        for (auto id : *materials)
-            if (std::ranges::find(material_in_use, id) == material_in_use.end())
-            {
-                auto operation = material_compilation_.operation(id);
-                if (!operation)
-                    return applicationFailure("material.operation", operation.error());
-                if (!operation->get().ready())
-                    continue;
-                auto acknowledged = material_compilation_.acknowledge(id);
-                if (!acknowledged)
-                    return applicationFailure("material.acknowledge", acknowledged.error());
-            }
+            receive(applicationFailure("material.operations", materials.error()));
+        if (materials && view_operations_known)
+            for (auto id : *materials)
+                if (std::ranges::find(material_in_use, id) == material_in_use.end())
+                {
+                    auto operation = material_compilation_.operation(id);
+                    if (!operation)
+                    {
+                        receive(applicationFailure("material.operation", operation.error()));
+                        continue;
+                    }
+                    if (!operation->get().ready())
+                        continue;
+                    auto acknowledged = material_compilation_.acknowledge(id);
+                    if (!acknowledged)
+                        receive(applicationFailure("material.acknowledge", acknowledged.error()));
+                }
         auto flows = flow_compilation_.snapshotIds();
         if (!flows)
-            return applicationFailure("flow.operations", flows.error());
-        for (auto id : *flows)
-            if (std::ranges::find(flow_in_use, id) == flow_in_use.end())
-            {
-                auto operation = flow_compilation_.operation(id);
-                if (!operation)
-                    return applicationFailure("flow.operation", operation.error());
-                if (!operation->get().ready())
-                    continue;
-                auto acknowledged = flow_compilation_.acknowledge(id);
-                if (!acknowledged)
-                    return applicationFailure("flow.acknowledge", acknowledged.error());
-            }
-        if (auto settled = settleSaves(); !settled)
-            return settled;
-        if (phase_ == EApplicationPhase::DRAINING && materials->empty() && flows->empty() && pending_saves_.empty() &&
-            opening_.settled() && run_presentations_.empty() &&
+            receive(applicationFailure("flow.operations", flows.error()));
+        if (flows && view_operations_known)
+            for (auto id : *flows)
+                if (std::ranges::find(flow_in_use, id) == flow_in_use.end())
+                {
+                    auto operation = flow_compilation_.operation(id);
+                    if (!operation)
+                    {
+                        receive(applicationFailure("flow.operation", operation.error()));
+                        continue;
+                    }
+                    if (!operation->get().ready())
+                        continue;
+                    auto acknowledged = flow_compilation_.acknowledge(id);
+                    if (!acknowledged)
+                        receive(applicationFailure("flow.acknowledge", acknowledged.error()));
+                }
+        receive(settleSaves());
+        const bool operations_settled =
+            materials && flows && materials->empty() && flows->empty() && pending_saves_.empty() &&
+            opening_.settled() &&
+            std::ranges::none_of(run_presentations_, [](const auto& run) { return bool(run.preparing) || run.run; });
+        if (phase_ == EApplicationPhase::DRAINING && operations_settled &&
             std::ranges::none_of(reloads_, [](const auto& reload) { return bool(reload.operation); }) &&
             std::ranges::none_of(model_placements_, [](const auto& model) { return bool(model.operation); }))
         {
             project_->requestClose();
             auto closed = project_->advanceClose();
             if (!closed)
-                return cxx::unexpected(closed.error());
-            if (*closed)
+                receive(cxx::unexpected(closed.error()));
+            else if (*closed)
             {
                 // This is the actual UI retirement boundary; Engine/renderer/window remain alive.
                 desktop_.reset();
@@ -359,44 +438,49 @@ namespace lux::editor::application
                     phase_ = EApplicationPhase::RELEASED;
             }
         }
-        return {};
+        return outcome;
     }
     EditorResult<void> EditorApplication::Impl::update()
     {
         if (auto ready = admission(); !ready)
             return ready;
         Dispatch scope{dispatching_};
+        EditorResult<void> outcome;
+        const auto receive = [&](EditorResult<void> result) {
+            if (!result && outcome)
+                outcome = std::move(result);
+        };
         if (window_)
         {
             window::LuxWindow::pollEvents();
             input_.sample(*window_);
             if (desktop_)
                 if (auto fed = desktop_->feedInput(input_.snapshot()); !fed)
-                    return applicationFailure("desktop.input", fed.error());
+                    receive(applicationFailure("desktop.input", fed.error()));
         }
+        // Independent accepted work keeps its completion path even if another owner reports an error.
         if (auto completed = engine_->execution().collectCompletions(); !completed)
-            return applicationFailure("execution.collect", completed.error());
+            receive(applicationFailure("execution.collect", completed.error()));
         if (auto events = engine_->execution().dispatchTaskEvents(); !events)
-            return applicationFailure("execution.events", events.error());
+            receive(applicationFailure("execution.events", events.error()));
         (void)task_monitor_.dispatchChanges();
         project_->dispatchEvents();
         (void)messages_.dispatchPending();
         saves_.adoptCompletions();
         if (auto submitted = save_execution_.submitReady(); !submitted)
-            return applicationFailure("save.submit", submitted.error());
+            receive(applicationFailure("save.submit", submitted.error()));
         if (phase_ == EApplicationPhase::RUNNING)
         {
             auto requests = std::exchange(open_intents_, {});
             open_intents_.reserve(64);
             for (auto reference : requests)
                 if (auto opened = open(reference); !opened)
-                    log::error("application.open", "{}", opened.error().domain);
-            if (auto received = receiveOpenResults(); !received)
-                return received;
+                    receive(cxx::unexpected(opened.error()));
+            receive(receiveOpenResults());
         }
         else if (phase_ == EApplicationPhase::DRAINING)
             if (auto received = opening_.update(); !received)
-                return applicationFailure("open.drain", received.error());
+                receive(applicationFailure("open.drain", received.error()));
         for (auto& content : content_views_)
             if (content.preview)
                 content.preview->update();
@@ -411,11 +495,11 @@ namespace lux::editor::application
             if (phase_ == EApplicationPhase::DRAINING)
                 frame = lux::ui::FrameInfo{};
             if (auto drawn = desktop_->update(frame); !drawn)
-                return applicationFailure("desktop.update", drawn.error());
+                receive(applicationFailure("desktop.update", drawn.error()));
             for (auto& completion : desktop_->commands()->takeCompletions())
             {
                 if (!completion.result)
-                    log::error("application.command", "{}", completion.result.error().domain);
+                    receive(applicationFailure("application.command", completion.result.error()));
                 else if (const auto* admitted = std::get_if<commands::AcceptedOperation>(&*completion.result);
                          admitted && admitted->kind == "save")
                     if (std::ranges::find(pending_saves_, persistence::SaveId{admitted->value}) == pending_saves_.end())
@@ -431,47 +515,52 @@ namespace lux::editor::application
                 result_failure_.reset();
         }
         settleModels();
-        if (auto answered = receiveSaveAnswer(); !answered)
-            log::error("application.save", "{}", answered.error().domain);
-        if (auto answered = receiveReloadAnswer(); !answered)
-            log::error("application.reload", "{}", answered.error().domain);
+        receive(receiveSaveAnswer());
+        receive(receiveReloadAnswer());
         if (phase_ == EApplicationPhase::RUNNING)
-            if (auto closed = receiveViewClose(); !closed)
-                log::error("application.close-view", "{}", closed.error().domain);
+            receive(receiveViewClose());
         if (auto reviewed = reviewClose(); !reviewed)
         {
-            // A failed preflight never falls through to destruction. The frozen error needs a user decision;
-            // maintenance and already accepted completions continue while the modal is displayed.
+            // Preflight failure preserves the frozen review and leaves completion/retirement active.
             exit_failure_ = std::move(reviewed.error());
             log::error("application.exit", "{}", exit_failure_->domain);
         }
         const auto driven = engine_->sceneRuntime().driveFrame();
-        if (!driven)
-            return applicationFailure("scene.drive", driven.error());
-        if (!driven->empty())
-            return applicationFailure("scene.execution", *driven);
+        if (!driven || !driven->empty())
+        {
+            auto failure = std::make_shared<SceneFailures>();
+            failure->code.assign(plugins_.libraries().begin(), plugins_.libraries().end());
+            if (!driven)
+                failure->values.push_back(driven.error());
+            else
+                failure->values.assign(driven->begin(), driven->end());
+            receive(applicationFailure("scene.execution", std::shared_ptr<const SceneFailures>{std::move(failure)}));
+        }
         if (auto maintained = runs_.update(); !maintained)
-            return applicationFailure("run.receive", maintained.error());
-        if (auto maintained = maintainRuns(); !maintained)
-            log::error("application.run", "{}", maintained.error().domain);
+            receive(applicationFailure("run.receive", maintained.error()));
+        receive(maintainRuns());
         if (desktop_)
-            if (auto synchronized = synchronizeSceneTools(); !synchronized)
-                log::error("application.inspector", "{}", synchronized.error().domain);
+            receive(synchronizeSceneTools());
         projections_.collectReleased();
-        return settleOperations();
+        receive(settleOperations());
+        if (!outcome && !maintenance_failure_)
+            maintenance_failure_ = outcome.error();
+        return outcome;
     }
     EditorResult<void> EditorApplication::exec()
     {
         while (impl_->phase_ != EApplicationPhase::RELEASED)
         {
-            auto updated = impl_->update();
-            if (!updated)
-                return updated;
+            // A domain failure is a retained result, never permission to destroy accepted work.
+            if (auto updated = impl_->update(); !updated)
+                log::error("application.update", "{}", updated.error().domain);
             if (impl_->window_)
                 window::LuxWindow::waitEvents(0.001);
             else
                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
+        if (impl_->maintenance_failure_)
+            return cxx::unexpected(*impl_->maintenance_failure_);
         return {};
     }
 }

@@ -1,6 +1,8 @@
 #include <lux/engine/editor/application/EditorApplicationImpl.hpp>
 #include <lux/engine/editor/desktop/DesktopTestAccess.hpp>
 #include <lux/engine/editor/scene/OutlinerView.hpp>
+#include <lux/engine/editor/scene/InspectorView.hpp>
+#include <lux/engine/scene/SceneSystemInstaller.hpp>
 #include <lux/engine/resource/asset/model/ModelAsset.hpp>
 #include <lux/engine/resource/asset/mesh/MeshAsset.hpp>
 #include <lux/engine/material/Cooker.hpp>
@@ -21,6 +23,41 @@ namespace lux::editor::application
             return *app.impl_;
         }
     };
+}
+namespace
+{
+    struct FailureSystem final
+    {
+        inline static constexpr std::string_view worlds[]{"*"};
+        inline static constexpr lux::system::SystemTypeDescription Description{
+            .canonical_name = "test.application.failure",
+            .version = 1,
+            .supported_world_types = worlds
+        };
+    };
+    lux::scene::SceneSystemRegistration failureRegistration()
+    {
+        using namespace lux;
+        return {
+            .type = system::systemTypeId(FailureSystem::Description.canonical_name),
+            .cpp_type = cxx::typeToken<FailureSystem>(),
+            .description = &FailureSystem::Description,
+            .install = +[](scene::SceneSystemInstaller& installer, scene::SceneSystemDescription description
+                        ) noexcept -> cxx::expected<void, scene::SceneSystemBuildFailure> {
+                auto installed = installer.emplaceSystem<FailureSystem>(description.instanceId());
+                if (!installed)
+                    return cxx::unexpected(installed.error());
+                return installer.addPublicationTask<FailureSystem>(
+                    description.instanceId(),
+                    [](FailureSystem&) noexcept -> scene::SceneStageResult {
+                        return cxx::unexpected(
+                            scene::SceneExecutionFailure{scene::ESceneExecutionError::SYSTEM_FAILURE, {}, 731}
+                        );
+                    }
+                );
+            }
+        };
+    }
 }
 int main(int argc, char** argv)
 {
@@ -418,6 +455,97 @@ int main(int argc, char** argv)
                    .createObject(object, {0}, lux::editor::scene::EObjectSpace::SPACE_3D));
     };
     assert(impl.desktop_->views().withView(outliner->id, create_object));
+    auto selected_record =
+        std::ranges::find(impl.content_views_, scene_view, &std::remove_reference_t<decltype(impl)>::ContentView::view);
+    auto interaction = selected_record->scene;
+    assert(interaction->select(
+        {{lux::editor::scene::SceneObjectRef{scene_id, impl.sessions_.describe(scene_id)->current.state.history, object}
+        }}
+    ));
+    assert(app->execute(commands::CommandId{"lux.editor.scene.inspector"}, commands::CommandInvocation{scene_view}));
+    auto inspector_views = impl.desktop_->views().describeAll();
+    auto inspector_info = std::ranges::find_if(*inspector_views, [](const auto& view) {
+        return view.type == views::ViewTypeId{"lux.editor.inspector"};
+    });
+    assert(inspector_info != inspector_views->end());
+    assert(interaction->select({}));
+    assert(app->update());
+    auto no_target = [&](ui::Pane& pane) { assert(!static_cast<lux::editor::scene::InspectorView&>(pane).target()); };
+    assert(impl.desktop_->views().withView(inspector_info->id, no_target));
+
+    // An unrelated real SceneSystem failure must not bypass the accepted source-save/catalog handoff.
+    auto saving = impl.save({material_id, impl.sessions_.describe(material_id)->current}, persistence::ESaveMode::SAVE);
+    assert(saving);
+    const auto saving_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+    while (impl.saves_.status(*saving)->stage != persistence::ESaveStage::TERMINAL)
+    {
+        assert(std::chrono::steady_clock::now() < saving_deadline);
+        assert(impl.engine_->execution().collectCompletions());
+        impl.saves_.adoptCompletions();
+        assert(impl.save_execution_.submitReady());
+        std::this_thread::yield();
+    }
+    auto registration = failureRegistration();
+    lux::scene::SceneDescriptionBuilder failure_builder;
+    assert(failure_builder.addSystem({1}, "failure", registration.type, 1, {}, 0));
+    auto failure_description = std::move(failure_builder).buildResolved();
+    assert(failure_description);
+    auto snapshot = impl.sessions_.access<lux::editor::scene::SceneSession>().read(*author_key)->get().capture();
+    assert(snapshot);
+    auto failing =
+        impl.engine_->sceneRuntime()
+            .builder()
+            .setDescription(std::make_shared<const lux::scene::SceneDescription>(std::move(*failure_description)))
+            .setWorld(std::shared_ptr<const world::WorldDescription>(
+                snapshot->configuration().world,
+                &snapshot->configuration().world->data()
+            ))
+            .setSimulation(std::shared_ptr<const simulation::SimulationDescription>(
+                snapshot->configuration().simulation,
+                &snapshot->configuration().simulation->data()
+            ))
+            .setRegistrations(
+                impl.registrations_.components,
+                *impl.registrations_.simulation_systems,
+                std::span{&registration, 1}
+            )
+            .build();
+    assert(failing);
+    auto failed_frame = app->update();
+    assert(!failed_frame && failed_frame.error().domain == "scene.execution");
+    auto failed_save =
+        std::ranges::find(impl.save_reports_, *saving, &std::remove_reference_t<decltype(impl)>::SavePresentation::id);
+    assert(failed_save != impl.save_reports_.end() && failed_save->catalog_ticket);
+    using Failures = std::remove_reference_t<decltype(impl)>::SceneFailures;
+    auto retained = std::any_cast<std::shared_ptr<const Failures>>(failed_frame.error().cause);
+    assert(retained && retained->values.size() == 1);
+    const auto failed_instance = retained->values.front().scene;
+    auto retired_failure = failing->retire();
+    while (!retired_failure.complete() || std::ranges::find(impl.pending_saves_, *saving) != impl.pending_saves_.end())
+    {
+        assert(std::chrono::steady_clock::now() < saving_deadline);
+        auto updated = app->update();
+        if (!updated)
+        {
+            assert(updated.error().domain == "scene.execution");
+            auto retiring = std::any_cast<std::shared_ptr<const Failures>>(updated.error().cause);
+            assert(retiring && retiring->values.size() == 1);
+            assert(retiring->values.front().scene == failed_instance);
+            const auto& original = std::get<lux::scene::SceneDriveFailure>(retiring->values.front().cause);
+            assert(std::any_cast<int>(std::get<lux::scene::SceneExecutionFailure>(original.cause).cause) == 731);
+        }
+        std::this_thread::yield();
+    }
+    const auto& drive_failure = std::get<lux::scene::SceneDriveFailure>(retained->values.front().cause);
+    assert(retained->values.front().scene == failed_instance);
+    assert(std::any_cast<int>(std::get<lux::scene::SceneExecutionFailure>(drive_failure.cause).cause) == 731);
+    impl.result_intent_ = std::remove_reference_t<decltype(impl)>::ResultIntent{
+        std::remove_reference_t<decltype(impl)>::EResultAction::ACK_MAINTENANCE,
+        std::uint64_t{}
+    };
+    assert(app->update() && !impl.maintenance_failure_);
+    std::cout << "Scene failure keeps an owning diagnostic and independent save completion; empty selection clears "
+                 "Inspector\n";
     const auto run_source = impl.sessions_.describe(scene_id)->current;
     assert(app->execute(
         commands::CommandId{"lux.editor.play"},

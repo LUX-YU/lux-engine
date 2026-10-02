@@ -236,6 +236,17 @@ namespace lux::editor::scene
     {
         return impl_->rebind(target);
     }
+    RunResult<void> RunInspectorView::clearTarget()
+    {
+        if (object::LuxObject::isDispatching())
+            return cxx::unexpected(RunFailure{ERunError::BUSY});
+        auto cleared = impl_->clear();
+        if (!cleared)
+            return cleared;
+        impl_->cancel_requested_ = false;
+        impl_->status_ = {};
+        return {};
+    }
     RunResult<void> RunInspectorView::finishEditing()
     {
         for (auto& entry : impl_->components_)

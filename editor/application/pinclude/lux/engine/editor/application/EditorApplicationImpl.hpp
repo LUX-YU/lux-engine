@@ -33,6 +33,12 @@ namespace lux::editor::application
     }
     struct EditorApplication::Impl final
     {
+        struct SceneFailures final
+        {
+            // Immutable owning diagnostic: values finish destruction before the plugin libraries.
+            std::vector<std::shared_ptr<const lux::project::PluginLibrary>> code;
+            std::vector<lux::scene::SceneRuntimeFailure> values;
+        };
         struct OpenPresentation final
         {
             sessions::OpenAssetId operation;
@@ -94,11 +100,14 @@ namespace lux::editor::application
         };
         enum class EResultAction : std::uint8_t
         {
+            ACK_MAINTENANCE,
             ACK_SAVE,
             CANCEL_SAVE,
             RECONCILE,
             ACK_RELOAD,
             ACK_MODEL,
+            ACK_RUN_FAILURE,
+            ACK_STEP,
             CANCEL_MODEL,
             SHOW_CONTENT,
             SAVE_AS,
@@ -107,10 +116,18 @@ namespace lux::editor::application
         struct ResultIntent final
         {
             EResultAction action;
-            std::variant<persistence::SaveId, persistence::WriteTicket, sessions::ContentStamp, std::uint64_t> target;
+            std::variant<
+                persistence::SaveId,
+                persistence::WriteTicket,
+                sessions::ContentStamp,
+                std::uint64_t,
+                scene::StartRunId,
+                scene::StepTicket>
+                target;
         };
         struct RunPresentation final
         {
+            scene::StartRunId start;
             sessions::ContentStamp source;
             std::unique_ptr<scene::StartRunOperation> preparing;
             std::optional<scene::RunId> run;
@@ -201,6 +218,7 @@ namespace lux::editor::application
         std::optional<ReloadQuestion> reload_question_;
         std::optional<ResultIntent> result_intent_;
         std::optional<EditorFailure> result_failure_;
+        std::optional<EditorFailure> maintenance_failure_;
         std::optional<sessions::SaveAllOperation> save_all_;
         std::vector<sessions::SessionCloseDecision> close_decisions_;
         std::vector<ProjectAssetEntry> close_destinations_;

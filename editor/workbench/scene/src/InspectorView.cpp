@@ -378,6 +378,20 @@ namespace lux::editor::scene
     {
         return impl_->rebind(binding, target);
     }
+    SceneEditResult<void> InspectorView::clearTarget()
+    {
+        if (object::LuxObject::isDispatching())
+            return cxx::unexpected(SceneEditError{ESceneEditError::BUSY});
+        auto cleared = impl_->clear();
+        if (!cleared)
+            return cleared;
+        impl_->root_.reset();
+        impl_->structure_request_.reset();
+        impl_->add_.setEnabled(false);
+        impl_->remove_.setEnabled(false);
+        impl_->status_ = {};
+        return {};
+    }
     SceneEditResult<void> InspectorView::finishEditing()
     {
         return impl_->finish();

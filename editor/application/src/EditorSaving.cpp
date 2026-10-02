@@ -44,9 +44,25 @@ namespace lux::editor::application
             if (!info->binding)
                 return applicationFailure("save.unbound", persistence::EPersistenceError::UNBOUND);
             const auto* existing = project_->asset(info->binding->asset);
-            if (!existing)
-                return cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "save.catalog"});
-            entry = *existing;
+            if (existing)
+                entry = *existing;
+            else
+            {
+                // Save As may have published the source while its catalog publication failed.
+                // Recover only from the original physical binding, not a guessed current asset.
+                const auto relative = std::filesystem::u8path(info->binding->location)
+                                          .lexically_relative(project_->root())
+                                          .generic_string();
+                if (!validProjectPath(relative))
+                    return cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "save.binding.path"});
+                auto physical = files_.resolve(relative);
+                if (!physical)
+                    return applicationFailure("save.binding.path", physical.error());
+                if (physical->key.value != info->binding->location)
+                    return cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "save.binding.identity"});
+                entry = {info->binding->asset, *kind, relative};
+                entry.mount_path = std::filesystem::u8path(relative).parent_path().generic_string();
+            }
         }
         else
         {
@@ -55,6 +71,8 @@ namespace lux::editor::application
             auto resolved = files_.resolve(destination);
             if (!resolved)
                 return applicationFailure("save.destination", resolved.error());
+            if (resolved->expected_version != "missing")
+                return applicationFailure("save.destination.exists", persistence::EPersistenceError::CONFLICT);
             // Naming another registered source is not permission to overwrite its identity.
             for (const auto& other : project_->manifest().assets)
             {
@@ -239,6 +257,22 @@ namespace lux::editor::application
             if (!remembered)
                 return remembered;
             auto& report = *std::ranges::find(save_reports_, id, &SavePresentation::id);
+            const bool close_borrows = closing_ && std::ranges::any_of(closing_->saves(), [id](const auto& entry) {
+                                           return entry.save == id;
+                                       });
+            if (report.result)
+            {
+                if (close_borrows)
+                {
+                    ++iterator;
+                    continue;
+                }
+                auto acknowledged = saves_.acknowledge(id);
+                if (!acknowledged)
+                    return applicationFailure("save.acknowledge", acknowledged.error());
+                iterator = pending_saves_.erase(iterator);
+                continue;
+            }
             auto status = saves_.status(id);
             if (!status)
                 return applicationFailure("save.status", status.error());
@@ -334,6 +368,11 @@ namespace lux::editor::application
                 }
             }
             report.result = status->outcome;
+            if (close_borrows)
+            {
+                ++iterator;
+                continue;
+            }
             auto acknowledged = saves_.acknowledge(id);
             if (!acknowledged)
                 return applicationFailure("save.acknowledge", acknowledged.error());

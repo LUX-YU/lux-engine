@@ -61,7 +61,7 @@ namespace lux::editor::application
         if (!prepared)
             return applicationFailure("run.prepare", prepared.error());
         const auto id = (*prepared)->id();
-        run_presentations_.push_back({information->current, std::move(*prepared)});
+        run_presentations_.push_back({id, information->current, std::move(*prepared)});
         return id;
     }
     EditorResult<void> EditorApplication::Impl::maintainRuns()
@@ -79,14 +79,20 @@ namespace lux::editor::application
                     continue;
                 }
                 auto adopted = run_controller_.adopt(*record.preparing);
-                record.preparing.reset();
                 if (!adopted)
                 {
+                    const auto* control = std::get_if<scene::ERunError>(&adopted.error().cause);
+                    if (control && *control == scene::ERunError::BUSY)
+                    {
+                        ++iterator;
+                        continue;
+                    }
                     record.failure = applicationFailure("run.adopt", adopted.error()).value();
-                    log::error("application.run", "{}", record.failure->domain);
-                    iterator = run_presentations_.erase(iterator);
+                    record.preparing.reset();
+                    ++iterator;
                     continue;
                 }
+                record.preparing.reset();
                 record.run = *adopted;
                 record.interaction = std::make_shared<scene::SceneInteractionGroup>(
                     runs_.inspect(),
@@ -295,14 +301,19 @@ namespace lux::editor::application
             if (!record.scene || !record.source_view.valid())
                 continue;
             const auto& selected = record.scene->selection().objects;
-            if (selected.empty())
-                continue;
             std::optional<EditorFailure> error;
             auto synchronize = [&](lux::ui::Pane& pane) {
                 if (pane.type() == lux::ui::PaneTypeId{"lux.editor.inspector"})
                 {
-                    const auto* target = std::get_if<scene::SceneObjectRef>(&selected.front());
+                    const auto* target =
+                        selected.empty() ? nullptr : std::get_if<scene::SceneObjectRef>(&selected.front());
                     auto& inspector = static_cast<scene::InspectorView&>(pane);
+                    if (!target && inspector.target())
+                    {
+                        auto cleared = inspector.clearTarget();
+                        if (!cleared)
+                            error = applicationFailure("inspector.clear", cleared.error()).value();
+                    }
                     if (target && inspector.target() != *target)
                     {
                         auto bound = inspector.rebind({*record.scene->session(), record.scene.get()}, *target);
@@ -312,8 +323,15 @@ namespace lux::editor::application
                 }
                 else if (pane.type() == lux::ui::PaneTypeId{"lux.editor.run-inspector"})
                 {
-                    const auto* target = std::get_if<scene::RunningObjectRef>(&selected.front());
+                    const auto* target =
+                        selected.empty() ? nullptr : std::get_if<scene::RunningObjectRef>(&selected.front());
                     auto& inspector = static_cast<scene::RunInspectorView&>(pane);
+                    if (!target && inspector.target())
+                    {
+                        auto cleared = inspector.clearTarget();
+                        if (!cleared)
+                            error = applicationFailure("run-inspector.clear", cleared.error()).value();
+                    }
                     if (target && inspector.target() != *target)
                     {
                         auto bound = inspector.rebind(*target);

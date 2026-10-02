@@ -2,7 +2,7 @@
 #include <lux/cxx/algorithm/Sha256.hpp>
 #include <fstream>
 #include <array>
-#include "NativePublicationPath.hpp"
+#include <lux/engine/platform/FilePath.hpp>
 #if defined(_WIN32)
 #define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
@@ -44,13 +44,13 @@ namespace lux::editor::storage
     FileResult<std::vector<std::byte>> readPublicationFile(const std::filesystem::path& path, std::size_t file_limit)
     {
         std::error_code error;
-        const auto size = std::filesystem::file_size(path, error);
+        const auto size = std::filesystem::file_size(lux::engine::platform::nativeFilePath(path), error);
         if (error || size > file_limit)
         {
             return failed(EFilePublicationError::READ, path, error.value());
         }
         std::vector<std::byte> bytes(static_cast<std::size_t>(size));
-        std::ifstream file(detail::nativePublicationPath(path), std::ios::binary);
+        std::ifstream file(lux::engine::platform::nativeFilePath(path), std::ios::binary);
         if (!file.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size())))
         {
             return failed(EFilePublicationError::READ, path);
@@ -62,7 +62,7 @@ namespace lux::editor::storage
     {
 #if defined(_WIN32)
         const auto file = CreateFileW(
-            detail::nativePublicationPath(path).c_str(),
+            lux::engine::platform::nativeFilePath(path).c_str(),
             GENERIC_WRITE,
             0,
             nullptr,
@@ -123,8 +123,8 @@ namespace lux::editor::storage
     {
 #if defined(_WIN32)
         if (!MoveFileExW(
-                detail::nativePublicationPath(staged).c_str(),
-                detail::nativePublicationPath(target).c_str(),
+                lux::engine::platform::nativeFilePath(staged).c_str(),
+                lux::engine::platform::nativeFilePath(target).c_str(),
                 MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH
             ))
         {
@@ -145,7 +145,7 @@ namespace lux::editor::storage
     {
         constexpr std::size_t file_limit = 512U * 1024U * 1024U;
         std::error_code error;
-        const bool exists = std::filesystem::exists(path, error);
+        const bool exists = std::filesystem::exists(lux::engine::platform::nativeFilePath(path), error);
         if (error)
         {
             return failed(EFilePublicationError::READ, path, error.value());
@@ -154,12 +154,12 @@ namespace lux::editor::storage
         {
             return std::string{"missing"};
         }
-        const auto size = std::filesystem::file_size(path, error);
+        const auto size = std::filesystem::file_size(lux::engine::platform::nativeFilePath(path), error);
         if (error || size > file_limit)
         {
             return failed(EFilePublicationError::READ, path, error.value());
         }
-        std::ifstream file(detail::nativePublicationPath(path), std::ios::binary);
+        std::ifstream file(lux::engine::platform::nativeFilePath(path), std::ios::binary);
         if (!file)
         {
             return failed(EFilePublicationError::READ, path);
@@ -191,23 +191,28 @@ namespace lux::editor::storage
     )
     {
         std::error_code error;
-        const auto base = std::filesystem::canonical(root, error);
+        const auto base = std::filesystem::canonical(lux::engine::platform::nativeFilePath(root), error);
         if (error)
             return failed(EFilePublicationError::INVALID_PATH, root, error.value());
-        auto path = std::filesystem::weakly_canonical(address.is_absolute() ? address : base / address, error);
+        auto path = std::filesystem::weakly_canonical(
+            lux::engine::platform::nativeFilePath(address.is_absolute() ? address : base / address),
+            error
+        );
         if (error)
             return failed(EFilePublicationError::INVALID_PATH, address, error.value());
         const auto relative = path.lexically_relative(base);
         const bool outside = relative.empty() || *relative.begin() == ".." || relative == ".";
         if (outside)
             return failed(EFilePublicationError::INVALID_PATH, address);
-        const bool exists = std::filesystem::exists(path, error);
+        const bool exists = std::filesystem::exists(lux::engine::platform::nativeFilePath(path), error);
         if (error)
             return failed(EFilePublicationError::INVALID_PATH, path, error.value());
         if (exists)
         {
-            const auto links = std::filesystem::hard_link_count(path, error);
-            const bool unsupported = error || links != 1 || !std::filesystem::is_regular_file(path, error);
+            const auto links = std::filesystem::hard_link_count(lux::engine::platform::nativeFilePath(path), error);
+            const bool unsupported =
+                error || links != 1 ||
+                !std::filesystem::is_regular_file(lux::engine::platform::nativeFilePath(path), error);
             if (unsupported)
                 return failed(EFilePublicationError::INVALID_PATH, path, error.value());
         }

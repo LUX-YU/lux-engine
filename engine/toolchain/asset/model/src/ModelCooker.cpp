@@ -1,6 +1,7 @@
 #include <lux/engine/toolchain/asset/model/ModelCooker.hpp>
 
 #include <lux/engine/material/Cooker.hpp>
+#include <lux/engine/platform/FilePath.hpp>
 #include <lux/engine/toolchain/asset/texture/TextureCooker.hpp>
 
 #include <lux/cxx/algorithm/sha256.hpp>
@@ -1356,7 +1357,7 @@ namespace lux::toolchain
             return rejected("Model source file count exceeds its limit");
         }
         std::error_code error;
-        const auto source_root = std::filesystem::canonical(root, error);
+        const auto source_root = std::filesystem::canonical(lux::engine::platform::nativeFilePath(root), error);
         if (error)
         {
             return rejected("Cannot resolve model source root: " + error.message());
@@ -1371,7 +1372,8 @@ namespace lux::toolchain
             {
                 return rejected("Invalid model dependency: " + path);
             }
-            const auto full = std::filesystem::weakly_canonical(source_root / path, error);
+            const auto full =
+                std::filesystem::weakly_canonical(lux::engine::platform::nativeFilePath(source_root / path), error);
             if (error)
             {
                 return rejected("Cannot resolve model dependency: " + path + ": " + error.message());
@@ -1381,7 +1383,8 @@ namespace lux::toolchain
             {
                 return rejected("Model dependency leaves its source root: " + path);
             }
-            const bool exists = std::filesystem::exists(full, error);
+            const auto native_path = lux::engine::platform::nativeFilePath(full);
+            const bool exists = std::filesystem::exists(native_path, error);
             if (error)
             {
                 return rejected("Cannot inspect model dependency: " + path + ": " + error.message());
@@ -1393,11 +1396,11 @@ namespace lux::toolchain
                 );
                 continue;
             }
-            if (!std::filesystem::is_regular_file(full, error) || error)
+            if (!std::filesystem::is_regular_file(native_path, error) || error)
             {
                 return rejected("Model dependency is not a readable file: " + path);
             }
-            std::ifstream input(full, std::ios::binary | std::ios::ate);
+            std::ifstream input(native_path, std::ios::binary | std::ios::ate);
             const auto length = input.tellg();
             if (!input || length < 0 || static_cast<std::uintmax_t>(length) > max_bytes - bytes)
             {

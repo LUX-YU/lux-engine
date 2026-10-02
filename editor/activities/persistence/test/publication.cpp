@@ -1,5 +1,7 @@
 #include <lux/engine/editor/storage/FileArtifactStore.hpp>
+#include <lux/engine/editor/storage/FilePublication.hpp>
 #include <cassert>
+#include <algorithm>
 #include <fstream>
 #include <iostream>
 #include <span>
@@ -89,6 +91,26 @@ int main(int argc, char** argv)
     std::filesystem::create_hard_link(root / "Content/a.lux", root / "alias.lux");
     assert(!store.resolve("alias.lux") && !store.resolve("Content/a.lux"));
     std::filesystem::remove(root / "alias.lux");
+    // Extended paths are an IO detail; aliases still resolve to one ordinary physical key.
+    std::filesystem::path long_address{"Content"};
+    while ((root / long_address).native().size() < 300)
+        long_address /= "immutable-generation";
+    long_address /= "payload.bin";
+    auto long_target = store.resolve(long_address.generic_string());
+    assert(long_target && long_target->expected_version == "missing");
+    const auto long_artifact = artifact("long published bytes");
+    PublicationQuery long_work{{6}, *long_target, long_artifact};
+    auto long_outcome = store.publish(long_work);
+    assert(std::holds_alternative<CommitReceipt>(long_outcome));
+    auto long_read = storage::readPublicationFile(root / long_address, 1024);
+    assert(long_read && std::span(*long_read).size() == long_artifact->bytes.size());
+    assert(std::ranges::equal(*long_read, long_artifact->bytes.view()));
+    auto long_resolved = store.resolve(long_address.generic_string());
+    assert(long_resolved && long_resolved->key == long_target->key);
+    assert(long_resolved->expected_version == std::get<CommitReceipt>(long_outcome).version);
+    assert(std::holds_alternative<NotPublished>(store.publish(long_work)));
+    assert(storage::publicationFileDigest(root / long_address) == long_resolved->expected_version);
+    std::cout << "Long physical target: read/digest/version conflict retain actual bytes PASS\n";
     std::cout
         << "Actual filesystem access denial preserves old bytes; case alias and unsupported hard-link aliases PASS\n";
     std::cout << "X05-08 real file create/overwrite/conflict/cancel/path-failure/post-replace durability: PASS\n";

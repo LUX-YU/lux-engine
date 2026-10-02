@@ -1,11 +1,11 @@
 #pragma once
 #include <filesystem>
-namespace lux::editor::storage::detail
+namespace lux::engine::platform
 {
 #if defined(_WIN32)
-    // Keep coordinator keys canonical and platform-neutral. Only the OS/CRT IO boundary
-    // uses extended paths, including the staging suffix of immutable model generations.
-    inline std::filesystem::path nativePublicationPath(const std::filesystem::path& path)
+    // Use only at OS/CRT file boundaries, after logical path and confinement validation.
+    // Extended Windows paths must not become persisted asset names or coordinator keys.
+    inline std::filesystem::path nativeFilePath(const std::filesystem::path& path)
     {
         if (!path.is_absolute())
             return path;
@@ -17,7 +17,7 @@ namespace lux::editor::storage::detail
         return L"\\\\?\\" + native;
     }
 #else
-    inline const std::filesystem::path& nativePublicationPath(const std::filesystem::path& path) noexcept
+    inline const std::filesystem::path& nativeFilePath(const std::filesystem::path& path) noexcept
     {
         return path;
     }

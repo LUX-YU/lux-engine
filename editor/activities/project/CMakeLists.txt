@@ -25,11 +25,13 @@ target_link_libraries(editor_storage PUBLIC lux::engine::editor::editor_project 
 target_link_libraries(editor_storage PUBLIC lux::engine::project::project_plugins lux::engine::editor::editor_persistence_execution)
 component_add_transitive_commands(editor_storage "find_package(lux-engine-editor-persistence REQUIRED COMPONENTS editor_persistence_execution)")
 component_add_transitive_commands(editor_storage "find_package(lux-engine-project-plugins REQUIRED COMPONENTS project_plugins)")
-target_link_libraries(editor_storage PRIVATE lux::engine::scene::scene_asset lux::engine::editor::editor_file_publication)
+target_link_libraries(editor_storage PRIVATE lux::engine::platform::platform_process lux::engine::scene::scene_asset lux::engine::editor::editor_file_publication)
 component_add_transitive_commands(editor_storage
+    "find_package(lux-engine-platform REQUIRED COMPONENTS platform_process)"
     "find_package(lux-engine-editor-file-publication REQUIRED COMPONENTS editor_file_publication)")
 component_add_transitive_commands(editor_storage "find_package(lux-engine-scene-asset REQUIRED COMPONENTS scene_asset)")
 component_add_transitive_commands(editor_storage
+    "find_package(lux-engine-platform REQUIRED COMPONENTS platform_process)"
     "find_package(lux-engine-editor-project REQUIRED COMPONENTS editor_project)"
     "find_package(lux-engine-editor-contracts REQUIRED COMPONENTS editor_contracts)"
     "find_package(lux-engine-core REQUIRED COMPONENTS object meta log)"
@@ -89,7 +91,9 @@ find_package(tomlplusplus CONFIG REQUIRED)
 target_compile_definitions(editor_assets PRIVATE TOML_HEADER_ONLY=1 TOML_EXCEPTIONS=0)
 target_include_directories(editor_assets PRIVATE $<TARGET_PROPERTY:tomlplusplus::tomlplusplus,INTERFACE_INCLUDE_DIRECTORIES>)
 target_link_libraries(editor_assets PUBLIC lux::engine::editor::editor_storage lux::engine::toolchain::toolchain_model_cooker)
+target_link_libraries(editor_assets PRIVATE lux::engine::platform::platform_process)
 component_add_transitive_commands(editor_assets
+    "find_package(lux-engine-platform REQUIRED COMPONENTS platform_process)"
     "find_package(lux-engine-editor-storage REQUIRED COMPONENTS editor_storage)"
     "find_package(lux-engine-toolchain-asset REQUIRED COMPONENTS toolchain_model_cooker)")
 lux_classify_target(TARGET editor_assets LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)

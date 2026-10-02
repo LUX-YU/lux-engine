@@ -45,8 +45,12 @@ int main(int argc, char** argv)
     using namespace lux;
     using namespace lux::editor;
     assert(argc == 2);
-    const auto root = std::filesystem::absolute(argv[1]) /
-                      std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+    auto root = std::filesystem::absolute(argv[1]) /
+                std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+    // The immutable source generation adds 120+ characters. Exercise it past MAX_PATH
+    // independently of the build tree name, including a reimport without an external source.
+    while (root.native().size() < 170)
+        root /= "source-generation";
     std::filesystem::create_directories(root);
     const auto id = asset::AssetId{*uuids::uuid::from_string("57279371-1b9c-40d6-b55d-a1a12065d932")};
     const auto path = root / "Project.luxproject";

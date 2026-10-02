@@ -38,12 +38,14 @@ target_link_libraries(
         lux::engine::toolchain::toolchain_material_cooker
         lux::engine::toolchain::toolchain_texture_cooker
     PRIVATE
+        lux::engine::platform::platform_process
         assimp::assimp
         meshoptimizer::meshoptimizer
         lux::cxx::algorithm
 )
 component_add_transitive_commands(
     toolchain_model_cooker
+    "find_package(lux-engine-platform REQUIRED COMPONENTS platform_process)"
     "find_package(assimp CONFIG REQUIRED)"
     "find_package(meshoptimizer CONFIG REQUIRED)"
     "find_package(lux-cxx REQUIRED COMPONENTS algorithm)"

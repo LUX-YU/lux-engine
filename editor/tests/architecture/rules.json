@@ -5138,6 +5138,9 @@
       },
       "lux::cxx::memory": {
         "imported": true
+      },
+      "platform_process": {
+        "path": "modules/platform/process"
       }
     },
     "headers": [
@@ -5169,6 +5172,10 @@
       "editor/activities/workspace/include/lux/engine/editor/workspace/WorkspaceStore.hpp",
       "editor/activities/workspace/src/LegacyWorkspaceImporter.cpp",
       "editor/activities/workspace/src/WorkspaceStore.cpp"
+    ],
+    "native_libraries": [
+      "ole32",
+      "shell32"
     ]
   },
   "view_host": {
@@ -8979,6 +8986,9 @@
       },
       "scene_persistence": {
         "path": "editor/activities/scene"
+      },
+      "platform_process": {
+        "path": "modules/platform/process"
       }
     },
     "native_libraries": [
@@ -9204,7 +9214,8 @@
     "direct": [
       "lux::cxx::compile_time",
       "lux::cxx::algorithm",
-      "editor_persistence"
+      "editor_persistence",
+      "platform_process"
     ],
     "closure": {
       "edit_history": {
@@ -9239,6 +9250,9 @@
       },
       "lux::cxx::algorithm": {
         "imported": true
+      },
+      "platform_process": {
+        "path": "modules/platform/process"
       }
     },
     "headers": [
@@ -9292,7 +9306,7 @@
       "lux/cxx/algorithm/Sha256.hpp",
       "fcntl.h",
       "unistd.h",
-      "NativePublicationPath.hpp"
+      "lux/engine/platform/FilePath.hpp"
     ],
     "prefixes": [
       "lux/engine/editor/contracts/",
@@ -9305,6 +9319,10 @@
       "editor/activities/persistence/include/lux/engine/editor/storage/FilePublication.hpp",
       "editor/activities/persistence/include/lux/engine/editor/storage/FileArtifactStore.hpp",
       "editor/activities/persistence/test/publication.cpp"
+    ],
+    "native_libraries": [
+      "ole32",
+      "shell32"
     ]
   },
   "editor_viewport": {

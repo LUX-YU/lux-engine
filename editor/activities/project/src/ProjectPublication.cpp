@@ -1,6 +1,7 @@
 #include <lux/engine/editor/PublicationProbe.hpp>
 #include <lux/engine/editor/storage/FilePublication.hpp>
 #include <lux/engine/editor/storage/ProjectPublication.hpp>
+#include <lux/engine/platform/FilePath.hpp>
 #include <lux/engine/resource/asset/storage/pak/PakAssetProvider.hpp>
 
 #include <array>
@@ -323,7 +324,7 @@ namespace lux::editor
         if (!result)
             return failed(EProjectPublicationError::READ, path, result.error().native_code);
         std::error_code error;
-        const auto size = std::filesystem::file_size(path, error);
+        const auto size = std::filesystem::file_size(lux::engine::platform::nativeFilePath(path), error);
         if (!error)
         {
             LUX_EDITOR_IO("hash-read", path, size);
@@ -459,7 +460,9 @@ namespace lux::editor
 
     EditorResult<ProjectPackage> readProjectPackage(const std::filesystem::path& root, std::string path)
     {
-        auto provider = asset::PakAssetProvider::loadFromFile(root / std::filesystem::u8path(path));
+        auto provider = asset::PakAssetProvider::loadFromFile(
+            lux::engine::platform::nativeFilePath(root / std::filesystem::u8path(path))
+        );
         if (!provider)
         {
             return lux::cxx::unexpected(

@@ -1,4 +1,5 @@
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
+#include <lux/engine/platform/FilePath.hpp>
 
 #include <algorithm>
 #include <fstream>
@@ -43,10 +44,13 @@ namespace lux::editor
                 if (!contains(id))
                     return lux::cxx::unexpected(Error::NOT_FOUND);
                 std::error_code error;
-                const auto root = std::filesystem::canonical(root_, error);
+                const auto root = std::filesystem::canonical(lux::engine::platform::nativeFilePath(root_), error);
                 if (error)
                     return lux::cxx::unexpected(Error::IO_FAILURE);
-                const auto path = std::filesystem::canonical(root / std::filesystem::u8path(entry_.source_path), error);
+                const auto path = std::filesystem::canonical(
+                    lux::engine::platform::nativeFilePath(root / std::filesystem::u8path(entry_.source_path)),
+                    error
+                );
                 if (error)
                     return lux::cxx::unexpected(Error::IO_FAILURE);
                 const auto relative = path.lexically_relative(root);
@@ -54,13 +58,14 @@ namespace lux::editor
                                      std::ranges::any_of(relative, [](const auto& part) { return part == ".."; });
                 if (escapes)
                     return lux::cxx::unexpected(Error::UNSUPPORTED);
-                const auto size = std::filesystem::file_size(path, error);
+                const auto native_path = lux::engine::platform::nativeFilePath(path);
+                const auto size = std::filesystem::file_size(native_path, error);
                 if (error)
                     return lux::cxx::unexpected(Error::IO_FAILURE);
                 if (size > limit_)
                     return lux::cxx::unexpected(Error::LIMIT_EXCEEDED);
                 auto bytes = std::make_shared<std::vector<std::byte>>(static_cast<std::size_t>(size));
-                std::ifstream file(path, std::ios::binary);
+                std::ifstream file(native_path, std::ios::binary);
                 if (!file.read(reinterpret_cast<char*>(bytes->data()), static_cast<std::streamsize>(size)) ||
                     file.peek() != std::char_traits<char>::eof() || file.bad())
                     return lux::cxx::unexpected(Error::IO_FAILURE);

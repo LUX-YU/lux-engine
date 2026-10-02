@@ -1,3 +1,4 @@
+#include <lux/engine/platform/FilePath.hpp>
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -65,7 +66,7 @@ namespace lux::editor::assets
                 {
                     return Source{file.parent_path(), {file.filename().generic_string(), {}}, config};
                 }
-                std::ifstream stream(file, std::ios::binary | std::ios::ate);
+                std::ifstream stream(lux::engine::platform::nativeFilePath(file), std::ios::binary | std::ios::ate);
                 const auto size = stream.tellg();
                 const bool is_invalid_stream = !stream;
                 const bool is_invalid_size = size < 0 || size > 16U * 1024U * 1024U;
@@ -222,12 +223,16 @@ namespace lux::editor::assets
                 if (replacement.empty())
                 {
                     std::error_code ec;
-                    const auto parent = std::filesystem::weakly_canonical(file.parent_path(), ec);
+                    const auto parent = std::filesystem::weakly_canonical(
+                        lux::engine::platform::nativeFilePath(file.parent_path()),
+                        ec
+                    );
                     if (ec)
                     {
                         return failed(EEditorError::SOURCE_FAILURE, "model.recipe.root");
                     }
-                    const auto resolved = std::filesystem::weakly_canonical(result.root, ec);
+                    const auto resolved =
+                        std::filesystem::weakly_canonical(lux::engine::platform::nativeFilePath(result.root), ec);
                     if (ec)
                     {
                         return failed(EEditorError::SOURCE_FAILURE, "model.recipe.root");

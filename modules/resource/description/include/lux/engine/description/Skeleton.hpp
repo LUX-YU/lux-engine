@@ -9,7 +9,7 @@ namespace lux::rdesc
     /**
      * @brief Structure representing a single bone in a skeleton hierarchy.
      *
-     * One Bone_t is one named joint in the rest pose tree. `parent_index`
+     * One BoneRestPose is one named joint in the rest pose tree. `parent_index`
      * is an index into the owning Skeleton's `bones` array, or -1 for the
      * root bone. The two transforms split the rest-pose information into
      * the two forms that runtime skinning actually needs:
@@ -26,11 +26,11 @@ namespace lux::rdesc
      *                        Equal to `aiBone::mOffsetMatrix` for Assimp
      *                        imports.
      *
-     * Suffix `_t` distinguishes this from the per-vertex `struct Bone`
+     * The rest-pose name distinguishes this from the per-vertex `struct Bone`
      * (bone influences + weights) declared in Vertex.hpp; the two are
      * different concepts that historically share a name.
      */
-    struct Bone_t
+    struct BoneRestPose
     {
         std::string name;               ///< Bone name (matches Assimp / DCC tool)
         int32_t parent_index;           ///< Index into Skeleton::bones, or -1 for root
@@ -52,7 +52,7 @@ namespace lux::rdesc
      */
     struct Skeleton
     {
-        std::vector<Bone_t> bones; ///< Bone array; bone i's parent is bones[bones[i].parent_index]
+        std::vector<BoneRestPose> bones; ///< Bone array; bone i's parent is bones[bones[i].parent_index]
 
         /// World-space prefix applied to ROOT bones (parent_index < 0): the
         /// accumulated transform of the non-bone nodes (armature / empty objects)

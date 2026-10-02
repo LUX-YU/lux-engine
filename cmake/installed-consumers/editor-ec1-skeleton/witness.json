@@ -1,0 +1,15 @@
+{
+  "format": "lux.engine.plugin",
+  "version": 2,
+  "plugin": {
+    "id": "example.witness",
+    "version": 1,
+    "author": "Lux SDK qualification",
+    "description": "Application qualification observations; not an authoring provider",
+    "source": "plugin",
+    "dependencies": [],
+    "runtime_library": {"exports": ["components"]}
+  },
+  "abilities": [], "implementations": [], "systems": [], "components": [],
+  "configurations": [], "render_features": [], "render_scene_bindings": []
+}

@@ -180,7 +180,7 @@ namespace lux::asset
 
         [[nodiscard]] std::size_t skeletonRetained(const lux::rdesc::Skeleton& skeleton) noexcept
         {
-            std::size_t result = sizeof(skeleton) + skeleton.bones.capacity() * sizeof(lux::rdesc::Bone_t);
+            std::size_t result = sizeof(skeleton) + skeleton.bones.capacity() * sizeof(lux::rdesc::BoneRestPose);
             for (const auto& bone : skeleton.bones)
             {
                 if (bone.name.capacity() > (std::numeric_limits<std::size_t>::max)() - result)

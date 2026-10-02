@@ -1,0 +1,20 @@
+{
+  "format": "lux.engine.plugin",
+  "version": 2,
+  "plugin": {
+    "id": "example.skeleton",
+    "version": 1,
+    "author": "Lux SDK example",
+    "description": "Skeleton authoring through public Session, History, persistence and Pane capabilities",
+    "source": "plugin",
+    "dependencies": [],
+    "runtime_library": {"exports": ["components"]}
+  },
+  "abilities": [],
+  "implementations": [],
+  "systems": [],
+  "components": [],
+  "configurations": [],
+  "render_features": [],
+  "render_scene_bindings": []
+}

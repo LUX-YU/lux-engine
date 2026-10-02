@@ -198,6 +198,31 @@ namespace lux::editor::application
     }
     void EditorApplication::Impl::installWorkspaceView(extensions::ContributionDraft& draft)
     {
+        // The same recovery operations are available to menus, scripts and installed workbench consumers.
+        // Commands retain the existing workspace owner, admission and publication path.
+        const auto recovery_command = [&](const char* id, const char* label, VWorkspaceIntent intent) {
+            draft.commands.push_back(std::make_shared<commands::CommandEntry>(
+                contracts::CodeLease::builtin(),
+                commands::CommandDescriptor{commands::CommandId{id}, label, "Workspace"},
+                [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
+                    return commands::CommandState{phase_ == EApplicationPhase::RUNNING};
+                },
+                [this, intent = std::move(intent)](const commands::CommandInvocation&)
+                    -> commands::CommandResult<commands::DispatchReceipt> {
+                    auto requested = executeWorkspaceIntent(intent);
+                    if (!requested)
+                        return cxx::unexpected(commands::CommandFailure{
+                            commands::ECommandError::DOMAIN_FAILURE,
+                            requested.error().domain,
+                            requested.error().reason,
+                            requested.error().message
+                        });
+                    return commands::DispatchReceipt{commands::ImmediateCompletion{}};
+                }
+            ));
+        };
+        recovery_command("lux.editor.recovery.capture", "Record content locations", CaptureRecovery{});
+        recovery_command("lux.editor.recovery.restore", "Restore recorded content", RestoreRecovery{});
         class WorkspacePane final : public lux::ui::Pane
         {
             struct Content final : lux::ui::Element

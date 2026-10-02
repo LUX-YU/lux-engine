@@ -19,7 +19,7 @@ component_add_transitive_commands(scene_ui
     "find_package(lux-engine-scene-mesh-query REQUIRED COMPONENTS scene_mesh_query)"
     "find_package(lux-engine-project-plugins REQUIRED COMPONENTS project_plugins)"
     "find_package(lux-engine-scene-transform REQUIRED COMPONENTS scene_transform)"
-    "find_package(lux-engine-editor-view-host REQUIRED COMPONENTS view_host)"
+    "find_package(lux-engine-editor-desktop REQUIRED COMPONENTS view_host)"
     "find_package(imgui REQUIRED COMPONENTS core)")
 lux_classify_target(TARGET scene_ui LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 
@@ -61,3 +61,4 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     add_test(NAME editor.inspector_codegen COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test/inspector_codegen.py")
     set_tests_properties(editor.inspector_codegen PROPERTIES LABELS "editor;native")
 endif()
+

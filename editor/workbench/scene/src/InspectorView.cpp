@@ -392,7 +392,14 @@ namespace lux::editor::scene
     }
     SceneEditResult<void> InspectorView::prepareClose()
     {
-        return impl_->clear();
+        for (auto& entry : impl_->entries_)
+        {
+            auto cancelled = entry->fields->cancel();
+            if (!cancelled)
+                return cancelled;
+        }
+        impl_->structure_request_.reset();
+        return {};
     }
     std::optional<SceneObjectRef> InspectorView::target() const noexcept
     {

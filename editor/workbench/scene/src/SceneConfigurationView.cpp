@@ -217,7 +217,25 @@ namespace lux::editor::scene
     }
     SceneConfigurationResult<void> SceneConfigurationView::prepareClose()
     {
-        return impl_->clear();
+        if (!impl_->binding_)
+            return {};
+        // Refresh discards the draft under the original read gate while preserving the binding.
+        // Another view may still refuse the same prepared close batch.
+        auto restored = impl_->rebind(*impl_->binding_);
+        if (!restored)
+        {
+            const auto* error = std::get_if<SceneEditError>(&restored.error().cause);
+            const bool closed = error && error->code == ESceneEditError::SESSION &&
+                                error->session == sessions::ESessionError::STALE_SESSION;
+            if (closed)
+                return impl_->clear();
+        }
+        if (restored)
+        {
+            impl_->apply_requested_ = false;
+            impl_->revert_requested_ = false;
+        }
+        return restored;
     }
     SceneConfigurationElement* SceneConfigurationView::form() noexcept
     {

@@ -247,7 +247,10 @@ namespace lux::editor::desktop
             Dispatch guard(dispatching_);
             return commitAdmitted(prepared);
         }
-        views::ViewResult<object::SignalDelivery> commitAdmitted(PreparedViewBatch& prepared)
+        views::ViewResult<object::SignalDelivery> commitAdmitted(
+            PreparedViewBatch& prepared,
+            cxx::function_ref<void()>* handoff = nullptr
+        )
         {
             auto* data = prepared.data_.get();
             const bool stale = !data || data->domain != domain_ || data->revision != revision_ || !data->attachment;
@@ -288,6 +291,8 @@ namespace lux::editor::desktop
                 prepared.data_ = std::move(active);
                 return cxx::unexpected(attachmentError(committed.error()));
             }
+            if (handoff)
+                (*handoff)();
             return committed->notifications;
         }
         cxx::expected<PreparedViewBatch, views::ViewPreparationFailure> prepareClose(std::span<const views::ViewId> ids)
@@ -576,6 +581,20 @@ namespace lux::editor::desktop
     {
         return impl_->commit(prepared);
     }
+    views::ViewResult<object::SignalDelivery> ViewHost::commitClose(
+        PreparedViewBatch& prepared,
+        cxx::function_ref<void()> handoff
+    )
+    {
+        if (impl_->closing_)
+            return cxx::unexpected(views::EViewError::CLOSED);
+        if (impl_->busy())
+            return cxx::unexpected(views::EViewError::BUSY);
+        if (!prepared.data_ || !prepared.data_->detach)
+            return cxx::unexpected(views::EViewError::INVALID_ID);
+        Dispatch guard(impl_->dispatching_);
+        return impl_->commitAdmitted(prepared, &handoff);
+    }
     cxx::expected<PreparedViewBatch, views::ViewPreparationFailure> ViewHost::prepareClose(
         std::span<const views::ViewId> ids
     )
@@ -685,6 +704,17 @@ namespace lux::editor::desktop
         if (!slot)
             return cxx::unexpected(views::EViewError::INVALID_ID);
         return impl_->info(*slot);
+    }
+    views::ViewResult<void> ViewHost::withView(views::ViewId id, cxx::function_ref<void(lux::ui::Pane&)> visit)
+    {
+        if (impl_->busy())
+            return cxx::unexpected(views::EViewError::BUSY);
+        auto* slot = impl_->find(id);
+        if (!slot)
+            return cxx::unexpected(views::EViewError::INVALID_ID);
+        Dispatch guard(impl_->dispatching_);
+        visit(*slot->owner->pane());
+        return {};
     }
     views::ViewResult<std::vector<views::ViewInfo>> ViewHost::describeAll() const
     {

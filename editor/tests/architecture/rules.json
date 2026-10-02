@@ -5272,7 +5272,10 @@
       "map",
       "lux/cxx/core/function_ref.hpp",
       "lux/engine/editor/workspace/LayoutPlan.hpp",
-      "lux/engine/ui/Docking.hpp"
+      "lux/engine/ui/Docking.hpp",
+      "lux/engine/editor/desktop/ReviewView.hpp",
+      "lux/engine/ui/Controls.hpp",
+      "lux/engine/ui/Layout.hpp"
     ],
     "prefixes": [],
     "test_headers": {
@@ -5283,7 +5286,8 @@
         "lux/engine/editor/desktop/ViewHost.hpp",
         "lux/engine/ui/Element.hpp",
         "array",
-        "source_location"
+        "source_location",
+        "lux/engine/editor/desktop/ReviewView.hpp"
       ]
     },
     "files": [
@@ -5301,7 +5305,9 @@
       "editor/workbench/desktop/src/ViewHost.cpp",
       "editor/workbench/desktop/src/WindowInput.cpp",
       "editor/workbench/desktop/src/WindowOutput.cpp",
-      "editor/workbench/desktop/test/host.cpp"
+      "editor/workbench/desktop/test/host.cpp",
+      "editor/workbench/desktop/src/ReviewView.cpp",
+      "editor/workbench/desktop/include/lux/engine/editor/desktop/ReviewView.hpp"
     ]
   },
   "desktop_shell": {
@@ -5690,7 +5696,10 @@
       "map",
       "lux/cxx/core/function_ref.hpp",
       "lux/engine/editor/workspace/LayoutPlan.hpp",
-      "lux/engine/ui/Docking.hpp"
+      "lux/engine/ui/Docking.hpp",
+      "lux/engine/editor/desktop/ReviewView.hpp",
+      "lux/engine/ui/Controls.hpp",
+      "lux/engine/ui/Layout.hpp"
     ],
     "prefixes": [],
     "test_headers": {
@@ -5701,7 +5710,8 @@
         "lux/engine/editor/desktop/ViewHost.hpp",
         "lux/engine/ui/Element.hpp",
         "array",
-        "source_location"
+        "source_location",
+        "lux/engine/editor/desktop/ReviewView.hpp"
       ]
     },
     "files": [
@@ -5721,7 +5731,9 @@
       "editor/workbench/desktop/src/WindowOutput.cpp",
       "editor/workbench/desktop/test/host.cpp",
       "editor/workbench/desktop/src/CommandMenu.cpp",
-      "editor/workbench/desktop/include/lux/engine/editor/desktop/CommandMenu.hpp"
+      "editor/workbench/desktop/include/lux/engine/editor/desktop/CommandMenu.hpp",
+      "editor/workbench/desktop/src/ReviewView.cpp",
+      "editor/workbench/desktop/include/lux/engine/editor/desktop/ReviewView.hpp"
     ]
   },
   "editor_widgets": {
@@ -7712,7 +7724,8 @@
         "type_traits",
         "cstdio",
         "algorithm",
-        "lux/engine/ui/Root.hpp"
+        "lux/engine/ui/Root.hpp",
+        "lux/engine/editor/desktop/ReviewView.hpp"
       ]
     },
     "files": [
@@ -7910,7 +7923,8 @@
         "lux/engine/editor/project/AssetPickerElement.hpp",
         "lux/engine/editor/project/ProjectView.hpp",
         "lux/engine/ui/Layout.hpp",
-        "lux/engine/ui/Root.hpp"
+        "lux/engine/ui/Root.hpp",
+        "lux/engine/editor/desktop/ReviewView.hpp"
       ]
     },
     "files": [
@@ -17732,6 +17746,12 @@
       ],
       "editor/activities/scene/src/ModelCreationOperation.cpp": [
         "scene_execution"
+      ],
+      "editor/workbench/desktop/src/ReviewView.cpp": [
+        "view_host"
+      ],
+      "editor/workbench/desktop/include/lux/engine/editor/desktop/ReviewView.hpp": [
+        "view_host"
       ]
     },
     "native_libraries": [

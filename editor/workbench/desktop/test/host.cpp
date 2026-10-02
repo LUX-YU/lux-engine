@@ -1,4 +1,5 @@
 #include <lux/engine/editor/desktop/ViewHost.hpp>
+#include <lux/engine/editor/desktop/ReviewView.hpp>
 #include <lux/engine/ui/Root.hpp>
 #include <lux/engine/ui/Element.hpp>
 #include <cassert>
@@ -335,8 +336,16 @@ namespace
                 assert(!host.close(one) && !host.close(two)); // Both identities retired before notification.
             }
         ));
-        assert(host.commit(prepared));
-        assert(detached == 2 && first.code == 1 && second.code == 1);
+        unsigned handed_off{};
+        const auto handoff = [&]() noexcept {
+            ++handed_off;
+            assert(detached == 2 && first.pane == 0 && second.pane == 0);
+            assert(!host.describe(one) && !host.describe(two));
+            assert(!host.drain()); // Cleanup stays inside the original Host dispatch.
+        };
+        assert(host.commitClose(prepared, handoff));
+        assert(handed_off == 1 && detached == 2 && first.code == 1 && second.code == 1);
+        assert(!host.commitClose(prepared, handoff) && handed_off == 1);
         assert(take(host.describeAll()).empty() && !host.commit(prepared));
     }
     void layoutAtomicity(object::ObjectDispatcherRef dispatcher)
@@ -459,6 +468,41 @@ namespace
         assert(candidates[0].owner.pane() && candidates[1].owner.pane());
         assert(!first.pane && !second.pane && take(host.describeAll()).empty());
     }
+    void review(object::ObjectDispatcherRef dispatcher)
+    {
+        using enum desktop::EReviewChoice;
+        auto root = take(ui::Root::create(dispatcher));
+        desktop::ViewHost host(*root);
+        auto question =
+            desktop::ReviewQuestion{91, "Unsaved scene", "Save this captured scene?", {SAVE, DISCARD, CANCEL}};
+        auto view = take(desktop::ReviewView::create(dispatcher, ui::PaneId{"review"}, question));
+        assert(view->modal() && !view->attachedRoot() && !view->response());
+        views::DetachedView candidate{contracts::CodeLease::builtin(), std::move(view)};
+        auto id = take(host.adopt(candidate, views::ViewRestoreKey{"review"})).id;
+        bool visited{};
+        const auto borrow = [&](ui::Pane& pane) {
+            visited = true;
+            assert(pane.type() == ui::PaneTypeId{"lux.editor.review"});
+            auto& modal = static_cast<desktop::ReviewView&>(pane);
+            assert(modal.question().request == 91 && !modal.answer(KEEP_CONTENT));
+            pane.requestClose(); // Native close means Cancel; it does not destroy the modal.
+            assert(modal.response() && modal.response()->choice == CANCEL && modal.response()->request == 91);
+            assert(!modal.answer(SAVE)); // First answer cannot be overwritten by late input.
+            assert(host.close(id));
+            assert(!host.drain()); // Callback cannot invalidate the current borrowed reference.
+            const auto nested = [](ui::Pane&) {};
+            auto recursive = host.withView(id, nested);
+            assert(!recursive && recursive.error() == views::EViewError::BUSY);
+        };
+        assert(host.withView(id, borrow) && visited && host.describe(id));
+        take(host.drain());
+        visited = false;
+        assert(!host.withView(id, borrow) && !visited);
+        question.choices = {SAVE};
+        assert(!desktop::ReviewView::create(dispatcher, ui::PaneId{"invalid"}, question));
+        question.choices = {CANCEL, CANCEL};
+        assert(!desktop::ReviewView::create(dispatcher, ui::PaneId{"invalid"}, question));
+    }
 }
 int main()
 {
@@ -474,5 +518,6 @@ int main()
     batchFailure(queue.dispatcherRef());
     layoutAtomicity(queue.dispatcherRef());
     atomicClose(queue.dispatcherRef());
+    review(queue.dispatcherRef());
     std::puts("PASS P10 real ViewHost ownership, bounded requests, generation, callback batches and prepare failure");
 }

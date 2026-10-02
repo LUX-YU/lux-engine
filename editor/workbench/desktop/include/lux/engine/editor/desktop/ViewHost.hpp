@@ -73,6 +73,13 @@ namespace lux::editor::desktop
             std::optional<lux::ui::PreparedDockTree> docking = {}
         );
         [[nodiscard]] views::ViewResult<object::SignalDelivery> commit(PreparedViewBatch&);
+        // Close-only handoff: after successful detach and notification, before detached owners are
+        // destroyed. The application can commit already prepared content permits here. This callback
+        // must not fail or retain the Host borrow; it is never called if structural commit is refused.
+        [[nodiscard]] views::ViewResult<object::SignalDelivery> commitClose(
+            PreparedViewBatch&,
+            cxx::function_ref<void()> handoff
+        );
         [[nodiscard]] cxx::
             expected<PreparedViewBatch, views::ViewPreparationFailure> prepareClose(std::span<const views::ViewId>);
         // Native close is an unapproved user intent. Only the application decides last-view/content policy.
@@ -91,6 +98,9 @@ namespace lux::editor::desktop
             std::string label
         ) const;
         [[nodiscard]] views::ViewResult<views::ViewInfo> describe(views::ViewId) const override;
+        // Synchronous owner-thread borrow only. Structural requests are deferred until it returns.
+        // A caller checks pane.type() before a concrete cast and never retains the reference.
+        [[nodiscard]] views::ViewResult<void> withView(views::ViewId, cxx::function_ref<void(lux::ui::Pane&)> visit);
         [[nodiscard]] views::ViewResult<std::vector<views::ViewInfo>> describeAll() const;
         [[nodiscard]] views::ViewResult<std::optional<views::ViewPreparationFailure>> closeFailure(views::ViewId) const;
         [[nodiscard]] views::ViewResult<void> close(views::ViewId) noexcept override;

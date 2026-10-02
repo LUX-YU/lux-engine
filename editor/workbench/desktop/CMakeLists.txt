@@ -17,7 +17,7 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     set_tests_properties(editor.detached_views PROPERTIES LABELS "editor;native;P08" TIMEOUT 60 RUN_SERIAL TRUE)
 endif()
 
-add_component(COMPONENT_NAME view_host NAMESPACE lux::engine::editor STATIC SOURCE_FILES src/ViewHost.cpp src/ViewFactory.cpp)
+add_component(COMPONENT_NAME view_host NAMESPACE lux::engine::editor STATIC SOURCE_FILES src/ViewHost.cpp src/ViewFactory.cpp src/ReviewView.cpp)
 component_include_directories(view_host BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
 target_link_libraries(view_host PUBLIC lux::engine::editor::view_api lux::engine::editor::layout_model)
 component_add_transitive_commands(view_host
@@ -55,6 +55,7 @@ install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/desktop/DesktopShell.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/desktop/Presentation.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/desktop/ViewHost.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/desktop/ReviewView.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/desktop/WindowInput.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/desktop/WindowOutput.hpp
     DESTINATION include/lux/engine/editor/desktop COMPONENT lux_engine_editor_desktop)

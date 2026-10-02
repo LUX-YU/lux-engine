@@ -519,6 +519,90 @@ namespace
         f.wait([&] { return !f.desktop->views().describe(id); }, false);
         assert(!group.overlay() && f.session->describe().current == before.current);
     }
+    void closeInspectorContent(Fixture& f)
+    {
+        auto snapshot = take(f.session->capture());
+        auto package = take(author::buildSceneSnapshotPackage(snapshot));
+        auto reservation =
+            take(f.store.reserve<author::SceneSession>({"lux.editor.scene"}, contracts::CodeLease::builtin()));
+        auto model = take(author::SceneSession::create(
+            reservation.id(),
+            {},
+            take(author::SceneSource::create(package, f.environment.components))
+        ));
+        auto* source = model.get();
+        assert(f.store.prepare(reservation, model));
+        auto key = take(f.store.key<author::SceneSession>(take(f.store.publish(reservation))));
+        author::SceneInteractionGroup group(f.store.access<author::SceneSession>(), key, {901});
+        const auto before = source->describe();
+        const author::SceneObjectRef target{key.id(), before.current.state.history, f.object};
+        auto candidate = take(author::makeInspectorView(
+            f.messages.dispatcherRef(),
+            ui::PaneId{"closing-inspector"},
+            f.store.access<author::SceneSession>(),
+            {key, &group},
+            target,
+            f.environment.components,
+            author::sceneInspectorComponents()
+        ));
+        auto* inspector = static_cast<author::InspectorView*>(candidate.pane());
+        auto& host = f.desktop->views();
+        const auto view = take(host.adopt(candidate, views::ViewRestoreKey{"closing-inspector"})).id;
+        class BlockingPane final : public ui::Pane
+        {
+        public:
+            using Pane::Pane;
+            bool refuse{true};
+        };
+        auto blocker = std::make_unique<BlockingPane>(
+            f.messages.dispatcherRef(),
+            ui::PaneId{"close-blocker"},
+            ui::PaneTypeId{"test.blocker"},
+            "Blocker"
+        );
+        auto* blocking = blocker.get();
+        views::DetachedView other{
+            contracts::CodeLease::builtin(),
+            std::move(blocker),
+            +[](ui::Pane& pane) -> views::ViewCloseResult {
+                if (static_cast<BlockingPane&>(pane).refuse)
+                    return cxx::unexpected(views::ViewPreparationFailure{"test.close", 7, "Not ready", true});
+                return {};
+            }
+        };
+        const auto other_id = take(host.adopt(other, views::ViewRestoreKey{"close-blocker"})).id;
+        f.frame(false);
+        const std::array ids{view, other_id};
+        assert(!host.prepareClose(ids));
+        assert(host.describe(view) && host.describe(other_id));
+        assert(inspector->target() == target && source->describe().current == before.current);
+        blocking->refuse = false;
+        auto prepared = take(host.prepareClose(ids));
+        assert(inspector->target() == target);
+        std::array permits{take(f.store.prepareClose(before.current))};
+        bool notified{};
+        auto connection = take(object::LuxObject::connect(
+            &f.desktop->root(),
+            &ui::Root::attachmentChanged,
+            [&](const ui::AttachmentChanged& change) noexcept {
+                if (change.mounted)
+                    return;
+                notified = true;
+                assert(take(f.store.describe(key.id())).admission == sessions::EEditAdmission::CLOSING);
+                auto refused = source->apply({before.current, "reentrant close edit", {}});
+                assert(!refused);
+                assert(inspector->target() == target); // Still owned until the handoff completes.
+            }
+        ));
+        const auto commit_content = [&]() noexcept {
+            assert(notified && f.store.close(permits));
+            assert(!f.store.describe(key.id()));
+        };
+        assert(host.commitClose(prepared, commit_content));
+        assert(notified && !host.describe(view) && !host.describe(other_id));
+        assert(f.store.describe(f.key->id()));
+        std::puts("PASS P12 real Inspector abandonable close preparation and guarded content retirement handoff");
+    }
     void runningView(Fixture& f)
     {
         author::RunStore runs(*f.runtime, f.execution);
@@ -1507,6 +1591,7 @@ int main(int argc, char** argv)
     assert(f.desktop->views().close(id_b) && f.desktop->views().close(id_c));
     f.wait([&] { return take(f.desktop->views().describeAll()).empty(); });
     inspectorView(f);
+    closeInspectorContent(f);
     creationView(f, argv[2]);
     runningView(f);
     const auto compiled = materialView(f);

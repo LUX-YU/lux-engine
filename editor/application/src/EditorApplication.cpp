@@ -32,6 +32,7 @@ namespace lux::editor::application
         open_intents_.reserve(64);
         model_placements_.reserve(32);
         artifacts_.reserve(64);
+        workspace_publications_.reserve(16);
     }
     EditorApplication::Impl::~Impl()
     {

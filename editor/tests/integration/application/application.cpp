@@ -3,6 +3,7 @@
 #include <lux/engine/editor/desktop/DesktopTestAccess.hpp>
 #include <lux/engine/editor/scene/OutlinerView.hpp>
 #include <lux/engine/editor/scene/InspectorView.hpp>
+#include <lux/engine/editor/storage/FilePublication.hpp>
 #include <lux/engine/editor/scene/ResourceView.hpp>
 #include <lux/engine/scene/SceneSystemInstaller.hpp>
 #include <lux/engine/resource/asset/model/ModelAsset.hpp>
@@ -182,6 +183,67 @@ int main(int argc, char** argv)
     assert(impl.desktop_->views().describeAll()->size() == views->size());
     assert(app->applyLayout(*before_layout));
     std::cout << "C01: malformed product layout preserves hidden state, count and exact dock encoding\n";
+    using WorkspaceAction = std::remove_reference_t<decltype(impl)>::EWorkspaceAction;
+    const auto settle_workspace = [&] {
+        const auto limit = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+        while (std::ranges::any_of(impl.workspace_publications_, [](const auto& item) { return !item.result; }))
+        {
+            assert(std::chrono::steady_clock::now() < limit);
+            assert(app->update());
+            std::this_thread::yield();
+        }
+        for (const auto& report : impl.workspace_publications_)
+            assert(report.result && std::holds_alternative<persistence::CommitReceipt>(*report.result));
+    };
+    assert(app->execute(commands::CommandId{"lux.editor.workspace"}));
+    assert(app->update());
+    assert(impl.executeWorkspaceIntent({WorkspaceAction::SAVE_LAYOUT, {}, "Quality workspace"}));
+    settle_workspace();
+    assert(impl.layout_catalog_.layouts.size() == 1);
+    const auto stored_id = impl.layout_catalog_.layouts.front().id;
+    auto stored = impl.workspace_.readLayout(stored_id);
+    assert(stored && stored->value.label == "Quality workspace");
+    assert(impl.executeWorkspaceIntent({WorkspaceAction::RENAME_LAYOUT, stored_id, "Renamed"}));
+    settle_workspace();
+    auto renamed = impl.workspace_.readLayout(stored_id);
+    assert(renamed && renamed->value.id == stored_id && renamed->value.label == "Renamed");
+    assert(renamed->target.key == stored->target.key);
+    assert(impl.desktop_->views().show(views->front().id));
+    assert(impl.executeWorkspaceIntent({WorkspaceAction::APPLY_LAYOUT, stored_id}));
+    assert(!impl.desktop_->views().describe(views->front().id)->visible);
+    settle_workspace();
+    assert(impl.workspace_.readPreferences()->value.selected_layout == stored_id);
+    const auto preferences_file = root / ".lux/workspace/preferences.toml";
+    const auto preferences_before = storage::readPublicationFile(preferences_file, 65536);
+    assert(preferences_before);
+    {
+        std::ofstream output(preferences_file, std::ios::binary | std::ios::trunc);
+        output << "bad = [";
+    }
+    assert(impl.desktop_->views().show(views->front().id));
+    auto applied_with_bad_preferences = impl.executeWorkspaceIntent({WorkspaceAction::APPLY_LAYOUT, stored_id});
+    assert(
+        !applied_with_bad_preferences &&
+        applied_with_bad_preferences.error().domain == "workspace.applied.preferences-read"
+    );
+    assert(!impl.desktop_->views().describe(views->front().id)->visible); // UI commit is not rolled back.
+    {
+        std::ofstream output(preferences_file, std::ios::binary | std::ios::trunc);
+        output.write(reinterpret_cast<const char*>(preferences_before->data()), preferences_before->size());
+    }
+    assert(impl.executeWorkspaceIntent({WorkspaceAction::REMOVE_LAYOUT, stored_id}));
+    settle_workspace();
+    assert(impl.layout_catalog_.layouts.empty());
+    for (auto ticket : [&] {
+             std::vector<persistence::WriteTicket> ids;
+             for (const auto& report : impl.workspace_publications_)
+                 ids.push_back(report.ticket);
+             return ids;
+         }())
+        assert(impl.executeWorkspaceIntent({WorkspaceAction::ACKNOWLEDGE, {}, {}, ticket}));
+    assert(impl.workspace_publications_.empty());
+    std::cout << "Workspace UI uses stable layout IDs and one publication coordinator; preference failure preserves UI "
+                 "commit\n";
     const auto create_content = [&](const char* command) {
         auto accepted = app->execute(commands::CommandId{command});
         assert(accepted);

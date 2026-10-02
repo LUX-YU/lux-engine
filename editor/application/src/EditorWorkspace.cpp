@@ -1,5 +1,9 @@
 #include <lux/engine/editor/application/EditorApplicationImpl.hpp>
 #include <algorithm>
+#include <random>
+#include <lux/engine/ui/Element.hpp>
+#include <imgui.h>
+#include <imgui_stdlib.h>
 
 namespace lux::editor::application
 {
@@ -93,4 +97,247 @@ namespace lux::editor::application
             return applicationFailure("layout.catalog", entered.error());
         return result;
     }
+    EditorResult<void> EditorApplication::Impl::executeWorkspaceIntent(const WorkspaceIntent& intent)
+    {
+        using namespace workspace;
+        using namespace persistence;
+        const auto refresh = [&]() -> EditorResult<void> {
+            auto catalog = workspace_.listLayouts();
+            if (!catalog)
+                return applicationFailure("workspace.catalog", catalog.error());
+            layout_catalog_ = std::move(*catalog); // Partial catalogs retain their per-file diagnostics.
+            return {};
+        };
+        if (intent.action == EWorkspaceAction::REFRESH)
+            return refresh();
+        if (intent.action == EWorkspaceAction::ACKNOWLEDGE)
+        {
+            std::erase_if(workspace_publications_, [&](const auto& report) {
+                return report.ticket == intent.ticket && report.result.has_value();
+            });
+            return {};
+        }
+        if (intent.action == EWorkspaceAction::RECONCILE)
+        {
+            auto reconciled = writes_.reconcile(intent.ticket, files_);
+            return reconciled ? EditorResult<void>{} : applicationFailure("workspace.reconcile", reconciled.error());
+        }
+        if (phase_ != EApplicationPhase::RUNNING || workspace_publications_.size() >= 16)
+            return cxx::unexpected(EditorFailure{EEditorError::BUSY, "workspace.admission"});
+        WorkspaceResult<WriteTicket> publication = cxx::unexpected(WorkspaceFailure{EWorkspaceError::INVALID_DATA});
+        std::string label;
+        switch (intent.action)
+        {
+        case EWorkspaceAction::SAVE_LAYOUT: {
+            std::mt19937 random{std::random_device{}()};
+            workspace::LayoutId id{uuids::to_string(uuids::uuid_random_generator{random}())};
+            std::erase(id.value, '-');
+            auto layout = desktop_->views().captureLayout(id, intent.label);
+            if (!layout)
+                return applicationFailure("workspace.capture", layout.error());
+            publication = workspace_.saveLayout(*layout, "missing");
+            label = "Save layout: " + intent.label;
+            break;
+        }
+        case EWorkspaceAction::APPLY_LAYOUT: {
+            auto layout = workspace_.readLayout(intent.layout);
+            if (!layout)
+                return applicationFailure("workspace.read", layout.error());
+            auto applied = applyLayout(std::move(layout->value));
+            if (!applied)
+                return applied;
+            // UI commit is a fact. Preferences are a separate write, with their own retained result.
+            auto previous = workspace_.readPreferences();
+            if (!previous && previous.error().code != EWorkspaceError::NOT_FOUND)
+                return applicationFailure("workspace.applied.preferences-read", previous.error());
+            auto preferences = previous ? std::move(previous->value) : UserPreferences{};
+            const auto version = previous ? previous->target.expected_version : "missing";
+            preferences.selected_layout = intent.layout;
+            publication = workspace_.writePreferences(preferences, version);
+            label = "Applied layout; persist selection";
+            break;
+        }
+        case EWorkspaceAction::RENAME_LAYOUT:
+            publication = workspace_.renameLayout(intent.layout, intent.label);
+            label = "Rename layout: " + intent.label;
+            break;
+        case EWorkspaceAction::REMOVE_LAYOUT:
+            publication = workspace_.removeLayout(intent.layout);
+            label = "Delete layout: " + intent.layout.value;
+            break;
+        default:
+            return cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "workspace.action"});
+        }
+        if (!publication)
+            return applicationFailure("workspace.publication", publication.error());
+        workspace_publications_.push_back({std::move(label), *publication});
+        return {};
+    }
+    EditorResult<void> EditorApplication::Impl::settleWorkspace()
+    {
+        if (workspace_intent_)
+        {
+            auto intent = std::exchange(workspace_intent_, {});
+            auto received = executeWorkspaceIntent(*intent);
+            if (!received)
+                workspace_failure_ = received.error();
+            else
+                workspace_failure_.reset();
+        }
+        for (auto& report : workspace_publications_)
+        {
+            if (report.result)
+                continue;
+            auto status = writes_.status(report.ticket);
+            if (!status)
+                return applicationFailure("workspace.status", status.error());
+            if (status->stage != persistence::EWriteStage::TERMINAL)
+                continue;
+            report.result = status->outcome;
+            auto acknowledged = writes_.acknowledge(report.ticket);
+            if (!acknowledged)
+                return applicationFailure("workspace.acknowledge", acknowledged.error());
+            auto catalog = workspace_.listLayouts();
+            if (catalog)
+                layout_catalog_ = std::move(*catalog);
+            else
+                report.catalog_failure = catalog.error(); // Never replace the last catalog with an empty one.
+        }
+        return {};
+    }
+    void EditorApplication::Impl::installWorkspaceView(extensions::ContributionDraft& draft)
+    {
+        class WorkspacePane final : public lux::ui::Pane
+        {
+            struct Content final : lux::ui::Element
+            {
+                Impl& app_;
+                std::string label_{"Workspace"};
+                Content(WorkspacePane& parent, Impl& app) : Element(parent, lux::ui::ElementId{"workspace"}), app_(app)
+                {
+                    setStretch({1, 1});
+                }
+                void draw() noexcept override
+                {
+                    auto button = [&](const char* label, WorkspaceIntent intent) {
+                        ImGui::BeginDisabled(app_.workspace_intent_.has_value());
+                        if (ImGui::Button(label))
+                            app_.workspace_intent_ = std::move(intent);
+                        ImGui::EndDisabled();
+                    };
+                    ImGui::InputText("Layout label", &label_);
+                    button("Save current layout as new", {EWorkspaceAction::SAVE_LAYOUT, {}, label_});
+                    ImGui::SameLine();
+                    button("Refresh directory", {EWorkspaceAction::REFRESH});
+                    if (app_.workspace_failure_)
+                        ImGui::TextWrapped(
+                            "%s: %s",
+                            app_.workspace_failure_->domain.c_str(),
+                            app_.workspace_failure_->message.c_str()
+                        );
+                    for (const auto& diagnostic : app_.layout_catalog_.diagnostics)
+                        ImGui::TextWrapped("%s: %s", diagnostic.file.c_str(), diagnostic.failure.detail.c_str());
+                    for (const auto& layout : app_.layout_catalog_.layouts)
+                    {
+                        ImGui::PushID(layout.id.value.c_str());
+                        ImGui::SeparatorText(layout.label.c_str());
+                        button("Apply", {EWorkspaceAction::APPLY_LAYOUT, layout.id});
+                        ImGui::SameLine();
+                        button("Rename to label", {EWorkspaceAction::RENAME_LAYOUT, layout.id, label_});
+                        ImGui::SameLine();
+                        button("Delete", {EWorkspaceAction::REMOVE_LAYOUT, layout.id});
+                        ImGui::PopID();
+                    }
+                    ImGui::SeparatorText("Publication results");
+                    for (const auto& report : app_.workspace_publications_)
+                    {
+                        ImGui::PushID(static_cast<int>(report.ticket.value));
+                        ImGui::TextUnformatted(report.label.c_str());
+                        if (report.result)
+                        {
+                            std::visit(
+                                [](const auto& result) {
+                                    if constexpr (std::same_as<
+                                                      std::decay_t<decltype(result)>,
+                                                      persistence::CommitReceipt>)
+                                        ImGui::TextUnformatted("Published");
+                                    else
+                                        ImGui::TextWrapped("%s", result.failure.detail.c_str());
+                                },
+                                *report.result
+                            );
+                            if (report.catalog_failure)
+                                ImGui::TextWrapped(
+                                    "Directory refresh failed: %s",
+                                    report.catalog_failure->detail.c_str()
+                                );
+                            button("Acknowledge", {EWorkspaceAction::ACKNOWLEDGE, {}, {}, report.ticket});
+                        }
+                        else
+                        {
+                            auto current = app_.writes_.status(report.ticket);
+                            if (current && current->stage == persistence::EWriteStage::UNKNOWN)
+                            {
+                                ImGui::TextUnformatted("Unknown publication; target remains reserved.");
+                                button("Reconcile", {EWorkspaceAction::RECONCILE, {}, {}, report.ticket});
+                            }
+                            else
+                                ImGui::TextUnformatted("Publication pending");
+                        }
+                        ImGui::PopID();
+                    }
+                }
+            } content_;
+            bool initialized_{};
+            void update() noexcept override
+            {
+                if (!initialized_ && !content_.app_.workspace_intent_)
+                {
+                    content_.app_.workspace_intent_ = WorkspaceIntent{EWorkspaceAction::REFRESH};
+                    initialized_ = true;
+                }
+            }
+
+        public:
+            WorkspacePane(object::ObjectDispatcherRef dispatcher, lux::ui::PaneId id, Impl& app)
+                : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{"lux.editor.workspace"}, "Workspace"),
+                  content_(*this, app)
+            {
+                setContent(content_);
+            }
+        };
+        draft.views.push_back(std::make_shared<views::ViewFactoryEntry>(
+            contracts::CodeLease::builtin(),
+            views::ViewFactoryDescriptor{
+                views::ViewTypeId{"lux.editor.workspace"},
+                "Workspace",
+                cxx::typeToken<EmptyViewInput>()
+            },
+            [this](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
+                return views::DetachedView{
+                    contracts::CodeLease::builtin(),
+                    std::make_unique<WorkspacePane>(input.dispatcher(), input.paneId(), *this)
+                };
+            }
+        ));
+        draft.commands.push_back(std::make_shared<commands::CommandEntry>(
+            contracts::CodeLease::builtin(),
+            commands::CommandDescriptor{commands::CommandId{"lux.editor.workspace"}, "Layouts and Recovery", "Window"},
+            [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
+                return commands::CommandState{phase_ == EApplicationPhase::RUNNING};
+            },
+            [this](const commands::CommandInvocation&) -> commands::CommandResult<commands::DispatchReceipt> {
+                auto shown = showTool(views::ViewTypeId{"lux.editor.workspace"});
+                if (!shown)
+                    return cxx::unexpected(commands::CommandFailure{
+                        commands::ECommandError::DOMAIN_FAILURE,
+                        shown.error().domain,
+                        shown.error().reason,
+                        shown.error().message
+                    });
+                return commands::DispatchReceipt{commands::ImmediateCompletion{}};
+            }
+        ));
+    }
+
 }

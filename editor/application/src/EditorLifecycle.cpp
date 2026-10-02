@@ -289,6 +289,22 @@ namespace lux::editor::application
                 if (!*ready)
                     return {};
             }
+        if (close_application_)
+            for (const auto& publication : workspace_publications_)
+                if (!publication.result)
+                {
+                    auto status = writes_.status(publication.ticket);
+                    if (!status)
+                        return applicationFailure("exit.workspace.status", status.error());
+                    if (status->stage == persistence::EWriteStage::UNKNOWN)
+                        return cxx::unexpected(EditorFailure{
+                            EEditorError::BUSY,
+                            "exit.workspace.unknown",
+                            0,
+                            "Reconcile the pending workspace publication before exiting."
+                        });
+                    return {};
+                }
         auto closing_views = desktop_->views().prepareClose(ids);
         if (!closing_views)
         {
@@ -439,9 +455,12 @@ namespace lux::editor::application
                 }
         receive(settleSaves());
         receive(settleArtifacts());
+        receive(settleWorkspace());
         const bool operations_settled =
             materials && flows && materials->empty() && flows->empty() && pending_saves_.empty() &&
-            opening_.settled() && std::ranges::all_of(artifacts_, [](const auto& value) { return value.settled; }) &&
+            opening_.settled() &&
+            std::ranges::all_of(workspace_publications_, [](const auto& value) { return value.result.has_value(); }) &&
+            std::ranges::all_of(artifacts_, [](const auto& value) { return value.settled; }) &&
             std::ranges::none_of(run_presentations_, [](const auto& run) { return bool(run.preparing) || run.run; });
         if (phase_ == EApplicationPhase::DRAINING && operations_settled &&
             std::ranges::none_of(reloads_, [](const auto& reload) { return bool(reload.operation); }) &&

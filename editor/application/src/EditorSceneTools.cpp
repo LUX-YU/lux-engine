@@ -319,7 +319,7 @@ namespace lux::editor::application
                 }
             };
             auto observed = desktop_->views().withView(record.source_view, source);
-            if (!observed)
+            if (!observed && observed.error() != views::EViewError::INVALID_ID)
                 return applicationFailure("scene.tool.source", observed.error());
             auto synchronize = [&](lux::ui::Pane& pane) {
                 if (pane.type() == lux::ui::PaneTypeId{"lux.editor.inspector"})

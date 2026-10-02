@@ -180,6 +180,30 @@ namespace lux::editor::application
         {
             std::optional<flowforge::FlowViewBinding> binding;
         };
+        enum class EWorkspaceAction : std::uint8_t
+        {
+            REFRESH,
+            SAVE_LAYOUT,
+            APPLY_LAYOUT,
+            RENAME_LAYOUT,
+            REMOVE_LAYOUT,
+            ACKNOWLEDGE,
+            RECONCILE
+        };
+        struct WorkspaceIntent final
+        {
+            EWorkspaceAction action;
+            workspace::LayoutId layout;
+            std::string label;
+            persistence::WriteTicket ticket;
+        };
+        struct WorkspacePublication final
+        {
+            std::string label;
+            persistence::WriteTicket ticket;
+            std::optional<persistence::VPublicationOutcome> result;
+            std::optional<workspace::WorkspaceFailure> catalog_failure;
+        };
         struct EmptyViewInput final
         {};
         struct Dispatch final
@@ -226,6 +250,10 @@ namespace lux::editor::application
         commands::CommandDispatcher command_dispatcher_{commands_};
         extensions::ContributionRegistry contributions_;
         workspace::WorkspaceStore workspace_;
+        workspace::LayoutCatalog layout_catalog_;
+        std::optional<EditorFailure> workspace_failure_;
+        std::optional<WorkspaceIntent> workspace_intent_;
+        std::vector<WorkspacePublication> workspace_publications_;
         std::vector<ContentView> content_views_;
         std::vector<RunPresentation> run_presentations_;
         std::vector<OpenPresentation> opens_;
@@ -284,6 +312,9 @@ namespace lux::editor::application
         void installSceneCommands(extensions::ContributionDraft&);
         void installSaveCommands(extensions::ContributionDraft&);
         void installResultView(extensions::ContributionDraft&);
+        void installWorkspaceView(extensions::ContributionDraft&);
+        [[nodiscard]] EditorResult<void> executeWorkspaceIntent(const WorkspaceIntent&);
+        [[nodiscard]] EditorResult<void> settleWorkspace();
         [[nodiscard]] EditorResult<void> receiveResultIntent();
         [[nodiscard]] EditorResult<PreparedSave> prepareSave(
             commands::SessionTarget,

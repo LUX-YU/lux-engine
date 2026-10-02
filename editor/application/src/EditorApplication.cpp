@@ -108,6 +108,8 @@ namespace lux::editor::application
         if (!project)
             return cxx::unexpected(project.error());
         project_ = std::move(*project);
+        importer_ =
+            std::make_unique<assets::AssetImporter>(*project_, engine_->execution(), writes_, files_, save_execution_);
         for (const auto& runtime : plugins_.libraries())
         {
             const auto* description = plugins_.catalog().find(runtime->identity().id);

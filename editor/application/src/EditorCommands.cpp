@@ -130,6 +130,7 @@ namespace lux::editor::application
         installSaveCommands(draft);
         installResultView(draft);
         installWorkspaceView(draft);
+        installProjectTools(draft);
         installSceneCommands(draft);
         draft.views.push_back(std::make_shared<views::ViewFactoryEntry>(
             contracts::CodeLease::builtin(),

@@ -2,7 +2,7 @@ generate_visibility_header(ENABLE_MACRO_NAME LUX_EDITOR_STORAGE_LIBRARY
     PUBLIC_MACRO_NAME LUX_EDITOR_STORAGE_PUBLIC DISABLE_DLL_MACRO_NAME LUX_EDITOR_STORAGE_DLL_DISABLE
     GENERATE_FILE_PATH lux/engine/editor/storage/visibility.h)
 add_component(COMPONENT_NAME editor_storage NAMESPACE lux::engine::editor STATIC
-    SOURCE_FILES src/ProjectStorage.cpp src/ProjectOpenData.cpp src/ProjectAssetSource.cpp src/ProjectPublication.cpp src/ProjectCreation.cpp src/ProjectPlugins.cpp)
+    SOURCE_FILES src/ProjectStorage.cpp src/ProjectOpenData.cpp src/ProjectAssetSource.cpp src/ProjectPublication.cpp src/ProjectCreation.cpp src/ProjectPlugins.cpp src/ProjectPublicationOperation.cpp)
 component_include_directories(editor_storage
     BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR}
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude ${CMAKE_CURRENT_SOURCE_DIR}/sinclude
@@ -22,7 +22,8 @@ endif()
 target_link_libraries(editor_storage PUBLIC lux::engine::editor::editor_project lux::engine::editor::editor_contracts
     lux::engine::core::object lux::engine::core::log lux::engine::core::meta
     lux::engine::process::process_execution lux::engine::process::asset_loading lux::engine::resource::asset)
-target_link_libraries(editor_storage PUBLIC lux::engine::project::project_plugins)
+target_link_libraries(editor_storage PUBLIC lux::engine::project::project_plugins lux::engine::editor::editor_persistence_execution)
+component_add_transitive_commands(editor_storage "find_package(lux-engine-editor-persistence REQUIRED COMPONENTS editor_persistence_execution)")
 component_add_transitive_commands(editor_storage "find_package(lux-engine-project-plugins REQUIRED COMPONENTS project_plugins)")
 target_link_libraries(editor_storage PRIVATE lux::engine::scene::scene_asset lux::engine::editor::editor_file_publication)
 component_add_transitive_commands(editor_storage
@@ -44,6 +45,11 @@ lux_classify_target(TARGET editor_storage LAYER EDITOR PRODUCT EDITOR ROLE LIBRA
 lux_engine_install_components(PROJECT_NAME lux-engine-editor-storage VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS editor_storage)
 if(LUX_EDITOR_BUILD_NATIVE_TESTS)
+    add_executable(editor_project_publication_operation_test test/project_publication_operation.cpp)
+    target_link_libraries(editor_project_publication_operation_test PRIVATE editor_storage editor_file_publication editor_assets)
+    lux_editor_test_options(editor_project_publication_operation_test)
+    add_test(NAME editor.project_publication_operation COMMAND editor_project_publication_operation_test "${CMAKE_CURRENT_BINARY_DIR}/coordinated-publication")
+    set_tests_properties(editor.project_publication_operation PROPERTIES LABELS "editor;native;P12" RUN_SERIAL TRUE TIMEOUT 60)
     add_executable(editor_project_creation_test test/project_creation.cpp)
     target_link_libraries(editor_project_creation_test PRIVATE editor_storage lux::engine::scene::scene_asset)
     if(MSVC)
@@ -99,6 +105,7 @@ install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/storage/ProjectPlugins.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/storage/ProjectOpenData.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/storage/ProjectPublication.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/storage/ProjectPublicationOperation.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/storage/ProjectStorage.hpp
     DESTINATION include/lux/engine/editor/storage COMPONENT lux_engine_editor_storage)
 install(FILES ${LUX_GENERATE_HEADER_DIR}/lux/engine/editor/storage/visibility.h

@@ -15,6 +15,13 @@ namespace lux::editor
     class ProjectStorage;
 }
 
+namespace lux::editor::persistence
+{
+    class WriteCoordinator;
+    class IArtifactStore;
+    class SaveExecution;
+}
+
 namespace lux::editor::assets
 {
     struct ModelImportRequest final
@@ -51,7 +58,9 @@ namespace lux::editor::assets
         EditorResult<void> cleanup;
     };
     struct AssetImportAbandoned final
-    {};
+    {
+        std::size_t published_files{};
+    };
     using VAssetImportStatus =
         std::variant<AssetImportPending, EditorFailure, AssetImportSucceeded, AssetImportAbandoned>;
 
@@ -60,10 +69,12 @@ namespace lux::editor::assets
     class LUX_EDITOR_ASSETS_PUBLIC AssetImporter final
     {
     public:
-        AssetImporter(ProjectStorage&, process::ExecutionRuntime&);
+        AssetImporter(ProjectStorage&, process::ExecutionRuntime&, persistence::WriteCoordinator&, persistence::IArtifactStore&, persistence::SaveExecution&);
         ~AssetImporter();
         AssetImporter(const AssetImporter&) = delete;
         AssetImporter(AssetImporter&&) = delete;
+        AssetImporter& operator=(const AssetImporter&) = delete;
+        AssetImporter& operator=(AssetImporter&&) = delete;
 
         [[nodiscard]] EditorResult<AssetImportId> requestModel(const ModelImportRequest&);
         [[nodiscard]] EditorResult<AssetImportId> reimportModel(
@@ -76,6 +87,7 @@ namespace lux::editor::assets
         [[nodiscard]] EditorResult<void> retry(AssetImportId);
         [[nodiscard]] EditorResult<void> abandon(AssetImportId);
         [[nodiscard]] EditorResult<void> acknowledge(AssetImportId);
+        void update() noexcept;
         void requestClose() noexcept;
         [[nodiscard]] CloseStatus closeStatus() const;
 

@@ -9262,7 +9262,8 @@
       "lux/cxx/algorithm/hash.hpp",
       "lux/cxx/algorithm/Sha256.hpp",
       "fcntl.h",
-      "unistd.h"
+      "unistd.h",
+      "NativePublicationPath.hpp"
     ],
     "prefixes": [
       "lux/engine/editor/contracts/",
@@ -15355,6 +15356,25 @@
           "CPU"
         ],
         "path": "editor/tests/integration/application"
+      },
+      "editor_project_publication_operation_test": {
+        "layer": "TEST",
+        "role": "TEST",
+        "capabilities": [
+          "CPU"
+        ],
+        "path": "editor/activities/project"
+      },
+      "project_tools_ui": {
+        "layer": "E3",
+        "role": "UI",
+        "capabilities": [
+          "CPU",
+          "GUI",
+          "PROCESS",
+          "TOOLCHAIN"
+        ],
+        "path": "editor/workbench/project/tools"
       }
     },
     "files": {
@@ -17833,6 +17853,36 @@
       ],
       "editor/application/src/EditorRecovery.cpp": [
         "editor_bootstrap"
+      ],
+      "editor/activities/project/src/ProjectPublicationOperation.cpp": [
+        "editor_storage"
+      ],
+      "editor/activities/project/include/lux/engine/editor/storage/ProjectPublicationOperation.hpp": [
+        "editor_storage"
+      ],
+      "editor/activities/project/test/project_publication_operation.cpp": [
+        "editor_project_publication_operation_test"
+      ],
+      "editor/application/src/EditorProjectTools.cpp": [
+        "editor_bootstrap"
+      ],
+      "editor/workbench/project/tools/src/ImportView.cpp": [
+        "project_tools_ui"
+      ],
+      "editor/workbench/project/tools/include/lux/engine/editor/project/ImportView.hpp": [
+        "project_tools_ui"
+      ],
+      "editor/activities/persistence/src/NativePublicationPath.hpp": [
+        "editor_file_publication"
+      ],
+      "editor/application/src/EditorSettings.cpp": [
+        "editor_bootstrap"
+      ],
+      "editor/workbench/project/tools/src/SettingsView.cpp": [
+        "project_tools_ui"
+      ],
+      "editor/workbench/project/tools/include/lux/engine/editor/project/SettingsView.hpp": [
+        "project_tools_ui"
       ]
     },
     "native_libraries": [

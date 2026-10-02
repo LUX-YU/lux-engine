@@ -4,6 +4,8 @@
 #include <lux/engine/editor/detail/TaskResult.hpp>
 #include <lux/engine/editor/detail/SignalDelivery.hpp>
 #include <lux/engine/editor/assets/AssetImporter.hpp>
+#include <lux/engine/editor/storage/FileArtifactStore.hpp>
+#include <lux/engine/editor/persistence/SaveExecution.hpp>
 #include <lux/engine/editor/metadata/EditorPlugin.hpp>
 #include <lux/engine/editor/configuration/EditorReflection.hpp>
 #include <lux/engine/project/PluginRendering.hpp>
@@ -83,6 +85,10 @@ namespace lux::editor
         std::vector<CommandRegistration> commands;
         std::uint64_t command_revision{};
         engine::RenderContext& rendering;
+        std::unique_ptr<storage::FileArtifactStore> files;
+        persistence::WriteCoordinator writes;
+        persistence::SaveService saves{writes};
+        std::unique_ptr<persistence::SaveExecution> saving;
         std::unique_ptr<assets::AssetImporter> importer;
 
         Impl(engine::EngineContext& application, object::ObjectMessageQueue& queue) noexcept
@@ -219,7 +225,9 @@ namespace lux::editor
                 return lux::cxx::unexpected(
                     EditorFailure{EEditorError::FRONTEND_FAILURE, "context.features", 0, {}, registered.error()}
                 );
-            importer = std::make_unique<assets::AssetImporter>(*project, execution);
+            files = std::make_unique<storage::FileArtifactStore>(project->root());
+            saving = std::make_unique<persistence::SaveExecution>(execution, saves, writes, *files);
+            importer = std::make_unique<assets::AssetImporter>(*project, execution, writes, *files, *saving);
             auto committed = draft.commit();
             if (!committed)
                 return lux::cxx::unexpected(
@@ -251,6 +259,9 @@ namespace lux::editor
     }
     assets::AssetImporter& EditorContext::assetImporter() noexcept
     {
+        impl_->importer->update();
+        if (!impl_->saving->submitReady())
+            std::terminate();
         return *impl_->importer;
     }
     render::RenderRuntime& EditorContext::renderRuntime() noexcept

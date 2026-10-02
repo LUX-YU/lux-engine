@@ -1,5 +1,6 @@
 #include <lux/engine/editor/storage/FileArtifactStore.hpp>
 #include <lux/engine/editor/storage/FilePublication.hpp>
+#include "NativePublicationPath.hpp"
 
 namespace lux::editor::storage
 {
@@ -55,7 +56,7 @@ namespace lux::editor::storage
             resolved->key != work.target.key || resolved->expected_version != work.target.expected_version;
         if (is_conflict)
             return NotPublished{{EPersistenceError::CONFLICT, work.target.key.value}};
-        const auto path = std::filesystem::u8path(work.target.key.value);
+        const auto path = detail::nativePublicationPath(std::filesystem::u8path(work.target.key.value));
         if (work.action == EPublicationAction::REMOVE)
         {
             // This synchronous publisher is the sole remaining writer of this taken lane item.

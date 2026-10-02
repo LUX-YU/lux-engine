@@ -5,8 +5,11 @@
 #include <fstream>
 #include <limits>
 #include <lux/cxx/algorithm/Sha256.hpp>
-#include <lux/engine/editor/detail/ProjectWrite.hpp>
+#include <lux/engine/editor/storage/ProjectPublicationOperation.hpp>
+#include <lux/engine/editor/storage/ProjectStorage.hpp>
+#include <lux/engine/editor/persistence/SaveExecution.hpp>
 #include <lux/engine/editor/detail/SignalDelivery.hpp>
+#include <lux/engine/editor/detail/TaskResult.hpp>
 #include <lux/engine/editor/assets/AssetImporter.hpp>
 #include <lux/engine/resource/asset/AssetSerDeser.hpp>
 #include <lux/engine/resource/asset/storage/pak/PakArchive.hpp>
@@ -244,8 +247,8 @@ namespace lux::editor::assets
                         const auto& captured_file = (*captured)[index];
                         const bool is_missing_source =
                             captured_file.state != lux::toolchain::EModelSourceState::PRESENT;
-                        const bool is_digest_mismatch = !is_missing_source &&
-                            projectContentDigest(captured_file.bytes.view()) != digests[index];
+                        const bool is_digest_mismatch =
+                            !is_missing_source && projectContentDigest(captured_file.bytes.view()) != digests[index];
                         const bool has_source_conflict = is_missing_source || is_digest_mismatch;
                         if (has_source_conflict)
                         {
@@ -296,7 +299,6 @@ namespace lux::editor::assets
             const Source* source;
             const lux::toolchain::ModelCookProduct* product;
             ProjectAssetEntry entry;
-            std::string before;
             EditorResult<Output> operator()() const noexcept
             {
                 lux::cxx::algorithm::Sha256 hash;
@@ -421,7 +423,8 @@ namespace lux::editor::assets
                 published.cooked_path = ".lux/compiled/" + uuids::to_string(entry.id.uuid()) + "/" +
                                         projectContentDigest(bytes.view()) + ".luxpak";
                 result.update.files.push_back({published.cooked_path, "missing", std::move(bytes), true});
-                result.update.files.push_back({published.source_path, before, std::move(encoded_source)});
+                published.source_path = recipe_parent + "/Model-" + published.source_digest + ".luxmodel";
+                result.update.files.push_back({published.source_path, "missing", std::move(encoded_source), true});
                 result.update.assets.push_back(std::move(published));
                 result.model = product->model;
                 return result;
@@ -463,7 +466,7 @@ namespace lux::editor::assets
             VAssetImportStatus status{AssetImportPending{EAssetImportStage::READING}};
             std::size_t bytes{}, rounds{};
             bool abandoning{};
-            std::variant<Idle, Working, detail::ProjectWrite> work;
+            std::variant<Idle, Working, ProjectPublicationOperation> work;
             std::variant<
                 std::monostate,
                 EditorResult<Source>,
@@ -551,7 +554,7 @@ namespace lux::editor::assets
             void encode()
             {
                 pending(EAssetImportStage::COOKING);
-                submit("Encode model", owner.runtime.cpu(), Encode{&source, &product, entry, before});
+                submit("Encode model", owner.runtime.cpu(), Encode{&source, &product, entry});
             }
             bool terminal() const
             {
@@ -560,7 +563,7 @@ namespace lux::editor::assets
             void abandon()
             {
                 abandoning = true;
-                if (auto* publication = std::get_if<detail::ProjectWrite>(&work))
+                if (auto* publication = std::get_if<ProjectPublicationOperation>(&work))
                 {
                     publication->abandon();
                 }
@@ -575,7 +578,7 @@ namespace lux::editor::assets
                 {
                     return failed(EEditorError::BUSY, "model.import.retry");
                 }
-                if (auto* publication = std::get_if<detail::ProjectWrite>(&work))
+                if (auto* publication = std::get_if<ProjectPublicationOperation>(&work))
                 {
                     auto result = publication->retry();
                     if (result)
@@ -750,8 +753,9 @@ namespace lux::editor::assets
                         pending(EAssetImportStage::WAITING_FOR_PROJECT);
                     }
                 }
-                if (auto* publication = std::get_if<detail::ProjectWrite>(&work))
+                if (auto* publication = std::get_if<ProjectPublicationOperation>(&work))
                 {
+                    publication->update();
                     const auto& state = publication->status();
                     if (const auto* error = std::get_if<EditorFailure>(&state))
                     {
@@ -762,9 +766,9 @@ namespace lux::editor::assets
                         status = AssetImportSucceeded{entry.id, output.model, done->cleanup};
                         work.emplace<Idle>();
                     }
-                    else if (std::holds_alternative<PublicationAbandoned>(state))
+                    else if (const auto* abandoned = std::get_if<PublicationAbandoned>(&state))
                     {
-                        status = AssetImportAbandoned{};
+                        status = AssetImportAbandoned{abandoned->published_files};
                         work.emplace<Idle>();
                     }
                 }
@@ -804,24 +808,35 @@ namespace lux::editor::assets
                         return;
                     }
                     pending(EAssetImportStage::PUBLISHING);
-                    work.emplace<detail::ProjectWrite>(
+                    work.emplace<ProjectPublicationOperation>(
                         owner.project,
                         owner.runtime,
-                        std::move(*prepared),
-                        owner.adoption.requester()
+                        owner.writes,
+                        owner.files,
+                        owner.execution,
+                        std::move(*prepared)
                     );
                 }
             }
         };
         ProjectStorage& project;
         process::ExecutionRuntime& runtime;
+        persistence::WriteCoordinator& writes;
+        persistence::IArtifactStore& files;
+        persistence::SaveExecution& execution;
         std::uint64_t owner{}, serial{};
         bool closing{};
         process::CompletionWork adoption;
         EditorResult<void> setup;
         std::variant<Idle, Request> request;
-        Impl(ProjectStorage& project, process::ExecutionRuntime& runtime)
-            : project(project), runtime(runtime),
+        Impl(
+            ProjectStorage& project,
+            process::ExecutionRuntime& runtime,
+            persistence::WriteCoordinator& writes,
+            persistence::IArtifactStore& files,
+            persistence::SaveExecution& execution
+        )
+            : project(project), runtime(runtime), writes(writes), files(files), execution(execution),
               adoption(runtime, this, [](void* owner) noexcept { static_cast<Impl*>(owner)->adoptCompleted(); })
         {
             static std::atomic<std::uint64_t> counter{1};
@@ -834,17 +849,15 @@ namespace lux::editor::assets
         }
         ~Impl()
         {
-            // Finish an admitted publication; cancel only the pre-publication preparation.
             closing = true;
             if (auto* active = std::get_if<Request>(&request))
             {
-                if (!std::holds_alternative<detail::ProjectWrite>(active->work))
-                    active->abandon();
-                adoption.request();
-                if (!runtime.waitUntil([&]() noexcept {
-                        return !std::holds_alternative<AssetImportPending>(active->status);
-                    }))
+                active->abandon();
+                active->tasks.requestStop();
+                if (!active->tasks.join())
                     std::terminate();
+                active->adoptCompleted();
+                // The publication member drains accepted IO through the shared owner before it dies.
                 if (const auto* failure = std::get_if<EditorFailure>(&active->status))
                     log::error("asset.import", "{}: {}", failure->domain, failure->message);
             }
@@ -862,8 +875,14 @@ namespace lux::editor::assets
         }
     };
 
-    AssetImporter::AssetImporter(ProjectStorage& project, process::ExecutionRuntime& runtime)
-        : impl_(std::make_unique<Impl>(project, runtime))
+    AssetImporter::AssetImporter(
+        ProjectStorage& project,
+        process::ExecutionRuntime& runtime,
+        persistence::WriteCoordinator& writes,
+        persistence::IArtifactStore& files,
+        persistence::SaveExecution& execution
+    )
+        : impl_(std::make_unique<Impl>(project, runtime, writes, files, execution))
     {}
     AssetImporter::~AssetImporter() = default;
     EditorResult<AssetImportId> AssetImporter::Impl::requestModel(const ModelImportRequest& input)
@@ -1010,7 +1029,7 @@ namespace lux::editor::assets
         closing = true;
         if (auto* active = std::get_if<Impl::Request>(&this->request); active && !active->terminal())
         {
-            if (!std::holds_alternative<detail::ProjectWrite>(active->work))
+            if (!std::holds_alternative<ProjectPublicationOperation>(active->work))
                 active->abandon();
             adoption.request();
         }
@@ -1028,7 +1047,11 @@ namespace lux::editor::assets
         }
         if (const auto* error = std::get_if<EditorFailure>(&active->status))
         {
-            return {ECloseState::CLOSED, "Model publication failed", lux::cxx::unexpected(*error)};
+            return {
+                ECloseState::CLOSING,
+                "Model publication requires reconciliation or abandonment",
+                lux::cxx::unexpected(*error)
+            };
         }
         return {ECloseState::CLOSING, "Model import and project publication"};
     }
@@ -1055,6 +1078,10 @@ namespace lux::editor::assets
     EditorResult<void> AssetImporter::acknowledge(AssetImportId id)
     {
         return impl_->acknowledge(id);
+    }
+    void AssetImporter::update() noexcept
+    {
+        impl_->adoptCompleted();
     }
     void AssetImporter::requestClose() noexcept
     {

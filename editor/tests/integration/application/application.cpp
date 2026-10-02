@@ -2,6 +2,8 @@
 #include <lux/engine/editor/application/EditorApplicationImpl.hpp>
 #include <lux/engine/editor/desktop/DesktopTestAccess.hpp>
 #include <lux/engine/editor/scene/OutlinerView.hpp>
+#include <lux/engine/editor/project/ImportView.hpp>
+#include <lux/engine/editor/project/SettingsView.hpp>
 #include <lux/engine/editor/scene/InspectorView.hpp>
 #include <lux/engine/editor/storage/FilePublication.hpp>
 #include <lux/engine/editor/scene/ResourceView.hpp>
@@ -846,6 +848,64 @@ int main(int argc, char** argv)
         assert(app->update());
     assert(impl.runs_.info(run)->provenance.content == run_source);
     std::cout << "Formal scene form, Outliner, frozen Play/Pause/Step/Resume and Keep Run after author close\n";
+
+    // Formal factories, concrete UI admission and application-owned completion survive the window.
+    assert(app->execute(commands::CommandId{"lux.editor.import"}));
+    auto tool_views = impl.desktop_->views().describeAll();
+    assert(tool_views);
+    const auto import_view =
+        std::ranges::find(*tool_views, views::ViewTypeId{"lux.editor.import"}, &views::ViewInfo::type)->id;
+    const auto imported_id = asset::AssetId{*uuids::uuid::from_string("091adbc2-cc75-42c0-b33a-a5f4e4fb8e07")};
+    const auto import_file = root / "import-ui.obj";
+    {
+        std::ofstream file(import_file);
+        file << "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n";
+    }
+    std::optional<assets::AssetImportId> importing;
+    auto request_import = [&](ui::Pane& pane) {
+        auto accepted = static_cast<lux::editor::project::ImportView&>(pane).importModel(
+            {imported_id, std::filesystem::absolute(import_file), "Content/Imported/Triangle", {}}
+        );
+        assert(accepted);
+        importing = *accepted;
+    };
+    assert(impl.desktop_->views().withView(import_view, request_import));
+    assert(app->closeView(import_view));
+    const auto import_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
+    while (!std::holds_alternative<assets::AssetImportSucceeded>(*impl.importer_->status(*importing)))
+    {
+        assert(std::chrono::steady_clock::now() < import_deadline);
+        assert(app->update());
+        auto status = impl.importer_->status(*importing);
+        if (const auto* error = std::get_if<EditorFailure>(&*status))
+            std::cerr << error->domain << '\n';
+        assert(!std::holds_alternative<EditorFailure>(*status));
+        std::this_thread::yield();
+    }
+    assert(impl.project_->asset(imported_id) && !impl.desktop_->views().describe(import_view));
+    assert(impl.importer_->acknowledge(*importing));
+    assert(app->execute(commands::CommandId{"lux.editor.settings"}));
+    tool_views = impl.desktop_->views().describeAll();
+    const auto settings_view =
+        std::ranges::find(*tool_views, views::ViewTypeId{"lux.editor.settings"}, &views::ViewInfo::type)->id;
+    const auto active_plugins = impl.plugins_.libraries().size();
+    auto choose_plugins = [&](ui::Pane& pane) {
+        assert(static_cast<lux::editor::project::SettingsView&>(pane).requestSave({}));
+    };
+    assert(impl.desktop_->views().withView(settings_view, choose_plugins));
+    assert(app->update() && impl.plugin_publication_);
+    assert(app->closeView(settings_view));
+    while (!impl.plugin_publication_->terminal())
+    {
+        assert(std::chrono::steady_clock::now() < import_deadline);
+        assert(app->update());
+        assert(!std::holds_alternative<EditorFailure>(impl.plugin_publication_->status()));
+        std::this_thread::yield();
+    }
+    assert(impl.project_->manifest().plugins.empty() && impl.plugins_.libraries().size() == active_plugins);
+    assert(!impl.desktop_->views().describe(settings_view));
+    std::cout << "Formal import/settings factories: UI closes, immutable import and plugin publication finish; active "
+                 "code stays pinned\n";
 
     assert(app->requestExit());
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);

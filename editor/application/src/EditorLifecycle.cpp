@@ -305,6 +305,23 @@ namespace lux::editor::application
                         });
                     return {};
                 }
+        if (close_application_)
+            if (auto operation = importer_->currentRequest())
+            {
+                auto state = importer_->status(*operation);
+                if (!state)
+                    return cxx::unexpected(state.error());
+                if (auto* error = std::get_if<EditorFailure>(&*state))
+                    return cxx::unexpected(*error);
+                if (std::holds_alternative<assets::AssetImportPending>(*state))
+                    return {}; // Keep import controls until accepted publication is settled.
+            }
+        if (close_application_ && plugin_publication_ && !plugin_publication_->terminal())
+        {
+            if (const auto* failure = std::get_if<EditorFailure>(&plugin_publication_->status()))
+                return cxx::unexpected(*failure);
+            return {};
+        }
         auto closing_views = desktop_->views().prepareClose(ids);
         if (!closing_views)
         {
@@ -374,6 +391,7 @@ namespace lux::editor::application
         // The irreversible handoff has completed. Failures from now on cannot return to review.
         phase_ = EApplicationPhase::DRAINING;
         opening_.requestStop();
+        importer_->requestClose();
         desktop_->presentation().stopFrames();
         return {};
     }
@@ -457,8 +475,8 @@ namespace lux::editor::application
         receive(settleArtifacts());
         receive(settleWorkspace());
         const bool operations_settled =
-            materials && flows && materials->empty() && flows->empty() && pending_saves_.empty() &&
-            opening_.settled() &&
+            importer_->closeStatus().state == ECloseState::CLOSED && materials && flows && materials->empty() &&
+            flows->empty() && pending_saves_.empty() && opening_.settled() &&
             std::ranges::all_of(workspace_publications_, [](const auto& value) { return value.result.has_value(); }) &&
             std::ranges::all_of(artifacts_, [](const auto& value) { return value.settled; }) &&
             std::ranges::none_of(run_presentations_, [](const auto& run) { return bool(run.preparing) || run.run; });
@@ -520,6 +538,8 @@ namespace lux::editor::application
         }
         project_->dispatchEvents();
         (void)messages_.dispatchPending();
+        importer_->update();
+        receive(maintainProjectSettings());
         saves_.adoptCompletions();
         if (auto submitted = save_execution_.submitReady(); !submitted)
             receive(applicationFailure("save.submit", submitted.error()));
@@ -568,6 +588,8 @@ namespace lux::editor::application
             else
                 result_failure_.reset();
         }
+        if (phase_ == EApplicationPhase::RUNNING)
+            receive(receiveProjectIntents());
         settleModels();
         receive(receiveSaveAnswer());
         receive(receiveReloadAnswer());

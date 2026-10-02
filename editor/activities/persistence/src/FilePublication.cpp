@@ -2,6 +2,7 @@
 #include <lux/cxx/algorithm/Sha256.hpp>
 #include <fstream>
 #include <array>
+#include "NativePublicationPath.hpp"
 #if defined(_WIN32)
 #define NOMINMAX
 #define WIN32_LEAN_AND_MEAN
@@ -49,7 +50,7 @@ namespace lux::editor::storage
             return failed(EFilePublicationError::READ, path, error.value());
         }
         std::vector<std::byte> bytes(static_cast<std::size_t>(size));
-        std::ifstream file(path, std::ios::binary);
+        std::ifstream file(detail::nativePublicationPath(path), std::ios::binary);
         if (!file.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size())))
         {
             return failed(EFilePublicationError::READ, path);
@@ -60,8 +61,15 @@ namespace lux::editor::storage
     FileResult<void> writePublicationFile(const std::filesystem::path& path, std::span<const std::byte> bytes)
     {
 #if defined(_WIN32)
-        const auto file =
-            CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        const auto file = CreateFileW(
+            detail::nativePublicationPath(path).c_str(),
+            GENERIC_WRITE,
+            0,
+            nullptr,
+            CREATE_ALWAYS,
+            FILE_ATTRIBUTE_NORMAL,
+            nullptr
+        );
         if (file == INVALID_HANDLE_VALUE)
         {
             return failed(EFilePublicationError::WRITE, path, GetLastError());
@@ -114,7 +122,11 @@ namespace lux::editor::storage
     FileResult<void> replacePublicationFile(const std::filesystem::path& staged, const std::filesystem::path& target)
     {
 #if defined(_WIN32)
-        if (!MoveFileExW(staged.c_str(), target.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+        if (!MoveFileExW(
+                detail::nativePublicationPath(staged).c_str(),
+                detail::nativePublicationPath(target).c_str(),
+                MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH
+            ))
         {
             return failed(EFilePublicationError::REPLACE, target, GetLastError());
         }
@@ -147,7 +159,7 @@ namespace lux::editor::storage
         {
             return failed(EFilePublicationError::READ, path, error.value());
         }
-        std::ifstream file(path, std::ios::binary);
+        std::ifstream file(detail::nativePublicationPath(path), std::ios::binary);
         if (!file)
         {
             return failed(EFilePublicationError::READ, path);

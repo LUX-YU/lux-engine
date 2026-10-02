@@ -1,6 +1,6 @@
 if(LUX_EDITOR_TEST_DESKTOP_GPU AND LUX_EDITOR_BUILD_NATIVE_TESTS)
     add_executable(editor_application_test application.cpp)
-    target_link_libraries(editor_application_test PRIVATE editor_bootstrap editor_extensions desktop_shell editor_assets editor_storage
+    target_link_libraries(editor_application_test PRIVATE editor_bootstrap project_tools_ui editor_extensions desktop_shell editor_assets editor_storage
         editor_file_publication editor_persistence_execution workspace_store project_ui tasks_ui
         lux::engine::engine_context_render lux::engine::project::project_plugin_rendering)
     target_include_directories(editor_application_test PRIVATE

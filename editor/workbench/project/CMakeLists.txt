@@ -19,3 +19,5 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     lux_editor_test_options(editor_project_views_test)
     add_test(NAME editor.project_views COMMAND editor_project_views_test)
 endif()
+
+add_subdirectory(tools)

@@ -21,7 +21,10 @@ namespace lux::editor
         EditorResult<void> cleanup;
     };
     struct PublicationAbandoned final
-    {};
+    {
+        // Immutable files already published remain on disk; no catalog references were adopted.
+        std::size_t published_files{};
+    };
     using VPublicationStatus =
         std::variant<PublicationPending, EditorFailure, PublicationSucceeded, PublicationAbandoned>;
 

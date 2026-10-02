@@ -8,6 +8,7 @@
 #include <lux/engine/object/ObjectDispatcher.hpp>
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
 #include <lux/engine/editor/storage/ProjectPlugins.hpp>
+#include <lux/engine/editor/storage/ProjectPublicationOperation.hpp>
 #include <lux/engine/editor/storage/FileArtifactStore.hpp>
 #include <lux/engine/editor/assets/AssetImporter.hpp>
 #include <lux/engine/editor/persistence/SaveExecution.hpp>
@@ -270,6 +271,23 @@ namespace lux::editor::application
         persistence::SaveService saves_{writes_};
         sessions::SessionStore sessions_{128};
         persistence::SaveExecution save_execution_;
+        std::unique_ptr<assets::AssetImporter> importer_;
+        std::optional<lux::ui::PaneId> import_browse_;
+        struct PluginSelection final
+        {
+            std::vector<ProjectPluginEntry> based_on, desired;
+        };
+        enum class EPluginAction
+        {
+            SAVE,
+            RETRY,
+            ABANDON,
+            ACKNOWLEDGE
+        };
+        std::optional<PluginSelection> plugin_selection_;
+        std::optional<EPluginAction> plugin_action_;
+        std::unique_ptr<ProjectPublicationOperation> plugin_publication_;
+        std::optional<EditorFailure> plugin_failure_;
         sessions::SessionOpening opening_;
         scene::ScenePresentationHub projections_;
         scene::RunStore runs_;
@@ -350,6 +368,10 @@ namespace lux::editor::application
         void installSaveCommands(extensions::ContributionDraft&);
         void installResultView(extensions::ContributionDraft&);
         void installWorkspaceView(extensions::ContributionDraft&);
+        void installProjectTools(extensions::ContributionDraft&);
+        void installSettingsView(extensions::ContributionDraft&);
+        [[nodiscard]] EditorResult<void> maintainProjectSettings();
+        [[nodiscard]] EditorResult<void> receiveProjectIntents();
         [[nodiscard]] EditorResult<void> executeWorkspaceIntent(const WorkspaceIntent&);
         [[nodiscard]] EditorResult<void> settleWorkspace();
         [[nodiscard]] EditorResult<void> captureRecovery();

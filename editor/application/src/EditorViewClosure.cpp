@@ -1,0 +1,160 @@
+#include <lux/engine/editor/application/EditorApplicationImpl.hpp>
+#include <algorithm>
+
+namespace lux::editor::application
+{
+    EditorResult<void> EditorApplication::closeView(views::ViewId id)
+    {
+        if (auto ready = impl_->admission(); !ready)
+            return ready;
+        Impl::Dispatch scope{impl_->dispatching_};
+        return impl_->closeView(id);
+    }
+    EditorResult<void> EditorApplication::Impl::requestClose(sessions::ContentStamp expected)
+    {
+        if (phase_ != EApplicationPhase::RUNNING || last_view_)
+            return cxx::unexpected(EditorFailure{EEditorError::BUSY, "close.review"});
+        auto current = sessions_.describe(expected.session);
+        if (!current)
+            return applicationFailure("close.content", current.error());
+        if (current->current != expected)
+            return applicationFailure("close.content", sessions::ESessionError::STALE_CONTENT);
+        close_decisions_ = {
+            {expected, current->dirty ? sessions::ECloseChoice::CANCEL : sessions::ECloseChoice::DISCARD}
+        };
+        close_application_ = false;
+        phase_ = EApplicationPhase::REVIEWING;
+        return {};
+    }
+    EditorResult<void> EditorApplication::Impl::closeView(views::ViewId id)
+    {
+        if (phase_ != EApplicationPhase::RUNNING || last_view_)
+            return cxx::unexpected(EditorFailure{EEditorError::BUSY, "close.view.review"});
+        auto information = desktop_->views().describe(id);
+        if (!information)
+            return applicationFailure("close.view", information.error());
+        auto content = std::ranges::find(content_views_, id, &ContentView::view);
+        if (content != content_views_.end() && content->session.valid())
+        {
+            const auto count = std::ranges::count(content_views_, content->session, &ContentView::session);
+            if (count == 1)
+            {
+                auto author = sessions_.describe(content->session);
+                if (!author)
+                    return applicationFailure("close.view.content", author.error());
+                auto prompt = desktop::ReviewView::create(
+                    messages_.dispatcherRef(),
+                    lux::ui::PaneId{"last-view"},
+                    {next_review_++,
+                     "Last view of this content",
+                     "Keep the content open without a view, or close the content?",
+                     {desktop::EReviewChoice::KEEP_CONTENT,
+                      desktop::EReviewChoice::CLOSE_CONTENT,
+                      desktop::EReviewChoice::CANCEL}}
+                );
+                if (!prompt)
+                    return applicationFailure("close.view.question", prompt.error());
+                views::DetachedView candidate{contracts::CodeLease::builtin(), std::move(*prompt)};
+                auto shown = adopt(candidate, "last-view");
+                if (!shown)
+                    return cxx::unexpected(shown.error());
+                last_view_ = LastViewQuestion{id, author->current, *shown};
+                return {};
+            }
+        }
+        auto prepared = desktop_->views().prepareClose(std::span{&id, 1});
+        if (!prepared)
+            return applicationFailure("close.view.prepare", prepared.error());
+        auto committed = desktop_->views().commit(*prepared);
+        if (!committed)
+            return applicationFailure("close.view.commit", committed.error());
+        std::erase_if(content_views_, [id](const auto& record) { return record.view == id; });
+        return {};
+    }
+    EditorResult<void> EditorApplication::Impl::receiveViewClose()
+    {
+        if (last_view_)
+        {
+            std::optional<desktop::ReviewAnswer> answer;
+            auto read_answer = [&](lux::ui::Pane& pane) {
+                if (pane.type() == lux::ui::PaneTypeId{"lux.editor.review"})
+                    answer = static_cast<desktop::ReviewView&>(pane).response();
+            };
+            auto borrowed = desktop_->views().withView(last_view_->question, read_answer);
+            if (!borrowed)
+                return applicationFailure("close.view.answer", borrowed.error());
+            if (!answer)
+                return {};
+            const auto decision = *last_view_;
+            const std::array ids{decision.question, decision.view};
+            const bool keep = answer->choice == desktop::EReviewChoice::KEEP_CONTENT;
+            auto prepared = desktop_->views().prepareClose(std::span{ids}.first(keep ? 2 : 1));
+            if (!prepared)
+                return applicationFailure("close.view.prepare", prepared.error());
+            auto committed = desktop_->views().commit(*prepared);
+            if (!committed)
+                return applicationFailure("close.view.commit", committed.error());
+            last_view_.reset();
+            if (keep)
+                std::erase_if(content_views_, [&](const auto& record) { return record.view == decision.view; });
+            else
+            {
+                auto dismissed = desktop_->views().dismissCloseIntent(decision.view);
+                if (!dismissed)
+                    return applicationFailure("close.view.intent", dismissed.error());
+                if (answer->choice == desktop::EReviewChoice::CLOSE_CONTENT)
+                    return requestClose(decision.content);
+            }
+            return {};
+        }
+        auto requests = desktop_->views().closeIntents();
+        if (!requests)
+            return applicationFailure("close.view.requests", requests.error());
+        for (auto id : *requests)
+        {
+            auto closed = closeView(id);
+            if (!closed)
+                return closed;
+            if (last_view_)
+                break;
+        }
+        return {};
+    }
+    EditorResult<views::ViewId> EditorApplication::Impl::showTool(views::ViewTypeId type)
+    {
+        auto existing = desktop_->views().describeAll();
+        if (!existing)
+            return applicationFailure("tool.views", existing.error());
+        for (const auto& view : *existing)
+            if (view.type == type)
+            {
+                auto shown = desktop_->views().show(view.id);
+                if (!shown)
+                    return applicationFailure("tool.show", shown.error());
+                auto focused = desktop_->views().focus(view.id);
+                if (!focused)
+                    return applicationFailure("tool.focus", focused.error());
+                return view.id;
+            }
+        std::optional<EditorResult<views::ViewId>> result;
+        auto create = [&](const extensions::ContributionSnapshot& snapshot) -> extensions::ContributionResult<void> {
+            views::ViewFactoryInput input{
+                messages_.dispatcherRef(),
+                lux::ui::PaneId{type.name()},
+                contracts::CodeLease::builtin(),
+                cxx::typeToken<EmptyViewInput>(),
+                std::make_shared<const EmptyViewInput>()
+            };
+            auto candidate = snapshot.views().prepare(type, input);
+            if (!candidate)
+                result.emplace(applicationFailure("tool.factory", candidate.error()));
+            else
+                result.emplace(adopt(*candidate, std::string(type.name())));
+            return {};
+        };
+        auto entered = contributions_.withSnapshot(create);
+        if (!entered)
+            return applicationFailure("tool.catalog", entered.error());
+        return std::move(*result);
+    }
+}

@@ -46,6 +46,12 @@ namespace lux::editor::application
             std::unique_ptr<flowforge::FlowInteraction> flow;
             std::unique_ptr<material::MaterialPreviewStore> preview;
         };
+        struct LastViewQuestion final
+        {
+            views::ViewId view;
+            sessions::ContentStamp content;
+            views::ViewId question;
+        };
         struct MaterialViewAssembly final
         {
             std::optional<material::MaterialViewBinding> binding;
@@ -111,6 +117,8 @@ namespace lux::editor::application
         std::vector<sessions::SessionCloseDecision> close_decisions_;
         std::unique_ptr<sessions::CloseSessionsOperation> closing_;
         std::optional<EditorFailure> exit_failure_;
+        std::optional<LastViewQuestion> last_view_;
+        bool close_application_{};
         std::optional<views::ViewId> review_;
         std::optional<sessions::ContentStamp> review_content_;
         std::uint64_t next_view_{1}, next_review_{1};
@@ -144,7 +152,11 @@ namespace lux::editor::application
         [[nodiscard]] EditorResult<views::ViewId> show(sessions::SessionId, bool another_view);
         [[nodiscard]] EditorResult<void> update();
         [[nodiscard]] EditorResult<void> receiveOpenResults();
-        [[nodiscard]] EditorResult<void> reviewExit();
+        [[nodiscard]] EditorResult<void> reviewClose();
+        [[nodiscard]] EditorResult<void> requestClose(sessions::ContentStamp);
+        [[nodiscard]] EditorResult<void> closeView(views::ViewId);
+        [[nodiscard]] EditorResult<void> receiveViewClose();
+        [[nodiscard]] EditorResult<views::ViewId> showTool(views::ViewTypeId);
         [[nodiscard]] EditorResult<void> settleOperations();
         [[nodiscard]] EditorResult<void> requestExit();
         [[nodiscard]] EditorResult<views::ViewId> adopt(views::DetachedView&, std::string key);

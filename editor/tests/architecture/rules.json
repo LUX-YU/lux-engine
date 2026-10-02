@@ -17805,6 +17805,9 @@
       ],
       "editor/application/src/EditorContent.cpp": [
         "editor_bootstrap"
+      ],
+      "editor/application/src/EditorViewClosure.cpp": [
+        "editor_bootstrap"
       ]
     },
     "native_libraries": [

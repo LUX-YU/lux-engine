@@ -54,6 +54,7 @@ namespace lux::editor::application
         [[nodiscard]] EditorResult<void> acknowledgeOpen(sessions::OpenAssetId);
         [[nodiscard]] EditorResult<views::ViewId> show(sessions::SessionId, bool another_view = false);
         [[nodiscard]] EditorResult<void> requestExit();
+        [[nodiscard]] EditorResult<void> closeView(views::ViewId);
         [[nodiscard]] EditorResult<void> applyLayout(workspace::DockLayout);
         [[nodiscard]] commands::CommandResult<commands::DispatchReceipt> execute(
             commands::CommandId,

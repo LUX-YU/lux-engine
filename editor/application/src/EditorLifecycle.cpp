@@ -7,7 +7,7 @@ namespace lux::editor::application
 {
     EditorResult<void> EditorApplication::Impl::requestExit()
     {
-        if (phase_ != EApplicationPhase::RUNNING)
+        if (phase_ != EApplicationPhase::RUNNING || last_view_)
             return cxx::unexpected(EditorFailure{EEditorError::BUSY, "exit.phase"});
         auto ids = sessions_.snapshotIds();
         if (!ids)
@@ -23,11 +23,12 @@ namespace lux::editor::application
                 {info->current, info->dirty ? sessions::ECloseChoice::CANCEL : sessions::ECloseChoice::DISCARD}
             );
         }
+        close_application_ = true;
         close_decisions_ = std::move(decisions);
         phase_ = EApplicationPhase::REVIEWING;
         return {};
     }
-    EditorResult<void> EditorApplication::Impl::reviewExit()
+    EditorResult<void> EditorApplication::Impl::reviewClose()
     {
         if (phase_ != EApplicationPhase::REVIEWING && phase_ != EApplicationPhase::COMMITTING_EXIT)
             return {};
@@ -100,7 +101,8 @@ namespace lux::editor::application
                     lux::ui::PaneId{"exit-review"},
                     {request,
                      "Unsaved content",
-                     "Save this content before closing the Editor?",
+                     close_application_ ? "Save this content before closing the Editor?"
+                                        : "Save this content before closing it?",
                      {desktop::EReviewChoice::SAVE, desktop::EReviewChoice::DISCARD, desktop::EReviewChoice::CANCEL}}
                 );
                 if (!question)
@@ -126,7 +128,15 @@ namespace lux::editor::application
         std::vector<views::ViewId> ids;
         ids.reserve(views->size());
         for (const auto& view : *views)
-            ids.push_back(view.id);
+        {
+            const auto content = std::ranges::find(content_views_, view.id, &ContentView::view);
+            const bool closes_content =
+                content != content_views_.end() && std::ranges::any_of(close_decisions_, [&](const auto& decision) {
+                    return decision.content.session == content->session;
+                });
+            if (close_application_ || closes_content)
+                ids.push_back(view.id);
+        }
         auto closing_views = desktop_->views().prepareClose(ids);
         if (!closing_views)
         {
@@ -141,7 +151,8 @@ namespace lux::editor::application
                 return {};
             return applicationFailure("exit.content.prepare", permits.error());
         }
-        phase_ = EApplicationPhase::COMMITTING_EXIT;
+        if (close_application_)
+            phase_ = EApplicationPhase::COMMITTING_EXIT;
         auto close_content = [&] {
             // No intervening business callback: Store validates the entire permit set, then reclaims.
             const auto closed = sessions_.close(*permits);
@@ -155,7 +166,13 @@ namespace lux::editor::application
             if (save.save)
                 pending_saves_.push_back(*save.save);
         closing_.reset();
-        content_views_.clear();
+        std::erase_if(content_views_, [&](const auto& view) { return std::ranges::find(ids, view.view) != ids.end(); });
+        close_decisions_.clear();
+        if (!close_application_)
+        {
+            phase_ = EApplicationPhase::RUNNING;
+            return {};
+        }
         opening_.requestStop();
         project_->requestClose();
         desktop_->presentation().stopFrames();
@@ -301,7 +318,10 @@ namespace lux::editor::application
                     pending_saves_.push_back({admitted->value});
             }
         }
-        if (auto reviewed = reviewExit(); !reviewed)
+        if (phase_ == EApplicationPhase::RUNNING)
+            if (auto closed = receiveViewClose(); !closed)
+                log::error("application.close-view", "{}", closed.error().domain);
+        if (auto reviewed = reviewClose(); !reviewed)
         {
             // A failed preflight never falls through to destruction. The frozen error needs a user decision;
             // maintenance and already accepted completions continue while the modal is displayed.

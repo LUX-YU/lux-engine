@@ -4,6 +4,7 @@
 #include <fstream>
 #include <iostream>
 #include <thread>
+#include <algorithm>
 
 namespace lux::editor::application
 {
@@ -122,6 +123,41 @@ int main(int argc, char** argv)
     assert(impl.sessions_.describe(flow_id)->current == flow_before);
     assert(impl.sessions_.size() == 2);
     std::cout << "Actual new commands, shared content views and cancel exit preserve all author state\n";
+    const auto choose_last = [&](desktop::EReviewChoice choice) {
+        assert(impl.last_view_);
+        auto choose = [&](ui::Pane& pane) { assert(static_cast<desktop::ReviewView&>(pane).answer(choice)); };
+        assert(impl.desktop_->views().withView(impl.last_view_->question, choose));
+        assert(app->update());
+    };
+    std::vector<views::ViewId> material_views;
+    for (const auto& view : impl.content_views_)
+        if (view.session == material_id)
+            material_views.push_back(view.view);
+    assert(material_views.size() == 2);
+    assert(app->closeView(material_views.back()));
+    assert(!impl.last_view_ && impl.sessions_.describe(material_id)->current == material_before);
+    assert(app->closeView(material_views.front()) && impl.last_view_);
+    choose_last(desktop::EReviewChoice::CANCEL);
+    assert(impl.desktop_->views().describe(material_views.front()));
+    assert(app->closeView(material_views.front()));
+    choose_last(desktop::EReviewChoice::KEEP_CONTENT);
+    assert(!impl.desktop_->views().describe(material_views.front()));
+    assert(impl.sessions_.describe(material_id)->current == material_before);
+    const auto shown_again = app->show(material_id);
+    assert(shown_again && *shown_again != material_views.front());
+    auto flow_view =
+        std::ranges::find_if(impl.content_views_, [&](const auto& record) { return record.session == flow_id; });
+    assert(flow_view != impl.content_views_.end());
+    const auto flow_view_id = flow_view->view;
+    assert(app->closeView(flow_view_id));
+    choose_last(desktop::EReviewChoice::CLOSE_CONTENT);
+    assert(impl.review_ && impl.sessions_.size() == 2);
+    answer(desktop::EReviewChoice::DISCARD);
+    assert(app->update() && app->phase() == EApplicationPhase::RUNNING);
+    assert(!impl.sessions_.describe(flow_id) && !impl.desktop_->views().describe(flow_view_id));
+    assert(impl.sessions_.describe(material_id)->current == material_before);
+    std::cout << "Last-view Cancel/Keep/Close use real modals; closing one content preserves another\n";
+
     assert(app->requestExit());
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
     while (app->phase() != EApplicationPhase::RELEASED)

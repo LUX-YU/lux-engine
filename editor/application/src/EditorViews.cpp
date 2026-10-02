@@ -239,11 +239,9 @@ namespace lux::editor::application
                 lux::ui::PaneId{name},
                 contracts::CodeLease::builtin(),
                 cxx::typeToken<MaterialViewAssembly>(),
-                std::make_shared<const MaterialViewAssembly>(MaterialViewAssembly{
-                    material::MaterialViewBinding{*key, owner.material.get()},
-                    owner.preview.get(),
-                    source + ".compiled"
-                })
+                std::make_shared<const MaterialViewAssembly>(
+                    MaterialViewAssembly{material::MaterialViewBinding{*key, owner.material.get()}, owner.preview.get()}
+                )
             );
         }
         else if (info->kind.name == "lux.editor.flowforge")
@@ -259,7 +257,7 @@ namespace lux::editor::application
                 contracts::CodeLease::builtin(),
                 cxx::typeToken<FlowViewAssembly>(),
                 std::make_shared<const FlowViewAssembly>(
-                    FlowViewAssembly{flowforge::FlowViewBinding{*key, owner.flow.get()}, source + ".compiled"}
+                    FlowViewAssembly{flowforge::FlowViewBinding{*key, owner.flow.get()}}
                 )
             );
         }
@@ -278,6 +276,32 @@ namespace lux::editor::application
             if (!connected)
                 return applicationFailure("scene.model.connect", connected.error());
             owner.model_drop = std::move(*connected);
+        }
+        if (owner.material)
+        {
+            auto connection = object::LuxObject::connect(
+                static_cast<material::MaterialView*>(view->pane()),
+                &material::MaterialView::publishRequested,
+                [this](std::shared_ptr<const material::CompiledMaterial> compiled) noexcept {
+                    receiveArtifact(std::move(compiled));
+                }
+            );
+            if (!connection)
+                return applicationFailure("material.publish.connect", connection.error());
+            owner.publish = std::move(*connection);
+        }
+        if (owner.flow)
+        {
+            auto connection = object::LuxObject::connect(
+                static_cast<flowforge::FlowView*>(view->pane()),
+                &flowforge::FlowView::publishRequested,
+                [this](std::shared_ptr<const flowforge::CompiledFlow> compiled) noexcept {
+                    receiveArtifact(std::move(compiled));
+                }
+            );
+            if (!connection)
+                return applicationFailure("flow.publish.connect", connection.error());
+            owner.publish = std::move(*connection);
         }
         auto adopted = adopt(*view, name);
         if (!adopted)

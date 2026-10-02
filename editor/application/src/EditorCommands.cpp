@@ -77,9 +77,7 @@ namespace lux::editor::application
                      render.runtime(),
                      *value.preview,
                      material_compilation_,
-                     writes_,
-                     files_,
-                     value.publication_address,
+                     environment_,
                      &project_->catalogModel(),
                      {2}},
                     value.binding
@@ -101,12 +99,7 @@ namespace lux::editor::application
                 auto view = flowforge::makeFlowView(
                     input.dispatcher(),
                     input.paneId(),
-                    {sessions_.access<flowforge::FlowSession>(),
-                     flow_compilation_,
-                     flow_environment_,
-                     writes_,
-                     files_,
-                     value.publication_address},
+                    {sessions_.access<flowforge::FlowSession>(), flow_compilation_, flow_environment_},
                     value.binding
                 );
                 if (!view)

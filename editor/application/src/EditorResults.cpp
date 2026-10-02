@@ -15,6 +15,11 @@ namespace lux::editor::application
         case EResultAction::ACK_MAINTENANCE:
             maintenance_failure_.reset();
             break;
+        case EResultAction::ACK_ARTIFACT:
+            std::erase_if(artifacts_, [&](const auto& entry) {
+                return entry.id == std::get<std::uint64_t>(intent->target) && entry.settled;
+            });
+            break;
         case EResultAction::ACK_SAVE:
             std::erase_if(save_reports_, [&](const auto& report) {
                 return report.id == std::get<persistence::SaveId>(intent->target) && report.result.has_value() &&
@@ -183,6 +188,35 @@ namespace lux::editor::application
                                     button("Acknowledge step", EResultAction::ACK_STEP, ticket);
                             }
                             ImGui::PopID();
+                        }
+                        ImGui::PopID();
+                    }
+                    ImGui::SeparatorText("Compiled publications");
+                    for (const auto& report : app_.artifacts_)
+                    {
+                        ImGui::PushID(static_cast<int>(report.id));
+                        ImGui::TextWrapped("%s", report.asset.cooked_path.c_str());
+                        if (report.failure)
+                            ImGui::TextWrapped(
+                                "%s: %s",
+                                report.failure->domain.c_str(),
+                                report.failure->message.c_str()
+                            );
+                        if (report.settled)
+                        {
+                            ImGui::TextUnformatted(
+                                report.result && std::holds_alternative<persistence::CommitReceipt>(*report.result)
+                                    ? "Package published. Author save baseline is unchanged."
+                                    : "Publication rejected or failed."
+                            );
+                            button("Acknowledge publication", EResultAction::ACK_ARTIFACT, report.id);
+                        }
+                        else
+                        {
+                            if (report.ticket)
+                                publication(*report.ticket);
+                            if (report.catalog_ticket)
+                                publication(*report.catalog_ticket);
                         }
                         ImGui::PopID();
                     }

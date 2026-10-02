@@ -1,7 +1,6 @@
 #include <lux/engine/editor/views/ViewportElement.hpp>
 #include <lux/engine/editor/detail/ViewportStateCodec.hpp>
 #include <lux/engine/editor/workbench/InteractionDelivery.hpp>
-#include <lux/engine/editor/material/PublishCompiledMaterial.hpp>
 #include <lux/engine/editor/material/MaterialView.hpp>
 #include <lux/engine/editor/material/MaterialNodeControls.hpp>
 #include <lux/engine/editor/project/AssetPickerElement.hpp>
@@ -113,6 +112,8 @@ namespace lux::editor::material
         MaterialView& view_;
         MaterialViewServices services_;
         MaterialCompileId compile_;
+        lux::scene::RenderAssetInput compile_assets_;
+        MaterialCompileId delivered_;
         std::optional<MaterialViewBinding> binding_;
         MaterialViewState state_;
         Display display_;
@@ -708,7 +709,7 @@ namespace lux::editor::material
                 command_result = accepted(view_.compile());
                 break;
             case EControl::PUBLISH:
-                command_result = accepted(view_.publish());
+                command_result = accepted(view_.requestPublication());
                 break;
             case EControl::CANCEL:
                 command_result = view_.cancelEdit();
@@ -756,6 +757,28 @@ namespace lux::editor::material
                     return cxx::unexpected(current.error());
                 if (auto installed = install(std::move(*current)); !installed)
                     return installed;
+            }
+            if (compile_.value)
+            {
+                auto operation = services_.compilation.operation(compile_);
+                if (operation)
+                {
+                    auto desired = operation->get().key();
+                    desired.content = info.current;
+                    if (services_.preview.status().desired != desired)
+                        delivered_ = {}; // A discarded candidate may be requested again after Undo restores its source.
+                    services_.preview.setDesired(desired);
+                    const bool has_current_completion =
+                        operation->get().ready() && operation->get().key() == desired && delivered_ != compile_;
+                    if (has_current_completion)
+                    {
+                        auto received = services_.preview.receive(operation->get(), compile_assets_);
+                        if (received || !temporary(VMaterialViewFailure{received.error()}))
+                            delivered_ = compile_;
+                        if (!received)
+                            return rejected(received.error());
+                    }
+                }
             }
             const auto instance = services_.preview.instance();
             const auto preview = services_.preview.status();
@@ -912,11 +935,16 @@ namespace lux::editor::material
         auto snapshot = owner->get().capture();
         if (!snapshot)
             return rejected(snapshot.error());
-        auto started =
-            impl_->services_.compilation.start(std::move(*snapshot), {}, 1, impl_->services_.preview.target());
+        auto started = impl_->services_.compilation.start(
+            std::move(*snapshot),
+            {},
+            impl_->services_.environment.version,
+            impl_->services_.preview.target()
+        );
         if (!started)
             return rejected(started.error());
         impl_->compile_ = *started;
+        impl_->compile_assets_ = impl_->services_.environment.assets;
         const auto operation = impl_->services_.compilation.operation(*started);
         impl_->services_.preview.setDesired(operation->get().key());
         return *started;
@@ -925,7 +953,7 @@ namespace lux::editor::material
     {
         return impl_->compile_;
     }
-    MaterialViewResult<persistence::WriteTicket> MaterialView::publish()
+    MaterialViewResult<void> MaterialView::requestPublication()
     {
         auto operation = impl_->services_.compilation.operation(impl_->compile_);
         if (!operation)
@@ -933,13 +961,10 @@ namespace lux::editor::material
         auto compiled = operation->get().result();
         if (!compiled)
             return rejected(compiled.error());
-        auto target = impl_->services_.artifacts.resolve(impl_->services_.publication_address);
-        if (!target)
-            return rejected(target.error());
-        auto ticket = publishCompiledMaterial(impl_->services_.writes, std::move(*target), std::move(*compiled));
-        if (!ticket)
-            return rejected(ticket.error());
-        return *ticket;
+        auto sent = emit(publishRequested, std::move(*compiled));
+        if (!sent.complete())
+            return rejected(views::EViewError::BUSY);
+        return {};
     }
 
     MaterialViewResult<void> MaterialView::navigate(const lux::editor::views::CameraMotion& motion)

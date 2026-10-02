@@ -1,3 +1,4 @@
+#include <lux/engine/material/graph/Nodes.hpp>
 #include <lux/engine/editor/application/EditorApplicationImpl.hpp>
 #include <lux/engine/editor/desktop/DesktopTestAccess.hpp>
 #include <lux/engine/editor/scene/OutlinerView.hpp>
@@ -204,6 +205,25 @@ int main(int argc, char** argv)
     };
     const auto material_id = create_content("lux.editor.new.material");
     const auto flow_id = create_content("lux.editor.new.flow");
+    const auto material_view = std::ranges::find(
+                                   impl.content_views_,
+                                   material_id,
+                                   &std::remove_reference_t<decltype(impl)>::ContentView::session
+    )
+                                   ->view;
+    auto material_action = [&](auto action) {
+        auto invoke = [&](ui::Pane& pane) { action(static_cast<lux::editor::material::MaterialView&>(pane)); };
+        assert(impl.desktop_->views().withView(material_view, invoke));
+    };
+    material_action([&](lux::editor::material::MaterialView& view) {
+        assert(view.beginEdit("Create output"));
+        std::vector<lux::editor::material::VMaterialEdit> edits;
+        edits.emplace_back(lux::editor::material::MaterialInsertNode{
+            contracts::CodeLease::builtin(),
+            std::make_unique<lux::material::OutputSurfaceNode>()
+        });
+        assert(view.previewEdit(edits) && view.commitEdit());
+    });
     const auto save_material_stamp = impl.sessions_.describe(material_id)->current;
     assert(app->execute(
         commands::CommandId{"lux.editor.save-as"},
@@ -248,6 +268,58 @@ int main(int argc, char** argv)
     assert(reopened_status && reopened_status->content.session == material_id);
     assert(app->acknowledgeOpen(*reopened));
     std::cout << "Real Save As preserves author history, publishes source/catalog and reopens the same Session\n";
+    lux::editor::material::MaterialCompileId compilation;
+    material_action([&](lux::editor::material::MaterialView& view) {
+        auto result = view.compile();
+        assert(result);
+        compilation = *result;
+    });
+    const auto compile_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+    while (!impl.material_compilation_.operation(compilation)->get().ready())
+    {
+        assert(std::chrono::steady_clock::now() < compile_deadline);
+        assert(app->update());
+    }
+    assert(impl.material_compilation_.operation(compilation)->get().result());
+    auto rename_material = [&] {
+        material_action([&](lux::editor::material::MaterialView& view) {
+            assert(view.beginEdit("Edit after compile"));
+            std::vector<lux::editor::material::VMaterialEdit> edits;
+            edits.emplace_back(lux::editor::material::MaterialRename{"Newer author source"});
+            assert(view.previewEdit(edits) && view.commitEdit());
+        });
+    };
+    material_action([&](lux::editor::material::MaterialView& view) { assert(view.requestPublication()); });
+    rename_material();
+    assert(app->update());
+    assert(impl.artifacts_.back().settled && impl.artifacts_.back().failure && !impl.artifacts_.back().ticket);
+    material_action([&](lux::editor::material::MaterialView& view) { assert(view.undo() && view.requestPublication()); }
+    );
+    assert(app->update() && impl.artifacts_.back().ticket);
+    rename_material(); // Already admitted work owns the older capture, not this live source.
+    const auto newer_material = impl.sessions_.describe(material_id);
+    while (!impl.artifacts_.back().settled)
+    {
+        assert(std::chrono::steady_clock::now() < compile_deadline);
+        assert(app->update());
+    }
+    const auto& published_material = impl.artifacts_.back();
+    if (published_material.failure)
+        std::cerr << published_material.failure->domain << ": " << published_material.failure->message << '\n';
+    assert(!published_material.failure && published_material.result);
+    assert(std::holds_alternative<persistence::CommitReceipt>(*published_material.result));
+    auto* compiled_entry = impl.project_->asset(saved_material->binding->asset);
+    assert(compiled_entry && !compiled_entry->cooked_path.empty());
+    assert(compiled_entry->compiled_source_digest == compiled_entry->source_digest);
+    assert(impl.project_->catalogAsset(compiled_entry->id));
+    assert(std::filesystem::exists(root / compiled_entry->cooked_path));
+    auto current_material = impl.sessions_.describe(material_id);
+    assert(current_material->current == newer_material->current && current_material->dirty == newer_material->dirty);
+    material_action([&](lux::editor::material::MaterialView& view) { assert(view.undo()); });
+    assert(impl.sessions_.describe(material_id)->current == saved_material->current);
+    std::cout
+        << "Real compile intent publishes a readable versioned package; stale intent rejected and baseline unchanged\n";
+
     assert(app->execute(
         commands::CommandId{"lux.editor.export-copy"},
         commands::CommandInvocation{commands::SessionTarget{material_id, saved_material->current}}
@@ -264,6 +336,24 @@ int main(int argc, char** argv)
         assert(std::chrono::steady_clock::now() < save_deadline);
         assert(app->update());
         std::this_thread::yield();
+    }
+    bool preview_visible{};
+    const auto preview_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (!preview_visible)
+    {
+        if (std::chrono::steady_clock::now() >= preview_deadline)
+        {
+            for (auto& content : impl.content_views_)
+                if (content.view == material_view)
+                {
+                    const auto state = content.preview->status();
+                    std::cerr << "Preview: prepared=" << bool(state.prepared) << " accepted=" << bool(state.accepted)
+                              << " stale=" << state.stale << " diagnostic=" << state.diagnostic << '\n';
+                }
+            assert(false && "Actual material preview did not become visible");
+        }
+        assert(app->update());
+        material_action([&](lux::editor::material::MaterialView& view) { preview_visible = view.image().isValid(); });
     }
     const auto after_copy = impl.sessions_.describe(material_id);
     assert(

@@ -252,6 +252,26 @@ namespace lux::editor::application
             return status->stage == persistence::ESaveStage::TERMINAL &&
                    (report == save_reports_.end() || report->result.has_value());
         };
+        for (const auto& artifact : artifacts_)
+        {
+            if (artifact.settled)
+                continue;
+            auto ticket = artifact.catalog_ticket ? artifact.catalog_ticket : artifact.ticket;
+            if (ticket)
+            {
+                auto status = writes_.status(*ticket);
+                if (!status)
+                    return applicationFailure("close.artifact.status", status.error());
+                if (status->stage == persistence::EWriteStage::UNKNOWN)
+                    return cxx::unexpected(EditorFailure{
+                        EEditorError::SOURCE_FAILURE,
+                        "close.artifact.unknown",
+                        0,
+                        "Cancel closing and reconcile the retained publication in Operation Results."
+                    });
+            }
+            return {}; // Keep the desktop available until accepted artifact and catalog publications settle.
+        }
         for (auto id : pending_saves_)
         {
             auto ready = ready_save(id);
@@ -418,9 +438,10 @@ namespace lux::editor::application
                         receive(applicationFailure("flow.acknowledge", acknowledged.error()));
                 }
         receive(settleSaves());
+        receive(settleArtifacts());
         const bool operations_settled =
             materials && flows && materials->empty() && flows->empty() && pending_saves_.empty() &&
-            opening_.settled() &&
+            opening_.settled() && std::ranges::all_of(artifacts_, [](const auto& value) { return value.settled; }) &&
             std::ranges::none_of(run_presentations_, [](const auto& run) { return bool(run.preparing) || run.run; });
         if (phase_ == EApplicationPhase::DRAINING && operations_settled &&
             std::ranges::none_of(reloads_, [](const auto& reload) { return bool(reload.operation); }) &&
@@ -464,6 +485,20 @@ namespace lux::editor::application
         if (auto events = engine_->execution().dispatchTaskEvents(); !events)
             receive(applicationFailure("execution.events", events.error()));
         (void)task_monitor_.dispatchChanges();
+        if (environment_.assets.version != project_->catalogRevision())
+        {
+            auto reads = project_->captureAssetReads();
+            if (!reads)
+                receive(cxx::unexpected(reads.error()));
+            else
+            {
+                auto next = environment_.assets;
+                next.reads = std::move(*reads);
+                next.version = project_->catalogRevision();
+                environment_.assets = std::move(next);
+                environment_.version = project_->catalogRevision();
+            }
+        }
         project_->dispatchEvents();
         (void)messages_.dispatchPending();
         saves_.adoptCompletions();

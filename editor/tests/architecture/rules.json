@@ -17827,6 +17827,9 @@
       ],
       "editor/application/src/EditorModels.cpp": [
         "editor_bootstrap"
+      ],
+      "editor/application/src/EditorArtifacts.cpp": [
+        "editor_bootstrap"
       ]
     },
     "native_libraries": [

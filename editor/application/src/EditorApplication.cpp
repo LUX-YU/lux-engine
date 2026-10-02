@@ -31,8 +31,15 @@ namespace lux::editor::application
         opens_.reserve(64);
         open_intents_.reserve(64);
         model_placements_.reserve(32);
+        artifacts_.reserve(64);
     }
-    EditorApplication::Impl::~Impl() = default;
+    EditorApplication::Impl::~Impl()
+    {
+        // Completion callbacks borrow application records. Partial construction and normal exit both
+        // release the accepted task handles before member destruction begins.
+        if (!project_tasks_.join())
+            std::terminate();
+    }
     EditorApplication::EditorApplication(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}
     EditorApplication::~EditorApplication() = default;
     EditorResult<std::unique_ptr<EditorApplication>> EditorApplication::create(EditorApplicationConfig config)

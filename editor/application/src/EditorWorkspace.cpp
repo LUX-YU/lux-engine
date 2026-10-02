@@ -41,7 +41,7 @@ namespace lux::editor::application
                     engine_->sceneRuntime(),
                     material::MaterialPreviewEnvironment{environment_, registrations_.features}
                 );
-                auto input = make_input(MaterialViewAssembly{{}, owner.preview.get(), {}});
+                auto input = make_input(MaterialViewAssembly{{}, owner.preview.get()});
                 pane_names.emplace_back(id.name());
                 owners.push_back(std::move(owner));
                 return input;

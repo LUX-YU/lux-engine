@@ -32,9 +32,7 @@ namespace lux::editor::material
         render::RenderRuntime& renderer;
         MaterialPreviewStore& preview;
         MaterialCompilationService& compilation;
-        persistence::WriteCoordinator& writes;
-        persistence::IArtifactStore& artifacts;
-        std::string publication_address;
+        const scene::ProjectionEnvironment& environment;
         project::ProjectCatalogModel* assets{};
         system::SystemInstanceId render_system;
     };
@@ -75,7 +73,9 @@ namespace lux::editor::material
         [[nodiscard]] MaterialViewResult<void> undo();
         [[nodiscard]] MaterialViewResult<void> redo();
         [[nodiscard]] MaterialViewResult<MaterialCompileId> compile();
-        [[nodiscard]] MaterialViewResult<persistence::WriteTicket> publish();
+        // This is a user intention. Admission and publication results belong to its explicit receiver.
+        object::TSignal<std::shared_ptr<const CompiledMaterial>> publishRequested{*this};
+        [[nodiscard]] MaterialViewResult<void> requestPublication();
         [[nodiscard]] MaterialCompileId compilation() const noexcept;
         [[nodiscard]] MaterialViewResult<void> navigate(const lux::editor::views::CameraMotion&);
         [[nodiscard]] const std::optional<MaterialViewBinding>& binding() const noexcept;

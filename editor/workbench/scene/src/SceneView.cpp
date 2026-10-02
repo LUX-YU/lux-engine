@@ -384,6 +384,19 @@ namespace lux::editor::scene
                 auto session = services_.sessions.read(author->session);
                 if (!session)
                     return rejected(SceneEditError{session.error()});
+                if (projection_->version().environment != services_.environment.version)
+                {
+                    auto next = services_.projections.acquire(session->get(), services_.environment);
+                    if (!next)
+                        return rejected(next.error());
+                    auto presentation = preparePresentation((*next)->instance());
+                    if (!presentation)
+                        return rejected(presentation.error());
+                    // The complete candidate is ready; old output and camera survived every failed attempt.
+                    viewport_.setPresentation(std::move(*presentation), state_.extent);
+                    projection_ = std::move(*next);
+                    presented_ = projection_->instance();
+                }
                 auto refreshed = projection_->update(session->get());
                 if (!refreshed)
                     return rejected(refreshed.error());

@@ -23,9 +23,6 @@ namespace lux::editor::flowforge
         sessions::TSessionAccess<FlowSession> sessions;
         FlowCompilationService& compilation;
         lux::flowforge::FlowSourceEnvironment metadata;
-        persistence::WriteCoordinator& writes;
-        persistence::IArtifactStore& artifacts;
-        std::string publication_address;
     };
     struct FlowViewState final
     {
@@ -58,7 +55,9 @@ namespace lux::editor::flowforge
         [[nodiscard]] FlowViewResult<void> redo();
         [[nodiscard]] FlowViewResult<FlowCompileId> compile();
         [[nodiscard]] FlowViewResult<void> retryLink(LinkSettings);
-        [[nodiscard]] FlowViewResult<persistence::WriteTicket> publish();
+        // This is a user intention. Admission and publication results belong to its explicit receiver.
+        object::TSignal<std::shared_ptr<const CompiledFlow>> publishRequested{*this};
+        [[nodiscard]] FlowViewResult<void> requestPublication();
         [[nodiscard]] const std::optional<FlowViewBinding>& binding() const noexcept;
         [[nodiscard]] const FlowViewResult<void>& status() const noexcept;
         [[nodiscard]] FlowCompileId compilation() const noexcept;

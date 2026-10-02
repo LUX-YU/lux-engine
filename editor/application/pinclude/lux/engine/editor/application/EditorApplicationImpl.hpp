@@ -57,6 +57,7 @@ namespace lux::editor::application
             std::optional<scene::RunId> run;
             views::ViewId source_view;
             object::Connection model_drop;
+            object::Connection publish;
         };
         struct ModelPresentation final
         {
@@ -66,6 +67,27 @@ namespace lux::editor::application
             std::optional<scene::ModelCreationResult<scene::SceneEditReceipt>> result;
             std::optional<EditorFailure> failure;
             bool cancel_requested{};
+        };
+        using VCompiledSource = std::
+            variant<std::shared_ptr<const material::CompiledMaterial>, std::shared_ptr<const flowforge::CompiledFlow>>;
+        struct CompiledPackage final
+        {
+            cxx::SharedBytes<> bytes;
+            std::string source_digest;
+        };
+        struct ArtifactPresentation final
+        {
+            std::uint64_t id;
+            VCompiledSource source;
+            ProjectAssetEntry asset;
+            std::optional<persistence::WriteTicket> ticket;
+            std::optional<persistence::PersistenceResult<CompiledPackage>> encoded;
+            std::optional<persistence::VPublicationOutcome> result;
+            std::optional<EditorResult<ProjectPackage>> package;
+            std::optional<ProjectPublication> catalog;
+            std::optional<persistence::WriteTicket> catalog_ticket;
+            std::optional<EditorFailure> failure;
+            bool encoding{}, reading{}, settled{};
         };
         struct SavePresentation final
         {
@@ -102,6 +124,7 @@ namespace lux::editor::application
         {
             ACK_MAINTENANCE,
             ACK_SAVE,
+            ACK_ARTIFACT,
             CANCEL_SAVE,
             RECONCILE,
             ACK_RELOAD,
@@ -152,12 +175,10 @@ namespace lux::editor::application
         {
             std::optional<material::MaterialViewBinding> binding;
             material::MaterialPreviewStore* preview{};
-            std::string publication_address;
         };
         struct FlowViewAssembly final
         {
             std::optional<flowforge::FlowViewBinding> binding;
-            std::string publication_address;
         };
         struct EmptyViewInput final
         {};
@@ -213,6 +234,8 @@ namespace lux::editor::application
         std::uint64_t next_model_{1};
         std::vector<persistence::SaveId> pending_saves_;
         std::vector<SavePresentation> save_reports_;
+        std::vector<ArtifactPresentation> artifacts_;
+        std::uint64_t next_artifact_{1};
         std::optional<SaveQuestion> save_question_;
         std::vector<ReloadPresentation> reloads_;
         std::optional<ReloadQuestion> reload_question_;
@@ -275,6 +298,8 @@ namespace lux::editor::application
         [[nodiscard]] EditorResult<void> askSave(commands::SessionTarget, persistence::ESaveMode);
         [[nodiscard]] EditorResult<void> receiveSaveAnswer();
         [[nodiscard]] EditorResult<void> settleSaves();
+        void receiveArtifact(VCompiledSource);
+        [[nodiscard]] EditorResult<void> settleArtifacts();
         [[nodiscard]] EditorResult<void> rememberSave(persistence::SaveId);
         [[nodiscard]] EditorResult<void> cancelContentPreview(sessions::SessionId);
         [[nodiscard]] EditorResult<void> reload(commands::SessionTarget);

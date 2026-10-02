@@ -351,7 +351,7 @@ namespace draft_test
         auto detached = take(ef::makeFlowView(
             f.messages.dispatcherRef(),
             ui::PaneId{"r1-flow"},
-            {f.store.access<ef::FlowSession>(), compilation, {}, f.writes, f.disk, {}},
+            {f.store.access<ef::FlowSession>(), compilation, {}},
             ef::FlowViewBinding{key, &interaction}
         ));
         auto* view = static_cast<ef::FlowView*>(detached.pane());
@@ -610,9 +610,7 @@ namespace draft_test
              *f.renderer,
              preview,
              compilation,
-             f.writes,
-             f.disk,
-             {},
+             f.environment,
              {},
              {3}},
             em::MaterialViewBinding{key, &interaction}

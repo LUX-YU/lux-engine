@@ -2,7 +2,7 @@ add_subdirectory(launch)
 add_subdirectory(extensions)
 
 add_component(COMPONENT_NAME editor_bootstrap NAMESPACE lux::engine::editor STATIC
-    SOURCE_FILES src/EditorApplication.cpp src/EditorViews.cpp src/EditorCommands.cpp src/EditorLifecycle.cpp src/EditorWorkspace.cpp src/EditorContent.cpp src/EditorViewClosure.cpp src/EditorSceneTools.cpp src/EditorSaving.cpp src/EditorReload.cpp src/EditorResults.cpp src/EditorModels.cpp)
+    SOURCE_FILES src/EditorApplication.cpp src/EditorViews.cpp src/EditorCommands.cpp src/EditorLifecycle.cpp src/EditorWorkspace.cpp src/EditorContent.cpp src/EditorViewClosure.cpp src/EditorSceneTools.cpp src/EditorSaving.cpp src/EditorReload.cpp src/EditorResults.cpp src/EditorModels.cpp src/EditorArtifacts.cpp)
 component_include_directories(editor_bootstrap BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude INSTALL_TIME include)
 target_link_libraries(editor_bootstrap PUBLIC lux::engine::editor::session_execution lux::engine::editor::editor_project

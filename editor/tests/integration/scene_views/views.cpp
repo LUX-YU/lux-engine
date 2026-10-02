@@ -810,8 +810,7 @@ namespace
         const auto key = take(f.store.key<ef::FlowSession>(take(f.store.publish(reserved))));
         ef::FlowInteraction interaction(f.store.access<ef::FlowSession>(), key);
         ef::FlowCompilationService compilation(f.execution);
-        ef::FlowViewServices
-            services{f.store.access<ef::FlowSession>(), compilation, {}, f.writes, f.disk, "derived.flow"};
+        ef::FlowViewServices services{f.store.access<ef::FlowSession>(), compilation, {}};
         auto detached = take(registered_views::flow(
             f.messages.dispatcherRef(),
             ui::PaneId{"flow"},
@@ -920,7 +919,17 @@ namespace
         assert(completed.result() && completed.attempts().size() == 2);
         assert(completed.object() == object); // Failed linker configuration cannot discard the compiled artifact.
         const auto published_author = author->describe();
-        const auto publication = take(view->publish());
+        std::optional<persistence::WriteTicket> published_ticket;
+        auto publish_connection = take(object::LuxObject::connect(
+            view,
+            &ef::FlowView::publishRequested,
+            [&](std::shared_ptr<const ef::CompiledFlow> result) noexcept {
+                published_ticket =
+                    take(ef::publishFlowArtifact(f.writes, take(f.disk.resolve("derived.flow")), std::move(result)));
+            }
+        ));
+        assert(view->requestPublication() && published_ticket);
+        const auto publication = *published_ticket;
         assert(view->undo() && author->describe().current == initial.current);
         assert(f.desktop->views().close(next));
         f.wait([&] { return !f.desktop->views().describe(next); });
@@ -980,9 +989,7 @@ namespace
              *f.renderer,
              preview,
              compilation,
-             f.writes,
-             f.disk,
-             "derived.material",
+             f.environment,
              {},
              {2}},
             em::MaterialViewBinding{key, &interaction},
@@ -1029,7 +1036,18 @@ namespace
         f.wait([&] { return operation->ready(); });
         const auto compiled = take(operation->result());
         const auto unsaved = author->describe();
-        const auto publication = take(view->publish());
+        std::optional<persistence::WriteTicket> published_ticket;
+        auto publish_connection = take(object::LuxObject::connect(
+            view,
+            &em::MaterialView::publishRequested,
+            [&](std::shared_ptr<const em::CompiledMaterial> result) noexcept {
+                published_ticket = take(
+                    em::publishCompiledMaterial(f.writes, take(f.disk.resolve("derived.material")), std::move(result))
+                );
+            }
+        ));
+        assert(view->requestPublication() && published_ticket);
+        const auto publication = *published_ticket;
         f.wait([&] { return take(f.writes.status(publication)).stage == persistence::EWriteStage::TERMINAL; });
         assert(std::holds_alternative<persistence::CommitReceipt>(*take(f.writes.status(publication)).outcome));
         assert(std::filesystem::file_size(f.files / "derived.material") == compiled->bytes.size());

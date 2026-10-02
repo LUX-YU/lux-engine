@@ -1,5 +1,4 @@
 #include <lux/engine/editor/workbench/InteractionDelivery.hpp>
-#include <lux/engine/editor/flowforge/PublishFlowArtifact.hpp>
 #include <lux/engine/editor/flowforge/FlowView.hpp>
 #include <lux/engine/serialization/BinaryReader.hpp>
 #include <lux/engine/editor/flowforge/FlowNodeControls.hpp>
@@ -227,7 +226,7 @@ namespace lux::editor::flowforge
                     ++state_.state_.linker.version;
                     state_.control_ = EControl::RETRY;
                 }
-                ImGui::BeginDisabled(state_.services_.publication_address.empty());
+                ImGui::BeginDisabled(!state_.binding_);
                 if (ImGui::Button("Publish artifact"))
                     state_.control_ = EControl::PUBLISH;
                 ImGui::EndDisabled();
@@ -654,7 +653,7 @@ namespace lux::editor::flowforge
                 controlled = view_.retryLink(state_.linker);
                 break;
             case EControl::PUBLISH:
-                controlled = accepted(view_.publish());
+                controlled = accepted(view_.requestPublication());
                 break;
             case EControl::CANCEL:
                 controlled = view_.cancelEdit();
@@ -859,7 +858,7 @@ namespace lux::editor::flowforge
     {
         return accepted(impl_->services_.compilation.retryLink(impl_->compile_, std::move(settings)));
     }
-    FlowViewResult<persistence::WriteTicket> FlowView::publish()
+    FlowViewResult<void> FlowView::requestPublication()
     {
         auto operation = impl_->services_.compilation.operation(impl_->compile_);
         if (!operation)
@@ -867,13 +866,10 @@ namespace lux::editor::flowforge
         auto compiled = operation->get().result();
         if (!compiled)
             return rejected(compiled.error());
-        auto target = impl_->services_.artifacts.resolve(impl_->services_.publication_address);
-        if (!target)
-            return rejected(target.error());
-        auto ticket = publishFlowArtifact(impl_->services_.writes, std::move(*target), std::move(*compiled));
-        if (!ticket)
-            return rejected(ticket.error());
-        return *ticket;
+        auto sent = emit(publishRequested, std::move(*compiled));
+        if (!sent.complete())
+            return rejected(views::EViewError::BUSY);
+        return {};
     }
     void FlowView::update() noexcept
     {

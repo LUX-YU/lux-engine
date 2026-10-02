@@ -20,7 +20,48 @@ namespace
         bytes.back() = value;
         return asset::AssetId{bytes};
     }
-
+    void manifestFormats(const std::filesystem::path& root)
+    {
+        const auto header = std::string{"format = \"lux.editor.project\"\nversion = "};
+        const auto body = std::string{"\nproject_id = \""} + uuids::to_string(id(30).uuid()) +
+            "\"\nname = \"Legacy\"\n[[assets]]\nid = \"" + uuids::to_string(id(31).uuid()) +
+            "\"\nkind = \"material_graph\"\nsource_path = \"Content/Example.material\"\n";
+        for (const int version : {1, 2})
+        {
+            const auto old_bytes = header + std::to_string(version) +
+                (version == 2 ? "\nplugins = []" : "") + body;
+            auto old = decodeProjectManifest(old_bytes);
+            assert(old && old->assets.size() == 1);
+            assert(old->assets[0].source_type == "lux.material.source" && old->assets[0].source_version == 1);
+            const auto directory = root / ("legacy-" + std::to_string(version));
+            std::filesystem::create_directory(directory);
+            const auto file = directory / "Project.luxproject";
+            {
+                std::ofstream output(file, std::ios::binary);
+                output << old_bytes;
+                assert(output);
+            }
+            auto opened = readProjectOpenData(file);
+            assert(opened && opened->manifest == *old);
+            std::ifstream input(file, std::ios::binary);
+            assert(std::string(std::istreambuf_iterator<char>(input), {}) == old_bytes);
+            const auto migrated = encodeProjectManifest(*old);
+            assert(migrated && migrated->find("version = 3\n") != std::string::npos);
+            assert(decodeProjectManifest(*migrated)->assets == old->assets);
+        }
+        ProjectManifest future{id(32), "Missing provider"};
+        future.assets.push_back({id(33), "org.vendor.future-source", "Content/Unknown.source"});
+        future.assets.front().source_version = 73;
+        const auto encoded = encodeProjectManifest(future);
+        assert(encoded && *decodeProjectManifest(*encoded) == future);
+        assert(future.assets.front().sourceType() == asset::AssetTypeId::fromName("org.vendor.future-source"));
+        future.assets.front().source_version = 0;
+        assert(!encodeProjectManifest(future));
+        future.assets.front().source_version = 73;
+        future.assets.front().source_type = "invalid/name";
+        assert(!encodeProjectManifest(future));
+        assert(!decodeProjectManifest(header + "9" + body));
+    }
 }
 
 int main(int argc, char** argv)
@@ -71,6 +112,7 @@ int main(int argc, char** argv)
     auto config = ProjectBuilder(id(1), "Empty").build();
     assert(config && !config->initial_scene);
     assert(std::filesystem::is_empty(root)); // Builder has no filesystem side effects.
+    manifestFormats(root);
     assert(!ProjectBuilder({}, "Bad").build());
     std::optional<EditorResult<ProjectCreationResult>> result;
     auto operation = create(root / std::filesystem::u8path("空项目 with spaces"), *config, result);

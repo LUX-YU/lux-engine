@@ -1,5 +1,6 @@
 #pragma once
 #include <lux/engine/editor/views/IViewHost.hpp>
+#include <lux/engine/editor/sessions/SessionId.hpp>
 #include <lux/cxx/core/move_only_function.hpp>
 #include <lux/cxx/compile_time/TypeToken.hpp>
 #include <span>
@@ -13,7 +14,8 @@ namespace lux::editor::views
         NOT_FOUND,
         CAPACITY,
         CONSTRUCT,
-        CALLBACK
+        CALLBACK,
+        AMBIGUOUS
     };
     struct ViewFactoryFailure final
     {
@@ -31,6 +33,8 @@ namespace lux::editor::views
         std::string label;
         cxx::TypeToken binding_type;
         std::uint32_t input_version{1};
+        std::vector<sessions::SessionKindId> content_kinds;
+        bool default_content_view{true};
     };
     // Immutable typed binding. The external code pin survives payload destruction and replacement.
     // Contents are identities and explicit borrowed services; never a mutable author source.
@@ -90,6 +94,10 @@ namespace lux::editor::views
             std::size_t capacity = 256
         );
         [[nodiscard]] ViewFactoryResult<DetachedView> prepare(ViewTypeId, const ViewFactoryInput&) const;
+        [[nodiscard]] ViewFactoryResult<ViewTypeId> selectContent(
+            const sessions::SessionKindId&,
+            std::optional<ViewTypeId> preferred = {}
+        ) const;
         [[nodiscard]] std::span<const std::shared_ptr<ViewFactoryEntry>> entries() const noexcept;
 
     private:

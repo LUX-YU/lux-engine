@@ -38,7 +38,7 @@ namespace lux::editor::detail
             const auto bytes = lux::cxx::SharedBytes<>::fromOwner(owner, *owner);
             ProjectAssetEntry entry{
                 initial.package->scene->id(),
-                EProjectAssetKind::SCENE,
+                "lux.scene.package",
                 "Content/" + initial.source_path,
                 {},
                 projectContentDigest(bytes.view()),

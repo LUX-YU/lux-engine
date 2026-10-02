@@ -6,16 +6,6 @@ namespace lux::editor::application
 {
     namespace
     {
-        std::optional<EProjectAssetKind> assetKind(const sessions::SessionKindId& kind)
-        {
-            if (kind.name == "lux.editor.scene")
-                return EProjectAssetKind::SCENE;
-            if (kind.name == "lux.editor.material")
-                return EProjectAssetKind::MATERIAL_GRAPH;
-            if (kind.name == "lux.editor.flowforge")
-                return EProjectAssetKind::FLOW_GRAPH;
-            return {};
-        }
         commands::CommandFailure saveFailure(const EditorFailure& error)
         {
             return {commands::ECommandError::DOMAIN_FAILURE, error.domain, error.reason, error.message};
@@ -34,9 +24,10 @@ namespace lux::editor::application
             return applicationFailure("save.source", sessions::ESessionError::STALE_CONTENT);
         if (save_reports_.size() >= 128)
             return cxx::unexpected(EditorFailure{EEditorError::CAPACITY, "save.reports"});
-        const auto kind = assetKind(info->kind);
-        if (!kind)
+        const auto factory = contributions_.snapshot().sessions().find(info->kind);
+        if (!factory || !(*factory)->descriptor().source)
             return cxx::unexpected(EditorFailure{EEditorError::MISSING_PROVIDER, "save.project.kind"});
+        const auto& source = *(*factory)->descriptor().source;
         persistence::SaveRequest request{target.id, mode};
         ProjectAssetEntry entry;
         if (mode == persistence::ESaveMode::SAVE)
@@ -60,7 +51,7 @@ namespace lux::editor::application
                     return applicationFailure("save.binding.path", physical.error());
                 if (physical->key.value != info->binding->location)
                     return cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "save.binding.identity"});
-                entry = {info->binding->asset, *kind, relative};
+                entry = {info->binding->asset, source.canonical_name, relative, {}, {}, {}, {}, source.version};
                 entry.mount_path = std::filesystem::u8path(relative).parent_path().generic_string();
             }
         }
@@ -85,7 +76,7 @@ namespace lux::editor::application
             std::mt19937 random{std::random_device{}()};
             request.asset = asset::AssetId{uuids::uuid_random_generator{random}()};
             request.destination = std::move(*resolved);
-            entry = {request.asset, *kind, std::move(destination)};
+            entry = {request.asset, source.canonical_name, std::move(destination), {}, {}, {}, {}, source.version};
             entry.mount_path = std::filesystem::u8path(entry.source_path).parent_path().generic_string();
         }
         return PreparedSave{std::move(request), std::move(entry)};
@@ -145,9 +136,12 @@ namespace lux::editor::application
             return applicationFailure("save.question.source", info.error());
         if (!target.based_on || *target.based_on != info->current)
             return applicationFailure("save.question.source", sessions::ESessionError::STALE_CONTENT);
-        const char* suffix = info->kind.name == "lux.editor.scene"      ? ".scene"
-                             : info->kind.name == "lux.editor.material" ? ".material"
-                                                                        : ".flow";
+        const auto factory = contributions_.snapshot().sessions().find(info->kind);
+        if (!factory || !(*factory)->descriptor().source)
+        {
+            return cxx::unexpected(EditorFailure{EEditorError::MISSING_PROVIDER, "save.naming"});
+        }
+        const auto& suffix = (*factory)->descriptor().source->save_extension;
         auto question = desktop::ReviewView::create(
             messages_.dispatcherRef(),
             lux::ui::PaneId{"save-destination"},

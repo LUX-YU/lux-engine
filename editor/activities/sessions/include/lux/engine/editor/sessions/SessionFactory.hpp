@@ -1,15 +1,29 @@
 #pragma once
 #include <lux/engine/editor/sessions/SessionInstallation.hpp>
 #include <lux/engine/resource/asset/storage/AssetVfs.hpp>
+#include <lux/engine/resource/asset/AssetTypeId.hpp>
 #include <lux/cxx/core/move_only_function.hpp>
 #include <stop_token>
 namespace lux::editor::sessions
 {
+    // Exact source-format relationship and save naming policy. A file suffix is only a discovery hint.
+    struct SourceAuthoring final
+    {
+        std::string canonical_name;
+        std::uint32_t version{1};
+        std::string save_extension;
+        bool is_default{true};
+        [[nodiscard]] asset::AssetTypeId type() const noexcept
+        {
+            return asset::AssetTypeId::fromName(canonical_name);
+        }
+    };
     struct SessionKindDescriptor final
     {
         SessionKindId kind;
         std::string label;
         std::vector<std::string> extensions;
+        std::optional<SourceAuthoring> source;
     };
     struct SessionLoadInput final
     {
@@ -94,6 +108,13 @@ namespace lux::editor::sessions
             std::size_t capacity = 256
         );
         [[nodiscard]] SessionFactoryResult<std::shared_ptr<SessionFactoryEntry>> find(SessionKindId) const;
+        // Immutable registration index; no factory callback runs during lookup. Multiple defaults or
+        // multiple non-default candidates require an explicit choice, never registration-order selection.
+        [[nodiscard]] SessionFactoryResult<std::shared_ptr<SessionFactoryEntry>> selectSource(
+            std::string_view canonical_name,
+            std::uint32_t version,
+            std::optional<SessionKindId> preferred = {}
+        ) const;
         [[nodiscard]] std::span<const std::shared_ptr<SessionFactoryEntry>> entries() const noexcept;
 
     private:

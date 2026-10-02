@@ -100,13 +100,16 @@ namespace lux::editor::application
                 }
                 const auto asset_id = asset::AssetId{*parsed};
                 const auto* asset = project_->asset(asset_id);
-                const bool matching =
-                    asset &&
-                    ((asset->kind == EProjectAssetKind::SCENE && type == views::ViewTypeId{"lux.editor.scene.view"}) ||
-                     (asset->kind == EProjectAssetKind::MATERIAL_GRAPH &&
-                      type == views::ViewTypeId{"lux.editor.material"}) ||
-                     (asset->kind == EProjectAssetKind::FLOW_GRAPH && type == views::ViewTypeId{"lux.editor.flowforge"})
-                    );
+                const auto factory = asset
+                    ? recovery_->catalog.sessions().selectSource(asset->source_type, asset->source_version)
+                    : sessions::SessionFactoryResult<std::shared_ptr<sessions::SessionFactoryEntry>>{
+                        cxx::unexpected(sessions::SessionFactoryFailure{
+                            sessions::ESessionFactoryError::NOT_FOUND, "recovery.asset"
+                        })
+                    };
+                const bool matching = factory && recovery_->catalog.views().selectContent(
+                    (*factory)->descriptor().kind, type
+                ).has_value();
                 if (!matching)
                 {
                     item.failure = EditorFailure{

@@ -37,7 +37,7 @@ int main(int argc, char** argv)
     const std::string path = "Content/Beginner/material.luxmaterial";
     write(root / path, std::string_view{reinterpret_cast<const char*>(bytes.data()), bytes.size()});
     ProjectManifest manifest{id, "Primitives"};
-    manifest.assets.push_back({id, EProjectAssetKind::MATERIAL_GRAPH, path});
+    manifest.assets.push_back({id, "lux.material.source", path});
     write(root / "Project.luxproject", take(encodeProjectManifest(manifest)));
     auto runtime = take(process::ExecutionRuntime::create({
         .cpu_concurrency = 2,

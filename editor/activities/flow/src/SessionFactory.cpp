@@ -39,7 +39,9 @@ namespace lux::editor::flowforge
         using namespace sessions;
         return std::make_shared<SessionFactoryEntry>(
             code,
-            SessionKindDescriptor{{"lux.editor.flowforge"}, "Flow", {"luxflow"}},
+            SessionKindDescriptor{
+                {"lux.editor.flowforge"}, "Flow", {"luxflow"}, SourceAuthoring{"lux.flowforge.source", 1, ".flow"}
+            },
             [environment, code](const SessionLoadInput& input, std::span<const std::byte> bytes, std::stop_token stop)
                 -> SessionFactoryResult<SessionPreparation> {
                 auto decoded = FlowCodec::decode(bytes, stop);

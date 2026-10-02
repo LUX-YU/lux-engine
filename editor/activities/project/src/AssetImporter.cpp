@@ -926,7 +926,7 @@ namespace lux::editor::assets
         const auto id = AssetImportId{owner, ++serial};
         ProjectAssetEntry entry{
             input.asset,
-            EProjectAssetKind::MODEL,
+            "lux.model.source",
             "Assets/" + uuids::to_string(input.asset.uuid()) + "/Model.luxmodel",
             {},
             {},
@@ -963,7 +963,7 @@ namespace lux::editor::assets
         }
         const auto* entry = project.asset(asset);
         const bool is_missing_asset = entry == nullptr;
-        const bool is_invalid_kind = !is_missing_asset && entry->kind != EProjectAssetKind::MODEL;
+        const bool is_invalid_kind = !is_missing_asset && entry->source_type != "lux.model.source";
         const bool is_missing_executor = !runtime.blocking();
         const bool is_invalid_replacement = !replacement.empty() && !replacement.is_absolute();
         const bool is_invalid_request =

@@ -35,7 +35,9 @@ namespace lux::editor::material
         using namespace sessions;
         return std::make_shared<SessionFactoryEntry>(
             code,
-            SessionKindDescriptor{{"lux.editor.material"}, "Material", {"luxmaterial"}},
+            SessionKindDescriptor{
+                {"lux.editor.material"}, "Material", {"luxmaterial"}, SourceAuthoring{"lux.material.source", 1, ".material"}
+            },
             [code](const SessionLoadInput& input, std::span<const std::byte> bytes, std::stop_token stop)
                 -> SessionFactoryResult<SessionPreparation> {
                 auto decoded = MaterialCodec::decode(bytes, stop);

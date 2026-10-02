@@ -9,11 +9,11 @@ component_include_directories(editor_project
     BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR} INSTALL_TIME include)
 target_compile_definitions(editor_project PRIVATE LUX_EDITOR_PROJECT_LIBRARY TOML_HEADER_ONLY=1 TOML_EXCEPTIONS=0)
 target_include_directories(editor_project PRIVATE $<TARGET_PROPERTY:tomlplusplus::tomlplusplus,INTERFACE_INCLUDE_DIRECTORIES>)
-target_link_libraries(editor_project PUBLIC lux::engine::resource::identity lux::cxx::compile_time lux::engine::core::object)
+target_link_libraries(editor_project PUBLIC lux::engine::resource::identity lux::engine::resource::asset lux::cxx::compile_time lux::engine::core::object)
 target_link_libraries(editor_project PRIVATE lux::engine::scene::scene_asset)
 component_add_transitive_commands(editor_project "find_package(lux-engine-scene-asset REQUIRED COMPONENTS scene_asset)")
 component_add_transitive_commands(editor_project
-    "find_package(lux-engine-resource REQUIRED COMPONENTS identity)"
+    "find_package(lux-engine-resource REQUIRED COMPONENTS identity asset)"
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time)"
     "find_package(lux-engine-core REQUIRED COMPONENTS object)")
 lux_classify_target(TARGET editor_project LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)

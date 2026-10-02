@@ -1,5 +1,7 @@
 #include <lux/engine/editor/sessions/SessionFactory.hpp>
 #include <variant>
+#include <algorithm>
+#include <unordered_map>
 namespace lux::editor::sessions
 {
     struct SessionPreparation::Data final
@@ -136,6 +138,7 @@ namespace lux::editor::sessions
     struct SessionFactorySnapshot::Data final
     {
         std::vector<std::shared_ptr<SessionFactoryEntry>> entries;
+        std::unordered_map<asset::AssetTypeId, std::vector<std::size_t>> sources;
     };
     SessionFactoryResult<SessionFactorySnapshot> SessionFactorySnapshot::create(
         std::vector<std::shared_ptr<SessionFactoryEntry>> entries,
@@ -150,6 +153,7 @@ namespace lux::editor::sessions
             }
         if (entries.size() > capacity)
             return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::CAPACITY, "factory"});
+        std::unordered_map<asset::AssetTypeId, std::vector<std::size_t>> sources;
         for (std::size_t i{}; i < entries.size(); ++i)
         {
             if (!entries[i])
@@ -159,6 +163,36 @@ namespace lux::editor::sessions
                                  entry.descriptor_.label.empty() || !entry.decode_;
             if (invalid)
                 return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::INVALID_ARGUMENT, "factory"});
+            if (const auto& source = entry.descriptor_.source)
+            {
+                const auto& name = source->canonical_name;
+                const auto& suffix = source->save_extension;
+                const bool is_invalid_name = name.empty() || name.size() > 192 ||
+                    !std::ranges::all_of(name, [](unsigned char c) {
+                        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                            (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '-';
+                    });
+                const bool is_invalid_suffix = suffix.size() < 2 || suffix.size() > 64 || suffix.front() != '.' ||
+                    !std::ranges::all_of(std::string_view{suffix}.substr(1), [](unsigned char c) {
+                        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                            (c >= '0' && c <= '9') || c == '_' || c == '-';
+                    });
+                const bool is_invalid_source = is_invalid_name || is_invalid_suffix || !source->version;
+                if (is_invalid_source)
+                {
+                    return cxx::unexpected(SessionFactoryFailure{
+                        ESessionFactoryError::INVALID_ARGUMENT, "factory.source"
+                    });
+                }
+                auto& indices = sources[source->type()];
+                if (!indices.empty() && entries[indices.front()]->descriptor_.source->canonical_name != name)
+                {
+                    return cxx::unexpected(SessionFactoryFailure{
+                        ESessionFactoryError::INVALID_ARGUMENT, "factory.source.collision"
+                    });
+                }
+                indices.push_back(i);
+            }
             for (std::size_t j{}; j < i; ++j)
                 if (entries[j]->descriptor_.kind == entry.descriptor_.kind)
                     return cxx::unexpected(
@@ -166,7 +200,7 @@ namespace lux::editor::sessions
                     );
         }
         SessionFactorySnapshot result;
-        result.data_ = std::make_shared<Data>(std::move(entries));
+        result.data_ = std::make_shared<Data>(std::move(entries), std::move(sources));
         return result;
     }
     SessionFactoryResult<std::shared_ptr<SessionFactoryEntry>> SessionFactorySnapshot::find(SessionKindId kind) const
@@ -175,6 +209,70 @@ namespace lux::editor::sessions
             if (entry->descriptor().kind == kind)
                 return entry;
         return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::NOT_FOUND, "factory"});
+    }
+    SessionFactoryResult<std::shared_ptr<SessionFactoryEntry>> SessionFactorySnapshot::selectSource(
+        std::string_view canonical_name,
+        std::uint32_t version,
+        std::optional<SessionKindId> preferred
+    ) const
+    {
+        if (canonical_name.empty() || !version)
+        {
+            return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::INVALID_ARGUMENT, "factory.source"});
+        }
+        const auto pinned = data_;
+        if (!pinned)
+        {
+            return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::NOT_FOUND, "factory.source"});
+        }
+        const auto found = pinned->sources.find(asset::AssetTypeId::fromName(canonical_name));
+        if (found == pinned->sources.end())
+        {
+            return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::NOT_FOUND, "factory.source"});
+        }
+        std::shared_ptr<SessionFactoryEntry> only, selected;
+        std::size_t matches{}, defaults{};
+        std::string candidates;
+        for (const auto index : found->second)
+        {
+            const auto& entry = pinned->entries[index];
+            const auto& source = *entry->descriptor_.source;
+            if (source.canonical_name != canonical_name || source.version != version)
+            {
+                continue;
+            }
+            if (preferred && entry->descriptor_.kind == *preferred)
+            {
+                return entry;
+            }
+            ++matches;
+            only = entry;
+            if (source.is_default)
+            {
+                ++defaults;
+                selected = entry;
+            }
+            if (!candidates.empty())
+            {
+                candidates += ", ";
+            }
+            candidates += entry->descriptor_.kind.name;
+        }
+        if (!matches || preferred)
+        {
+            return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::NOT_FOUND, "factory.source"});
+        }
+        if (defaults == 1)
+        {
+            return selected;
+        }
+        if (matches == 1)
+        {
+            return only;
+        }
+        return cxx::unexpected(SessionFactoryFailure{
+            ESessionFactoryError::AMBIGUOUS, "factory.source", 0, std::move(candidates)
+        });
     }
     std::span<const std::shared_ptr<SessionFactoryEntry>> SessionFactorySnapshot::entries() const noexcept
     {

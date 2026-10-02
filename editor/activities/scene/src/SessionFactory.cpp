@@ -39,7 +39,9 @@ namespace lux::editor::scene
         using namespace sessions;
         return std::make_shared<SessionFactoryEntry>(
             code,
-            SessionKindDescriptor{{"lux.editor.scene"}, "Scene", {"luxscene"}},
+            SessionKindDescriptor{
+                {"lux.editor.scene"}, "Scene", {"luxscene"}, SourceAuthoring{"lux.scene.package", 1, ".scene"}
+            },
             [schemas, code](const SessionLoadInput& input, std::span<const std::byte> bytes, std::stop_token stop)
                 -> SessionFactoryResult<SessionPreparation> {
                 auto decoded = SceneCodec::decode(bytes, stop);

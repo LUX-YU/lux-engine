@@ -1,4 +1,6 @@
 #include <lux/engine/editor/views/ViewFactory.hpp>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace lux::editor::views
 {
@@ -67,6 +69,7 @@ namespace lux::editor::views
     struct ViewFactorySnapshot::Data final
     {
         std::vector<std::shared_ptr<ViewFactoryEntry>> entries;
+        std::unordered_map<std::string, std::vector<std::size_t>> content;
     };
     ViewFactoryResult<ViewFactorySnapshot> ViewFactorySnapshot::create(
         std::vector<std::shared_ptr<ViewFactoryEntry>> entries,
@@ -81,6 +84,7 @@ namespace lux::editor::views
             }
         if (entries.size() > capacity)
             return cxx::unexpected(ViewFactoryFailure{EViewFactoryError::CAPACITY, "views"});
+        std::unordered_map<std::string, std::vector<std::size_t>> content;
         for (std::size_t i{}; i < entries.size(); ++i)
         {
             const auto& entry = entries[i];
@@ -91,12 +95,23 @@ namespace lux::editor::views
                                  !entry->descriptor_.input_version;
             if (invalid)
                 return cxx::unexpected(ViewFactoryFailure{EViewFactoryError::INVALID_ARGUMENT, "view.descriptor"});
+            std::unordered_set<std::string_view> kinds;
+            for (const auto& kind : entry->descriptor_.content_kinds)
+            {
+                if (kind.name.empty() || !kinds.insert(kind.name).second)
+                {
+                    return cxx::unexpected(ViewFactoryFailure{
+                        EViewFactoryError::INVALID_ARGUMENT, "view.content.kind"
+                    });
+                }
+                content[kind.name].push_back(i);
+            }
             for (std::size_t j{}; j < i; ++j)
                 if (entries[j]->descriptor_.type == entry->descriptor_.type)
                     return cxx::unexpected(ViewFactoryFailure{EViewFactoryError::INVALID_ARGUMENT, "view.duplicate"});
         }
         ViewFactorySnapshot result;
-        result.data_ = std::make_shared<Data>(std::move(entries));
+        result.data_ = std::make_shared<Data>(std::move(entries), std::move(content));
         return result;
     }
     ViewFactoryResult<DetachedView> ViewFactorySnapshot::prepare(ViewTypeId type, const ViewFactoryInput& input) const
@@ -144,5 +159,57 @@ namespace lux::editor::views
     {
         return data_ ? std::span<const std::shared_ptr<ViewFactoryEntry>>(data_->entries)
                      : std::span<const std::shared_ptr<ViewFactoryEntry>>{};
+    }
+    ViewFactoryResult<ViewTypeId> ViewFactorySnapshot::selectContent(
+        const sessions::SessionKindId& kind,
+        std::optional<ViewTypeId> preferred
+    ) const
+    {
+        const auto pinned = data_;
+        if (!pinned)
+        {
+            return cxx::unexpected(ViewFactoryFailure{EViewFactoryError::NOT_FOUND, "view.content"});
+        }
+        const auto found = pinned->content.find(kind.name);
+        if (found == pinned->content.end())
+        {
+            return cxx::unexpected(ViewFactoryFailure{EViewFactoryError::NOT_FOUND, "view.content"});
+        }
+        std::optional<ViewTypeId> selected;
+        std::size_t defaults{};
+        std::string candidates;
+        for (const auto index : found->second)
+        {
+            const auto& descriptor = pinned->entries[index]->descriptor_;
+            if (preferred && descriptor.type == *preferred)
+            {
+                return descriptor.type;
+            }
+            if (descriptor.default_content_view)
+            {
+                ++defaults;
+                selected = descriptor.type;
+            }
+            if (!candidates.empty())
+            {
+                candidates += ", ";
+            }
+            candidates += descriptor.type.name();
+        }
+        if (preferred)
+        {
+            return cxx::unexpected(ViewFactoryFailure{EViewFactoryError::NOT_FOUND, "view.content"});
+        }
+        if (defaults == 1)
+        {
+            return *selected;
+        }
+        if (found->second.size() == 1)
+        {
+            return pinned->entries[found->second.front()]->descriptor_.type;
+        }
+        return cxx::unexpected(ViewFactoryFailure{
+            EViewFactoryError::AMBIGUOUS, "view.content", 0, std::move(candidates)
+        });
     }
 }

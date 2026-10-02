@@ -51,20 +51,10 @@ namespace lux::editor::application
         const auto* asset = project_->asset(*resolved);
         if (!asset)
             return cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "project.source"});
-        sessions::SessionKindId kind;
-        switch (asset->kind)
+        auto factory = snapshot.sessions().selectSource(asset->source_type, asset->source_version);
+        if (!factory)
         {
-        case EProjectAssetKind::SCENE:
-            kind = sessions::SessionKindId{"lux.editor.scene"};
-            break;
-        case EProjectAssetKind::MATERIAL_GRAPH:
-            kind = sessions::SessionKindId{"lux.editor.material"};
-            break;
-        case EProjectAssetKind::FLOW_GRAPH:
-            kind = sessions::SessionKindId{"lux.editor.flowforge"};
-            break;
-        default:
-            return cxx::unexpected(EditorFailure{EEditorError::MISSING_PROVIDER, "asset.authoring"});
+            return applicationFailure("asset.authoring", factory.error());
         }
         auto target = files_.resolve(asset->source_path);
         if (!target)
@@ -74,7 +64,7 @@ namespace lux::editor::application
             return cxx::unexpected(source.error());
         sessions::OpenAssetRequest request{
             reference.project_instance,
-            kind,
+            (*factory)->descriptor().kind,
             {std::move(*source), asset->id, sessions::BoundSource{asset->id, target->key.value}, *target}
         };
         auto opened = opening_.open(std::move(request), snapshot.sessions());

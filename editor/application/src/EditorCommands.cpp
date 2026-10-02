@@ -77,7 +77,9 @@ namespace lux::editor::application
             views::ViewFactoryDescriptor{
                 views::ViewTypeId{"lux.editor.material"},
                 "Material",
-                cxx::typeToken<MaterialViewAssembly>()
+                cxx::typeToken<MaterialViewAssembly>(),
+                1,
+                {{"lux.editor.material"}}
             },
             [this](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
                 const auto& value = *static_cast<const MaterialViewAssembly*>(input.binding());
@@ -110,7 +112,9 @@ namespace lux::editor::application
             views::ViewFactoryDescriptor{
                 views::ViewTypeId{"lux.editor.flowforge"},
                 "FlowForge",
-                cxx::typeToken<FlowViewAssembly>()
+                cxx::typeToken<FlowViewAssembly>(),
+                1,
+                {{"lux.editor.flowforge"}}
             },
             [this](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
                 const auto& value = *static_cast<const FlowViewAssembly*>(input.binding());

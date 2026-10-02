@@ -30,7 +30,9 @@ namespace lux::editor::application
             return cxx::unexpected(bytes.error());
         // A command already holds the participating registry scopes. Keep only its immutable factory
         // owner across the read; never retain a Batch while waiting for IO or a user decision.
-        auto factory = contributions_.snapshot().sessions().find(current->kind);
+        auto factory = contributions_.snapshot().sessions().selectSource(
+            asset->source_type, asset->source_version, current->kind
+        );
         if (!factory)
             return applicationFailure("reload.factory", factory.error());
         sessions::SessionLoadInput input{

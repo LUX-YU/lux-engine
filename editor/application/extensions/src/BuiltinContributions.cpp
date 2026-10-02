@@ -73,11 +73,18 @@ namespace lux::editor::extensions
             requires requires(Create& create, const views::ViewFactoryInput& input, const Input& value) {
                 create(input, value);
             }
-        std::shared_ptr<views::ViewFactoryEntry> viewFactory(views::ViewTypeId type, std::string label, Create create)
+        std::shared_ptr<views::ViewFactoryEntry> viewFactory(
+            views::ViewTypeId type,
+            std::string label,
+            sessions::SessionKindId kind,
+            Create create
+        )
         {
             return std::make_shared<views::ViewFactoryEntry>(
                 contracts::CodeLease::builtin(),
-                views::ViewFactoryDescriptor{std::move(type), std::move(label), cxx::typeToken<Input>()},
+                views::ViewFactoryDescriptor{
+                    std::move(type), std::move(label), cxx::typeToken<Input>(), 1, {std::move(kind)}
+                },
                 [create = std::move(create)](const views::ViewFactoryInput& input
                 ) mutable -> views::ViewFactoryResult<views::DetachedView> {
                     auto view = create(input, *static_cast<const Input*>(input.binding()));
@@ -174,6 +181,7 @@ namespace lux::editor::extensions
         return viewFactory<SceneViewInput>(
             views::ViewTypeId{"lux.editor.scene.view"},
             "Scene",
+            {"lux.editor.scene"},
             [scene](const views::ViewFactoryInput& input, const SceneViewInput& value) {
                 return scene::makeSceneView(
                     input.dispatcher(),
@@ -188,6 +196,7 @@ namespace lux::editor::extensions
         return viewFactory<MaterialViewInput>(
             views::ViewTypeId{"lux.editor.material"},
             "Material",
+            {"lux.editor.material"},
             [material](const views::ViewFactoryInput& input, const MaterialViewInput& value) {
                 return material::makeMaterialView(
                     input.dispatcher(),
@@ -204,6 +213,7 @@ namespace lux::editor::extensions
         return viewFactory<FlowViewInput>(
             views::ViewTypeId{"lux.editor.flowforge"},
             "FlowForge",
+            {"lux.editor.flowforge"},
             [flow](const views::ViewFactoryInput& input, const FlowViewInput& value) {
                 return flowforge::makeFlowView(input.dispatcher(), input.paneId(), flow, value.binding, value.state);
             }

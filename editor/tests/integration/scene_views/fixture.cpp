@@ -469,8 +469,8 @@ int main(int argc, char** argv)
         identity<asset::AssetId>(20),
         "Native Desktop",
         "Main.luxscene",
-        {{identity<asset::AssetId>(12), editor::EProjectAssetKind::SCENE, "Main.luxscene", {}, {}, {}, "Scenes/Main"},
-         {seed(10), editor::EProjectAssetKind::MODEL, "Cube.obj", "Seed.luxpak", {}, {}, "Seed"}}
+        {{identity<asset::AssetId>(12), "lux.scene.package", "Main.luxscene", {}, {}, {}, "Scenes/Main"},
+         {seed(10), "lux.model.source", "Cube.obj", "Seed.luxpak", {}, {}, "Seed"}}
     };
     if (std::string_view(argv[2]) == "gpu-sharing")
     {
@@ -488,7 +488,7 @@ int main(int argc, char** argv)
         assert(asset::writePakFile(root / "Second.luxscene", std::move(entries), "/Scene", &failure));
         project.assets.push_back(
             {identity<asset::AssetId>(22),
-             editor::EProjectAssetKind::SCENE,
+             "lux.scene.package",
              "Second.luxscene",
              {},
              {},
@@ -512,7 +512,7 @@ int main(int argc, char** argv)
         file << *source;
         assert(file.good());
         unopened_bytes += source->size();
-        project.assets.push_back({id, editor::EProjectAssetKind::MATERIAL_GRAPH, path, {}, {}, {}, path});
+        project.assets.push_back({id, "lux.material.source", path, {}, {}, {}, path});
     }
     project.plugins = {{"lux.builtin.scene_render", 1, {}}};
     auto encoded = editor::encodeProjectManifest(project);

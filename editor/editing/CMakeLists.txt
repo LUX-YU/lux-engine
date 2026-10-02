@@ -88,7 +88,6 @@ install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/sessions/ContentStamp.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/sessions/IEditSession.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/sessions/PersistenceCheckpoint.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/sessions/SessionId.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/sessions/SessionPermits.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/sessions/SessionState.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/sessions/SessionStore.hpp
@@ -106,3 +105,7 @@ install(FILES ${LUX_GENERATE_HEADER_DIR}/lux/engine/editor/editing/history_visib
     DESTINATION include/lux/engine/editor/editing COMPONENT lux_engine_edit_history)
 install(FILES ${LUX_GENERATE_HEADER_DIR}/lux/engine/editor/sessions/visibility.h
     DESTINATION include/lux/engine/editor/sessions COMPONENT lux_engine_edit_sessions)
+
+install(FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/sessions/SessionId.hpp
+    DESTINATION include/lux/engine/editor/sessions COMPONENT lux_engine_editor_contracts)

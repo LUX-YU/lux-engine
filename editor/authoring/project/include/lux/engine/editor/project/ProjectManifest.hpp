@@ -2,6 +2,7 @@
 
 #include <lux/engine/editor/project/visibility.h>
 #include <lux/engine/resource/identity/AssetId.hpp>
+#include <lux/engine/resource/asset/AssetTypeId.hpp>
 #include <lux/cxx/compile_time/expected.hpp>
 
 #include <cstdint>
@@ -11,19 +12,10 @@
 
 namespace lux::editor
 {
-    enum class EProjectAssetKind : std::uint8_t
-    {
-        SCENE,
-        MATERIAL_GRAPH,
-        FLOW_GRAPH,
-        MODEL,
-        TEXTURE
-    };
-
     struct ProjectAssetEntry final
     {
         asset::AssetId id;
-        EProjectAssetKind kind{};
+        std::string source_type; // Canonical source format name; not the cooked asset type.
         std::string source_path;
         std::string cooked_path;
         // SHA-256 of source bytes. A source save does not imply a successful/current compiled artifact.
@@ -31,6 +23,11 @@ namespace lux::editor
         std::string compiled_source_digest;
         // Stable project-relative browser directory, independent of immutable compiled revision storage.
         std::string mount_path;
+        std::uint32_t source_version{1};
+        [[nodiscard]] asset::AssetTypeId sourceType() const noexcept
+        {
+            return asset::AssetTypeId::fromName(source_type);
+        }
         friend bool operator==(const ProjectAssetEntry&, const ProjectAssetEntry&) = default;
     };
 
@@ -62,7 +59,8 @@ namespace lux::editor
         INVALID_IDENTITY,
         INVALID_PATH,
         INVALID_DIGEST,
-        UNKNOWN_ASSET_KIND,
+        UNKNOWN_ASSET_KIND, // Only the finite v1/v2 read-only mapping.
+        INVALID_SOURCE_TYPE,
         DUPLICATE_IDENTITY,
         DUPLICATE_PATH,
         INVALID_DEFAULT_SCENE

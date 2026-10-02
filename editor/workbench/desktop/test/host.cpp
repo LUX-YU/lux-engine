@@ -506,6 +506,35 @@ namespace
 }
 int main()
 {
+    {
+        const auto entry = [](std::string name, bool is_default) {
+            return std::make_shared<views::ViewFactoryEntry>(
+                contracts::CodeLease::builtin(),
+                views::ViewFactoryDescriptor{
+                    views::ViewTypeId{name}, name, cxx::typeToken<std::monostate>(), 1,
+                    {{"test.author"}}, is_default
+                },
+                [](const views::ViewFactoryInput&) -> views::ViewFactoryResult<views::DetachedView> {
+                    std::abort(); // Metadata lookup cannot construct a window.
+                }
+            );
+        };
+        const auto a = entry("test.first", true);
+        const auto b = entry("test.second", true);
+        for (bool reverse : {false, true})
+        {
+            auto catalog = take(views::ViewFactorySnapshot::create(reverse
+                ? std::vector{b, a} : std::vector{a, b}));
+            const auto ambiguous = catalog.selectContent({"test.author"});
+            assert(!ambiguous && ambiguous.error().code == views::EViewFactoryError::AMBIGUOUS);
+            assert(take(catalog.selectContent({"test.author"}, views::ViewTypeId{"test.second"})) ==
+                views::ViewTypeId{"test.second"});
+            assert(!catalog.selectContent({"test.other"}));
+            assert(!catalog.selectContent({"test.author"}, views::ViewTypeId{"test.missing"}));
+        }
+        auto one_default = take(views::ViewFactorySnapshot::create({entry("test.other", false), a}));
+        assert(take(one_default.selectContent({"test.author"})) == views::ViewTypeId{"test.first"});
+    }
     static_assert(!std::is_copy_constructible_v<desktop::ViewHost>);
     static_assert(!std::is_move_constructible_v<desktop::ViewHost>);
     auto queue = take(object::ObjectMessageQueue::create(32));

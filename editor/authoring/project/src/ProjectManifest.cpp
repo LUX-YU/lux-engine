@@ -4,12 +4,29 @@
 #include <algorithm>
 #include <array>
 #include <unordered_set>
+#include <unordered_map>
 
 namespace lux::editor
 {
     namespace
     {
-        constexpr std::array kinds{"scene", "material_graph", "flow_graph", "model", "texture"};
+        // Read-only data migration, never used to route an open or choose a factory.
+        constexpr std::array legacy_kinds{"scene", "material_graph", "flow_graph", "model", "texture"};
+        constexpr std::array legacy_types{
+            "lux.scene.package", "lux.material.source", "lux.flowforge.source", "lux.model.source", "lux.texture.source"
+        };
+        bool validSourceName(std::string_view name) noexcept
+        {
+            const bool is_invalid_size = name.empty() || name.size() > 192;
+            if (is_invalid_size)
+            {
+                return false;
+            }
+            return std::ranges::all_of(name, [](unsigned char c) {
+                return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                    (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '-';
+            });
+        }
 
         auto fail(EProjectManifestError code, std::string field = {}, std::size_t asset = 0) noexcept
         {
@@ -228,6 +245,7 @@ namespace lux::editor
             if (invalid_path)
                 return fail(EProjectManifestError::INVALID_PATH, "plugins.description_path", index);
         }
+        std::unordered_map<asset::AssetTypeId, std::string_view> source_names;
         std::unordered_set<asset::AssetId> identities;
         std::unordered_set<std::string> paths;
         std::unordered_set<std::string> mounts;
@@ -245,9 +263,15 @@ namespace lux::editor
             {
                 return fail(EProjectManifestError::DUPLICATE_IDENTITY, "id", i);
             }
-            if (static_cast<std::size_t>(asset.kind) >= kinds.size())
+            const bool is_invalid_source = !validSourceName(asset.source_type) || !asset.source_version;
+            if (is_invalid_source)
             {
-                return fail(EProjectManifestError::UNKNOWN_ASSET_KIND, "kind", i);
+                return fail(EProjectManifestError::INVALID_SOURCE_TYPE, "source_type/version", i);
+            }
+            const auto [name, inserted] = source_names.emplace(asset.sourceType(), asset.source_type);
+            if (!inserted && name->second != asset.source_type)
+            {
+                return fail(EProjectManifestError::INVALID_SOURCE_TYPE, "source_type.collision", i);
             }
             const bool is_source_path_too_long = asset.source_path.size() > limits.max_path_bytes;
             const bool is_cooked_path_too_long = asset.cooked_path.size() > limits.max_path_bytes;
@@ -294,7 +318,7 @@ namespace lux::editor
                     return fail(EProjectManifestError::DUPLICATE_PATH, "mount_path", i);
                 }
             }
-            if (asset.source_path == manifest.default_scene && asset.kind == EProjectAssetKind::SCENE)
+            if (asset.source_path == manifest.default_scene && asset.source_type == "lux.scene.package")
             {
                 default_found = true;
             }
@@ -333,7 +357,7 @@ namespace lux::editor
         const auto format = table["format"].value<std::string>();
         const auto version = table["version"].value<std::int64_t>();
         const bool is_invalid_format = !format || *format != "lux.editor.project";
-        const bool is_invalid_version = !version || *version != 2;
+        const bool is_invalid_version = !version || (*version != 1 && *version != 2 && *version != 3);
         const bool is_unsupported_format = is_invalid_format || is_invalid_version;
         if (is_unsupported_format)
         {
@@ -361,11 +385,11 @@ namespace lux::editor
         }
         ProjectManifest result{asset::AssetId{*uuid}, *name, *default_scene, {}};
         const auto* plugins = table["plugins"].as_array();
-        if (!plugins)
+        if (!plugins && (table.contains("plugins") || *version >= 2))
             return fail(EProjectManifestError::MISSING_FIELD, "plugins");
-        if (plugins->size() > limits.max_plugins)
+        if (plugins && plugins->size() > limits.max_plugins)
             return fail(EProjectManifestError::LIMIT_EXCEEDED, "plugins");
-        for (std::size_t index{}; index < plugins->size(); ++index)
+        for (std::size_t index{}; plugins && index < plugins->size(); ++index)
         {
             const auto* entry = (*plugins)[index].as_table();
             if (!entry)
@@ -408,22 +432,20 @@ namespace lux::editor
                 {
                     return fail(EProjectManifestError::PARSE_FAILURE, "assets", i);
                 }
-                const auto allowed = std::array{
-                    "id",
-                    "kind",
-                    "source_path",
-                    "cooked_path",
-                    "source_digest",
-                    "compiled_source_digest",
-                    "mount_path"
-                };
-                const auto checked = fields(*entry, allowed, i);
+                const auto checked = *version == 3
+                    ? fields(*entry, std::array{
+                        "id", "source_type", "source_version", "source_path", "cooked_path", "source_digest",
+                        "compiled_source_digest", "mount_path"
+                    }, i)
+                    : fields(*entry, std::array{
+                        "id", "kind", "source_path", "cooked_path", "source_digest", "compiled_source_digest", "mount_path"
+                    }, i);
                 if (!checked)
                 {
                     return lux::cxx::unexpected(checked.error());
                 }
                 const auto asset_id = text(*entry, "id", i);
-                const auto kind = text(*entry, "kind", i);
+                const auto source_type = text(*entry, *version == 3 ? "source_type" : "kind", i);
                 const auto path = text(*entry, "source_path", i);
                 const auto cooked = text(*entry, "cooked_path", i, true);
                 const auto source_digest = text(*entry, "source_digest", i, true);
@@ -433,9 +455,9 @@ namespace lux::editor
                 {
                     return lux::cxx::unexpected(asset_id.error());
                 }
-                if (!kind)
+                if (!source_type)
                 {
-                    return lux::cxx::unexpected(kind.error());
+                    return lux::cxx::unexpected(source_type.error());
                 }
                 if (!path)
                 {
@@ -462,15 +484,31 @@ namespace lux::editor
                 {
                     return fail(EProjectManifestError::INVALID_IDENTITY, "id", i);
                 }
-                const auto found = std::find(kinds.begin(), kinds.end(), *kind);
-                if (found == kinds.end())
+                std::string canonical_name = *source_type;
+                std::uint32_t source_version = 1;
+                if (*version < 3)
                 {
-                    return fail(EProjectManifestError::UNKNOWN_ASSET_KIND, "kind", i);
+                    const auto found = std::ranges::find(legacy_kinds, *source_type);
+                    if (found == legacy_kinds.end())
+                    {
+                        return fail(EProjectManifestError::UNKNOWN_ASSET_KIND, "kind", i);
+                    }
+                    canonical_name = legacy_types[static_cast<std::size_t>(found - legacy_kinds.begin())];
                 }
-                const auto asset_kind = static_cast<EProjectAssetKind>(found - kinds.begin());
-                result.assets.push_back(
-                    {asset::AssetId{*asset_uuid}, asset_kind, *path, *cooked, *source_digest, *compiled_digest, *mount}
-                );
+                else
+                {
+                    const auto value = (*entry)["source_version"].value<std::int64_t>();
+                    const bool is_invalid_version = !value || *value <= 0 || *value > UINT32_MAX;
+                    if (is_invalid_version)
+                    {
+                        return fail(EProjectManifestError::INVALID_SOURCE_TYPE, "source_version", i);
+                    }
+                    source_version = static_cast<std::uint32_t>(*value);
+                }
+                result.assets.push_back({
+                    asset::AssetId{*asset_uuid}, std::move(canonical_name), *path, *cooked, *source_digest,
+                    *compiled_digest, *mount, source_version
+                });
             }
         }
         const auto checked = validateProjectManifest(result, limits);
@@ -491,7 +529,7 @@ namespace lux::editor
         {
             return lux::cxx::unexpected(checked.error());
         }
-        std::string result = "format = \"lux.editor.project\"\nversion = 2\nproject_id = ";
+        std::string result = "format = \"lux.editor.project\"\nversion = 3\nproject_id = ";
         quote(result, uuids::to_string(manifest.id.uuid()));
         result += "name = ";
         quote(result, manifest.name);
@@ -514,8 +552,9 @@ namespace lux::editor
         {
             result += "\n[[assets]]\nid = ";
             quote(result, uuids::to_string(asset.id.uuid()));
-            result += "kind = ";
-            quote(result, kinds[static_cast<std::size_t>(asset.kind)]);
+            result += "source_type = ";
+            quote(result, asset.source_type);
+            result += "source_version = " + std::to_string(asset.source_version) + "\n";
             result += "source_path = ";
             quote(result, asset.source_path);
             result += "cooked_path = ";

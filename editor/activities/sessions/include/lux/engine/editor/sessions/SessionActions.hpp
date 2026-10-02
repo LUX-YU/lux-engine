@@ -17,7 +17,8 @@ namespace lux::editor::sessions
         CONSTRUCT,
         ROLE,
         CLOSED,
-        CALLBACK
+        CALLBACK,
+        AMBIGUOUS
     };
     struct SessionFactoryFailure final
     {

@@ -129,7 +129,7 @@ int main(int argc, char** argv)
         {id,
          "Application",
          {},
-         {{model_id, EProjectAssetKind::MODEL, "Content/Model.recipe", "Content/Model.pak", {}, {}, "Content/Model"}},
+         {{model_id, "lux.model.source", "Content/Model.recipe", "Content/Model.pak", {}, {}, "Content/Model"}},
          {{"lux.builtin.scene_render", 1, {}}}}
     );
     assert(manifest);

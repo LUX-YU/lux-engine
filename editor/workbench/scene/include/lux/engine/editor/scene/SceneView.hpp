@@ -3,6 +3,7 @@
 #include <lux/engine/editor/scene/SceneSession.hpp>
 #include <lux/engine/editor/scene/SceneInteraction.hpp>
 #include <lux/engine/editor/scene/SceneProjection.hpp>
+#include <lux/engine/editor/scene/ModelPlacement.hpp>
 #include <lux/engine/editor/views/CameraNavigation.hpp>
 #include <lux/engine/editor/views/IViewHost.hpp>
 #include <lux/engine/scene/MeshQuery.hpp>
@@ -67,6 +68,8 @@ namespace lux::editor::scene
     class SceneView final : public lux::ui::Pane
     {
     public:
+        // UI intent only. The receiver owns admission, transport and the eventual domain result.
+        object::TSignal<ModelPlacement> modelDropped{*this};
         [[nodiscard]] static SceneViewResult<std::unique_ptr<SceneView>> create(
             object::ObjectDispatcherRef,
             SceneViewServices,
@@ -84,6 +87,7 @@ namespace lux::editor::scene
         [[nodiscard]] views::ViewStateResult prepareState(std::uint32_t, std::span<const std::byte>);
         [[nodiscard]] SceneViewResult<void> navigate(const lux::editor::views::CameraMotion&);
         [[nodiscard]] SceneViewResult<void> pick(Eigen::Vector2d position, Eigen::Vector2d extent);
+        [[nodiscard]] SceneViewResult<void> dropModel(AssetReference, Eigen::Vector2d position, Eigen::Vector2d extent);
         [[nodiscard]] SceneViewResult<void> undo();
         [[nodiscard]] SceneViewResult<void> redo();
         [[nodiscard]] SceneViewResult<void> beginEdit(std::string);

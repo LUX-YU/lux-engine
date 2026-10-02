@@ -344,7 +344,8 @@ namespace lux::editor::application
             return settled;
         if (phase_ == EApplicationPhase::DRAINING && materials->empty() && flows->empty() && pending_saves_.empty() &&
             opening_.settled() && run_presentations_.empty() &&
-            std::ranges::none_of(reloads_, [](const auto& reload) { return bool(reload.operation); }))
+            std::ranges::none_of(reloads_, [](const auto& reload) { return bool(reload.operation); }) &&
+            std::ranges::none_of(model_placements_, [](const auto& model) { return bool(model.operation); }))
         {
             project_->requestClose();
             auto closed = project_->advanceClose();
@@ -429,6 +430,7 @@ namespace lux::editor::application
             else
                 result_failure_.reset();
         }
+        settleModels();
         if (auto answered = receiveSaveAnswer(); !answered)
             log::error("application.save", "{}", answered.error().domain);
         if (auto answered = receiveReloadAnswer(); !answered)

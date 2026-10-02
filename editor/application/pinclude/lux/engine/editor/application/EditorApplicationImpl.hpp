@@ -18,6 +18,7 @@
 #include <lux/engine/editor/desktop/DesktopShell.hpp>
 #include <lux/engine/editor/desktop/ReviewView.hpp>
 #include <lux/engine/editor/scene/RunController.hpp>
+#include <lux/engine/editor/scene/ModelCreationOperation.hpp>
 #include <lux/engine/editor/scene/SceneCreationView.hpp>
 #include <lux/engine/editor/tasks/TaskMonitor.hpp>
 #include <lux/engine/editor/workspace/WorkspaceStore.hpp>
@@ -49,6 +50,16 @@ namespace lux::editor::application
             std::unique_ptr<material::MaterialPreviewStore> preview;
             std::optional<scene::RunId> run;
             views::ViewId source_view;
+            object::Connection model_drop;
+        };
+        struct ModelPresentation final
+        {
+            std::uint64_t id;
+            scene::ModelPlacement placement;
+            std::unique_ptr<scene::ModelCreationOperation> operation;
+            std::optional<scene::ModelCreationResult<scene::SceneEditReceipt>> result;
+            std::optional<EditorFailure> failure;
+            bool cancel_requested{};
         };
         struct SavePresentation final
         {
@@ -87,6 +98,8 @@ namespace lux::editor::application
             CANCEL_SAVE,
             RECONCILE,
             ACK_RELOAD,
+            ACK_MODEL,
+            CANCEL_MODEL,
             SHOW_CONTENT,
             SAVE_AS,
             CLEAR_SAVE_ALL
@@ -94,7 +107,7 @@ namespace lux::editor::application
         struct ResultIntent final
         {
             EResultAction action;
-            std::variant<persistence::SaveId, persistence::WriteTicket, sessions::ContentStamp> target;
+            std::variant<persistence::SaveId, persistence::WriteTicket, sessions::ContentStamp, std::uint64_t> target;
         };
         struct RunPresentation final
         {
@@ -179,6 +192,8 @@ namespace lux::editor::application
         std::vector<RunPresentation> run_presentations_;
         std::vector<OpenPresentation> opens_;
         std::vector<AssetReference> open_intents_;
+        std::vector<ModelPresentation> model_placements_;
+        std::uint64_t next_model_{1};
         std::vector<persistence::SaveId> pending_saves_;
         std::vector<SavePresentation> save_reports_;
         std::optional<SaveQuestion> save_question_;
@@ -264,6 +279,8 @@ namespace lux::editor::application
         [[nodiscard]] EditorResult<void> receiveViewClose();
         [[nodiscard]] EditorResult<views::ViewId> showTool(views::ViewTypeId);
         [[nodiscard]] EditorResult<void> settleOperations();
+        void receiveModel(scene::ModelPlacement);
+        void settleModels();
         [[nodiscard]] EditorResult<void> requestExit();
         [[nodiscard]] EditorResult<views::ViewId> adopt(views::DetachedView&, std::string key);
         [[nodiscard]] scene::SceneViewServices sceneServices();

@@ -1,6 +1,11 @@
 #include <lux/engine/editor/application/EditorApplicationImpl.hpp>
 #include <lux/engine/editor/desktop/DesktopTestAccess.hpp>
 #include <lux/engine/editor/scene/OutlinerView.hpp>
+#include <lux/engine/resource/asset/model/ModelAsset.hpp>
+#include <lux/engine/resource/asset/mesh/MeshAsset.hpp>
+#include <lux/engine/material/Cooker.hpp>
+#include <lux/engine/resource/asset/AssetSerDeser.hpp>
+#include <lux/engine/resource/asset/storage/pak/PakArchive.hpp>
 #include <cassert>
 #include <fstream>
 #include <iostream>
@@ -27,7 +32,63 @@ int main(int argc, char** argv)
         std::filesystem::path{argv[2]} / std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
     std::filesystem::create_directories(root);
     const auto id = asset::AssetId{*uuids::uuid::from_string("57279371-1b9c-40d6-b55d-a1a12065d932")};
-    const auto manifest = encodeProjectManifest({id, "Application", {}, {}, {{"lux.builtin.scene_render", 1, {}}}});
+    const auto model_id = asset::AssetId{*uuids::uuid::from_string("4789f937-0886-4aab-91d9-d45b4a9cffb4")};
+    const auto mesh_id = asset::AssetId{*uuids::uuid::from_string("5889f937-0886-4aab-91d9-d45b4a9cffb4")};
+    const auto material_asset_id = asset::AssetId{*uuids::uuid::from_string("6889f937-0886-4aab-91d9-d45b4a9cffb4")};
+    auto mesh_data = std::make_shared<rdesc::Mesh>();
+    mesh_data->vertices.resize(3);
+    mesh_data->vertices[0].position = {-1, 0, 0};
+    mesh_data->vertices[1].position = {1, 0, 0};
+    mesh_data->vertices[2].position = {0, 1, 0};
+    for (auto& vertex : mesh_data->vertices)
+    {
+        vertex.normal = {0, 0, 1};
+        vertex.tangent = {1, 0, 0};
+        vertex.bitangent = {0, 1, 0};
+        vertex.uv = {0, 0};
+        for (auto& bone : vertex.bone.bone_ids)
+            bone = -1;
+    }
+    mesh_data->indices = {0, 1, 2};
+    mesh_data->bounds = math::AABB{{-1, 0, 0}, {1, 1, 0}};
+    auto mesh_asset = asset::MeshAsset::create({mesh_id, asset::MeshAsset::asset_type}, mesh_data);
+    auto material_asset = lux::material::cookImportedMaterial(
+        {material_asset_id, asset::MaterialAsset::asset_type},
+        lux::material::ImportedMaterialDescription{}
+    );
+    assert(mesh_asset && material_asset);
+    auto model_description = std::make_shared<rdesc::ModelDescription>();
+    model_description->primitives.push_back({mesh_id, material_asset_id});
+    model_description->nodes.resize(2);
+    model_description->nodes[1].primitives.push_back(0);
+    model_description->nodes[0].children.push_back(1);
+    auto model_asset = asset::ModelAsset::create({model_id, asset::ModelAsset::asset_type}, model_description);
+    assert(model_asset);
+    std::vector<asset::PakWriteEntry> entries;
+    const auto append = [&]<class Asset>(const Asset& value, std::string path) {
+        auto encoded = asset::TAssetSerDeser<Asset>::encode(value, asset::AssetEncodeLimits{16 * 1024 * 1024});
+        assert(encoded);
+        auto bytes = std::make_shared<const std::vector<std::byte>>(std::move(*encoded));
+        entries.push_back(
+            {value.id(), Asset::primary_magic, std::move(path), {}, cxx::SharedBytes<>::fromOwner(bytes, *bytes)}
+        );
+    };
+    append(**model_asset, "Content/Model");
+    append(**mesh_asset, "Content/Model/Mesh");
+    append(**material_asset, "Content/Model/Material");
+    std::filesystem::create_directories(root / "Content");
+    assert(asset::writePakFile(root / "Content/Model.pak", std::move(entries), "/Project"));
+    {
+        std::ofstream source(root / "Content/Model.recipe");
+        source << "model fixture";
+    }
+    const auto manifest = encodeProjectManifest(
+        {id,
+         "Application",
+         {},
+         {{model_id, EProjectAssetKind::MODEL, "Content/Model.recipe", "Content/Model.pak", {}, {}, "Content/Model"}},
+         {{"lux.builtin.scene_render", 1, {}}}}
+    );
     assert(manifest);
     const auto file = root / "Project.luxproject";
     {
@@ -302,6 +363,48 @@ int main(int argc, char** argv)
     );
     assert(scene_record != impl.content_views_.end());
     const auto scene_view = scene_record->view;
+    const auto model_source = impl.sessions_.describe(scene_id)->current;
+    for (int frame = 0; frame < 32; ++frame)
+        assert(app->update());
+    auto drop_model = [&](ui::Pane& pane) {
+        auto requested = static_cast<lux::editor::scene::SceneView&>(pane)
+                             .dropModel(impl.project_->catalogModel().reference(model_id), {320, 420}, {640, 480});
+        if (!requested)
+            std::cerr << "Model drop preparation failed, variant " << requested.error().cause.index() << '\n';
+        assert(requested);
+    };
+    assert(impl.desktop_->views().withView(scene_view, drop_model));
+    assert(impl.model_placements_.size() == 1 && !impl.model_placements_.front().operation);
+    assert(impl.model_placements_.front().placement.based_on == model_source);
+    const auto model_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+    while (!impl.model_placements_.front().result)
+    {
+        assert(std::chrono::steady_clock::now() < model_deadline);
+        assert(app->update());
+        assert(!impl.model_placements_.front().failure);
+        std::this_thread::yield();
+    }
+    const auto& model_result = *impl.model_placements_.front().result;
+    if (!model_result)
+        std::cerr << "Model insertion failed, variant " << model_result.error().cause.index() << '\n';
+    assert(model_result && !impl.model_placements_.front().operation);
+    assert(impl.sessions_.describe(scene_id)->current != model_source);
+    auto author_key = impl.sessions_.key<lux::editor::scene::SceneSession>(scene_id);
+    assert(author_key);
+    {
+        auto author = impl.sessions_.access<lux::editor::scene::SceneSession>().edit(*author_key);
+        assert(author);
+        assert(author->get().capture()->objects().size() == 2);
+        assert(author->get().undo());
+        assert(author->get().describe().current == model_source);
+        assert(author->get().redo());
+    }
+    impl.result_intent_ = std::remove_reference_t<decltype(impl)>::ResultIntent{
+        std::remove_reference_t<decltype(impl)>::EResultAction::ACK_MODEL,
+        impl.model_placements_.front().id
+    };
+    assert(app->update() && impl.model_placements_.empty());
+    std::cout << "Actual SceneView drop reads project pak through Process and commits one undoable model batch\n";
     assert(app->execute(commands::CommandId{"lux.editor.scene.outliner"}, commands::CommandInvocation{scene_view}));
     auto all_views = impl.desktop_->views().describeAll();
     assert(all_views);

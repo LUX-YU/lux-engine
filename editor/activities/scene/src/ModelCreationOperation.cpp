@@ -230,6 +230,10 @@ namespace lux::editor::scene
     {
         return impl_->stage();
     }
+    bool ModelCreationOperation::settled() const noexcept
+    {
+        return impl_->loaded_.has_value();
+    }
     ModelCreationResult<SceneEditReceipt> ModelCreationOperation::commit()
     {
         return impl_->commit();

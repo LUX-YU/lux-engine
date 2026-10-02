@@ -1,4 +1,6 @@
 #include <lux/engine/editor/scene/SceneView.hpp>
+#include <lux/engine/editor/scene/SceneCreationPoint.hpp>
+#include <lux/engine/editor/project/ProjectCatalogModel.hpp>
 #include <lux/engine/editor/detail/ViewportStateCodec.hpp>
 #include <lux/engine/editor/views/ViewportElement.hpp>
 #include <lux/engine/scene/WorldResidency.hpp>
@@ -7,6 +9,7 @@
 #include <lux/engine/ui/Controls.hpp>
 #include <lux/engine/ui/Root.hpp>
 #include <array>
+#include <imgui.h>
 
 namespace lux::editor::scene
 {
@@ -37,6 +40,52 @@ namespace lux::editor::scene
     }
     struct SceneView::Impl final
     {
+        // Asset drop belongs to the Scene tool. The shared viewport remains asset/domain independent.
+        struct Canvas final : lux::ui::Element
+        {
+            Impl& owner_;
+            lux::editor::views::ViewportElement viewport_;
+            Canvas(lux::ui::Element& parent, Impl& owner)
+                : Element(parent, lux::ui::ElementId{"canvas"}), owner_(owner),
+                  viewport_(*this, lux::ui::ElementId{"viewport"})
+            {}
+            lux::ui::SizeHint sizeHintContent() noexcept override
+            {
+                return viewport_.sizeHint();
+            }
+            lux::ui::SizeHint measureContent(float width) noexcept override
+            {
+                return viewport_.measure(width);
+            }
+            void arrangeContent() noexcept override
+            {
+                viewport_.arrange({{}, rect().size});
+            }
+            void draw() noexcept override
+            {
+                drawChild(viewport_);
+                if (!viewport_.bound() || !ImGui::BeginDragDropTarget())
+                    return;
+                if (const auto* payload = ImGui::AcceptDragDropPayload(project::kAssetReferencePayload))
+                {
+                    auto reference = project::decodeAssetReference(
+                        {static_cast<const std::byte*>(payload->Data), static_cast<std::size_t>(payload->DataSize)}
+                    );
+                    if (reference)
+                    {
+                        const auto& image = viewport_.image().interaction();
+                        owner_.status_ = owner_.view_.dropModel(
+                            *reference,
+                            {image.local_pointer.x, image.local_pointer.y},
+                            {image.size.width, image.size.height}
+                        );
+                    }
+                    else
+                        owner_.status_ = rejected(std::string_view{"Invalid model drag payload"});
+                }
+                ImGui::EndDragDropTarget();
+            }
+        };
         enum class EControl : std::uint8_t
         {
             NONE,
@@ -54,7 +103,8 @@ namespace lux::editor::scene
         lux::ui::Layout layout_, toolbar_;
         lux::ui::Button undo_, redo_;
         lux::ui::Label message_;
-        lux::editor::views::ViewportElement viewport_;
+        Canvas canvas_;
+        lux::editor::views::ViewportElement& viewport_;
         std::array<object::Connection, 4> controls_;
         std::optional<lux::editor::views::ViewportPoint> pick_;
         lux::scene::SceneInstanceId pick_instance_;
@@ -68,8 +118,8 @@ namespace lux::editor::scene
               layout_(view, lux::ui::ElementId{"content"}),
               toolbar_(layout_, lux::ui::ElementId{"toolbar"}, lux::ui::ELayoutType::HORIZONTAL),
               undo_(toolbar_, lux::ui::ElementId{"undo"}, "Undo"), redo_(toolbar_, lux::ui::ElementId{"redo"}, "Redo"),
-              message_(layout_, lux::ui::ElementId{"status"}, "No scene bound"),
-              viewport_(layout_, lux::ui::ElementId{"viewport"})
+              message_(layout_, lux::ui::ElementId{"status"}, "No scene bound"), canvas_(layout_, *this),
+              viewport_(canvas_.viewport_)
         {
             toolbar_.setStretch({1, 0});
             message_.setStretch({1, 0});
@@ -278,6 +328,55 @@ namespace lux::editor::scene
                 return rejected(ended.error());
             return adopted(selected->select(std::move(selection)));
         }
+        SceneViewResult<ModelPlacement> placement(
+            AssetReference asset,
+            Eigen::Vector2d position,
+            Eigen::Vector2d extent
+        )
+        {
+            const auto* author = std::get_if<EditedSceneBinding>(&binding_);
+            if (!author || !projection_ || !presented_.valid())
+                return rejected(views::EViewError::NOT_ATTACHED);
+            const auto based_on = projection_->version().content;
+            auto session = services_.sessions.read(author->session);
+            if (!session)
+                return rejected(SceneEditError{session.error()});
+            if (session->get().describe().current != based_on)
+                return rejected(SceneEditError{ESceneEditError::STALE_CONTENT});
+            auto read = session->get().read();
+            if (!read)
+                return rejected(read.error());
+            auto single = read->withRead([](const SceneReadView& source) -> SceneEditResult<void> {
+                // Multi-partition placement needs an explicit destination; never guess ordinal zero.
+                if (source.configuration().world->data().partitionCount() != 1)
+                    return cxx::unexpected(SceneEditError{ESceneEditError::INVALID_PARTITION});
+                return {};
+            });
+            if (!single)
+                return rejected(single.error());
+            simulation::ecs::WorldTransform3D camera;
+            camera.value = Eigen::Translation3d(state_.camera.transform.translation) *
+                           state_.camera.transform.rotation * Eigen::Scaling(state_.camera.transform.scale);
+            auto ray = lux::editor::views::cameraRay(camera, state_.camera.camera, position, extent);
+            if (!ray)
+                return rejected(ray.error());
+            auto registry = std::as_const(services_.runtime).borrowInstance(presented_);
+            if (!registry)
+                return rejected(ProjectionFailure{registry.error()});
+            lux::scene::RayHit3D hit;
+            bool found{};
+            if (const auto* query = registry->get().ctx().find<lux::scene::MeshQuery>())
+            {
+                auto result = query->raycastNearest(*ray, 1.0e12, hit);
+                if (!result)
+                    return rejected(result.error());
+                found = *result;
+            }
+            auto point = sceneCreationPoint(found ? &hit : nullptr, *ray, state_.work_plane_height);
+            if (!point)
+                return rejected(point.error());
+            return ModelPlacement{author->session, based_on, asset, *point, {0}};
+        }
         SceneViewResult<void> refresh()
         {
             if (const auto* author = std::get_if<EditedSceneBinding>(&binding_))
@@ -454,6 +553,20 @@ namespace lux::editor::scene
     SceneViewResult<void> SceneView::pick(Eigen::Vector2d position, Eigen::Vector2d extent)
     {
         return impl_->pick(position, extent);
+    }
+    SceneViewResult<void> SceneView::dropModel(
+        AssetReference reference,
+        Eigen::Vector2d position,
+        Eigen::Vector2d extent
+    )
+    {
+        auto request = impl_->placement(reference, position, extent);
+        if (!request)
+            return cxx::unexpected(request.error());
+        const auto delivery = emit(modelDropped, *request);
+        if (!delivery.complete())
+            return rejected(views::EViewError::CAPACITY);
+        return {};
     }
     SceneViewResult<void> SceneView::navigate(const lux::editor::views::CameraMotion& motion)
     {

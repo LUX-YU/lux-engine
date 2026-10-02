@@ -34,6 +34,17 @@ namespace lux::editor::application
                 return reload.source == std::get<sessions::ContentStamp>(intent->target) && reload.result.has_value();
             });
             break;
+        case EResultAction::ACK_MODEL:
+            std::erase_if(model_placements_, [&](const auto& model) {
+                return model.id == std::get<std::uint64_t>(intent->target) && !model.operation &&
+                       (model.result || model.failure);
+            });
+            break;
+        case EResultAction::CANCEL_MODEL:
+            for (auto& model : model_placements_)
+                if (model.id == std::get<std::uint64_t>(intent->target))
+                    model.cancel_requested = true;
+            break;
         case EResultAction::SHOW_CONTENT: {
             const auto target = std::get<sessions::ContentStamp>(intent->target);
             auto current = sessions_.describe(target.session);
@@ -176,6 +187,44 @@ namespace lux::editor::application
                             "Unbound content: use Save As above. Other accepted saves continue independently."
                         );
                         button("Acknowledge Save All report", EResultAction::CLEAR_SAVE_ALL, persistence::SaveId{});
+                    }
+                    ImGui::SeparatorText("Model insertion");
+                    for (const auto& model : app_.model_placements_)
+                    {
+                        ImGui::PushID(static_cast<int>(model.id));
+                        ImGui::Text(
+                            "Content %u: %s",
+                            model.placement.target.id().slot,
+                            model.result && *model.result   ? "inserted"
+                            : model.result || model.failure ? "not inserted"
+                            : model.cancel_requested        ? "cancelling; waiting for completion"
+                                                            : "loading / waiting for the target gate"
+                        );
+                        if (model.failure)
+                            ImGui::TextWrapped("%s: %s", model.failure->domain.c_str(), model.failure->message.c_str());
+                        if (model.result && !*model.result)
+                            std::visit(
+                                [](const auto& error) {
+                                    using Error = std::decay_t<decltype(error)>;
+                                    if constexpr (std::same_as<Error, scene::SceneEditError>)
+                                        ImGui::Text(
+                                            "Scene edit rejected (%u); the captured target was not rebased.",
+                                            static_cast<unsigned>(error.code)
+                                        );
+                                    else if constexpr (std::same_as<Error, process::TaskCancelled>)
+                                        ImGui::TextUnformatted("Cancelled; no author edit was committed.");
+                                    else
+                                        ImGui::TextUnformatted(
+                                            "Model read or dependency validation failed; source retained."
+                                        );
+                                },
+                                model.result->error().cause
+                            );
+                        if (model.result || model.failure)
+                            button("Acknowledge insertion", EResultAction::ACK_MODEL, model.id);
+                        else
+                            button("Cancel insertion", EResultAction::CANCEL_MODEL, model.id);
+                        ImGui::PopID();
                     }
                     ImGui::SeparatorText("Reload results");
                     for (std::size_t index{}; index < app_.reloads_.size(); ++index)

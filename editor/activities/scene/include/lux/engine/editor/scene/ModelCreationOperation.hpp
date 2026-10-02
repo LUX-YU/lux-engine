@@ -1,7 +1,5 @@
 #pragma once
-#include <Eigen/Core>
-#include <lux/engine/editor/scene/SceneSession.hpp>
-#include <lux/engine/editor/sessions/SessionStore.hpp>
+#include <lux/engine/editor/scene/ModelPlacement.hpp>
 #include <lux/engine/editor/project/ProjectCatalogModel.hpp>
 #include <lux/engine/process/asset_loading/AssetLoadSender.hpp>
 
@@ -27,14 +25,6 @@ namespace lux::editor::scene
         VCause cause;
     };
     template <class T> using ModelCreationResult = cxx::expected<T, ModelCreationFailure>;
-    struct ModelPlacement final
-    {
-        sessions::TSessionKey<SceneSession> target;
-        sessions::ContentStamp based_on;
-        AssetReference asset;
-        Eigen::Vector3d position{Eigen::Vector3d::Zero()};
-        partition::PartitionOrdinal partition;
-    };
     // One accepted model read and one atomic domain commit. Views never own its completion.
     class ModelCreationOperation final
     {
@@ -53,6 +43,8 @@ namespace lux::editor::scene
         ModelCreationOperation(ModelCreationOperation&&) = delete;
         ModelCreationOperation& operator=(ModelCreationOperation&&) = delete;
         [[nodiscard]] EModelCreationStage stage() const noexcept;
+        // Cancellation is an intent; the accepted transport must still deliver its owning result.
+        [[nodiscard]] bool settled() const noexcept;
         [[nodiscard]] ModelCreationResult<SceneEditReceipt> commit();
         void cancel() noexcept;
         [[nodiscard]] const std::optional<ModelCreationFailure>& failure() const noexcept;

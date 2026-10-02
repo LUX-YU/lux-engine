@@ -268,6 +268,17 @@ namespace lux::editor::application
         auto view = snapshot.views().prepare(type, *input);
         if (!view)
             return applicationFailure("view.factory", view.error());
+        if (owner.scene)
+        {
+            auto connected = object::LuxObject::connect(
+                static_cast<scene::SceneView*>(view->pane()),
+                &scene::SceneView::modelDropped,
+                [this](scene::ModelPlacement placement) noexcept { receiveModel(std::move(placement)); }
+            );
+            if (!connected)
+                return applicationFailure("scene.model.connect", connected.error());
+            owner.model_drop = std::move(*connected);
+        }
         auto adopted = adopt(*view, name);
         if (!adopted)
             return cxx::unexpected(adopted.error());

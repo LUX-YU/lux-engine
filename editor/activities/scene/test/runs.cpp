@@ -710,8 +710,12 @@ namespace
         assert(f.author->describe().current == before_stale.current);
         assert(f.author->describe().observed == before_stale.observed);
         auto cancelled = start();
+        assert(!cancelled->settled());
         cancelled->cancel();
         assert(!cancelled->commit() && cancelled->stage() == EModelCreationStage::CANCELLED);
+        assert(!cancelled->settled()); // Cancel is not the completion callback.
+        f.until([&] { return cancelled->settled(); });
+        assert(cancelled->stage() == EModelCreationStage::CANCELLED);
         auto catalogue = start();
         f.until([&] { return catalogue->stage() != EModelCreationStage::READING; });
         catalog.setFailure(project::EProjectQueryError::BUSY);

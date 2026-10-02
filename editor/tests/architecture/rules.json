@@ -3049,7 +3049,9 @@
       "type_traits",
       "utility",
       "vector",
-      "lux/engine/object/ObjectDispatcher.hpp"
+      "lux/engine/object/ObjectDispatcher.hpp",
+      "lux/engine/editor/scene/ModelPlacement.hpp",
+      "lux/engine/editor/project/AssetCatalog.hpp"
     ],
     "prefixes": [
       "lux/cxx/",
@@ -3071,7 +3073,8 @@
       "editor/activities/scene/src/RunStore.cpp",
       "editor/activities/scene/test/runs.cpp",
       "editor/activities/scene/include/lux/engine/editor/scene/ModelCreationOperation.hpp",
-      "editor/activities/scene/src/ModelCreationOperation.cpp"
+      "editor/activities/scene/src/ModelCreationOperation.cpp",
+      "editor/activities/scene/include/lux/engine/editor/scene/ModelPlacement.hpp"
     ]
   },
   "scene_projection": {
@@ -6410,7 +6413,8 @@
       "lux/engine/editor/scene/RunStore.hpp",
       "lux/engine/editor/scene/RunInspectorFields.hpp",
       "lux/engine/editor/scene/RunInspectorView.hpp",
-      "lux/engine/editor/editing/scene/FieldEdit.hpp"
+      "lux/engine/editor/editing/scene/FieldEdit.hpp",
+      "lux/engine/editor/scene/ModelPlacement.hpp"
     ],
     "prefixes": [],
     "test_headers": {
@@ -17816,6 +17820,12 @@
         "editor_bootstrap"
       ],
       "editor/application/src/EditorResults.cpp": [
+        "editor_bootstrap"
+      ],
+      "editor/activities/scene/include/lux/engine/editor/scene/ModelPlacement.hpp": [
+        "scene_execution"
+      ],
+      "editor/application/src/EditorModels.cpp": [
         "editor_bootstrap"
       ]
     },

@@ -30,6 +30,7 @@ namespace lux::editor::application
         content_views_.reserve(64);
         opens_.reserve(64);
         open_intents_.reserve(64);
+        model_placements_.reserve(32);
     }
     EditorApplication::Impl::~Impl() = default;
     EditorApplication::EditorApplication(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}

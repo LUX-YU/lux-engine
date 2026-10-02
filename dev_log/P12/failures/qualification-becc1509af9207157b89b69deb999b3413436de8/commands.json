@@ -1,0 +1,113 @@
+[
+  {
+    "name": "clone",
+    "argv": [
+      "git",
+      "clone",
+      "--no-hardlinks",
+      "--no-checkout",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-p12",
+      "E:\\SyncForder\\CodeRepos\\build\\p12-clean-becc1509af92"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine-p12",
+    "exit_code": 0,
+    "log": "clone.log",
+    "sha256": "2bdd4eabf986362f07d22517c801a52d560e720d807287c1671740df701c796f",
+    "implementation_sha": "becc1509af9207157b89b69deb999b3413436de8",
+    "started": "2026-10-02T06:45:10.666656+00:00",
+    "ended": "2026-10-02T06:45:26.537537+00:00"
+  },
+  {
+    "name": "checkout",
+    "argv": [
+      "git",
+      "checkout",
+      "--detach",
+      "becc1509af9207157b89b69deb999b3413436de8"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\build\\p12-clean-becc1509af92",
+    "exit_code": 0,
+    "log": "checkout.log",
+    "sha256": "343a91cfafa19d5c057eb6d9d2c7354ffa55e021508e0f837152354ed80bec15",
+    "implementation_sha": "becc1509af9207157b89b69deb999b3413436de8",
+    "started": "2026-10-02T06:45:26.541720+00:00",
+    "ended": "2026-10-02T06:45:37.853035+00:00"
+  },
+  {
+    "name": "tracked-snapshot",
+    "argv": [
+      "cmake",
+      "-DLUX_SOURCE_DIR=E:\\SyncForder\\CodeRepos\\build\\p12-clean-becc1509af92",
+      "-P",
+      "E:\\SyncForder\\CodeRepos\\build\\p12-clean-becc1509af92\\cmake\\ValidateTrackedSnapshot.cmake"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\build\\p12-clean-becc1509af92",
+    "exit_code": 0,
+    "log": "tracked-snapshot.log",
+    "sha256": "ad27a2fd3e777ffb63960ecfadfe5e67dd05e56cf22feb564112785f738c02d7",
+    "implementation_sha": "becc1509af9207157b89b69deb999b3413436de8",
+    "started": "2026-10-02T06:45:37.887789+00:00",
+    "ended": "2026-10-02T06:45:42.729063+00:00"
+  },
+  {
+    "name": "configure",
+    "argv": [
+      "cmake",
+      "-S",
+      "E:\\SyncForder\\CodeRepos\\build\\p12-clean-becc1509af92",
+      "-B",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p12-becc1509af92",
+      "-G",
+      "Ninja",
+      "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+      "-DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/P12-becc1509af92",
+      "-DCMAKE_INSTALL_PREFIX=E:/SyncForder/CodeRepos/install/P12-becc1509af92",
+      "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+      "-DVCPKG_TARGET_TRIPLET=x64-windows",
+      "-DBUILD_TESTING=ON",
+      "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+      "-DLuxLua55_DIR=E:/SyncForder/CodeRepos/install/o/v4/lua55/lib/cmake/LuxLua55",
+      "-DPython3_EXECUTABLE=C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+      "-DLUX_EDITOR_MIGRATION_STAGE=P12",
+      "-DLUX_EDITOR_LAYERING_MODE=STRICT",
+      "-DLUX_BUILD_COMPONENT_LUA_META=OFF",
+      "-DLUX_BUILD_PHYSICS2D=ON",
+      "-DLUX_BUILD_PACKED_RENDER_CONTENT=ON",
+      "-DLUX_EDITOR_BUILD_NATIVE_TESTS=ON",
+      "-DLUX_EDITOR_BUILD_DESKTOP_TESTS=ON",
+      "-DLUX_EDITOR_BUILD_GPU_TESTS=ON",
+      "-DLUX_EDITOR_BUILD_TOOLCHAIN_TESTS=ON",
+      "-DLUX_EDITOR_BUILD_INSTALLED_TESTS=ON",
+      "-DLUX_BUILD_PROFILE=EDITOR"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\build\\p12-clean-becc1509af92",
+    "exit_code": 0,
+    "log": "configure.log",
+    "sha256": "e5983f78e964065bbf23ec996ea7071432fb12d6cb6b95b67e2129c17b4bd419",
+    "implementation_sha": "becc1509af9207157b89b69deb999b3413436de8",
+    "started": "2026-10-02T06:45:43.976455+00:00",
+    "ended": "2026-10-02T06:46:31.394183+00:00"
+  },
+  {
+    "name": "build",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p12-becc1509af92",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\build\\p12-clean-becc1509af92",
+    "exit_code": 1,
+    "log": "build.log",
+    "sha256": "57d91cac2fccd19c09ed50eca042a27e4269e6a6ca00871223a3ff02ffbf7bf8",
+    "implementation_sha": "becc1509af9207157b89b69deb999b3413436de8",
+    "started": "2026-10-02T06:46:31.399194+00:00",
+    "ended": "2026-10-02T06:47:15.992034+00:00"
+  }
+]

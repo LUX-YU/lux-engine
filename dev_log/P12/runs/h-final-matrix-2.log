@@ -1,0 +1,184 @@
+Sequential final phase: cold 3c790677bb3c8eec496a17ff0396c4ac0725f9e2
+clone 0
+checkout 0
+tracked-snapshot 0
+configure 0
+build 0
+no-work 0
+test-names 0
+ctest 0
+All non-input tests complete; awaiting the reserved native-input window.
+native-input 0
+product-help 0
+launcher-smoke 0
+install 0
+installed-editor-smoke 0
+imports 0
+actual-link-commands 0
+Sequential final phase: cpu 3c790677bb3c8eec496a17ff0396c4ac0725f9e2
+cpu-configure 0
+cpu-build 0
+cpu-no-work 0
+cpu-ctest 8
+nce.receipts ......................   Passed    0.06 sec
+        Start 142: editor.persistence.identities
+142/201 Test #142: editor.persistence.identities ....................   Passed    0.02 sec
+        Start 143: editor.persistence.conflict
+143/201 Test #143: editor.persistence.conflict ......................   Passed    0.03 sec
+        Start 144: editor.persistence.measure
+144/201 Test #144: editor.persistence.measure .......................   Passed    0.35 sec
+        Start 145: editor.persistence.r2-accept-success
+145/201 Test #145: editor.persistence.r2-accept-success .............   Passed    0.04 sec
+        Start 146: editor.persistence.r2-accept-error
+146/201 Test #146: editor.persistence.r2-accept-error ...............   Passed    0.03 sec
+        Start 147: editor.persistence.r2-accept-cancel
+147/201 Test #147: editor.persistence.r2-accept-cancel ..............   Passed    0.04 sec
+        Start 148: editor.persistence.r2-accept-drain
+148/201 Test #148: editor.persistence.r2-accept-drain ...............   Passed    0.04 sec
+        Start 149: editor.persistence.r2-admission
+149/201 Test #149: editor.persistence.r2-admission ..................   Passed    1.43 sec
+        Start 150: editor.persistence.r1-revoke
+150/201 Test #150: editor.persistence.r1-revoke .....................   Passed    0.03 sec
+        Start 151: editor.persistence.r1-recursive
+151/201 Test #151: editor.persistence.r1-recursive ..................   Passed    0.02 sec
+        Start 152: editor.persistence.r1-chain
+152/201 Test #152: editor.persistence.r1-chain ......................   Passed    0.07 sec
+        Start 153: editor.persistence.r1-chain-control
+153/201 Test #153: editor.persistence.r1-chain-control ..............   Passed    0.08 sec
+        Start 154: editor.persistence.r1-callbacks
+154/201 Test #154: editor.persistence.r1-callbacks ..................   Passed    0.09 sec
+        Start 155: editor.persistence.r1-reading
+155/201 Test #155: editor.persistence.r1-reading ....................   Passed    0.04 sec
+        Start 156: editor.persistence.r1-conflicts
+156/201 Test #156: editor.persistence.r1-conflicts ..................   Passed    0.06 sec
+        Start 157: editor.interaction_reclaim.scene.sync
+157/201 Test #157: editor.interaction_reclaim.scene.sync ............   Passed    0.04 sec
+        Start 158: editor.interaction_reclaim.scene.cancel
+158/201 Test #158: editor.interaction_reclaim.scene.cancel ..........   Passed    0.02 sec
+        Start 159: editor.interaction_reclaim.scene.selection
+159/201 Test #159: editor.interaction_reclaim.scene.selection .......   Passed    0.03 sec
+        Start 160: editor.interaction_reclaim.scene.stale
+160/201 Test #160: editor.interaction_reclaim.scene.stale ...........   Passed    0.02 sec
+        Start 161: editor.interaction_reclaim.scene.gate
+161/201 Test #161: editor.interaction_reclaim.scene.gate ............   Passed    0.02 sec
+        Start 162: editor.interaction_reclaim.scene.thread
+162/201 Test #162: editor.interaction_reclaim.scene.thread ..........   Passed    0.02 sec
+        Start 163: editor.interaction_reclaim.scene.reload
+163/201 Test #163: editor.interaction_reclaim.scene.reload ..........   Passed    0.02 sec
+        Start 164: editor.interaction_reclaim.material.sync
+164/201 Test #164: editor.interaction_reclaim.material.sync .........   Passed    0.02 sec
+        Start 165: editor.interaction_reclaim.material.cancel
+165/201 Test #165: editor.interaction_reclaim.material.cancel .......   Passed    0.02 sec
+        Start 166: editor.interaction_reclaim.material.selection
+166/201 Test #166: editor.interaction_reclaim.material.selection ....   Passed    0.02 sec
+        Start 167: editor.interaction_reclaim.material.stale
+167/201 Test #167: editor.interaction_reclaim.material.stale ........   Passed    0.02 sec
+        Start 168: editor.interaction_reclaim.material.gate
+168/201 Test #168: editor.interaction_reclaim.material.gate .........   Passed    0.02 sec
+        Start 169: editor.interaction_reclaim.material.thread
+169/201 Test #169: editor.interaction_reclaim.material.thread .......   Passed    0.02 sec
+        Start 170: editor.interaction_reclaim.material.reload
+170/201 Test #170: editor.interaction_reclaim.material.reload .......   Passed    0.02 sec
+        Start 171: editor.interaction_reclaim.flow.sync
+171/201 Test #171: editor.interaction_reclaim.flow.sync .............   Passed    0.02 sec
+        Start 172: editor.interaction_reclaim.flow.cancel
+172/201 Test #172: editor.interaction_reclaim.flow.cancel ...........   Passed    0.02 sec
+        Start 173: editor.interaction_reclaim.flow.selection
+173/201 Test #173: editor.interaction_reclaim.flow.selection ........   Passed    0.02 sec
+        Start 174: editor.interaction_reclaim.flow.stale
+174/201 Test #174: editor.interaction_reclaim.flow.stale ............   Passed    0.02 sec
+        Start 175: editor.interaction_reclaim.flow.gate
+175/201 Test #175: editor.interaction_reclaim.flow.gate .............   Passed    0.02 sec
+        Start 176: editor.interaction_reclaim.flow.thread
+176/201 Test #176: editor.interaction_reclaim.flow.thread ...........   Passed    0.02 sec
+        Start 177: editor.interaction_reclaim.flow.reload
+177/201 Test #177: editor.interaction_reclaim.flow.reload ...........   Passed    0.02 sec
+        Start 178: editor.persistence.r11-input-duplicate
+178/201 Test #178: editor.persistence.r11-input-duplicate ...........   Passed    0.03 sec
+        Start 179: editor.persistence.r11-input-invalid
+179/201 Test #179: editor.persistence.r11-input-invalid .............   Passed    0.03 sec
+        Start 180: editor.persistence.r11-input-busy
+180/201 Test #180: editor.persistence.r11-input-busy ................   Passed    0.03 sec
+        Start 181: editor.persistence.r11-input-success
+181/201 Test #181: editor.persistence.r11-input-success .............   Passed    0.02 sec
+        Start 182: editor.persistence.r11-input-completion
+182/201 Test #182: editor.persistence.r11-input-completion ..........   Passed    0.03 sec
+        Start 183: editor.workspace.validation
+183/201 Test #183: editor.workspace.validation ......................   Passed    0.04 sec
+        Start 184: editor.workspace.opaque
+184/201 Test #184: editor.workspace.opaque ..........................   Passed    0.01 sec
+        Start 185: editor.workspace.rename
+185/201 Test #185: editor.workspace.rename ..........................   Passed    0.04 sec
+        Start 186: editor.workspace.remove
+186/201 Test #186: editor.workspace.remove ..........................   Passed    0.03 sec
+        Start 187: editor.workspace.ordering
+187/201 Test #187: editor.workspace.ordering ........................   Passed    0.03 sec
+        Start 188: editor.workspace.unknown
+188/201 Test #188: editor.workspace.unknown .........................   Passed    0.03 sec
+        Start 189: editor.workspace.aliases
+189/201 Test #189: editor.workspace.aliases .........................   Passed    0.07 sec
+        Start 190: editor.workspace.reads
+190/201 Test #190: editor.workspace.reads ...........................   Passed    0.02 sec
+        Start 191: editor.workspace.catalog
+191/201 Test #191: editor.workspace.catalog .........................   Passed    0.03 sec
+        Start 192: editor.workspace.migration
+192/201 Test #192: editor.workspace.migration .......................   Passed    0.07 sec
+        Start 193: editor.workspace.collision
+193/201 Test #193: editor.workspace.collision .......................   Passed    0.02 sec
+        Start 194: editor.workspace.budgets
+194/201 Test #194: editor.workspace.budgets .........................   Passed    0.01 sec
+        Start 195: editor.workspace.r1-alpha
+195/201 Test #195: editor.workspace.r1-alpha ........................   Passed    0.10 sec
+        Start 196: editor.workspace.r1-beta
+196/201 Test #196: editor.workspace.r1-beta .........................   Passed    0.17 sec
+        Start 197: editor.workspace.r1-extras
+197/201 Test #197: editor.workspace.r1-extras .......................   Passed    0.09 sec
+        Start 198: editor.workspace.r1-selection
+198/201 Test #198: editor.workspace.r1-selection ....................   Passed    0.27 sec
+        Start 199: editor.workspace.r1-resume
+199/201 Test #199: editor.workspace.r1-resume .......................   Passed    0.12 sec
+        Start 200: editor.workspace.r1-control
+200/201 Test #200: editor.workspace.r1-control ......................   Passed    0.09 sec
+        Start 201: editor.workspace.effects
+201/201 Test #201: editor.workspace.effects .........................   Passed    0.04 sec
+
+99% tests passed, 1 tests failed out of 201
+
+Label Time Summary:
+P01                =   2.36 sec*proc (2 tests)
+P01-R1             =   0.02 sec*proc (2 tests)
+P02                =  12.63 sec*proc (14 tests)
+P03                =  22.54 sec*proc (13 tests)
+P04                =  25.10 sec*proc (24 tests)
+P05                =  35.44 sec*proc (28 tests)
+P05-R1             =   0.38 sec*proc (7 tests)
+P05-R2             =   1.58 sec*proc (5 tests)
+P06                =  25.09 sec*proc (10 tests)
+P07                =  32.10 sec*proc (4 tests)
+P08                =  37.79 sec*proc (27 tests)
+P09                =  34.96 sec*proc (20 tests)
+P09-R1             =   0.84 sec*proc (6 tests)
+P10                =  47.48 sec*proc (2 tests)
+P10Q               =  84.44 sec*proc (10 tests)
+P11                =  17.33 sec*proc (4 tests)
+P12                =  21.64 sec*proc (6 tests)
+R1                 =   0.41 sec*proc (21 tests)
+architecture       =  32.77 sec*proc (2 tests)
+editor             = 504.13 sec*proc (177 tests)
+editor_layering    =  72.09 sec*proc (5 tests)
+native             = 504.24 sec*proc (180 tests)
+render             =   0.04 sec*proc (1 test)
+
+Total Test time (real) = 506.65 sec
+
+The following tests FAILED:
+	 83 - editor.project_publication_operation (Exit code 0xc0000409
+) P12 editor native
+Errors while running CTest
+
+Traceback (most recent call last):
+  File "E:\SyncForder\CodeRepos\lux-engine\.internal\editor-redesign\P12\final_matrix.py", line 9, in <module>
+    subprocess.run([sys.executable,w/'qualify.py','--phase',phase],check=True)
+  File "C:\Users\ChenHui\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe', WindowsPath('E:/SyncForder/CodeRepos/lux-engine/.internal/editor-redesign/P12/qualify.py'), '--phase', 'cpu']' returned non-zero exit status 8.

@@ -1,0 +1,11 @@
+{
+  "implementation_sha": "85d2ed7ec6f9f4b39679a0d1bb6ed17b2888a616",
+  "base": "0a6644d8781dd3aeea1da549a87dfd6303a1c1dc",
+  "git_name_status_counts": {
+    "M": 171,
+    "D": 174,
+    "A": 68,
+    "R": 10
+  },
+  "status_policy": "Git rename detection; files.json uses --no-renames and also lists each removed physical path."
+}

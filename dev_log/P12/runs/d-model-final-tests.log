@@ -1,0 +1,33 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev
+      Start 71: editor.scene.editing
+ 1/11 Test #71: editor.scene.editing .....................   Passed    0.02 sec
+      Start 72: editor.scene_execution.isolation
+ 2/11 Test #72: editor.scene_execution.isolation .........   Passed    0.06 sec
+      Start 73: editor.scene_execution.controls
+ 3/11 Test #73: editor.scene_execution.controls ..........   Passed    0.09 sec
+      Start 74: editor.scene_execution.failure
+ 4/11 Test #74: editor.scene_execution.failure ...........   Passed    0.03 sec
+      Start 75: editor.scene_execution.completion
+ 5/11 Test #75: editor.scene_execution.completion ........   Passed    0.03 sec
+      Start 76: editor.scene_execution.r1-queued
+ 6/11 Test #76: editor.scene_execution.r1-queued .........   Passed    0.03 sec
+      Start 77: editor.scene_execution.r1-mixed
+ 7/11 Test #77: editor.scene_execution.r1-mixed ..........   Passed    0.08 sec
+      Start 78: editor.scene_execution.r1-failed
+ 8/11 Test #78: editor.scene_execution.r1-failed .........   Passed    0.03 sec
+      Start 79: editor.scene_execution.r1-callback
+ 9/11 Test #79: editor.scene_execution.r1-callback .......   Passed    0.03 sec
+      Start 80: editor.scene_execution.r1-capacity
+10/11 Test #80: editor.scene_execution.r1-capacity .......   Passed    0.04 sec
+      Start 81: editor.scene_execution.model-insertion
+11/11 Test #81: editor.scene_execution.model-insertion ...   Passed    0.03 sec
+
+100% tests passed, 0 tests failed out of 11
+
+Label Time Summary:
+P06       =   0.43 sec*proc (9 tests)
+P12       =   0.03 sec*proc (1 test)
+editor    =   0.48 sec*proc (11 tests)
+native    =   0.48 sec*proc (11 tests)
+
+Total Test time (real) =   0.90 sec

@@ -1,0 +1,20 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev
+    Start 136: editor.application
+1/1 Test #136: editor.application ...............Exit code 0xc0000409
+***Exception:   4.63 sec
+Assertion failed: !rejected && rejected.error().domain == "object.connect", file E:\SyncForder\CodeRepos\lux-engine-p12\editor\tests\integration\application\application.cpp, line 41
+
+
+0% tests passed, 1 tests failed out of 1
+
+Label Time Summary:
+P12       =   4.63 sec*proc (1 test)
+editor    =   4.63 sec*proc (1 test)
+gpu       =   4.63 sec*proc (1 test)
+
+Total Test time (real) =   4.68 sec
+
+The following tests FAILED:
+	136 - editor.application (Exit code 0xc0000409
+)        P12 editor gpu
+Errors while running CTest

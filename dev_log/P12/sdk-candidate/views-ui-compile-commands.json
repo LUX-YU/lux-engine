@@ -1,0 +1,8 @@
+[
+  {
+    "directory": "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/views-ui",
+    "command": "D:\\Development\\Mircosoft\\VisualStudio\\VC\\Tools\\MSVC\\14.44.35207\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DIMGUI_SHARED_CORE -external:IE:\\SyncForder\\CodeRepos\\install\\P12-candidate-scene-api\\include -external:ID:\\Development\\vcpkg\\installed\\x64-windows\\include\\eigen3 -external:ID:\\Development\\vcpkg\\installed\\x64-windows\\include -external:ID:\\Development\\vcpkg\\installed\\x64-windows\\include\\stduuid -external:W0 /DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD /UNDEBUG /utf-8 /Zc:__cplusplus /Zc:preprocessor /Zc:externConstexpr /FoCMakeFiles\\context.dir\\context.cpp.obj /FdCMakeFiles\\context.dir\\ /FS -c E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p12-sdk-candidate\\views-ui\\context.cpp",
+    "file": "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/views-ui/context.cpp",
+    "output": "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/views-ui/CMakeFiles/context.dir/context.cpp.obj"
+  }
+]

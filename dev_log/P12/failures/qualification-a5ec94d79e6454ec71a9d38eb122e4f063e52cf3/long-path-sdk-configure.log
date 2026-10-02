@@ -1,0 +1,32 @@
+-- The CXX compiler identification is MSVC 19.44.35228.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: D:/Development/Mircosoft/VisualStudio/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+---- Importing lux-cxx-compile_time
+---- Importing lux-cxx-algorithm
+---- Importing lux-cxx-memory
+---- Importing lux-cxx-binary
+---- Importing lux-cxx-core
+-- Configuring done (1.5s)
+-- Generating done (0.0s)
+CMake Warning:
+  Manually-specified variables were not used by the project:
+
+    BUILD_TESTING
+    LUX_BUILD_COMPONENT_LUA_META
+    LUX_BUILD_PACKED_RENDER_CONTENT
+    LUX_BUILD_PHYSICS2D
+    LUX_EDITOR_BUILD_DESKTOP_TESTS
+    LUX_EDITOR_BUILD_GPU_TESTS
+    LUX_EDITOR_BUILD_INSTALLED_TESTS
+    LUX_EDITOR_BUILD_NATIVE_TESTS
+    LUX_EDITOR_BUILD_TOOLCHAIN_TESTS
+    LUX_EDITOR_LAYERING_MODE
+    LUX_EDITOR_MIGRATION_STAGE
+    LuxLua55_DIR
+    Python3_EXECUTABLE
+
+
+-- Build files have been written to: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-a5ec94d79e64-long-path-sdk

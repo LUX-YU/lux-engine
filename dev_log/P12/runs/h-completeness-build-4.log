@@ -1,0 +1,6 @@
+[0/2] Re-checking globbed directories...
+[1/5] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorProjectTools.cpp.obj
+[2/5] Linking CXX static library lib\editor_bootstrap.lib
+[3/5] Linking CXX executable bin\lux_launcher.exe
+[4/5] Linking CXX executable bin\editor_application_test.exe
+[5/5] Linking CXX executable bin\lux_editor.exe

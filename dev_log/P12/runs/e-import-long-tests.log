@@ -1,0 +1,28 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev
+    Start  83: editor.project_publication_operation
+1/4 Test  #83: editor.project_publication_operation ...Exit code 0xc0000409
+***Exception:   2.42 sec
+project.publication.write: 
+Assertion failed: !std::holds_alternative<EditorFailure>(*state), file E:\SyncForder\CodeRepos\lux-engine-p12\editor\activities\project\test\project_publication_operation.cpp, line 158
+
+    Start  85: editor.plugin_publication
+2/4 Test  #85: editor.plugin_publication ..............   Passed    0.10 sec
+    Start  95: editor.project_views
+3/4 Test  #95: editor.project_views ...................   Passed    0.02 sec
+    Start 137: editor.application
+4/4 Test #137: editor.application .....................   Passed    0.73 sec
+
+75% tests passed, 1 tests failed out of 4
+
+Label Time Summary:
+P12       =   3.15 sec*proc (2 tests)
+editor    =   3.25 sec*proc (3 tests)
+gpu       =   0.73 sec*proc (1 test)
+native    =   2.53 sec*proc (2 tests)
+
+Total Test time (real) =   3.31 sec
+
+The following tests FAILED:
+	 83 - editor.project_publication_operation (Exit code 0xc0000409
+) P12 editor native
+Errors while running CTest

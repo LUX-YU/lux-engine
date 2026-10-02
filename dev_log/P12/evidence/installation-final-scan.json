@@ -1,0 +1,553 @@
+{
+  "implementation_sha": "85d2ed7ec6f9f4b39679a0d1bb6ed17b2888a616",
+  "files": [
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\bin\\editor_metadata.dll",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\bin\\lux_engine_editor_editing.dll",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\bin\\lux_engine_editor_ui.dll",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\AssetEditing.hpp",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\AssetOpenRequest.hpp",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\AssetSave.hpp",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\CloseRequest.hpp",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\CloseStatus.hpp",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\Editor.hpp",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\EditorContext.hpp",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\PaneManager.hpp",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\WindowSpec.hpp",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\WorkspaceRequest.hpp",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\app\\visibility.h",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\editing\\EditHistoryTarget.hpp",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\editing\\visibility.h",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\flowforge\\FlowForgeEditor.hpp",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\flowforge\\visibility.h",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\launcher\\ProjectCreationPane.hpp",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\material\\MaterialEditor.hpp",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\material\\visibility.h",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\metadata\\AssetEditorRegistration.hpp",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\metadata\\CommandRegistration.hpp",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\metadata\\ComponentEditorRegistry.hpp",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\metadata\\EditorPlugin.hpp",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\metadata\\EditorPluginExports.hpp",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\metadata\\PaneRegistration.hpp",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\metadata\\PaneState.hpp",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\metadata\\SceneRegistrations.hpp",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\metadata\\visibility.h",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\plugins\\physics2d_visibility.h",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\plugins\\render_visibility.h",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\project\\ProjectPane.hpp",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\scene\\SceneEditor.hpp",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\scene\\ScenePlayback.hpp",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\scene\\visibility.h",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\settings\\SettingPane.hpp",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\ui\\CloseReview.hpp",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\ui\\ComponentEditors.hpp",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\ui\\HistoryCommand.hpp",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\ui\\InspectorInteraction.hpp",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\ui\\SaveAllRequest.hpp",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\ui\\SceneConfigurationElement.hpp",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\ui\\SpatialInteraction.hpp",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\ui\\TaskPane.hpp",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\editor\\ui\\visibility.h",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\scene\\SceneCapture.hpp",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\lib\\editor_context.lib",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\lib\\editor_launcher.lib",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\lib\\editor_metadata.lib",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\lib\\editor_project_tools.lib",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\lib\\editor_settings.lib",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\lib\\lux_engine_editor_app.lib",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\lib\\lux_engine_editor_editing.lib",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\lib\\lux_engine_editor_flowforge.lib",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\lib\\lux_engine_editor_material.lib",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\lib\\lux_engine_editor_scene.lib",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\lib\\lux_engine_editor_ui.lib",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-app\\editor_app\\lux-engine-editor-app-editor_app-config-targets-relwithdebinfo.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-app\\editor_app\\lux-engine-editor-app-editor_app-config-targets.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-app\\editor_app\\lux-engine-editor-app-editor_app-import.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-app\\lux-engine-editor-app-available-components.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-app\\lux-engine-editor-app-config-version.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-app\\lux-engine-editor-app-config.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-context\\editor_context\\lux-engine-editor-context-editor_context-config-targets-relwithdebinfo.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-context\\editor_context\\lux-engine-editor-context-editor_context-config-targets.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-context\\editor_context\\lux-engine-editor-context-editor_context-import.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-context\\lux-engine-editor-context-available-components.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-context\\lux-engine-editor-context-config-version.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-context\\lux-engine-editor-context-config.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-editing\\editor_editing\\lux-engine-editor-editing-editor_editing-config-targets-relwithdebinfo.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-editing\\editor_editing\\lux-engine-editor-editing-editor_editing-config-targets.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-editing\\editor_editing\\lux-engine-editor-editing-editor_editing-import.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-editing\\lux-engine-editor-editing-available-components.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-editing\\lux-engine-editor-editing-config-version.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-editing\\lux-engine-editor-editing-config.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-flowforge\\editor_flowforge\\lux-engine-editor-flowforge-editor_flowforge-config-targets-relwithdebinfo.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-flowforge\\editor_flowforge\\lux-engine-editor-flowforge-editor_flowforge-config-targets.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-flowforge\\editor_flowforge\\lux-engine-editor-flowforge-editor_flowforge-import.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-flowforge\\lux-engine-editor-flowforge-available-components.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-flowforge\\lux-engine-editor-flowforge-config-version.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-flowforge\\lux-engine-editor-flowforge-config.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-launcher\\editor_launcher\\lux-engine-editor-launcher-editor_launcher-config-targets-relwithdebinfo.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-launcher\\editor_launcher\\lux-engine-editor-launcher-editor_launcher-config-targets.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-launcher\\editor_launcher\\lux-engine-editor-launcher-editor_launcher-import.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-launcher\\lux-engine-editor-launcher-available-components.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-launcher\\lux-engine-editor-launcher-config-version.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-launcher\\lux-engine-editor-launcher-config.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-material\\editor_material\\lux-engine-editor-material-editor_material-config-targets-relwithdebinfo.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-material\\editor_material\\lux-engine-editor-material-editor_material-config-targets.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-material\\editor_material\\lux-engine-editor-material-editor_material-import.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-material\\lux-engine-editor-material-available-components.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-material\\lux-engine-editor-material-config-version.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-material\\lux-engine-editor-material-config.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-metadata\\editor_metadata\\lux-engine-editor-metadata-editor_metadata-config-targets-relwithdebinfo.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-metadata\\editor_metadata\\lux-engine-editor-metadata-editor_metadata-config-targets.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-metadata\\editor_metadata\\lux-engine-editor-metadata-editor_metadata-import.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-metadata\\lux-engine-editor-metadata-available-components.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-metadata\\lux-engine-editor-metadata-config-version.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-metadata\\lux-engine-editor-metadata-config.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-project-tools\\editor_project_tools\\lux-engine-editor-project-tools-editor_project_tools-config-targets-relwithdebinfo.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-project-tools\\editor_project_tools\\lux-engine-editor-project-tools-editor_project_tools-config-targets.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-project-tools\\editor_project_tools\\lux-engine-editor-project-tools-editor_project_tools-import.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-project-tools\\lux-engine-editor-project-tools-available-components.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-project-tools\\lux-engine-editor-project-tools-config-version.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-project-tools\\lux-engine-editor-project-tools-config.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-scene\\editor_scene\\lux-engine-editor-scene-editor_scene-config-targets-relwithdebinfo.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-scene\\editor_scene\\lux-engine-editor-scene-editor_scene-config-targets.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-scene\\editor_scene\\lux-engine-editor-scene-editor_scene-import.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-scene\\lux-engine-editor-scene-available-components.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-scene\\lux-engine-editor-scene-config-version.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-scene\\lux-engine-editor-scene-config.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-settings\\editor_settings\\lux-engine-editor-settings-editor_settings-config-targets-relwithdebinfo.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-settings\\editor_settings\\lux-engine-editor-settings-editor_settings-config-targets.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-settings\\editor_settings\\lux-engine-editor-settings-editor_settings-import.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-settings\\lux-engine-editor-settings-available-components.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-settings\\lux-engine-editor-settings-config-version.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-settings\\lux-engine-editor-settings-config.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-ui\\editor_ui\\cmake_scripts\\codegen\\inspector_codegen.py",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-ui\\editor_ui\\cmake_scripts\\codegen\\ir.template",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-ui\\editor_ui\\cmake_scripts\\codegen\\support\\FirstPartyInspectorControls.hpp",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-ui\\editor_ui\\cmake_scripts\\codegen\\support\\InspectorAggregateElements.hpp",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-ui\\editor_ui\\cmake_scripts\\codegen\\support\\InspectorAlternativeElement.hpp",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-ui\\editor_ui\\cmake_scripts\\codegen\\support\\InspectorAssociativeElement.hpp",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-ui\\editor_ui\\cmake_scripts\\codegen\\support\\InspectorControl.hpp",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-ui\\editor_ui\\cmake_scripts\\codegen\\support\\InspectorElementFields.hpp",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-ui\\editor_ui\\cmake_scripts\\engine_editor_imgui_inspector_codegen.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-ui\\editor_ui\\lux-engine-editor-ui-editor_ui-config-targets-relwithdebinfo.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-ui\\editor_ui\\lux-engine-editor-ui-editor_ui-config-targets.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-ui\\editor_ui\\lux-engine-editor-ui-editor_ui-import.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-ui\\lux-engine-editor-ui-available-components.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-ui\\lux-engine-editor-ui-config-version.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\share\\lux-engine-editor-ui\\lux-engine-editor-ui-config.cmake",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\Debug\\include\\lux\\engine\\editor\\material\\MaterialEditor.hpp",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\Debug\\include\\lux\\engine\\editor\\scene\\SceneEditor.hpp",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\Android\\lux-engine\\include\\lux\\engine\\editor\\material\\MaterialEditor.hpp",
+      "absent_after": true
+    },
+    {
+      "path": "E:\\SyncForder\\CodeRepos\\install\\Android\\lux-engine\\include\\lux\\engine\\editor\\scene\\SceneEditor.hpp",
+      "absent_after": true
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "status": "FAILED_COLD_BUILD",
+  "implementation_sha": "740b76a1ce284939d07f5d94c2bf9baefa446839",
+  "cause": [
+    "editor_bootstrap omitted its direct platform_process include/link dependency",
+    "EditorApplication public command types require a public editor_commands dependency"
+  ],
+  "policy": "Keep first failure. Fix actual target/public/install dependencies in successor; no preinstalled Engine headers added to clean seed."
+}

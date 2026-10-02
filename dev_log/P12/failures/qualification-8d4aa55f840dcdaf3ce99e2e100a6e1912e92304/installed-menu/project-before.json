@@ -1,0 +1,14 @@
+[
+  {
+    "path": ".lux-editor.lock",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "Content/Beginner/Main.scene",
+    "sha256": "6bc5128260fb4d5b9f8e4afe6571348dff26e0b443b7d4a94fc103c929a3f2c3"
+  },
+  {
+    "path": "Project.luxproject",
+    "sha256": "6cc2d603ef77136841aad37f498fa73aedd52b5546f05c98ba6075e16e45b210"
+  }
+]

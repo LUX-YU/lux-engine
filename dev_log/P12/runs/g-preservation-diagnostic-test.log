@@ -1,0 +1,31 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev
+    Start 110: editor.scene_source_preservation
+1/2 Test #110: editor.scene_source_preservation ...Exit code 0xc0000409
+***Exception:   2.50 sec
+Preservation: opaque=1 partitions=1 bundle=0 scene=0 simulation=0
+Assertion failed: before.opaque == after.opaque && before.partitions == after.partitions && before.bundle == after.bundle, file E:\SyncForder\CodeRepos\lux-engine-p12\editor\tests\integration\scene_views\scene_source_checks.hpp, line 164
+
+    Start 129: editor.component_elements
+2/2 Test #129: editor.component_elements ..........Exit code 0xc0000409
+***Exception:   2.43 sec
+Inspector operation failed at E:\SyncForder\CodeRepos\lux-engine-p12\cmake\installed-consumers\editor-d2\GuiGesture.cpp:91
+Assertion failed: result, file E:\SyncForder\CodeRepos\lux-engine-p12\cmake\installed-consumers\editor-d2\GuiGesture.cpp, line 23
+
+
+0% tests passed, 2 tests failed out of 2
+
+Label Time Summary:
+P12          =   2.50 sec*proc (1 test)
+desktop      =   2.43 sec*proc (1 test)
+editor       =   4.93 sec*proc (2 tests)
+installed    =   2.43 sec*proc (1 test)
+native       =   2.50 sec*proc (1 test)
+
+Total Test time (real) =   4.97 sec
+
+The following tests FAILED:
+	110 - editor.scene_source_preservation (Exit code 0xc0000409
+) P12 editor native
+	129 - editor.component_elements (Exit code 0xc0000409
+) desktop editor installed
+Errors while running CTest

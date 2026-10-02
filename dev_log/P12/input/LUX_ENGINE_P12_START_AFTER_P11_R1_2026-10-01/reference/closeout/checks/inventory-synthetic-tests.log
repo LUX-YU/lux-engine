@@ -1,0 +1,9 @@
+test_committed_only_and_no_modification (__main__.InventorySafetyTests.test_committed_only_and_no_modification) ... ok
+test_invalid_ref_rejected (__main__.InventorySafetyTests.test_invalid_ref_rejected) ... ok
+test_output_never_overwritten (__main__.InventorySafetyTests.test_output_never_overwritten) ... ok
+test_repo_output_refused (__main__.InventorySafetyTests.test_repo_output_refused) ... ok
+
+----------------------------------------------------------------------
+Ran 4 tests in 1.968s
+
+OK

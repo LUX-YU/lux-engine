@@ -1,0 +1,55 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev
+      Start 136: editor.application
+ 1/21 Test #136: editor.application ...............   Passed    0.75 sec
+      Start 148: editor.workspace_boundaries
+ 2/21 Test #148: editor.workspace_boundaries ......   Passed   33.87 sec
+      Start 208: editor.workspace.validation
+ 3/21 Test #208: editor.workspace.validation ......   Passed    0.03 sec
+      Start 209: editor.workspace.opaque
+ 4/21 Test #209: editor.workspace.opaque ..........   Passed    0.01 sec
+      Start 210: editor.workspace.rename
+ 5/21 Test #210: editor.workspace.rename ..........   Passed    0.04 sec
+      Start 211: editor.workspace.remove
+ 6/21 Test #211: editor.workspace.remove ..........   Passed    0.03 sec
+      Start 212: editor.workspace.ordering
+ 7/21 Test #212: editor.workspace.ordering ........   Passed    0.03 sec
+      Start 213: editor.workspace.unknown
+ 8/21 Test #213: editor.workspace.unknown .........   Passed    0.03 sec
+      Start 214: editor.workspace.aliases
+ 9/21 Test #214: editor.workspace.aliases .........   Passed    0.02 sec
+      Start 215: editor.workspace.reads
+10/21 Test #215: editor.workspace.reads ...........   Passed    0.02 sec
+      Start 216: editor.workspace.catalog
+11/21 Test #216: editor.workspace.catalog .........   Passed    0.03 sec
+      Start 217: editor.workspace.migration
+12/21 Test #217: editor.workspace.migration .......   Passed    0.07 sec
+      Start 218: editor.workspace.collision
+13/21 Test #218: editor.workspace.collision .......   Passed    0.02 sec
+      Start 219: editor.workspace.budgets
+14/21 Test #219: editor.workspace.budgets .........   Passed    0.01 sec
+      Start 220: editor.workspace.r1-alpha
+15/21 Test #220: editor.workspace.r1-alpha ........   Passed    0.10 sec
+      Start 221: editor.workspace.r1-beta
+16/21 Test #221: editor.workspace.r1-beta .........   Passed    0.17 sec
+      Start 222: editor.workspace.r1-extras
+17/21 Test #222: editor.workspace.r1-extras .......   Passed    0.10 sec
+      Start 223: editor.workspace.r1-selection
+18/21 Test #223: editor.workspace.r1-selection ....   Passed    0.29 sec
+      Start 224: editor.workspace.r1-resume
+19/21 Test #224: editor.workspace.r1-resume .......   Passed    0.12 sec
+      Start 225: editor.workspace.r1-control
+20/21 Test #225: editor.workspace.r1-control ......   Passed    0.09 sec
+      Start 226: editor.workspace.effects
+21/21 Test #226: editor.workspace.effects .........   Passed    0.08 sec
+
+100% tests passed, 0 tests failed out of 21
+
+Label Time Summary:
+P09       =  35.18 sec*proc (20 tests)
+P09-R1    =   0.86 sec*proc (6 tests)
+P12       =   0.75 sec*proc (1 test)
+editor    =  35.93 sec*proc (21 tests)
+gpu       =   0.75 sec*proc (1 test)
+native    =  35.18 sec*proc (20 tests)
+
+Total Test time (real) =  36.01 sec

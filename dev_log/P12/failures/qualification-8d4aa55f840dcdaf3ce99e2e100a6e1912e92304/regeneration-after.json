@@ -1,0 +1,14 @@
+[
+  {
+    "path": "editor\\workbench\\scene\\inspector_gen\\scene_fields_transform\\lux__simulation__ecs__Transform2D_038ea190.inspector.generated.cpp",
+    "sha256": "5cd08597c9654230f3fef1365234c6f5310de644b7aa7cf35d1056301d881bb9"
+  },
+  {
+    "path": "editor\\workbench\\scene\\inspector_gen\\scene_fields_transform\\lux__simulation__ecs__Transform3D_b831b8b5.inspector.generated.cpp",
+    "sha256": "cd9b3922be6f35d6744ea3bc966a743a6ed0f98d2d9648c79c30491f363516cb"
+  },
+  {
+    "path": "editor\\workbench\\scene\\inspector_gen\\scene_fields_transform\\scene_fields_transform.inspector.generated.hpp",
+    "sha256": "23e901177ba434a13010be17652ebaa0171ff0aa63b946ad38bce148d919349c"
+  }
+]

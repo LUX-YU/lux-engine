@@ -1,0 +1,17 @@
+[0/2] Re-checking globbed directories...
+[1/39] Building CXX object editor\workbench\desktop\CMakeFiles\editor_view_host_test.dir\test\host.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[2/39] Building CXX object modules\function\ui\CMakeFiles\ui_imgui_backend.dir\src\Root.cpp.obj
+[3/39] Linking CXX shared library bin\ui.dll
+[4/15] Linking CXX executable bin\editor_view_host_test.exe
+[5/15] Building CXX object editor\workbench\flow\CMakeFiles\flow_ui.dir\src\FlowView.cpp.obj
+[6/15] Linking CXX static library lib\flow_ui.lib
+[7/15] Linking CXX executable bin\editor_contributions_test.exe
+[8/15] Linking CXX executable bin\lux_editor.exe
+[9/15] Linking CXX executable bin\editor_material_protocol.exe
+[10/15] Linking CXX executable bin\editor_flow_protocol.exe
+[11/15] Linking CXX executable bin\editor_review_regressions.exe
+[12/15] Linking CXX executable bin\editor_scene_views_test.exe
+[13/15] Linking CXX executable bin\editor_core_protocol.exe
+[14/15] Linking CXX executable bin\consumer_protocol.exe
+[15/15] Linking CXX executable bin\editor_session_installation_test.exe

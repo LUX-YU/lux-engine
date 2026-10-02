@@ -1,0 +1,6 @@
+Usage: lux_editor [options]
+
+Options:
+  -p, --project             Open an existing .luxproject
+  --font                  Explicit cold UI font file
+  -h, --help              Show this help and exit

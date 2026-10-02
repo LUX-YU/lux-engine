@@ -1,0 +1,41 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev
+      Start  73: editor.scene_execution.isolation
+ 1/14 Test  #73: editor.scene_execution.isolation .........   Passed    0.04 sec
+      Start  74: editor.scene_execution.controls
+ 2/14 Test  #74: editor.scene_execution.controls ..........   Passed    0.09 sec
+      Start  75: editor.scene_execution.failure
+ 3/14 Test  #75: editor.scene_execution.failure ...........   Passed    0.03 sec
+      Start  76: editor.scene_execution.completion
+ 4/14 Test  #76: editor.scene_execution.completion ........   Passed    0.03 sec
+      Start  77: editor.scene_execution.r1-queued
+ 5/14 Test  #77: editor.scene_execution.r1-queued .........   Passed    0.03 sec
+      Start  78: editor.scene_execution.r1-mixed
+ 6/14 Test  #78: editor.scene_execution.r1-mixed ..........   Passed    0.03 sec
+      Start  79: editor.scene_execution.r1-failed
+ 7/14 Test  #79: editor.scene_execution.r1-failed .........   Passed    0.03 sec
+      Start  80: editor.scene_execution.r1-callback
+ 8/14 Test  #80: editor.scene_execution.r1-callback .......   Passed    0.03 sec
+      Start  81: editor.scene_execution.r1-capacity
+ 9/14 Test  #81: editor.scene_execution.r1-capacity .......   Passed    0.05 sec
+      Start  82: editor.scene_execution.model-insertion
+10/14 Test  #82: editor.scene_execution.model-insertion ...   Passed    0.03 sec
+      Start 136: editor.application
+11/14 Test #136: editor.application .......................   Passed    0.63 sec
+      Start 138: editor.architecture_negative
+12/14 Test #138: editor.architecture_negative .............   Passed   23.63 sec
+      Start 139: editor.architecture_current
+13/14 Test #139: editor.architecture_current ..............   Passed   16.96 sec
+      Start 145: editor.scene_execution_boundaries
+14/14 Test #145: editor.scene_execution_boundaries ........   Passed   27.67 sec
+
+100% tests passed, 0 tests failed out of 14
+
+Label Time Summary:
+P06             =  28.02 sec*proc (10 tests)
+P12             =   0.66 sec*proc (2 tests)
+architecture    =  40.59 sec*proc (2 tests)
+editor          =  69.28 sec*proc (14 tests)
+gpu             =   0.63 sec*proc (1 test)
+native          =  68.65 sec*proc (13 tests)
+
+Total Test time (real) =  69.34 sec

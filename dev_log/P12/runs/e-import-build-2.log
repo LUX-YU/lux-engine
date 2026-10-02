@@ -1,0 +1,85 @@
+[0/2] Re-checking globbed directories...
+[1/82] Building CXX object editor\activities\project\CMakeFiles\editor_assets.dir\src\AssetImporter.cpp.obj
+[2/82] Linking CXX static library lib\editor_assets.lib
+[3/82] Linking CXX static library lib\project_tools_ui.lib
+[4/82] Linking CXX static library lib\editor_context.lib
+[5/82] Generate Editor-only ImGui Inspector: desktop_transform
+Editor Inspector: 2 component implementation(s); no runtime target output
+[6/80] Linking CXX static library lib\editor_bootstrap.lib
+[7/80] Generate Editor-only ImGui Inspector: desktop_hierarchy
+Editor Inspector: 1 component implementation(s); no runtime target output
+[8/79] Generate Editor-only ImGui Inspector: desktop_visual
+Editor Inspector: 2 component implementation(s); no runtime target output
+[9/77] Generate Editor-only ImGui Inspector: desktop_camera
+Editor Inspector: 1 component implementation(s); no runtime target output
+[10/75] Linking CXX executable bin\editor_asset_save_test.exe
+[11/75] Linking CXX executable bin\editor_project_publication_operation_test.exe
+[12/75] Linking CXX shared library bin\lux_engine_editor_ui.dll
+[13/75] Linking CXX executable bin\editor_application_test.exe
+[14/75] Linking CXX executable bin\editor_ui_presentation.exe
+[15/75] Building CXX object editor\tools\material\CMakeFiles\editor_material.dir\src\MaterialPreview.cpp.obj
+[16/75] Linking CXX executable bin\editor_scene_configuration.exe
+[17/75] Building CXX object editor\tools\material\CMakeFiles\editor_material.dir\src\MaterialEditor.cpp.obj
+[18/75] Building CXX object editor\tools\material\CMakeFiles\editor_material.dir\src\MaterialAssets.cpp.obj
+[19/75] Building CXX object editor\tools\material\CMakeFiles\editor_material.dir\src\ui\MaterialPreviewElement.cpp.obj
+[20/75] Building CXX object editor\tools\material\CMakeFiles\editor_material.dir\src\ui\MaterialElements.cpp.obj
+[21/75] Building CXX object editor\tools\material\CMakeFiles\editor_material.dir\test\MaterialEditorTestAccess.cpp.obj
+[22/75] Linking CXX static library lib\lux_engine_editor_material.lib
+[23/75] Building CXX object editor\tools\flowforge\CMakeFiles\editor_flowforge.dir\test\FlowForgeEditorTestAccess.cpp.obj
+[24/75] Building CXX object editor\tools\flowforge\CMakeFiles\editor_flowforge.dir\src\FlowAssets.cpp.obj
+[25/75] Building CXX object editor\tools\flowforge\CMakeFiles\editor_flowforge.dir\src\FlowForgeEditor.cpp.obj
+[26/75] Building CXX object editor\tools\flowforge\CMakeFiles\editor_flowforge.dir\src\ui\FlowForgeElements.cpp.obj
+[27/75] Linking CXX static library lib\lux_engine_editor_flowforge.lib
+[28/75] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\ModelCreation.cpp.obj
+[29/75] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\SceneAssets.cpp.obj
+[30/75] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\SceneObjectEdits.cpp.obj
+[31/75] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\SceneEditor.cpp.obj
+[32/75] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\ScenePlayback.cpp.obj
+[33/75] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\ui\SceneUi.cpp.obj
+[34/75] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\ui\SceneContentElement.cpp.obj
+[35/75] Building CXX object editor\tools\project\CMakeFiles\editor_project_tools.dir\src\ProjectPane.cpp.obj
+[36/75] Linking CXX static library lib\editor_project_tools.lib
+[37/75] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\ui\OutlinerPane.cpp.obj
+[38/75] Building CXX object editor\tools\settings\CMakeFiles\editor_settings.dir\src\SettingPane.cpp.obj
+[39/75] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\src\ui\ResourcePane.cpp.obj
+[40/75] Building CXX object editor\tools\scene\CMakeFiles\editor_scene.dir\test\SceneEditorTestAccess.cpp.obj
+[41/75] Linking CXX static library lib\lux_engine_editor_scene.lib
+[42/75] Building CXX object editor\tools\settings\CMakeFiles\editor_settings.dir\src\PluginSettingsElement.cpp.obj
+[43/75] Linking CXX static library lib\editor_settings.lib
+[44/75] Linking CXX executable bin\editor_scene_fixture.exe
+[45/75] Building CXX object editor\app\CMakeFiles\editor_app.dir\src\Editor.cpp.obj
+[46/75] Building CXX object editor\launcher\CMakeFiles\editor_launcher.dir\src\ProjectCreationPane.cpp.obj
+[47/75] Linking CXX static library lib\editor_launcher.lib
+[48/75] Building CXX object editor\app\CMakeFiles\editor_app.dir\src\EditorStartup.cpp.obj
+[49/75] Building CXX object editor\app\CMakeFiles\editor_app.dir\src\EditorLoop.cpp.obj
+[50/75] Building CXX object editor\app\CMakeFiles\editor_app.dir\src\EditorPlatform.cpp.obj
+[51/75] Linking CXX executable bin\lux_launcher.exe
+[52/75] Building CXX object editor\app\CMakeFiles\editor_app.dir\src\EditorMenu.cpp.obj
+[53/75] Building CXX object editor\app\CMakeFiles\editor_app.dir\src\EditorWorkspace.cpp.obj
+[54/75] Building CXX object editor\app\CMakeFiles\lux_editor.dir\product\ProductAssembly.cpp.obj
+[55/75] Building CXX object editor\app\CMakeFiles\editor_app.dir\src\EditorTestAccess.cpp.obj
+[56/75] Linking CXX static library lib\lux_engine_editor_app.lib
+[57/75] Building CXX object editor\app\CMakeFiles\editor_baseline_failures.dir\test\baseline_failures.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[58/75] Linking CXX executable bin\editor_context_lifecycle.exe
+[59/75] Building CXX object editor\app\CMakeFiles\lux_editor.dir\product\ProductCommands.cpp.obj
+[60/75] Linking CXX executable bin\editor_baseline_failures.exe
+[61/75] Building CXX object editor\app\CMakeFiles\editor_material_protocol.dir\__\tools\material\test\material_protocol.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[62/75] Linking CXX executable bin\lux_editor.exe
+[63/75] Linking CXX executable bin\editor_material_protocol.exe
+[64/75] Generate Editor-only ImGui Inspector: consumer
+Editor Inspector: 1 component implementation(s); no runtime target output
+[65/73] Building CXX object editor\app\CMakeFiles\editor_flow_protocol.dir\__\tools\flowforge\test\flow_protocol.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[66/73] Building CXX object editor\app\CMakeFiles\editor_review_regressions.dir\__\__\cmake\installed-consumers\editor-d2\protocol\review_regressions.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[67/73] Linking CXX shared library bin\consumer_gui.dll
+[68/73] Linking CXX executable bin\editor_review_regressions.exe
+[69/73] Linking CXX executable bin\editor_flow_protocol.exe
+[70/73] Building CXX object editor\app\CMakeFiles\editor_core_protocol.dir\__\tools\scene\test\core_protocol.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[71/73] Linking CXX executable bin\editor_core_protocol.exe
+[72/73] Building CXX object editor\app\CMakeFiles\consumer_protocol.dir\__\__\cmake\installed-consumers\editor-d2\SceneWorkflow.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[73/73] Linking CXX executable bin\consumer_protocol.exe

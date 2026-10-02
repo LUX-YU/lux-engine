@@ -1,0 +1,21 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev
+    Start 127: editor.application
+1/1 Test #127: editor.application ...............Exit code 0xc0000409
+***Exception:   5.48 sec
+Application construction: object.connect: 
+Assertion failed: default_source != default_manifest.assets.end(), file E:\SyncForder\CodeRepos\lux-engine-p12\editor\tests\integration\application\application.cpp, line 1105
+
+
+0% tests passed, 1 tests failed out of 1
+
+Label Time Summary:
+P12       =   5.48 sec*proc (1 test)
+editor    =   5.48 sec*proc (1 test)
+gpu       =   5.48 sec*proc (1 test)
+
+Total Test time (real) =   6.07 sec
+
+The following tests FAILED:
+	127 - editor.application (Exit code 0xc0000409
+)        P12 editor gpu
+Errors while running CTest

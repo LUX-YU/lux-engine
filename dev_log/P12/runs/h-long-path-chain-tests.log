@@ -1,0 +1,24 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev
+    Start 70: editor.persistence.real_files
+1/2 Test #70: editor.persistence.real_files ..........   Passed    0.04 sec
+    Start 83: editor.project_publication_operation
+2/2 Test #83: editor.project_publication_operation ...Exit code 0xc0000409
+***Exception:   2.32 sec
+model.recipe.read: E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\editor\activities\project\coordinated-publication\656160622972600\source-generation\source-generation\source-generation\Assets/57279371-1b9c-40d6-b55d-a1a12065d932/Model-0b36a0800c045e42335c259d6489d40f5f95e5f9863d5bd9770304233b4e290c.luxmodel
+Assertion failed: !std::holds_alternative<EditorFailure>(*state), file E:\SyncForder\CodeRepos\lux-engine-p12\editor\activities\project\test\project_publication_operation.cpp, line 196
+
+
+50% tests passed, 1 tests failed out of 2
+
+Label Time Summary:
+P05       =   0.04 sec*proc (1 test)
+P12       =   2.32 sec*proc (1 test)
+editor    =   2.37 sec*proc (2 tests)
+native    =   2.37 sec*proc (2 tests)
+
+Total Test time (real) =   2.65 sec
+
+The following tests FAILED:
+	 83 - editor.project_publication_operation (Exit code 0xc0000409
+) P12 editor native
+Errors while running CTest

@@ -1,0 +1,7 @@
+{
+  "editor/ui/test/unified_ui.cpp": "editor/tests/integration/scene_views/unified_ui.cpp",
+  "editor/ui/test/inspector_codegen.py": "editor/workbench/scene/test/inspector_codegen.py",
+  "editor/tools/scene/test/fixture.cpp": "editor/tests/integration/scene_views/fixture.cpp",
+  "editor/tools/scene/test/scene_source_checks.hpp": "editor/tests/integration/scene_views/scene_source_checks.hpp",
+  "editor/tools/scene/test/run_system.hpp": "editor/tests/integration/scene_views/run_system.hpp"
+}

@@ -1,0 +1,30 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev
+    Start  84: editor.project_creation
+1/5 Test  #84: editor.project_creation ..........   Passed    0.09 sec
+    Start 104: editor.scene_configuration
+2/5 Test #104: editor.scene_configuration .......Exit code 0xc0000409
+***Exception:   2.81 sec
+Assertion failed: extension, file E:\SyncForder\CodeRepos\lux-engine-p12\editor\ui\test\scene_configuration.cpp, line 47
+
+    Start 137: editor.application
+3/5 Test #137: editor.application ...............   Passed    0.96 sec
+    Start 139: editor.architecture_negative
+4/5 Test #139: editor.architecture_negative .....   Passed   20.92 sec
+    Start 140: editor.architecture_current
+5/5 Test #140: editor.architecture_current ......   Passed   14.87 sec
+
+80% tests passed, 1 tests failed out of 5
+
+Label Time Summary:
+P12             =   0.96 sec*proc (1 test)
+architecture    =  35.79 sec*proc (2 tests)
+editor          =  39.65 sec*proc (5 tests)
+gpu             =   0.96 sec*proc (1 test)
+native          =  38.69 sec*proc (4 tests)
+
+Total Test time (real) =  39.95 sec
+
+The following tests FAILED:
+	104 - editor.scene_configuration (Exit code 0xc0000409
+) editor native
+Errors while running CTest

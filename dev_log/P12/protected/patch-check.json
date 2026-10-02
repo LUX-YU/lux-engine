@@ -1,0 +1,12 @@
+{
+  "implementation_sha": "a5ec94d79e6454ec71a9d38eb122e4f063e52cf3",
+  "command": [
+    "git",
+    "apply",
+    "--check",
+    "protected/relocated.patch"
+  ],
+  "exit_code": 0,
+  "applied": false,
+  "checked_utc": "2026-10-02T08:49:35.267591+00:00"
+}

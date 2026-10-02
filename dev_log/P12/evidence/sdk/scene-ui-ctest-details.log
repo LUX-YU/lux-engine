@@ -1,0 +1,18 @@
+Start testing: Oct 02 13:08 GMT 夏令时
+----------------------------------------------------------
+1/1 Testing: installed.cpu_context
+1/1 Test: installed.cpu_context
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-85d2ed7ec6f9-sdk/scene-ui/bin/context.exe"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-85d2ed7ec6f9-sdk/scene-ui
+"installed.cpu_context" start time: Oct 02 13:08 GMT 夏令时
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"installed.cpu_context" end time: Oct 02 13:08 GMT 夏令时
+"installed.cpu_context" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Oct 02 13:08 GMT 夏令时

@@ -1,0 +1,14 @@
+-- The CXX compiler identification is MSVC 19.44.35228.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: D:/Development/Mircosoft/VisualStudio/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+---- Importing lux-cxx-core
+---- Importing lux-cxx-compile_time
+---- Importing lux-cxx-algorithm
+---- Importing lux-cxx-memory
+---- Importing lux-cxx-binary
+-- Configuring done (1.9s)
+-- Generating done (0.0s)
+-- Build files have been written to: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/scene-model

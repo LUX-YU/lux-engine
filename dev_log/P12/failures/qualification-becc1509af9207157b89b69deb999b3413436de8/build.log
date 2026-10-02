@@ -1,0 +1,211 @@
+[0/2] Re-checking globbed directories...
+[1/1349] Building CXX object modules\platform\window\CMakeFiles\window.dir\src\GlfwRuntime.cpp.obj
+[2/1349] Building CXX object modules\platform\process\CMakeFiles\platform_process_arguments.dir\test\arguments.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[3/1349] Building CXX object modules\platform\window\CMakeFiles\window.dir\src\LuxWindow.glfw.cpp.obj
+[4/1349] Building CXX object modules\platform\process\CMakeFiles\platform_process.dir\src\Process.cpp.obj
+[5/1349] Linking CXX static library lib\platform_process.lib
+[6/1349] Building CXX object modules\platform\window\CMakeFiles\window.dir\src\FileDialog.cpp.obj
+[7/1349] Linking CXX executable bin\platform_process_arguments.exe
+[8/1349] Building CXX object modules\function\script\core\CMakeFiles\script_core.dir\src\ScriptCore.cpp.obj
+[9/1349] Building CXX object modules\platform\filewatch\CMakeFiles\filewatch.dir\src\FileWatcher.cpp.obj
+[10/1349] Building CXX object modules\platform\dynamic_library\CMakeFiles\dynamic_library.dir\src\DynamicLibrary.win32.cpp.obj
+[11/1349] Building CXX object modules\platform\window\CMakeFiles\window.dir\src\TrayIconWin32.cpp.obj
+[12/1349] Linking CXX shared library bin\lux_engine_function_script_core.dll
+[13/1349] Linking CXX shared library bin\dynamic_library.dll
+[14/1349] Linking CXX shared library bin\filewatch.dll
+[15/1349] Linking CXX shared library bin\window.dll
+[16/1349] Building CXX object modules\core\object\CMakeFiles\object.dir\src\Connection.cpp.obj
+[17/1349] Building CXX object modules\core\meta\CMakeFiles\meta.dir\src\Meta.cpp.obj
+[18/1349] Building CXX object modules\core\object\CMakeFiles\object.dir\src\Object.cpp.obj
+[19/1349] Building CXX object modules\core\object\CMakeFiles\object.dir\src\ObjectDispatcher.cpp.obj
+[20/1349] Building CXX object modules\core\object\CMakeFiles\object_tree_test.dir\test\tree.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[21/1349] Building CXX object modules\core\object\CMakeFiles\object_queue_test.dir\test\queue.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[22/1349] Building CXX object modules\core\serialization\CMakeFiles\serialization.dir\src\Serialization.cpp.obj
+[23/1349] Linking CXX shared library bin\lux_engine_core_meta.dll
+[24/1349] Linking CXX shared library bin\lux_engine_core_object.dll
+[25/1349] Building CXX object modules\core\events\CMakeFiles\events.dir\src\DomainEvents.cpp.obj
+[26/1349] Building CXX object modules\core\log\CMakeFiles\log.dir\src\Log.cpp.obj
+[27/1349] Linking CXX shared library bin\lux_engine_core_serialization.dll
+[28/1349] Linking CXX executable bin\object_tree_test.exe
+[29/1349] Building CXX object modules\core\task\CMakeFiles\task.dir\src\TaskCallable.cpp.obj
+[30/1349] Linking CXX executable bin\object_queue_test.exe
+[31/1349] Linking CXX shared library bin\lux_engine_core_events.dll
+[32/1349] Linking CXX shared library bin\lux_engine_core_log.dll
+[33/1349] Building CXX object modules\core\task\CMakeFiles\task.dir\src\TaskExecutor.cpp.obj
+[34/1349] Building CXX object modules\core\task\CMakeFiles\task.dir\src\TaskExecutorFailureInjection.cpp.obj
+[35/1349] Building CXX object modules\core\task\CMakeFiles\task.dir\src\TaskGraphBuilder.cpp.obj
+[36/1349] Building CXX object modules\resource\description\CMakeFiles\description.dir\src\Shader.cpp.obj
+[37/1349] Building CXX object modules\resource\description\CMakeFiles\description.dir\src\Texture.cpp.obj
+[38/1349] Building CXX object modules\core\task\CMakeFiles\task.dir\src\TaskExecutorWorker.cpp.obj
+[39/1349] Building CXX object modules\resource\description\CMakeFiles\description.dir\src\ShaderInfo.cpp.obj
+[40/1349] Building CXX object modules\resource\asset\CMakeFiles\asset.dir\src\Asset.cpp.obj
+[41/1349] Building CXX object modules\resource\asset\CMakeFiles\asset.dir\src\CookedAssetImage.cpp.obj
+[42/1349] Linking CXX shared library bin\lux_engine_core_task.dll
+[43/1349] Building CXX object modules\resource\asset\CMakeFiles\asset.dir\src\detail\CookedAssetWriter.cpp.obj
+[44/1349] Linking CXX shared library bin\description.dll
+[45/1349] Building CXX object modules\resource\asset\CMakeFiles\asset.dir\src\material\MaterialAssets.cpp.obj
+[46/1349] Building CXX object modules\resource\asset\CMakeFiles\asset.dir\src\shader\ShaderAsset.cpp.obj
+[47/1349] Building CXX object modules\resource\asset\CMakeFiles\asset.dir\src\metadata\MetadataAssets.cpp.obj
+[48/1349] Building CXX object modules\resource\asset\CMakeFiles\asset.dir\src\texture\TextureAsset.cpp.obj
+[49/1349] Building CXX object modules\resource\asset\CMakeFiles\asset.dir\src\storage\VirtualPath.cpp.obj
+[50/1349] Building CXX object modules\resource\asset\CMakeFiles\asset.dir\src\model\ModelAsset.cpp.obj
+[51/1349] Building CXX object modules\resource\asset\CMakeFiles\asset.dir\src\storage\AssetVfs.cpp.obj
+[52/1349] Building CXX object modules\resource\asset\CMakeFiles\asset.dir\src\texture\TextureAtlasAssets.cpp.obj
+[53/1349] Building CXX object modules\resource\asset\CMakeFiles\asset.dir\src\storage\pak\PakArchive.cpp.obj
+[54/1349] Building CXX object modules\resource\asset\CMakeFiles\asset.dir\src\storage\pak\PakAssetProvider.cpp.obj
+[55/1349] Building CXX object modules\resource\asset\CMakeFiles\asset.dir\src\mesh\MeshDescriptionCodec.cpp.obj
+[56/1349] Building CXX object modules\resource\asset\CMakeFiles\asset.dir\src\storage\pak\PakCodec.cpp.obj
+[57/1349] Building CXX object modules\resource\asset\CMakeFiles\asset.dir\src\animation\SkeletonDescriptionCodec.cpp.obj
+[58/1349] Building CXX object modules\function\material\CMakeFiles\material_graph.dir\src\Node.cpp.obj
+[59/1349] Building CXX object modules\resource\asset\CMakeFiles\asset.dir\src\animation\AnimationClipDescriptionCodec.cpp.obj
+[60/1349] Building CXX object engine\toolchain\shader\CMakeFiles\toolchain_shader_reflection.dir\src\SpirvReflection.cpp.obj
+[61/1349] Building CXX object modules\function\material\CMakeFiles\material_graph.dir\src\MaterialGraph.cpp.obj
+[62/1349] Linking CXX shared library bin\lux_engine_asset.dll
+[63/1349] Building CXX object engine\toolchain\shader\CMakeFiles\lux_shader_emitter.dir\src\ShaderEmitterTool.cpp.obj
+[64/1349] Building CXX object engine\toolchain\shader\CMakeFiles\toolchain_shader_emitter.dir\src\lglsl\LglslEmitter.cpp.obj
+[65/1349] Linking CXX static library lib\lux_engine_toolchain_shader_emitter.lib
+[66/1349] Building CXX object modules\function\material\CMakeFiles\material_graph.dir\src\MaterialSource.cpp.obj
+[67/1349] Building CXX object engine\toolchain\asset\shader\CMakeFiles\toolchain_shader_asset_cooker.dir\src\ShaderCooker.cpp.obj
+[68/1349] Linking CXX static library lib\lux_engine_toolchain_shader_asset_cooker.lib
+[69/1349] Linking CXX executable bin\lux_shader_emitter.exe
+[70/1349] Emit Material compiler cluster_common.glsl
+[71/1349] Emit Material compiler lighting.glsl
+[72/1349] Emit Material compiler shadow_common.glsl
+[73/1349] Building CXX object engine\toolchain\asset\texture\CMakeFiles\toolchain_texture_cooker.dir\src\TextureCooker.cpp.obj
+[74/1349] Emit Material compiler view_prefix.glsl
+[75/1349] Building CXX object engine\toolchain\asset\texture\CMakeFiles\toolchain_texture_cooker.dir\third_party\bc7enc_rdo\bc7enc.cpp.obj
+[76/1349] Building CXX object engine\toolchain\asset\texture\CMakeFiles\toolchain_texture_cooker.dir\third_party\bc7enc_rdo\rgbcx.cpp.obj
+[77/1349] Linking CXX static library lib\lux_engine_toolchain_texture_cooker.lib
+[78/1349] Building CXX object modules\function\graph\CMakeFiles\graph.dir\src\GraphLayout.cpp.obj
+[79/1349] Building CXX object modules\function\graph\CMakeFiles\graph.dir\src\GraphTopology.cpp.obj
+[80/1349] Building CXX object modules\function\flowforge\CMakeFiles\flowforge.dir\src\NodeBase.cpp.obj
+[81/1349] Building CXX object modules\function\flowforge\CMakeFiles\flowforge.dir\src\NodeRegistry.cpp.obj
+[82/1349] Building CXX object modules\function\flowforge\CMakeFiles\flowforge.dir\src\ControlNode.cpp.obj
+[83/1349] Building CXX object modules\function\flowforge\CMakeFiles\flowforge.dir\src\FunctionalNode.cpp.obj
+[84/1349] Building CXX object modules\function\flowforge\CMakeFiles\flowforge.dir\src\ArithmeticNode.cpp.obj
+[85/1349] Building CXX object modules\function\flowforge\CMakeFiles\flowforge.dir\src\ObjectNode.cpp.obj
+[86/1349] Linking CXX shared library bin\lux_engine_function_graph.dll
+[87/1349] Linking CXX shared library bin\lux_engine_function_material_graph.dll
+[88/1349] Building CXX object modules\function\flowforge\CMakeFiles\flowforge.dir\src\FlowGraph.cpp.obj
+[89/1349] Building CXX object modules\function\flowforge\CMakeFiles\flowforge.dir\src\StateLayout.cpp.obj
+[90/1349] Building CXX object modules\function\flowforge\CMakeFiles\flowforge.dir\src\FlowSourceGraph.cpp.obj
+[91/1349] Building CXX object modules\function\flowforge\CMakeFiles\flowforge.dir\src\script\ScriptGraph.cpp.obj
+[92/1349] Building CXX object modules\function\flowforge\CMakeFiles\flowforge.dir\src\FlowSource.cpp.obj
+[93/1349] Building CXX object modules\function\flowforge\CMakeFiles\flowforge.dir\src\script\ScriptAbilityCatalog.cpp.obj
+[94/1349] Embed Material compiler Shader includes
+[95/1349] Building CXX object modules\function\flowforge\CMakeFiles\flowforge.dir\src\script\ScriptEventAwaitNode.cpp.obj
+[96/1349] Building CXX object modules\function\flowforge\CMakeFiles\flowforge.dir\src\script\ScriptAbilityNode.cpp.obj
+[97/1349] Building CXX object engine\toolchain\material\CMakeFiles\toolchain_material_compiler.dir\src\ShaderIR.cpp.obj
+[98/1349] Building CXX object engine\toolchain\material\CMakeFiles\toolchain_material_compiler.dir\src\ShaderCompiler.cpp.obj
+[99/1349] Building CXX object engine\toolchain\material\CMakeFiles\toolchain_material_compiler.dir\src\ShaderEmitter.cpp.obj
+[100/1349] Building CXX object engine\toolchain\material\CMakeFiles\toolchain_material_compiler.dir\src\MaterialLowering.cpp.obj
+[101/1349] Building CXX object engine\toolchain\material\CMakeFiles\toolchain_material_compiler.dir\src\MaterialCompiler.cpp.obj
+[102/1349] Building CXX object modules\function\animation\CMakeFiles\animation.dir\src\PoseSampling.cpp.obj
+[103/1349] Building CXX object engine\toolchain\material\CMakeFiles\toolchain_material_cooker.dir\src\MaterialToGraph.cpp.obj
+[104/1349] Building CXX object engine\toolchain\material\CMakeFiles\toolchain_material_cooker.dir\src\MaterialCooker.cpp.obj
+[105/1349] Linking CXX shared library bin\lux_engine_toolchain_material_compiler.dll
+[106/1349] Linking CXX static library lib\lux_engine_function_flowforge.lib
+[107/1349] Linking CXX static library lib\lux_engine_toolchain_material_cooker.lib
+[108/1349] Building CXX object modules\function\input\CMakeFiles\input.dir\src\Input.cpp.obj
+[109/1349] Linking CXX shared library bin\animation.dll
+[110/1349] Building CXX object modules\function\input\CMakeFiles\input.dir\src\BindingIdAllocator.cpp.obj
+[111/1349] Building CXX object modules\function\input\CMakeFiles\input.dir\src\ActionMapper.cpp.obj
+[112/1349] Building CXX object engine\toolchain\asset\packer\CMakeFiles\lux_asset_packer.dir\src\AssetPacker.cpp.obj
+[113/1349] Building CXX object modules\function\input\CMakeFiles\input.dir\src\platform\glfw\InputPlatform.cpp.obj
+[114/1349] Building CXX object modules\function\navigation\detour3d\CMakeFiles\navigation_detour3d.dir\src\NavigationDetour3D.cpp.obj
+[115/1349] Building CXX object modules\function\navigation\detour3d\CMakeFiles\navigation_detour3d.dir\src\Navigation3DBackend.cpp.obj
+[116/1349] [lux_target_add_codegen] render_comm_ops_Grid3DOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[117/1349] Linking CXX shared library bin\lux_engine_function_input.dll
+[118/1349] Linking CXX shared library bin\lux_engine_function_navigation_detour3d.dll
+[119/1349] [lux_target_add_codegen] render_comm_ops_Grid2DOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[120/1349] [lux_target_add_codegen] render_comm_ops_LineListOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[121/1349] [lux_target_add_codegen] render_comm_ops_TriOverlayOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[122/1349] [lux_target_add_codegen] render_comm_ops_TrajectoryOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[123/1349] [lux_target_add_codegen] render_comm_ops_SkyboxOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[124/1349] [lux_target_add_codegen] render_comm_ops_SkinningOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[125/1349] Building CXX object engine\toolchain\asset\model\CMakeFiles\toolchain_model_cooker.dir\src\ModelCooker.cpp.obj
+[126/1349] [lux_target_add_codegen] render_comm_ops_TonemapOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[127/1349] Linking CXX static library lib\lux_engine_toolchain_model_cooker.lib
+[128/1349] [lux_target_add_codegen] render_comm_ops_PointCloudOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[129/1349] [lux_target_add_codegen] render_comm_ops_ViewCameraOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[130/1349] [lux_target_add_codegen] render_comm_ops_ShadowMapOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[131/1349] [lux_target_add_codegen] render_comm_ops_MeshStackOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[132/1349] [lux_target_add_codegen] render_comm_ops_LightOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[133/1349] [lux_target_add_codegen] render_comm_ops_MaterialOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[134/1349] [lux_target_add_codegen] render_comm_ops_DeferredGBufferOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[135/1349] Linking CXX executable bin\lux_asset_packer.exe
+[136/1349] [lux_target_add_codegen] render_comm_ops_DeferredLightingOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[137/1349] [lux_target_add_codegen] render_comm_ops_DepthPrepassOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[138/1349] [lux_target_add_codegen] render_comm_ops_HzbOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[139/1349] [lux_target_add_codegen] render_comm_ops_ForwardMeshOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[140/1349] [lux_target_add_codegen] render_comm_ops_SsaoOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[141/1349] [lux_target_add_codegen] render_comm_ops_HighlightOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[142/1349] [lux_target_add_codegen] render_comm_ops_StreamingFeedbackOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[143/1349] [lux_target_add_codegen] render_comm_ops_LinearDepthOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[144/1349] [lux_target_add_codegen] render_comm_ops_FogOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[145/1349] [lux_target_add_codegen] render_comm_ops_SpatialCullOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[146/1349] [lux_target_add_codegen] render_comm_ops_MeshShadowOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[147/1349] [lux_target_add_codegen] render_comm_ops_Canvas2DOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[148/1349] [lux_target_add_codegen] render_comm_ops_RenderClusterOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[149/1349] [lux_target_add_codegen] render_comm_ops_TerrainOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[150/1349] [lux_target_add_codegen] render_comm_ops_WaterOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[151/1349] Building CXX object modules\function\render\client\CMakeFiles\render_client.dir\src\Capacity.cpp.obj
+[152/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\features\src\client\Canvas2DOperationClient.cpp.obj
+[153/1349] Building CXX object modules\function\render\client\CMakeFiles\render_client.dir\src\FeatureParamsClient.cpp.obj
+[154/1349] Building CXX object modules\function\render\client\CMakeFiles\render_client.dir\src\RenderControlSession.cpp.obj
+[155/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\features\src\client\MaterialOperationClient.cpp.obj
+[156/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\features\src\client\LightOperationClient.cpp.obj
+[157/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\features\src\client\ViewCameraOperation.cpp.obj
+[158/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\features\src\client\MeshStackOperationClient.cpp.obj
+[159/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\Grid3DOperation.metadata.cpp.obj
+[160/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\Grid3DOperation.client.ops.cpp.obj
+[161/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\Grid2DOperation.metadata.cpp.obj
+[162/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\Grid2DOperation.client.ops.cpp.obj
+[163/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\LineListOperation.metadata.cpp.obj
+[164/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\LineListOperation.client.ops.cpp.obj
+[165/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\TriOverlayOperation.metadata.cpp.obj
+[166/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\TriOverlayOperation.client.ops.cpp.obj
+[167/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\TrajectoryOperation.metadata.cpp.obj
+[168/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\TrajectoryOperation.client.ops.cpp.obj
+[169/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\SkyboxOperation.metadata.cpp.obj
+[170/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\SkyboxOperation.client.ops.cpp.obj
+[171/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\SkinningOperation.client.ops.cpp.obj
+[172/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\SkinningOperation.metadata.cpp.obj
+[173/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\PointCloudOperation.metadata.cpp.obj
+[174/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\TonemapOperation.metadata.cpp.obj
+[175/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\PointCloudOperation.client.ops.cpp.obj
+[176/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\TonemapOperation.client.ops.cpp.obj
+[177/1349] Building CXX object modules\function\ren

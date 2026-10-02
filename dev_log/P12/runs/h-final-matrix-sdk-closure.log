@@ -1,0 +1,60 @@
+Sequential final phase: cold 8d4aa55f840dcdaf3ce99e2e100a6e1912e92304
+clone 0
+checkout 0
+tracked-snapshot 0
+configure 0
+build 0
+no-work 0
+test-names 0
+ctest 0
+product-help 0
+launcher-smoke 0
+install 0
+installed-editor-smoke 0
+long-path-sdk-configure 0
+long-path-sdk-build 0
+long-path-sdk-run 0
+imports 0
+actual-link-commands 0
+Sequential final phase: developer 8d4aa55f840dcdaf3ce99e2e100a6e1912e92304
+developer-install 0
+developer-editor-smoke 0
+Sequential final phase: cpu 8d4aa55f840dcdaf3ce99e2e100a6e1912e92304
+cpu-configure 0
+cpu-build 0
+cpu-no-work 0
+cpu-ctest 0
+cpu-test-names 0
+Sequential final phase: player 8d4aa55f840dcdaf3ce99e2e100a6e1912e92304
+player-configure 0
+player-build 0
+player-no-work 0
+player-ctest 0
+player-test-names 0
+player-imports 0
+Sequential final phase: sdk 8d4aa55f840dcdaf3ce99e2e100a6e1912e92304
+sdk-all 0
+Sequential final phase: clang 8d4aa55f840dcdaf3ce99e2e100a6e1912e92304
+clang-configure 0
+clang-build 0
+clang-no-work 0
+clang-ctest 0
+clang-public-headers 1
+Traceback (most recent call last):
+  File "E:\SyncForder\CodeRepos\lux-engine\.internal\editor-redesign\P12\check_headers.py", line 21, in <module>
+    assert installed.read_bytes().replace(b'\r\n',b'\n')==expected.replace(b'\r\n',b'\n'),path
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ChenHui\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\pathlib.py", line 1019, in read_bytes
+    with self.open(mode='rb') as f:
+         ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ChenHui\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\pathlib.py", line 1013, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'E:\\SyncForder\\CodeRepos\\install\\P12-8d4aa55f840d\\include\\consumer\\Component.hpp'
+
+Traceback (most recent call last):
+  File "E:\SyncForder\CodeRepos\lux-engine\.internal\editor-redesign\P12\final_matrix.py", line 9, in <module>
+    subprocess.run([sys.executable,w/'qualify.py','--phase',phase],check=True)
+  File "C:\Users\ChenHui\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe', WindowsPath('E:/SyncForder/CodeRepos/lux-engine/.internal/editor-redesign/P12/qualify.py'), '--phase', 'clang']' returned non-zero exit status 1.

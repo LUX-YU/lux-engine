@@ -1,0 +1,10 @@
+[
+  {
+    "path": ".lux-editor.lock",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "Project.luxproject",
+    "sha256": "46825a95b77d8334a43f91a6c81c2118ea0ab5bfb6fa36a9b29533ad5b1828ae"
+  }
+]

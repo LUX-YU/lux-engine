@@ -1,0 +1,36 @@
+---- Importing lux-cxx-core
+---- Importing lux-cxx-compile_time
+---- Importing lux-cxx-memory
+---- Importing lux-cxx-algorithm
+---- Importing lux-cxx-binary
+---- Importing lux-cxx-container
+---- Importing lux-cxx-concurrent
+---- Importing lux-cxx-reflection_runtime
+---- Importing imgui-core
+---- Importing node_editor-node_editor
+---- Importing lux-cxx-reflection_generator
+-- Found LibClang:
+--   Version: 0.64
+--   Include directory: D:/Development/vcpkg/installed/x64-windows/include
+--   Library: D:/Development/vcpkg/installed/x64-windows/lib/libclang.lib
+-- Configuring done (1.2s)
+-- Generating done (0.1s)
+-- Build files have been written to: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/desktop-views
+[0/2] Re-checking globbed directories...
+[1/2] Re-running CMake...
+[0/2] Re-checking globbed directories...
+[1/8] Building CXX object CMakeFiles\desktop_views.dir\views.cpp.obj
+FAILED: CMakeFiles/desktop_views.dir/views.cpp.obj 
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\bin\Hostx64\x64\cl.exe  /nologo /TP -DENTT_NO_ETO -DIMGUI_SHARED_CORE -DLUX_EDITOR_PROJECT_DLL_DISABLE -DLUX_ENGINE_FLOWFORGE_DLL_DISABLE -DSTDEXEC_ENABLE_WINDOWS_THREAD_POOL -DVULKAN_DEBUG_REPORT -DVULKAN_SUPPORT -D__PLATFORM_WIN32__ -D__TRAY_ENABLED__ -external:IE:\SyncForder\CodeRepos\install\P12-candidate-scene-api\include -external:ID:\Development\vcpkg\installed\x64-windows\include -external:ID:\Development\vcpkg\installed\x64-windows\include\stduuid -external:ID:\Development\vcpkg\installed\x64-windows\include\eigen3 -external:ID:\Development\VulkanSDK\1.4.304.0\include -external:W0 /DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD /UNDEBUG /utf-8 /Zc:__cplusplus /Zc:preprocessor /Zc:externConstexpr /showIncludes /FoCMakeFiles\desktop_views.dir\views.cpp.obj /FdCMakeFiles\desktop_views.dir\ /FS -c E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-sdk-candidate\desktop-views\views.cpp
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-sdk-candidate\desktop-views\views.cpp(1): fatal error C1083: Cannot open include file: '../../../authoring/flow/src/FlowSessionData.hpp': No such file or directory
+[2/8] [lux_target_add_codegen] desktop_consumer_ir: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[3/8] [lux_target_add_codegen] desktop_consumer_schema: parse once, render 5 projection(s)
+[Info] Parsed 1 target file(s) for 5 projection(s).
+[4/8] Generate Editor-only ImGui Inspector: desktop_consumer
+Editor Inspector: 1 component implementation(s); no runtime target output
+[5/7] Building CXX object CMakeFiles\inspector_fields.dir\inspector_gen\desktop_consumer\consumer__Component_2abfe8b5.inspector.generated.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[6/7] Linking CXX executable bin\inspector_fields.exe
+ninja: build stopped: cannot make progress due to previous errors.

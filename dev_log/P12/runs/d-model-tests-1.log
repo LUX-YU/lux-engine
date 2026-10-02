@@ -1,0 +1,16 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev
+    Start  81: editor.scene_execution.model-insertion
+1/2 Test  #81: editor.scene_execution.model-insertion ...   Passed    0.06 sec
+    Start 121: editor.scene_views_gpu
+2/2 Test #121: editor.scene_views_gpu ...................   Passed    1.59 sec
+
+100% tests passed, 0 tests failed out of 2
+
+Label Time Summary:
+P06       =   0.06 sec*proc (1 test)
+P10       =   1.59 sec*proc (1 test)
+editor    =   1.66 sec*proc (2 tests)
+gpu       =   1.59 sec*proc (1 test)
+native    =   0.06 sec*proc (1 test)
+
+Total Test time (real) =   1.71 sec

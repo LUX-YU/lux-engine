@@ -1,0 +1,11 @@
+Traceback (most recent call last):
+  File "E:\SyncForder\CodeRepos\lux-engine\.internal\editor-redesign\P12\check_headers.py", line 21, in <module>
+    assert installed.read_bytes().replace(b'\r\n',b'\n')==expected.replace(b'\r\n',b'\n'),path
+           ^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ChenHui\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\pathlib.py", line 1019, in read_bytes
+    with self.open(mode='rb') as f:
+         ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ChenHui\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\pathlib.py", line 1013, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'E:\\SyncForder\\CodeRepos\\install\\P12-8d4aa55f840d\\include\\consumer\\Component.hpp'

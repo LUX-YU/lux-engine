@@ -1,0 +1,12 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev
+    Start 83: editor.project_publication_operation
+1/1 Test #83: editor.project_publication_operation ...   Passed    0.07 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Label Time Summary:
+P12       =   0.07 sec*proc (1 test)
+editor    =   0.07 sec*proc (1 test)
+native    =   0.07 sec*proc (1 test)
+
+Total Test time (real) =   0.37 sec

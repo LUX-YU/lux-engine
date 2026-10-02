@@ -1,0 +1,36 @@
+All non-input tests complete; awaiting the reserved native-input window.
+native-input 8
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-8d4aa55f840d
+    Start 122: editor.desktop_native_input
+1/1 Test #122: editor.desktop_native_input ......Exit code 0xc0000409
+***Exception:  35.01 sec
+native activation: foreground=1 visible=1
+native button: flags=4 right=0 down=0
+native button: flags=16 right=1 down=0
+native click target: foreground=1 hit_test=1
+native button: flags=2 right=0 down=1
+native drag: point=(403.5,140.5) sampled=(449.0,170.0) editing=1 foreground=1
+pointer pending: requested=(443.5,140.5) native=(543.0,167.0) OS=(543,167) sequences=341/341 foreground=1
+pointer pending: requested=(443.5,140.5) native=(543.0,167.0) OS=(543,167) sequences=341/342 foreground=0
+pointer pending: requested=(443.5,140.5) native=(543.0,167.0) OS=(543,167) sequences=341/342 foreground=0
+pointer pending: requested=(443.5,140.5) native=(739.0,242.0) OS=(740,242) sequences=1090/1083 foreground=1
+pointer pending: requested=(443.5,140.5) native=(642.0,188.0) OS=(640,188) sequences=2300/2300 foreground=1
+pointer pending: requested=(443.5,140.5) native=(495.0,219.0) OS=(495,219) sequences=2858/2858 foreground=1
+wait expired at E:\SyncForder\CodeRepos\build\p12-clean-8d4aa55f840d\editor\tests\integration\scene_views\NativeDesktop.hpp:56 (auto __cdecl `anonymous-namespace'::nativeDesktop::<lambda_2>::operator ()(struct lux::ui::Point) const)
+
+
+0% tests passed, 1 tests failed out of 1
+
+Label Time Summary:
+P10        =  35.01 sec*proc (1 test)
+desktop    =  35.01 sec*proc (1 test)
+editor     =  35.01 sec*proc (1 test)
+gpu        =  35.01 sec*proc (1 test)
+
+Total Test time (real) =  35.06 sec
+
+The following tests FAILED:
+	122 - editor.desktop_native_input (Exit code 0xc0000409
+) P10 desktop editor gpu
+Errors while running CTest
+

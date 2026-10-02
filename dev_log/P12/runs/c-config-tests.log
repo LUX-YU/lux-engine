@@ -1,0 +1,30 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev
+    Start  81: editor.project_creation
+1/5 Test  #81: editor.project_creation ..............   Passed    0.08 sec
+    Start  84: editor.detached_views
+2/5 Test  #84: editor.detached_views ................   Passed    0.05 sec
+    Start  85: editor.view_host
+3/5 Test  #85: editor.view_host .....................Exit code 0xc0000409
+***Exception:   3.35 sec
+Assertion failed: value, file E:\SyncForder\CodeRepos\lux-engine-p12\editor\workbench\desktop\test\host.cpp, line 15
+
+    Start 113: editor.asset_save_target
+4/5 Test #113: editor.asset_save_target .............   Passed    0.09 sec
+    Start 133: editor.sessions.content_operations
+5/5 Test #133: editor.sessions.content_operations ...   Passed    1.39 sec
+
+80% tests passed, 1 tests failed out of 5
+
+Label Time Summary:
+P08       =   0.05 sec*proc (1 test)
+P10       =   3.35 sec*proc (1 test)
+P12       =   1.39 sec*proc (1 test)
+editor    =   4.96 sec*proc (5 tests)
+native    =   4.96 sec*proc (5 tests)
+
+Total Test time (real) =   5.35 sec
+
+The following tests FAILED:
+	 85 - editor.view_host (Exit code 0xc0000409
+)          P10 editor native
+Errors while running CTest

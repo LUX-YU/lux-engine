@@ -1,0 +1,28 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev
+    Start  95: editor.contributions
+1/8 Test  #95: editor.contributions ..................   Passed    0.04 sec
+    Start  96: editor.contributions.r11-factory
+2/8 Test  #96: editor.contributions.r11-factory ......   Passed    0.02 sec
+    Start  97: editor.contributions.r11-reflection
+3/8 Test  #97: editor.contributions.r11-reflection ...   Passed    0.02 sec
+    Start  98: editor.contributions.r11-cleanup
+4/8 Test  #98: editor.contributions.r11-cleanup ......   Passed    0.02 sec
+    Start  99: editor.contributions.r11-notify
+5/8 Test  #99: editor.contributions.r11-notify .......   Passed    0.02 sec
+    Start 100: plugin.configuration
+6/8 Test #100: plugin.configuration ..................   Passed    0.04 sec
+    Start 101: plugin.physics2d
+7/8 Test #101: plugin.physics2d ......................   Passed    0.09 sec
+    Start 136: editor.application
+8/8 Test #136: editor.application ....................   Passed    0.93 sec
+
+100% tests passed, 0 tests failed out of 8
+
+Label Time Summary:
+P11       =   0.04 sec*proc (1 test)
+P12       =   0.93 sec*proc (1 test)
+editor    =   1.09 sec*proc (4 tests)
+gpu       =   0.93 sec*proc (1 test)
+native    =   0.17 sec*proc (3 tests)
+
+Total Test time (real) =   1.65 sec

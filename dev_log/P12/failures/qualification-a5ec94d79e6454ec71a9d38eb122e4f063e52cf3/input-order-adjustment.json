@@ -1,0 +1,8 @@
+{
+  "utc": "2026-10-02T09:02:04.681270+00:00",
+  "status": "DEFERRED_INPUT_UNTIL_AFTER_NONINTERACTIVE_QUALIFICATION",
+  "stopped_own_idle_process": 22004,
+  "no_running_child": true,
+  "preserved": "Cold build/no-work and 219/219 non-input tests, same clean implementation. No test or active build cancelled. CPU regression continues separately.",
+  "remaining_input": "Native input and manual installed menu still required, no PASS inferred from previous SHA."
+}

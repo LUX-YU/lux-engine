@@ -1,0 +1,472 @@
+[
+  {
+    "path": "cmake/installed-consumers/common/UiDrawPane.hpp",
+    "before": "404fc2ae0e99a69212442f444005fb31937a9be3",
+    "after": "d9c5392f6423d0a9b31d0bc2fada8787458e2eb6"
+  },
+  {
+    "path": "cmake/installed-consumers/common/UiTestContent.hpp",
+    "before": "04136456c43c6e76772b48d33dec33e3017fefc3",
+    "after": "0fcf23a217a0dd25efb41cb800ae2cee5c1b2da4"
+  },
+  {
+    "path": "cmake/installed-consumers/desktop-views/CMakeLists.txt",
+    "before": "8a9d3311c74212983d643f528d9473dec0087a26",
+    "after": "dd31ae387cac871562b33bd4f821c750adc17f6d"
+  },
+  {
+    "path": "cmake/installed-consumers/editor-d2/CMakeLists.txt",
+    "before": "9cb5056cb8cf9e319fdb83d69f6299976ce81201",
+    "after": "f12a1c2da29417e78fc68bbaf507c094bfdf5d6d"
+  },
+  {
+    "path": "cmake/installed-consumers/editor-d2/ComponentFactoryPane.hpp",
+    "before": "5a1172de4a1597511949a12d4544cb53dc1810be",
+    "after": null
+  },
+  {
+    "path": "cmake/installed-consumers/editor-d2/EditorTestFactory.hpp",
+    "before": "854461ca8e1d8413a6fa81a5d9e7f13dbbe48b86",
+    "after": null
+  },
+  {
+    "path": "cmake/installed-consumers/editor-d2/FiniteCost.hpp",
+    "before": "93e5fa7b3884b183e6d404d0dd2ad1d991fc1358",
+    "after": null
+  },
+  {
+    "path": "cmake/installed-consumers/editor-d2/Gui.cpp",
+    "before": "90c7d9d82704ff2b5202688c82caa51238291aac",
+    "after": "98c0fe2ba6cdb3f757ec869d66fe659a1217c298"
+  },
+  {
+    "path": "cmake/installed-consumers/editor-d2/GuiGesture.cpp",
+    "before": "91195220f04e03e092e33e1defe357a8bb824751",
+    "after": "1ba3f2fd24409062543eb9a79ac3ab2e1d7af9d6"
+  },
+  {
+    "path": "cmake/installed-consumers/editor-d2/SceneWorkflow.cpp",
+    "before": "6e9b785fb3dc33d468365663e580751468893a41",
+    "after": null
+  },
+  {
+    "path": "cmake/installed-consumers/editor-d2/Targets.cmake",
+    "before": "42b8a85af221d15e81df50ad69116c0ed7ee6447",
+    "after": "fdcb152fe996c8c6ef492c938ddb8c13469ff86a"
+  },
+  {
+    "path": "cmake/installed-consumers/editor-d2/TestAssembly.hpp",
+    "before": "33bb189c62755517e8050ac6fcd16c9a0f0a3b8b",
+    "after": null
+  },
+  {
+    "path": "cmake/installed-consumers/editor-d2/TestExit.hpp",
+    "before": "bf41d028656d50ec7cf6314da6ee39b8123f640e",
+    "after": null
+  },
+  {
+    "path": "cmake/installed-consumers/editor-d2/closure/CMakeLists.txt",
+    "before": "f1005cb48099925c765ee381e9f4036384a908c0",
+    "after": null
+  },
+  {
+    "path": "cmake/installed-consumers/editor-d2/include/consumer/Component.hpp",
+    "before": "9c803d47a9e9cc51e85c0122b3c3ae6eb551e163",
+    "after": "dcae4c079beec72750113cc326f83d9fbdcbbcc1"
+  },
+  {
+    "path": "cmake/installed-consumers/editor-d2/include/consumer/Gui.hpp",
+    "before": "fed9d2e37c30a900d6b9d62c40f223d597191587",
+    "after": "fa81931995e0e236749424ddd74279eba9dd5767"
+  },
+  {
+    "path": "cmake/installed-consumers/editor-d2/main.cpp",
+    "before": "afd74653870e2f7ecce3138e2f877be1f4f9a635",
+    "after": "160c85698bedcbfaff64c6dabd821e76f1e71dae"
+  },
+  {
+    "path": "cmake/installed-consumers/editor-d2/protocol/RunCase.ps1",
+    "before": "93be88ba9457f69add4965e3c189badf604ee155",
+    "after": null
+  },
+  {
+    "path": "cmake/installed-consumers/editor-d2/protocol/review_regressions.cpp",
+    "before": "5f271113ab082535d10ae01b4ca3a63e9767d2e7",
+    "after": null
+  },
+  {
+    "path": "cmake/installed-consumers/editor-p11/models/CMakeLists.txt",
+    "before": "f8c82cff9b0a0520115012fae9a4dd6851b573a1",
+    "after": "39ce23a9e038db1f173b9a3d4eb9b672e047bb22"
+  },
+  {
+    "path": "cmake/installed-consumers/editor-p11/runtime/CMakeLists.txt",
+    "before": "a4e9cc476ad9db1c236d3c9e8f9de0ea6d574400",
+    "after": "890668805d96d1682e30f394471829466270aef6"
+  },
+  {
+    "path": "cmake/installed-consumers/editor-p11/runtime/main.cpp",
+    "before": "0dba38a2dd9bd6641b34e6b8d94cbf20e5f15a1d",
+    "after": "1ca77933ee0ca51b81c9d6f0782c536a36709f77"
+  },
+  {
+    "path": "cmake/installed-consumers/scene-ui/CMakeLists.txt",
+    "before": "a301a84f35b8da62525491326f53ae918d99cb2c",
+    "after": "ffbb154182bb85edcbcbfd034f7c46520b52b2ea"
+  },
+  {
+    "path": "editor/activities/persistence/test/publication.cpp",
+    "before": "956c177bc5e28e5218d3235896a6edba288d455f",
+    "after": "c60115ed66aff060b74738750a11e9ac941649c3"
+  },
+  {
+    "path": "editor/activities/project/test/plugin_publication.cpp",
+    "before": "df687ad2b411f94d7fa4a5f7cb72339bd0a344d7",
+    "after": "e6483aeefe0354bbc89f3280df5ebe1d70d4752f"
+  },
+  {
+    "path": "editor/activities/project/test/project_creation.cpp",
+    "before": "9c59a8388d6fe55e3fe85a595f5e936d6c50b5ce",
+    "after": "4c46a85097193bf27e9ea563c6cdd8de13751d43"
+  },
+  {
+    "path": "editor/activities/project/test/project_publication_operation.cpp",
+    "before": null,
+    "after": "4321fcbba580c920a3cde230e061c5bba04b24bf"
+  },
+  {
+    "path": "editor/activities/scene/test/runs.cpp",
+    "before": "cd5ca472bc68311ea801d2d8daadd6c2bc5a50fe",
+    "after": "7c46e46794fcfe36f8822c956bba5015f78fb7d2"
+  },
+  {
+    "path": "editor/app/test/baseline_failures.cpp",
+    "before": "c014d0d077ad08a10585f6704b0cd09896eb3b8e",
+    "after": null
+  },
+  {
+    "path": "editor/app/test/context_lifecycle.cpp",
+    "before": "157e7020327997db6e53b2dcb9614e273cbfaba9",
+    "after": null
+  },
+  {
+    "path": "editor/application/extensions/builtin/test/configuration.cpp",
+    "before": null,
+    "after": "03786ae75fd929a712c6532e8799bbcc57f66bd4"
+  },
+  {
+    "path": "editor/application/extensions/builtin/test/plugin.cpp",
+    "before": null,
+    "after": "139138091f47afe53761b865753ddf5a4464e9ee"
+  },
+  {
+    "path": "editor/assets/test/asset_save.cpp",
+    "before": "152db12542f9b1b0f117d43a82d6f9c5754e4f0e",
+    "after": null
+  },
+  {
+    "path": "editor/authoring/flow/test/flow_session.cpp",
+    "before": "f2f804b50b12dd2cfaf7bebb3668bbc5e76475db",
+    "after": "1b8738e0dd4a281c944e44ac7dec5eab3bddfeca"
+  },
+  {
+    "path": "editor/authoring/material/test/material_session.cpp",
+    "before": "a63dd66202645422755fe24c5a62912fbbf6c7e0",
+    "after": "576b79c5b1f6b6e9e08ea9bc0cedcc7f1f2a0e2e"
+  },
+  {
+    "path": "editor/authoring/scene/test/plugin_snapshot.cpp",
+    "before": "7dce3338ff740c01808901881d57c09396eb5f12",
+    "after": "874c7af8eba355ff8a3d5e564e6b03de0d5b9774"
+  },
+  {
+    "path": "editor/authoring/scene/test/scene_session.cpp",
+    "before": "16b97aa70ef4eb9bae128fa92489803ad7382312",
+    "after": "eaf773438bca0296127f6292b6163e10c68930a7"
+  },
+  {
+    "path": "editor/editing/test/sessions/sessions.cpp",
+    "before": "9387f79029ebdfd903111580931a05b7ec8151a0",
+    "after": "50d41251e801a0480b43f9409a61dd6bb72c37c2"
+  },
+  {
+    "path": "editor/metadata/test/configuration.cpp",
+    "before": "3100a92eb48a6e06fdcd39fd59e3cc3f5347bf7b",
+    "after": null
+  },
+  {
+    "path": "editor/metadata/test/plugin.cpp",
+    "before": "de26e502e979214d23021487c3579d0a6e827bc1",
+    "after": null
+  },
+  {
+    "path": "editor/tests/architecture/CMakeLists.txt",
+    "before": "8172aa4a14b81f5e0c2144d1c837a1f8222bacb1",
+    "after": "d50bbba4be30546b07468f1daeae64da8b5fe229"
+  },
+  {
+    "path": "editor/tests/architecture/rules.json",
+    "before": "a918c2f1e41bf4e7f0fc10c38c265d0c61fe0203",
+    "after": "f74fec9055a034d99438cc3a17712ac96ae5e3df"
+  },
+  {
+    "path": "editor/tests/architecture/test_editor_boundaries.py",
+    "before": "3052868a5e4a4c2473f69328984d558d0e8655e6",
+    "after": "a166f7b922365fbeffb99622307a45bb3da97673"
+  },
+  {
+    "path": "editor/tests/architecture/test_layering_boundaries.py",
+    "before": "f4a17ff3d658182c8aea1fe6bbdfe50f146d1365",
+    "after": "c52cadd602d0a038d8245dd422bffddb957d74ae"
+  },
+  {
+    "path": "editor/tests/integration/CMakeLists.txt",
+    "before": "2225bf3a5eab157f4fa00f8c9195778e18b857e1",
+    "after": "aea547a18641a101db424dc3738506c6f5551ac6"
+  },
+  {
+    "path": "editor/tests/integration/application/CMakeLists.txt",
+    "before": null,
+    "after": "9b8817677102dd90c5035889ab357ab42a83db54"
+  },
+  {
+    "path": "editor/tests/integration/application/application.cpp",
+    "before": null,
+    "after": "b205736ba46f739a66d7cfc0d5080936a671c89c"
+  },
+  {
+    "path": "editor/tests/integration/components/CMakeLists.txt",
+    "before": null,
+    "after": "8135cc850c179786e919d2114c196011c76d4192"
+  },
+  {
+    "path": "editor/tests/integration/material_activity/ownership.cpp",
+    "before": "51ab744ab169d19293e4eb74adcfb790a83b3ee7",
+    "after": "7b6e6c5385f6fbc7c42cc218fb9d418fddfda6c6"
+  },
+  {
+    "path": "editor/tests/integration/project/CMakeLists.txt",
+    "before": null,
+    "after": "f795d999ad9d41622dd01f0789104f2946e671c6"
+  },
+  {
+    "path": "editor/tests/integration/project/scene_configuration.cpp",
+    "before": null,
+    "after": "e3825db0444f0c34e3cb2226328600ab4cff91b5"
+  },
+  {
+    "path": "editor/tests/integration/scene_views/CMakeLists.txt",
+    "before": "82fa983a8d2963d242b98c0563cae28acf47528b",
+    "after": "a6e0eef497b7b38bdbcd60b32edcf9566d289eba"
+  },
+  {
+    "path": "editor/tests/integration/scene_views/DraftSources.hpp",
+    "before": "018f21a72122f7b7cf4a6d09344c1ee17b3d7894",
+    "after": "add9107727fc13cadb651605f8196479ba263609"
+  },
+  {
+    "path": "editor/tests/integration/scene_views/fixture.cpp",
+    "before": null,
+    "after": "c6ac3d0fcfb61a5bc0f6ddf00726f333d722d102"
+  },
+  {
+    "path": "editor/tests/integration/scene_views/run_system.hpp",
+    "before": null,
+    "after": "eb6e7c8035202d6d5e79e7281c993412269284b9"
+  },
+  {
+    "path": "editor/tests/integration/scene_views/scene_source_checks.hpp",
+    "before": null,
+    "after": "e74ca0eefe42231914cdc188e25928f23c7d0982"
+  },
+  {
+    "path": "editor/tests/integration/scene_views/unified_ui.cpp",
+    "before": null,
+    "after": "aa29e5ca98070be37b47a62669422a35b439c2c6"
+  },
+  {
+    "path": "editor/tests/integration/scene_views/views.cpp",
+    "before": "d80902da1601d508a4b3af4980c9bc2af2da3416",
+    "after": "8f5b306c37f19eef685ae3078825d0d8c03f4b24"
+  },
+  {
+    "path": "editor/tests/integration/session_factories/CMakeLists.txt",
+    "before": "538368ad7a42d19dab57d7c4fcb9664f47d4aa14",
+    "after": "27b8a12b9e43ba3759a7564cdadbbb8f8e6b8171"
+  },
+  {
+    "path": "editor/tests/integration/session_factories/installation.cpp",
+    "before": "a574f7359cb804456e26e5416f6cae2dfab10f62",
+    "after": "069ac271c003f6696eda3f72a7266ab573adc42c"
+  },
+  {
+    "path": "editor/tests/persistence/interaction_reclaim.cpp",
+    "before": "92cdb4d3d33ccfc730922c3b2a407fd4533ac84f",
+    "after": "950a46049d9466f0e41f04570801384b9cec0970"
+  },
+  {
+    "path": "editor/tools/flowforge/test/FlowForgeEditorTestAccess.cpp",
+    "before": "983f6ece009353de6c39b80e7f2775effcb3ad87",
+    "after": null
+  },
+  {
+    "path": "editor/tools/flowforge/test/FlowForgeEditorTestAccess.hpp",
+    "before": "36a8121e53177aab62629fc27e11f1e970f200fa",
+    "after": null
+  },
+  {
+    "path": "editor/tools/flowforge/test/flow_metadata.hpp",
+    "before": "70374340ea2d04a816bbae65354c450dc1d06756",
+    "after": null
+  },
+  {
+    "path": "editor/tools/flowforge/test/flow_protocol.cpp",
+    "before": "4dae7e2492473c618a30ab5d116e076c22b5860b",
+    "after": null
+  },
+  {
+    "path": "editor/tools/material/test/MaterialEditorTestAccess.cpp",
+    "before": "aa0bcbb98d9d6a3e41c16a24b01ed4d16ac71103",
+    "after": null
+  },
+  {
+    "path": "editor/tools/material/test/MaterialEditorTestAccess.hpp",
+    "before": "b8682d9f5ec6ade8294e4ba83960475c9f5bfea4",
+    "after": null
+  },
+  {
+    "path": "editor/tools/material/test/material_protocol.cpp",
+    "before": "3849b7dfa87c3ecaa8c23bb21bafe93bcc090cb6",
+    "after": null
+  },
+  {
+    "path": "editor/tools/scene/test/SceneEditorTestAccess.cpp",
+    "before": "8842a838b7066486f7d267f7e227c3a0357380c4",
+    "after": null
+  },
+  {
+    "path": "editor/tools/scene/test/SceneEditorTestAccess.hpp",
+    "before": "ab4c070e73c0920c943020976f4719b8f82e2cd4",
+    "after": null
+  },
+  {
+    "path": "editor/tools/scene/test/core_protocol.cpp",
+    "before": "f0ac0b21804b155988fa5e97dd5a337b95cb6bc4",
+    "after": null
+  },
+  {
+    "path": "editor/tools/scene/test/entity_checks.hpp",
+    "before": "5445bd4691ad6cb00a80f997f397444bf116827d",
+    "after": null
+  },
+  {
+    "path": "editor/tools/scene/test/fixture.cpp",
+    "before": "42fea4cdba7c7466b3c88f62cada804dd90a3157",
+    "after": null
+  },
+  {
+    "path": "editor/tools/scene/test/menu_checks.hpp",
+    "before": "82a3603fe07490535121f81a42725d71ee65dc03",
+    "after": null
+  },
+  {
+    "path": "editor/tools/scene/test/run_checks.hpp",
+    "before": "6948308785bcbf41ce6437589a3d1b5fbd4fef63",
+    "after": null
+  },
+  {
+    "path": "editor/tools/scene/test/run_system.hpp",
+    "before": "eb6e7c8035202d6d5e79e7281c993412269284b9",
+    "after": null
+  },
+  {
+    "path": "editor/tools/scene/test/scene_save_checks.hpp",
+    "before": "bf99926d2b47d26ea224c977076ec0230844b113",
+    "after": null
+  },
+  {
+    "path": "editor/tools/scene/test/scene_source_checks.hpp",
+    "before": "6d8506412d07582e9487aa32f6c519bb6879bea0",
+    "after": null
+  },
+  {
+    "path": "editor/tools/scene/test/scene_structure_checks.hpp",
+    "before": "c049d8d97e3c6832c83577479039dc29375879fa",
+    "after": null
+  },
+  {
+    "path": "editor/tools/scene/test/workspace_checks.hpp",
+    "before": "fa452f9609dc59b52357dbbf5ac245c4bcc18c5f",
+    "after": null
+  },
+  {
+    "path": "editor/tools/test/ToolTestAccess.hpp",
+    "before": "f41eef9be47c36943a0dbb66e8f0ef4ab1a8e5c4",
+    "after": null
+  },
+  {
+    "path": "editor/ui/test/inspector_codegen.py",
+    "before": "61a2b411ba8e4976f906477ce9a3efc74d9adf7a",
+    "after": null
+  },
+  {
+    "path": "editor/ui/test/scene_configuration.cpp",
+    "before": "5ecb7ba2f08b9123c844b8047f34c8f92644ebfa",
+    "after": null
+  },
+  {
+    "path": "editor/ui/test/unified_ui.cpp",
+    "before": "8072f6db283fec5eb58f27efab489f0180526b67",
+    "after": null
+  },
+  {
+    "path": "editor/workbench/desktop/test/host.cpp",
+    "before": "1d39eba27974fac4cfb6859da6fa102c963373bc",
+    "after": "a3aa57ed662a25cdeda7e70e583ea9331d186ac0"
+  },
+  {
+    "path": "editor/workbench/flow/interaction/test/interaction.cpp",
+    "before": "29d3d858f579dac335413708e7b5fb9d487f964d",
+    "after": "17c919286511196e7eafe3b02c79465e614694ce"
+  },
+  {
+    "path": "editor/workbench/material/interaction/test/interaction.cpp",
+    "before": "77b2c43db990af6af60b0ac6fca001d243cc79d8",
+    "after": "3824d280a5d40006fdf1270f29a33cf1c73a1e93"
+  },
+  {
+    "path": "editor/workbench/scene/interaction/test/interaction.cpp",
+    "before": "b818a010f329b05bf4e2a4022e444cd99953cc5a",
+    "after": "acd4e07de09f499a80e3d9f22a2e562005a954b4"
+  },
+  {
+    "path": "editor/workbench/scene/interaction/test/run_selection.cpp",
+    "before": "33b1cee6de49dac0694902c24a8d00e9fb2220e6",
+    "after": "24bb7d854eb35ac8530e3eb2b8fb488edbb1f595"
+  },
+  {
+    "path": "editor/workbench/scene/test/inspector_codegen.py",
+    "before": null,
+    "after": "7da1cc62df6e6e5caabf497cea1a49f08a032d19"
+  },
+  {
+    "path": "engine/project/plugins/rendering/test/scene_registrations.cpp",
+    "before": null,
+    "after": "dcce79919ea8dd2b95940b56688e317dee36c266"
+  },
+  {
+    "path": "modules/function/ui/test/elements.hpp",
+    "before": "33edde851c030598bea15fc561fee34c2f721518",
+    "after": "780fb2fb23a5019c77a60eb1f5ce6ffb16551103"
+  },
+  {
+    "path": "modules/function/ui/test/input_checks.hpp",
+    "before": "6490423789695372fb545585d741c287ea11f0b9",
+    "after": "dd1ba1c046d7a1a1e4dbd54a71faf44978436ed4"
+  },
+  {
+    "path": "modules/function/ui/test/root.cpp",
+    "before": "0cc0550d0110308719974042595b098670d83608",
+    "after": "a835de4df3fccb45fe07bc1204f1c6d00f5618db"
+  }
+]

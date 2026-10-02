@@ -1,0 +1,77 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev
+      Start  96: editor.inspector_codegen
+ 1/32 Test  #96: editor.inspector_codegen ........................   Passed    0.09 sec
+      Start 112: editor.draft_source_literal
+ 2/32 Test #112: editor.draft_source_literal .....................   Passed    0.66 sec
+      Start 113: editor.draft_source_signature
+ 3/32 Test #113: editor.draft_source_signature ...................   Passed    0.63 sec
+      Start 114: editor.draft_source_flow-canvas
+ 4/32 Test #114: editor.draft_source_flow-canvas .................   Passed    0.37 sec
+      Start 115: editor.draft_source_material-canvas
+ 5/32 Test #115: editor.draft_source_material-canvas .............   Passed    0.41 sec
+      Start 116: editor.draft_source_flow-queue
+ 6/32 Test #116: editor.draft_source_flow-queue ..................   Passed    0.39 sec
+      Start 117: editor.draft_source_material-queue
+ 7/32 Test #117: editor.draft_source_material-queue ..............   Passed    0.36 sec
+      Start 118: editor.draft_source_material-lifetime
+ 8/32 Test #118: editor.draft_source_material-lifetime ...........   Passed    0.35 sec
+      Start 119: editor.draft_source_lifecycle
+ 9/32 Test #119: editor.draft_source_lifecycle ...................   Passed    0.57 sec
+      Start 120: editor.draft_source_positive
+10/32 Test #120: editor.draft_source_positive ....................   Passed    0.46 sec
+      Start 121: editor.draft_source_history
+11/32 Test #121: editor.draft_source_history .....................   Passed    0.59 sec
+      Start 176: editor.interaction_reclaim.scene.sync
+12/32 Test #176: editor.interaction_reclaim.scene.sync ...........   Passed    0.04 sec
+      Start 177: editor.interaction_reclaim.scene.cancel
+13/32 Test #177: editor.interaction_reclaim.scene.cancel .........   Passed    0.02 sec
+      Start 178: editor.interaction_reclaim.scene.selection
+14/32 Test #178: editor.interaction_reclaim.scene.selection ......   Passed    0.02 sec
+      Start 179: editor.interaction_reclaim.scene.stale
+15/32 Test #179: editor.interaction_reclaim.scene.stale ..........   Passed    0.02 sec
+      Start 180: editor.interaction_reclaim.scene.gate
+16/32 Test #180: editor.interaction_reclaim.scene.gate ...........   Passed    0.02 sec
+      Start 181: editor.interaction_reclaim.scene.thread
+17/32 Test #181: editor.interaction_reclaim.scene.thread .........   Passed    0.02 sec
+      Start 182: editor.interaction_reclaim.scene.reload
+18/32 Test #182: editor.interaction_reclaim.scene.reload .........   Passed    0.02 sec
+      Start 183: editor.interaction_reclaim.material.sync
+19/32 Test #183: editor.interaction_reclaim.material.sync ........   Passed    0.02 sec
+      Start 184: editor.interaction_reclaim.material.cancel
+20/32 Test #184: editor.interaction_reclaim.material.cancel ......   Passed    0.02 sec
+      Start 185: editor.interaction_reclaim.material.selection
+21/32 Test #185: editor.interaction_reclaim.material.selection ...   Passed    0.02 sec
+      Start 186: editor.interaction_reclaim.material.stale
+22/32 Test #186: editor.interaction_reclaim.material.stale .......   Passed    0.02 sec
+      Start 187: editor.interaction_reclaim.material.gate
+23/32 Test #187: editor.interaction_reclaim.material.gate ........   Passed    0.02 sec
+      Start 188: editor.interaction_reclaim.material.thread
+24/32 Test #188: editor.interaction_reclaim.material.thread ......   Passed    0.02 sec
+      Start 189: editor.interaction_reclaim.material.reload
+25/32 Test #189: editor.interaction_reclaim.material.reload ......   Passed    0.02 sec
+      Start 190: editor.interaction_reclaim.flow.sync
+26/32 Test #190: editor.interaction_reclaim.flow.sync ............   Passed    0.02 sec
+      Start 191: editor.interaction_reclaim.flow.cancel
+27/32 Test #191: editor.interaction_reclaim.flow.cancel ..........   Passed    0.02 sec
+      Start 192: editor.interaction_reclaim.flow.selection
+28/32 Test #192: editor.interaction_reclaim.flow.selection .......   Passed    0.02 sec
+      Start 193: editor.interaction_reclaim.flow.stale
+29/32 Test #193: editor.interaction_reclaim.flow.stale ...........   Passed    0.02 sec
+      Start 194: editor.interaction_reclaim.flow.gate
+30/32 Test #194: editor.interaction_reclaim.flow.gate ............   Passed    0.02 sec
+      Start 195: editor.interaction_reclaim.flow.thread
+31/32 Test #195: editor.interaction_reclaim.flow.thread ..........   Passed    0.02 sec
+      Start 196: editor.interaction_reclaim.flow.reload
+32/32 Test #196: editor.interaction_reclaim.flow.reload ..........   Passed    0.02 sec
+
+100% tests passed, 0 tests failed out of 32
+
+Label Time Summary:
+P08       =   0.43 sec*proc (21 tests)
+P10       =   4.79 sec*proc (10 tests)
+R1        =   5.22 sec*proc (31 tests)
+editor    =   5.31 sec*proc (32 tests)
+gpu       =   4.79 sec*proc (10 tests)
+native    =   0.52 sec*proc (22 tests)
+
+Total Test time (real) =   6.03 sec

@@ -1,0 +1,16 @@
+Internal ctest changing into directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-installed-plugin-closure
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-installed-plugin-closure
+    Start 1: installed.p11.runtime
+1/2 Test #1: installed.p11.runtime ..................   Passed    0.02 sec
+    Start 2: installed.p12.builtin_plugin_closure
+2/2 Test #2: installed.p12.builtin_plugin_closure ...***Failed    0.03 sec
+7 lux.builtin.render bin/render_features.dll 找不到指定的模块。
+
+
+50% tests passed, 1 tests failed out of 2
+
+Total Test time (real) =   0.05 sec
+
+The following tests FAILED:
+	  2 - installed.p12.builtin_plugin_closure (Failed)
+Errors while running CTest

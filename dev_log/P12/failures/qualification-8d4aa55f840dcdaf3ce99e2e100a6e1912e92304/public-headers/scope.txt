@@ -1,0 +1,1 @@
+Standalone parse only, using the fresh installed prefix and external dependency includes. No source/private/build include. Package dependency closure and linking are independently tested by the SDK consumer groups.

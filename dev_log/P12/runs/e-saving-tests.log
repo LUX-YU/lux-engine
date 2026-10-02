@@ -1,0 +1,27 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev
+    Start 136: editor.application
+1/3 Test #136: editor.application ........................Exit code 0xc0000409
+***Exception:   3.98 sec
+Application construction: object.connect: 
+Assertion failed: app->execute(commands::CommandId{"lux.editor.scene.resume"}, commands::CommandInvocation{run_view}), file E:\SyncForder\CodeRepos\lux-engine-p12\editor\tests\integration\application\application.cpp, line 296
+
+    Start 157: editor.persistence.models
+2/3 Test #157: editor.persistence.models .................   Passed    0.08 sec
+    Start 207: editor.persistence.r11-input-completion
+3/3 Test #207: editor.persistence.r11-input-completion ...   Passed    0.08 sec
+
+67% tests passed, 1 tests failed out of 3
+
+Label Time Summary:
+P05       =   0.08 sec*proc (1 test)
+P12       =   3.98 sec*proc (1 test)
+editor    =   4.06 sec*proc (2 tests)
+gpu       =   3.98 sec*proc (1 test)
+native    =   0.08 sec*proc (1 test)
+
+Total Test time (real) =   4.58 sec
+
+The following tests FAILED:
+	136 - editor.application (Exit code 0xc0000409
+)        P12 editor gpu
+Errors while running CTest

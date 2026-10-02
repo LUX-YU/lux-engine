@@ -1,0 +1,27 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev
+    Start  70: editor.persistence.real_files
+1/7 Test  #70: editor.persistence.real_files ..........   Passed    0.05 sec
+    Start  83: editor.project_publication_operation
+2/7 Test  #83: editor.project_publication_operation ...   Passed    0.44 sec
+    Start  85: editor.plugin_publication
+3/7 Test  #85: editor.plugin_publication ..............   Passed    0.11 sec
+    Start  95: editor.project_views
+4/7 Test  #95: editor.project_views ...................   Passed    0.02 sec
+    Start 137: editor.application
+5/7 Test #137: editor.application .....................   Passed    0.88 sec
+    Start 139: editor.architecture_negative
+6/7 Test #139: editor.architecture_negative ...........   Passed   20.67 sec
+    Start 140: editor.architecture_current
+7/7 Test #140: editor.architecture_current ............   Passed   15.01 sec
+
+100% tests passed, 0 tests failed out of 7
+
+Label Time Summary:
+P05             =   0.05 sec*proc (1 test)
+P12             =   1.32 sec*proc (2 tests)
+architecture    =  35.67 sec*proc (2 tests)
+editor          =  37.16 sec*proc (6 tests)
+gpu             =   0.88 sec*proc (1 test)
+native          =  36.28 sec*proc (5 tests)
+
+Total Test time (real) =  37.48 sec

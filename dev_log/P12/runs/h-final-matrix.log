@@ -1,0 +1,130 @@
+Sequential final phase: cold becc1509af9207157b89b69deb999b3413436de8
+clone 0
+checkout 0
+tracked-snapshot 0
+configure 0
+build 1
+.dir\src\Navigation3DBackend.cpp.obj
+[116/1349] [lux_target_add_codegen] render_comm_ops_Grid3DOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+
+[117/1349] Linking CXX shared library bin\lux_engine_function_input.dll
+[118/1349] Linking CXX shared library bin\lux_engine_function_navigation_detour3d.dll
+[119/1349] [lux_target_add_codegen] render_comm_ops_Grid2DOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+
+[120/1349] [lux_target_add_codegen] render_comm_ops_LineListOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+
+[121/1349] [lux_target_add_codegen] render_comm_ops_TriOverlayOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+
+[122/1349] [lux_target_add_codegen] render_comm_ops_TrajectoryOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+
+[123/1349] [lux_target_add_codegen] render_comm_ops_SkyboxOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+
+[124/1349] [lux_target_add_codegen] render_comm_ops_SkinningOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+
+[125/1349] Building CXX object engine\toolchain\asset\model\CMakeFiles\toolchain_model_cooker.dir\src\ModelCooker.cpp.obj
+[126/1349] [lux_target_add_codegen] render_comm_ops_TonemapOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+
+[127/1349] Linking CXX static library lib\lux_engine_toolchain_model_cooker.lib
+[128/1349] [lux_target_add_codegen] render_comm_ops_PointCloudOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+
+[129/1349] [lux_target_add_codegen] render_comm_ops_ViewCameraOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+
+[130/1349] [lux_target_add_codegen] render_comm_ops_ShadowMapOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+
+[131/1349] [lux_target_add_codegen] render_comm_ops_MeshStackOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+
+[132/1349] [lux_target_add_codegen] render_comm_ops_LightOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+
+[133/1349] [lux_target_add_codegen] render_comm_ops_MaterialOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+
+[134/1349] [lux_target_add_codegen] render_comm_ops_DeferredGBufferOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[135/1349] Linking CXX executable bin\lux_asset_packer.exe
+[136/1349] [lux_target_add_codegen] render_comm_ops_DeferredLightingOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[137/1349] [lux_target_add_codegen] render_comm_ops_DepthPrepassOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[138/1349] [lux_target_add_codegen] render_comm_ops_HzbOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[139/1349] [lux_target_add_codegen] render_comm_ops_ForwardMeshOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[140/1349] [lux_target_add_codegen] render_comm_ops_SsaoOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+
+[141/1349] [lux_target_add_codegen] render_comm_ops_HighlightOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+
+[142/1349] [lux_target_add_codegen] render_comm_ops_StreamingFeedbackOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+
+[143/1349] [lux_target_add_codegen] render_comm_ops_LinearDepthOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+
+[144/1349] [lux_target_add_codegen] render_comm_ops_FogOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+
+[145/1349] [lux_target_add_codegen] render_comm_ops_SpatialCullOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+
+[146/1349] [lux_target_add_codegen] render_comm_ops_MeshShadowOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+
+[147/1349] [lux_target_add_codegen] render_comm_ops_Canvas2DOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+
+[148/1349] [lux_target_add_codegen] render_comm_ops_RenderClusterOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+
+[149/1349] [lux_target_add_codegen] render_comm_ops_TerrainOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+
+[150/1349] [lux_target_add_codegen] render_comm_ops_WaterOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+
+[151/1349] Building CXX object modules\function\render\client\CMakeFiles\render_client.dir\src\Capacity.cpp.obj
+[152/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\features\src\client\Canvas2DOperationClient.cpp.obj
+[153/1349] Building CXX object modules\function\render\client\CMakeFiles\render_client.dir\src\FeatureParamsClient.cpp.obj
+[154/1349] Building CXX object modules\function\render\client\CMakeFiles\render_client.dir\src\RenderControlSession.cpp.obj
+[155/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\features\src\client\MaterialOperationClient.cpp.obj
+[156/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\features\src\client\LightOperationClient.cpp.obj
+[157/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\features\src\client\ViewCameraOperation.cpp.obj
+[158/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\features\src\client\MeshStackOperationClient.cpp.obj
+[159/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\Grid3DOperation.metadata.cpp.obj
+[160/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\Grid3DOperation.client.ops.cpp.obj
+[161/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\Grid2DOperation.metadata.cpp.obj
+[162/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\Grid2DOperation.client.ops.cpp.obj
+[163/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\LineListOperation.metadata.cpp.obj
+[164/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\LineListOperation.client.ops.cpp.obj
+[165/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\TriOverlayOperation.metadata.cpp.obj
+[166/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\TriOverlayOperation.client.ops.cpp.obj
+[167/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\TrajectoryOperation.metadata.cpp.obj
+[168/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\TrajectoryOperation.client.ops.cpp.obj
+[169/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\SkyboxOperation.metadata.cpp.obj
+[170/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\SkyboxOperation.client.ops.cpp.obj
+[171/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\SkinningOperation.client.ops.cpp.obj
+[172/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\SkinningOperation.metadata.cpp.obj
+[173/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\PointCloudOperation.metadata.cpp.obj
+[174/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\TonemapOperation.metadata.cpp.obj
+[175/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\PointCloudOperation.client.ops.cpp.obj
+[176/1349] Building CXX object modules\function\render\CMakeFiles\render_feature_client.dir\comm_gen\lux\engine\function\render\features\genops\TonemapOperation.client.ops.cpp.obj
+[177/1349] Building CXX object modules\function\ren
+Traceback (most recent call last):
+  File "E:\SyncForder\CodeRepos\lux-engine\.internal\editor-redesign\P12\final_matrix.py", line 9, in <module>
+    subprocess.run([sys.executable,w/'qualify.py','--phase',phase],check=True)
+  File "C:\Users\ChenHui\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\subprocess.py", line 571, in run
+    raise CalledProcessError(retcode, process.args,
+subprocess.CalledProcessError: Command '['C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe', WindowsPath('E:/SyncForder/CodeRepos/lux-engine/.internal/editor-redesign/P12/qualify.py'), '--phase', 'cold']' returned non-zero exit status 1.

@@ -1,0 +1,10 @@
+[0/2] Re-checking globbed directories...
+[1/8] [lux_target_add_codegen] desktop_consumer_ir: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[2/8] [lux_target_add_codegen] desktop_consumer_schema: parse once, render 5 projection(s)
+[Info] Parsed 1 target file(s) for 5 projection(s).
+[3/8] Generate Editor-only ImGui Inspector: desktop_consumer
+Editor Inspector: 1 component implementation(s); no runtime target output
+[4/5] Building CXX object CMakeFiles\desktop_views.dir\views.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[5/5] Linking CXX executable bin\desktop_views.exe

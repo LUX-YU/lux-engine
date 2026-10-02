@@ -1,0 +1,291 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev
+        Start  13: editor.sessions
+  1/133 Test  #13: editor.sessions ..................................   Passed    0.04 sec
+        Start  14: editor.sessions_close_throw
+  2/133 Test  #14: editor.sessions_close_throw ......................   Passed    0.01 sec
+        Start  15: editor.sessions_close_contract
+  3/133 Test  #15: editor.sessions_close_contract ...................   Passed    0.01 sec
+        Start  16: editor.sessions_scope_compile
+  4/133 Test  #16: editor.sessions_scope_compile ....................   Passed    2.45 sec
+        Start  17: editor.scene_model.content
+  5/133 Test  #17: editor.scene_model.content .......................   Passed    0.06 sec
+        Start  18: editor.scene_model.atomic
+  6/133 Test  #18: editor.scene_model.atomic ........................   Passed    0.02 sec
+        Start  19: editor.scene_model.identity
+  7/133 Test  #19: editor.scene_model.identity ......................   Passed    0.02 sec
+        Start  20: editor.scene_model.changes
+  8/133 Test  #20: editor.scene_model.changes .......................   Passed    0.02 sec
+        Start  21: editor.scene_model.plugin
+  9/133 Test  #21: editor.scene_model.plugin ........................   Passed    0.02 sec
+        Start  22: editor.scene_model.mixed-1
+ 10/133 Test  #22: editor.scene_model.mixed-1 .......................   Passed    0.02 sec
+        Start  23: editor.scene_model.mixed-2
+ 11/133 Test  #23: editor.scene_model.mixed-2 .......................   Passed    0.02 sec
+        Start  24: editor.scene_model.mixed-3
+ 12/133 Test  #24: editor.scene_model.mixed-3 .......................   Passed    0.02 sec
+        Start  25: editor.scene_model.mixed-4
+ 13/133 Test  #25: editor.scene_model.mixed-4 .......................   Passed    0.02 sec
+        Start  26: editor.scene_model.read-5
+ 14/133 Test  #26: editor.scene_model.read-5 ........................   Passed    0.08 sec
+        Start  27: editor.scene_model.read-6
+ 15/133 Test  #27: editor.scene_model.read-6 ........................   Passed    0.02 sec
+        Start  28: editor.scene_model.read-7
+ 16/133 Test  #28: editor.scene_model.read-7 ........................   Passed    0.02 sec
+        Start  29: editor.scene_model.read-8
+ 17/133 Test  #29: editor.scene_model.read-8 ........................   Passed    0.02 sec
+        Start  30: editor.scene_model.hierarchy_chain
+ 18/133 Test  #30: editor.scene_model.hierarchy_chain ...............   Passed    0.15 sec
+        Start  31: editor.scene_model.hierarchy_wide
+ 19/133 Test  #31: editor.scene_model.hierarchy_wide ................   Passed    0.10 sec
+        Start  32: editor.scene_model.hierarchy_roots
+ 20/133 Test  #32: editor.scene_model.hierarchy_roots ...............   Passed    0.12 sec
+        Start  33: editor.scene_model.hierarchy_cycle
+ 21/133 Test  #33: editor.scene_model.hierarchy_cycle ...............   Passed    0.12 sec
+        Start  34: editor.material_model.content
+ 22/133 Test  #34: editor.material_model.content ....................   Passed    0.04 sec
+        Start  35: editor.material_model.failure
+ 23/133 Test  #35: editor.material_model.failure ....................   Passed    0.02 sec
+        Start  36: editor.material_model.layout
+ 24/133 Test  #36: editor.material_model.layout .....................   Passed    0.02 sec
+        Start  37: editor.material_model.lifetime
+ 25/133 Test  #37: editor.material_model.lifetime ...................   Passed    0.02 sec
+        Start  38: editor.material_model.mixed-replace
+ 26/133 Test  #38: editor.material_model.mixed-replace ..............   Passed    0.02 sec
+        Start  39: editor.material_model.mixed-recreate
+ 27/133 Test  #39: editor.material_model.mixed-recreate .............   Passed    0.02 sec
+        Start  40: editor.material_model.reading
+ 28/133 Test  #40: editor.material_model.reading ....................   Passed    0.02 sec
+        Start  41: editor.material_model.reload-unbound
+ 29/133 Test  #41: editor.material_model.reload-unbound .............   Passed    0.02 sec
+        Start  42: editor.material_model.reload-unbound-lease
+ 30/133 Test  #42: editor.material_model.reload-unbound-lease .......   Passed    0.02 sec
+        Start  43: editor.material_model.reload-closing-lease
+ 31/133 Test  #43: editor.material_model.reload-closing-lease .......   Passed    0.02 sec
+        Start  44: editor.material_model.reload-reading-lease
+ 32/133 Test  #44: editor.material_model.reload-reading-lease .......   Passed    0.02 sec
+        Start  45: editor.material_model.reload-outcomes
+ 33/133 Test  #45: editor.material_model.reload-outcomes ............   Passed    0.02 sec
+        Start  46: editor.flowforge_model.content
+ 34/133 Test  #46: editor.flowforge_model.content ...................   Passed    0.04 sec
+        Start  47: editor.flowforge_model.failure
+ 35/133 Test  #47: editor.flowforge_model.failure ...................   Passed    0.02 sec
+        Start  48: editor.flowforge_model.mixed-signature
+ 36/133 Test  #48: editor.flowforge_model.mixed-signature ...........   Passed    0.02 sec
+        Start  49: editor.flowforge_model.mixed-recreate
+ 37/133 Test  #49: editor.flowforge_model.mixed-recreate ............   Passed    0.02 sec
+        Start  50: editor.flowforge_model.lifetime
+ 38/133 Test  #50: editor.flowforge_model.lifetime ..................   Passed    0.02 sec
+        Start  51: editor.flowforge_model.reading
+ 39/133 Test  #51: editor.flowforge_model.reading ...................   Passed    0.02 sec
+        Start  52: editor.flowforge_model.reload-unbound
+ 40/133 Test  #52: editor.flowforge_model.reload-unbound ............   Passed    0.02 sec
+        Start  53: editor.flowforge_model.reload-unbound-external
+ 41/133 Test  #53: editor.flowforge_model.reload-unbound-external ...   Passed    0.06 sec
+        Start  54: editor.flowforge_model.reload-reading
+ 42/133 Test  #54: editor.flowforge_model.reload-reading ............   Passed    0.02 sec
+        Start  55: editor.flowforge_model.reload-closing
+ 43/133 Test  #55: editor.flowforge_model.reload-closing ............   Passed    0.02 sec
+        Start  56: editor.flowforge_model.reload-identity
+ 44/133 Test  #56: editor.flowforge_model.reload-identity ...........   Passed    0.02 sec
+        Start  57: editor.flowforge_model.reload-success
+ 45/133 Test  #57: editor.flowforge_model.reload-success ............   Passed    0.02 sec
+        Start  58: editor.flowforge_model.input-stale
+ 46/133 Test  #58: editor.flowforge_model.input-stale ...............   Passed    0.02 sec
+        Start  59: editor.flowforge_model.input-reading
+ 47/133 Test  #59: editor.flowforge_model.input-reading .............   Passed    0.02 sec
+        Start  60: editor.flowforge_model.input-closing
+ 48/133 Test  #60: editor.flowforge_model.input-closing .............   Passed    0.02 sec
+        Start  61: editor.flowforge_model.budgets
+ 49/133 Test  #61: editor.flowforge_model.budgets ...................   Passed    0.02 sec
+        Start  62: editor.flowforge_model.ids-undo-branch
+ 50/133 Test  #62: editor.flowforge_model.ids-undo-branch ...........   Passed    0.02 sec
+        Start  63: editor.flowforge_model.ids-candidate-seed
+ 51/133 Test  #63: editor.flowforge_model.ids-candidate-seed ........   Passed    0.02 sec
+        Start  64: editor.flowforge_model.ids-signature
+ 52/133 Test  #64: editor.flowforge_model.ids-signature .............   Passed    0.02 sec
+        Start  65: editor.flowforge_model.ids-restore
+ 53/133 Test  #65: editor.flowforge_model.ids-restore ...............   Passed    0.02 sec
+        Start  66: editor.flowforge_model.ids-failure
+ 54/133 Test  #66: editor.flowforge_model.ids-failure ...............   Passed    0.02 sec
+        Start  67: editor.flowforge_model.ids-exhaustion
+ 55/133 Test  #67: editor.flowforge_model.ids-exhaustion ............   Passed    0.02 sec
+        Start  68: editor.persistence.write_coordinator
+ 56/133 Test  #68: editor.persistence.write_coordinator .............   Passed    0.04 sec
+        Start  69: editor.persistence.real_files
+ 57/133 Test  #69: editor.persistence.real_files ....................   Passed    0.07 sec
+        Start  71: editor.scene.editing
+ 58/133 Test  #71: editor.scene.editing .............................   Passed    0.04 sec
+        Start  72: editor.scene_execution.isolation
+ 59/133 Test  #72: editor.scene_execution.isolation .................   Passed    0.06 sec
+        Start  73: editor.scene_execution.controls
+ 60/133 Test  #73: editor.scene_execution.controls ..................   Passed    0.09 sec
+        Start  74: editor.scene_execution.failure
+ 61/133 Test  #74: editor.scene_execution.failure ...................   Passed    0.04 sec
+        Start  75: editor.scene_execution.completion
+ 62/133 Test  #75: editor.scene_execution.completion ................   Passed    0.03 sec
+        Start  76: editor.scene_execution.r1-queued
+ 63/133 Test  #76: editor.scene_execution.r1-queued .................   Passed    0.03 sec
+        Start  77: editor.scene_execution.r1-mixed
+ 64/133 Test  #77: editor.scene_execution.r1-mixed ..................   Passed    0.03 sec
+        Start  78: editor.scene_execution.r1-failed
+ 65/133 Test  #78: editor.scene_execution.r1-failed .................   Passed    0.03 sec
+        Start  79: editor.scene_execution.r1-callback
+ 66/133 Test  #79: editor.scene_execution.r1-callback ...............   Passed    0.03 sec
+        Start  80: editor.scene_execution.r1-capacity
+ 67/133 Test  #80: editor.scene_execution.r1-capacity ...............   Passed    0.05 sec
+        Start  88: editor.scene_interaction
+ 68/133 Test  #88: editor.scene_interaction .........................   Passed    0.10 sec
+        Start  89: editor.interaction_run_identity
+ 69/133 Test  #89: editor.interaction_run_identity ..................   Passed    0.06 sec
+        Start  90: editor.material_interaction
+ 70/133 Test  #90: editor.material_interaction ......................   Passed    0.04 sec
+        Start  91: editor.flowforge_interaction
+ 71/133 Test  #91: editor.flowforge_interaction .....................   Passed    0.05 sec
+        Start 101: editor.scene_configuration
+ 72/133 Test #101: editor.scene_configuration .......................   Passed    0.09 sec
+        Start 120: editor.scene_views_gpu
+ 73/133 Test #120: editor.scene_views_gpu ...........................   Passed    1.76 sec
+        Start 132: editor.sessions.installation
+ 74/133 Test #132: editor.sessions.installation .....................   Passed    0.46 sec
+        Start 133: editor.sessions.content_operations
+ 75/133 Test #133: editor.sessions.content_operations ...............   Passed    1.32 sec
+        Start 134: editor.scene_model_boundaries
+ 76/133 Test #134: editor.scene_model_boundaries ....................   Passed   13.88 sec
+        Start 137: editor.flow_source_native
+ 77/133 Test #137: editor.flow_source_native ........................   Passed    0.04 sec
+        Start 138: editor.material_model_boundaries
+ 78/133 Test #138: editor.material_model_boundaries .................   Passed   26.26 sec
+        Start 139: editor.flowforge_model_boundaries
+ 79/133 Test #139: editor.flowforge_model_boundaries ................   Passed   28.49 sec
+        Start 141: editor.persistence_boundaries
+ 80/133 Test #141: editor.persistence_boundaries ....................   Passed   37.25 sec
+        Start 142: editor.scene_execution_boundaries
+ 81/133 Test #142: editor.scene_execution_boundaries ................   Passed   27.79 sec
+        Start 144: editor.interaction_view_boundaries
+ 82/133 Test #144: editor.interaction_view_boundaries ...............   Passed   42.53 sec
+        Start 154: editor.persistence.models
+ 83/133 Test #154: editor.persistence.models ........................   Passed    0.08 sec
+        Start 155: editor.persistence.save-as
+ 84/133 Test #155: editor.persistence.save-as .......................   Passed    0.09 sec
+        Start 156: editor.persistence.unknown
+ 85/133 Test #156: editor.persistence.unknown .......................   Passed    0.04 sec
+        Start 157: editor.persistence.order
+ 86/133 Test #157: editor.persistence.order .........................   Passed    0.07 sec
+        Start 158: editor.persistence.close
+ 87/133 Test #158: editor.persistence.close .........................   Passed    0.04 sec
+        Start 159: editor.persistence.close-key
+ 88/133 Test #159: editor.persistence.close-key .....................   Passed    0.04 sec
+        Start 160: editor.persistence.capacity
+ 89/133 Test #160: editor.persistence.capacity ......................   Passed    0.03 sec
+        Start 161: editor.persistence.execution
+ 90/133 Test #161: editor.persistence.execution .....................   Passed    0.09 sec
+        Start 162: editor.persistence.decoded
+ 91/133 Test #162: editor.persistence.decoded .......................   Passed    0.04 sec
+        Start 163: editor.persistence.receipts
+ 92/133 Test #163: editor.persistence.receipts ......................   Passed    0.06 sec
+        Start 164: editor.persistence.identities
+ 93/133 Test #164: editor.persistence.identities ....................   Passed    0.03 sec
+        Start 165: editor.persistence.conflict
+ 94/133 Test #165: editor.persistence.conflict ......................   Passed    0.03 sec
+        Start 166: editor.persistence.measure
+ 95/133 Test #166: editor.persistence.measure .......................   Passed    0.36 sec
+        Start 167: editor.persistence.r2-accept-success
+ 96/133 Test #167: editor.persistence.r2-accept-success .............   Passed    0.04 sec
+        Start 168: editor.persistence.r2-accept-error
+ 97/133 Test #168: editor.persistence.r2-accept-error ...............   Passed    0.04 sec
+        Start 169: editor.persistence.r2-accept-cancel
+ 98/133 Test #169: editor.persistence.r2-accept-cancel ..............   Passed    0.04 sec
+        Start 170: editor.persistence.r2-accept-drain
+ 99/133 Test #170: editor.persistence.r2-accept-drain ...............   Passed    0.04 sec
+        Start 171: editor.persistence.r2-admission
+100/133 Test #171: editor.persistence.r2-admission ..................   Passed    1.50 sec
+        Start 172: editor.persistence.r1-revoke
+101/133 Test #172: editor.persistence.r1-revoke .....................   Passed    0.03 sec
+        Start 173: editor.persistence.r1-recursive
+102/133 Test #173: editor.persistence.r1-recursive ..................   Passed    0.10 sec
+        Start 174: editor.persistence.r1-chain
+103/133 Test #174: editor.persistence.r1-chain ......................   Passed    0.08 sec
+        Start 175: editor.persistence.r1-chain-control
+104/133 Test #175: editor.persistence.r1-chain-control ..............   Passed    0.08 sec
+        Start 176: editor.persistence.r1-callbacks
+105/133 Test #176: editor.persistence.r1-callbacks ..................   Passed    0.04 sec
+        Start 177: editor.persistence.r1-reading
+106/133 Test #177: editor.persistence.r1-reading ....................   Passed    0.04 sec
+        Start 178: editor.persistence.r1-conflicts
+107/133 Test #178: editor.persistence.r1-conflicts ..................   Passed    0.06 sec
+        Start 179: editor.interaction_reclaim.scene.sync
+108/133 Test #179: editor.interaction_reclaim.scene.sync ............   Passed    0.06 sec
+        Start 180: editor.interaction_reclaim.scene.cancel
+109/133 Test #180: editor.interaction_reclaim.scene.cancel ..........   Passed    0.02 sec
+        Start 181: editor.interaction_reclaim.scene.selection
+110/133 Test #181: editor.interaction_reclaim.scene.selection .......   Passed    0.02 sec
+        Start 182: editor.interaction_reclaim.scene.stale
+111/133 Test #182: editor.interaction_reclaim.scene.stale ...........   Passed    0.02 sec
+        Start 183: editor.interaction_reclaim.scene.gate
+112/133 Test #183: editor.interaction_reclaim.scene.gate ............   Passed    0.03 sec
+        Start 184: editor.interaction_reclaim.scene.thread
+113/133 Test #184: editor.interaction_reclaim.scene.thread ..........   Passed    0.02 sec
+        Start 185: editor.interaction_reclaim.scene.reload
+114/133 Test #185: editor.interaction_reclaim.scene.reload ..........   Passed    0.08 sec
+        Start 186: editor.interaction_reclaim.material.sync
+115/133 Test #186: editor.interaction_reclaim.material.sync .........   Passed    0.02 sec
+        Start 187: editor.interaction_reclaim.material.cancel
+116/133 Test #187: editor.interaction_reclaim.material.cancel .......   Passed    0.02 sec
+        Start 188: editor.interaction_reclaim.material.selection
+117/133 Test #188: editor.interaction_reclaim.material.selection ....   Passed    0.02 sec
+        Start 189: editor.interaction_reclaim.material.stale
+118/133 Test #189: editor.interaction_reclaim.material.stale ........   Passed    0.02 sec
+        Start 190: editor.interaction_reclaim.material.gate
+119/133 Test #190: editor.interaction_reclaim.material.gate .........   Passed    0.02 sec
+        Start 191: editor.interaction_reclaim.material.thread
+120/133 Test #191: editor.interaction_reclaim.material.thread .......   Passed    0.02 sec
+        Start 192: editor.interaction_reclaim.material.reload
+121/133 Test #192: editor.interaction_reclaim.material.reload .......   Passed    0.02 sec
+        Start 193: editor.interaction_reclaim.flow.sync
+122/133 Test #193: editor.interaction_reclaim.flow.sync .............   Passed    0.02 sec
+        Start 194: editor.interaction_reclaim.flow.cancel
+123/133 Test #194: editor.interaction_reclaim.flow.cancel ...........   Passed    0.02 sec
+        Start 195: editor.interaction_reclaim.flow.selection
+124/133 Test #195: editor.interaction_reclaim.flow.selection ........   Passed    0.02 sec
+        Start 196: editor.interaction_reclaim.flow.stale
+125/133 Test #196: editor.interaction_reclaim.flow.stale ............   Passed    0.02 sec
+        Start 197: editor.interaction_reclaim.flow.gate
+126/133 Test #197: editor.interaction_reclaim.flow.gate .............   Passed    0.07 sec
+        Start 198: editor.interaction_reclaim.flow.thread
+127/133 Test #198: editor.interaction_reclaim.flow.thread ...........   Passed    0.02 sec
+        Start 199: editor.interaction_reclaim.flow.reload
+128/133 Test #199: editor.interaction_reclaim.flow.reload ...........   Passed    0.02 sec
+        Start 200: editor.persistence.r11-input-duplicate
+129/133 Test #200: editor.persistence.r11-input-duplicate ...........   Passed    0.03 sec
+        Start 201: editor.persistence.r11-input-invalid
+130/133 Test #201: editor.persistence.r11-input-invalid .............   Passed    0.03 sec
+        Start 202: editor.persistence.r11-input-busy
+131/133 Test #202: editor.persistence.r11-input-busy ................   Passed    0.03 sec
+        Start 203: editor.persistence.r11-input-success
+132/133 Test #203: editor.persistence.r11-input-success .............   Passed    0.03 sec
+        Start 204: editor.persistence.r11-input-completion
+133/133 Test #204: editor.persistence.r11-input-completion ..........   Passed    0.04 sec
+
+100% tests passed, 0 tests failed out of 133
+
+Label Time Summary:
+P01       =   2.48 sec*proc (2 tests)
+P01-R1    =   0.02 sec*proc (2 tests)
+P02       =  14.26 sec*proc (14 tests)
+P03       =  26.48 sec*proc (13 tests)
+P04       =  28.92 sec*proc (23 tests)
+P05       =  40.45 sec*proc (28 tests)
+P05-R1    =   0.43 sec*proc (7 tests)
+P05-R2    =   1.66 sec*proc (5 tests)
+P06       =  28.19 sec*proc (10 tests)
+P08       =  43.40 sec*proc (26 tests)
+P10       =   1.76 sec*proc (1 test)
+P10Q      =   0.49 sec*proc (4 tests)
+P11       =   0.46 sec*proc (1 test)
+P12       =   1.32 sec*proc (1 test)
+R1        =   0.61 sec*proc (21 tests)
+editor    = 188.42 sec*proc (128 tests)
+gpu       =   1.76 sec*proc (1 test)
+native    = 186.66 sec*proc (127 tests)
+
+Total Test time (real) = 189.63 sec

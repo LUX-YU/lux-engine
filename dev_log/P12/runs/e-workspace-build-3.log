@@ -1,0 +1,18 @@
+[0/2] Re-checking globbed directories...
+[1/16] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorViews.cpp.obj
+[2/16] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorApplication.cpp.obj
+[3/16] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorCommands.cpp.obj
+[4/16] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorLifecycle.cpp.obj
+[5/16] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorContent.cpp.obj
+[6/16] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorViewClosure.cpp.obj
+[7/16] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorWorkspace.cpp.obj
+[8/16] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorSceneTools.cpp.obj
+[9/16] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorReload.cpp.obj
+[10/16] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorSaving.cpp.obj
+[11/16] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorResults.cpp.obj
+[12/16] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorModels.cpp.obj
+[13/16] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorArtifacts.cpp.obj
+[14/16] Linking CXX static library lib\editor_bootstrap.lib
+[15/16] Building CXX object editor\tests\integration\application\CMakeFiles\editor_application_test.dir\application.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[16/16] Linking CXX executable bin\editor_application_test.exe

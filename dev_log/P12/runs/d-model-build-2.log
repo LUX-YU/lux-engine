@@ -1,0 +1,24 @@
+[0/2] Re-checking globbed directories...
+[1/22] Building CXX object editor\workbench\scene\CMakeFiles\scene_ui.dir\src\RunInspectorView.cpp.obj
+[2/22] Linking CXX static library lib\scene_ui.lib
+[3/22] Linking CXX shared library bin\lux_engine_function_render_feature_meta.dll
+[4/22] Linking CXX executable bin\editor_contributions_test.exe
+[5/22] Building CXX object editor\activities\scene\CMakeFiles\editor_scene_execution_test.dir\test\runs.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[6/22] Linking CXX shared library bin\lux_engine_editor_ui.dll
+[7/22] Linking CXX executable bin\editor_session_installation_test.exe
+[8/22] Linking CXX executable bin\editor_scene_views_test.exe
+[9/22] Linking CXX executable bin\editor_ui_presentation.exe
+[10/22] Linking CXX executable bin\editor_scene_execution_test.exe
+[11/22] Linking CXX executable bin\editor_scene_fixture.exe
+[12/22] Linking CXX executable bin\editor_scene_configuration.exe
+[13/22] Linking CXX executable bin\lux_launcher.exe
+[14/22] Linking CXX executable bin\lux_editor.exe
+[15/22] Linking CXX executable bin\editor_baseline_failures.exe
+[16/22] Linking CXX executable bin\editor_context_lifecycle.exe
+[17/22] Linking CXX executable bin\editor_material_protocol.exe
+[18/22] Linking CXX executable bin\editor_flow_protocol.exe
+[19/22] Linking CXX executable bin\editor_review_regressions.exe
+[20/22] Linking CXX shared library bin\consumer_gui.dll
+[21/22] Linking CXX executable bin\editor_core_protocol.exe
+[22/22] Linking CXX executable bin\consumer_protocol.exe

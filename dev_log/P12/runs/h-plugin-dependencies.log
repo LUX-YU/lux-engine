@@ -1,0 +1,36 @@
+Microsoft (R) COFF/PE Dumper Version 14.44.35228.0
+Copyright (C) Microsoft Corporation.  All rights reserved.
+
+
+Dump of file E:\SyncForder\CodeRepos\install\P12-8d4aa55f840d\bin\lux_engine_physics2d_simulation.dll
+
+File Type: DLL
+
+  Image has the following dependencies:
+
+    lux_engine_simulation_composition.dll
+    box2d.dll
+    lux_engine_simulation_ecs_schema.dll
+    lux_engine_core_task.dll
+    lux_engine_simulation_description.dll
+    lux_engine_domain_system_identity.dll
+    MSVCP140.dll
+    VCRUNTIME140.dll
+    VCRUNTIME140_1.dll
+    api-ms-win-crt-runtime-l1-1-0.dll
+    api-ms-win-crt-math-l1-1-0.dll
+    api-ms-win-crt-heap-l1-1-0.dll
+    api-ms-win-crt-string-l1-1-0.dll
+    KERNEL32.dll
+
+  Summary
+
+        1000 .00cfg
+        3000 .data
+        3000 .idata
+        5000 .pdata
+        D000 .rdata
+        1000 .reloc
+        1000 .rsrc
+       57000 .text
+        1000 .tls

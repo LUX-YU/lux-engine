@@ -1,0 +1,15 @@
+{
+  "recorded_at": "2026-10-02T13:27:10.882092+00:00",
+  "instruction": "验收不必了，直接推送吧。",
+  "implementation_sha": "85d2ed7ec6f9f4b39679a0d1bb6ed17b2888a616",
+  "status": "PARTIAL_USER_WAIVER",
+  "scope": [
+    "Remaining manual installed-product open/edit/save/run/close observations",
+    "Final archive relocation/missing/tamper qualification probes",
+    "Final strict acceptance verifier"
+  ],
+  "completed_evidence_preserved": true,
+  "qualification_rules_unchanged": true,
+  "manual_wrapper_exit_is_not_observed_menu_acceptance": true,
+  "p13_authorized": false
+}

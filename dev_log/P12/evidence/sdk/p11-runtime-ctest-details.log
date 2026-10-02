@@ -1,0 +1,35 @@
+Start testing: Oct 02 13:07 GMT 夏令时
+----------------------------------------------------------
+1/2 Testing: installed.p11.runtime
+1/2 Test: installed.p11.runtime
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-85d2ed7ec6f9-sdk/p11-runtime/bin/p11_runtime_consumer.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-85d2ed7ec6f9-sdk/p11-runtime/bin/p11_runtime.dll"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-85d2ed7ec6f9-sdk/p11-runtime
+"installed.p11.runtime" start time: Oct 02 13:07 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS installed runtime plugin without Editor target/header/ABI
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"installed.p11.runtime" end time: Oct 02 13:07 GMT 夏令时
+"installed.p11.runtime" time elapsed: 00:00:00
+----------------------------------------------------------
+
+2/2 Testing: installed.p12.builtin_plugin_closure
+2/2 Test: installed.p12.builtin_plugin_closure
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-85d2ed7ec6f9-sdk/p11-runtime/bin/p11_runtime_consumer.exe" "--builtins" "E:/SyncForder/CodeRepos/install/P12-85d2ed7ec6f9"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-85d2ed7ec6f9-sdk/p11-runtime
+"installed.p12.builtin_plugin_closure" start time: Oct 02 13:07 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS installed built-in plugin closure, without statically linking/preloading the plugins
+<end of output>
+Test time =   0.10 sec
+----------------------------------------------------------
+Test Passed.
+"installed.p12.builtin_plugin_closure" end time: Oct 02 13:07 GMT 夏令时
+"installed.p12.builtin_plugin_closure" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Oct 02 13:07 GMT 夏令时

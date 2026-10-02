@@ -1,0 +1,20 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev
+    Start 136: editor.application
+1/4 Test #136: editor.application ...............   Passed    1.05 sec
+    Start 137: editor.scene_configuration
+2/4 Test #137: editor.scene_configuration .......   Passed    0.05 sec
+    Start 139: editor.architecture_negative
+3/4 Test #139: editor.architecture_negative .....   Passed   20.88 sec
+    Start 140: editor.architecture_current
+4/4 Test #140: editor.architecture_current ......   Passed   15.31 sec
+
+100% tests passed, 0 tests failed out of 4
+
+Label Time Summary:
+P12             =   1.05 sec*proc (1 test)
+architecture    =  36.19 sec*proc (2 tests)
+editor          =  37.30 sec*proc (4 tests)
+gpu             =   1.05 sec*proc (1 test)
+native          =  36.25 sec*proc (3 tests)
+
+Total Test time (real) =  37.59 sec

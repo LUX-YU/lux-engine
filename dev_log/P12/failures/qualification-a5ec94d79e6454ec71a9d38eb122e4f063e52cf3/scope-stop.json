@@ -1,0 +1,10 @@
+{
+  "status": "FAILED_REAL_SDK_CLOSURE",
+  "implementation_sha": "a5ec94d79e6454ec71a9d38eb122e4f063e52cf3",
+  "failure": "Installed external p11 consumer cannot import scene_execution without scene_execution_api. The provider must declare its own component dependency.",
+  "evidence": [
+    "sdk-all.log",
+    "sdk/p11-configure.log"
+  ],
+  "preserved_passes": "Cold all/no-work, 219 non-input, CPU 201, PLAYER build/CTest, fresh/standard installed sole product and long-path SDK passed; native input/manual menu still pending."
+}

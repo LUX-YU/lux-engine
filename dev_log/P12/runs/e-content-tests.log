@@ -1,0 +1,12 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev
+    Start 136: editor.application
+1/1 Test #136: editor.application ...............   Passed    0.46 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Label Time Summary:
+P12       =   0.46 sec*proc (1 test)
+editor    =   0.46 sec*proc (1 test)
+gpu       =   0.46 sec*proc (1 test)
+
+Total Test time (real) =   0.77 sec

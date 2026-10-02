@@ -1,0 +1,14 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev
+    Start  13: plugin.scene_registrations
+1/2 Test  #13: plugin.scene_registrations .......   Passed    0.08 sec
+    Start 103: editor.scene_configuration
+2/2 Test #103: editor.scene_configuration .......   Passed    0.08 sec
+
+100% tests passed, 0 tests failed out of 2
+
+Label Time Summary:
+P12       =   0.08 sec*proc (1 test)
+editor    =   0.08 sec*proc (1 test)
+native    =   0.16 sec*proc (2 tests)
+
+Total Test time (real) =   0.61 sec

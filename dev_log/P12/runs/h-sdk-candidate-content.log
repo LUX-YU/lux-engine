@@ -1,0 +1,78 @@
+p11-configure verified same-commit evidence
+p11-build verified same-commit evidence
+p11-no-work verified same-commit evidence
+p11-ctest verified same-commit evidence
+p11-runtime-configure verified same-commit evidence
+p11-runtime-build verified same-commit evidence
+p11-runtime-no-work verified same-commit evidence
+p11-runtime-ctest verified same-commit evidence
+p11-models-configure verified same-commit evidence
+p11-models-build 0
+p11-models-no-work 0
+p11-models-ctest 0
+quality-configure 0
+quality-build 0
+quality-no-work 0
+quality-ctest 0
+sessions-configure 0
+sessions-build 0
+sessions-no-work 0
+sessions-ctest 0
+editor-d2-configure 0
+editor-d2-build 0
+editor-d2-no-work 0
+editor-d2-ctest 0
+external-feature-configure 0
+external-feature-build 0
+external-feature-no-work 0
+external-feature-ctest 0
+scene-ui-configure 0
+scene-ui-build 0
+scene-ui-no-work 0
+scene-ui-ctest 0
+views-ui-configure 0
+views-ui-build 0
+views-ui-no-work 0
+views-ui-ctest 0
+scene-model-configure 0
+scene-model-build 0
+scene-model-no-work 0
+scene-model-ctest 0
+material-model-configure 0
+material-model-build 0
+material-model-no-work 0
+material-model-ctest 0
+flowforge-model-configure 0
+flowforge-model-build 0
+flowforge-model-no-work 0
+flowforge-model-ctest 0
+persistence-configure 0
+persistence-build 0
+persistence-no-work 0
+persistence-ctest 0
+persistence-scene-isolated 0
+persistence-material-isolated 0
+persistence-flowforge-isolated 0
+scene-execution-configure 0
+scene-execution-build 0
+scene-execution-no-work 0
+scene-execution-ctest 0
+projection-compilation-configure 0
+projection-compilation-build 0
+projection-compilation-no-work 0
+projection-compilation-ctest 0
+interaction-views-configure 0
+interaction-views-build 1
+[1/6] Building CXX object CMakeFiles\interaction_reclaim_consumer.dir\interaction_reclaim.cpp.obj
+FAILED: CMakeFiles/interaction_reclaim_consumer.dir/interaction_reclaim.cpp.obj 
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\bin\Hostx64\x64\cl.exe  /nologo /TP -DENTT_NO_ETO -DLUX_ENGINE_FLOWFORGE_DLL_DISABLE -DSTDEXEC_ENABLE_WINDOWS_THREAD_POOL -external:IE:\SyncForder\CodeRepos\install\P12-candidate-scene-api\include -external:ID:\Development\vcpkg\installed\x64-windows\include -external:ID:\Development\vcpkg\installed\x64-windows\include\stduuid -external:ID:\Development\vcpkg\installed\x64-windows\include\eigen3 -external:W0 /DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD /UNDEBUG /utf-8 /Zc:__cplusplus /Zc:preprocessor /Zc:externConstexpr /showIncludes /FoCMakeFiles\interaction_reclaim_consumer.dir\interaction_reclaim.cpp.obj /FdCMakeFiles\interaction_reclaim_consumer.dir\ /FS -c E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-sdk-candidate\interaction-views-source\interaction_reclaim.cpp
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-sdk-candidate\interaction-views-source\interaction_reclaim.cpp(1): fatal error C1083: Cannot open include file: '../../authoring/flow/src/FlowSessionData.hpp': No such file or directory
+[2/6] Building CXX object CMakeFiles\detached_views_consumer.dir\lifecycle.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[3/6] Linking CXX executable detached_views_consumer.exe
+[4/6] Building CXX object CMakeFiles\interaction_consumer.dir\interactions.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[5/6] Linking CXX executable interaction_consumer.exe
+ninja: build stopped: cannot make progress due to previous errors.
+

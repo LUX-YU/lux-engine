@@ -1,0 +1,122 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev
+      Start  69: editor.persistence.write_coordinator
+ 1/48 Test  #69: editor.persistence.write_coordinator ......   Passed    0.02 sec
+      Start  70: editor.persistence.real_files
+ 2/48 Test  #70: editor.persistence.real_files .............   Passed    0.04 sec
+      Start  73: editor.scene_execution.isolation
+ 3/48 Test  #73: editor.scene_execution.isolation ..........   Passed    0.04 sec
+      Start  74: editor.scene_execution.controls
+ 4/48 Test  #74: editor.scene_execution.controls ...........   Passed    0.09 sec
+      Start  75: editor.scene_execution.failure
+ 5/48 Test  #75: editor.scene_execution.failure ............   Passed    0.03 sec
+      Start  76: editor.scene_execution.completion
+ 6/48 Test  #76: editor.scene_execution.completion .........   Passed    0.03 sec
+      Start  77: editor.scene_execution.r1-queued
+ 7/48 Test  #77: editor.scene_execution.r1-queued ..........   Passed    0.03 sec
+      Start  78: editor.scene_execution.r1-mixed
+ 8/48 Test  #78: editor.scene_execution.r1-mixed ...........   Passed    0.03 sec
+      Start  79: editor.scene_execution.r1-failed
+ 9/48 Test  #79: editor.scene_execution.r1-failed ..........   Passed    0.03 sec
+      Start  80: editor.scene_execution.r1-callback
+10/48 Test  #80: editor.scene_execution.r1-callback ........   Passed    0.03 sec
+      Start  81: editor.scene_execution.r1-capacity
+11/48 Test  #81: editor.scene_execution.r1-capacity ........   Passed    0.05 sec
+      Start  82: editor.scene_execution.model-insertion
+12/48 Test  #82: editor.scene_execution.model-insertion ....   Passed    0.03 sec
+      Start 122: editor.scene_views_gpu
+13/48 Test #122: editor.scene_views_gpu ....................   Passed    1.79 sec
+      Start 136: editor.application
+14/48 Test #136: editor.application ........................Exit code 0xc0000409
+***Exception:   4.94 sec
+Application construction: object.connect: 
+Assertion failed: app->update(), file E:\SyncForder\CodeRepos\lux-engine-p12\editor\tests\integration\application\application.cpp, line 526
+
+      Start 138: editor.architecture_negative
+15/48 Test #138: editor.architecture_negative ..............   Passed   23.68 sec
+      Start 139: editor.architecture_current
+16/48 Test #139: editor.architecture_current ...............   Passed   16.67 sec
+      Start 144: editor.persistence_boundaries
+17/48 Test #144: editor.persistence_boundaries .............   Passed   37.40 sec
+      Start 145: editor.scene_execution_boundaries
+18/48 Test #145: editor.scene_execution_boundaries .........   Passed   27.85 sec
+      Start 157: editor.persistence.models
+19/48 Test #157: editor.persistence.models .................   Passed    0.06 sec
+      Start 158: editor.persistence.save-as
+20/48 Test #158: editor.persistence.save-as ................   Passed    0.08 sec
+      Start 159: editor.persistence.unknown
+21/48 Test #159: editor.persistence.unknown ................   Passed    0.04 sec
+      Start 160: editor.persistence.order
+22/48 Test #160: editor.persistence.order ..................   Passed    0.07 sec
+      Start 161: editor.persistence.close
+23/48 Test #161: editor.persistence.close ..................   Passed    0.10 sec
+      Start 162: editor.persistence.close-key
+24/48 Test #162: editor.persistence.close-key ..............   Passed    0.04 sec
+      Start 163: editor.persistence.capacity
+25/48 Test #163: editor.persistence.capacity ...............   Passed    0.02 sec
+      Start 164: editor.persistence.execution
+26/48 Test #164: editor.persistence.execution ..............   Passed    0.12 sec
+      Start 165: editor.persistence.decoded
+27/48 Test #165: editor.persistence.decoded ................   Passed    0.04 sec
+      Start 166: editor.persistence.receipts
+28/48 Test #166: editor.persistence.receipts ...............   Passed    0.06 sec
+      Start 167: editor.persistence.identities
+29/48 Test #167: editor.persistence.identities .............   Passed    0.03 sec
+      Start 168: editor.persistence.conflict
+30/48 Test #168: editor.persistence.conflict ...............   Passed    0.03 sec
+      Start 169: editor.persistence.measure
+31/48 Test #169: editor.persistence.measure ................   Passed    0.36 sec
+      Start 170: editor.persistence.r2-accept-success
+32/48 Test #170: editor.persistence.r2-accept-success ......   Passed    0.04 sec
+      Start 171: editor.persistence.r2-accept-error
+33/48 Test #171: editor.persistence.r2-accept-error ........   Passed    0.04 sec
+      Start 172: editor.persistence.r2-accept-cancel
+34/48 Test #172: editor.persistence.r2-accept-cancel .......   Passed    0.04 sec
+      Start 173: editor.persistence.r2-accept-drain
+35/48 Test #173: editor.persistence.r2-accept-drain ........   Passed    0.04 sec
+      Start 174: editor.persistence.r2-admission
+36/48 Test #174: editor.persistence.r2-admission ...........   Passed    1.50 sec
+      Start 175: editor.persistence.r1-revoke
+37/48 Test #175: editor.persistence.r1-revoke ..............   Passed    0.04 sec
+      Start 176: editor.persistence.r1-recursive
+38/48 Test #176: editor.persistence.r1-recursive ...........   Passed    0.09 sec
+      Start 177: editor.persistence.r1-chain
+39/48 Test #177: editor.persistence.r1-chain ...............   Passed    0.09 sec
+      Start 178: editor.persistence.r1-chain-control
+40/48 Test #178: editor.persistence.r1-chain-control .......   Passed    0.08 sec
+      Start 179: editor.persistence.r1-callbacks
+41/48 Test #179: editor.persistence.r1-callbacks ...........   Passed    0.04 sec
+      Start 180: editor.persistence.r1-reading
+42/48 Test #180: editor.persistence.r1-reading .............   Passed    0.05 sec
+      Start 181: editor.persistence.r1-conflicts
+43/48 Test #181: editor.persistence.r1-conflicts ...........   Passed    0.05 sec
+      Start 203: editor.persistence.r11-input-duplicate
+44/48 Test #203: editor.persistence.r11-input-duplicate ....   Passed    0.03 sec
+      Start 204: editor.persistence.r11-input-invalid
+45/48 Test #204: editor.persistence.r11-input-invalid ......   Passed    0.03 sec
+      Start 205: editor.persistence.r11-input-busy
+46/48 Test #205: editor.persistence.r11-input-busy .........   Passed    0.03 sec
+      Start 206: editor.persistence.r11-input-success
+47/48 Test #206: editor.persistence.r11-input-success ......   Passed    0.03 sec
+      Start 207: editor.persistence.r11-input-completion
+48/48 Test #207: editor.persistence.r11-input-completion ...   Passed    0.04 sec
+
+98% tests passed, 1 tests failed out of 48
+
+Label Time Summary:
+P05             =  40.60 sec*proc (28 tests)
+P05-R1          =   0.43 sec*proc (7 tests)
+P05-R2          =   1.66 sec*proc (5 tests)
+P06             =  28.20 sec*proc (10 tests)
+P10             =   1.79 sec*proc (1 test)
+P12             =   4.97 sec*proc (2 tests)
+architecture    =  40.36 sec*proc (2 tests)
+editor          = 115.91 sec*proc (43 tests)
+gpu             =   6.73 sec*proc (2 tests)
+native          = 109.18 sec*proc (41 tests)
+
+Total Test time (real) = 116.60 sec
+
+The following tests FAILED:
+	136 - editor.application (Exit code 0xc0000409
+)        P12 editor gpu
+Errors while running CTest

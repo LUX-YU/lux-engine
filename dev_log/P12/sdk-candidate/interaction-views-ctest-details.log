@@ -1,0 +1,332 @@
+Start testing: Oct 02 10:33 GMT 夏令时
+----------------------------------------------------------
+1/20 Testing: installed.interactions
+1/20 Test: installed.interactions
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/interaction-views/interaction_consumer.exe"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/interaction-views
+"installed.interactions" start time: Oct 02 10:33 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS installed P08 three real interactions, one Store, preview not captured, one undo, cancel
+<end of output>
+Test time =   0.05 sec
+----------------------------------------------------------
+Test Passed.
+"installed.interactions" end time: Oct 02 10:33 GMT 夏令时
+"installed.interactions" time elapsed: 00:00:00
+----------------------------------------------------------
+
+2/20 Testing: installed.detached_views
+2/20 Test: installed.detached_views
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/interaction-views/detached_views_consumer.exe"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/interaction-views
+"installed.detached_views" start time: Oct 02 10:33 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS X08-03..06 real detached tree, preparation, callback close, IDs, code lifetime and remount
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"installed.detached_views" end time: Oct 02 10:33 GMT 夏令时
+"installed.detached_views" time elapsed: 00:00:00
+----------------------------------------------------------
+
+3/20 Testing: installed.interaction_reclaim.scene.sync
+3/20 Test: installed.interaction_reclaim.scene.sync
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/interaction-views/interaction_reclaim_consumer.exe" "scene" "sync"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/interaction-views
+"installed.interaction_reclaim.scene.sync" start time: Oct 02 10:33 GMT 夏令时
+Output:
+----------------------------------------------------------
+Scene operation=sync callback=1 store_busy=1 live=1 result_ok=0 reported_busy=1 overlay=1 selection=1 stamp_payload_retained=1 released=0 author=unchanged
+Scene retry=sync PASS original-history/checkpoint preserved, real domain follow-up verified
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"installed.interaction_reclaim.scene.sync" end time: Oct 02 10:33 GMT 夏令时
+"installed.interaction_reclaim.scene.sync" time elapsed: 00:00:00
+----------------------------------------------------------
+
+4/20 Testing: installed.interaction_reclaim.scene.cancel
+4/20 Test: installed.interaction_reclaim.scene.cancel
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/interaction-views/interaction_reclaim_consumer.exe" "scene" "cancel"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/interaction-views
+"installed.interaction_reclaim.scene.cancel" start time: Oct 02 10:33 GMT 夏令时
+Output:
+----------------------------------------------------------
+Scene operation=cancel callback=1 store_busy=1 live=1 result_ok=0 reported_busy=1 overlay=1 selection=1 stamp_payload_retained=1 released=0 author=unchanged
+Scene retry=cancel PASS original-history/checkpoint preserved, real domain follow-up verified
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"installed.interaction_reclaim.scene.cancel" end time: Oct 02 10:33 GMT 夏令时
+"installed.interaction_reclaim.scene.cancel" time elapsed: 00:00:00
+----------------------------------------------------------
+
+5/20 Testing: installed.interaction_reclaim.scene.selection
+5/20 Test: installed.interaction_reclaim.scene.selection
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/interaction-views/interaction_reclaim_consumer.exe" "scene" "selection"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/interaction-views
+"installed.interaction_reclaim.scene.selection" start time: Oct 02 10:33 GMT 夏令时
+Output:
+----------------------------------------------------------
+Scene operation=selection callback=1 store_busy=1 live=1 result_ok=0 reported_busy=1 overlay=0 selection=1 stamp_payload_retained=1 released=0 author=unchanged
+Scene retry=selection PASS original-history/checkpoint preserved, real domain follow-up verified
+<end of output>
+Test time =   0.08 sec
+----------------------------------------------------------
+Test Passed.
+"installed.interaction_reclaim.scene.selection" end time: Oct 02 10:33 GMT 夏令时
+"installed.interaction_reclaim.scene.selection" time elapsed: 00:00:00
+----------------------------------------------------------
+
+6/20 Testing: installed.interaction_reclaim.scene.stale
+6/20 Test: installed.interaction_reclaim.scene.stale
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/interaction-views/interaction_reclaim_consumer.exe" "scene" "stale"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/interaction-views
+"installed.interaction_reclaim.scene.stale" start time: Oct 02 10:33 GMT 夏令时
+Output:
+----------------------------------------------------------
+Scene stale slot-reuse cleanup=1 payload=1 new-author=unchanged
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"installed.interaction_reclaim.scene.stale" end time: Oct 02 10:33 GMT 夏令时
+"installed.interaction_reclaim.scene.stale" time elapsed: 00:00:00
+----------------------------------------------------------
+
+7/20 Testing: installed.interaction_reclaim.scene.gate
+7/20 Test: installed.interaction_reclaim.scene.gate
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/interaction-views/interaction_reclaim_consumer.exe" "scene" "gate"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/interaction-views
+"installed.interaction_reclaim.scene.gate" start time: Oct 02 10:33 GMT 夏令时
+Output:
+----------------------------------------------------------
+Scene gate cancel/synchronize=BUSY preserved=1 cleanup=1 gate_held=1 inactive=1 author=unchanged
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"installed.interaction_reclaim.scene.gate" end time: Oct 02 10:33 GMT 夏令时
+"installed.interaction_reclaim.scene.gate" time elapsed: 00:00:00
+----------------------------------------------------------
+
+8/20 Testing: installed.interaction_reclaim.scene.thread
+8/20 Test: installed.interaction_reclaim.scene.thread
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/interaction-views/interaction_reclaim_consumer.exe" "scene" "thread"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/interaction-views
+"installed.interaction_reclaim.scene.thread" start time: Oct 02 10:33 GMT 夏令时
+Output:
+----------------------------------------------------------
+Scene cancel/synchronize=WRONG_THREAD retained=1 author=unchanged
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"installed.interaction_reclaim.scene.thread" end time: Oct 02 10:33 GMT 夏令时
+"installed.interaction_reclaim.scene.thread" time elapsed: 00:00:00
+----------------------------------------------------------
+
+9/20 Testing: installed.interaction_reclaim.material.sync
+9/20 Test: installed.interaction_reclaim.material.sync
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/interaction-views/interaction_reclaim_consumer.exe" "material" "sync"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/interaction-views
+"installed.interaction_reclaim.material.sync" start time: Oct 02 10:33 GMT 夏令时
+Output:
+----------------------------------------------------------
+Material operation=sync callback=1 store_busy=1 live=1 result_ok=0 reported_busy=1 overlay=1 selection=1 stamp_payload_retained=1 released=0 author=unchanged
+Material retry=sync PASS original-history/checkpoint preserved, real domain follow-up verified
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"installed.interaction_reclaim.material.sync" end time: Oct 02 10:33 GMT 夏令时
+"installed.interaction_reclaim.material.sync" time elapsed: 00:00:00
+----------------------------------------------------------
+
+10/20 Testing: installed.interaction_reclaim.material.cancel
+10/20 Test: installed.interaction_reclaim.material.cancel
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/interaction-views/interaction_reclaim_consumer.exe" "material" "cancel"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/interaction-views
+"installed.interaction_reclaim.material.cancel" start time: Oct 02 10:33 GMT 夏令时
+Output:
+----------------------------------------------------------
+Material operation=cancel callback=1 store_busy=1 live=1 result_ok=0 reported_busy=1 overlay=1 selection=1 stamp_payload_retained=1 released=0 author=unchanged
+Material retry=cancel PASS original-history/checkpoint preserved, real domain follow-up verified
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"installed.interaction_reclaim.material.cancel" end time: Oct 02 10:33 GMT 夏令时
+"installed.interaction_reclaim.material.cancel" time elapsed: 00:00:00
+----------------------------------------------------------
+
+11/20 Testing: installed.interaction_reclaim.material.selection
+11/20 Test: installed.interaction_reclaim.material.selection
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/interaction-views/interaction_reclaim_consumer.exe" "material" "selection"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/interaction-views
+"installed.interaction_reclaim.material.selection" start time: Oct 02 10:33 GMT 夏令时
+Output:
+----------------------------------------------------------
+Material operation=selection callback=1 store_busy=1 live=1 result_ok=0 reported_busy=1 overlay=0 selection=1 stamp_payload_retained=1 released=0 author=unchanged
+Material retry=selection PASS original-history/checkpoint preserved, real domain follow-up verified
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"installed.interaction_reclaim.material.selection" end time: Oct 02 10:33 GMT 夏令时
+"installed.interaction_reclaim.material.selection" time elapsed: 00:00:00
+----------------------------------------------------------
+
+12/20 Testing: installed.interaction_reclaim.material.stale
+12/20 Test: installed.interaction_reclaim.material.stale
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/interaction-views/interaction_reclaim_consumer.exe" "material" "stale"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/interaction-views
+"installed.interaction_reclaim.material.stale" start time: Oct 02 10:33 GMT 夏令时
+Output:
+----------------------------------------------------------
+Material stale slot-reuse cleanup=1 payload=1 new-author=unchanged
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"installed.interaction_reclaim.material.stale" end time: Oct 02 10:33 GMT 夏令时
+"installed.interaction_reclaim.material.stale" time elapsed: 00:00:00
+----------------------------------------------------------
+
+13/20 Testing: installed.interaction_reclaim.material.gate
+13/20 Test: installed.interaction_reclaim.material.gate
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/interaction-views/interaction_reclaim_consumer.exe" "material" "gate"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/interaction-views
+"installed.interaction_reclaim.material.gate" start time: Oct 02 10:33 GMT 夏令时
+Output:
+----------------------------------------------------------
+Material gate cancel/synchronize=BUSY preserved=1 cleanup=1 gate_held=1 inactive=1 author=unchanged
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"installed.interaction_reclaim.material.gate" end time: Oct 02 10:33 GMT 夏令时
+"installed.interaction_reclaim.material.gate" time elapsed: 00:00:00
+----------------------------------------------------------
+
+14/20 Testing: installed.interaction_reclaim.material.thread
+14/20 Test: installed.interaction_reclaim.material.thread
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/interaction-views/interaction_reclaim_consumer.exe" "material" "thread"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/interaction-views
+"installed.interaction_reclaim.material.thread" start time: Oct 02 10:33 GMT 夏令时
+Output:
+----------------------------------------------------------
+Material cancel/synchronize=WRONG_THREAD retained=1 author=unchanged
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"installed.interaction_reclaim.material.thread" end time: Oct 02 10:33 GMT 夏令时
+"installed.interaction_reclaim.material.thread" time elapsed: 00:00:00
+----------------------------------------------------------
+
+15/20 Testing: installed.interaction_reclaim.flow.sync
+15/20 Test: installed.interaction_reclaim.flow.sync
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/interaction-views/interaction_reclaim_consumer.exe" "flow" "sync"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/interaction-views
+"installed.interaction_reclaim.flow.sync" start time: Oct 02 10:33 GMT 夏令时
+Output:
+----------------------------------------------------------
+Flow operation=sync callback=1 store_busy=1 live=1 result_ok=0 reported_busy=1 overlay=1 selection=1 stamp_payload_retained=1 released=0 author=unchanged
+Flow retry=sync PASS original-history/checkpoint preserved, real domain follow-up verified
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"installed.interaction_reclaim.flow.sync" end time: Oct 02 10:33 GMT 夏令时
+"installed.interaction_reclaim.flow.sync" time elapsed: 00:00:00
+----------------------------------------------------------
+
+16/20 Testing: installed.interaction_reclaim.flow.cancel
+16/20 Test: installed.interaction_reclaim.flow.cancel
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/interaction-views/interaction_reclaim_consumer.exe" "flow" "cancel"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/interaction-views
+"installed.interaction_reclaim.flow.cancel" start time: Oct 02 10:33 GMT 夏令时
+Output:
+----------------------------------------------------------
+Flow operation=cancel callback=1 store_busy=1 live=1 result_ok=0 reported_busy=1 overlay=1 selection=1 stamp_payload_retained=1 released=0 author=unchanged
+Flow retry=cancel PASS original-history/checkpoint preserved, real domain follow-up verified
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"installed.interaction_reclaim.flow.cancel" end time: Oct 02 10:33 GMT 夏令时
+"installed.interaction_reclaim.flow.cancel" time elapsed: 00:00:00
+----------------------------------------------------------
+
+17/20 Testing: installed.interaction_reclaim.flow.selection
+17/20 Test: installed.interaction_reclaim.flow.selection
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/interaction-views/interaction_reclaim_consumer.exe" "flow" "selection"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/interaction-views
+"installed.interaction_reclaim.flow.selection" start time: Oct 02 10:33 GMT 夏令时
+Output:
+----------------------------------------------------------
+Flow operation=selection callback=1 store_busy=1 live=1 result_ok=0 reported_busy=1 overlay=0 selection=1 stamp_payload_retained=1 released=0 author=unchanged
+Flow retry=selection PASS original-history/checkpoint preserved, real domain follow-up verified
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"installed.interaction_reclaim.flow.selection" end time: Oct 02 10:33 GMT 夏令时
+"installed.interaction_reclaim.flow.selection" time elapsed: 00:00:00
+----------------------------------------------------------
+
+18/20 Testing: installed.interaction_reclaim.flow.stale
+18/20 Test: installed.interaction_reclaim.flow.stale
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/interaction-views/interaction_reclaim_consumer.exe" "flow" "stale"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/interaction-views
+"installed.interaction_reclaim.flow.stale" start time: Oct 02 10:33 GMT 夏令时
+Output:
+----------------------------------------------------------
+Flow stale slot-reuse cleanup=1 payload=1 new-author=unchanged
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"installed.interaction_reclaim.flow.stale" end time: Oct 02 10:33 GMT 夏令时
+"installed.interaction_reclaim.flow.stale" time elapsed: 00:00:00
+----------------------------------------------------------
+
+19/20 Testing: installed.interaction_reclaim.flow.gate
+19/20 Test: installed.interaction_reclaim.flow.gate
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/interaction-views/interaction_reclaim_consumer.exe" "flow" "gate"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/interaction-views
+"installed.interaction_reclaim.flow.gate" start time: Oct 02 10:33 GMT 夏令时
+Output:
+----------------------------------------------------------
+Flow gate cancel/synchronize=BUSY preserved=1 cleanup=1 gate_held=1 inactive=1 author=unchanged
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"installed.interaction_reclaim.flow.gate" end time: Oct 02 10:33 GMT 夏令时
+"installed.interaction_reclaim.flow.gate" time elapsed: 00:00:00
+----------------------------------------------------------
+
+20/20 Testing: installed.interaction_reclaim.flow.thread
+20/20 Test: installed.interaction_reclaim.flow.thread
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/interaction-views/interaction_reclaim_consumer.exe" "flow" "thread"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-sdk-candidate/interaction-views
+"installed.interaction_reclaim.flow.thread" start time: Oct 02 10:33 GMT 夏令时
+Output:
+----------------------------------------------------------
+Flow cancel/synchronize=WRONG_THREAD retained=1 author=unchanged
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"installed.interaction_reclaim.flow.thread" end time: Oct 02 10:33 GMT 夏令时
+"installed.interaction_reclaim.flow.thread" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Oct 02 10:33 GMT 夏令时

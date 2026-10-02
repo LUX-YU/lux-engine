@@ -1,0 +1,24 @@
+{
+  "implementation_sha": "85d2ed7ec6f9f4b39679a0d1bb6ed17b2888a616",
+  "files": [
+    {
+      "file": "box2d.dll",
+      "installed_path": "E:\\SyncForder\\CodeRepos\\install\\P12-85d2ed7ec6f9\\bin\\box2d.dll",
+      "sha256": "15d6d30e44ffbd9a90b466139384fa34fa82231c079ad78964416d68e1dd12b0",
+      "listed_in_clean_install_manifest": true
+    },
+    {
+      "file": "glfw3.dll",
+      "installed_path": "E:\\SyncForder\\CodeRepos\\install\\P12-85d2ed7ec6f9\\bin\\glfw3.dll",
+      "sha256": "e97765e4aa376f8925cf245ba07aaabb78cbeeda0c068927a26fa298d7023394",
+      "listed_in_clean_install_manifest": true
+    },
+    {
+      "file": "nfd.dll",
+      "installed_path": "E:\\SyncForder\\CodeRepos\\install\\P12-85d2ed7ec6f9\\bin\\nfd.dll",
+      "sha256": "2bfcedee839046a2b0fa5ab2c1d8979327e7b769e5cd6a64d5461ab9d466a643",
+      "listed_in_clean_install_manifest": true
+    }
+  ],
+  "manual_copies_to_final_prefix": false
+}

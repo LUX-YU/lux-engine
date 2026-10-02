@@ -322,6 +322,8 @@ namespace lux::editor::application
                 return cxx::unexpected(*failure);
             return {};
         }
+        if (close_application_ && project_creation_ && project_creation_->progress().pending)
+            return {};
         auto closing_views = desktop_->views().prepareClose(ids);
         if (!closing_views)
         {
@@ -539,6 +541,7 @@ namespace lux::editor::application
         project_->dispatchEvents();
         (void)messages_.dispatchPending();
         importer_->update();
+        if (project_creation_) project_creation_->update();
         receive(maintainProjectSettings());
         saves_.adoptCompletions();
         if (auto submitted = save_execution_.submitReady(); !submitted)

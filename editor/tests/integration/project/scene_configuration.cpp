@@ -1,7 +1,8 @@
-#include <lux/engine/editor/ui/SceneConfigurationElement.hpp>
-#include <lux/engine/editor/metadata/EditorPlugin.hpp>
+#include <lux/engine/editor/scene/ConfigurationEditor.hpp>
+#include <lux/engine/editor/extensions/EditorExtension.hpp>
 #include <lux/engine/editor/configuration/EditorReflection.hpp>
 #include <lux/engine/project/PluginManager.hpp>
+#include <lux/engine/project/PluginRendering.hpp>
 #include <lux/engine/scene/ScenePackage.hpp>
 #include <lux/engine/scene/RenderSystemConfiguration.hpp>
 #include <lux/engine/ui/Root.hpp>
@@ -37,62 +38,81 @@ int main(int argc, char** argv)
     const lux::project::MetadataIdentity selected{"lux.builtin.scene_render", 1};
     auto manager = lux::project::PluginManager::create(std::move(catalog), std::span(&selected, 1));
     assert(manager);
-    std::vector<editor::EditorPlugin> extensions;
-    std::vector<editor::ConfigurationEditorRegistration> configurations;
-    auto draft = meta::ReflectionRegistry::beginDraft();
-    for (const auto& library : manager->libraries())
-    {
-        auto extension =
-            editor::loadEditorPlugin(*manager->catalog().find(library->identity().id), *library, extensions);
-        assert(extension);
-        if (extension->exports)
-        {
-            assert(draft.appendOnce(extension->exports->register_types, extension->code));
-            for (auto configuration :
-                 std::span{extension->exports->configurations, extension->exports->configuration_count})
-            {
-                configuration.code_lifetime = extension->code;
-                configurations.push_back(std::move(configuration));
-            }
-        }
-        extensions.push_back(std::move(*extension));
-    }
-    assert(draft.commit());
-    // A creation form in an already open Editor reuses the same admitted reflection callbacks.
-    auto second = meta::ReflectionRegistry::beginDraft();
-    for (const auto& extension : extensions)
-        if (extension.exports)
-            assert(second.appendOnce(extension.exports->register_types, extension.code));
-    assert(second.commit());
-    auto registrations = lux::project::readSceneRegistrations({}, manager->libraries());
-    assert(registrations);
+    std::vector<editor::extensions::EditorExtension> extensions;
     auto queue = object::ObjectMessageQueue::create(64);
     assert(queue);
+    editor::commands::CommandRegistry commands;
+    editor::extensions::ContributionRegistry contributions(queue->dispatcherRef(), commands);
+    for (const auto& library : manager->libraries())
+    {
+        auto extension = editor::extensions::EditorExtension::load(
+            *manager->catalog().find(library->identity().id),
+            *library,
+            extensions
+        );
+        assert(extension);
+        extensions.push_back(std::move(*extension));
+    }
+    // Preserve the original duplicate-registration case through the real V7 owner batch.
+    for (int attempt = 0; attempt != 2; ++attempt)
+    {
+        editor::extensions::ContributionDraft draft;
+        for (const auto& extension : extensions)
+        {
+            auto supplied = extension.contributions();
+            assert(supplied);
+            auto append = [](auto& to, auto& from) {
+                to.insert(to.end(), std::make_move_iterator(from.begin()), std::make_move_iterator(from.end()));
+            };
+            append(draft.code, supplied->code);
+            append(draft.reflection, supplied->reflection);
+            append(draft.configurations, supplied->configurations);
+        }
+        auto prepared = editor::extensions::ContributionSnapshot::prepare(std::move(draft));
+        assert(prepared);
+        assert(contributions.enqueue(*prepared) && contributions.applyPending());
+    }
+    auto registrations = lux::project::readSceneRegistrations({}, manager->libraries());
+    assert(registrations);
     auto root = ui::Root::create(queue->dispatcherRef());
     assert(root);
     ui::Pane pane(**root, ui::PaneId{"scene-configuration"}, ui::PaneTypeId{"test"}, "Scene Configuration");
     ui::Layout layout(pane, ui::ElementId{"content"});
     pane.setContent(layout);
-    constexpr editor::ui::SceneProviderOption providers[]{
+    constexpr editor::scene::SceneProviderOption providers[]{
         {"lux.render.runtime", "main-window"},
         {"lux.render.scene_bindings", "render-bindings"},
         {"lux.render.resources", "resources"},
         {"lux.render.assets", "assets"},
         {"lux.world.loading", "world-storage"}
     };
-    editor::EditorResult<void> status;
-    editor::ui::SceneConfigurationElement element(
+    editor::scene::SceneConfigurationResult<void> status;
+    editor::scene::SceneConfigurationElement element(
         layout,
         ui::ElementId{"configuration"},
-        manager->catalog(),
-        *registrations,
-        configurations,
-        providers,
+        {manager->catalog(),
+         registrations->components,
+         *registrations->simulation_systems,
+         registrations->scene_systems,
+         registrations->features,
+         providers,
+         [snapshot = contributions.snapshot()](
+             ui::Element& parent,
+             std::string_view name,
+             std::uint32_t version,
+             const serialization::PortableValueCodec&,
+             std::optional<std::span<const std::byte>> initial
+         ) -> editor::scene::SceneConfigurationResult<editor::scene::ConfigurationControl> {
+             for (const auto& descriptor : snapshot.configurations())
+                 if (descriptor.value.schema_name == name && descriptor.value.schema_version == version)
+                     return editor::scene::makeConfigurationControl(descriptor, parent, ui::ElementId{name}, initial);
+             return editor::scene::ConfigurationControl{};
+         }},
         status
     );
     assert(status);
     for (const auto preset :
-         {editor::ui::ESceneContentPreset::TWO_DIMENSIONAL, editor::ui::ESceneContentPreset::THREE_DIMENSIONAL})
+         {editor::scene::ESceneContentPreset::TWO_DIMENSIONAL, editor::scene::ESceneContentPreset::THREE_DIMENSIONAL})
     {
         auto applied = element.applyPreset(preset);
         if (!applied)
@@ -105,11 +125,11 @@ int main(int argc, char** argv)
         assert(!element.build());
         field->setValue(256.0);
         for (const auto stage :
-             {editor::ui::ESceneConfigurationStage::CONTENT,
-              editor::ui::ESceneConfigurationStage::SIMULATION,
-              editor::ui::ESceneConfigurationStage::SCENE,
-              editor::ui::ESceneConfigurationStage::FEATURES,
-              editor::ui::ESceneConfigurationStage::RELATIONSHIPS})
+             {editor::scene::ESceneConfigurationStage::CONTENT,
+              editor::scene::ESceneConfigurationStage::SIMULATION,
+              editor::scene::ESceneConfigurationStage::SCENE,
+              editor::scene::ESceneConfigurationStage::FEATURES,
+              editor::scene::ESceneConfigurationStage::RELATIONSHIPS})
         {
             element.setStage(stage);
             ui::DrawData data;
@@ -125,8 +145,9 @@ int main(int argc, char** argv)
         assert(registered != registrations->scene_systems.end());
         assert(registered->configuration.decode(render.configurationPayload(), &configuration));
         assert(configuration.coordinate_page_size == 256.0 && render.requirementBindingCount() == 4);
-        const auto expected = preset == editor::ui::ESceneContentPreset::TWO_DIMENSIONAL ? "lux.render.canvas2d.v2"
-                                                                                         : "lux.render.forward_mesh.v1";
+        const auto expected = preset == editor::scene::ESceneContentPreset::TWO_DIMENSIONAL
+                                  ? "lux.render.canvas2d.v2"
+                                  : "lux.render.forward_mesh.v1";
         const auto feature = std::ranges::find_if(registrations->features, [&](const auto& value) {
             return value.factory.descriptor.canonical_name == expected;
         });

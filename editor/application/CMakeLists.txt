@@ -2,16 +2,17 @@ add_subdirectory(launch)
 add_subdirectory(extensions)
 
 add_component(COMPONENT_NAME editor_bootstrap NAMESPACE lux::engine::editor STATIC
-    SOURCE_FILES src/EditorApplication.cpp src/EditorViews.cpp src/EditorCommands.cpp src/EditorLifecycle.cpp src/EditorWorkspace.cpp src/EditorContent.cpp src/EditorViewClosure.cpp src/EditorSceneTools.cpp src/EditorSaving.cpp src/EditorReload.cpp src/EditorResults.cpp src/EditorModels.cpp src/EditorArtifacts.cpp src/EditorRecovery.cpp src/EditorProjectTools.cpp src/EditorSettings.cpp)
+    SOURCE_FILES src/EditorApplication.cpp src/EditorViews.cpp src/EditorCommands.cpp src/EditorLifecycle.cpp src/EditorWorkspace.cpp src/EditorContent.cpp src/EditorViewClosure.cpp src/EditorSceneTools.cpp src/EditorSaving.cpp src/EditorReload.cpp src/EditorResults.cpp src/EditorModels.cpp src/EditorArtifacts.cpp src/EditorRecovery.cpp src/EditorProjectTools.cpp src/EditorSettings.cpp src/ProjectCreation.cpp src/EditorProjectCreation.cpp)
 component_include_directories(editor_bootstrap BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude INSTALL_TIME include)
 target_link_libraries(editor_bootstrap PUBLIC lux::engine::editor::session_execution lux::engine::editor::editor_project
-    PRIVATE lux::engine::engine_context_render lux::engine::project::project_plugin_rendering
+    PRIVATE lux::engine::editor::editor_launch lux::engine::engine_context_render lux::engine::project::project_plugin_rendering
     lux::engine::editor::editor_extensions lux::engine::editor::desktop_shell
     lux::engine::editor::editor_assets lux::engine::editor::editor_storage
     lux::engine::editor::editor_file_publication lux::engine::editor::editor_persistence_execution
     lux::engine::editor::project_tools_ui lux::engine::editor::workspace_store lux::engine::editor::project_ui lux::engine::editor::tasks_ui imgui::core)
 component_add_transitive_commands(editor_bootstrap
+    "find_package(lux-engine-editor-launch REQUIRED COMPONENTS editor_launch)"
     "find_package(lux-engine-editor-session-factories REQUIRED COMPONENTS session_execution)"
     "find_package(lux-engine-editor-project REQUIRED COMPONENTS editor_project)"
     "find_package(lux-engine-context-render REQUIRED COMPONENTS engine_context_render)"

@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/editor/application/ProjectCreation.hpp>
 #include <lux/engine/editor/application/EditorApplication.hpp>
 #include <lux/engine/EngineContext.hpp>
 #include <lux/engine/EngineRendering.hpp>
@@ -272,6 +273,7 @@ namespace lux::editor::application
         sessions::SessionStore sessions_{128};
         persistence::SaveExecution save_execution_;
         std::unique_ptr<assets::AssetImporter> importer_;
+        std::unique_ptr<ProjectCreation> project_creation_;
         std::optional<lux::ui::PaneId> import_browse_;
         struct PluginSelection final
         {
@@ -368,6 +370,7 @@ namespace lux::editor::application
         void installSaveCommands(extensions::ContributionDraft&);
         void installResultView(extensions::ContributionDraft&);
         void installWorkspaceView(extensions::ContributionDraft&);
+        void installProjectCreation(extensions::ContributionDraft&);
         void installProjectTools(extensions::ContributionDraft&);
         void installSettingsView(extensions::ContributionDraft&);
         [[nodiscard]] EditorResult<void> maintainProjectSettings();

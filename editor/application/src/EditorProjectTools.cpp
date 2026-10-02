@@ -7,6 +7,7 @@ namespace lux::editor::application
     void EditorApplication::Impl::installProjectTools(extensions::ContributionDraft& draft)
     {
         installSettingsView(draft);
+        installProjectCreation(draft);
         draft.views.push_back(std::make_shared<views::ViewFactoryEntry>(
             contracts::CodeLease::builtin(),
             views::ViewFactoryDescriptor{

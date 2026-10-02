@@ -84,18 +84,10 @@ endif()
 if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
     add_test(NAME editor.inspector_codegen COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test/inspector_codegen.py")
-    add_executable(editor_scene_configuration test/scene_configuration.cpp)
-    target_link_libraries(editor_scene_configuration PRIVATE editor_ui lux::engine::scene::scene_asset)
-    if(MSVC)
-        target_compile_options(editor_scene_configuration PRIVATE /UNDEBUG /utf-8)
-    else()
-        target_compile_options(editor_scene_configuration PRIVATE -UNDEBUG)
-    endif()
-    add_test(NAME editor.scene_configuration COMMAND editor_scene_configuration "${CMAKE_BINARY_DIR}")
-    set_tests_properties(editor.scene_configuration PROPERTIES TIMEOUT 30)
+
 endif()
 
 if(LUX_EDITOR_BUILD_NATIVE_TESTS)
-    set_tests_properties(editor.inspector_codegen editor.scene_configuration
+    set_tests_properties(editor.inspector_codegen
         PROPERTIES LABELS "editor;native")
 endif()

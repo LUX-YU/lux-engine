@@ -89,6 +89,7 @@ namespace lux::editor::scene
                 SnapshotBudget budget
             );
             [[nodiscard]] static SceneEditResult<void> validate(const Data& source);
+            [[nodiscard]] static SceneEditResult<void> retainOpaque(const SceneSource& from, Data& to, SceneBudget& budget);
             [[nodiscard]] static SceneEditResult<void> copyOpaque(const Data& from, Data& to, SceneBudget& budget);
         };
 

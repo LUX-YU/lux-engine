@@ -6,11 +6,13 @@
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include <lux/engine/simulation/ecs/TransformSchema.hpp>
 #include <lux/engine/simulation/ecs/HierarchySchema.hpp>
+#include <lux/engine/simulation/ecs/Parent.hpp>
 #include <lux/engine/simulation/ecs/VisualSchema.hpp>
 #include <lux/engine/editor/scene/PreparedSceneReload.hpp>
 #include <cassert>
 #include <cstdio>
 #include <cstring>
+#include <chrono>
 
 namespace
 {
@@ -118,6 +120,60 @@ namespace
         }
     };
 
+    void snapshotCost()
+    {
+        for (const std::size_t count : {1000u, 10000u})
+        {
+            detail::SceneSourceAccess::Data source;
+            source.schemas = schemas();
+            source.objects.reserve(count);
+            source.identities.reserve(count);
+            for (std::size_t i = 0; i != count; ++i)
+            {
+                const auto id = object(std::to_string(i));
+                const auto entity = source.registry.create();
+                assert(source.identities.bind(id, entity));
+                source.registry.emplace<ecs::Transform3D>(entity);
+                if (i % 4 == 0)
+                    source.registry.emplace<ecs::Parent>(entity);
+                source.objects.push_back({id, {0}, {}});
+            }
+            auto bytes = std::make_shared<const std::vector<std::byte>>(8 * 1024 * 1024, std::byte{42});
+            source.volumes.push_back(cxx::SharedBytes<>::fromOwner(bytes, *bytes));
+            Fixture frozen_source;
+            auto& frozen = detail::SceneSessionAccess::data(*frozen_source.session).source;
+            detail::SceneSourceAccess::data(frozen).volumes.clear();
+            detail::SceneSourceAccess::data(frozen).package = {};
+            detail::SceneSourceAccess::data(frozen).partition_ids.clear();
+            detail::SceneBudget admission_budget{256 * 1024 * 1024};
+            assert(detail::SceneSourceAccess::copyOpaque(source, detail::SceneSourceAccess::data(frozen), admission_budget));
+            for (int sample = 0; sample != 7; ++sample)
+            {
+                detail::SceneBudget budget{256 * 1024 * 1024};
+                const auto start = std::chrono::steady_clock::now();
+                auto values = take(detail::SceneSourceAccess::objects(source, budget));
+                const auto encoded = std::chrono::steady_clock::now();
+                detail::SceneSourceAccess::Data opaque;
+                assert(detail::SceneSourceAccess::retainOpaque(frozen, opaque, budget));
+                const auto copied = std::chrono::steady_clock::now();
+                std::size_t components{}, encoded_bytes{};
+                for (const auto& value : values)
+                    for (const auto& component : value.components)
+                    {
+                        ++components;
+                        encoded_bytes += component.bytes.size();
+                    }
+                assert(components == count + count / 4);
+                assert(opaque.volumes[0].view()[0] == std::byte{42});
+                std::printf("EC1 snapshot sample=%d warmup=%d n=%zu schemas=%zu components=%zu encoded_bytes=%zu "
+                            "objects_us=%.3f opaque_us=%.3f opaque_copied_bytes=%zu logical_budget=%zu\n",
+                    sample, sample < 2, count, source.schemas.all().size(), components, encoded_bytes,
+                    std::chrono::duration<double, std::micro>(encoded - start).count(),
+                    std::chrono::duration<double, std::micro>(copied - encoded).count(),
+                    opaque.volumes[0].view().data() == detail::SceneSourceAccess::data(frozen).volumes[0].view().data() ? 0 : bytes->size(), budget.used());
+            }
+        }
+    }
     void applicability()
     {
         const auto metadata = schemas();
@@ -211,6 +267,10 @@ namespace
         auto opaque_snapshot = take(opaque_session->capture());
         assert(opaque_snapshot.package().entries.back().bytes.view()[0] == std::byte{7});
         assert(opaque_snapshot.package().mount_hint == "author");
+        auto second_snapshot = take(opaque_session->capture());
+        assert(second_snapshot.package().entries.back().bytes.view().data() ==
+               opaque_snapshot.package().entries.back().bytes.view().data());
+        assert(second_snapshot.retainedBytes() == opaque_snapshot.retainedBytes());
         opaque_session.reset();
         assert(opaque_snapshot.package().entries.back().bytes.view()[0] == std::byte{7});
         Fixture f;
@@ -556,7 +616,9 @@ void codecReadRegression(int scenario);
 int main(int argc, char** argv)
 {
     const std::string_view test = argc > 1 ? argv[1] : "content";
-    if (test == "applicability")
+    if (test == "snapshot-cost")
+        snapshotCost();
+    else if (test == "applicability")
         applicability();
     else if (test == "content")
         content();

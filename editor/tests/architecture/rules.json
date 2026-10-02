@@ -1492,7 +1492,8 @@
       "lux/engine/editor/scene/SceneEditError.hpp",
       "lux/engine/editor/scene/ScenePersistenceAccess.hpp",
       "lux/engine/editor/scene/PreparedSceneReload.hpp",
-      "lux/engine/editor/scene/AuthoringFacts.hpp"
+      "lux/engine/editor/scene/AuthoringFacts.hpp",
+      "chrono"
     ],
     "prefixes": [
       "lux/engine/editor/sessions/",

@@ -16,6 +16,48 @@ namespace lux::editor::scene
     {
         namespace
         {
+            template <class Transfer>
+            SceneEditResult<void> transferOpaque(
+                const SceneSourceAccess::Data& from, SceneSourceAccess::Data& to, SceneBudget& budget, Transfer transfer
+            )
+            {
+                if (!budget.take(from.partition_ids.size() * sizeof(world::WorldPartitionId)))
+                    return rejected(ESceneEditError::BUDGET);
+                to.partition_ids = from.partition_ids;
+                if (!budget.take(from.package.mount_hint.size()))
+                    return rejected(ESceneEditError::BUDGET);
+                to.package.mount_hint = from.package.mount_hint;
+                for (const auto& bytes : from.volumes)
+                {
+                    if (!budget.take(bytes.size() + sizeof(bytes)))
+                        return rejected(ESceneEditError::BUDGET);
+                    to.volumes.push_back(transfer(bytes));
+                }
+                for (const auto& entry : from.package.entries)
+                {
+                    if (!budget.take(entry.bytes.size() + sizeof(entry) + entry.metadata.vpath.size()))
+                        return rejected(ESceneEditError::BUDGET);
+                    to.package.entries.push_back({entry.metadata, transfer(entry.bytes)});
+                }
+                return {};
+            }
+            SceneEditResult<SceneComponentData> captureComponent(
+                const SceneSourceAccess::Data& source, world::WorldObjectId object,
+                ecs::Entity entity, const ecs::ComponentSchema& schema, SceneBudget& budget
+            )
+            {
+                if (!schema.capture)
+                    return rejected(ESceneEditError::INVALID_COMPONENT, object);
+                auto value = schema.capture(source.registry, entity, schema.code_lifetime);
+                if (!value)
+                    return rejected(ESceneEditError::CODEC, object);
+                auto encoded = value->encode(source.identities, budget.remaining());
+                if (!encoded)
+                    return rejected(ESceneEditError::CODEC, object);
+                if (!budget.take(sizeof(SceneComponentData) + schema.id.name.size() + encoded->size()))
+                    return rejected(ESceneEditError::BUDGET, object);
+                return SceneComponentData{schema.id, schema.version, std::move(*encoded)};
+            }
             lux::cxx::SharedBytes<> own(std::vector<std::byte> bytes)
             {
                 auto storage = std::make_shared<const std::vector<std::byte>>(std::move(bytes));
@@ -94,17 +136,7 @@ namespace lux::editor::scene
             const auto* schema = source.schemas.find(id);
             if (schema && schema->operations.has(source.registry, entity))
             {
-                if (!schema->capture)
-                    return rejected(ESceneEditError::INVALID_COMPONENT, object);
-                auto value = schema->capture(source.registry, entity, schema->code_lifetime);
-                if (!value)
-                    return rejected(ESceneEditError::CODEC, object);
-                auto encoded = value->encode(source.identities, budget.remaining());
-                if (!encoded)
-                    return rejected(ESceneEditError::CODEC, object);
-                if (!budget.take(sizeof(SceneComponentData) + id.name.size() + encoded->size()))
-                    return rejected(ESceneEditError::BUDGET, object);
-                return SceneComponentData{id, schema->version, std::move(*encoded)};
+                return captureComponent(source, object, entity, *schema, budget);
             }
             const auto found = std::ranges::find(source.objects, object, &SceneObjectData::id);
             const auto unknown = std::ranges::find(found->components, id, &SceneComponentData::schema);
@@ -124,6 +156,10 @@ namespace lux::editor::scene
             if (!budget.take(source.objects.size() * sizeof(SceneObjectData)))
                 return rejected(ESceneEditError::BUDGET);
             result.reserve(source.objects.size());
+            std::vector<const ecs::ComponentSchema*> populated;
+            for (const auto& schema : source.schemas.all())
+                if (schema.operations.size(source.registry))
+                    populated.push_back(&schema);
             for (const auto& object : source.objects)
             {
                 SceneObjectData copy{object.id, object.partition, {}};
@@ -134,11 +170,13 @@ namespace lux::editor::scene
                     copy.components.push_back(unknown);
                 }
                 const auto entity = source.identities.entity(object.id);
-                for (const auto& schema : source.schemas.all())
+                for (const auto* schema : populated)
                 {
-                    if (!schema.operations.has(source.registry, entity))
+                    if (!schema->operations.has(source.registry, entity))
                         continue;
-                    auto value = component(source, object.id, schema.id, budget);
+                    // Identity/schema/membership were just established under the caller's read gate.
+                    // No callback occurs before capture; do not look them up a second time.
+                    auto value = captureComponent(source, object.id, entity, *schema, budget);
                     if (!value)
                         return lux::cxx::unexpected(value.error());
                     copy.components.push_back(std::move(*value));
@@ -267,25 +305,15 @@ namespace lux::editor::scene
 
         SceneEditResult<void> SceneSourceAccess::copyOpaque(const Data& from, Data& to, SceneBudget& budget)
         {
-            if (!budget.take(from.partition_ids.size() * sizeof(world::WorldPartitionId)))
-                return rejected(ESceneEditError::BUDGET);
-            to.partition_ids = from.partition_ids;
-            if (!budget.take(from.package.mount_hint.size()))
-                return rejected(ESceneEditError::BUDGET);
-            to.package.mount_hint = from.package.mount_hint;
-            for (const auto& bytes : from.volumes)
-            {
-                if (!budget.take(bytes.size() + sizeof(bytes)))
-                    return rejected(ESceneEditError::BUDGET);
-                to.volumes.push_back(lux::cxx::SharedBytes<>::copyOf(bytes.view()));
-            }
-            for (const auto& entry : from.package.entries)
-            {
-                if (!budget.take(entry.bytes.size() + sizeof(entry) + entry.metadata.vpath.size()))
-                    return rejected(ESceneEditError::BUDGET);
-                to.package.entries.push_back({entry.metadata, lux::cxx::SharedBytes<>::copyOf(entry.bytes.view())});
-            }
-            return {};
+            return transferOpaque(from, to, budget, [](const auto& bytes) {
+                return lux::cxx::SharedBytes<>::copyOf(bytes.view());
+            });
+        }
+        SceneEditResult<void> SceneSourceAccess::retainOpaque(const SceneSource& from, Data& to, SceneBudget& budget)
+        {
+            // Only a successfully created author source enters here. Its external bytes were copied
+            // on admission; no mutable owner escapes. Retention still charges the full logical budget.
+            return transferOpaque(*from.data_, to, budget, [](const auto& bytes) { return bytes; });
         }
 
         SceneEditResult<SceneSnapshot> SceneSourceAccess::capture(
@@ -304,7 +332,7 @@ namespace lux::editor::scene
             if (!content)
                 return lux::cxx::unexpected(content.error());
             Data opaque;
-            if (auto copied = copyOpaque(data, opaque, budget); !copied)
+            if (auto copied = retainOpaque(source, opaque, budget); !copied)
                 return lux::cxx::unexpected(copied.error());
             SceneSnapshot result;
             result.schemas_ = data.schemas;

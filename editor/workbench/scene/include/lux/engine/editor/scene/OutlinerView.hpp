@@ -22,6 +22,8 @@ namespace lux::editor::scene
         OutlinerView& operator=(OutlinerView&&) = delete;
         [[nodiscard]] SceneViewResult<void> rebind(VSceneViewBinding);
         [[nodiscard]] SceneViewResult<void> select(VSceneSelectionTarget);
+        [[nodiscard]] SceneViewResult<void> setCollapsed(VSceneSelectionTarget, bool);
+        [[nodiscard]] bool isCollapsed(const VSceneSelectionTarget&) const noexcept;
         [[nodiscard]] SceneViewResult<void> erase(std::span<const SceneObjectRef>);
         [[nodiscard]] SceneViewResult<void> reparent(SceneObjectRef, world::WorldObjectId);
         [[nodiscard]] SceneViewResult<void> createObject(

@@ -9,6 +9,7 @@
 #include <unordered_set>
 #include <random>
 #include <cstring>
+#include <type_traits>
 namespace lux::editor::scene
 {
     namespace
@@ -25,6 +26,35 @@ namespace lux::editor::scene
             return error && (error->code == ESceneEditError::BUSY || (error->code == ESceneEditError::SESSION &&
                                                                       error->session == sessions::ESessionError::BUSY));
         }
+        struct SelectionHash final
+        {
+            std::size_t operator()(const VSceneSelectionTarget& target) const noexcept
+            {
+                std::size_t result = target.index();
+                const auto append = [&](std::uint64_t value) {
+                    result ^= std::hash<std::uint64_t>{}(value) + 0x9e3779b9 + (result << 6) + (result >> 2);
+                };
+                std::visit([&](const auto& value) {
+                    if constexpr (std::is_same_v<std::decay_t<decltype(value)>, SceneObjectRef>)
+                    {
+                        append(value.session.domain);
+                        append(value.session.slot);
+                        append(value.session.generation);
+                        append(value.history.value);
+                        append(world::WorldObjectIdHash{}(value.object));
+                    }
+                    else
+                    {
+                        append(value.run.domain);
+                        append(value.run.slot);
+                        append(value.run.generation);
+                        append(lux::scene::SceneInstanceId::Hash{}(value.instance));
+                        append(simulation::ecs::entityBits(value.entity));
+                    }
+                }, target);
+                return result;
+            }
+        };
         constexpr const char* objectPayload = "lux.editor.scene.author-object.v4";
         SceneInteractionGroup* group(const VSceneViewBinding& binding) noexcept
         {
@@ -75,7 +105,7 @@ namespace lux::editor::scene
         std::optional<std::pair<SceneObjectRef, world::WorldObjectId>> parent_request_;
         std::optional<EObjectSpace> create_request_;
         std::uint32_t partition_{};
-        std::unordered_set<std::string> collapsed_;
+        std::unordered_set<VSceneSelectionTarget, SelectionHash> collapsed_;
         std::vector<std::size_t> visible_;
         SceneViewResult<void> status_;
         Content content_;
@@ -96,7 +126,7 @@ namespace lux::editor::scene
             {
                 visible_.push_back(i);
                 const auto& row = rows_.tree[i];
-                i = collapsed_.contains(rows_.labels[row.source]) ? row.end : i + 1;
+                i = collapsed_.contains(rows_.objects[row.source]) ? row.end : i + 1;
             }
         }
 
@@ -312,9 +342,11 @@ namespace lux::editor::scene
             if (candidate)
             {
                 rows_ = std::move(*candidate);
-                std::erase_if(collapsed_, [&](const std::string& label) {
-                    return std::ranges::find(rows_.labels, label) == rows_.labels.end();
-                });
+                // One current identity set, then one lookup per collapsed item. Labels are presentation only.
+                const std::unordered_set<VSceneSelectionTarget, SelectionHash> live(
+                    rows_.objects.begin(), rows_.objects.end()
+                );
+                std::erase_if(collapsed_, [&](const auto& target) { return !live.contains(target); });
                 visibleRows();
             }
             else
@@ -366,7 +398,7 @@ namespace lux::editor::scene
                     const bool selected = interaction && std::ranges::find(interaction->selection().objects, target) !=
                                                              interaction->selection().objects.end();
                     const bool has_children = row.end > row_index + 1;
-                    ImGui::SetNextItemOpen(!collapsed_.contains(rows_.labels[row.source]), ImGuiCond_Always);
+                    ImGui::SetNextItemOpen(!collapsed_.contains(rows_.objects[row.source]), ImGuiCond_Always);
                     const auto flags = ImGuiTreeNodeFlags_NoTreePushOnOpen | ImGuiTreeNodeFlags_OpenOnArrow |
                                        ImGuiTreeNodeFlags_SpanAvailWidth |
                                        (selected ? ImGuiTreeNodeFlags_Selected : 0) |
@@ -374,12 +406,12 @@ namespace lux::editor::scene
                     const bool open = ImGui::TreeNodeEx("object", flags, "%s", rows_.labels[row.source].c_str());
                     if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen())
                         selection_request_ = target;
-                    if (has_children && open == collapsed_.contains(rows_.labels[row.source]))
+                    if (has_children && open == collapsed_.contains(rows_.objects[row.source]))
                     {
                         if (open)
-                            collapsed_.erase(rows_.labels[row.source]);
+                            collapsed_.erase(target);
                         else
-                            collapsed_.insert(rows_.labels[row.source]);
+                            collapsed_.insert(target);
                         visibility_changed = true;
                     }
                     if (auto* object = std::get_if<SceneObjectRef>(&target))
@@ -446,6 +478,21 @@ namespace lux::editor::scene
     {
         return impl_->select(std::move(value));
     }
+    SceneViewResult<void> OutlinerView::setCollapsed(VSceneSelectionTarget target, bool collapsed)
+    {
+        if (std::ranges::find(impl_->rows_.objects, target) == impl_->rows_.objects.end())
+            return rejected(views::EViewError::INVALID_ID);
+        if (collapsed)
+            impl_->collapsed_.insert(std::move(target));
+        else
+            impl_->collapsed_.erase(target);
+        impl_->visibleRows();
+        return {};
+    }
+    bool OutlinerView::isCollapsed(const VSceneSelectionTarget& target) const noexcept
+    {
+        return impl_->collapsed_.contains(target);
+    }
     SceneViewResult<void> OutlinerView::erase(std::span<const SceneObjectRef> targets)
     {
         std::vector<VSceneEdit> edits;
@@ -478,8 +525,12 @@ namespace lux::editor::scene
             const auto facts = source.facts();
             const std::string_view names[]{space == EObjectSpace::SPACE_2D ? "lux.ecs.Transform2D" : "lux.ecs.Transform3D"};
             const auto required = space == EObjectSpace::NONE ? std::span<const std::string_view>{} : std::span{names};
-            if (!queryApplicability(facts, {required, false, true}).supported())
-                return cxx::unexpected(SceneEditError{ESceneEditError::MISSING_SCHEMA});
+            const auto allowed = queryApplicability(facts, {required, false, true});
+            if (!allowed.supported())
+                return cxx::unexpected(SceneEditError{
+                    allowed.reason == EApplicabilityReason::INDEX_REBUILD_REQUIRED
+                        ? ESceneEditError::INDEX_REBUILD_REQUIRED : ESceneEditError::MISSING_SCHEMA
+                });
             const std::string_view parent[]{"lux.ecs.Parent"};
             const bool hierarchy = queryApplicability(facts, {parent}).supported();
             auto encoded = makeSceneObject(id, partition, space, hierarchy, impl_->schemas_);

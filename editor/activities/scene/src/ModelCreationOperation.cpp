@@ -3,7 +3,6 @@
 #include <lux/engine/process/TaskScope.hpp>
 #include <lux/engine/resource/asset/material/MaterialAssets.hpp>
 #include <lux/engine/resource/asset/mesh/MeshAsset.hpp>
-#include <algorithm>
 
 namespace lux::editor::scene
 {
@@ -116,9 +115,8 @@ namespace lux::editor::scene
             for (const auto& primitive : model->data().primitives)
             {
                 const auto exists = [&](asset::AssetId id, std::uint32_t magic) {
-                    return std::ranges::any_of(snapshot_.assets(), [&](const auto& entry) {
-                        return entry.id == id && entry.magic == magic;
-                    });
+                    const auto* entry = snapshot_.find(id);
+                    return entry && entry->magic == magic;
                 };
                 if (!exists(primitive.mesh, asset::MeshAsset::primary_magic) ||
                     !exists(primitive.material, asset::MaterialAsset::primary_magic))

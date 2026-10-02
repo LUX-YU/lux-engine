@@ -431,7 +431,8 @@ namespace lux::editor::scene
             const bool present = valid && std::ranges::find(components_, candidates_[index]) != components_.end();
             add_.setEnabled(valid && !present && candidate_support_[index].supported());
             remove_.setEnabled(present);
-            message_.setText("");
+            const bool retained_unknown = present && candidate_support_[index].reason == EApplicabilityReason::MISSING_PROVIDER;
+            message_.setText(retained_unknown ? "Component provider unavailable; encoded content is preserved." : "");
         }
         // Declared before destruction is needed by entries; explicit clear runs while it is alive.
         std::unique_ptr<Content> root_;

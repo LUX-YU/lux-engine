@@ -46,7 +46,7 @@ namespace
         SceneSession* author{};
         sessions::SessionId author_id;
         world::WorldObjectId object{uuid("object")};
-        Fixture()
+        explicit Fixture(std::size_t capacity = 64)
         {
             std::vector<ecs::ComponentSchema> types;
             for (auto group : {ecs::transformComponentSchemas(), ecs::hierarchyComponentSchemas()})
@@ -70,7 +70,7 @@ namespace
                 1,
                 payload
             ));
-            auto transform = take(lux::scene::makeTransformSystemConfiguration(64, {512, 65536}));
+            auto transform = take(lux::scene::makeTransformSystemConfiguration(capacity, {capacity * 8, capacity * 1024}));
             assert(builder.addSystem(
                 {2},
                 "transform",
@@ -133,9 +133,84 @@ namespace
             assert(author->apply(std::move(batch)));
         }
     };
+    void projectionCost()
+    {
+        for (const std::size_t count : {32u, 512u})
+            for (int sample = 0; sample != 4; ++sample)
+            {
+                Fixture f{2048};
+                ecs::WorldEntityMap identities;
+                const auto component = take(encodeSceneValue(ecs::Transform3D{}, f.schemas, identities, 4096));
+                SceneEditBatch initial{f.author->describe().current, "population", {}};
+                for (std::size_t i = 1; i != count; ++i)
+                    initial.edits.push_back(SceneCreateObject{{{uuid(std::to_string(i))}, {0}, {component}}});
+                assert(f.author->apply(std::move(initial)));
+                auto projection = take(f.hub.acquire(*f.author, f.environment()));
+                f.frame();
+                const auto measure = [&](const char* name, bool changed) {
+                    const auto before = projection->rebuildCount();
+                    const auto start = std::chrono::steady_clock::now();
+                    assert(projection->update(*f.author));
+                    const auto end = std::chrono::steady_clock::now();
+                    assert(projection->rebuildCount() == before + (changed ? 1 : 0));
+                    std::printf("EC1 projection n=%zu sample=%d warmup=%d case=%s update_us=%.3f rebuilds=%zu\n",
+                        count, sample, sample == 0, name,
+                        std::chrono::duration<double, std::micro>(end - start).count(),
+                        projection->rebuildCount() - before);
+                    f.frame();
+                };
+                measure("unchanged", false);
+                f.set(27);
+                measure("field", true);
+                SceneEditBatch structure{f.author->describe().current, "structure", {}};
+                structure.edits.push_back(SceneCreateObject{{{uuid("extra")}, {0}, {component}}});
+                assert(f.author->apply(std::move(structure)));
+                measure("structure", true);
+                auto configuration = take(f.author->read()).configuration();
+                const auto& current = configuration.scene->data();
+                lux::scene::SceneDescriptionBuilder builder;
+                builder.setWorld(current.world());
+                builder.setSimulation(current.simulation());
+                const auto transform = take(lux::scene::makeTransformSystemConfiguration(4096, {32768, 4194304}));
+                for (std::size_t i = 0; i != current.systemCount(); ++i)
+                {
+                    const auto system = current.systemAt(i);
+                    const auto payload = system.type() == f.registrations[1].type ? std::span<const std::byte>{transform}
+                                                                                 : system.configurationPayload();
+                    assert(builder.addSystem(system.instanceId(), system.instanceName(), system.type(), system.version(),
+                        system.configurationSchemaName(), system.configurationSchemaVersion(), payload));
+                    for (std::size_t j = 0; j != system.requirementBindingCount(); ++j)
+                    {
+                        const auto binding = system.requirementBindingAt(j);
+                        assert(builder.bindRequirement(binding.system(), binding.requirement(), binding.provider()));
+                    }
+                }
+                for (std::size_t i = 0; i != current.dependencyCount(); ++i)
+                {
+                    const auto edge = current.dependencyAt(i);
+                    assert(builder.addDependency(edge.before(), edge.after()));
+                }
+                configuration.scene = take(lux::scene::SceneAsset::create(configuration.scene->info(),
+                    std::make_shared<const lux::scene::SceneDescription>(take(std::move(builder).build()))));
+                SceneEditBatch settings{f.author->describe().current, "configuration", {}};
+                settings.edits.push_back(SceneSetConfiguration{std::move(configuration)});
+                assert(f.author->apply(std::move(settings)));
+                measure("configuration", true);
+                projection.reset();
+                f.hub.collectReleased();
+                f.frame();
+                assert(f.hub.size() == 0);
+            }
+    }
+
 }
-int main()
+int main(int argc, char** argv)
 {
+    if (argc == 2 && std::string_view{argv[1]} == "cost")
+    {
+        projectionCost();
+        return 0;
+    }
     const auto begin = std::chrono::steady_clock::now();
     Fixture f;
     auto first = take(f.hub.acquire(*f.author, f.environment()));

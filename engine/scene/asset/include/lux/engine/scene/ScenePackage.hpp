@@ -75,7 +75,15 @@ namespace lux::scene
     [[nodiscard]] LUX_ENGINE_SCENE_ASSET_PUBLIC lux::cxx::expected<ScenePackage, ScenePackageFailure>
     createScenePackage(asset::AssetId, std::string_view, std::span<const world::WorldDataSchemaId>, std::shared_ptr<const simulation::SimulationDescription>, const SceneDescription&) noexcept;
 
-    // Reassemble explicitly supplied content. Callers must reject extensions with unknown identity references.
+    // Rebuild existing content without changing its root or bundle identities.
+    [[nodiscard]] LUX_ENGINE_SCENE_ASSET_PUBLIC lux::cxx::expected<ScenePackage, ScenePackageFailure>
+    assembleScenePackage(
+        const ScenePackage&,
+        std::span<const std::shared_ptr<const world::WorldPartitionData>>,
+        std::stop_token = {}
+    ) noexcept;
+
+    // Assemble a new identity domain. Callers must reject extensions with unknown identity references.
     [[nodiscard]] LUX_ENGINE_SCENE_ASSET_PUBLIC lux::cxx::expected<ScenePackage, ScenePackageFailure>
     assembleScenePackage(
         asset::AssetId,

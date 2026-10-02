@@ -23,28 +23,16 @@ namespace lux::ui
                 node->preparation_->valid = false;
     }
 
-    Pane::Pane(Root& parent, PaneId id, PaneTypeId type, std::string title)
-        : Pane(parent, &parent, std::move(id), std::move(type), std::move(title))
-    {}
-
     Pane::Pane(Pane& parent, PaneId id, PaneTypeId type, std::string title)
-        : Pane(parent, parent.attachedRoot(), std::move(id), std::move(type), std::move(title))
-    {}
-
-    Pane::Pane(object::LuxObject& parent, Root* root, PaneId id, PaneTypeId type, std::string title)
-        : LuxObject(parent.dispatcherRef()), id_(std::move(id)), type_(std::move(type)), title_(std::move(title)),
-          root_(root)
+        : Pane(parent.dispatcherRef(), std::move(id), std::move(type), std::move(title))
     {
-        if (!id_.isValid())
-            detail::failContract();
-        if (root)
-            root->checkContentChange();
-        if (auto* pane = dynamic_cast<Pane*>(&parent))
-            pane->invalidatePreparation();
-        rebuildWindowLabel();
+        root_ = parent.attachedRoot();
+        if (root_)
+            root_->checkContentChange();
+        parent.invalidatePreparation();
         attachTo(parent);
-        if (root)
-            root->registerPane(*this);
+        if (root_)
+            root_->registerPane(*this);
     }
 
     Pane::~Pane()

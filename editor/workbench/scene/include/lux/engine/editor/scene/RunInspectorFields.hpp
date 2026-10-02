@@ -63,10 +63,6 @@ namespace lux::editor::scene
         {
             read_only_ = value;
         }
-        [[nodiscard]] project::ProjectCatalogModel* catalogAccess() const noexcept
-        {
-            return catalog_;
-        }
         [[nodiscard]] project::ProjectCatalogModel* assetCatalog() const noexcept
         {
             return catalog_;

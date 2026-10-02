@@ -34,7 +34,7 @@ namespace lux::editor::application
             views::ViewFactoryDescriptor{
                 views::ViewTypeId{"lux.editor.import"},
                 "Import Assets",
-                cxx::typeToken<EmptyViewInput>()
+                cxx::typeToken<std::monostate>()
             },
             [this](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
                 std::erase_if(connections_, [](const auto& value) { return !value.connected(); });

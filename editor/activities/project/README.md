@@ -32,6 +32,6 @@ AssetImporter 借用 ProjectStorage 和执行设施，组合 engine/toolchain �
 纯格式转换位于 engine/toolchain；运行资产读取/解码位于 engine/process/asset_loading。
 本模块只承担编辑器工作流，不建立第二份项目目录或 GPU 资源缓存。
 通用 History 与会话位于 editor/editing；正式保存协议位于 activities/persistence。
-旧 AssetSource/AssetSave 适配仍只供已登记旧产品使用，最迟 P12 删除；不编入正式导入活动。
+旧 AssetSource/AssetSave 协议已删除。AssetImporter 继续拥有导入任务和完成事实，关闭状态由其自身的 AssetImportCloseStatus 表达。
 
 `editor_assets` 为 STATIC，无独立资产 DLL；其安装 include 前缀仍为 lux/engine/editor。

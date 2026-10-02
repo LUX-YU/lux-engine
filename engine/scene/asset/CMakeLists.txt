@@ -8,7 +8,7 @@ add_component(
     COMPONENT_NAME scene_asset
     NAMESPACE      lux::engine::scene
     OUTPUT_NAME    lux_engine_scene_asset
-    SOURCE_FILES src/SceneAssetCodec.cpp src/ScenePackage.cpp src/SceneCapture.cpp src/SceneConstruction.cpp
+    SOURCE_FILES src/SceneAssetCodec.cpp src/ScenePackage.cpp src/SceneConstruction.cpp
 )
 component_include_directories(
     scene_asset

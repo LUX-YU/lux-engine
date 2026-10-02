@@ -37,7 +37,7 @@ This restriction also applies to fields that could invalidate a spatial index.
 
 Model insertion takes an already loaded ModelAsset and returns author object
 values; camera creation takes camera/transform values. Neither performs IO.
-Legacy SceneEditor adapters reuse these algorithms and must be removed by P12.
+Formal content activities and views reuse these algorithms; the legacy SceneEditor adapter has been removed.
 
 ## Capture, changes and reload
 

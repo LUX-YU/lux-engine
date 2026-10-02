@@ -1,4 +1,5 @@
 #pragma once
+#include "../../../../cmake/installed-consumers/common/UiTestContent.hpp"
 #include <lux/engine/ui/Layout.hpp>
 #include <lux/engine/ui/Pane.hpp>
 #include <lux/engine/ui/Root.hpp>
@@ -56,10 +57,11 @@ namespace element_checks
     {
     public:
         explicit Owner(ui::Root& root)
-            : ui::Pane(root, ui::PaneId{"owner"}, ui::PaneTypeId{"test.owner"}, "Owner"),
+            : ui::Pane(root.dispatcherRef(), ui::PaneId{"owner"}, ui::PaneTypeId{"test.owner"}, "Owner"),
               item(std::make_unique<Item>(*this, "old"))
         {
             setContent(*item);
+            ui_test::mount(root, *this);
         }
         std::unique_ptr<Item> item;
         bool replace{};
@@ -98,7 +100,8 @@ namespace element_checks
             assert(root.update({{640, 480}, 0.016F}, &draw));
             assert(content.draws == 1 && owner.item->draws == 0);
         }
-        ui::Pane pane(root, ui::PaneId{"layout"}, ui::PaneTypeId{"test"}, "Layout");
+        ui::Pane pane(root.dispatcherRef(), ui::PaneId{"layout"}, ui::PaneTypeId{"test"}, "Layout");
+        ui_test::mount(root, pane);
         {
             std::vector<std::unique_ptr<ui::Layout>> levels;
             levels.push_back(std::make_unique<ui::Layout>(pane, ui::ElementId{"deep"}));

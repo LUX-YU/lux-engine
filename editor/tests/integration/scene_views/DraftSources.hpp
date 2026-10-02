@@ -55,10 +55,17 @@ namespace draft_test
             }
         } probe;
         explicit UiInput(Fixture& f)
-            : Pane(f.desktop->root(), ui::PaneId{"r1-probe"}, ui::PaneTypeId{"test.probe"}, "Input probe"), fixture(f),
-              probe(*this)
+            : Pane(
+                  f.desktop->root().dispatcherRef(),
+                  ui::PaneId{"r1-probe"},
+                  ui::PaneTypeId{"test.probe"},
+                  "Input probe"
+              ),
+              fixture(f), probe(*this)
         {
             setContent(probe);
+            auto mounted = f.desktop->root().prepareMount(*this);
+            assert(mounted && f.desktop->root().commit(*mounted));
             fixture.wait([&] { return context != nullptr; });
             ImGuiContextHook value;
             value.Type = ImGuiContextHookType_NewFramePost;

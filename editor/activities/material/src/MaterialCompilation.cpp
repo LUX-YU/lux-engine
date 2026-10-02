@@ -110,24 +110,11 @@ namespace lux::editor::material
     {
         const MaterialCompileKey key{snapshot.content(), settings, environment, target};
         auto owned = std::make_shared<const MaterialSnapshot>(std::move(snapshot));
-        return startSource(
-            execution,
-            std::shared_ptr<const lux::material::MaterialSource>(owned, &owned->source()),
-            key,
-            owned->observed()
-        );
-    }
-    MaterialCompileResult<std::unique_ptr<MaterialCompileOperation>> MaterialCompileOperation::startSource(
-        process::ExecutionRuntime& execution,
-        std::shared_ptr<const lux::material::MaterialSource> source,
-        MaterialCompileKey key,
-        sessions::ObservationVersion observed
-    )
-    {
-        const bool is_invalid_source = !source;
+        auto source = std::shared_ptr<const lux::material::MaterialSource>(owned, &owned->source());
+        const auto observed = owned->observed();
         const bool is_invalid_configuration = !key.settings.byte_limit || !key.settings.version;
         const bool is_invalid_target = !key.target || !key.environment;
-        const bool is_invalid_request = is_invalid_source || is_invalid_configuration || is_invalid_target;
+        const bool is_invalid_request = is_invalid_configuration || is_invalid_target;
         if (is_invalid_request)
             return failed(EMaterialCompileRequestError::INVALID_ID);
         auto state = std::make_shared<Impl>();

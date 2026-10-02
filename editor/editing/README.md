@@ -7,10 +7,6 @@ but retain their binary identity owners and separate installed packages.
 ViewInfo is a pure observation; window errors and close preparation belong to view_api.
 EditorError is a pure value supplied by editor_contracts.
 
-The `editor_editing` target, EditHistoryTarget and transition/LegacyPersistenceState are retained
-only for the existing product until P12. They are not dependencies of the new authoring or activities.
-
-
 ## Edit sessions (P01)
 
 `SessionStore` exclusively owns published `IEditSession` objects. It is an owner-thread collection;
@@ -46,12 +42,6 @@ The slot declares `CodeLease` before its session owner. A concrete session must 
 source before history so retained edits are destroyed first. Native and installed tests exercise
 history memento -> source -> code destruction, candidate abandonment, generation/type rejection,
 checkpoint identity, permit lifetime and compile-negative scope copies/moves.
-
-The old Scene/Material/FlowForge products temporarily use the private
-`editor/transition/LegacyPersistenceState` compiled into `editor_editing`. Each working copy has one
-checkpoint, moved with its history; pending requests prevent bridge movement. The bridge is not
-installed and new modules cannot include it. It expires by P12. There is still only one history
-algorithm, implemented in `editor/editing`.
 
 P01-R1 separates the closing commit from presentation queries. The private
 `IEditSession::currentContent() noexcept` reads only existing scalar identities, with no allocation,

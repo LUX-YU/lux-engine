@@ -89,9 +89,10 @@ namespace lux::editor::scene
         lux::ui::Layout layout_;
         lux::ui::Layout actions_;
         lux::ui::Choice component_choice_;
-        lux::ui::Button add_, remove_;
+        lux::ui::Button add_, remove_, cancel_;
         lux::ui::Label message_;
-        std::array<object::Connection, 2> connections_;
+        std::array<object::Connection, 3> connections_;
+        bool cancel_requested_{};
         std::optional<bool> structure_request_;
         std::vector<std::unique_ptr<Component>> entries_;
         SceneEditResult<void> status_;
@@ -108,6 +109,7 @@ namespace lux::editor::scene
               component_choice_(actions_, lux::ui::ElementId{"schema"}, options(schemas_), 0),
               add_(actions_, lux::ui::ElementId{"add"}, "Add component"),
               remove_(actions_, lux::ui::ElementId{"remove"}, "Remove component"),
+              cancel_(actions_, lux::ui::ElementId{"cancel"}, "Cancel field draft"),
               message_(layout_, lux::ui::ElementId{"message"}, "")
         {
             view.setContent(layout_);
@@ -119,12 +121,16 @@ namespace lux::editor::scene
                 if (!structure_request_)
                     structure_request_ = false;
             });
-            if (!add || !remove)
+            auto cancel = object::LuxObject::connect(&cancel_, &lux::ui::Button::activated, [this]() noexcept {
+                cancel_requested_ = true;
+            });
+            if (!add || !remove || !cancel)
                 status_ = InspectorFields::constructionFailure();
             else
             {
                 connections_[0] = std::move(*add);
                 connections_[1] = std::move(*remove);
+                connections_[2] = std::move(*cancel);
             }
         }
         static std::vector<lux::ui::ChoiceOption> options(const simulation::ecs::ComponentSchemaSet& schemas)
@@ -283,10 +289,25 @@ namespace lux::editor::scene
                     return entry->fields->status();
             return {};
         }
+        SceneEditResult<void> cancel()
+        {
+            for (auto& entry : entries_)
+                if (auto result = entry->fields->cancel(); !result)
+                    return result;
+            structure_request_.reset();
+            return {};
+        }
         void update()
         {
             if (!binding_)
                 return;
+            if (cancel_requested_)
+            {
+                status_ = cancel();
+                if (!status_)
+                    return;
+                cancel_requested_ = false;
+            }
             if (structure_request_)
             {
                 const auto index = component_choice_.value();
@@ -345,7 +366,12 @@ namespace lux::editor::scene
             {
                 status_ = entry->fields->update();
                 if (!status_)
+                {
+                    message_.setText(
+                        "Field operation rejected; cancel the draft to recover. Author content is retained."
+                    );
                     return;
+                }
             }
             const auto index = component_choice_.value();
             const bool valid = index >= 0 && static_cast<std::size_t>(index) < schemas_.all().size();
@@ -396,6 +422,10 @@ namespace lux::editor::scene
     {
         return impl_->finish();
     }
+    SceneEditResult<void> InspectorView::cancelEditing()
+    {
+        return impl_->cancel();
+    }
     SceneEditResult<void> InspectorView::addComponent(const simulation::ecs::ComponentSchemaId& schema)
     {
         return impl_->changeComponent(schema, true);
@@ -406,14 +436,7 @@ namespace lux::editor::scene
     }
     SceneEditResult<void> InspectorView::prepareClose()
     {
-        for (auto& entry : impl_->entries_)
-        {
-            auto cancelled = entry->fields->cancel();
-            if (!cancelled)
-                return cancelled;
-        }
-        impl_->structure_request_.reset();
-        return {};
+        return impl_->cancel();
     }
     std::optional<SceneObjectRef> InspectorView::target() const noexcept
     {

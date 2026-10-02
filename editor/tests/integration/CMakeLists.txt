@@ -7,3 +7,5 @@ add_subdirectory(session_factories)
 add_subdirectory(application)
 
 add_subdirectory(project)
+
+add_subdirectory(components)

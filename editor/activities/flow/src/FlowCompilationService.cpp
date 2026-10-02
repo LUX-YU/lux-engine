@@ -277,24 +277,6 @@ namespace lux::editor::flowforge
     {
         if (source.retainedBytes() > settings.byte_limit)
             return failed(EFlowCompilationError::CAPACITY);
-        return startSource(
-            source.source(),
-            source.content(),
-            source.observed(),
-            std::move(env),
-            settings,
-            std::move(link)
-        );
-    }
-    FlowCompilationResult<FlowCompileId> FlowCompilationService::startSource(
-        lux::flowforge::FlowSource source,
-        sessions::ContentStamp content,
-        sessions::ObservationVersion observed,
-        FlowCompileEnvironment env,
-        FlowCompileSettings settings,
-        LinkSettings link
-    )
-    {
         if (impl_->owner != std::this_thread::get_id())
             return failed(EFlowCompilationError::WRONG_THREAD);
         if (impl_->operations.size() >= impl_->capacity)
@@ -306,11 +288,11 @@ namespace lux::editor::flowforge
         auto state = std::make_shared<FlowCompileOperation::Impl>();
         if (!state->id.value)
             return failed(EFlowCompilationError::CAPACITY);
-        state->source = std::make_shared<const lux::flowforge::FlowSource>(std::move(source));
+        state->source = std::make_shared<const lux::flowforge::FlowSource>(source.source());
         state->environment = std::move(env);
         state->settings = settings;
-        state->key = {content, settings.version, state->environment.version()};
-        state->observed = observed;
+        state->key = {source.content(), settings.version, state->environment.version()};
+        state->observed = source.observed();
         state->attempts.push_back({1, link});
         auto submitted = impl_->execution.submit(
             {"Compile Flow", "compiler"},

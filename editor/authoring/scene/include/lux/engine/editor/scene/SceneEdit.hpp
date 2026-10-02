@@ -79,10 +79,10 @@ namespace lux::editor::scene
                                             index < std::ranges::size(object);
                 if (!is_valid_index)
                     return false;
-                auto& item = object[index];
+                auto&& item = object[index];
                 if (dot != std::string_view::npos)
                     return assignSceneField(item, path.substr(dot + 1), value);
-                if constexpr (std::same_as<std::remove_cvref_t<decltype(item)>, Value>)
+                if constexpr (std::same_as<std::ranges::range_value_t<Object>, Value>)
                 {
                     item = value;
                     return true;

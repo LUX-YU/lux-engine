@@ -44,7 +44,7 @@ DrawData 拥有顶点、索引、命令和使用到的图像 ID，复用 DrawLis
 
 ImageElement::setImage(render::RTextureHandle) 只设置非拥有身份。空 ID 输出占位，UV 与期望尺寸可配置；最终显示尺寸由布局矩形决定。组件不接收路径、AssetId 或资产读取回调。业务 owner 保证资源需求，发布 owner 保证已经捕获的图像仍有效。
 
-ImageElement 同时显示普通纹理和离屏输出，区域几何、焦点、点击及拖放视图统一由 interaction() 提供。拖放数据只在当前帧借用，业务 owner 在 draw 中解码或复制所需值。引擎场景绑定由 L5 editor_ui 的 SceneElement 负责，资源需求由 RenderResources 管理，UI 发布捕获独立保留 GPU 使用。
+ImageElement 同时显示普通纹理和离屏输出，区域几何、焦点、点击及拖放视图统一由 interaction() 提供。拖放数据只在当前帧借用，业务 owner 在 draw 中解码或复制所需值。引擎场景绑定由 Editor workbench/viewport 的 ViewportElement 负责，资源需求由 RenderResources 管理，UI 发布捕获独立保留 GPU 使用。
 
 字体 atlas 是拥有型 CPU 像素，GPU atlas 属于 Feature。渲染线程的 create/draw/destroy 不访问 CPU Context。Feature 会保留最近一份发布内容；Clear 结束后续绘制，已经提交的 GPU 使用仍须等实际完成，不能以 Program 被消费代替 GPU 退休。
 

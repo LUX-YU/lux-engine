@@ -27,7 +27,7 @@ namespace lux::editor::scene
         bool hierarchy
     );
 
-    // Shared author codec entry, also used by the old Registry adaptation until P12.
+    // Shared author codec entry for formal content producers.
     template <class Component>
     [[nodiscard]] editing::EditResult<SceneComponentData> encodeSceneValue(
         const Component& value,

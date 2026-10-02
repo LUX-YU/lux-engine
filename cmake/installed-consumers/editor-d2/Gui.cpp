@@ -48,18 +48,18 @@ namespace consumer
             }
         };
 
-        lux::editor::ComponentEditorRegistration::CreateResult create(
+        lux::editor::scene::InspectorComponent::CreateResult create(
             lux::ui::Element& parent,
             lux::ui::ElementId id,
-            lux::editor::scene::SceneEditing& editing,
-            lux::simulation::ecs::Entity target,
-            lux::editor::ui::InspectorInteraction& interaction
+            lux::editor::scene::InspectorFields& fields
         ) noexcept
         {
             auto result = std::make_unique<MeasuredElement>(parent, std::move(id));
-            auto content = lux::editor::ui::generated::consumerBindings()
-                               .front()
-                               .create(*result, lux::ui::ElementId{"generated"}, editing, target, interaction);
+            auto content = lux::editor::scene::generated::consumerBindings().front().create(
+                *result,
+                lux::ui::ElementId{"generated"},
+                fields
+            );
             if (!content)
                 return lux::cxx::unexpected(content.error());
             result->content = std::move(*content);
@@ -67,11 +67,10 @@ namespace consumer
         }
     } // namespace
 
-    lux::editor::ComponentEditorRegistration binding()
+    lux::editor::scene::InspectorComponent binding()
     {
-        auto result = lux::editor::ui::generated::consumerBindings().front();
+        auto result = lux::editor::scene::generated::consumerBindings().front();
         result.create = create;
-        result.provider = {"consumer.editor", 1};
         return result;
     }
 

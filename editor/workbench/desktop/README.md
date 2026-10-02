@@ -28,9 +28,11 @@ Each owned unit keeps its defining code alive until its Pane and all member/uniq
 
 `SessionStore` remains the sole author Session owner. `RunStore`, SaveService and compilation services retain their original completion and acknowledgement duties. Views own no author source, History, checkpoint or SaveOperation. Layout application organizes existing views; it does not inspect opaque layouts to open content or rewrite recovery/marker files.
 
-The P10 integration executable is a noninstalled test assembly of these modules, not another product. The old product uses bounded conversion adapters until P12; new targets do not link `editor_ui`, old Context or tool Editors. The Inspector generator has one implementation in workbench/scene, with a temporary old interaction policy for those registered consumers.
+The integration executable assembles these formal modules for qualification; only EditorApplication is
+installed as the product. No old Context or tool Editor is linked. Inspector generation has one
+implementation, producing author and runtime controls against their distinct field capabilities.
 
-P10 native input tests use actual OS mouse/keyboard events through the new shell. They do not certify system IME candidate composition; that scope must be recorded separately. Full product entry switching and dynamic registration remain P12 and P11 respectively.
+P10 native input tests use actual OS mouse/keyboard events through the new shell. They do not certify system IME candidate composition; that scope must be recorded separately. The installed product uses the same desktop and V7 contribution contracts.
 
 ## View API（P08）
 
@@ -42,7 +44,7 @@ DetachedView 是 code + unique_ptr<Pane> 的唯一 owning 单元，移动赋值�
 Pane 和控件成员／unique_ptr 各自只有一个 C++ owner；Root 和 LuxObject 父子链只观察。
 
 ViewRequests 的 close/show/focus 接收 ViewId，宿主排队，在安全点重新检查代次。当前回调不得删除自身。
-真实 Root 协议由同目录的 ViewHost/DesktopShell 消费；FakeHost 仅用于协议单测，不代替桌面验证。产品入口切换仍属于 P12。
+真实 Root 协议由同目录的 ViewHost/DesktopShell 消费；FakeHost 仅用于协议单测，不代替桌面验证。实际产品入口使用同一正式 DesktopShell。
 
 `test/lifecycle.cpp` 同时用于安装消费者，执行真实 ImGui Root 的绘制、注册、焦点撤销、离树析构与通知故障。
 这不是 P10/P13 GPU 像素、IME 或新产品资格。

@@ -44,15 +44,11 @@ stores its result independently of new-business admission. Nested delivery does 
 RunStore dispatch guard. The task cycle is released after completion; abandoning a start cancels it and
 late completion only releases owned data. A consumed failed build cannot be adopted again.
 
-### Compatibility and dependencies
+### Execution and dependencies
 
-The old SceneEditor is a P12 UI consumer of RunStore. It retains UI selection, cached display facts and
-borrowed pause-editing pointers; source/package, task ownership, instance lease, Registry observers and
-history ownership moved here. Its existing single-outstanding Step button policy remains a UI admission
-rule, while the new RunStore/Runtime API accepts the full bounded FIFO. The private
-`editor/transition/SceneRunCaptureAccess.hpp` accepts only a frozen legacy SceneCapture. It is not installed,
-not linked into execution, has only editor_scene as consumer, and must disappear by P12. New code uses
-SceneSession.capture / SceneSnapshot. No shadow SceneSession is synthesized for the legacy Registry.
+RunController accepts SceneSession capture or an owning SceneSnapshot. Worker preparation never
+borrows live author data. The old Registry capture friend and encoding branch have been removed.
+The formal RunInspector uses RunStore's existing paused Registry editing and its separate history.
 
 `scene_execution_api` is a header target and `scene_execution` a static library, exported by
 lux-engine-editor-scene-execution. The API uses SceneEditError and ContentStamp from the pure model;
@@ -62,7 +58,7 @@ EditorContext, UI or transition. Existing RenderSystem dependencies still includ
 engine SceneRuntime itself remains graphics/editor independent.
 
 Author projection is implemented in this activity; formal View/UI/GPU integration lives in workbench.
-Application lifetime switching remains P12. Historical qualification failures/results stay in dev_log.
+EditorApplication owns frame driving and lifetime draining. Historical qualification failures/results stay in dev_log.
 
 ### P06 R1: results after instance retirement
 

@@ -109,16 +109,9 @@ namespace lux::editor::scene
                 );
             partitions.push_back(std::make_shared<const lux::world::WorldPartitionData>(std::move(*decoded)));
         }
-        auto package = lux::scene::assembleScenePackage(
-            config.scene->id(),
-            world.name(),
-            world.schemas(),
-            world.partitioner(),
-            partitions,
-            config.simulation->sharedData(),
-            config.scene->data(),
-            stop
-        );
+        lux::scene::ScenePackage source{config.scene, config.world, config.simulation};
+        source.package = snapshot.package();
+        auto package = lux::scene::assembleScenePackage(source, partitions, stop);
         if (!package)
             return failed(lux::scene::EScenePackageError::ENCODE, package.error().stage);
         {

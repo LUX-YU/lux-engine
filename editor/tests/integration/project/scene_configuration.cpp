@@ -1,3 +1,4 @@
+#include "../../../../cmake/installed-consumers/common/UiTestContent.hpp"
 #include <lux/engine/editor/scene/ConfigurationEditor.hpp>
 #include <lux/engine/editor/extensions/EditorExtension.hpp>
 #include <lux/engine/editor/configuration/EditorReflection.hpp>
@@ -76,7 +77,13 @@ int main(int argc, char** argv)
     assert(registrations);
     auto root = ui::Root::create(queue->dispatcherRef());
     assert(root);
-    ui::Pane pane(**root, ui::PaneId{"scene-configuration"}, ui::PaneTypeId{"test"}, "Scene Configuration");
+    ui::Pane pane(
+        (*root)->dispatcherRef(),
+        ui::PaneId{"scene-configuration"},
+        ui::PaneTypeId{"test"},
+        "Scene Configuration"
+    );
+    ui_test::mount(**root, pane);
     ui::Layout layout(pane, ui::ElementId{"content"});
     pane.setContent(layout);
     constexpr editor::scene::SceneProviderOption providers[]{

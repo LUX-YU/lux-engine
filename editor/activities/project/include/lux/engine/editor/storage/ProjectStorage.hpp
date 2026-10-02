@@ -12,11 +12,6 @@
 #include <lux/engine/process/CompletionWork.hpp>
 #include <unordered_map>
 
-namespace lux::editor::detail
-{
-    class ProjectWrite;
-}
-
 namespace lux::editor
 {
     class LUX_EDITOR_STORAGE_PUBLIC ProjectStorage final : public lux::object::LuxObject
@@ -96,11 +91,6 @@ namespace lux::editor
         [[nodiscard]] std::string_view sourceDigest(std::string_view path) const noexcept;
         [[nodiscard]] EditorResult<ProjectPublication> preparePublication(ProjectUpdate&);
         [[nodiscard]] EditorResult<void> adoptPublication(ProjectPublication&, ProjectPublicationReceipt&);
-        [[nodiscard]] EditorResult<void> savePlugins(std::vector<ProjectPluginEntry>, process::ExecutionRuntime&);
-        [[nodiscard]] const VPublicationStatus* pluginSaveStatus() const noexcept;
-        [[nodiscard]] EditorResult<void> retryPluginSave();
-        [[nodiscard]] EditorResult<void> acknowledgePluginSave();
-        void abandonPluginSave() noexcept;
         void requestClose() noexcept;
         [[nodiscard]] EditorResult<bool> advanceClose();
 
@@ -132,7 +122,6 @@ namespace lux::editor
         std::vector<process::CompletionWork::Request> publication_waiters_;
         std::vector<asset::AssetId> changed_assets_;
         bool closing_{};
-        std::unique_ptr<detail::ProjectWrite> plugin_save_;
         project::ProjectCatalogModel catalog_;
     };
 } // namespace lux::editor

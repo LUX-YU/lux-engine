@@ -165,13 +165,20 @@ namespace lux::editor::ui::generated_support
                 if (stale)
                     interaction_.fail("The alternative changed before the request was adopted.");
                 else if (!read_only_)
-                    interaction_.template mutateField<Component>(
+                {
+                    const auto prepared = interaction_.template mutateField<Component>(
                         target_,
                         this->id().name().data(),
                         label_.c_str(),
                         access_,
                         [desired](auto& next) { return choose(next, desired); }
                     );
+                    // This is owner maintenance, after the field owner was visited. Complete the
+                    // accepted structural edit before selecting its new child. A failed finish
+                    // remains in the original interaction owner for the next maintenance turn.
+                    if (prepared)
+                        static_cast<void>(interaction_.finish());
+                }
                 requested_.reset();
                 choice_.setValue(static_cast<std::int64_t>(index()));
             }

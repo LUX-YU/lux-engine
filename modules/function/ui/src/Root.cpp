@@ -1190,9 +1190,6 @@ namespace lux::ui
     {
         checkDestruction(pane);
         checkContentChange();
-        // The rooted destructor adapter keeps its established notification order until P12.
-        if (notify)
-            static_cast<void>(emit(objectRemoved, static_cast<object::LuxObject*>(&pane)));
         ++impl_->structure_revision;
         if (impl_->menu_pane == &pane)
         {
@@ -1217,15 +1214,14 @@ namespace lux::ui
             impl_->pointer_capture = {};
         pane.registration_slot_ = pane.window_slot_ = SIZE_MAX;
         pane.focused_ = pane.hovered_ = false;
+        if (notify)
+            static_cast<void>(emit(objectRemoved, static_cast<object::LuxObject*>(&pane)));
     }
 
     void Root::unregisterElement(Element& element, bool notify) noexcept
     {
         checkDestruction(element);
         checkContentChange();
-        // The rooted destructor adapter keeps its established notification order until P12.
-        if (notify)
-            static_cast<void>(emit(objectRemoved, static_cast<object::LuxObject*>(&element)));
         ++impl_->structure_revision;
         if (impl_->menu_element == &element)
             impl_->menu_element = nullptr;
@@ -1249,6 +1245,8 @@ namespace lux::ui
             impl_->pointer_capture = {};
         element.registration_slot_ = SIZE_MAX;
         element.hovered_ = false;
+        if (notify)
+            static_cast<void>(emit(objectRemoved, static_cast<object::LuxObject*>(&element)));
     }
 
     void Root::checkDestruction(const object::LuxObject& object) const noexcept

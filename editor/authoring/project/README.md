@@ -9,15 +9,15 @@ ProjectBuilder 只生成创建配置：项目身份、名称、插件选择以�
 源相对路径与 /Project 下的资产 VFS 路径分别保存，不互相推导。
 
 磁盘读写由 editor/activities/project 的 createProject / ProjectStorage 完成。
-AssetImporter 位于 editor/assets，由 EditorContext 持有并借用同一 ProjectStorage。
+AssetImporter 位于 activities/project，由 EditorApplication 装配并借用同一 ProjectStorage。
 AssetImporter 使用 engine/toolchain 编译器；其它引擎消费者可以直接调用这些编译器，不需要 Editor。
 
-具体 Scene/Material/FlowForge 工具拥有当前编辑内容、History、打开/保存请求及切换审阅。
-源读写算法归 assets；保存票据、History 与业务错误归 editing，不建立第二份内容管理器。
+SessionStore 唯一拥有三类作者会话及其 History；具体视图只借用会话与交互。
+内容打开、保存和发布归 activities，应用负责组合与关闭审阅。
 窗口隐藏不会停止已接纳的导入或发布工作。
 
 `engine/project/plugins` 是运行期插件装载与元信息能力，供游戏和编辑器共享；
-本目录是编辑器项目描述。Editor 专用配置和组件 UI 插件位于 `editor/plugins`，不会进入游戏链接依赖。
+本目录是编辑器项目描述。Editor 专用配置和组件 UI 插件位于 `editor/application/extensions`，不会进入游戏链接依赖。
 
 保留的快速测试验证保存目标冲突与发布行为。资产切换、首次保存、另存为、
 未知数据保留和关闭流程由编辑器工作流用例覆盖。

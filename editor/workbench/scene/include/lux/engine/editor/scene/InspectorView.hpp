@@ -33,6 +33,7 @@ namespace lux::editor::scene
         [[nodiscard]] SceneEditResult<void> rebind(EditedSceneBinding, SceneObjectRef);
         [[nodiscard]] SceneEditResult<void> clearTarget();
         [[nodiscard]] SceneEditResult<void> finishEditing();
+        [[nodiscard]] SceneEditResult<void> cancelEditing();
         [[nodiscard]] SceneEditResult<void> addComponent(const simulation::ecs::ComponentSchemaId&);
         [[nodiscard]] SceneEditResult<void> removeComponent(const simulation::ecs::ComponentSchemaId&);
         [[nodiscard]] SceneEditResult<void> prepareClose();

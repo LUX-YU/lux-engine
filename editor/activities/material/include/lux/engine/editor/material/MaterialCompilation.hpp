@@ -5,10 +5,6 @@
 #include <lux/engine/resource/asset/material/MaterialAssets.hpp>
 #include <optional>
 #include <any>
-namespace lux::editor::transition
-{
-    class MaterialCompilationAccess;
-}
 namespace lux::editor::material
 {
     enum class EMaterialCompileRequestError : std::uint8_t
@@ -82,15 +78,8 @@ namespace lux::editor::material
         [[nodiscard]] MaterialCompileResult<std::shared_ptr<const CompiledMaterial>> result() const;
 
     private:
-        friend class lux::editor::transition::MaterialCompilationAccess;
         struct Impl;
         explicit MaterialCompileOperation(std::shared_ptr<Impl>);
-        [[nodiscard]] static MaterialCompileResult<std::unique_ptr<MaterialCompileOperation>> startSource(
-            process::ExecutionRuntime&,
-            std::shared_ptr<const lux::material::MaterialSource>,
-            MaterialCompileKey,
-            sessions::ObservationVersion
-        );
         std::shared_ptr<Impl> impl_;
     };
 }

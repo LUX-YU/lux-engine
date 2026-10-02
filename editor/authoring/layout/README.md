@@ -72,5 +72,7 @@ An existing same-origin recovery or completed marker remains authoritative, incl
 silently replace a previously migrated recovery that used the earlier directory-wide selection policy. Any
 later repair of such user data needs a separate explicit decision; no format version changes in this correction.
 
-The formal DesktopShell consumes these plans; the existing product entry has not switched. The original EditorWorkspace files and settings consumers remain confined to
-the old product until P12. Original C01 full application still fails; the new pure validation is separate evidence.
+EditorApplication applies the complete plan through DesktopShell/ViewHost preparation and commit.
+Independent RecoveryManifest input supplies content bindings. The product's C01 regression checks
+rejected dock data against its original visibility, count and serialized dock state; historical C01
+FAIL snapshots remain unchanged and are evaluated at their own implementation SHA.

@@ -137,7 +137,7 @@ namespace lux::editor::application
             views::ViewFactoryDescriptor{
                 views::ViewTypeId{"lux.editor.project"},
                 "Assets",
-                cxx::typeToken<EmptyViewInput>()
+                cxx::typeToken<std::monostate>()
             },
             [this](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
                 return makeProjectView(input.paneId());
@@ -148,7 +148,7 @@ namespace lux::editor::application
             views::ViewFactoryDescriptor{
                 views::ViewTypeId{"lux.editor.tasks"},
                 "Tasks",
-                cxx::typeToken<EmptyViewInput>()
+                cxx::typeToken<std::monostate>()
             },
             [this](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
                 return tasks::makeTaskView(input.dispatcher(), input.paneId(), task_monitor_);
@@ -159,6 +159,35 @@ namespace lux::editor::application
             auto contributed = extension.contributions();
             if (!contributed)
                 return applicationFailure("extension.contribute", contributed.error());
+            for (const auto& entry : contributed->views)
+            {
+                const auto& descriptor = entry->descriptor();
+                if (descriptor.binding_type != cxx::typeToken<std::monostate>())
+                    continue;
+                draft.commands.push_back(std::make_shared<commands::CommandEntry>(
+                    contracts::CodeLease::builtin(),
+                    commands::CommandDescriptor{
+                        commands::CommandId{std::string("lux.editor.tool/") + std::string(descriptor.type.name())},
+                        descriptor.label,
+                        "Window"
+                    },
+                    [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
+                        return commands::CommandState{phase_ == EApplicationPhase::RUNNING};
+                    },
+                    [this, type = descriptor.type](const commands::CommandInvocation&)
+                        -> commands::CommandResult<commands::DispatchReceipt> {
+                        auto shown = showTool(type);
+                        if (!shown)
+                            return cxx::unexpected(commands::CommandFailure{
+                                commands::ECommandError::DOMAIN_FAILURE,
+                                shown.error().domain,
+                                shown.error().reason,
+                                shown.error().message
+                            });
+                        return commands::DispatchReceipt{commands::ImmediateCompletion{}};
+                    }
+                ));
+            }
             append(draft.code, contributed->code);
             append(draft.reflection, contributed->reflection);
             append(draft.commands, contributed->commands);

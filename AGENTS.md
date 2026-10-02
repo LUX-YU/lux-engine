@@ -19,8 +19,8 @@ lux 是一个项目簇；lux-engine 是其中的游戏引擎——`modules/` 提
 Editor 正式实现按 `editing -> authoring -> activities -> workbench -> application` 由内向外组织；
 层目录不是聚合库。项目纯描述和 Builder 归 `authoring/project`，文件与资产活动归
 `activities/project`，保存和文件发布归 `activities/persistence`；领域 UI 归对应 workbench 主题。
-`app/context/ui/tools/launcher/metadata/plugins` 中仍有已登记的 P11/P12 旧产品消费者，
-新正式路径不得依赖它们。公开逻辑 include 和安装包不随物理目录迁移改名。
+P12 已移除旧产品根与兼容接线；正式路径只能依赖相应层的真实 provider。
+公开逻辑 include 和安装包不随物理目录迁移改名。
 编译与执行入口见
 `.vscode/launch.json` 与 `.vscode/settings.json`。
 

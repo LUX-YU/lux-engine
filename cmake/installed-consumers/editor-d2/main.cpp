@@ -181,8 +181,6 @@ void decodedValues(const lux::simulation::ecs::ComponentSchema& schema)
               "and code lease");
 }
 
-int sceneWorkflow(const std::filesystem::path&, bool);
-
 void pakRoundTrip(const std::filesystem::path& root)
 {
     using namespace lux::asset;
@@ -216,44 +214,6 @@ void pakRoundTrip(const std::filesystem::path& root)
     assert(!writePakFile(root / "invalid.luxpak", entries, "/Game", &error));
     assert(!std::filesystem::exists(root / "invalid.luxpak"));
     std::puts("PASS installed Pak: file tombstones, shared/empty virtual paths, exact payload rejection");
-}
-
-void sharedInspector()
-{
-    using namespace lux;
-    auto schemas = simulation::ecs::ComponentSchemaSet::build(consumer::schemas(), {});
-    assert(schemas);
-    simulation::SimulationSystemRegistry systems;
-    auto description = scene::SceneDescriptionBuilder{}.buildResolved();
-    assert(description);
-    auto execution = process::ExecutionRuntime::create({1, 32, 32, {16}});
-    assert(execution);
-    auto runtime = scene::SceneRuntime::create(*execution, {0, 1024});
-    assert(runtime);
-    auto instance = (*runtime)
-                        ->builder()
-                        .setDescription(std::make_shared<const scene::SceneDescription>(std::move(*description)))
-                        .setWorld(std::make_shared<const world::WorldDescription>())
-                        .setSimulation(std::make_shared<const simulation::SimulationDescription>())
-                        .setRegistrations(*schemas, systems, {})
-                        .build();
-    assert(instance && (*runtime)->pauseSimulation(instance->id()));
-    auto& registry = (*runtime)->borrowInstance(instance->id())->get();
-    const auto entity = registry.create();
-    registry.emplace<consumer::Component>(entity);
-    assert((*runtime)->driveFrame());
-    auto history = editor::editing::EditHistory::create({{128, 16777216, 16777216, 256}, {}});
-    assert(history);
-    editor::scene::SceneEditing editing(**runtime, instance->id(), *schemas, **history);
-    auto queue = object::ObjectMessageQueue::create(64);
-    assert(queue);
-    auto root = ui::Root::create(queue->dispatcherRef());
-    assert(root);
-    consumer::checkCompletedGesture(editing, **history, entity);
-    consumer::checkUndrawnInspector(**root, editing, **history, entity, [] {});
-    assert((*history)->close());
-    editing.close();
-    std::puts("PASS installed shared Inspector: no concrete editor, renderer or world loader");
 }
 
 int main(int argc, char** argv)
@@ -292,14 +252,10 @@ int main(int argc, char** argv)
 
     std::puts("PASS installed component: separate domain/GUI DLLs, typed generated binding, nested codec and immutable "
               "capture");
-    assert(argc == 2 || (argc == 3 && std::string_view(argv[2]) == "cost"));
+    assert(argc == 2);
     const auto run = std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
     const auto root = std::filesystem::u8path(argv[1]) / run;
     pakRoundTrip(root / "pak");
-    sharedInspector();
-#if defined(LUX_TOOL_INTERNAL_TESTS)
-    return sceneWorkflow(root / "scene", argc == 3);
-#else
+    consumer::checkInspector();
     return 0;
-#endif
 }

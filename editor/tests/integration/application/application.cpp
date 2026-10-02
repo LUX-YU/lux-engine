@@ -156,6 +156,18 @@ int main(int argc, char** argv)
         cause->domain_code == static_cast<std::uint64_t>(object::EConnectError::CAPACITY_EXHAUSTED)
     );
     std::cout << "C04: actual EditorApplication::create rejects required menu connection failure\n";
+    {
+        auto direct = EditorApplication::create(config);
+        assert(direct);
+        for (const auto command : {"lux.editor.new.material", "lux.editor.new.flow", "lux.editor.settings"})
+            assert((*direct)->execute(commands::CommandId{command}));
+        for (int frame{}; frame < 8; ++frame)
+            assert((*direct)->update());
+        auto& owned = ApplicationTestAccess::implementation(**direct);
+        assert(owned.sessions_.size() == 2 && owned.desktop_->views().describeAll()->size() >= 5);
+        // No exec/requestExit: destruction still releases mounted UI and accepted resource work.
+    }
+    std::cout << "Application direct destruction: formal content, tools and GPU presentation released\n";
     auto created = EditorApplication::create(config);
     if (!created)
     {
@@ -190,7 +202,7 @@ int main(int argc, char** argv)
     assert(impl.desktop_->views().describeAll()->size() == views->size());
     assert(app->applyLayout(*before_layout));
     std::cout << "C01: malformed product layout preserves hidden state, count and exact dock encoding\n";
-    using WorkspaceAction = std::remove_reference_t<decltype(impl)>::EWorkspaceAction;
+    using WorkspaceAction = std::remove_reference_t<decltype(impl)>::EWorkspaceIntent;
     const auto settle_workspace = [&] {
         const auto limit = std::chrono::steady_clock::now() + std::chrono::seconds(15);
         while (std::ranges::any_of(impl.workspace_publications_, [](const auto& item) { return !item.result; }))
@@ -995,6 +1007,21 @@ int main(int argc, char** argv)
     std::cout << "Formal import/settings factories: UI closes, immutable import and plugin publication finish; active "
                  "code stays pinned\n";
 
+    // Accepted source encoding and real material compilation remain owned while the Run/GPU are live.
+    const auto exit_content = impl.sessions_.describe(material_id)->current;
+    auto exit_save = impl.save({material_id, exit_content}, persistence::ESaveMode::SAVE);
+    assert(exit_save && impl.saves_.status(*exit_save)->stage != persistence::ESaveStage::TERMINAL);
+    lux::editor::material::MaterialCompileId exit_compile;
+    auto compile_at_exit = [&](ui::Pane& pane) {
+        auto compiled = static_cast<lux::editor::material::MaterialView&>(pane).compile();
+        assert(compiled);
+        exit_compile = *compiled;
+    };
+    assert(impl.desktop_->views().withView(*shown_again, compile_at_exit));
+    auto exit_operation = impl.material_compilation_.operation(exit_compile);
+    assert(exit_operation && !exit_operation->get().ready());
+    const auto exit_task = exit_operation->get().task();
+    assert(impl.runs_.info(run) && !impl.engine_->renderContext()->resources().empty());
     assert(app->requestExit());
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
     while (app->phase() != EApplicationPhase::RELEASED)
@@ -1011,5 +1038,18 @@ int main(int argc, char** argv)
         std::this_thread::yield();
     }
     assert(!impl.desktop_ && impl.engine_->renderContext()->resources().empty());
+    assert(impl.material_compilation_.snapshotIds()->empty());
+    assert(!impl.material_compilation_.operation(exit_compile));
+    const auto exit_completed = impl.engine_->execution().taskInfo(exit_task);
+    assert(exit_completed && exit_completed->finished && exit_completed->state == process::ETaskState::SUCCEEDED);
+    const auto exit_saved = std::ranges::find(
+        impl.save_reports_,
+        *exit_save,
+        &std::remove_reference_t<decltype(impl)>::SavePresentation::id
+    );
+    assert(exit_saved != impl.save_reports_.end() && exit_saved->result);
+    assert(std::holds_alternative<persistence::CommitReceipt>(exit_saved->result->publication));
+    assert(impl.pending_saves_.empty() && impl.sessions_.size() == 0);
+    std::cout << "X12-09: accepted encode/compile, independent Run and GPU drain; source publication retained\n";
     std::cout << "Application: formal service assembly, frames, and asynchronous exit drain complete\n";
 }

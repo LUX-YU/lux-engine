@@ -151,8 +151,8 @@ namespace lux::editor::application
             messages_.dispatcherRef(),
             lux::ui::PaneId{type.name()},
             contracts::CodeLease::builtin(),
-            cxx::typeToken<EmptyViewInput>(),
-            std::make_shared<const EmptyViewInput>()
+            cxx::typeToken<std::monostate>(),
+            std::make_shared<const std::monostate>()
         };
         auto candidate = snapshot.views().prepare(type, input);
         if (!candidate)

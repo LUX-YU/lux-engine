@@ -67,10 +67,6 @@ namespace lux::editor::scene
         {
             return catalog_;
         }
-        [[nodiscard]] project::ProjectCatalogModel* catalogAccess() const noexcept
-        {
-            return catalog_;
-        }
         [[nodiscard]] const char* errorMessage() const noexcept
         {
             return message_.c_str();

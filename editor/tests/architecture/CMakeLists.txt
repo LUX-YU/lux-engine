@@ -105,3 +105,8 @@ add_test(NAME editor.extensions.boundaries
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_layering_boundaries.py"
         --source "${PROJECT_SOURCE_DIR}" --build "${CMAKE_BINARY_DIR}" --cmake "${CMAKE_COMMAND}" --p11)
 set_tests_properties(editor.extensions.boundaries PROPERTIES LABELS "editor;native;P11" TIMEOUT 180)
+
+add_test(NAME editor.product.boundaries
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test_layering_boundaries.py"
+        --source "${PROJECT_SOURCE_DIR}" --build "${CMAKE_BINARY_DIR}" --cmake "${CMAKE_COMMAND}" --p12)
+set_tests_properties(editor.product.boundaries PROPERTIES LABELS "editor;native;P12" TIMEOUT 180)

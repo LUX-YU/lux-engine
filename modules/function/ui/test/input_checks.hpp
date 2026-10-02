@@ -1,4 +1,5 @@
 #pragma once
+#include "../../../../cmake/installed-consumers/common/UiTestContent.hpp"
 #include <lux/engine/ui/Root.hpp>
 #include <lux/engine/ui/Pane.hpp>
 #include <lux/engine/ui/Layout.hpp>
@@ -33,9 +34,10 @@ namespace input_checks
     public:
         template <class Parent>
         Window(Parent& parent, const char* name)
-            : ui::Pane(parent, ui::PaneId{name}, ui::PaneTypeId{"test.input"}, name), content(*this)
+            : ui::Pane(ui_test::parent(parent), ui::PaneId{name}, ui::PaneTypeId{"test.input"}, name), content(*this)
         {
             setContent(content);
+            ui_test::mount(parent, *this);
         }
         Content content;
         unsigned keys{};

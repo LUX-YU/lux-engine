@@ -3,6 +3,7 @@
 #include <lux/cxx/core/move_only_function.hpp>
 #include <lux/cxx/compile_time/TypeToken.hpp>
 #include <span>
+#include <variant>
 
 namespace lux::editor::views
 {
@@ -22,6 +23,8 @@ namespace lux::editor::views
         std::string detail;
     };
     template <class T> using ViewFactoryResult = cxx::expected<T, ViewFactoryFailure>;
+    // Standalone tool windows use typeToken<std::monostate>() and an owned monostate input.
+    // The application can expose these in its Window menu without knowing plugin-specific services.
     struct ViewFactoryDescriptor final
     {
         ViewTypeId type;

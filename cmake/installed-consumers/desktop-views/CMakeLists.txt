@@ -40,7 +40,7 @@ target_link_libraries(inspector_fields PRIVATE lux::engine::editor::scene_ui lux
 engine_target_add_ecs_component_codegen(NAME desktop_consumer_schema TARGET inspector_fields
     SOURCE_FILE "${CMAKE_CURRENT_SOURCE_DIR}/Inspector.cpp" HEADER "${component_input}"
     LOGICAL_PATH consumer/Component.hpp SYMBOL DesktopConsumer)
-engine_target_add_imgui_inspector_codegen(NAME desktop_consumer TARGET inspector_fields SESSION_FIELDS
+engine_target_add_imgui_inspector_codegen(NAME desktop_consumer TARGET inspector_fields
     SOURCE_FILE "${CMAKE_CURRENT_SOURCE_DIR}/Inspector.cpp" HEADER "${component_input}"
     LOGICAL_PATH consumer/Component.hpp COMPONENTS consumer::Component)
 # Only maintained test code is copied. All production headers and libraries come from the installed SDK.

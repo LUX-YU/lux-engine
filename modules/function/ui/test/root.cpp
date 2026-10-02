@@ -80,13 +80,14 @@ namespace
     {
     public:
         LifetimeOwner(lux::ui::Root& root, Lifetime& lifetime)
-            : Pane(root, lux::ui::PaneId{"lifetime"}, lux::ui::PaneTypeId{"test.lifetime"}, "Lifetime"),
+            : Pane(root.dispatcherRef(), lux::ui::PaneId{"lifetime"}, lux::ui::PaneTypeId{"test.lifetime"}, "Lifetime"),
               resource_{lifetime}, content_(*this, lux::ui::ElementId{"layout"}), fixed_(content_, lifetime, "fixed"),
               child_(*this, lifetime)
         {
             setContent(content_);
             fields_.push_back(std::make_unique<LifetimeElement>(content_, lifetime, "first"));
             fields_.push_back(std::make_unique<LifetimeElement>(content_, lifetime, "second"));
+            ui_test::mount(root, *this);
             assert(root.requestFocus(*fields_.front()));
             assert(root.capturePointer(*fields_.front()));
             root.deferChange(*fields_.front(), [](lux::object::LuxObject&) noexcept { std::abort(); });
@@ -151,9 +152,10 @@ namespace
     {
     public:
         explicit ChangeOwner(lux::ui::Root& root)
-            : Pane(root, lux::ui::PaneId{"change"}, lux::ui::PaneTypeId{"test.change"}, "Change")
+            : Pane(root.dispatcherRef(), lux::ui::PaneId{"change"}, lux::ui::PaneTypeId{"test.change"}, "Change")
         {
             replace();
+            ui_test::mount(root, *this);
         }
         std::optional<ChangeElement> content;
         void replace() noexcept
@@ -293,9 +295,10 @@ namespace
     public:
         template <class Parent>
         Probe(Parent& parent, const char* id)
-            : lux::ui::Pane(parent, lux::ui::PaneId{id}, lux::ui::PaneTypeId{"test.probe"}, id)
+            : lux::ui::Pane(ui_test::parent(parent), lux::ui::PaneId{id}, lux::ui::PaneTypeId{"test.probe"}, id)
         {
             setContent(probe_content_);
+            ui_test::mount(parent, *this);
         }
         unsigned draws{}, updates{}, keys{}, undo{}, redo{}, moves{}, losses{};
         bool nested{}, reject_capture{}, edit_text{}, consume_keys{true}, immediate_input{};
@@ -382,6 +385,7 @@ int main(int argc, char** argv)
         parent.reject_capture = true;
         Probe child(parent, "child");
         static_assert(!std::is_constructible_v<ui::Pane, object::LuxObject&, ui::PaneId, ui::PaneTypeId, std::string>);
+        static_assert(!std::is_constructible_v<ui::Pane, ui::Root&, ui::PaneId, ui::PaneTypeId, std::string>);
         Probe sibling(**first, "sibling");
         Probe separate(**second, "separate");
         assert(&child.root() == first->get());

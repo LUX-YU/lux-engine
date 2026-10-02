@@ -198,6 +198,20 @@ def main():
         print("PASS S01 old directories rejected; narrow history/session scopes preserved")
 
 
+        # An excluded/unlinked old source is still expired. It cannot hide behind #if 0.
+        assert not inspect(root, [], rules, "P12")
+        for name in ["app", "assets", "context", "launcher", "metadata", "plugins", "tools", "transition", "ui"]:
+            retired = root / "editor" / name
+            retired.mkdir()
+            hidden = retired / "Unused.cpp"
+            hidden.write_text("#if 0\nvoid oldProduct() {}\n#endif\n")
+            assert any(x["rule"] == "EXPIRED_PATH" and x["path"] == f"editor/{name}"
+                       for x in inspect(root, [], rules, "P12"))
+            hidden.unlink()
+            retired.rmdir()
+            assert not inspect(root, [], rules, "P12")
+        print("PASS N12-07: all nine expired source roots rejected, including excluded bodies; repaired")
+
         # Test options must be subordinate to BUILD_TESTING and default to native-only.
         (root / "CMakeLists.txt").write_text(
             'cmake_minimum_required(VERSION 3.22)\nproject(options LANGUAGES NONE)\n'

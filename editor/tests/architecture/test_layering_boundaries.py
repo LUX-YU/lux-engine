@@ -18,6 +18,7 @@ def main():
     parser.add_argument("--build", type=Path, required=True)
     parser.add_argument("--cmake", default="cmake")
     parser.add_argument("--p11", action="store_true")
+    parser.add_argument("--p12", action="store_true")
     args = parser.parse_args()
     repo = args.source.resolve()
     base_rules = json.loads((repo / "editor/tests/architecture/rules.json").read_text())
@@ -47,7 +48,21 @@ def main():
             ("N11-04", "editor_extensions", "session_factories", "private_support_dependency", "private"),
             ("N11-05", "material_model", "process_execution", "authoring_outer_dependency", "link"),
         ]
-    folder_name = "p11-boundaries" if args.p11 else "layering-boundaries"
+    if args.p12:
+        assert not args.p11
+        # The retired target has no production source. A classified fixture permits the positive
+        # build while the real checker must still reject linking it, even through LINK_ONLY.
+        classification["editor_context"]["path"] = "fixture/retired_context"
+        classification["editor_ui"]["path"] = "fixture/retired_ui"
+        cases = [
+            ("N12-01-context", "editor_bootstrap", "editor_context", "new_legacy_dependency", "transitive"),
+            ("N12-01-ui", "editor_bootstrap", "editor_ui", "new_legacy_dependency", "link"),
+            ("N12-02", "material_model", "material_ui", "authoring_outer_dependency", "transitive"),
+            ("N12-03", "material_ui", "scene_ui", "cross_tool_ui_dependency", "link"),
+            ("N12-04", "editor_tasks", "tasks_ui", "task_monitor_ui_dependency", "link"),
+            ("N12-05", "world_storage", "editor_contracts", "product_reverse_dependency", "link"),
+        ]
+    folder_name = "p12-boundaries" if args.p12 else ("p11-boundaries" if args.p11 else "layering-boundaries")
     folder = args.build / folder_name
     suffix = 1
     while folder.exists():
@@ -112,6 +127,8 @@ def main():
                'set(LUX_EDITOR_LAYERING_MODE STRICT CACHE STRING "")\n')
         if args.p11:
             top = top.replace("STAGE P10Q", "STAGE P11")
+        elif args.p12:
+            top = top.replace("STAGE P10Q", "STAGE P12")
         top += "".join(f"add_subdirectory({p})\n" for p in declarations)
         legal_edges = f"target_link_libraries({owner} PRIVATE {dependency})\n" if kind == "unknown" else ""
         if kind == "generated":

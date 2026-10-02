@@ -2,10 +2,6 @@
 #include <lux/engine/editor/flowforge/FlowSnapshot.hpp>
 #include <lux/engine/flowforge/Compiler.hpp>
 #include <lux/engine/process/ExecutionRuntime.hpp>
-namespace lux::editor::transition
-{
-    class FlowCompilationAccess;
-}
 namespace lux::editor::flowforge
 {
     enum class EFlowCompilationError : std::uint8_t
@@ -126,15 +122,6 @@ namespace lux::editor::flowforge
         [[nodiscard]] FlowCompilationResult<std::vector<FlowCompileId>> snapshotIds() const;
 
     private:
-        friend class lux::editor::transition::FlowCompilationAccess;
-        [[nodiscard]] FlowCompilationResult<FlowCompileId> startSource(
-            lux::flowforge::FlowSource,
-            sessions::ContentStamp,
-            sessions::ObservationVersion,
-            FlowCompileEnvironment,
-            FlowCompileSettings,
-            LinkSettings
-        );
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };

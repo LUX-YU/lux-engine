@@ -84,9 +84,9 @@ alive; collect and reconcile physical responsibilities; revoke source registrati
 and Sessions. Destroying a service with an encode work item still outstanding violates its lifetime
 contract. Closing a Session alone does not cancel or erase an accepted physical write.
 
-The old `TAssetSave`, old tool IO/UI adapters and `SceneSaveCapture::copied` remain limited to the old
-product until P12. New targets do not include or link them. Source, compiled-product and Workspace
-producers borrow the same coordinator; no ordering is promised against legacy/external writers that bypass it.
+Source, compiled-product, import, project and Workspace producers borrow the same coordinator.
+The old TAssetSave and tool save bridges have been removed. External writers remain subject to the
+existing optimistic version-conflict checks; they are not serialized by this coordinator.
 
 P10Q keeps two STATIC components in this package: `editor_persistence` owns pure save/publication
 coordination; `editor_persistence_execution` owns SaveExecution and its Process TaskScope binding.

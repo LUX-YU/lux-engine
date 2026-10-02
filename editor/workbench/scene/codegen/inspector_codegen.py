@@ -75,7 +75,7 @@ class Generator:
             body.insert(0, "ReadOnlyScope read_only{state.readOnly()};")
         body = [re.sub(r'ImGui::SmallButton\(("[^"]*")\)', r'readOnlyButton(\1, state)', line) for line in body]
         self.functions.append(
-            f"lux::ui::EditResult {name}(std::type_identity_t<{typename}>& value, InspectorInteraction& state)\n{{\n"
+            f"lux::ui::EditResult {name}(std::type_identity_t<{typename}>& value, InspectorFields& state)\n{{\n"
             "    lux::ui::EditResult result;\n" + "\n".join("    " + x for x in body) +
             "\n    return result;\n}\n")
         return name
@@ -295,21 +295,21 @@ class Generator:
         args = resolved.get('template_arguments', [])
         if template in ('std::vector', 'std::deque', 'std::list'):
             child = self.element_factory(component, args[0]['type_id'])
-            return f'TSequenceFieldElement<InspectorInteraction, {component}, {tid}, {access}, {child}>', ''
+            return f'TSequenceFieldElement<InspectorFields, {component}, {tid}, {access}, {child}>', ''
         if template in ('std::optional', 'std::variant'):
             optional = template == 'std::optional'
             values = [args[0]['type_id']] if optional else self.type_arguments(args)
             factories = ', '.join(self.element_factory(component, item) for item in values)
             options = '{0, "Absent"}, {1, "Present"}' if optional else ', '.join(
                 '{' + f'{index}, {literal(str(index) + ": " + item)}' + '}' for index, item in enumerate(values))
-            return f'TAlternativeFieldElement<InspectorInteraction, {component}, {tid}, {access}, {str(optional).lower()}, {factories}>', ', std::vector<lux::ui::ChoiceOption>{' + options + '}'
+            return f'TAlternativeFieldElement<InspectorFields, {component}, {tid}, {access}, {str(optional).lower()}, {factories}>', ', std::vector<lux::ui::ChoiceOption>{' + options + '}'
         if template in ('std::map', 'std::unordered_map', 'std::set', 'std::unordered_set'):
             key = self.resolve(args[0]['type_id'])
             scalar_key = key.get('__kind') in ('BuiltinType', 'EnumType', 'ScopedEnumType') or key.get('template_name') in ('std::basic_string', 'std::string')
             if not scalar_key: raise ValueError('Associative keys require a scalar/string or an explicit custom Element: ' + tid)
             mapping = template in ('std::map', 'std::unordered_map')
             child = self.element_factory(component, args[1]['type_id']) if mapping else 'void'
-            return f'TAssociativeFieldElement<InspectorInteraction, {component}, {tid}, {access}, {child}>', ''
+            return f'TAssociativeFieldElement<InspectorFields, {component}, {tid}, {access}, {child}>', ''
         return None
 
     def validate_field(self, t, attrs, stack=()):
@@ -410,7 +410,7 @@ class Generator:
                 if key in properties:
                     setup.append(f'    spec.{member} = NumericStorage<{value_type}>({properties[key]});')
             setup += [f'    if (!{target}.setSpec(std::move(spec)))',
-                      '        status = InspectorInteraction::constructionFailure();', '}']
+                      '        status = InspectorFields::constructionFailure();', '}']
             return 'lux::ui::NumericEdit', '', setup
         if kind in ('EnumType', 'ScopedEnumType'):
             options = ', '.join('{' + f'static_cast<std::int64_t>({tid}::{item["name"]}), {literal(item["name"])}' + '}'
@@ -433,7 +433,7 @@ class Generator:
         control, extra, setup = self.control_plan(resolved, properties, tid, 'result->control()')
         record = self.decls.get(resolved.get('decl_id'), {})
         if control:
-            body = [f'auto result = std::make_unique<TFieldElement<InspectorInteraction, {component}, {tid}, Access, {control}>>(',
+            body = [f'auto result = std::make_unique<TFieldElement<InspectorFields, {component}, {tid}, Access, {control}>>(',
                     '    parent, std::move(id), editing, target, interaction, status, std::move(label), read_only, std::move(access)' + extra + ');']
             body += setup + ['return result;']
         elif aggregate := self.aggregate_element(component, resolved, 'Access'):
@@ -455,11 +455,11 @@ class Generator:
             body.append('return group;')
         else:
             draw = self.draw_function(tid, properties)
-            body = [f'return std::make_unique<TCompositeFieldElement<InspectorInteraction, {component}, {tid}, Access, {draw}>>(',
+            body = [f'return std::make_unique<TCompositeFieldElement<InspectorFields, {component}, {tid}, Access, {draw}>>(',
                     '    parent, std::move(id), editing, target, interaction, status, std::move(label), read_only, std::move(access), 3.F);']
         self.functions.append('struct ' + name + '\n{\n    template<class Access>\n'
             '    static std::unique_ptr<lux::ui::Element> create(lux::ui::Element& parent, lux::ui::ElementId id,\n'
-            '        scene::SceneEditing& editing, lux::simulation::ecs::Entity target, InspectorInteraction& interaction, EditorResult<void>& status,\n'
+            '        InspectorFields& editing, SceneObjectRef target, InspectorFields& interaction, SceneEditResult<void>& status,\n'
             '        std::string label, bool read_only, Access access)\n    {\n' +
             '\n'.join('        ' + line for line in body) + '\n    }\n};\n')
         return name
@@ -497,10 +497,10 @@ class Generator:
             if aggregate := self.aggregate_element(name, resolved, access):
                 field_type, extra = aggregate
             elif control:
-                field_type = f'TFieldElement<InspectorInteraction, {name}, {value}, {access}, {control}>'
+                field_type = f'TFieldElement<InspectorFields, {name}, {value}, {access}, {control}>'
             else:
                 draw = self.draw_function(tid, properties)
-                field_type = f'TCompositeFieldElement<InspectorInteraction, {name}, {value}, {access}, {draw}>'
+                field_type = f'TCompositeFieldElement<InspectorFields, {name}, {value}, {access}, {draw}>'
                 extra = ', 6.F' if tid in self.custom_types else ', 3.F'
             fields.append(f'    {field_type} field{index}_;')
             initializers.append(f'field{index}_(layout_, lux::ui::ElementId{{{literal(identity)}}}, editing, target, interaction, status, {literal(label)}, {str(immutable).lower()}, {access}{{}}{extra})')
@@ -525,17 +525,18 @@ class Generator:
 #include <new>
 {includes}
 
-namespace lux::editor::ui::generated
+namespace lux::editor::scene::generated
 {{
 namespace
 {{
-using namespace generated_support;
+using namespace lux::editor::ui;
+using namespace lux::editor::ui::generated_support;
 {chr(10).join(self.functions)}
 class Element_{suffix} final : public lux::ui::Element
 {{
 public:
-    Element_{suffix}(lux::ui::Element& parent, lux::ui::ElementId id, scene::SceneEditing& editing,
-                    lux::simulation::ecs::Entity target, InspectorInteraction& interaction, EditorResult<void>& status)
+    Element_{suffix}(lux::ui::Element& parent, lux::ui::ElementId id, InspectorFields& editing,
+                    SceneObjectRef target, InspectorFields& interaction, SceneEditResult<void>& status)
         : lux::ui::Element(parent, std::move(id)), layout_(*this, lux::ui::ElementId{{"fields"}}){initializers}
     {{
         setStretch({{1, 0}});
@@ -549,44 +550,35 @@ private:
     lux::ui::Layout layout_;
 {chr(10).join(fields)}
 }};
-ComponentEditorRegistration::CreateResult create_{suffix}(lux::ui::Element& parent, lux::ui::ElementId id,
-    scene::SceneEditing& editing, lux::simulation::ecs::Entity target, InspectorInteraction& interaction) noexcept
+InspectorComponent::CreateResult create_{suffix}(lux::ui::Element& parent, lux::ui::ElementId id,
+    InspectorFields& interaction) noexcept
 {{
     try {{
-        EditorResult<void> status;
-        auto result = std::unique_ptr<lux::ui::Element>(new Element_{suffix}(parent, std::move(id), editing, target, interaction, status));
+        SceneEditResult<void> status;
+        auto result = std::unique_ptr<lux::ui::Element>(new Element_{suffix}(parent, std::move(id), interaction, interaction.target(), interaction, status));
         if (!status) return lux::cxx::unexpected(status.error());
         return result;
     }}
     catch (const std::bad_alloc&) {{ std::terminate(); }}
-    catch (...) {{ return lux::cxx::unexpected(EditorFailure{{EEditorError::FRONTEND_FAILURE, "inspector.create"}}); }}
+    catch (...) {{ return lux::cxx::unexpected(InspectorFields::constructionFailure().error()); }}
 }}
 }}
-ComponentEditorRegistration binding_{suffix}()
+InspectorComponent binding_{suffix}()
 {{
     return {{lux::cxx::typeToken<{name}>(), {literal(attrs.get('display_name', decl['name']))}, create_{suffix}}};
 }}
 }}
 '''
-        if self.config.get('session_fields'):
-            text = text.replace('namespace lux::editor::ui::generated', 'namespace lux::editor::scene::generated')
-            text = text.replace('using namespace generated_support;', 'using namespace lux::editor::ui;\nusing namespace lux::editor::ui::generated_support;\nusing InspectorInteraction = InspectorFields;')
-            text = text.replace('scene::SceneEditing&', 'InspectorFields&').replace('lux::simulation::ecs::Entity target', 'SceneObjectRef target')
-            text = text.replace('EditorResult<void>', 'SceneEditResult<void>').replace('ComponentEditorRegistration', 'InspectorComponent')
-            text = text.replace('return lux::cxx::unexpected(EditorFailure{EEditorError::FRONTEND_FAILURE, "inspector.create"});', 'return lux::cxx::unexpected(InspectorFields::constructionFailure().error());')
-            old = f'create_{suffix}(lux::ui::Element& parent, lux::ui::ElementId id,\n    InspectorFields& editing, SceneObjectRef target, InspectorInteraction& interaction) noexcept'
-            new = f'create_{suffix}(lux::ui::Element& parent, lux::ui::ElementId id, InspectorFields& interaction) noexcept'
-            text = text.replace(old, new).replace(f'new Element_{suffix}(parent, std::move(id), editing, target, interaction, status)', f'new Element_{suffix}(parent, std::move(id), interaction, interaction.target(), interaction, status)')
-            run = text.replace('namespace lux::editor::scene::generated', 'namespace lux::editor::scene::run_generated')
-            run = run.replace('InspectorFields', 'RunInspectorFields').replace('SceneObjectRef', 'RunningObjectRef')
-            run = run.replace('SceneEditResult<void>', 'RunResult<void>').replace('InspectorComponent', 'RunInspectorComponent')
-            # The component-specific copy is generated alongside its controls, with the same code owner.
-            old_binding = "return {" + f"lux::cxx::typeToken<{name}>(), {literal(attrs.get('display_name', decl['name']))}, create_{suffix}" + "};"
-            new_binding = old_binding[:-2] + f", +[](const void* value) -> std::shared_ptr<void> {{ return std::make_shared<{name}>(*static_cast<const {name}*>(value)); }}" + "};"
-            if old_binding not in run:
-                raise ValueError('missing generated run component binding')
-            run = run.replace(old_binding, new_binding)
-            text += '\n' + run
+        run = text.replace('namespace lux::editor::scene::generated', 'namespace lux::editor::scene::run_generated')
+        run = run.replace('InspectorFields', 'RunInspectorFields').replace('SceneObjectRef', 'RunningObjectRef')
+        run = run.replace('SceneEditResult<void>', 'RunResult<void>').replace('InspectorComponent', 'RunInspectorComponent')
+        # The component-specific copy is generated alongside its controls, with the same code owner.
+        old_binding = "return {" + f"lux::cxx::typeToken<{name}>(), {literal(attrs.get('display_name', decl['name']))}, create_{suffix}" + "};"
+        new_binding = old_binding[:-2] + f", +[](const void* value) -> std::shared_ptr<void> {{ return std::make_shared<{name}>(*static_cast<const {name}*>(value)); }}" + "};"
+        if old_binding not in run:
+            raise ValueError('missing generated run component binding')
+        run = run.replace(old_binding, new_binding)
+        text += '\n' + run
         return suffix, text
 
 
@@ -597,25 +589,17 @@ def generate(config, data):
     for component in config["components"]:
         suffix, text = Generator(data, config).component(component)
         outputs[suffix + ".inspector.generated.cpp"] = text
-        declarations.append(f"ComponentEditorRegistration binding_{suffix}();")
+        declarations.append(f"InspectorComponent binding_{suffix}();")
         bindings.append(f"binding_{suffix}()")
-    outputs[config["name"] + ".inspector.generated.hpp"] = (
-        '#pragma once\n#include <lux/engine/editor/ui/ComponentEditors.hpp>\n#include <array>\n'
-        f'#include <{config["logical_path"]}>\nnamespace lux::editor::ui::generated\n{{\n' +
+    header = (
+        '#pragma once\n#include <lux/engine/editor/scene/InspectorView.hpp>\n#include <array>\n'
+        f'#include <{config["logical_path"]}>\nnamespace lux::editor::scene::generated\n{{\n' +
         '\n'.join(declarations) + f'\ninline auto {config["name"]}Bindings()\n{{\n'
         '    return std::array{' + ', '.join(bindings) + '};\n}\n}\n')
-    if config.get('session_fields'):
-        header = outputs[config['name'] + '.inspector.generated.hpp']
-        header = header.replace('lux/engine/editor/ui/ComponentEditors.hpp', 'lux/engine/editor/scene/InspectorView.hpp')
-        header = header.replace('namespace lux::editor::ui::generated', 'namespace lux::editor::scene::generated')
-        header = header.replace('ComponentEditorRegistration', 'InspectorComponent')
-        run_header = header.replace('lux/engine/editor/scene/InspectorView.hpp', 'lux/engine/editor/scene/RunInspectorView.hpp')
-        run_header = run_header.replace('namespace lux::editor::scene::generated', 'namespace lux::editor::scene::run_generated')
-        run_header = run_header.replace('InspectorComponent', 'RunInspectorComponent')
-        outputs[config['name'] + '.inspector.generated.hpp'] = header + '\n' + run_header
-    else:
-        header = outputs[config['name'] + '.inspector.generated.hpp']
-        outputs[config['name'] + '.inspector.generated.hpp'] = header.replace('#include <array>', '#include <array>\n#include <lux/engine/editor/ui/InspectorInteraction.hpp>')
+    run = header.replace('lux/engine/editor/scene/InspectorView.hpp', 'lux/engine/editor/scene/RunInspectorView.hpp')
+    run = run.replace('namespace lux::editor::scene::generated', 'namespace lux::editor::scene::run_generated')
+    run = run.replace('InspectorComponent', 'RunInspectorComponent')
+    outputs[config['name'] + '.inspector.generated.hpp'] = header + '\n' + run
     return outputs
 
 

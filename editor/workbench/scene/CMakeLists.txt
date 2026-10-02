@@ -22,19 +22,19 @@ lux_classify_target(TARGET scene_ui LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 
 include_component_cmake_scripts(meta)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/engine_editor_imgui_inspector_codegen.cmake)
-engine_target_add_imgui_inspector_codegen(NAME scene_fields_transform TARGET scene_ui SESSION_FIELDS
+engine_target_add_imgui_inspector_codegen(NAME scene_fields_transform TARGET scene_ui
     SOURCE_FILE ${CMAKE_CURRENT_SOURCE_DIR}/src/CodegenInput.cpp
     HEADER ${PROJECT_SOURCE_DIR}/engine/domain/simulation/ecs/transform/include/lux/engine/simulation/ecs/Transform.hpp
     LOGICAL_PATH lux/engine/simulation/ecs/Transform.hpp
     COMPONENTS lux::simulation::ecs::Transform2D lux::simulation::ecs::Transform3D)
-engine_target_add_imgui_inspector_codegen(NAME scene_fields_hierarchy TARGET scene_ui SESSION_FIELDS
+engine_target_add_imgui_inspector_codegen(NAME scene_fields_hierarchy TARGET scene_ui
     SOURCE_FILE ${CMAKE_CURRENT_SOURCE_DIR}/src/CodegenInput.cpp
     HEADER ${PROJECT_SOURCE_DIR}/engine/domain/simulation/ecs/hierarchy/include/lux/engine/simulation/ecs/Parent.hpp
     LOGICAL_PATH lux/engine/simulation/ecs/Parent.hpp
     COMPONENTS lux::simulation::ecs::Parent
     CUSTOM_TYPES lux::simulation::ecs::Entity
     CUSTOM_HEADERS FirstPartyInspectorControls.hpp)
-engine_target_add_imgui_inspector_codegen(NAME scene_fields_visual TARGET scene_ui SESSION_FIELDS
+engine_target_add_imgui_inspector_codegen(NAME scene_fields_visual TARGET scene_ui
     SOURCE_FILE ${CMAKE_CURRENT_SOURCE_DIR}/src/CodegenInput.cpp
     HEADER ${PROJECT_SOURCE_DIR}/engine/domain/simulation/ecs/visual/include/lux/engine/simulation/ecs/Visual.hpp
     LOGICAL_PATH lux/engine/simulation/ecs/Visual.hpp
@@ -42,7 +42,7 @@ engine_target_add_imgui_inspector_codegen(NAME scene_fields_visual TARGET scene_
     CUSTOM_TYPES lux::rdesc::LightDescription
     CUSTOM_ELEMENTS lux::rdesc::MeshVisualDescription=MeshVisualControl
     CUSTOM_HEADERS FirstPartyInspectorControls.hpp)
-engine_target_add_imgui_inspector_codegen(NAME scene_fields_camera TARGET scene_ui SESSION_FIELDS
+engine_target_add_imgui_inspector_codegen(NAME scene_fields_camera TARGET scene_ui
     SOURCE_FILE ${CMAKE_CURRENT_SOURCE_DIR}/src/CodegenInput.cpp
     HEADER ${PROJECT_SOURCE_DIR}/engine/scene/components/camera/include/lux/engine/scene/Camera.hpp
     LOGICAL_PATH lux/engine/scene/Camera.hpp
@@ -52,3 +52,9 @@ component_add_cmake_scripts(scene_ui ${CMAKE_CURRENT_SOURCE_DIR}/cmake/engine_ed
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/codegen/ DESTINATION share/lux-engine-editor-scene-ui/scene_ui/cmake_scripts/codegen PATTERN "__pycache__" EXCLUDE)
 lux_engine_install_components(PROJECT_NAME lux-engine-editor-scene-ui VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS scene_ui)
+
+if(LUX_EDITOR_BUILD_NATIVE_TESTS)
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    add_test(NAME editor.inspector_codegen COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test/inspector_codegen.py")
+    set_tests_properties(editor.inspector_codegen PROPERTIES LABELS "editor;native")
+endif()

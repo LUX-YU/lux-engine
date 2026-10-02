@@ -24,16 +24,18 @@ Public includes/packages retain their logical names. Project-only support lives 
 implementation headers are not SDK APIs. Inspector generation lives in workbench/scene; generic widgets
 and viewport do not depend on author models. Tests spanning layers are configured last under tests.
 
-## Existing product, pending P11/P12
+## Product assembly
 
-The executable has not switched to the new product workflow. `app`, `context`, `ui`, legacy concrete
-`tools`, `launcher`, `metadata`, `plugins`, `transition`, and the old editing/save adapters retain only
-their registered consumers. Contribution protocol replacement belongs to P11; product and adapter
-removal belongs to P12. Formal providers must never include or link those implementations.
+`lux_editor` is the sole installed Editor executable. It constructs EditorApplication, loads the project's
+V7 contributions, and combines the existing content, save, compilation, Run and desktop providers.
+With no project it displays the same Launcher composition used by `lux_launcher`; project creation uses
+ProjectCreationView and the existing asynchronous project IO. No old/new product fallback is built.
+The nine old roots and their registration/save bridges have been removed. The formal scene execution
+activity retains runtime Registry editing; it is not a legacy author adapter.
 
-The old ProjectCreationPane remains in launcher; its process launch implementation is shared from
-application/launch. The integration harness assembles formal modules and is never installed as a second
-product. Layout values do not open content; WorkspaceStore returns plans/manifests without applying Root.
+Layout application is an atomic Host preparation/commit. Independent recovery manifests supply content
+bindings; layout payloads never authorize opening every persisted asset. Read-only legacy data import
+remains in WorkspaceStore. Historical qualification snapshots keep their original source SHA and results.
 
 See [continuous quality rules](../docs/editor-quality.md). Mutable construction state is only in
 `.internal/editor-redesign/`; frozen dev_log snapshots describe their own implementation SHA.

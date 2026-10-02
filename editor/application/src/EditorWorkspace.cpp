@@ -52,7 +52,7 @@ namespace lux::editor::application
             }
             if (type == views::ViewTypeId{"lux.editor.flowforge"})
                 return make_input(FlowViewAssembly{});
-            return make_input(EmptyViewInput{}); // Exact factory argument validation rejects unsupported types.
+            return make_input(std::monostate{}); // Exact factory argument validation rejects unsupported types.
         };
         auto apply = [&](const extensions::ContributionSnapshot& snapshot) -> extensions::ContributionResult<void> {
             auto prepared = desktop_->views().prepareLayout(std::move(layout), snapshot.views(), create_input);
@@ -108,9 +108,9 @@ namespace lux::editor::application
             layout_catalog_ = std::move(*catalog); // Partial catalogs retain their per-file diagnostics.
             return {};
         };
-        if (intent.action == EWorkspaceAction::REFRESH)
+        if (intent.action == EWorkspaceIntent::REFRESH)
             return refresh();
-        if (intent.action == EWorkspaceAction::ACKNOWLEDGE)
+        if (intent.action == EWorkspaceIntent::ACKNOWLEDGE)
         {
             std::erase_if(workspace_publications_, [&](const auto& report) {
                 return report.ticket == intent.ticket && report.result.has_value() &&
@@ -118,18 +118,18 @@ namespace lux::editor::application
             });
             return {};
         }
-        if (intent.action == EWorkspaceAction::RECONCILE)
+        if (intent.action == EWorkspaceIntent::RECONCILE)
         {
             auto reconciled = writes_.reconcile(intent.ticket, files_);
             return reconciled ? EditorResult<void>{} : applicationFailure("workspace.reconcile", reconciled.error());
         }
         if (phase_ != EApplicationPhase::RUNNING || workspace_publications_.size() >= 16)
             return cxx::unexpected(EditorFailure{EEditorError::BUSY, "workspace.admission"});
-        if (intent.action == EWorkspaceAction::CAPTURE_RECOVERY)
+        if (intent.action == EWorkspaceIntent::CAPTURE_RECOVERY)
             return captureRecovery();
-        if (intent.action == EWorkspaceAction::RESTORE_RECOVERY)
+        if (intent.action == EWorkspaceIntent::RESTORE_RECOVERY)
             return restoreRecovery();
-        if (intent.action == EWorkspaceAction::MIGRATE)
+        if (intent.action == EWorkspaceIntent::MIGRATE)
         {
             if (migration_ticket_)
                 return cxx::unexpected(EditorFailure{EEditorError::BUSY, "workspace.migration.pending"});
@@ -145,7 +145,7 @@ namespace lux::editor::application
         std::string label;
         switch (intent.action)
         {
-        case EWorkspaceAction::SAVE_LAYOUT: {
+        case EWorkspaceIntent::SAVE_LAYOUT: {
             std::mt19937 random{std::random_device{}()};
             workspace::LayoutId id{uuids::to_string(uuids::uuid_random_generator{random}())};
             std::erase(id.value, '-');
@@ -156,7 +156,7 @@ namespace lux::editor::application
             label = "Save layout: " + intent.label;
             break;
         }
-        case EWorkspaceAction::APPLY_LAYOUT: {
+        case EWorkspaceIntent::APPLY_LAYOUT: {
             auto layout = workspace_.readLayout(intent.layout);
             if (!layout)
                 return applicationFailure("workspace.read", layout.error());
@@ -174,11 +174,11 @@ namespace lux::editor::application
             label = "Applied layout; persist selection";
             break;
         }
-        case EWorkspaceAction::RENAME_LAYOUT:
+        case EWorkspaceIntent::RENAME_LAYOUT:
             publication = workspace_.renameLayout(intent.layout, intent.label);
             label = "Rename layout: " + intent.label;
             break;
-        case EWorkspaceAction::REMOVE_LAYOUT:
+        case EWorkspaceIntent::REMOVE_LAYOUT:
             publication = workspace_.removeLayout(intent.layout);
             label = "Delete layout: " + intent.layout.value;
             break;
@@ -246,9 +246,9 @@ namespace lux::editor::application
                         ImGui::EndDisabled();
                     };
                     ImGui::InputText("Layout label", &label_);
-                    button("Save current layout as new", {EWorkspaceAction::SAVE_LAYOUT, {}, label_});
+                    button("Save current layout as new", {EWorkspaceIntent::SAVE_LAYOUT, {}, label_});
                     ImGui::SameLine();
-                    button("Refresh directory", {EWorkspaceAction::REFRESH});
+                    button("Refresh directory", {EWorkspaceIntent::REFRESH});
                     if (app_.workspace_failure_)
                         ImGui::TextWrapped(
                             "%s: %s",
@@ -261,17 +261,17 @@ namespace lux::editor::application
                     {
                         ImGui::PushID(layout.id.value.c_str());
                         ImGui::SeparatorText(layout.label.c_str());
-                        button("Apply", {EWorkspaceAction::APPLY_LAYOUT, layout.id});
+                        button("Apply", {EWorkspaceIntent::APPLY_LAYOUT, layout.id});
                         ImGui::SameLine();
-                        button("Rename to label", {EWorkspaceAction::RENAME_LAYOUT, layout.id, label_});
+                        button("Rename to label", {EWorkspaceIntent::RENAME_LAYOUT, layout.id, label_});
                         ImGui::SameLine();
-                        button("Delete", {EWorkspaceAction::REMOVE_LAYOUT, layout.id});
+                        button("Delete", {EWorkspaceIntent::REMOVE_LAYOUT, layout.id});
                         ImGui::PopID();
                     }
                     ImGui::SeparatorText("Content recovery (independent of layouts)");
-                    button("Record current locations", {EWorkspaceAction::CAPTURE_RECOVERY});
-                    button("Restore recorded content", {EWorkspaceAction::RESTORE_RECOVERY});
-                    button("Import old workspace data", {EWorkspaceAction::MIGRATE});
+                    button("Record current locations", {EWorkspaceIntent::CAPTURE_RECOVERY});
+                    button("Restore recorded content", {EWorkspaceIntent::RESTORE_RECOVERY});
+                    button("Import old workspace data", {EWorkspaceIntent::MIGRATE});
                     if (app_.migration_)
                     {
                         for (const auto& diagnostic : app_.migration_->diagnostics)
@@ -341,7 +341,7 @@ namespace lux::editor::application
                                     "Directory refresh failed: %s",
                                     report.catalog_failure->detail.c_str()
                                 );
-                            button("Acknowledge", {EWorkspaceAction::ACKNOWLEDGE, {}, {}, report.ticket});
+                            button("Acknowledge", {EWorkspaceIntent::ACKNOWLEDGE, {}, {}, report.ticket});
                         }
                         else
                         {
@@ -349,7 +349,7 @@ namespace lux::editor::application
                             if (current && current->stage == persistence::EWriteStage::UNKNOWN)
                             {
                                 ImGui::TextUnformatted("Unknown publication; target remains reserved.");
-                                button("Reconcile", {EWorkspaceAction::RECONCILE, {}, {}, report.ticket});
+                                button("Reconcile", {EWorkspaceIntent::RECONCILE, {}, {}, report.ticket});
                             }
                             else
                                 ImGui::TextUnformatted("Publication pending");
@@ -363,7 +363,7 @@ namespace lux::editor::application
             {
                 if (!initialized_ && !content_.app_.workspace_intent_)
                 {
-                    content_.app_.workspace_intent_ = WorkspaceIntent{EWorkspaceAction::REFRESH};
+                    content_.app_.workspace_intent_ = WorkspaceIntent{EWorkspaceIntent::REFRESH};
                     initialized_ = true;
                 }
             }
@@ -381,7 +381,7 @@ namespace lux::editor::application
             views::ViewFactoryDescriptor{
                 views::ViewTypeId{"lux.editor.workspace"},
                 "Workspace",
-                cxx::typeToken<EmptyViewInput>()
+                cxx::typeToken<std::monostate>()
             },
             [this](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
                 return views::DetachedView{

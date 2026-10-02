@@ -199,7 +199,7 @@ namespace lux::editor::application
         {
             std::optional<flowforge::FlowViewBinding> binding;
         };
-        enum class EWorkspaceAction : std::uint8_t
+        enum class EWorkspaceIntent : std::uint8_t
         {
             REFRESH,
             SAVE_LAYOUT,
@@ -214,7 +214,7 @@ namespace lux::editor::application
         };
         struct WorkspaceIntent final
         {
-            EWorkspaceAction action;
+            EWorkspaceIntent action;
             workspace::LayoutId layout;
             std::string label;
             persistence::WriteTicket ticket;
@@ -238,8 +238,6 @@ namespace lux::editor::application
             extensions::ContributionSnapshot catalog;
             std::vector<RecoveryItem> items;
         };
-        struct EmptyViewInput final
-        {};
         struct Dispatch final
         {
             bool& active;

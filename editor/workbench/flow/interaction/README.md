@@ -16,4 +16,4 @@ SessionStore 必须活得更久；Scene 的 RunInspectAccess 是值形式的非�
   真正旧身份不借用新代际会话；没有手势的显式取消保持幂等。
 
 节点布局仍通过原领域编辑保存；相机、hover、画布 pan/zoom 不进入共享选择组。
-旧产品即时 UI guard/输入适配只留原消费者至 P12，新 target 不链接旧 Context、Editor、UI 或转换桥。
+正式视图消费这些交互能力；旧产品的即时 UI guard 和输入转换桥已删除。

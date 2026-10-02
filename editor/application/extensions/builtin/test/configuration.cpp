@@ -122,12 +122,14 @@ int main()
         auto messages = std::move(*messages_created);
         auto context = ui::Root::create(messages.dispatcherRef());
         assert(context);
-        ui::Pane pane(**context, ui::PaneId{"configuration"}, ui::PaneTypeId{"test"}, "Configuration");
+        ui::Pane pane(messages.dispatcherRef(), ui::PaneId{"configuration"}, ui::PaneTypeId{"test"}, "Configuration");
         ui::Layout layout(pane, ui::ElementId{"content"}, ui::ELayoutType::VERTICAL);
         pane.setContent(layout);
         auto created = registration.create(layout, ui::ElementId{"configuration"}, *first);
         assert(created);
         auto& element = static_cast<ConfigurationElement&>(**created);
+        auto prepared = (*context)->prepareMount(pane);
+        assert(prepared && (*context)->commit(*prepared));
         ui::DrawData snapshot;
         for (unsigned turn{}; turn < 4; ++turn)
         {

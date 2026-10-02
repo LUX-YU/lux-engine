@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/editor/CloseStatus.hpp>
+#include <lux/engine/editor/EditorError.hpp>
 #include <variant>
 #include <optional>
 #include <lux/engine/editor/assets/visibility.h>
@@ -24,6 +24,18 @@ namespace lux::editor::persistence
 
 namespace lux::editor::assets
 {
+    enum class EAssetImportCloseState : std::uint8_t
+    {
+        OPEN,
+        CLOSING,
+        CLOSED
+    };
+    struct AssetImportCloseStatus final
+    {
+        EAssetImportCloseState state{EAssetImportCloseState::OPEN};
+        std::string waiting_for;
+        EditorResult<void> progress;
+    };
     struct ModelImportRequest final
     {
         asset::AssetId asset;
@@ -89,7 +101,7 @@ namespace lux::editor::assets
         [[nodiscard]] EditorResult<void> acknowledge(AssetImportId);
         void update() noexcept;
         void requestClose() noexcept;
-        [[nodiscard]] CloseStatus closeStatus() const;
+        [[nodiscard]] AssetImportCloseStatus closeStatus() const;
 
     private:
         struct Impl;

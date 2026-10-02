@@ -1,4 +1,7 @@
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
+#include <lux/engine/editor/storage/ProjectPublicationOperation.hpp>
+#include <lux/engine/editor/storage/FileArtifactStore.hpp>
+#include <lux/engine/editor/persistence/SaveExecution.hpp>
 #include <lux/engine/editor/storage/ProjectPlugins.hpp>
 #include <lux/engine/object/ObjectDispatcher.hpp>
 #include <lux/engine/process/ExecutionRuntime.hpp>
@@ -9,10 +12,6 @@
 #include <chrono>
 #include <fstream>
 #include <thread>
-
-namespace
-{
-}
 
 int main(int argc, char** argv)
 {
@@ -57,43 +56,74 @@ int main(int argc, char** argv)
     lux::asset::AssetVfs assets;
     auto project = ProjectStorage::open(*source, assets, *execution->blocking(), tasks, messages->dispatcherRef());
     assert(project);
-    const std::vector<ProjectPluginEntry> selection{{"test.runtime", 3, "Plugins/Runtime.json"}};
-    assert((*project)->savePlugins(selection, *execution));
-    assert(!(*project)->savePlugins({}, *execution));
+    persistence::WriteCoordinator writes;
+    persistence::SaveService saves{writes};
+    storage::FileArtifactStore files{root};
+    persistence::SaveExecution delivery{*execution, saves, writes, files};
+    std::unique_ptr<ProjectPublicationOperation> operation;
+    const auto start = [&](ProjectUpdate update) -> EditorResult<void> {
+        if (operation)
+            return cxx::unexpected(EditorFailure{EEditorError::BUSY, "test.project.publication"});
+        auto publication = (*project)->preparePublication(update);
+        if (!publication)
+            return cxx::unexpected(publication.error());
+        operation = std::make_unique<ProjectPublicationOperation>(
+            **project,
+            *execution,
+            writes,
+            files,
+            delivery,
+            std::move(*publication)
+        );
+        return {};
+    };
     const auto await = [&](auto ready) {
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
         while (!ready())
         {
             assert(std::chrono::steady_clock::now() < deadline);
             assert(execution->collectCompletions());
+            if (operation)
+                operation->update();
+            assert(delivery.submitReady());
             std::this_thread::yield();
         }
     };
-    await([&] { return std::holds_alternative<PublicationSucceeded>(*(*project)->pluginSaveStatus()); });
+    const std::vector<ProjectPluginEntry> selection{{"test.runtime", 3, "Plugins/Runtime.json"}};
+    ProjectUpdate selected;
+    selected.plugins = selection;
+    assert(start(std::move(selected)));
+    assert(!start({}));
+    ProjectUpdate competitor;
+    assert(!(*project)->preparePublication(competitor));
+    await([&] { return std::holds_alternative<PublicationSucceeded>(operation->status()); });
     assert((*project)->manifest().plugins == selection);
-    assert((*project)->acknowledgePluginSave());
-    assert(!(*project)->pluginSaveStatus());
+    assert(operation->terminal());
+    operation.reset();
+    assert(!operation && writes.size() == 0);
 
-    // Other publications preserve the selection unless an explicit replacement is supplied.
-    ProjectUpdate asset_update;
-    auto publication = (*project)->preparePublication(asset_update);
-    assert(publication && publication->manifest.plugins == selection);
-    auto receipt = publishProjectFiles(*publication);
-    assert(receipt && (*project)->adoptPublication(*publication, *receipt));
-    *publication = {};
+    // The same coordinator publishes other project changes without replacing plugin selection.
+    assert(start({}));
+    await([&] { return operation->terminal(); });
+    assert(std::holds_alternative<PublicationSucceeded>(operation->status()));
+    assert((*project)->manifest().plugins == selection);
+    operation.reset();
 
-    // A conflict is retained by Project independently of any pane or notification.
+    // A conflict remains in its operation owner, independently of any pane or notification.
     {
         std::ofstream external(file, std::ios::binary | std::ios::app);
         external << "\n# external edit\n";
     }
-    assert((*project)->savePlugins({}, *execution));
-    await([&] { return std::holds_alternative<EditorFailure>(*(*project)->pluginSaveStatus()); });
+    ProjectUpdate deselected;
+    deselected.plugins.emplace();
+    assert(start(std::move(deselected)));
+    await([&] { return std::holds_alternative<EditorFailure>(operation->status()); });
     assert((*project)->manifest().plugins == selection);
-    (*project)->abandonPluginSave();
-    await([&] { return std::holds_alternative<PublicationAbandoned>(*(*project)->pluginSaveStatus()); });
-    assert((*project)->acknowledgePluginSave());
-    assert((*project)->manifest().plugins == selection);
+    operation->abandon();
+    await([&] { return std::holds_alternative<PublicationAbandoned>(operation->status()); });
+    assert(operation->terminal());
+    operation.reset();
+    assert((*project)->manifest().plugins == selection && writes.size() == 0);
 
     (*project)->requestClose();
     await([&] {

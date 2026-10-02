@@ -365,7 +365,7 @@ namespace lux::editor::application
             views::ViewFactoryDescriptor{
                 views::ViewTypeId{"lux.editor.content.results"},
                 "Content and Operations",
-                cxx::typeToken<EmptyViewInput>()
+                cxx::typeToken<std::monostate>()
             },
             [this](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
                 return views::DetachedView{

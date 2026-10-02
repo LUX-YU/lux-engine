@@ -447,7 +447,7 @@ namespace lux::editor::assets
         EditorResult<void> acknowledge(AssetImportId);
         void adoptCompleted() noexcept;
         void requestClose() noexcept;
-        CloseStatus closeStatus() const;
+        AssetImportCloseStatus closeStatus() const;
         struct Idle final
         {};
         struct Working final
@@ -1034,7 +1034,7 @@ namespace lux::editor::assets
             adoption.request();
         }
     }
-    CloseStatus AssetImporter::Impl::closeStatus() const
+    AssetImportCloseStatus AssetImporter::Impl::closeStatus() const
     {
         if (!closing)
         {
@@ -1043,17 +1043,17 @@ namespace lux::editor::assets
         const auto* active = std::get_if<Impl::Request>(&this->request);
         if (!active || active->terminal())
         {
-            return {ECloseState::CLOSED};
+            return {EAssetImportCloseState::CLOSED};
         }
         if (const auto* error = std::get_if<EditorFailure>(&active->status))
         {
             return {
-                ECloseState::CLOSING,
+                EAssetImportCloseState::CLOSING,
                 "Model publication requires reconciliation or abandonment",
                 lux::cxx::unexpected(*error)
             };
         }
-        return {ECloseState::CLOSING, "Model import and project publication"};
+        return {EAssetImportCloseState::CLOSING, "Model import and project publication"};
     }
     EditorResult<AssetImportId> AssetImporter::requestModel(const ModelImportRequest& input)
     {
@@ -1087,7 +1087,7 @@ namespace lux::editor::assets
     {
         impl_->requestClose();
     }
-    CloseStatus AssetImporter::closeStatus() const
+    AssetImportCloseStatus AssetImporter::closeStatus() const
     {
         return impl_->closeStatus();
     }

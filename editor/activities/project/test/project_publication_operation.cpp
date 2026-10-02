@@ -219,7 +219,7 @@ int main(int argc, char** argv)
         assert(project->asset(id)->source_path == second.source_path);
         assert(importer.acknowledge(*captured));
         importer.requestClose();
-        assert(importer.closeStatus().state == ECloseState::CLOSED && writes.size() == 0);
+        assert(importer.closeStatus().state == assets::EAssetImportCloseState::CLOSED && writes.size() == 0);
     }
     {
         ProjectUpdate update;

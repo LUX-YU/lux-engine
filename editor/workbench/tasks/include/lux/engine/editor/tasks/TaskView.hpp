@@ -4,7 +4,7 @@
 #include <lux/engine/ui/Element.hpp>
 namespace lux::editor::tasks
 {
-    // Shared table implementation, also used by the old product adapter until P12.
+    // Shared task table; observation and cancellation remain with TaskMonitor and ExecutionRuntime.
     class TaskListElement final : public lux::ui::Element
     {
     public:

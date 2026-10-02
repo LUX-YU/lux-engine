@@ -314,11 +314,6 @@ namespace lux::editor::ui::generated_support
                 if (std::ranges::any_of(rows_, [](const auto& row) { return row->editing(); }) ||
                     !interaction_.finish())
                     return;
-                // The P12 legacy interaction policy still separates structural adoption.
-                // InspectorFields::finish already completes both responsibilities.
-                if constexpr (requires { interaction_.finishPending(); })
-                    if (!interaction_.finishPending())
-                        return;
                 first_ = std::exchange(page_request_, 0) < 0 ? (first_ >= page_size ? first_ - page_size : 0)
                                                              : first_ + page_size;
                 synchronized_ = false;

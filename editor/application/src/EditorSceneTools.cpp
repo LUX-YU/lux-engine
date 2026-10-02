@@ -411,7 +411,7 @@ namespace lux::editor::application
             views::ViewFactoryDescriptor{
                 views::ViewTypeId{"lux.editor.scene.creation"},
                 "New Scene",
-                cxx::typeToken<EmptyViewInput>()
+                cxx::typeToken<std::monostate>()
             },
             [this](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
                 scene::SceneCreationRequests requests{

@@ -494,7 +494,6 @@ namespace lux::editor::scene
         RunEnvironment environment;
         RunProvenance provenance;
         std::shared_ptr<const SceneSnapshot> snapshot;
-        std::optional<lux::scene::SceneCapture> captured;
         std::stop_source stop;
         std::optional<RunResult<lux::scene::ScenePackage>> completed;
         process::Task task;
@@ -539,13 +538,7 @@ namespace lux::editor::scene
             [state, cpu = execution.cpu()](process::TaskReporter reporter) noexcept {
                 reporter.setPhase("Assemble frozen scene");
                 return stdexec::then(stdexec::schedule(cpu), [state]() -> RunResult<lux::scene::ScenePackage> {
-                    auto package = state->snapshot
-                                       ? buildSceneSnapshotPackage(*state->snapshot, state->stop.get_token())
-                                       : lux::scene::buildScenePackage(
-                                             *state->captured,
-                                             256U * 1024U * 1024U,
-                                             state->stop.get_token()
-                                         );
+                    auto package = buildSceneSnapshotPackage(*state->snapshot, state->stop.get_token());
                     if (!package)
                         return rejected(package.error());
                     return std::move(*package);
@@ -591,19 +584,6 @@ namespace lux::editor::scene
         state->environment = std::move(environment);
         state->provenance = {snapshot.content(), configuration};
         state->snapshot = std::make_shared<const SceneSnapshot>(std::move(snapshot));
-        return launch(std::move(state));
-    }
-    RunResult<std::unique_ptr<StartRunOperation>> RunController::prepareCaptured(
-        lux::scene::SceneCapture capture,
-        sessions::ContentStamp stamp,
-        RunEnvironment environment,
-        RunConfiguration configuration
-    )
-    {
-        auto state = std::make_shared<StartRunOperation::Impl>();
-        state->environment = std::move(environment);
-        state->provenance = {stamp, configuration};
-        state->captured.emplace(std::move(capture));
         return launch(std::move(state));
     }
     RunResult<RunId> RunController::adopt(StartRunOperation& operation)

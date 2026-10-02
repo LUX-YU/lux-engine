@@ -45,8 +45,6 @@ namespace lux::ui
         {
             return root_;
         }
-        // transition: rooted construction is restricted to existing products until P12.
-        Pane(Root& parent, PaneId id, PaneTypeId type, std::string title);
         Pane(Pane& parent, PaneId id, PaneTypeId type, std::string title);
 
         ~Pane() override;
@@ -113,7 +111,6 @@ namespace lux::ui
         {
             return false;
         }
-        Pane(object::LuxObject&, Root*, PaneId, PaneTypeId, std::string);
         void invalidatePreparation() noexcept;
         detail::AttachmentState* preparation_{};
         std::size_t registration_slot_{SIZE_MAX}, window_slot_{SIZE_MAX};

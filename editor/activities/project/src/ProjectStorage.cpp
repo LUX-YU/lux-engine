@@ -5,7 +5,6 @@
 #include <fstream>
 #include <lux/engine/editor/PublicationProbe.hpp>
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
-#include <lux/engine/editor/detail/ProjectWrite.hpp>
 #include <lux/engine/resource/asset/storage/pak/PakAssetProvider.hpp>
 #include <unordered_set>
 
@@ -92,7 +91,6 @@ namespace lux::editor
     ProjectStorage::~ProjectStorage()
     {
         requestClose();
-        plugin_save_.reset(); // Adopt accepted publication before unmounting the project.
         const auto completed = tasks_.execution().waitUntil([&]() noexcept {
             auto result = advanceClose();
             if (!result)
@@ -451,48 +449,6 @@ namespace lux::editor
         return (*endpoint)->port();
     }
 
-    EditorResult<void> ProjectStorage::savePlugins(
-        std::vector<ProjectPluginEntry> plugins,
-        process::ExecutionRuntime& runtime
-    )
-    {
-        if (plugin_save_)
-            return lux::cxx::unexpected(EditorFailure{EEditorError::BUSY, "project.plugins.save"});
-        ProjectUpdate update;
-        update.plugins = std::move(plugins);
-        auto publication = preparePublication(update);
-        if (!publication)
-            return lux::cxx::unexpected(publication.error());
-        plugin_save_ = std::make_unique<detail::ProjectWrite>(*this, runtime, std::move(*publication));
-        return {};
-    }
-
-    const VPublicationStatus* ProjectStorage::pluginSaveStatus() const noexcept
-    {
-        return plugin_save_ ? &plugin_save_->status() : nullptr;
-    }
-
-    EditorResult<void> ProjectStorage::retryPluginSave()
-    {
-        if (!plugin_save_)
-            return lux::cxx::unexpected(EditorFailure{EEditorError::INVALID_STATE, "project.plugins.retry"});
-        return plugin_save_->retry();
-    }
-
-    EditorResult<void> ProjectStorage::acknowledgePluginSave()
-    {
-        if (!plugin_save_ || !plugin_save_->terminal())
-            return lux::cxx::unexpected(EditorFailure{EEditorError::BUSY, "project.plugins.acknowledge"});
-        plugin_save_.reset();
-        return {};
-    }
-
-    void ProjectStorage::abandonPluginSave() noexcept
-    {
-        if (plugin_save_)
-            plugin_save_->abandon();
-    }
-
     void ProjectStorage::requestClose() noexcept
     {
         closing_ = true;
@@ -509,13 +465,6 @@ namespace lux::editor
 
     EditorResult<bool> ProjectStorage::advanceClose()
     {
-        if (plugin_save_ && !plugin_save_->terminal())
-        {
-            if (const auto* failure = std::get_if<EditorFailure>(&plugin_save_->status()))
-                return lux::cxx::unexpected(*failure);
-            return false;
-        }
-        plugin_save_.reset();
         if (publishing_)
         {
             return false;

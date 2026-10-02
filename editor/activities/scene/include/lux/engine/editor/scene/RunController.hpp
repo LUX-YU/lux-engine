@@ -2,12 +2,6 @@
 
 #include <lux/engine/editor/scene/RunStore.hpp>
 #include <lux/engine/editor/scene/SceneSession.hpp>
-#include <lux/engine/scene/SceneCapture.hpp>
-
-namespace lux::editor::transition
-{
-    class SceneRunCaptureAccess;
-}
 
 namespace lux::editor::scene
 {
@@ -46,14 +40,6 @@ namespace lux::editor::scene
         [[nodiscard]] RunResult<RunId> adopt(StartRunOperation&);
 
     private:
-        friend class lux::editor::transition::SceneRunCaptureAccess;
-        // Frozen input only. The pre-P12 adapter cannot borrow a live Registry or History.
-        [[nodiscard]] RunResult<std::unique_ptr<StartRunOperation>> prepareCaptured(
-            lux::scene::SceneCapture,
-            sessions::ContentStamp,
-            RunEnvironment,
-            RunConfiguration
-        );
         [[nodiscard]] RunResult<std::unique_ptr<StartRunOperation>> launch(std::shared_ptr<StartRunOperation::Impl>);
         RunStore& store_;
     };

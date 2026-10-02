@@ -77,7 +77,7 @@ namespace lux::scene
         }
     }
 
-    lux::cxx::expected<ScenePackage, ScenePackageFailure> assembleScenePackage(
+    static lux::cxx::expected<ScenePackage, ScenePackageFailure> assemble(
         asset::AssetId id,
         std::string_view name,
         std::span<const lux::world::WorldDataSchemaId> schemas,
@@ -85,7 +85,8 @@ namespace lux::scene
         std::span<const std::shared_ptr<const lux::world::WorldPartitionData>> partitions,
         std::shared_ptr<const lux::simulation::SimulationDescription> simulation,
         const lux::scene::SceneDescription& scene,
-        std::stop_token stop
+        std::stop_token stop,
+        const ScenePackage* source
     ) noexcept
     try
     {
@@ -95,9 +96,9 @@ namespace lux::scene
             return lux::cxx::unexpected(ScenePackageFailure{EScenePackageError::INVALID_ARGUMENT});
         namespace world = lux::world;
         uuids::uuid_name_generator identity{id.uuid()};
-        const world::WorldBundleId bundle{identity("world-bundle")};
-        const world::WorldBundleGeneration generation{identity("world-generation")};
-        const asset::AssetId world_id{identity("world")}, simulation_id{identity("simulation")};
+        const auto bundle = source ? source->world->data().bundleId() : world::WorldBundleId{identity("world-bundle")};
+        const auto world_id = source ? source->world->id() : asset::AssetId{identity("world")};
+        const auto simulation_id = source ? source->simulation->id() : asset::AssetId{identity("simulation")};
         if (partitions.size() > UINT32_MAX || partitions.empty())
             return lux::cxx::unexpected(
                 ScenePackageFailure{EScenePackageError::INVALID_ARGUMENT, {}, 0, {}, "scene.source.partitions"}
@@ -106,6 +107,7 @@ namespace lux::scene
         std::vector<world::WorldPartitionRecord> records;
         std::vector<world::WorldPartitionExtent> extents;
         std::size_t retained{};
+        lux::cxx::algorithm::Sha256 content_digest;
         for (std::size_t ordinal{}; ordinal < partitions.size(); ++ordinal)
         {
             if (stop.stop_requested())
@@ -120,11 +122,16 @@ namespace lux::scene
                     ScenePackageFailure{EScenePackageError::LIMIT, {}, 0, {}, "scene.source.partition"}
                 );
             retained += encoded->size();
+            content_digest.update(*encoded);
             encoded_partitions.push_back(std::move(*encoded));
             const auto index = static_cast<std::uint32_t>(ordinal);
             records.push_back({partitions[ordinal]->id(), index, 1});
             extents.push_back({0, index + 1, 1});
         }
+        const auto digest = content_digest.digest();
+        const std::string generation_key(reinterpret_cast<const char*>(digest.data()), digest.size());
+        const auto seed = source ? source->world->data().generation().value : identity("world-generation");
+        const world::WorldBundleGeneration generation{uuids::uuid_name_generator(seed)(generation_key)};
         auto table = world::encodeWorldPartitionTablePage({0}, records, extents);
         if (!table)
             return failed("scene.source.table", table.error());
@@ -193,17 +200,19 @@ namespace lux::scene
         if (!scene_description)
             return failed("scene.source.description", scene_description.error());
         auto world_asset = world::WorldAsset::create(
-            asset::AssetInfo{world_id},
+            source ? source->world->info() : asset::AssetInfo{world_id},
             std::make_shared<const world::WorldDescription>(std::move(*world_description))
         );
         if (!world_asset)
             return failed("scene.source.world-asset", world_asset.error());
-        auto simulation_asset =
-            lux::simulation::SimulationAsset::create(asset::AssetInfo{simulation_id}, std::move(simulation));
+        auto simulation_asset = lux::simulation::SimulationAsset::create(
+            source ? source->simulation->info() : asset::AssetInfo{simulation_id},
+            std::move(simulation)
+        );
         if (!simulation_asset)
             return failed("scene.source.simulation-asset", simulation_asset.error());
         auto scene_asset = lux::scene::SceneAsset::create(
-            asset::AssetInfo{id},
+            source ? source->scene->info() : asset::AssetInfo{id},
             std::make_shared<const lux::scene::SceneDescription>(std::move(*scene_description))
         );
         if (!scene_asset)
@@ -219,6 +228,24 @@ namespace lux::scene
             return lux::cxx::unexpected(encoded.error());
         result.volumes.push_back(bytes(std::move(*volume)));
         append(result, asset::AssetId{identity("storage/0")}, 1, "Storage/0", result.volumes.front());
+        if (source)
+        {
+            result.package.mount_hint = source->package.mount_hint;
+            for (auto& entry : result.package.entries)
+            {
+                const auto original = std::ranges::find_if(source->package.entries, [&](const auto& candidate) {
+                    return candidate.metadata.id == entry.metadata.id ||
+                           (entry.metadata.vpath == "Storage/0" && candidate.metadata.vpath == "Storage/0");
+                });
+                if (original == source->package.entries.end())
+                    continue;
+                const auto size = entry.metadata.size;
+                const auto digest = entry.metadata.content_digest;
+                entry.metadata = original->metadata;
+                entry.metadata.size = size;
+                entry.metadata.content_digest = digest;
+            }
+        }
         std::ranges::sort(result.package.entries, std::less<asset::AssetId>{}, [](const auto& entry) {
             return entry.metadata.id;
         });
@@ -243,6 +270,50 @@ namespace lux::scene
     catch (...)
     {
         return lux::cxx::unexpected(ScenePackageFailure{EScenePackageError::LIMIT});
+    }
+
+    lux::cxx::expected<ScenePackage, ScenePackageFailure> assembleScenePackage(
+        asset::AssetId id,
+        std::string_view name,
+        std::span<const world::WorldDataSchemaId> schemas,
+        world::WorldPartitionerDescriptor partitioner,
+        std::span<const std::shared_ptr<const world::WorldPartitionData>> partitions,
+        std::shared_ptr<const simulation::SimulationDescription> simulation,
+        const SceneDescription& scene,
+        std::stop_token stop
+    ) noexcept
+    {
+        return assemble(
+            id,
+            name,
+            schemas,
+            std::move(partitioner),
+            partitions,
+            std::move(simulation),
+            scene,
+            stop,
+            nullptr
+        );
+    }
+
+    lux::cxx::expected<ScenePackage, ScenePackageFailure> assembleScenePackage(
+        const ScenePackage& source,
+        std::span<const std::shared_ptr<const world::WorldPartitionData>> partitions,
+        std::stop_token stop
+    ) noexcept
+    {
+        const auto& world = source.world->data();
+        return assemble(
+            source.scene->id(),
+            world.name(),
+            world.schemas(),
+            world.partitioner(),
+            partitions,
+            source.simulation->sharedData(),
+            source.scene->data(),
+            stop,
+            &source
+        );
     }
 
     lux::cxx::expected<ScenePackage, ScenePackageFailure> createScenePackage(

@@ -63,7 +63,9 @@ namespace lux::editor::application
         );
 
     private:
+#if defined(LUX_APPLICATION_TEST_ACCESS)
         friend struct ApplicationTestAccess;
+#endif
         struct Impl;
         explicit EditorApplication(std::unique_ptr<Impl>) noexcept;
         std::unique_ptr<Impl> impl_;

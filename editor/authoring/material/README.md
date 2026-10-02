@@ -24,10 +24,9 @@ Node placement is serialized author content; camera, pan, zoom, selection and ho
 Root AssetId is not embedded in node mementos.
 
 By-value batches own supplied node candidates, also on failure. They never transfer half a
-candidate into the live source. The old product's reference-taking methods clone that input and
-consume its original unique_ptr only after success. All pure editing/history algorithms have
-one implementation here; old MaterialEditor admission, asset catalog checks, signals, preview,
-compile and persistence adapters remain scheduled for P05/P07/P10/P12.
+candidate into the live source. All pure editing/history algorithms have one implementation here.
+Formal activities own compilation and persistence; workbench owns gestures and presentation.
+No reference-taking legacy editor adapter remains.
 
 MaterialReadView::withRead lends const source only within a synchronous callback. Owning capture
 and encode enter the same SessionState gate; temporary destruction and exception unwinding occur

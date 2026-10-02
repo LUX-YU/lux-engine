@@ -8,7 +8,7 @@ SceneRuntime 统一拥有实例、逐实例 Clock/Driver 和共享执行器；Co
 `engine_context` 为不链接图形库的 STATIC 组件。无图形游戏只需此核心。
 图形宿主另链接 `engine_context_render`，通过 initializeRendering 一次构造 RenderContext 和统一日志出口。
 RenderContext 拥有 RenderRuntime、资源 TaskScope、RenderResources 及运输完成接线；
-registerFeatures 冷装配沿 Runtime 的候选/回滚协议执行。EditorContext 和 Launcher 只借用资源设施。
+registerFeatures 冷装配沿 Runtime 的候选/回滚协议执行。EditorApplication 和 Launcher 只借用资源设施。
 Editor 和 Launcher 必须具备 Renderer，不能把空指针当成启动成功。
 
 宿主先释放业务、视口和项目 owner，再销毁 EngineContext。各 owner 的析构等待自身已接纳工作；

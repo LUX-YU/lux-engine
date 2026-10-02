@@ -1,5 +1,4 @@
 #include <lux/engine/editor/storage/ProjectOpenData.hpp>
-#include <lux/engine/editor/detail/ProjectWrite.hpp>
 #include <lux/engine/editor/storage/ProjectPublication.hpp>
 #include <lux/engine/editor/PublicationProbe.hpp>
 #include <fstream>

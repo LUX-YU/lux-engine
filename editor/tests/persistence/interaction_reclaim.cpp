@@ -1,6 +1,3 @@
-#include "../../authoring/flow/src/FlowSessionData.hpp"
-#include "../../authoring/material/src/MaterialSessionData.hpp"
-#include "../../authoring/scene/src/SceneSessionData.hpp"
 #include <lux/engine/editor/scene/SceneInteraction.hpp>
 #include <lux/engine/editor/material/MaterialInteraction.hpp>
 #include <lux/engine/editor/flowforge/FlowInteraction.hpp>
@@ -21,6 +18,9 @@
 #include <thread>
 
 #ifdef LUX_NATIVE_INTERACTION_RECLAIM
+#include "../../authoring/flow/src/FlowSessionData.hpp"
+#include "../../authoring/material/src/MaterialSessionData.hpp"
+#include "../../authoring/scene/src/SceneSessionData.hpp"
 #include <lux/engine/editor/scene/PreparedSceneReload.hpp>
 #include <lux/engine/editor/material/PreparedMaterialReload.hpp>
 #include <lux/engine/editor/flowforge/PreparedFlowReload.hpp>

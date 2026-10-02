@@ -70,6 +70,7 @@ target_link_libraries(scene_execution PUBLIC lux::engine::editor::scene_executio
     lux::engine::scene::scene_world_loading lux::engine::process::world_loading
     lux::engine::editor::editor_project lux::engine::process::asset_loading)
 component_add_transitive_commands(scene_execution
+    "find_package(lux-engine-editor-scene-execution REQUIRED COMPONENTS scene_execution_api)"
     "find_package(lux-engine-editor-project REQUIRED COMPONENTS editor_project)"
     "find_package(lux-engine-process-asset-loading REQUIRED COMPONENTS process_asset_loading)"
     "find_package(lux-engine-editor-editing-scene REQUIRED COMPONENTS editor_editing_scene)"
@@ -115,6 +116,7 @@ install(FILES
     DESTINATION include/lux/engine/editor/editing/scene COMPONENT lux_engine_editor_editing_scene)
 install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/scene/ModelCreationOperation.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/scene/ModelPlacement.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/scene/RunController.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/scene/RunInspectAccess.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/scene/RunStore.hpp

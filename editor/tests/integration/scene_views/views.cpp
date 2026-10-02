@@ -1,4 +1,3 @@
-#include "../../../authoring/flow/src/FlowSessionData.hpp"
 #include <lux/engine/editor/extensions/BuiltinContributions.hpp>
 #include <lux/engine/object/ObjectEvent.hpp>
 #include <lux/engine/editor/storage/FileArtifactStore.hpp>
@@ -28,6 +27,7 @@
 #include <lux/engine/flowforge/graph/ArithmeticNode.hpp>
 #include <imgui_internal.h>
 #ifdef LUX_P10_R1_NATIVE
+#include "../../../authoring/flow/src/FlowSessionData.hpp"
 #include <lux/engine/editor/flowforge/PreparedFlowReload.hpp>
 #include "../../../authoring/material/src/MaterialSessionData.hpp"
 #endif

@@ -9,10 +9,11 @@ find_package(lux-engine-editor-extensions REQUIRED COMPONENTS editor_extensions)
 find_package(lux-engine-editor-desktop REQUIRED COMPONENTS desktop_shell)
 find_package(lux-engine-editor-persistence REQUIRED COMPONENTS editor_persistence_execution)
 find_package(lux-engine-editor-file-publication REQUIRED COMPONENTS editor_file_publication)
+find_package(lux-engine-editor-session-factories REQUIRED COMPONENTS session_execution)
 add_executable(p11_models installation.cpp)
 target_link_libraries(p11_models PRIVATE lux::engine::editor::editor_extensions
     lux::engine::editor::desktop_shell lux::engine::editor::editor_persistence_execution
-    lux::engine::editor::editor_file_publication)
+    lux::engine::editor::editor_file_publication lux::engine::editor::session_execution)
 if(MSVC)
     target_compile_options(p11_models PRIVATE /UNDEBUG /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor)
 else()
@@ -20,6 +21,7 @@ else()
 endif()
 enable_testing()
 add_test(NAME installed.p11.models COMMAND p11_models "${CMAKE_BINARY_DIR}/sources")
+add_test(NAME installed.p12.content_operations COMMAND p11_models "${CMAKE_BINARY_DIR}/sources" p12)
 
 # Same maintained regression bodies, compiled solely against installed public headers/libraries.
 foreach(name contributions commands)

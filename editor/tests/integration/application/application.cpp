@@ -1120,4 +1120,59 @@ int main(int argc, char** argv)
         assert((*initial)->update());
     assert(initial_owner.sessions_.size() == 1);
     std::cout << "Initial scene: installed project description opens one shared content; explicit menu reuses it\n";
+    // A real installed factory refusal happens after content publication, not during fake model construction.
+    auto original_factories = initial_owner.contributions_.snapshot();
+    extensions::ContributionDraft failing_draft;
+    const auto commands = original_factories.commands().entries();
+    failing_draft.commands.assign(commands.begin(), commands.end());
+    const auto factories = original_factories.sessions().entries();
+    failing_draft.sessions.assign(factories.begin(), factories.end());
+    for (const auto& entry : original_factories.views().entries())
+    {
+        if (entry->descriptor().type != views::ViewTypeId{"lux.editor.material"})
+            failing_draft.views.push_back(entry);
+        else
+            failing_draft.views.push_back(std::make_shared<views::ViewFactoryEntry>(
+                contracts::CodeLease::builtin(),
+                entry->descriptor(),
+                [](const views::ViewFactoryInput&) -> views::ViewFactoryResult<views::DetachedView> {
+                    return cxx::unexpected(views::ViewFactoryFailure{
+                        views::EViewFactoryError::CONSTRUCT,
+                        "test.actual-material-factory",
+                        17,
+                        "Deliberate failure"
+                    });
+                }
+            ));
+    }
+    auto failing_factories = extensions::ContributionSnapshot::prepare(std::move(failing_draft));
+    assert(failing_factories && initial_owner.contributions_.enqueue(*failing_factories));
+    assert(initial_owner.contributions_.applyPending());
+    const auto view_count = initial_owner.desktop_->views().describeAll()->size();
+    const auto partial_command = (*initial)->execute(commands::CommandId{"lux.editor.new.material"});
+    assert(partial_command);
+    const sessions::OpenAssetId partial_id{std::get<commands::AcceptedOperation>(*partial_command).value};
+    while (!(*initial)->openStatus(partial_id)->presentation_failure)
+    {
+        assert((*initial)->update());
+        assert(std::chrono::steady_clock::now() < initial_deadline);
+    }
+    const auto partial = (*initial)->openStatus(partial_id);
+    assert(partial && partial->content.stage == sessions::EOpenAssetStage::PUBLISHED && !partial->view);
+    const auto retained_content = initial_owner.sessions_.describe(partial->content.session);
+    assert(
+        retained_content && retained_content->dirty && !retained_content->binding && initial_owner.sessions_.size() == 2
+    );
+    assert(initial_owner.opening_.find(partial->content.session));
+    assert(initial_owner.desktop_->views().describeAll()->size() == view_count);
+    assert(initial_owner.contributions_.enqueue(original_factories) && initial_owner.contributions_.applyPending());
+    assert((*initial)->show(partial->content.session));
+    const auto recovered = initial_owner.sessions_.describe(partial->content.session);
+    assert(recovered && recovered->current == retained_content->current && recovered->dirty == retained_content->dirty);
+    assert(
+        initial_owner.sessions_.size() == 2 && initial_owner.desktop_->views().describeAll()->size() == view_count + 1
+    );
+    assert((*initial)->acknowledgeOpen(partial_id));
+    std::cout
+        << "X12-01: real factory failure preserves published unbound content; explicit show recovers same Session\n";
 }

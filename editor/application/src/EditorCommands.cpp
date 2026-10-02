@@ -249,16 +249,15 @@ namespace lux::editor::application
             return cxx::unexpected(commands::CommandFailure{commands::ECommandError::STALE_TARGET, "menu.view"});
         if (descriptor.scope == commands::ECommandScope::VIEW)
             return commands::CommandInvocation{focused->id};
-        const auto binding = std::ranges::find(content_views_, focused->id, &ContentView::view);
-        if (binding == content_views_.end())
+        if (!focused->content.primary)
             return cxx::unexpected(commands::CommandFailure{commands::ECommandError::STALE_TARGET, "menu.content"});
-        const auto content = sessions_.describe(binding->session);
+        const auto content = sessions_.describe(*focused->content.primary);
         if (!content)
             return cxx::unexpected(commands::CommandFailure{
                 content.error() == sessions::ESessionError::BUSY ? commands::ECommandError::BUSY
                                                                  : commands::ECommandError::STALE_TARGET,
                 "menu.session"
             });
-        return commands::CommandInvocation{commands::SessionTarget{binding->session, content->current}};
+        return commands::CommandInvocation{commands::SessionTarget{*focused->content.primary, content->current}};
     }
 }

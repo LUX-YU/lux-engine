@@ -460,6 +460,8 @@ namespace lux::editor::material
         }
         ~Impl() noexcept
         {
+            if (!services_.compilation.releaseResult(compile_))
+                std::terminate(); // The view and its service share the owner thread.
             if (!discardInputs())
                 std::terminate();
         }
@@ -533,6 +535,9 @@ namespace lux::editor::material
             auto installed = install(std::move(candidate));
             if (!installed)
                 return installed;
+            if (!services_.compilation.releaseResult(compile_))
+                std::terminate();
+            compile_ = {};
             binding_ = binding;
             viewport_.setPresentation({}, state_.extent);
             presented_ = {};
@@ -970,6 +975,8 @@ namespace lux::editor::material
         );
         if (!started)
             return rejected(started.error());
+        if (!impl_->services_.compilation.releaseResult(impl_->compile_))
+            std::terminate();
         impl_->compile_ = *started;
         impl_->compile_assets_ = impl_->services_.environment.assets;
         const auto operation = impl_->services_.compilation.operation(*started);

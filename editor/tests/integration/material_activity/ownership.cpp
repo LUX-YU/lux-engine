@@ -147,6 +147,20 @@ namespace
         });
         assert(service.acknowledge(again));
         assert(take(service.snapshotIds()).empty());
+        const auto released = take(service.start(take(author->capture())));
+        workerFinished(execution, take(service.operation(released)).get().task());
+        assert(service.releaseResult(released) && service.collectReleased());
+        assert(!service.empty() && !take(service.operation(released)).get().ready());
+        std::shared_ptr<const em::CompiledMaterial> after_release;
+        until([&] {
+            dispatch(execution);
+            if (!take(service.operation(released)).get().ready())
+                return false;
+            after_release = take(take(service.operation(released)).get().result());
+            return true;
+        });
+        assert(service.collectReleased() && service.empty());
+        assert(service.releaseResult(released) && !after_release->bytes.empty());
         assert(author->describe().current == before.current && author->describe().dirty == before.dirty);
         assert(author->describe().observed == before.observed);
         assert(take(take(author->read()).encode()) == bytes);
@@ -227,6 +241,20 @@ namespace
         assert(take(take(service.operation(recovered)).get().result())->source->name == "Ownership");
         assert(service.acknowledge(recovered));
         assert(take(service.snapshotIds()).empty());
+        const auto released = take(service.start(take(author->capture()), ef::FlowCompileEnvironment{}, {}, {linker}));
+        workerFinished(execution, take(service.operation(released)).get().task());
+        assert(service.releaseResult(released) && service.collectReleased());
+        assert(!service.empty() && !take(service.operation(released)).get().ready());
+        std::shared_ptr<const ef::CompiledFlow> after_release;
+        until([&] {
+            dispatch(execution);
+            if (!take(service.operation(released)).get().ready())
+                return false;
+            after_release = take(take(service.operation(released)).get().result());
+            return true;
+        });
+        assert(service.collectReleased() && service.empty());
+        assert(service.releaseResult(released) && !after_release->bytes.empty());
         assert(author->describe().current == before.current && author->describe().dirty == before.dirty);
         assert(author->describe().observed == before.observed);
         assert(take(take(author->read()).encode()) == bytes);

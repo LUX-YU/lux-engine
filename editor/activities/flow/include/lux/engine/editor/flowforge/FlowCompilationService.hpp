@@ -118,8 +118,13 @@ namespace lux::editor::flowforge
         ) const;
         [[nodiscard]] FlowCompilationResult<void> acknowledge(FlowCompileId);
         [[nodiscard]] FlowCompilationResult<void> cancel(FlowCompileId);
-        // Enumerates bounded service ownership, independent of current views. No task is cancelled.
+        // Release the caller's interest without cancelling accepted work. Idempotent after acknowledgement.
+        [[nodiscard]] FlowCompilationResult<void> releaseResult(FlowCompileId) noexcept;
+        // Collects only the released, ready set observed on entry; cleanup-created work waits for another turn.
+        [[nodiscard]] FlowCompilationResult<void> collectReleased();
         [[nodiscard]] FlowCompilationResult<std::vector<FlowCompileId>> snapshotIds() const;
+        [[nodiscard]] bool empty() const noexcept;
+
 
     private:
         struct Impl;

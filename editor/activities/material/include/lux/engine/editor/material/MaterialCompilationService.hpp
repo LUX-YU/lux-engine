@@ -24,14 +24,23 @@ namespace lux::editor::material
         ) const noexcept;
         [[nodiscard]] MaterialCompileResult<void> acknowledge(MaterialCompileId);
         [[nodiscard]] MaterialCompileResult<void> cancel(MaterialCompileId) noexcept;
-        // Fixed owner-thread identities, including operations whose initiating view has disappeared.
-        // The application may acknowledge ready unreferenced results; enumeration never cancels work.
+        // Release the caller's interest without cancelling accepted work. Idempotent after acknowledgement.
+        [[nodiscard]] MaterialCompileResult<void> releaseResult(MaterialCompileId) noexcept;
+        // Collects only the released, ready set observed on entry; cleanup-created work waits for another turn.
+        [[nodiscard]] MaterialCompileResult<void> collectReleased();
         [[nodiscard]] MaterialCompileResult<std::vector<MaterialCompileId>> snapshotIds() const;
+        [[nodiscard]] bool empty() const noexcept;
+
 
     private:
         const std::thread::id owner_{std::this_thread::get_id()};
         process::ExecutionRuntime& runtime_;
         std::size_t capacity_;
-        std::vector<std::unique_ptr<MaterialCompileOperation>> operations_;
+        struct Record final
+        {
+            std::unique_ptr<MaterialCompileOperation> operation;
+            bool released{};
+        };
+        std::vector<Record> operations_;
     };
 }

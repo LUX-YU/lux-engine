@@ -19,6 +19,7 @@ namespace lux::editor::sessions
         struct Work final
         {
             Key key;
+            SessionFactorySnapshot factories;
             process::TaskId task;
             std::optional<SessionFactoryResult<SessionPreparation>> result;
             std::optional<PreparedSessionInstallation> prepared;
@@ -33,6 +34,7 @@ namespace lux::editor::sessions
         struct Roles final
         {
             Key key;
+            SessionFactorySnapshot factories;
             InstalledSession session;
         };
         struct Dispatch final
@@ -112,7 +114,9 @@ namespace lux::editor::sessions
         : impl_(std::make_unique<Impl>(runtime, store, saves, capacity))
     {}
     SessionOpening::~SessionOpening() = default;
-    SessionFactoryResult<OpenAssetId> SessionOpening::create(std::uint64_t project_instance, SessionPreparation input)
+    SessionFactoryResult<OpenAssetId> SessionOpening::create(
+        std::uint64_t project_instance, SessionPreparation input, const SessionFactorySnapshot& factories
+    )
     {
         if (auto entered = impl_->enter(); !entered)
             return cxx::unexpected(entered.error());
@@ -129,6 +133,7 @@ namespace lux::editor::sessions
         const OpenAssetId id{impl_->next++};
         auto work = std::make_shared<Impl::Work>();
         work->key = {project_instance, {}, {}, {}, 0};
+        work->factories = factories;
         work->status.stage = EOpenAssetStage::PREPARING;
         work->result.emplace(std::move(owned));
         impl_->works.push_back(work);
@@ -177,6 +182,7 @@ namespace lux::editor::sessions
         }
         auto work = std::make_shared<Impl::Work>();
         work->key = key;
+        work->factories = factories;
         for (const auto& role : impl_->roles)
         {
             const bool same_domain = role.key.project == key.project && role.key.copy == key.copy;
@@ -336,7 +342,7 @@ namespace lux::editor::sessions
                 continue;
             }
             work->status = {EOpenAssetStage::PUBLISHED, installed->id()};
-            impl_->roles.push_back({std::move(installed_key), std::move(*installed)});
+            impl_->roles.push_back({std::move(installed_key), work->factories, std::move(*installed)});
             work->prepared.reset();
             work->result.reset();
         }
@@ -356,6 +362,19 @@ namespace lux::editor::sessions
             if (role.session.id() == id)
                 return &role.session;
         return nullptr;
+    }
+    SessionFactoryResult<std::shared_ptr<SessionFactoryEntry>> SessionOpening::factory(SessionId id) const
+    {
+        if (auto entered = impl_->enter(); !entered)
+            return cxx::unexpected(entered.error());
+        Impl::Dispatch dispatch{impl_->dispatching};
+        auto current = impl_->store.describe(id);
+        if (!current)
+            return cxx::unexpected(factoryFailure(current.error()));
+        for (const auto& role : impl_->roles)
+            if (role.session.id() == id)
+                return role.factories.find(current->kind);
+        return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::NOT_FOUND, "content.factory"});
     }
     void SessionOpening::requestStop() noexcept
     {

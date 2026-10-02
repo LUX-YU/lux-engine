@@ -40,13 +40,18 @@ namespace lux::editor::application
         auto information = desktop_->views().describe(id);
         if (!information)
             return applicationFailure("close.view", information.error());
-        auto content = std::ranges::find(content_views_, id, &ContentView::view);
-        if (content != content_views_.end() && content->session.valid())
+        if (information->content.primary)
         {
-            const auto count = std::ranges::count(content_views_, content->session, &ContentView::session);
+            auto all_views = desktop_->views().describeAll();
+            if (!all_views)
+                return applicationFailure("close.view.references", all_views.error());
+            const auto primary = *information->content.primary;
+            const auto count = std::ranges::count_if(*all_views, [&](const auto& view) {
+                return std::ranges::find(view.content.sessions, primary) != view.content.sessions.end();
+            });
             if (count == 1)
             {
-                auto author = sessions_.describe(content->session);
+                auto author = sessions_.describe(primary);
                 if (!author)
                     return applicationFailure("close.view.content", author.error());
                 auto prompt = desktop::ReviewView::create(

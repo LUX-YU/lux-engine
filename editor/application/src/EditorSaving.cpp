@@ -24,7 +24,7 @@ namespace lux::editor::application
             return applicationFailure("save.source", sessions::ESessionError::STALE_CONTENT);
         if (save_reports_.size() >= 128)
             return cxx::unexpected(EditorFailure{EEditorError::CAPACITY, "save.reports"});
-        const auto factory = contributions_.snapshot().sessions().find(info->kind);
+        const auto factory = opening_.factory(target.id);
         if (!factory || !(*factory)->descriptor().source)
             return cxx::unexpected(EditorFailure{EEditorError::MISSING_PROVIDER, "save.project.kind"});
         const auto& source = *(*factory)->descriptor().source;
@@ -124,7 +124,7 @@ namespace lux::editor::application
             return applicationFailure("save.question.source", info.error());
         if (!target.based_on || *target.based_on != info->current)
             return applicationFailure("save.question.source", sessions::ESessionError::STALE_CONTENT);
-        const auto factory = contributions_.snapshot().sessions().find(info->kind);
+        const auto factory = opening_.factory(target.id);
         if (!factory || !(*factory)->descriptor().source)
         {
             return cxx::unexpected(EditorFailure{EEditorError::MISSING_PROVIDER, "save.naming"});

@@ -49,13 +49,17 @@ namespace lux::editor::sessions
         SessionOpening& operator=(SessionOpening&&) = delete;
         [[nodiscard]] SessionFactoryResult<OpenAssetId> open(OpenAssetRequest, const SessionFactorySnapshot&);
         // New in-memory content uses the same installation and role owner; no encode/read/decode round trip.
-        [[nodiscard]] SessionFactoryResult<OpenAssetId> create(std::uint64_t project_instance, SessionPreparation);
+        [[nodiscard]] SessionFactoryResult<OpenAssetId> create(
+            std::uint64_t project_instance, SessionPreparation, const SessionFactorySnapshot&
+        );
         [[nodiscard]] SessionFactoryResult<OpenAssetStatus> status(OpenAssetId) const;
         [[nodiscard]] SessionFactoryResult<void> cancel(OpenAssetId);
         [[nodiscard]] SessionFactoryResult<void> acknowledge(OpenAssetId);
         // Completion collection only stores owning facts. Installation occurs here, at the owner's safe point.
         [[nodiscard]] SessionFactoryResult<void> update();
         [[nodiscard]] InstalledSession* find(SessionId) noexcept;
+        // Uses the catalog fixed at content admission, including after contributions are replaced.
+        [[nodiscard]] SessionFactoryResult<std::shared_ptr<SessionFactoryEntry>> factory(SessionId) const;
         // Closes new admission and requests outstanding reads to stop; already published sessions remain.
         void requestStop() noexcept;
         [[nodiscard]] bool settled() const noexcept;

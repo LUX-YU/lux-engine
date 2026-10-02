@@ -216,10 +216,11 @@ namespace lux::editor::application
         for (const auto& view : *views)
         {
             const auto content = std::ranges::find(content_views_, view.id, &ContentView::view);
-            const bool closes_content =
-                content != content_views_.end() && std::ranges::any_of(close_decisions_, [&](const auto& decision) {
-                    return decision.content.session == content->session;
-                });
+            const bool closes_content = std::ranges::any_of(close_decisions_, [&](const auto& decision) {
+                return std::ranges::find(view.content.sessions, decision.content.session) != view.content.sessions.end();
+            }) || (content != content_views_.end() && std::ranges::any_of(close_decisions_, [&](const auto& decision) {
+                return decision.content.session == content->session;
+            }));
             const bool stops_run =
                 content != content_views_.end() && content->run &&
                 std::ranges::any_of(close_run_decisions_, [&](const auto& decision) {
@@ -404,7 +405,6 @@ namespace lux::editor::application
             if (!result && outcome)
                 outcome = std::move(result);
         };
-        bool view_operations_known = true;
         for (auto& reload : reloads_)
             if (reload.operation)
             {
@@ -417,68 +417,16 @@ namespace lux::editor::application
                     reload.operation.reset();
                 }
             }
-        std::vector<material::MaterialCompileId> material_in_use;
-        std::vector<flowforge::FlowCompileId> flow_in_use;
-        if (desktop_)
-            for (const auto& record : content_views_)
-            {
-                auto read_operation = [&](lux::ui::Pane& pane) {
-                    if (pane.type() == lux::ui::PaneTypeId{"lux.editor.material"})
-                        material_in_use.push_back(static_cast<material::MaterialView&>(pane).compilation());
-                    else if (pane.type() == lux::ui::PaneTypeId{"lux.editor.flowforge"})
-                        flow_in_use.push_back(static_cast<flowforge::FlowView&>(pane).compilation());
-                };
-                auto used = desktop_->views().withView(record.view, read_operation);
-                if (!used && used.error() != views::EViewError::INVALID_ID)
-                {
-                    view_operations_known = false;
-                    receive(applicationFailure("compilation.view", used.error()));
-                }
-            }
-        auto materials = material_compilation_.snapshotIds();
-        if (!materials)
-            receive(applicationFailure("material.operations", materials.error()));
-        if (materials && view_operations_known)
-            for (auto id : *materials)
-                if (std::ranges::find(material_in_use, id) == material_in_use.end())
-                {
-                    auto operation = material_compilation_.operation(id);
-                    if (!operation)
-                    {
-                        receive(applicationFailure("material.operation", operation.error()));
-                        continue;
-                    }
-                    if (!operation->get().ready())
-                        continue;
-                    auto acknowledged = material_compilation_.acknowledge(id);
-                    if (!acknowledged)
-                        receive(applicationFailure("material.acknowledge", acknowledged.error()));
-                }
-        auto flows = flow_compilation_.snapshotIds();
-        if (!flows)
-            receive(applicationFailure("flow.operations", flows.error()));
-        if (flows && view_operations_known)
-            for (auto id : *flows)
-                if (std::ranges::find(flow_in_use, id) == flow_in_use.end())
-                {
-                    auto operation = flow_compilation_.operation(id);
-                    if (!operation)
-                    {
-                        receive(applicationFailure("flow.operation", operation.error()));
-                        continue;
-                    }
-                    if (!operation->get().ready())
-                        continue;
-                    auto acknowledged = flow_compilation_.acknowledge(id);
-                    if (!acknowledged)
-                        receive(applicationFailure("flow.acknowledge", acknowledged.error()));
-                }
+        if (auto received = material_compilation_.collectReleased(); !received)
+            receive(applicationFailure("material.release", received.error()));
+        if (auto received = flow_compilation_.collectReleased(); !received)
+            receive(applicationFailure("flow.release", received.error()));
         receive(settleSaves());
         receive(settleArtifacts());
         receive(settleWorkspace());
         const bool operations_settled =
-            importer_->closeStatus().state == assets::EAssetImportCloseState::CLOSED && materials && flows &&
-            materials->empty() && flows->empty() && pending_saves_.empty() && opening_.settled() && !recent_task_ &&
+            importer_->closeStatus().state == assets::EAssetImportCloseState::CLOSED && material_compilation_.empty() &&
+            flow_compilation_.empty() && pending_saves_.empty() && opening_.settled() && !recent_task_ &&
             !recent_result_ && !recent_ticket_ && !project_launch_ &&
             std::ranges::all_of(workspace_publications_, [](const auto& value) { return value.result.has_value(); }) &&
             std::ranges::all_of(artifacts_, [](const auto& value) { return value.settled; }) &&

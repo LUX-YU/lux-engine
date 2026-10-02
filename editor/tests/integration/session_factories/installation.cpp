@@ -588,13 +588,19 @@ namespace
         };
         for (std::size_t i{}; i < new_sources.size(); ++i)
         {
-            const auto created = take(opening.create(17, std::move(new_sources[i])));
+            const auto created = take(opening.create(17, std::move(new_sources[i]), factories));
             assert(take(opening.status(created)).stage == EOpenAssetStage::PREPARING);
             assert(opening.update());
             const auto done = take(opening.status(created));
             assert(done.stage == EOpenAssetStage::PUBLISHED && opening.find(done.session));
             const auto current = take(store.describe(done.session));
             assert(!current.binding && current.dirty);
+            const auto provider = take(opening.factory(done.session));
+            assert(provider == take(factories.find(current.kind)) && provider->descriptor().source);
+            // Replacing the caller's directory cannot change the admitted content's source policy or code owner.
+            auto removed = take(SessionFactorySnapshot::create({}));
+            assert(!removed.find(current.kind));
+            assert(take(opening.factory(done.session)) == provider);
             assert(opening.acknowledge(created));
         }
         const auto unbound = take(SaveAllOperation::begin(store, saves));

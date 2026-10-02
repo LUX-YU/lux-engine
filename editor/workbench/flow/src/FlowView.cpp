@@ -428,6 +428,8 @@ namespace lux::editor::flowforge
         }
         ~Impl() noexcept
         {
+            if (!services_.compilation.releaseResult(compile_))
+                std::terminate(); // The view and its service share the owner thread.
             if (!discardInputs())
                 std::terminate();
         }
@@ -499,8 +501,10 @@ namespace lux::editor::flowforge
             auto installed = install(std::move(candidate));
             if (!installed)
                 return installed;
-            binding_ = binding;
+            if (!services_.compilation.releaseResult(compile_))
+                std::terminate();
             compile_ = {};
+            binding_ = binding;
             compile_status_.clear();
             control_ = EControl::NONE;
             return {};
@@ -877,6 +881,8 @@ namespace lux::editor::flowforge
         );
         if (!requested)
             return rejected(requested.error());
+        if (!impl_->services_.compilation.releaseResult(impl_->compile_))
+            std::terminate();
         impl_->compile_ = *requested;
         return *requested;
     }

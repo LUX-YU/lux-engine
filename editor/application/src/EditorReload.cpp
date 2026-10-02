@@ -28,13 +28,15 @@ namespace lux::editor::application
         auto bytes = project_->captureSource(asset->id, 64 * 1024 * 1024, destination->expected_version);
         if (!bytes)
             return cxx::unexpected(bytes.error());
-        // A command already holds the participating registry scopes. Keep only its immutable factory
-        // owner across the read; never retain a Batch while waiting for IO or a user decision.
-        auto factory = contributions_.snapshot().sessions().selectSource(
-            asset->source_type, asset->source_version, current->kind
-        );
+        // Reload uses the same admitted format/code owner as the existing content, not a replacement registry.
+        auto factory = opening_.factory(target.id);
         if (!factory)
             return applicationFailure("reload.factory", factory.error());
+        const auto& format = (*factory)->descriptor().source;
+        const bool is_same_format = format && format->canonical_name == asset->source_type &&
+                                    format->version == asset->source_version;
+        if (!is_same_format)
+            return cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "reload.format"});
         sessions::SessionLoadInput input{
             std::move(*bytes),
             asset->id,

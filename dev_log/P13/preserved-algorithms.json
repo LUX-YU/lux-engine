@@ -1,0 +1,47 @@
+[
+  {
+    "path": "dev_log/P09-R1/before/LegacyWorkspaceImporter.cpp",
+    "sha256": "408b8a8172b8ca33742935f52c909b256276110cb0d3ab24db8ba216d767857b",
+    "base_blob": "b3d83d7cdc780793cf375670b52f5c5f8beffd05"
+  },
+  {
+    "path": "dev_log/P10Q-structure/protected/ProjectBuilder.cpp",
+    "sha256": "ccac49618140d014236c9f23b55fc15d31c96e94b44395dee39fd67d35ab1f5c",
+    "base_blob": "e748eb893490c14bb5273e393053eeb5bf28cf2b"
+  },
+  {
+    "path": "dev_log/P11/protected/ProjectBuilder.cpp",
+    "sha256": "ccac49618140d014236c9f23b55fc15d31c96e94b44395dee39fd67d35ab1f5c",
+    "base_blob": "e748eb893490c14bb5273e393053eeb5bf28cf2b"
+  },
+  {
+    "path": "editor/activities/project/src/AssetImporter.cpp",
+    "sha256": "078fb6389692d5c37e1a89883a501635823d4ee6244297f05c8fb05562360ae1",
+    "base_blob": "88e756dd5ab7b1670e7c5a54d536705bacd5b9f4"
+  },
+  {
+    "path": "editor/activities/scene/src/SceneEditing.cpp",
+    "sha256": "0b87332e3e3d42f9db0f42e14dcf9904042c3d1c760ba20a1a4729089d0f44c7",
+    "base_blob": "c4f6cf8d37a6713a163dad68038817ccb461bd35"
+  },
+  {
+    "path": "editor/activities/workspace/src/LegacyWorkspaceImporter.cpp",
+    "sha256": "786dce97eb83602910cb3730286b9eedf720142f2fc8216988d8956671a9af93",
+    "base_blob": "08902477010f958f53bf022509dbf3c7cdd198d9"
+  },
+  {
+    "path": "editor/authoring/project/src/ProjectBuilder.cpp",
+    "sha256": "758a19ec87d64226fc94aee3eadb816d4ada51e35f1ea47ded4de70c2ede1377",
+    "base_blob": "8617d4267f97af42fb24687ca9c3dc964bbe5aec"
+  },
+  {
+    "path": "editor/authoring/project/src/ProjectManifest.cpp",
+    "sha256": "4c416c27a6c51505a859da283de0d896b8b9122cc72777cb2da3a7fcb02f8eaf",
+    "base_blob": "f1f2afbcedccb8512d37469cad1607def678698c"
+  },
+  {
+    "path": "editor/authoring/scene/src/edits/SceneFieldEdit.cpp",
+    "sha256": "10ffe19bcb0c928d29cf8677fd98b5237b490c45565e3632d4ab24a6366a8395",
+    "base_blob": "519052981d532501d36051a5186cc537d47fe0a7"
+  }
+]

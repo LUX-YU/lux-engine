@@ -1,0 +1,29 @@
+Start testing: Oct 02 15:38 GMT 夏令时
+----------------------------------------------------------
+1/1 Testing: installed.application.command_thread
+1/1 Test: installed.application.command_thread
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p13-sdk-after/application_consumer.exe" "E:/SyncForder/CodeRepos/install/P13-closeout" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p13-sdk-after/project"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p13-sdk-after
+"installed.application.command_thread" start time: Oct 02 15:38 GMT 夏令时
+Output:
+----------------------------------------------------------
+lux.editor.new.material code=1 domain=application.thread
+lux.editor.exit code=1 domain=application.thread
+test.missing code=1 domain=application.thread
+owner calls recover; phase remains RUNNING; wrong-thread classification=1
+<end of output>
+Test time =   0.47 sec
+----------------------------------------------------------
+Test Passed.
+"installed.application.command_thread" end time: Oct 02 15:38 GMT 夏令时
+"installed.application.command_thread" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Oct 02 15:38 GMT 夏令时
+
+P13 =   0.47 sec*proc
+
+gpu =   0.47 sec*proc
+
+installed =   0.47 sec*proc
+

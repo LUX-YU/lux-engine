@@ -1,0 +1,290 @@
+Start testing: Oct 02 15:33 GMT 夏令时
+----------------------------------------------------------
+71/220 Testing: editor.commands
+71/220 Test: editor.commands
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev/bin/editor_commands_test.exe"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev/editor/activities/commands
+"editor.commands" start time: Oct 02 15:33 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS 10000 shared-entry revisions retain one value without an owner chain
+PASS immutable command entries, pinned/current policy, bounded BUSY FIFO, recursive and foreign calls
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"editor.commands" end time: Oct 02 15:33 GMT 夏令时
+"editor.commands" time elapsed: 00:00:00
+----------------------------------------------------------
+
+96/220 Testing: editor.inspector_codegen
+96/220 Test: editor.inspector_codegen
+Command: "C:/Users/ChenHui/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe" "E:/SyncForder/CodeRepos/lux-engine-p12/editor/workbench/scene/test/inspector_codegen.py"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev/editor/workbench/scene
+"editor.inspector_codegen" start time: Oct 02 15:33 GMT 夏令时
+Output:
+----------------------------------------------------------
+....
+----------------------------------------------------------------------
+Ran 4 tests in 0.001s
+
+OK
+<end of output>
+Test time =   0.08 sec
+----------------------------------------------------------
+Test Passed.
+"editor.inspector_codegen" end time: Oct 02 15:33 GMT 夏令时
+"editor.inspector_codegen" time elapsed: 00:00:00
+----------------------------------------------------------
+
+97/220 Testing: editor.contributions
+97/220 Test: editor.contributions
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev/bin/editor_contributions_test.exe"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev/editor/application/extensions
+"editor.contributions" start time: Oct 02 15:33 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS immutable batch, bounded publication, cleanup pins, post-publication notification and rejection
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"editor.contributions" end time: Oct 02 15:33 GMT 夏令时
+"editor.contributions" time elapsed: 00:00:00
+----------------------------------------------------------
+
+98/220 Testing: editor.contributions.r11-factory
+98/220 Test: editor.contributions.r11-factory
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev/bin/editor_contributions_test.exe" "factory"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev/editor/application/extensions
+"editor.contributions.r11-factory" start time: Oct 02 15:33 GMT 夏令时
+Output:
+----------------------------------------------------------
+R11 batch factory direct_calls=1 blocked=1 consistent=1
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"editor.contributions.r11-factory" end time: Oct 02 15:33 GMT 夏令时
+"editor.contributions.r11-factory" time elapsed: 00:00:00
+----------------------------------------------------------
+
+99/220 Testing: editor.contributions.r11-reflection
+99/220 Test: editor.contributions.r11-reflection
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev/bin/editor_contributions_test.exe" "reflection"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev/editor/application/extensions
+"editor.contributions.r11-reflection" start time: Oct 02 15:33 GMT 夏令时
+Output:
+----------------------------------------------------------
+R11 batch reflection direct_calls=1 blocked=1 consistent=1
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"editor.contributions.r11-reflection" end time: Oct 02 15:33 GMT 夏令时
+"editor.contributions.r11-reflection" time elapsed: 00:00:00
+----------------------------------------------------------
+
+100/220 Testing: editor.contributions.r11-cleanup
+100/220 Test: editor.contributions.r11-cleanup
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev/bin/editor_contributions_test.exe" "cleanup"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev/editor/application/extensions
+"editor.contributions.r11-cleanup" start time: Oct 02 15:33 GMT 夏令时
+Output:
+----------------------------------------------------------
+R11 first publication cleanup direct_calls=1 blocked=1 consistent=1
+R11 batch cleanup direct_calls=1 blocked=1 consistent=1
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"editor.contributions.r11-cleanup" end time: Oct 02 15:33 GMT 夏令时
+"editor.contributions.r11-cleanup" time elapsed: 00:00:00
+----------------------------------------------------------
+
+101/220 Testing: editor.contributions.r11-notify
+101/220 Test: editor.contributions.r11-notify
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev/bin/editor_contributions_test.exe" "notify"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev/editor/application/extensions
+"editor.contributions.r11-notify" start time: Oct 02 15:33 GMT 夏令时
+Output:
+----------------------------------------------------------
+R11 first publication notify direct_calls=1 blocked=1 consistent=1
+R11 batch notify direct_calls=2 blocked=2 consistent=1
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"editor.contributions.r11-notify" end time: Oct 02 15:33 GMT 夏令时
+"editor.contributions.r11-notify" time elapsed: 00:00:00
+----------------------------------------------------------
+
+127/220 Testing: editor.application
+127/220 Test: editor.application
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev/bin/editor_application_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev/editor/tests/integration/application"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev/editor/tests/integration/application
+"editor.application" start time: Oct 02 15:33 GMT 夏令时
+Output:
+----------------------------------------------------------
+Application construction: object.connect: 
+C04: actual EditorApplication::create rejects required menu connection failure
+P13 foreign command lux.editor.new.material code=1 domain=application.thread
+P13 foreign command lux.editor.exit code=1 domain=application.thread
+P13 foreign command test.missing code=1 domain=application.thread
+P13 foreign command lux.editor.new.material code=1 domain=application.thread
+P13 foreign command lux.editor.exit code=1 domain=application.thread
+P13 foreign command test.missing code=1 domain=application.thread
+P13 command admission: owner recovers; sessions, content and views unchanged
+Application direct destruction: formal content, tools and GPU presentation released
+Recent projects: real legacy-format read, one coordinator publication, malformed input preserves file/list, explicit retry
+C01: malformed product layout preserves hidden state, count and exact dock encoding
+Workspace UI uses stable layout IDs and one publication coordinator; preference failure preserves UI commit
+Real Save As preserves author history, publishes source/catalog and reopens the same Session
+Recovery uses an independent immutable manifest, keeps BUSY input, reuses exact windows and preserves unknown bytes/camera
+Real compile intent publishes a readable versioned package; stale intent rejected and baseline unchanged
+Export Copy leaves the baseline intact; actual Reload keeps SessionId and replaces history
+Actual new commands, shared content views and cancel exit preserve all author state
+Last-view Cancel/Keep/Close use real modals; closing one content preserves another
+Actual SceneView drop reads project pak through Process and commits one undoable model batch
+Scene failure keeps an owning diagnostic and independent save completion; empty selection clears Inspector
+Formal scene form, Outliner, frozen Play/Pause/Step/Resume and Keep Run after author close
+Formal project creation: selected V7 plugins, minimal/2D/3D real files, closed view, conflict retained
+Formal import/settings factories: UI closes, immutable import and plugin publication finish; active code stays pinned
+X12-09: accepted encode/compile, independent Run and GPU drain; source publication retained
+Application: formal service assembly, frames, and asynchronous exit drain complete
+Initial scene: installed project description opens one shared content; explicit menu reuses it
+X12-01: real factory failure preserves published unbound content; explicit show recovers same Session
+<end of output>
+Test time =   1.71 sec
+----------------------------------------------------------
+Test Passed.
+"editor.application" end time: Oct 02 15:33 GMT 夏令时
+"editor.application" time elapsed: 00:00:01
+----------------------------------------------------------
+
+131/220 Testing: editor.architecture_negative
+131/220 Test: editor.architecture_negative
+Command: "C:/Users/ChenHui/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe" "E:/SyncForder/CodeRepos/lux-engine-p12/editor/tests/architecture/test_editor_boundaries.py" "--source" "E:/SyncForder/CodeRepos/lux-engine-p12" "--cmake" "D:/Development/CMake/bin/cmake.exe"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev/editor/tests/architecture
+"editor.architecture_negative" start time: Oct 02 15:33 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS ENGINE_DEPENDS_ON_EDITOR: forbidden edge rejected; same environment repaired
+PASS WORKFLOWS_DEPEND_ON_BOOTSTRAP: forbidden edge rejected; same environment repaired
+PASS MODEL_DEPENDS_ON_UI: forbidden edge rejected; same environment repaired
+PASS expiry and private header checks
+PASS P01 retired history API, saved state and new-to-transition checks
+PASS S01 old directories rejected; narrow history/session scopes preserved
+PASS N12-07: all nine expired source roots rejected, including excluded bodies; repaired
+PASS native-only option defaults
+PASS X01-R2-01: configure=1 expected=FOUNDATION_DIRECT_DEPENDENCY repaired=0
+PASS X01-R2-02: configure=1 expected=FOUNDATION_FORBIDDEN_DEPENDENCY repaired=0
+PASS X01-R2-03: configure=1 expected=FOUNDATION_FORBIDDEN_DEPENDENCY repaired=0
+PASS X01-R2-04: configure=1 expected=FOUNDATION_FORBIDDEN_DEPENDENCY repaired=0
+PASS X01-R2-05: configure=1 expected=FOUNDATION_FORBIDDEN_INCLUDE repaired=0
+PASS legal: configure=0 expected=None repaired=0
+PASS legal-external: configure=0 expected=None repaired=0
+PASS imported-hop: configure=1 expected=FOUNDATION_FORBIDDEN_DEPENDENCY repaired=0
+PASS conditional: configure=1 expected=FOUNDATION_FORBIDDEN_DEPENDENCY repaired=0
+PASS contracts-ui: configure=1 expected=FOUNDATION_FORBIDDEN_DEPENDENCY repaired=0
+PASS history-ui: configure=1 expected=FOUNDATION_FORBIDDEN_DEPENDENCY repaired=0
+PASS context: configure=1 expected=NEW_DEPENDS_ON_OLD_TARGET repaired=0
+PASS unknown: configure=1 expected=FOUNDATION_UNRESOLVED_DEPENDENCY repaired=0
+<end of output>
+Test time =  22.59 sec
+----------------------------------------------------------
+Test Passed.
+"editor.architecture_negative" end time: Oct 02 15:34 GMT 夏令时
+"editor.architecture_negative" time elapsed: 00:00:22
+----------------------------------------------------------
+
+132/220 Testing: editor.architecture_current
+132/220 Test: editor.architecture_current
+Command: "C:/Users/ChenHui/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe" "E:/SyncForder/CodeRepos/lux-engine-p12/editor/tests/architecture/check_editor_boundaries.py" "--repo" "E:/SyncForder/CodeRepos/lux-engine-p12" "--graph" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev/editor-architecture/targets.json" "--compile-db" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev/compile_commands.json" "--stage" "P13" "--layering-mode" "STRICT"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev/editor/tests/architecture
+"editor.architecture_current" start time: Oct 02 15:34 GMT 夏令时
+Output:
+----------------------------------------------------------
+{"status": "PASS", "findings": []}
+<end of output>
+Test time =  21.94 sec
+----------------------------------------------------------
+Test Passed.
+"editor.architecture_current" end time: Oct 02 15:34 GMT 夏令时
+"editor.architecture_current" time elapsed: 00:00:21
+----------------------------------------------------------
+
+148/220 Testing: editor.layering.compiler_providers
+148/220 Test: editor.layering.compiler_providers
+Command: "C:/Users/ChenHui/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe" "E:/SyncForder/CodeRepos/lux-engine-p12/editor/tests/architecture/test_layering_compiler.py" "--source" "E:/SyncForder/CodeRepos/lux-engine-p12" "--build" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev/editor/tests/architecture
+"editor.layering.compiler_providers" start time: Oct 02 15:34 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS compiler providers: 739 TUs; actual template positive/rejection/repair
+<end of output>
+Test time =  73.62 sec
+----------------------------------------------------------
+Test Passed.
+"editor.layering.compiler_providers" end time: Oct 02 15:35 GMT 夏令时
+"editor.layering.compiler_providers" time elapsed: 00:01:13
+----------------------------------------------------------
+
+149/220 Testing: editor.extensions.boundaries
+149/220 Test: editor.extensions.boundaries
+Command: "C:/Users/ChenHui/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe" "E:/SyncForder/CodeRepos/lux-engine-p12/editor/tests/architecture/test_layering_boundaries.py" "--source" "E:/SyncForder/CodeRepos/lux-engine-p12" "--build" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev" "--cmake" "D:/Development/CMake/bin/cmake.exe" "--p11"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev/editor/tests/architecture
+"editor.extensions.boundaries" start time: Oct 02 15:35 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS N11-01-context
+PASS N11-01-ui
+PASS N11-02
+PASS N11-03
+PASS N11-04
+PASS N11-05
+<end of output>
+Test time =  19.16 sec
+----------------------------------------------------------
+Test Passed.
+"editor.extensions.boundaries" end time: Oct 02 15:36 GMT 夏令时
+"editor.extensions.boundaries" time elapsed: 00:00:19
+----------------------------------------------------------
+
+150/220 Testing: editor.product.boundaries
+150/220 Test: editor.product.boundaries
+Command: "C:/Users/ChenHui/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe" "E:/SyncForder/CodeRepos/lux-engine-p12/editor/tests/architecture/test_layering_boundaries.py" "--source" "E:/SyncForder/CodeRepos/lux-engine-p12" "--build" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev" "--cmake" "D:/Development/CMake/bin/cmake.exe" "--p12"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev/editor/tests/architecture
+"editor.product.boundaries" start time: Oct 02 15:36 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS N12-01-context
+PASS N12-01-ui
+PASS N12-02
+PASS N12-03
+PASS N12-04
+PASS N12-05
+<end of output>
+Test time =  19.03 sec
+----------------------------------------------------------
+Test Passed.
+"editor.product.boundaries" end time: Oct 02 15:36 GMT 夏令时
+"editor.product.boundaries" time elapsed: 00:00:19
+----------------------------------------------------------
+
+End testing: Oct 02 15:36 GMT 夏令时
+
+P11 =  19.22 sec*proc
+
+P12 =  20.74 sec*proc
+
+architecture =  44.54 sec*proc
+
+editor = 158.19 sec*proc
+
+editor_layering =  73.62 sec*proc
+
+gpu =   1.71 sec*proc
+
+native = 156.48 sec*proc
+

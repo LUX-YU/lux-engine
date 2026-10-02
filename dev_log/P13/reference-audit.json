@@ -1,0 +1,38 @@
+{
+  "inspected_production_files": 321,
+  "retained_homonyms": [
+    {
+      "path": "editor/workbench/widgets/include/lux/engine/editor/widgets/NodeCanvas.hpp",
+      "line": 8,
+      "text": "        void operator()(ax::NodeEditor::EditorContext*) const noexcept;"
+    },
+    {
+      "path": "editor/workbench/widgets/include/lux/engine/editor/widgets/NodeCanvas.hpp",
+      "line": 10,
+      "text": "    using NodeCanvas = std::unique_ptr<ax::NodeEditor::EditorContext, CanvasDelete>;"
+    },
+    {
+      "path": "editor/workbench/widgets/include/lux/engine/editor/widgets/NodeCanvas.hpp",
+      "line": 15,
+      "text": "        explicit CanvasScope(ax::NodeEditor::EditorContext*) noexcept;"
+    },
+    {
+      "path": "editor/workbench/widgets/include/lux/engine/editor/widgets/NodeCanvas.hpp",
+      "line": 23,
+      "text": "        ax::NodeEditor::EditorContext* previous_;"
+    },
+    {
+      "path": "editor/workbench/widgets/src/NodeCanvas.cpp",
+      "line": 4,
+      "text": "    void CanvasDelete::operator()(ax::NodeEditor::EditorContext* context) const noexcept"
+    },
+    {
+      "path": "editor/workbench/widgets/src/NodeCanvas.cpp",
+      "line": 15,
+      "text": "    CanvasScope::CanvasScope(ax::NodeEditor::EditorContext* context) noexcept"
+    }
+  ],
+  "homonym_reason": "ax::NodeEditor::EditorContext is the third-party node canvas, not the deleted Lux EditorContext.",
+  "historical_inventory": "editor/tests/architecture/inventory_editor.py intentionally names original V4 owners for Git history inspection; it is not product code.",
+  "logical_includes": "lux/engine/editor/project and storage remain public include identities; physical old roots are absent."
+}

@@ -1,0 +1,132 @@
+diff --git a/AGENTS.md b/AGENTS.md
+index e8898a006..1fd312315 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -4,10 +4,9 @@
+ 后面附着它的成因——不写成因的规矩会在下一次"就这一次"里被绕过。
+ 前两节（项目簇背景、代码风格）是用户定的基线约定，随仓走。
+ 
+-（历史设计、未完成清单及原始记录已按用户要求清理；`.internal/` 保留
+-`exception-usage-audit.md`《异常使用核查与 OOM 收敛》，并按后续要求新增
+-`editor-lifetime-and-ui-design.md`《Editor 生命周期、Pane 装配与主循环收敛方案》，
+-其分阶段实施文档位于 `.internal/implementation/`，由总文档第 14 节索引。历史日志与原始数据仍不保留。）
++（早期设计材料曾按用户要求清理。后续阶段的唯一可变施工材料位于
++`.internal/editor-redesign/`，验收快照冻结于 `dev_log/`，按各自 implementation SHA 核验。
++这些历史快照及失败证据必须保留，不修改过去的判定；用户免验或未测项目不能标成通过。）
+ 
+ ---
+ 
+@@ -309,6 +308,6 @@ layer 就不会重设——Android 切回前台后画面永远停在旧 surface
+ P10Q 及后续 Editor 修改遵守 [docs/editor-quality.md](docs/editor-quality.md) 的 QR01–QR22。
+ 该文件只定义持续规则；唯一可变施工材料仍为 `.internal/editor-redesign/`，不另建状态账本。
+ 五层源和目标归属在现有架构规则的 `editor_layering` 组核验，最终资格显式使用
+-`LUX_EDITOR_MIGRATION_STAGE=P10Q` 与 `LUX_EDITOR_LAYERING_MODE=STRICT`。
++`LUX_EDITOR_MIGRATION_STAGE=<当前获授权阶段>` 与 `LUX_EDITOR_LAYERING_MODE=STRICT`。
+ 同目录多 target 必须精确声明头文件的 provider 和安装清单；不得用整个目录的归属
+ 替代实际 SOURCES、生成依赖、编译器依赖与静态链接闭包。
+diff --git a/editor/application/README.md b/editor/application/README.md
+index 2955e1b8c..1898c5a3f 100644
+--- a/editor/application/README.md
++++ b/editor/application/README.md
+@@ -6,6 +6,8 @@ SessionStore owns author content; SaveService/WriteCoordinator own accepted save
+ RunStore/SceneRuntime own execution. ViewHost alone owns top-level Panes.
+ 
+ `EditorApplication::create` publishes only a fully assembled desktop, including its command receiver.
++`execute` is an owner-thread API: another thread receives `WRONG_THREAD` before command lookup or
++callbacks; owner-thread reentry receives `BUSY`. Neither rejection admits work or changes content.
+ The frame receives accepted completions, applies owner maintenance and drives the one SceneRuntime once.
+ Close decisions retain content stamps. All content and views are prepared before irreversible close;
+ physical file facts are preserved if another decision cancels. Completion and retirement continue after
+diff --git a/editor/application/src/EditorCommands.cpp b/editor/application/src/EditorCommands.cpp
+index a2c4f260f..f7886f2c6 100644
+--- a/editor/application/src/EditorCommands.cpp
++++ b/editor/application/src/EditorCommands.cpp
+@@ -31,7 +31,25 @@ namespace lux::editor::application
+     )
+     {
+         if (auto ready = impl_->admission(); !ready)
+-            return cxx::unexpected(commands::CommandFailure{commands::ECommandError::BUSY, ready.error().domain});
++        {
++            auto error = std::move(ready.error());
++            auto code = commands::ECommandError::DOMAIN_FAILURE;
++            switch (error.code)
++            {
++            case EEditorError::INVALID_STATE:
++                // admission checks the owner thread before inspecting dispatch state.
++                code = commands::ECommandError::WRONG_THREAD;
++                break;
++            case EEditorError::BUSY:
++                code = commands::ECommandError::BUSY;
++                break;
++            default:
++                break;
++            }
++            return cxx::unexpected(
++                commands::CommandFailure{code, std::move(error.domain), error.reason, std::move(error.message)}
++            );
++        }
+         Impl::Dispatch scope{impl_->dispatching_};
+         if (impl_->phase_ != EApplicationPhase::RUNNING)
+             return cxx::unexpected(commands::CommandFailure{commands::ECommandError::CLOSED, "application.phase"});
+diff --git a/editor/tests/integration/application/application.cpp b/editor/tests/integration/application/application.cpp
+index b205736ba..fca8651c3 100644
+--- a/editor/tests/integration/application/application.cpp
++++ b/editor/tests/integration/application/application.cpp
+@@ -166,6 +166,57 @@ int main(int argc, char** argv)
+             assert((*direct)->update());
+         auto& owned = ApplicationTestAccess::implementation(**direct);
+         assert(owned.sessions_.size() == 2 && owned.desktop_->views().describeAll()->size() >= 5);
++        const auto session_ids = *owned.sessions_.snapshotIds();
++        std::vector<sessions::SessionInfo> content_before;
++        for (const auto session : session_ids)
++            content_before.push_back(*owned.sessions_.describe(session));
++        const auto views_before = *owned.desktop_->views().describeAll();
++        const auto revision_before = owned.commands_.revision();
++        const auto check_foreign_commands = [&] {
++            // The owner is waiting; no UI, Store or command mutation runs concurrently.
++            std::thread foreign([&] {
++                for (const auto command : {"lux.editor.new.material", "lux.editor.exit", "test.missing"})
++                {
++                    const auto result = (*direct)->execute(commands::CommandId{command});
++                    assert(!result);
++                    std::cout << "P13 foreign command " << command << " code=" << int(result.error().code)
++                              << " domain=" << result.error().domain << std::endl;
++                    assert(result.error().code == commands::ECommandError::WRONG_THREAD);
++                    assert(result.error().domain == "application.thread");
++                }
++            });
++            foreign.join();
++        };
++        check_foreign_commands();
++        {
++            // Reentry is BUSY on the owner, but wrong-thread admission still takes precedence.
++            std::remove_reference_t<decltype(owned)>::Dispatch scope{owned.dispatching_};
++            const auto nested = (*direct)->execute(commands::CommandId{"lux.editor.new.material"});
++            assert(!nested && nested.error().code == commands::ECommandError::BUSY);
++            assert(nested.error().domain == "application.dispatch");
++            check_foreign_commands();
++            assert(owned.dispatching_);
++        }
++        assert(!owned.dispatching_ && (*direct)->phase() == EApplicationPhase::RUNNING);
++        assert(owned.commands_.revision() == revision_before);
++        assert(*owned.sessions_.snapshotIds() == session_ids);
++        const auto views_after = *owned.desktop_->views().describeAll();
++        assert(views_after.size() == views_before.size());
++        for (std::size_t i{}; i < views_before.size(); ++i)
++            assert(views_after[i].id == views_before[i].id);
++        for (const auto& before : content_before)
++        {
++            const auto after = owned.sessions_.describe(before.id);
++            assert(after && after->current == before.current && after->observed == before.observed);
++            assert(after->binding == before.binding && after->dirty == before.dirty);
++            assert(after->admission == before.admission);
++        }
++        const auto missing = (*direct)->execute(commands::CommandId{"test.missing"});
++        assert(!missing && missing.error().code == commands::ECommandError::NOT_FOUND);
++        assert((*direct)->execute(commands::CommandId{"lux.editor.assets"}));
++        const auto about = (*direct)->execute(commands::CommandId{"lux.editor.about"});
++        assert(!about && about.error().code == commands::ECommandError::DISABLED);
++        std::cout << "P13 command admission: owner recovers; sessions, content and views unchanged\n";
+         // No exec/requestExit: destruction still releases mounted UI and accepted resource work.
+     }
+     std::cout << "Application direct destruction: formal content, tools and GPU presentation released\n";

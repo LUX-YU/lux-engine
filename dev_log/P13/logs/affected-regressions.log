@@ -1,0 +1,40 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev
+      Start  71: editor.commands
+ 1/13 Test  #71: editor.commands .......................   Passed    0.02 sec
+      Start  96: editor.inspector_codegen
+ 2/13 Test  #96: editor.inspector_codegen ..............   Passed    0.08 sec
+      Start  97: editor.contributions
+ 3/13 Test  #97: editor.contributions ..................   Passed    0.04 sec
+      Start  98: editor.contributions.r11-factory
+ 4/13 Test  #98: editor.contributions.r11-factory ......   Passed    0.02 sec
+      Start  99: editor.contributions.r11-reflection
+ 5/13 Test  #99: editor.contributions.r11-reflection ...   Passed    0.02 sec
+      Start 100: editor.contributions.r11-cleanup
+ 6/13 Test #100: editor.contributions.r11-cleanup ......   Passed    0.02 sec
+      Start 101: editor.contributions.r11-notify
+ 7/13 Test #101: editor.contributions.r11-notify .......   Passed    0.02 sec
+      Start 127: editor.application
+ 8/13 Test #127: editor.application ....................   Passed    1.71 sec
+      Start 131: editor.architecture_negative
+ 9/13 Test #131: editor.architecture_negative ..........   Passed   22.59 sec
+      Start 132: editor.architecture_current
+10/13 Test #132: editor.architecture_current ...........   Passed   21.94 sec
+      Start 148: editor.layering.compiler_providers
+11/13 Test #148: editor.layering.compiler_providers ....   Passed   73.62 sec
+      Start 149: editor.extensions.boundaries
+12/13 Test #149: editor.extensions.boundaries ..........   Passed   19.16 sec
+      Start 150: editor.product.boundaries
+13/13 Test #150: editor.product.boundaries .............   Passed   19.03 sec
+
+100% tests passed, 0 tests failed out of 13
+
+Label Time Summary:
+P11                =  19.22 sec*proc (3 tests)
+P12                =  20.74 sec*proc (2 tests)
+architecture       =  44.54 sec*proc (2 tests)
+editor             = 158.19 sec*proc (9 tests)
+editor_layering    =  73.62 sec*proc (1 test)
+gpu                =   1.71 sec*proc (1 test)
+native             = 156.48 sec*proc (8 tests)
+
+Total Test time (real) = 158.92 sec

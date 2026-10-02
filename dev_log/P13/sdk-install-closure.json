@@ -1,0 +1,30 @@
+{
+  "prefix": "E:\\SyncForder\\CodeRepos\\install\\P13-closeout",
+  "producer_build": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\p12-dev",
+  "qualification": "Affected public Application API against fresh installation of current incremental all-target build; not a new cold/platform matrix.",
+  "libraries": [
+    {
+      "path": "bin/lux_editor.exe",
+      "sha256": "ed9e3d3e324a6cd13fb1e0ddfce6e9bd0ac2549210351ba3ae6a5e773f5352d4"
+    },
+    {
+      "path": "bin/lux_launcher.exe",
+      "sha256": "84a2d2cc354a1b569786ea7174ccc885f3b038cbbd15ae93583662b2b273221a"
+    },
+    {
+      "path": "bin/box2d.dll",
+      "sha256": "15d6d30e44ffbd9a90b466139384fa34fa82231c079ad78964416d68e1dd12b0"
+    },
+    {
+      "path": "bin/glfw3.dll",
+      "sha256": "e97765e4aa376f8925cf245ba07aaabb78cbeeda0c068927a26fa298d7023394"
+    },
+    {
+      "path": "bin/nfd.dll",
+      "sha256": "2bfcedee839046a2b0fa5ab2c1d8979327e7b769e5cd6a64d5461ab9d466a643"
+    }
+  ],
+  "private_include_paths": false,
+  "installed_test_access_headers": false,
+  "link_evidence": "sdk-link-libraries.txt"
+}

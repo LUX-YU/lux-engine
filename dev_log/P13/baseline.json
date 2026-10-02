@@ -1,0 +1,24 @@
+{
+  "base": "32500d90e5e27cfd22be1ef6b29a5e3010efcb3c",
+  "checkout": "E:\\SyncForder\\CodeRepos\\lux-engine-p12",
+  "branch": "codex/p12-closeout",
+  "implementation_scope": "P13 limited engineering closeout; not full original V4 final qualification",
+  "p12_status": "PARTIAL_USER_WAIVER",
+  "p12_receipt": "dev_log/P12/receipt.json",
+  "user_patch_applied": false,
+  "user_sha256": "ccac49618140d014236c9f23b55fc15d31c96e94b44395dee39fd67d35ab1f5c",
+  "steps": {
+    "P13-A": "Baseline and function/behavior mapping; inherited evidence with exact SHA",
+    "P13-B": "Actual references, installed/export and generator/test-support closure audit",
+    "P13-C": "Correct command wrong-thread classification with real before/after regressions",
+    "P13-D": "Affected Windows build/tests and installed consumer; reuse unchanged evidence",
+    "P13-E": "Document actual support, waived/not-run scope; separate implementation/record commits and normal push"
+  },
+  "exclusions": [
+    "No P12 waived manual menu/archive qualification",
+    "No Linux/IME setup or old performance long run",
+    "No framework/layer/Process/Runtime/History redesign",
+    "No main merge or release"
+  ],
+  "recorded_at": "2026-10-02T14:26:45.816849+00:00"
+}

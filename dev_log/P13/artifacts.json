@@ -1,0 +1,170 @@
+[
+  {
+    "path": ".gitattributes",
+    "sha256": "705fd4d6451a31d36b3df7de96f83f30ac976c9b4a6d1e51671d8e2f33e2d0da"
+  },
+  {
+    "path": "audit.py",
+    "sha256": "3532bbf7b3f923329cfcf0bec1d4fa48d4862863bb82d62e47ba9a3fe28f3228"
+  },
+  {
+    "path": "baseline.json",
+    "sha256": "67f04667df330e5f9e7f14a65bb8b4fdf4471620f8b618792ed7640e7abef882"
+  },
+  {
+    "path": "build-audit.json",
+    "sha256": "d211c3867d30237f5ab949cd5cc4f6dcc58aa49fd910f0b3635fb57451c21e03"
+  },
+  {
+    "path": "CMakeCache.txt",
+    "sha256": "776617f882dab58a149356eb5b9d32ffd731fb5e0089fe0a55a67de694ac23bf"
+  },
+  {
+    "path": "commands.json",
+    "sha256": "34df4c79998155472e22af5516f1571fc5624c813d32284495e75f6847273369"
+  },
+  {
+    "path": "dependency-seed.json",
+    "sha256": "7e615616bc19f90904034d30c04a15a0a794c84c7323337b69e74bb45e4bb610"
+  },
+  {
+    "path": "feature-review.json",
+    "sha256": "905cfd85681fbe7c31e27cc3549698b8b4c3d0534100b1436ecb6df6633dd488"
+  },
+  {
+    "path": "generation-support-audit.json",
+    "sha256": "61ac19bc7ac3b5111f79b07e700376bf74b0082cb6db80d2bba7db3577c1770f"
+  },
+  {
+    "path": "implementation-files.json",
+    "sha256": "bac61357522c5ce1aa8adf8a8ef1668a1a356ef3a769bb0d04dc082c465fd7dd"
+  },
+  {
+    "path": "inherited-evidence.json",
+    "sha256": "a6d4516c939cbe6ea417c68b75cd94895ec0f5e0c0bd25eccc98c5527ff81687"
+  },
+  {
+    "path": "install_manifest.txt",
+    "sha256": "3107cc3811e4bc152caf9b1cd1d49fec8dd3c0311e249318a31f76d6eceb19af"
+  },
+  {
+    "path": "ledger-snapshot.json",
+    "sha256": "5e63c7241f19e2d614877426cdc90c80323dc871f8ffef1f2a9052a22b58d0ca"
+  },
+  {
+    "path": "logs/affected-regressions-details.log",
+    "sha256": "0500f12630302d7ed0b21189a1b6bff41b3efad4a8d20bde3d8154413282eb9b"
+  },
+  {
+    "path": "logs/affected-regressions.log",
+    "sha256": "58e64bfb079c1bb24640bd6c5c114af6fcd71a2422e9e0776cb019c32fdd517c"
+  },
+  {
+    "path": "logs/affected-sdk-install.log",
+    "sha256": "71244ab043ee7a904d4da73a711aed16ef6242b6714b512134baaee6479f7737"
+  },
+  {
+    "path": "logs/all-build.log",
+    "sha256": "3bbd06e7a4b06eef71d52753ab9357acaac7744c64ea3d9c7da3e14a25677f3f"
+  },
+  {
+    "path": "logs/all-no-work.log",
+    "sha256": "7716162f3cd3b99cf3b8a8dd6decf324e08c7e941aae7e730baba5e4fc8c075b"
+  },
+  {
+    "path": "logs/configure-p13.log",
+    "sha256": "efd428a4332d32c0e973d0a80cd387ae4455d67dee6d3a1d8e78b40f70c39b39"
+  },
+  {
+    "path": "logs/final-no-work.log",
+    "sha256": "7716162f3cd3b99cf3b8a8dd6decf324e08c7e941aae7e730baba5e4fc8c075b"
+  },
+  {
+    "path": "logs/sdk-actual-link.log",
+    "sha256": "17b59908c87ac8d60ce3ce45b975346bac080f1b27cf3f5420b688cd55c1604f"
+  },
+  {
+    "path": "logs/sdk-after-build.log",
+    "sha256": "7c53c5a4ce90abb2f72aebdd78e1c913ad408d9a960e641d3a391ad9421929cc"
+  },
+  {
+    "path": "logs/sdk-after-configure.log",
+    "sha256": "454da1df28b0946b7457a640617c6a440935427ec40d4395e10f2d8506f1472c"
+  },
+  {
+    "path": "logs/sdk-after-details.log",
+    "sha256": "1c483cf581cedc43260f6c139fc7824f6b906fecfdf171bf16ae999dcb5c93aa"
+  },
+  {
+    "path": "logs/sdk-after-no-work.log",
+    "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6"
+  },
+  {
+    "path": "logs/sdk-after-regression.log",
+    "sha256": "c6b54860ae1c4cc45506734ae8f0bca5b23d19c3e40abaa5edf8fb6d707da39c"
+  },
+  {
+    "path": "logs/sdk-before-build.log",
+    "sha256": "7c53c5a4ce90abb2f72aebdd78e1c913ad408d9a960e641d3a391ad9421929cc"
+  },
+  {
+    "path": "logs/sdk-before-configure.log",
+    "sha256": "e8e8646b80064285f5644f922a424cfe9513b936d7bf1e0fb900f710575a1526"
+  },
+  {
+    "path": "logs/sdk-before-fixture-build.log",
+    "sha256": "7c53c5a4ce90abb2f72aebdd78e1c913ad408d9a960e641d3a391ad9421929cc"
+  },
+  {
+    "path": "logs/sdk-before-real-regression.log",
+    "sha256": "a194db19b8ae71a42de02c44573e73412c43954b4ce4ff47fb7d6cb3ec6e47b8"
+  },
+  {
+    "path": "logs/sdk-before-regression.log",
+    "sha256": "57e6ababa734d3d5920ffba33af3d9d04ba9b2f35e16d7a0da4fa2899e2d75ba"
+  },
+  {
+    "path": "preserved-algorithms.json",
+    "sha256": "11d88177d25d1db01f5494307ba7a5cd81c948a739969d03405c065ffdfd44fa"
+  },
+  {
+    "path": "protection.json",
+    "sha256": "b3e362bbb21157effc694ef59c7b1534797d188f62959dad15f61d52ae815a18"
+  },
+  {
+    "path": "README.md",
+    "sha256": "dfa8dfe278d9b4fb2cce6cfad19b2c173662e892ba57d2801166ecf56a570e89"
+  },
+  {
+    "path": "receipt.json",
+    "sha256": "9ad251fb12ad6f6764503299a10b6e6934402b2c6b13f51993d96640a185b488"
+  },
+  {
+    "path": "reference-audit.json",
+    "sha256": "ce722c7fafde2bafa7f77bf22b3f78f733a870a5ed353d7a8010ffaa4e436d83"
+  },
+  {
+    "path": "run.py",
+    "sha256": "da61b6732928d2312cb1f26578e2f92f7887dc8c8ba1eecb649b972037f5de55"
+  },
+  {
+    "path": "sdk-compile-commands.json",
+    "sha256": "29ca3670fd8686f8c852b13fd442b34c032761278e26177514572ad6881b19d3"
+  },
+  {
+    "path": "sdk-install-closure.json",
+    "sha256": "c2647fd0947ac0c8d8100e5beaf538804eed7f4111e832f7230eff9d0818b847"
+  },
+  {
+    "path": "sdk-link-libraries.txt",
+    "sha256": "68d552c494b2d0fa488e7bbca6ca396325d15d831f743b87903a27ebc58fe9b6"
+  },
+  {
+    "path": "tested-implementation.patch",
+    "sha256": "0271ffad93502cbc02188c96aa5c6dfa0aa13f14683602a167491d8c7720d861"
+  },
+  {
+    "path": "validation-source-binding.json",
+    "sha256": "bd6719006691cea6495e2ce1953d494a176c164ca2baa7086eec2f3ba34855f9"
+  }
+]

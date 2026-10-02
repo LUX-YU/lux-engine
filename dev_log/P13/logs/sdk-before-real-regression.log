@@ -1,0 +1,21 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p13-sdk-before
+    Start 1: installed.application.command_thread
+1/1 Test #1: installed.application.command_thread ...***Failed    0.33 sec
+lux.editor.new.material code=2 domain=application.thread
+lux.editor.exit code=2 domain=application.thread
+test.missing code=2 domain=application.thread
+owner calls recover; phase remains RUNNING; wrong-thread classification=0
+
+
+0% tests passed, 1 tests failed out of 1
+
+Label Time Summary:
+P13          =   0.33 sec*proc (1 test)
+gpu          =   0.33 sec*proc (1 test)
+installed    =   0.33 sec*proc (1 test)
+
+Total Test time (real) =   0.33 sec
+
+The following tests FAILED:
+	  1 - installed.application.command_thread (Failed)     P13 gpu installed
+Errors while running CTest

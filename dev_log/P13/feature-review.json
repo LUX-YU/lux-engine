@@ -1,0 +1,423 @@
+[
+  {
+    "old_id": "lux.asset.save",
+    "label": "Save",
+    "menu": "File",
+    "shortcut": "Ctrl+S",
+    "query": "Pure availability on fixed target; no mutation",
+    "execute_target": "original SessionId; Save freezes at actual admission; history through installed role",
+    "formal": "lux.editor.save",
+    "owner": "activities: SaveService / InstalledSession / concrete Session",
+    "phase": "P11",
+    "status": "IMPLEMENTED_AUTOMATED_MATRIX_COMPLETE_MANUAL_WAIVED",
+    "evidence_scope": "Final 85d2ed7ec6f9 automated command/application/role regressions retained; remaining manual installed menu observations waived, not PASS. See receipt and user-waiver.json.",
+    "current_source_locations": [
+      {
+        "path": "editor/application/extensions/src/BuiltinContributions.cpp",
+        "line": 102
+      },
+      {
+        "path": "editor/application/src/EditorCommands.cpp",
+        "line": 145
+      },
+      {
+        "path": "editor/application/src/EditorSaving.cpp",
+        "line": 413
+      }
+    ],
+    "inherited_record": "dev_log/P12/behavior-map.json at 32500d90e5e27cfd22be1ef6b29a5e3010efcb3c",
+    "new_runtime_result": false
+  },
+  {
+    "old_id": "lux.edit.undo",
+    "label": "Undo",
+    "menu": "Edit",
+    "shortcut": "Ctrl+Z",
+    "query": "Pure availability on fixed target; no mutation",
+    "execute_target": "original SessionId; Save freezes at actual admission; history through installed role",
+    "formal": "lux.editor.undo",
+    "owner": "activities: SaveService / InstalledSession / concrete Session",
+    "phase": "P11",
+    "status": "IMPLEMENTED_AUTOMATED_MATRIX_COMPLETE_MANUAL_WAIVED",
+    "evidence_scope": "Final 85d2ed7ec6f9 automated command/application/role regressions retained; remaining manual installed menu observations waived, not PASS. See receipt and user-waiver.json.",
+    "current_source_locations": [
+      {
+        "path": "editor/application/extensions/src/BuiltinContributions.cpp",
+        "line": 129
+      }
+    ],
+    "inherited_record": "dev_log/P12/behavior-map.json at 32500d90e5e27cfd22be1ef6b29a5e3010efcb3c",
+    "new_runtime_result": false
+  },
+  {
+    "old_id": "lux.edit.redo",
+    "label": "Redo",
+    "menu": "Edit",
+    "shortcut": "Ctrl+Y",
+    "query": "Pure availability on fixed target; no mutation",
+    "execute_target": "original SessionId; Save freezes at actual admission; history through installed role",
+    "formal": "lux.editor.redo",
+    "owner": "activities: SaveService / InstalledSession / concrete Session",
+    "phase": "P11",
+    "status": "IMPLEMENTED_AUTOMATED_MATRIX_COMPLETE_MANUAL_WAIVED",
+    "evidence_scope": "Final 85d2ed7ec6f9 automated command/application/role regressions retained; remaining manual installed menu observations waived, not PASS. See receipt and user-waiver.json.",
+    "current_source_locations": [
+      {
+        "path": "editor/application/extensions/src/BuiltinContributions.cpp",
+        "line": 129
+      }
+    ],
+    "inherited_record": "dev_log/P12/behavior-map.json at 32500d90e5e27cfd22be1ef6b29a5e3010efcb3c",
+    "new_runtime_result": false
+  },
+  {
+    "old_id": "lux.asset.save-as",
+    "label": "Save As",
+    "menu": "File",
+    "shortcut": "Ctrl+Shift+S",
+    "query": "Pure availability on fixed target; no mutation",
+    "execute_target": "fixed SessionId + prepared target",
+    "formal": "lux.editor.save-as",
+    "owner": "EditorSaving::prepareSave -> existing SaveService prepared rebind",
+    "phase": "P12",
+    "status": "IMPLEMENTED_AUTOMATED_MATRIX_COMPLETE_MANUAL_WAIVED",
+    "evidence_scope": "Final 85d2ed7ec6f9 automated command/application/role regressions retained; remaining manual installed menu observations waived, not PASS. See receipt and user-waiver.json.",
+    "current_source_locations": [
+      {
+        "path": "editor/application/src/EditorSaving.cpp",
+        "line": 414
+      }
+    ],
+    "inherited_record": "dev_log/P12/behavior-map.json at 32500d90e5e27cfd22be1ef6b29a5e3010efcb3c",
+    "new_runtime_result": false
+  },
+  {
+    "old_id": "lux.asset.save-all",
+    "label": "Save All",
+    "menu": "File",
+    "shortcut": "",
+    "query": "Pure availability on fixed target; no mutation",
+    "execute_target": "fixed accepted content IDs",
+    "formal": "lux.editor.save-all",
+    "owner": "SaveAllOperation freezes SessionStore IDs; original SaveService",
+    "phase": "P12",
+    "status": "IMPLEMENTED_AUTOMATED_MATRIX_COMPLETE_MANUAL_WAIVED",
+    "evidence_scope": "Final 85d2ed7ec6f9 automated command/application/role regressions retained; remaining manual installed menu observations waived, not PASS. See receipt and user-waiver.json.",
+    "current_source_locations": [
+      {
+        "path": "editor/application/src/EditorSaving.cpp",
+        "line": 450
+      }
+    ],
+    "inherited_record": "dev_log/P12/behavior-map.json at 32500d90e5e27cfd22be1ef6b29a5e3010efcb3c",
+    "new_runtime_result": false
+  },
+  {
+    "old_id": "lux.window.close",
+    "label": "Close Window",
+    "menu": "File",
+    "shortcut": "Ctrl+W",
+    "query": "Pure availability on fixed target; no mutation",
+    "execute_target": "complete ViewId generation",
+    "formal": "lux.editor.close-view",
+    "owner": "EditorContent last-view review; ViewHost prepare/commit; SessionStore separate",
+    "phase": "P12",
+    "status": "IMPLEMENTED_AUTOMATED_MATRIX_COMPLETE_MANUAL_WAIVED",
+    "evidence_scope": "Final 85d2ed7ec6f9 automated command/application/role regressions retained; remaining manual installed menu observations waived, not PASS. See receipt and user-waiver.json.",
+    "current_source_locations": [
+      {
+        "path": "editor/application/src/EditorContent.cpp",
+        "line": 28
+      }
+    ],
+    "inherited_record": "dev_log/P12/behavior-map.json at 32500d90e5e27cfd22be1ef6b29a5e3010efcb3c",
+    "new_runtime_result": false
+  },
+  {
+    "old_id": "lux.application.exit",
+    "label": "Exit",
+    "menu": "File",
+    "shortcut": "",
+    "query": "Pure availability on fixed target; no mutation",
+    "execute_target": "application close decision",
+    "formal": "lux.editor.exit",
+    "owner": "EditorLifecycle review -> CloseSessionsOperation -> original Run/Task/GPU retirement",
+    "phase": "P12",
+    "status": "IMPLEMENTED_AUTOMATED_MATRIX_COMPLETE_MANUAL_WAIVED",
+    "evidence_scope": "Final 85d2ed7ec6f9 automated command/application/role regressions retained; remaining manual installed menu observations waived, not PASS. See receipt and user-waiver.json.",
+    "current_source_locations": [
+      {
+        "path": "editor/application/src/EditorCommands.cpp",
+        "line": 130
+      }
+    ],
+    "inherited_record": "dev_log/P12/behavior-map.json at 32500d90e5e27cfd22be1ef6b29a5e3010efcb3c",
+    "new_runtime_result": false
+  },
+  {
+    "old_id": "lux.edit.cut/copy/paste/delete/select-all",
+    "label": "Selection operations",
+    "menu": "Edit",
+    "shortcut": "",
+    "query": "Pure availability on fixed target; no mutation",
+    "execute_target": "original domain selection; no fallback focus",
+    "formal": "NOT_APPLICABLE: old menu-only placeholders without concrete consumers",
+    "owner": "Concrete graph deletion/selection remains via Material/Flow interaction. No nonfunctional global clipboard menu",
+    "phase": "P12",
+    "status": "RETIRED_EMPTY_MENU_PLACEHOLDER",
+    "evidence_scope": "Actual application/command/role tests plus installed product verification; final logs pending",
+    "current_source_locations": [],
+    "inherited_record": "dev_log/P12/behavior-map.json at 32500d90e5e27cfd22be1ef6b29a5e3010efcb3c",
+    "new_runtime_result": false
+  },
+  {
+    "old_id": "lux.window.create/<type>",
+    "label": "Open Window",
+    "menu": "Window",
+    "shortcut": "",
+    "query": "Pure availability on fixed target; no mutation",
+    "execute_target": "fixed ViewType + typed initial binding",
+    "formal": "lux.editor.tool/<ViewType>, assets/tasks and explicit another-view",
+    "owner": "Immutable factory snapshot; ViewHost one owner; showTool explicit singleton lookup",
+    "phase": "P12",
+    "status": "IMPLEMENTED_AUTOMATED_MATRIX_COMPLETE_MANUAL_WAIVED",
+    "evidence_scope": "Final 85d2ed7ec6f9 automated command/application/role regressions retained; remaining manual installed menu observations waived, not PASS. See receipt and user-waiver.json.",
+    "current_source_locations": [],
+    "inherited_record": "dev_log/P12/behavior-map.json at 32500d90e5e27cfd22be1ef6b29a5e3010efcb3c",
+    "new_runtime_result": false
+  },
+  {
+    "old_id": "lux.window.show/<id>",
+    "label": "Show Window",
+    "menu": "Window",
+    "shortcut": "",
+    "query": "Pure availability on fixed target; no mutation",
+    "execute_target": "fixed ViewId",
+    "formal": "ViewHost show/focus through existing open/tool commands",
+    "owner": "Original complete ViewId generation; no raw slot reuse",
+    "phase": "P12",
+    "status": "IMPLEMENTED_AUTOMATED_MATRIX_COMPLETE_MANUAL_WAIVED",
+    "evidence_scope": "Final 85d2ed7ec6f9 automated command/application/role regressions retained; remaining manual installed menu observations waived, not PASS. See receipt and user-waiver.json.",
+    "current_source_locations": [],
+    "inherited_record": "dev_log/P12/behavior-map.json at 32500d90e5e27cfd22be1ef6b29a5e3010efcb3c",
+    "new_runtime_result": false,
+    "review": "EditorViews.cpp show/showTool and existing open handlers preserve ViewHost ownership."
+  },
+  {
+    "old_id": "lux.workspace.default/apply/<name>",
+    "label": "Layouts",
+    "menu": "Window",
+    "shortcut": "",
+    "query": "Pure availability on fixed target; no mutation",
+    "execute_target": "stable LayoutId plan + explicit provider snapshot",
+    "formal": "lux.editor.workspace",
+    "owner": "EditorWorkspace requests -> WorkspaceStore immutable records -> Host atomic prepared layout",
+    "phase": "P12",
+    "status": "IMPLEMENTED_AUTOMATED_MATRIX_COMPLETE_MANUAL_WAIVED",
+    "evidence_scope": "Final 85d2ed7ec6f9 automated command/application/role regressions retained; remaining manual installed menu observations waived, not PASS. See receipt and user-waiver.json.",
+    "current_source_locations": [
+      {
+        "path": "editor/application/src/EditorWorkspace.cpp",
+        "line": 373
+      },
+      {
+        "path": "editor/application/src/EditorWorkspace.cpp",
+        "line": 382
+      },
+      {
+        "path": "editor/application/src/EditorWorkspace.cpp",
+        "line": 395
+      },
+      {
+        "path": "editor/application/src/EditorWorkspace.cpp",
+        "line": 400
+      }
+    ],
+    "inherited_record": "dev_log/P12/behavior-map.json at 32500d90e5e27cfd22be1ef6b29a5e3010efcb3c",
+    "new_runtime_result": false
+  },
+  {
+    "old_id": "lux.product.refresh/default",
+    "label": "Refresh/open initial scene",
+    "menu": "",
+    "shortcut": "",
+    "query": "Pure availability on fixed target; no mutation",
+    "execute_target": "project identity + fixed initial locator",
+    "formal": "lux.editor.initial-scene and initialize manifest default_scene",
+    "owner": "SessionOperations fixed AssetReference; repeated open reuses SessionId",
+    "phase": "P12",
+    "status": "IMPLEMENTED_AUTOMATED_MATRIX_COMPLETE_MANUAL_WAIVED",
+    "evidence_scope": "Final 85d2ed7ec6f9 automated command/application/role regressions retained; remaining manual installed menu observations waived, not PASS. See receipt and user-waiver.json.",
+    "current_source_locations": [
+      {
+        "path": "editor/application/src/EditorProjectTools.cpp",
+        "line": 20
+      }
+    ],
+    "inherited_record": "dev_log/P12/behavior-map.json at 32500d90e5e27cfd22be1ef6b29a5e3010efcb3c",
+    "new_runtime_result": false
+  },
+  {
+    "old_id": "lux.product.new-project",
+    "label": "New Project",
+    "menu": "File",
+    "shortcut": "",
+    "query": "Pure availability on fixed target; no mutation",
+    "execute_target": "new project config",
+    "formal": "lux.editor.project.create",
+    "owner": "Pure ProjectBuilder -> ProjectCreationOperation -> launchEditor",
+    "phase": "P12",
+    "status": "IMPLEMENTED_AUTOMATED_MATRIX_COMPLETE_MANUAL_WAIVED",
+    "evidence_scope": "Final 85d2ed7ec6f9 automated command/application/role regressions retained; remaining manual installed menu observations waived, not PASS. See receipt and user-waiver.json.",
+    "current_source_locations": [
+      {
+        "path": "editor/application/src/EditorProjectCreation.cpp",
+        "line": 41
+      }
+    ],
+    "inherited_record": "dev_log/P12/behavior-map.json at 32500d90e5e27cfd22be1ef6b29a5e3010efcb3c",
+    "new_runtime_result": false
+  },
+  {
+    "old_id": "lux.product.open-project/recent/<n>",
+    "label": "Open/Recent Projects",
+    "menu": "File",
+    "shortcut": "",
+    "query": "Pure availability on fixed target; no mutation",
+    "execute_target": "owned project path, not index into changing list",
+    "formal": "lux.editor.project.open / lux.editor.project.recent",
+    "owner": "Owned path -> Process launch; original v1 recent list through shared WriteCoordinator",
+    "phase": "P12",
+    "status": "IMPLEMENTED_AUTOMATED_MATRIX_COMPLETE_MANUAL_WAIVED",
+    "evidence_scope": "Final 85d2ed7ec6f9 automated command/application/role regressions retained; remaining manual installed menu observations waived, not PASS. See receipt and user-waiver.json.",
+    "current_source_locations": [
+      {
+        "path": "editor/application/src/EditorProjectTools.cpp",
+        "line": 47
+      },
+      {
+        "path": "editor/application/src/EditorProjectTools.cpp",
+        "line": 389
+      }
+    ],
+    "inherited_record": "dev_log/P12/behavior-map.json at 32500d90e5e27cfd22be1ef6b29a5e3010efcb3c",
+    "new_runtime_result": false
+  },
+  {
+    "old_id": "lux.product.new-scene/new-material/new-flow",
+    "label": "New Asset",
+    "menu": "File/New Asset",
+    "shortcut": "",
+    "query": "Pure availability on fixed target; no mutation",
+    "execute_target": "new typed source factory",
+    "formal": "lux.editor.new.scene / lux.editor.new.material / lux.editor.new.flow",
+    "owner": "Typed factory creates one installed Session; SceneCreationView config gate",
+    "phase": "P12",
+    "status": "IMPLEMENTED_AUTOMATED_MATRIX_COMPLETE_MANUAL_WAIVED",
+    "evidence_scope": "Final 85d2ed7ec6f9 automated command/application/role regressions retained; remaining manual installed menu observations waived, not PASS. See receipt and user-waiver.json.",
+    "current_source_locations": [
+      {
+        "path": "editor/application/src/EditorContent.cpp",
+        "line": 101
+      },
+      {
+        "path": "editor/application/src/EditorSceneTools.cpp",
+        "line": 472
+      }
+    ],
+    "inherited_record": "dev_log/P12/behavior-map.json at 32500d90e5e27cfd22be1ef6b29a5e3010efcb3c",
+    "new_runtime_result": false
+  },
+  {
+    "old_id": "lux.product.settings",
+    "label": "Settings / Layouts",
+    "menu": "Edit",
+    "shortcut": "",
+    "query": "Pure availability on fixed target; no mutation",
+    "execute_target": "typed settings view",
+    "formal": "lux.editor.settings / lux.editor.workspace",
+    "owner": "Settings UI -> original ProjectPublicationOperation; layout preferences separate",
+    "phase": "P12",
+    "status": "IMPLEMENTED_AUTOMATED_MATRIX_COMPLETE_MANUAL_WAIVED",
+    "evidence_scope": "Final 85d2ed7ec6f9 automated command/application/role regressions retained; remaining manual installed menu observations waived, not PASS. See receipt and user-waiver.json.",
+    "current_source_locations": [
+      {
+        "path": "editor/application/src/EditorSettings.cpp",
+        "line": 10
+      },
+      {
+        "path": "editor/application/src/EditorSettings.cpp",
+        "line": 73
+      },
+      {
+        "path": "editor/application/src/EditorSettings.cpp",
+        "line": 78
+      },
+      {
+        "path": "editor/application/src/EditorSettings.cpp",
+        "line": 150
+      },
+      {
+        "path": "editor/application/src/EditorWorkspace.cpp",
+        "line": 373
+      },
+      {
+        "path": "editor/application/src/EditorWorkspace.cpp",
+        "line": 382
+      },
+      {
+        "path": "editor/application/src/EditorWorkspace.cpp",
+        "line": 395
+      },
+      {
+        "path": "editor/application/src/EditorWorkspace.cpp",
+        "line": 400
+      },
+      {
+        "path": "editor/workbench/project/tools/src/SettingsView.cpp",
+        "line": 117
+      }
+    ],
+    "inherited_record": "dev_log/P12/behavior-map.json at 32500d90e5e27cfd22be1ef6b29a5e3010efcb3c",
+    "new_runtime_result": false
+  },
+  {
+    "old_id": "lux.product.open-asset",
+    "label": "Open Asset",
+    "menu": "File",
+    "shortcut": "",
+    "query": "Pure availability on fixed target; no mutation",
+    "execute_target": "fixed AssetReference",
+    "formal": "ProjectView.openRequested fixed AssetReference -> EditorApplication.open",
+    "owner": "E2 SessionOperations owns decode/install; E4 owns view composition",
+    "phase": "P12",
+    "status": "IMPLEMENTED_AUTOMATED_MATRIX_COMPLETE_MANUAL_WAIVED",
+    "evidence_scope": "Final 85d2ed7ec6f9 automated command/application/role regressions retained; remaining manual installed menu observations waived, not PASS. See receipt and user-waiver.json.",
+    "current_source_locations": [],
+    "inherited_record": "dev_log/P12/behavior-map.json at 32500d90e5e27cfd22be1ef6b29a5e3010efcb3c",
+    "new_runtime_result": false,
+    "review": "EditorApplication.cpp openRequested connects the fixed AssetReference to open_intents_; ProjectView only emits intent."
+  },
+  {
+    "old_id": "lux.product.about",
+    "label": "Version",
+    "menu": "Help",
+    "shortcut": "",
+    "query": "Pure availability on fixed target; no mutation",
+    "execute_target": "pure display",
+    "formal": "lux.editor.about",
+    "owner": "Read-only product version in Help menu",
+    "phase": "P12",
+    "status": "IMPLEMENTED_AUTOMATED_MATRIX_COMPLETE_MANUAL_WAIVED",
+    "evidence_scope": "Final 85d2ed7ec6f9 automated command/application/role regressions retained; remaining manual installed menu observations waived, not PASS. See receipt and user-waiver.json.",
+    "current_source_locations": [
+      {
+        "path": "editor/application/src/EditorProjectTools.cpp",
+        "line": 405
+      }
+    ],
+    "inherited_record": "dev_log/P12/behavior-map.json at 32500d90e5e27cfd22be1ef6b29a5e3010efcb3c",
+    "new_runtime_result": false,
+    "clarification": "Version is a disabled informational menu label, not an executable action."
+  }
+]

@@ -1,4 +1,4 @@
-#include <lux/engine/editor/scene/ConfigurationEditor.hpp>
+#include <lux/engine/editor/scene/SceneConfigurationElement.hpp>
 
 namespace lux::editor::scene
 {

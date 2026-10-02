@@ -65,7 +65,7 @@ lux_engine_install_components(PROJECT_NAME lux-engine-editor-plugins VERSION ${P
 
 if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     add_executable(plugin_configuration_test test/configuration.cpp)
-    target_link_libraries(plugin_configuration_test PRIVATE editor_extensions lux::engine::function::ui imgui::core)
+    target_link_libraries(plugin_configuration_test PRIVATE editor_extensions scene_ui lux::engine::function::ui imgui::core)
 
     if(MSVC)
         target_compile_options(plugin_configuration_test PRIVATE /UNDEBUG /utf-8)

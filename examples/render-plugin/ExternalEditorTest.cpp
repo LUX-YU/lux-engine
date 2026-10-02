@@ -47,5 +47,5 @@ int main(int argc, char** argv)
     assert((*editor)->exec());
     assert((*editor)->phase() == application::EApplicationPhase::RELEASED);
     editor->reset();
-    std::puts("PASS installed V7 plugin: formal application Window command, reuse, close and retirement");
+    std::puts("PASS installed V8 plugin: formal application Window command, reuse, close and retirement");
 }

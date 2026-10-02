@@ -4,7 +4,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-find_package(lux-engine-editor-extensions REQUIRED COMPONENTS editor_extensions)
+find_package(lux-engine-editor-extensions REQUIRED COMPONENTS editor_builtin_contributions)
 find_package(lux-engine-editor-desktop REQUIRED COMPONENTS desktop_shell)
 find_package(lux-engine-editor-scene-ui REQUIRED COMPONENTS scene_ui)
 find_package(lux-engine-editor-material-ui REQUIRED COMPONENTS material_ui)
@@ -56,7 +56,7 @@ configure_file("${CMAKE_CURRENT_SOURCE_DIR}/../common/ControlsTestAccess.hpp"
     "${CMAKE_CURRENT_BINARY_DIR}/ControlsTestAccess.hpp" COPYONLY)
 configure_file("${engine_source}/editor/workbench/desktop/test/host.cpp" "${CMAKE_CURRENT_BINARY_DIR}/host.cpp" COPYONLY)
 add_executable(desktop_views "${CMAKE_CURRENT_BINARY_DIR}/views.cpp")
-target_link_libraries(desktop_views PRIVATE lux::engine::editor::editor_extensions lux::engine::editor::scene_ui lux::engine::editor::desktop_shell
+target_link_libraries(desktop_views PRIVATE lux::engine::editor::editor_builtin_contributions lux::engine::editor::scene_ui lux::engine::editor::desktop_shell
     lux::engine::editor::material_ui lux::engine::editor::flow_ui lux::engine::editor::scene_execution
     lux::engine::editor::tasks_ui lux::engine::editor::editor_persistence_execution lux::engine::editor::editor_file_publication lux::engine::editor::material_persistence
     lux::engine::scene::scene_transform lux::engine::function::render_features
@@ -89,7 +89,7 @@ add_test(NAME installed.desktop.inspector_codegen COMMAND inspector_fields)
 add_test(NAME installed.desktop.real_views COMMAND desktop_views "${P10_LINKER}" "${sdk_prefix}")
 set_tests_properties(installed.desktop.real_views PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)
 if(WIN32)
-    target_link_libraries(desktop_views PRIVATE lux::engine::editor::editor_extensions user32)
+    target_link_libraries(desktop_views PRIVATE lux::engine::editor::editor_builtin_contributions user32)
     add_test(NAME installed.desktop.native_input COMMAND desktop_views "${P10_LINKER}" "${sdk_prefix}" native)
     set_tests_properties(installed.desktop.native_input PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)
 endif()

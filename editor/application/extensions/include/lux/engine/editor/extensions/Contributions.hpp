@@ -3,7 +3,7 @@
 #include <lux/engine/editor/sessions/SessionFactory.hpp>
 #include <lux/engine/editor/views/ViewFactory.hpp>
 #include <lux/engine/editor/scene/ConfigurationEditor.hpp>
-#include <lux/engine/editor/scene/InspectorView.hpp>
+#include <lux/engine/editor/scene/InspectorComponent.hpp>
 #include <lux/cxx/core/function_ref.hpp>
 #include <lux/engine/object/LuxObject.hpp>
 
@@ -18,7 +18,8 @@ namespace lux::editor::extensions
         WRONG_THREAD,
         CALLBACK,
         INCOMPATIBLE_ABI,
-        IO
+        IO,
+        UNAVAILABLE
     };
     struct ContributionFailure final
     {

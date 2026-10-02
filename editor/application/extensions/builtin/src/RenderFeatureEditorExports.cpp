@@ -32,7 +32,7 @@
 #include <lux/engine/function/render/features/genops/ViewCameraOperation.type_static_info.hpp>
 #include <lux/engine/function/render/features/genops/WaterOperation.type_static_info.hpp>
 
-extern "C" LUX_RENDER_FEATURE_META_PUBLIC const lux::editor::extensions::EditorExtensionExports* lux_editor_exports_v7(
+extern "C" LUX_RENDER_FEATURE_META_PUBLIC const lux::editor::extensions::EditorExtensionExports* lux_editor_exports_v8(
 ) noexcept
 {
     static const lux::editor::scene::ConfigurationEditor configurations[]{

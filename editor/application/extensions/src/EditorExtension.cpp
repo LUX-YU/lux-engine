@@ -4,6 +4,53 @@
 
 namespace lux::editor::extensions
 {
+    namespace
+    {
+        bool validCounts(ContributionCounts counts) noexcept
+        {
+            return counts.commands <= 256 && counts.sessions <= 256 && counts.views <= 256 &&
+                counts.reflection <= 256 && counts.configurations <= 256 && counts.components <= 256;
+        }
+        ContributionResult<ContributionDraft> normalizeDraft(
+            std::shared_ptr<const void> pinned,
+            ContributionCounts counts,
+            ContributionDraft incoming
+        )
+        {
+            auto draft = std::move(incoming);
+            const bool mismatch = counts.commands != draft.commands.size() || counts.sessions != draft.sessions.size() ||
+                                  counts.reflection != draft.reflection.size() || counts.views != draft.views.size() ||
+                                  counts.configurations != draft.configurations.size() ||
+                                  counts.components != draft.components.size();
+            if (mismatch)
+                return cxx::unexpected(ContributionFailure{EContributionError::INVALID_ARGUMENT, "extension.counts"});
+            const auto lease = contracts::CodeLease::plugin(pinned);
+            draft.code.push_back(lease);
+            for (const auto& entry : draft.reflection)
+                if (!entry.code.sameOwner(lease))
+                    return cxx::unexpected(ContributionFailure{EContributionError::INVALID_ARGUMENT, "reflection.code"});
+            for (const auto& entry : draft.commands)
+                if (!entry || !entry->usesCode(lease))
+                    return cxx::unexpected(ContributionFailure{EContributionError::INVALID_ARGUMENT, "command.code"});
+            for (const auto& entry : draft.sessions)
+                if (!entry || !entry->usesCode(lease))
+                    return cxx::unexpected(ContributionFailure{EContributionError::INVALID_ARGUMENT, "session.code"});
+            for (const auto& entry : draft.views)
+                if (!entry || !entry->usesCode(lease))
+                    return cxx::unexpected(ContributionFailure{EContributionError::INVALID_ARGUMENT, "view.code"});
+            for (auto& entry : draft.configurations)
+                entry.code = lease;
+            for (auto& entry : draft.components)
+            {
+                struct Pins final
+                {
+                    std::shared_ptr<const void> library, original;
+                };
+                entry.code = std::make_shared<Pins>(pinned, std::move(entry.code));
+            }
+            return draft;
+        }
+    }
     lux::project::PluginResult<EditorExtension> EditorExtension::load(
         const lux::project::PluginDescription& description,
         const lux::project::PluginLibrary& runtime,
@@ -45,10 +92,13 @@ namespace lux::editor::extensions
             return fail(lux::project::EPluginError::INVALID_EXPORT, "editor.header");
         if (!table->editor_sdk_abi || std::string_view(table->editor_sdk_abi) != kEditorExtensionAbi)
             return fail(lux::project::EPluginError::ABI_MISMATCH, "editor.sdk");
-        const auto counts = table->counts;
-        const bool invalid_counts = counts.commands > 256 || counts.sessions > 256 || counts.views > 256 ||
-                                    counts.reflection > 256 || counts.configurations > 256 || counts.components > 256 ||
-                                    !table->contribute;
+        const bool has_activation = table->activate != nullptr;
+        const auto requirements = table->requires_capabilities;
+        const bool has_requirements = requirements.sessions || requirements.project || requirements.workbench;
+        const bool has_activation_entries = table->activation_counts != ContributionCounts{};
+        const bool is_invalid_activation = !has_activation && (has_requirements || has_activation_entries);
+        const bool invalid_counts = !validCounts(table->counts) || !validCounts(table->activation_counts) ||
+            !table->contribute || is_invalid_activation;
         if (invalid_counts)
             return fail(lux::project::EPluginError::INVALID_EXPORT, "editor.counts");
         EditorExtension result;
@@ -81,38 +131,50 @@ namespace lux::editor::extensions
         {
             return cxx::unexpected(ContributionFailure{EContributionError::CALLBACK, "extension.contribute"});
         }
-        const auto counts = table->counts;
-        const bool mismatch = counts.commands != draft.commands.size() || counts.sessions != draft.sessions.size() ||
-                              counts.reflection != draft.reflection.size() || counts.views != draft.views.size() ||
-                              counts.configurations != draft.configurations.size() ||
-                              counts.components != draft.components.size();
-        if (mismatch)
-            return cxx::unexpected(ContributionFailure{EContributionError::INVALID_ARGUMENT, "extension.counts"});
-        const auto lease = contracts::CodeLease::plugin(pinned);
-        draft.code.push_back(lease);
-        for (const auto& entry : draft.reflection)
-            if (!entry.code.sameOwner(lease))
-                return cxx::unexpected(ContributionFailure{EContributionError::INVALID_ARGUMENT, "reflection.code"});
-        for (const auto& entry : draft.commands)
-            if (!entry || !entry->usesCode(lease))
-                return cxx::unexpected(ContributionFailure{EContributionError::INVALID_ARGUMENT, "command.code"});
-        for (const auto& entry : draft.sessions)
-            if (!entry || !entry->usesCode(lease))
-                return cxx::unexpected(ContributionFailure{EContributionError::INVALID_ARGUMENT, "session.code"});
-        for (const auto& entry : draft.views)
-            if (!entry || !entry->usesCode(lease))
-                return cxx::unexpected(ContributionFailure{EContributionError::INVALID_ARGUMENT, "view.code"});
-        for (auto& entry : draft.configurations)
-            entry.code = lease;
-        for (auto& entry : draft.components)
+        return normalizeDraft(pinned, table->counts, std::move(draft));
+    }
+    ContributionResult<ContributionDraft> EditorExtension::activate(const ExtensionCapabilities& supplied) const
+    {
+        if (std::this_thread::get_id() != owner_)
+            return cxx::unexpected(ContributionFailure{EContributionError::WRONG_THREAD, "extension.activate"});
+        const auto pinned = code_;
+        if (!pinned)
+            return cxx::unexpected(ContributionFailure{EContributionError::INVALID_ARGUMENT, "extension"});
+        const auto* table = exports_;
+        if (!table || !table->activate)
+            return ContributionDraft{};
+        const auto requirements = table->requires_capabilities;
+        const bool is_missing_sessions = requirements.sessions && !supplied.sessions;
+        const bool is_missing_project = requirements.project && !supplied.project;
+        const bool is_missing_workbench = requirements.workbench && !supplied.workbench;
+        if (is_missing_sessions || is_missing_project || is_missing_workbench)
+            return cxx::unexpected(ContributionFailure{
+                EContributionError::UNAVAILABLE,
+                "extension.capabilities",
+                0,
+                is_missing_sessions ? "sessions" : is_missing_project ? "project" : "workbench"
+            });
+        const ExtensionCapabilities selected{
+            requirements.sessions ? supplied.sessions : nullptr,
+            requirements.project ? supplied.project : nullptr,
+            requirements.workbench ? supplied.workbench : nullptr
+        };
+        ContributionDraft draft;
+        try
         {
-            struct Pins final
-            {
-                std::shared_ptr<const void> library, original;
-            };
-            entry.code = std::make_shared<Pins>(pinned, std::move(entry.code));
+            auto result = table->activate(draft, contracts::CodeLease::plugin(pinned), selected);
+            if (!result)
+                return cxx::unexpected(result.error());
         }
-        return draft;
+        catch (const std::bad_alloc&)
+        {
+            std::terminate();
+        }
+        catch (...)
+        {
+            return cxx::unexpected(ContributionFailure{EContributionError::CALLBACK, "extension.activate"});
+        }
+        return normalizeDraft(pinned, table->activation_counts, std::move(draft));
     }
     const lux::project::MetadataIdentity& EditorExtension::identity() const noexcept
     {

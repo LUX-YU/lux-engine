@@ -1,5 +1,6 @@
 #include "Probe.hpp"
 #include <lux/engine/editor/extensions/EditorExtension.hpp>
+#include <lux/engine/editor/scene/SceneConfigurationElement.hpp>
 #include <lux/engine/editor/material/MaterialSessionFactory.hpp>
 #include <lux/engine/editor/storage/FileArtifactStore.hpp>
 #include <lux/engine/editor/persistence/SaveExecution.hpp>
@@ -154,6 +155,25 @@ int main(int argc, char** argv)
         assert(!rejected && rejected.error().domain == "configuration.reflection" && catalog.revision() == 0);
         assert(!catalog.snapshot().valid());
         auto draft = take(extension.contributions());
+        auto missing = extension.activate({});
+        assert(!missing && missing.error().code == extensions::EContributionError::UNAVAILABLE);
+        assert(facts.activations == 0);
+        const extensions::SessionActivities session_activities{store, saves};
+        const extensions::WorkbenchAccess workbench{messages.dispatcherRef(), host, commands};
+        std::jthread foreign([&] {
+            auto refused = extension.activate({&session_activities, {}, &workbench});
+            assert(!refused && refused.error().code == extensions::EContributionError::WRONG_THREAD);
+        });
+        foreign.join();
+        assert(facts.activations == 0);
+        auto activated = take(extension.activate({&session_activities, {}, &workbench}));
+        assert(facts.activations == 1 && activated.commands.size() == 1 && activated.views.size() == 1);
+        for (auto& pin : activated.code)
+            draft.code.push_back(std::move(pin));
+        for (auto& entry : activated.commands)
+            draft.commands.push_back(std::move(entry));
+        for (auto& entry : activated.views)
+            draft.views.push_back(std::move(entry));
         if (!with_configuration)
         {
             draft.configurations.clear();
@@ -221,6 +241,23 @@ int main(int argc, char** argv)
         commands::CommandInvocation invocation{commands::SessionTarget{installed->id()}};
         assert(commands.execute(handle, invocation));
         assert(facts.queries == 1 && facts.executions == 1);
+        auto active_command = take(current.commands().find(commands::CommandIdView{"qualification.activated"}));
+        assert(commands.execute(active_command, invocation));
+        assert(facts.activation_queries == 1 && facts.activation_executions == 1);
+        views::ViewFactoryInput free_input{
+            messages.dispatcherRef(),
+            ui::PaneId{"free"},
+            contracts::CodeLease::builtin(),
+            cxx::typeToken<std::monostate>(),
+            std::make_shared<const std::monostate>()
+        };
+        auto free_window = take(current.views().prepare(views::ViewTypeId{"qualification.free"}, free_input));
+        assert(!free_window.pane()->attachedRoot());
+        const auto free_id = take(host.adopt(free_window, views::ViewRestoreKey{"free"})).id;
+        assert(take(host.describe(free_id)).type == views::ViewTypeId{"qualification.free"});
+        assert(host.focus(free_id) && host.close(free_id));
+        take(host.drain());
+        assert(store.describe(installed->id()));
         facts.fail_query = true;
         auto contained = commands.query(handle, invocation.query());
         assert(!contained && contained.error().domain == "plugin.command.query");
@@ -240,6 +277,7 @@ int main(int argc, char** argv)
         assert(catalog.enqueue(empty) && catalog.applyPending());
     }
     assert(!weak_library.expired() && facts.unloaded == 0);
+    assert(facts.activations_destroyed == 1);
     assert(host.close(view_id));
     take(host.drain());
     assert(facts.panes_destroyed == 1);

@@ -68,6 +68,10 @@ def check(repo, records, sources, rules, mode, report, compiler_dependencies=Non
             return "authoring_outer_dependency" if layer == "E1" else "editing_capability_leak"
         if owner == "editor_tasks" and (dest in ("E3", "E4") or "GUI" in caps or "GPU" in caps):
             return "task_monitor_ui_dependency"
+        # LuxWindow declares Vulkan surface types but loads no renderer. Its header-only type
+        # dependency is distinct from a Vulkan library, RenderRuntime or compiler implementation.
+        if owner == "editor_extensions" and dependency != "Vulkan::Headers" and caps.intersection(("GPU", "TOOLCHAIN")):
+            return "extension_optional_capability_leak"
         if layer == "E2" and dest in ("E3", "E4"):
             return "activity_workbench_dependency"
         if owner in ("editor_commands", "session_factories") and caps.intersection(("GUI", "GPU")):

@@ -16,14 +16,16 @@ namespace
 #if PROBE_REJECT == 6
 extern "C" PROBE_EXPORT const extensions::EditorExtensionExports* lux_editor_exports_v6() noexcept
 #else
-extern "C" PROBE_EXPORT const extensions::EditorExtensionExports* lux_editor_exports_v7() noexcept
+extern "C" PROBE_EXPORT const extensions::EditorExtensionExports* lux_editor_exports_v8() noexcept
 #endif
 {
     static const auto exports = [] {
         extensions::EditorExtensionExports value;
         value.contribute = &mustNotCall;
-#if PROBE_REJECT == 6 || PROBE_REJECT == 7
+#if PROBE_REJECT == 6
         value.interface_version = 6;
+#elif PROBE_REJECT == 7
+        value.interface_version = 7;
 #elif PROBE_REJECT == 8
         value.structure_size -= 1;
 #elif PROBE_REJECT == 9

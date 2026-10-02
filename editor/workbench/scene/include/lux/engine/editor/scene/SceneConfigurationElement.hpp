@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/project/PluginCatalog.hpp>
+#include <lux/engine/editor/scene/ConfigurationEditor.hpp>
 #include <lux/engine/scene/SceneDescriptionBuilder.hpp>
 #include <lux/engine/scene/SceneSystemRegistration.hpp>
 #include <lux/engine/function/render/client/core/RenderFeatureRegistration.hpp>
@@ -120,6 +121,13 @@ namespace lux::editor::scene
         std::unique_ptr<lux::ui::Element> content_;
         Encode encode_{};
     };
+    [[nodiscard]] SceneConfigurationResult<ConfigurationControl> makeConfigurationControl(
+        const ConfigurationEditor&,
+        lux::ui::Element&,
+        lux::ui::ElementId,
+        std::optional<std::span<const std::byte>> initial = {}
+    );
+
     struct SceneConfigurationInputs final
     {
         const lux::project::PluginCatalog& catalog;

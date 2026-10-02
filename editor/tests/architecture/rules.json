@@ -5941,7 +5941,8 @@
       "view_api",
       "editor_viewport",
       "editor_configuration",
-      "scene_execution"
+      "scene_execution",
+      "scene_control_api"
     ],
     "closure": {
       "Eigen3::Eigen": {
@@ -6351,6 +6352,9 @@
       },
       "scene_execution": {
         "path": "editor/activities/scene"
+      },
+      "scene_control_api": {
+        "path": "editor/workbench/scene/api"
       }
     },
     "native_libraries": [
@@ -6463,7 +6467,8 @@
       "lux/engine/editor/scene/RunInspectorFields.hpp",
       "lux/engine/editor/scene/RunInspectorView.hpp",
       "lux/engine/editor/editing/scene/FieldEdit.hpp",
-      "lux/engine/editor/scene/ModelPlacement.hpp"
+      "lux/engine/editor/scene/ModelPlacement.hpp",
+      "lux/engine/editor/scene/InspectorComponent.hpp"
     ],
     "prefixes": [],
     "test_headers": {
@@ -8004,7 +8009,7 @@
       "material_persistence",
       "editor_persistence_execution",
       "editor_file_publication",
-      "editor_extensions"
+      "editor_builtin_contributions"
     ],
     "closure": {
       "Eigen3::Eigen": {
@@ -9002,6 +9007,12 @@
       },
       "platform_process": {
         "path": "modules/platform/process"
+      },
+      "scene_control_api": {
+        "path": "editor/workbench/scene/api"
+      },
+      "editor_builtin_contributions": {
+        "path": "editor/application/extensions"
       }
     },
     "native_libraries": [
@@ -15383,9 +15394,7 @@
         "role": "COMPOSITION",
         "capabilities": [
           "CPU",
-          "PROCESS",
-          "TOOLCHAIN",
-          "GPU"
+          "GUI"
         ],
         "path": "editor/application/extensions"
       },
@@ -15447,6 +15456,26 @@
           "TOOLCHAIN"
         ],
         "path": "editor/workbench/project/tools"
+      },
+      "scene_control_api": {
+        "layer": "E3",
+        "role": "UI",
+        "capabilities": [
+          "CPU",
+          "GUI"
+        ],
+        "path": "editor/workbench/scene/api"
+      },
+      "editor_builtin_contributions": {
+        "layer": "E4",
+        "role": "COMPOSITION",
+        "capabilities": [
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN",
+          "GPU"
+        ],
+        "path": "editor/application/extensions"
       }
     },
     "files": {
@@ -17503,9 +17532,6 @@
       "editor/workbench/desktop/src/ViewFactory.cpp": [
         "view_host"
       ],
-      "editor/workbench/scene/include/lux/engine/editor/scene/ConfigurationEditor.hpp": [
-        "scene_ui"
-      ],
       "editor/workbench/scene/include/lux/engine/editor/scene/ConfigurationForm.hpp": [
         "scene_ui"
       ],
@@ -17525,10 +17551,10 @@
         "editor_extensions"
       ],
       "editor/application/extensions/include/lux/engine/editor/extensions/BuiltinContributions.hpp": [
-        "editor_extensions"
+        "editor_builtin_contributions"
       ],
       "editor/application/extensions/src/BuiltinContributions.cpp": [
-        "editor_extensions"
+        "editor_builtin_contributions"
       ],
       "editor/application/extensions/test/contributions.cpp": [
         "editor_contributions_test"
@@ -17751,6 +17777,18 @@
       ],
       "editor/editing/test/sessions/executor.hpp": [
         "editor_sessions_test"
+      ],
+      "editor/workbench/scene/api/include/lux/engine/editor/scene/ConfigurationEditor.hpp": [
+        "scene_control_api"
+      ],
+      "editor/workbench/scene/api/include/lux/engine/editor/scene/InspectorComponent.hpp": [
+        "scene_control_api"
+      ],
+      "editor/application/extensions/include/lux/engine/editor/extensions/ExtensionCapabilities.hpp": [
+        "editor_extensions"
+      ],
+      "editor/workbench/scene/api/CMakeLists.txt": [
+        "scene_control_api"
       ]
     },
     "native_libraries": [

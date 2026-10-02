@@ -108,19 +108,77 @@ namespace
         ));
         return {};
     }
+    struct Activation final
+    {
+        sessions::SessionStore& sessions;
+        explicit Activation(sessions::SessionStore& value) : sessions(value) {}
+        ~Activation() { ++facts->activations_destroyed; }
+    };
+    extensions::ContributionResult<void> activate(
+        extensions::ContributionDraft& draft,
+        contracts::CodeLease code,
+        const extensions::ExtensionCapabilities& capabilities
+    )
+    {
+        if (!capabilities.sessions || !capabilities.workbench || capabilities.project)
+            std::abort();
+        ++facts->activations;
+        auto state = std::make_shared<Activation>(capabilities.sessions->sessions);
+        draft.commands.push_back(std::make_shared<commands::CommandEntry>(
+            code,
+            commands::CommandDescriptor{
+                commands::CommandId{"qualification.activated"},
+                "Inspect through injected capability",
+                "Extension",
+                {},
+                commands::ECommandScope::SESSION
+            },
+            [state](const commands::CommandQuery& input) -> commands::CommandResult<commands::CommandState> {
+                ++facts->activation_queries;
+                auto content = state->sessions.describe(std::get<commands::SessionTarget>(input.target).id);
+                if (!content)
+                    return cxx::unexpected(commands::CommandFailure{
+                        commands::ECommandError::STALE_TARGET, "activation.session"
+                    });
+                return commands::CommandState{true};
+            },
+            [state](const commands::CommandInvocation&) -> commands::CommandResult<commands::DispatchReceipt> {
+                ++facts->activation_executions;
+                return commands::DispatchReceipt{commands::ImmediateCompletion{}};
+            }
+        ));
+        draft.views.push_back(std::make_shared<views::ViewFactoryEntry>(
+            code,
+            views::ViewFactoryDescriptor{
+                views::ViewTypeId{"qualification.free"}, "Free window", cxx::typeToken<std::monostate>()
+            },
+            [state, code](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
+                return views::DetachedView{
+                    code,
+                    std::make_unique<ui::Pane>(
+                        input.dispatcher(), input.paneId(), ui::PaneTypeId{"qualification.free"}, "Free window"
+                    )
+                };
+            }
+        ));
+        return {};
+    }
 }
 extern "C" PROBE_EXPORT void p11_probe(probe::Facts* value) noexcept
 {
     facts = value;
 }
-extern "C" PROBE_EXPORT const extensions::EditorExtensionExports* lux_editor_exports_v7() noexcept
+extern "C" PROBE_EXPORT const extensions::EditorExtensionExports* lux_editor_exports_v8() noexcept
 {
     static const extensions::EditorExtensionExports exports{
         sizeof(exports),
         extensions::kEditorExtensionVersion,
         extensions::kEditorExtensionAbi,
         {1, 1, 1, 1, 0, 1},
-        &contribute
+        &contribute,
+        {.commands = 1, .views = 1},
+        {.sessions = true, .workbench = true},
+        &activate
     };
     return &exports;
 }

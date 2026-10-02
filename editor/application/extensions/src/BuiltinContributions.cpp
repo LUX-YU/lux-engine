@@ -89,12 +89,13 @@ namespace lux::editor::extensions
         }
     }
     std::vector<std::shared_ptr<commands::CommandEntry>> builtinSessionCommands(
-        sessions::SessionStore& store,
-        persistence::SaveService& saves,
+        SessionActivities activities,
         HistoryActionLookup lookup
     )
     {
         using namespace commands;
+        auto& store = activities.sessions;
+        auto& saves = activities.saves;
         auto roles = std::make_shared<HistoryActionLookup>(std::move(lookup));
         std::vector<std::shared_ptr<CommandEntry>> entries;
         entries.push_back(std::make_shared<CommandEntry>(

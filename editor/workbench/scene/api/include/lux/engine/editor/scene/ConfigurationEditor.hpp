@@ -1,8 +1,14 @@
 #pragma once
 #include <lux/engine/editor/configuration/ConfigurationValue.hpp>
-#include <lux/engine/editor/scene/SceneConfigurationElement.hpp>
+#include <lux/engine/ui/Ids.hpp>
+#include <memory>
 #include <lux/engine/editor/contracts/CodeLease.hpp>
 #include <lux/engine/editor/EditorError.hpp>
+
+namespace lux::ui
+{
+    class Element;
+}
 
 namespace lux::editor::scene
 {
@@ -14,10 +20,4 @@ namespace lux::editor::scene
         ConfigurationDescriptor value;
         Create create{};
     };
-    [[nodiscard]] SceneConfigurationResult<ConfigurationControl> makeConfigurationControl(
-        const ConfigurationEditor&,
-        lux::ui::Element&,
-        lux::ui::ElementId,
-        std::optional<std::span<const std::byte>> initial = {}
-    );
 }

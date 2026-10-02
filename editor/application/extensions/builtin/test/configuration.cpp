@@ -1,5 +1,6 @@
 #include <lux/engine/editor/configuration/ConfigurationValue.hpp>
 #include <lux/engine/editor/scene/ConfigurationEditor.hpp>
+#include <lux/engine/editor/scene/SceneConfigurationElement.hpp>
 #include <lux/engine/meta/TypeStaticInfo.hpp>
 #include <lux/engine/ui/Root.hpp>
 #include <lux/engine/ui/Pane.hpp>

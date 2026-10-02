@@ -1,3 +1,4 @@
+#include <lux/engine/editor/scene/SceneConfigurationElement.hpp>
 #include "../../../../cmake/installed-consumers/common/UiTestContent.hpp"
 #include <lux/engine/editor/scene/ConfigurationEditor.hpp>
 #include <lux/engine/editor/extensions/EditorExtension.hpp>

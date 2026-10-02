@@ -767,7 +767,7 @@ int main(int argc, char** argv)
                     return &entry;
             return nullptr;
         };
-        auto snapshot = take(CommandRegistrySnapshot::create(extensions::builtinSessionCommands(store, saves, find)));
+        auto snapshot = take(CommandRegistrySnapshot::create(extensions::builtinSessionCommands({store, saves}, find)));
         assert(registry.publish(snapshot));
         auto messages = take(object::ObjectMessageQueue::create(64));
         CommandRoot root{messages.dispatcherRef()};

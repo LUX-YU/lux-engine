@@ -69,7 +69,7 @@ namespace lux::editor::application
     {
         extensions::ContributionDraft draft;
         draft.commands =
-            extensions::builtinSessionCommands(sessions_, saves_, [this](auto id) { return opening_.find(id); });
+            extensions::builtinSessionCommands({sessions_, saves_}, [this](auto id) { return opening_.find(id); });
 
         draft.views.push_back(extensions::builtinSceneViewFactory(sceneServices()));
         draft.views.push_back(std::make_shared<views::ViewFactoryEntry>(
@@ -172,11 +172,24 @@ namespace lux::editor::application
                 return tasks::makeTaskView(input.dispatcher(), input.paneId(), task_monitor_);
             }
         ));
+        const extensions::SessionActivities session_activities{sessions_, saves_};
+        const extensions::ProjectActivities project_activities{*project_, writes_, engine_->execution()};
+        const extensions::WorkbenchAccess workbench{messages_.dispatcherRef(), desktop_->views(), commands_};
         for (const auto& extension : extensions_)
         {
             auto contributed = extension.contributions();
             if (!contributed)
                 return applicationFailure("extension.contribute", contributed.error());
+            auto activated = extension.activate({&session_activities, &project_activities, &workbench});
+            if (!activated)
+                return applicationFailure("extension.activate", activated.error());
+            append(contributed->code, activated->code);
+            append(contributed->reflection, activated->reflection);
+            append(contributed->commands, activated->commands);
+            append(contributed->sessions, activated->sessions);
+            append(contributed->views, activated->views);
+            append(contributed->configurations, activated->configurations);
+            append(contributed->components, activated->components);
             for (const auto& entry : contributed->views)
             {
                 const auto& descriptor = entry->descriptor();

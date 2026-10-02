@@ -47,6 +47,8 @@ def main():
             ("N11-03", "material_persistence", "editor_extensions", "activity_workbench_dependency", "transitive"),
             ("N11-04", "editor_extensions", "session_factories", "private_support_dependency", "private"),
             ("N11-05", "material_model", "process_execution", "authoring_outer_dependency", "link"),
+            ("EC1-extension-gpu", "editor_extensions", "scene_ui", "extension_optional_capability_leak", "link"),
+            ("EC1-extension-toolchain", "editor_extensions", "flowforge_compilation", "extension_optional_capability_leak", "transitive"),
         ]
     if args.p12:
         assert not args.p11

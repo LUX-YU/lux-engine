@@ -1,17 +1,10 @@
 #pragma once
 #include <lux/engine/editor/scene/InspectorFields.hpp>
+#include <lux/engine/editor/scene/InspectorComponent.hpp>
 #include <lux/engine/editor/scene/SceneView.hpp>
 
 namespace lux::editor::scene
 {
-    struct InspectorComponent final
-    {
-        using CreateResult = SceneEditResult<std::unique_ptr<lux::ui::Element>>;
-        cxx::TypeToken type;
-        std::string label;
-        CreateResult (*create)(lux::ui::Element&, lux::ui::ElementId, InspectorFields&){};
-        std::shared_ptr<const void> code;
-    };
     [[nodiscard]] std::vector<InspectorComponent> sceneInspectorComponents();
 
     class InspectorView final : public lux::ui::Pane

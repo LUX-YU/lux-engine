@@ -9,7 +9,7 @@ namespace
     public:
         explicit SamplePane(const lux::editor::views::ViewFactoryInput& input)
             : Pane(input.dispatcher(), input.paneId(), lux::ui::PaneTypeId{"sample.editor"}, "Plugin editor"),
-              text_(*this, lux::ui::ElementId{"message"}, "External V7 editor extension")
+              text_(*this, lux::ui::ElementId{"message"}, "External V8 editor extension")
         {
             setContent(text_);
         }
@@ -19,7 +19,7 @@ namespace
     };
 }
 
-extern "C" SAMPLE_EXTERNAL_EDITOR_EXPORT const lux::editor::extensions::EditorExtensionExports* lux_editor_exports_v7(
+extern "C" SAMPLE_EXTERNAL_EDITOR_EXPORT const lux::editor::extensions::EditorExtensionExports* lux_editor_exports_v8(
 ) noexcept
 {
     using namespace lux::editor;

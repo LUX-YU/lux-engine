@@ -1,6 +1,7 @@
 #include <lux/engine/editor/extensions/Contributions.hpp>
 #include <lux/engine/editor/configuration/EditorReflection.hpp>
 #include <lux/engine/ui/Root.hpp>
+#include <lux/engine/ui/Element.hpp>
 #include <cassert>
 #include <iostream>
 

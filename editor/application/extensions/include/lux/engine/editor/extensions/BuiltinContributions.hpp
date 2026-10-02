@@ -1,5 +1,7 @@
 #pragma once
 #include <lux/engine/editor/extensions/Contributions.hpp>
+#include <lux/engine/editor/extensions/ExtensionCapabilities.hpp>
+#include <lux/engine/editor/scene/SceneView.hpp>
 #include <lux/engine/editor/scene/SceneSessionFactory.hpp>
 #include <lux/engine/editor/material/MaterialSessionFactory.hpp>
 #include <lux/engine/editor/flowforge/FlowSessionFactory.hpp>
@@ -10,8 +12,7 @@ namespace lux::editor::extensions
 {
     using HistoryActionLookup = cxx::move_only_function<sessions::InstalledSession*(sessions::SessionId)>;
     [[nodiscard]] std::vector<std::shared_ptr<commands::CommandEntry>> builtinSessionCommands(
-        sessions::SessionStore&,
-        persistence::SaveService&,
+        SessionActivities,
         HistoryActionLookup
     );
     [[nodiscard]] std::vector<std::shared_ptr<sessions::SessionFactoryEntry>> builtinSessionFactories(

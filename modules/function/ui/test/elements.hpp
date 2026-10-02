@@ -233,6 +233,13 @@ namespace element_checks
             text.setValue("start");
             number.setValue(2.0F);
             choice.setValue(2);
+            unsigned choice_changes{};
+            auto choice_connection = lux::object::LuxObject::connect(&choice, &ui::Choice::edited,
+                [&](const ui::EditResult&) noexcept { ++choice_changes; }).value();
+            choice.setOptions({{2, "Two renamed"}, {3, "Three"}});
+            assert(choice.value() == 2 && choice_changes == 0);
+            choice.setOptions({{1, "One"}, {2, "Two"}});
+            assert(choice.value() == 2 && choice_changes == 0);
             assert(checks == 0 && text_changes == 0 && std::get<float>(number.value()) == 2.F);
             assert(!number.setSpec({.minimum = std::int32_t{0}}));
             assert(number.setSpec({.minimum = 0.0F, .maximum = 10.0F}));

@@ -115,7 +115,7 @@ int main(int argc, char** argv)
                  if (descriptor.value.schema_name == name && descriptor.value.schema_version == version)
                      return editor::scene::makeConfigurationControl(descriptor, parent, ui::ElementId{name}, initial);
              return editor::scene::ConfigurationControl{};
-         }},
+         }, registrations->render_bindings},
         status
     );
     assert(status);
@@ -142,6 +142,24 @@ int main(int argc, char** argv)
             element.setStage(stage);
             ui::DrawData data;
             assert((*root)->update({{1100, 820}, 1.0F / 60}, &data));
+        }
+        if (preset == editor::scene::ESceneContentPreset::THREE_DIMENSIONAL)
+        {
+            const auto find_schema = [&](auto&& self, object::LuxObject& owner) -> ui::CheckBox* {
+                if (auto* field = dynamic_cast<ui::CheckBox*>(&owner);
+                    field && field->id().name() == "lux.ecs.Mesh3D")
+                    return field;
+                for (auto* child = owner.firstChild(); child; child = child->nextSibling())
+                    if (auto* field = self(self, *child))
+                        return field;
+                return nullptr;
+            };
+            auto* mesh = find_schema(find_schema, element);
+            assert(mesh && mesh->value());
+            mesh->setValue(false);
+            const auto denied = element.build();
+            assert(!denied && denied.error().domain == "scene.feature.author-input");
+            mesh->setValue(true);
         }
         auto built = element.build();
         assert(built);

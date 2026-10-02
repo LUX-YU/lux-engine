@@ -118,6 +118,77 @@ namespace
         }
     };
 
+    void applicability()
+    {
+        const auto metadata = schemas();
+        const std::string_view t2[]{"lux.ecs.Transform2D"};
+        const std::string_view t3[]{"lux.ecs.Transform3D"};
+        const std::string_view hierarchy[]{"lux.ecs.Parent"};
+        const std::string_view unknown[]{"test.removed.plugin"};
+        for (unsigned mask = 0; mask < 4; ++mask)
+        {
+            std::vector<world::WorldDataSchemaId> ids{world::worldDataSchemaId(unknown[0])};
+            if (mask & 1) ids.push_back(world::worldDataSchemaId(t2[0]));
+            if (mask & 2) ids.push_back(world::worldDataSchemaId(t3[0]));
+            auto simulation = take(std::move(simulation::SimulationDescriptionBuilder{}).build());
+            auto description = take(std::move(lux::scene::SceneDescriptionBuilder{}).buildResolved());
+            auto input = take(lux::scene::createScenePackage(asset::AssetId{uuid("applicability")}, "facts", ids,
+                std::make_shared<const simulation::SimulationDescription>(std::move(simulation)), description));
+            sessions::SessionStore store{8};
+            auto reservation = take(store.reserve<SceneSession>({"lux.editor.scene"}, contracts::CodeLease::builtin()));
+            auto candidate = take(SceneSession::create(reservation.id(), {}, take(SceneSource::create(input, metadata))));
+            auto* session = candidate.get();
+            assert(store.prepare(reservation, candidate) && store.publish(reservation));
+            const auto initial = session->describe();
+            auto read = take(session->read());
+            assert(read.withRead([&](const SceneReadView& source) -> SceneEditResult<void> {
+                auto facts = source.facts();
+                auto two = queryApplicability(facts, {t2, true, true});
+                auto three = queryApplicability(facts, {t3, true, true});
+                assert(two.supported() == bool(mask & 1) && three.supported() == bool(mask & 2));
+                assert(two.based_on == initial.current && three.based_on == initial.current);
+                assert(queryApplicability(facts, {hierarchy}).reason == EApplicabilityReason::UNDECLARED_SCHEMA);
+                assert(queryApplicability(facts, {unknown}).reason == EApplicabilityReason::MISSING_PROVIDER);
+                assert(queryApplicability(facts, {{}, false, false, "lux.spatial.builtin.grid2d", 1}).reason ==
+                       EApplicabilityReason::PARTITION_MISMATCH);
+                facts.available = false;
+                assert(queryApplicability(facts, {}).status == EApplicability::TEMPORARILY_UNAVAILABLE);
+                assert(queryApplicability(facts, {hierarchy}).status == EApplicability::NOT_APPLICABLE);
+                SceneEditBatch blocked{initial.current, "nested", {}};
+                blocked.edits.push_back(SceneCreateObject{{object("blocked"), {0}, {}}});
+                auto refused = session->apply(std::move(blocked));
+                assert(!refused && refused.error().session == sessions::ESessionError::BUSY);
+                return {};
+            }));
+            assert(session->describe().current == initial.current && session->describe().dirty == initial.dirty);
+            auto object3 = take(makeSceneObject(object("three"), {0}, EObjectSpace::SPACE_3D, false, metadata));
+            SceneEditBatch create_three{initial.current, "create three", {}};
+            create_three.edits.push_back(SceneCreateObject{std::move(object3)});
+            auto inserted = session->apply(std::move(create_three));
+            assert(bool(inserted) == bool(mask & 2));
+            if (inserted)
+            {
+                assert(session->undo());
+                assert(session->describe().current == initial.current);
+            }
+            SceneObjectData opaque{object("opaque"), {0}, {{ecs::componentSchemaId(unknown[0]), 1, {std::byte{42}}}}};
+            SceneEditBatch create_opaque{session->describe().current, "preserve unknown", {}};
+            create_opaque.edits.push_back(SceneCreateObject{opaque});
+            assert(session->apply(std::move(create_opaque)));
+            auto frozen = take(session->capture());
+            assert(frozen.objects().back().components == opaque.components);
+            auto reopened = take(SceneSource::create(take(buildSceneSnapshotPackage(frozen)), metadata));
+            auto rebuilt = take(SceneSession::create({999, 0, 1}, {}, std::move(reopened)));
+            assert(take(rebuilt->capture()).objects().back().components == opaque.components);
+            const auto changed = session->describe().current;
+            assert(changed != initial.current);
+            assert(take(session->read()).withRead([&](const SceneReadView& source) -> SceneEditResult<void> {
+                assert(queryApplicability(source.facts(), {}).based_on == changed);
+                return {};
+            }));
+        }
+        std::puts("EC1: real single World 2D/3D/mixed, no Parent, installed-not-declared, absent provider, gate and opaque PASS");
+    }
     void content()
     {
         Fixture baseline;
@@ -485,7 +556,9 @@ void codecReadRegression(int scenario);
 int main(int argc, char** argv)
 {
     const std::string_view test = argc > 1 ? argv[1] : "content";
-    if (test == "content")
+    if (test == "applicability")
+        applicability();
+    else if (test == "content")
         content();
     else if (test == "atomic")
         atomic();

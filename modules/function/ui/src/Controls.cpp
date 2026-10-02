@@ -414,6 +414,13 @@ namespace lux::ui
     {
         setStretch({1, 0});
     }
+    void Choice::setOptions(std::vector<ChoiceOption> options) noexcept
+    {
+        requireOwner(*this);
+        options_ = std::move(options);
+        if (std::ranges::find(options_, value_, &ChoiceOption::value) == options_.end())
+            value_ = options_.empty() ? -1 : options_.front().value;
+    }
     void Choice::setValue(std::int64_t value) noexcept
     {
         requireOwner(*this);

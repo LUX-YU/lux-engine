@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <memory>
 #include <span>
+#include <string_view>
 
 namespace lux::scene
 {
@@ -74,6 +75,9 @@ namespace lux::scene
         std::span<const ComponentObservationSpec> observations{};
         CreateRenderSyncStageFn create_sync_stage{};
         std::shared_ptr<const void> code_lifetime;
+        // Persistent inputs needed when offering this feature for author content. Runtime-produced
+        // observations and viewport-owned cameras are deliberately not inferred as author schemas.
+        std::span<const std::string_view> author_inputs{};
     };
     using RenderFeatureSceneBindings = std::span<const RenderFeatureSceneBinding>;
 } // namespace lux::scene

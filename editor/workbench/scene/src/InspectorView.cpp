@@ -87,6 +87,9 @@ namespace lux::editor::scene
         std::optional<EditedSceneBinding> binding_;
         std::optional<SceneObjectRef> target_;
         std::vector<simulation::ecs::ComponentSchemaId> components_;
+        std::vector<simulation::ecs::ComponentSchemaId> candidates_;
+        std::vector<ApplicabilityResult> candidate_support_;
+        std::optional<sessions::ContentStamp> candidates_at_;
         lux::ui::Layout layout_;
         lux::ui::Layout actions_;
         lux::ui::Choice component_choice_;
@@ -112,7 +115,7 @@ namespace lux::editor::scene
             : sessions_(sessions), schemas_(std::move(schemas)), registrations_(std::move(registrations)),
               catalog_(catalog), layout_(view, lux::ui::ElementId{"components"}),
               actions_(layout_, lux::ui::ElementId{"actions"}, lux::ui::ELayoutType::HORIZONTAL),
-              component_choice_(actions_, lux::ui::ElementId{"schema"}, options(schemas_), 0),
+              component_choice_(actions_, lux::ui::ElementId{"schema"}, {}, -1),
               add_(actions_, lux::ui::ElementId{"add"}, "Add component"),
               remove_(actions_, lux::ui::ElementId{"remove"}, "Remove component"),
               cancel_(actions_, lux::ui::ElementId{"cancel"}, "Cancel field draft"),
@@ -139,12 +142,46 @@ namespace lux::editor::scene
                 connections_[2] = std::move(*cancel);
             }
         }
-        static std::vector<lux::ui::ChoiceOption> options(const simulation::ecs::ComponentSchemaSet& schemas)
+        SceneEditResult<void> updateCandidates(const SceneReadView& read)
         {
-            std::vector<lux::ui::ChoiceOption> result;
-            for (const auto& schema : schemas.all())
-                result.push_back({static_cast<std::int64_t>(result.size()), schema.id.name});
-            return result;
+            return read.withRead([&](const SceneReadView& source) -> SceneEditResult<void> {
+                if (!target_ || !source.contains(*target_))
+                    return cxx::unexpected(SceneEditError{ESceneEditError::STALE_OBJECT});
+                const auto facts = source.facts();
+                if (candidates_at_ == facts.based_on)
+                    return {};
+                const auto previous = component_choice_.value();
+                const bool has_previous = previous >= 0 && static_cast<std::size_t>(previous) < candidates_.size();
+                const auto selected = has_previous ? std::optional{candidates_[previous]} : std::nullopt;
+                std::vector<simulation::ecs::ComponentSchemaId> ids;
+                std::vector<ApplicabilityResult> support;
+                for (const auto& schema : facts.schemas)
+                {
+                    const auto id = simulation::ecs::componentSchemaId(schema.name);
+                    const std::string_view names[]{schema.name};
+                    auto allowed = queryApplicability(facts, {names, true, true});
+                    const bool present = std::ranges::find(components_, id) != components_.end();
+                    if (!allowed.supported() && !present)
+                        continue;
+                    ids.push_back(id);
+                    support.push_back(std::move(allowed));
+                }
+                std::vector<lux::ui::ChoiceOption> options;
+                for (std::size_t i{}; i < ids.size(); ++i)
+                    options.push_back({static_cast<std::int64_t>(i), ids[i].name});
+                component_choice_.setValue(-1);
+                component_choice_.setOptions(std::move(options));
+                if (selected)
+                {
+                    const auto found = std::ranges::find(ids, *selected);
+                    if (found != ids.end())
+                        component_choice_.setValue(found - ids.begin());
+                }
+                candidates_ = std::move(ids);
+                candidate_support_ = std::move(support);
+                candidates_at_ = facts.based_on;
+                return {};
+            });
         }
         SceneEditResult<void> changeComponent(const simulation::ecs::ComponentSchemaId& id, bool add)
         {
@@ -166,6 +203,10 @@ namespace lux::editor::scene
                 if (!schema || !schema->create)
                     return cxx::unexpected(SceneEditError{ESceneEditError::MISSING_SCHEMA});
                 auto encoded = read->withRead([&](const SceneReadView&) -> SceneEditResult<SceneComponentData> {
+                    const std::string_view names[]{id.name};
+                    auto allowed = queryApplicability(read->facts(), {names, true, true});
+                    if (!allowed.supported())
+                        return cxx::unexpected(SceneEditError{ESceneEditError::INVALID_COMPONENT});
                     try
                     {
                         auto value = schema->create(schema->code_lifetime);
@@ -224,6 +265,7 @@ namespace lux::editor::scene
                     return result;
             entries_.clear();
             components_.clear();
+            candidates_at_.reset();
             target_.reset();
             binding_.reset();
             return {};
@@ -288,7 +330,7 @@ namespace lux::editor::scene
             binding_ = binding;
             target_ = target;
             components_ = std::move(*components);
-            return {};
+            return updateCandidates(*read);
         }
         SceneEditResult<void> finish()
         {
@@ -319,8 +361,8 @@ namespace lux::editor::scene
             if (structure_request_)
             {
                 const auto index = component_choice_.value();
-                if (index >= 0 && static_cast<std::size_t>(index) < schemas_.all().size())
-                    status_ = changeComponent(schemas_.all()[index].id, *structure_request_ == EComponentAction::ADD);
+                if (index >= 0 && static_cast<std::size_t>(index) < candidates_.size())
+                    status_ = changeComponent(candidates_[index], *structure_request_ == EComponentAction::ADD);
                 else
                     status_ = cxx::unexpected(SceneEditError{ESceneEditError::MISSING_SCHEMA});
                 if (!status_)
@@ -381,10 +423,13 @@ namespace lux::editor::scene
                     return;
                 }
             }
+            status_ = updateCandidates(*read);
+            if (!status_)
+                return;
             const auto index = component_choice_.value();
-            const bool valid = index >= 0 && static_cast<std::size_t>(index) < schemas_.all().size();
-            const bool present = valid && std::ranges::find(components_, schemas_.all()[index].id) != components_.end();
-            add_.setEnabled(valid && !present && schemas_.all()[index].create);
+            const bool valid = index >= 0 && static_cast<std::size_t>(index) < candidates_.size();
+            const bool present = valid && std::ranges::find(components_, candidates_[index]) != components_.end();
+            add_.setEnabled(valid && !present && candidate_support_[index].supported());
             remove_.setEnabled(present);
             message_.setText("");
         }

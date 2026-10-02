@@ -49,6 +49,8 @@ namespace lux::editor::scene
             std::optional<sessions::ContentStamp> content;
             lux::scene::SceneInstanceId instance;
             std::uint64_t structure{};
+            std::array<bool, 3> can_create{};
+            bool can_reparent{};
         };
         class Content final : public lux::ui::Element
         {
@@ -113,6 +115,21 @@ namespace lux::editor::scene
                 if (!read)
                     return rejected(read.error());
                 result.content = session->get().describe().current;
+                auto available = read->withRead([&](const SceneReadView& source) -> SceneEditResult<void> {
+                    const auto facts = source.facts();
+                    const std::string_view transform2d[]{"lux.ecs.Transform2D"};
+                    const std::string_view transform3d[]{"lux.ecs.Transform3D"};
+                    const std::string_view parent[]{"lux.ecs.Parent"};
+                    result.can_create = {
+                        queryApplicability(facts, {{}, false, true}).supported(),
+                        queryApplicability(facts, {transform2d, false, true}).supported(),
+                        queryApplicability(facts, {transform3d, false, true}).supported()
+                    };
+                    result.can_reparent = queryApplicability(facts, {parent, false, true}).supported();
+                    return {};
+                });
+                if (!available)
+                    return rejected(available.error());
                 const auto objects = read->objects();
                 std::unordered_map<world::WorldObjectId, std::size_t, world::WorldObjectIdHash> indices;
                 for (std::size_t i{}; i < objects.size(); ++i)
@@ -314,20 +331,20 @@ namespace lux::editor::scene
             if (ImGui::BeginPopup("create-object"))
             {
                 ImGui::InputScalar("Partition", ImGuiDataType_U32, &partition_);
-                if (ImGui::MenuItem("Empty object"))
+                if (ImGui::MenuItem("Empty object", nullptr, false, rows_.can_create[0]))
                     create_request_ = EObjectSpace::NONE;
                 if (ImGui::MenuItem(
                         "2D object",
                         nullptr,
                         false,
-                        schemas_.find(cxx::typeToken<simulation::ecs::Transform2D>()) != nullptr
+                        rows_.can_create[1]
                     ))
                     create_request_ = EObjectSpace::SPACE_2D;
                 if (ImGui::MenuItem(
                         "3D object",
                         nullptr,
                         false,
-                        schemas_.find(cxx::typeToken<simulation::ecs::Transform3D>()) != nullptr
+                        rows_.can_create[2]
                     ))
                     create_request_ = EObjectSpace::SPACE_3D;
                 ImGui::EndPopup();
@@ -373,7 +390,7 @@ namespace lux::editor::scene
                             ImGui::TextUnformatted(rows_.labels[row.source].c_str());
                             ImGui::EndDragDropSource();
                         }
-                        if (ImGui::BeginDragDropTarget())
+                        if (rows_.can_reparent && ImGui::BeginDragDropTarget())
                         {
                             if (auto* payload = ImGui::AcceptDragDropPayload(objectPayload);
                                 payload && payload->DataSize == sizeof(SceneObjectRef))
@@ -390,7 +407,7 @@ namespace lux::editor::scene
                     {
                         if (ImGui::MenuItem("Delete"))
                             erase_request_ = *author;
-                        if (ImGui::MenuItem("Make root"))
+                        if (ImGui::MenuItem("Make root", nullptr, false, rows_.can_reparent))
                             parent_request_ = {*author, {}};
                         ImGui::EndPopup();
                     }
@@ -458,9 +475,13 @@ namespace lux::editor::scene
         if (!read)
             return rejected(read.error());
         auto object = read->withRead([&](const SceneReadView& source) -> SceneEditResult<SceneObjectData> {
-            const auto schemas = source.configuration().world->data().schemas();
-            const bool hierarchy =
-                std::ranges::find(schemas, world::worldDataSchemaId("lux.ecs.Parent")) != schemas.end();
+            const auto facts = source.facts();
+            const std::string_view names[]{space == EObjectSpace::SPACE_2D ? "lux.ecs.Transform2D" : "lux.ecs.Transform3D"};
+            const auto required = space == EObjectSpace::NONE ? std::span<const std::string_view>{} : std::span{names};
+            if (!queryApplicability(facts, {required, false, true}).supported())
+                return cxx::unexpected(SceneEditError{ESceneEditError::MISSING_SCHEMA});
+            const std::string_view parent[]{"lux.ecs.Parent"};
+            const bool hierarchy = queryApplicability(facts, {parent}).supported();
             auto encoded = makeSceneObject(id, partition, space, hierarchy, impl_->schemas_);
             if (!encoded)
             {

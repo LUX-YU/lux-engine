@@ -1,3 +1,4 @@
+#include <lux/engine/editor/scene/AuthoringFacts.hpp>
 #include <lux/engine/editor/scene/SceneAlgorithms.hpp>
 #include <random>
 #include <unordered_map>
@@ -186,9 +187,10 @@ namespace lux::editor::scene
         namespace ecs = simulation::ecs;
         const auto supports = [&]<class Component>() {
             const auto* schema = schemas.find(lux::cxx::typeToken<Component>());
-            return schema && schema->capture_value &&
-                   std::ranges::find(world.schemas(), schema->id.name, &world::WorldDataSchemaId::name) !=
-                       world.schemas().end();
+            if (!schema || !schema->capture_value)
+                return false;
+            const std::string_view names[]{schema->id.name};
+            return queryApplicability(authoringFacts(world, schemas), {names, false, true}).supported();
         };
         const bool is_unsupported =
             !supports.template operator()<ecs::Transform3D>() || !supports.template operator()<ecs::Mesh3D>();

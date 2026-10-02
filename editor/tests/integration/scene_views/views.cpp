@@ -1481,6 +1481,12 @@ namespace
     }
     void creationView(Fixture& f, const std::filesystem::path& installation)
     {
+        // This form offers the full 3D preset; its registry must include the advertised author codecs.
+        std::vector<ecs::ComponentSchema> types(f.environment.components.all().begin(), f.environment.components.all().end());
+        for (const auto& schema : ecs::visualComponentSchemas())
+            if (schema.snapshot == ecs::EComponentSnapshotPolicy::COPY)
+                types.push_back(schema);
+        const auto metadata = take(ecs::ComponentSchemaSet::build(std::move(types)));
         lux::project::PluginCatalog catalog;
         assert(catalog.read(installation / "share/lux-engine/plugins/catalog.json", installation));
         constexpr author::SceneProviderOption providers[]{
@@ -1492,11 +1498,11 @@ namespace
         };
         author::SceneConfigurationInputs inputs{
             catalog,
-            f.environment.components,
+            metadata,
             *f.environment.simulation_systems,
             f.environment.scene_systems,
             render::builtinRenderFeatureRegistrations(),
-            providers
+            providers, {}, lux::scene::builtinRenderFeatureSceneBindings()
         };
         auto configuration_view = take(author::makeSceneConfigurationView(
             f.messages.dispatcherRef(),
@@ -1569,7 +1575,7 @@ namespace
                 auto model = take(author::SceneSession::create(
                     reservation.id(),
                     {},
-                    take(author::SceneSource::create(package, f.environment.components))
+                    take(author::SceneSource::create(package, metadata))
                 ));
                 assert(f.store.prepare(reservation, model));
                 created = take(f.store.publish(reservation));
@@ -1584,7 +1590,11 @@ namespace
              {author::ESceneContentPreset::TWO_DIMENSIONAL, author::ESceneContentPreset::THREE_DIMENSIONAL})
         {
             assert(pane->configuration().applyPreset(preset));
-            auto config = take(pane->configuration().build());
+            auto prepared = pane->configuration().build();
+            if (!prepared)
+                std::fprintf(stderr, "Preset %u: %s: %s\n", static_cast<unsigned>(preset),
+                    prepared.error().domain.c_str(), prepared.error().message.c_str());
+            auto config = take(std::move(prepared));
             assert(config.scene.systemCount() == 3 && config.simulation->systemCount() == 0);
         }
         const auto mounted = take(f.desktop->views().adopt(view, views::ViewRestoreKey{"creation"})).id;

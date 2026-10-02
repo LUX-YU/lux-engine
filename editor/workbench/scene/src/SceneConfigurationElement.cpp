@@ -1,10 +1,12 @@
 #include <lux/engine/editor/scene/SceneConfigurationElement.hpp>
+#include <lux/engine/editor/scene/AuthoringFacts.hpp>
 #include <lux/engine/scene/SceneDescriptionBuilder.hpp>
 #include <lux/engine/scene/RenderSystemConfiguration.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include <lux/engine/scene/TransformSystem.hpp>
 #include <lux/engine/scene/WorldLoadingSystem.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
+#include <lux/engine/scene/RenderFeatureSceneBinding.hpp>
 #include <lux/engine/ui/Controls.hpp>
 #include <lux/engine/ui/Layout.hpp>
 #include <imgui.h>
@@ -137,6 +139,7 @@ namespace lux::editor::scene
             const lux::render::RenderFeatureRegistration& registration;
             controls::Layout layout;
             controls::CheckBox enabled;
+            controls::Label applicability;
             ConfigurationField configuration;
             FeatureField(
                 controls::Element& parent,
@@ -150,7 +153,7 @@ namespace lux::editor::scene
                       layout,
                       controls::ElementId{"enabled"},
                       std::string(feature.factory.descriptor.canonical_name)
-                  )
+                  ), applicability(layout, controls::ElementId{"applicability"})
             {
                 status = configuration.create(
                     layout,
@@ -537,6 +540,30 @@ namespace lux::editor::scene
                     if (provider->names.size() == 2)
                         provider->choice.setValue(1);
             }
+            SceneConfigurationResult<void> checkFeatures(
+                const AuthoringFacts& facts, lux::scene::RenderFeatureSceneBindings bindings
+            )
+            {
+                SceneConfigurationResult<void> result;
+                for (const auto& feature : features_)
+                {
+                    const auto type = feature->registration.factory.descriptor.type;
+                    const auto binding = std::ranges::find(bindings, type, &lux::scene::RenderFeatureSceneBinding::feature);
+                    const auto required = binding == bindings.end() ? std::span<const std::string_view>{}
+                                                                   : binding->author_inputs;
+                    const auto allowed = queryApplicability(facts, {required});
+                    // An existing selection stays visible and may be explicitly removed. Never drop
+                    // unknown configurations or silently change the user's selected feature set.
+                    feature->enabled.setEnabled(allowed.supported() || feature->enabled.value());
+                    feature->applicability.setText(allowed.supported() ? "" : "Missing author input: " + allowed.subject);
+                    if (!allowed.supported() && feature->enabled.value() && result)
+                        result = cxx::unexpected(SceneConfigurationFailure{
+                            ESceneConfigurationError::INVALID_ARGUMENT, "scene.feature.author-input",
+                            static_cast<std::uint64_t>(allowed.reason), allowed.subject
+                        });
+                }
+                return result;
+            }
             SceneConfigurationResult<void> presetFeatures(const Inputs& inputs, ESceneContentPreset preset)
             {
                 if (features_.empty())
@@ -669,11 +696,7 @@ namespace lux::editor::scene
             layout_.setScrollable(false, true);
             for (const auto& schema : inputs.components.all())
             {
-                const bool is_runtime_derived =
-                    schema.semantic_kind == lux::simulation::ecs::EComponentSemanticKind::RUNTIME_DERIVED;
-                const bool has_capture = static_cast<bool>(schema.capture);
-                const bool is_capturable_schema = !is_runtime_derived && has_capture;
-                if (is_capturable_schema)
+                if (isAuthorComponent(schema))
                     schema_fields_.emplace_back(
                         lux::world::worldDataSchemaId(schema.id.name),
                         std::make_unique<controls::CheckBox>(
@@ -751,6 +774,28 @@ namespace lux::editor::scene
                 error
             });
         }
+        AuthoringFacts facts()
+        {
+            if (base_)
+                return authoringFacts(base_->world->data(), inputs_.components);
+            std::size_t position{};
+            bool changed{};
+            for (const auto& [id, field] : schema_fields_)
+                if (field->value())
+                {
+                    changed |= position >= selected_schemas_.size() || selected_schemas_[position] != id;
+                    ++position;
+                }
+            changed |= position != selected_schemas_.size();
+            if (changed)
+            {
+                selected_schemas_.clear();
+                for (const auto& [id, field] : schema_fields_)
+                    if (field->value())
+                        selected_schemas_.push_back(id);
+            }
+            return {{}, selected_schemas_, inputs_.components, "lux.spatial.builtin.single", 1};
+        }
         SceneConfigurationResult<SceneCreationConfiguration> build()
         {
             finishControls(owner_);
@@ -773,8 +818,12 @@ namespace lux::editor::scene
                         return rejected("scene.configuration.data", added.error());
                 }
             }
+            const auto context = facts();
             for (const auto& row : rows_)
             {
+                auto supported = row->checkFeatures(context, inputs_.feature_bindings);
+                if (!supported)
+                    return cxx::unexpected(supported.error());
                 auto encoded = row->encode();
                 if (!encoded)
                     return lux::cxx::unexpected(encoded.error());
@@ -982,6 +1031,10 @@ namespace lux::editor::scene
                     ++it;
             if (changed)
                 rebuildEndpoints();
+            const auto context = facts();
+            for (const auto& row : rows_)
+                if (auto supported = row->checkFeatures(context, inputs_.feature_bindings); !supported)
+                    error_.setText(supported.error().domain + ": " + supported.error().message);
             setStage(stage_);
         }
         struct Endpoint final
@@ -1205,6 +1258,7 @@ namespace lux::editor::scene
         controls::Label error_;
         std::vector<std::pair<lux::world::WorldDataSchemaId, std::unique_ptr<controls::CheckBox>>> schema_fields_;
         std::vector<std::unique_ptr<SystemElement>> rows_;
+        std::vector<world::WorldDataSchemaId> selected_schemas_;
         std::vector<std::pair<SystemId, SystemId>> construction_, scene_dependencies_;
         std::vector<lux::simulation::SimulationExecutionDependency> execution_;
         std::vector<lux::simulation::SimulationChannelProducer> producers_;

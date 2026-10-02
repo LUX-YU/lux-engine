@@ -1,4 +1,5 @@
 #include "SceneSourceData.hpp"
+#include <lux/engine/editor/scene/AuthoringFacts.hpp>
 #include <lux/engine/editor/sessions/SessionState.hpp>
 #include <lux/engine/editor/scene/FieldValue.hpp>
 #include <lux/engine/editor/scene/SceneAlgorithms.hpp>
@@ -237,8 +238,7 @@ namespace lux::editor::scene
                     if (!seen.insert(component.schema.name).second)
                         return rejected(ESceneEditError::INVALID_COMPONENT, object.id, index);
                     const auto declared = data->configuration.world->data().schemas();
-                    if (std::ranges::find(declared, component.schema.name, &world::WorldDataSchemaId::name) ==
-                        declared.end())
+                    if (!declaresAuthorSchema(declared, component.schema.name))
                         return rejected(ESceneEditError::MISSING_SCHEMA, object.id, index);
                     const auto* schema = data->schemas.find(component.schema);
                     if (!schema)
@@ -246,10 +246,7 @@ namespace lux::editor::scene
                         record.components.push_back(component);
                         continue;
                     }
-                    const bool is_unusable = schema->snapshot != ecs::EComponentSnapshotPolicy::COPY ||
-                                             schema->semantic_kind == ecs::EComponentSemanticKind::RUNTIME_DERIVED ||
-                                             !schema->decode_value || !schema->capture;
-                    if (is_unusable)
+                    if (!isAuthorComponent(*schema))
                         return rejected(ESceneEditError::INVALID_COMPONENT, object.id, index);
                     if (!budget.take(schema->operations.valueBytes()))
                         return rejected(ESceneEditError::BUDGET, object.id, index);
@@ -445,5 +442,9 @@ namespace lux::editor::scene
     const SceneConfiguration& SceneReadView::configuration() const noexcept
     {
         return source_->data_->configuration;
+    }
+    AuthoringFacts SceneReadView::facts() const noexcept
+    {
+        return authoringFacts(source_->data_->configuration.world->data(), source_->data_->schemas, stamp_);
     }
 }

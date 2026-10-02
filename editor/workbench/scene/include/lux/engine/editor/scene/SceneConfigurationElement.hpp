@@ -15,6 +15,8 @@
 #include <any>
 #include <lux/engine/editor/scene/SceneEdit.hpp>
 
+namespace lux::scene { struct RenderFeatureSceneBinding; }
+
 namespace lux::editor::scene
 {
     enum class ESceneConfigurationError : std::uint8_t
@@ -140,6 +142,7 @@ namespace lux::editor::scene
         std::function<SceneConfigurationResult<
             ConfigurationControl>(lux::ui::Element&, std::string_view, std::uint32_t, const serialization::PortableValueCodec&, std::optional<std::span<const std::byte>>)>
             configuration;
+        std::span<const lux::scene::RenderFeatureSceneBinding> feature_bindings{};
     };
     class SceneConfigurationElement final : public lux::ui::Element
     {

@@ -1043,19 +1043,21 @@ namespace lux::scene
             ComponentObservationSpec{lux::cxx::typeToken<simulation::ecs::WorldTransform3D>(), AllObservationEvents}
         };
 
+        constexpr std::array<std::string_view, 2> MeshAuthorInputs{"lux.ecs.Transform3D", "lux.ecs.Mesh3D"};
+        constexpr std::array<std::string_view, 2> LightAuthorInputs{"lux.ecs.Transform3D", "lux.ecs.Light3D"};
         const std::array Bindings{
             cameraRenderFeatureBinding(),
             RenderFeatureSceneBinding{
                 system::systemTypeId(RenderSystem::Description.canonical_name),
                 render::featureId("lux.render.mesh_stack.v1"),
                 MeshObservations,
-                &createMesh3DRenderStage
+                &createMesh3DRenderStage, {}, MeshAuthorInputs
             },
             RenderFeatureSceneBinding{
                 system::systemTypeId(RenderSystem::Description.canonical_name),
                 render::featureId("lux.render.light.v1"),
                 LightObservations,
-                &createLight3DRenderStage
+                &createLight3DRenderStage, {}, LightAuthorInputs
             }
         };
     } // namespace

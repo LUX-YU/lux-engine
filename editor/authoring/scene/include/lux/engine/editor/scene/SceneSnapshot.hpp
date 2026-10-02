@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/editor/scene/SceneSource.hpp>
+#include <lux/engine/editor/scene/AuthoringFacts.hpp>
 #include <lux/engine/editor/scene/SceneObjectRef.hpp>
 #include <lux/engine/editor/sessions/SessionState.hpp>
 
@@ -109,6 +110,8 @@ namespace lux::editor::scene
             const simulation::ecs::ComponentSchemaId& schema
         ) const;
         [[nodiscard]] const SceneConfiguration& configuration() const noexcept;
+        // Borrowed facts are only valid for this synchronous read, never across callbacks or frames.
+        [[nodiscard]] AuthoringFacts facts() const noexcept;
 
     private:
         friend class SceneSession;

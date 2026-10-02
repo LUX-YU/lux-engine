@@ -265,7 +265,8 @@ namespace lux::editor::application
                                     initial
                                 );
                         return scene::ConfigurationControl{};
-                    }
+                    },
+                    registrations.render_bindings
                 },
                 selected_
             };

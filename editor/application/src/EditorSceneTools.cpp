@@ -214,7 +214,8 @@ namespace lux::editor::application
                     if (editor.value.schema_name == name && editor.value.schema_version == version)
                         return scene::makeConfigurationControl(editor, parent, lux::ui::ElementId{name}, initial);
                 return scene::ConfigurationControl{};
-            }
+            },
+            registrations_.render_bindings
         };
     }
     void EditorApplication::Impl::installSceneCommands(extensions::ContributionDraft& draft)

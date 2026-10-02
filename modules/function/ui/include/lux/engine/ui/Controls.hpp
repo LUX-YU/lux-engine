@@ -160,6 +160,8 @@ namespace lux::ui
         object::TSignal<EditResult> edited{*this};
         Choice(Pane& parent, ElementId id, std::vector<ChoiceOption> options, std::int64_t value = 0);
         Choice(Element& parent, ElementId id, std::vector<ChoiceOption> options, std::int64_t value = 0);
+        // Owner maintenance replaces candidate values; this never emits an editing signal.
+        void setOptions(std::vector<ChoiceOption> options) noexcept;
         void setValue(std::int64_t value) noexcept;
         [[nodiscard]] std::int64_t value() const noexcept
         {

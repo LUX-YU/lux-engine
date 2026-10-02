@@ -1,5 +1,5 @@
 add_component(COMPONENT_NAME scene_model NAMESPACE lux::engine::editor STATIC
-    SOURCE_FILES src/PreparedSceneReload.cpp src/SceneSnapshot.cpp src/SceneSource.cpp src/SceneSession.cpp src/ScenePersistenceAccess.cpp src/SceneAlgorithms.cpp
+    SOURCE_FILES src/AuthoringFacts.cpp src/PreparedSceneReload.cpp src/SceneSnapshot.cpp src/SceneSource.cpp src/SceneSession.cpp src/ScenePersistenceAccess.cpp src/SceneAlgorithms.cpp
         src/edits/SceneObjectEdit.cpp src/edits/SceneFieldEdit.cpp src/edits/SceneConfigurationEdit.cpp)
 component_include_directories(scene_model
     BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
@@ -21,7 +21,7 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     add_executable(editor_scene_model_test test/scene_session.cpp test/plugin_snapshot.cpp)
     target_link_libraries(editor_scene_model_test PRIVATE scene_model)
     lux_editor_test_options(editor_scene_model_test)
-    foreach(scenario content atomic identity changes plugin mixed-1 mixed-2 mixed-3 mixed-4 read-5 read-6 read-7 read-8)
+    foreach(scenario applicability content atomic identity changes plugin mixed-1 mixed-2 mixed-3 mixed-4 read-5 read-6 read-7 read-8)
         add_test(NAME editor.scene_model.${scenario} COMMAND editor_scene_model_test ${scenario})
         set_tests_properties(editor.scene_model.${scenario} PROPERTIES LABELS "editor;native;P02")
     endforeach()

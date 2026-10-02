@@ -60,6 +60,9 @@ namespace lux::editor::persistence
         sessions::ContentStamp content;
         WriteTicket ticket;
         std::optional<SaveOutcome> outcome;
+        // Original admitted intent and physical destination, independent of later binding/closure.
+        SaveRequest request;
+        WriteTarget target;
     };
     struct SaveLimits final
     {

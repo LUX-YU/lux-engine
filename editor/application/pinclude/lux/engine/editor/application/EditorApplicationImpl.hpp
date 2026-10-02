@@ -12,6 +12,7 @@
 #include <lux/engine/editor/assets/AssetImporter.hpp>
 #include <lux/engine/editor/persistence/SaveExecution.hpp>
 #include <lux/engine/editor/sessions/SessionOperations.hpp>
+#include <lux/engine/editor/sessions/ReloadSessionOperation.hpp>
 #include <lux/engine/editor/extensions/BuiltinContributions.hpp>
 #include <lux/engine/editor/extensions/EditorExtension.hpp>
 #include <lux/engine/editor/desktop/DesktopShell.hpp>
@@ -48,6 +49,52 @@ namespace lux::editor::application
             std::unique_ptr<material::MaterialPreviewStore> preview;
             std::optional<scene::RunId> run;
             views::ViewId source_view;
+        };
+        struct SavePresentation final
+        {
+            persistence::SaveId id;
+            ProjectAssetEntry asset;
+            std::optional<persistence::SaveOutcome> result;
+            std::optional<ProjectPublication> catalog;
+            std::optional<persistence::WriteTicket> catalog_ticket;
+            std::optional<EditorFailure> failure;
+        };
+        struct SaveQuestion final
+        {
+            commands::SessionTarget target;
+            persistence::ESaveMode mode;
+            views::ViewId view;
+        };
+        struct PreparedSave final
+        {
+            persistence::SaveRequest request;
+            ProjectAssetEntry asset;
+        };
+        struct ReloadPresentation final
+        {
+            sessions::ContentStamp source;
+            std::unique_ptr<sessions::ReloadSessionOperation> operation;
+            std::optional<sessions::SessionFactoryResult<sessions::ContentStamp>> result;
+        };
+        struct ReloadQuestion final
+        {
+            commands::SessionTarget target;
+            views::ViewId view;
+        };
+        enum class EResultAction : std::uint8_t
+        {
+            ACK_SAVE,
+            CANCEL_SAVE,
+            RECONCILE,
+            ACK_RELOAD,
+            SHOW_CONTENT,
+            SAVE_AS,
+            CLEAR_SAVE_ALL
+        };
+        struct ResultIntent final
+        {
+            EResultAction action;
+            std::variant<persistence::SaveId, persistence::WriteTicket, sessions::ContentStamp> target;
         };
         struct RunPresentation final
         {
@@ -133,8 +180,15 @@ namespace lux::editor::application
         std::vector<OpenPresentation> opens_;
         std::vector<AssetReference> open_intents_;
         std::vector<persistence::SaveId> pending_saves_;
+        std::vector<SavePresentation> save_reports_;
+        std::optional<SaveQuestion> save_question_;
+        std::vector<ReloadPresentation> reloads_;
+        std::optional<ReloadQuestion> reload_question_;
+        std::optional<ResultIntent> result_intent_;
+        std::optional<EditorFailure> result_failure_;
         std::optional<sessions::SaveAllOperation> save_all_;
         std::vector<sessions::SessionCloseDecision> close_decisions_;
+        std::vector<ProjectAssetEntry> close_destinations_;
         std::unique_ptr<sessions::CloseSessionsOperation> closing_;
         std::optional<EditorFailure> exit_failure_;
         std::optional<LastViewQuestion> last_view_;
@@ -172,6 +226,27 @@ namespace lux::editor::application
         [[nodiscard]] EditorResult<sessions::OpenAssetId> createContent(sessions::PreparedSessionData);
         void installContentCommands(extensions::ContributionDraft&);
         void installSceneCommands(extensions::ContributionDraft&);
+        void installSaveCommands(extensions::ContributionDraft&);
+        void installResultView(extensions::ContributionDraft&);
+        [[nodiscard]] EditorResult<void> receiveResultIntent();
+        [[nodiscard]] EditorResult<PreparedSave> prepareSave(
+            commands::SessionTarget,
+            persistence::ESaveMode,
+            std::string destination
+        );
+        [[nodiscard]] EditorResult<persistence::SaveId> save(
+            commands::SessionTarget,
+            persistence::ESaveMode,
+            std::string destination = {}
+        );
+        [[nodiscard]] EditorResult<void> askSave(commands::SessionTarget, persistence::ESaveMode);
+        [[nodiscard]] EditorResult<void> receiveSaveAnswer();
+        [[nodiscard]] EditorResult<void> settleSaves();
+        [[nodiscard]] EditorResult<void> rememberSave(persistence::SaveId);
+        [[nodiscard]] EditorResult<void> cancelContentPreview(sessions::SessionId);
+        [[nodiscard]] EditorResult<void> reload(commands::SessionTarget);
+        [[nodiscard]] EditorResult<void> askReload(commands::SessionTarget);
+        [[nodiscard]] EditorResult<void> receiveReloadAnswer();
         [[nodiscard]] scene::SceneConfigurationInputs sceneConfigurationInputs();
         [[nodiscard]] EditorResult<scene::StartRunId> play(commands::SessionTarget);
         [[nodiscard]] EditorResult<void> maintainRuns();

@@ -36,6 +36,8 @@ namespace lux::editor::desktop
         std::optional<ReviewAnswer> answer_;
         lux::ui::Layout body_;
         lux::ui::Label message_;
+        std::unique_ptr<lux::ui::Label> input_label_;
+        std::unique_ptr<lux::ui::TextEdit> input_;
         lux::ui::Layout actions_;
         std::vector<std::unique_ptr<lux::ui::Button>> buttons_;
         std::vector<object::Connection> connections_;
@@ -43,6 +45,19 @@ namespace lux::editor::desktop
         Impl(ReviewView& view, ReviewQuestion question)
             : question_(std::move(question)), body_(view, lux::ui::ElementId{"body"}),
               message_(body_, lux::ui::ElementId{"message"}, question_.message),
+              input_label_(
+                  question_.input_label ? std::make_unique<lux::ui::Label>(
+                                              body_,
+                                              lux::ui::ElementId{"input-label"},
+                                              *question_.input_label
+                                          )
+                                        : nullptr
+              ),
+              input_(
+                  question_.input_label
+                      ? std::make_unique<lux::ui::TextEdit>(body_, lux::ui::ElementId{"input"}, question_.initial_text)
+                      : nullptr
+              ),
               actions_(body_, lux::ui::ElementId{"choices"}, lux::ui::ELayoutType::HORIZONTAL)
         {
             message_.setWrap(true);
@@ -118,15 +133,28 @@ namespace lux::editor::desktop
             return cxx::unexpected(views::EViewError::BUSY);
         if (std::ranges::find(impl_->question_.choices, choice) == impl_->question_.choices.end())
             return cxx::unexpected(views::EViewError::INVALID_ID);
-        impl_->answer_ = ReviewAnswer{impl_->question_.request, choice};
+        impl_->answer_ = ReviewAnswer{impl_->question_.request, choice, impl_->input_ ? impl_->input_->value() : ""};
         return {};
     }
     const std::optional<ReviewAnswer>& ReviewView::response() const noexcept
     {
         return impl_->answer_;
     }
+    views::ViewResult<void> ReviewView::setText(std::string text)
+    {
+        if (!impl_->input_ || impl_->answer_)
+            return cxx::unexpected(views::EViewError::BUSY);
+        impl_->input_->setValue(std::move(text));
+        return {};
+    }
     const ReviewQuestion& ReviewView::question() const noexcept
     {
         return impl_->question_;
+    }
+    void ReviewView::rejectAnswer(std::string message)
+    {
+        impl_->question_.message = std::move(message);
+        impl_->message_.setText(impl_->question_.message);
+        impl_->answer_.reset();
     }
 }

@@ -40,6 +40,8 @@ namespace lux::editor::sessions
     {
         ContentStamp content;
         ECloseChoice choice{ECloseChoice::CANCEL};
+        std::optional<persistence::WriteTarget> destination;
+        asset::AssetId destination_asset;
     };
     // UI/run dependency preparation is composed by the application. No content is removed here.
     // Once prepare() returns every permit, the original Store commits the whole set in one call.

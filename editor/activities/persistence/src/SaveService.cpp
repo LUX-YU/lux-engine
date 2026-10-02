@@ -114,6 +114,7 @@ namespace lux::editor::persistence
             std::shared_ptr<SaveSourceRegistration::State> registration;
             FrozenSave frozen;
             WriteTicket ticket;
+            WriteTarget target;
             ESaveStage stage{ESaveStage::CAPTURED};
             bool cancel_requested{};
             std::optional<SaveOutcome> outcome;
@@ -372,6 +373,7 @@ namespace lux::editor::persistence
         operation->request = request;
         operation->registration = registration;
         operation->ticket = *ticket;
+        operation->target = *target;
         operation->stage = ESaveStage::CAPTURING;
         operation->frozen.retained_bytes = allowance;
         impl_->snapshot_bytes += allowance;
@@ -513,7 +515,7 @@ namespace lux::editor::persistence
         if (found == impl_->operations.end())
             return failed(EPersistenceError::UNKNOWN_ID);
         const auto& op = **found;
-        return SaveStatus{op.stage, op.frozen.source.content, op.ticket, op.outcome};
+        return SaveStatus{op.stage, op.frozen.source.content, op.ticket, op.outcome, op.request, op.target};
     }
     PersistenceResult<ECancelResult> SaveService::requestCancel(SaveId id)
     {

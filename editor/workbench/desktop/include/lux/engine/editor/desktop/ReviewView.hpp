@@ -18,11 +18,14 @@ namespace lux::editor::desktop
         std::uint64_t request{};
         std::string title, message;
         std::vector<EReviewChoice> choices;
+        std::optional<std::string> input_label;
+        std::string initial_text;
     };
     struct ReviewAnswer final
     {
         std::uint64_t request{};
         EReviewChoice choice{EReviewChoice::CANCEL};
+        std::string text;
     };
     // Owns presentation values only. The application retains the exact source stamps and performs
     // the decision; the modal neither reads content nor starts saving or closing it.
@@ -43,6 +46,9 @@ namespace lux::editor::desktop
         [[nodiscard]] views::ViewResult<void> answer(EReviewChoice) noexcept;
         [[nodiscard]] const std::optional<ReviewAnswer>& response() const noexcept;
         [[nodiscard]] const ReviewQuestion& question() const noexcept;
+        [[nodiscard]] views::ViewResult<void> setText(std::string);
+        // Reopen the same owned draft after a rejected answer; the caller retains its original source stamp.
+        void rejectAnswer(std::string message);
 
     private:
         ReviewView(object::ObjectDispatcherRef, lux::ui::PaneId, ReviewQuestion);

@@ -1,0 +1,257 @@
+#include <lux/engine/editor/application/EditorApplicationImpl.hpp>
+#include <lux/engine/ui/Element.hpp>
+#include <imgui.h>
+#include <algorithm>
+
+namespace lux::editor::application
+{
+    EditorResult<void> EditorApplication::Impl::receiveResultIntent()
+    {
+        if (!result_intent_)
+            return {};
+        const auto intent = std::exchange(result_intent_, {});
+        switch (intent->action)
+        {
+        case EResultAction::ACK_SAVE:
+            std::erase_if(save_reports_, [&](const auto& report) {
+                return report.id == std::get<persistence::SaveId>(intent->target) && report.result.has_value();
+            });
+            break;
+        case EResultAction::CANCEL_SAVE: {
+            auto cancelled = saves_.requestCancel(std::get<persistence::SaveId>(intent->target));
+            if (!cancelled)
+                return applicationFailure("save.cancel", cancelled.error());
+            break;
+        }
+        case EResultAction::RECONCILE: {
+            auto reconciled = writes_.reconcile(std::get<persistence::WriteTicket>(intent->target), files_);
+            if (!reconciled)
+                return applicationFailure("publication.reconcile", reconciled.error());
+            break;
+        }
+        case EResultAction::ACK_RELOAD:
+            std::erase_if(reloads_, [&](const auto& reload) {
+                return reload.source == std::get<sessions::ContentStamp>(intent->target) && reload.result.has_value();
+            });
+            break;
+        case EResultAction::SHOW_CONTENT: {
+            const auto target = std::get<sessions::ContentStamp>(intent->target);
+            auto current = sessions_.describe(target.session);
+            if (!current)
+                return applicationFailure("content.show", current.error());
+            if (current->current != target)
+                return applicationFailure("content.show", sessions::ESessionError::STALE_CONTENT);
+            auto shown = show(target.session, false);
+            if (!shown)
+                return cxx::unexpected(shown.error());
+            break;
+        }
+        case EResultAction::SAVE_AS: {
+            const auto target = std::get<sessions::ContentStamp>(intent->target);
+            return askSave({target.session, target}, persistence::ESaveMode::SAVE_AS);
+        }
+        case EResultAction::CLEAR_SAVE_ALL:
+            save_all_.reset(); // The accepted SaveIds remain in their original operation/report owners.
+            break;
+        }
+        return {};
+    }
+    void EditorApplication::Impl::installResultView(extensions::ContributionDraft& draft)
+    {
+        // An application composition view, not another operation owner. It records button intents only;
+        // service calls and structural changes run after Root returns from draw/update.
+        class ResultsPane final : public lux::ui::Pane
+        {
+            struct Content final : lux::ui::Element
+            {
+                Impl& app_;
+                Content(ResultsPane& pane, Impl& app) : Element(pane, lux::ui::ElementId{"results"}), app_(app)
+                {
+                    setStretch({1, 1});
+                }
+                void draw() noexcept override
+                {
+                    auto button = [&](const char* label, EResultAction action, auto target) {
+                        ImGui::BeginDisabled(app_.result_intent_.has_value());
+                        if (ImGui::Button(label))
+                            app_.result_intent_ = ResultIntent{action, target};
+                        ImGui::EndDisabled();
+                    };
+                    auto publication = [&](persistence::WriteTicket ticket) {
+                        auto status = app_.writes_.status(ticket);
+                        if (!status)
+                            return;
+                        if (status->stage == persistence::EWriteStage::UNKNOWN)
+                        {
+                            ImGui::TextUnformatted("Publication unknown; this physical target remains reserved.");
+                            button("Reconcile disk result", EResultAction::RECONCILE, ticket);
+                        }
+                    };
+                    if (app_.result_failure_)
+                        ImGui::TextWrapped(
+                            "%s: %s",
+                            app_.result_failure_->domain.c_str(),
+                            app_.result_failure_->message.c_str()
+                        );
+                    ImGui::SeparatorText("Open content (including content without a window)");
+                    auto ids = app_.sessions_.snapshotIds();
+                    if (!ids)
+                        ImGui::TextUnformatted("Content temporarily unavailable; no empty-list inference.");
+                    else
+                        for (auto id : *ids)
+                        {
+                            auto info = app_.sessions_.describe(id);
+                            if (!info)
+                                continue;
+                            ImGui::PushID(static_cast<int>(id.slot));
+                            ImGui::Text("%s%s", info->kind.name.c_str(), info->dirty ? " *" : "");
+                            if (info->binding)
+                                ImGui::TextWrapped("%s", info->binding->location.c_str());
+                            button("Show", EResultAction::SHOW_CONTENT, info->current);
+                            if (!info->binding)
+                            {
+                                ImGui::SameLine();
+                                button("Save As", EResultAction::SAVE_AS, info->current);
+                            }
+                            ImGui::PopID();
+                        }
+                    ImGui::SeparatorText("Save results");
+                    for (const auto& report : app_.save_reports_)
+                    {
+                        ImGui::PushID(static_cast<int>(report.id.value));
+                        ImGui::TextWrapped("%s", report.asset.source_path.c_str());
+                        if (report.result)
+                        {
+                            const auto& outcome = report.result->publication;
+                            ImGui::Text(
+                                "Disk: %s; baseline adoption: %u",
+                                std::holds_alternative<persistence::CommitReceipt>(outcome) ? "published"
+                                                                                            : "not published",
+                                static_cast<unsigned>(report.result->adoption)
+                            );
+                            if (const auto* failed = std::get_if<persistence::NotPublished>(&outcome))
+                                ImGui::TextWrapped("%s", failed->failure.detail.c_str());
+                            if (report.failure)
+                                ImGui::TextWrapped(
+                                    "Catalog: %s: %s",
+                                    report.failure->domain.c_str(),
+                                    report.failure->message.c_str()
+                                );
+                            button("Acknowledge result", EResultAction::ACK_SAVE, report.id);
+                        }
+                        else
+                        {
+                            auto status = app_.saves_.status(report.id);
+                            if (status)
+                            {
+                                ImGui::Text("Accepted save, stage %u", static_cast<unsigned>(status->stage));
+                                publication(status->ticket);
+                                button("Cancel before publication", EResultAction::CANCEL_SAVE, report.id);
+                            }
+                            if (report.catalog_ticket)
+                                publication(*report.catalog_ticket);
+                        }
+                        ImGui::PopID();
+                    }
+                    if (app_.save_all_)
+                    {
+                        ImGui::SeparatorText("Save All fixed set");
+                        for (const auto& entry : app_.save_all_->entries())
+                        {
+                            ImGui::Text(
+                                "Content %u: %s",
+                                entry.session.slot,
+                                entry.already_clean ? "already clean"
+                                : entry.save        ? "accepted (see save result)"
+                                                    : "not admitted"
+                            );
+                            if (entry.failure)
+                                ImGui::TextWrapped(
+                                    "%s: %s",
+                                    entry.failure->domain.c_str(),
+                                    entry.failure->detail.c_str()
+                                );
+                        }
+                        ImGui::TextUnformatted(
+                            "Unbound content: use Save As above. Other accepted saves continue independently."
+                        );
+                        button("Acknowledge Save All report", EResultAction::CLEAR_SAVE_ALL, persistence::SaveId{});
+                    }
+                    ImGui::SeparatorText("Reload results");
+                    for (std::size_t index{}; index < app_.reloads_.size(); ++index)
+                    {
+                        const auto& reload = app_.reloads_[index];
+                        ImGui::PushID(static_cast<int>(index));
+                        ImGui::Text(
+                            "Content %u: %s",
+                            reload.source.session.slot,
+                            !reload.result   ? "reading / preparing"
+                            : *reload.result ? "reloaded"
+                                             : "original content retained"
+                        );
+                        if (reload.result)
+                        {
+                            if (!*reload.result)
+                                ImGui::TextWrapped(
+                                    "%s: %s",
+                                    reload.result->error().domain.c_str(),
+                                    reload.result->error().detail.c_str()
+                                );
+                            button("Acknowledge reload", EResultAction::ACK_RELOAD, reload.source);
+                        }
+                        ImGui::PopID();
+                    }
+                }
+            } content_;
+
+        public:
+            ResultsPane(object::ObjectDispatcherRef dispatcher, lux::ui::PaneId id, Impl& app)
+                : Pane(
+                      dispatcher,
+                      std::move(id),
+                      lux::ui::PaneTypeId{"lux.editor.content.results"},
+                      "Content and Operations"
+                  ),
+                  content_(*this, app)
+            {
+                setContent(content_);
+            }
+        };
+        draft.views.push_back(std::make_shared<views::ViewFactoryEntry>(
+            contracts::CodeLease::builtin(),
+            views::ViewFactoryDescriptor{
+                views::ViewTypeId{"lux.editor.content.results"},
+                "Content and Operations",
+                cxx::typeToken<EmptyViewInput>()
+            },
+            [this](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
+                return views::DetachedView{
+                    contracts::CodeLease::builtin(),
+                    std::make_unique<ResultsPane>(input.dispatcher(), input.paneId(), *this)
+                };
+            }
+        ));
+        draft.commands.push_back(std::make_shared<commands::CommandEntry>(
+            contracts::CodeLease::builtin(),
+            commands::CommandDescriptor{
+                commands::CommandId{"lux.editor.content.results"},
+                "Content and Operations",
+                "Window"
+            },
+            [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
+                return commands::CommandState{phase_ == EApplicationPhase::RUNNING};
+            },
+            [this](const commands::CommandInvocation&) -> commands::CommandResult<commands::DispatchReceipt> {
+                auto shown = showTool(views::ViewTypeId{"lux.editor.content.results"});
+                if (!shown)
+                    return cxx::unexpected(commands::CommandFailure{
+                        commands::ECommandError::DOMAIN_FAILURE,
+                        shown.error().domain,
+                        shown.error().reason,
+                        shown.error().message
+                    });
+                return commands::DispatchReceipt{commands::ImmediateCompletion{}};
+            }
+        ));
+    }
+}

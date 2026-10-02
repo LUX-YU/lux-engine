@@ -42,7 +42,9 @@ namespace lux::editor::application
         if (result)
             if (const auto* operation = std::get_if<commands::AcceptedOperation>(&*result);
                 operation && operation->kind == "save")
-                impl_->pending_saves_.push_back({operation->value});
+                if (std::ranges::find(impl_->pending_saves_, persistence::SaveId{operation->value}) ==
+                    impl_->pending_saves_.end())
+                    impl_->pending_saves_.push_back({operation->value});
         return result;
     }
     EditorResult<void> EditorApplication::Impl::installContributions()
@@ -128,7 +130,12 @@ namespace lux::editor::application
             }
         );
         draft.commands.push_back(std::move(exit));
+        std::erase_if(draft.commands, [](const auto& entry) {
+            return entry->descriptor().id == commands::CommandId{"lux.editor.save"};
+        });
         installContentCommands(draft);
+        installSaveCommands(draft);
+        installResultView(draft);
         installSceneCommands(draft);
         draft.views.push_back(std::make_shared<views::ViewFactoryEntry>(
             contracts::CodeLease::builtin(),

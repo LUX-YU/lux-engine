@@ -12,8 +12,10 @@ namespace lux::editor::application
     }
     EditorResult<void> EditorApplication::Impl::requestClose(sessions::ContentStamp expected)
     {
-        if (phase_ != EApplicationPhase::RUNNING || last_view_)
+        if (phase_ != EApplicationPhase::RUNNING || last_view_ || save_question_ || reload_question_)
             return cxx::unexpected(EditorFailure{EEditorError::BUSY, "close.review"});
+        if (save_reports_.size() >= 128)
+            return cxx::unexpected(EditorFailure{EEditorError::CAPACITY, "close.save-results"});
         auto current = sessions_.describe(expected.session);
         if (!current)
             return applicationFailure("close.content", current.error());
@@ -23,6 +25,7 @@ namespace lux::editor::application
             {expected, current->dirty ? sessions::ECloseChoice::CANCEL : sessions::ECloseChoice::DISCARD}
         };
         close_run_decisions_.clear();
+        close_destinations_.clear();
         for (const auto& run : run_presentations_)
             if (run.source.session == expected.session && run.run && !run.stopping)
                 close_run_decisions_.push_back({*run.run, {}});

@@ -23,8 +23,9 @@ namespace lux::editor::sessions
         ReloadSessionOperation& operator=(const ReloadSessionOperation&) = delete;
         ReloadSessionOperation(ReloadSessionOperation&&) = delete;
         ReloadSessionOperation& operator=(ReloadSessionOperation&&) = delete;
-        // Borrow the role only for this call. A closed/replaced installation is never retained across frames.
-        void update(InstalledSession&);
+        // Borrow the role only for this call. Null means the installation has closed; an admitted read
+        // still settles before its owned candidate is discarded. No live role is retained across frames.
+        void update(InstalledSession*);
         void cancel() noexcept;
         [[nodiscard]] const std::optional<SessionFactoryResult<ContentStamp>>& outcome() const noexcept;
 

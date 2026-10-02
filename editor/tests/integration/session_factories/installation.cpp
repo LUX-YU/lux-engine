@@ -468,14 +468,14 @@ namespace
                 for (unsigned n{}; n < 20; ++n)
                 {
                     turn();
-                    reload->update(*opening.find(ids[i]));
+                    reload->update(opening.find(ids[i]));
                 }
                 assert(!reload->outcome() && take(store.describe(ids[i])).current == before.current);
             }
             for (unsigned n{}; n < 10000 && !reload->outcome(); ++n)
             {
                 turn();
-                reload->update(*opening.find(ids[i]));
+                reload->update(opening.find(ids[i]));
             }
             assert(reload->outcome() && *reload->outcome());
             const auto after = take(store.describe(ids[i]));
@@ -496,7 +496,7 @@ namespace
             for (unsigned n{}; n < 10000 && !reload->outcome(); ++n)
             {
                 turn();
-                reload->update(*opening.find(ids[1]));
+                reload->update(opening.find(ids[1]));
             }
             assert(reload->outcome() && !*reload->outcome());
             assert(reload->outcome()->error().code == ESessionFactoryError::STALE_CONTENT);
@@ -517,7 +517,7 @@ namespace
             for (unsigned n{}; n < 10000 && !reload->outcome(); ++n)
             {
                 turn();
-                reload->update(*opening.find(ids[1]));
+                reload->update(opening.find(ids[1]));
             }
             assert(reload->outcome() && *reload->outcome());
         }
@@ -564,10 +564,22 @@ namespace
         auto closing = take(CloseSessionsOperation::begin(store, saves, decisions));
         auto permits = take(closing.prepare());
         assert(permits.size() == 3 && store.size() == 3);
+        auto closing_read = input(1);
+        closing_read.reload = take(store.describe(ids[1])).current;
+        auto late_reload =
+            take(ReloadSessionOperation::start(runtime, store, writes, take(factories.find(kinds[1])), closing_read));
         assert(store.close(permits) && store.size() == 0);
         turn();
         for (auto id : ids)
             assert(!opening.find(id));
+        for (unsigned n{}; n < 10000 && !late_reload->outcome(); ++n)
+        {
+            turn();
+            late_reload->update(nullptr);
+        }
+        assert(late_reload->outcome() && !*late_reload->outcome());
+        assert(late_reload->outcome()->error().code == ESessionFactoryError::STALE_SESSION);
+        assert(store.size() == 0);
         // New sources enter the same installation directory directly, without a VFS task or encoding pass.
         std::array<PreparedSessionData, 3> new_sources{
             es::prepareSceneSession(take(es::SceneCodec::decode(read(root / SourceFiles::names[0]))), {}, {}, {}),

@@ -7,11 +7,13 @@ namespace lux::editor::application
 {
     EditorResult<void> EditorApplication::Impl::requestExit()
     {
-        if (phase_ != EApplicationPhase::RUNNING || last_view_)
+        if (phase_ != EApplicationPhase::RUNNING || last_view_ || save_question_ || reload_question_)
             return cxx::unexpected(EditorFailure{EEditorError::BUSY, "exit.phase"});
         auto ids = sessions_.snapshotIds();
         if (!ids)
             return applicationFailure("exit.sessions", ids.error());
+        if (save_reports_.size() + ids->size() > 128)
+            return cxx::unexpected(EditorFailure{EEditorError::CAPACITY, "exit.save-results"});
         std::vector<sessions::SessionCloseDecision> decisions;
         decisions.reserve(ids->size());
         for (auto id : *ids)
@@ -24,6 +26,7 @@ namespace lux::editor::application
             );
         }
         close_run_decisions_.clear();
+        close_destinations_.clear();
         close_application_ = true;
         close_decisions_ = std::move(decisions);
         phase_ = EApplicationPhase::REVIEWING;
@@ -65,6 +68,40 @@ namespace lux::editor::application
                 return applicationFailure("exit.review", borrowed.error());
             if (!response)
                 return {};
+            if (response->choice == desktop::EReviewChoice::SAVE && review_content_)
+            {
+                auto info = sessions_.describe(review_content_->session);
+                if (!info)
+                    return applicationFailure("close.save.source", info.error());
+                if (!info->binding)
+                {
+                    auto destination = prepareSave(
+                        {review_content_->session, *review_content_},
+                        persistence::ESaveMode::SAVE_AS,
+                        response->text
+                    );
+                    if (!destination)
+                    {
+                        auto reject = [&](lux::ui::Pane& pane) {
+                            static_cast<desktop::ReviewView&>(pane).rejectAnswer(
+                                destination.error().domain + ": " + destination.error().message +
+                                "\nChoose a valid unused source path, or cancel closing."
+                            );
+                        };
+                        auto shown = desktop_->views().withView(*review_, reject);
+                        if (!shown)
+                            return applicationFailure("close.save.destination", shown.error());
+                        return {};
+                    }
+                    auto decision =
+                        std::ranges::find(close_decisions_, *review_content_, &sessions::SessionCloseDecision::content);
+                    if (decision == close_decisions_.end())
+                        return cxx::unexpected(EditorFailure{EEditorError::STALE_REQUEST, "close.save.decision"});
+                    decision->destination = std::move(destination->request.destination);
+                    decision->destination_asset = destination->request.asset;
+                    close_destinations_.push_back(std::move(destination->asset));
+                }
+            }
             auto closed = desktop_->views().prepareClose(std::span{&*review_, 1});
             if (!closed)
                 return applicationFailure("exit.review.close", closed.error());
@@ -80,7 +117,11 @@ namespace lux::editor::application
                 if (closing_)
                     for (const auto& saved : closing_->saves())
                         if (saved.save && std::ranges::find(pending_saves_, *saved.save) == pending_saves_.end())
+                        {
+                            if (auto remembered = rememberSave(*saved.save); !remembered)
+                                return remembered;
                             pending_saves_.push_back(*saved.save);
+                        }
                 closing_.reset();
                 exit_failure_.reset();
                 close_decisions_.clear();
@@ -109,6 +150,9 @@ namespace lux::editor::application
         for (const auto& decision : close_decisions_)
             if (decision.choice == sessions::ECloseChoice::CANCEL)
             {
+                auto info = sessions_.describe(decision.content.session);
+                if (!info)
+                    return applicationFailure("close.review.source", info.error());
                 const auto request = next_review_++;
                 auto question = desktop::ReviewView::create(
                     messages_.dispatcherRef(),
@@ -117,7 +161,9 @@ namespace lux::editor::application
                      "Unsaved content",
                      close_application_ ? "Save this content before closing the Editor?"
                                         : "Save this content before closing it?",
-                     {desktop::EReviewChoice::SAVE, desktop::EReviewChoice::DISCARD, desktop::EReviewChoice::CANCEL}}
+                     {desktop::EReviewChoice::SAVE, desktop::EReviewChoice::DISCARD, desktop::EReviewChoice::CANCEL},
+                     info->binding ? std::nullopt : std::optional<std::string>{"Project-relative source path"},
+                     "Content/Untitled.source"}
                 );
                 if (!question)
                     return applicationFailure("exit.question", question.error());
@@ -194,6 +240,10 @@ namespace lux::editor::application
         }
         if (close_application_)
             phase_ = EApplicationPhase::COMMITTING_EXIT;
+        for (const auto& save : closing_->saves())
+            if (save.save)
+                if (auto remembered = rememberSave(*save.save); !remembered)
+                    return remembered;
         auto close_content = [&] {
             // No intervening business callback: Store validates the entire permit set, then reclaims.
             const auto closed = sessions_.close(*permits);
@@ -205,7 +255,10 @@ namespace lux::editor::application
             return applicationFailure("exit.views.commit", committed.error());
         for (const auto& save : closing_->saves())
             if (save.save)
-                pending_saves_.push_back(*save.save);
+            {
+                if (std::ranges::find(pending_saves_, *save.save) == pending_saves_.end())
+                    pending_saves_.push_back(*save.save);
+            }
         closing_.reset();
         std::erase_if(content_views_, [&](const auto& view) { return std::ranges::find(ids, view.view) != ids.end(); });
         close_decisions_.clear();
@@ -225,12 +278,23 @@ namespace lux::editor::application
         // The irreversible handoff has completed. Failures from now on cannot return to review.
         phase_ = EApplicationPhase::DRAINING;
         opening_.requestStop();
-        project_->requestClose();
         desktop_->presentation().stopFrames();
         return {};
     }
     EditorResult<void> EditorApplication::Impl::settleOperations()
     {
+        for (auto& reload : reloads_)
+            if (reload.operation)
+            {
+                if (phase_ == EApplicationPhase::DRAINING)
+                    reload.operation->cancel();
+                reload.operation->update(opening_.find(reload.source.session));
+                if (reload.operation->outcome())
+                {
+                    reload.result = *reload.operation->outcome();
+                    reload.operation.reset();
+                }
+            }
         std::vector<material::MaterialCompileId> material_in_use;
         std::vector<flowforge::FlowCompileId> flow_in_use;
         if (desktop_)
@@ -276,25 +340,13 @@ namespace lux::editor::application
                 if (!acknowledged)
                     return applicationFailure("flow.acknowledge", acknowledged.error());
             }
-        for (auto i = pending_saves_.begin(); i != pending_saves_.end();)
-        {
-            const auto status = saves_.status(*i);
-            if (!status)
-                return applicationFailure("save.status", status.error());
-            if (status->stage != persistence::ESaveStage::TERMINAL)
-            {
-                ++i;
-                continue;
-            }
-            // Acknowledgement never changes disk publication or the adopted checkpoint.
-            const auto acknowledged = saves_.acknowledge(*i);
-            if (!acknowledged)
-                return applicationFailure("save.acknowledge", acknowledged.error());
-            i = pending_saves_.erase(i);
-        }
+        if (auto settled = settleSaves(); !settled)
+            return settled;
         if (phase_ == EApplicationPhase::DRAINING && materials->empty() && flows->empty() && pending_saves_.empty() &&
-            opening_.settled() && run_presentations_.empty())
+            opening_.settled() && run_presentations_.empty() &&
+            std::ranges::none_of(reloads_, [](const auto& reload) { return bool(reload.operation); }))
         {
+            project_->requestClose();
             auto closed = project_->advanceClose();
             if (!closed)
                 return cxx::unexpected(closed.error());
@@ -365,9 +417,22 @@ namespace lux::editor::application
                     log::error("application.command", "{}", completion.result.error().domain);
                 else if (const auto* admitted = std::get_if<commands::AcceptedOperation>(&*completion.result);
                          admitted && admitted->kind == "save")
-                    pending_saves_.push_back({admitted->value});
+                    if (std::ranges::find(pending_saves_, persistence::SaveId{admitted->value}) == pending_saves_.end())
+                        pending_saves_.push_back({admitted->value});
             }
         }
+        if (result_intent_)
+        {
+            auto applied = receiveResultIntent();
+            if (!applied)
+                result_failure_ = applied.error();
+            else
+                result_failure_.reset();
+        }
+        if (auto answered = receiveSaveAnswer(); !answered)
+            log::error("application.save", "{}", answered.error().domain);
+        if (auto answered = receiveReloadAnswer(); !answered)
+            log::error("application.reload", "{}", answered.error().domain);
         if (phase_ == EApplicationPhase::RUNNING)
             if (auto closed = receiveViewClose(); !closed)
                 log::error("application.close-view", "{}", closed.error().domain);

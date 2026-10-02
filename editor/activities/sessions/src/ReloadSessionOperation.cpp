@@ -86,7 +86,7 @@ namespace lux::editor::sessions
             });
         return std::unique_ptr<ReloadSessionOperation>(new ReloadSessionOperation(std::move(impl)));
     }
-    void ReloadSessionOperation::update(InstalledSession& role)
+    void ReloadSessionOperation::update(InstalledSession* role)
     {
         if (impl_->result || impl_->dispatching || !impl_->loaded)
             return;
@@ -117,7 +117,7 @@ namespace lux::editor::sessions
             fail(std::move(impl_->loaded->error()));
             return;
         }
-        if (role.id() != impl_->expected.session)
+        if (!role || role->id() != impl_->expected.session)
         {
             fail(factoryFailure(ESessionError::STALE_SESSION));
             return;
@@ -140,7 +140,7 @@ namespace lux::editor::sessions
             fail({ESessionFactoryError::CANCELLED, "reload.cancelled"});
             return;
         }
-        auto adopted = role.reload(*impl_->prepared, impl_->writes);
+        auto adopted = role->reload(*impl_->prepared, impl_->writes);
         if (!adopted && adopted.error().code == ESessionFactoryError::BUSY)
             return;
         impl_->result.emplace(std::move(adopted));

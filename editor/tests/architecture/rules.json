@@ -17808,6 +17808,15 @@
       ],
       "editor/application/extensions/builtin/test/plugin.cpp": [
         "plugin_library_test"
+      ],
+      "editor/application/src/EditorSaving.cpp": [
+        "editor_bootstrap"
+      ],
+      "editor/application/src/EditorReload.cpp": [
+        "editor_bootstrap"
+      ],
+      "editor/application/src/EditorResults.cpp": [
+        "editor_bootstrap"
       ]
     },
     "native_libraries": [

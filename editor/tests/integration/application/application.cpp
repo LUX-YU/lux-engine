@@ -106,6 +106,90 @@ int main(int argc, char** argv)
     };
     const auto material_id = create_content("lux.editor.new.material");
     const auto flow_id = create_content("lux.editor.new.flow");
+    const auto save_material_stamp = impl.sessions_.describe(material_id)->current;
+    assert(app->execute(
+        commands::CommandId{"lux.editor.save-as"},
+        commands::CommandInvocation{commands::SessionTarget{material_id, save_material_stamp}}
+    ));
+    assert(impl.save_question_);
+    const auto original_save_target = impl.save_question_->target;
+    auto invalid_path = [&](ui::Pane& pane) {
+        auto& question = static_cast<desktop::ReviewView&>(pane);
+        assert(question.setText("../outside.source"));
+        assert(question.answer(desktop::EReviewChoice::SAVE));
+    };
+    assert(impl.desktop_->views().withView(impl.save_question_->view, invalid_path));
+    assert(app->update() && impl.save_question_ && impl.pending_saves_.empty());
+    assert(impl.save_question_->target.based_on == original_save_target.based_on);
+    auto choose_source = [&](ui::Pane& pane) {
+        auto& question = static_cast<desktop::ReviewView&>(pane);
+        assert(question.setText("Content/Beginner/Material.source"));
+        assert(question.answer(desktop::EReviewChoice::SAVE));
+    };
+    assert(impl.desktop_->views().withView(impl.save_question_->view, choose_source));
+    assert(app->update());
+    const auto save_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+    while (!impl.pending_saves_.empty())
+    {
+        assert(std::chrono::steady_clock::now() < save_deadline);
+        auto frame = app->update();
+        if (!frame)
+            std::cerr << "save frame: " << frame.error().domain << '\n';
+        assert(frame);
+        std::this_thread::yield();
+    }
+    assert(!impl.save_reports_.empty() && !impl.save_reports_.back().failure && impl.save_reports_.back().result);
+    const auto saved_material = impl.sessions_.describe(material_id);
+    assert(saved_material && !saved_material->dirty && saved_material->current == save_material_stamp);
+    assert(saved_material->binding && impl.project_->asset(saved_material->binding->asset));
+    assert(std::filesystem::exists(impl.project_->root() / "Content/Beginner/Material.source"));
+    const auto reopened = app->open(impl.project_->reference(saved_material->binding->asset));
+    assert(reopened);
+    assert(app->update());
+    const auto reopened_status = app->openStatus(*reopened);
+    assert(reopened_status && reopened_status->content.session == material_id);
+    assert(app->acknowledgeOpen(*reopened));
+    std::cout << "Real Save As preserves author history, publishes source/catalog and reopens the same Session\n";
+    assert(app->execute(
+        commands::CommandId{"lux.editor.export-copy"},
+        commands::CommandInvocation{commands::SessionTarget{material_id, saved_material->current}}
+    ));
+    auto export_path = [&](ui::Pane& pane) {
+        auto& question = static_cast<desktop::ReviewView&>(pane);
+        assert(question.setText("Content/Beginner/MaterialCopy.source"));
+        assert(question.answer(desktop::EReviewChoice::SAVE));
+    };
+    assert(impl.desktop_->views().withView(impl.save_question_->view, export_path));
+    assert(app->update());
+    while (!impl.pending_saves_.empty())
+    {
+        assert(std::chrono::steady_clock::now() < save_deadline);
+        assert(app->update());
+        std::this_thread::yield();
+    }
+    const auto after_copy = impl.sessions_.describe(material_id);
+    assert(
+        after_copy && after_copy->binding == saved_material->binding && after_copy->current == saved_material->current
+    );
+    assert(!after_copy->dirty && std::filesystem::exists(root / "Content/Beginner/MaterialCopy.source"));
+    assert(app->execute(
+        commands::CommandId{"lux.editor.reload"},
+        commands::CommandInvocation{commands::SessionTarget{material_id, after_copy->current}}
+    ));
+    while (!impl.reloads_.back().result)
+    {
+        assert(std::chrono::steady_clock::now() < save_deadline);
+        assert(app->update());
+        std::this_thread::yield();
+    }
+    assert(*impl.reloads_.back().result);
+    const auto reloaded_material = impl.sessions_.describe(material_id);
+    assert(reloaded_material && reloaded_material->current != after_copy->current && !reloaded_material->dirty);
+    assert(reloaded_material->binding == after_copy->binding);
+    std::cout << "Export Copy leaves the baseline intact; actual Reload keeps SessionId and replaces history\n";
+    assert(app->execute(commands::CommandId{"lux.editor.content.results"}));
+    assert(app->update()); // Draw the installed result view, including save/reload and unbound content rows.
+
     assert(impl.sessions_.size() == 2);
     assert(app->execute(
         commands::CommandId{"lux.editor.another-view"},
@@ -160,8 +244,20 @@ int main(int argc, char** argv)
     assert(app->closeView(flow_view_id));
     choose_last(desktop::EReviewChoice::CLOSE_CONTENT);
     assert(impl.review_ && impl.sessions_.size() == 2);
-    answer(desktop::EReviewChoice::DISCARD);
-    assert(app->update() && app->phase() == EApplicationPhase::RUNNING);
+    auto choose_flow_source = [&](ui::Pane& pane) {
+        assert(static_cast<desktop::ReviewView&>(pane).setText("Content/Beginner/Flow.source"));
+    };
+    assert(impl.desktop_->views().withView(*impl.review_, choose_flow_source));
+    answer(desktop::EReviewChoice::SAVE);
+    const auto close_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+    do
+    {
+        assert(std::chrono::steady_clock::now() < close_deadline);
+        assert(app->update());
+        assert(!impl.exit_failure_);
+        std::this_thread::yield();
+    } while (app->phase() != EApplicationPhase::RUNNING || !impl.pending_saves_.empty());
+    assert(std::filesystem::exists(impl.project_->root() / "Content/Beginner/Flow.source"));
     assert(!impl.sessions_.describe(flow_id) && !impl.desktop_->views().describe(flow_view_id));
     assert(impl.sessions_.describe(material_id)->current == material_before);
     std::cout << "Last-view Cancel/Keep/Close use real modals; closing one content preserves another\n";
@@ -244,9 +340,15 @@ int main(int argc, char** argv)
     }
     assert(app->execute(commands::CommandId{"lux.editor.scene.step"}, commands::CommandInvocation{run_view}));
     const auto step = impl.run_presentations_.front().steps.front();
-    for (int frame = 0; frame < 16; ++frame)
+    const auto step_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
+    while (impl.runs_.info(run)->pause_pending)
+    {
+        assert(std::chrono::steady_clock::now() < step_deadline);
         assert(app->update());
+        std::this_thread::yield();
+    }
     assert(impl.runs_.stepStatus(step)); // Completion has not been silently acknowledged by an update.
+    assert(impl.runs_.stepStatus(step)->state == lux::scene::ESceneStepState::COMPLETED);
     assert(impl.requestClose(impl.sessions_.describe(scene_id)->current));
     assert(app->update() && impl.review_);
     answer(desktop::EReviewChoice::DISCARD);

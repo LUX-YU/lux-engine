@@ -112,7 +112,14 @@ namespace lux::editor::sessions
                     save.already_clean = true;
                     continue;
                 }
-                auto requested = service_.requestSave({decision.content.session});
+                persistence::SaveRequest request{decision.content.session};
+                if (decision.destination)
+                {
+                    request.mode = persistence::ESaveMode::SAVE_AS;
+                    request.destination = decision.destination;
+                    request.asset = decision.destination_asset;
+                }
+                auto requested = service_.requestSave(std::move(request));
                 if (!requested)
                     return cxx::unexpected(factoryFailure(requested.error()));
                 save.save = *requested;

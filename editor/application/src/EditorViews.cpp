@@ -60,7 +60,7 @@ namespace lux::editor::application
         sessions::OpenAssetRequest request{
             reference.project_instance,
             kind,
-            {std::move(*source), asset->id, sessions::BoundSource{asset->id, asset->source_path}, *target}
+            {std::move(*source), asset->id, sessions::BoundSource{asset->id, target->key.value}, *target}
         };
         // A pinned catalog may outlive this short compound owner scope, never the scope itself.
         std::optional<sessions::OpenAssetId> id;

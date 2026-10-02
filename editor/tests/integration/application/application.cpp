@@ -140,6 +140,7 @@ int main(int argc, char** argv)
         assert(output);
     }
     EditorApplicationConfig config{file, argv[1], "Application qualification", 640, 480, true};
+    config.user_directory = root;
     config.font = root / "missing-font.ttf";
     auto missing_font = EditorApplication::create(config);
     assert(!missing_font && missing_font.error().domain == "editor.font.read");
@@ -177,6 +178,52 @@ int main(int argc, char** argv)
     auto app = std::move(*created);
     auto& impl = ApplicationTestAccess::implementation(*app);
     assert(impl.desktop_ && impl.desktop_->commands());
+    assert(app->execute(commands::CommandId{"lux.editor.project.recent"}));
+    const auto recent_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (!impl.recent_publication_)
+    {
+        assert(app->update());
+        assert(std::chrono::steady_clock::now() < recent_deadline);
+        std::this_thread::yield();
+    }
+    assert(std::holds_alternative<persistence::CommitReceipt>(*impl.recent_publication_));
+    assert(impl.recent_projects_.size() == 1 && impl.recent_projects_.front() == config.project_file);
+    const auto recent_file = *config.user_directory / "lux/editor/recent-projects.toml";
+    const auto recent_before = storage::readPublicationFile(recent_file, 64 * 1024);
+    assert(recent_before && !recent_before->empty());
+    const std::string bad_recent = "version = 9\nprojects = []\n";
+    assert(storage::writePublicationFile(recent_file, std::as_bytes(std::span{bad_recent})));
+    impl.recent_requested_ = true;
+    while (!impl.recent_failure_)
+    {
+        assert(app->update());
+        assert(std::chrono::steady_clock::now() < recent_deadline);
+    }
+    assert(impl.recent_failure_->domain == "recent.format" && impl.recent_projects_.size() == 1);
+    const auto refused = storage::readPublicationFile(recent_file, 64 * 1024);
+    assert(refused && std::string(reinterpret_cast<const char*>(refused->data()), refused->size()) == bad_recent);
+    assert(storage::writePublicationFile(recent_file, *recent_before));
+    impl.recent_requested_ = true;
+    while (impl.recent_failure_ || impl.recent_requested_ || impl.recent_task_ || impl.recent_result_ ||
+           impl.recent_ticket_)
+    {
+        assert(app->update());
+        assert(std::chrono::steady_clock::now() < recent_deadline);
+    }
+    assert(
+        impl.recent_projects_.size() == 1 &&
+        !impl.files_.resolve((root.parent_path() / "outside-user-root.txt").generic_string())
+    );
+    std::cout << "Recent projects: real legacy-format read, one coordinator publication, malformed input preserves "
+                 "file/list, explicit retry\n";
+
+    auto tools = impl.desktop_->views().describeAll();
+    assert(tools);
+    auto recent_view =
+        std::ranges::find(*tools, views::ViewTypeId{"lux.editor.recent-projects"}, &views::ViewInfo::type);
+    assert(recent_view != tools->end());
+    auto close_recent = impl.desktop_->views().prepareClose(std::span{&recent_view->id, 1});
+    assert(close_recent && impl.desktop_->views().commit(*close_recent));
     for (int frame = 0; frame < 8; ++frame)
         assert(app->update());
     assert(impl.sessions_.size() == 0);
@@ -1052,4 +1099,25 @@ int main(int argc, char** argv)
     assert(impl.pending_saves_.empty() && impl.sessions_.size() == 0);
     std::cout << "X12-09: accepted encode/compile, independent Run and GPU drain; source publication retained\n";
     std::cout << "Application: formal service assembly, frames, and asynchronous exit drain complete\n";
+    // Reopen the actual Builder-created project rather than inventing a catalog entry.
+    const auto default_path = root / "Initial3D/Project.luxproject";
+    const auto default_project = readProjectOpenData(default_path);
+    assert(default_project && !default_project->manifest.default_scene.empty());
+    // Earlier local activity fixtures still borrow this application execution owner until scope exit.
+    config.project_file = default_path;
+    auto initial = EditorApplication::create(config);
+    assert(initial);
+    auto& initial_owner = ApplicationTestAccess::implementation(**initial);
+    const auto initial_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (initial_owner.sessions_.size() == 0 || initial_owner.content_views_.empty())
+    {
+        assert((*initial)->update());
+        assert(std::chrono::steady_clock::now() < initial_deadline);
+    }
+    assert(initial_owner.sessions_.size() == 1);
+    assert((*initial)->execute(commands::CommandId{"lux.editor.initial-scene"}));
+    for (int frame{}; frame < 12; ++frame)
+        assert((*initial)->update());
+    assert(initial_owner.sessions_.size() == 1);
+    std::cout << "Initial scene: installed project description opens one shared content; explicit menu reuses it\n";
 }

@@ -265,7 +265,39 @@ namespace lux::editor::application
         lux::project::SceneRegistrations registrations_;
         std::vector<extensions::EditorExtension> extensions_;
         std::unique_ptr<ProjectStorage> project_;
-        storage::FileArtifactStore files_;
+        // One scheduler/coordinator publishes project files and the exact user-preference file.
+        // The user root never becomes an unrestricted fallback for project paths.
+        class ApplicationFiles final : public persistence::IArtifactStore
+        {
+        public:
+            ApplicationFiles(std::filesystem::path project, const std::filesystem::path& user_directory)
+                : project_(std::move(project)), recent_(user_directory), recent_key_([&] {
+                      const auto bytes = (user_directory / "lux/editor/recent-projects.toml").generic_u8string();
+                      return std::string{bytes.begin(), bytes.end()};
+                  }())
+            {}
+            persistence::PersistenceResult<persistence::WriteTarget> resolve(std::string_view address) override
+            {
+                return select(address).resolve(address);
+            }
+            persistence::VPublicationOutcome publish(const persistence::PublicationQuery& query, std::stop_token stop)
+                override
+            {
+                return select(query.target.key.value).publish(query, stop);
+            }
+            persistence::Reconciliation reconcile(const persistence::PublicationQuery& query) override
+            {
+                return select(query.target.key.value).reconcile(query);
+            }
+
+        private:
+            storage::FileArtifactStore& select(std::string_view key)
+            {
+                return key == recent_key_ ? recent_ : project_;
+            }
+            storage::FileArtifactStore project_, recent_;
+            std::string recent_key_;
+        } files_;
         persistence::WriteCoordinator writes_;
         persistence::SaveService saves_{writes_};
         sessions::SessionStore sessions_{128};
@@ -274,6 +306,20 @@ namespace lux::editor::application
         std::unique_ptr<ProjectCreation> project_creation_;
         std::optional<lux::ui::PaneId> import_browse_;
         bool project_open_requested_{};
+        std::optional<std::filesystem::path> project_launch_intent_;
+        struct RecentProjects final
+        {
+            std::vector<std::filesystem::path> paths;
+            persistence::WriteTarget target;
+            persistence::EncodedArtifact encoded;
+        };
+        bool recent_requested_{true}, recent_reconcile_{};
+        std::optional<process::TaskId> recent_task_;
+        std::optional<EditorResult<RecentProjects>> recent_result_;
+        std::vector<std::filesystem::path> recent_projects_;
+        std::optional<persistence::WriteTicket> recent_ticket_;
+        std::optional<persistence::VPublicationOutcome> recent_publication_;
+        std::optional<EditorFailure> recent_failure_;
         std::optional<process::TaskId> project_launch_;
         std::optional<EditorResult<void>> project_launch_result_;
         struct PluginSelection final
@@ -377,6 +423,8 @@ namespace lux::editor::application
         void installSettingsView(extensions::ContributionDraft&);
         [[nodiscard]] EditorResult<void> maintainProjectSettings();
         [[nodiscard]] EditorResult<void> receiveProjectIntents();
+        void maintainRecentProjects();
+        void installRecentProjects(extensions::ContributionDraft&);
         [[nodiscard]] EditorResult<void> executeWorkspaceIntent(const WorkspaceIntent&);
         [[nodiscard]] EditorResult<void> settleWorkspace();
         [[nodiscard]] EditorResult<void> captureRecovery();

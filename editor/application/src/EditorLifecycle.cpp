@@ -478,7 +478,8 @@ namespace lux::editor::application
         receive(settleWorkspace());
         const bool operations_settled =
             importer_->closeStatus().state == assets::EAssetImportCloseState::CLOSED && materials && flows &&
-            materials->empty() && flows->empty() && pending_saves_.empty() && opening_.settled() &&
+            materials->empty() && flows->empty() && pending_saves_.empty() && opening_.settled() && !recent_task_ &&
+            !recent_result_ && !recent_ticket_ && !project_launch_ &&
             std::ranges::all_of(workspace_publications_, [](const auto& value) { return value.result.has_value(); }) &&
             std::ranges::all_of(artifacts_, [](const auto& value) { return value.settled; }) &&
             std::ranges::none_of(run_presentations_, [](const auto& run) { return bool(run.preparing) || run.run; });
@@ -542,6 +543,7 @@ namespace lux::editor::application
         (void)messages_.dispatchPending();
         if (auto result = std::exchange(project_launch_result_, {}))
             receive(std::move(*result));
+        maintainRecentProjects();
         importer_->update();
         if (project_creation_)
             project_creation_->update();

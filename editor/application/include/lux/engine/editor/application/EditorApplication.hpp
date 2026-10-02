@@ -22,6 +22,8 @@ namespace lux::editor::application
         // Uses the same desktop and renderer with an offscreen output, without a native window.
         bool offscreen{};
         std::optional<std::filesystem::path> font;
+        // Host override for isolated profiles; defaults to the platform user config directory.
+        std::optional<std::filesystem::path> user_directory;
     };
     enum class EApplicationPhase : std::uint8_t
     {

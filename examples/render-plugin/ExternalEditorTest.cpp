@@ -31,6 +31,7 @@ int main(int argc, char** argv)
     config.project_file = root / "Project.luxproject";
     config.installation = installation;
     config.offscreen = true;
+    config.user_directory = root;
     auto editor = application::EditorApplication::create(std::move(config));
     if (!editor)
         std::fprintf(stderr, "%s: %s\n", editor.error().domain.c_str(), editor.error().message.c_str());

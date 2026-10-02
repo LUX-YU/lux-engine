@@ -28,6 +28,7 @@ component_add_transitive_commands(editor_bootstrap
     "find_package(lux-engine-editor-project-tools-ui REQUIRED COMPONENTS project_tools_ui)"
     "find_package(lux-engine-editor-tasks-ui REQUIRED COMPONENTS tasks_ui)"
     "find_package(imgui REQUIRED COMPONENTS core)")
+target_compile_definitions(editor_bootstrap PRIVATE LUX_EDITOR_VERSION="${PROJECT_VERSION}" TOML_HEADER_ONLY=1 TOML_EXCEPTIONS=0)
 lux_classify_target(TARGET editor_bootstrap LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 lux_engine_install_components(PROJECT_NAME lux-engine-editor-application VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS editor_bootstrap)

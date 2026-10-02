@@ -5,6 +5,8 @@
 #include <lux/engine/log/Log.hpp>
 #include <algorithm>
 #include <fstream>
+#include <lux/engine/platform/Process.hpp>
+#include <lux/engine/editor/storage/FilePublication.hpp>
 
 namespace lux::editor::application
 {
@@ -20,7 +22,7 @@ namespace lux::editor::application
         : config_(std::move(config)), platform_(std::move(platform)), window_(std::move(window)),
           engine_(std::move(engine)), messages_(std::move(messages)), project_tasks_(engine_->execution()),
           task_monitor_(messages_.dispatcherRef(), engine_->execution()), plugins_(std::move(plugins)),
-          registrations_(std::move(registrations)), files_(config_.project_file.parent_path()),
+          registrations_(std::move(registrations)), files_(config_.project_file.parent_path(), *config_.user_directory),
           save_execution_(engine_->execution(), saves_, writes_, files_),
           opening_(engine_->execution(), sessions_, saves_),
           projections_(engine_->sceneRuntime(), engine_->execution()),
@@ -48,6 +50,20 @@ namespace lux::editor::application
     {
         if (config.project_file.empty() || config.width <= 0 || config.height <= 0)
             return cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "application.config"});
+        if (!config.user_directory)
+        {
+            auto directory = engine::platform::userConfigDirectory();
+            if (!directory)
+                return applicationFailure("preferences.directory", directory.error());
+            config.user_directory = std::move(*directory);
+        }
+        auto user_key = storage::publicationTargetKey(
+            *config.user_directory,
+            *config.user_directory / "lux/editor/recent-projects.toml"
+        );
+        if (!user_key)
+            return applicationFailure("preferences.path", user_key.error());
+        config.user_directory = std::filesystem::u8path(*user_key).parent_path().parent_path().parent_path();
         auto source = readProjectOpenData(config.project_file);
         if (!source)
             return cxx::unexpected(source.error());
@@ -204,6 +220,14 @@ namespace lux::editor::application
         auto tasks = tasks::makeTaskView(messages_.dispatcherRef(), lux::ui::PaneId{"tasks"}, task_monitor_);
         if (auto adopted = adopt(tasks, "tasks"); !adopted)
             return cxx::unexpected(adopted.error());
+        const auto& manifest = project_->manifest();
+        if (!manifest.default_scene.empty())
+        {
+            const auto initial =
+                std::ranges::find(manifest.assets, manifest.default_scene, &ProjectAssetEntry::source_path);
+            if (initial != manifest.assets.end())
+                open_intents_.push_back(project_->catalogModel().reference(initial->id));
+        }
         if (window_)
             window_->on_close = [this](const window::WindowCloseEvent&) {
                 const auto requested = requestExit();

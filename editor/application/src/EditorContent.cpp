@@ -1,7 +1,4 @@
 #include <lux/engine/editor/application/EditorApplicationImpl.hpp>
-#include <lux/engine/material/graph/Nodes.hpp>
-#include <lux/engine/flowforge/graph/ControlNode.hpp>
-#include <random>
 
 namespace lux::editor::application
 {
@@ -97,42 +94,26 @@ namespace lux::editor::application
                     return commands::DispatchReceipt{commands::ImmediateCompletion{}};
                 }
             ));
-        for (bool material : {true, false})
-            draft.commands.push_back(std::make_shared<commands::CommandEntry>(
-                contracts::CodeLease::builtin(),
-                commands::CommandDescriptor{
-                    commands::CommandId{material ? "lux.editor.new.material" : "lux.editor.new.flow"},
-                    material ? "New Material" : "New Flow",
-                    "File"
-                },
-                [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
-                    return commands::CommandState{phase_ == EApplicationPhase::RUNNING && opens_.size() < 64};
-                },
-                [this,
-                 material](const commands::CommandInvocation&) -> commands::CommandResult<commands::DispatchReceipt> {
-                    std::mt19937 random{std::random_device{}()};
-                    auto id = asset::AssetId{uuids::uuid_random_generator{random}()};
-                    auto prepared = [&] {
-                        if (material)
-                        {
-                            lux::material::MaterialSource source{id, "Untitled Material", {}};
-                            return material::prepareMaterialSession({std::move(source)}, {}, {});
-                        }
-                        lux::flowforge::FlowSource source;
-                        source.id = id;
-                        source.name = "Untitled Flow";
-                        return flowforge::prepareFlowSession({std::move(source)}, {}, {}, flow_environment_);
-                    }();
-                    auto opened = createContent(std::move(prepared));
-                    if (!opened)
-                        return cxx::unexpected(commands::CommandFailure{
-                            commands::ECommandError::DOMAIN_FAILURE,
-                            opened.error().domain,
-                            opened.error().reason,
-                            opened.error().message
-                        });
-                    return commands::DispatchReceipt{commands::AcceptedOperation{"open", opened->value}};
-                }
-            ));
+        auto commands = extensions::builtinContentCommands(
+            [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
+                return commands::CommandState{phase_ == EApplicationPhase::RUNNING && opens_.size() < 64};
+            },
+            contentCreation(), flow_environment_
+        );
+        draft.commands.insert(draft.commands.end(), commands.begin(), commands.end());
+    }
+    extensions::ContentCreation EditorApplication::Impl::contentCreation()
+    {
+        return [this](sessions::SessionPreparation prepared) -> commands::CommandResult<commands::DispatchReceipt> {
+            auto opened = createContent(std::move(prepared));
+            if (!opened)
+            {
+                const auto& error = opened.error();
+                const auto code = error.code == EEditorError::BUSY
+                    ? commands::ECommandError::BUSY : commands::ECommandError::DOMAIN_FAILURE;
+                return cxx::unexpected(commands::CommandFailure{code, error.domain, error.reason, error.message});
+            }
+            return commands::DispatchReceipt{commands::AcceptedOperation{"open", opened->value}};
+        };
     }
 }

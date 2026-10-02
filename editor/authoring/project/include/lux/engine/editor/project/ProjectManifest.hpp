@@ -21,7 +21,7 @@ namespace lux::editor
         // SHA-256 of source bytes. A source save does not imply a successful/current compiled artifact.
         std::string source_digest;
         std::string compiled_source_digest;
-        // Stable project-relative browser directory, independent of immutable compiled revision storage.
+        // Stable project-relative browser asset path, independent of immutable compiled revision storage.
         std::string mount_path;
         std::uint32_t source_version{1};
         [[nodiscard]] asset::AssetTypeId sourceType() const noexcept

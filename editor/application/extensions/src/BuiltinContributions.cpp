@@ -1,10 +1,23 @@
 #include <lux/engine/editor/extensions/BuiltinContributions.hpp>
+#include <lux/engine/editor/scene/SceneView.hpp>
+#include <lux/engine/editor/scene/SceneSessionFactory.hpp>
+#include <lux/engine/editor/scene/SceneCreationView.hpp>
+#include <lux/engine/editor/material/MaterialSessionFactory.hpp>
+#include <lux/engine/editor/flowforge/FlowSessionFactory.hpp>
+#include <lux/engine/editor/material/MaterialView.hpp>
+#include <lux/engine/editor/flowforge/FlowView.hpp>
 #include <algorithm>
+#include <random>
 
 namespace lux::editor::extensions
 {
     namespace
     {
+        asset::AssetId newAssetId()
+        {
+            std::mt19937 random{std::random_device{}()};
+            return asset::AssetId{uuids::uuid_random_generator{random}()};
+        }
         commands::CommandFailure commandFailure(const sessions::SessionFactoryFailure& error)
         {
             using enum commands::ECommandError;
@@ -124,6 +137,81 @@ namespace lux::editor::extensions
                 }
             );
         }
+    }
+    std::vector<std::shared_ptr<commands::CommandEntry>> builtinContentCommands(
+        commands::CommandEntry::Query query, ContentCreation receiver, lux::flowforge::FlowSourceEnvironment environment
+    )
+    {
+        auto available = std::make_shared<commands::CommandEntry::Query>(std::move(query));
+        auto create = std::make_shared<ContentCreation>(std::move(receiver));
+        const auto state = [available](const commands::CommandQuery& input) { return (*available)(input); };
+        return {
+            std::make_shared<commands::CommandEntry>(
+                contracts::CodeLease::builtin(),
+                commands::CommandDescriptor{commands::CommandId{"lux.editor.new.material"}, "New Material", "File"},
+                state,
+                [create](const commands::CommandInvocation&) {
+                    lux::material::MaterialSource source{newAssetId(), "Untitled Material", {}};
+                    return (*create)(material::prepareMaterialSession({std::move(source)}, {}, {}));
+                }
+            ),
+            std::make_shared<commands::CommandEntry>(
+                contracts::CodeLease::builtin(),
+                commands::CommandDescriptor{commands::CommandId{"lux.editor.new.flow"}, "New Flow", "File"},
+                state,
+                [create, environment = std::move(environment)](const commands::CommandInvocation&) {
+                    lux::flowforge::FlowSource source;
+                    source.id = newAssetId();
+                    source.name = "Untitled Flow";
+                    return (*create)(flowforge::prepareFlowSession({std::move(source)}, {}, {}, environment));
+                }
+            )
+        };
+    }
+    std::shared_ptr<views::ViewFactoryEntry> builtinSceneCreationFactory(
+        scene::SceneConfigurationInputs configuration, ContentCreation receiver
+    )
+    {
+        auto create = std::make_shared<ContentCreation>(std::move(receiver));
+        return std::make_shared<views::ViewFactoryEntry>(
+            contracts::CodeLease::builtin(),
+            views::ViewFactoryDescriptor{
+                views::ViewTypeId{"lux.editor.scene.creation"}, "New Scene", cxx::typeToken<std::monostate>()
+            },
+            [configuration = std::move(configuration), create](const views::ViewFactoryInput& input)
+                -> views::ViewFactoryResult<views::DetachedView> {
+                scene::SceneCreationRequests requests{
+                    [schemas = configuration.components, create](const scene::SceneCreationConfiguration& value)
+                        -> scene::SceneConfigurationResult<void> {
+                        auto package = lux::scene::createScenePackage(
+                            newAssetId(), value.name, value.schemas, value.simulation, value.scene
+                        );
+                        if (!package)
+                            return cxx::unexpected(scene::SceneConfigurationFailure{
+                                scene::ESceneConfigurationError::CONTROL_FAILURE, "scene.creation.package",
+                                0, {}, std::any{package.error()}
+                            });
+                        auto installed = (*create)(scene::prepareSceneSession({std::move(*package)}, {}, {}, schemas));
+                        if (!installed)
+                        {
+                            const auto& error = installed.error();
+                            const auto code = error.code == commands::ECommandError::BUSY
+                                ? scene::ESceneConfigurationError::BUSY : scene::ESceneConfigurationError::CONTROL_FAILURE;
+                            return cxx::unexpected(scene::SceneConfigurationFailure{
+                                code, error.domain, error.domain_code, error.detail, std::any{error}
+                            });
+                        }
+                        return {};
+                    }
+                };
+                auto view = scene::makeSceneCreationView(
+                    input.dispatcher(), input.paneId(), configuration, std::move(requests)
+                );
+                if (!view)
+                    return cxx::unexpected(viewFailure(view.error()));
+                return std::move(*view);
+            }
+        );
     }
     std::vector<std::shared_ptr<commands::CommandEntry>> builtinSessionCommands(
         SessionActivities activities,

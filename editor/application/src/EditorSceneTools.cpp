@@ -3,7 +3,6 @@
 #include <lux/engine/log/Log.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
 #include <lux/engine/editor/scene/SceneConfigurationView.hpp>
-#include <random>
 #include <algorithm>
 
 namespace lux::editor::application
@@ -220,67 +219,7 @@ namespace lux::editor::application
     }
     void EditorApplication::Impl::installSceneCommands(extensions::ContributionDraft& draft)
     {
-        draft.views.push_back(std::make_shared<views::ViewFactoryEntry>(
-            contracts::CodeLease::builtin(),
-            views::ViewFactoryDescriptor{
-                views::ViewTypeId{"lux.editor.scene.creation"},
-                "New Scene",
-                cxx::typeToken<std::monostate>()
-            },
-            [this](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
-                scene::SceneCreationRequests requests{
-                    [this](const scene::SceneCreationConfiguration& value) -> scene::SceneConfigurationResult<void> {
-                        std::mt19937 random{std::random_device{}()};
-                        auto package = lux::scene::createScenePackage(
-                            asset::AssetId{uuids::uuid_random_generator{random}()},
-                            value.name,
-                            value.schemas,
-                            value.simulation,
-                            value.scene
-                        );
-                        if (!package)
-                            return cxx::unexpected(scene::SceneConfigurationFailure{
-                                scene::ESceneConfigurationError::CONTROL_FAILURE,
-                                "scene.creation.package",
-                                0,
-                                {},
-                                std::any{package.error()}
-                            });
-                        auto prepared =
-                            scene::prepareSceneSession({std::move(*package)}, {}, {}, registrations_.components);
-                        auto installed = createContent(std::move(prepared));
-                        if (!installed)
-                        {
-                            log::error("application.scene.create", "{}", installed.error().domain);
-                            return cxx::unexpected(scene::SceneConfigurationFailure{
-                                installed.error().code == EEditorError::BUSY
-                                    ? scene::ESceneConfigurationError::BUSY
-                                    : scene::ESceneConfigurationError::CONTROL_FAILURE,
-                                installed.error().domain,
-                                installed.error().reason,
-                                installed.error().message,
-                                std::any{installed.error()}
-                            });
-                        }
-                        return {};
-                    }
-                };
-                auto created = scene::makeSceneCreationView(
-                    input.dispatcher(),
-                    input.paneId(),
-                    sceneConfigurationInputs(),
-                    std::move(requests)
-                );
-                if (!created)
-                    return cxx::unexpected(views::ViewFactoryFailure{
-                        views::EViewFactoryError::CONSTRUCT,
-                        created.error().domain,
-                        created.error().reason,
-                        created.error().message
-                    });
-                return std::move(*created);
-            }
-        ));
+        draft.views.push_back(extensions::builtinSceneCreationFactory(sceneConfigurationInputs(), contentCreation()));
         draft.commands.push_back(std::make_shared<commands::CommandEntry>(
             contracts::CodeLease::builtin(),
             commands::CommandDescriptor{commands::CommandId{"lux.editor.new.scene"}, "New Scene", "File"},

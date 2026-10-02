@@ -71,18 +71,6 @@ namespace lux::editor::application
         draft.commands =
             extensions::builtinSessionCommands({sessions_, saves_}, [this](auto id) { return opening_.find(id); });
 
-        draft.views.push_back(extensions::builtinSceneViewFactory(
-            sceneServices(), [this](const scene::ModelPlacement& value) { receiveModel(value); }
-        ));
-        draft.views.push_back(extensions::builtinMaterialViewFactory(
-            sessions_.access<material::MaterialSession>(), engine_->sceneRuntime(), material_compilation_,
-            environment_, registrations_.features, &project_->catalogModel(),
-            [this](const persistence::DerivedArtifact& value) { receiveArtifact(value); }
-        ));
-        draft.views.push_back(extensions::builtinFlowViewFactory(
-            {sessions_.access<flowforge::FlowSession>(), flow_compilation_, flow_environment_},
-            [this](const persistence::DerivedArtifact& value) { receiveArtifact(value); }
-        ));
         auto exit = std::make_shared<commands::CommandEntry>(
             contracts::CodeLease::builtin(),
             commands::CommandDescriptor{commands::CommandId{"lux.editor.exit"}, "Exit", "File", "Alt+X"},
@@ -102,12 +90,10 @@ namespace lux::editor::application
         std::erase_if(draft.commands, [](const auto& entry) {
             return entry->descriptor().id == commands::CommandId{"lux.editor.save"};
         });
-        installContentCommands(draft);
         installSaveCommands(draft);
         installResultView(draft);
         installWorkspaceView(draft);
         installProjectTools(draft);
-        installSceneCommands(draft);
         draft.views.push_back(std::make_shared<views::ViewFactoryEntry>(
             contracts::CodeLease::builtin(),
             views::ViewFactoryDescriptor{
@@ -220,6 +206,22 @@ namespace lux::editor::application
         auto valid = lux::flowforge::validateFlowSourceEnvironment(flow_environment_);
         if (!valid)
             return applicationFailure("flow.metadata", valid.error());
+        draft.views.push_back(extensions::builtinSceneViewFactory(
+            sceneServices(), [this](const scene::ModelPlacement& value) { receiveModel(value); }
+        ));
+        draft.views.push_back(extensions::builtinMaterialViewFactory(
+            sessions_.access<material::MaterialSession>(), engine_->sceneRuntime(), material_compilation_,
+            environment_, registrations_.features, &project_->catalogModel(),
+            [this](const persistence::DerivedArtifact& value) { receiveArtifact(value); }
+        ));
+        draft.views.push_back(extensions::builtinFlowViewFactory(
+            {sessions_.access<flowforge::FlowSession>(), flow_compilation_, flow_environment_},
+            [this](const persistence::DerivedArtifact& value) { receiveArtifact(value); }
+        ));
+        // Factories capture this established immutable metadata environment, never the uninitialized
+        // startup catalog. Their controls and new-content preparations retain the same defining code.
+        installContentCommands(draft);
+        installSceneCommands(draft);
         auto builtins = extensions::builtinSessionFactories(registrations_.components, flow_environment_);
         append(draft.sessions, builtins);
         auto prepared = extensions::ContributionSnapshot::prepare(std::move(draft));

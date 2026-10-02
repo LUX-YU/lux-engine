@@ -85,10 +85,16 @@ namespace lux::editor::views
             swap(capture_state_, previous.capture_state_);
             swap(capture_content_, previous.capture_content_);
             swap(rebind_content_, previous.rebind_content_);
+            swap(connections_, previous.connections_);
             return *this;
         }
         DetachedView(const DetachedView&) = delete;
         DetachedView& operator=(const DetachedView&) = delete;
+        // A complete factory result owns its intent connections. Disconnect before destroying the Pane.
+        void addConnection(object::Connection connection)
+        {
+            connections_.push_back(std::move(connection));
+        }
         [[nodiscard]] lux::ui::Pane* pane() const noexcept
         {
             return pane_.get();
@@ -153,6 +159,7 @@ namespace lux::editor::views
         CaptureState capture_state_{};
         CaptureContent capture_content_{};
         RebindContent rebind_content_{};
+        std::vector<object::Connection> connections_;
     };
     // Accept only identities. Implementations queue intents; no callback may erase its own UI owner.
     class ViewRequests

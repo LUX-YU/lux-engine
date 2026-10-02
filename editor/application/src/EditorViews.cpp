@@ -236,40 +236,6 @@ namespace lux::editor::application
         if (pane.type() == lux::ui::PaneTypeId{"lux.editor.scene.view"})
         {
             owner.scene = static_cast<scene::SceneView&>(pane).interactionOwner();
-            auto connected = object::LuxObject::connect(
-                static_cast<scene::SceneView*>(&pane),
-                &scene::SceneView::modelDropped,
-                [this](scene::ModelPlacement placement) noexcept { receiveModel(std::move(placement)); }
-            );
-            if (!connected)
-                return applicationFailure("scene.model.connect", connected.error());
-            owner.model_drop = std::move(*connected);
-        }
-        if (pane.type() == lux::ui::PaneTypeId{"lux.editor.material"})
-        {
-            auto connection = object::LuxObject::connect(
-                static_cast<material::MaterialView*>(&pane),
-                &material::MaterialView::publishRequested,
-                [this](const persistence::DerivedArtifact& compiled) noexcept {
-                    receiveArtifact(compiled);
-                }
-            );
-            if (!connection)
-                return applicationFailure("material.publish.connect", connection.error());
-            owner.publish = std::move(*connection);
-        }
-        if (pane.type() == lux::ui::PaneTypeId{"lux.editor.flowforge"})
-        {
-            auto connection = object::LuxObject::connect(
-                static_cast<flowforge::FlowView*>(&pane),
-                &flowforge::FlowView::publishRequested,
-                [this](const persistence::DerivedArtifact& compiled) noexcept {
-                    receiveArtifact(compiled);
-                }
-            );
-            if (!connection)
-                return applicationFailure("flow.publish.connect", connection.error());
-            owner.publish = std::move(*connection);
         }
         return {};
     }

@@ -80,6 +80,25 @@ namespace lux::editor::extensions
                 return result;
             }
         }
+        template <class View, class Payload>
+        views::ViewFactoryResult<void> connectIntent(
+            views::DetachedView& view,
+            object::TSignal<Payload> View::* signal,
+            const std::shared_ptr<cxx::move_only_function<void(const Payload&)>>& receiver
+        )
+        {
+            if (!*receiver)
+                return {};
+            // The factory just constructed this exact view type; no runtime type probing is needed.
+            auto connection = object::LuxObject::connect(
+                static_cast<View*>(view.pane()), signal,
+                [receiver](const Payload& value) noexcept { (*receiver)(value); }
+            );
+            if (!connection)
+                return cxx::unexpected(viewFailure(connection.error()));
+            view.addConnection(std::move(*connection));
+            return {};
+        }
         template <class Input, class Create>
             requires requires(Create& create, const views::ViewFactoryInput& input, const Input& value) {
                 create(input, value);
@@ -187,11 +206,12 @@ namespace lux::editor::extensions
             flowforge::makeFlowSessionFactory(std::move(flow))
         };
     }
-    std::shared_ptr<views::ViewFactoryEntry> builtinSceneViewFactory(scene::SceneViewServices scene)
+    std::shared_ptr<views::ViewFactoryEntry> builtinSceneViewFactory(scene::SceneViewServices scene, ModelIntent receiver)
     {
+        auto intent = std::make_shared<ModelIntent>(std::move(receiver));
         return viewFactory<views::ContentViewInput>(
             views::ViewTypeId{"lux.editor.scene.view"}, "Scene", {"lux.editor.scene"},
-            [scene](const views::ViewFactoryInput& input, const views::ContentViewInput& value)
+            [scene, intent](const views::ViewFactoryInput& input, const views::ContentViewInput& value)
                 -> views::ViewFactoryResult<views::DetachedView> {
                 scene::SceneViewCreateInfo info;
                 info.id = input.paneId();
@@ -205,6 +225,9 @@ namespace lux::editor::extensions
                     return cxx::unexpected(views::ViewFactoryFailure{
                         views::EViewFactoryError::CONSTRUCT, bound.error().domain, bound.error().code, bound.error().message
                     });
+                auto connected = connectIntent(*view, &scene::SceneView::modelDropped, intent);
+                if (!connected)
+                    return cxx::unexpected(std::move(connected.error()));
                 return std::move(*view);
             }
         );
@@ -215,26 +238,35 @@ namespace lux::editor::extensions
         material::MaterialCompilationService& compilation,
         const scene::ProjectionEnvironment& environment,
         std::span<const render::RenderFeatureRegistration> features,
-        project::ProjectCatalogModel* assets
+        project::ProjectCatalogModel* assets,
+        ArtifactIntent receiver
     )
     {
+        auto intent = std::make_shared<ArtifactIntent>(std::move(receiver));
         return viewFactory<views::ContentViewInput>(
             views::ViewTypeId{"lux.editor.material"}, "Material", {"lux.editor.material"},
-            [sessions, &runtime, &compilation, &environment, features, assets](
+            [sessions, &runtime, &compilation, &environment, features, assets, intent](
                 const views::ViewFactoryInput& input, const views::ContentViewInput& value
-            ) {
-                return material::makeMaterialContentView(
+            ) -> views::ViewFactoryResult<views::DetachedView> {
+                auto view = material::makeMaterialContentView(
                     input.dispatcher(), input.paneId(), sessions, runtime, compilation, environment,
                     features, assets, value.content
                 );
+                if (!view)
+                    return cxx::unexpected(viewFailure(view.error()));
+                auto connected = connectIntent(*view, &material::MaterialView::publishRequested, intent);
+                if (!connected)
+                    return cxx::unexpected(std::move(connected.error()));
+                return std::move(*view);
             }
         );
     }
-    std::shared_ptr<views::ViewFactoryEntry> builtinFlowViewFactory(flowforge::FlowViewServices flow)
+    std::shared_ptr<views::ViewFactoryEntry> builtinFlowViewFactory(flowforge::FlowViewServices flow, ArtifactIntent receiver)
     {
+        auto intent = std::make_shared<ArtifactIntent>(std::move(receiver));
         return viewFactory<views::ContentViewInput>(
             views::ViewTypeId{"lux.editor.flowforge"}, "FlowForge", {"lux.editor.flowforge"},
-            [flow](const views::ViewFactoryInput& input, const views::ContentViewInput& value)
+            [flow, intent](const views::ViewFactoryInput& input, const views::ContentViewInput& value)
                 -> views::ViewFactoryResult<views::DetachedView> {
                 auto view = flowforge::makeFlowView(input.dispatcher(), input.paneId(), flow);
                 if (!view)
@@ -244,6 +276,9 @@ namespace lux::editor::extensions
                     return cxx::unexpected(views::ViewFactoryFailure{
                         views::EViewFactoryError::CONSTRUCT, bound.error().domain, bound.error().code, bound.error().message
                     });
+                auto connected = connectIntent(*view, &flowforge::FlowView::publishRequested, intent);
+                if (!connected)
+                    return cxx::unexpected(std::move(connected.error()));
                 return std::move(*view);
             }
         );

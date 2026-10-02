@@ -71,13 +71,17 @@ namespace lux::editor::application
         draft.commands =
             extensions::builtinSessionCommands({sessions_, saves_}, [this](auto id) { return opening_.find(id); });
 
-        draft.views.push_back(extensions::builtinSceneViewFactory(sceneServices()));
+        draft.views.push_back(extensions::builtinSceneViewFactory(
+            sceneServices(), [this](const scene::ModelPlacement& value) { receiveModel(value); }
+        ));
         draft.views.push_back(extensions::builtinMaterialViewFactory(
             sessions_.access<material::MaterialSession>(), engine_->sceneRuntime(), material_compilation_,
-            environment_, registrations_.features, &project_->catalogModel()
+            environment_, registrations_.features, &project_->catalogModel(),
+            [this](const persistence::DerivedArtifact& value) { receiveArtifact(value); }
         ));
         draft.views.push_back(extensions::builtinFlowViewFactory(
-            {sessions_.access<flowforge::FlowSession>(), flow_compilation_, flow_environment_}
+            {sessions_.access<flowforge::FlowSession>(), flow_compilation_, flow_environment_},
+            [this](const persistence::DerivedArtifact& value) { receiveArtifact(value); }
         ));
         auto exit = std::make_shared<commands::CommandEntry>(
             contracts::CodeLease::builtin(),

@@ -75,8 +75,6 @@ namespace lux::editor::application
             std::shared_ptr<scene::SceneInteractionGroup> scene;
             std::optional<scene::RunId> run;
             views::ViewId source_view;
-            object::Connection model_drop;
-            object::Connection publish;
         };
         struct ModelPresentation final
         {

@@ -92,6 +92,30 @@ namespace
         auto code = std::make_shared<Code>(facts);
         return {contracts::CodeLease::plugin(code), std::make_unique<Window>(dispatcher, id, facts)};
     }
+    void completeViewConnections(object::ObjectDispatcherRef dispatcher)
+    {
+        struct Sender final : object::LuxObject
+        {
+            explicit Sender(object::ObjectDispatcherRef dispatcher) : LuxObject(dispatcher) {}
+            object::TSignal<> changed{*this};
+            void send() noexcept { assert(emit(changed).complete()); }
+        } sender(dispatcher);
+        Facts first_facts, second_facts;
+        unsigned received{};
+        auto first = candidate(dispatcher, "connected-first", first_facts);
+        first.addConnection(take(object::LuxObject::connect(&sender, &Sender::changed, [&]() noexcept {
+            assert(first_facts.alive && !first_facts.pane);
+            ++received;
+        })));
+        auto transferred = std::move(first);
+        sender.send();
+        assert(received == 1);
+        auto second = candidate(dispatcher, "connected-second", second_facts);
+        transferred = std::move(second);
+        assert(first_facts.code == 1);
+        sender.send();
+        assert(received == 1); // Move replacement released the old callback before the old node/code.
+    }
     void contentAssociations(object::ObjectDispatcherRef dispatcher)
     {
         auto root = take(ui::Root::create(dispatcher));
@@ -597,6 +621,7 @@ int main()
     static_assert(!std::is_copy_constructible_v<desktop::ViewHost>);
     static_assert(!std::is_move_constructible_v<desktop::ViewHost>);
     auto queue = take(object::ObjectMessageQueue::create(32));
+    completeViewConnections(queue.dispatcherRef());
     contentAssociations(queue.dispatcherRef());
     ownership(queue.dispatcherRef());
     reentrant(queue.dispatcherRef());

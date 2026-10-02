@@ -166,6 +166,57 @@ int main(int argc, char** argv)
             assert((*direct)->update());
         auto& owned = ApplicationTestAccess::implementation(**direct);
         assert(owned.sessions_.size() == 2 && owned.desktop_->views().describeAll()->size() >= 5);
+        const auto session_ids = *owned.sessions_.snapshotIds();
+        std::vector<sessions::SessionInfo> content_before;
+        for (const auto session : session_ids)
+            content_before.push_back(*owned.sessions_.describe(session));
+        const auto views_before = *owned.desktop_->views().describeAll();
+        const auto revision_before = owned.commands_.revision();
+        const auto check_foreign_commands = [&] {
+            // The owner is waiting; no UI, Store or command mutation runs concurrently.
+            std::thread foreign([&] {
+                for (const auto command : {"lux.editor.new.material", "lux.editor.exit", "test.missing"})
+                {
+                    const auto result = (*direct)->execute(commands::CommandId{command});
+                    assert(!result);
+                    std::cout << "P13 foreign command " << command << " code=" << int(result.error().code)
+                              << " domain=" << result.error().domain << std::endl;
+                    assert(result.error().code == commands::ECommandError::WRONG_THREAD);
+                    assert(result.error().domain == "application.thread");
+                }
+            });
+            foreign.join();
+        };
+        check_foreign_commands();
+        {
+            // Reentry is BUSY on the owner, but wrong-thread admission still takes precedence.
+            std::remove_reference_t<decltype(owned)>::Dispatch scope{owned.dispatching_};
+            const auto nested = (*direct)->execute(commands::CommandId{"lux.editor.new.material"});
+            assert(!nested && nested.error().code == commands::ECommandError::BUSY);
+            assert(nested.error().domain == "application.dispatch");
+            check_foreign_commands();
+            assert(owned.dispatching_);
+        }
+        assert(!owned.dispatching_ && (*direct)->phase() == EApplicationPhase::RUNNING);
+        assert(owned.commands_.revision() == revision_before);
+        assert(*owned.sessions_.snapshotIds() == session_ids);
+        const auto views_after = *owned.desktop_->views().describeAll();
+        assert(views_after.size() == views_before.size());
+        for (std::size_t i{}; i < views_before.size(); ++i)
+            assert(views_after[i].id == views_before[i].id);
+        for (const auto& before : content_before)
+        {
+            const auto after = owned.sessions_.describe(before.id);
+            assert(after && after->current == before.current && after->observed == before.observed);
+            assert(after->binding == before.binding && after->dirty == before.dirty);
+            assert(after->admission == before.admission);
+        }
+        const auto missing = (*direct)->execute(commands::CommandId{"test.missing"});
+        assert(!missing && missing.error().code == commands::ECommandError::NOT_FOUND);
+        assert((*direct)->execute(commands::CommandId{"lux.editor.assets"}));
+        const auto about = (*direct)->execute(commands::CommandId{"lux.editor.about"});
+        assert(!about && about.error().code == commands::ECommandError::DISABLED);
+        std::cout << "P13 command admission: owner recovers; sessions, content and views unchanged\n";
         // No exec/requestExit: destruction still releases mounted UI and accepted resource work.
     }
     std::cout << "Application direct destruction: formal content, tools and GPU presentation released\n";

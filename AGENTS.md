@@ -4,10 +4,9 @@
 后面附着它的成因——不写成因的规矩会在下一次"就这一次"里被绕过。
 前两节（项目簇背景、代码风格）是用户定的基线约定，随仓走。
 
-（历史设计、未完成清单及原始记录已按用户要求清理；`.internal/` 保留
-`exception-usage-audit.md`《异常使用核查与 OOM 收敛》，并按后续要求新增
-`editor-lifetime-and-ui-design.md`《Editor 生命周期、Pane 装配与主循环收敛方案》，
-其分阶段实施文档位于 `.internal/implementation/`，由总文档第 14 节索引。历史日志与原始数据仍不保留。）
+（早期设计材料曾按用户要求清理。后续阶段的唯一可变施工材料位于
+`.internal/editor-redesign/`，验收快照冻结于 `dev_log/`，按各自 implementation SHA 核验。
+这些历史快照及失败证据必须保留，不修改过去的判定；用户免验或未测项目不能标成通过。）
 
 ---
 
@@ -309,6 +308,6 @@ layer 就不会重设——Android 切回前台后画面永远停在旧 surface 
 P10Q 及后续 Editor 修改遵守 [docs/editor-quality.md](docs/editor-quality.md) 的 QR01–QR22。
 该文件只定义持续规则；唯一可变施工材料仍为 `.internal/editor-redesign/`，不另建状态账本。
 五层源和目标归属在现有架构规则的 `editor_layering` 组核验，最终资格显式使用
-`LUX_EDITOR_MIGRATION_STAGE=P10Q` 与 `LUX_EDITOR_LAYERING_MODE=STRICT`。
+`LUX_EDITOR_MIGRATION_STAGE=<当前获授权阶段>` 与 `LUX_EDITOR_LAYERING_MODE=STRICT`。
 同目录多 target 必须精确声明头文件的 provider 和安装清单；不得用整个目录的归属
 替代实际 SOURCES、生成依赖、编译器依赖与静态链接闭包。

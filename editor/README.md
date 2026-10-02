@@ -39,3 +39,5 @@ remains in WorkspaceStore. Historical qualification snapshots keep their origina
 
 See [continuous quality rules](../docs/editor-quality.md). Mutable construction state is only in
 `.internal/editor-redesign/`; frozen dev_log snapshots describe their own implementation SHA.
+The [delivery scope](../docs/editor-delivery.md) records the current workspace, protected user patch,
+supported verification scope and the P12 acceptance waiver; it does not grant a release qualification.

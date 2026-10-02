@@ -6,6 +6,8 @@ SessionStore owns author content; SaveService/WriteCoordinator own accepted save
 RunStore/SceneRuntime own execution. ViewHost alone owns top-level Panes.
 
 `EditorApplication::create` publishes only a fully assembled desktop, including its command receiver.
+`execute` is an owner-thread API: another thread receives `WRONG_THREAD` before command lookup or
+callbacks; owner-thread reentry receives `BUSY`. Neither rejection admits work or changes content.
 The frame receives accepted completions, applies owner maintenance and drives the one SceneRuntime once.
 Close decisions retain content stamps. All content and views are prepared before irreversible close;
 physical file facts are preserved if another decision cancels. Completion and retirement continue after

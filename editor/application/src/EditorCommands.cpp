@@ -31,7 +31,25 @@ namespace lux::editor::application
     )
     {
         if (auto ready = impl_->admission(); !ready)
-            return cxx::unexpected(commands::CommandFailure{commands::ECommandError::BUSY, ready.error().domain});
+        {
+            auto error = std::move(ready.error());
+            auto code = commands::ECommandError::DOMAIN_FAILURE;
+            switch (error.code)
+            {
+            case EEditorError::INVALID_STATE:
+                // admission checks the owner thread before inspecting dispatch state.
+                code = commands::ECommandError::WRONG_THREAD;
+                break;
+            case EEditorError::BUSY:
+                code = commands::ECommandError::BUSY;
+                break;
+            default:
+                break;
+            }
+            return cxx::unexpected(
+                commands::CommandFailure{code, std::move(error.domain), error.reason, std::move(error.message)}
+            );
+        }
         Impl::Dispatch scope{impl_->dispatching_};
         if (impl_->phase_ != EApplicationPhase::RUNNING)
             return cxx::unexpected(commands::CommandFailure{commands::ECommandError::CLOSED, "application.phase"});

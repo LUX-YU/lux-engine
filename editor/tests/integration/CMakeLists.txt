@@ -3,3 +3,5 @@ add_subdirectory(material_activity)
 add_subdirectory(tasks)
 add_subdirectory(scene_views)
 add_subdirectory(session_factories)
+
+add_subdirectory(application)

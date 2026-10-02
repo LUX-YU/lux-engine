@@ -122,6 +122,8 @@ namespace lux::editor::flowforge
         ) const;
         [[nodiscard]] FlowCompilationResult<void> acknowledge(FlowCompileId);
         [[nodiscard]] FlowCompilationResult<void> cancel(FlowCompileId);
+        // Enumerates bounded service ownership, independent of current views. No task is cancelled.
+        [[nodiscard]] FlowCompilationResult<std::vector<FlowCompileId>> snapshotIds() const;
 
     private:
         friend class lux::editor::transition::FlowCompilationAccess;

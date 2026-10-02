@@ -258,6 +258,16 @@ namespace lux::editor::flowforge
         : impl_(std::make_unique<Impl>(execution, std::this_thread::get_id(), capacity))
     {}
     FlowCompilationService::~FlowCompilationService() = default;
+    FlowCompilationResult<std::vector<FlowCompileId>> FlowCompilationService::snapshotIds() const
+    {
+        if (impl_->owner != std::this_thread::get_id())
+            return failed(EFlowCompilationError::WRONG_THREAD);
+        std::vector<FlowCompileId> result;
+        result.reserve(impl_->operations.size());
+        for (const auto& operation : impl_->operations)
+            result.push_back(operation->id());
+        return result;
+    }
     FlowCompilationResult<FlowCompileId> FlowCompilationService::start(
         FlowSnapshot source,
         FlowCompileEnvironment env,

@@ -15335,6 +15335,25 @@
         "capabilities": [
           "CPU"
         ]
+      },
+      "editor_bootstrap": {
+        "layer": "E4",
+        "role": "PROVIDER",
+        "capabilities": [
+          "CPU",
+          "PROCESS",
+          "GPU",
+          "TOOLCHAIN"
+        ],
+        "path": "editor/application"
+      },
+      "editor_application_test": {
+        "layer": "TEST",
+        "role": "TEST",
+        "capabilities": [
+          "CPU"
+        ],
+        "path": "editor/tests/integration/application"
       }
     },
     "files": {
@@ -17759,6 +17778,33 @@
       ],
       "editor/activities/project/src/ProjectPlugins.cpp": [
         "editor_storage"
+      ],
+      "editor/application/include/lux/engine/editor/application/EditorApplication.hpp": [
+        "editor_bootstrap"
+      ],
+      "editor/application/pinclude/lux/engine/editor/application/EditorApplicationImpl.hpp": [
+        "editor_bootstrap"
+      ],
+      "editor/application/src/EditorApplication.cpp": [
+        "editor_bootstrap"
+      ],
+      "editor/application/src/EditorCommands.cpp": [
+        "editor_bootstrap"
+      ],
+      "editor/application/src/EditorLifecycle.cpp": [
+        "editor_bootstrap"
+      ],
+      "editor/application/src/EditorViews.cpp": [
+        "editor_bootstrap"
+      ],
+      "editor/workbench/desktop/pinclude/lux/engine/editor/desktop/DesktopTestAccess.hpp": [
+        "desktop_shell"
+      ],
+      "editor/application/src/EditorWorkspace.cpp": [
+        "editor_bootstrap"
+      ],
+      "editor/application/src/EditorContent.cpp": [
+        "editor_bootstrap"
       ]
     },
     "native_libraries": [

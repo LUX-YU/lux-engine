@@ -66,3 +66,7 @@ install(FILES
 
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/views/ViewFactory.hpp
     DESTINATION include/lux/engine/editor/views COMPONENT lux_engine_editor_desktop)
+
+if(LUX_EDITOR_BUILD_NATIVE_TESTS)
+    target_compile_definitions(desktop_shell PRIVATE LUX_DESKTOP_TEST_ACCESS=1)
+endif()

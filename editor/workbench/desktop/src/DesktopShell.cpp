@@ -4,6 +4,17 @@
 
 namespace lux::editor::desktop
 {
+#if defined(LUX_DESKTOP_TEST_ACCESS)
+    namespace testing
+    {
+        thread_local bool reject_menu_connection{};
+        void rejectNextMenuConnection() noexcept
+        {
+            reject_menu_connection = true;
+        }
+    }
+#endif
+
     struct DesktopShell::Impl final
     {
         class ShellRoot final : public lux::ui::Root
@@ -15,12 +26,14 @@ namespace lux::editor::desktop
                 return initialize(config);
             }
             Presentation* presentation{};
-            CommandMenu* menu{};
+            // This synchronous private route is the only menu receiver. The request is a stack borrow;
+            // no queued connection or public signal endpoint can retain it beyond event dispatch.
+            object::TSignal<lux::ui::MenuRequest*> menuRequested{*this};
             void event(object::EventView& event) noexcept override
             {
-                if (auto* request = event.getIf<lux::ui::MenuRequest>(); request && menu)
+                if (auto* request = event.getIf<lux::ui::MenuRequest>())
                 {
-                    menu->receive(*request);
+                    (void)emit(menuRequested, request);
                     event.accept();
                 }
             }
@@ -36,10 +49,11 @@ namespace lux::editor::desktop
         std::unique_ptr<Presentation> presentation_;
         ViewHost host_;
         std::unique_ptr<CommandMenu> menu_;
+        object::Connection menu_connection_;
         Impl(object::ObjectDispatcherRef dispatcher, ViewHostLimits limits) : root_(dispatcher), host_(root_, limits) {}
         ~Impl() noexcept
         {
-            root_.menu = nullptr;
+            menu_connection_.disconnect();
             root_.closeInput();
             root_.bindWindow(nullptr);
         }
@@ -80,11 +94,27 @@ namespace lux::editor::desktop
                 commands::CommandFailure{commands::ECommandError::INVALID_ARGUMENT, "desktop.commands"}
             );
         auto menu = std::make_unique<CommandMenu>(impl_->root_, registry, dispatcher, std::move(capture));
+        auto connected = object::LuxObject::connect(
+            &impl_->root_,
+            &Impl::ShellRoot::menuRequested,
+            [receiver = menu.get()](lux::ui::MenuRequest* request) noexcept { receiver->receive(*request); }
+        );
+#if defined(LUX_DESKTOP_TEST_ACCESS)
+        if (std::exchange(testing::reject_menu_connection, false))
+            connected = cxx::unexpected(object::EConnectError::CAPACITY_EXHAUSTED);
+#endif
+        if (!connected)
+            return cxx::unexpected(commands::CommandFailure{
+                commands::ECommandError::DOMAIN_FAILURE,
+                "object.connect",
+                static_cast<std::uint64_t>(connected.error()),
+                "Desktop menu route could not be installed"
+            });
         auto installed = menu->update();
         if (!installed)
             return installed;
         impl_->menu_ = std::move(menu);
-        impl_->root_.menu = impl_->menu_.get();
+        impl_->menu_connection_ = std::move(*connected);
         return {};
     }
     CommandMenu* DesktopShell::commands() noexcept

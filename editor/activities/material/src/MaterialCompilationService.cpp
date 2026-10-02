@@ -16,6 +16,16 @@ namespace lux::editor::material
         operations_.reserve(capacity);
     }
     MaterialCompilationService::~MaterialCompilationService() = default;
+    MaterialCompileResult<std::vector<MaterialCompileId>> MaterialCompilationService::snapshotIds() const
+    {
+        if (owner_ != std::this_thread::get_id())
+            return rejected(EMaterialCompileRequestError::WRONG_THREAD);
+        std::vector<MaterialCompileId> result;
+        result.reserve(operations_.size());
+        for (const auto& operation : operations_)
+            result.push_back(operation->id());
+        return result;
+    }
     MaterialCompileResult<MaterialCompileId> MaterialCompilationService::start(
         MaterialSnapshot snapshot,
         MaterialCompileSettings settings,

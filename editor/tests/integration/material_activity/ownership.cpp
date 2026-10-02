@@ -123,7 +123,11 @@ namespace
         });
         assert(delivered == 1 && take(next->result())->source->name == "Ownership");
         em::MaterialCompilationService service(execution, 1);
+        assert(take(service.snapshotIds()).empty());
         const auto controlled = take(service.start(take(author->capture())));
+        assert(take(service.snapshotIds()) == std::vector{controlled});
+        std::thread observer([&] { assert(!service.snapshotIds()); });
+        observer.join();
         const auto& operation = take(service.operation(controlled)).get();
         assert(!service.start(take(author->capture())) && !service.acknowledge(controlled));
         workerFinished(execution, operation.task());
@@ -142,6 +146,7 @@ namespace
             return take(service.operation(again)).get().ready();
         });
         assert(service.acknowledge(again));
+        assert(take(service.snapshotIds()).empty());
         assert(author->describe().current == before.current && author->describe().dirty == before.dirty);
         assert(author->describe().observed == before.observed);
         assert(take(take(author->read()).encode()) == bytes);
@@ -170,6 +175,9 @@ namespace
         const auto second =
             take(service.start(take(author->capture()), ef::FlowCompileEnvironment{}, {}, {"missing-P07-linker.exe"}));
         assert(id != second);
+        assert((take(service.snapshotIds()) == std::vector{id, second}));
+        std::thread observer([&] { assert(!service.snapshotIds()); });
+        observer.join();
         const auto& operation = take(service.operation(id)).get();
         static_assert(std::is_same_v<decltype(operation), const ef::FlowCompileOperation&>);
         const auto task = operation.task();
@@ -218,6 +226,7 @@ namespace
         assert(take(service.operation(recovered)).get().ready());
         assert(take(take(service.operation(recovered)).get().result())->source->name == "Ownership");
         assert(service.acknowledge(recovered));
+        assert(take(service.snapshotIds()).empty());
         assert(author->describe().current == before.current && author->describe().dirty == before.dirty);
         assert(author->describe().observed == before.observed);
         assert(take(take(author->read()).encode()) == bytes);

@@ -34,5 +34,11 @@ namespace lux::editor::scene
         std::unique_ptr<Impl> impl_;
     };
     [[nodiscard]] SceneConfigurationResult<views::DetachedView>
-        makeSceneConfigurationView(object::ObjectDispatcherRef, lux::ui::PaneId, sessions::TSessionAccess<SceneSession>, SceneConfigurationInputs, sessions::TSessionKey<SceneSession>);
+    makeSceneConfigurationView(
+        object::ObjectDispatcherRef,
+        lux::ui::PaneId,
+        sessions::TSessionAccess<SceneSession>,
+        SceneConfigurationInputs,
+        sessions::TSessionKey<SceneSession>
+    );
 }

@@ -61,4 +61,3 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     add_test(NAME editor.inspector_codegen COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test/inspector_codegen.py")
     set_tests_properties(editor.inspector_codegen PROPERTIES LABELS "editor;native")
 endif()
-

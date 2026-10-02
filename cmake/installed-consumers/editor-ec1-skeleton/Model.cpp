@@ -346,7 +346,8 @@ namespace skeleton
             if (!owner)
                 return saveFailure(owner.error());
             auto &model = owner->get();
-            if (request.mode == ESaveMode::SAVE && !model.state_.binding())
+            const bool is_unbound_save = request.mode == ESaveMode::SAVE && !model.state_.binding();
+            if (is_unbound_save)
                 return cxx::unexpected(PersistenceFailure{EPersistenceError::UNBOUND});
             const auto id = request.mode == ESaveMode::SAVE ? model.state_.binding()->asset : request.asset;
             auto frozen = model.freeze(id);
@@ -419,7 +420,8 @@ namespace skeleton
             {
                 if (stop.stop_requested())
                     return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::CANCELLED});
-                if (input.binding && input.binding->asset != input.asset)
+                const bool is_identity_mismatch = input.binding && input.binding->asset != input.asset;
+                if (is_identity_mismatch)
                     return cxx::unexpected(
                         SessionFactoryFailure{ESessionFactoryError::INVALID_ARGUMENT, "skeleton.identity"});
                 auto decoded = asset::TAssetSerDeser<asset::SkeletonAsset>::decode(
@@ -451,7 +453,8 @@ namespace skeleton
                             {
                                 auto admitted = std::move(value);
                                 const auto info = owner->get().describe();
-                                if (info.current != expected || info.binding != binding)
+                                const bool is_stale_source = info.current != expected || info.binding != binding;
+                                if (is_stale_source)
                                 {
                                     built = cxx::unexpected(ESessionError::STALE_CONTENT);
                                     return;

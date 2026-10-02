@@ -36,7 +36,8 @@ namespace lux::editor::scene
             object::EConnectError,
             asset::AssetDecodeFailure,
             SceneEditError,
-            std::any>;
+            std::any
+        >;
         ESceneConfigurationError code{};
         std::string domain;
         std::uint64_t reason{};
@@ -132,6 +133,14 @@ namespace lux::editor::scene
 
     struct SceneConfigurationInputs final
     {
+        using CreateControlResult = SceneConfigurationResult<ConfigurationControl>;
+        using CreateControl = std::function<CreateControlResult(
+            lux::ui::Element&,
+            std::string_view,
+            std::uint32_t,
+            const serialization::PortableValueCodec&,
+            std::optional<std::span<const std::byte>>
+        )>;
         const lux::project::PluginCatalog& catalog;
         const simulation::ecs::ComponentSchemaSet& components;
         const simulation::SimulationSystemRegistry& simulation_systems;
@@ -139,15 +148,18 @@ namespace lux::editor::scene
         std::span<const render::RenderFeatureRegistration> features;
         std::span<const SceneProviderOption> providers;
         // An empty control uses the registered codec's default. Factories return complete owning controls.
-        std::function<SceneConfigurationResult<
-            ConfigurationControl>(lux::ui::Element&, std::string_view, std::uint32_t, const serialization::PortableValueCodec&, std::optional<std::span<const std::byte>>)>
-            configuration;
+        CreateControl configuration;
         std::span<const lux::scene::RenderFeatureSceneBinding> feature_bindings{};
     };
     class SceneConfigurationElement final : public lux::ui::Element
     {
     public:
-        SceneConfigurationElement(lux::ui::Element&, lux::ui::ElementId, SceneConfigurationInputs, SceneConfigurationResult<void>&);
+        SceneConfigurationElement(
+            lux::ui::Element&,
+            lux::ui::ElementId,
+            SceneConfigurationInputs,
+            SceneConfigurationResult<void>&
+        );
         ~SceneConfigurationElement() noexcept override;
         SceneConfigurationElement(const SceneConfigurationElement&) = delete;
         SceneConfigurationElement& operator=(const SceneConfigurationElement&) = delete;

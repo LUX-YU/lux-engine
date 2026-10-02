@@ -64,7 +64,10 @@ namespace lux::editor::views
               cancel_preview_(cancel_preview), prepare_state_(prepare_state), capture_state_(capture_state),
               capture_content_(capture_content), rebind_content_(rebind_content)
         {
-            if (!code_.valid() || !pane_ || pane_->attachedRoot() || pane_->parent())
+            const bool is_invalid_owner = !code_.valid() || !pane_;
+            const bool is_attached = pane_ && (pane_->attachedRoot() || pane_->parent());
+            const bool is_invalid_candidate = is_invalid_owner || is_attached;
+            if (is_invalid_candidate)
                 std::terminate();
         }
         ~DetachedView() noexcept
@@ -138,7 +141,8 @@ namespace lux::editor::views
         {
             if (!prepare_state_)
             {
-                if (schema != 1 || !bytes.empty())
+                const bool is_unsupported_state = schema != 1 || !bytes.empty();
+                if (is_unsupported_state)
                     return cxx::unexpected(
                         ViewPreparationFailure{"view.state", schema, "Unsupported view configuration", false}
                     );

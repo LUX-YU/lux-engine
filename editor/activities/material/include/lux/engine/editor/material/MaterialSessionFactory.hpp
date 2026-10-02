@@ -6,7 +6,7 @@ namespace lux::editor::material
 {
     [[nodiscard]] sessions::SessionPreparation prepareMaterialSession(
         PreparedMaterialData data,
-        [[nodiscard]] sessions::SourceBinding binding,
+        sessions::SourceBinding binding,
         std::optional<persistence::WriteTarget> target,
         contracts::CodeLease code = contracts::CodeLease::builtin()
     );

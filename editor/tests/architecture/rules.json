@@ -17830,6 +17830,9 @@
       ],
       "editor/application/src/EditorArtifacts.cpp": [
         "editor_bootstrap"
+      ],
+      "editor/application/src/EditorRecovery.cpp": [
+        "editor_bootstrap"
       ]
     },
     "native_libraries": [

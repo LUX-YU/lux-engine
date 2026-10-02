@@ -113,7 +113,8 @@ namespace lux::editor::application
         if (intent.action == EWorkspaceAction::ACKNOWLEDGE)
         {
             std::erase_if(workspace_publications_, [&](const auto& report) {
-                return report.ticket == intent.ticket && report.result.has_value();
+                return report.ticket == intent.ticket && report.result.has_value() &&
+                       migration_ticket_ != report.ticket;
             });
             return {};
         }
@@ -124,6 +125,22 @@ namespace lux::editor::application
         }
         if (phase_ != EApplicationPhase::RUNNING || workspace_publications_.size() >= 16)
             return cxx::unexpected(EditorFailure{EEditorError::BUSY, "workspace.admission"});
+        if (intent.action == EWorkspaceAction::CAPTURE_RECOVERY)
+            return captureRecovery();
+        if (intent.action == EWorkspaceAction::RESTORE_RECOVERY)
+            return restoreRecovery();
+        if (intent.action == EWorkspaceAction::MIGRATE)
+        {
+            if (migration_ticket_)
+                return cxx::unexpected(EditorFailure{EEditorError::BUSY, "workspace.migration.pending"});
+            auto input = workspace_.prepareLegacyMigration();
+            if (!input)
+                return applicationFailure("workspace.migration.read", input.error());
+            migration_ = std::move(*input);
+            migration_failure_.reset();
+            migration_complete_ = false;
+            return {};
+        }
         WorkspaceResult<WriteTicket> publication = cxx::unexpected(WorkspaceFailure{EWorkspaceError::INVALID_DATA});
         std::string label;
         switch (intent.action)
@@ -203,7 +220,10 @@ namespace lux::editor::application
             else
                 report.catalog_failure = catalog.error(); // Never replace the last catalog with an empty one.
         }
-        return {};
+        auto migrated = settleMigration();
+        if (!migrated)
+            return migrated;
+        return settleRecovery();
     }
     void EditorApplication::Impl::installWorkspaceView(extensions::ContributionDraft& draft)
     {
@@ -248,6 +268,56 @@ namespace lux::editor::application
                         button("Delete", {EWorkspaceAction::REMOVE_LAYOUT, layout.id});
                         ImGui::PopID();
                     }
+                    ImGui::SeparatorText("Content recovery (independent of layouts)");
+                    button("Record current locations", {EWorkspaceAction::CAPTURE_RECOVERY});
+                    button("Restore recorded content", {EWorkspaceAction::RESTORE_RECOVERY});
+                    button("Import old workspace data", {EWorkspaceAction::MIGRATE});
+                    if (app_.migration_)
+                    {
+                        for (const auto& diagnostic : app_.migration_->diagnostics)
+                            ImGui::TextWrapped("%s", diagnostic.c_str());
+                        if (app_.migration_complete_)
+                            ImGui::TextUnformatted("Migration verified complete");
+                        if (app_.migration_failure_)
+                            ImGui::TextWrapped("%s", app_.migration_failure_->domain.c_str());
+                    }
+                    if (app_.recovery_)
+                        for (const auto& item : app_.recovery_->items)
+                        {
+                            ImGui::TextWrapped(
+                                "%s / %s",
+                                std::string(item.entry.restore_key.name()).c_str(),
+                                item.entry.locator.c_str()
+                            );
+                            if (item.entry.unpersisted_changes)
+                                ImGui::TextUnformatted(
+                                    "Only saved content can be restored; unsaved edits are not in this manifest."
+                                );
+                            if (item.failure)
+                                ImGui::TextWrapped(
+                                    "%s: %s",
+                                    item.failure->domain.c_str(),
+                                    item.failure->message.c_str()
+                                );
+                            else if (item.result)
+                            {
+                                if (item.result->presentation_failure)
+                                    ImGui::TextWrapped(
+                                        "Content retained, view unavailable: %s",
+                                        item.result->presentation_failure->domain.c_str()
+                                    );
+                                else if (item.result->content.failure)
+                                    ImGui::TextWrapped(
+                                        "%s: %s",
+                                        item.result->content.failure->domain.c_str(),
+                                        item.result->content.failure->detail.c_str()
+                                    );
+                                else
+                                    ImGui::TextUnformatted(item.result->view ? "Content presented" : "Not presented");
+                            }
+                            else
+                                ImGui::TextUnformatted("Recovery pending");
+                        }
                     ImGui::SeparatorText("Publication results");
                     for (const auto& report : app_.workspace_publications_)
                     {

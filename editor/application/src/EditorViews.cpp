@@ -26,6 +26,21 @@ namespace lux::editor::application
     }
     EditorResult<sessions::OpenAssetId> EditorApplication::Impl::open(AssetReference reference)
     {
+        std::optional<EditorResult<sessions::OpenAssetId>> result;
+        auto prepare = [&](const extensions::ContributionSnapshot& snapshot) -> extensions::ContributionResult<void> {
+            result.emplace(openCaptured(reference, snapshot));
+            return {};
+        };
+        auto guarded = contributions_.withSnapshot(prepare);
+        if (!guarded)
+            return applicationFailure("open.catalog", guarded.error());
+        return std::move(*result);
+    }
+    EditorResult<sessions::OpenAssetId> EditorApplication::Impl::openCaptured(
+        AssetReference reference,
+        const extensions::ContributionSnapshot& snapshot
+    )
+    {
         if (phase_ != EApplicationPhase::RUNNING)
             return cxx::unexpected(EditorFailure{EEditorError::CLOSING, "application.open"});
         if (opens_.size() == 64)
@@ -62,28 +77,13 @@ namespace lux::editor::application
             kind,
             {std::move(*source), asset->id, sessions::BoundSource{asset->id, target->key.value}, *target}
         };
-        // A pinned catalog may outlive this short compound owner scope, never the scope itself.
-        std::optional<sessions::OpenAssetId> id;
-        auto open_source = [&](const auto& snapshot) -> extensions::ContributionResult<void> {
-            auto opened = opening_.open(std::move(request), snapshot.sessions());
-            if (!opened)
-                return cxx::unexpected(extensions::ContributionFailure{
-                    opened.error().code == sessions::ESessionFactoryError::BUSY
-                        ? extensions::EContributionError::BUSY
-                        : extensions::EContributionError::CALLBACK,
-                    opened.error().domain,
-                    opened.error().domain_code,
-                    opened.error().detail
-                });
-            id = *opened;
-            return {};
-        };
-        auto entered = contributions_.withSnapshot(open_source);
-        if (!entered)
-            return applicationFailure("open.admission", entered.error());
-        opens_.push_back({*id});
-        return *id;
+        auto opened = opening_.open(std::move(request), snapshot.sessions());
+        if (!opened)
+            return applicationFailure("open.admission", opened.error());
+        opens_.push_back({*opened});
+        return *opened;
     }
+
     EditorResult<OpenAndShowResult> EditorApplication::openStatus(sessions::OpenAssetId id) const
     {
         const auto entry = std::ranges::find(impl_->opens_, id, &Impl::OpenPresentation::operation);
@@ -126,7 +126,7 @@ namespace lux::editor::application
             return applicationFailure("open.receive", received.error());
         for (auto& entry : opens_)
         {
-            if (entry.view || entry.failure || entry.cancelled)
+            if (!entry.present || entry.view || entry.failure || entry.cancelled)
                 continue;
             const auto status = opening_.status(entry.operation);
             if (!status)
@@ -136,7 +136,7 @@ namespace lux::editor::application
             auto shown = show(status->session, false);
             if (shown)
                 entry.view = *shown;
-            else
+            else if (shown.error().code != EEditorError::BUSY)
                 entry.failure = std::move(shown.error()); // Content remains owned and queryable without a view.
         }
         return {};
@@ -156,13 +156,14 @@ namespace lux::editor::application
     EditorResult<views::ViewId> EditorApplication::Impl::makeContentView(
         sessions::SessionId id,
         bool another_view,
-        const extensions::ContributionSnapshot& snapshot
+        const extensions::ContributionSnapshot& snapshot,
+        std::optional<views::ViewRestoreKey> restore_key
     )
     {
         auto info = sessions_.describe(id);
         if (!info)
             return applicationFailure("show.session", info.error());
-        if (!another_view)
+        if (!another_view && !restore_key)
             for (const auto& entry : content_views_)
                 if (entry.session == id && desktop_->views().describe(entry.view))
                 {
@@ -171,7 +172,37 @@ namespace lux::editor::application
                         return applicationFailure("show.focus", focused.error());
                     return entry.view;
                 }
-        if (content_views_.size() == 64 || next_view_ == UINT64_MAX)
+        std::optional<views::ViewId> existing;
+        if (restore_key)
+        {
+            const auto type = views::ViewTypeId{
+                info->kind.name == "lux.editor.scene"      ? "lux.editor.scene.view"
+                : info->kind.name == "lux.editor.material" ? "lux.editor.material"
+                                                           : "lux.editor.flowforge"
+            };
+            auto views = desktop_->views().describeAll();
+            if (!views)
+                return applicationFailure("recovery.views", views.error());
+            for (const auto& view : *views)
+                if (view.restore_key == *restore_key && view.type == type)
+                {
+                    existing = view.id;
+                    auto owner = std::ranges::find(content_views_, view.id, &ContentView::view);
+                    if (owner != content_views_.end() && owner->session.valid())
+                    {
+                        if (owner->session != id)
+                            return cxx::unexpected(EditorFailure{
+                                EEditorError::STALE_REQUEST,
+                                "recovery.binding",
+                                0,
+                                "The matching window already displays different content; original binding retained."
+                            });
+                        return view.id;
+                    }
+                    break;
+                }
+        }
+        if ((!existing && content_views_.size() == 64) || next_view_ == UINT64_MAX)
             return cxx::unexpected(EditorFailure{EEditorError::CAPACITY, "show.views"});
         const auto name = "content-" + std::to_string(next_view_++);
         ContentView owner{id};
@@ -263,13 +294,102 @@ namespace lux::editor::application
         }
         else
             return cxx::unexpected(EditorFailure{EEditorError::MISSING_PROVIDER, "show.kind"});
+        if (existing)
+        {
+            EditorResult<void> result;
+            auto bind = [&](lux::ui::Pane& pane) {
+                result = wireContentView(owner, pane);
+                if (!result)
+                    return;
+                if (owner.scene)
+                {
+                    auto bound = static_cast<scene::SceneView&>(pane).rebind(
+                        scene::EditedSceneBinding{*owner.scene->session(), owner.scene.get()}
+                    );
+                    if (!bound)
+                        result = std::visit(
+                            [](const auto& error) -> EditorResult<void> {
+                                return applicationFailure("recovery.scene", error);
+                            },
+                            bound.error().cause
+                        );
+                }
+                else if (owner.material)
+                {
+                    auto key = sessions_.key<material::MaterialSession>(id);
+                    if (!key)
+                    {
+                        result = applicationFailure("recovery.material.key", key.error());
+                        return;
+                    }
+                    auto bound = static_cast<material::MaterialView&>(pane).rebind(
+                        material::MaterialViewBinding{*key, owner.material.get()}
+                    );
+                    if (!bound)
+                        result = std::visit(
+                            [](const auto& error) -> EditorResult<void> {
+                                return applicationFailure("recovery.material", error);
+                            },
+                            bound.error()
+                        );
+                }
+                else if (owner.flow)
+                {
+                    auto key = sessions_.key<flowforge::FlowSession>(id);
+                    if (!key)
+                    {
+                        result = applicationFailure("recovery.flow.key", key.error());
+                        return;
+                    }
+                    auto bound = static_cast<flowforge::FlowView&>(pane).rebind(
+                        flowforge::FlowViewBinding{*key, owner.flow.get()}
+                    );
+                    if (!bound)
+                        result = std::visit(
+                            [](const auto& error) -> EditorResult<void> {
+                                return applicationFailure("recovery.flow", error);
+                            },
+                            bound.error()
+                        );
+                }
+            };
+            auto visited = desktop_->views().withView(*existing, bind);
+            if (!visited)
+                return applicationFailure("recovery.view", visited.error());
+            if (!result)
+                return cxx::unexpected(result.error());
+            owner.view = *existing;
+            auto previous = std::ranges::find(content_views_, *existing, &ContentView::view);
+            if (previous != content_views_.end())
+            {
+                // The Pane's services borrow this exact preview owner; replacing interaction does not replace it.
+                owner.preview = std::move(previous->preview);
+                *previous = std::move(owner);
+            }
+            else
+                content_views_.push_back(std::move(owner));
+            return *existing;
+        }
         auto view = snapshot.views().prepare(type, *input);
         if (!view)
             return applicationFailure("view.factory", view.error());
+        auto connected = wireContentView(owner, *view->pane());
+        if (!connected)
+            return cxx::unexpected(connected.error());
+        auto adopted = adopt(*view, restore_key ? std::string(restore_key->name()) : name);
+        if (!adopted)
+            return cxx::unexpected(adopted.error());
+        owner.view = *adopted;
+        const auto published = owner.view;
+        content_views_.push_back(std::move(owner));
+        return published;
+    }
+    EditorResult<void> EditorApplication::Impl::wireContentView(ContentView& owner, lux::ui::Pane& pane)
+    {
         if (owner.scene)
         {
             auto connected = object::LuxObject::connect(
-                static_cast<scene::SceneView*>(view->pane()),
+                static_cast<scene::SceneView*>(&pane),
                 &scene::SceneView::modelDropped,
                 [this](scene::ModelPlacement placement) noexcept { receiveModel(std::move(placement)); }
             );
@@ -280,7 +400,7 @@ namespace lux::editor::application
         if (owner.material)
         {
             auto connection = object::LuxObject::connect(
-                static_cast<material::MaterialView*>(view->pane()),
+                static_cast<material::MaterialView*>(&pane),
                 &material::MaterialView::publishRequested,
                 [this](std::shared_ptr<const material::CompiledMaterial> compiled) noexcept {
                     receiveArtifact(std::move(compiled));
@@ -293,7 +413,7 @@ namespace lux::editor::application
         if (owner.flow)
         {
             auto connection = object::LuxObject::connect(
-                static_cast<flowforge::FlowView*>(view->pane()),
+                static_cast<flowforge::FlowView*>(&pane),
                 &flowforge::FlowView::publishRequested,
                 [this](std::shared_ptr<const flowforge::CompiledFlow> compiled) noexcept {
                     receiveArtifact(std::move(compiled));
@@ -303,12 +423,7 @@ namespace lux::editor::application
                 return applicationFailure("flow.publish.connect", connection.error());
             owner.publish = std::move(*connection);
         }
-        auto adopted = adopt(*view, name);
-        if (!adopted)
-            return cxx::unexpected(adopted.error());
-        owner.view = *adopted;
-        const auto published = owner.view;
-        content_views_.push_back(std::move(owner));
-        return published;
+        return {};
     }
+
 }

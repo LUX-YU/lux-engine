@@ -29,7 +29,23 @@ namespace lux::editor::application
     // Error conversion is a cold application boundary, preserving the exact owning cause.
     template <class Error> auto applicationFailure(std::string domain, const Error& cause)
     {
-        return cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, std::move(domain), 0, {}, cause});
+        auto code = EEditorError::SOURCE_FAILURE;
+        if constexpr (requires { cause.code == decltype(cause.code)::BUSY; })
+        {
+            if (cause.code == decltype(cause.code)::BUSY)
+                code = EEditorError::BUSY;
+        }
+        else if constexpr (requires { cause == Error::BUSY; })
+        {
+            if (cause == Error::BUSY)
+                code = EEditorError::BUSY;
+        }
+        if constexpr (requires { cause.session == sessions::ESessionError::BUSY; })
+        {
+            if (cause.session == sessions::ESessionError::BUSY)
+                code = EEditorError::BUSY;
+        }
+        return cxx::unexpected(EditorFailure{code, std::move(domain), 0, {}, cause});
     }
     struct EditorApplication::Impl final
     {
@@ -45,6 +61,7 @@ namespace lux::editor::application
             std::optional<views::ViewId> view;
             std::optional<EditorFailure> failure;
             bool cancelled{};
+            bool present{true};
         };
         struct ContentView final
         {
@@ -188,7 +205,10 @@ namespace lux::editor::application
             RENAME_LAYOUT,
             REMOVE_LAYOUT,
             ACKNOWLEDGE,
-            RECONCILE
+            RECONCILE,
+            CAPTURE_RECOVERY,
+            RESTORE_RECOVERY,
+            MIGRATE
         };
         struct WorkspaceIntent final
         {
@@ -203,6 +223,18 @@ namespace lux::editor::application
             persistence::WriteTicket ticket;
             std::optional<persistence::VPublicationOutcome> result;
             std::optional<workspace::WorkspaceFailure> catalog_failure;
+        };
+        struct RecoveryItem final
+        {
+            workspace::RecoveryEntry entry;
+            std::optional<sessions::OpenAssetId> opening;
+            std::optional<OpenAndShowResult> result;
+            std::optional<EditorFailure> failure;
+        };
+        struct RecoveryPresentation final
+        {
+            extensions::ContributionSnapshot catalog;
+            std::vector<RecoveryItem> items;
         };
         struct EmptyViewInput final
         {};
@@ -254,6 +286,11 @@ namespace lux::editor::application
         std::optional<EditorFailure> workspace_failure_;
         std::optional<WorkspaceIntent> workspace_intent_;
         std::vector<WorkspacePublication> workspace_publications_;
+        std::optional<RecoveryPresentation> recovery_;
+        std::optional<workspace::LegacyMigration> migration_;
+        std::optional<persistence::WriteTicket> migration_ticket_;
+        std::optional<EditorFailure> migration_failure_;
+        bool migration_complete_{};
         std::vector<ContentView> content_views_;
         std::vector<RunPresentation> run_presentations_;
         std::vector<OpenPresentation> opens_;
@@ -315,6 +352,13 @@ namespace lux::editor::application
         void installWorkspaceView(extensions::ContributionDraft&);
         [[nodiscard]] EditorResult<void> executeWorkspaceIntent(const WorkspaceIntent&);
         [[nodiscard]] EditorResult<void> settleWorkspace();
+        [[nodiscard]] EditorResult<void> captureRecovery();
+        [[nodiscard]] EditorResult<void> restoreRecovery();
+        [[nodiscard]] EditorResult<void> settleRecovery();
+        [[nodiscard]] EditorResult<void> settleMigration();
+        [[nodiscard]] EditorResult<void> wireContentView(ContentView&, lux::ui::Pane&);
+        [[nodiscard]] EditorResult<sessions::OpenAssetId>
+        openCaptured(AssetReference, const extensions::ContributionSnapshot&);
         [[nodiscard]] EditorResult<void> receiveResultIntent();
         [[nodiscard]] EditorResult<PreparedSave> prepareSave(
             commands::SessionTarget,
@@ -343,8 +387,12 @@ namespace lux::editor::application
         [[nodiscard]] EditorResult<views::ViewId> showSceneTool(views::ViewId, std::string_view);
         [[nodiscard]] EditorResult<void> synchronizeSceneTools();
         [[nodiscard]] EditorResult<views::ViewId> show(sessions::SessionId, bool another_view);
-        [[nodiscard]] EditorResult<views::ViewId>
-        makeContentView(sessions::SessionId, bool another_view, const extensions::ContributionSnapshot&);
+        [[nodiscard]] EditorResult<views::ViewId> makeContentView(
+            sessions::SessionId,
+            bool another_view,
+            const extensions::ContributionSnapshot&,
+            std::optional<views::ViewRestoreKey> = {}
+        );
         [[nodiscard]] EditorResult<void> update();
         [[nodiscard]] EditorResult<void> receiveOpenResults();
         [[nodiscard]] EditorResult<void> reviewClose();

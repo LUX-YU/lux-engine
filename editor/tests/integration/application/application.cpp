@@ -331,6 +331,84 @@ int main(int argc, char** argv)
     assert(reopened_status && reopened_status->content.session == material_id);
     assert(app->acknowledgeOpen(*reopened));
     std::cout << "Real Save As preserves author history, publishes source/catalog and reopens the same Session\n";
+    // Layouts prepare unbound windows. Only the independent recovery manifest opens author content.
+    auto unbound_capture = impl.executeWorkspaceIntent({WorkspaceAction::CAPTURE_RECOVERY});
+    assert(!unbound_capture && unbound_capture.error().domain == "recovery.unbound");
+    assert(!impl.workspace_.readRecovery()); // Unsaved Flow prevented any partial manifest publication.
+    const auto material_window = *impl.desktop_->views().describe(material_view);
+    auto current_layout = impl.desktop_->views().captureLayout(layout_id, "Recovery qualification");
+    assert(current_layout);
+    const auto material_slot =
+        std::ranges::find(current_layout->slots, material_window.restore_key, &workspace::LayoutSlot::restore_key);
+    assert(material_slot != current_layout->slots.end());
+    workspace::DockLayout recovery_layout;
+    recovery_layout.id = layout_id;
+    recovery_layout.label = "Unbound recovery window";
+    recovery_layout.slots.push_back(*material_slot);
+    recovery_layout.slots.front().id = {1};
+    recovery_layout.slots.front().restore_key = views::ViewRestoreKey{"recovery-material"};
+    recovery_layout.dock.nodes.push_back({1, workspace::EDockSplit::LEAF, 0, 0, 0.5, {{1}}});
+    recovery_layout.dock.roots.push_back({1});
+    assert(app->applyLayout(recovery_layout));
+    auto recovery_windows = impl.desktop_->views().describeAll();
+    assert(recovery_windows);
+    auto unbound_window =
+        std::ranges::find(*recovery_windows, views::ViewRestoreKey{"recovery-material"}, &views::ViewInfo::restore_key);
+    assert(unbound_window != recovery_windows->end());
+    const auto recovered_view = unbound_window->id;
+    lux::editor::material::MaterialViewState camera_before;
+    auto read_camera = [&](ui::Pane& pane) {
+        auto& material = static_cast<lux::editor::material::MaterialView&>(pane);
+        assert(!material.binding());
+        camera_before = material.state();
+    };
+    assert(impl.desktop_->views().withView(recovered_view, read_camera));
+    workspace::RecoveryManifest recovery_manifest;
+    const auto locator = "asset:" + uuids::to_string(saved_material->binding->asset.uuid());
+    recovery_manifest.entries = {
+        {material_window.restore_key, material_window.type, locator, true},
+        {unbound_window->restore_key, unbound_window->type, locator, false},
+        {views::ViewRestoreKey{"future-window"}, views::ViewTypeId{"future.provider"}, "future:opaque", false}
+    };
+    recovery_manifest.opaque.push_back({"future-data", 4, {std::byte{5}, std::byte{9}}});
+    auto recovery_write = impl.workspace_.writeRecovery(recovery_manifest, "missing");
+    assert(recovery_write);
+    impl.workspace_publications_.push_back({"Recovery fixture", *recovery_write});
+    settle_workspace();
+    auto recovery_before = workspace::encodeRecovery(impl.workspace_.readRecovery()->value);
+    assert(recovery_before);
+    assert(impl.executeWorkspaceIntent({WorkspaceAction::RESTORE_RECOVERY}));
+    auto while_catalog_busy = [&](const extensions::ContributionSnapshot&) -> extensions::ContributionResult<void> {
+        assert(impl.settleRecovery());
+        assert(!impl.recovery_->items.front().opening && !impl.recovery_->items.front().failure);
+        return {};
+    };
+    assert(impl.contributions_.withSnapshot(while_catalog_busy));
+    const auto recovery_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+    while (std::ranges::any_of(impl.recovery_->items, [](const auto& entry) { return !entry.result && !entry.failure; })
+    )
+    {
+        assert(std::chrono::steady_clock::now() < recovery_deadline);
+        assert(app->update());
+    }
+    assert(impl.recovery_->items[0].result->view == material_view);
+    assert(impl.recovery_->items[1].result->view == recovered_view);
+    assert(impl.recovery_->items[2].failure);
+    assert(impl.sessions_.size() == 2 && impl.sessions_.describe(material_id)->current == saved_material->current);
+    assert(impl.desktop_->views().describeAll()->size() == recovery_windows->size());
+    auto check_recovery = [&](ui::Pane& pane) {
+        auto& material = static_cast<lux::editor::material::MaterialView&>(pane);
+        assert(material.binding() && material.binding()->session.id() == material_id);
+        assert(material.state().camera.transform.translation.isApprox(camera_before.camera.transform.translation));
+    };
+    assert(impl.desktop_->views().withView(recovered_view, check_recovery));
+    assert(*workspace::encodeRecovery(impl.workspace_.readRecovery()->value) == *recovery_before);
+    assert(app->closeView(recovered_view));
+    for (int i = 0; i < 10 && impl.desktop_->views().describe(recovered_view); ++i)
+        assert(app->update());
+    assert(!impl.desktop_->views().describe(recovered_view));
+    std::cout << "Recovery uses an independent immutable manifest, keeps BUSY input, reuses exact windows and "
+                 "preserves unknown bytes/camera\n";
     lux::editor::material::MaterialCompileId compilation;
     material_action([&](lux::editor::material::MaterialView& view) {
         auto result = view.compile();

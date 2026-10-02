@@ -1,6 +1,14 @@
 find_package(box2d CONFIG REQUIRED)
 find_package(Eigen3 CONFIG REQUIRED)
 
+# Installed plugins use a restricted DLL search path. Their foreign runtime must be
+# beside the plugin, even when the product does not link/preload Physics2D itself.
+get_target_property(_box2d_type box2d::box2d TYPE)
+if(WIN32 AND _box2d_type STREQUAL "SHARED_LIBRARY")
+    install(IMPORTED_RUNTIME_ARTIFACTS box2d::box2d
+        RUNTIME DESTINATION bin COMPONENT lux_engine_physics2d)
+endif()
+
 generate_visibility_header(
     ENABLE_MACRO_NAME       LUX_ENGINE_PHYSICS2D_SIMULATION_LIBRARY
     PUBLIC_MACRO_NAME       LUX_ENGINE_PHYSICS2D_SIMULATION_PUBLIC

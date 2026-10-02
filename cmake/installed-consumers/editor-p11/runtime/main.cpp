@@ -1,12 +1,37 @@
 #include <lux/engine/project/PluginLibrary.hpp>
+#include <lux/engine/project/PluginManager.hpp>
 #include <lux/engine/simulation/ecs/TransformSchema.hpp>
 #include <cassert>
 #include <iostream>
 
 int main(int argc, char** argv)
 {
-    assert(argc == 2);
     namespace project = lux::project;
+    if (argc == 3)
+    {
+        assert(std::string_view(argv[1]) == "--builtins");
+        const std::filesystem::path installation{argv[2]};
+        project::PluginCatalog catalog;
+        assert(catalog.read(installation / "share/lux-engine/plugins/catalog.json", installation));
+        std::vector<project::MetadataIdentity> selected;
+        for (const auto& plugin : catalog.plugins())
+            if (plugin.builtin)
+                selected.push_back(plugin.identity);
+        assert(!selected.empty());
+        auto plugins = project::PluginManager::create(std::move(catalog), selected);
+        if (!plugins)
+        {
+            const auto& failure = plugins.error();
+            std::cerr << static_cast<unsigned>(failure.code) << ' ' << failure.plugin << ' ' << failure.subject << ' '
+                      << failure.detail << '\n';
+            return 1;
+        }
+        for (const auto& identity : selected)
+            assert(plugins->find(identity.id));
+        std::cout << "PASS installed built-in plugin closure, without statically linking/preloading the plugins\n";
+        return 0;
+    }
+    assert(argc == 2);
     const std::filesystem::path path{argv[1]};
     project::PluginLibraryDescription library;
     library.path = path.filename();

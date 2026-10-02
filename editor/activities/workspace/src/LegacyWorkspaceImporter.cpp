@@ -347,7 +347,7 @@ namespace lux::editor::workspace
                 {
                     if (is_selected)
                         migration.recovery.entries.push_back(
-                            {slot.restore_key, slot.type, "asset:" + payload->substr(3), false}
+                            {slot.restore_key, slot.type, {{"asset:" + payload->substr(3), false}}, 0}
                         );
                     // Every snapshot keeps its original locator in the envelope, never in active view state.
                     slot.state.bytes.clear();

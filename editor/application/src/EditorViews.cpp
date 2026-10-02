@@ -135,7 +135,7 @@ namespace lux::editor::application
     {
         std::optional<EditorResult<views::ViewId>> result;
         auto prepare = [&](const extensions::ContributionSnapshot& snapshot) -> extensions::ContributionResult<void> {
-            result.emplace(makeContentView(id, another_view, snapshot));
+            result.emplace(makeContentView({{id}, id}, another_view, snapshot));
             return {};
         };
         auto guarded = contributions_.withSnapshot(prepare);
@@ -144,23 +144,34 @@ namespace lux::editor::application
         return std::move(*result);
     }
     EditorResult<views::ViewId> EditorApplication::Impl::makeContentView(
-        sessions::SessionId id,
+        views::ViewContent association,
         bool another_view,
         const extensions::ContributionSnapshot& snapshot,
         std::optional<views::ViewRestoreKey> restore_key,
         std::optional<views::ViewTypeId> preferred
     )
     {
-        auto info = sessions_.describe(id);
-        if (!info)
-            return applicationFailure("show.session", info.error());
-        auto selected = snapshot.views().selectContent(info->kind, preferred);
+        if (!association.valid())
+            return cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "show.content"});
+        std::optional<views::ViewTypeId> selected = preferred;
+        std::string title;
+        for (const auto id : association.sessions)
+        {
+            auto info = sessions_.describe(id);
+            if (!info)
+                return applicationFailure("show.session", info.error());
+            auto candidate = snapshot.views().selectContent(info->kind, selected);
+            if (!candidate)
+                return applicationFailure("show.provider", candidate.error());
+            selected = *candidate;
+            if (association.primary == id && info->binding)
+                title = info->binding->location;
+        }
         if (!selected)
-            return applicationFailure("show.provider", selected.error());
+            return cxx::unexpected(EditorFailure{EEditorError::MISSING_PROVIDER, "show.provider"});
         auto views = desktop_->views().describeAll();
         if (!views)
             return applicationFailure("show.views", views.error());
-        const views::ViewContent association{{id}, id};
         std::optional<views::ViewId> existing;
         for (const auto& view : *views)
         {
@@ -199,7 +210,7 @@ namespace lux::editor::application
                 return applicationFailure("recovery.binding", rebound.error());
             return *existing;
         }
-        views::ContentViewInput value{association, info->binding ? info->binding->location : name};
+        views::ContentViewInput value{association, title.empty() ? name : std::move(title)};
         const views::ViewFactoryInput input{
             messages_.dispatcherRef(), lux::ui::PaneId{name}, contracts::CodeLease::builtin(),
             cxx::typeToken<views::ContentViewInput>(), std::make_shared<const views::ContentViewInput>(std::move(value))

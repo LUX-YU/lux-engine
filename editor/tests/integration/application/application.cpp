@@ -43,6 +43,18 @@ namespace
         });
         return std::move(*all);
     }
+    class ComparisonPane final : public lux::ui::Pane
+    {
+    public:
+        ComparisonPane(lux::object::ObjectDispatcherRef dispatcher, lux::ui::PaneId id,
+                       lux::editor::views::ViewContent content)
+            : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{"test.comparison"}, "Comparison"),
+              content_(std::move(content))
+        {}
+        [[nodiscard]] const lux::editor::views::ViewContent& content() const noexcept { return content_; }
+    private:
+        lux::editor::views::ViewContent content_;
+    };
     struct FailureSystem final
     {
         inline static constexpr std::string_view worlds[]{"*"};
@@ -489,9 +501,9 @@ int main(int argc, char** argv)
     workspace::RecoveryManifest recovery_manifest;
     const auto locator = "asset:" + uuids::to_string(saved_material->binding->asset.uuid());
     recovery_manifest.entries = {
-        {material_window.restore_key, material_window.type, locator, true},
-        {unbound_window->restore_key, unbound_window->type, locator, false},
-        {views::ViewRestoreKey{"future-window"}, views::ViewTypeId{"future.provider"}, "future:opaque", false}
+        {material_window.restore_key, material_window.type, {{locator, true}}, 0},
+        {unbound_window->restore_key, unbound_window->type, {{locator, false}}, 0},
+        {views::ViewRestoreKey{"future-window"}, views::ViewTypeId{"future.provider"}, {{"future:opaque", false}}, 0}
     };
     recovery_manifest.opaque.push_back({"future-data", 4, {std::byte{5}, std::byte{9}}});
     auto recovery_write = impl.workspace_.writeRecovery(recovery_manifest, "missing");
@@ -503,20 +515,20 @@ int main(int argc, char** argv)
     assert(impl.executeWorkspaceIntent(ApplicationImpl::RestoreRecovery{}));
     auto while_catalog_busy = [&](const extensions::ContributionSnapshot&) -> extensions::ContributionResult<void> {
         assert(impl.settleRecovery());
-        assert(!impl.recovery_->items.front().opening && !impl.recovery_->items.front().failure);
+        assert(!impl.recovery_->items.front().opening && !impl.recovery_->items.front().result);
         return {};
     };
     assert(impl.contributions_.withSnapshot(while_catalog_busy));
     const auto recovery_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
-    while (std::ranges::any_of(impl.recovery_->items, [](const auto& entry) { return !entry.result && !entry.failure; })
+    while (std::ranges::any_of(impl.recovery_->items, [](const auto& entry) { return !entry.result; })
     )
     {
         assert(std::chrono::steady_clock::now() < recovery_deadline);
         assert(app->update());
     }
-    assert(impl.recovery_->items[0].result->view == material_view);
-    assert(impl.recovery_->items[1].result->view == recovered_view);
-    assert(impl.recovery_->items[2].failure);
+    assert(impl.recovery_->items[0].result->has_value() && **impl.recovery_->items[0].result == material_view);
+    assert(impl.recovery_->items[1].result->has_value() && **impl.recovery_->items[1].result == recovered_view);
+    assert(impl.recovery_->items[2].result && !*impl.recovery_->items[2].result);
     assert(impl.sessions_.size() == 2 && impl.sessions_.describe(material_id)->current == saved_material->current);
     assert(impl.desktop_->views().describeAll()->size() == recovery_windows->size());
     auto check_recovery = [&](ui::Pane& pane) {
@@ -709,6 +721,112 @@ int main(int argc, char** argv)
     assert(!impl.sessions_.describe(flow_id) && !impl.desktop_->views().describe(flow_view_id));
     assert(impl.sessions_.describe(material_id)->current == material_before);
     std::cout << "Last-view Cancel/Keep/Close use real modals; closing one content preserves another\n";
+
+    // Composite recovery reads two real, previously saved author sources. The window factory only
+    // binds their identities; there is no application branch for this comparison view.
+    {
+        auto previous_catalog = impl.contributions_.snapshot();
+        extensions::ContributionDraft draft;
+        const auto copy = [](auto& destination, auto values) { destination.assign(values.begin(), values.end()); };
+        copy(draft.commands, previous_catalog.commands().entries());
+        copy(draft.sessions, previous_catalog.sessions().entries());
+        copy(draft.views, previous_catalog.views().entries());
+        copy(draft.components, previous_catalog.components());
+        copy(draft.configurations, previous_catalog.configurations());
+        bool refuse_view{};
+        draft.views.push_back(std::make_shared<views::ViewFactoryEntry>(
+            contracts::CodeLease::builtin(),
+            views::ViewFactoryDescriptor{
+                views::ViewTypeId{"test.comparison"}, "Comparison", cxx::typeToken<views::ContentViewInput>(), 1,
+                {{"lux.editor.material"}, {"lux.editor.flowforge"}}, false
+            },
+            [&](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
+                const auto& binding = *static_cast<const views::ContentViewInput*>(input.binding());
+                assert(binding.content.sessions.size() == 2 && binding.content.primary == binding.content.sessions[1]);
+                for (const auto session : binding.content.sessions)
+                    assert(impl.sessions_.describe(session));
+                if (refuse_view)
+                    return cxx::unexpected(views::ViewFactoryFailure{
+                        views::EViewFactoryError::CONSTRUCT, "comparison.deliberate"
+                    });
+                return views::DetachedView{
+                    contracts::CodeLease::builtin(),
+                    std::make_unique<ComparisonPane>(input.dispatcher(), input.paneId(), binding.content),
+                    nullptr, nullptr, nullptr, nullptr,
+                    +[](const ui::Pane& pane) noexcept { return static_cast<const ComparisonPane&>(pane).content(); }
+                };
+            }
+        ));
+        auto extended = extensions::ContributionSnapshot::prepare(std::move(draft));
+        assert(extended && impl.contributions_.enqueue(*extended) && impl.contributions_.applyPending());
+        for (const auto& report : impl.save_reports_)
+            assert(report.result && !report.failure);
+        const auto& assets = impl.project_->manifest().assets;
+        const auto flow_asset = std::ranges::find(assets, std::string{"Content/Beginner/Flow.source"},
+                                                &ProjectAssetEntry::source_path);
+        if (flow_asset == assets.end())
+            for (const auto& report : impl.save_reports_)
+                std::cerr << "save source=" << report.asset.source_path << " type=" << report.asset.source_type
+                          << " failure=" << (report.failure ? report.failure->domain + ":" + report.failure->message : "none")
+                          << " result=" << bool(report.result) << '\n';
+        assert(flow_asset != assets.end());
+        workspace::RecoveryManifest composite;
+        composite.entries.push_back({
+            views::ViewRestoreKey{"comparison"}, views::ViewTypeId{"test.comparison"},
+            {{locator, false}, {"asset:" + uuids::to_string(flow_asset->id.uuid()), false}}, 1
+        });
+        const auto publish = [&] {
+            const auto stored = impl.workspace_.readRecovery();
+            assert(stored);
+            auto ticket = impl.workspace_.writeRecovery(composite, stored->target.expected_version);
+            assert(ticket);
+            impl.workspace_publications_.push_back({"Composite recovery", *ticket});
+            settle_workspace();
+        };
+        publish();
+        const auto recover = [&] {
+            assert(impl.restoreRecovery());
+            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+            while (!impl.recovery_->items.front().result)
+            {
+                assert(std::chrono::steady_clock::now() < deadline);
+                assert(app->update());
+            }
+        };
+        recover();
+        const auto& first_result = impl.recovery_->items.front();
+        assert(first_result.sources.size() == 2 && *first_result.result);
+        const auto comparison = **first_result.result;
+        const auto restored_flow = first_result.sources[1].session;
+        assert(restored_flow != flow_id && impl.sessions_.describe(restored_flow));
+        const auto associated = impl.desktop_->views().describe(comparison);
+        assert(associated && associated->content.sessions ==
+            (std::vector<sessions::SessionId>{material_id, restored_flow}));
+        assert(associated->content.primary == restored_flow);
+        assert(impl.captureRecovery());
+        settle_workspace();
+        const auto captured = impl.workspace_.readRecovery();
+        const auto saved = std::ranges::find(captured->value.entries, views::ViewRestoreKey{"comparison"},
+                                            &workspace::RecoveryEntry::restore_key);
+        assert(saved != captured->value.entries.end() && saved->contents.size() == 2 && saved->primary == 1);
+        assert(saved->contents[0].locator == locator && saved->contents[1].locator == composite.entries[0].contents[1].locator);
+        assert(impl.desktop_->views().close(comparison) && impl.desktop_->views().drain());
+        assert(!impl.desktop_->views().describe(comparison));
+        assert(impl.sessions_.describe(material_id) && impl.sessions_.describe(restored_flow));
+        publish();
+        refuse_view = true;
+        recover();
+        const auto& rejected = impl.recovery_->items.front();
+        assert(rejected.sources.size() == 2 && rejected.result && !*rejected.result);
+        for (const auto& source : rejected.sources)
+            assert(source.stage == sessions::EOpenAssetStage::PUBLISHED && impl.sessions_.describe(source.session));
+        assert(impl.contributions_.enqueue(previous_catalog) && impl.contributions_.applyPending());
+        assert(impl.requestClose(impl.sessions_.describe(restored_flow)->current));
+        while (app->phase() != EApplicationPhase::RUNNING)
+            assert(app->update());
+        assert(!impl.sessions_.describe(restored_flow) && impl.sessions_.describe(material_id));
+        std::cout << "EC1 composite recovery: all sources/primary retained, real IO, failed view preserves content\n";
+    }
 
     auto new_scene = app->execute(commands::CommandId{"lux.editor.new.scene"});
     if (!new_scene)

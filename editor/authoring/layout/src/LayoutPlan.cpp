@@ -193,7 +193,7 @@ namespace lux::editor::workspace
     }
     WorkspaceResult<void> validateRecovery(const RecoveryManifest& value, WorkspaceLimits limits)
     {
-        if (value.schema != 1)
+        if (value.schema != 2)
             return failed(EWorkspaceError::UNSUPPORTED_VERSION, "recovery schema");
         if (value.entries.size() > limits.entries)
             return failed(EWorkspaceError::CAPACITY, "recovery count");
@@ -203,10 +203,16 @@ namespace lux::editor::workspace
         std::set<ViewKey> unique;
         for (const auto& entry : value.entries)
         {
-            const bool valid = text(entry.restore_key.name(), limits) && text(entry.type.name(), limits) &&
-                               text(entry.locator, limits);
-            if (!valid || !unique.insert(key(entry.restore_key, entry.type)).second)
-                return failed(EWorkspaceError::INVALID_DATA, "recovery identity/locator");
+            const bool is_valid_identity = text(entry.restore_key.name(), limits) && text(entry.type.name(), limits);
+            const bool is_invalid_primary = entry.primary && *entry.primary >= entry.contents.size();
+            if (!is_valid_identity || is_invalid_primary || !unique.insert(key(entry.restore_key, entry.type)).second)
+                return failed(EWorkspaceError::INVALID_DATA, "recovery identity/primary");
+            if (entry.contents.size() > 64)
+                return failed(EWorkspaceError::CAPACITY, "recovery content count");
+            std::set<std::string_view> locations;
+            for (const auto& content : entry.contents)
+                if (!text(content.locator, limits) || !locations.insert(content.locator).second)
+                    return failed(EWorkspaceError::INVALID_DATA, "recovery locator");
         }
         return {};
     }

@@ -158,12 +158,31 @@ namespace
         w::UserPreferences preferences{1, value.id, value.opaque};
         assert(take(w::decodePreferences(take(w::encodePreferences(preferences)))).opaque == value.opaque);
         w::RecoveryManifest recovery{
-            1,
-            {{v::ViewRestoreKey{"x"}, v::ViewTypeId{"future.plugin"}, "asset:stable", true}},
+            2,
+            {{v::ViewRestoreKey{"x"}, v::ViewTypeId{"future.plugin"}, {{"asset:stable", true}}, 0}},
             value.opaque
         };
         auto restored = take(w::decodeRecovery(take(w::encodeRecovery(recovery))));
-        assert(restored.entries[0].unpersisted_changes && restored.opaque == value.opaque);
+        assert(restored.entries[0].contents[0].unpersisted_changes && restored.opaque == value.opaque);
+        recovery.entries[0].contents.push_back({"asset:second", false});
+        recovery.entries[0].primary = 1;
+        restored = take(w::decodeRecovery(take(w::encodeRecovery(recovery))));
+        assert(restored.entries[0].contents.size() == 2 && restored.entries[0].primary == 1);
+        assert(restored.entries[0].contents[1].locator == "asset:second");
+        recovery.entries[0].primary = 2;
+        assert(!w::encodeRecovery(recovery));
+        recovery.entries[0].primary.reset();
+        recovery.entries[0].contents[1].locator = "asset:stable";
+        assert(!w::encodeRecovery(recovery));
+        constexpr std::string_view legacy =
+            "schema=1\nopaque=[]\n[[entries]]\nkey='old'\ntype='missing.plugin'\n"
+            "locator='asset:old'\nunpersisted=true\nfuture='kept'\n";
+        auto legacy_read = take(w::decodeRecovery(bytes(std::string(legacy))));
+        assert(legacy_read.schema == 2 && legacy_read.entries[0].primary == 0);
+        assert(legacy_read.entries[0].contents[0].locator == "asset:old");
+        assert(legacy_read.opaque.back().bytes == bytes(std::string(legacy)));
+        const auto reread = take(w::decodeRecovery(take(w::encodeRecovery(legacy_read))));
+        assert(reread.opaque == legacy_read.opaque && reread.entries[0].contents[0].unpersisted_changes);
         w::WorkspaceLimits limits;
         limits.opaque_bytes = 3;
         assert(!w::encodeLayout(value, limits) && !w::decodeLayout(encoded, limits));
@@ -432,7 +451,7 @@ visible = false
         assert(take(restarted.readLayout(id)).value.label == "user edit after interruption");
         assert(take(restarted.listLayouts()).layouts.size() == 1);
         assert(take(restarted.readPreferences()).value.selected_layout == id);
-        assert(take(restarted.readRecovery()).value.entries[0].locator.starts_with("asset:"));
+        assert(take(restarted.readRecovery()).value.entries[0].contents[0].locator.starts_with("asset:"));
         assert(!take(restarted.continueMigration(retry)));
         assert(raw(old) == text);
         std::puts("X09-05 REAL files: new record before marker, recreated Store, stable mapping, user edit retained, "
@@ -534,7 +553,7 @@ visible = false
         const bool is_expected_count = plan.recovery.entries.size() == (expects_empty ? 0u : 1u);
         const bool is_scoped =
             is_expected_count &&
-            (expects_empty || (plan.recovery.entries[0].locator == "asset:" + std::string(expected_asset) &&
+            (expects_empty || (plan.recovery.entries[0].contents[0].locator == "asset:" + std::string(expected_asset) &&
                                plan.recovery.entries[0].restore_key.name() == expected_key &&
                                plan.recovery.entries[0].type == v::ViewTypeId{"lux.editor.material.v1"}));
         std::printf(
@@ -549,7 +568,7 @@ visible = false
             std::printf(
                 "recovery key=%s locator=%s\n",
                 std::string(entry.restore_key.name()).c_str(),
-                entry.locator.c_str()
+                entry.contents[0].locator.c_str()
             );
         return is_scoped;
     }
@@ -704,7 +723,7 @@ visible = false
         assert(take(store->readLayout(first_id)).value.label == "user edit after interruption");
         auto recovery = take(store->readRecovery());
         assert(
-            recovery.value.entries.size() == 1 && recovery.value.entries[0].locator == "asset:" + std::string(assetB)
+            recovery.value.entries.size() == 1 && recovery.value.entries[0].contents[0].locator == "asset:" + std::string(assetB)
         );
         // Existing marker and same-origin user-modified recovery are not permission to silently overwrite it.
         recovery.value.entries.clear();

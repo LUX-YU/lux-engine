@@ -275,8 +275,8 @@ namespace lux::editor::application
         {
             workspace::RecoveryEntry entry;
             std::optional<sessions::OpenAssetId> opening;
-            std::optional<OpenAndShowResult> result;
-            std::optional<EditorFailure> failure;
+            std::vector<sessions::OpenAssetStatus> sources;
+            std::optional<EditorResult<views::ViewId>> result;
         };
         struct RecoveryPresentation final
         {
@@ -505,7 +505,7 @@ namespace lux::editor::application
         [[nodiscard]] EditorResult<views::ViewId> showSceneTool(views::ViewId, std::string_view);
         [[nodiscard]] EditorResult<views::ViewId> show(sessions::SessionId, bool another_view);
         [[nodiscard]] EditorResult<views::ViewId> makeContentView(
-            sessions::SessionId,
+            views::ViewContent,
             bool another_view,
             const extensions::ContributionSnapshot&,
             std::optional<views::ViewRestoreKey> = {},

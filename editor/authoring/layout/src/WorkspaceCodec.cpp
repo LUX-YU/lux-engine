@@ -93,10 +93,10 @@ namespace lux::editor::workspace
                     toml::table{{"key", value.legacy_origin->key}, {"digest", value.legacy_origin->digest}}
                 );
         }
-        WorkspaceResult<void> decodeCommon(const toml::table& table, auto& value, WorkspaceLimits limits, bool& extra)
+        WorkspaceResult<void> decodeCommon(const toml::table& table, auto& value, WorkspaceLimits limits, bool& extra, std::uint32_t maximum_schema = 1)
         {
             value.schema = number(table, "schema");
-            if (value.schema != 1)
+            if (value.schema == 0 || value.schema > maximum_schema)
                 return lux::cxx::unexpected(WorkspaceFailure{EWorkspaceError::UNSUPPORTED_VERSION, "file schema"});
             const auto* opaque = table["opaque"].as_array();
             if (!opaque)
@@ -348,12 +348,15 @@ namespace lux::editor::workspace
         encodeCommon(table, value);
         toml::array entries;
         for (const auto& entry : value.entries)
-            entries.push_back(toml::table{
-                {"key", entry.restore_key.name()},
-                {"type", entry.type.name()},
-                {"locator", entry.locator},
-                {"unpersisted", entry.unpersisted_changes}
-            });
+        {
+            toml::array contents;
+            for (const auto& content : entry.contents)
+                contents.push_back(toml::table{{"locator", content.locator}, {"unpersisted", content.unpersisted_changes}});
+            toml::table row{{"key", entry.restore_key.name()}, {"type", entry.type.name()}, {"contents", std::move(contents)}};
+            if (entry.primary)
+                row.insert("primary", std::int64_t(*entry.primary));
+            entries.push_back(std::move(row));
+        }
         table.insert("entries", std::move(entries));
         return encode(table, limits);
     }
@@ -364,7 +367,7 @@ namespace lux::editor::workspace
             return lux::cxx::unexpected(table.error());
         RecoveryManifest value;
         bool extra = unknown(*table, {"schema", "opaque", "origin", "entries"});
-        auto common = decodeCommon(*table, value, limits, extra);
+        auto common = decodeCommon(*table, value, limits, extra, 2);
         if (!common)
             return lux::cxx::unexpected(common.error());
         const auto* entries = (*table)["entries"].as_array();
@@ -375,16 +378,47 @@ namespace lux::editor::workspace
         for (const auto& item : *entries)
         {
             const auto* row = item.as_table();
-            if (!row || !(*row)["unpersisted"].is_boolean())
+            if (!row)
                 return malformed("recovery entry");
-            value.entries.push_back(
-                {views::ViewRestoreKey{(*row)["key"].value_or(std::string{})},
-                 views::ViewTypeId{(*row)["type"].value_or(std::string{})},
-                 (*row)["locator"].value_or(std::string{}),
-                 (*row)["unpersisted"].value_or(false)}
-            );
-            extra |= unknown(*row, {"key", "type", "locator", "unpersisted"});
+            RecoveryEntry entry{views::ViewRestoreKey{(*row)["key"].value_or(std::string{})},
+                                views::ViewTypeId{(*row)["type"].value_or(std::string{})}};
+            if (value.schema == 1)
+            {
+                if (!(*row)["unpersisted"].is_boolean())
+                    return malformed("recovery entry");
+                entry.contents.push_back({(*row)["locator"].value_or(std::string{}),
+                                          (*row)["unpersisted"].value_or(false)});
+                entry.primary = 0;
+                extra |= unknown(*row, {"key", "type", "locator", "unpersisted"});
+            }
+            else
+            {
+                const auto* contents = (*row)["contents"].as_array();
+                if (!contents)
+                    return malformed("recovery contents");
+                if (contents->size() > 64)
+                    return capacity();
+                for (const auto& child : *contents)
+                {
+                    const auto* content = child.as_table();
+                    if (!content || !(*content)["unpersisted"].is_boolean())
+                        return malformed("recovery content");
+                    entry.contents.push_back({(*content)["locator"].value_or(std::string{}),
+                                              (*content)["unpersisted"].value_or(false)});
+                    extra |= unknown(*content, {"locator", "unpersisted"});
+                }
+                if (row->contains("primary"))
+                {
+                    const auto primary = (*row)["primary"].value<std::int64_t>();
+                    if (!primary || *primary < 0 || *primary >= static_cast<std::int64_t>(entry.contents.size()))
+                        return malformed("recovery primary");
+                    entry.primary = static_cast<std::uint32_t>(*primary);
+                }
+                extra |= unknown(*row, {"key", "type", "contents", "primary"});
+            }
+            value.entries.push_back(std::move(entry));
         }
+        value.schema = 2; // Read-only v1 conversion; no IO/publication occurs in this codec.
         preserveExtra(value, extra, bytes);
         auto valid = validateRecovery(value, limits);
         if (!valid)

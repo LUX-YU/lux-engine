@@ -31,7 +31,7 @@ namespace lux::editor::application
         const auto catalog = contributions_.snapshot();
         for (const auto& view : *views)
         {
-            if (!view.content.primary)
+            if (view.content.sessions.empty())
                 continue;
             const auto factory = std::ranges::find_if(catalog.views().entries(), [&](const auto& entry) {
                 return entry->descriptor().type == view.type &&
@@ -39,22 +39,21 @@ namespace lux::editor::application
             });
             if (factory == catalog.views().entries().end())
                 continue; // Contextual auxiliary windows are layout entries, not content creation factories.
-            auto source = sessions_.describe(*view.content.primary);
-            if (!source)
-                return applicationFailure("recovery.source", source.error());
-            if (!source->binding)
-                return cxx::unexpected(EditorFailure{
-                    EEditorError::INVALID_ARGUMENT,
-                    "recovery.unbound",
-                    0,
-                    "Save unbound content before recording its recovery location."
-                });
-            workspace::RecoveryEntry next{
-                view.restore_key,
-                view.type,
-                "asset:" + uuids::to_string(source->binding->asset.uuid()),
-                source->dirty
-            };
+            workspace::RecoveryEntry next{view.restore_key, view.type};
+            for (const auto id : view.content.sessions)
+            {
+                auto source = sessions_.describe(id);
+                if (!source)
+                    return applicationFailure("recovery.source", source.error());
+                if (!source->binding)
+                    return cxx::unexpected(EditorFailure{
+                        EEditorError::INVALID_ARGUMENT, "recovery.unbound", 0,
+                        "Save unbound content before recording its recovery location."
+                    });
+                if (view.content.primary == id)
+                    next.primary = static_cast<std::uint32_t>(next.contents.size());
+                next.contents.push_back({"asset:" + uuids::to_string(source->binding->asset.uuid()), source->dirty});
+            }
             auto found = std::ranges::find_if(value.entries, [&](const auto& entry) {
                 return entry.restore_key == next.restore_key && entry.type == next.type;
             });
@@ -90,19 +89,52 @@ namespace lux::editor::application
             return {};
         for (auto& item : recovery_->items)
         {
-            if (item.failure || item.result)
+            if (item.result)
                 continue;
-            if (!item.opening)
+            if (item.opening)
             {
-                if (phase_ != EApplicationPhase::RUNNING)
+                auto status = opening_.status(*item.opening);
+                if (!status)
+                    return applicationFailure("recovery.open.status", status.error());
+                const bool is_pending = status->stage == sessions::EOpenAssetStage::READING ||
+                                        status->stage == sessions::EOpenAssetStage::PREPARING;
+                const bool is_reviewing = phase_ == EApplicationPhase::REVIEWING ||
+                                          phase_ == EApplicationPhase::COMMITTING_EXIT;
+                if (is_pending || (status->stage == sessions::EOpenAssetStage::PUBLISHED && is_reviewing))
                     continue;
-                const auto type = recoveryType(item.entry.type);
-                const auto& locator = item.entry.locator;
-                auto parsed = locator.starts_with("asset:") ? uuids::uuid::from_string(locator.substr(6))
-                                                            : std::optional<uuids::uuid>{};
+                auto acknowledged = opening_.acknowledge(*item.opening);
+                if (!acknowledged)
+                    return applicationFailure("recovery.acknowledge", acknowledged.error());
+                std::erase_if(opens_, [&](const auto& entry) { return entry.operation == *item.opening; });
+                item.opening.reset();
+                item.sources.push_back(std::move(*status));
+                const auto& completed = item.sources.back();
+                if (completed.stage != sessions::EOpenAssetStage::PUBLISHED)
+                {
+                    item.result.emplace(completed.failure
+                        ? applicationFailure("recovery.open", *completed.failure)
+                        : cxx::unexpected(EditorFailure{EEditorError::CANCELLED, "recovery.open"}));
+                    continue;
+                }
+            }
+            if (phase_ != EApplicationPhase::RUNNING)
+            {
+                if (phase_ == EApplicationPhase::DRAINING)
+                    item.result.emplace(cxx::unexpected(EditorFailure{EEditorError::CLOSING, "recovery.presentation"}));
+                continue;
+            }
+            if (item.sources.size() < item.entry.contents.size())
+            {
+                // One admitted read per entry. Completed facts remain owned even if another source or
+                // the final view fails; no partial content publication is rolled back for a UI error.
+                const auto& locator = item.entry.contents[item.sources.size()].locator;
+                const auto parsed = locator.starts_with("asset:") ? uuids::uuid::from_string(locator.substr(6))
+                                                                  : std::optional<uuids::uuid>{};
                 if (!parsed)
                 {
-                    item.failure = EditorFailure{EEditorError::INVALID_ARGUMENT, "recovery.locator", 0, locator};
+                    item.result.emplace(cxx::unexpected(EditorFailure{
+                        EEditorError::INVALID_ARGUMENT, "recovery.locator", 0, locator
+                    }));
                     continue;
                 }
                 const auto asset_id = asset::AssetId{*parsed};
@@ -115,16 +147,14 @@ namespace lux::editor::application
                         })
                     };
                 const bool matching = factory && recovery_->catalog.views().selectContent(
-                    (*factory)->descriptor().kind, type
+                    (*factory)->descriptor().kind, recoveryType(item.entry.type)
                 ).has_value();
                 if (!matching)
                 {
-                    item.failure = EditorFailure{
-                        EEditorError::MISSING_PROVIDER,
-                        "recovery.type-or-asset",
-                        0,
+                    item.result.emplace(cxx::unexpected(EditorFailure{
+                        EEditorError::MISSING_PROVIDER, "recovery.type-or-asset", 0,
                         "Entry retained: its asset or exact content view type is unavailable."
-                    };
+                    }));
                     continue;
                 }
                 std::optional<EditorResult<sessions::OpenAssetId>> admitted;
@@ -136,64 +166,44 @@ namespace lux::editor::application
                 if (!guarded)
                 {
                     if (guarded.error().code != extensions::EContributionError::BUSY)
-                        item.failure = applicationFailure("recovery.catalog", guarded.error()).value();
+                        item.result.emplace(applicationFailure("recovery.catalog", guarded.error()));
                     continue;
                 }
                 if (!*admitted)
                 {
                     if (admitted->error().code != EEditorError::BUSY)
-                        item.failure = admitted->error();
+                        item.result.emplace(cxx::unexpected(admitted->error()));
                     continue;
                 }
                 item.opening = **admitted;
                 auto presentation = std::ranges::find(opens_, **admitted, &OpenPresentation::operation);
                 if (presentation == opens_.end())
                     std::terminate();
-                presentation->present = false; // Only this recovery record is allowed to choose its view key.
+                presentation->present = false;
+                continue;
             }
-            auto status = opening_.status(*item.opening);
-            if (!status)
-                return applicationFailure("recovery.open.status", status.error());
-            if (status->stage == sessions::EOpenAssetStage::READING ||
-                status->stage == sessions::EOpenAssetStage::PREPARING)
-                continue;
-            // Review is cancellable. Keep accepted content and its presentation request intact.
-            if (status->stage == sessions::EOpenAssetStage::PUBLISHED &&
-                (phase_ == EApplicationPhase::REVIEWING || phase_ == EApplicationPhase::COMMITTING_EXIT))
-                continue;
-            OpenAndShowResult result{*status};
-            if (status->stage == sessions::EOpenAssetStage::PUBLISHED && phase_ == EApplicationPhase::RUNNING)
+            views::ViewContent association;
+            for (const auto& content : item.sources)
+                association.sessions.push_back(content.session);
+            if (item.entry.primary)
+                association.primary = association.sessions[*item.entry.primary];
+            std::optional<EditorResult<views::ViewId>> displayed;
+            auto prepare = [&](const extensions::ContributionSnapshot&) -> extensions::ContributionResult<void> {
+                displayed.emplace(makeContentView(
+                    association, true, recovery_->catalog, item.entry.restore_key, recoveryType(item.entry.type)
+                ));
+                return {};
+            };
+            auto guarded = contributions_.withSnapshot(prepare);
+            if (!guarded)
             {
-                std::optional<EditorResult<views::ViewId>> displayed;
-                auto prepare = [&](const extensions::ContributionSnapshot&) -> extensions::ContributionResult<void> {
-                    displayed.emplace(makeContentView(status->session, true, recovery_->catalog, item.entry.restore_key, recoveryType(item.entry.type))
-                    );
-                    return {};
-                };
-                auto guarded = contributions_.withSnapshot(prepare);
-                if (!guarded)
-                {
-                    if (guarded.error().code == extensions::EContributionError::BUSY)
-                        continue;
-                    result.presentation_failure = applicationFailure("recovery.view.catalog", guarded.error()).value();
-                }
-                else if (*displayed)
-                    result.view = **displayed;
-                else
-                {
-                    if (displayed->error().code == EEditorError::BUSY)
-                        continue;
-                    result.presentation_failure = displayed->error();
-                }
+                if (guarded.error().code != extensions::EContributionError::BUSY)
+                    item.result.emplace(applicationFailure("recovery.view.catalog", guarded.error()));
+                continue;
             }
-            else if (status->stage == sessions::EOpenAssetStage::PUBLISHED)
-                result.presentation_failure = EditorFailure{EEditorError::CLOSING, "recovery.presentation"};
-            auto acknowledged = opening_.acknowledge(*item.opening);
-            if (!acknowledged)
-                return applicationFailure("recovery.acknowledge", acknowledged.error());
-            std::erase_if(opens_, [&](const auto& entry) { return entry.operation == *item.opening; });
-            item.opening.reset();
-            item.result = std::move(result);
+            if (!*displayed && displayed->error().code == EEditorError::BUSY)
+                continue;
+            item.result = std::move(displayed);
         }
         return {};
     }

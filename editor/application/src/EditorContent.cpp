@@ -60,7 +60,8 @@ namespace lux::editor::application
             [this](const commands::CommandInvocation& invocation
             ) -> commands::CommandResult<commands::DispatchReceipt> {
                 auto result = makeContentView(
-                    std::get<commands::SessionTarget>(invocation.target()).id,
+                    {{std::get<commands::SessionTarget>(invocation.target()).id},
+                     std::get<commands::SessionTarget>(invocation.target()).id},
                     true,
                     contributions_.snapshot()
                 );

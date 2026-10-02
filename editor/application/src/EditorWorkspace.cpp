@@ -255,39 +255,26 @@ namespace lux::editor::application
                     if (app_.recovery_)
                         for (const auto& item : app_.recovery_->items)
                         {
-                            ImGui::TextWrapped(
-                                "%s / %s",
-                                std::string(item.entry.restore_key.name()).c_str(),
-                                item.entry.locator.c_str()
-                            );
-                            if (item.entry.unpersisted_changes)
-                                ImGui::TextUnformatted(
-                                    "Only saved content can be restored; unsaved edits are not in this manifest."
-                                );
-                            if (item.failure)
-                                ImGui::TextWrapped(
-                                    "%s: %s",
-                                    item.failure->domain.c_str(),
-                                    item.failure->message.c_str()
-                                );
-                            else if (item.result)
+                            ImGui::TextUnformatted(std::string(item.entry.restore_key.name()).c_str());
+                            for (const auto& content : item.entry.contents)
                             {
-                                if (item.result->presentation_failure)
-                                    ImGui::TextWrapped(
-                                        "Content retained, view unavailable: %s",
-                                        item.result->presentation_failure->domain.c_str()
+                                ImGui::TextWrapped("%s", content.locator.c_str());
+                                if (content.unpersisted_changes)
+                                    ImGui::TextUnformatted(
+                                        "Only saved content can be restored; unsaved edits are not in this manifest."
                                     );
-                                else if (item.result->content.failure)
-                                    ImGui::TextWrapped(
-                                        "%s: %s",
-                                        item.result->content.failure->domain.c_str(),
-                                        item.result->content.failure->detail.c_str()
-                                    );
-                                else
-                                    ImGui::TextUnformatted(item.result->view ? "Content presented" : "Not presented");
                             }
-                            else
+                            if (!item.result)
                                 ImGui::TextUnformatted("Recovery pending");
+                            else if (!*item.result)
+                                ImGui::TextWrapped("%s: %s", item.result->error().domain.c_str(),
+                                                   item.result->error().message.c_str());
+                            else
+                                ImGui::TextUnformatted("Content presented");
+                            for (const auto& source : item.sources)
+                                if (source.failure)
+                                    ImGui::TextWrapped("%s: %s", source.failure->domain.c_str(),
+                                                       source.failure->detail.c_str());
                         }
                     ImGui::SeparatorText("Publication results");
                     for (const auto& report : app_.workspace_publications_)

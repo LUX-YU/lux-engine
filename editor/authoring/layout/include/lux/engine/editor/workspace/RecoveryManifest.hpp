@@ -3,17 +3,22 @@
 
 namespace lux::editor::workspace
 {
+    struct RecoveryContent final
+    {
+        std::string locator;
+        // The locator cannot recover changes that were never persisted.
+        bool unpersisted_changes{};
+    };
     struct RecoveryEntry final
     {
         views::ViewRestoreKey restore_key;
         views::ViewTypeId type;
-        std::string locator;
-        // A diagnostic fact: this manifest cannot recover changes that were never persisted.
-        bool unpersisted_changes{};
+        std::vector<RecoveryContent> contents;
+        std::optional<std::uint32_t> primary;
     };
     struct RecoveryManifest final
     {
-        std::uint32_t schema{1};
+        std::uint32_t schema{2};
         std::vector<RecoveryEntry> entries;
         std::vector<PreservedOpaqueState> opaque;
         std::optional<LegacyOrigin> legacy_origin;

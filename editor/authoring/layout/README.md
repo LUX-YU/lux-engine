@@ -76,3 +76,11 @@ EditorApplication applies the complete plan through DesktopShell/ViewHost prepar
 Independent RecoveryManifest input supplies content bindings. The product's C01 regression checks
 rejected dock data against its original visibility, count and serialized dock state; historical C01
 FAIL snapshots remain unchanged and are evaluated at their own implementation SHA.
+
+EC1 recovery format 2 records every content locator and its unpersisted-change diagnostic per view,
+plus an optional primary index. Up to 64 distinct locators match the bounded ViewContent contract.
+Version 1 remains readable as one content with primary 0; reads never publish or rewrite the original file.
+Unknown opaque data and migration provenance remain owned across decoding and explicit publication.
+Recovery admits reads one at a time per entry, retains their actual terminal results, and only presents
+when all contents are published. A later source or exact-view failure leaves earlier published sessions
+owned by SessionStore. Layout files and original migration markers retain their existing formats.

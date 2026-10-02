@@ -5,6 +5,7 @@
 #include <lux/engine/scene/RenderAssets.hpp>
 #include <lux/engine/scene/RenderFeatureSceneBinding.hpp>
 #include <lux/engine/editor/editing/EditHistory.hpp>
+#include <lux/cxx/core/function_ref.hpp>
 
 namespace lux::editor::scene
 {
@@ -46,6 +47,12 @@ namespace lux::editor::scene
         [[nodiscard]] RunResult<std::reference_wrapper<SceneEditing>> debugEditing(RunId) noexcept;
         [[nodiscard]] RunResult<std::reference_wrapper<editing::EditHistory>> debugHistory(RunId) noexcept;
         [[nodiscard]] RunResult<void> finishEditing(RunId);
+        // Synchronous borrows protected against callback-driven resume, stop and slot reclamation.
+        using Inspect = cxx::function_ref<
+            RunResult<void>(const simulation::ecs::Registry&, const std::optional<editing::HistorySnapshot>&)>;
+        using Edit = cxx::function_ref<RunResult<void>(SceneEditing&)>;
+        [[nodiscard]] RunResult<void> withInspection(RunningObjectRef, Inspect);
+        [[nodiscard]] RunResult<void> withEditing(RunningObjectRef, editing::StateId, editing::Revision, Edit);
 
     private:
         friend class RunController;

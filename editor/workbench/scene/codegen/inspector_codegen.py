@@ -577,6 +577,16 @@ ComponentEditorRegistration binding_{suffix}()
             old = f'create_{suffix}(lux::ui::Element& parent, lux::ui::ElementId id,\n    InspectorFields& editing, SceneObjectRef target, InspectorInteraction& interaction) noexcept'
             new = f'create_{suffix}(lux::ui::Element& parent, lux::ui::ElementId id, InspectorFields& interaction) noexcept'
             text = text.replace(old, new).replace(f'new Element_{suffix}(parent, std::move(id), editing, target, interaction, status)', f'new Element_{suffix}(parent, std::move(id), interaction, interaction.target(), interaction, status)')
+            run = text.replace('namespace lux::editor::scene::generated', 'namespace lux::editor::scene::run_generated')
+            run = run.replace('InspectorFields', 'RunInspectorFields').replace('SceneObjectRef', 'RunningObjectRef')
+            run = run.replace('SceneEditResult<void>', 'RunResult<void>').replace('InspectorComponent', 'RunInspectorComponent')
+            # The component-specific copy is generated alongside its controls, with the same code owner.
+            old_binding = "return {" + f"lux::cxx::typeToken<{name}>(), {literal(attrs.get('display_name', decl['name']))}, create_{suffix}" + "};"
+            new_binding = old_binding[:-2] + f", +[](const void* value) -> std::shared_ptr<void> {{ return std::make_shared<{name}>(*static_cast<const {name}*>(value)); }}" + "};"
+            if old_binding not in run:
+                raise ValueError('missing generated run component binding')
+            run = run.replace(old_binding, new_binding)
+            text += '\n' + run
         return suffix, text
 
 
@@ -598,7 +608,11 @@ def generate(config, data):
         header = outputs[config['name'] + '.inspector.generated.hpp']
         header = header.replace('lux/engine/editor/ui/ComponentEditors.hpp', 'lux/engine/editor/scene/InspectorView.hpp')
         header = header.replace('namespace lux::editor::ui::generated', 'namespace lux::editor::scene::generated')
-        outputs[config['name'] + '.inspector.generated.hpp'] = header.replace('ComponentEditorRegistration', 'InspectorComponent')
+        header = header.replace('ComponentEditorRegistration', 'InspectorComponent')
+        run_header = header.replace('lux/engine/editor/scene/InspectorView.hpp', 'lux/engine/editor/scene/RunInspectorView.hpp')
+        run_header = run_header.replace('namespace lux::editor::scene::generated', 'namespace lux::editor::scene::run_generated')
+        run_header = run_header.replace('InspectorComponent', 'RunInspectorComponent')
+        outputs[config['name'] + '.inspector.generated.hpp'] = header + '\n' + run_header
     else:
         header = outputs[config['name'] + '.inspector.generated.hpp']
         outputs[config['name'] + '.inspector.generated.hpp'] = header.replace('#include <array>', '#include <array>\n#include <lux/engine/editor/ui/InspectorInteraction.hpp>')

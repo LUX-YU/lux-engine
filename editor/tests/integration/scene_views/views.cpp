@@ -18,6 +18,7 @@
 #include <lux/engine/editor/scene/ResourceView.hpp>
 #include <lux/engine/editor/scene/OutlinerView.hpp>
 #include <lux/engine/editor/scene/InspectorView.hpp>
+#include <lux/engine/editor/scene/RunInspectorView.hpp>
 #include <lux/engine/editor/scene/SceneCreationView.hpp>
 #include <lux/engine/editor/scene/SceneConfigurationView.hpp>
 #include "../../../../../cmake/installed-consumers/common/ControlsTestAccess.hpp"
@@ -605,6 +606,91 @@ namespace
         assert(!b->beginEdit("must not edit author") && !run_group.overlay());
         assert(runs.pause(run));
         f.wait([&] { return take(runs.info(run)).state == author::ERunState::PAUSED; });
+        const auto registry = take(runs.inspect().borrow(run));
+        const auto entity = registry.get().view<const simulation::ecs::Transform3D>().front();
+        const auto target = take(runs.inspect().reference(run, entity));
+        auto run_inspector = take(author::makeRunInspectorView(
+            f.messages.dispatcherRef(),
+            ui::PaneId{"run-fields"},
+            runs,
+            target,
+            f.environment.components,
+            author::runInspectorComponents()
+        ));
+        auto* run_fields_view = static_cast<author::RunInspectorView*>(run_inspector.pane());
+        const auto inspector_id = take(f.desktop->views().adopt(run_inspector, views::ViewRestoreKey{"run-fields"})).id;
+        assert(run_fields_view->target() == target);
+        {
+            const auto components = author::runInspectorComponents();
+            const auto type = cxx::typeToken<simulation::ecs::Transform3D>();
+            const auto registration = std::ranges::find(components, type, &author::RunInspectorComponent::type);
+            assert(registration != components.end());
+            author::RunInspectorFields fields(runs, target, *f.environment.components.find(type), registration->copy);
+            assert(fields.refresh() && fields.writeRestriction().empty());
+            const auto axis = [](auto& value) { return &value.translation.x(); };
+            const auto initial = fields.read<simulation::ecs::Transform3D>(target)->translation.x();
+            const auto paused = take(take(runs.debugHistory(run)).get().view()).snapshot;
+            assert(fields.apply<simulation::ecs::Transform3D>(
+                target,
+                "translation.x",
+                "Move paused object",
+                axis,
+                initial + 2.,
+                {true, true, false, false}
+            ));
+            assert(
+                take(runs.inspect().borrow(run)).get().get<simulation::ecs::Transform3D>(entity).translation.x() ==
+                initial
+            );
+            assert(fields.cancel() && fields.refresh());
+            assert(take(take(runs.debugHistory(run)).get().view()).snapshot.current == paused.current);
+            assert(fields.apply<simulation::ecs::Transform3D>(
+                target,
+                "translation.x",
+                "Move paused object",
+                axis,
+                initial + 3.,
+                {true, true, true, false}
+            ));
+            assert(fields.update());
+            assert(
+                take(runs.inspect().borrow(run)).get().get<simulation::ecs::Transform3D>(entity).translation.x() ==
+                initial + 3.
+            );
+            assert(take(runs.debugHistory(run)).get().undo());
+            assert(
+                take(runs.inspect().borrow(run)).get().get<simulation::ecs::Transform3D>(entity).translation.x() ==
+                initial
+            );
+            assert(fields.refresh());
+            const auto inspect = [&](const simulation::ecs::Registry&,
+                                     const std::optional<editing::HistorySnapshot>&) -> author::RunResult<void> {
+                const auto refused = runs.resume(run);
+                assert(!refused && std::get<author::ERunError>(refused.error().cause) == author::ERunError::BUSY);
+                return {};
+            };
+            assert(runs.withInspection(target, inspect));
+            assert(fields.apply<simulation::ecs::Transform3D>(
+                target,
+                "translation.x",
+                "Old pause epoch",
+                axis,
+                initial + 4.,
+                {true, true, false, false}
+            ));
+            assert(runs.resume(run));
+            assert(!fields.finish() && fields.active());
+            assert(fields.cancel());
+            f.wait([&] { return fields.refresh().has_value(); });
+            assert(!fields.writeRestriction().empty());
+            assert(runs.pause(run));
+            f.wait([&] { return take(runs.info(run)).state == author::ERunState::PAUSED; });
+            assert(fields.refresh());
+            assert(take(take(runs.debugHistory(run)).get().view()).snapshot.history != paused.history);
+            assert(f.session->describe().current == stamp.current);
+        }
+        assert(f.desktop->views().close(inspector_id));
+        f.wait([&] { return !f.desktop->views().describe(inspector_id); });
         const auto clock = take(runs.info(run)).progress.time.elapsed;
         for (int i{}; i < 3; ++i)
             f.frame();

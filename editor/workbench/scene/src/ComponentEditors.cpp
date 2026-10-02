@@ -18,4 +18,16 @@ namespace lux::editor::scene
         append(generated::scene_fields_cameraBindings());
         return result;
     }
+    std::vector<RunInspectorComponent> runInspectorComponents()
+    {
+        std::vector<RunInspectorComponent> result;
+        const auto append = [&](const auto& bindings) {
+            result.insert(result.end(), bindings.begin(), bindings.end());
+        };
+        append(run_generated::scene_fields_transformBindings());
+        append(run_generated::scene_fields_hierarchyBindings());
+        append(run_generated::scene_fields_visualBindings());
+        append(run_generated::scene_fields_cameraBindings());
+        return result;
+    }
 } // namespace lux::editor::scene

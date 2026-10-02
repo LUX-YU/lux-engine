@@ -402,6 +402,56 @@ namespace lux::editor::scene
         return (*run)->finishEditing();
     }
 
+    RunResult<void> RunStore::withInspection(RunningObjectRef target, Inspect inspect)
+    {
+        auto found = impl_->find(target.run);
+        if (!found)
+            return cxx::unexpected(found.error());
+        auto& run = **found;
+        if (run.info.instance != target.instance)
+            return rejected(ERunError::INVALID_ID);
+        if (!run.instance)
+            return rejected(ERunError::STOPPED);
+        auto registry = std::as_const(impl_->runtime).borrowInstance(target.instance);
+        if (!registry)
+            return rejected(registry.error());
+        if (!registry->get().valid(target.entity))
+            return rejected(ERunError::INVALID_ID);
+        DispatchScope dispatch(impl_->dispatching);
+        std::optional<editing::HistorySnapshot> history;
+        if (run.debug && run.info.state == ERunState::PAUSED && !run.info.pause_pending)
+        {
+            auto view = run.debug->history->view();
+            if (!view)
+                return rejected(view.error());
+            history = view->snapshot;
+        }
+        return inspect(registry->get(), history);
+    }
+    RunResult<void> RunStore::withEditing(
+        RunningObjectRef target,
+        editing::StateId expected,
+        editing::Revision revision,
+        Edit edit
+    )
+    {
+        auto found = impl_->find(target.run);
+        if (!found)
+            return cxx::unexpected(found.error());
+        auto& run = **found;
+        if (run.info.instance != target.instance)
+            return rejected(ERunError::INVALID_ID);
+        if (!run.debug || run.info.state != ERunState::PAUSED || run.info.pause_pending)
+            return rejected(ERunError::BUSY);
+        DispatchScope dispatch(impl_->dispatching);
+        auto current = run.debug->history->view();
+        if (!current)
+            return rejected(current.error());
+        if (current->snapshot.current != expected || current->snapshot.revision != revision)
+            return rejected(editing::makeEditFailure(editing::EEditError::STALE_BASE));
+        return edit(run.debug->editing);
+    }
+
     RunInspectAccess RunStore::inspect() const noexcept
     {
         return RunInspectAccess(

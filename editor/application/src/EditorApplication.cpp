@@ -30,7 +30,6 @@ namespace lux::editor::application
           flow_compilation_(engine_->execution()), contributions_(messages_.dispatcherRef(), commands_),
           workspace_(config_.project_file.parent_path(), writes_, files_)
     {
-        content_views_.reserve(64);
         opens_.reserve(64);
         open_intents_.reserve(64);
         model_placements_.reserve(32);

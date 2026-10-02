@@ -1,11 +1,20 @@
 #include <lux/engine/editor/scene/ResourceView.hpp>
 #include <lux/engine/ui/Element.hpp>
+#include <lux/engine/editor/scene/SceneView.hpp>
+#include <lux/engine/editor/desktop/ViewHost.hpp>
 #include <imgui.h>
 
 namespace lux::editor::scene
 {
     struct ResourceView::Impl final
     {
+        struct Viewport final
+        {
+            desktop::ViewHost& host;
+            views::ViewId id;
+        };
+        std::optional<Viewport> viewport_;
+        views::ViewContent association_;
         lux::scene::SceneRuntime& runtime_;
         std::optional<ResourceViewBinding> binding_;
         ResourceStatusSnapshot snapshot_;
@@ -71,6 +80,34 @@ namespace lux::editor::scene
             retry_.reset();
             return {};
         }
+        render::RenderResult<void> synchronizeViewport(const Viewport& source)
+        {
+            std::optional<ResourceViewBinding> target;
+            views::ViewContent content;
+            bool is_scene{};
+            const auto read = [&](lux::ui::Pane& pane) {
+                if (const auto* view = dynamic_cast<const SceneView*>(&pane))
+                {
+                    is_scene = true;
+                    if (view->presentedInstance().valid())
+                        target = ResourceViewBinding{view->presentedInstance(), view->renderSystem()};
+                    if (const auto* author = std::get_if<EditedSceneBinding>(&view->binding()))
+                        content = {{author->session.id()}, author->session.id()};
+                }
+            };
+            auto observed = source.host.withView(source.id, read);
+            if (!observed && observed.error() != views::EViewError::INVALID_ID)
+                return cxx::unexpected(render::RendererFailure{
+                    observed.error() == views::EViewError::BUSY ? render::ERendererError::BUSY
+                                                               : render::ERendererError::INVALID_ARGUMENT
+                });
+            if (observed && !is_scene)
+                return cxx::unexpected(render::RendererFailure{render::ERendererError::INVALID_ARGUMENT});
+            auto changed = rebind(target);
+            if (changed)
+                association_ = std::move(content);
+            return changed;
+        }
         render::RenderResult<void> refresh()
         {
             if (!binding_)
@@ -113,6 +150,18 @@ namespace lux::editor::scene
     {
         return impl_->status_ = impl_->rebind(binding);
     }
+    render::RenderResult<void> ResourceView::followViewport(desktop::ViewHost& host, views::ViewId id)
+    {
+        const Impl::Viewport source{host, id};
+        auto changed = impl_->synchronizeViewport(source);
+        if (changed)
+            impl_->viewport_.emplace(source);
+        return changed;
+    }
+    views::ViewContent ResourceView::content() const noexcept
+    {
+        return impl_->association_;
+    }
     render::RenderResult<void> ResourceView::refresh()
     {
         return impl_->status_ = impl_->refresh();
@@ -134,6 +183,12 @@ namespace lux::editor::scene
     }
     void ResourceView::update() noexcept
     {
+        if (impl_->viewport_)
+        {
+            impl_->status_ = impl_->synchronizeViewport(*impl_->viewport_);
+            if (!impl_->status_)
+                return;
+        }
         static_cast<void>(refresh());
         if (impl_->retry_)
         {
@@ -155,6 +210,9 @@ namespace lux::editor::scene
         auto bound = result->rebind(binding);
         if (!bound)
             return cxx::unexpected(bound.error());
-        return views::DetachedView{contracts::CodeLease::builtin(), std::move(result)};
+        return views::DetachedView{
+            contracts::CodeLease::builtin(), std::move(result), nullptr, nullptr, nullptr, nullptr,
+            +[](const lux::ui::Pane& pane) noexcept { return static_cast<const ResourceView&>(pane).content(); }
+        };
     }
 }

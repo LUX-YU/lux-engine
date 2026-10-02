@@ -68,14 +68,6 @@ namespace lux::editor::application
             bool cancelled{};
             bool present{true};
         };
-        struct ContentView final
-        {
-            sessions::SessionId session;
-            views::ViewId view;
-            std::shared_ptr<scene::SceneInteractionGroup> scene;
-            std::optional<scene::RunId> run;
-            views::ViewId source_view;
-        };
         struct ModelPresentation final
         {
             std::uint64_t id;
@@ -206,7 +198,7 @@ namespace lux::editor::application
             sessions::ContentStamp source;
             std::unique_ptr<scene::StartRunOperation> preparing;
             std::optional<scene::RunId> run;
-            std::shared_ptr<scene::SceneInteractionGroup> interaction;
+            std::vector<views::ViewId> views;
             std::optional<scene::StopTicket> stopping;
             bool stop_requested{};
             std::vector<scene::StepTicket> steps;
@@ -411,7 +403,6 @@ namespace lux::editor::application
         std::optional<persistence::WriteTicket> migration_ticket_;
         std::optional<EditorFailure> migration_failure_;
         bool migration_complete_{};
-        std::vector<ContentView> content_views_;
         std::vector<RunPresentation> run_presentations_;
         std::vector<OpenPresentation> opens_;
         std::vector<AssetReference> open_intents_;
@@ -484,7 +475,6 @@ namespace lux::editor::application
         [[nodiscard]] EditorResult<void> restoreRecovery();
         [[nodiscard]] EditorResult<void> settleRecovery();
         [[nodiscard]] EditorResult<void> settleMigration();
-        [[nodiscard]] EditorResult<void> wireContentView(ContentView&, lux::ui::Pane&);
         [[nodiscard]] EditorResult<sessions::OpenAssetId>
         openCaptured(AssetReference, const extensions::ContributionSnapshot&);
         [[nodiscard]] EditorResult<void> receiveResultIntent();
@@ -513,7 +503,6 @@ namespace lux::editor::application
         [[nodiscard]] EditorResult<void> maintainRuns();
         [[nodiscard]] EditorResult<void> stopRun(scene::RunId);
         [[nodiscard]] EditorResult<views::ViewId> showSceneTool(views::ViewId, std::string_view);
-        [[nodiscard]] EditorResult<void> synchronizeSceneTools();
         [[nodiscard]] EditorResult<views::ViewId> show(sessions::SessionId, bool another_view);
         [[nodiscard]] EditorResult<views::ViewId> makeContentView(
             sessions::SessionId,

@@ -188,29 +188,15 @@ namespace lux::editor::application
                 break;
             }
         }
-        const bool is_full = !existing && content_views_.size() == 64;
+        const bool is_full = !existing && views->size() == 64;
         if (is_full || next_view_ == UINT64_MAX)
             return cxx::unexpected(EditorFailure{EEditorError::CAPACITY, "show.views"});
         const auto name = "content-" + std::to_string(next_view_++);
-        ContentView owner{id};
         if (existing)
         {
             auto rebound = desktop_->views().rebindContent(*existing, association);
             if (!rebound)
                 return applicationFailure("recovery.binding", rebound.error());
-            EditorResult<void> connected;
-            auto wire = [&](lux::ui::Pane& pane) { connected = wireContentView(owner, pane); };
-            auto visited = desktop_->views().withView(*existing, wire);
-            if (!visited)
-                return applicationFailure("recovery.view", visited.error());
-            if (!connected)
-                return cxx::unexpected(connected.error());
-            owner.view = *existing;
-            auto previous = std::ranges::find(content_views_, *existing, &ContentView::view);
-            if (previous != content_views_.end())
-                *previous = std::move(owner);
-            else
-                content_views_.push_back(std::move(owner));
             return *existing;
         }
         views::ContentViewInput value{association, info->binding ? info->binding->location : name};
@@ -221,23 +207,9 @@ namespace lux::editor::application
         auto view = snapshot.views().prepare(*selected, input);
         if (!view)
             return applicationFailure("view.factory", view.error());
-        auto connected = wireContentView(owner, *view->pane());
-        if (!connected)
-            return cxx::unexpected(connected.error());
         auto adopted = adopt(*view, restore_key ? std::string(restore_key->name()) : name);
         if (!adopted)
             return cxx::unexpected(adopted.error());
-        owner.view = *adopted;
-        content_views_.push_back(std::move(owner));
         return *adopted;
     }
-    EditorResult<void> EditorApplication::Impl::wireContentView(ContentView& owner, lux::ui::Pane& pane)
-    {
-        if (pane.type() == lux::ui::PaneTypeId{"lux.editor.scene.view"})
-        {
-            owner.scene = static_cast<scene::SceneView&>(pane).interactionOwner();
-        }
-        return {};
-    }
-
 }

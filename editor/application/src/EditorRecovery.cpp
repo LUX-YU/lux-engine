@@ -25,14 +25,21 @@ namespace lux::editor::application
         auto value = previous ? previous->value : workspace::RecoveryManifest{};
         const auto version = previous ? previous->target.expected_version : "missing";
         // Preserve unknown records and payload. Only the actual currently bound view entries are replaced.
-        for (const auto& record : content_views_)
+        auto views = desktop_->views().describeAll();
+        if (!views)
+            return applicationFailure("recovery.views", views.error());
+        const auto catalog = contributions_.snapshot();
+        for (const auto& view : *views)
         {
-            if (!record.session.valid() || record.run || record.source_view.valid())
+            if (!view.content.primary)
                 continue;
-            auto view = desktop_->views().describe(record.view);
-            if (!view)
-                return applicationFailure("recovery.view", view.error());
-            auto source = sessions_.describe(record.session);
+            const auto factory = std::ranges::find_if(catalog.views().entries(), [&](const auto& entry) {
+                return entry->descriptor().type == view.type &&
+                       entry->descriptor().binding_type == cxx::typeToken<views::ContentViewInput>();
+            });
+            if (factory == catalog.views().entries().end())
+                continue; // Contextual auxiliary windows are layout entries, not content creation factories.
+            auto source = sessions_.describe(*view.content.primary);
             if (!source)
                 return applicationFailure("recovery.source", source.error());
             if (!source->binding)
@@ -43,8 +50,8 @@ namespace lux::editor::application
                     "Save unbound content before recording its recovery location."
                 });
             workspace::RecoveryEntry next{
-                view->restore_key,
-                view->type,
+                view.restore_key,
+                view.type,
                 "asset:" + uuids::to_string(source->binding->asset.uuid()),
                 source->dirty
             };

@@ -81,6 +81,7 @@ namespace lux::editor::scene
         SceneView(SceneView&&) = delete;
         SceneView& operator=(SceneView&&) = delete;
         [[nodiscard]] SceneViewResult<void> rebind(VSceneViewBinding);
+        [[nodiscard]] SceneViewResult<void> rebindRun(RunId);
         [[nodiscard]] SceneViewResult<void> rebindContent(const views::ViewContent&);
         [[nodiscard]] const std::shared_ptr<SceneInteractionGroup>& interactionOwner() const noexcept;
         [[nodiscard]] const VSceneViewBinding& binding() const noexcept;

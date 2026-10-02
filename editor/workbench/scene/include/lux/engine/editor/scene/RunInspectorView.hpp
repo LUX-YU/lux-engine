@@ -4,6 +4,7 @@
 
 namespace lux::editor::scene
 {
+    class SceneInteractionGroup;
     struct RunInspectorComponent final
     {
         using CreateResult = RunResult<std::unique_ptr<lux::ui::Element>>;
@@ -23,8 +24,10 @@ namespace lux::editor::scene
             RunStore&,
             simulation::ecs::ComponentSchemaSet,
             std::vector<RunInspectorComponent>,
-            project::ProjectCatalogModel* = {}
+            project::ProjectCatalogModel* = {},
+            std::shared_ptr<SceneInteractionGroup> = {}
         );
+        [[nodiscard]] const std::shared_ptr<SceneInteractionGroup>& interactionOwner() const noexcept;
         ~RunInspectorView() noexcept override;
         RunInspectorView(const RunInspectorView&) = delete;
         RunInspectorView& operator=(const RunInspectorView&) = delete;
@@ -50,6 +53,7 @@ namespace lux::editor::scene
         RunningObjectRef,
         simulation::ecs::ComponentSchemaSet,
         std::vector<RunInspectorComponent>,
-        project::ProjectCatalogModel* = {}
+        project::ProjectCatalogModel* = {},
+        std::shared_ptr<SceneInteractionGroup> = {}
     );
 }

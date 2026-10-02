@@ -211,6 +211,13 @@ namespace lux::editor::scene
         if (!impl_->clear())
             std::terminate();
     }
+    views::ViewContent SceneConfigurationView::content() const noexcept
+    {
+        if (!impl_->binding_)
+            return {};
+        const auto id = impl_->binding_->id();
+        return {{id}, id};
+    }
     SceneConfigurationResult<void> SceneConfigurationView::rebind(sessions::TSessionKey<SceneSession> target)
     {
         return impl_->rebind(target);
@@ -284,6 +291,10 @@ namespace lux::editor::scene
                         busy(closed.error())
                     });
                 return {};
+            },
+            nullptr, nullptr, nullptr,
+            +[](const lux::ui::Pane& pane) noexcept {
+                return static_cast<const SceneConfigurationView&>(pane).content();
             }
         };
     }

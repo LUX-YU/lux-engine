@@ -80,7 +80,8 @@ namespace lux::editor::application
         auto committed = desktop_->views().commit(*prepared);
         if (!committed)
             return applicationFailure("close.view.commit", committed.error());
-        std::erase_if(content_views_, [id](const auto& record) { return record.view == id; });
+        for (auto& run : run_presentations_)
+            std::erase(run.views, id);
         return {};
     }
     EditorResult<void> EditorApplication::Impl::receiveViewClose()
@@ -108,7 +109,10 @@ namespace lux::editor::application
                 return applicationFailure("close.view.commit", committed.error());
             last_view_.reset();
             if (keep)
-                std::erase_if(content_views_, [&](const auto& record) { return record.view == decision.view; });
+            {
+                for (auto& run : run_presentations_)
+                    std::erase(run.views, decision.view);
+            }
             else
             {
                 auto dismissed = desktop_->views().dismissCloseIntent(decision.view);

@@ -11,8 +11,10 @@ namespace lux::editor::scene
             sessions::TSessionAccess<SceneSession>,
             VSceneViewBinding,
             std::optional<RunInspectAccess> = {},
-            simulation::ecs::ComponentSchemaSet = {}
+            simulation::ecs::ComponentSchemaSet = {},
+            std::shared_ptr<SceneInteractionGroup> = {}
         );
+        [[nodiscard]] const std::shared_ptr<SceneInteractionGroup>& interactionOwner() const noexcept;
         ~OutlinerView() noexcept override;
         OutlinerView(const OutlinerView&) = delete;
         OutlinerView& operator=(const OutlinerView&) = delete;
@@ -27,6 +29,7 @@ namespace lux::editor::scene
             partition::PartitionOrdinal,
             EObjectSpace
         );
+        [[nodiscard]] views::ViewContent content() const noexcept;
         [[nodiscard]] std::span<const VSceneSelectionTarget> objects() const noexcept;
         [[nodiscard]] const SceneViewResult<void>& status() const noexcept;
 
@@ -41,6 +44,7 @@ namespace lux::editor::scene
         sessions::TSessionAccess<SceneSession>,
         VSceneViewBinding,
         std::optional<RunInspectAccess> = {},
-        simulation::ecs::ComponentSchemaSet = {}
+        simulation::ecs::ComponentSchemaSet = {},
+        std::shared_ptr<SceneInteractionGroup> = {}
     );
 }

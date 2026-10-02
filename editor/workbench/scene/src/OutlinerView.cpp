@@ -40,6 +40,7 @@ namespace lux::editor::scene
     }
     struct OutlinerView::Impl final
     {
+        std::shared_ptr<SceneInteractionGroup> interaction_;
         struct Rows final
         {
             std::vector<VSceneSelectionTarget> objects;
@@ -177,6 +178,8 @@ namespace lux::editor::scene
         {
             if (object::LuxObject::isDispatching())
                 return rejected(views::EViewError::BUSY);
+            if (interaction_ && group(binding) != interaction_.get())
+                return rejected(views::EViewError::INVALID_ID);
             auto candidate = readRows(binding);
             if (!candidate)
                 return rejected(candidate.error());
@@ -404,12 +407,18 @@ namespace lux::editor::scene
         sessions::TSessionAccess<SceneSession> sessions,
         VSceneViewBinding binding,
         std::optional<RunInspectAccess> runs,
-        simulation::ecs::ComponentSchemaSet schemas
+        simulation::ecs::ComponentSchemaSet schemas,
+        std::shared_ptr<SceneInteractionGroup> interaction
     )
         : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{"lux.editor.outliner"}, "Outliner"),
           impl_(std::make_unique<Impl>(*this, sessions, runs, std::move(schemas)))
     {
+        impl_->interaction_ = std::move(interaction);
         impl_->status_ = impl_->rebind(std::move(binding));
+    }
+    const std::shared_ptr<SceneInteractionGroup>& OutlinerView::interactionOwner() const noexcept
+    {
+        return impl_->interaction_;
     }
     OutlinerView::~OutlinerView() noexcept = default;
     SceneViewResult<void> OutlinerView::rebind(VSceneViewBinding value)
@@ -467,6 +476,11 @@ namespace lux::editor::scene
         edits.emplace_back(SceneCreateObject{std::move(*object)});
         return impl_->apply(std::move(edits), "Create object");
     }
+    views::ViewContent OutlinerView::content() const noexcept
+    {
+        const auto* author = std::get_if<EditedSceneBinding>(&impl_->binding_);
+        return author ? views::ViewContent{{author->session.id()}, author->session.id()} : views::ViewContent{};
+    }
     std::span<const VSceneSelectionTarget> OutlinerView::objects() const noexcept
     {
         return impl_->rows_.objects;
@@ -485,7 +499,8 @@ namespace lux::editor::scene
         sessions::TSessionAccess<SceneSession> sessions,
         VSceneViewBinding binding,
         std::optional<RunInspectAccess> runs,
-        simulation::ecs::ComponentSchemaSet schemas
+        simulation::ecs::ComponentSchemaSet schemas,
+        std::shared_ptr<SceneInteractionGroup> interaction
     )
     {
         auto view = std::make_unique<OutlinerView>(
@@ -494,10 +509,14 @@ namespace lux::editor::scene
             sessions,
             std::move(binding),
             runs,
-            std::move(schemas)
+            std::move(schemas),
+            std::move(interaction)
         );
         if (!view->status())
             return cxx::unexpected(view->status().error());
-        return views::DetachedView{contracts::CodeLease::builtin(), std::move(view)};
+        return views::DetachedView{
+            contracts::CodeLease::builtin(), std::move(view), nullptr, nullptr, nullptr, nullptr,
+            +[](const lux::ui::Pane& pane) noexcept { return static_cast<const OutlinerView&>(pane).content(); }
+        };
     }
 }

@@ -2,6 +2,7 @@
 #include <lux/engine/editor/application/EditorApplicationImpl.hpp>
 #include <lux/engine/editor/desktop/DesktopTestAccess.hpp>
 #include <lux/engine/editor/scene/OutlinerView.hpp>
+#include <lux/engine/editor/scene/SceneTools.hpp>
 #include <lux/engine/editor/project/ImportView.hpp>
 #include <lux/engine/editor/project/SettingsView.hpp>
 #include <lux/engine/editor/scene/InspectorView.hpp>
@@ -32,6 +33,16 @@ namespace lux::editor::application
 }
 namespace
 {
+    std::vector<lux::editor::views::ViewInfo> contentViews(lux::editor::desktop::ViewHost& host,
+                                                        lux::editor::sessions::SessionId session)
+    {
+        auto all = host.describeAll();
+        assert(all);
+        std::erase_if(*all, [&](const auto& view) {
+            return std::ranges::find(view.content.sessions, session) == view.content.sessions.end();
+        });
+        return std::move(*all);
+    }
     struct FailureSystem final
     {
         inline static constexpr std::string_view worlds[]{"*"};
@@ -385,12 +396,7 @@ int main(int argc, char** argv)
     };
     const auto material_id = create_content("lux.editor.new.material");
     const auto flow_id = create_content("lux.editor.new.flow");
-    const auto material_view = std::ranges::find(
-                                   impl.content_views_,
-                                   material_id,
-                                   &std::remove_reference_t<decltype(impl)>::ContentView::session
-    )
-                                   ->view;
+    const auto material_view = contentViews(impl.desktop_->views(), material_id).front().id;
     auto material_action = [&](auto action) {
         auto invoke = [&](ui::Pane& pane) { action(static_cast<lux::editor::material::MaterialView&>(pane)); };
         assert(impl.desktop_->views().withView(material_view, invoke));
@@ -666,9 +672,8 @@ int main(int argc, char** argv)
         assert(app->update());
     };
     std::vector<views::ViewId> material_views;
-    for (const auto& view : impl.content_views_)
-        if (view.session == material_id)
-            material_views.push_back(view.view);
+    for (const auto& view : contentViews(impl.desktop_->views(), material_id))
+        material_views.push_back(view.id);
     assert(material_views.size() == 2);
     assert(app->closeView(material_views.back()));
     assert(!impl.last_view_ && impl.sessions_.describe(material_id)->current == material_before);
@@ -681,10 +686,9 @@ int main(int argc, char** argv)
     assert(impl.sessions_.describe(material_id)->current == material_before);
     const auto shown_again = app->show(material_id);
     assert(shown_again && *shown_again != material_views.front());
-    auto flow_view =
-        std::ranges::find_if(impl.content_views_, [&](const auto& record) { return record.session == flow_id; });
-    assert(flow_view != impl.content_views_.end());
-    const auto flow_view_id = flow_view->view;
+    const auto flow_views = contentViews(impl.desktop_->views(), flow_id);
+    assert(!flow_views.empty());
+    const auto flow_view_id = flow_views.front().id;
     assert(app->closeView(flow_view_id));
     choose_last(desktop::EReviewChoice::CLOSE_CONTENT);
     assert(impl.review_ && impl.sessions_.size() == 2);
@@ -735,17 +739,15 @@ int main(int argc, char** argv)
         if (!updated)
             std::cerr << updated.error().domain << '\n';
         assert(updated);
-        for (const auto& record : impl.content_views_)
-            if (record.scene && !record.run)
-                scene_id = record.session;
+        const auto entries = impl.desktop_->views().describeAll();
+        assert(entries);
+        for (const auto& record : *entries)
+            if (record.type == views::ViewTypeId{"lux.editor.scene.view"} && record.content.primary)
+                scene_id = *record.content.primary;
     }
-    auto scene_record = std::ranges::find(
-        impl.content_views_,
-        scene_id,
-        &std::remove_reference_t<decltype(impl)>::ContentView::session
-    );
-    assert(scene_record != impl.content_views_.end());
-    const auto scene_view = scene_record->view;
+    const auto scene_records = contentViews(impl.desktop_->views(), scene_id);
+    assert(!scene_records.empty());
+    const auto scene_view = scene_records.front().id;
     const auto model_source = impl.sessions_.describe(scene_id)->current;
     for (int frame = 0; frame < 32; ++frame)
         assert(app->update());
@@ -820,9 +822,9 @@ int main(int argc, char** argv)
                    .createObject(object, {0}, lux::editor::scene::EObjectSpace::SPACE_3D));
     };
     assert(impl.desktop_->views().withView(outliner->id, create_object));
-    auto selected_record =
-        std::ranges::find(impl.content_views_, scene_view, &std::remove_reference_t<decltype(impl)>::ContentView::view);
-    auto interaction = selected_record->scene;
+    auto shared_interaction = lux::editor::scene::shareSceneInteraction(impl.desktop_->views(), scene_view);
+    assert(shared_interaction);
+    auto interaction = *shared_interaction;
     assert(interaction->select(
         {{lux::editor::scene::SceneObjectRef{scene_id, impl.sessions_.describe(scene_id)->current.state.history, object}
         }}
@@ -924,9 +926,8 @@ int main(int argc, char** argv)
     }
     const auto run = *impl.run_presentations_.front().run;
     assert(!impl.run_presentations_.front().failure);
-    auto run_record = std::ranges::find_if(impl.content_views_, [&](const auto& view) { return view.run == run; });
-    assert(run_record != impl.content_views_.end());
-    const auto run_view = run_record->view;
+    assert(!impl.run_presentations_.front().views.empty());
+    const auto run_view = impl.run_presentations_.front().views.front();
     assert(app->execute(commands::CommandId{"lux.editor.scene.pause"}, commands::CommandInvocation{run_view}));
     while (impl.runs_.info(run)->pause_pending)
     {
@@ -951,7 +952,8 @@ int main(int argc, char** argv)
     assert(app->update() && app->phase() == EApplicationPhase::RUNNING);
     assert(!impl.sessions_.describe(scene_id) && impl.runs_.info(run));
     assert(impl.desktop_->views().describe(run_view));
-    assert(impl.run_presentations_.front().interaction->synchronize());
+    auto running_interaction = lux::editor::scene::shareSceneInteraction(impl.desktop_->views(), run_view);
+    assert(running_interaction && (*running_interaction)->synchronize());
     assert(app->execute(commands::CommandId{"lux.editor.scene.outliner"}, commands::CommandInvocation{run_view}));
     assert(app->execute(commands::CommandId{"lux.editor.scene.resume"}, commands::CommandInvocation{run_view}));
     for (int frame = 0; frame < 4; ++frame)
@@ -1155,7 +1157,9 @@ int main(int argc, char** argv)
     assert(initial);
     auto& initial_owner = ApplicationTestAccess::implementation(**initial);
     const auto initial_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
-    while (initial_owner.sessions_.size() == 0 || initial_owner.content_views_.empty())
+    while (initial_owner.sessions_.size() == 0 ||
+           !std::ranges::any_of(*initial_owner.desktop_->views().describeAll(),
+                               [](const auto& view) { return !view.content.sessions.empty(); }))
     {
         assert((*initial)->update());
         assert(std::chrono::steady_clock::now() < initial_deadline);

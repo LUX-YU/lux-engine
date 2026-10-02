@@ -1,8 +1,5 @@
 #include <lux/engine/editor/application/EditorApplicationImpl.hpp>
-#include <lux/engine/editor/scene/InspectorView.hpp>
-#include <lux/engine/editor/scene/RunInspectorView.hpp>
-#include <lux/engine/editor/scene/OutlinerView.hpp>
-#include <lux/engine/editor/scene/ResourceView.hpp>
+#include <lux/engine/editor/scene/SceneTools.hpp>
 #include <lux/engine/log/Log.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
 #include <lux/engine/editor/scene/SceneConfigurationView.hpp>
@@ -94,24 +91,16 @@ namespace lux::editor::application
                 }
                 record.preparing.reset();
                 record.run = *adopted;
-                record.interaction = std::make_shared<scene::SceneInteractionGroup>(
-                    runs_.inspect(),
-                    *adopted,
-                    scene::InteractionGroupId{next_view_}
-                );
                 if (phase_ != EApplicationPhase::DRAINING)
                 {
                     const auto information = runs_.info(*adopted);
                     if (!information)
                         return applicationFailure("run.info", information.error());
                     const auto name = "run-" + std::to_string(next_view_++);
-                    scene::SceneViewCreateInfo input;
-                    input.id = lux::ui::PaneId{name};
-                    input.title = "Run (frozen author content)";
-                    input.binding = scene::RunningSceneBinding{*adopted, record.interaction.get()};
-                    input.state.camera.transform.translation = {0, 3, 8};
-                    input.render_system = information->provenance.configuration.viewport;
-                    auto candidate = scene::makeSceneView(messages_.dispatcherRef(), sceneServices(), std::move(input));
+                    auto candidate = scene::makeRunSceneView(
+                        messages_.dispatcherRef(), sceneServices(), lux::ui::PaneId{name},
+                        *adopted, information->provenance.configuration.viewport
+                    );
                     if (!candidate)
                         record.failure = applicationFailure("run.view", candidate.error()).value();
                     else
@@ -121,11 +110,7 @@ namespace lux::editor::application
                             record.failure = shown.error();
                         else
                         {
-                            ContentView content;
-                            content.view = *shown;
-                            content.scene = record.interaction;
-                            content.run = *adopted;
-                            content_views_.push_back(std::move(content));
+                            record.views.push_back(*shown);
                         }
                     }
                 }
@@ -156,10 +141,7 @@ namespace lux::editor::application
         auto record = std::ranges::find(run_presentations_, std::optional{id}, &RunPresentation::run);
         if (record == run_presentations_.end())
             return cxx::unexpected(EditorFailure{EEditorError::STALE_REQUEST, "run.stop"});
-        std::vector<views::ViewId> ids;
-        for (const auto& view : content_views_)
-            if (view.run == id)
-                ids.push_back(view.view);
+        const auto ids = record->views;
         auto prepared = desktop_->views().prepareClose(ids);
         if (!prepared)
             return applicationFailure("run.views.prepare", prepared.error());
@@ -170,208 +152,40 @@ namespace lux::editor::application
         auto committed = desktop_->views().commit(*prepared);
         if (!committed)
             return applicationFailure("run.views.close", committed.error());
-        std::erase_if(content_views_, [id](const auto& view) { return view.run == id; });
+        record->views.clear();
         return {};
     }
     EditorResult<views::ViewId> EditorApplication::Impl::showSceneTool(views::ViewId source, std::string_view role)
     {
-        const auto found = std::ranges::find(content_views_, source, &ContentView::view);
-        if (found == content_views_.end() || !found->scene)
-            return cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "scene.tool.source"});
-        ContentView record;
-        record.session = found->session;
-        record.scene = found->scene;
-        record.run = found->run;
-        record.source_view = source;
+        const auto kind = role == "outliner" ? scene::ESceneTool::OUTLINER
+                        : role == "inspector" ? scene::ESceneTool::INSPECTOR
+                        : role == "resources" ? scene::ESceneTool::RESOURCES
+                        : scene::ESceneTool::CONFIGURATION;
+        auto source_group = scene::shareSceneInteraction(desktop_->views(), source);
+        if (!source_group)
+            return applicationFailure("scene.tool.source", source_group.error());
+        const auto run = (*source_group)->run();
+        const auto snapshot = contributions_.snapshot();
+        auto components = scene::sceneInspectorComponents();
+        components.insert(components.end(), snapshot.components().begin(), snapshot.components().end());
         const auto name = std::string(role) + "-" + std::to_string(next_view_++);
-        const auto pane = lux::ui::PaneId{name};
-        scene::VSceneViewBinding binding =
-            record.run
-                ? scene::VSceneViewBinding{scene::RunningSceneBinding{*record.run, record.scene.get()}}
-                : scene::VSceneViewBinding{scene::EditedSceneBinding{*record.scene->session(), record.scene.get()}};
-        std::optional<views::DetachedView> candidate;
-        if (role == "outliner")
-        {
-            auto built = scene::makeOutlinerView(
-                messages_.dispatcherRef(),
-                pane,
-                sessions_.access<scene::SceneSession>(),
-                binding,
-                runs_.inspect(),
-                registrations_.components
-            );
-            if (!built)
-                return applicationFailure("outliner.create", built.error());
-            candidate.emplace(std::move(*built));
-        }
-        else if (role == "inspector")
-        {
-            const auto& selection = record.scene->selection().objects;
-            if (selection.empty())
-                return cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "inspector.selection"});
-            if (record.run)
-            {
-                const auto* target = std::get_if<scene::RunningObjectRef>(&selection.front());
-                if (!target)
-                    return cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "inspector.run"});
-                auto built = scene::makeRunInspectorView(
-                    messages_.dispatcherRef(),
-                    pane,
-                    runs_,
-                    *target,
-                    registrations_.components,
-                    scene::runInspectorComponents(),
-                    &project_->catalogModel()
-                );
-                if (!built)
-                    return applicationFailure("inspector.run", built.error());
-                candidate.emplace(std::move(*built));
-            }
-            else
-            {
-                const auto* target = std::get_if<scene::SceneObjectRef>(&selection.front());
-                if (!target)
-                    return cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "inspector.author"});
-                // This private entry is called by CommandRegistry::execute, whose active dispatch
-                // already excludes compound contribution publication. Pin its immutable catalog;
-                // acquiring a second command batch would reject this command itself.
-                const auto snapshot = contributions_.snapshot();
-                auto components = scene::sceneInspectorComponents();
-                components.insert(components.end(), snapshot.components().begin(), snapshot.components().end());
-                auto built = scene::makeInspectorView(
-                    messages_.dispatcherRef(),
-                    pane,
-                    sessions_.access<scene::SceneSession>(),
-                    std::get<scene::EditedSceneBinding>(binding),
-                    *target,
-                    registrations_.components,
-                    std::move(components),
-                    &project_->catalogModel()
-                );
-                if (!built)
-                    return applicationFailure("inspector.author", built.error());
-                candidate.emplace(std::move(*built));
-            }
-        }
-        else if (role == "configuration")
-        {
-            if (record.run || !record.scene->session())
-                return cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "configuration.author"});
-            auto built = scene::makeSceneConfigurationView(
-                messages_.dispatcherRef(),
-                pane,
-                sessions_.access<scene::SceneSession>(),
-                sceneConfigurationInputs(),
-                *record.scene->session()
-            );
-            if (!built)
-                return applicationFailure("configuration.create", built.error());
-            candidate.emplace(std::move(*built));
-        }
-        else if (role == "resources")
-        {
-            std::optional<scene::ResourceViewBinding> target;
-            auto read = [&](lux::ui::Pane& view) {
-                if (view.type() == lux::ui::PaneTypeId{"lux.editor.scene.view"})
-                {
-                    auto instance = static_cast<scene::SceneView&>(view).presentedInstance();
-                    if (instance.valid())
-                    {
-                        // The exact RenderSystem is the one bound by this viewport, never a first-match lookup.
-                        auto system = static_cast<scene::SceneView&>(view).renderSystem();
-                        target = scene::ResourceViewBinding{instance, system};
-                    }
-                }
-            };
-            auto read_result = desktop_->views().withView(source, read);
-            if (!read_result)
-                return applicationFailure("resource.source", read_result.error());
-            auto built = scene::makeResourceView(messages_.dispatcherRef(), pane, engine_->sceneRuntime(), target);
-            if (!built)
-                return applicationFailure("resources.create", built.error());
-            candidate.emplace(std::move(*built));
-        }
-        else
-            return cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "scene.tool.role"});
+        auto candidate = scene::makeSceneToolView(
+            messages_.dispatcherRef(), lux::ui::PaneId{name}, desktop_->views(), source, kind,
+            {sceneServices(), runs_, registrations_.components, std::move(components),
+             &project_->catalogModel(), sceneConfigurationInputs()}
+        );
+        if (!candidate)
+            return applicationFailure("scene.tool.create", candidate.error());
         auto shown = adopt(*candidate, name);
         if (!shown)
             return shown;
-        record.view = *shown;
-        content_views_.push_back(std::move(record));
-        return *shown;
-    }
-    EditorResult<void> EditorApplication::Impl::synchronizeSceneTools()
-    {
-        for (const auto& record : content_views_)
+        if (run)
         {
-            if (!record.scene || !record.source_view.valid())
-                continue;
-            const auto& selected = record.scene->selection().objects;
-            std::optional<EditorFailure> error;
-            std::optional<scene::ResourceViewBinding> resource;
-            // Complete this borrow before entering the auxiliary view: Host callbacks cannot nest.
-            auto source = [&](lux::ui::Pane& pane) {
-                if (pane.type() == lux::ui::PaneTypeId{"lux.editor.scene.view"})
-                {
-                    auto& viewport = static_cast<scene::SceneView&>(pane);
-                    if (viewport.presentedInstance().valid())
-                        resource = scene::ResourceViewBinding{viewport.presentedInstance(), viewport.renderSystem()};
-                }
-            };
-            auto observed = desktop_->views().withView(record.source_view, source);
-            if (!observed && observed.error() != views::EViewError::INVALID_ID)
-                return applicationFailure("scene.tool.source", observed.error());
-            auto synchronize = [&](lux::ui::Pane& pane) {
-                if (pane.type() == lux::ui::PaneTypeId{"lux.editor.inspector"})
-                {
-                    const auto* target =
-                        selected.empty() ? nullptr : std::get_if<scene::SceneObjectRef>(&selected.front());
-                    auto& inspector = static_cast<scene::InspectorView&>(pane);
-                    if (!target && inspector.target())
-                    {
-                        auto cleared = inspector.clearTarget();
-                        if (!cleared)
-                            error = applicationFailure("inspector.clear", cleared.error()).value();
-                    }
-                    if (target && inspector.target() != *target)
-                    {
-                        auto bound = inspector.rebind({*record.scene->session(), record.scene.get()}, *target);
-                        if (!bound)
-                            error = applicationFailure("inspector.rebind", bound.error()).value();
-                    }
-                }
-                else if (pane.type() == lux::ui::PaneTypeId{"lux.editor.run-inspector"})
-                {
-                    const auto* target =
-                        selected.empty() ? nullptr : std::get_if<scene::RunningObjectRef>(&selected.front());
-                    auto& inspector = static_cast<scene::RunInspectorView&>(pane);
-                    if (!target && inspector.target())
-                    {
-                        auto cleared = inspector.clearTarget();
-                        if (!cleared)
-                            error = applicationFailure("run-inspector.clear", cleared.error()).value();
-                    }
-                    if (target && inspector.target() != *target)
-                    {
-                        auto bound = inspector.rebind(*target);
-                        if (!bound)
-                            error = applicationFailure("run-inspector.rebind", bound.error()).value();
-                    }
-                }
-                else if (pane.type() == lux::ui::PaneTypeId{"lux.editor.resources"})
-                {
-                    auto rebound = static_cast<scene::ResourceView&>(pane).rebind(resource);
-                    if (!rebound)
-                        error = applicationFailure("resources.rebind", rebound.error()).value();
-                }
-            };
-            auto read = desktop_->views().withView(record.view, synchronize);
-            if (!read)
-                return applicationFailure("inspector.view", read.error());
-            if (error)
-                return cxx::unexpected(std::move(*error));
+            auto owner = std::ranges::find(run_presentations_, run, &RunPresentation::run);
+            if (owner != run_presentations_.end())
+                owner->views.push_back(*shown);
         }
-        return {};
+        return *shown;
     }
     scene::SceneConfigurationInputs EditorApplication::Impl::sceneConfigurationInputs()
     {
@@ -525,25 +339,28 @@ namespace lux::editor::application
                     }
                     else
                     {
-                        auto record = std::ranges::find(content_views_, view, &ContentView::view);
-                        if (record == content_views_.end() || !record->run)
+                        auto group = scene::shareSceneInteraction(desktop_->views(), view);
+                        const auto run = group ? (*group)->run() : std::optional<scene::RunId>{};
+                        if (!group)
+                            return cxx::unexpected(commandFailure(applicationFailure("run.view", group.error()).value()));
+                        if (!run)
                             return cxx::unexpected(
                                 commands::CommandFailure{commands::ECommandError::STALE_TARGET, "run.view"}
                             );
                         if (role == "stop")
                         {
-                            auto result = stopRun(*record->run);
+                            auto result = stopRun(*run);
                             if (!result)
                                 return cxx::unexpected(commandFailure(result.error()));
                         }
                         else if (role == "step")
                         {
-                            auto owner = std::ranges::find(run_presentations_, record->run, &RunPresentation::run);
+                            auto owner = std::ranges::find(run_presentations_, run, &RunPresentation::run);
                             if (owner == run_presentations_.end() || owner->steps.size() >= 64)
                                 return cxx::unexpected(
                                     commands::CommandFailure{commands::ECommandError::BUSY, "run.steps"}
                                 );
-                            auto step = runs_.step(*record->run);
+                            auto step = runs_.step(*run);
                             if (!step)
                                 return cxx::unexpected(
                                     commandFailure(applicationFailure("run.step", step.error()).value())
@@ -552,7 +369,7 @@ namespace lux::editor::application
                         }
                         else
                         {
-                            auto result = role == "pause" ? runs_.pause(*record->run) : runs_.resume(*record->run);
+                            auto result = role == "pause" ? runs_.pause(*run) : runs_.resume(*run);
                             if (!result)
                                 return cxx::unexpected(
                                     commandFailure(applicationFailure("run.control", result.error()).value())

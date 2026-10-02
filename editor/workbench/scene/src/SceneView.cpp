@@ -606,6 +606,19 @@ namespace lux::editor::scene
     {
         return impl_->interaction_;
     }
+    SceneViewResult<void> SceneView::rebindRun(RunId run)
+    {
+        if (!impl_->services_.runs)
+            return rejected(views::EViewError::NOT_ATTACHED);
+        auto group = std::make_shared<SceneInteractionGroup>(
+            *impl_->services_.runs, run, InteractionGroupId{id().hash()}
+        );
+        auto adopted = impl_->rebind(RunningSceneBinding{run, group.get()});
+        if (!adopted)
+            return adopted;
+        impl_->interaction_ = std::move(group);
+        return {};
+    }
     SceneViewResult<void> SceneView::rebindContent(const views::ViewContent& content)
     {
         const bool is_single = content.sessions.size() == 1 && content.primary == content.sessions.front();

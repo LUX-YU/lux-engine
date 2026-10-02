@@ -79,6 +79,7 @@ namespace lux::editor::scene
                 return fields->release();
             }
         };
+        std::shared_ptr<SceneInteractionGroup> selection_;
         sessions::TSessionAccess<SceneSession> sessions_;
         simulation::ecs::ComponentSchemaSet schemas_;
         std::vector<InspectorComponent> registrations_;
@@ -231,7 +232,9 @@ namespace lux::editor::scene
         {
             if (object::LuxObject::isDispatching())
                 return cxx::unexpected(SceneEditError{ESceneEditError::BUSY});
-            const bool invalid = !binding.interaction || binding.interaction->session() != binding.session ||
+            const bool is_owner_mismatch = selection_ && selection_.get() != binding.interaction;
+            const bool invalid = is_owner_mismatch || !binding.interaction ||
+                                 binding.interaction->session() != binding.session ||
                                  target.session != binding.session.id();
             if (invalid)
                 return cxx::unexpected(SceneEditError{ESceneEditError::STALE_OBJECT});
@@ -399,11 +402,18 @@ namespace lux::editor::scene
         sessions::TSessionAccess<SceneSession> sessions,
         simulation::ecs::ComponentSchemaSet schemas,
         std::vector<InspectorComponent> registrations,
-        project::ProjectCatalogModel* catalog
+        project::ProjectCatalogModel* catalog,
+        std::shared_ptr<SceneInteractionGroup> selection
     )
         : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{"lux.editor.inspector"}, "Inspector"),
           impl_(std::make_unique<Impl>(*this, sessions, std::move(schemas), std::move(registrations), catalog))
-    {}
+    {
+        impl_->selection_ = std::move(selection);
+    }
+    const std::shared_ptr<SceneInteractionGroup>& InspectorView::interactionOwner() const noexcept
+    {
+        return impl_->selection_;
+    }
     InspectorView::~InspectorView() noexcept = default;
     SceneEditResult<void> InspectorView::rebind(EditedSceneBinding binding, SceneObjectRef target)
     {
@@ -443,6 +453,20 @@ namespace lux::editor::scene
     {
         return impl_->cancel();
     }
+    views::ViewContent InspectorView::content() const noexcept
+    {
+        if (impl_->selection_ && impl_->selection_->session())
+        {
+            const auto id = impl_->selection_->session()->id();
+            return {{id}, id};
+        }
+        if (impl_->binding_)
+        {
+            const auto id = impl_->binding_->session.id();
+            return {{id}, id};
+        }
+        return {};
+    }
     std::optional<SceneObjectRef> InspectorView::target() const noexcept
     {
         return impl_->target_;
@@ -453,6 +477,28 @@ namespace lux::editor::scene
     }
     void InspectorView::update() noexcept
     {
+        if (impl_->selection_)
+        {
+            auto synchronized = impl_->selection_->synchronize();
+            if (!synchronized)
+            {
+                impl_->status_ = std::move(synchronized);
+                return;
+            }
+            const auto& selection = impl_->selection_->selection().objects;
+            const auto* target = selection.empty() ? nullptr : std::get_if<SceneObjectRef>(&selection.front());
+            const auto session = impl_->selection_->session();
+            SceneEditResult<void> changed;
+            if (target && session && impl_->target_ != *target)
+                changed = rebind({*session, impl_->selection_.get()}, *target);
+            else if (!target && impl_->target_)
+                changed = clearTarget();
+            if (!changed)
+            {
+                impl_->status_ = std::move(changed);
+                return;
+            }
+        }
         impl_->update();
     }
     SceneViewResult<views::DetachedView> makeInspectorView(
@@ -463,7 +509,8 @@ namespace lux::editor::scene
         SceneObjectRef target,
         simulation::ecs::ComponentSchemaSet schemas,
         std::vector<InspectorComponent> registrations,
-        project::ProjectCatalogModel* catalog
+        project::ProjectCatalogModel* catalog,
+        std::shared_ptr<SceneInteractionGroup> selection
     )
     {
         auto view = std::make_unique<InspectorView>(
@@ -472,7 +519,8 @@ namespace lux::editor::scene
             sessions,
             std::move(schemas),
             std::move(registrations),
-            catalog
+            catalog,
+            std::move(selection)
         );
         if (!view->status())
             return cxx::unexpected(SceneViewFailure{view->status().error()});
@@ -496,7 +544,9 @@ namespace lux::editor::scene
                              cleared.error().session == sessions::ESessionError::BUSY)
                     });
                 return {};
-            }
+            },
+            nullptr, nullptr, nullptr,
+            +[](const lux::ui::Pane& pane) noexcept { return static_cast<const InspectorView&>(pane).content(); }
         };
     }
 }

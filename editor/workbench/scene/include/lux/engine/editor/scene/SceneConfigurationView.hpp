@@ -20,6 +20,7 @@ namespace lux::editor::scene
         SceneConfigurationView& operator=(const SceneConfigurationView&) = delete;
         SceneConfigurationView(SceneConfigurationView&&) = delete;
         SceneConfigurationView& operator=(SceneConfigurationView&&) = delete;
+        [[nodiscard]] views::ViewContent content() const noexcept;
         [[nodiscard]] SceneConfigurationResult<void> rebind(sessions::TSessionKey<SceneSession>);
         [[nodiscard]] SceneConfigurationResult<void> prepareClose();
         [[nodiscard]] SceneConfigurationElement* form() noexcept;

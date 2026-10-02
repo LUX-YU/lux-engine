@@ -215,17 +215,15 @@ namespace lux::editor::application
         ids.reserve(views->size());
         for (const auto& view : *views)
         {
-            const auto content = std::ranges::find(content_views_, view.id, &ContentView::view);
             const bool closes_content = std::ranges::any_of(close_decisions_, [&](const auto& decision) {
                 return std::ranges::find(view.content.sessions, decision.content.session) != view.content.sessions.end();
-            }) || (content != content_views_.end() && std::ranges::any_of(close_decisions_, [&](const auto& decision) {
-                return decision.content.session == content->session;
-            }));
-            const bool stops_run =
-                content != content_views_.end() && content->run &&
-                std::ranges::any_of(close_run_decisions_, [&](const auto& decision) {
-                    return decision.run == *content->run && decision.choice == desktop::EReviewChoice::STOP_RUN;
-                });
+            });
+            const bool stops_run = std::ranges::any_of(run_presentations_, [&](const auto& run) {
+                return run.run && std::ranges::find(run.views, view.id) != run.views.end() &&
+                    std::ranges::any_of(close_run_decisions_, [&](const auto& decision) {
+                        return decision.run == *run.run && decision.choice == desktop::EReviewChoice::STOP_RUN;
+                    });
+            });
             if (close_application_ || closes_content || stops_run)
                 ids.push_back(view.id);
         }
@@ -376,7 +374,8 @@ namespace lux::editor::application
                     pending_saves_.push_back(*save.save);
             }
         closing_.reset();
-        std::erase_if(content_views_, [&](const auto& view) { return std::ranges::find(ids, view.view) != ids.end(); });
+        for (auto& run : run_presentations_)
+            std::erase_if(run.views, [&](auto view) { return std::ranges::find(ids, view) != ids.end(); });
         close_decisions_.clear();
         for (const auto& decision : close_run_decisions_)
             if (decision.choice == desktop::EReviewChoice::STOP_RUN)
@@ -568,8 +567,6 @@ namespace lux::editor::application
         if (auto maintained = runs_.update(); !maintained)
             receive(applicationFailure("run.receive", maintained.error()));
         receive(maintainRuns());
-        if (desktop_)
-            receive(synchronizeSceneTools());
         projections_.collectReleased();
         receive(settleOperations());
         if (!outcome && !maintenance_failure_)

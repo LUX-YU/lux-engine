@@ -14,6 +14,7 @@
 #include <source_location>
 #include <lux/engine/editor/desktop/DesktopShell.hpp>
 #include <lux/engine/editor/scene/SceneView.hpp>
+#include <lux/engine/editor/scene/SceneTools.hpp>
 #include <lux/engine/editor/scene/RunController.hpp>
 #include <lux/engine/editor/scene/ResourceView.hpp>
 #include <lux/engine/editor/scene/OutlinerView.hpp>
@@ -533,6 +534,79 @@ namespace
         assert(busy);
         f.wait([&] { return !f.desktop->views().describe(id); }, false);
         assert(!group.overlay() && f.session->describe().current == before.current);
+    }
+    void ownedSceneTools(Fixture& f)
+    {
+        const auto before = f.session->describe();
+        const author::SceneObjectRef target{f.key->id(), before.current.state.history, f.object};
+        author::SceneViewCreateInfo input;
+        input.id = ui::PaneId{"owned-primary"};
+        auto detached = take(author::makeSceneView(f.messages.dispatcherRef(), f.services(), std::move(input)));
+        auto* primary = static_cast<author::SceneView*>(detached.pane());
+        assert(primary->rebindContent({{f.key->id()}, f.key->id()}));
+        auto group = primary->interactionOwner();
+        assert(group && group->select({{target}}));
+        const auto primary_id = take(f.desktop->views().adopt(detached, views::ViewRestoreKey{"owned-primary"})).id;
+        f.wait([&] { return primary->image().isValid(); });
+        author::RunStore runs(*f.runtime, f.execution);
+        lux::project::PluginCatalog catalog;
+        author::SceneToolInputs inputs{
+            f.services(), runs, f.environment.components, author::sceneInspectorComponents(), nullptr,
+            {catalog, f.environment.components, *f.environment.simulation_systems,
+             f.environment.scene_systems, render::builtinRenderFeatureRegistrations(), {}}
+        };
+        const auto make = [&](const char* name, author::ESceneTool tool) {
+            auto candidate = take(author::makeSceneToolView(
+                f.messages.dispatcherRef(), ui::PaneId{name}, f.desktop->views(), primary_id, tool, inputs
+            ));
+            return take(f.desktop->views().adopt(candidate, views::ViewRestoreKey{name})).id;
+        };
+        const auto outline = make("owned-outline", author::ESceneTool::OUTLINER);
+        const auto inspector = make("owned-inspector", author::ESceneTool::INSPECTOR);
+        const auto resources = make("owned-resources", author::ESceneTool::RESOURCES);
+        std::weak_ptr<author::SceneInteractionGroup> lifetime = group;
+        group.reset();
+        assert(f.desktop->views().close(primary_id));
+        f.wait([&] { return !f.desktop->views().describe(primary_id); });
+        assert(!lifetime.expired());
+        assert(take(f.desktop->views().describe(outline)).content.primary == f.key->id());
+        assert(take(f.desktop->views().describe(inspector)).content.primary == f.key->id());
+        f.frame(false);
+        assert(take(f.desktop->views().describe(resources)).content.sessions.empty());
+        assert(lifetime.lock()->select({}));
+        f.frame(false);
+        const auto no_target = [&](ui::Pane& pane) {
+            assert(!static_cast<author::InspectorView&>(pane).target());
+        };
+        assert(f.desktop->views().withView(inspector, no_target));
+        // An empty selection does not detach the still-live author's content association.
+        assert(take(f.desktop->views().describe(inspector)).content.primary == f.key->id());
+        assert(lifetime.lock()->select({{target}}));
+        auto read = take(f.session->read());
+        assert(read.withRead([&](const author::SceneReadView&) -> author::SceneEditResult<void> {
+            f.frame(false);
+            const auto unchanged = [&](ui::Pane& pane) {
+                auto& view = static_cast<author::InspectorView&>(pane);
+                assert(!view.target() && !view.status());
+            };
+            assert(f.desktop->views().withView(inspector, unchanged));
+            assert(lifetime.lock()->selection().objects == std::vector<author::VSceneSelectionTarget>{target});
+            return {};
+        }));
+        f.frame(false);
+        const auto restored = [&](ui::Pane& pane) {
+            auto& view = static_cast<author::InspectorView&>(pane);
+            assert(view.status() && view.target() == target);
+        };
+        assert(f.desktop->views().withView(inspector, restored));
+        assert(f.desktop->views().close(outline));
+        f.wait([&] { return !f.desktop->views().describe(outline); }, false);
+        assert(!lifetime.expired());
+        assert(f.desktop->views().close(inspector) && f.desktop->views().close(resources));
+        f.wait([&] { return !f.desktop->views().describe(inspector) && !f.desktop->views().describe(resources); }, false);
+        assert(lifetime.expired());
+        assert(f.session->describe().current == before.current && f.session->describe().dirty == before.dirty);
+        std::puts("EC1 complete Scene tools: owner lifetime, no-target association, BUSY retry and release");
     }
     void closeInspectorContent(Fixture& f)
     {
@@ -1638,6 +1712,7 @@ int main(int argc, char** argv)
     assert(f.desktop->views().close(id_b) && f.desktop->views().close(id_c));
     f.wait([&] { return take(f.desktop->views().describeAll()).empty(); });
     inspectorView(f);
+    ownedSceneTools(f);
     closeInspectorContent(f);
     creationView(f, argv[2]);
     runningView(f);

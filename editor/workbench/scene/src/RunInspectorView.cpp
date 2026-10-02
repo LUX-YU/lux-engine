@@ -1,5 +1,6 @@
 #include <lux/engine/editor/scene/RunInspectorView.hpp>
 #include <lux/engine/ui/Layout.hpp>
+#include <lux/engine/editor/scene/SceneInteraction.hpp>
 
 namespace lux::editor::scene
 {
@@ -75,6 +76,7 @@ namespace lux::editor::scene
                     std::terminate();
             }
         };
+        std::shared_ptr<SceneInteractionGroup> selection_;
         RunStore& runs_;
         simulation::ecs::ComponentSchemaSet schemas_;
         std::vector<RunInspectorComponent> registrations_;
@@ -131,6 +133,8 @@ namespace lux::editor::scene
         {
             if (object::LuxObject::isDispatching())
                 return cxx::unexpected(RunFailure{ERunError::BUSY});
+            if (selection_ && selection_->run() != target.run)
+                return cxx::unexpected(RunFailure{ERunError::INVALID_ID});
             auto candidate = std::make_unique<lux::ui::Layout>(layout_, lux::ui::ElementId{"fields"});
             candidate->setVisible(false);
             std::vector<std::unique_ptr<Component>> entries;
@@ -226,11 +230,18 @@ namespace lux::editor::scene
         RunStore& runs,
         simulation::ecs::ComponentSchemaSet schemas,
         std::vector<RunInspectorComponent> registrations,
-        project::ProjectCatalogModel* catalog
+        project::ProjectCatalogModel* catalog,
+        std::shared_ptr<SceneInteractionGroup> selection
     )
         : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{"lux.editor.run-inspector"}, "Run Inspector"),
           impl_(std::make_unique<Impl>(*this, runs, std::move(schemas), std::move(registrations), catalog))
-    {}
+    {
+        impl_->selection_ = std::move(selection);
+    }
+    const std::shared_ptr<SceneInteractionGroup>& RunInspectorView::interactionOwner() const noexcept
+    {
+        return impl_->selection_;
+    }
     RunInspectorView::~RunInspectorView() noexcept = default;
     RunResult<void> RunInspectorView::rebind(RunningObjectRef target)
     {
@@ -274,6 +285,27 @@ namespace lux::editor::scene
     }
     void RunInspectorView::update() noexcept
     {
+        if (impl_->selection_)
+        {
+            auto synchronized = impl_->selection_->synchronize();
+            if (!synchronized)
+            {
+                impl_->status_ = cxx::unexpected(RunFailure{synchronized.error()});
+                return;
+            }
+            const auto& selection = impl_->selection_->selection().objects;
+            const auto* target = selection.empty() ? nullptr : std::get_if<RunningObjectRef>(&selection.front());
+            RunResult<void> changed;
+            if (target && impl_->target_ != *target)
+                changed = rebind(*target);
+            else if (!target && impl_->target_)
+                changed = clearTarget();
+            if (!changed)
+            {
+                impl_->status_ = std::move(changed);
+                return;
+            }
+        }
         impl_->update();
     }
     RunResult<views::DetachedView> makeRunInspectorView(
@@ -283,7 +315,8 @@ namespace lux::editor::scene
         RunningObjectRef target,
         simulation::ecs::ComponentSchemaSet schemas,
         std::vector<RunInspectorComponent> registrations,
-        project::ProjectCatalogModel* catalog
+        project::ProjectCatalogModel* catalog,
+        std::shared_ptr<SceneInteractionGroup> selection
     )
     {
         auto view = std::make_unique<RunInspectorView>(
@@ -292,7 +325,8 @@ namespace lux::editor::scene
             runs,
             std::move(schemas),
             std::move(registrations),
-            catalog
+            catalog,
+            std::move(selection)
         );
         if (!view->status())
             return cxx::unexpected(view->status().error());

@@ -4,6 +4,7 @@
 #include <lux/engine/editor/configuration/EditorReflection.hpp>
 #include <lux/engine/editor/project/ProjectBuilder.hpp>
 #include <lux/engine/editor/storage/ProjectCreation.hpp>
+#include <lux/engine/editor/storage/ProjectPlugins.hpp>
 #include <lux/engine/editor/detail/TaskResult.hpp>
 #include <lux/engine/editor/detail/SignalDelivery.hpp>
 #include <lux/engine/project/PluginManager.hpp>
@@ -50,10 +51,10 @@ namespace lux::editor
             std::vector<lux::project::MetadataIdentity> selected;
             EditorResult<LoadedPlugins> operator()() const noexcept
             {
-                auto catalog = ReadCatalog{installation}();
-                if (!catalog)
-                    return lux::cxx::unexpected(catalog.error());
-                auto manager = lux::project::PluginManager::create(std::move(*catalog), selected);
+                std::vector<ProjectPluginEntry> selection;
+                for (const auto& item : selected)
+                    selection.push_back({item.id, item.version, {}});
+                auto manager = loadProjectPlugins({}, selection, installation);
                 if (!manager)
                     return lux::cxx::unexpected(pluginError(manager.error()));
                 std::vector<EditorPlugin> extensions;

@@ -15333,8 +15333,7 @@
         "layer": "TEST",
         "role": "TEST",
         "capabilities": [
-          "CPU",
-          "GPU"
+          "CPU"
         ]
       }
     },
@@ -17754,6 +17753,12 @@
       ],
       "editor/workbench/desktop/include/lux/engine/editor/desktop/ReviewView.hpp": [
         "view_host"
+      ],
+      "editor/activities/project/include/lux/engine/editor/storage/ProjectPlugins.hpp": [
+        "editor_storage"
+      ],
+      "editor/activities/project/src/ProjectPlugins.cpp": [
+        "editor_storage"
       ]
     },
     "native_libraries": [

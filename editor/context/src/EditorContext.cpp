@@ -8,6 +8,7 @@
 #include <lux/engine/editor/configuration/EditorReflection.hpp>
 #include <lux/engine/project/PluginRendering.hpp>
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
+#include <lux/engine/editor/storage/ProjectPlugins.hpp>
 #include <lux/engine/project/PluginManager.hpp>
 #include <lux/engine/scene/RenderResources.hpp>
 
@@ -38,45 +39,7 @@ namespace lux::editor
         ) noexcept
         try
         {
-            lux::project::PluginCatalog catalog;
-            if (!installation.empty())
-            {
-                auto read = catalog.read(installation / "share/lux-engine/plugins/catalog.json", installation);
-                if (!read)
-                    return lux::cxx::unexpected(pluginFailure(read.error()));
-            }
-            std::vector<lux::project::MetadataIdentity> selected;
-            std::vector<std::string> descriptions;
-            for (const auto& plugin : selection)
-            {
-                selected.push_back({plugin.id, plugin.version});
-                const bool is_missing_description = plugin.description_path.empty();
-                const bool is_duplicate_description =
-                    std::ranges::find(descriptions, plugin.description_path) != descriptions.end();
-                const bool should_skip_description = is_missing_description || is_duplicate_description;
-                if (should_skip_description)
-                    continue;
-                std::error_code error;
-                const auto path = std::filesystem::canonical(project_root / plugin.description_path, error);
-                const auto relative = error ? std::filesystem::path{} : path.lexically_relative(project_root);
-                const bool has_path_error = static_cast<bool>(error);
-                const bool is_empty_relative_path = relative.empty();
-                const bool is_absolute_relative_path = relative.is_absolute();
-                const bool has_parent_traversal =
-                    !has_path_error && !is_empty_relative_path && !is_absolute_relative_path &&
-                    std::ranges::any_of(relative, [](const auto& part) { return part == ".."; });
-                const bool escapes =
-                    has_path_error || is_empty_relative_path || is_absolute_relative_path || has_parent_traversal;
-                if (escapes)
-                    return lux::cxx::unexpected(
-                        EditorFailure{EEditorError::SOURCE_FAILURE, "project.plugins.path", 0, plugin.description_path}
-                    );
-                auto read = catalog.read(path, project_root);
-                if (!read)
-                    return lux::cxx::unexpected(pluginFailure(read.error()));
-                descriptions.push_back(plugin.description_path);
-            }
-            auto loaded = lux::project::PluginManager::create(std::move(catalog), selected);
+            auto loaded = loadProjectPlugins(project_root, selection, installation);
             if (!loaded)
                 return lux::cxx::unexpected(pluginFailure(loaded.error()));
             std::vector<EditorPlugin> extensions;

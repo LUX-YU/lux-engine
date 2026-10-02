@@ -1,4 +1,5 @@
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
+#include <lux/engine/editor/storage/ProjectPlugins.hpp>
 #include <lux/engine/object/ObjectDispatcher.hpp>
 #include <lux/engine/process/ExecutionRuntime.hpp>
 #include <lux/engine/process/TaskScope.hpp>
@@ -17,10 +18,28 @@ int main(int argc, char** argv)
 {
     using namespace lux;
     using namespace lux::editor;
-    assert(argc == 2);
+    assert(argc == 3);
     const std::filesystem::path root = std::filesystem::absolute(argv[1]);
     std::filesystem::create_directories(root);
     const auto file = root / "Project.luxproject";
+    // Actual runtime admission uses the same helper as the product; errors are not empty catalogs.
+    const ProjectPluginEntry builtin{"lux.builtin.scene_render", 1, {}};
+    auto runtime_plugins = loadProjectPlugins(root, std::span{&builtin, 1}, argv[2]);
+    assert(runtime_plugins && runtime_plugins->find(builtin.id));
+    const ProjectPluginEntry missing{"missing.plugin", 1, {}};
+    assert(!loadProjectPlugins(root, std::span{&missing, 1}, argv[2]));
+    const ProjectPluginEntry absent{"test", 1, "absent.json"};
+    auto absent_result = loadProjectPlugins(root, std::span{&absent, 1}, {});
+    assert(!absent_result && absent_result.error().code == lux::project::EPluginError::IO_FAILURE);
+    const auto outside = root.parent_path() / "plugin-outside.json";
+    {
+        std::ofstream stream(outside);
+        stream << "{}";
+    }
+    const ProjectPluginEntry escaped{"test", 1, "../plugin-outside.json"};
+    auto escaped_result = loadProjectPlugins(root, std::span{&escaped, 1}, {});
+    assert(!escaped_result && escaped_result.error().code == lux::project::EPluginError::INVALID_PATH);
+
     const auto id = asset::AssetId{*uuids::uuid::from_string("57279371-1b9c-40d6-b55d-a1a12065d932")};
     ProjectManifest initial{id, "Publication test", {}, {}};
     {

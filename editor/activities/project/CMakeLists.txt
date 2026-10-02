@@ -2,7 +2,7 @@ generate_visibility_header(ENABLE_MACRO_NAME LUX_EDITOR_STORAGE_LIBRARY
     PUBLIC_MACRO_NAME LUX_EDITOR_STORAGE_PUBLIC DISABLE_DLL_MACRO_NAME LUX_EDITOR_STORAGE_DLL_DISABLE
     GENERATE_FILE_PATH lux/engine/editor/storage/visibility.h)
 add_component(COMPONENT_NAME editor_storage NAMESPACE lux::engine::editor STATIC
-    SOURCE_FILES src/ProjectStorage.cpp src/ProjectOpenData.cpp src/ProjectAssetSource.cpp src/ProjectPublication.cpp src/ProjectCreation.cpp)
+    SOURCE_FILES src/ProjectStorage.cpp src/ProjectOpenData.cpp src/ProjectAssetSource.cpp src/ProjectPublication.cpp src/ProjectCreation.cpp src/ProjectPlugins.cpp)
 component_include_directories(editor_storage
     BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR}
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude ${CMAKE_CURRENT_SOURCE_DIR}/sinclude
@@ -22,6 +22,8 @@ endif()
 target_link_libraries(editor_storage PUBLIC lux::engine::editor::editor_project lux::engine::editor::editor_contracts
     lux::engine::core::object lux::engine::core::log lux::engine::core::meta
     lux::engine::process::process_execution lux::engine::process::asset_loading lux::engine::resource::asset)
+target_link_libraries(editor_storage PUBLIC lux::engine::project::project_plugins)
+component_add_transitive_commands(editor_storage "find_package(lux-engine-project-plugins REQUIRED COMPONENTS project_plugins)")
 target_link_libraries(editor_storage PRIVATE lux::engine::scene::scene_asset lux::engine::editor::editor_file_publication)
 component_add_transitive_commands(editor_storage
     "find_package(lux-engine-editor-file-publication REQUIRED COMPONENTS editor_file_publication)")
@@ -58,7 +60,7 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     else()
         target_compile_options(editor_plugin_publication_test PRIVATE -UNDEBUG)
     endif()
-    add_test(NAME editor.plugin_publication COMMAND editor_plugin_publication_test "${CMAKE_CURRENT_BINARY_DIR}/plugin-publication")
+    add_test(NAME editor.plugin_publication COMMAND editor_plugin_publication_test "${CMAKE_CURRENT_BINARY_DIR}/plugin-publication" "${CMAKE_BINARY_DIR}")
     set_tests_properties(editor.plugin_publication PROPERTIES TIMEOUT 60 RUN_SERIAL TRUE)
 endif()
 
@@ -94,6 +96,7 @@ install(FILES
     DESTINATION include/lux/engine/editor/assets COMPONENT lux_engine_editor_assets)
 install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/storage/ProjectCreation.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/storage/ProjectPlugins.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/storage/ProjectOpenData.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/storage/ProjectPublication.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/storage/ProjectStorage.hpp

@@ -275,6 +275,9 @@ namespace lux::editor::application
         std::unique_ptr<assets::AssetImporter> importer_;
         std::unique_ptr<ProjectCreation> project_creation_;
         std::optional<lux::ui::PaneId> import_browse_;
+        bool project_open_requested_{};
+        std::optional<process::TaskId> project_launch_;
+        std::optional<EditorResult<void>> project_launch_result_;
         struct PluginSelection final
         {
             std::vector<ProjectPluginEntry> based_on, desired;
@@ -344,6 +347,7 @@ namespace lux::editor::application
         input::Input input_;
         std::vector<object::Connection> connections_;
         // Last owner: views release borrows before interactions, code, services and content.
+        lux::ui::FontSource font_;
         std::unique_ptr<desktop::DesktopShell> desktop_;
 
         Impl(

@@ -1042,13 +1042,13 @@
     },
     {
       "name": "lux_editor",
-      "path": "editor/launcher",
+      "path": "editor/application",
       "first_phase": "P12",
       "dependencies": [
         "editor_bootstrap"
       ],
       "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
-      "actual_cmake_target": null
+      "actual_cmake_target": "lux_editor"
     },
     {
       "name": "view_host",
@@ -13631,14 +13631,16 @@
         ]
       },
       "lux_launcher": {
-        "layer": "RETAINED",
-        "role": "PROVIDER",
+        "layer": "E4",
+        "role": "PRODUCT",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "GPU",
+          "GUI",
+          "TOOLCHAIN"
         ],
-        "path": "editor/launcher",
-        "deadline": "P12",
-        "consumers": []
+        "path": "editor/application"
       },
       "editor_app": {
         "layer": "RETAINED",
@@ -13660,14 +13662,16 @@
         ]
       },
       "lux_editor": {
-        "layer": "RETAINED",
-        "role": "PROVIDER",
+        "layer": "E4",
+        "role": "PRODUCT",
         "capabilities": [
-          "CPU"
+          "CPU",
+          "PROCESS",
+          "GPU",
+          "GUI",
+          "TOOLCHAIN"
         ],
-        "path": "editor/app",
-        "deadline": "P12",
-        "consumers": []
+        "path": "editor/application"
       },
       "editor_baseline_failures": {
         "layer": "TEST",
@@ -15640,15 +15644,6 @@
       "editor/activities/workspace/src/WorkspaceStore.cpp": [
         "workspace_store"
       ],
-      "editor/app/main.cpp": [
-        "lux_editor"
-      ],
-      "editor/app/product/ProductAssembly.cpp": [
-        "lux_editor"
-      ],
-      "editor/app/product/ProductCommands.cpp": [
-        "lux_editor"
-      ],
       "editor/app/src/Editor.cpp": [
         "editor_app"
       ],
@@ -15966,9 +15961,6 @@
       ],
       "editor/editing/test/sessions/sessions.cpp": [
         "editor_sessions_test"
-      ],
-      "editor/launcher/main.cpp": [
-        "lux_launcher"
       ],
       "editor/launcher/src/ProjectCreationPane.cpp": [
         "editor_launcher"
@@ -17898,6 +17890,18 @@
       ],
       "editor/tests/integration/project/scene_configuration.cpp": [
         "editor_scene_configuration"
+      ],
+      "editor/application/src/Launcher.cpp": [
+        "editor_bootstrap"
+      ],
+      "editor/application/sinclude/lux/engine/editor/application/Launcher.hpp": [
+        "editor_bootstrap"
+      ],
+      "editor/application/main.cpp": [
+        "lux_editor"
+      ],
+      "editor/application/launcher_main.cpp": [
+        "lux_launcher"
       ]
     },
     "native_libraries": [

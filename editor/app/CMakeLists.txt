@@ -21,14 +21,7 @@ component_add_transitive_commands(editor_app
     "find_package(lux-engine-editor-metadata REQUIRED COMPONENTS editor_metadata)")
 lux_engine_install_components(PROJECT_NAME lux-engine-editor-app VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS editor_app)
-add_executable(lux_editor main.cpp product/ProductAssembly.cpp product/ProductCommands.cpp)
-lux_classify_target(TARGET lux_editor LAYER EDITOR PRODUCT EDITOR ROLE EXECUTABLE)
-target_link_libraries(lux_editor PRIVATE lux::engine::platform::platform_process lux::engine::editor::editor_app lux::engine::editor::editor_assets
-    lux::engine::platform::window
-    lux::engine::editor::editor_scene lux::engine::editor::editor_material
-    lux::engine::editor::editor_flowforge lux::engine::editor::editor_project_tools
-    lux::engine::editor::editor_settings lux::engine::editor::editor_launcher lux::engine::editor::editor_launch lux::cxx::arguments)
-install(TARGETS lux_editor RUNTIME DESTINATION bin)
+
 
 if(LUX_EDITOR_TEST_DESKTOP_GPU)
     target_sources(editor_app PRIVATE src/EditorTestAccess.cpp)
@@ -155,8 +148,6 @@ find_package(tomlplusplus CONFIG REQUIRED)
 target_include_directories(editor_app PRIVATE $<TARGET_PROPERTY:tomlplusplus::tomlplusplus,INTERFACE_INCLUDE_DIRECTORIES>)
 target_compile_definitions(editor_app PRIVATE TOML_HEADER_ONLY=1 TOML_EXCEPTIONS=0)
 
-target_include_directories(lux_editor PRIVATE ${PROJECT_SOURCE_DIR}/editor/activities/sinclude $<TARGET_PROPERTY:tomlplusplus::tomlplusplus,INTERFACE_INCLUDE_DIRECTORIES>)
-target_compile_definitions(lux_editor PRIVATE TOML_HEADER_ONLY=1 TOML_EXCEPTIONS=0 "LUX_EDITOR_VERSION=\"${PROJECT_VERSION}\"")
 
 get_property(editor_app_tests DIRECTORY PROPERTY TESTS)
 foreach(test IN LISTS editor_app_tests)

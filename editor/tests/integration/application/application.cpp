@@ -140,6 +140,10 @@ int main(int argc, char** argv)
         assert(output);
     }
     EditorApplicationConfig config{file, argv[1], "Application qualification", 640, 480, true};
+    config.font = root / "missing-font.ttf";
+    auto missing_font = EditorApplication::create(config);
+    assert(!missing_font && missing_font.error().domain == "editor.font.read");
+    config.font.reset();
     desktop::testing::rejectNextMenuConnection();
     auto rejected = EditorApplication::create(config);
     if (!rejected)

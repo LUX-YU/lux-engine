@@ -21,6 +21,7 @@ namespace lux::editor::application
         int width{1440}, height{900};
         // Uses the same desktop and renderer with an offscreen output, without a native window.
         bool offscreen{};
+        std::optional<std::filesystem::path> font;
     };
     enum class EApplicationPhase : std::uint8_t
     {

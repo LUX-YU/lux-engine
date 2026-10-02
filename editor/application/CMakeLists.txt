@@ -2,9 +2,9 @@ add_subdirectory(launch)
 add_subdirectory(extensions)
 
 add_component(COMPONENT_NAME editor_bootstrap NAMESPACE lux::engine::editor STATIC
-    SOURCE_FILES src/EditorApplication.cpp src/EditorViews.cpp src/EditorCommands.cpp src/EditorLifecycle.cpp src/EditorWorkspace.cpp src/EditorContent.cpp src/EditorViewClosure.cpp src/EditorSceneTools.cpp src/EditorSaving.cpp src/EditorReload.cpp src/EditorResults.cpp src/EditorModels.cpp src/EditorArtifacts.cpp src/EditorRecovery.cpp src/EditorProjectTools.cpp src/EditorSettings.cpp src/ProjectCreation.cpp src/EditorProjectCreation.cpp)
+    SOURCE_FILES src/EditorApplication.cpp src/EditorViews.cpp src/EditorCommands.cpp src/EditorLifecycle.cpp src/EditorWorkspace.cpp src/EditorContent.cpp src/EditorViewClosure.cpp src/EditorSceneTools.cpp src/EditorSaving.cpp src/EditorReload.cpp src/EditorResults.cpp src/EditorModels.cpp src/EditorArtifacts.cpp src/EditorRecovery.cpp src/EditorProjectTools.cpp src/EditorSettings.cpp src/ProjectCreation.cpp src/EditorProjectCreation.cpp src/Launcher.cpp)
 component_include_directories(editor_bootstrap BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include
-    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude INSTALL_TIME include)
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude ${CMAKE_CURRENT_SOURCE_DIR}/sinclude INSTALL_TIME include)
 target_link_libraries(editor_bootstrap PUBLIC lux::engine::editor::session_execution lux::engine::editor::editor_project
     PRIVATE lux::engine::editor::editor_launch lux::engine::engine_context_render lux::engine::project::project_plugin_rendering
     lux::engine::editor::editor_extensions lux::engine::editor::desktop_shell
@@ -31,3 +31,13 @@ component_add_transitive_commands(editor_bootstrap
 lux_classify_target(TARGET editor_bootstrap LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 lux_engine_install_components(PROJECT_NAME lux-engine-editor-application VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS editor_bootstrap)
+
+find_package(lux-cxx REQUIRED COMPONENTS arguments)
+add_executable(lux_editor main.cpp)
+add_executable(lux_launcher launcher_main.cpp)
+foreach(product lux_editor lux_launcher)
+    target_include_directories(${product} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/sinclude)
+    target_link_libraries(${product} PRIVATE editor_bootstrap lux::engine::platform::platform_process lux::cxx::arguments)
+    lux_classify_target(TARGET ${product} LAYER EDITOR PRODUCT EDITOR ROLE EXECUTABLE)
+    install(TARGETS ${product} RUNTIME DESTINATION bin)
+endforeach()

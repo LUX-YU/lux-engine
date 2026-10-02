@@ -1,6 +1,7 @@
 #include <lux/engine/editor/application/EditorApplicationImpl.hpp>
 #include <lux/engine/editor/project/ImportView.hpp>
 #include <lux/engine/window/FileDialog.hpp>
+#include <lux/engine/editor/launcher/LaunchEditor.hpp>
 
 namespace lux::editor::application
 {
@@ -8,6 +9,26 @@ namespace lux::editor::application
     {
         installSettingsView(draft);
         installProjectCreation(draft);
+        draft.commands.push_back(std::make_shared<commands::CommandEntry>(
+            contracts::CodeLease::builtin(),
+            commands::CommandDescriptor{
+                commands::CommandId{"lux.editor.project.open"},
+                "Open Project in New Editor",
+                "File"
+            },
+            [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
+                return commands::CommandState{
+                    phase_ == EApplicationPhase::RUNNING && !project_launch_ && !project_open_requested_
+                };
+            },
+            [this](const commands::CommandInvocation&) -> commands::CommandResult<commands::DispatchReceipt> {
+                if (project_launch_ || project_open_requested_)
+                    return cxx::unexpected(commands::CommandFailure{commands::ECommandError::BUSY, "project.open"});
+                project_open_requested_ = true;
+                return commands::DispatchReceipt{commands::ImmediateCompletion{}};
+            }
+        ));
+
         draft.views.push_back(std::make_shared<views::ViewFactoryEntry>(
             contracts::CodeLease::builtin(),
             views::ViewFactoryDescriptor{
@@ -61,6 +82,38 @@ namespace lux::editor::application
     }
     EditorResult<void> EditorApplication::Impl::receiveProjectIntents()
     {
+        if (std::exchange(project_open_requested_, false))
+        {
+            const std::array filters{window::FileDialogFilter{"Lux project", "luxproject"}};
+            auto selected = window::openFileDialog(window_.get(), filters);
+            if (!selected)
+                return applicationFailure("project.dialog", selected.error());
+            if (*selected)
+            {
+                auto accepted = project_tasks_.submit(
+                    {"Open project in Editor", "Project"},
+                    [file = std::move(**selected),
+                     installation = config_.installation,
+                     scheduler = *engine_->execution().blocking()](process::TaskReporter) noexcept {
+                        return stdexec::then(stdexec::schedule(scheduler), [file, installation]() noexcept {
+                            return launchEditor(installation, file);
+                        });
+                    },
+                    [this](process::TTaskResult<void, EditorFailure>&& result) noexcept {
+                        project_launch_.reset();
+                        if (result)
+                            project_launch_result_.emplace();
+                        else if (auto* error = result.error().domainFailure())
+                            project_launch_result_.emplace(cxx::unexpected(std::move(*error)));
+                        else
+                            project_launch_result_.emplace(applicationFailure("project.launch.task", result.error()));
+                    }
+                );
+                if (!accepted)
+                    return applicationFailure("project.launch.submit", accepted.error());
+                project_launch_ = *accepted;
+            }
+        }
         if (!import_browse_)
             return {};
         const auto target = std::exchange(import_browse_, {});

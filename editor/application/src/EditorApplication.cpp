@@ -4,6 +4,7 @@
 #include <lux/engine/ui/rendering/RenderFeature.hpp>
 #include <lux/engine/log/Log.hpp>
 #include <algorithm>
+#include <fstream>
 
 namespace lux::editor::application
 {
@@ -131,13 +132,54 @@ namespace lux::editor::application
             &rendering.resources(),
             {{project_->catalogModel().reference({}).project_instance, 0}, project_->catalogRevision(), *reads, {}}
         };
+        if (config_.font)
+        {
+            std::optional<EditorResult<lux::ui::FontSource>> loaded;
+            process::TaskScope font_tasks(engine_->execution());
+            auto submitted = font_tasks.submit(
+                {"Read UI font", "Desktop"},
+                [file = *config_.font, scheduler = *engine_->execution().blocking()](process::TaskReporter) noexcept {
+                    return stdexec::then(stdexec::schedule(scheduler), [file]() -> EditorResult<lux::ui::FontSource> {
+                        std::ifstream stream(file, std::ios::binary | std::ios::ate);
+                        const auto size = stream ? std::streamoff(stream.tellg()) : -1;
+                        if (size <= 0 || size > 32 * 1024 * 1024)
+                            return cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "editor.font.read"});
+                        lux::ui::FontSource result;
+                        result.bytes.resize(static_cast<std::size_t>(size));
+                        stream.seekg(0);
+                        if (!stream.read(reinterpret_cast<char*>(result.bytes.data()), size))
+                            return cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "editor.font.read"});
+                        return result;
+                    });
+                },
+                [&](process::TTaskResult<lux::ui::FontSource, EditorFailure>&& result) noexcept {
+                    if (result)
+                        loaded.emplace(std::move(*result));
+                    else if (auto* error = result.error().domainFailure())
+                        loaded.emplace(cxx::unexpected(std::move(*error)));
+                    else
+                        loaded.emplace(applicationFailure("editor.font.task", result.error()));
+                }
+            );
+            if (!submitted)
+                return applicationFailure("editor.font.submit", submitted.error());
+            auto received = engine_->execution().waitUntil([&]() noexcept { return loaded.has_value(); });
+            if (!received)
+                return applicationFailure("editor.font.receive", received.error());
+            if (!*loaded)
+                return cxx::unexpected(loaded->error());
+            font_ = std::move(**loaded);
+        }
+        lux::ui::RootConfig ui_config;
+        ui_config.font = config_.font ? &font_ : nullptr;
         auto desktop = desktop::DesktopShell::create(
             messages_.dispatcherRef(),
             engine_->execution(),
             engine_->sceneRuntime(),
             rendering.runtime(),
             rendering.resources(),
-            window_.get()
+            window_.get(),
+            ui_config
         );
         if (!desktop)
             return applicationFailure(std::string(desktop.error().operation), desktop.error().cause);

@@ -25,8 +25,8 @@ namespace skeleton
         unsigned settings_applied{};
         bool indices_applied{true}, indices_displayed{true};
         // Qualification observations only. No production extension looks up capabilities through this record.
-        lux::editor::ProjectStorage *project{};
-        lux::editor::desktop::ViewHost *host{};
+        lux::editor::ProjectStorage* project{};
+        lux::editor::desktop::ViewHost* host{};
     };
     struct Rename final
     {
@@ -37,14 +37,13 @@ namespace skeleton
     using Inspect = lux::editor::sessions::SessionResult<lux::rdesc::Skeleton>(lux::editor::sessions::SessionId);
     using Describe =
         lux::editor::sessions::SessionResult<lux::editor::sessions::SessionInfo>(lux::editor::sessions::SessionId);
-    using ReadGuard = lux::editor::sessions::SessionResult<void>(lux::editor::sessions::SessionId,
-                                                                 void (*)(void *),
-                                                                 void *);
+    using ReadGuard =
+        lux::editor::sessions::SessionResult<void>(lux::editor::sessions::SessionId, void (*)(void*), void*);
     struct ProbeApi final
     {
-        void (*set_facts)(Facts *) noexcept;
-        Inspect *inspect;
-        Describe *describe;
-        ReadGuard *read_guard;
+        void (*set_facts)(Facts*) noexcept;
+        Inspect* inspect;
+        Describe* describe;
+        ReadGuard* read_guard;
     };
 } // namespace skeleton

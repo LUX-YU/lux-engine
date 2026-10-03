@@ -32,7 +32,8 @@ namespace lux::editor::sessions
     }
     SessionFactoryResult<SaveAllOperation> SaveAllOperation::begin(SessionStore& store, persistence::SaveService& saves)
     {
-        auto request = [&saves](ContentStamp content) -> SessionFactoryResult<persistence::SaveId> {
+        auto request = [&saves](ContentStamp content) -> SessionFactoryResult<persistence::SaveId>
+        {
             auto saved = saves.requestSave({content.session});
             if (!saved)
                 return cxx::unexpected(factoryFailure(saved.error()));
@@ -163,4 +164,4 @@ namespace lux::editor::sessions
         }
         return permits;
     }
-}
+} // namespace lux::editor::sessions

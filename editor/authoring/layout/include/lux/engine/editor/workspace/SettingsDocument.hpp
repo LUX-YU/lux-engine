@@ -7,11 +7,27 @@
 
 namespace lux::editor::settings
 {
-    enum class ESettingsScope : std::uint8_t { INSTALLATION, PROJECT, USER, USER_PROJECT, LAUNCH };
+    enum class ESettingsScope : std::uint8_t
+    {
+        INSTALLATION,
+        PROJECT,
+        USER,
+        USER_PROJECT,
+        LAUNCH
+    };
     enum class ESettingsError : std::uint8_t
     {
-        INVALID_DESCRIPTOR, DUPLICATE, COLLISION, INVALID_VALUE, INVALID_SCOPE, UNSUPPORTED_VERSION,
-        CAPACITY, CONFLICT, UNAVAILABLE, CALLBACK, BUSY
+        INVALID_DESCRIPTOR,
+        DUPLICATE,
+        COLLISION,
+        INVALID_VALUE,
+        INVALID_SCOPE,
+        UNSUPPORTED_VERSION,
+        CAPACITY,
+        CONFLICT,
+        UNAVAILABLE,
+        CALLBACK,
+        BUSY
     };
     struct SettingsFailure final
     {
@@ -23,8 +39,8 @@ namespace lux::editor::settings
     {
         return scope <= ESettingsScope::LAUNCH ? 1u << static_cast<unsigned>(scope) : 0u;
     }
-    inline constexpr auto kPersonalScopes = scopeBit(ESettingsScope::INSTALLATION) |
-        scopeBit(ESettingsScope::USER) | scopeBit(ESettingsScope::USER_PROJECT) | scopeBit(ESettingsScope::LAUNCH);
+    inline constexpr auto kPersonalScopes = scopeBit(ESettingsScope::INSTALLATION) | scopeBit(ESettingsScope::USER) |
+                                            scopeBit(ESettingsScope::USER_PROJECT) | scopeBit(ESettingsScope::LAUNCH);
 
     struct SettingsValue final
     {
@@ -50,9 +66,7 @@ namespace lux::editor::settings
         std::size_t values{256};
         std::size_t depth{32};
     };
-    [[nodiscard]] SettingsResult<std::vector<std::byte>>
-    encodeSettings(const SettingsDocument&, SettingsLimits = {});
-    [[nodiscard]] SettingsResult<SettingsDocument>
-    decodeSettings(std::span<const std::byte>, SettingsLimits = {});
+    [[nodiscard]] SettingsResult<std::vector<std::byte>> encodeSettings(const SettingsDocument&, SettingsLimits = {});
+    [[nodiscard]] SettingsResult<SettingsDocument> decodeSettings(std::span<const std::byte>, SettingsLimits = {});
 
-}
+} // namespace lux::editor::settings

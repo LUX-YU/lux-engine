@@ -20,8 +20,14 @@ namespace lux::editor
         struct Dispatch final
         {
             bool& active;
-            explicit Dispatch(bool& value) noexcept : active(value) { active = true; }
-            ~Dispatch() { active = false; }
+            explicit Dispatch(bool& value) noexcept : active(value)
+            {
+                active = true;
+            }
+            ~Dispatch()
+            {
+                active = false;
+            }
             Dispatch(const Dispatch&) = delete;
             Dispatch& operator=(const Dispatch&) = delete;
         };
@@ -41,7 +47,8 @@ namespace lux::editor
             return {};
         }
         EditorResult<void> request(
-            std::span<const ProjectPluginEntry> based_on, std::vector<ProjectPluginEntry> desired
+            std::span<const ProjectPluginEntry> based_on,
+            std::vector<ProjectPluginEntry> desired
         )
         {
             if (auto ready = admission(); !ready)
@@ -51,7 +58,9 @@ namespace lux::editor
                 return cxx::unexpected(EditorFailure{EEditorError::BUSY, "plugins.publication"});
             if (!std::ranges::equal(based_on, project_.manifest().plugins))
                 return cxx::unexpected(EditorFailure{
-                    EEditorError::STALE_REQUEST, "plugins.source", 0,
+                    EEditorError::STALE_REQUEST,
+                    "plugins.source",
+                    0,
                     "Project selection changed. Revert the draft before trying again."
                 });
             ProjectUpdate input;
@@ -60,7 +69,12 @@ namespace lux::editor
             if (!prepared)
                 return cxx::unexpected(prepared.error());
             publication_ = std::make_unique<ProjectPublicationOperation>(
-                project_, runtime_, writes_, files_, execution_, std::move(*prepared)
+                project_,
+                runtime_,
+                writes_,
+                files_,
+                execution_,
+                std::move(*prepared)
             );
             return {};
         }
@@ -104,21 +118,39 @@ namespace lux::editor
     };
 
     ProjectPluginSelection::ProjectPluginSelection(
-        ProjectStorage& project, process::ExecutionRuntime& runtime, persistence::WriteCoordinator& writes,
-        persistence::IArtifactStore& files, persistence::SaveExecution& execution
-    ) : impl_(std::make_unique<Impl>(project, runtime, writes, files, execution))
-    {}
+        ProjectStorage& project,
+        process::ExecutionRuntime& runtime,
+        persistence::WriteCoordinator& writes,
+        persistence::IArtifactStore& files,
+        persistence::SaveExecution& execution
+    )
+        : impl_(std::make_unique<Impl>(project, runtime, writes, files, execution))
+    {
+    }
     ProjectPluginSelection::~ProjectPluginSelection() = default;
     EditorResult<void> ProjectPluginSelection::request(
-        std::span<const ProjectPluginEntry> based_on, std::vector<ProjectPluginEntry> desired
+        std::span<const ProjectPluginEntry> based_on,
+        std::vector<ProjectPluginEntry> desired
     )
     {
         return impl_->request(based_on, std::move(desired));
     }
-    EditorResult<void> ProjectPluginSelection::retry() { return impl_->retry(); }
-    EditorResult<void> ProjectPluginSelection::abandon() { return impl_->abandon(); }
-    EditorResult<void> ProjectPluginSelection::acknowledge() { return impl_->acknowledge(); }
-    EditorResult<void> ProjectPluginSelection::update() { return impl_->update(); }
+    EditorResult<void> ProjectPluginSelection::retry()
+    {
+        return impl_->retry();
+    }
+    EditorResult<void> ProjectPluginSelection::abandon()
+    {
+        return impl_->abandon();
+    }
+    EditorResult<void> ProjectPluginSelection::acknowledge()
+    {
+        return impl_->acknowledge();
+    }
+    EditorResult<void> ProjectPluginSelection::update()
+    {
+        return impl_->update();
+    }
     const VPublicationStatus* ProjectPluginSelection::status() const noexcept
     {
         return impl_->publication_ ? &impl_->publication_->status() : nullptr;
@@ -127,4 +159,4 @@ namespace lux::editor
     {
         return !impl_->publication_ || impl_->publication_->terminal();
     }
-}
+} // namespace lux::editor

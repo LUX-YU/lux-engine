@@ -53,10 +53,11 @@ namespace lux::editor::project
         object::Connection changes;
         Impl(ProjectView& view, ProjectCatalogModel& access) : content(view, *this), query(access)
         {
-            auto connected =
-                object::LuxObject::connect(&query, &ProjectCatalogModel::changed, [this](std::uint64_t) noexcept {
-                    refresh_requested = true;
-                });
+            auto connected = object::LuxObject::connect(
+                &query,
+                &ProjectCatalogModel::changed,
+                [this](std::uint64_t) noexcept { refresh_requested = true; }
+            );
             if (!connected)
                 std::terminate();
             changes = std::move(*connected);
@@ -146,26 +147,33 @@ namespace lux::editor::project
     {
         return {contracts::CodeLease::builtin(), std::make_unique<ProjectView>(dispatcher, std::move(id), query)};
     }
-}
+} // namespace lux::editor::project
 
 namespace lux::editor::project
 {
     namespace
     {
         constexpr commands::CommandDescriptor kCommand{
-            commands::CommandIdView{"lux.editor.assets"}, "Assets", "Window"
+            commands::CommandIdView{"lux.editor.assets"},
+            "Assets",
+            "Window"
         };
         constexpr views::ViewFactoryDescriptor kFactoryDescriptor{
-            views::ViewTypeIdView{"lux.editor.project"}, "Assets", cxx::typeToken<std::monostate>()
+            views::ViewTypeIdView{"lux.editor.project"},
+            "Assets",
+            cxx::typeToken<std::monostate>()
         };
-    }
+    } // namespace
     std::shared_ptr<views::ViewFactoryEntry> makeProjectViewFactory(
-        ProjectCatalogModel& catalog, cxx::move_only_function<void(const AssetReference&)> open
+        ProjectCatalogModel& catalog,
+        cxx::move_only_function<void(const AssetReference&)> open
     )
     {
         auto receiver = std::make_shared<cxx::move_only_function<void(const AssetReference&)>>(std::move(open));
-        return views::ViewFactoryEntry::bind<kFactoryDescriptor>(contracts::CodeLease::builtin(),
-            [&catalog, receiver](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
+        return views::ViewFactoryEntry::bind<kFactoryDescriptor>(
+            contracts::CodeLease::builtin(),
+            [&catalog, receiver](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView>
+            {
                 auto view = makeProjectView(input.dispatcher(), input.paneId(), catalog);
                 auto connected = workbench::detail::connectIntent(view, &ProjectView::openRequested, receiver);
                 if (!connected)
@@ -175,10 +183,11 @@ namespace lux::editor::project
         );
     }
     std::shared_ptr<commands::CommandEntry> makeAssetsCommand(
-        commands::CommandEntry::Query query, desktop::ToolOpening open
+        commands::CommandEntry::Query query,
+        desktop::ToolOpening open
     )
     {
         return workbench::detail::bindToolCommand<kCommand, kFactoryDescriptor>(std::move(query), std::move(open));
     }
 
-}
+} // namespace lux::editor::project

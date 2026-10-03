@@ -31,7 +31,8 @@ namespace lux::editor::application
             extensions::ContributionRegistry contributions;
             CreationEnvironment(object::ObjectDispatcherRef dispatcher, LoadedPlugins value)
                 : plugins(std::move(value)), contributions(dispatcher, commands)
-            {}
+            {
+            }
         };
         template <class T> EditorResult<T> completed(process::TTaskResult<T, EditorFailure>&& result)
         {
@@ -75,7 +76,7 @@ namespace lux::editor::application
                 return failure("project.build", built.error());
             return std::move(*built);
         }
-    }
+    } // namespace
     struct ProjectCreation::Impl final
     {
         process::TaskScope tasks_;
@@ -103,7 +104,8 @@ namespace lux::editor::application
         )
             : tasks_(execution), dispatcher_(dispatcher), installation_(std::move(installation)),
               launch_created_(launch_created)
-        {}
+        {
+        }
         ~Impl() noexcept
         {
             // TaskScope drains before callback state/environment is destroyed. Closing a view does not cancel it.
@@ -115,12 +117,16 @@ namespace lux::editor::application
         {
             if (progress_.pending)
                 return cxx::unexpected(EditorFailure{EEditorError::BUSY, "project.task"});
-            auto accepted =
-                tasks_.submit({std::move(label), "Project"}, std::move(factory), [this](auto&& result) noexcept {
+            auto accepted = tasks_.submit(
+                {std::move(label), "Project"},
+                std::move(factory),
+                [this](auto&& result) noexcept
+                {
                     auto value = completed(std::move(result));
                     completed_.template emplace<decltype(value)>(std::move(value));
                     task_.reset(); // Receive only: no UI, reflection, launch or nested business dispatch.
-                });
+                }
+            );
             if (!accepted)
                 return failure("project.submit", accepted.error());
             progress_.pending = true;
@@ -138,10 +144,12 @@ namespace lux::editor::application
                 return failure("project.scheduler", blocking.error());
             return submit(
                 "Read project plugin catalog",
-                [scheduler = *blocking, installation = installation_](process::TaskReporter) noexcept {
+                [scheduler = *blocking, installation = installation_](process::TaskReporter) noexcept
+                {
                     return stdexec::then(
                         stdexec::schedule(scheduler),
-                        [installation]() -> EditorResult<lux::project::PluginCatalog> {
+                        [installation]() -> EditorResult<lux::project::PluginCatalog>
+                        {
                             lux::project::PluginCatalog catalog;
                             auto read =
                                 catalog.read(installation / "share/lux-engine/plugins/catalog.json", installation);
@@ -162,10 +170,12 @@ namespace lux::editor::application
                 return failure("project.scheduler", blocking.error());
             auto accepted = submit(
                 "Load creation plugins",
-                [scheduler = *blocking, installation = installation_, selected](process::TaskReporter) noexcept {
+                [scheduler = *blocking, installation = installation_, selected](process::TaskReporter) noexcept
+                {
                     return stdexec::then(
                         stdexec::schedule(scheduler),
-                        [installation, selected]() -> EditorResult<LoadedPlugins> {
+                        [installation, selected]() -> EditorResult<LoadedPlugins>
+                        {
                             auto manager = loadProjectPlugins({}, selected, installation);
                             if (!manager)
                                 return failure("project.plugins", manager.error());
@@ -256,7 +266,8 @@ namespace lux::editor::application
                         std::uint32_t version,
                         const serialization::PortableValueCodec&,
                         std::optional<std::span<const std::byte>> initial
-                    ) -> scene::SceneConfigurationResult<scene::ConfigurationControl> {
+                    ) -> scene::SceneConfigurationResult<scene::ConfigurationControl>
+                    {
                         for (const auto& editor : environment->contributions.snapshot().configurations())
                             if (editor.value.schema_name == name && editor.value.schema_version == version)
                                 return scene::makeConfigurationControl(
@@ -287,11 +298,13 @@ namespace lux::editor::application
                  environment = environment_,
 
                  cpu = tasks_.execution().cpu(),
-                 blocking = *blocking](process::TaskReporter reporter) mutable noexcept {
+                 blocking = *blocking](process::TaskReporter reporter) mutable noexcept
+                {
                     auto prepared = stdexec::then(
                         stdexec::schedule(cpu),
                         [draft = std::move(draft), environment, reporter](
-                        ) mutable -> ProjectPublicationPlan::PrepareResult {
+                        ) mutable -> ProjectPublicationPlan::PrepareResult
+                        {
                             reporter.setPhase("Prepare project");
                             auto directory = draft.directory;
                             auto config = buildProject(std::move(draft));
@@ -319,10 +332,12 @@ namespace lux::editor::application
                 "Open project in Editor",
                 [scheduler = *blocking,
                  installation = installation_,
-                 file = progress_.committed->project_file](process::TaskReporter) noexcept {
-                    return stdexec::then(stdexec::schedule(scheduler), [installation, file]() noexcept {
-                        return launchEditor(installation, file);
-                    });
+                 file = progress_.committed->project_file](process::TaskReporter) noexcept
+                {
+                    return stdexec::then(
+                        stdexec::schedule(scheduler),
+                        [installation, file]() noexcept { return launchEditor(installation, file); }
+                    );
                 }
             );
         }
@@ -340,7 +355,8 @@ namespace lux::editor::application
             completed_.emplace<std::monostate>();
             progress_.pending = false;
             std::visit(
-                [this](auto& value) {
+                [this](auto& value)
+                {
                     using T = std::decay_t<decltype(value)>;
                     if constexpr (!std::is_same_v<T, std::monostate>)
                     {
@@ -382,7 +398,8 @@ namespace lux::editor::application
         bool launch_created
     )
         : impl_(std::make_unique<Impl>(execution, dispatcher, std::move(installation), launch_created))
-    {}
+    {
+    }
     ProjectCreation::~ProjectCreation() noexcept = default;
     EditorResult<void> ProjectCreation::start()
     {
@@ -410,7 +427,8 @@ namespace lux::editor::application
             [this](auto draft) { return impl_->create(std::move(draft)); },
             [this]() { return impl_->launch(); },
             [this]() { impl_->cancel(); },
-            [this]() -> EditorResult<void> {
+            [this]() -> EditorResult<void>
+            {
                 if (impl_->progress_.pending)
                     return cxx::unexpected(EditorFailure{EEditorError::BUSY, "project.reset"});
                 impl_->progress_ = {};
@@ -418,4 +436,4 @@ namespace lux::editor::application
             }
         };
     }
-}
+} // namespace lux::editor::application

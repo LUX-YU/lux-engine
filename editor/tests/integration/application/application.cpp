@@ -31,28 +31,40 @@ namespace lux::editor::application
             return *app.impl_;
         }
     };
-}
+} // namespace lux::editor::application
 namespace
 {
-    std::vector<lux::editor::views::ViewInfo> contentViews(lux::editor::desktop::ViewHost& host,
-                                                        lux::editor::sessions::SessionId session)
+    std::vector<lux::editor::views::ViewInfo> contentViews(
+        lux::editor::desktop::ViewHost& host,
+        lux::editor::sessions::SessionId session
+    )
     {
         auto all = host.describeAll();
         assert(all);
-        std::erase_if(*all, [&](const auto& view) {
-            return std::ranges::find(view.content.sessions, session) == view.content.sessions.end();
-        });
+        std::erase_if(
+            *all,
+            [&](const auto& view)
+            { return std::ranges::find(view.content.sessions, session) == view.content.sessions.end(); }
+        );
         return std::move(*all);
     }
     class ComparisonPane final : public lux::ui::Pane
     {
     public:
-        ComparisonPane(lux::object::ObjectDispatcherRef dispatcher, lux::ui::PaneId id,
-                       lux::editor::views::ViewContent content)
+        ComparisonPane(
+            lux::object::ObjectDispatcherRef dispatcher,
+            lux::ui::PaneId id,
+            lux::editor::views::ViewContent content
+        )
             : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{"test.comparison"}, "Comparison"),
               content_(std::move(content))
-        {}
-        [[nodiscard]] const lux::editor::views::ViewContent& content() const noexcept { return content_; }
+        {
+        }
+        [[nodiscard]] const lux::editor::views::ViewContent& content() const noexcept
+        {
+            return content_;
+        }
+
     private:
         lux::editor::views::ViewContent content_;
     };
@@ -73,7 +85,8 @@ namespace
             .cpp_type = cxx::typeToken<FailureSystem>(),
             .description = &FailureSystem::Description,
             .install = +[](scene::SceneSystemInstaller& installer, scene::SceneSystemDescription description
-                        ) noexcept -> cxx::expected<void, scene::SceneSystemBuildFailure> {
+                        ) noexcept -> cxx::expected<void, scene::SceneSystemBuildFailure>
+            {
                 auto installed = installer.emplaceSystem<FailureSystem>(description.instanceId());
                 if (!installed)
                     return cxx::unexpected(installed.error());
@@ -88,7 +101,7 @@ namespace
             }
         };
     }
-}
+} // namespace
 int main(int argc, char** argv)
 {
     using namespace lux;
@@ -132,7 +145,8 @@ int main(int argc, char** argv)
     auto model_asset = asset::ModelAsset::create({model_id, asset::ModelAsset::asset_type}, model_description);
     assert(model_asset);
     std::vector<asset::PakWriteEntry> entries;
-    const auto append = [&]<class Asset>(const Asset& value, std::string path) {
+    const auto append = [&]<class Asset>(const Asset& value, std::string path)
+    {
         auto encoded = asset::TAssetSerDeser<Asset>::encode(value, asset::AssetEncodeLimits{16 * 1024 * 1024});
         assert(encoded);
         auto bytes = std::make_shared<const std::vector<std::byte>>(std::move(*encoded));
@@ -216,19 +230,23 @@ int main(int argc, char** argv)
             content_before.push_back(*owned.sessions_.describe(session));
         const auto views_before = *owned.desktop_->views().describeAll();
         const auto revision_before = owned.commands_.revision();
-        const auto check_foreign_commands = [&] {
+        const auto check_foreign_commands = [&]
+        {
             // The owner is waiting; no UI, Store or command mutation runs concurrently.
-            std::thread foreign([&] {
-                for (const auto command : {"lux.editor.new.material", "lux.editor.exit", "test.missing"})
+            std::thread foreign(
+                [&]
                 {
-                    const auto result = (*direct)->execute(commands::CommandId{command});
-                    assert(!result);
-                    std::cout << "P13 foreign command " << command << " code=" << int(result.error().code)
-                              << " domain=" << result.error().domain << std::endl;
-                    assert(result.error().code == commands::ECommandError::WRONG_THREAD);
-                    assert(result.error().domain == "application.thread");
+                    for (const auto command : {"lux.editor.new.material", "lux.editor.exit", "test.missing"})
+                    {
+                        const auto result = (*direct)->execute(commands::CommandId{command});
+                        assert(!result);
+                        std::cout << "P13 foreign command " << command << " code=" << int(result.error().code)
+                                  << " domain=" << result.error().domain << std::endl;
+                        assert(result.error().code == commands::ECommandError::WRONG_THREAD);
+                        assert(result.error().domain == "application.thread");
+                    }
                 }
-            });
+            );
             foreign.join();
         };
         check_foreign_commands();
@@ -264,8 +282,10 @@ int main(int argc, char** argv)
         // Save restart-only settings through the same real application publication owner.
         settings::SettingsDocument personal;
         personal.scope = settings::ESettingsScope::USER;
-        const auto appearance = owned.contributions_.snapshot().findSetting(settings::SettingsIdView{"lux.desktop.appearance"})->entry;
-        const auto shortcuts = owned.contributions_.snapshot().findSetting(settings::SettingsIdView{"lux.desktop.shortcuts"})->entry;
+        const auto appearance =
+            owned.contributions_.snapshot().findSetting(settings::SettingsIdView{"lux.desktop.appearance"})->entry;
+        const auto shortcuts =
+            owned.contributions_.snapshot().findSetting(settings::SettingsIdView{"lux.desktop.shortcuts"})->entry;
         lux::editor::project::AppearanceSettings appearance_value{"", 1.5f};
 #if defined(_WIN32)
         const auto* windows = std::getenv("WINDIR");
@@ -276,7 +296,8 @@ int main(int argc, char** argv)
         appearance_value.font.assign(utf8.begin(), utf8.end());
 #endif
         lux::editor::project::ShortcutSettings shortcut_value{{{"lux.editor.new.material", "Ctrl+Alt+M"}}};
-        settings::SettingsValue appearance_bytes{"lux.desktop.appearance", 1}, shortcut_bytes{"lux.desktop.shortcuts", 1};
+        settings::SettingsValue appearance_bytes{"lux.desktop.appearance", 1},
+            shortcut_bytes{"lux.desktop.shortcuts", 1};
         assert(appearance->descriptor().configuration->codec.encode(&appearance_value, appearance_bytes.bytes));
         assert(shortcuts->descriptor().configuration->codec.encode(&shortcut_value, shortcut_bytes.bytes));
         personal.values.push_back(std::move(appearance_bytes));
@@ -291,7 +312,10 @@ int main(int argc, char** argv)
             std::this_thread::yield();
         }
         const auto& saved = owned.user_settings_changes_.publications().back();
-        assert(saved.ticket == *accepted_settings && saved.result && std::holds_alternative<persistence::CommitReceipt>(*saved.result));
+        assert(
+            saved.ticket == *accepted_settings && saved.result &&
+            std::holds_alternative<persistence::CommitReceipt>(*saved.result)
+        );
         assert(owned.desktop_->root().scale() == 1.f); // Persisted is not yet applied.
         // No exec/requestExit: destruction still releases mounted UI and accepted resource work.
     }
@@ -305,7 +329,8 @@ int main(int argc, char** argv)
         auto overridden = EditorApplication::create(launch_override);
         if (!overridden)
         {
-            std::cerr << "Settings restart: " << overridden.error().domain << ": " << overridden.error().message << '\n';
+            std::cerr << "Settings restart: " << overridden.error().domain << ": " << overridden.error().message
+                      << '\n';
             if (const auto* cause = std::any_cast<settings::SettingsFailure>(&overridden.error().cause))
                 std::cerr << "settings cause " << static_cast<int>(cause->code) << ": " << cause->detail << '\n';
         }
@@ -327,7 +352,8 @@ int main(int argc, char** argv)
     assert(impl.font_.bytes.size() > 1000 && impl.config_.font && impl.desktop_->root().fontAtlas());
 #endif
     bool restored_shortcut{};
-    const auto inspect_menu = [&](auto&& self, std::span<const ui::MenuItem> items) -> void {
+    const auto inspect_menu = [&](auto&& self, std::span<const ui::MenuItem> items) -> void
+    {
         for (const auto& item : items)
         {
             if (item.command == ui::CommandIdView{"lux.editor.new.material"})
@@ -337,7 +363,8 @@ int main(int argc, char** argv)
     };
     inspect_menu(inspect_menu, impl.desktop_->root().menu());
     assert(restored_shortcut);
-    std::cout << "EC3 persisted font/scale/shortcut applied by actual restarted product; launch override left disk unchanged\n";
+    std::cout
+        << "EC3 persisted font/scale/shortcut applied by actual restarted product; launch override left disk unchanged\n";
     assert(app->execute(commands::CommandId{"lux.editor.project.recent"}));
     const auto recent_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
     while (!impl.recent_projects_->publication())
@@ -347,8 +374,10 @@ int main(int argc, char** argv)
         std::this_thread::yield();
     }
     assert(std::holds_alternative<persistence::CommitReceipt>(*impl.recent_projects_->publication()));
-    assert(impl.recent_projects_->entries().size() == 1 &&
-        std::filesystem::equivalent(impl.recent_projects_->entries().front(), config.project_file));
+    assert(
+        impl.recent_projects_->entries().size() == 1 &&
+        std::filesystem::equivalent(impl.recent_projects_->entries().front(), config.project_file)
+    );
     const auto recent_file = *config.user_directory / "lux/editor/recent-projects.toml";
     const auto recent_before = storage::readPublicationFile(recent_file, 64 * 1024);
     assert(recent_before && !recent_before->empty());
@@ -410,9 +439,12 @@ int main(int argc, char** argv)
     assert(app->applyLayout(*before_layout));
     std::cout << "C01: malformed product layout preserves hidden state, count and exact dock encoding\n";
     using ApplicationImpl = std::remove_reference_t<decltype(impl)>;
-    const auto settle_workspace = [&] {
+    const auto settle_workspace = [&]
+    {
         const auto limit = std::chrono::steady_clock::now() + std::chrono::seconds(15);
-        while (std::ranges::any_of(impl.workspace_changes_.publications(), [](const auto& item) { return !item.result; }))
+        while (
+            std::ranges::any_of(impl.workspace_changes_.publications(), [](const auto& item) { return !item.result; })
+        )
         {
             assert(std::chrono::steady_clock::now() < limit);
             assert(app->update());
@@ -440,7 +472,7 @@ int main(int argc, char** argv)
     settle_workspace();
     assert(impl.workspace_.readPreferences()->value.selected_layout == stored_id);
     const auto preferences_file = *config.user_directory / "lux/editor/projects" / uuids::to_string(id.uuid()) /
-        ".lux/workspace/preferences.toml";
+                                  ".lux/workspace/preferences.toml";
     const auto preferences_before = storage::readPublicationFile(preferences_file, 65536);
     assert(preferences_before);
     {
@@ -461,7 +493,9 @@ int main(int argc, char** argv)
     assert(impl.executeWorkspaceIntent(lux::editor::project::RemoveLayout{stored_id}));
     settle_workspace();
     assert(impl.workspace_changes_.catalog().layouts.empty());
-    for (auto ticket : [&] {
+    for (auto ticket :
+         [&]
+         {
              std::vector<persistence::WriteTicket> ids;
              for (const auto& report : impl.workspace_changes_.publications())
                  ids.push_back(report.ticket);
@@ -471,7 +505,8 @@ int main(int argc, char** argv)
     assert(impl.workspace_changes_.publications().empty());
     std::cout << "Workspace UI uses stable layout IDs and one publication coordinator; preference failure preserves UI "
                  "commit\n";
-    const auto create_content = [&](const char* command) {
+    const auto create_content = [&](const char* command)
+    {
         auto accepted = app->execute(commands::CommandId{command});
         assert(accepted);
         auto operation = std::get<commands::AcceptedOperation>(*accepted);
@@ -496,19 +531,23 @@ int main(int argc, char** argv)
     const auto material_id = create_content("lux.editor.new.material");
     const auto flow_id = create_content("lux.editor.new.flow");
     const auto material_view = contentViews(impl.desktop_->views(), material_id).front().id;
-    auto material_action = [&](auto action) {
+    auto material_action = [&](auto action)
+    {
         auto invoke = [&](ui::Pane& pane) { action(static_cast<lux::editor::material::MaterialView&>(pane)); };
         assert(impl.desktop_->views().withView(material_view, invoke));
     };
-    material_action([&](lux::editor::material::MaterialView& view) {
-        assert(view.beginEdit("Create output"));
-        std::vector<lux::editor::material::VMaterialEdit> edits;
-        edits.emplace_back(lux::editor::material::MaterialInsertNode{
-            contracts::CodeLease::builtin(),
-            std::make_unique<lux::material::OutputSurfaceNode>()
-        });
-        assert(view.previewEdit(edits) && view.commitEdit());
-    });
+    material_action(
+        [&](lux::editor::material::MaterialView& view)
+        {
+            assert(view.beginEdit("Create output"));
+            std::vector<lux::editor::material::VMaterialEdit> edits;
+            edits.emplace_back(lux::editor::material::MaterialInsertNode{
+                contracts::CodeLease::builtin(),
+                std::make_unique<lux::material::OutputSurfaceNode>()
+            });
+            assert(view.previewEdit(edits) && view.commitEdit());
+        }
+    );
     const auto save_material_stamp = impl.sessions_.describe(material_id)->current;
     assert(app->execute(
         commands::CommandId{"lux.editor.save-as"},
@@ -516,7 +555,8 @@ int main(int argc, char** argv)
     ));
     assert(impl.save_question_);
     const auto original_save_target = impl.save_question_->target;
-    auto invalid_path = [&](ui::Pane& pane) {
+    auto invalid_path = [&](ui::Pane& pane)
+    {
         auto& question = static_cast<desktop::ReviewView&>(pane);
         assert(question.setText("../outside.source"));
         assert(question.answer(desktop::EReviewChoice::SAVE));
@@ -524,7 +564,8 @@ int main(int argc, char** argv)
     assert(impl.desktop_->views().withView(impl.save_question_->view, invalid_path));
     assert(app->update() && impl.save_question_ && impl.content_saving_->pending().empty());
     assert(impl.save_question_->target.based_on == original_save_target.based_on);
-    auto choose_source = [&](ui::Pane& pane) {
+    auto choose_source = [&](ui::Pane& pane)
+    {
         auto& question = static_cast<desktop::ReviewView&>(pane);
         assert(question.setText("Content/Beginner/Material.source"));
         assert(question.answer(desktop::EReviewChoice::SAVE));
@@ -541,7 +582,10 @@ int main(int argc, char** argv)
         assert(frame);
         std::this_thread::yield();
     }
-    assert(!impl.content_saving_->reports().empty() && !impl.content_saving_->reports().back().failure && impl.content_saving_->reports().back().result);
+    assert(
+        !impl.content_saving_->reports().empty() && !impl.content_saving_->reports().back().failure &&
+        impl.content_saving_->reports().back().result
+    );
     const auto saved_material = impl.sessions_.describe(material_id);
     assert(saved_material && !saved_material->dirty && saved_material->current == save_material_stamp);
     assert(saved_material->binding && impl.project_->asset(saved_material->binding->asset));
@@ -579,7 +623,8 @@ int main(int argc, char** argv)
     assert(unbound_window != recovery_windows->end());
     const auto recovered_view = unbound_window->id;
     lux::editor::material::MaterialViewState camera_before;
-    auto read_camera = [&](ui::Pane& pane) {
+    auto read_camera = [&](ui::Pane& pane)
+    {
         auto& material = static_cast<lux::editor::material::MaterialView&>(pane);
         assert(!material.binding());
         camera_before = material.state();
@@ -598,25 +643,30 @@ int main(int argc, char** argv)
     auto recovery_before = workspace::encodeRecovery(impl.workspace_.readRecovery()->value);
     assert(recovery_before);
     assert(impl.executeWorkspaceIntent(lux::editor::project::RestoreRecovery{}));
-    auto while_catalog_busy = [&](const extensions::ContributionSnapshot&) -> extensions::ContributionResult<void> {
+    auto while_catalog_busy = [&](const extensions::ContributionSnapshot&) -> extensions::ContributionResult<void>
+    {
         assert(impl.settleRecovery());
         assert(!impl.restoration_->items().front().opening && !impl.restoration_->items().front().result);
         return {};
     };
     assert(impl.contributions_.withSnapshot(while_catalog_busy));
     const auto recovery_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
-    while (std::ranges::any_of(impl.restoration_->items(), [](const auto& entry) { return !entry.result; })
-    )
+    while (std::ranges::any_of(impl.restoration_->items(), [](const auto& entry) { return !entry.result; }))
     {
         assert(std::chrono::steady_clock::now() < recovery_deadline);
         assert(app->update());
     }
-    assert(impl.restoration_->items()[0].result->has_value() && **impl.restoration_->items()[0].result == material_view);
-    assert(impl.restoration_->items()[1].result->has_value() && **impl.restoration_->items()[1].result == recovered_view);
+    assert(
+        impl.restoration_->items()[0].result->has_value() && **impl.restoration_->items()[0].result == material_view
+    );
+    assert(
+        impl.restoration_->items()[1].result->has_value() && **impl.restoration_->items()[1].result == recovered_view
+    );
     assert(impl.restoration_->items()[2].result && !*impl.restoration_->items()[2].result);
     assert(impl.sessions_.size() == 2 && impl.sessions_.describe(material_id)->current == saved_material->current);
     assert(impl.desktop_->views().describeAll()->size() == recovery_windows->size());
-    auto check_recovery = [&](ui::Pane& pane) {
+    auto check_recovery = [&](ui::Pane& pane)
+    {
         auto& material = static_cast<lux::editor::material::MaterialView&>(pane);
         assert(material.binding() && material.binding()->session.id() == material_id);
         assert(material.state().camera.transform.translation.isApprox(camera_before.camera.transform.translation));
@@ -630,11 +680,14 @@ int main(int argc, char** argv)
     std::cout << "Recovery uses an independent immutable manifest, keeps BUSY input, reuses exact windows and "
                  "preserves unknown bytes/camera\n";
     lux::editor::material::MaterialCompileId compilation;
-    material_action([&](lux::editor::material::MaterialView& view) {
-        auto result = view.compile();
-        assert(result);
-        compilation = *result;
-    });
+    material_action(
+        [&](lux::editor::material::MaterialView& view)
+        {
+            auto result = view.compile();
+            assert(result);
+            compilation = *result;
+        }
+    );
     const auto compile_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
     while (!impl.material_compilation_.operation(compilation)->get().ready())
     {
@@ -642,13 +695,17 @@ int main(int argc, char** argv)
         assert(app->update());
     }
     assert(impl.material_compilation_.operation(compilation)->get().result());
-    auto rename_material = [&] {
-        material_action([&](lux::editor::material::MaterialView& view) {
-            assert(view.beginEdit("Edit after compile"));
-            std::vector<lux::editor::material::VMaterialEdit> edits;
-            edits.emplace_back(lux::editor::material::MaterialRename{"Newer author source"});
-            assert(view.previewEdit(edits) && view.commitEdit());
-        });
+    auto rename_material = [&]
+    {
+        material_action(
+            [&](lux::editor::material::MaterialView& view)
+            {
+                assert(view.beginEdit("Edit after compile"));
+                std::vector<lux::editor::material::VMaterialEdit> edits;
+                edits.emplace_back(lux::editor::material::MaterialRename{"Newer author source"});
+                assert(view.previewEdit(edits) && view.commitEdit());
+            }
+        );
     };
     material_action([&](lux::editor::material::MaterialView& view) { assert(view.requestPublication()); });
     rename_material();
@@ -685,7 +742,8 @@ int main(int argc, char** argv)
         commands::CommandId{"lux.editor.export-copy"},
         commands::CommandInvocation{commands::SessionTarget{material_id, saved_material->current}}
     ));
-    auto export_path = [&](ui::Pane& pane) {
+    auto export_path = [&](ui::Pane& pane)
+    {
         auto& question = static_cast<desktop::ReviewView&>(pane);
         assert(question.setText("Content/Beginner/MaterialCopy.source"));
         assert(question.answer(desktop::EReviewChoice::SAVE));
@@ -704,11 +762,14 @@ int main(int argc, char** argv)
     {
         if (std::chrono::steady_clock::now() >= preview_deadline)
         {
-            material_action([&](lux::editor::material::MaterialView& view) {
-                const auto state = view.previewStatus();
-                std::cerr << "Preview: prepared=" << bool(state.prepared) << " accepted=" << bool(state.accepted)
-                          << " stale=" << state.stale << " diagnostic=" << state.diagnostic << '\n';
-            });
+            material_action(
+                [&](lux::editor::material::MaterialView& view)
+                {
+                    const auto state = view.previewStatus();
+                    std::cerr << "Preview: prepared=" << bool(state.prepared) << " accepted=" << bool(state.accepted)
+                              << " stale=" << state.stale << " diagnostic=" << state.diagnostic << '\n';
+                }
+            );
             assert(false && "Actual material preview did not become visible");
         }
         assert(app->update());
@@ -746,9 +807,11 @@ int main(int argc, char** argv)
     assert(impl.sessions_.size() == 2);
     const auto material_before = impl.sessions_.describe(material_id)->current;
     const auto flow_before = impl.sessions_.describe(flow_id)->current;
-    const auto answer = [&](desktop::EReviewChoice choice) {
+    const auto answer = [&](desktop::EReviewChoice choice)
+    {
         assert(impl.review_);
-        auto choose = [&](ui::Pane& pane) {
+        auto choose = [&](ui::Pane& pane)
+        {
             assert(pane.type() == ui::PaneTypeId{"lux.editor.review"});
             assert(static_cast<desktop::ReviewView&>(pane).answer(choice));
         };
@@ -762,7 +825,8 @@ int main(int argc, char** argv)
     assert(impl.sessions_.describe(flow_id)->current == flow_before);
     assert(impl.sessions_.size() == 2);
     std::cout << "Actual new commands, shared content views and cancel exit preserve all author state\n";
-    const auto choose_last = [&](desktop::EReviewChoice choice) {
+    const auto choose_last = [&](desktop::EReviewChoice choice)
+    {
         assert(impl.last_view_);
         auto choose = [&](ui::Pane& pane) { assert(static_cast<desktop::ReviewView&>(pane).answer(choice)); };
         assert(impl.desktop_->views().withView(impl.last_view_->question, choose));
@@ -789,9 +853,8 @@ int main(int argc, char** argv)
     assert(app->closeView(flow_view_id));
     choose_last(desktop::EReviewChoice::CLOSE_CONTENT);
     assert(impl.review_ && impl.sessions_.size() == 2);
-    auto choose_flow_source = [&](ui::Pane& pane) {
-        assert(static_cast<desktop::ReviewView&>(pane).setText("Content/Beginner/Flow.source"));
-    };
+    auto choose_flow_source = [&](ui::Pane& pane)
+    { assert(static_cast<desktop::ReviewView&>(pane).setText("Content/Beginner/Flow.source")); };
     assert(impl.desktop_->views().withView(*impl.review_, choose_flow_source));
     answer(desktop::EReviewChoice::SAVE);
     const auto close_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
@@ -822,23 +885,33 @@ int main(int argc, char** argv)
         draft.views.push_back(views::ViewFactoryEntry::create(
             contracts::CodeLease::builtin(),
             views::ViewFactoryDescriptor{
-                views::ViewTypeIdView{"test.comparison"}, "Comparison", cxx::typeToken<views::ContentViewInput>(), 1,
-                std::array{sessions::SessionKindIdView{"lux.editor.material"},
-                           sessions::SessionKindIdView{"lux.editor.flowforge"}}, false
+                views::ViewTypeIdView{"test.comparison"},
+                "Comparison",
+                cxx::typeToken<views::ContentViewInput>(),
+                1,
+                std::array{
+                    sessions::SessionKindIdView{"lux.editor.material"},
+                    sessions::SessionKindIdView{"lux.editor.flowforge"}
+                },
+                false
             },
-            [&](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
+            [&](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView>
+            {
                 const auto& binding = *static_cast<const views::ContentViewInput*>(input.binding());
                 assert(binding.content.sessions.size() == 2 && binding.content.primary == binding.content.sessions[1]);
                 for (const auto session : binding.content.sessions)
                     assert(impl.sessions_.describe(session));
                 if (refuse_view)
-                    return cxx::unexpected(views::ViewFactoryFailure{
-                        views::EViewFactoryError::CONSTRUCT, "comparison.deliberate"
-                    });
+                    return cxx::unexpected(
+                        views::ViewFactoryFailure{views::EViewFactoryError::CONSTRUCT, "comparison.deliberate"}
+                    );
                 return views::DetachedView{
                     contracts::CodeLease::builtin(),
                     std::make_unique<ComparisonPane>(input.dispatcher(), input.paneId(), binding.content),
-                    nullptr, nullptr, nullptr, nullptr,
+                    nullptr,
+                    nullptr,
+                    nullptr,
+                    nullptr,
                     +[](const ui::Pane& pane) noexcept { return static_cast<const ComparisonPane&>(pane).content(); }
                 };
             }
@@ -848,27 +921,32 @@ int main(int argc, char** argv)
         for (const auto& report : impl.content_saving_->reports())
             assert(report.result && !report.failure);
         const auto& assets = impl.project_->manifest().assets;
-        const auto flow_asset = std::ranges::find(assets, std::string{"Content/Beginner/Flow.source"},
-                                                &ProjectAssetEntry::source_path);
+        const auto flow_asset =
+            std::ranges::find(assets, std::string{"Content/Beginner/Flow.source"}, &ProjectAssetEntry::source_path);
         if (flow_asset == assets.end())
             for (const auto& report : impl.content_saving_->reports())
                 std::cerr << "save source=" << report.asset.source_path << " type=" << report.asset.source_type
-                          << " failure=" << (report.failure ? report.failure->domain + ":" + report.failure->message : "none")
+                          << " failure="
+                          << (report.failure ? report.failure->domain + ":" + report.failure->message : "none")
                           << " result=" << bool(report.result) << '\n';
         assert(flow_asset != assets.end());
         workspace::RecoveryManifest composite;
-        composite.entries.push_back({
-            views::ViewRestoreKey{"comparison"}, views::ViewTypeId{"test.comparison"},
-            {{locator, false}, {"asset:" + uuids::to_string(flow_asset->id.uuid()), false}}, 1
-        });
-        const auto publish = [&] {
+        composite.entries.push_back(
+            {views::ViewRestoreKey{"comparison"},
+             views::ViewTypeId{"test.comparison"},
+             {{locator, false}, {"asset:" + uuids::to_string(flow_asset->id.uuid()), false}},
+             1}
+        );
+        const auto publish = [&]
+        {
             const auto stored = impl.workspace_.readRecovery();
             assert(stored);
             assert(impl.workspace_changes_.recordRecovery(composite, stored->target.expected_version));
             settle_workspace();
         };
         publish();
-        const auto recover = [&] {
+        const auto recover = [&]
+        {
             assert(impl.restoreRecovery());
             const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
             while (!impl.restoration_->items().front().result)
@@ -884,16 +962,23 @@ int main(int argc, char** argv)
         const auto restored_flow = first_result.sources[1].session;
         assert(restored_flow != flow_id && impl.sessions_.describe(restored_flow));
         const auto associated = impl.desktop_->views().describe(comparison);
-        assert(associated && associated->content.sessions ==
-            (std::vector<sessions::SessionId>{material_id, restored_flow}));
+        assert(
+            associated && associated->content.sessions == (std::vector<sessions::SessionId>{material_id, restored_flow})
+        );
         assert(associated->content.primary == restored_flow);
         assert(impl.captureRecovery());
         settle_workspace();
         const auto captured = impl.workspace_.readRecovery();
-        const auto saved = std::ranges::find(captured->value.entries, views::ViewRestoreKey{"comparison"},
-                                            &workspace::RecoveryEntry::restore_key);
+        const auto saved = std::ranges::find(
+            captured->value.entries,
+            views::ViewRestoreKey{"comparison"},
+            &workspace::RecoveryEntry::restore_key
+        );
         assert(saved != captured->value.entries.end() && saved->contents.size() == 2 && saved->primary == 1);
-        assert(saved->contents[0].locator == locator && saved->contents[1].locator == composite.entries[0].contents[1].locator);
+        assert(
+            saved->contents[0].locator == locator &&
+            saved->contents[1].locator == composite.entries[0].contents[1].locator
+        );
         assert(impl.desktop_->views().close(comparison) && impl.desktop_->views().drain());
         assert(!impl.desktop_->views().describe(comparison));
         assert(impl.sessions_.describe(material_id) && impl.sessions_.describe(restored_flow));
@@ -918,11 +1003,13 @@ int main(int argc, char** argv)
     assert(new_scene);
     auto windows = impl.desktop_->views().describeAll();
     assert(windows);
-    auto creation = std::ranges::find_if(*windows, [](const auto& view) {
-        return view.type == views::ViewTypeId{"lux.editor.scene.creation"};
-    });
+    auto creation = std::ranges::find_if(
+        *windows,
+        [](const auto& view) { return view.type == views::ViewTypeId{"lux.editor.scene.creation"}; }
+    );
     assert(creation != windows->end());
-    auto configure_scene = [&](ui::Pane& pane) {
+    auto configure_scene = [&](ui::Pane& pane)
+    {
         auto& form = static_cast<lux::editor::scene::SceneCreationView&>(pane);
         const auto preset =
             form.configuration().applyPreset(lux::editor::scene::ESceneContentPreset::THREE_DIMENSIONAL);
@@ -956,18 +1043,42 @@ int main(int argc, char** argv)
     assert(app->execute(commands::CommandId{"lux.editor.scene.resources"}, commands::CommandInvocation{scene_view}));
     auto resource_views = impl.desktop_->views().describeAll();
     assert(resource_views);
-    auto resources = std::ranges::find_if(*resource_views, [](const auto& view) {
-        return view.type == views::ViewTypeId{"lux.editor.resources"};
-    });
+    auto resources = std::ranges::find_if(
+        *resource_views,
+        [](const auto& view) { return view.type == views::ViewTypeId{"lux.editor.resources"}; }
+    );
     assert(resources != resource_views->end());
-    auto drop_model = [&](ui::Pane& pane) {
+    bool model_drop_ready{};
+    auto drop_model = [&](ui::Pane& pane)
+    {
         auto requested = static_cast<lux::editor::scene::SceneView&>(pane)
                              .dropModel(impl.project_->catalogModel().reference(model_id), {320, 420}, {640, 480});
         if (!requested)
-            std::cerr << "Model drop preparation failed, variant " << requested.error().cause.index() << '\n';
-        assert(requested);
+        {
+            const auto* render_error = std::get_if<render::RendererFailure>(&requested.error().cause);
+            const bool is_pending_output = render_error && render_error->code == render::ERendererError::NOT_READY;
+            if (!is_pending_output)
+                std::cerr << "Model drop preparation failed, variant " << requested.error().cause.index() << '\n';
+            assert(is_pending_output);
+            assert(impl.model_placements_.empty());
+            assert(impl.sessions_.describe(scene_id)->current == model_source);
+            return;
+        }
+        model_drop_ready = true;
     };
-    assert(impl.desktop_->views().withView(scene_view, drop_model));
+    // A fixed number of UI iterations is not a GPU completion guarantee. Keep the original
+    // drop input and require a matching sampled camera output before admitting the intent.
+    const auto drop_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
+    while (!model_drop_ready)
+    {
+        assert(std::chrono::steady_clock::now() < drop_deadline);
+        assert(impl.desktop_->views().withView(scene_view, drop_model));
+        if (!model_drop_ready)
+        {
+            assert(app->update());
+            std::this_thread::yield();
+        }
+    }
     assert(impl.model_placements_.size() == 1 && !impl.model_placements_.front().operation);
     assert(impl.model_placements_.front().placement.based_on == model_source);
     const auto model_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
@@ -993,33 +1104,31 @@ int main(int argc, char** argv)
         assert(author->get().describe().current == model_source);
         assert(author->get().redo());
     }
-    impl.result_intent_ = lux::editor::project::AcknowledgeModel{
-        impl.model_placements_.front().id
-    };
+    impl.result_intent_ = lux::editor::project::AcknowledgeModel{impl.model_placements_.front().id};
     assert(app->update() && impl.model_placements_.empty());
     std::cout << "Actual SceneView drop reads project pak through Process and commits one undoable model batch\n";
     for (int frame = 0; frame < 8; ++frame)
         assert(app->update());
     lux::scene::SceneInstanceId presented;
-    auto read_instance = [&](ui::Pane& pane) {
-        presented = static_cast<lux::editor::scene::SceneView&>(pane).presentedInstance();
-    };
+    auto read_instance = [&](ui::Pane& pane)
+    { presented = static_cast<lux::editor::scene::SceneView&>(pane).presentedInstance(); };
     assert(impl.desktop_->views().withView(scene_view, read_instance));
     assert(presented.valid());
-    auto read_resources = [&](ui::Pane& pane) {
-        assert(static_cast<lux::editor::scene::ResourceView&>(pane).snapshot().instance == presented);
-    };
+    auto read_resources = [&](ui::Pane& pane)
+    { assert(static_cast<lux::editor::scene::ResourceView&>(pane).snapshot().instance == presented); };
     assert(impl.desktop_->views().withView(resources->id, read_resources));
 
     assert(app->execute(commands::CommandId{"lux.editor.scene.outliner"}, commands::CommandInvocation{scene_view}));
     auto all_views = impl.desktop_->views().describeAll();
     assert(all_views);
-    auto outliner = std::ranges::find_if(*all_views, [](const auto& view) {
-        return view.type == views::ViewTypeId{"lux.editor.outliner"};
-    });
+    auto outliner = std::ranges::find_if(
+        *all_views,
+        [](const auto& view) { return view.type == views::ViewTypeId{"lux.editor.outliner"}; }
+    );
     assert(outliner != all_views->end());
     const world::WorldObjectId object{*uuids::uuid::from_string("49606a4d-f15c-4e2f-a6e7-a25efb3f6a10")};
-    auto create_object = [&](ui::Pane& pane) {
+    auto create_object = [&](ui::Pane& pane)
+    {
         assert(static_cast<lux::editor::scene::OutlinerView&>(pane)
                    .createObject(object, {0}, lux::editor::scene::EObjectSpace::SPACE_3D));
     };
@@ -1033,9 +1142,10 @@ int main(int argc, char** argv)
     ));
     assert(app->execute(commands::CommandId{"lux.editor.scene.inspector"}, commands::CommandInvocation{scene_view}));
     auto inspector_views = impl.desktop_->views().describeAll();
-    auto inspector_info = std::ranges::find_if(*inspector_views, [](const auto& view) {
-        return view.type == views::ViewTypeId{"lux.editor.inspector"};
-    });
+    auto inspector_info = std::ranges::find_if(
+        *inspector_views,
+        [](const auto& view) { return view.type == views::ViewTypeId{"lux.editor.inspector"}; }
+    );
     assert(inspector_info != inspector_views->end());
     assert(interaction->select({}));
     assert(app->update());
@@ -1082,15 +1192,15 @@ int main(int argc, char** argv)
     assert(failing);
     auto failed_frame = app->update();
     assert(!failed_frame && failed_frame.error().domain == "scene.execution");
-    auto failed_save =
-        std::ranges::find(impl.content_saving_->reports(), *saving, &ProjectSaveReport::id);
+    auto failed_save = std::ranges::find(impl.content_saving_->reports(), *saving, &ProjectSaveReport::id);
     assert(failed_save != impl.content_saving_->reports().end() && failed_save->catalog_ticket);
     using Failures = std::remove_reference_t<decltype(impl)>::SceneFailures;
     auto retained = std::any_cast<std::shared_ptr<const Failures>>(failed_frame.error().cause);
     assert(retained && retained->values.size() == 1);
     const auto failed_instance = retained->values.front().scene;
     auto retired_failure = failing->retire();
-    while (!retired_failure.complete() || std::ranges::find(impl.content_saving_->pending(), *saving) != impl.content_saving_->pending().end())
+    while (!retired_failure.complete() ||
+           std::ranges::find(impl.content_saving_->pending(), *saving) != impl.content_saving_->pending().end())
     {
         assert(std::chrono::steady_clock::now() < saving_deadline);
         auto updated = app->update();
@@ -1108,8 +1218,7 @@ int main(int argc, char** argv)
     const auto& drive_failure = std::get<lux::scene::SceneDriveFailure>(retained->values.front().cause);
     assert(retained->values.front().scene == failed_instance);
     assert(std::any_cast<int>(std::get<lux::scene::SceneExecutionFailure>(drive_failure.cause).cause) == 731);
-    impl.result_intent_ = lux::editor::project::AcknowledgeMaintenance{
-    };
+    impl.result_intent_ = lux::editor::project::AcknowledgeMaintenance{};
     assert(app->update() && !impl.maintenance_failure_);
     std::cout << "Scene failure keeps an owning diagnostic and independent save completion; empty selection clears "
                  "Inspector\n";
@@ -1176,7 +1285,8 @@ int main(int argc, char** argv)
         file << "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n";
     }
     std::optional<assets::ModelImportId> importing;
-    auto request_import = [&](ui::Pane& pane) {
+    auto request_import = [&](ui::Pane& pane)
+    {
         auto accepted = static_cast<lux::editor::project::ImportView&>(pane).importModel(
             {imported_id, std::filesystem::absolute(import_file), "Content/Imported/Triangle", {}}
         );
@@ -1201,7 +1311,8 @@ int main(int argc, char** argv)
     assert(app->execute(commands::CommandId{"lux.editor.project.create"}));
     auto creation_requests = impl.project_creation_->requests();
     const auto creation_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
-    auto settle_creation = [&](ProjectCreation& activity) {
+    auto settle_creation = [&](ProjectCreation& activity)
+    {
         while (activity.progress().pending)
         {
             assert(std::chrono::steady_clock::now() < creation_deadline);
@@ -1286,9 +1397,8 @@ int main(int argc, char** argv)
     const auto settings_view =
         std::ranges::find(*tool_views, views::ViewTypeId{"lux.editor.settings"}, &views::ViewInfo::type)->id;
     const auto active_plugins = impl.plugins_.libraries().size();
-    auto choose_plugins = [&](ui::Pane& pane) {
-        assert(static_cast<lux::editor::project::SettingsView&>(pane).requestSave({}));
-    };
+    auto choose_plugins = [&](ui::Pane& pane)
+    { assert(static_cast<lux::editor::project::SettingsView&>(pane).requestSave({})); };
     assert(impl.desktop_->views().withView(settings_view, choose_plugins));
     assert(app->update() && impl.plugin_saving_->status());
     assert(app->closeView(settings_view));
@@ -1309,7 +1419,8 @@ int main(int argc, char** argv)
     auto exit_save = impl.save({material_id, exit_content}, persistence::ESaveMode::SAVE);
     assert(exit_save && impl.saves_.status(*exit_save)->stage != persistence::ESaveStage::TERMINAL);
     lux::editor::material::MaterialCompileId exit_compile;
-    auto compile_at_exit = [&](ui::Pane& pane) {
+    auto compile_at_exit = [&](ui::Pane& pane)
+    {
         auto compiled = static_cast<lux::editor::material::MaterialView&>(pane).compile();
         assert(compiled);
         exit_compile = *compiled;
@@ -1339,11 +1450,7 @@ int main(int argc, char** argv)
     assert(!impl.material_compilation_.operation(exit_compile));
     const auto exit_completed = impl.engine_->execution().taskInfo(exit_task);
     assert(exit_completed && exit_completed->finished && exit_completed->state == process::ETaskState::SUCCEEDED);
-    const auto exit_saved = std::ranges::find(
-        impl.content_saving_->reports(),
-        *exit_save,
-        &ProjectSaveReport::id
-    );
+    const auto exit_saved = std::ranges::find(impl.content_saving_->reports(), *exit_save, &ProjectSaveReport::id);
     assert(exit_saved != impl.content_saving_->reports().end() && exit_saved->result);
     assert(std::holds_alternative<persistence::CommitReceipt>(exit_saved->result->publication));
     assert(impl.content_saving_->pending().empty() && impl.sessions_.size() == 0);
@@ -1359,9 +1466,10 @@ int main(int argc, char** argv)
     assert(initial);
     auto& initial_owner = ApplicationTestAccess::implementation(**initial);
     const auto initial_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
-    while (initial_owner.sessions_.size() == 0 ||
-           !std::ranges::any_of(*initial_owner.desktop_->views().describeAll(),
-                               [](const auto& view) { return !view.content.sessions.empty(); }))
+    while (initial_owner.sessions_.size() == 0 || !std::ranges::any_of(
+                                                      *initial_owner.desktop_->views().describeAll(),
+                                                      [](const auto& view) { return !view.content.sessions.empty(); }
+                                                  ))
     {
         assert((*initial)->update());
         assert(std::chrono::steady_clock::now() < initial_deadline);
@@ -1387,7 +1495,8 @@ int main(int argc, char** argv)
             failing_draft.views.push_back(views::ViewFactoryEntry::create(
                 contracts::CodeLease::builtin(),
                 entry->descriptor(),
-                [](const views::ViewFactoryInput&) -> views::ViewFactoryResult<views::DetachedView> {
+                [](const views::ViewFactoryInput&) -> views::ViewFactoryResult<views::DetachedView>
+                {
                     return cxx::unexpected(views::ViewFactoryFailure{
                         views::EViewFactoryError::CONSTRUCT,
                         "test.actual-material-factory",

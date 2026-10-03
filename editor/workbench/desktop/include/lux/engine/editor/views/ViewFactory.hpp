@@ -78,16 +78,21 @@ namespace lux::editor::views
         template <const ViewFactoryDescriptor& Descriptor>
         [[nodiscard]] static std::shared_ptr<ViewFactoryEntry> bind(contracts::CodeLease code, Create create)
         {
-            static_assert(Descriptor.type.isValid() && !Descriptor.label.empty() &&
-                          Descriptor.binding_type.isValid() && Descriptor.input_version != 0,
-                          "Fixed view metadata must be a valid constant declaration.");
+            static_assert(
+                Descriptor.type.isValid() && !Descriptor.label.empty() && Descriptor.binding_type.isValid() &&
+                    Descriptor.input_version != 0,
+                "Fixed view metadata must be a valid constant declaration."
+            );
             return std::shared_ptr<ViewFactoryEntry>(
                 new ViewFactoryEntry(std::move(code), Descriptor, std::move(create))
             );
         }
         // Freeze dynamic strings/arrays before publishing any borrowed descriptor.
-        [[nodiscard]] static std::shared_ptr<ViewFactoryEntry>
-        create(contracts::CodeLease, const ViewFactoryDescriptor&, Create);
+        [[nodiscard]] static std::shared_ptr<ViewFactoryEntry> create(
+            contracts::CodeLease,
+            const ViewFactoryDescriptor&,
+            Create
+        );
         ~ViewFactoryEntry();
         ViewFactoryEntry(const ViewFactoryEntry&) = delete;
         ViewFactoryEntry& operator=(const ViewFactoryEntry&) = delete;
@@ -126,4 +131,4 @@ namespace lux::editor::views
         struct Data;
         std::shared_ptr<const Data> data_;
     };
-}
+} // namespace lux::editor::views

@@ -10,7 +10,8 @@ namespace lux::editor
     ) noexcept
         : code_(std::move(code)), reflection_(acquireEditorReflection()), value_(std::move(value)),
           descriptor_(std::move(registration))
-    {}
+    {
+    }
 
     cxx::expected<ConfigurationValue, EConfigurationError> ConfigurationValue::create(
         ConfigurationDescriptor registration,

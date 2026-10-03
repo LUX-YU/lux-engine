@@ -131,7 +131,8 @@ namespace lux::editor::commands
         ERegistryBinding registration_;
     };
     struct ImmediateCompletion final
-    {};
+    {
+    };
     // An existing business identity for observation, never a second copy of its state or cancellation.
     struct OperationKindIdTag;
     using OperationKindId = cxx::StableNameId<OperationKindIdTag>;
@@ -141,4 +142,4 @@ namespace lux::editor::commands
         std::uint64_t value{};
     };
     using DispatchReceipt = std::variant<ImmediateCompletion, AcceptedOperation>;
-}
+} // namespace lux::editor::commands

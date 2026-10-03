@@ -30,10 +30,11 @@ namespace lux::editor
                     code = EEditorError::BUSY;
             return cxx::unexpected(EditorFailure{code, std::move(domain), 0, {}, cause});
         }
-    }
+    } // namespace
     ProjectSaveReport::ProjectSaveReport(persistence::SaveId value, ProjectAssetEntry entry)
         : id(value), asset(std::move(entry))
-    {}
+    {
+    }
     struct ProjectContentSaving::Impl final
     {
         static constexpr std::size_t capacity_ = 128;
@@ -51,15 +52,24 @@ namespace lux::editor
         struct Dispatch final
         {
             bool& active;
-            explicit Dispatch(bool& value) noexcept : active(value) { active = true; }
-            ~Dispatch() { active = false; }
+            explicit Dispatch(bool& value) noexcept : active(value)
+            {
+                active = true;
+            }
+            ~Dispatch()
+            {
+                active = false;
+            }
             Dispatch(const Dispatch&) = delete;
             Dispatch& operator=(const Dispatch&) = delete;
         };
         Impl(
-            sessions::SessionStore& sessions, sessions::SessionOpening& opening,
-            persistence::SaveService& saves, ProjectStorage& project,
-            persistence::WriteCoordinator& writes, persistence::IArtifactStore& files
+            sessions::SessionStore& sessions,
+            sessions::SessionOpening& opening,
+            persistence::SaveService& saves,
+            ProjectStorage& project,
+            persistence::WriteCoordinator& writes,
+            persistence::IArtifactStore& files
         )
             : sessions_(sessions), opening_(opening), saves_(saves), project_(project), writes_(writes), files_(files)
         {
@@ -81,7 +91,8 @@ namespace lux::editor
                 return failure("save-all.contents", ids.error());
             if (ids->size() > capacity_ - save_reports_.size())
                 return cxx::unexpected(EditorFailure{EEditorError::CAPACITY, "save-all.results"});
-            auto admit = [this](sessions::ContentStamp content) -> sessions::SessionFactoryResult<persistence::SaveId> {
+            auto admit = [this](sessions::ContentStamp content) -> sessions::SessionFactoryResult<persistence::SaveId>
+            {
                 auto saved = request(content, persistence::ESaveMode::SAVE, {});
                 if (!saved)
                 {
@@ -89,7 +100,10 @@ namespace lux::editor
                     if (saved.error().code == EEditorError::BUSY)
                         code = sessions::ESessionFactoryError::BUSY;
                     return cxx::unexpected(sessions::SessionFactoryFailure{
-                        code, saved.error().domain, static_cast<std::uint64_t>(saved.error().code), saved.error().message
+                        code,
+                        saved.error().domain,
+                        static_cast<std::uint64_t>(saved.error().code),
+                        saved.error().message
                     });
                 }
                 return *saved;
@@ -135,16 +149,18 @@ namespace lux::editor
                     // Compare paths in the backend's physical key domain, including Windows case
                     // normalization and extended-path roots; logical project paths are not that domain.
                     const auto manifest_name = project_.projectFile().filename().generic_u8string();
-                    auto manifest = files_.resolve(std::string_view{
-                        reinterpret_cast<const char*>(manifest_name.data()), manifest_name.size()
-                    });
+                    auto manifest = files_.resolve(
+                        std::string_view{reinterpret_cast<const char*>(manifest_name.data()), manifest_name.size()}
+                    );
                     if (!manifest)
                         return failure("save.binding.root", manifest.error());
-                    const auto relative_path = std::filesystem::u8path(info->binding->location)
-                        .lexically_relative(std::filesystem::u8path(manifest->key.value).parent_path())
-                        .generic_u8string();
+                    const auto relative_path =
+                        std::filesystem::u8path(info->binding->location)
+                            .lexically_relative(std::filesystem::u8path(manifest->key.value).parent_path())
+                            .generic_u8string();
                     const std::string relative{
-                        reinterpret_cast<const char*>(relative_path.data()), relative_path.size()
+                        reinterpret_cast<const char*>(relative_path.data()),
+                        relative_path.size()
                     };
                     if (!validProjectPath(relative))
                         return cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "save.binding.path"});
@@ -153,7 +169,16 @@ namespace lux::editor
                         return failure("save.binding.path", physical.error());
                     if (physical->key.value != info->binding->location)
                         return cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "save.binding.identity"});
-                    entry = {info->binding->asset, std::string{source.canonical_name}, relative, {}, {}, {}, {}, source.version};
+                    entry = {
+                        info->binding->asset,
+                        std::string{source.canonical_name},
+                        relative,
+                        {},
+                        {},
+                        {},
+                        {},
+                        source.version
+                    };
                     entry.mount_path = relative;
                 }
             }
@@ -178,7 +203,16 @@ namespace lux::editor
                 std::mt19937 random{std::random_device{}()};
                 request.asset = asset::AssetId{uuids::uuid_random_generator{random}()};
                 request.destination = std::move(*resolved);
-                entry = {request.asset, std::string{source.canonical_name}, std::move(destination), {}, {}, {}, {}, source.version};
+                entry = {
+                    request.asset,
+                    std::string{source.canonical_name},
+                    std::move(destination),
+                    {},
+                    {},
+                    {},
+                    {},
+                    source.version
+                };
                 entry.mount_path = entry.source_path;
             }
             return PreparedProjectSave{std::move(request), std::move(entry)};
@@ -196,7 +230,8 @@ namespace lux::editor
             if (!accepted)
                 return failure("save.admission", accepted.error());
             save_reports_.emplace_back(*accepted, std::move(prepared->asset));
-            pending_saves_.push_back(*accepted); // SaveService allocated this fresh identity at the preceding admission.
+            pending_saves_.push_back(*accepted
+            ); // SaveService allocated this fresh identity at the preceding admission.
             return *accepted;
         }
         EditorResult<void> track(persistence::SaveId id, std::span<const ProjectAssetEntry> destinations = {})
@@ -210,7 +245,8 @@ namespace lux::editor
                 return failure("save.status", status.error());
             // Resolve from the immutable physical destination (including a reviewed unbound close),
             // so closing or rebinding the Session cannot relabel a late disk fact.
-            auto remember = [&](const auto& entries) -> EditorResult<bool> {
+            auto remember = [&](const auto& entries) -> EditorResult<bool>
+            {
                 for (const auto& entry : entries)
                 {
                     auto target = files_.resolve(entry.source_path);
@@ -243,9 +279,8 @@ namespace lux::editor
             {
                 const auto id = *iterator;
                 auto& report = *std::ranges::find(save_reports_, id, &ProjectSaveReport::id);
-                const bool close_borrows = std::ranges::any_of(borrowed, [id](const auto& entry) {
-                    return entry.save == id;
-                });
+                const bool close_borrows =
+                    std::ranges::any_of(borrowed, [id](const auto& entry) { return entry.save == id; });
                 if (report.result)
                 {
                     if (close_borrows)
@@ -270,7 +305,8 @@ namespace lux::editor
                 // A terminal source observation may still describe an unknown disk publication.
                 // The original SaveService keeps and refreshes that fact on reconciliation; do not
                 // freeze a second outcome or acknowledge its still-owned lane here.
-                const bool is_unknown = status->outcome &&
+                const bool is_unknown =
+                    status->outcome &&
                     std::holds_alternative<persistence::PublicationUnknown>(status->outcome->publication);
                 if (is_unknown)
                 {
@@ -308,7 +344,8 @@ namespace lux::editor
                             {
                                 target->expected_version = candidate->plan().beforeManifestDigest();
                                 auto ticket = persistence::publishEncodedArtifact(
-                                    writes_, std::move(*target),
+                                    writes_,
+                                    std::move(*target),
                                     persistence::EncodedArtifact{candidate->plan().manifestBytes()}
                                 );
                                 if (!ticket)
@@ -371,13 +408,21 @@ namespace lux::editor
         }
     };
     ProjectContentSaving::ProjectContentSaving(
-        sessions::SessionStore& sessions, sessions::SessionOpening& opening, persistence::SaveService& saves,
-        ProjectStorage& project, persistence::WriteCoordinator& writes, persistence::IArtifactStore& files
-    ) : impl_(std::make_unique<Impl>(sessions, opening, saves, project, writes, files))
-    {}
+        sessions::SessionStore& sessions,
+        sessions::SessionOpening& opening,
+        persistence::SaveService& saves,
+        ProjectStorage& project,
+        persistence::WriteCoordinator& writes,
+        persistence::IArtifactStore& files
+    )
+        : impl_(std::make_unique<Impl>(sessions, opening, saves, project, writes, files))
+    {
+    }
     ProjectContentSaving::~ProjectContentSaving() = default;
     EditorResult<PreparedProjectSave> ProjectContentSaving::prepare(
-        sessions::ContentStamp source, persistence::ESaveMode mode, std::string destination
+        sessions::ContentStamp source,
+        persistence::ESaveMode mode,
+        std::string destination
     )
     {
         if (auto admitted = impl_->admission(); !admitted)
@@ -386,7 +431,9 @@ namespace lux::editor
         return impl_->prepare(source, mode, std::move(destination));
     }
     EditorResult<persistence::SaveId> ProjectContentSaving::request(
-        sessions::ContentStamp source, persistence::ESaveMode mode, std::string destination
+        sessions::ContentStamp source,
+        persistence::ESaveMode mode,
+        std::string destination
     )
     {
         if (auto admitted = impl_->admission(); !admitted)
@@ -394,7 +441,10 @@ namespace lux::editor
         Impl::Dispatch scope{impl_->dispatching_};
         return impl_->request(source, mode, std::move(destination));
     }
-    EditorResult<void> ProjectContentSaving::track(persistence::SaveId id, std::span<const ProjectAssetEntry> destinations)
+    EditorResult<void> ProjectContentSaving::track(
+        persistence::SaveId id,
+        std::span<const ProjectAssetEntry> destinations
+    )
     {
         if (auto admitted = impl_->admission(); !admitted)
             return cxx::unexpected(admitted.error());
@@ -437,13 +487,22 @@ namespace lux::editor
         impl_->save_all_.reset();
         return {};
     }
-    std::span<const ProjectSaveReport> ProjectContentSaving::reports() const noexcept { return impl_->save_reports_; }
-    std::span<const persistence::SaveId> ProjectContentSaving::pending() const noexcept { return impl_->pending_saves_; }
+    std::span<const ProjectSaveReport> ProjectContentSaving::reports() const noexcept
+    {
+        return impl_->save_reports_;
+    }
+    std::span<const persistence::SaveId> ProjectContentSaving::pending() const noexcept
+    {
+        return impl_->pending_saves_;
+    }
     std::span<const sessions::SaveAllEntry> ProjectContentSaving::saveAllEntries() const noexcept
     {
         return impl_->save_all_ ? impl_->save_all_->entries() : std::span<const sessions::SaveAllEntry>{};
     }
-    bool ProjectContentSaving::hasSaveAll() const noexcept { return impl_->save_all_.has_value(); }
+    bool ProjectContentSaving::hasSaveAll() const noexcept
+    {
+        return impl_->save_all_.has_value();
+    }
     bool ProjectContentSaving::hasCapacity(std::size_t count) const noexcept
     {
         return count <= Impl::capacity_ - impl_->save_reports_.size();
@@ -452,4 +511,4 @@ namespace lux::editor
     {
         return impl_->pending_saves_.empty();
     }
-}
+} // namespace lux::editor

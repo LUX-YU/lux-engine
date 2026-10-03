@@ -79,15 +79,16 @@ namespace lux::window
         {
             return {code, message};
         }
-    }
+    } // namespace
 
     LuxWindow::DisplaysResult LuxWindow::displays() noexcept
     {
         int count{};
         const auto* monitors = glfwGetMonitors(&count);
         if (!monitors)
-            return lux::cxx::unexpected(placementFailure(EWindowPlacementError::NO_DISPLAY,
-                "No initialized desktop displays"));
+            return lux::cxx::unexpected(
+                placementFailure(EWindowPlacementError::NO_DISPLAY, "No initialized desktop displays")
+            );
         std::vector<DisplayInfo> result;
         result.reserve(static_cast<std::size_t>(count));
         for (int i = 0; i < count; ++i)
@@ -98,14 +99,16 @@ namespace lux::window
     LuxWindow::StateResult LuxWindow::state() const noexcept
     {
         if (!_glfw_window)
-            return lux::cxx::unexpected(placementFailure(EWindowPlacementError::NOT_INITIALIZED,
-                "Window has no native resource"));
+            return lux::cxx::unexpected(
+                placementFailure(EWindowPlacementError::NOT_INITIALIZED, "Window has no native resource")
+            );
         WindowState result;
         result.content = windowRect(_glfw_window);
         result.placement.normal = normal_rect_;
         auto* monitor = glfwGetWindowMonitor(_glfw_window);
-        result.placement.mode = monitor ? EWindowMode::FULLSCREEN :
-            (glfwGetWindowAttrib(_glfw_window, GLFW_MAXIMIZED) ? EWindowMode::MAXIMIZED : EWindowMode::ORDINARY);
+        result.placement.mode = monitor ? EWindowMode::FULLSCREEN
+                                        : (glfwGetWindowAttrib(_glfw_window, GLFW_MAXIMIZED) ? EWindowMode::MAXIMIZED
+                                                                                             : EWindowMode::ORDINARY);
         glfwGetWindowContentScale(_glfw_window, &result.scale.x, &result.scale.y);
         auto& insets = result.insets;
         glfwGetWindowFrameSize(_glfw_window, &insets.left, &insets.top, &insets.right, &insets.bottom);
@@ -117,18 +120,25 @@ namespace lux::window
             int count{};
             auto* const* monitors = glfwGetMonitors(&count);
             if (!monitors)
-                return lux::cxx::unexpected(placementFailure(EWindowPlacementError::NO_DISPLAY,
-                    "Window has no available desktop display"));
+                return lux::cxx::unexpected(
+                    placementFailure(EWindowPlacementError::NO_DISPLAY, "Window has no available desktop display")
+                );
             std::int64_t best_area{-1};
             for (int i = 0; i < count; ++i)
             {
                 auto hint = displayHint(monitors[i]);
                 const auto& area = hint.work_area;
                 const auto& rect = result.content;
-                const auto width = std::max<std::int64_t>(0, std::min(std::int64_t{rect.x} + rect.width,
-                    std::int64_t{area.x} + area.width) - std::max(rect.x, area.x));
-                const auto height = std::max<std::int64_t>(0, std::min(std::int64_t{rect.y} + rect.height,
-                    std::int64_t{area.y} + area.height) - std::max(rect.y, area.y));
+                const auto width = std::max<std::int64_t>(
+                    0,
+                    std::min(std::int64_t{rect.x} + rect.width, std::int64_t{area.x} + area.width) -
+                        std::max(rect.x, area.x)
+                );
+                const auto height = std::max<std::int64_t>(
+                    0,
+                    std::min(std::int64_t{rect.y} + rect.height, std::int64_t{area.y} + area.height) -
+                        std::max(rect.y, area.y)
+                );
                 if (width * height > best_area)
                 {
                     best_area = width * height;
@@ -142,8 +152,9 @@ namespace lux::window
     LuxWindow::StateResult LuxWindow::applyPlacement(const WindowPlacement& request) noexcept
     {
         if (!_glfw_window)
-            return lux::cxx::unexpected(placementFailure(EWindowPlacementError::NOT_INITIALIZED,
-                "Window has no native resource"));
+            return lux::cxx::unexpected(
+                placementFailure(EWindowPlacementError::NOT_INITIALIZED, "Window has no native resource")
+            );
         auto available = displays();
         if (!available)
             return lux::cxx::unexpected(available.error());
@@ -151,8 +162,11 @@ namespace lux::window
         if (!glfwGetWindowMonitor(_glfw_window))
             glfwGetWindowFrameSize(_glfw_window, &insets.left, &insets.top, &insets.right, &insets.bottom);
         // Saved values may be repaired by policy. Explicit mode and size must be valid.
-        auto resolved = resolveWindowPlacement({request, WindowSize{request.normal.width, request.normal.height},
-            request.mode, request.display}, *available, insets);
+        auto resolved = resolveWindowPlacement(
+            {request, WindowSize{request.normal.width, request.normal.height}, request.mode, request.display},
+            *available,
+            insets
+        );
         if (!resolved)
             return lux::cxx::unexpected(resolved.error());
         const auto& placement = resolved->placement;
@@ -162,8 +176,8 @@ namespace lux::window
         for (int i = 0; i < count; ++i)
         {
             const auto current = displayHint(monitors[i]);
-            const bool is_match = current.name == placement.display.name &&
-                current.work_area == placement.display.work_area;
+            const bool is_match =
+                current.name == placement.display.name && current.work_area == placement.display.work_area;
             if (is_match)
             {
                 target = monitors[i];
@@ -171,12 +185,14 @@ namespace lux::window
             }
         }
         if (!target)
-            return lux::cxx::unexpected(placementFailure(EWindowPlacementError::NO_DISPLAY,
-                "Selected display was disconnected"));
+            return lux::cxx::unexpected(
+                placementFailure(EWindowPlacementError::NO_DISPLAY, "Selected display was disconnected")
+            );
         const auto* mode = glfwGetVideoMode(target);
         if (!mode)
-            return lux::cxx::unexpected(placementFailure(EWindowPlacementError::UNSUPPORTED,
-                "Selected display has no current mode"));
+            return lux::cxx::unexpected(
+                placementFailure(EWindowPlacementError::UNSUPPORTED, "Selected display has no current mode")
+            );
         glfwGetError(nullptr);
         changing_placement_ = true;
         glfwRestoreWindow(_glfw_window);
@@ -195,8 +211,10 @@ namespace lux::window
         const int error = glfwGetError(&message);
         placementChanged();
         if (error != GLFW_NO_ERROR)
-            return lux::cxx::unexpected(placementFailure(EWindowPlacementError::PLATFORM,
-                message ? message : "Platform rejected window placement"));
+            return lux::cxx::unexpected(placementFailure(
+                EWindowPlacementError::PLATFORM,
+                message ? message : "Platform rejected window placement"
+            ));
         return state();
     }
 
@@ -204,8 +222,8 @@ namespace lux::window
     {
         if (changing_placement_)
             return;
-        const bool is_normal = !glfwGetWindowMonitor(_glfw_window) &&
-            !glfwGetWindowAttrib(_glfw_window, GLFW_MAXIMIZED) && !minimized();
+        const bool is_normal =
+            !glfwGetWindowMonitor(_glfw_window) && !glfwGetWindowAttrib(_glfw_window, GLFW_MAXIMIZED) && !minimized();
         if (is_normal)
             normal_rect_ = windowRect(_glfw_window);
         if (on_placement_changed)
@@ -321,45 +339,62 @@ namespace lux::window
         glfwSetWindowUserPointer(_glfw_window, this);
         glfwSetWindowCloseCallback(_glfw_window, &LuxWindow::window_close_callback);
         normal_rect_ = windowRect(_glfw_window);
-        glfwSetWindowPosCallback(_glfw_window, [](GLFWwindow* window, int x, int y) {
-            auto& self = *static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
-            self.placementChanged();
-            if (self.on_moved)
-                self.on_moved({x, y});
-        });
-        glfwSetWindowMaximizeCallback(_glfw_window, [](GLFWwindow* window, int) {
-            static_cast<LuxWindow*>(glfwGetWindowUserPointer(window))->placementChanged();
-        });
-        glfwSetWindowIconifyCallback(_glfw_window, [](GLFWwindow* window, int minimized) {
-            auto& self = *static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
-            self.placementChanged();
-            if (self.on_minimized)
-                self.on_minimized({minimized == GLFW_TRUE});
-        });
-        glfwSetWindowContentScaleCallback(_glfw_window, [](GLFWwindow* window, float, float) {
-            static_cast<LuxWindow*>(glfwGetWindowUserPointer(window))->placementChanged();
-        });
-        glfwSetWindowFocusCallback(_glfw_window, [](GLFWwindow* window, int focused) {
-            auto* self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
-            if (focused)
+        glfwSetWindowPosCallback(
+            _glfw_window,
+            [](GLFWwindow* window, int x, int y)
             {
-                self->recordInput(WindowFocusEvent{});
-                if (self->on_focus)
-                    self->on_focus({});
+                auto& self = *static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
+                self.placementChanged();
+                if (self.on_moved)
+                    self.on_moved({x, y});
             }
-            else
+        );
+        glfwSetWindowMaximizeCallback(
+            _glfw_window,
+            [](GLFWwindow* window, int)
+            { static_cast<LuxWindow*>(glfwGetWindowUserPointer(window))->placementChanged(); }
+        );
+        glfwSetWindowIconifyCallback(
+            _glfw_window,
+            [](GLFWwindow* window, int minimized)
             {
-                if (std::exchange(self->composing_, false))
-                    self->recordInput(WindowCompositionEvent{ECompositionStage::CANCELLED});
-                self->recordInput(WindowLostFocusEvent{});
-                if (self->on_lost_focus)
-                    self->on_lost_focus({});
+                auto& self = *static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
+                self.placementChanged();
+                if (self.on_minimized)
+                    self.on_minimized({minimized == GLFW_TRUE});
             }
-        });
+        );
+        glfwSetWindowContentScaleCallback(
+            _glfw_window,
+            [](GLFWwindow* window, float, float)
+            { static_cast<LuxWindow*>(glfwGetWindowUserPointer(window))->placementChanged(); }
+        );
+        glfwSetWindowFocusCallback(
+            _glfw_window,
+            [](GLFWwindow* window, int focused)
+            {
+                auto* self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
+                if (focused)
+                {
+                    self->recordInput(WindowFocusEvent{});
+                    if (self->on_focus)
+                        self->on_focus({});
+                }
+                else
+                {
+                    if (std::exchange(self->composing_, false))
+                        self->recordInput(WindowCompositionEvent{ECompositionStage::CANCELLED});
+                    self->recordInput(WindowLostFocusEvent{});
+                    if (self->on_lost_focus)
+                        self->on_lost_focus({});
+                }
+            }
+        );
 
 #if defined(_WIN32)
         const auto capture_ime =
-            [](HWND window, UINT message, WPARAM wparam, LPARAM lparam, UINT_PTR id, DWORD_PTR context) -> LRESULT {
+            [](HWND window, UINT message, WPARAM wparam, LPARAM lparam, UINT_PTR id, DWORD_PTR context) -> LRESULT
+        {
             auto& owner = *reinterpret_cast<LuxWindow*>(context);
             switch (message)
             {
@@ -537,105 +572,138 @@ namespace lux::window
 
     void LuxWindow::subscribeKeyEvent()
     {
-        glfwSetKeyCallback(_glfw_window, [](GLFWwindow* window, int key, int scancode, int action, int mods) {
-            auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
-            WindowKeyEvent event{key, scancode, action, mods};
-            self->recordInput(event);
-            if (self->on_key)
+        glfwSetKeyCallback(
+            _glfw_window,
+            [](GLFWwindow* window, int key, int scancode, int action, int mods)
             {
-                self->on_key(event);
+                auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
+                WindowKeyEvent event{key, scancode, action, mods};
+                self->recordInput(event);
+                if (self->on_key)
+                {
+                    self->on_key(event);
+                }
             }
-        });
+        );
     }
 
     void LuxWindow::subscribeCursorPositionCallback()
     {
-        glfwSetCursorPosCallback(_glfw_window, [](GLFWwindow* window, double xpos, double ypos) {
-            auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
-            self->recordInput(CursorMoveEvent{xpos, ypos});
-            if (self->on_cursor_move)
+        glfwSetCursorPosCallback(
+            _glfw_window,
+            [](GLFWwindow* window, double xpos, double ypos)
             {
-                self->on_cursor_move(CursorMoveEvent{xpos, ypos});
+                auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
+                self->recordInput(CursorMoveEvent{xpos, ypos});
+                if (self->on_cursor_move)
+                {
+                    self->on_cursor_move(CursorMoveEvent{xpos, ypos});
+                }
             }
-        });
+        );
     }
 
     void LuxWindow::subscribeScrollCallback()
     {
-        glfwSetScrollCallback(_glfw_window, [](GLFWwindow* window, double xoffset, double yoffset) {
-            auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
-            const WindowScrollEvent event{xoffset, yoffset};
-            self->recordInput(event);
-            if (self->on_mouse_scroll)
+        glfwSetScrollCallback(
+            _glfw_window,
+            [](GLFWwindow* window, double xoffset, double yoffset)
             {
-                self->on_mouse_scroll(event);
+                auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
+                const WindowScrollEvent event{xoffset, yoffset};
+                self->recordInput(event);
+                if (self->on_mouse_scroll)
+                {
+                    self->on_mouse_scroll(event);
+                }
             }
-        });
+        );
     }
 
     void LuxWindow::subscribeDropCallback()
     {
-        glfwSetDropCallback(_glfw_window, [](GLFWwindow* window, int count, const char** paths) {
-            auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
-            FileDropEvent ev;
-            ev.paths.reserve(static_cast<size_t>(count));
-            for (int i = 0; i < count; ++i)
+        glfwSetDropCallback(
+            _glfw_window,
+            [](GLFWwindow* window, int count, const char** paths)
             {
-                ev.paths.emplace_back(paths[i]); // GLFW gives absolute paths
+                auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
+                FileDropEvent ev;
+                ev.paths.reserve(static_cast<size_t>(count));
+                for (int i = 0; i < count; ++i)
+                {
+                    ev.paths.emplace_back(paths[i]); // GLFW gives absolute paths
+                }
+                if (self->on_file_drop)
+                {
+                    self->on_file_drop(ev);
+                }
             }
-            if (self->on_file_drop)
-            {
-                self->on_file_drop(ev);
-            }
-        });
+        );
     }
 
     void LuxWindow::subscribeCharCallback()
     {
-        glfwSetCharCallback(_glfw_window, [](GLFWwindow* window, unsigned int codepoint) {
-            auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
-            self->recordInput(WindowTextEvent{.codepoint = codepoint});
-        });
+        glfwSetCharCallback(
+            _glfw_window,
+            [](GLFWwindow* window, unsigned int codepoint)
+            {
+                auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
+                self->recordInput(WindowTextEvent{.codepoint = codepoint});
+            }
+        );
     }
 
     void LuxWindow::subscribeMouseButtonCallback()
     {
-        glfwSetMouseButtonCallback(_glfw_window, [](GLFWwindow* window, int button, int action, int mods) {
-            auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
-
-            WindowMouseButtonEvent event{button, action, mods};
-            self->recordInput(event);
-            if (self->on_mouse_button)
+        glfwSetMouseButtonCallback(
+            _glfw_window,
+            [](GLFWwindow* window, int button, int action, int mods)
             {
-                self->on_mouse_button(event);
+                auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
+
+                WindowMouseButtonEvent event{button, action, mods};
+                self->recordInput(event);
+                if (self->on_mouse_button)
+                {
+                    self->on_mouse_button(event);
+                }
             }
-        });
+        );
     }
 
     void LuxWindow::subscribeWindowSizeChangeCallback()
     {
-        glfwSetWindowSizeCallback(_glfw_window, [](GLFWwindow* window, int width, int height) {
-            auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
-            self->placementChanged();
-            if (self->on_resize)
+        glfwSetWindowSizeCallback(
+            _glfw_window,
+            [](GLFWwindow* window, int width, int height)
             {
-                self->on_resize(WindowResizeEvent{static_cast<std::uint32_t>(width), static_cast<std::uint32_t>(height)}
-                );
+                auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
+                self->placementChanged();
+                if (self->on_resize)
+                {
+                    self->on_resize(
+                        WindowResizeEvent{static_cast<std::uint32_t>(width), static_cast<std::uint32_t>(height)}
+                    );
+                }
             }
-        });
+        );
     }
 
     void LuxWindow::subscribeFramebufferSizeChangeCallback()
     {
-        glfwSetFramebufferSizeCallback(_glfw_window, [](GLFWwindow* window, int width, int height) {
-            auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
-            if (self->on_framebuffer_resize)
+        glfwSetFramebufferSizeCallback(
+            _glfw_window,
+            [](GLFWwindow* window, int width, int height)
             {
-                self->on_framebuffer_resize(
-                    FramebufferResizeEvent{static_cast<std::uint32_t>(width), static_cast<std::uint32_t>(height)}
-                );
+                auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
+                if (self->on_framebuffer_resize)
+                {
+                    self->on_framebuffer_resize(
+                        FramebufferResizeEvent{static_cast<std::uint32_t>(width), static_cast<std::uint32_t>(height)}
+                    );
+                }
             }
-        });
+        );
     }
 
     float LuxWindow::lastFrameDelayTime() const
@@ -747,4 +815,4 @@ namespace lux::window
         drained_input_events_.swap(pending_input_events_);
         return drained_input_events_;
     }
-}
+} // namespace lux::window

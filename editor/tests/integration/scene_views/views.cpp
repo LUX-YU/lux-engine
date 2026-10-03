@@ -96,17 +96,19 @@ namespace registered_views
     }
     // These fixtures deliberately borrow an explicit interaction to inspect its gesture lifetime.
     // Production content factories instead construct the complete owner from ContentViewInput.
-    template <class Create>
-    auto fixtureFactory(views::ViewTypeId type, Create create)
+    template <class Create> auto fixtureFactory(views::ViewTypeId type, Create create)
     {
         return views::ViewFactoryEntry::create(
             contracts::CodeLease::builtin(),
             views::ViewFactoryDescriptor{type.view(), "Borrowed fixture", lux::cxx::typeToken<std::monostate>()},
-            [create = std::move(create)](const views::ViewFactoryInput& input) mutable
-                -> views::ViewFactoryResult<views::DetachedView> {
+            [create = std::move(create)](const views::ViewFactoryInput& input
+            ) mutable -> views::ViewFactoryResult<views::DetachedView>
+            {
                 auto view = create(input);
                 if (!view)
-                    return lux::cxx::unexpected(views::ViewFactoryFailure{views::EViewFactoryError::CONSTRUCT, "fixture"});
+                    return lux::cxx::unexpected(
+                        views::ViewFactoryFailure{views::EViewFactoryError::CONSTRUCT, "fixture"}
+                    );
                 return std::move(*view);
             }
         );
@@ -118,12 +120,16 @@ namespace registered_views
     )
     {
         const auto id = info.id;
-        return prepare(dispatcher, id, fixtureFactory(
-            views::ViewTypeId{"lux.editor.scene.view"},
-            [services, info = std::move(info)](const views::ViewFactoryInput& input) mutable {
-                return scene::makeSceneView(input.dispatcher(), services, std::move(info));
-            }
-        ), std::monostate{});
+        return prepare(
+            dispatcher,
+            id,
+            fixtureFactory(
+                views::ViewTypeId{"lux.editor.scene.view"},
+                [services, info = std::move(info)](const views::ViewFactoryInput& input) mutable
+                { return scene::makeSceneView(input.dispatcher(), services, std::move(info)); }
+            ),
+            std::monostate{}
+        );
     }
     auto material(
         lux::object::ObjectDispatcherRef dispatcher,
@@ -133,12 +139,16 @@ namespace registered_views
         material::MaterialViewState state
     )
     {
-        return prepare(dispatcher, id, fixtureFactory(
-            views::ViewTypeId{"lux.editor.material"},
-            [services, binding, state](const views::ViewFactoryInput& input) {
-                return material::makeMaterialView(input.dispatcher(), input.paneId(), services, binding, state);
-            }
-        ), std::monostate{});
+        return prepare(
+            dispatcher,
+            id,
+            fixtureFactory(
+                views::ViewTypeId{"lux.editor.material"},
+                [services, binding, state](const views::ViewFactoryInput& input)
+                { return material::makeMaterialView(input.dispatcher(), input.paneId(), services, binding, state); }
+            ),
+            std::monostate{}
+        );
     }
     auto flow(
         lux::object::ObjectDispatcherRef dispatcher,
@@ -148,15 +158,19 @@ namespace registered_views
         flowforge::FlowViewState state
     )
     {
-        return prepare(dispatcher, id, fixtureFactory(
-            views::ViewTypeId{"lux.editor.flowforge"},
-            [services, binding, state](const views::ViewFactoryInput& input) {
-                return flowforge::makeFlowView(input.dispatcher(), input.paneId(), services, binding, state);
-            }
-        ), std::monostate{});
+        return prepare(
+            dispatcher,
+            id,
+            fixtureFactory(
+                views::ViewTypeId{"lux.editor.flowforge"},
+                [services, binding, state](const views::ViewFactoryInput& input)
+                { return flowforge::makeFlowView(input.dispatcher(), input.paneId(), services, binding, state); }
+            ),
+            std::monostate{}
+        );
     }
 
-}
+} // namespace registered_views
 namespace
 {
     using namespace lux;
@@ -259,10 +273,14 @@ namespace
             if (window_)
                 for (auto extension : window::LuxWindow::requiredVulkanInstanceExtensions())
                     config.instance_extensions.emplace_back(extension);
-            renderer = take(render::RenderRuntime::create(config, [](auto severity, auto message) {
-                if (severity == 2)
-                    std::fprintf(stderr, "%.*s\n", static_cast<int>(message.size()), message.data());
-            }));
+            renderer = take(render::RenderRuntime::create(
+                config,
+                [](auto severity, auto message)
+                {
+                    if (severity == 2)
+                        std::fprintf(stderr, "%.*s\n", static_cast<int>(message.size()), message.data());
+                }
+            ));
             std::vector<render::RenderFeatureRegistration> features;
             for (const auto& entry : render::builtinRenderFeatureRegistrations())
                 features.push_back(entry);
@@ -300,7 +318,8 @@ namespace
             lux::scene::WorldLoadingConfiguration loading{{{0}}};
             std::vector<std::byte> loading_bytes;
             assert(environment.scene_systems[0].configuration.encode(&loading, loading_bytes));
-            const auto add = [&](std::size_t index, std::span<const std::byte> bytes) {
+            const auto add = [&](std::size_t index, std::span<const std::byte> bytes)
+            {
                 const auto& registration = environment.scene_systems[index];
                 assert(builder.addSystem(
                     {static_cast<std::uint64_t>(index + 1)},
@@ -455,7 +474,8 @@ namespace
             assert(renderer->statistics().validation_errors == 0);
             assert(renderer->beginClose());
             wait(
-                [&] {
+                [&]
+                {
                     std::size_t replies = 128, controls = 128, programs = 32;
                     return take(renderer->advanceClose(replies, controls, programs)) == render::ERenderClose::COMPLETE;
                 },
@@ -482,7 +502,8 @@ namespace
         auto* inspector = static_cast<author::InspectorView*>(detached.pane());
         const auto id = take(f.desktop->views().adopt(detached, views::ViewRestoreKey{"inspector"})).id;
         f.frame(false);
-        const auto find = [&](auto&& self, object::LuxObject& object) -> lux::ui::NumericEdit* {
+        const auto find = [&](auto&& self, object::LuxObject& object) -> lux::ui::NumericEdit*
+        {
             if (auto* control = dynamic_cast<lux::ui::NumericEdit*>(&object))
                 return control;
             for (auto* child = object.firstChild(); child; child = child->nextSibling())
@@ -523,14 +544,17 @@ namespace
         static_cast<void>(lux::ui::ControlsTestAccess::edited(*control, {true, true, false, false}));
         f.frame(false);
         auto read = take(f.session->read());
-        auto busy = read.withRead([&](const author::SceneReadView&) -> author::SceneEditResult<void> {
-            assert(!inspector->prepareClose());
-            assert(inspector->target() == target && group.overlay());
-            assert(f.desktop->views().close(id));
-            auto drain = take(f.desktop->views().drain());
-            assert(drain.pending == 1 && f.desktop->views().describe(id));
-            return {};
-        });
+        auto busy = read.withRead(
+            [&](const author::SceneReadView&) -> author::SceneEditResult<void>
+            {
+                assert(!inspector->prepareClose());
+                assert(inspector->target() == target && group.overlay());
+                assert(f.desktop->views().close(id));
+                auto drain = take(f.desktop->views().drain());
+                assert(drain.pending == 1 && f.desktop->views().describe(id));
+                return {};
+            }
+        );
         assert(busy);
         f.wait([&] { return !f.desktop->views().describe(id); }, false);
         assert(!group.overlay() && f.session->describe().current == before.current);
@@ -551,13 +575,27 @@ namespace
         author::RunStore runs(*f.runtime, f.execution);
         lux::project::PluginCatalog catalog;
         author::SceneToolInputs inputs{
-            f.services(), runs, f.environment.components, author::sceneInspectorComponents(), nullptr,
-            {catalog, f.environment.components, *f.environment.simulation_systems,
-             f.environment.scene_systems, render::builtinRenderFeatureRegistrations(), {}}
+            f.services(),
+            runs,
+            f.environment.components,
+            author::sceneInspectorComponents(),
+            nullptr,
+            {catalog,
+             f.environment.components,
+             *f.environment.simulation_systems,
+             f.environment.scene_systems,
+             render::builtinRenderFeatureRegistrations(),
+             {}}
         };
-        const auto make = [&](const char* name, author::ESceneTool tool) {
+        const auto make = [&](const char* name, author::ESceneTool tool)
+        {
             auto candidate = take(author::makeSceneToolView(
-                f.messages.dispatcherRef(), ui::PaneId{name}, f.desktop->views(), primary_id, tool, inputs
+                f.messages.dispatcherRef(),
+                ui::PaneId{name},
+                f.desktop->views(),
+                primary_id,
+                tool,
+                inputs
             ));
             return take(f.desktop->views().adopt(candidate, views::ViewRestoreKey{name})).id;
         };
@@ -575,26 +613,29 @@ namespace
         assert(take(f.desktop->views().describe(resources)).content.sessions.empty());
         assert(lifetime.lock()->select({}));
         f.frame(false);
-        const auto no_target = [&](ui::Pane& pane) {
-            assert(!static_cast<author::InspectorView&>(pane).target());
-        };
+        const auto no_target = [&](ui::Pane& pane) { assert(!static_cast<author::InspectorView&>(pane).target()); };
         assert(f.desktop->views().withView(inspector, no_target));
         // An empty selection does not detach the still-live author's content association.
         assert(take(f.desktop->views().describe(inspector)).content.primary == f.key->id());
         assert(lifetime.lock()->select({{target}}));
         auto read = take(f.session->read());
-        assert(read.withRead([&](const author::SceneReadView&) -> author::SceneEditResult<void> {
-            f.frame(false);
-            const auto unchanged = [&](ui::Pane& pane) {
-                auto& view = static_cast<author::InspectorView&>(pane);
-                assert(!view.target() && !view.status());
-            };
-            assert(f.desktop->views().withView(inspector, unchanged));
-            assert(lifetime.lock()->selection().objects == std::vector<author::VSceneSelectionTarget>{target});
-            return {};
-        }));
+        assert(read.withRead(
+            [&](const author::SceneReadView&) -> author::SceneEditResult<void>
+            {
+                f.frame(false);
+                const auto unchanged = [&](ui::Pane& pane)
+                {
+                    auto& view = static_cast<author::InspectorView&>(pane);
+                    assert(!view.target() && !view.status());
+                };
+                assert(f.desktop->views().withView(inspector, unchanged));
+                assert(lifetime.lock()->selection().objects == std::vector<author::VSceneSelectionTarget>{target});
+                return {};
+            }
+        ));
         f.frame(false);
-        const auto restored = [&](ui::Pane& pane) {
+        const auto restored = [&](ui::Pane& pane)
+        {
             auto& view = static_cast<author::InspectorView&>(pane);
             assert(view.status() && view.target() == target);
         };
@@ -603,7 +644,10 @@ namespace
         f.wait([&] { return !f.desktop->views().describe(outline); }, false);
         assert(!lifetime.expired());
         assert(f.desktop->views().close(inspector) && f.desktop->views().close(resources));
-        f.wait([&] { return !f.desktop->views().describe(inspector) && !f.desktop->views().describe(resources); }, false);
+        f.wait(
+            [&] { return !f.desktop->views().describe(inspector) && !f.desktop->views().describe(resources); },
+            false
+        );
         assert(lifetime.expired());
         assert(f.session->describe().current == before.current && f.session->describe().dirty == before.dirty);
         std::puts("EC1 complete Scene tools: owner lifetime, no-target association, BUSY retry and release");
@@ -653,7 +697,8 @@ namespace
         views::DetachedView other{
             contracts::CodeLease::builtin(),
             std::move(blocker),
-            +[](ui::Pane& pane) -> views::ViewCloseResult {
+            +[](ui::Pane& pane) -> views::ViewCloseResult
+            {
                 if (static_cast<BlockingPane&>(pane).refuse)
                     return cxx::unexpected(views::ViewPreparationFailure{"test.close", 7, "Not ready", true});
                 return {};
@@ -673,7 +718,8 @@ namespace
         auto connection = take(object::LuxObject::connect(
             &f.desktop->root(),
             &ui::Root::attachmentChanged,
-            [&](const ui::AttachmentChanged& change) noexcept {
+            [&](const ui::AttachmentChanged& change) noexcept
+            {
                 if (change.mounted)
                     return;
                 notified = true;
@@ -683,7 +729,8 @@ namespace
                 assert(inspector->target() == target); // Still owned until the handoff completes.
             }
         ));
-        const auto commit_content = [&]() noexcept {
+        const auto commit_content = [&]() noexcept
+        {
             assert(notified && f.store.close(permits));
             assert(!f.store.describe(key.id()));
         };
@@ -727,26 +774,27 @@ namespace
         auto* b = static_cast<author::SceneView*>(running.pane());
         const auto aid = take(f.desktop->views().adopt(author_candidate, views::ViewRestoreKey{"author-run-pair"})).id;
         const auto bid = take(f.desktop->views().adopt(running, views::ViewRestoreKey{"running"})).id;
-        auto command_candidate = take(author::makeRunSceneView(
-            f.messages.dispatcherRef(), services, ui::PaneId{"run-commands"}, run, {3}
-        ));
-        const auto command_view = take(
-            f.desktop->views().adopt(command_candidate, views::ViewRestoreKey{"run-commands"})
-        ).id;
+        auto command_candidate =
+            take(author::makeRunSceneView(f.messages.dispatcherRef(), services, ui::PaneId{"run-commands"}, run, {3}));
+        const auto command_view =
+            take(f.desktop->views().adopt(command_candidate, views::ViewRestoreKey{"run-commands"})).id;
         // The installed tool provider binds real run/view identities without an Application owner.
-        const auto available = [](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
-            return commands::CommandState{true};
-        };
+        const auto available = [](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
+        { return commands::CommandState{true}; };
         std::optional<author::StepTicket> command_step;
         std::optional<author::StopTicket> command_stop;
         auto run_commands = author::makeRunViewCommands(
-            available, f.desktop->views(), runs,
-            [&](author::RunId id) -> commands::CommandResult<void> {
+            available,
+            f.desktop->views(),
+            runs,
+            [&](author::RunId id) -> commands::CommandResult<void>
+            {
                 assert(id == run && !command_step);
                 command_step = take(runs.step(id));
                 return {};
             },
-            [&](author::RunId id) -> commands::CommandResult<void> {
+            [&](author::RunId id) -> commands::CommandResult<void>
+            {
                 assert(id == run && !command_stop);
                 command_stop = take(runs.stop(id));
                 return {};
@@ -754,23 +802,28 @@ namespace
         );
         std::optional<author::ESceneTool> requested_tool;
         auto tool_commands = author::makeSceneToolCommands(
-            available, [&](views::ViewId id, author::ESceneTool tool) -> commands::CommandResult<void> {
+            available,
+            [&](views::ViewId id, author::ESceneTool tool) -> commands::CommandResult<void>
+            {
                 assert(id == bid);
                 requested_tool = tool;
                 return {};
             }
         );
         auto other_tools = author::makeSceneToolCommands(
-            available, [](views::ViewId, author::ESceneTool) -> commands::CommandResult<void> { return {}; }
+            available,
+            [](views::ViewId, author::ESceneTool) -> commands::CommandResult<void> { return {}; }
         );
         for (std::size_t i{}; i < tool_commands.size(); ++i)
             assert(&tool_commands[i]->descriptor() == &other_tools[i]->descriptor());
         run_commands.insert(run_commands.end(), tool_commands.begin(), tool_commands.end());
         commands::CommandRegistry controls;
         assert(controls.publish(take(commands::CommandRegistrySnapshot::create(std::move(run_commands)))));
-        const auto invoke = [&](const char* name, views::ViewId target) {
+        const auto invoke = [&](const char* name, views::ViewId target)
+        {
             return controls.execute(
-                take(controls.snapshot().find(commands::CommandIdView{name})), commands::CommandInvocation{target}
+                take(controls.snapshot().find(commands::CommandIdView{name})),
+                commands::CommandInvocation{target}
             );
         };
         constexpr std::pair<const char*, author::ESceneTool> tool_cases[]{
@@ -831,16 +884,19 @@ namespace
         lux::editor::views::CameraMotion motion;
         motion.local_translation.x() = 1;
         const auto run_camera = b->state().camera.transform.translation;
-        f.wait([&] {
-            auto result = b->navigate(motion);
-            if (!result)
+        f.wait(
+            [&]
             {
-                const auto* failure = std::get_if<render::RendererFailure>(&result.error().cause);
-                assert(failure && failure->code == render::ERendererError::BUSY);
-                assert(b->state().camera.transform.translation == run_camera);
+                auto result = b->navigate(motion);
+                if (!result)
+                {
+                    const auto* failure = std::get_if<render::RendererFailure>(&result.error().cause);
+                    assert(failure && failure->code == render::ERendererError::BUSY);
+                    assert(b->state().camera.transform.translation == run_camera);
+                }
+                return result.has_value();
             }
-            return result.has_value();
-        });
+        );
         assert(a->state().camera.transform.translation == camera && f.session->describe().current == stamp.current);
         assert(!b->beginEdit("must not edit author") && !run_group.overlay());
         assert(invoke("lux.editor.scene.pause", command_view));
@@ -903,7 +959,8 @@ namespace
             );
             assert(fields.refresh());
             const auto inspect = [&](const simulation::ecs::Registry&,
-                                     const std::optional<editing::HistorySnapshot>&) -> author::RunResult<void> {
+                                     const std::optional<editing::HistorySnapshot>&) -> author::RunResult<void>
+            {
                 const auto refused = runs.resume(run);
                 assert(!refused && std::get<author::ERunError>(refused.error().cause) == author::ERunError::BUSY);
                 return {};
@@ -931,9 +988,7 @@ namespace
         assert(f.desktop->views().close(inspector_id));
         f.wait([&] { return !f.desktop->views().describe(inspector_id); });
         assert(invoke("lux.editor.scene.step", command_view) && command_step);
-        f.wait([&] {
-            return take(runs.stepStatus(*command_step)).state == lux::scene::ESceneStepState::COMPLETED;
-        });
+        f.wait([&] { return take(runs.stepStatus(*command_step)).state == lux::scene::ESceneStepState::COMPLETED; });
         assert(runs.acknowledgeStep(*command_step));
         const auto clock = take(runs.info(run)).progress.time.elapsed;
         for (int i{}; i < 3; ++i)
@@ -999,12 +1054,15 @@ namespace
         // A real Session gate is held. The host must retain its owned Pane and interaction until later.
         assert(f.desktop->views().close(id));
         auto read = take(author->read());
-        assert(read.withRead([&]() -> ef::FlowEditResult<void> {
-            const auto report = take(f.desktop->views().drain());
-            assert(report.completed == 0 && report.pending == 1);
-            assert(f.desktop->views().describe(id) && interaction.overlay());
-            return {};
-        }));
+        assert(read.withRead(
+            [&]() -> ef::FlowEditResult<void>
+            {
+                const auto report = take(f.desktop->views().drain());
+                assert(report.completed == 0 && report.pending == 1);
+                assert(f.desktop->views().describe(id) && interaction.overlay());
+                return {};
+            }
+        ));
         assert(take(f.desktop->views().drain()).completed == 1);
         assert(!interaction.overlay() && !f.desktop->views().describe(id));
         assert(author->describe().current == initial.current && take(take(author->read()).encode()) == encoded);
@@ -1018,7 +1076,8 @@ namespace
         view = static_cast<ef::FlowView*>(reopened.pane());
         const auto next = take(f.desktop->views().adopt(reopened, views::ViewRestoreKey{"flow"})).id;
         // The public view commands used by the controls exercise the complete property matrix.
-        auto apply_property = [&](std::vector<ef::VFlowEdit> changes) {
+        auto apply_property = [&](std::vector<ef::VFlowEdit> changes)
+        {
             const auto before = take(take(author->read()).encode());
             const auto stamp = author->describe();
             assert(view->beginEdit("Flow property") && view->previewEdit(changes));
@@ -1043,7 +1102,8 @@ namespace
         );
         apply_property(std::move(properties));
         const auto call = take(author->capture()).source().nodes.back();
-        const auto data_pin = [](const auto& pins) {
+        const auto data_pin = [](const auto& pins)
+        {
             for (const auto& pin : pins)
                 if (pin.kind == lux::flowforge::EPinKind::DATA_IN || pin.kind == lux::flowforge::EPinKind::DATA_OUT)
                     return pin.id;
@@ -1087,14 +1147,18 @@ namespace
         auto publish_connection = take(object::LuxObject::connect(
             view,
             &ef::FlowView::publishRequested,
-            [&](const persistence::DerivedArtifact& result) noexcept {
+            [&](const persistence::DerivedArtifact& result) noexcept
+            {
                 assert(result.valid() && result.info().content == published_author.current);
                 assert(result.info().type() == script::ScriptArtifactAsset::asset_type);
                 const auto encoded_source = take(result.encodeSource({}));
-                const auto expected_source = take(lux::flowforge::encodeFlowSource(*take(completed.result())->source()));
+                const auto expected_source =
+                    take(lux::flowforge::encodeFlowSource(*take(completed.result())->source()));
                 assert(std::ranges::equal(encoded_source.bytes.view(), std::as_bytes(std::span(expected_source))));
                 published_ticket = take(persistence::publishEncodedArtifact(
-                    f.writes, take(f.disk.resolve("derived.flow")), {result.bytes()}
+                    f.writes,
+                    take(f.disk.resolve("derived.flow")),
+                    {result.bytes()}
                 ));
             }
         ));
@@ -1235,14 +1299,17 @@ namespace
         auto publish_connection = take(object::LuxObject::connect(
             view,
             &em::MaterialView::publishRequested,
-            [&](const persistence::DerivedArtifact& result) noexcept {
+            [&](const persistence::DerivedArtifact& result) noexcept
+            {
                 assert(result.valid() && result.info().content == unsaved.current);
                 assert(result.info().type() == asset::MaterialAsset::asset_type);
                 const auto encoded_source = take(result.encodeSource({}));
                 const auto expected_source = take(lux::material::encodeMaterialSource(*compiled->source()));
                 assert(std::ranges::equal(encoded_source.bytes.view(), std::as_bytes(std::span(expected_source))));
                 published_ticket = take(persistence::publishEncodedArtifact(
-                    f.writes, take(f.disk.resolve("derived.material")), {result.bytes()}
+                    f.writes,
+                    take(f.disk.resolve("derived.material")),
+                    {result.bytes()}
                 ));
             }
         ));
@@ -1270,26 +1337,37 @@ namespace
             const auto adoption = take(second.setDesired(compiled->key(), quad));
             assert(adoption.target != preview.status().desired.target);
             assert(second.receive(adoption, compiled, preview_assets));
-            f.wait([&] {
-                second.update();
-                const auto status = second.status();
-                if (status.failure)
-                    std::fprintf(stderr, "Second preview failed: %s\n", status.failure->domain.c_str());
-                assert(!status.failure);
-                return second.instance().valid();
-            });
+            f.wait(
+                [&]
+                {
+                    second.update();
+                    const auto status = second.status();
+                    if (status.failure)
+                        std::fprintf(stderr, "Second preview failed: %s\n", status.failure->domain.c_str());
+                    assert(!status.failure);
+                    return second.instance().valid();
+                }
+            );
             assert(second.instance() != preview.instance());
             auto presentation = take(views::ViewportPresentation::create(
-                *f.runtime, second.instance(), *f.resources, {2}, second.camera(),
+                *f.runtime,
+                second.instance(),
+                *f.resources,
+                {2},
+                second.camera(),
                 lux::scene::ViewConfig{.extent = {320, 240}}
             ));
-            f.wait([&] {
-                second.update();
-                presentation->update({320, 240});
-                return second.status().accepted == adoption && presentation->image().isValid();
-            });
+            f.wait(
+                [&]
+                {
+                    second.update();
+                    presentation->update({320, 240});
+                    return second.status().accepted == adoption && presentation->image().isValid();
+                }
+            );
             assert(view->image().isValid() && preview.status().accepted->input == compiled->key());
-            const auto pixels = [&] {
+            const auto pixels = [&]
+            {
                 for (int i{}; i < 8; ++i)
                 {
                     second.update();
@@ -1298,9 +1376,8 @@ namespace
                 }
                 const auto output = take(f.resources->outputInfo(take(f.resources->viewOutput(presentation->view()))));
                 std::vector<std::byte> buffer(std::size_t(output.extent.width) * output.extent.height * 8);
-                auto request = f.renderer->control()->get().readbackTargetAsync(
-                    output.target, buffer.data(), buffer.size(), 4
-                );
+                auto request =
+                    f.renderer->control()->get().readbackTargetAsync(output.target, buffer.data(), buffer.size(), 4);
                 f.wait([&] { return request.isReady(); });
                 const auto result = request.tryResult();
                 assert(result && result->get().status == 0 && result->get().bytes_written > 0);
@@ -1315,21 +1392,27 @@ namespace
             assert(second.receive(adoption, compiled, preview_assets)); // Late old recipe result must only settle.
             assert(second.status().accepted == adoption && !second.status().prepared && second.status().stale);
             assert(second.receive(sphere_adoption, compiled, preview_assets));
-            f.wait([&] {
-                second.update();
-                presentation->update({320, 240});
-                return second.status().accepted == sphere_adoption;
-            });
+            f.wait(
+                [&]
+                {
+                    second.update();
+                    presentation->update({320, 240});
+                    return second.status().accepted == sphere_adoption;
+                }
+            );
             const auto sphere_pixels = pixels();
             assert(sphere_pixels != quad_pixels && second.instance() == instance);
             // The same existing quad now replaces the sphere through the identical public entry.
             const auto again = take(second.setDesired(compiled->key(), quad));
             assert(second.receive(again, compiled, preview_assets));
-            f.wait([&] {
-                second.update();
-                presentation->update({320, 240});
-                return second.status().accepted == again;
-            });
+            f.wait(
+                [&]
+                {
+                    second.update();
+                    presentation->update({320, 240});
+                    return second.status().accepted == again;
+                }
+            );
             assert(pixels() == quad_pixels);
             // Replace a queued resource candidate before Runtime maintenance can consume it.
             const auto superseded = take(second.setDesired(compiled->key(), sphere));
@@ -1338,37 +1421,47 @@ namespace
             assert(second.status().prepared == superseded && second.status().accepted == again);
             const auto latest = take(second.setDesired(compiled->key(), quad));
             assert(second.receive(latest, compiled, preview_assets));
-            f.wait([&] {
-                second.update();
-                presentation->update({320, 240});
-                return second.status().accepted == latest;
-            });
+            f.wait(
+                [&]
+                {
+                    second.update();
+                    presentation->update({320, 240});
+                    return second.status().accepted == latest;
+                }
+            );
             assert(second.receive(superseded, compiled, preview_assets));
             assert(second.status().accepted == latest && !second.status().prepared && pixels() == quad_pixels);
             // Same mesh ID, different owning bytes: a real decode failure, not a key-only change.
             auto corrupt = std::make_shared<const std::vector<std::byte>>(32, std::byte{0xff});
             const auto broken = take(second.setDesired(
-                compiled->key(), em::MaterialPreviewRecipe{quad.mesh, cxx::SharedBytes<>::fromOwner(corrupt, *corrupt)}
+                compiled->key(),
+                em::MaterialPreviewRecipe{quad.mesh, cxx::SharedBytes<>::fromOwner(corrupt, *corrupt)}
             ));
             corrupt.reset();
             assert(broken.recipe > latest.recipe && broken.input == latest.input);
             assert(second.receive(broken, compiled, preview_assets));
-            f.wait([&] {
-                second.update();
-                presentation->update({320, 240});
-                return second.status().failure.has_value();
-            });
+            f.wait(
+                [&]
+                {
+                    second.update();
+                    presentation->update({320, 240});
+                    return second.status().failure.has_value();
+                }
+            );
             assert(second.status().accepted == latest && second.status().stale && !second.status().prepared);
             assert(pixels() == quad_pixels); // Last successful geometry and material survived actual resource failure.
             assert(second.receive(sphere_adoption, compiled, preview_assets));
             assert(second.status().accepted == latest && !second.status().prepared);
             const auto recovered = take(second.setDesired(compiled->key(), sphere));
             assert(second.receive(recovered, compiled, preview_assets));
-            f.wait([&] {
-                second.update();
-                presentation->update({320, 240});
-                return second.status().accepted == recovered;
-            });
+            f.wait(
+                [&]
+                {
+                    second.update();
+                    presentation->update({320, 240});
+                    return second.status().accepted == recovered;
+                }
+            );
             assert(!second.status().failure && pixels() == sphere_pixels && second.instance() == instance);
             assert(author->describe().current == unsaved.current && author->describe().dirty == unsaved.dirty);
             std::printf("EC2-R1 XEC2-12 public sphere/quad recipe GPU readbacks differ; same-input adoption, "
@@ -1409,12 +1502,15 @@ namespace
         assert(view->previewEdit(edits));
         assert(f.desktop->views().close(id));
         auto read = take(author->read());
-        assert(read.withRead([&](const lux::material::MaterialSource&) -> em::MaterialEditResult<void> {
-            const auto report = take(f.desktop->views().drain());
-            assert(report.completed == 0 && report.pending == 1 && interaction.overlay());
-            assert(f.desktop->views().describe(id));
-            return {};
-        }));
+        assert(read.withRead(
+            [&](const lux::material::MaterialSource&) -> em::MaterialEditResult<void>
+            {
+                const auto report = take(f.desktop->views().drain());
+                assert(report.completed == 0 && report.pending == 1 && interaction.overlay());
+                assert(f.desktop->views().describe(id));
+                return {};
+            }
+        ));
         f.wait([&] { return !f.desktop->views().describe(id); });
         assert(!interaction.overlay() && take(take(author->read()).encode()) == encoded);
         // Accepted save work completes after its view is gone; the service alone adopts the baseline.
@@ -1430,7 +1526,7 @@ namespace
         f.material_preview = nullptr;
         return compiled;
     }
-}
+} // namespace
 namespace
 {
     void meshViews(Fixture& f, const editor::material::CompiledMaterial& material)
@@ -1494,9 +1590,11 @@ namespace
               "lux.render.highlight.v1"})
         {
             const auto registrations = render::builtinRenderFeatureRegistrations();
-            auto found = std::ranges::find(registrations, std::string_view{name}, [](const auto& value) {
-                return value.factory.descriptor.canonical_name;
-            });
+            auto found = std::ranges::find(
+                registrations,
+                std::string_view{name},
+                [](const auto& value) { return value.factory.descriptor.canonical_name; }
+            );
             assert(found != registrations.end());
             std::vector<std::byte> payload;
             assert(found->configuration.portable.encode_default(payload));
@@ -1604,12 +1702,17 @@ namespace
         auto* b = static_cast<author::SceneView*>(second.pane());
         const auto aid = take(f.desktop->views().adopt(first, views::ViewRestoreKey{"mesh-left"})).id;
         const auto bid = take(f.desktop->views().adopt(second, views::ViewRestoreKey{"mesh-right"})).id;
-        f.wait([&] {
-            auto resources = author::captureResourceStatus(*f.runtime, a->presentedInstance(), {3});
-            return resources && std::ranges::any_of(resources->rows, [](const auto& row) {
-                       return row.state == lux::scene::ERenderAssetState::FAILED;
-                   });
-        });
+        f.wait(
+            [&]
+            {
+                auto resources = author::captureResourceStatus(*f.runtime, a->presentedInstance(), {3});
+                return resources &&
+                       std::ranges::any_of(
+                           resources->rows,
+                           [](const auto& row) { return row.state == lux::scene::ERenderAssetState::FAILED; }
+                       );
+            }
+        );
         auto recovery = take(author::makeResourceView(
             f.messages.dispatcherRef(),
             ui::PaneId{"resource-recovery"},
@@ -1619,26 +1722,32 @@ namespace
         auto* resource_view = static_cast<author::ResourceView*>(recovery.pane());
         const auto recovery_id =
             take(f.desktop->views().adopt(recovery, views::ViewRestoreKey{"resource-recovery"})).id;
-        const auto failed = std::ranges::find_if(resource_view->snapshot().rows, [](const auto& row) {
-            return row.state == lux::scene::ERenderAssetState::FAILED;
-        });
+        const auto failed = std::ranges::find_if(
+            resource_view->snapshot().rows,
+            [](const auto& row) { return row.state == lux::scene::ERenderAssetState::FAILED; }
+        );
         assert(failed != resource_view->snapshot().rows.end() && failing->failures > 0);
         failing->available = true;
         assert(resource_view->retry(failed->key));
         assert(f.desktop->views().close(recovery_id));
         f.wait([&] { return !f.desktop->views().describe(recovery_id); });
-        f.wait([&] {
-            if (!a->image().isValid() || !b->image().isValid())
-                return false;
-            auto resources = author::captureResourceStatus(*f.runtime, a->presentedInstance(), {3});
-            if (!resources || resources->rows.empty())
-                return false;
-            return std::ranges::all_of(resources->rows, [](const auto& row) {
-                return row.state == lux::scene::ERenderAssetState::READY;
-            });
-        });
+        f.wait(
+            [&]
+            {
+                if (!a->image().isValid() || !b->image().isValid())
+                    return false;
+                auto resources = author::captureResourceStatus(*f.runtime, a->presentedInstance(), {3});
+                if (!resources || resources->rows.empty())
+                    return false;
+                return std::ranges::all_of(
+                    resources->rows,
+                    [](const auto& row) { return row.state == lux::scene::ERenderAssetState::READY; }
+                );
+            }
+        );
         assert(a->presentedInstance() == b->presentedInstance() && a->viewport() != b->viewport());
-        const auto pixels = [&](author::SceneView& view) {
+        const auto pixels = [&](author::SceneView& view)
+        {
             for (int i{}; i < 8; ++i)
                 f.frame();
             auto output = take(f.resources->outputInfo(take(f.resources->viewOutput(view.viewport()))));
@@ -1672,8 +1781,12 @@ namespace
         assert(a->navigate(delayed_motion));
         assert(a->image() == displayed);
         auto premature_pick = a->pick({160, 120}, {320, 240});
-        std::fprintf(stderr, "EC3 delayed camera output: retained image=%d premature pick accepted=%d\n",
-            a->image() == displayed, bool(premature_pick));
+        std::fprintf(
+            stderr,
+            "EC3 delayed camera output: retained image=%d premature pick accepted=%d\n",
+            a->image() == displayed,
+            bool(premature_pick)
+        );
         assert(!premature_pick && left.selection().objects.empty());
         delayed_motion.local_translation.x() = -1;
         assert(a->navigate(delayed_motion));
@@ -1688,9 +1801,12 @@ namespace
         assert(f.commands.publish({}));
         const auto receipt = take(f.resources->viewReceipt(a->viewport()));
         assert(f.desktop->views().close(aid));
-        f.wait([&] {
-            return !f.desktop->views().describe(aid) && receipt.status().status.state == lux::scene::EViewState::CLOSED;
-        });
+        f.wait(
+            [&] {
+                return !f.desktop->views().describe(aid) &&
+                       receipt.status().status.state == lux::scene::EViewState::CLOSED;
+            }
+        );
         assert(pixels(*b) == right_selected);
         assert(f.desktop->views().close(bid));
         f.wait([&] { return !f.desktop->views().describe(bid); });
@@ -1702,7 +1818,10 @@ namespace
     void creationView(Fixture& f, const std::filesystem::path& installation)
     {
         // This form offers the full 3D preset; its registry must include the advertised author codecs.
-        std::vector<ecs::ComponentSchema> types(f.environment.components.all().begin(), f.environment.components.all().end());
+        std::vector<ecs::ComponentSchema> types(
+            f.environment.components.all().begin(),
+            f.environment.components.all().end()
+        );
         for (const auto& schema : ecs::visualComponentSchemas())
             if (schema.snapshot == ecs::EComponentSnapshotPolicy::COPY)
                 types.push_back(schema);
@@ -1722,7 +1841,9 @@ namespace
             *f.environment.simulation_systems,
             f.environment.scene_systems,
             render::builtinRenderFeatureRegistrations(),
-            providers, {}, lux::scene::builtinRenderFeatureSceneBindings()
+            providers,
+            {},
+            lux::scene::builtinRenderFeatureSceneBindings()
         };
         auto configuration_view = take(author::makeSceneConfigurationView(
             f.messages.dispatcherRef(),
@@ -1735,7 +1856,8 @@ namespace
         const auto config_id =
             take(f.desktop->views().adopt(configuration_view, views::ViewRestoreKey{"configuration"})).id;
         const auto original = f.session->describe();
-        const auto find_page = [&](auto&& self, object::LuxObject& owner) -> lux::ui::NumericEdit* {
+        const auto find_page = [&](auto&& self, object::LuxObject& owner) -> lux::ui::NumericEdit*
+        {
             if (auto* number = dynamic_cast<lux::ui::NumericEdit*>(&owner);
                 number && number->id() == lux::ui::ElementId{"Coordinate page size"})
                 return number;
@@ -1776,7 +1898,8 @@ namespace
         const auto before = f.session->describe();
         std::size_t requests{};
         author::SceneCreationRequests sink{
-            [&](const author::SceneCreationConfiguration& config) -> author::SceneConfigurationResult<void> {
+            [&](const author::SceneCreationConfiguration& config) -> author::SceneConfigurationResult<void>
+            {
                 ++requests;
                 if (requests == 1)
                     return cxx::unexpected(author::SceneConfigurationFailure{
@@ -1812,8 +1935,13 @@ namespace
             assert(pane->configuration().applyPreset(preset));
             auto prepared = pane->configuration().build();
             if (!prepared)
-                std::fprintf(stderr, "Preset %u: %s: %s\n", static_cast<unsigned>(preset),
-                    prepared.error().domain.c_str(), prepared.error().message.c_str());
+                std::fprintf(
+                    stderr,
+                    "Preset %u: %s: %s\n",
+                    static_cast<unsigned>(preset),
+                    prepared.error().domain.c_str(),
+                    prepared.error().message.c_str()
+                );
             auto config = take(std::move(prepared));
             assert(config.scene.systemCount() == 3 && config.simulation->systemCount() == 0);
         }
@@ -1834,7 +1962,7 @@ namespace
 #include "NativeDesktop.hpp"
 #include "AuxiliaryViews.hpp"
 #include "DraftSources.hpp"
-}
+} // namespace
 int main(int argc, char** argv)
 {
     assert(argc == 3 || argc == 4);
@@ -1892,22 +2020,27 @@ int main(int argc, char** argv)
     assert(!rejected && first_group.overlay() && a->state().camera.transform.translation == camera_before_failure);
     assert(a->commitEdit());
     const auto committed = f.session->describe().current;
-    f.wait([&] {
-        return a->projectedContent() == committed && b->projectedContent() == committed && a->image().isValid() &&
-               b->image().isValid();
-    });
+    f.wait(
+        [&]
+        {
+            return a->projectedContent() == committed && b->projectedContent() == committed && a->image().isValid() &&
+                   b->image().isValid();
+        }
+    );
     // The actual DesktopShell menu submits a pinned view command; execution still enters the
     // same SceneView/domain undo path that this dual-viewport regression has always observed.
     using namespace editor::commands;
     auto undo = CommandEntry::create(
         contracts::CodeLease::builtin(),
         CommandDescriptor{CommandIdView{"p11.undo"}, "Undo", "Edit", "Ctrl+Z", ECommandScope::VIEW},
-        [&](const CommandQuery& input) -> CommandResult<CommandState> {
+        [&](const CommandQuery& input) -> CommandResult<CommandState>
+        {
             if (std::get<views::ViewId>(input.target) != id_b || !f.desktop->views().describe(id_b))
                 return cxx::unexpected(CommandFailure{ECommandError::STALE_TARGET, "scene.view"});
             return CommandState{take(f.session->historyView()).can_undo};
         },
-        [&](const CommandInvocation&) -> CommandResult<DispatchReceipt> {
+        [&](const CommandInvocation&) -> CommandResult<DispatchReceipt>
+        {
             assert(b->undo());
             return DispatchReceipt{ImmediateCompletion{}};
         }
@@ -1916,22 +2049,29 @@ int main(int argc, char** argv)
     assert(f.desktop->installCommands(
         f.commands,
         f.dispatcher,
-        [&](const CommandDescriptor&, const ui::Pane*, const ui::Element*) -> CommandResult<CommandInvocation> {
-            return CommandInvocation{id_b};
-        }
+        [&](const CommandDescriptor&, const ui::Pane*, const ui::Element*) -> CommandResult<CommandInvocation>
+        { return CommandInvocation{id_b}; }
     ));
     f.frame();
     ui::MenuRequest open_menu;
     assert(object::sendEvent(f.desktop->root(), open_menu));
-    ui::MenuRequest
-        invoke{ui::EMenuAction::COMMAND, {}, {}, {ui::CommandIdView{"p11.undo"}, ui::ECommandPhase::EXECUTE},
-               open_menu.source, 0};
+    ui::MenuRequest invoke{
+        ui::EMenuAction::COMMAND,
+        {},
+        {},
+        {ui::CommandIdView{"p11.undo"}, ui::ECommandPhase::EXECUTE},
+        open_menu.source,
+        0
+    };
     assert(object::sendEvent(f.desktop->root(), invoke));
     assert(f.dispatcher.pending() == 1);
-    f.wait([&] {
-        return a->projectedContent() == before.current && b->projectedContent() == before.current &&
-               a->image().isValid() && b->image().isValid();
-    });
+    f.wait(
+        [&]
+        {
+            return a->projectedContent() == before.current && b->projectedContent() == before.current &&
+                   a->image().isValid() && b->image().isValid();
+        }
+    );
     const auto receipt = take(f.resources->viewReceipt(a->viewport()));
     assert(f.desktop->views().close(id_a));
     f.wait([&] { return !f.desktop->views().describe(id_a); });

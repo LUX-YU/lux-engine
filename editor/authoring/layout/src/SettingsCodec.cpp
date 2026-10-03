@@ -58,9 +58,12 @@ namespace lux::editor::settings
                 return failure(ESettingsError::INVALID_VALUE, "settings payload length");
             if (std::uint64_t(*size) > limits.file_bytes)
                 return failure(ESettingsError::CAPACITY, "settings payload bytes");
-            auto digit = [](char c) {
-                if (c >= '0' && c <= '9') return int(c - '0');
-                if (c >= 'a' && c <= 'f') return int(c - 'a') + 10;
+            auto digit = [](char c)
+            {
+                if (c >= '0' && c <= '9')
+                    return int(c - '0');
+                if (c >= 'a' && c <= 'f')
+                    return int(c - 'a') + 10;
                 return -1;
             };
             std::vector<std::byte> result;
@@ -86,7 +89,8 @@ namespace lux::editor::settings
             std::size_t bytes{};
             for (const auto& row : value.values)
             {
-                const bool is_invalid_identity = row.id.empty() || row.id.size() > 4096 || row.id.find('\0') != row.id.npos;
+                const bool is_invalid_identity =
+                    row.id.empty() || row.id.size() > 4096 || row.id.find('\0') != row.id.npos;
                 if (is_invalid_identity || !row.schema)
                     return failure(ESettingsError::INVALID_VALUE, "settings value identity/schema");
                 if (!identities.insert(row.id).second)
@@ -97,7 +101,7 @@ namespace lux::editor::settings
             }
             return {};
         }
-    }
+    } // namespace
     SettingsResult<SettingsDocument> decodeSettings(std::span<const std::byte> bytes, SettingsLimits limits)
     {
         const std::string_view text{reinterpret_cast<const char*>(bytes.data()), bytes.size()};
@@ -162,8 +166,8 @@ namespace lux::editor::settings
             toml::table row;
             if (old_values)
                 for (const auto& old_node : *old_values)
-                    if (const auto* old_row = old_node.as_table(); old_row &&
-                        (*old_row)["id"].value<std::string>() == value_row.id)
+                    if (const auto* old_row = old_node.as_table();
+                        old_row && (*old_row)["id"].value<std::string>() == value_row.id)
                     {
                         row = *old_row;
                         break;
@@ -185,4 +189,4 @@ namespace lux::editor::settings
         const auto bytes = std::as_bytes(std::span(text));
         return std::vector<std::byte>(bytes.begin(), bytes.end());
     }
-}
+} // namespace lux::editor::settings

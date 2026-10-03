@@ -16,7 +16,8 @@ namespace lux::editor::application
         if (phase_ != EApplicationPhase::RUNNING)
             return cxx::unexpected(EditorFailure{EEditorError::CLOSING, "layout.application"});
         EditorResult<void> result;
-        auto apply = [&](const extensions::ContributionSnapshot& snapshot) -> extensions::ContributionResult<void> {
+        auto apply = [&](const extensions::ContributionSnapshot& snapshot) -> extensions::ContributionResult<void>
+        {
             result = workspace_actions_->apply(std::move(layout), snapshot.views());
             return {};
         };
@@ -27,45 +28,50 @@ namespace lux::editor::application
     }
     EditorResult<void> EditorApplication::Impl::executeWorkspaceIntent(const VWorkspaceIntent& request)
     {
-        return std::visit([&](const auto& intent) -> EditorResult<void> {
-            using Intent = std::decay_t<decltype(intent)>;
-            if constexpr (std::same_as<Intent, RefreshWorkspace>)
-                return workspace_changes_.refresh();
-            else if constexpr (std::same_as<Intent, AcknowledgeWorkspace>)
-                return workspace_changes_.acknowledge(intent.ticket);
-            else if constexpr (std::same_as<Intent, ReconcileWorkspace>)
-                return workspace_changes_.reconcile(intent.ticket);
-            else
+        return std::visit(
+            [&](const auto& intent) -> EditorResult<void>
             {
-                if (phase_ != EApplicationPhase::RUNNING)
-                    return cxx::unexpected(EditorFailure{EEditorError::CLOSING, "workspace.admission"});
-                if constexpr (std::same_as<Intent, CaptureRecovery>)
-                    return captureRecovery();
-                else if constexpr (std::same_as<Intent, RestoreRecovery>)
-                    return restoreRecovery();
-                else if constexpr (std::same_as<Intent, MigrateWorkspace>)
-                    return workspace_changes_.migrate();
-                else if constexpr (std::same_as<Intent, SaveLayout>)
-                    return workspace_actions_->save(intent.label);
-                else if constexpr (std::same_as<Intent, RenameLayout>)
-                    return workspace_changes_.rename(intent.layout, intent.label);
-                else if constexpr (std::same_as<Intent, RemoveLayout>)
-                    return workspace_changes_.remove(intent.layout);
-                else if constexpr (std::same_as<Intent, ApplyLayout>)
-                {
-                    EditorResult<void> result;
-                    auto apply = [&](const extensions::ContributionSnapshot& snapshot)
-                        -> extensions::ContributionResult<void> {
-                        result = workspace_actions_->apply(intent.layout, snapshot.views());
-                        return {};
-                    };
-                    auto guarded = contributions_.withSnapshot(apply);
-                    return guarded ? std::move(result) : applicationFailure("layout.catalog", guarded.error());
-                }
+                using Intent = std::decay_t<decltype(intent)>;
+                if constexpr (std::same_as<Intent, RefreshWorkspace>)
+                    return workspace_changes_.refresh();
+                else if constexpr (std::same_as<Intent, AcknowledgeWorkspace>)
+                    return workspace_changes_.acknowledge(intent.ticket);
+                else if constexpr (std::same_as<Intent, ReconcileWorkspace>)
+                    return workspace_changes_.reconcile(intent.ticket);
                 else
-                    static_assert(sizeof(Intent) == 0, "Every workspace intent needs an explicit receiver");
-            }
-        }, request);
+                {
+                    if (phase_ != EApplicationPhase::RUNNING)
+                        return cxx::unexpected(EditorFailure{EEditorError::CLOSING, "workspace.admission"});
+                    if constexpr (std::same_as<Intent, CaptureRecovery>)
+                        return captureRecovery();
+                    else if constexpr (std::same_as<Intent, RestoreRecovery>)
+                        return restoreRecovery();
+                    else if constexpr (std::same_as<Intent, MigrateWorkspace>)
+                        return workspace_changes_.migrate();
+                    else if constexpr (std::same_as<Intent, SaveLayout>)
+                        return workspace_actions_->save(intent.label);
+                    else if constexpr (std::same_as<Intent, RenameLayout>)
+                        return workspace_changes_.rename(intent.layout, intent.label);
+                    else if constexpr (std::same_as<Intent, RemoveLayout>)
+                        return workspace_changes_.remove(intent.layout);
+                    else if constexpr (std::same_as<Intent, ApplyLayout>)
+                    {
+                        EditorResult<void> result;
+                        auto apply = [&](const extensions::ContributionSnapshot& snapshot
+                                     ) -> extensions::ContributionResult<void>
+                        {
+                            result = workspace_actions_->apply(intent.layout, snapshot.views());
+                            return {};
+                        };
+                        auto guarded = contributions_.withSnapshot(apply);
+                        return guarded ? std::move(result) : applicationFailure("layout.catalog", guarded.error());
+                    }
+                    else
+                        static_assert(sizeof(Intent) == 0, "Every workspace intent needs an explicit receiver");
+                }
+            },
+            request
+        );
     }
 
     EditorResult<void> EditorApplication::Impl::settleWorkspace()
@@ -92,8 +98,8 @@ namespace lux::editor::application
             snapshot.diagnostics.push_back(workspace_failure_->domain + ": " + workspace_failure_->message);
         if (const auto* migration = workspace_changes_.migration())
         {
-            snapshot.diagnostics.insert(snapshot.diagnostics.end(), migration->diagnostics().begin(),
-                migration->diagnostics().end());
+            snapshot.diagnostics
+                .insert(snapshot.diagnostics.end(), migration->diagnostics().begin(), migration->diagnostics().end());
             if (workspace_changes_.migrationComplete())
                 snapshot.diagnostics.emplace_back("Migration verified complete");
         }
@@ -111,7 +117,9 @@ namespace lux::editor::application
             {
                 snapshot.recovery.push_back(content.locator);
                 if (content.unpersisted_changes)
-                    snapshot.recovery.emplace_back("Only saved content can be restored; unsaved edits are not in this manifest.");
+                    snapshot.recovery.emplace_back(
+                        "Only saved content can be restored; unsaved edits are not in this manifest."
+                    );
             }
             if (!item.result)
                 snapshot.recovery.emplace_back("Recovery pending");
@@ -143,15 +151,19 @@ namespace lux::editor::application
     void EditorApplication::Impl::installWorkspaceView(extensions::ContributionDraft& draft)
     {
         auto recovery = project::makeRecoveryCommands(
-            [phase = &phase_](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
-                return commands::CommandState{*phase == EApplicationPhase::RUNNING};
-            }, [this](VWorkspaceIntent intent) { return executeWorkspaceIntent(intent); }
+            [phase = &phase_](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
+            { return commands::CommandState{*phase == EApplicationPhase::RUNNING}; },
+            [this](VWorkspaceIntent intent) { return executeWorkspaceIntent(intent); }
         );
-        draft.commands.insert(draft.commands.end(),
-            std::make_move_iterator(recovery.begin()), std::make_move_iterator(recovery.end()));
+        draft.commands.insert(
+            draft.commands.end(),
+            std::make_move_iterator(recovery.begin()),
+            std::make_move_iterator(recovery.end())
+        );
         draft.views.push_back(project::makeWorkspaceViewFactory(
             [this] { return observeWorkspace(); },
-            [this](VWorkspaceIntent intent) -> EditorResult<void> {
+            [this](VWorkspaceIntent intent) -> EditorResult<void>
+            {
                 if (workspace_intent_)
                     return cxx::unexpected(EditorFailure{EEditorError::BUSY, "workspace.intent.capacity"});
                 workspace_intent_ = std::move(intent);
@@ -159,10 +171,10 @@ namespace lux::editor::application
             }
         ));
         draft.commands.push_back(project::makeWorkspaceCommand(
-            [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
-                return commands::CommandState{phase_ == EApplicationPhase::RUNNING};
-            }, toolOpening()
+            [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
+            { return commands::CommandState{phase_ == EApplicationPhase::RUNNING}; },
+            toolOpening()
         ));
     }
 
-}
+} // namespace lux::editor::application

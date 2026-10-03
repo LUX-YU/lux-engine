@@ -7,7 +7,10 @@
 #include <lux/engine/editor/workspace/SettingsDocument.hpp>
 #include <filesystem>
 
-namespace lux::asset { class AssetId; }
+namespace lux::asset
+{
+    class AssetId;
+}
 
 namespace lux::editor::workspace
 {
@@ -49,8 +52,10 @@ namespace lux::editor::workspace
         [[nodiscard]] WorkspaceResult<StoredPreferences> readPreferences() const;
         [[nodiscard]] WorkspaceResult<StoredRecovery> readRecovery() const;
         // Relative to this store's explicit physical root (project or user). Missing is distinct from IO.
-        [[nodiscard]] WorkspaceResult<settings::SettingsDocument>
-        readSettings(std::string_view relative, settings::ESettingsScope) const;
+        [[nodiscard]] WorkspaceResult<settings::SettingsDocument> readSettings(
+            std::string_view relative,
+            settings::ESettingsScope
+        ) const;
         [[nodiscard]] WorkspaceResult<persistence::WriteTicket>
         writeSettings(std::string_view relative, const settings::SettingsDocument&);
         [[nodiscard]] WorkspaceResult<LayoutCatalog> listLayouts() const;
@@ -73,13 +78,17 @@ namespace lux::editor::workspace
         [[nodiscard]] WorkspaceResult<LegacyMigration> prepareLegacyMigration() const;
         // Returns at most one accepted write. The caller settles/acknowledges it through P05 before retrying.
         // Empty means all records were verified and the marker is already present. No private queue/pump.
-        [[nodiscard]] WorkspaceResult<std::optional<persistence::WriteTicket>>
-        continueMigration(const LegacyMigration&, const WorkspaceStore* source = nullptr);
+        [[nodiscard]] WorkspaceResult<std::optional<persistence::WriteTicket>> continueMigration(
+            const LegacyMigration&,
+            const WorkspaceStore* source = nullptr
+        );
         // Bounded, read-only capture of the old project's layouts, preferences and recovery.
         // First pins source versions in a durable preparation marker; subsequent calls copy exact
         // bytes and finally confirm completion. Settle each ticket through the shared coordinator.
-        [[nodiscard]] WorkspaceResult<std::optional<persistence::WriteTicket>>
-        continueProfileMigration(const WorkspaceStore& source, const asset::AssetId& project);
+        [[nodiscard]] WorkspaceResult<std::optional<persistence::WriteTicket>> continueProfileMigration(
+            const WorkspaceStore& source,
+            const asset::AssetId& project
+        );
 
     private:
         [[nodiscard]] WorkspaceResult<LegacyWorkspaceInput> captureLegacyInput() const;
@@ -100,4 +109,4 @@ namespace lux::editor::workspace
         persistence::IArtifactStore& artifacts_;
         WorkspaceLimits limits_;
     };
-}
+} // namespace lux::editor::workspace

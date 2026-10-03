@@ -43,7 +43,7 @@ namespace lux::editor::persistence
         {
             return failed(EPersistenceError::ENCODE);
         }
-    }
+    } // namespace
     struct SaveSourceRegistration::State final
     {
         contracts::CodeLease code;
@@ -73,7 +73,8 @@ namespace lux::editor::persistence
     PreparedSaveSourceRegistration::PreparedSaveSourceRegistration(std::shared_ptr<SaveSourceRegistration::State> state
     ) noexcept
         : state_(std::move(state))
-    {}
+    {
+    }
     PreparedSaveSourceRegistration::~PreparedSaveSourceRegistration()
     {
         if (state_)
@@ -140,7 +141,8 @@ namespace lux::editor::persistence
                                                                       const void* service) {
                   return std::make_shared<SaveSourceRegistration::State>(std::move(code), nullptr, source, id, service);
               })
-        {}
+        {
+        }
         bool onOwner() const noexcept
         {
             return owner == std::this_thread::get_id();
@@ -167,10 +169,14 @@ namespace lux::editor::persistence
                 return failed(EPersistenceError::INVALID_ARGUMENT);
             if (source(id, true))
                 return failed(EPersistenceError::BUSY);
-            std::erase_if(sources, [](const auto& weak) {
-                auto value = weak.lock();
-                return !value || !value->source;
-            });
+            std::erase_if(
+                sources,
+                [](const auto& weak)
+                {
+                    auto value = weak.lock();
+                    return !value || !value->source;
+                }
+            );
             auto entry = allocate_source(std::move(code), &source_value, id, this);
             sources.push_back(entry);
             return PreparedSaveSourceRegistration{std::move(entry)};
@@ -184,7 +190,8 @@ namespace lux::editor::persistence
     };
     SaveService::SaveService(WriteCoordinator& coordinator, SaveLimits limits)
         : impl_(std::make_unique<Impl>(coordinator, limits))
-    {}
+    {
+    }
     SaveService::~SaveService()
     {
         // The scheduler adapter has already drained. Preserve settled/unknown disk records in the coordinator.
@@ -293,12 +300,16 @@ namespace lux::editor::persistence
                              !previous->source || !source || !code.valid();
         if (invalid)
             return failed(EPersistenceError::STALE_SOURCE);
-        const bool has_pending = std::ranges::any_of(impl_->operations, [&](const auto& operation) {
-            const bool unsettled =
-                operation->stage != ESaveStage::TERMINAL ||
-                (operation->outcome && std::holds_alternative<PublicationUnknown>(operation->outcome->publication));
-            return operation->request.session == previous->session && unsettled;
-        });
+        const bool has_pending = std::ranges::any_of(
+            impl_->operations,
+            [&](const auto& operation)
+            {
+                const bool unsettled =
+                    operation->stage != ESaveStage::TERMINAL ||
+                    (operation->outcome && std::holds_alternative<PublicationUnknown>(operation->outcome->publication));
+                return operation->request.session == previous->session && unsettled;
+            }
+        );
         if (has_pending)
             return failed(EPersistenceError::BUSY);
         // All allocation precedes the no-callback domain commit. The original role remains active on failure.
@@ -314,10 +325,14 @@ namespace lux::editor::persistence
         next->published = true;
         previous->source = nullptr;
         registration.state_ = std::move(next);
-        std::erase_if(impl_->sources, [](const auto& weak) {
-            const auto state = weak.lock();
-            return !state || !state->source;
-        });
+        std::erase_if(
+            impl_->sources,
+            [](const auto& weak)
+            {
+                const auto state = weak.lock();
+                return !state || !state->source;
+            }
+        );
         impl_->sources.push_back(registration.state_);
         return {};
     }
@@ -337,12 +352,16 @@ namespace lux::editor::persistence
         auto registration = impl_->source(request.session);
         if (!registration)
             return failed(EPersistenceError::STALE_SOURCE);
-        const bool has_active = std::ranges::any_of(impl_->operations, [&](const auto& op) {
-            const bool unresolved =
-                op->stage != ESaveStage::TERMINAL ||
-                (op->outcome && std::holds_alternative<PublicationUnknown>(op->outcome->publication));
-            return op->request.session == request.session && unresolved;
-        });
+        const bool has_active = std::ranges::any_of(
+            impl_->operations,
+            [&](const auto& op)
+            {
+                const bool unresolved =
+                    op->stage != ESaveStage::TERMINAL ||
+                    (op->outcome && std::holds_alternative<PublicationUnknown>(op->outcome->publication));
+                return op->request.session == request.session && unresolved;
+            }
+        );
         if (request.mode == ESaveMode::SAVE_AS && has_active)
             return failed(EPersistenceError::BUSY);
         auto* const source = registration->source;
@@ -569,4 +588,4 @@ namespace lux::editor::persistence
         impl_->operations.erase(found);
         return {};
     }
-}
+} // namespace lux::editor::persistence

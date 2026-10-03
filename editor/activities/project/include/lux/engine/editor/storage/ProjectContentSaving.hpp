@@ -9,13 +9,13 @@ namespace lux::editor::persistence
     class SaveService;
     class WriteCoordinator;
     class IArtifactStore;
-}
+} // namespace lux::editor::persistence
 namespace lux::editor::sessions
 {
     class SessionStore;
     class SessionOpening;
     struct SaveAllEntry;
-}
+} // namespace lux::editor::sessions
 namespace lux::editor
 {
     struct PreparedProjectSave final
@@ -48,10 +48,7 @@ namespace lux::editor
     class ProjectContentSaving final
     {
     public:
-        ProjectContentSaving(
-            sessions::SessionStore&, sessions::SessionOpening&, persistence::SaveService&,
-            ProjectStorage&, persistence::WriteCoordinator&, persistence::IArtifactStore&
-        );
+        ProjectContentSaving(sessions::SessionStore&, sessions::SessionOpening&, persistence::SaveService&, ProjectStorage&, persistence::WriteCoordinator&, persistence::IArtifactStore&);
         ~ProjectContentSaving();
         ProjectContentSaving(const ProjectContentSaving&) = delete;
         ProjectContentSaving& operator=(const ProjectContentSaving&) = delete;
@@ -60,15 +57,20 @@ namespace lux::editor
 
         // Used by a reviewed close: preparation does not admit encoding or change the source baseline.
         [[nodiscard]] EditorResult<PreparedProjectSave> prepare(
-            sessions::ContentStamp, persistence::ESaveMode, std::string destination = {}
+            sessions::ContentStamp,
+            persistence::ESaveMode,
+            std::string destination = {}
         );
         [[nodiscard]] EditorResult<persistence::SaveId> request(
-            sessions::ContentStamp, persistence::ESaveMode, std::string destination = {}
+            sessions::ContentStamp,
+            persistence::ESaveMode,
+            std::string destination = {}
         );
         // Transfer the observation responsibility for a SaveId already accepted by the existing fixed-set
         // close operation. On refusal that operation still owns it and must retain its destination values.
         [[nodiscard]] EditorResult<void> track(
-            persistence::SaveId, std::span<const ProjectAssetEntry> reviewed_destinations = {}
+            persistence::SaveId,
+            std::span<const ProjectAssetEntry> reviewed_destinations = {}
         );
         [[nodiscard]] EditorResult<void> saveAll();
         // Borrowed close results remain in SaveService until the close owner releases its fixed set.
@@ -88,4 +90,4 @@ namespace lux::editor
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };
-}
+} // namespace lux::editor

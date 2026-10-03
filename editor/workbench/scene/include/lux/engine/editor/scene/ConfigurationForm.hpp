@@ -17,7 +17,8 @@ namespace lux::editor::detail
     public:
         ConfigurationForm(lux::ui::Element& parent, lux::ui::ElementId id)
             : Element(parent, std::move(id)), layout_(*this, lux::ui::ElementId{"fields"}, lux::ui::ELayoutType::FORM)
-        {}
+        {
+        }
 
         template <class Accessor> void add(std::string name, Accessor access, EditorResult<void>& status)
         {
@@ -27,7 +28,8 @@ namespace lux::editor::detail
             if constexpr (meta::HasTypeStaticInfo<Value>)
             {
                 std::apply(
-                    [&](const auto&... field) {
+                    [&](const auto&... field)
+                    {
                         (add(
                              name.empty() ? std::string(field.name) : name + "." + std::string(field.name),
                              [access, field]() -> auto& { return access().*field.pointer; },
@@ -56,7 +58,8 @@ namespace lux::editor::detail
                     auto* control = field.get();
                     connect(
                         *control,
-                        [access, control](lux::ui::EditResult result) noexcept {
+                        [access, control](lux::ui::EditResult result) noexcept
+                        {
                             if (result.changed || result.cancelled)
                                 access() = control->value();
                         },
@@ -69,14 +72,22 @@ namespace lux::editor::detail
                 {
                     auto field = std::make_unique<lux::ui::TextEdit>(layout_, lux::ui::ElementId{name}, access());
                     auto* control = field.get();
-                    connect(*control, [access, control](lux::ui::EditResult result) noexcept {
-                        if (result.changed || result.cancelled)
-                            access() = control->value();
-                    }, status);
-                    sync_.push_back([access, control] {
-                        if (!control->editing())
-                            control->setValue(access());
-                    });
+                    connect(
+                        *control,
+                        [access, control](lux::ui::EditResult result) noexcept
+                        {
+                            if (result.changed || result.cancelled)
+                                access() = control->value();
+                        },
+                        status
+                    );
+                    sync_.push_back(
+                        [access, control]
+                        {
+                            if (!control->editing())
+                                control->setValue(access());
+                        }
+                    );
                     fields_.push_back(std::move(field));
                 }
                 else if constexpr (std::is_enum_v<Value>)
@@ -97,7 +108,8 @@ namespace lux::editor::detail
                         auto* control = field.get();
                         connect(
                             *control,
-                            [access, control](lux::ui::EditResult result) noexcept {
+                            [access, control](lux::ui::EditResult result) noexcept
+                            {
                                 if (result.changed || result.cancelled)
                                     access() = static_cast<Value>(control->value());
                             },
@@ -183,16 +195,20 @@ namespace lux::editor::detail
             auto* control = field.get();
             connect(
                 *control,
-                [write, control](lux::ui::EditResult result) noexcept {
+                [write, control](lux::ui::EditResult result) noexcept
+                {
                     if (result.changed || result.cancelled)
                         write(static_cast<Value>(std::get<Number>(control->value())));
                 },
                 status
             );
-            sync_.push_back([read, control] {
-                if (!control->editing())
-                    control->setValue(static_cast<Number>(read()));
-            });
+            sync_.push_back(
+                [read, control]
+                {
+                    if (!control->editing())
+                        control->setValue(static_cast<Number>(read()));
+                }
+            );
             fields_.push_back(std::move(field));
         }
         lux::ui::SizeHint sizeHintContent() noexcept override
@@ -229,11 +245,11 @@ namespace lux::editor::detail
             {schema,
              1,
              serialization::makePortableValueCodec<Configuration>(),
-             +[](meta::ReflectionRegistry& registry) noexcept {
-                 return registry.findClass(lux::cxx::typeToken<Configuration>().name());
-             }},
+             +[](meta::ReflectionRegistry& registry) noexcept
+             { return registry.findClass(lux::cxx::typeToken<Configuration>().name()); }},
             +[](lux::ui::Element& parent, lux::ui::ElementId id, ConfigurationValue& value
-             ) noexcept -> EditorResult<std::unique_ptr<lux::ui::Element>> {
+             ) noexcept -> EditorResult<std::unique_ptr<lux::ui::Element>>
+            {
                 try
                 {
                     EditorResult<void> status;
@@ -258,4 +274,4 @@ namespace lux::editor::detail
             }
         };
     }
-}
+} // namespace lux::editor::detail

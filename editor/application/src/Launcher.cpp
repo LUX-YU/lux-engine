@@ -85,10 +85,10 @@ namespace lux::editor::application
         std::vector<std::shared_ptr<commands::CommandEntry>> entries;
         entries.push_back(commands::CommandEntry::bind<command_lux_project_open>(
             contracts::CodeLease::builtin(),
-            [&](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
-                return commands::CommandState{!closing && !launching};
-            },
-            [&](const commands::CommandInvocation&) -> commands::CommandResult<commands::DispatchReceipt> {
+            [&](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
+            { return commands::CommandState{!closing && !launching}; },
+            [&](const commands::CommandInvocation&) -> commands::CommandResult<commands::DispatchReceipt>
+            {
                 open_requested = true;
                 return commands::DispatchReceipt{commands::ImmediateCompletion{}};
             }
@@ -99,9 +99,8 @@ namespace lux::editor::application
         if (!(*desktop)->installCommands(
                 commands,
                 dispatcher,
-                [](const auto&, auto*, auto*) -> commands::CommandResult<commands::CommandInvocation> {
-                    return commands::CommandInvocation{};
-                }
+                [](const auto&, auto*, auto*) -> commands::CommandResult<commands::CommandInvocation>
+                { return commands::CommandInvocation{}; }
             ))
             return 3;
         if (!creation.start())
@@ -110,7 +109,8 @@ namespace lux::editor::application
         input::Input input;
         int outcome{};
         const auto started = std::chrono::steady_clock::now();
-        auto fail = [&](std::string_view operation) {
+        auto fail = [&](std::string_view operation)
+        {
             std::fprintf(stderr, "launcher.%.*s failed\n", static_cast<int>(operation.size()), operation.data());
             outcome = 3;
             closing = true;
@@ -169,12 +169,15 @@ namespace lux::editor::application
                         {"Open project", "Project"},
                         [installation,
                          file = std::move(**chosen),
-                         scheduler = *execution.blocking()](process::TaskReporter) noexcept {
-                            return stdexec::then(stdexec::schedule(scheduler), [installation, file]() noexcept {
-                                return launchEditor(installation, file);
-                            });
+                         scheduler = *execution.blocking()](process::TaskReporter) noexcept
+                        {
+                            return stdexec::then(
+                                stdexec::schedule(scheduler),
+                                [installation, file]() noexcept { return launchEditor(installation, file); }
+                            );
                         },
-                        [&](process::TTaskResult<void, EditorFailure>&& result) noexcept {
+                        [&](process::TTaskResult<void, EditorFailure>&& result) noexcept
+                        {
                             launching.reset();
                             if (result)
                                 launched.emplace();
@@ -203,4 +206,4 @@ namespace lux::editor::application
         }
         return outcome;
     }
-}
+} // namespace lux::editor::application

@@ -13,10 +13,12 @@ namespace lux::editor::sessions
     };
     SessionPreparation::SessionPreparation(contracts::CodeLease code, Prepare prepare)
         : data_(std::make_unique<Data>(std::move(code), std::move(prepare)))
-    {}
+    {
+    }
     SessionPreparation::SessionPreparation(contracts::CodeLease code, ContentStamp expected, Reload reload)
         : data_(std::make_unique<Data>(std::move(code), std::move(reload), expected))
-    {}
+    {
+    }
     SessionPreparation::~SessionPreparation() = default;
     SessionPreparation::SessionPreparation(SessionPreparation&&) noexcept = default;
     SessionPreparation& SessionPreparation::operator=(SessionPreparation&&) noexcept = default;
@@ -46,7 +48,8 @@ namespace lux::editor::sessions
         const bool is_invalid_input = is_invalid_owner || is_missing_prepare;
         if (is_invalid_input)
             return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::INVALID_ARGUMENT, "prepared.data"});
-        auto invoke = [&]() -> SessionFactoryResult<PreparedSessionInstallation> {
+        auto invoke = [&]() -> SessionFactoryResult<PreparedSessionInstallation>
+        {
             if (owned->code.sameOwner(contracts::CodeLease::builtin()))
                 return (*prepare)(store, saves);
             try
@@ -86,7 +89,8 @@ namespace lux::editor::sessions
             return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::INVALID_ARGUMENT, "reload.unsupported"});
         // The domain callback checks its original stamp/gate before consuming the owned source.
         // On BUSY it leaves its input intact, so no encoder/decoder is rerun on retry.
-        auto invoke = [&]() -> SessionFactoryResult<PreparedSessionReload> {
+        auto invoke = [&]() -> SessionFactoryResult<PreparedSessionReload>
+        {
             if (data_->code.sameOwner(contracts::CodeLease::builtin()))
                 return (*reload)(store);
             try
@@ -114,7 +118,8 @@ namespace lux::editor::sessions
         std::unique_ptr<persistence::ISaveSource> source
     )
         : code_(std::move(code)), session_(session), adopt_(std::move(adopt)), source_(std::move(source))
-    {}
+    {
+    }
     PreparedSessionReload::~PreparedSessionReload() = default;
     PreparedSessionReload::PreparedSessionReload(PreparedSessionReload&&) noexcept = default;
     PreparedSessionReload& PreparedSessionReload::operator=(PreparedSessionReload&& other) noexcept
@@ -153,7 +158,8 @@ namespace lux::editor::sessions
                 text.append(input.source->canonical_name).append(input.source->save_extension);
             const std::string_view bytes{text};
             std::size_t offset{};
-            const auto take = [&](std::size_t count) {
+            const auto take = [&](std::size_t count)
+            {
                 const auto value = bytes.substr(offset, count);
                 offset += count;
                 return value;
@@ -166,13 +172,17 @@ namespace lux::editor::sessions
             descriptor.extensions = extensions;
             if (input.source)
                 descriptor.source = SourceAuthoring{
-                    take(input.source->canonical_name.size()), input.source->version,
-                    take(input.source->save_extension.size()), input.source->is_default
+                    take(input.source->canonical_name.size()),
+                    input.source->version,
+                    take(input.source->save_extension.size()),
+                    input.source->is_default
                 };
         }
     };
     std::shared_ptr<SessionFactoryEntry> SessionFactoryEntry::create(
-        contracts::CodeLease code, const SessionKindDescriptor& descriptor, Decode decode
+        contracts::CodeLease code,
+        const SessionKindDescriptor& descriptor,
+        Decode decode
     )
     {
         auto storage = std::make_unique<const DescriptorStorage>(descriptor);
@@ -183,10 +193,13 @@ namespace lux::editor::sessions
         return entry;
     }
     SessionFactoryEntry::SessionFactoryEntry(
-        contracts::CodeLease code, const SessionKindDescriptor& descriptor, Decode decode
+        contracts::CodeLease code,
+        const SessionKindDescriptor& descriptor,
+        Decode decode
     )
         : code_(std::move(code)), descriptor_(&descriptor), decode_(std::move(decode))
-    {}
+    {
+    }
     SessionFactoryEntry::~SessionFactoryEntry() = default;
     const SessionKindDescriptor& SessionFactoryEntry::descriptor() const noexcept
     {
@@ -223,8 +236,8 @@ namespace lux::editor::sessions
                 return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::INVALID_ARGUMENT, "factory"});
             const auto& entry = *entries[i];
             const auto& descriptor = entry.descriptor();
-            const bool is_invalid_identity = !descriptor.kind.isValid() ||
-                descriptor.kind.hash() != cxx::Fnv1a64::hash(descriptor.kind.name());
+            const bool is_invalid_identity =
+                !descriptor.kind.isValid() || descriptor.kind.hash() != cxx::Fnv1a64::hash(descriptor.kind.name());
             const bool is_invalid_binding = !entry.code_.valid() || !entry.decode_;
             const bool is_invalid_description = descriptor.label.empty();
             const bool is_invalid = is_invalid_identity || is_invalid_binding || is_invalid_description;
@@ -235,28 +248,35 @@ namespace lux::editor::sessions
                 const auto& name = source->canonical_name;
                 const auto& suffix = source->save_extension;
                 const bool is_invalid_name = name.empty() || name.size() > 192 ||
-                    !std::ranges::all_of(name, [](unsigned char c) {
-                        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-                            (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '-';
-                    });
+                                             !std::ranges::all_of(
+                                                 name,
+                                                 [](unsigned char c)
+                                                 {
+                                                     return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                                                            (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '-';
+                                                 }
+                                             );
                 const bool is_invalid_suffix = suffix.size() < 2 || suffix.size() > 64 || suffix.front() != '.' ||
-                    !std::ranges::all_of(std::string_view{suffix}.substr(1), [](unsigned char c) {
-                        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-                            (c >= '0' && c <= '9') || c == '_' || c == '-';
-                    });
+                                               !std::ranges::all_of(
+                                                   std::string_view{suffix}.substr(1),
+                                                   [](unsigned char c) {
+                                                       return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                                                              (c >= '0' && c <= '9') || c == '_' || c == '-';
+                                                   }
+                                               );
                 const bool is_invalid_source = is_invalid_name || is_invalid_suffix || !source->version;
                 if (is_invalid_source)
                 {
-                    return cxx::unexpected(SessionFactoryFailure{
-                        ESessionFactoryError::INVALID_ARGUMENT, "factory.source"
-                    });
+                    return cxx::unexpected(
+                        SessionFactoryFailure{ESessionFactoryError::INVALID_ARGUMENT, "factory.source"}
+                    );
                 }
                 auto& indices = sources[source->type()];
                 if (!indices.empty() && entries[indices.front()]->descriptor_->source->canonical_name != name)
                 {
-                    return cxx::unexpected(SessionFactoryFailure{
-                        ESessionFactoryError::INVALID_ARGUMENT, "factory.source.collision"
-                    });
+                    return cxx::unexpected(
+                        SessionFactoryFailure{ESessionFactoryError::INVALID_ARGUMENT, "factory.source.collision"}
+                    );
                 }
                 indices.push_back(i);
             }
@@ -358,9 +378,9 @@ namespace lux::editor::sessions
         {
             return only;
         }
-        return cxx::unexpected(SessionFactoryFailure{
-            ESessionFactoryError::AMBIGUOUS, "factory.source", 0, std::move(candidates)
-        });
+        return cxx::unexpected(
+            SessionFactoryFailure{ESessionFactoryError::AMBIGUOUS, "factory.source", 0, std::move(candidates)}
+        );
     }
     std::span<const std::shared_ptr<SessionFactoryEntry>> SessionFactorySnapshot::entries() const noexcept
     {
@@ -369,7 +389,8 @@ namespace lux::editor::sessions
     }
     SessionLoadJob::SessionLoadJob(std::shared_ptr<SessionFactoryEntry> entry, SessionLoadInput input)
         : entry_(std::move(entry)), input_(std::move(input))
-    {}
+    {
+    }
     SessionFactoryResult<SessionPreparation> SessionLoadJob::run(std::stop_token stop) &&
     {
         auto owned = std::move(*this);
@@ -391,7 +412,8 @@ namespace lux::editor::sessions
             return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::CAPACITY, "load.bytes"});
         if (stop.stop_requested())
             return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::CANCELLED, "load"});
-        auto invoke = [&]() -> SessionFactoryResult<SessionPreparation> {
+        auto invoke = [&]() -> SessionFactoryResult<SessionPreparation>
+        {
             if (owned.entry_->code_.sameOwner(contracts::CodeLease::builtin()))
                 return owned.entry_->decode_(owned.input_, blob->bytes.view(), stop);
             try
@@ -412,4 +434,4 @@ namespace lux::editor::sessions
             return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::DECODE, "decoded.code"});
         return result;
     }
-}
+} // namespace lux::editor::sessions

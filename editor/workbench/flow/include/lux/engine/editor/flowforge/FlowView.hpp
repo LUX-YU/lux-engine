@@ -8,9 +8,12 @@ namespace lux::editor::persistence
 {
     class WriteCoordinator;
     class IArtifactStore;
-}
+} // namespace lux::editor::persistence
 
-namespace lux::editor::views { class ViewFactoryEntry; }
+namespace lux::editor::views
+{
+    class ViewFactoryEntry;
+}
 
 namespace lux::editor::flowforge
 {
@@ -81,6 +84,7 @@ namespace lux::editor::flowforge
         FlowViewState = {}
     );
     [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> makeFlowViewFactory(
-        FlowViewServices, cxx::move_only_function<void(const persistence::DerivedArtifact&)> = {}
+        FlowViewServices,
+        cxx::move_only_function<void(const persistence::DerivedArtifact&)> = {}
     );
-}
+} // namespace lux::editor::flowforge

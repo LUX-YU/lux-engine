@@ -108,12 +108,14 @@ extern "C" LUX_RENDER_FEATURE_META_PUBLIC const lux::editor::extensions::EditorE
     using namespace lux::editor;
     static const extensions::EditorExtensionExports exports{
         .counts = {.configurations = static_cast<std::uint32_t>(std::size(configurations)), .reflection = 1},
-        .contribute = +[](extensions::ContributionDraft& draft,
-                          contracts::CodeLease code) -> extensions::ContributionResult<void> {
-            draft.reflection
-                .push_back({code, +[](lux::meta::ReflectionRegistry& registry, lux::meta::qual_type_index_fix_list&) {
-                                LuxRegisterRender_feature_clientMetas_META(registry);
-                            }});
+        .contribute =
+            +[](extensions::ContributionDraft& draft, contracts::CodeLease code) -> extensions::ContributionResult<void>
+        {
+            draft.reflection.push_back(
+                {code,
+                 +[](lux::meta::ReflectionRegistry& registry, lux::meta::qual_type_index_fix_list&)
+                 { LuxRegisterRender_feature_clientMetas_META(registry); }}
+            );
             for (auto configuration : configurations)
             {
                 configuration.code = code;

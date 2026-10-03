@@ -42,7 +42,7 @@ namespace lux::editor::desktop
         private:
             bool& active_;
         };
-    }
+    } // namespace
     struct PreparedViewBatch::Data final
     {
         std::uint64_t domain{}, revision{};
@@ -198,9 +198,8 @@ namespace lux::editor::desktop
             {
                 if (!candidate.owner.pane() || !candidate.restore_key.isValid())
                     return cxx::unexpected(views::EViewError::NOT_ATTACHED);
-                const auto duplicate = [&](const views::ViewRestoreKey& key, const lux::ui::Pane& pane) {
-                    return key == candidate.restore_key && pane.type() == candidate.owner.pane()->type();
-                };
+                const auto duplicate = [&](const views::ViewRestoreKey& key, const lux::ui::Pane& pane)
+                { return key == candidate.restore_key && pane.type() == candidate.owner.pane()->type(); };
                 for (const auto& slot : slots_)
                     if (slot.owner && duplicate(slot.restore_key, *slot.owner->pane()))
                         return cxx::unexpected(views::EViewError::INVALID_ID);
@@ -217,7 +216,8 @@ namespace lux::editor::desktop
                 auto connected = object::LuxObject::connect(
                     candidate.owner.pane(),
                     &lux::ui::Pane::closeRequested,
-                    [&slot, id]() noexcept {
+                    [&slot, id]() noexcept
+                    {
                         if (slot.owner && slot.generation == id.generation)
                             slot.close_intent = true;
                     }
@@ -257,7 +257,8 @@ namespace lux::editor::desktop
             const bool stale = !data || data->domain != domain_ || data->revision != revision_ || !data->attachment;
             if (stale)
                 return cxx::unexpected(views::EViewError::INVALID_ID);
-            const auto adopt = [&]() noexcept {
+            const auto adopt = [&]() noexcept
+            {
                 for (std::size_t i{}; i < data->ids.size(); ++i)
                 {
                     auto& slot = slots_[data->ids[i].slot];
@@ -312,7 +313,8 @@ namespace lux::editor::desktop
             std::span<const views::ViewId> ids
         )
         {
-            const auto failure = [](views::EViewError code, std::string message) {
+            const auto failure = [](views::EViewError code, std::string message)
+            {
                 return cxx::unexpected(views::ViewPreparationFailure{
                     "view.host",
                     static_cast<std::uint64_t>(code),
@@ -357,9 +359,8 @@ namespace lux::editor::desktop
             ViewHost::LayoutInput make_input
         )
         {
-            const auto failure = [](std::string domain, std::uint64_t code, std::string text, bool retry = false) {
-                return cxx::unexpected(views::ViewPreparationFailure{std::move(domain), code, std::move(text), retry});
-            };
+            const auto failure = [](std::string domain, std::uint64_t code, std::string text, bool retry = false)
+            { return cxx::unexpected(views::ViewPreparationFailure{std::move(domain), code, std::move(text), retry}); };
             if (closing_ || busy())
                 return failure("view.host", 0, "Workbench is unavailable", !closing_);
             Dispatch guard(dispatching_);
@@ -544,9 +545,9 @@ namespace lux::editor::desktop
                 if (auto* slot = find(id); slot && (!slot->close_failure || slot->close_failure->retryable))
                     if (!detach(*slot, report))
                         slot->close_requested = !slot->close_failure || slot->close_failure->retryable;
-            report.pending = requests_.size() + std::ranges::count_if(slots_, [](const Slot& slot) {
-                                 return slot.owner && slot.close_requested;
-                             });
+            report.pending =
+                requests_.size() +
+                std::ranges::count_if(slots_, [](const Slot& slot) { return slot.owner && slot.close_requested; });
             return report;
         }
     };
@@ -639,9 +640,8 @@ namespace lux::editor::desktop
         std::string label
     ) const
     {
-        const auto failure = [](std::string message, bool retry = false) {
-            return cxx::unexpected(views::ViewPreparationFailure{"view.capture", 0, std::move(message), retry});
-        };
+        const auto failure = [](std::string message, bool retry = false)
+        { return cxx::unexpected(views::ViewPreparationFailure{"view.capture", 0, std::move(message), retry}); };
         if (impl_->busy())
             return failure("Workbench unavailable", true);
         Dispatch guard(impl_->dispatching_);
@@ -776,4 +776,4 @@ namespace lux::editor::desktop
         return slot->close_failure;
     }
 
-}
+} // namespace lux::editor::desktop

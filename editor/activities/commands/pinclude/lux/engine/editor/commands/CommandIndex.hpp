@@ -28,10 +28,10 @@ namespace lux::editor::commands::detail
             const auto first = entries[result[i - 1].entry]->descriptor().id.name();
             const auto second = entries[result[i].entry]->descriptor().id.name();
             const auto code = first == second ? ECommandError::DUPLICATE : ECommandError::HASH_COLLISION;
-            return cxx::unexpected(CommandFailure{
-                code, "command.identity", 0, std::string{first} + " / " + std::string{second}
-            });
+            return cxx::unexpected(
+                CommandFailure{code, "command.identity", 0, std::string{first} + " / " + std::string{second}}
+            );
         }
         return result;
     }
-}
+} // namespace lux::editor::commands::detail

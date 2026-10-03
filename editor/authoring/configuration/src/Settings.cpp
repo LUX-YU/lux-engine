@@ -18,7 +18,7 @@ namespace lux::editor::settings
                 return failure(ESettingsError::INVALID_VALUE, "configuration encoding");
             return bytes;
         }
-    }
+    } // namespace
     struct SettingsEntry::Storage final
     {
         std::string id, label;
@@ -26,7 +26,8 @@ namespace lux::editor::settings
         SettingsDescriptor descriptor;
         explicit Storage(const SettingsDescriptor& source)
             : id(source.id.name()), label(source.label),
-              configuration(source.configuration ? *source.configuration : ConfigurationDescriptor{}), descriptor(source)
+              configuration(source.configuration ? *source.configuration : ConfigurationDescriptor{}),
+              descriptor(source)
         {
             descriptor.id = SettingsIdView{id};
             descriptor.label = label;
@@ -35,10 +36,13 @@ namespace lux::editor::settings
     };
     SettingsEntry::SettingsEntry(contracts::CodeLease code, const SettingsDescriptor& descriptor, Apply apply)
         : code_(std::move(code)), descriptor_(&descriptor), apply_(std::move(apply))
-    {}
+    {
+    }
     SettingsEntry::~SettingsEntry() = default;
     std::shared_ptr<SettingsEntry> SettingsEntry::create(
-        contracts::CodeLease code, const SettingsDescriptor& descriptor, Apply apply
+        contracts::CodeLease code,
+        const SettingsDescriptor& descriptor,
+        Apply apply
     )
     {
         auto result = std::shared_ptr<SettingsEntry>(new SettingsEntry(std::move(code), descriptor, std::move(apply)));
@@ -46,18 +50,25 @@ namespace lux::editor::settings
         result->descriptor_ = &result->storage_->descriptor;
         return result;
     }
-    const SettingsDescriptor& SettingsEntry::descriptor() const noexcept { return *descriptor_; }
-    bool SettingsEntry::usesCode(const contracts::CodeLease& code) const noexcept { return code_.sameOwner(code); }
+    const SettingsDescriptor& SettingsEntry::descriptor() const noexcept
+    {
+        return *descriptor_;
+    }
+    bool SettingsEntry::usesCode(const contracts::CodeLease& code) const noexcept
+    {
+        return code_.sameOwner(code);
+    }
     SettingsResult<void> SettingsEntry::validateDescriptor() const noexcept
     {
         const auto& value = *descriptor_;
         constexpr auto all_scopes = (scopeBit(ESettingsScope::LAUNCH) << 1) - 1;
         const bool has_identity = value.id.isValid() && !value.label.empty();
         const bool has_schema = value.configuration && !value.configuration->schema_name.empty() &&
-            value.configuration->schema_version && value.configuration->codec.valid() && value.configuration->reflection;
+                                value.configuration->schema_version && value.configuration->codec.valid() &&
+                                value.configuration->reflection;
         const bool has_application = value.apply == ESettingsApply::RESTART || bool(apply_);
         const bool has_policy = value.validate && value.scopes && !(value.scopes & ~all_scopes) &&
-            value.apply <= ESettingsApply::RESTART && has_application;
+                                value.apply <= ESettingsApply::RESTART && has_application;
         const bool is_invalid = !code_.valid() || !has_identity || !has_schema || !has_policy;
         if (is_invalid)
             return failure(ESettingsError::INVALID_DESCRIPTOR, std::string(value.id.name()));
@@ -109,7 +120,9 @@ namespace lux::editor::settings
         if (!valid)
             return cxx::unexpected(valid.error());
         auto value = ConfigurationValue::create(
-            *descriptor_->configuration, std::make_shared<contracts::CodeLease>(code_), registry
+            *descriptor_->configuration,
+            std::make_shared<contracts::CodeLease>(code_),
+            registry
         );
         if (!value)
             return failure(ESettingsError::UNAVAILABLE, "configuration reflection/type unavailable");
@@ -123,7 +136,8 @@ namespace lux::editor::settings
             return cxx::unexpected(checked.error());
         return std::move(*value);
     }
-    SettingsResult<ConfigurationValue> SettingsEntry::decode(std::uint32_t schema, std::span<const std::byte> bytes) const noexcept
+    SettingsResult<ConfigurationValue> SettingsEntry::decode(std::uint32_t schema, std::span<const std::byte> bytes)
+        const noexcept
     {
         auto value = defaults();
         if (!value)
@@ -146,7 +160,10 @@ namespace lux::editor::settings
             return cxx::unexpected(checked.error());
         return value;
     }
-    SettingsResult<void> validateSettingsEntries(std::span<const std::shared_ptr<SettingsEntry>> entries, std::size_t capacity)
+    SettingsResult<void> validateSettingsEntries(
+        std::span<const std::shared_ptr<SettingsEntry>> entries,
+        std::size_t capacity
+    )
     {
         if (entries.size() > capacity)
             return failure(ESettingsError::CAPACITY, "settings declarations");
@@ -167,8 +184,10 @@ namespace lux::editor::settings
             const auto lhs = sorted[i - 1]->descriptor().id;
             const auto rhs = sorted[i]->descriptor().id;
             if (lhs.hash() == rhs.hash())
-                return failure(lhs.name() == rhs.name() ? ESettingsError::DUPLICATE : ESettingsError::COLLISION,
-                               std::string(rhs.name()));
+                return failure(
+                    lhs.name() == rhs.name() ? ESettingsError::DUPLICATE : ESettingsError::COLLISION,
+                    std::string(rhs.name())
+                );
         }
         return {};
     }
@@ -235,8 +254,8 @@ namespace lux::editor::settings
     {
         if (!value.entry)
             return failure(ESettingsError::INVALID_DESCRIPTOR, "null settings resolution");
-        const bool is_invalid_scope = source.scope > ESettingsScope::LAUNCH ||
-            !(value.entry->descriptor().scopes & scopeBit(source.scope));
+        const bool is_invalid_scope =
+            source.scope > ESettingsScope::LAUNCH || !(value.entry->descriptor().scopes & scopeBit(source.scope));
         if (is_invalid_scope)
             return failure(ESettingsError::INVALID_SCOPE, "settings draft");
         auto bytes = encoded(value.desired);
@@ -269,7 +288,11 @@ namespace lux::editor::settings
             return cxx::unexpected(bytes.error());
         SettingsDocument candidate = source;
         const auto& descriptor = current.descriptor();
-        SettingsValue row{std::string(descriptor.id.name()), descriptor.configuration->schema_version, std::move(*bytes)};
+        SettingsValue row{
+            std::string(descriptor.id.name()),
+            descriptor.configuration->schema_version,
+            std::move(*bytes)
+        };
         auto found = std::ranges::find(candidate.values, row.id, &SettingsValue::id);
         if (found == candidate.values.end())
             candidate.values.push_back(std::move(row));
@@ -277,4 +300,4 @@ namespace lux::editor::settings
             *found = std::move(row);
         return candidate;
     }
-}
+} // namespace lux::editor::settings

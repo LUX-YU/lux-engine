@@ -17,12 +17,14 @@ namespace lux::editor::application
         std::unique_ptr<engine::EngineContext> engine,
         object::ObjectMessageQueue messages,
         lux::project::PluginManager plugins,
-        lux::project::SceneRegistrations registrations, std::filesystem::path profile
+        lux::project::SceneRegistrations registrations,
+        std::filesystem::path profile
     )
         : config_(std::move(config)), platform_(std::move(platform)), window_(std::move(window)),
           engine_(std::move(engine)), messages_(std::move(messages)), project_tasks_(engine_->execution()),
           task_monitor_(messages_.dispatcherRef(), engine_->execution()), plugins_(std::move(plugins)),
-          registrations_(std::move(registrations)), files_(config_.project_file.parent_path(), *config_.user_directory, config_.installation),
+          registrations_(std::move(registrations)),
+          files_(config_.project_file.parent_path(), *config_.user_directory, config_.installation),
           save_execution_(engine_->execution(), saves_, writes_, files_),
           opening_(engine_->execution(), sessions_, saves_),
           projections_(engine_->sceneRuntime(), engine_->execution()),
@@ -53,11 +55,12 @@ namespace lux::editor::application
     EditorResult<std::unique_ptr<EditorApplication>> EditorApplication::create(EditorApplicationConfig config)
     {
         const bool partial_extent = config.width.has_value() != config.height.has_value();
-        const bool invalid_extent = config.width && config.height && (*config.width <= 0 || *config.width > 32768 ||
-            *config.height <= 0 || *config.height > 32768);
+        const bool invalid_extent =
+            config.width && config.height &&
+            (*config.width <= 0 || *config.width > 32768 || *config.height <= 0 || *config.height > 32768);
         const bool missing_offscreen_extent = config.offscreen && !config.width;
-        const bool invalid_config = config.project_file.empty() || partial_extent || invalid_extent ||
-            missing_offscreen_extent;
+        const bool invalid_config =
+            config.project_file.empty() || partial_extent || invalid_extent || missing_offscreen_extent;
         if (invalid_config)
             return cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "application.config"});
         if (!config.user_directory)
@@ -74,11 +77,12 @@ namespace lux::editor::application
         if (!user_key)
             return applicationFailure("preferences.path", user_key.error());
         config.user_directory = std::filesystem::u8path(*user_key).parent_path().parent_path().parent_path();
-        auto installation_key = storage::publicationTargetKey(config.installation, "share/lux-engine/editor/settings.toml");
+        auto installation_key =
+            storage::publicationTargetKey(config.installation, "share/lux-engine/editor/settings.toml");
         if (!installation_key)
             return applicationFailure("installation.path", installation_key.error());
-        config.installation = std::filesystem::u8path(*installation_key)
-            .parent_path().parent_path().parent_path().parent_path();
+        config.installation =
+            std::filesystem::u8path(*installation_key).parent_path().parent_path().parent_path().parent_path();
         auto source = prepareProjectOpen(config.project_file);
         if (!source)
             return cxx::unexpected(source.error());
@@ -86,7 +90,8 @@ namespace lux::editor::application
         if (!project_key)
             return applicationFailure("project.path", project_key.error());
         config.project_file = std::filesystem::u8path(*project_key);
-        auto plugins = loadProjectPlugins(source->file().parent_path(), source->manifest().plugins, config.installation);
+        auto plugins =
+            loadProjectPlugins(source->file().parent_path(), source->manifest().plugins, config.installation);
         if (!plugins)
             return applicationFailure("project.plugins", plugins.error());
         auto registrations = lux::project::readSceneRegistrations({}, plugins->libraries());
@@ -102,7 +107,8 @@ namespace lux::editor::application
         auto messages = object::ObjectMessageQueue::create(1024);
         if (!messages)
             return applicationFailure("object.queue", messages.error());
-        const auto profile = *config.user_directory / "lux/editor/projects" / uuids::to_string(source->manifest().id.uuid());
+        const auto profile =
+            *config.user_directory / "lux/editor/projects" / uuids::to_string(source->manifest().id.uuid());
         std::error_code directory_error;
         std::filesystem::create_directories(profile, directory_error);
         if (directory_error)
@@ -114,7 +120,8 @@ namespace lux::editor::application
             std::move(*engine),
             std::move(*messages),
             std::move(*plugins),
-            std::move(*registrations), profile
+            std::move(*registrations),
+            profile
         );
         auto assembled = impl->assemble(*source);
         if (!assembled)
@@ -151,8 +158,10 @@ namespace lux::editor::application
         if (!config_.font && !bootstrap->appearance.font.empty())
             config_.font = std::filesystem::u8path(bootstrap->appearance.font);
         const auto scale = config_.scale.value_or(bootstrap->appearance.scale);
-        const auto initialized = engine::initializeRendering(*engine_,
-            window_ ? window::LuxWindow::requiredVulkanInstanceExtensions() : std::span<const char* const>{});
+        const auto initialized = engine::initializeRendering(
+            *engine_,
+            window_ ? window::LuxWindow::requiredVulkanInstanceExtensions() : std::span<const char* const>{}
+        );
         if (!initialized)
             return applicationFailure("engine.rendering", initialized.error());
         auto features = registrations_.features;
@@ -170,14 +179,17 @@ namespace lux::editor::application
         if (!project)
             return cxx::unexpected(project.error());
         project_ = std::move(*project);
-        content_saving_ = std::make_unique<ProjectContentSaving>(
-            sessions_, opening_, saves_, *project_, writes_, files_
-        );
-        plugin_saving_ = std::make_unique<ProjectPluginSelection>(
-            *project_, engine_->execution(), writes_, files_, save_execution_
-        );
+        content_saving_ =
+            std::make_unique<ProjectContentSaving>(sessions_, opening_, saves_, *project_, writes_, files_);
+        plugin_saving_ =
+            std::make_unique<ProjectPluginSelection>(*project_, engine_->execution(), writes_, files_, save_execution_);
         recent_projects_ = std::make_unique<RecentProjects>(
-            *config_.user_directory, config_.project_file, engine_->execution(), writes_, files_, save_execution_
+            *config_.user_directory,
+            config_.project_file,
+            engine_->execution(),
+            writes_,
+            files_,
+            save_execution_
         );
         importer_ =
             std::make_unique<assets::ModelImporter>(*project_, engine_->execution(), writes_, files_, save_execution_);
@@ -208,24 +220,30 @@ namespace lux::editor::application
             process::TaskScope font_tasks(engine_->execution());
             auto submitted = font_tasks.submit(
                 {"Read UI font", "Desktop"},
-                [file = *config_.font, scheduler = *engine_->execution().blocking()](process::TaskReporter) noexcept {
-                    return stdexec::then(stdexec::schedule(scheduler), [file]() -> EditorResult<lux::ui::FontSource> {
-                        std::ifstream stream(file, std::ios::binary | std::ios::ate);
-                        const auto size = stream ? std::streamoff(stream.tellg()) : -1;
-                        if (size <= 0 || size > 32 * 1024 * 1024)
-                            return cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "editor.font.read"});
-                        lux::ui::FontSource result;
-                        // Explicit desktop repertoire; Root validates the ranges and bounded atlas.
-                        result.ranges = {{0x20, 0xFF}, {0x2000, 0x206F}, {0x3000, 0x30FF},
-                            {0x4E00, 0x9FFF}, {0xFF00, 0xFFEF}};
-                        result.bytes.resize(static_cast<std::size_t>(size));
-                        stream.seekg(0);
-                        if (!stream.read(reinterpret_cast<char*>(result.bytes.data()), size))
-                            return cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "editor.font.read"});
-                        return result;
-                    });
+                [file = *config_.font, scheduler = *engine_->execution().blocking()](process::TaskReporter) noexcept
+                {
+                    return stdexec::then(
+                        stdexec::schedule(scheduler),
+                        [file]() -> EditorResult<lux::ui::FontSource>
+                        {
+                            std::ifstream stream(file, std::ios::binary | std::ios::ate);
+                            const auto size = stream ? std::streamoff(stream.tellg()) : -1;
+                            if (size <= 0 || size > 32 * 1024 * 1024)
+                                return cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "editor.font.read"});
+                            lux::ui::FontSource result;
+                            // Explicit desktop repertoire; Root validates the ranges and bounded atlas.
+                            result.ranges =
+                                {{0x20, 0xFF}, {0x2000, 0x206F}, {0x3000, 0x30FF}, {0x4E00, 0x9FFF}, {0xFF00, 0xFFEF}};
+                            result.bytes.resize(static_cast<std::size_t>(size));
+                            stream.seekg(0);
+                            if (!stream.read(reinterpret_cast<char*>(result.bytes.data()), size))
+                                return cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "editor.font.read"});
+                            return result;
+                        }
+                    );
                 },
-                [&](process::TTaskResult<lux::ui::FontSource, EditorFailure>&& result) noexcept {
+                [&](process::TTaskResult<lux::ui::FontSource, EditorFailure>&& result) noexcept
+                {
                     if (result)
                         loaded.emplace(std::move(*result));
                     else if (auto* error = result.error().domainFailure())
@@ -259,11 +277,13 @@ namespace lux::editor::application
             return applicationFailure(std::string(desktop.error().operation), desktop.error().cause);
         desktop_ = std::move(*desktop);
         workspace_actions_ = std::make_unique<desktop::WorkspaceActions>(
-            desktop_->views(), workspace_, workspace_changes_, messages_.dispatcherRef()
+            desktop_->views(),
+            workspace_,
+            workspace_changes_,
+            messages_.dispatcherRef()
         );
-        restoration_ = std::make_unique<RestoreWorkbench>(
-            *project_, files_, sessions_, opening_, workspace_, workspace_changes_, contributions_
-        );
+        restoration_ = std::make_unique<
+            RestoreWorkbench>(*project_, files_, sessions_, opening_, workspace_, workspace_changes_, contributions_);
         // Migration owns no worker or publisher: the existing changes/execution pair retains accepted
         // records. Failure is shown in Workspace; it does not masquerade as an empty personal catalog.
         if (auto migrated = workspace_changes_.migrateProfile(project_workspace_, project_->manifest().id); !migrated)
@@ -274,9 +294,8 @@ namespace lux::editor::application
         auto menu = desktop_->installCommands(
             commands_,
             command_dispatcher_,
-            [this](const auto& descriptor, auto* pane, auto* element) {
-                return captureCommand(descriptor, pane, element);
-            }
+            [this](const auto& descriptor, auto* pane, auto* element)
+            { return captureCommand(descriptor, pane, element); }
         );
         if (!menu)
             return applicationFailure(menu.error().domain, menu.error());
@@ -284,14 +303,17 @@ namespace lux::editor::application
         if (!activated_settings)
             return activated_settings;
         const auto factories = contributions_.snapshot().views();
-        for (const auto& [type, key] : std::array{
-                 std::pair{"lux.editor.project", "project"}, std::pair{"lux.editor.tasks", "tasks"}
-             })
+        for (const auto& [type, key] :
+             std::array{std::pair{"lux.editor.project", "project"}, std::pair{"lux.editor.tasks", "tasks"}})
         {
-            auto candidate = factories.prepare(views::ViewTypeId{type}, {
-                messages_.dispatcherRef(), lux::ui::PaneId{key}, contracts::CodeLease::builtin(),
-                cxx::typeToken<std::monostate>(), std::make_shared<const std::monostate>()
-            });
+            auto candidate = factories.prepare(
+                views::ViewTypeId{type},
+                {messages_.dispatcherRef(),
+                 lux::ui::PaneId{key},
+                 contracts::CodeLease::builtin(),
+                 cxx::typeToken<std::monostate>(),
+                 std::make_shared<const std::monostate>()}
+            );
             if (!candidate)
                 return applicationFailure("startup.view.factory", candidate.error());
             if (auto adopted = adopt(*candidate, key); !adopted)
@@ -306,7 +328,8 @@ namespace lux::editor::application
                 open_intents_.push_back(project_->catalogModel().reference(initial->id));
         }
         if (window_)
-            window_->on_close = [this](const window::WindowCloseEvent&) {
+            window_->on_close = [this](const window::WindowCloseEvent&)
+            {
                 const auto requested = requestExit();
                 if (!requested)
                     log::error("application.exit", "Exit review rejected: {}", requested.error().domain);
@@ -350,4 +373,4 @@ namespace lux::editor::application
         Impl::Dispatch scope{impl_->dispatching_};
         return impl_->show(id, another);
     }
-}
+} // namespace lux::editor::application

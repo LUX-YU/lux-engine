@@ -44,4 +44,4 @@ namespace lux::editor::sessions
         [[nodiscard]] virtual SessionFactoryResult<ContentStamp> undo() = 0;
         [[nodiscard]] virtual SessionFactoryResult<ContentStamp> redo() = 0;
     };
-}
+} // namespace lux::editor::sessions

@@ -272,7 +272,9 @@ namespace lux::editor::inspector_codegen
                         {
                             return lux::cxx::unexpected(properties.error());
                         }
-                        if (field.value("visibility", 0) != 1 || properties->contains("luxref::property::skip"))
+                        const bool excluded_field =
+                            field.value("visibility", 0) != 1 || properties->contains("luxref::property::skip");
+                        if (excluded_field)
                         {
                             continue;
                         }
@@ -358,11 +360,14 @@ namespace lux::editor::inspector_codegen
                 const bool floating = name == "float" || name == "double";
                 const bool is_unsigned = name.find("unsigned") != name.npos;
                 const auto bits = type.at("size").get<std::size_t>() * 8;
-                if (!floating && (bits == 0 || bits > 64))
+                const bool invalid_integer_width = !floating && (bits == 0 || bits > 64);
+                if (invalid_integer_width)
                 {
                     return lux::cxx::unexpected("unsupported scalar width: " + name);
                 }
-                if (property(props, "widget") == "slider" && (!props.contains("min") || !props.contains("max")))
+                const bool incomplete_slider =
+                    property(props, "widget") == "slider" && (!props.contains("min") || !props.contains("max"));
+                if (incomplete_slider)
                 {
                     return lux::cxx::unexpected("slider requires min/max: " + name);
                 }
@@ -415,7 +420,10 @@ namespace lux::editor::inspector_codegen
                                 std::uint64_t value = 0;
                                 const auto parsed = std::from_chars(exact->data(), end, value);
                                 const auto limit = bits == 64 ? UINT64_MAX : (std::uint64_t{1} << bits) - 1;
-                                if (parsed.ec != std::errc{} || parsed.ptr != end || value > limit)
+                                const bool invalid_integer = parsed.ec != std::errc{} || parsed.ptr != end;
+                                const bool outside_width = value > limit;
+                                const bool invalid_bound = invalid_integer || outside_width;
+                                if (invalid_bound)
                                 {
                                     return lux::cxx::unexpected("annotation does not fit " + name);
                                 }
@@ -430,8 +438,10 @@ namespace lux::editor::inspector_codegen
                                 std::int64_t value = 0;
                                 const auto parsed = std::from_chars(exact->data(), end, value);
                                 const auto limit = bits == 64 ? INT64_MAX : (std::int64_t{1} << (bits - 1)) - 1;
-                                if (parsed.ec != std::errc{} || parsed.ptr != end || value < -limit - 1 ||
-                                    value > limit)
+                                const bool invalid_integer = parsed.ec != std::errc{} || parsed.ptr != end;
+                                const bool outside_width = value < -limit - 1 || value > limit;
+                                const bool invalid_bound = invalid_integer || outside_width;
+                                if (invalid_bound)
                                 {
                                     return lux::cxx::unexpected("annotation does not fit " + name);
                                 }
@@ -881,7 +891,9 @@ namespace lux::editor::inspector_codegen
                             {
                                 return lux::cxx::unexpected(attrs.error());
                             }
-                            if (field.value("visibility", 0) != 1 || attrs->contains("luxref::property::skip"))
+                            const bool excluded_field =
+                                field.value("visibility", 0) != 1 || attrs->contains("luxref::property::skip");
+                            if (excluded_field)
                             {
                                 continue;
                             }

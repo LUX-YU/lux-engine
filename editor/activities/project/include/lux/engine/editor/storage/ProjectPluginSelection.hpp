@@ -12,7 +12,7 @@ namespace lux::editor::persistence
     class WriteCoordinator;
     class IArtifactStore;
     class SaveExecution;
-}
+} // namespace lux::editor::persistence
 namespace lux::editor
 {
     // The manifest remains authoritative. This activity owns only the outstanding publication;
@@ -20,10 +20,7 @@ namespace lux::editor
     class ProjectPluginSelection final
     {
     public:
-        ProjectPluginSelection(
-            ProjectStorage&, process::ExecutionRuntime&, persistence::WriteCoordinator&,
-            persistence::IArtifactStore&, persistence::SaveExecution&
-        );
+        ProjectPluginSelection(ProjectStorage&, process::ExecutionRuntime&, persistence::WriteCoordinator&, persistence::IArtifactStore&, persistence::SaveExecution&);
         ~ProjectPluginSelection();
         ProjectPluginSelection(const ProjectPluginSelection&) = delete;
         ProjectPluginSelection& operator=(const ProjectPluginSelection&) = delete;
@@ -31,7 +28,8 @@ namespace lux::editor
         ProjectPluginSelection& operator=(ProjectPluginSelection&&) = delete;
 
         [[nodiscard]] EditorResult<void> request(
-            std::span<const ProjectPluginEntry> based_on, std::vector<ProjectPluginEntry> desired
+            std::span<const ProjectPluginEntry> based_on,
+            std::vector<ProjectPluginEntry> desired
         );
         [[nodiscard]] EditorResult<void> retry();
         [[nodiscard]] EditorResult<void> abandon();
@@ -45,4 +43,4 @@ namespace lux::editor
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };
-}
+} // namespace lux::editor

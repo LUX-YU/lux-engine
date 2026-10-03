@@ -21,8 +21,12 @@ namespace lux::editor::workspace
     class WorkspaceChanges final
     {
     public:
-        WorkspaceChanges(WorkspaceStore&, persistence::WriteCoordinator&, persistence::IArtifactStore&,
-            const WorkspaceStore* legacy_source = nullptr);
+        WorkspaceChanges(
+            WorkspaceStore&,
+            persistence::WriteCoordinator&,
+            persistence::IArtifactStore&,
+            const WorkspaceStore* legacy_source = nullptr
+        );
         ~WorkspaceChanges();
         WorkspaceChanges(const WorkspaceChanges&) = delete;
         WorkspaceChanges& operator=(const WorkspaceChanges&) = delete;
@@ -58,4 +62,4 @@ namespace lux::editor::workspace
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };
-}
+} // namespace lux::editor::workspace

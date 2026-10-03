@@ -17,6 +17,8 @@ namespace lux::editor::flowforge
         contracts::CodeLease code = contracts::CodeLease::builtin()
     );
     [[nodiscard]] std::shared_ptr<commands::CommandEntry> makeNewFlowCommand(
-        commands::CommandEntry::Query, sessions::SessionCreation, lux::flowforge::FlowSourceEnvironment
+        commands::CommandEntry::Query,
+        sessions::SessionCreation,
+        lux::flowforge::FlowSourceEnvironment
     );
-}
+} // namespace lux::editor::flowforge

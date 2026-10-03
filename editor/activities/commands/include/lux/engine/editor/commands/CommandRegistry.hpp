@@ -8,7 +8,10 @@
 
 namespace lux::editor::commands
 {
-    namespace detail { struct CommandIndexTestAccess; }
+    namespace detail
+    {
+        struct CommandIndexTestAccess;
+    }
     class CommandEntry final
     {
     public:
@@ -18,22 +21,32 @@ namespace lux::editor::commands
         template <const CommandDescriptor& Descriptor>
         [[nodiscard]] static std::shared_ptr<CommandEntry> bind(contracts::CodeLease code, Query query, Execute execute)
         {
-            static_assert(Descriptor.id.isValid() && !Descriptor.label.empty() && Descriptor.input_version != 0,
-                          "Fixed command metadata must be a valid constant declaration.");
+            static_assert(
+                Descriptor.id.isValid() && !Descriptor.label.empty() && Descriptor.input_version != 0,
+                "Fixed command metadata must be a valid constant declaration."
+            );
             // The UI borrows these literals directly for its C-string backend. Dynamic declarations
             // use create(), which freezes and terminates arbitrary input views in its single backing.
-            static_assert(Descriptor.label.data()[Descriptor.label.size()] == '\0',
-                          "Fixed display labels must be terminated static text.");
-            static_assert(Descriptor.shortcut.empty() || Descriptor.shortcut.data()[Descriptor.shortcut.size()] == '\0',
-                          "Fixed shortcut labels must be terminated static text.");
+            static_assert(
+                Descriptor.label.data()[Descriptor.label.size()] == '\0',
+                "Fixed display labels must be terminated static text."
+            );
+            static_assert(
+                Descriptor.shortcut.empty() || Descriptor.shortcut.data()[Descriptor.shortcut.size()] == '\0',
+                "Fixed shortcut labels must be terminated static text."
+            );
             return std::shared_ptr<CommandEntry>(
                 new CommandEntry(std::move(code), Descriptor, std::move(query), std::move(execute))
             );
         }
         // Copies dynamic text once into immutable entry-owned storage before returning.
         // Every view in the input must be valid for this call; no input view escapes.
-        [[nodiscard]] static std::shared_ptr<CommandEntry>
-        create(contracts::CodeLease, const CommandDescriptor&, Query, Execute);
+        [[nodiscard]] static std::shared_ptr<CommandEntry> create(
+            contracts::CodeLease,
+            const CommandDescriptor&,
+            Query,
+            Execute
+        );
         ~CommandEntry();
         CommandEntry(const CommandEntry&) = delete;
         CommandEntry& operator=(const CommandEntry&) = delete;
@@ -169,4 +182,4 @@ namespace lux::editor::commands
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };
-}
+} // namespace lux::editor::commands

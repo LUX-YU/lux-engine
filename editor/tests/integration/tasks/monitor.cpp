@@ -17,7 +17,7 @@ namespace
         assert(value);
         return std::move(*value);
     }
-}
+} // namespace
 static_assert(!std::is_copy_constructible_v<tasks::TaskMonitor>);
 static_assert(!std::is_move_constructible_v<tasks::TaskMonitor>);
 int main()
@@ -42,11 +42,16 @@ int main()
     auto peer = tasks::makeTaskViewFactory(monitor);
     assert(&factory->descriptor() == &peer->descriptor());
     auto factories = take(views::ViewFactorySnapshot::create({factory}));
-    const auto create = [&](const char* id) {
-        return take(factories.prepare(views::ViewTypeId{"lux.editor.tasks"}, {
-            messages.dispatcherRef(), ui::PaneId{id}, contracts::CodeLease::builtin(),
-            cxx::typeToken<std::monostate>(), std::make_shared<const std::monostate>()
-        }));
+    const auto create = [&](const char* id)
+    {
+        return take(factories.prepare(
+            views::ViewTypeId{"lux.editor.tasks"},
+            {messages.dispatcherRef(),
+             ui::PaneId{id},
+             contracts::CodeLease::builtin(),
+             cxx::typeToken<std::monostate>(),
+             std::make_shared<const std::monostate>()}
+        ));
     };
     auto first = create("first");
     auto second = create("second");
@@ -58,18 +63,19 @@ int main()
     bool completed{};
     auto task = take(execution.submit(
         {"monitor", "P10Q"},
-        [timer = execution.timer()](process::TaskReporter) noexcept {
+        [timer = execution.timer()](process::TaskReporter) noexcept
+        {
             return stdexec::upon_error(
                 stdexec::then(
                     timer.after(std::chrono::hours(1)),
                     []() noexcept -> cxx::expected<int, process::ETimerError> { return 1; }
                 ),
-                [](process::ETimerError error) noexcept -> cxx::expected<int, process::ETimerError> {
-                    return cxx::unexpected(error);
-                }
+                [](process::ETimerError error) noexcept -> cxx::expected<int, process::ETimerError>
+                { return cxx::unexpected(error); }
             );
         },
-        [&](auto&& result) noexcept {
+        [&](auto&& result) noexcept
+        {
             assert(!result);
             completed = true;
         }
@@ -105,10 +111,12 @@ int main()
     bool next_done{};
     auto next = take(execution.submit(
         {"after views closed", "P10Q"},
-        [cpu = execution.cpu()](process::TaskReporter) noexcept {
+        [cpu = execution.cpu()](process::TaskReporter) noexcept
+        {
             return stdexec::then(stdexec::schedule(cpu), []() noexcept -> cxx::expected<int, int> { return 1; });
         },
-        [&](auto&& result) noexcept {
+        [&](auto&& result) noexcept
+        {
             assert(result);
             next_done = true;
         }

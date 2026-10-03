@@ -45,7 +45,8 @@ namespace
         factory.operation_count = 0;
         factory.register_ops_fn = nullptr;
         factory.unregister_ops_fn = nullptr;
-        factory.create_fn = +[](void*, const void*, std::size_t) -> render::Expected<render::FeatureHandle> {
+        factory.create_fn = +[](void*, const void*, std::size_t) -> render::Expected<render::FeatureHandle>
+        {
             gate_entered.store(true, std::memory_order_release);
             while (!gate_released.load(std::memory_order_acquire))
                 gate_released.wait(false);
@@ -152,7 +153,8 @@ int main(int argc, char** argv)
         initial_features.push_back(gateRegistration());
     if (scene_panes)
         initial_features.push_back(render::kViewCameraRenderFeatureRegistration);
-    auto diagnostics = [](auto severity, auto message) {
+    auto diagnostics = [](auto severity, auto message)
+    {
         if (severity == 2)
         {
             std::cerr << message << '\n';
@@ -183,7 +185,8 @@ int main(int argc, char** argv)
     root->presentation = ui.get();
     const lux::simulation::ecs::ComponentSchemaSet task_components{};
     const lux::simulation::SimulationSystemRegistry task_system_types;
-    const auto pump = [&] {
+    const auto pump = [&]
+    {
         std::size_t controls = 4, programs = 1;
         assert(runtime->collectCompletions(16));
         assert(runtime->submitPending(controls, programs));
@@ -191,7 +194,8 @@ int main(int argc, char** argv)
         const auto advanced = scenes->driveFrame();
         assert(advanced && advanced->empty());
     };
-    const auto until = [&](auto predicate, std::string_view waiting = "completion") {
+    const auto until = [&](auto predicate, std::string_view waiting = "completion")
+    {
         const auto deadline = std::chrono::steady_clock::now() + 15s;
         while (std::chrono::steady_clock::now() < deadline)
         {
@@ -212,7 +216,8 @@ int main(int argc, char** argv)
         output.output = lux::scene::NativeSurfaceOutput{reinterpret_cast<std::uintptr_t>(window->win32Handle())};
     }
 #endif
-    const auto open_output = [&](scene::ViewConfig config) {
+    const auto open_output = [&](scene::ViewConfig config)
+    {
         auto borrowed = scenes->borrowInstance(ui->sceneId());
         assert(borrowed);
         auto& registry = borrowed->get();
@@ -224,14 +229,17 @@ int main(int argc, char** argv)
             config
         );
         scene::RenderResourceId view;
-        until([&] {
-            const auto read = std::as_const(*scenes).borrowInstance(ui->sceneId());
-            assert(read);
-            const auto* result = read->get().try_get<scene::RenderViewResult>(request);
-            if (result && result->view.isValid())
-                view = result->view;
-            return view.isValid();
-        });
+        until(
+            [&]
+            {
+                const auto read = std::as_const(*scenes).borrowInstance(ui->sceneId());
+                assert(read);
+                const auto* result = read->get().try_get<scene::RenderViewResult>(request);
+                if (result && result->view.isValid())
+                    view = result->view;
+                return view.isValid();
+            }
+        );
         assert(resources->retain(view));
         return view;
     };
@@ -246,11 +254,16 @@ int main(int argc, char** argv)
         {
             more_views.push_back(open_output(output));
         }
-        until([&] {
-            return std::ranges::all_of(more_views, [&](const auto& value) {
-                return resources->observeView(value)->status.state == lux::scene::EViewState::READY;
-            });
-        });
+        until(
+            [&]
+            {
+                return std::ranges::all_of(
+                    more_views,
+                    [&](const auto& value)
+                    { return resources->observeView(value)->status.state == lux::scene::EViewState::READY; }
+                );
+            }
+        );
     }
     // An independent in-memory Scene, without any document, loader or SceneObjects.
     // Two elements borrow one ID. SceneRuntime is the only scheduler for content and UI.
@@ -373,6 +386,57 @@ int main(int argc, char** argv)
             assert(scenes->borrowInstance(content->id())->get().view<scene::RenderViewRequest>().empty());
             assert(resources->viewCount() == count);
         }
+        {
+            struct Changes final
+            {
+                unsigned transform{}, camera{}, request{};
+                void transformChanged(simulation::ecs::Registry&, simulation::ecs::Entity)
+                {
+                    ++transform;
+                }
+                void cameraChanged(simulation::ecs::Registry&, simulation::ecs::Entity)
+                {
+                    ++camera;
+                }
+                void requestChanged(simulation::ecs::Registry&, simulation::ecs::Entity)
+                {
+                    ++request;
+                }
+            } changes;
+            auto& registry = scenes->borrowInstance(content->id())->get();
+            entt::scoped_connection transform_connection =
+                registry.on_update<simulation::ecs::Transform3D>().connect<&Changes::transformChanged>(changes);
+            entt::scoped_connection camera_connection =
+                registry.on_update<scene::Camera>().connect<&Changes::cameraChanged>(changes);
+            entt::scoped_connection request_connection =
+                registry.on_update<scene::RenderViewRequest>().connect<&Changes::requestChanged>(changes);
+            simulation::ecs::Transform3D pose;
+            scene::Camera lens;
+            auto local = lux::editor::views::ViewportPresentation::create(
+                *scenes,
+                content->id(),
+                *resources,
+                {1},
+                pose,
+                lens,
+                {.extent = {16, 16}}
+            );
+            assert(local);
+            for (unsigned i{}; i < 1000; ++i)
+            {
+                assert((*local)->setCameraPose(pose, lens));
+            }
+            assert(changes.transform == 0 && changes.camera == 0 && changes.request == 0);
+            pose.translation.x() += 1.0;
+            assert((*local)->setCameraPose(pose, lens));
+            assert(changes.transform == 1 && changes.camera == 0 && changes.request == 1);
+            lens.primary = !lens.primary;
+            assert((*local)->setCameraPose(pose, lens));
+            assert(changes.transform == 1 && changes.camera == 1 && changes.request == 2);
+            std::cout << "M4 real ECS: unchanged calls=1000 patches=0; pose=(1,0,1); lens=(0,1,1)\n";
+            local->reset();
+        }
+        assert(scenes->driveFrame());
         auto one = lux::editor::views::ViewportElement::create(
             first_window,
             lux::ui::ElementId{"scene-one"},
@@ -440,18 +504,21 @@ int main(int argc, char** argv)
         const auto draws = pane.draws;
         const auto captures = ui->capturedFrames();
         // Publication may wait on transport, but polling never rebuilds UI input.
-        until([&] {
-            const auto begin = std::chrono::steady_clock::now();
-            const auto submitted = ui->applySceneInput();
-            assert(submitted);
-            const bool completed = bool(submitted);
-            if (measure)
+        until(
+            [&]
             {
-                input_time += std::chrono::steady_clock::now() - begin;
-                ++input_calls;
+                const auto begin = std::chrono::steady_clock::now();
+                const auto submitted = ui->applySceneInput();
+                assert(submitted);
+                const bool completed = bool(submitted);
+                if (measure)
+                {
+                    input_time += std::chrono::steady_clock::now() - begin;
+                    ++input_calls;
+                }
+                return completed;
             }
-            return completed;
-        });
+        );
         assert(pane.draws == draws && ui->capturedFrames() == captures);
         until([&] { return runtime->statistics().frames >= frame_index; });
     }
@@ -459,7 +526,8 @@ int main(int argc, char** argv)
     if (scene_panes)
     {
         float framebuffer_scale = 1.F;
-        const auto publish = [&] {
+        const auto publish = [&]
+        {
             assert(scenes->driveFrame());
             if (ui->tryAcquireDrawData() != nullptr)
             {
@@ -471,7 +539,8 @@ int main(int argc, char** argv)
             assert(ui->applySceneInput());
         };
         until(
-            [&] {
+            [&]
+            {
                 publish();
                 return first_pane->image().image().isValid() && second_pane->image().image().isValid();
             },
@@ -482,7 +551,8 @@ int main(int argc, char** argv)
             framebuffer_scale = scale;
             auto diagnostic = std::chrono::steady_clock::now();
             until(
-                [&] {
+                [&]
+                {
                     publish();
                     const auto size = first_pane->image().displayedSize();
                     const render::PixelExtent expected{
@@ -535,7 +605,8 @@ int main(int argc, char** argv)
         const auto second_view = second_pane->view();
         first_pane.reset(); // Destructor cancels the request; GPU completion remains with resources.
         until(
-            [&] {
+            [&]
+            {
                 publish();
                 return first_closed.status().status.state == scene::EViewState::CLOSED;
             },
@@ -548,7 +619,8 @@ int main(int argc, char** argv)
         static_cast<void>(second_pane->close());
         assert(!second_pane->image().image().isValid());
         until(
-            [&] {
+            [&]
+            {
                 publish();
                 return second_pane->close() == render::ERenderClose::COMPLETE;
             },
@@ -577,8 +649,8 @@ int main(int argc, char** argv)
         assert(!(*expired_view)->setCamera(last_camera));
         assert(root->update({logical_extent, 1.F / 60.F}, nullptr));
         assert(!(*expired_view)->image().image().isValid());
-        expired_view->reset(
-        ); // Revoking the ID before the Element must not leave a Registry borrow.        until([&] { return content_receipt.status().state == scene::ESceneResourceState::RETIRED; });
+        expired_view->reset(); // Revoking the ID before the Element must not leave a Registry borrow.        until([&]
+                               // { return content_receipt.status().state == scene::ESceneResourceState::RETIRED; });
     }
     if (backpressure)
     {
@@ -679,12 +751,15 @@ int main(int argc, char** argv)
     assert(resources->empty() && runtime->statistics().validation_errors == 0);
     assert(tasks.join());
     assert(runtime->beginClose());
-    until([&] {
-        std::size_t replies = 16, controls = 4, programs = 1;
-        auto result = runtime->advanceClose(replies, controls, programs);
-        assert(result);
-        return *result == render::ERenderClose::COMPLETE;
-    });
+    until(
+        [&]
+        {
+            std::size_t replies = 16, controls = 4, programs = 1;
+            auto result = runtime->advanceClose(replies, controls, programs);
+            assert(result);
+            return *result == render::ERenderClose::COMPLETE;
+        }
+    );
     assert(runtime->joinStopped());
     window.reset(); // Surface retirement and backend join have actually completed.
     messages.close();

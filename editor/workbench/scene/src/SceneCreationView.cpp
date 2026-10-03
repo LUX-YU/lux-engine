@@ -29,7 +29,8 @@ namespace lux::editor::scene
               message_(layout_, lux::ui::ElementId{"status"})
         {
             view.setContent(layout_);
-            const auto retain = [&](auto result, object::Connection& connection) {
+            const auto retain = [&](auto result, object::Connection& connection)
+            {
                 if (result)
                     connection = std::move(*result);
                 else
@@ -138,56 +139,78 @@ namespace lux::editor::scene
             return cxx::unexpected(status.error());
         return views::DetachedView{contracts::CodeLease::builtin(), std::move(view)};
     }
-}
+} // namespace lux::editor::scene
 
 namespace lux::editor::scene
 {
     namespace
     {
         constexpr views::ViewFactoryDescriptor kCreationDescriptor{
-            views::ViewTypeIdView{"lux.editor.scene.creation"}, "New Scene", cxx::typeToken<std::monostate>()
+            views::ViewTypeIdView{"lux.editor.scene.creation"},
+            "New Scene",
+            cxx::typeToken<std::monostate>()
         };
         constexpr commands::CommandDescriptor kNewCommand{
-            commands::CommandIdView{"lux.editor.new.scene"}, "New Scene", "File"
+            commands::CommandIdView{"lux.editor.new.scene"},
+            "New Scene",
+            "File"
         };
-    }
+    } // namespace
     std::shared_ptr<views::ViewFactoryEntry> makeSceneCreationViewFactory(
-        scene::SceneConfigurationInputs configuration, sessions::SessionCreation receiver
+        scene::SceneConfigurationInputs configuration,
+        sessions::SessionCreation receiver
     )
     {
         auto create = std::make_shared<sessions::SessionCreation>(std::move(receiver));
         return views::ViewFactoryEntry::bind<kCreationDescriptor>(
             contracts::CodeLease::builtin(),
-            [configuration = std::move(configuration), create](const views::ViewFactoryInput& input)
-                -> views::ViewFactoryResult<views::DetachedView> {
+            [configuration = std::move(configuration),
+             create](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView>
+            {
                 scene::SceneCreationRequests requests{
-                    [schemas = configuration.components, create](const scene::SceneCreationConfiguration& value)
-                        -> scene::SceneConfigurationResult<void> {
+                    [schemas = configuration.components,
+                     create](const scene::SceneCreationConfiguration& value) -> scene::SceneConfigurationResult<void>
+                    {
                         std::mt19937 random{std::random_device{}()};
                         const asset::AssetId id{uuids::uuid_random_generator{random}()};
                         auto package = lux::scene::createScenePackage(
-                            id, value.name, value.schemas, value.simulation, value.scene
+                            id,
+                            value.name,
+                            value.schemas,
+                            value.simulation,
+                            value.scene
                         );
                         if (!package)
                             return cxx::unexpected(scene::SceneConfigurationFailure{
-                                scene::ESceneConfigurationError::CONTROL_FAILURE, "scene.creation.package",
-                                0, {}, std::any{package.error()}
+                                scene::ESceneConfigurationError::CONTROL_FAILURE,
+                                "scene.creation.package",
+                                0,
+                                {},
+                                std::any{package.error()}
                             });
                         auto installed = (*create)(scene::prepareSceneSession({std::move(*package)}, {}, {}, schemas));
                         if (!installed)
                         {
                             const auto& error = installed.error();
                             const auto code = error.code == commands::ECommandError::BUSY
-                                ? scene::ESceneConfigurationError::BUSY : scene::ESceneConfigurationError::CONTROL_FAILURE;
+                                                  ? scene::ESceneConfigurationError::BUSY
+                                                  : scene::ESceneConfigurationError::CONTROL_FAILURE;
                             return cxx::unexpected(scene::SceneConfigurationFailure{
-                                code, error.domain, error.domain_code, error.detail, std::any{error}
+                                code,
+                                error.domain,
+                                error.domain_code,
+                                error.detail,
+                                std::any{error}
                             });
                         }
                         return {};
                     }
                 };
                 auto view = scene::makeSceneCreationView(
-                    input.dispatcher(), input.paneId(), configuration, std::move(requests)
+                    input.dispatcher(),
+                    input.paneId(),
+                    configuration,
+                    std::move(requests)
                 );
                 if (!view)
                     return cxx::unexpected(workbench::detail::viewFailure(view.error()));
@@ -196,9 +219,10 @@ namespace lux::editor::scene
         );
     }
     std::shared_ptr<commands::CommandEntry> makeNewSceneCommand(
-        commands::CommandEntry::Query query, desktop::ToolOpening open
+        commands::CommandEntry::Query query,
+        desktop::ToolOpening open
     )
     {
         return workbench::detail::bindToolCommand<kNewCommand, kCreationDescriptor>(std::move(query), std::move(open));
     }
-}
+} // namespace lux::editor::scene

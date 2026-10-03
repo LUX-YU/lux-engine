@@ -4,8 +4,11 @@ namespace lux::editor::application
 {
     void EditorApplication::Impl::installSettingsView(extensions::ContributionDraft& draft)
     {
-        draft.views.push_back(project::makeSettingsViewFactory(*project_, plugins_,
-            [this](const project::PluginSelectionDraft& draft) noexcept {
+        draft.views.push_back(project::makeSettingsViewFactory(
+            *project_,
+            plugins_,
+            [this](const project::PluginSelectionDraft& draft) noexcept
+            {
                 if (plugin_action_ || phase_ != EApplicationPhase::RUNNING)
                     plugin_failure_ = EditorFailure{EEditorError::BUSY, "settings.admission"};
                 else
@@ -14,23 +17,27 @@ namespace lux::editor::application
                     plugin_action_ = EPluginAction::SAVE;
                 }
             },
-            [this]() noexcept {
+            [this]() noexcept
+            {
                 if (!plugin_action_)
                     plugin_action_ = EPluginAction::RETRY;
             },
-            [this]() noexcept {
+            [this]() noexcept
+            {
                 if (!plugin_action_)
                     plugin_action_ = EPluginAction::ABANDON;
             },
-            [this]() noexcept {
+            [this]() noexcept
+            {
                 if (!plugin_action_)
                     plugin_action_ = EPluginAction::ACKNOWLEDGE;
-            }, settings_content_
+            },
+            settings_content_
         ));
         draft.commands.push_back(project::makeSettingsCommand(
-            [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
-                return commands::CommandState{phase_ == EApplicationPhase::RUNNING};
-            }, toolOpening()
+            [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
+            { return commands::CommandState{phase_ == EApplicationPhase::RUNNING}; },
+            toolOpening()
         ));
     }
     EditorResult<void> EditorApplication::Impl::maintainProjectSettings()
@@ -73,7 +80,8 @@ namespace lux::editor::application
         {
             if (info.type != views::ViewTypeId{"lux.editor.settings"})
                 continue;
-            auto receive = [&](lux::ui::Pane& pane) {
+            auto receive = [&](lux::ui::Pane& pane)
+            {
                 std::optional<VPublicationStatus> status;
                 if (plugin_failure_)
                     status = *plugin_failure_;
@@ -87,4 +95,4 @@ namespace lux::editor::application
         }
         return {};
     }
-}
+} // namespace lux::editor::application

@@ -20,10 +20,11 @@ namespace lux::editor::application
             progress = ERestorationProgress::ACTIVE;
         else if (phase_ == EApplicationPhase::DRAINING)
             progress = ERestorationProgress::CLOSING;
-        auto present = [&](views::ViewContent content, const extensions::ContributionSnapshot& catalog,
-                           views::ViewRestoreKey key, views::ViewTypeId type) {
-            return makeContentView(std::move(content), true, catalog, std::move(key), std::move(type));
-        };
+        auto present = [&](views::ViewContent content,
+                           const extensions::ContributionSnapshot& catalog,
+                           views::ViewRestoreKey key,
+                           views::ViewTypeId type)
+        { return makeContentView(std::move(content), true, catalog, std::move(key), std::move(type)); };
         return restoration_->update(progress, present);
     }
-}
+} // namespace lux::editor::application

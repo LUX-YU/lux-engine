@@ -63,7 +63,8 @@ namespace
     }
     const ui::MenuItem& menuItem(const ui::Root& root, ui::CommandIdView id)
     {
-        const auto find = [&](auto&& self, std::span<const ui::MenuItem> items) -> const ui::MenuItem* {
+        const auto find = [&](auto&& self, std::span<const ui::MenuItem> items) -> const ui::MenuItem*
+        {
             for (const auto& item : items)
             {
                 if (item.command == id)
@@ -85,8 +86,9 @@ namespace
         CommandDispatcher dispatcher{registry, 4};
         auto messages = take(object::ObjectMessageQueue::create(64));
         CommandRoot first{messages.dispatcherRef()}, second{messages.dispatcherRef()};
-        const auto capture = [](const CommandDescriptor&, const ui::Pane*, const ui::Element*)
-            -> CommandResult<CommandInvocation> { return CommandInvocation{}; };
+        const auto capture = [](const CommandDescriptor&,
+                                const ui::Pane*,
+                                const ui::Element*) -> CommandResult<CommandInvocation> { return CommandInvocation{}; };
         desktop::CommandMenu menu_a{first, registry, dispatcher, capture};
         desktop::CommandMenu menu_b{second, registry, dispatcher, capture};
         first.menu = &menu_a;
@@ -97,15 +99,20 @@ namespace
         {
             // Slice has no terminator at its own end; the dynamic Entry performs the sole text freeze.
             std::string dynamic_label{"Dynamic label unused suffix"};
-            auto code = contracts::CodeLease::plugin(std::shared_ptr<const void>(new int{1}, [&](const void* p) {
-                ++released;
-                delete static_cast<const int*>(p);
-            }));
+            auto code = contracts::CodeLease::plugin(std::shared_ptr<const void>(
+                new int{1},
+                [&](const void* p)
+                {
+                    ++released;
+                    delete static_cast<const int*>(p);
+                }
+            ));
             auto entry = CommandEntry::create(
                 code,
                 {CommandIdView{"menu.dynamic"}, std::string_view{dynamic_label}.substr(0, 13), "Tools/Sub", "Alt+M"},
                 [](const CommandQuery&) -> CommandResult<CommandState> { return CommandState{true}; },
-                [&](const CommandInvocation&) -> CommandResult<DispatchReceipt> {
+                [&](const CommandInvocation&) -> CommandResult<DispatchReceipt>
+                {
                     assert(released == 0);
                     ++calls;
                     return DispatchReceipt{ImmediateCompletion{}};
@@ -139,8 +146,14 @@ namespace
         ui::MenuRequest close_b{ui::EMenuAction::CLOSE, {}, {}, {}, opened_b.source};
         assert(object::sendEvent(second, close_b) && menu_b.update() && released == 0);
         // Dispatch uses the source-local index, not this deliberately unrelated event label.
-        ui::MenuRequest invoke{ui::EMenuAction::COMMAND, {}, {},
-            {ui::CommandIdView{"not.a.lookup"}, ui::ECommandPhase::EXECUTE}, opened_a.source, 0};
+        ui::MenuRequest invoke{
+            ui::EMenuAction::COMMAND,
+            {},
+            {},
+            {ui::CommandIdView{"not.a.lookup"}, ui::ECommandPhase::EXECUTE},
+            opened_a.source,
+            0
+        };
         assert(object::sendEvent(first, invoke));
         assert(invoke.command.result == ui::ECommandDispatchResult::EXECUTED && dispatcher.pending() == 1);
         ui::MenuRequest close_a{ui::EMenuAction::CLOSE, {}, {}, {}, opened_a.source};
@@ -160,27 +173,36 @@ namespace
         CommandDispatcher dispatcher{registry};
         auto messages = take(object::ObjectMessageQueue::create(64));
         CommandRoot root{messages.dispatcherRef()};
-        desktop::CommandMenu menu{root, registry, dispatcher,
-            [](const CommandDescriptor&, const ui::Pane*, const ui::Element*) -> CommandResult<CommandInvocation> {
-                return CommandInvocation{};
-            }};
+        desktop::CommandMenu menu{
+            root,
+            registry,
+            dispatcher,
+            [](const CommandDescriptor&, const ui::Pane*, const ui::Element*) -> CommandResult<CommandInvocation>
+            { return CommandInvocation{}; }
+        };
         root.menu = &menu;
-        auto make = [&](CommandIdView id, std::string_view shortcut, std::uint32_t version = 1) {
-            return CommandEntry::create(contracts::CodeLease::builtin(),
+        auto make = [&](CommandIdView id, std::string_view shortcut, std::uint32_t version = 1)
+        {
+            return CommandEntry::create(
+                contracts::CodeLease::builtin(),
                 {id, "Test command", "Tools", shortcut, ECommandScope::APPLICATION, version},
                 [](const CommandQuery&) -> CommandResult<CommandState> { return CommandState{true}; },
-                [&](const CommandInvocation&) -> CommandResult<DispatchReceipt> {
+                [&](const CommandInvocation&) -> CommandResult<DispatchReceipt>
+                {
                     ++calls;
                     return DispatchReceipt{ImmediateCompletion{}};
-                });
+                }
+            );
         };
         auto a = make(CommandIdView{"shortcut.a"}, "Ctrl+A");
         auto b = make(CommandIdView{"shortcut.b"}, "Ctrl+B");
         assert(registry.publish(take(CommandRegistrySnapshot::create({a, b}))));
         assert(menu.update());
         {
-            const std::array overrides{commands::ShortcutOverride{"shortcut.a", "Alt+M"},
-                                      commands::ShortcutOverride{"extension.absent", "Ctrl+P"}};
+            const std::array overrides{
+                commands::ShortcutOverride{"shortcut.a", "Alt+M"},
+                commands::ShortcutOverride{"extension.absent", "Ctrl+P"}
+            };
             assert(menu.setShortcuts(overrides));
         }
         assert(menuItem(root, ui::CommandIdView{"shortcut.a"}).shortcut_label == "Alt+M");
@@ -267,8 +289,8 @@ namespace
         {
             return pathOf(id).has_value();
         }
-        cxx::expected<asset::AssetBlob, asset::EAssetStorageError>
-        open(const asset::AssetId& id, std::size_t max_bytes) const override
+        cxx::expected<asset::AssetBlob, asset::EAssetStorageError> open(const asset::AssetId& id, std::size_t max_bytes)
+            const override
         {
             assert(std::this_thread::get_id() != owner_);
             const auto path = pathOf(id);
@@ -301,7 +323,8 @@ namespace
     public:
         ReentrantSource(ISaveSource& source, SessionStore& store, SaveService& saves, SessionPreparation& ready)
             : source_(source), store_(store), saves_(saves), ready_(ready)
-        {}
+        {
+        }
         PersistenceResult<SaveSourceInfo> describe() const override
         {
             const auto refused = std::move(ready_).prepare(store_, saves_);
@@ -334,7 +357,8 @@ namespace
     public:
         MaterialHistory(TSessionAccess<em::MaterialSession> access, TSessionKey<em::MaterialSession> key)
             : access_(access), key_(key)
-        {}
+        {
+        }
         SessionFactoryResult<HistoryActionsInfo> query() const override
         {
             auto model = access_.read(key_);
@@ -380,7 +404,8 @@ namespace
                 1,
                 cxx::typeToken<Selection>()
             },
-            [&store](const CommandQuery& input) -> CommandResult<CommandState> {
+            [&store](const CommandQuery& input) -> CommandResult<CommandState>
+            {
                 const auto& target = std::get<SessionTarget>(input.target);
                 auto state = store.describe(target.id);
                 if (!state)
@@ -391,7 +416,8 @@ namespace
                     return cxx::unexpected(CommandFailure{ECommandError::STALE_CONTENT, "material"});
                 return CommandState{true};
             },
-            [&model](const CommandInvocation& input) -> CommandResult<DispatchReceipt> {
+            [&model](const CommandInvocation& input) -> CommandResult<DispatchReceipt>
+            {
                 const auto& target = std::get<SessionTarget>(input.target());
                 em::MaterialEditBatch batch{target.based_on.value_or(model.describe().current), "delete", {}};
                 for (auto id : static_cast<const Selection*>(input.arguments().data())->nodes)
@@ -457,11 +483,16 @@ namespace
         {
             SessionId id;
             unsigned released{};
-            const auto exercise = [&] {
-                auto owner = std::shared_ptr<const void>(new int{}, [&](const void* p) {
-                    ++released;
-                    delete static_cast<const int*>(p);
-                });
+            const auto exercise = [&]
+            {
+                auto owner = std::shared_ptr<const void>(
+                    new int{},
+                    [&](const void* p)
+                    {
+                        ++released;
+                        delete static_cast<const int*>(p);
+                    }
+                );
                 auto code = contracts::CodeLease::plugin(owner);
                 auto decoded = take(em::MaterialCodec::decode(bytes));
                 if (boundary == 0)
@@ -544,14 +575,16 @@ namespace
         auto admitted = tasks.submit(
             {.name = "Read/decode session source"},
             [scheduler = take(runtime.blocking()),
-             job = SessionLoadJob{std::move(factory), std::move(input)}](process::TaskReporter reporter
-            ) mutable noexcept {
+             job =
+                 SessionLoadJob{std::move(factory), std::move(input)}](process::TaskReporter reporter) mutable noexcept
+            {
                 return stdexec::then(
                     stdexec::schedule(scheduler),
                     [job = std::move(job), stop = reporter.stopToken()]() mutable { return std::move(job).run(stop); }
                 );
             },
-            [&](process::TTaskResult<SessionPreparation, SessionFactoryFailure>&& completed) noexcept {
+            [&](process::TTaskResult<SessionPreparation, SessionFactoryFailure>&& completed) noexcept
+            {
                 assert(std::this_thread::get_id() == owner);
                 if (completed)
                     result.emplace(std::move(*completed));
@@ -581,7 +614,8 @@ namespace
         const std::array<SessionKindId, 3> kinds{
             {{"lux.editor.scene"}, {"lux.editor.material"}, {"lux.editor.flowforge"}}
         };
-        auto input = [&](std::size_t i) {
+        auto input = [&](std::size_t i)
+        {
             return SessionLoadInput{
                 vfs.view().capture(),
                 identity(SourceFiles::names[i]),
@@ -589,7 +623,8 @@ namespace
                 take(disk.resolve(SourceFiles::names[i]))
             };
         };
-        auto turn = [&] {
+        auto turn = [&]
+        {
             assert(runtime.collectCompletions());
             assert(opening.update());
             assert(execution.submitReady());
@@ -720,9 +755,10 @@ namespace
         for (unsigned n{}; n < 10000; ++n)
         {
             turn();
-            if (std::ranges::all_of(all.entries(), [&](const auto& e) {
-                    return take(saves.status(*e.save)).stage == ESaveStage::TERMINAL;
-                }))
+            if (std::ranges::all_of(
+                    all.entries(),
+                    [&](const auto& e) { return take(saves.status(*e.save)).stage == ESaveStage::TERMINAL; }
+                ))
                 break;
         }
         for (const auto& entry : all.entries())
@@ -794,7 +830,7 @@ namespace
         std::cout
             << "PASS P12 real content open dedup/cancel/reuse/copy, reload/gate/write-race, SaveAll and atomic close\n";
     }
-}
+} // namespace
 int main(int argc, char** argv)
 {
     assert(argc == 2 || argc == 3);
@@ -826,31 +862,43 @@ int main(int argc, char** argv)
     const auto flow_bytes = take(lux::flowforge::encodeFlowSource(source));
     write(root / SourceFiles::names[2], std::as_bytes(std::span{flow_bytes}));
     auto schemas = take(simulation::ecs::ComponentSchemaSet::build({}));
-    auto factories = take(SessionFactorySnapshot::create(std::vector{lux::editor::scene::makeSceneSessionFactory(schemas), lux::editor::material::makeMaterialSessionFactory(),
-                lux::editor::flowforge::makeFlowSessionFactory({})}));
+    auto factories = take(SessionFactorySnapshot::create(std::vector{
+        lux::editor::scene::makeSceneSessionFactory(schemas),
+        lux::editor::material::makeMaterialSessionFactory(),
+        lux::editor::flowforge::makeFlowSessionFactory({})
+    }));
     {
         assert(take(factories.selectSource("lux.scene.package", 1))->descriptor().kind.name() == "lux.editor.scene");
-        assert(take(factories.selectSource("lux.material.source", 1))->descriptor().kind.name() == "lux.editor.material");
-        assert(take(factories.selectSource("lux.flowforge.source", 1))->descriptor().kind.name() == "lux.editor.flowforge");
+        assert(
+            take(factories.selectSource("lux.material.source", 1))->descriptor().kind.name() == "lux.editor.material"
+        );
+        assert(
+            take(factories.selectSource("lux.flowforge.source", 1))->descriptor().kind.name() == "lux.editor.flowforge"
+        );
         assert(!factories.selectSource("lux.material", 1)); // Runtime asset is not the author source.
         assert(!factories.selectSource("lux.material.source", 2));
         assert(!factories.selectSource("org.vendor.missing", 1));
         auto alternate = SessionFactoryEntry::create(
             contracts::CodeLease::builtin(),
             SessionKindDescriptor{
-                SessionKindIdView{"test.material.alternative"}, "Alternative material",
+                SessionKindIdView{"test.material.alternative"},
+                "Alternative material",
                 std::array{std::string_view{"material"}},
                 SourceAuthoring{"lux.material.source", 1, ".material"}
             },
-            [](const SessionLoadInput&, std::span<const std::byte>, std::stop_token)
-                -> SessionFactoryResult<SessionPreparation> {
+            [](const SessionLoadInput&, std::span<const std::byte>, std::stop_token
+            ) -> SessionFactoryResult<SessionPreparation>
+            {
                 std::abort(); // Selection must never execute extension decode callbacks.
             }
         );
         for (bool reverse : {false, true})
         {
-            auto entries = std::vector{lux::editor::scene::makeSceneSessionFactory(schemas), lux::editor::material::makeMaterialSessionFactory(),
-                lux::editor::flowforge::makeFlowSessionFactory({})};
+            auto entries = std::vector{
+                lux::editor::scene::makeSceneSessionFactory(schemas),
+                lux::editor::material::makeMaterialSessionFactory(),
+                lux::editor::flowforge::makeFlowSessionFactory({})
+            };
             entries.push_back(alternate);
             if (reverse)
             {
@@ -860,8 +908,11 @@ int main(int argc, char** argv)
             const auto rejected = ambiguous.selectSource("lux.material.source", 1);
             assert(!rejected && rejected.error().code == ESessionFactoryError::AMBIGUOUS);
             assert(rejected.error().detail.find("test.material.alternative") != std::string::npos);
-            assert(take(ambiguous.selectSource("lux.material.source", 1, SessionKindId{"lux.editor.material"}))
-                ->descriptor().kind.name() == "lux.editor.material");
+            assert(
+                take(ambiguous.selectSource("lux.material.source", 1, SessionKindId{"lux.editor.material"}))
+                    ->descriptor()
+                    .kind.name() == "lux.editor.material"
+            );
         }
     }
     std::array<SessionKindId, 3> kinds{{{"lux.editor.scene"}, {"lux.editor.material"}, {"lux.editor.flowforge"}}};
@@ -981,7 +1032,8 @@ int main(int argc, char** argv)
         using namespace commands;
         CommandRegistry registry;
         CommandDispatcher dispatcher{registry, 4};
-        auto find = [&](SessionId id) -> InstalledSession* {
+        auto find = [&](SessionId id) -> InstalledSession*
+        {
             for (auto& entry : installed)
                 if (entry.id() == id)
                     return &entry;
@@ -998,9 +1050,8 @@ int main(int argc, char** argv)
             root,
             registry,
             dispatcher,
-            [&](const CommandDescriptor&, const ui::Pane*, const ui::Element*) -> CommandResult<CommandInvocation> {
-                return CommandInvocation{SessionTarget{selected}};
-            }
+            [&](const CommandDescriptor&, const ui::Pane*, const ui::Element*) -> CommandResult<CommandInvocation>
+            { return CommandInvocation{SessionTarget{selected}}; }
         };
         root.menu = &menu;
         desktop::ViewHost host{root};
@@ -1018,16 +1069,22 @@ int main(int argc, char** argv)
         take(host.drain());
         assert(menu.update());
         const auto original_undo = take(snapshot.find(CommandIdView{"lux.editor.undo"}));
-        assert(menuItem(root, ui::CommandIdView{"lux.editor.undo"}).label.data() ==
-               original_undo.descriptor().label.data());
+        assert(
+            menuItem(root, ui::CommandIdView{"lux.editor.undo"}).label.data() == original_undo.descriptor().label.data()
+        );
         const auto scene_before = take(store.describe(installed[0].id())).current;
         const auto material_before = take(store.describe(installed[1].id())).current;
         ui::MenuRequest opened;
         assert(object::sendEvent(root, opened));
         selected = installed[1].id(); // The menu's captured session must stay A.
-        ui::MenuRequest
-            undo{ui::EMenuAction::COMMAND, {}, {}, {ui::CommandIdView{"lux.editor.undo"}, ui::ECommandPhase::EXECUTE},
-                 opened.source, menuItem(root, ui::CommandIdView{"lux.editor.undo"}).index};
+        ui::MenuRequest undo{
+            ui::EMenuAction::COMMAND,
+            {},
+            {},
+            {ui::CommandIdView{"lux.editor.undo"}, ui::ECommandPhase::EXECUTE},
+            opened.source,
+            menuItem(root, ui::CommandIdView{"lux.editor.undo"}).index
+        };
         assert(object::sendEvent(root, undo));
         assert(undo.command.result == ui::ECommandDispatchResult::EXECUTED && dispatcher.pending() == 1);
         assert(registry.publish({})); // Pinned queue input survives catalog replacement.
@@ -1063,9 +1120,14 @@ int main(int argc, char** argv)
         selected = installed[2].id();
         opened = {};
         assert(object::sendEvent(root, opened));
-        ui::MenuRequest
-            save{ui::EMenuAction::COMMAND, {}, {}, {ui::CommandIdView{"lux.editor.save"}, ui::ECommandPhase::EXECUTE},
-                 opened.source, menuItem(root, ui::CommandIdView{"lux.editor.save"}).index};
+        ui::MenuRequest save{
+            ui::EMenuAction::COMMAND,
+            {},
+            {},
+            {ui::CommandIdView{"lux.editor.save"}, ui::ECommandPhase::EXECUTE},
+            opened.source,
+            menuItem(root, ui::CommandIdView{"lux.editor.save"}).index
+        };
         assert(object::sendEvent(root, save));
         ef::FlowEditBatch late{flow.describe().current, "late", {}};
         late.edits.emplace_back(ef::FlowRename{"latest flow"});
@@ -1085,7 +1147,8 @@ int main(int argc, char** argv)
             BoundSource{identity(SourceFiles::names[1]), SourceFiles::names[1]},
             take(disk.resolve(SourceFiles::names[1]))
         };
-        auto open_extra = [&]() {
+        auto open_extra = [&]()
+        {
             auto decoded = take(load(runtime, factory, input));
             auto prepared = take(std::move(decoded).prepare(store, saves));
             return take(prepared.publish());
@@ -1142,7 +1205,8 @@ int main(int argc, char** argv)
         const auto copy = take(
             saves.requestSave({entry.id(), ESaveMode::EXPORT_COPY, take(disk.resolve(copy_path)), identity(copy_path)})
         );
-        const auto drain_save = [&](SaveId id) {
+        const auto drain_save = [&](SaveId id)
+        {
             for (unsigned turn{}; turn < 10000; ++turn)
             {
                 assert(execution.submitReady() && runtime.collectCompletions());

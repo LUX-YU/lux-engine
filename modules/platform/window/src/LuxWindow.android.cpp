@@ -31,14 +31,18 @@ namespace lux::window
 {
     LuxWindow::DisplaysResult LuxWindow::displays() noexcept
     {
-        return lux::cxx::unexpected(WindowPlacementFailure{EWindowPlacementError::UNSUPPORTED,
-            "Desktop placement is not supported by the Android backend"});
+        return lux::cxx::unexpected(WindowPlacementFailure{
+            EWindowPlacementError::UNSUPPORTED,
+            "Desktop placement is not supported by the Android backend"
+        });
     }
 
     LuxWindow::StateResult LuxWindow::state() const noexcept
     {
-        return lux::cxx::unexpected(WindowPlacementFailure{EWindowPlacementError::UNSUPPORTED,
-            "Desktop placement is not supported by the Android backend"});
+        return lux::cxx::unexpected(WindowPlacementFailure{
+            EWindowPlacementError::UNSUPPORTED,
+            "Desktop placement is not supported by the Android backend"
+        });
     }
 
     LuxWindow::StateResult LuxWindow::applyPlacement(const WindowPlacement&) noexcept

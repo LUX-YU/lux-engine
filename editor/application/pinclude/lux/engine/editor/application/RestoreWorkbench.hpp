@@ -19,12 +19,12 @@ namespace lux::editor::workspace
 {
     class WorkspaceStore;
     class WorkspaceChanges;
-}
+} // namespace lux::editor::workspace
 namespace lux::editor::extensions
 {
     class ContributionRegistry;
     class ContributionSnapshot;
-}
+} // namespace lux::editor::extensions
 namespace lux::editor::application
 {
     struct RestoredView final
@@ -34,7 +34,12 @@ namespace lux::editor::application
         std::vector<sessions::OpenAssetStatus> sources;
         std::optional<EditorResult<views::ViewId>> result;
     };
-    enum class ERestorationProgress : std::uint8_t { ACTIVE, SUSPENDED, CLOSING };
+    enum class ERestorationProgress : std::uint8_t
+    {
+        ACTIVE,
+        SUSPENDED,
+        CLOSING
+    };
 
     // Product use case: content opening and exact view restoration. It borrows the existing owners,
     // holds immutable contributions across reads, and never inspects layout opaque data.
@@ -42,12 +47,12 @@ namespace lux::editor::application
     {
     public:
         using Present = cxx::function_ref<EditorResult<views::ViewId>(
-            views::ViewContent, const extensions::ContributionSnapshot&, views::ViewRestoreKey, views::ViewTypeId
+            views::ViewContent,
+            const extensions::ContributionSnapshot&,
+            views::ViewRestoreKey,
+            views::ViewTypeId
         )>;
-        RestoreWorkbench(
-            ProjectStorage&, persistence::IArtifactStore&, sessions::SessionStore&, sessions::SessionOpening&,
-            workspace::WorkspaceStore&, workspace::WorkspaceChanges&, extensions::ContributionRegistry&
-        );
+        RestoreWorkbench(ProjectStorage&, persistence::IArtifactStore&, sessions::SessionStore&, sessions::SessionOpening&, workspace::WorkspaceStore&, workspace::WorkspaceChanges&, extensions::ContributionRegistry&);
         ~RestoreWorkbench();
         RestoreWorkbench(const RestoreWorkbench&) = delete;
         RestoreWorkbench& operator=(const RestoreWorkbench&) = delete;
@@ -63,4 +68,4 @@ namespace lux::editor::application
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };
-}
+} // namespace lux::editor::application

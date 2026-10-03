@@ -5,7 +5,10 @@
 #include <lux/engine/editor/storage/ProjectCreation.hpp>
 #include <lux/engine/ui/Pane.hpp>
 
-namespace lux::editor::views { class ViewFactoryEntry; }
+namespace lux::editor::views
+{
+    class ViewFactoryEntry;
+}
 
 namespace lux::editor::project
 {
@@ -58,8 +61,9 @@ namespace lux::editor::project
         cxx::move_only_function<ProjectCreationRequests()> requests
     );
     [[nodiscard]] std::shared_ptr<commands::CommandEntry> makeProjectCreationCommand(
-        commands::CommandEntry::Query, desktop::ToolOpening,
+        commands::CommandEntry::Query,
+        desktop::ToolOpening,
         cxx::move_only_function<commands::CommandResult<void>()> start
     );
 
-}
+} // namespace lux::editor::project

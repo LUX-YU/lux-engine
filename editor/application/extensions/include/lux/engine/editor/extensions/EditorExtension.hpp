@@ -50,4 +50,4 @@ namespace lux::editor::extensions
         const EditorExtensionExports* exports_{};
         std::thread::id owner_{std::this_thread::get_id()};
     };
-}
+} // namespace lux::editor::extensions

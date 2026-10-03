@@ -11,7 +11,12 @@ namespace lux::editor::settings
     struct SettingsIdTag;
     using SettingsIdView = cxx::StableNameIdView<SettingsIdTag>;
 
-    enum class ESettingsApply : std::uint8_t { IMMEDIATE, SAFE_POINT, RESTART };
+    enum class ESettingsApply : std::uint8_t
+    {
+        IMMEDIATE,
+        SAFE_POINT,
+        RESTART
+    };
 
     // The original codec owns default construction/encoding. A null merge means whole-value replacement.
     // Optional migrations are explicit: a schema mismatch never silently decodes as the current schema.
@@ -38,23 +43,34 @@ namespace lux::editor::settings
             return std::shared_ptr<SettingsEntry>(new SettingsEntry(std::move(code), Descriptor, std::move(apply)));
         }
         // One immutable backing owns all dynamic names and the original configuration descriptor.
-        [[nodiscard]] static std::shared_ptr<SettingsEntry> create(contracts::CodeLease, const SettingsDescriptor&, Apply = {});
+        [[nodiscard]] static std::shared_ptr<SettingsEntry> create(
+            contracts::CodeLease,
+            const SettingsDescriptor&,
+            Apply = {}
+        );
         ~SettingsEntry();
         SettingsEntry(const SettingsEntry&) = delete;
         SettingsEntry& operator=(const SettingsEntry&) = delete;
         SettingsEntry(SettingsEntry&&) = delete;
         SettingsEntry& operator=(SettingsEntry&&) = delete;
         [[nodiscard]] const SettingsDescriptor& descriptor() const noexcept;
-        [[nodiscard]] const contracts::CodeLease& code() const noexcept { return code_; }
+        [[nodiscard]] const contracts::CodeLease& code() const noexcept
+        {
+            return code_;
+        }
         [[nodiscard]] bool usesCode(const contracts::CodeLease&) const noexcept;
         [[nodiscard]] SettingsResult<void> validateDescriptor() const noexcept;
         [[nodiscard]] SettingsResult<ConfigurationValue> defaults() const noexcept;
         [[nodiscard]] SettingsResult<void> validateDefault(meta::ReflectionRegistry&) const noexcept;
-        [[nodiscard]] SettingsResult<ConfigurationValue> decode(std::uint32_t, std::span<const std::byte>) const noexcept;
+        [[nodiscard]] SettingsResult<ConfigurationValue> decode(std::uint32_t, std::span<const std::byte>)
+            const noexcept;
         [[nodiscard]] SettingsResult<void> validate(const ConfigurationValue&) const noexcept;
         // Called by the exact owner at its documented safe point/startup, never implicitly by parsing.
         [[nodiscard]] SettingsResult<void> apply(const ConfigurationValue&);
-        [[nodiscard]] bool hasApply() const noexcept { return bool(apply_); }
+        [[nodiscard]] bool hasApply() const noexcept
+        {
+            return bool(apply_);
+        }
 
     private:
         SettingsEntry(contracts::CodeLease, const SettingsDescriptor&, Apply);
@@ -66,8 +82,10 @@ namespace lux::editor::settings
         Apply apply_;
     };
     // Pure cold validation; ContributionSnapshot is the sole publication owner.
-    [[nodiscard]] LUX_EDITOR_CONFIGURATION_PUBLIC SettingsResult<void>
-    validateSettingsEntries(std::span<const std::shared_ptr<SettingsEntry>>, std::size_t capacity = 256);
+    [[nodiscard]] LUX_EDITOR_CONFIGURATION_PUBLIC SettingsResult<void> validateSettingsEntries(
+        std::span<const std::shared_ptr<SettingsEntry>>,
+        std::size_t capacity = 256
+    );
 
     struct SettingsResolution final
     {
@@ -77,8 +95,8 @@ namespace lux::editor::settings
     };
     // Sources may be supplied in any order, but each scope occurs at most once.
     // Default < installation < project < user < user-project < launch, constrained per descriptor.
-    [[nodiscard]] LUX_EDITOR_CONFIGURATION_PUBLIC SettingsResult<SettingsResolution>
-    resolveSettings(std::shared_ptr<const SettingsEntry>, std::span<const SettingsDocument>);
+    [[nodiscard]] LUX_EDITOR_CONFIGURATION_PUBLIC SettingsResult<
+        SettingsResolution> resolveSettings(std::shared_ptr<const SettingsEntry>, std::span<const SettingsDocument>);
 
     struct SettingsDraft final
     {
@@ -92,6 +110,9 @@ namespace lux::editor::settings
     };
     [[nodiscard]] LUX_EDITOR_CONFIGURATION_PUBLIC SettingsResult<SettingsDraft>
     makeSettingsDraft(const SettingsResolution&, const SettingsDocument&);
-    [[nodiscard]] LUX_EDITOR_CONFIGURATION_PUBLIC SettingsResult<SettingsDocument>
-    prepareSettings(const SettingsDraft&, const SettingsDocument&, const SettingsEntry& current);
-}
+    [[nodiscard]] LUX_EDITOR_CONFIGURATION_PUBLIC SettingsResult<SettingsDocument> prepareSettings(
+        const SettingsDraft&,
+        const SettingsDocument&,
+        const SettingsEntry& current
+    );
+} // namespace lux::editor::settings

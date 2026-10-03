@@ -42,7 +42,8 @@ namespace lux::editor::project
         }
         void draw() noexcept override
         {
-            const auto button = [&](const char* label, VWorkspaceIntent intent) {
+            const auto button = [&](const char* label, VWorkspaceIntent intent)
+            {
                 if (ImGui::Button(label))
                     (void)request(std::move(intent));
             };
@@ -82,12 +83,16 @@ namespace lux::editor::project
                 ImGui::TextWrapped("%s", report.label.c_str());
                 if (report.result)
                 {
-                    std::visit([](const auto& result) {
-                        if constexpr (std::same_as<std::decay_t<decltype(result)>, persistence::CommitReceipt>)
-                            ImGui::TextUnformatted("Published");
-                        else
-                            ImGui::TextWrapped("%s", result.failure.detail.c_str());
-                    }, *report.result);
+                    std::visit(
+                        [](const auto& result)
+                        {
+                            if constexpr (std::same_as<std::decay_t<decltype(result)>, persistence::CommitReceipt>)
+                                ImGui::TextUnformatted("Published");
+                            else
+                                ImGui::TextWrapped("%s", result.failure.detail.c_str());
+                        },
+                        *report.result
+                    );
                     if (report.catalog_failure)
                         ImGui::TextWrapped("Directory refresh failed: %s", report.catalog_failure->c_str());
                     button("Acknowledge", AcknowledgeWorkspace{report.ticket});
@@ -103,38 +108,64 @@ namespace lux::editor::project
             }
         }
     };
-    WorkspaceView::WorkspaceView(object::ObjectDispatcherRef dispatcher, lux::ui::PaneId id,
-        Observe observe, Request request)
+    WorkspaceView::WorkspaceView(
+        object::ObjectDispatcherRef dispatcher,
+        lux::ui::PaneId id,
+        Observe observe,
+        Request request
+    )
         : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{"lux.editor.workspace"}, "Workspace"),
-          impl_(std::make_unique<Impl>(*this, std::move(observe), std::move(request))) {}
+          impl_(std::make_unique<Impl>(*this, std::move(observe), std::move(request)))
+    {
+    }
     WorkspaceView::~WorkspaceView() noexcept = default;
-    EditorResult<void> WorkspaceView::request(VWorkspaceIntent intent) { return impl_->request(std::move(intent)); }
-    const WorkspaceSnapshot& WorkspaceView::snapshot() const noexcept { return impl_->snapshot_; }
+    EditorResult<void> WorkspaceView::request(VWorkspaceIntent intent)
+    {
+        return impl_->request(std::move(intent));
+    }
+    const WorkspaceSnapshot& WorkspaceView::snapshot() const noexcept
+    {
+        return impl_->snapshot_;
+    }
     const std::optional<EditorFailure>& WorkspaceView::observationFailure() const noexcept
     {
         return impl_->observation_failure_;
     }
-    void WorkspaceView::update() noexcept { impl_->observe(); }
-}
+    void WorkspaceView::update() noexcept
+    {
+        impl_->observe();
+    }
+} // namespace lux::editor::project
 
 namespace lux::editor::project
 {
     namespace
     {
         constexpr commands::CommandDescriptor kCaptureRecovery{
-            commands::CommandIdView{"lux.editor.recovery.capture"}, "Record content locations", "Workspace"
+            commands::CommandIdView{"lux.editor.recovery.capture"},
+            "Record content locations",
+            "Workspace"
         };
         constexpr commands::CommandDescriptor kRestoreRecovery{
-            commands::CommandIdView{"lux.editor.recovery.restore"}, "Restore recorded content", "Workspace"
+            commands::CommandIdView{"lux.editor.recovery.restore"},
+            "Restore recorded content",
+            "Workspace"
         };
         constexpr commands::CommandDescriptor kCommand{
-            commands::CommandIdView{"lux.editor.workspace"}, "Layouts and Recovery", "Window"
+            commands::CommandIdView{"lux.editor.workspace"},
+            "Layouts and Recovery",
+            "Window"
         };
         constexpr views::ViewFactoryDescriptor kFactoryDescriptor{
-            views::ViewTypeIdView{"lux.editor.workspace"}, "Workspace", cxx::typeToken<std::monostate>()
+            views::ViewTypeIdView{"lux.editor.workspace"},
+            "Workspace",
+            cxx::typeToken<std::monostate>()
         };
-    }
-    std::shared_ptr<views::ViewFactoryEntry> makeWorkspaceViewFactory(WorkspaceView::Observe observe, WorkspaceView::Request request)
+    } // namespace
+    std::shared_ptr<views::ViewFactoryEntry> makeWorkspaceViewFactory(
+        WorkspaceView::Observe observe,
+        WorkspaceView::Request request
+    )
     {
         struct Receivers final
         {
@@ -142,34 +173,44 @@ namespace lux::editor::project
             WorkspaceView::Request request;
         };
         auto receivers = std::make_shared<Receivers>(std::move(observe), std::move(request));
-        return views::ViewFactoryEntry::bind<kFactoryDescriptor>(contracts::CodeLease::builtin(),
-            [receivers](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
-                return views::DetachedView{contracts::CodeLease::builtin(), std::make_unique<WorkspaceView>(
-                    input.dispatcher(), input.paneId(),
-                    [receivers] { return receivers->observe(); },
-                    [receivers](VWorkspaceIntent intent) { return receivers->request(std::move(intent)); }
-                )};
+        return views::ViewFactoryEntry::bind<kFactoryDescriptor>(
+            contracts::CodeLease::builtin(),
+            [receivers](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView>
+            {
+                return views::DetachedView{
+                    contracts::CodeLease::builtin(),
+                    std::make_unique<WorkspaceView>(
+                        input.dispatcher(),
+                        input.paneId(),
+                        [receivers] { return receivers->observe(); },
+                        [receivers](VWorkspaceIntent intent) { return receivers->request(std::move(intent)); }
+                    )
+                };
             }
         );
     }
     std::shared_ptr<commands::CommandEntry> makeWorkspaceCommand(
-        commands::CommandEntry::Query query, desktop::ToolOpening open
+        commands::CommandEntry::Query query,
+        desktop::ToolOpening open
     )
     {
         return workbench::detail::bindToolCommand<kCommand, kFactoryDescriptor>(std::move(query), std::move(open));
     }
 
     std::vector<std::shared_ptr<commands::CommandEntry>> makeRecoveryCommands(
-        commands::CommandEntry::Query query, WorkspaceView::Request request
+        commands::CommandEntry::Query query,
+        WorkspaceView::Request request
     )
     {
         auto check = std::make_shared<commands::CommandEntry::Query>(std::move(query));
         auto receiver = std::make_shared<WorkspaceView::Request>(std::move(request));
-        const auto bind = [&]<const commands::CommandDescriptor& Descriptor>(VWorkspaceIntent intent) {
+        const auto bind = [&]<const commands::CommandDescriptor & Descriptor>(VWorkspaceIntent intent)
+        {
             return workbench::detail::bindCommand<Descriptor>(
                 [check](const commands::CommandQuery& input) { return (*check)(input); },
-                [receiver, intent = std::move(intent)](const commands::CommandInvocation&)
-                    -> commands::CommandResult<void> {
+                [receiver,
+                 intent = std::move(intent)](const commands::CommandInvocation&) -> commands::CommandResult<void>
+                {
                     auto result = (*receiver)(intent);
                     if (!result)
                         return workbench::detail::commandFailure(result.error());
@@ -177,8 +218,10 @@ namespace lux::editor::project
                 }
             );
         };
-        return {bind.template operator()<kCaptureRecovery>(CaptureRecovery{}),
-                bind.template operator()<kRestoreRecovery>(RestoreRecovery{})};
+        return {
+            bind.template operator()<kCaptureRecovery>(CaptureRecovery{}),
+            bind.template operator()<kRestoreRecovery>(RestoreRecovery{})
+        };
     }
 
-}
+} // namespace lux::editor::project

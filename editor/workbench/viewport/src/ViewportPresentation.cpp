@@ -1,11 +1,11 @@
+#include "HighlightRenderer.hpp"
+#include <limits>
 #include <lux/engine/editor/views/ViewportPresentation.hpp>
 #include <lux/engine/scene/Camera.hpp>
 #include <lux/engine/scene/RenderAssets.hpp>
 #include <lux/engine/scene/RenderViewRequest.hpp>
 #include <lux/engine/scene/SceneRuntime.hpp>
 #include <utility>
-#include <limits>
-#include "HighlightRenderer.hpp"
 namespace lux::editor::views
 {
     namespace
@@ -14,7 +14,34 @@ namespace lux::editor::views
         {
             return registry.valid(camera) && registry.all_of<lux::scene::Camera>(camera);
         }
-    }
+        bool sameProjection(const lux::scene::Camera& first, const lux::scene::Camera& second) noexcept
+        {
+            if (first.primary != second.primary)
+            {
+                return false;
+            }
+            return std::visit(
+                [&](const auto& left)
+                {
+                    const auto* right = std::get_if<std::decay_t<decltype(left)>>(&second.projection);
+                    if (!right)
+                    {
+                        return false;
+                    }
+                    const bool same_planes = left.near_plane == right->near_plane && left.far_plane == right->far_plane;
+                    if constexpr (requires { left.vertical_fov; })
+                    {
+                        return same_planes && left.vertical_fov == right->vertical_fov;
+                    }
+                    else
+                    {
+                        return same_planes && left.vertical_extent == right->vertical_extent;
+                    }
+                },
+                first.projection
+            );
+        }
+    } // namespace
     ViewportPresentation::ViewportPresentation(
         lux::scene::SceneRuntime& runtime,
         lux::scene::SceneInstanceId scene,
@@ -22,7 +49,8 @@ namespace lux::editor::views
         simulation::ecs::Entity camera
     )
         : runtime_(runtime), scene_(scene), resources_(resources), camera_(camera)
-    {}
+    {
+    }
     ViewportPresentation::CreateResult ViewportPresentation::create(
         lux::scene::SceneRuntime& runtime,
         lux::scene::SceneInstanceId scene,
@@ -143,10 +171,28 @@ namespace lux::editor::views
             registry.all_of<simulation::ecs::Transform3D, lux::scene::Camera, lux::scene::RenderViewRequest>(request_);
         if (!has_target)
             return lux::cxx::unexpected(render::RendererFailure{render::ERendererError::INVALID_ARGUMENT});
+        const auto& previous = registry.get<simulation::ecs::Transform3D>(request_);
+        const bool same_transform = previous.translation == transform.translation &&
+                                    previous.rotation.coeffs() == transform.rotation.coeffs() &&
+                                    previous.scale == transform.scale;
+        const bool same_camera = sameProjection(registry.get<lux::scene::Camera>(request_), camera);
+        const bool is_unchanged = same_transform && same_camera;
+        if (is_unchanged)
+        {
+            return {};
+        }
         if (registry.get<lux::scene::RenderViewRequest>(request_).revision == std::numeric_limits<std::uint64_t>::max())
+        {
             return lux::cxx::unexpected(render::RendererFailure{render::ERendererError::CAPACITY});
-        registry.patch<simulation::ecs::Transform3D>(request_, [&](auto& value) { value = transform; });
-        registry.patch<lux::scene::Camera>(request_, [&](auto& value) { value = camera; });
+        }
+        if (!same_transform)
+        {
+            registry.patch<simulation::ecs::Transform3D>(request_, [&](auto& value) { value = transform; });
+        }
+        if (!same_camera)
+        {
+            registry.patch<lux::scene::Camera>(request_, [&](auto& value) { value = camera; });
+        }
         registry.patch<lux::scene::RenderViewRequest>(request_, [](auto& value) { ++value.revision; });
         return {};
     }
@@ -155,7 +201,9 @@ namespace lux::editor::views
     {
         const bool is_local_camera = scene_.valid() && camera_ == request_;
         if (!is_local_camera)
+        {
             return lux::cxx::unexpected(render::RendererFailure{render::ERendererError::INVALID_ARGUMENT});
+        }
         const auto borrowed = std::as_const(runtime_).borrowInstance(scene_);
         if (!borrowed)
         {
@@ -166,26 +214,34 @@ namespace lux::editor::views
             });
         }
         const auto& registry = borrowed->get();
-        const bool has_camera = registry.valid(camera_) &&
-            registry.all_of<lux::scene::Camera, simulation::ecs::WorldTransform3D>(camera_);
+        const bool has_camera =
+            registry.valid(camera_) && registry.all_of<lux::scene::Camera, simulation::ecs::WorldTransform3D>(camera_);
         const auto* request = registry.try_get<lux::scene::RenderViewRequest>(request_);
         const auto* adopted = registry.try_get<lux::scene::RenderViewResult>(request_);
         const bool has_request = has_camera && request && adopted;
         const bool is_current = has_request && !adopted->failure && adopted->view == view_ &&
-            adopted->adopted_revision == request->revision && adopted->published_revision == request->revision &&
-            adopted->published_sequence != 0 && receipt_.status().render_sequence == adopted->published_sequence;
+                                adopted->adopted_revision == request->revision &&
+                                adopted->published_revision == request->revision && adopted->published_sequence != 0 &&
+                                receipt_.status().render_sequence == adopted->published_sequence;
         if (!is_current || !image_resource_.isValid())
+        {
             return lux::cxx::unexpected(render::RendererFailure{render::ERendererError::NOT_READY});
+        }
         const auto info = resources_.outputInfo(image_resource_);
         if (!info)
+        {
             return lux::cxx::unexpected(info.error());
+        }
         const auto& stamp = info->content;
         const bool is_sampleable = info->texture == image_ && info->extent == request->configuration.extent &&
-            stamp.source.session == scene_.domain && stamp.source.view_revision == request->revision &&
-            stamp.source.surface_generation == adopted->published_sequence && stamp.frame_serial != 0 &&
-            stamp.evidence >= lux::scene::EImageEvidence::RECORDED;
+                                   stamp.source.session == scene_.domain &&
+                                   stamp.source.view_revision == request->revision &&
+                                   stamp.source.surface_generation == adopted->published_sequence &&
+                                   stamp.frame_serial != 0 && stamp.evidence >= lux::scene::EImageEvidence::RECORDED;
         if (!is_sampleable)
+        {
             return lux::cxx::unexpected(render::RendererFailure{render::ERendererError::NOT_READY});
+        }
         return info->extent;
     }
 
@@ -209,10 +265,14 @@ namespace lux::editor::views
             return lux::cxx::unexpected(render::RendererFailure{render::ERendererError::INVALID_ARGUMENT});
         if (camera == camera_)
             return {};
-        registry.patch<lux::scene::RenderViewRequest>(request_, [&](auto& request) {
-            request.camera = camera;
-            ++request.revision;
-        });
+        registry.patch<lux::scene::RenderViewRequest>(
+            request_,
+            [&](auto& request)
+            {
+                request.camera = camera;
+                ++request.revision;
+            }
+        );
         camera_ = camera;
         return {};
     }
@@ -280,10 +340,14 @@ namespace lux::editor::views
         }
         auto& request = registry.get<lux::scene::RenderViewRequest>(request_);
         if (request.configuration.extent != extent)
-            registry.patch<lux::scene::RenderViewRequest>(request_, [&](auto& value) {
-                value.configuration.extent = extent;
-                ++value.revision;
-            });
+            registry.patch<lux::scene::RenderViewRequest>(
+                request_,
+                [&](auto& value)
+                {
+                    value.configuration.extent = extent;
+                    ++value.revision;
+                }
+            );
         const auto* adopted = registry.try_get<lux::scene::RenderViewResult>(request_);
         if (!adopted)
             return;
@@ -340,7 +404,7 @@ namespace lux::editor::views
             resources_.release(old);
     }
 
-}
+} // namespace lux::editor::views
 
 namespace lux::editor::views
 {
@@ -360,4 +424,4 @@ namespace lux::editor::views
         if (highlight_)
             highlight_->rejected.reset();
     }
-}
+} // namespace lux::editor::views

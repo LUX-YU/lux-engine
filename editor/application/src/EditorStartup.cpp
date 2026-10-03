@@ -6,7 +6,8 @@ namespace lux::editor::application
     namespace
     {
         EditorResult<std::vector<settings::SettingsDocument>> readSettings(
-            std::span<const project::SettingsLocation> locations)
+            std::span<const project::SettingsLocation> locations
+        )
         {
             std::vector<settings::SettingsDocument> documents;
             documents.reserve(locations.size());
@@ -20,25 +21,32 @@ namespace lux::editor::application
             }
             return documents;
         }
-    }
+    } // namespace
     EditorResult<project::DesktopSettingsValues> EditorApplication::Impl::prepareDesktopSettings()
     {
-        builtin_settings_ = project::makeDesktopSettingsPages([this](const ConfigurationValue& value)
-            -> settings::SettingsResult<void> {
-            if (!desktop_ || !desktop_->commands())
-                return cxx::unexpected(settings::SettingsFailure{settings::ESettingsError::UNAVAILABLE,
-                    "Desktop commands are not installed yet"});
-            auto applied = desktop_->commands()->setShortcuts(
-                static_cast<const project::ShortcutSettings*>(value.data())->overrides);
-            if (!applied)
+        builtin_settings_ = project::makeDesktopSettingsPages(
+            [this](const ConfigurationValue& value) -> settings::SettingsResult<void>
             {
-                const auto code = applied.error().code == commands::ECommandError::BUSY
-                    ? settings::ESettingsError::BUSY : settings::ESettingsError::INVALID_VALUE;
-                return cxx::unexpected(settings::SettingsFailure{code,
-                    applied.error().domain + ": " + applied.error().detail});
+                if (!desktop_ || !desktop_->commands())
+                    return cxx::unexpected(settings::SettingsFailure{
+                        settings::ESettingsError::UNAVAILABLE,
+                        "Desktop commands are not installed yet"
+                    });
+                auto applied = desktop_->commands()->setShortcuts(
+                    static_cast<const project::ShortcutSettings*>(value.data())->overrides
+                );
+                if (!applied)
+                {
+                    const auto code = applied.error().code == commands::ECommandError::BUSY
+                                          ? settings::ESettingsError::BUSY
+                                          : settings::ESettingsError::INVALID_VALUE;
+                    return cxx::unexpected(
+                        settings::SettingsFailure{code, applied.error().domain + ": " + applied.error().detail}
+                    );
+                }
+                return {};
             }
-            return {};
-        });
+        );
         extensions::ContributionDraft bootstrap;
         bootstrap.reflection.push_back({contracts::CodeLease::builtin(), project::registerDesktopSettings});
         bootstrap.settings = builtin_settings_;
@@ -53,12 +61,16 @@ namespace lux::editor::application
             return applicationFailure("settings.bootstrap.install", installed.error());
 
         settings_content_ = std::make_shared<project::SettingsContentInput>();
-        settings_content_->pages = [this] {
+        settings_content_->pages = [this]
+        {
             const auto snapshot = contributions_.snapshot();
             return std::vector<settings::SettingsPage>{snapshot.settings().begin(), snapshot.settings().end()};
         };
         settings_content_->locations = std::vector<project::SettingsLocation>{
-            {installation_settings_, nullptr, settings::ESettingsScope::INSTALLATION, "share/lux-engine/editor/settings.toml"},
+            {installation_settings_,
+             nullptr,
+             settings::ESettingsScope::INSTALLATION,
+             "share/lux-engine/editor/settings.toml"},
             {project_workspace_, &project_settings_changes_, settings::ESettingsScope::PROJECT, ".lux/settings.toml"},
             {user_settings_, &user_settings_changes_, settings::ESettingsScope::USER, "settings.toml"},
             {workspace_, &workspace_changes_, settings::ESettingsScope::USER_PROJECT, "settings.toml"}
@@ -83,9 +95,10 @@ namespace lux::editor::application
             if (!effective)
                 return applicationFailure("settings.activate.resolve", effective.error());
             const auto type = effective->desired.type();
-            const bool is_builtin = std::ranges::any_of(builtin_settings_, [&](const auto& builtin) {
-                return builtin.entry == page.entry;
-            });
+            const bool is_builtin = std::ranges::any_of(
+                builtin_settings_,
+                [&](const auto& builtin) { return builtin.entry == page.entry; }
+            );
             if (is_builtin && type == cxx::typeToken<project::AppearanceSettings>())
             {
                 auto& actual = *static_cast<project::AppearanceSettings*>(effective->desired.data());
@@ -118,15 +131,24 @@ namespace lux::editor::application
         }
         if (window_)
         {
-            const auto entry = std::ranges::find_if(builtin_settings_, [](const auto& page) {
-                return page.entry->descriptor().configuration->codec.type == cxx::typeToken<project::WindowSettings>();
-            });
+            const auto entry = std::ranges::find_if(
+                builtin_settings_,
+                [](const auto& page) {
+                    return page.entry->descriptor().configuration->codec.type ==
+                           cxx::typeToken<project::WindowSettings>();
+                }
+            );
             auto bound = project::WindowSettingsBinding::create(
-                *window_, workspace_, workspace_changes_, entry->entry, *settings_content_);
+                *window_,
+                workspace_,
+                workspace_changes_,
+                entry->entry,
+                *settings_content_
+            );
             if (!bound)
                 return cxx::unexpected(bound.error());
             window_settings_ = std::move(*bound);
         }
         return {};
     }
-}
+} // namespace lux::editor::application

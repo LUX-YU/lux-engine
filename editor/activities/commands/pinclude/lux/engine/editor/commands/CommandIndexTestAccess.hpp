@@ -7,7 +7,9 @@ namespace lux::editor::commands::detail
     // its numeric locator under another already valid identity's hash; real resolution/dispatch runs unchanged.
     struct CommandIndexTestAccess final
     {
-        [[nodiscard]] static CommandResult<CommandRegistrySnapshot>
-        withSingleHash(const CommandRegistrySnapshot&, std::uint64_t);
+        [[nodiscard]] static CommandResult<CommandRegistrySnapshot> withSingleHash(
+            const CommandRegistrySnapshot&,
+            std::uint64_t
+        );
     };
-}
+} // namespace lux::editor::commands::detail

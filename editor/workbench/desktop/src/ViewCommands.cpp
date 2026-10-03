@@ -7,17 +7,25 @@ namespace lux::editor::desktop
     namespace
     {
         constexpr commands::CommandDescriptor kCloseView{
-            commands::CommandIdView{"lux.editor.close-view"}, "Close View", "Window", "Ctrl+W",
+            commands::CommandIdView{"lux.editor.close-view"},
+            "Close View",
+            "Window",
+            "Ctrl+W",
             commands::ECommandScope::VIEW
         };
         constexpr commands::CommandDescriptor kAnotherView{
-            commands::CommandIdView{"lux.editor.another-view"}, "Another View", "Window", "",
+            commands::CommandIdView{"lux.editor.another-view"},
+            "Another View",
+            "Window",
+            "",
             commands::ECommandScope::SESSION
         };
-    }
+    } // namespace
     commands::CommandResult<views::ViewId> showTool(
-        ViewHost& host, const views::ViewFactorySnapshot& factories,
-        object::ObjectDispatcherRef dispatcher, views::ViewTypeId type
+        ViewHost& host,
+        const views::ViewFactorySnapshot& factories,
+        object::ObjectDispatcherRef dispatcher,
+        views::ViewTypeId type
     )
     {
         auto existing = host.describeAll();
@@ -35,8 +43,11 @@ namespace lux::editor::desktop
                 return view.id;
             }
         views::ViewFactoryInput input{
-            dispatcher, lux::ui::PaneId{type.name()}, contracts::CodeLease::builtin(),
-            cxx::typeToken<std::monostate>(), std::make_shared<const std::monostate>()
+            dispatcher,
+            lux::ui::PaneId{type.name()},
+            contracts::CodeLease::builtin(),
+            cxx::typeToken<std::monostate>(),
+            std::make_shared<const std::monostate>()
         };
         auto candidate = factories.prepare(type, input);
         if (!candidate)
@@ -48,29 +59,35 @@ namespace lux::editor::desktop
     }
     commands::CommandResult<std::vector<std::shared_ptr<commands::CommandEntry>>> makeToolCommands(
         std::span<const std::shared_ptr<views::ViewFactoryEntry>> views,
-        commands::CommandEntry::Query query, ToolOpening open
+        commands::CommandEntry::Query query,
+        ToolOpening open
     )
     {
         const bool is_invalid_receiver = !query || !open;
         if (is_invalid_receiver)
-            return cxx::unexpected(commands::CommandFailure{commands::ECommandError::INVALID_ARGUMENT, "tool.receiver"});
+            return cxx::unexpected(commands::CommandFailure{commands::ECommandError::INVALID_ARGUMENT, "tool.receiver"}
+            );
         auto check = std::make_shared<commands::CommandEntry::Query>(std::move(query));
         auto receiver = std::make_shared<ToolOpening>(std::move(open));
         std::vector<std::shared_ptr<commands::CommandEntry>> result;
         for (const auto& entry : views)
         {
             if (!entry)
-                return cxx::unexpected(commands::CommandFailure{commands::ECommandError::INVALID_ARGUMENT, "tool.factory"});
+                return cxx::unexpected(
+                    commands::CommandFailure{commands::ECommandError::INVALID_ARGUMENT, "tool.factory"}
+                );
             const auto& descriptor = entry->descriptor();
             if (descriptor.binding_type != cxx::typeToken<std::monostate>())
                 continue;
             result.push_back(commands::CommandEntry::create(
                 contracts::CodeLease::builtin(),
                 {commands::CommandIdView{std::string("lux.editor.tool/") + std::string(descriptor.type.name())},
-                 descriptor.label, "Window"},
+                 descriptor.label,
+                 "Window"},
                 [check](const commands::CommandQuery& input) { return (*check)(input); },
                 [receiver, type = views::ViewTypeId{descriptor.type.name()}](const commands::CommandInvocation&)
-                    -> commands::CommandResult<commands::DispatchReceipt> {
+                    -> commands::CommandResult<commands::DispatchReceipt>
+                {
                     auto shown = (*receiver)(type);
                     if (!shown)
                         return cxx::unexpected(shown.error());
@@ -85,10 +102,10 @@ namespace lux::editor::desktop
         cxx::move_only_function<commands::CommandResult<void>(views::ViewId)> close
     )
     {
-        return workbench::detail::bindCommand<kCloseView>(std::move(query),
-            [close = std::move(close)](const commands::CommandInvocation& input) mutable {
-                return close(std::get<views::ViewId>(input.target()));
-            }
+        return workbench::detail::bindCommand<kCloseView>(
+            std::move(query),
+            [close = std::move(close)](const commands::CommandInvocation& input) mutable
+            { return close(std::get<views::ViewId>(input.target())); }
         );
     }
     std::shared_ptr<commands::CommandEntry> makeAnotherViewCommand(
@@ -96,10 +113,10 @@ namespace lux::editor::desktop
         cxx::move_only_function<commands::CommandResult<void>(commands::SessionTarget)> open
     )
     {
-        return workbench::detail::bindCommand<kAnotherView>(std::move(query),
-            [open = std::move(open)](const commands::CommandInvocation& input) mutable {
-                return open(std::get<commands::SessionTarget>(input.target()));
-            }
+        return workbench::detail::bindCommand<kAnotherView>(
+            std::move(query),
+            [open = std::move(open)](const commands::CommandInvocation& input) mutable
+            { return open(std::get<commands::SessionTarget>(input.target())); }
         );
     }
-}
+} // namespace lux::editor::desktop

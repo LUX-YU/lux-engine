@@ -12,9 +12,11 @@ namespace lux::editor::workspace
         {
             return cxx::unexpected(WorkspaceFailure{code, std::move(detail)});
         }
-    }
+    } // namespace
     WorkspaceResult<std::optional<persistence::WriteTicket>> WorkspaceStore::continueProfileMigration(
-        const WorkspaceStore& source, const asset::AssetId& project)
+        const WorkspaceStore& source,
+        const asset::AssetId& project
+    )
     {
         if (project.isNull())
             return failed(EWorkspaceError::INVALID_DATA, "profile migration requires persistent project identity");
@@ -31,7 +33,8 @@ namespace lux::editor::workspace
             auto complete = parsed["complete"].value<bool>();
             pinned_digest = parsed["source"].value_or(std::string{});
             const bool invalid_marker = parsed["schema"].value<std::int64_t>() != 1 ||
-                parsed["project"].value<std::string>() != project_key || pinned_digest.empty() || !complete;
+                                        parsed["project"].value<std::string>() != project_key ||
+                                        pinned_digest.empty() || !complete;
             if (invalid_marker)
                 return failed(EWorkspaceError::CONFLICT, "profile migration marker identity");
             // A completed marker is provenance, not a command to overwrite later personal edits.
@@ -49,7 +52,8 @@ namespace lux::editor::workspace
         std::vector<std::pair<std::string, ReadFile>> input;
         input.reserve(catalog->layouts.size() + 3);
         std::size_t total{};
-        const auto append = [&](std::string path, auto validate) -> WorkspaceResult<void> {
+        const auto append = [&](std::string path, auto validate) -> WorkspaceResult<void>
+        {
             auto captured = source.read(path);
             if (!captured)
             {
@@ -68,36 +72,45 @@ namespace lux::editor::workspace
         };
         for (const auto& layout : catalog->layouts)
         {
-            auto added = append(".lux/workspace/layouts/" + layout.id.value + ".layout", [&](auto bytes) {
-                return decodeLayout(bytes, limits_);
-            });
+            auto added = append(
+                ".lux/workspace/layouts/" + layout.id.value + ".layout",
+                [&](auto bytes) { return decodeLayout(bytes, limits_); }
+            );
             if (!added)
                 return cxx::unexpected(added.error());
             // Enumeration/read races must not turn a missing record into a complete profile.
             const bool missed_layout = input.empty() ||
-                input.back().first != ".lux/workspace/layouts/" + layout.id.value + ".layout" ||
-                input.back().second.target.expected_version != layout.version;
+                                       input.back().first != ".lux/workspace/layouts/" + layout.id.value + ".layout" ||
+                                       input.back().second.target.expected_version != layout.version;
             if (missed_layout)
                 return failed(EWorkspaceError::CONFLICT, "profile layout changed during capture");
         }
-        if (auto added = append(".lux/workspace/preferences.toml", [&](auto bytes) {
-                return decodePreferences(bytes, limits_);
-            }); !added)
+        if (auto added = append(
+                ".lux/workspace/preferences.toml",
+                [&](auto bytes) { return decodePreferences(bytes, limits_); }
+            );
+            !added)
             return cxx::unexpected(added.error());
-        if (auto added = append(".lux/workspace/recovery.toml", [&](auto bytes) {
-                return decodeRecovery(bytes, limits_);
-            }); !added)
+        if (auto added =
+                append(".lux/workspace/recovery.toml", [&](auto bytes) { return decodeRecovery(bytes, limits_); });
+            !added)
             return cxx::unexpected(added.error());
-        if (auto added = append(".lux/workspace/migration-v1.toml", [](auto bytes) -> WorkspaceResult<void> {
-                const auto parsed = toml::parse(std::string_view{reinterpret_cast<const char*>(bytes.data()), bytes.size()});
-                if (!parsed)
-                    return failed(EWorkspaceError::INVALID_DATA, "legacy conversion marker syntax");
-                const bool invalid = parsed["schema"].value<std::int64_t>() != 1 ||
-                    parsed["source"].value_or(std::string{}).empty();
-                if (invalid)
-                    return failed(EWorkspaceError::INVALID_DATA, "legacy conversion marker identity");
-                return {};
-            }); !added)
+        if (auto added = append(
+                ".lux/workspace/migration-v1.toml",
+                [](auto bytes) -> WorkspaceResult<void>
+                {
+                    const auto parsed =
+                        toml::parse(std::string_view{reinterpret_cast<const char*>(bytes.data()), bytes.size()});
+                    if (!parsed)
+                        return failed(EWorkspaceError::INVALID_DATA, "legacy conversion marker syntax");
+                    const bool invalid =
+                        parsed["schema"].value<std::int64_t>() != 1 || parsed["source"].value_or(std::string{}).empty();
+                    if (invalid)
+                        return failed(EWorkspaceError::INVALID_DATA, "legacy conversion marker identity");
+                    return {};
+                }
+            );
+            !added)
             return cxx::unexpected(added.error());
         if (input.empty() && !marker)
             return std::optional<persistence::WriteTicket>{};
@@ -107,8 +120,9 @@ namespace lux::editor::workspace
         const auto digest = storage::publicationDigest(std::as_bytes(std::span(manifest)));
         if (marker && pinned_digest != digest)
             return failed(EWorkspaceError::CONFLICT, "profile source changed after migration preparation");
-        const auto accepted = [](WorkspaceResult<persistence::WriteTicket> result)
-            -> WorkspaceResult<std::optional<persistence::WriteTicket>> {
+        const auto accepted = [](WorkspaceResult<persistence::WriteTicket> result
+                              ) -> WorkspaceResult<std::optional<persistence::WriteTicket>>
+        {
             if (!result)
                 return cxx::unexpected(result.error());
             return std::optional{*result};
@@ -133,12 +147,14 @@ namespace lux::editor::workspace
             if (destination->bytes != file.bytes)
                 return failed(EWorkspaceError::CONFLICT, "unmarked profile differs; explicit choice required");
         }
-        const auto mark = [&](bool complete) {
+        const auto mark = [&](bool complete)
+        {
             const auto text = "schema = 1\nproject = \"" + project_key + "\"\nsource = \"" + digest +
-                "\"\ncomplete = " + (complete ? "true\n" : "false\n");
+                              "\"\ncomplete = " + (complete ? "true\n" : "false\n");
             const auto bytes = std::as_bytes(std::span(text));
-            return accepted(write(marker_path, marker ? marker->target.expected_version : "missing",
-                {bytes.begin(), bytes.end()}));
+            return accepted(
+                write(marker_path, marker ? marker->target.expected_version : "missing", {bytes.begin(), bytes.end()})
+            );
         };
         if (!marker)
             return mark(false); // Pin all source versions before the first destination write.
@@ -181,12 +197,16 @@ namespace lux::editor::workspace
             if (captured->bytes.size() > limits_.file_bytes - total)
                 return failed(EWorkspaceError::CAPACITY, "migration aggregate input bytes");
             total += captured->bytes.size();
-            result.layouts.push_back({std::move(relative), std::move(captured->bytes), captured->target.expected_version});
+            result.layouts.push_back(
+                {std::move(relative), std::move(captured->bytes), captured->target.expected_version}
+            );
         }
         auto settings = read(".lux/editor/settings.toml");
         if (settings)
             result.settings = LegacyWorkspaceFile{
-                ".lux/editor/settings.toml", std::move(settings->bytes), settings->target.expected_version
+                ".lux/editor/settings.toml",
+                std::move(settings->bytes),
+                settings->target.expected_version
             };
         else if (settings.error().code != EWorkspaceError::NOT_FOUND)
             return cxx::unexpected(settings.error());
@@ -201,7 +221,8 @@ namespace lux::editor::workspace
         return workspace::prepareLegacyMigration(std::move(*input), limits_);
     }
     WorkspaceResult<std::optional<persistence::WriteTicket>> WorkspaceStore::continueMigration(
-        const LegacyMigration& migration, const WorkspaceStore* source
+        const LegacyMigration& migration,
+        const WorkspaceStore* source
     )
     {
         // Every retry consults the real disk, never a private in-memory 'done' bit.
@@ -224,7 +245,8 @@ namespace lux::editor::workspace
         if (marker.error().code != EWorkspaceError::NOT_FOUND)
             return lux::cxx::unexpected(marker.error());
         auto accepted = [](WorkspaceResult<persistence::WriteTicket> value
-                        ) -> WorkspaceResult<std::optional<persistence::WriteTicket>> {
+                        ) -> WorkspaceResult<std::optional<persistence::WriteTicket>>
+        {
             if (!value)
                 return lux::cxx::unexpected(value.error());
             return std::optional{*value};
@@ -261,4 +283,4 @@ namespace lux::editor::workspace
             return failed(EWorkspaceError::CONFLICT, "migration preferences collision");
         return accepted(write(marker_path, "missing", {marker_bytes.begin(), marker_bytes.end()}));
     }
-}
+} // namespace lux::editor::workspace

@@ -4,7 +4,10 @@
 #include <lux/engine/editor/tasks/TaskMonitor.hpp>
 #include <lux/engine/editor/views/IViewHost.hpp>
 #include <lux/engine/ui/Element.hpp>
-namespace lux::editor::views { class ViewFactoryEntry; }
+namespace lux::editor::views
+{
+    class ViewFactoryEntry;
+}
 
 namespace lux::editor::tasks
 {
@@ -55,7 +58,8 @@ namespace lux::editor::tasks
     [[nodiscard]] views::DetachedView makeTaskView(object::ObjectDispatcherRef, lux::ui::PaneId, TaskMonitor&);
     [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> makeTaskViewFactory(TaskMonitor& monitor);
     [[nodiscard]] std::shared_ptr<commands::CommandEntry> makeTasksCommand(
-        commands::CommandEntry::Query, desktop::ToolOpening
+        commands::CommandEntry::Query,
+        desktop::ToolOpening
     );
 
-}
+} // namespace lux::editor::tasks

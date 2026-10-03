@@ -31,7 +31,13 @@ namespace lux::editor::project
         std::vector<SettingsLocation> locations;
         std::vector<AppliedSetting> applied;
     };
-    enum class ESettingsAction : std::uint8_t { APPLY, SAVE, REVERT, DEFAULTS };
+    enum class ESettingsAction : std::uint8_t
+    {
+        APPLY,
+        SAVE,
+        REVERT,
+        DEFAULTS
+    };
     class SettingsContent final : public lux::ui::Element
     {
     public:
@@ -47,6 +53,7 @@ namespace lux::editor::project
         [[nodiscard]] const settings::SettingsDraft* draft() const noexcept;
         [[nodiscard]] const std::optional<EditorFailure>& failure() const noexcept;
         void finishEdit(bool cancel = false) noexcept override;
+
     private:
         void draw() noexcept override;
         void update() noexcept override;
@@ -54,4 +61,4 @@ namespace lux::editor::project
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };
-}
+} // namespace lux::editor::project

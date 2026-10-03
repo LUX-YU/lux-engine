@@ -17,7 +17,7 @@ namespace
     private:
         lux::ui::Label text_;
     };
-}
+} // namespace
 
 extern "C" SAMPLE_EXTERNAL_EDITOR_EXPORT const lux::editor::extensions::EditorExtensionExports* lux_editor_exports_v9(
 ) noexcept
@@ -25,8 +25,9 @@ extern "C" SAMPLE_EXTERNAL_EDITOR_EXPORT const lux::editor::extensions::EditorEx
     using namespace lux::editor;
     static const extensions::EditorExtensionExports exports{
         .counts = {.views = 1},
-        .contribute = +[](extensions::ContributionDraft& draft,
-                          contracts::CodeLease code) -> extensions::ContributionResult<void> {
+        .contribute =
+            +[](extensions::ContributionDraft& draft, contracts::CodeLease code) -> extensions::ContributionResult<void>
+        {
             draft.views.push_back(views::ViewFactoryEntry::create(
                 code,
                 views::ViewFactoryDescriptor{
@@ -34,9 +35,8 @@ extern "C" SAMPLE_EXTERNAL_EDITOR_EXPORT const lux::editor::extensions::EditorEx
                     "External editor",
                     lux::cxx::typeToken<std::monostate>()
                 },
-                [code](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
-                    return views::DetachedView{code, std::make_unique<SamplePane>(input)};
-                }
+                [code](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView>
+                { return views::DetachedView{code, std::make_unique<SamplePane>(input)}; }
             ));
             return {};
         }

@@ -7,39 +7,56 @@ namespace lux::editor::scene
     namespace
     {
         constexpr commands::CommandDescriptor kOutliner{
-            commands::CommandIdView{"lux.editor.scene.outliner"}, "outliner", "Scene", "",
+            commands::CommandIdView{"lux.editor.scene.outliner"},
+            "outliner",
+            "Scene",
+            "",
             commands::ECommandScope::VIEW
         };
         constexpr commands::CommandDescriptor kInspector{
-            commands::CommandIdView{"lux.editor.scene.inspector"}, "inspector", "Scene", "",
+            commands::CommandIdView{"lux.editor.scene.inspector"},
+            "inspector",
+            "Scene",
+            "",
             commands::ECommandScope::VIEW
         };
         constexpr commands::CommandDescriptor kResources{
-            commands::CommandIdView{"lux.editor.scene.resources"}, "resources", "Scene", "",
+            commands::CommandIdView{"lux.editor.scene.resources"},
+            "resources",
+            "Scene",
+            "",
             commands::ECommandScope::VIEW
         };
         constexpr commands::CommandDescriptor kConfiguration{
-            commands::CommandIdView{"lux.editor.scene.configuration"}, "configuration", "Scene", "",
+            commands::CommandIdView{"lux.editor.scene.configuration"},
+            "configuration",
+            "Scene",
+            "",
             commands::ECommandScope::VIEW
         };
         constexpr commands::CommandDescriptor kPause{
-            commands::CommandIdView{"lux.editor.scene.pause"}, "pause", "Scene", "",
+            commands::CommandIdView{"lux.editor.scene.pause"},
+            "pause",
+            "Scene",
+            "",
             commands::ECommandScope::VIEW
         };
         constexpr commands::CommandDescriptor kResume{
-            commands::CommandIdView{"lux.editor.scene.resume"}, "resume", "Scene", "",
+            commands::CommandIdView{"lux.editor.scene.resume"},
+            "resume",
+            "Scene",
+            "",
             commands::ECommandScope::VIEW
         };
-        constexpr commands::CommandDescriptor kStep{
-            commands::CommandIdView{"lux.editor.scene.step"}, "step", "Scene", "",
-            commands::ECommandScope::VIEW
-        };
-        constexpr commands::CommandDescriptor kStop{
-            commands::CommandIdView{"lux.editor.scene.stop"}, "stop", "Scene", "",
-            commands::ECommandScope::VIEW
-        };
+        constexpr commands::CommandDescriptor
+            kStep{commands::CommandIdView{"lux.editor.scene.step"}, "step", "Scene", "", commands::ECommandScope::VIEW};
+        constexpr commands::CommandDescriptor
+            kStop{commands::CommandIdView{"lux.editor.scene.stop"}, "stop", "Scene", "", commands::ECommandScope::VIEW};
         constexpr commands::CommandDescriptor kPlay{
-            commands::CommandIdView{"lux.editor.play"}, "Play Frozen Scene", "Scene", "Ctrl+P",
+            commands::CommandIdView{"lux.editor.play"},
+            "Play Frozen Scene",
+            "Scene",
+            "Ctrl+P",
             commands::ECommandScope::SESSION
         };
 
@@ -48,20 +65,24 @@ namespace lux::editor::scene
             auto detail = workbench::detail::viewFailure(error);
             return cxx::unexpected(commands::CommandFailure{
                 detail.code == views::EViewFactoryError::BUSY ? commands::ECommandError::BUSY
-                                                            : commands::ECommandError::DOMAIN_FAILURE,
-                std::move(detail.domain), detail.domain_code, std::move(detail.detail)
+                                                              : commands::ECommandError::DOMAIN_FAILURE,
+                std::move(detail.domain),
+                detail.domain_code,
+                std::move(detail.detail)
             });
         }
         template <const commands::CommandDescriptor& Descriptor, class Action>
         std::shared_ptr<commands::CommandEntry> bindViewCommand(
-            std::shared_ptr<commands::CommandEntry::Query> query, Action action
+            std::shared_ptr<commands::CommandEntry::Query> query,
+            Action action
         )
         {
             return commands::CommandEntry::bind<Descriptor>(
                 contracts::CodeLease::builtin(),
                 [query](const commands::CommandQuery& input) { return (*query)(input); },
-                [action = std::move(action)](const commands::CommandInvocation& input) mutable
-                    -> commands::CommandResult<commands::DispatchReceipt> {
+                [action = std::move(action)](const commands::CommandInvocation& input
+                ) mutable -> commands::CommandResult<commands::DispatchReceipt>
+                {
                     auto result = action(std::get<views::ViewId>(input.target()));
                     if (!result)
                         return cxx::unexpected(result.error());
@@ -71,7 +92,8 @@ namespace lux::editor::scene
         }
         template <class Action> auto forRun(desktop::ViewHost& host, Action action)
         {
-            return [&host, action = std::move(action)](views::ViewId view) mutable -> commands::CommandResult<void> {
+            return [&host, action = std::move(action)](views::ViewId view) mutable -> commands::CommandResult<void>
+            {
                 auto group = shareSceneInteraction(host, view);
                 if (!group)
                     return commandFailure(group.error());
@@ -81,7 +103,7 @@ namespace lux::editor::scene
                 return action(*run);
             };
         }
-    }
+    } // namespace
     std::vector<std::shared_ptr<commands::CommandEntry>> makeSceneToolCommands(
         commands::CommandEntry::Query query,
         cxx::move_only_function<commands::CommandResult<void>(views::ViewId, ESceneTool)> receiver
@@ -93,9 +115,10 @@ namespace lux::editor::scene
             bindViewCommand<kOutliner>(check, [show](views::ViewId id) { return (*show)(id, ESceneTool::OUTLINER); }),
             bindViewCommand<kInspector>(check, [show](views::ViewId id) { return (*show)(id, ESceneTool::INSPECTOR); }),
             bindViewCommand<kResources>(check, [show](views::ViewId id) { return (*show)(id, ESceneTool::RESOURCES); }),
-            bindViewCommand<kConfiguration>(check, [show](views::ViewId id) {
-                return (*show)(id, ESceneTool::CONFIGURATION);
-            })
+            bindViewCommand<kConfiguration>(
+                check,
+                [show](views::ViewId id) { return (*show)(id, ESceneTool::CONFIGURATION); }
+            )
         };
     }
     std::vector<std::shared_ptr<commands::CommandEntry>> makeRunViewCommands(
@@ -108,18 +131,32 @@ namespace lux::editor::scene
     {
         auto check = std::make_shared<commands::CommandEntry::Query>(std::move(query));
         return {
-            bindViewCommand<kPause>(check, forRun(host, [&runs](RunId id) -> commands::CommandResult<void> {
-                auto result = runs.pause(id);
-                if (!result)
-                    return commandFailure(result.error());
-                return {};
-            })),
-            bindViewCommand<kResume>(check, forRun(host, [&runs](RunId id) -> commands::CommandResult<void> {
-                auto result = runs.resume(id);
-                if (!result)
-                    return commandFailure(result.error());
-                return {};
-            })),
+            bindViewCommand<kPause>(
+                check,
+                forRun(
+                    host,
+                    [&runs](RunId id) -> commands::CommandResult<void>
+                    {
+                        auto result = runs.pause(id);
+                        if (!result)
+                            return commandFailure(result.error());
+                        return {};
+                    }
+                )
+            ),
+            bindViewCommand<kResume>(
+                check,
+                forRun(
+                    host,
+                    [&runs](RunId id) -> commands::CommandResult<void>
+                    {
+                        auto result = runs.resume(id);
+                        if (!result)
+                            return commandFailure(result.error());
+                        return {};
+                    }
+                )
+            ),
             bindViewCommand<kStep>(check, forRun(host, std::move(step))),
             bindViewCommand<kStop>(check, forRun(host, std::move(stop)))
         };
@@ -130,14 +167,18 @@ namespace lux::editor::scene
     )
     {
         return commands::CommandEntry::bind<kPlay>(
-            contracts::CodeLease::builtin(), std::move(query),
-            [start = std::move(start)](const commands::CommandInvocation& input) mutable
-                -> commands::CommandResult<commands::DispatchReceipt> {
+            contracts::CodeLease::builtin(),
+            std::move(query),
+            [start = std::move(start)](const commands::CommandInvocation& input
+            ) mutable -> commands::CommandResult<commands::DispatchReceipt>
+            {
                 auto result = start(std::get<commands::SessionTarget>(input.target()));
                 if (!result)
                     return cxx::unexpected(result.error());
-                return commands::DispatchReceipt{commands::AcceptedOperation{commands::OperationKindId{"run"}, result->serial}};
+                return commands::DispatchReceipt{
+                    commands::AcceptedOperation{commands::OperationKindId{"run"}, result->serial}
+                };
             }
         );
     }
-}
+} // namespace lux::editor::scene

@@ -24,73 +24,103 @@ namespace lux::editor::project
 
         template <class Value> ConfigurationDescriptor configuration(const char* name)
         {
-            return {name, 1, serialization::makePortableValueCodec<Value>(),
-                +[](meta::ReflectionRegistry& registry) noexcept {
-                    return registry.findClass(cxx::type_name<Value>());
-                }};
+            return {
+                name,
+                1,
+                serialization::makePortableValueCodec<Value>(),
+                +[](meta::ReflectionRegistry& registry) noexcept { return registry.findClass(cxx::type_name<Value>()); }
+            };
         }
 
         const auto appearance_value = configuration<AppearanceSettings>("lux.desktop.appearance");
         const auto window_value = configuration<WindowSettings>("lux.desktop.window");
         const auto shortcut_value = configuration<ShortcutSettings>("lux.desktop.shortcuts");
         constexpr settings::SettingsDescriptor appearance{
-            settings::SettingsIdView{"lux.desktop.appearance"}, "Font and UI scale", &appearance_value,
-            settings::kPersonalScopes, settings::ESettingsApply::RESTART,
-            +[](const ConfigurationValue& input) noexcept -> settings::SettingsResult<void> {
+            settings::SettingsIdView{"lux.desktop.appearance"},
+            "Font and UI scale",
+            &appearance_value,
+            settings::kPersonalScopes,
+            settings::ESettingsApply::RESTART,
+            +[](const ConfigurationValue& input) noexcept -> settings::SettingsResult<void>
+            {
                 const auto& value = *static_cast<const AppearanceSettings*>(input.data());
                 const bool invalid_scale = !std::isfinite(value.scale) || value.scale < 0.5f || value.scale > 4.f;
                 const bool invalid_font = value.font.size() > 4096 || value.font.find('\0') != std::string::npos;
                 if (invalid_scale || invalid_font)
-                    return cxx::unexpected(settings::SettingsFailure{settings::ESettingsError::INVALID_VALUE,
-                        "UI scale must be 0.5..4 and font must be a valid bounded path"});
+                    return cxx::unexpected(settings::SettingsFailure{
+                        settings::ESettingsError::INVALID_VALUE,
+                        "UI scale must be 0.5..4 and font must be a valid bounded path"
+                    });
                 return {};
             }
         };
         constexpr settings::SettingsDescriptor window_descriptor{
-            settings::SettingsIdView{"lux.desktop.window"}, "Window placement", &window_value,
-            settings::kPersonalScopes, settings::ESettingsApply::RESTART,
-            +[](const ConfigurationValue& input) noexcept -> settings::SettingsResult<void> {
+            settings::SettingsIdView{"lux.desktop.window"},
+            "Window placement",
+            &window_value,
+            settings::kPersonalScopes,
+            settings::ESettingsApply::RESTART,
+            +[](const ConfigurationValue& input) noexcept -> settings::SettingsResult<void>
+            {
                 const auto& value = *static_cast<const WindowSettings*>(input.data());
                 const auto& rect = value.placement.normal;
-                const bool invalid_size = value.restore &&
-                    (rect.width <= 0 || rect.height <= 0 || rect.width > 32768 || rect.height > 32768);
+                const bool invalid_size =
+                    value.restore && (rect.width <= 0 || rect.height <= 0 || rect.width > 32768 || rect.height > 32768);
                 const auto mode = value.placement.mode;
                 const bool invalid_mode = mode != window::EWindowMode::ORDINARY &&
-                    mode != window::EWindowMode::MAXIMIZED && mode != window::EWindowMode::FULLSCREEN;
+                                          mode != window::EWindowMode::MAXIMIZED &&
+                                          mode != window::EWindowMode::FULLSCREEN;
                 if (invalid_size || invalid_mode)
-                    return cxx::unexpected(settings::SettingsFailure{settings::ESettingsError::INVALID_VALUE,
-                        "Invalid restored window size or mode"});
+                    return cxx::unexpected(settings::SettingsFailure{
+                        settings::ESettingsError::INVALID_VALUE,
+                        "Invalid restored window size or mode"
+                    });
                 return {};
             }
         };
         constexpr settings::SettingsDescriptor shortcuts{
-            settings::SettingsIdView{"lux.desktop.shortcuts"}, "Command shortcuts", &shortcut_value,
-            settings::kPersonalScopes, settings::ESettingsApply::SAFE_POINT,
-            +[](const ConfigurationValue& input) noexcept -> settings::SettingsResult<void> {
-                auto checked = desktop::validateShortcutOverrides(static_cast<const ShortcutSettings*>(input.data())->overrides);
+            settings::SettingsIdView{"lux.desktop.shortcuts"},
+            "Command shortcuts",
+            &shortcut_value,
+            settings::kPersonalScopes,
+            settings::ESettingsApply::SAFE_POINT,
+            +[](const ConfigurationValue& input) noexcept -> settings::SettingsResult<void>
+            {
+                auto checked =
+                    desktop::validateShortcutOverrides(static_cast<const ShortcutSettings*>(input.data())->overrides);
                 if (!checked)
-                    return cxx::unexpected(settings::SettingsFailure{settings::ESettingsError::INVALID_VALUE,
-                        checked.error().domain + ": " + checked.error().detail});
+                    return cxx::unexpected(settings::SettingsFailure{
+                        settings::ESettingsError::INVALID_VALUE,
+                        checked.error().domain + ": " + checked.error().detail
+                    });
                 return {};
             }
         };
-    }
+    } // namespace
 
     settings::SettingsResult<DesktopSettingsValues> resolveDesktopSettings(
-        std::span<const settings::SettingsPage> pages, std::span<const settings::SettingsDocument> documents)
+        std::span<const settings::SettingsPage> pages,
+        std::span<const settings::SettingsDocument> documents
+    )
     {
-        const auto resolve = [&]<class Value>(const settings::SettingsDescriptor& descriptor)
-            -> settings::SettingsResult<Value> {
-            const auto found = std::ranges::find_if(pages, [&](const auto& page) {
-                return page.entry && page.entry->descriptor().id.name() == descriptor.id.name();
-            });
+        const auto resolve = [&]<class Value>(const settings::SettingsDescriptor& descriptor
+                             ) -> settings::SettingsResult<Value>
+        {
+            const auto found = std::ranges::find_if(
+                pages,
+                [&](const auto& page)
+                { return page.entry && page.entry->descriptor().id.name() == descriptor.id.name(); }
+            );
             if (found == pages.end())
-                return cxx::unexpected(settings::SettingsFailure{settings::ESettingsError::UNAVAILABLE,
-                    std::string{descriptor.id.name()}});
+                return cxx::unexpected(
+                    settings::SettingsFailure{settings::ESettingsError::UNAVAILABLE, std::string{descriptor.id.name()}}
+                );
             const auto* configuration = found->entry->descriptor().configuration;
             if (!configuration || configuration->codec.type != cxx::typeToken<Value>())
-                return cxx::unexpected(settings::SettingsFailure{settings::ESettingsError::INVALID_DESCRIPTOR,
-                    std::string{descriptor.id.name()}});
+                return cxx::unexpected(settings::SettingsFailure{
+                    settings::ESettingsError::INVALID_DESCRIPTOR,
+                    std::string{descriptor.id.name()}
+                });
             auto resolved = settings::resolveSettings(found->entry, documents);
             if (!resolved)
                 return cxx::unexpected(resolved.error());
@@ -110,7 +140,8 @@ namespace lux::editor::project
 
     void registerDesktopSettings(meta::ReflectionRegistry& registry, meta::qual_type_index_fix_list&)
     {
-        const auto add_enum = [&](auto tag, std::vector<meta::RefEnumValue> values) {
+        const auto add_enum = [&](auto tag, std::vector<meta::RefEnumValue> values)
+        {
             using Enum = decltype(tag);
             if (registry.findEnum(cxx::type_name<Enum>()))
                 return;
@@ -139,4 +170,4 @@ namespace lux::editor::project
     {
         return settings::SettingsEntry::bind<shortcuts>(contracts::CodeLease::builtin(), std::move(apply));
     }
-}
+} // namespace lux::editor::project

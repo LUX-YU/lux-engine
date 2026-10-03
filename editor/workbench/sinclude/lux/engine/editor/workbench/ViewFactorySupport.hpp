@@ -24,7 +24,10 @@ namespace lux::editor::workbench::detail
             if constexpr (requires { error.retryable; })
                 if (error.retryable)
                     result.code = views::EViewFactoryError::BUSY;
-            if constexpr (requires { error.session; error.code == decltype(error.code)::SESSION; })
+            if constexpr (requires {
+                              error.session;
+                              error.code == decltype(error.code)::SESSION;
+                          })
                 if (error.code == decltype(error.code)::SESSION)
                     return viewFailure(error.session);
             if constexpr (requires { error == Error::BUSY; })
@@ -52,7 +55,7 @@ namespace lux::editor::workbench::detail
     template <class View, class Payload>
     views::ViewFactoryResult<void> connectIntent(
         views::DetachedView& view,
-        object::TSignal<Payload> View::* signal,
+        object::TSignal<Payload> View::*signal,
         const std::shared_ptr<cxx::move_only_function<void(const Payload&)>>& receiver
     )
     {
@@ -60,7 +63,8 @@ namespace lux::editor::workbench::detail
             return {};
         // The factory just constructed this exact view type; no runtime type probing is needed.
         auto connection = object::LuxObject::connect(
-            static_cast<View*>(view.pane()), signal,
+            static_cast<View*>(view.pane()),
+            signal,
             [receiver](const Payload& value) noexcept { (*receiver)(value); }
         );
         if (!connection)
@@ -77,8 +81,9 @@ namespace lux::editor::workbench::detail
         static_assert(Descriptor.binding_type == cxx::typeToken<Input>());
         return views::ViewFactoryEntry::bind<Descriptor>(
             contracts::CodeLease::builtin(),
-            [create = std::move(create)](const views::ViewFactoryInput& input) mutable
-                -> views::ViewFactoryResult<views::DetachedView> {
+            [create = std::move(create)](const views::ViewFactoryInput& input
+            ) mutable -> views::ViewFactoryResult<views::DetachedView>
+            {
                 auto view = create(input, *static_cast<const Input*>(input.binding()));
                 if (!view)
                     return cxx::unexpected(viewFailure(view.error()));
@@ -86,4 +91,4 @@ namespace lux::editor::workbench::detail
             }
         );
     }
-}
+} // namespace lux::editor::workbench::detail

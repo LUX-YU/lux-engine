@@ -14,7 +14,7 @@ namespace skeleton
                 std::terminate();
             return std::move(*value);
         }
-        ESessionError historyError(const EditFailure &value)
+        ESessionError historyError(const EditFailure& value)
         {
             if (value.code == EEditError::BUSY)
                 return ESessionError::BUSY;
@@ -29,10 +29,10 @@ namespace skeleton
             const auto code = error == ESessionError::BUSY ? EPersistenceError::BUSY : EPersistenceError::STALE_SOURCE;
             return cxx::unexpected(PersistenceFailure{code, "skeleton.session", static_cast<std::uint64_t>(error)});
         }
-        std::size_t bytes(const rdesc::Skeleton &source)
+        std::size_t bytes(const rdesc::Skeleton& source)
         {
             auto size = sizeof(source) + source.bones.size() * sizeof(rdesc::BoneRestPose);
-            for (const auto &bone : source.bones)
+            for (const auto& bone : source.bones)
                 size += bone.name.size();
             return size;
         }
@@ -40,52 +40,75 @@ namespace skeleton
     class Edit final : public PreparedEdit
     {
     public:
-        Edit(const Edit &) = delete;
-        Edit &operator=(const Edit &) = delete;
-        Edit(Edit &&) = delete;
-        Edit &operator=(Edit &&) = delete;
-        Edit(Session &owner, rdesc::Skeleton value) : owner_(owner), value_(std::move(value)) {}
-        EEditEffect effect() const noexcept override { return EEditEffect::CHANGE; }
+        Edit(const Edit&) = delete;
+        Edit& operator=(const Edit&) = delete;
+        Edit(Edit&&) = delete;
+        Edit& operator=(Edit&&) = delete;
+        Edit(Session& owner, rdesc::Skeleton value) : owner_(owner), value_(std::move(value)) {}
+        EEditEffect effect() const noexcept override
+        {
+            return EEditEffect::CHANGE;
+        }
 
     private:
-        void apply() noexcept override { std::swap(owner_.source_, value_); }
-        void publish(const CommitInfo &) noexcept override { owner_.state_.contentChanged(); }
-        Session &owner_;
+        void apply() noexcept override
+        {
+            std::swap(owner_.source_, value_);
+        }
+        void publish(const CommitInfo&) noexcept override
+        {
+            owner_.state_.contentChanged();
+        }
+        Session& owner_;
         rdesc::Skeleton value_;
     };
     class Operation final : public EditOperation
     {
     public:
-        Operation(const Operation &) = delete;
-        Operation &operator=(const Operation &) = delete;
-        Operation(Operation &&) = delete;
-        Operation &operator=(Operation &&) = delete;
-        Operation(Session &owner, StateId before, rdesc::Skeleton value)
+        Operation(const Operation&) = delete;
+        Operation& operator=(const Operation&) = delete;
+        Operation(Operation&&) = delete;
+        Operation& operator=(Operation&&) = delete;
+        Operation(Session& owner, StateId before, rdesc::Skeleton value)
             : owner_(owner), base_(before), before_(owner.source_), after_(std::move(value))
         {
         }
-        HistoryId historyId() const noexcept override { return base_.history; }
-        StateId baseState() const noexcept override { return base_; }
-        std::string_view label() const noexcept override { return "Edit bone name and global translation"; }
-        std::size_t retainedBytesUpperBound() const noexcept override { return bytes(before_) + bytes(after_); }
-        EditResult<PreparedEditPtr> prepare(const ApplyContext &context,
-                                            EditPreparationBudget &budget) const noexcept override
+        HistoryId historyId() const noexcept override
         {
-            const auto &value = context.direction == EDirection::FORWARD ? after_ : before_;
+            return base_.history;
+        }
+        StateId baseState() const noexcept override
+        {
+            return base_;
+        }
+        std::string_view label() const noexcept override
+        {
+            return "Edit bone name and global translation";
+        }
+        std::size_t retainedBytesUpperBound() const noexcept override
+        {
+            return bytes(before_) + bytes(after_);
+        }
+        EditResult<PreparedEditPtr> prepare(const ApplyContext& context, EditPreparationBudget& budget)
+            const noexcept override
+        {
+            const auto& value = context.direction == EDirection::FORWARD ? after_ : before_;
             if (auto reserved = budget.reserve(bytes(value)); !reserved)
                 return cxx::unexpected(reserved.error());
             return std::make_unique<Edit>(owner_, value);
         }
 
     private:
-        Session &owner_;
+        Session& owner_;
         StateId base_;
         rdesc::Skeleton before_, after_;
     };
-    Session::Session(SessionId id,
-                     SourceBinding binding,
-                     std::shared_ptr<const asset::SkeletonAsset> source,
-                     std::unique_ptr<EditHistory> history)
+    Session::Session(
+        SessionId id,
+        SourceBinding binding,
+        std::shared_ptr<const asset::SkeletonAsset> source,
+        std::unique_ptr<EditHistory> history
+    )
         : state_(id, std::move(binding)), info_(source->info()),
           auxiliary_(source->auxiliaryPayloads().begin(), source->auxiliaryPayloads().end()), source_(source->data()),
           history_(std::move(history))
@@ -93,9 +116,11 @@ namespace skeleton
         if (state_.binding() && !state_.loaded(currentContent().state))
             std::terminate();
     }
-    SessionResult<std::unique_ptr<Session>> Session::create(SessionId id,
-                                                            SourceBinding binding,
-                                                            std::shared_ptr<const asset::SkeletonAsset> source)
+    SessionResult<std::unique_ptr<Session>> Session::create(
+        SessionId id,
+        SourceBinding binding,
+        std::shared_ptr<const asset::SkeletonAsset> source
+    )
     {
         if (!source)
             return cxx::unexpected(ESessionError::INVALID_ARGUMENT);
@@ -111,13 +136,15 @@ namespace skeleton
     SessionInfo Session::describe() const
     {
         const auto current = currentContent();
-        return {state_.id(),
-                kind,
-                state_.binding(),
-                current,
-                state_.observed(),
-                !state_.checkpoint().clean(current.state, state_.bindingRevision()),
-                state_.admission()};
+        return {
+            state_.id(),
+            kind,
+            state_.binding(),
+            current,
+            state_.observed(),
+            !state_.checkpoint().clean(current.state, state_.bindingRevision()),
+            state_.admission()
+        };
     }
     SessionResult<ClosePermit> Session::prepareClose(ContentStamp expected) noexcept
     {
@@ -126,7 +153,7 @@ namespace skeleton
     SessionResult<void> Session::edit(ContentStamp expected, std::size_t bone, std::string name, float x)
     {
         return state_.gate().withEdit(
-            [&](EditScope &) -> SessionResult<void>
+            [&](EditScope&) -> SessionResult<void>
             {
                 if (currentContent() != expected)
                     return cxx::unexpected(ESessionError::STALE_CONTENT);
@@ -145,18 +172,20 @@ namespace skeleton
                 if (!applied)
                     return cxx::unexpected(historyError(applied.error()));
                 return {};
-            });
+            }
+        );
     }
     SessionResult<void> Session::replay(bool forward)
     {
         return state_.gate().withEdit(
-            [&](EditScope &) -> SessionResult<void>
+            [&](EditScope&) -> SessionResult<void>
             {
                 const auto result = forward ? EditExecutor{}.redo(*history_) : EditExecutor{}.undo(*history_);
                 if (!result)
                     return cxx::unexpected(historyError(result.error()));
                 return {};
-            });
+            }
+        );
     }
     SessionResult<rdesc::Skeleton> Session::read() const
     {
@@ -169,7 +198,8 @@ namespace skeleton
             {
                 callback();
                 return {};
-            });
+            }
+        );
     }
     SessionResult<std::shared_ptr<const asset::SkeletonAsset>> Session::freeze(asset::AssetId id) const
     {
@@ -183,12 +213,13 @@ namespace skeleton
                 if (!value)
                     return cxx::unexpected(ESessionError::INVALID_ARGUMENT);
                 return std::move(*value);
-            });
+            }
+        );
     }
-    SessionResult<void> Session::adopt(ContentStamp expected, Session &candidate)
+    SessionResult<void> Session::adopt(ContentStamp expected, Session& candidate)
     {
         return state_.gate().withEdit(
-            [&](EditScope &) -> SessionResult<void>
+            [&](EditScope&) -> SessionResult<void>
             {
                 if (currentContent() != expected)
                     return cxx::unexpected(ESessionError::STALE_CONTENT);
@@ -198,15 +229,16 @@ namespace skeleton
                 swap(auxiliary_, candidate.auxiliary_);
                 swap(history_, candidate.history_);
                 return state_.loaded(currentContent().state);
-            });
+            }
+        );
     }
     class Actions final : public HistoryActions
     {
     public:
-        Actions(const Actions &) = delete;
-        Actions &operator=(const Actions &) = delete;
-        Actions(Actions &&) = delete;
-        Actions &operator=(Actions &&) = delete;
+        Actions(const Actions&) = delete;
+        Actions& operator=(const Actions&) = delete;
+        Actions(Actions&&) = delete;
+        Actions& operator=(Actions&&) = delete;
         Actions(TSessionAccess<Session> access, TSessionKey<Session> key) : access_(access), key_(key) {}
         SessionFactoryResult<HistoryActionsInfo> query() const override
         {
@@ -218,8 +250,14 @@ namespace skeleton
                 return cxx::unexpected(factoryFailure(historyError(history.error())));
             return HistoryActionsInfo{{key_.id(), history->snapshot.current}, history->can_undo, history->can_redo};
         }
-        SessionFactoryResult<ContentStamp> undo() override { return replay(false); }
-        SessionFactoryResult<ContentStamp> redo() override { return replay(true); }
+        SessionFactoryResult<ContentStamp> undo() override
+        {
+            return replay(false);
+        }
+        SessionFactoryResult<ContentStamp> redo() override
+        {
+            return replay(true);
+        }
 
     private:
         SessionFactoryResult<ContentStamp> replay(bool forward)
@@ -238,10 +276,10 @@ namespace skeleton
     class Encoder final : public IEncodeJob
     {
     public:
-        Encoder(const Encoder &) = delete;
-        Encoder &operator=(const Encoder &) = delete;
-        Encoder(Encoder &&) = delete;
-        Encoder &operator=(Encoder &&) = delete;
+        Encoder(const Encoder&) = delete;
+        Encoder& operator=(const Encoder&) = delete;
+        Encoder(Encoder&&) = delete;
+        Encoder& operator=(Encoder&&) = delete;
         explicit Encoder(std::shared_ptr<const asset::SkeletonAsset> frozen) : frozen_(std::move(frozen)) {}
         PersistenceResult<EncodedArtifact> encode(std::stop_token stop) override
         {
@@ -251,7 +289,10 @@ namespace skeleton
                 asset::TAssetSerDeser<asset::SkeletonAsset>::encode(*frozen_, asset::AssetEncodeLimits{max_bytes});
             if (!encoded)
                 return cxx::unexpected(PersistenceFailure{
-                    EPersistenceError::ENCODE, "skeleton.codec", static_cast<std::uint64_t>(encoded.error().code)});
+                    EPersistenceError::ENCODE,
+                    "skeleton.codec",
+                    static_cast<std::uint64_t>(encoded.error().code)
+                });
             return EncodedArtifact{std::move(*encoded)};
         }
 
@@ -261,27 +302,29 @@ namespace skeleton
     class Rebind final : public IPreparedRebind
     {
     public:
-        Rebind(const Rebind &) = delete;
-        Rebind &operator=(const Rebind &) = delete;
-        Rebind(Rebind &&) = delete;
-        Rebind &operator=(Rebind &&) = delete;
-        Rebind(TSessionAccess<Session> access,
-               TSessionKey<Session> key,
-               SourceBinding binding,
-               WriteTarget target,
-               std::optional<WriteTarget> &installed,
-               BindingRevision &revision,
-               BindingChangePermit permit)
+        Rebind(const Rebind&) = delete;
+        Rebind& operator=(const Rebind&) = delete;
+        Rebind(Rebind&&) = delete;
+        Rebind& operator=(Rebind&&) = delete;
+        Rebind(
+            TSessionAccess<Session> access,
+            TSessionKey<Session> key,
+            SourceBinding binding,
+            WriteTarget target,
+            std::optional<WriteTarget>& installed,
+            BindingRevision& revision,
+            BindingChangePermit permit
+        )
             : access_(access), key_(key), binding_(std::move(binding)), target_(std::move(target)),
               installed_(installed), revision_(revision), permit_(std::move(permit))
         {
         }
-        EAdoption apply(SaveReceipt &&receipt) noexcept override
+        EAdoption apply(SaveReceipt&& receipt) noexcept override
         {
             auto owner = access_.edit(key_);
             if (!owner)
                 return EAdoption::CLOSED;
-            auto &model = owner->get();
+            auto& model = owner->get();
             auto changed =
                 model.state_.rebind(permit_, std::move(binding_), model.currentContent().state, receipt.order);
             if (!changed)
@@ -297,22 +340,24 @@ namespace skeleton
         TSessionKey<Session> key_;
         SourceBinding binding_;
         WriteTarget target_;
-        std::optional<WriteTarget> &installed_;
-        BindingRevision &revision_;
+        std::optional<WriteTarget>& installed_;
+        BindingRevision& revision_;
         BindingChangePermit permit_;
     };
     class SaveSource final : public ISaveSource
     {
     public:
-        SaveSource(const SaveSource &) = delete;
-        SaveSource &operator=(const SaveSource &) = delete;
-        SaveSource(SaveSource &&) = delete;
-        SaveSource &operator=(SaveSource &&) = delete;
-        SaveSource(TSessionAccess<Session> access,
-                   TSessionKey<Session> key,
-                   std::optional<WriteTarget> target,
-                   BindingRevision revision,
-                   contracts::CodeLease code)
+        SaveSource(const SaveSource&) = delete;
+        SaveSource& operator=(const SaveSource&) = delete;
+        SaveSource(SaveSource&&) = delete;
+        SaveSource& operator=(SaveSource&&) = delete;
+        SaveSource(
+            TSessionAccess<Session> access,
+            TSessionKey<Session> key,
+            std::optional<WriteTarget> target,
+            BindingRevision revision,
+            contracts::CodeLease code
+        )
             : code_(std::move(code)), access_(access), key_(key), target_(std::move(target)), revision_(revision)
         {
         }
@@ -327,14 +372,17 @@ namespace skeleton
                     if (owner->get().state_.bindingRevision() != revision_)
                         return cxx::unexpected(ESessionError::STALE_BINDING);
                     return SaveSourceInfo{owner->get().currentContent(), revision_, target_};
-                });
+                }
+            );
             if (!state)
                 return saveFailure(state.error());
             return std::move(*state);
         }
-        PersistenceResult<FrozenSave> captureForSave(const SaveSourceInfo &expected,
-                                                     const SaveRequest &request,
-                                                     std::size_t limit) override
+        PersistenceResult<FrozenSave> captureForSave(
+            const SaveSourceInfo& expected,
+            const SaveRequest& request,
+            std::size_t limit
+        ) override
         {
             auto current = describe();
             if (!current)
@@ -345,7 +393,7 @@ namespace skeleton
             auto owner = access_.edit(key_);
             if (!owner)
                 return saveFailure(owner.error());
-            auto &model = owner->get();
+            auto& model = owner->get();
             const bool is_unbound_save = request.mode == ESaveMode::SAVE && !model.state_.binding();
             if (is_unbound_save)
                 return cxx::unexpected(PersistenceFailure{EPersistenceError::UNBOUND});
@@ -354,7 +402,7 @@ namespace skeleton
             if (!frozen)
                 return saveFailure(frozen.error());
             auto retained = bytes((*frozen)->data());
-            for (const auto &payload : (*frozen)->auxiliaryPayloads())
+            for (const auto& payload : (*frozen)->auxiliaryPayloads())
                 retained += payload.bytes.size();
             if (retained > limit)
                 return cxx::unexpected(PersistenceFailure{EPersistenceError::CAPACITY});
@@ -366,27 +414,33 @@ namespace skeleton
                 auto permit = model.state_.prepareBindingChange(model.currentContent(), expected.content);
                 if (!permit)
                     return saveFailure(permit.error());
-                rebind = std::make_unique<Rebind>(access_,
-                                                  key_,
-                                                  BoundSource{id, request.destination->key.value},
-                                                  *request.destination,
-                                                  target_,
-                                                  revision_,
-                                                  std::move(*permit));
+                rebind = std::make_unique<Rebind>(
+                    access_,
+                    key_,
+                    BoundSource{id, request.destination->key.value},
+                    *request.destination,
+                    target_,
+                    revision_,
+                    std::move(*permit)
+                );
             }
             return FrozenSave{
-                expected, retained, {code_, std::make_unique<Encoder>(std::move(*frozen))}, std::move(rebind)};
+                expected,
+                retained,
+                {code_, std::make_unique<Encoder>(std::move(*frozen))},
+                std::move(rebind)
+            };
         }
-        EAdoption accept(SaveReceipt &&receipt) noexcept override
+        EAdoption accept(SaveReceipt&& receipt) noexcept override
         {
             auto owner = access_.edit(key_);
             if (!owner)
                 return EAdoption::CLOSED;
-            auto &model = owner->get();
+            auto& model = owner->get();
             auto accepted = model.state_.gate().withEdit(
-                [&](EditScope &) -> SessionResult<void> {
-                    return model.state_.accept(model.currentContent(), receipt.content, receipt.binding, receipt.order);
-                });
+                [&](EditScope&) -> SessionResult<void>
+                { return model.state_.accept(model.currentContent(), receipt.content, receipt.binding, receipt.order); }
+            );
             if (!accepted)
             {
                 if (accepted.error() == ESessionError::BUSY)
@@ -413,23 +467,32 @@ namespace skeleton
         return SessionFactoryEntry::create(
             code,
             SessionKindDescriptor{
-                SessionKindIdView{kind.name}, "Skeleton", std::array{std::string_view{"luxskeleton"}}, SourceAuthoring{"lux.skeleton", 1, ".luxskeleton"}},
-            [code](const SessionLoadInput &input,
-                   std::span<const std::byte> image,
-                   std::stop_token stop) -> SessionFactoryResult<SessionPreparation>
+                SessionKindIdView{kind.name},
+                "Skeleton",
+                std::array{std::string_view{"luxskeleton"}},
+                SourceAuthoring{"lux.skeleton", 1, ".luxskeleton"}
+            },
+            [code](const SessionLoadInput& input, std::span<const std::byte> image, std::stop_token stop)
+                -> SessionFactoryResult<SessionPreparation>
             {
                 if (stop.stop_requested())
                     return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::CANCELLED});
                 const bool is_identity_mismatch = input.binding && input.binding->asset != input.asset;
                 if (is_identity_mismatch)
                     return cxx::unexpected(
-                        SessionFactoryFailure{ESessionFactoryError::INVALID_ARGUMENT, "skeleton.identity"});
+                        SessionFactoryFailure{ESessionFactoryError::INVALID_ARGUMENT, "skeleton.identity"}
+                    );
                 auto decoded = asset::TAssetSerDeser<asset::SkeletonAsset>::decode(
-                    input.asset, cxx::SharedBytes<>::copyOf(image), asset::AssetDecodeLimits{max_bytes, max_bytes, 64});
+                    input.asset,
+                    cxx::SharedBytes<>::copyOf(image),
+                    asset::AssetDecodeLimits{max_bytes, max_bytes, 64}
+                );
                 if (!decoded)
-                    return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::DECODE,
-                                                                 "skeleton.codec",
-                                                                 static_cast<std::uint64_t>(decoded.error().code)});
+                    return cxx::unexpected(SessionFactoryFailure{
+                        ESessionFactoryError::DECODE,
+                        "skeleton.codec",
+                        static_cast<std::uint64_t>(decoded.error().code)
+                    });
                 if (input.reload)
                     return SessionPreparation{
                         code,
@@ -439,7 +502,7 @@ namespace skeleton
                          expected = *input.reload,
                          binding = input.binding,
                          target =
-                             input.target](SessionStore &store) mutable -> SessionFactoryResult<PreparedSessionReload>
+                             input.target](SessionStore& store) mutable -> SessionFactoryResult<PreparedSessionReload>
                         {
                             auto key = store.key<Session>(expected.session);
                             if (!key)
@@ -471,12 +534,17 @@ namespace skeleton
                             if (!built)
                                 return cxx::unexpected(factoryFailure(built.error()));
                             auto source = std::make_unique<SaveSource>(
-                                store.access<Session>(), *key, target, owner->get().bindingRevision(), code);
+                                store.access<Session>(),
+                                *key,
+                                target,
+                                owner->get().bindingRevision(),
+                                code
+                            );
                             return PreparedSessionReload{
                                 code,
                                 expected.session,
-                                [key = *key, expected, candidate = std::move(candidate)](
-                                    SessionStore &store) mutable -> SessionFactoryResult<ContentStamp>
+                                [key = *key, expected, candidate = std::move(candidate)](SessionStore& store
+                                ) mutable -> SessionFactoryResult<ContentStamp>
                                 {
                                     auto model = store.access<Session>().edit(key);
                                     if (!model)
@@ -486,13 +554,16 @@ namespace skeleton
                                         return cxx::unexpected(factoryFailure(result.error()));
                                     return model->get().describe().current;
                                 },
-                                std::move(source)};
-                        }};
+                                std::move(source)
+                            };
+                        }
+                    };
                 return SessionPreparation{
                     code,
                     [code, value = std::move(*decoded), binding = input.binding, target = input.target](
-                        SessionStore &store,
-                        SaveService &saves) mutable -> SessionFactoryResult<PreparedSessionInstallation>
+                        SessionStore& store,
+                        SaveService& saves
+                    ) mutable -> SessionFactoryResult<PreparedSessionInstallation>
                     {
                         auto slot = store.reserve<Session>(kind, code);
                         if (!slot)
@@ -512,9 +583,12 @@ namespace skeleton
                             std::move(*slot),
                             code,
                             std::make_unique<Actions>(store.access<Session>(), *key),
-                            std::make_unique<SaveSource>(
-                                store.access<Session>(), *key, target, BindingRevision{1}, code));
-                    }};
-            });
+                            std::make_unique<
+                                SaveSource>(store.access<Session>(), *key, target, BindingRevision{1}, code)
+                        );
+                    }
+                };
+            }
+        );
     }
 } // namespace skeleton

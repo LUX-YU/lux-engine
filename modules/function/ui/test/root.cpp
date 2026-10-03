@@ -45,7 +45,8 @@ namespace
         template <class Parent>
         LifetimeElement(Parent& parent, Lifetime& lifetime, const char* id)
             : Element(parent, lux::ui::ElementId{id}), lifetime_(lifetime)
-        {}
+        {
+        }
         ~LifetimeElement() override
         {
             assert(lifetime_.resource_alive);
@@ -184,7 +185,8 @@ namespace
 
         // A failed factory reclaims a complete but unpublished candidate using the same ordinary deleter.
         Lifetime rejected;
-        const auto make_candidate = [&]() -> std::unique_ptr<ui::Pane> {
+        const auto make_candidate = [&]() -> std::unique_ptr<ui::Pane>
+        {
             auto candidate = std::make_unique<LifetimeOwner>(root, rejected);
             return {};
         };
@@ -205,9 +207,10 @@ namespace
         assert(content.applications == 1); // Draw, maintenance and events coalesce.
         content.defer_draw = content.defer_update = false;
         root.deferChange(content, ChangeElement::apply);
-        root.deferChange(content, [](object::LuxObject& target) noexcept {
-            ++static_cast<ChangeElement&>(target).extra;
-        });
+        root.deferChange(
+            content,
+            [](object::LuxObject& target) noexcept { ++static_cast<ChangeElement&>(target).extra; }
+        );
         root.applyPendingChanges();
         assert(content.applications == 2 && content.extra == 1);
         content.repeat = true;
@@ -221,12 +224,16 @@ namespace
         root.applyPendingChanges();
 
         // A preceding owner callback destroys a later target, in both current and next batches.
-        root.deferChange(owner, [](object::LuxObject& target) noexcept {
-            auto& self = static_cast<ChangeOwner&>(target);
-            self.root().deferChange(*self.content, ChangeElement::apply);
-            self.replace();
-            assert(!self.root().focusedElement());
-        });
+        root.deferChange(
+            owner,
+            [](object::LuxObject& target) noexcept
+            {
+                auto& self = static_cast<ChangeOwner&>(target);
+                self.root().deferChange(*self.content, ChangeElement::apply);
+                self.replace();
+                assert(!self.root().focusedElement());
+            }
+        );
         root.deferChange(content, ChangeElement::apply);
         assert(root.requestFocus(content) && root.capturePointer(content));
         root.applyPendingChanges();
@@ -359,7 +366,7 @@ namespace
             }
         }
     };
-}
+} // namespace
 
 int main(int argc, char** argv)
 {
@@ -464,9 +471,10 @@ int main(int argc, char** argv)
         assert((*second)->update({}, nullptr));
 
         const auto has_image = [&] {
-            return std::ranges::any_of(slot.textures(), [](auto texture) {
-                return texture == render::RTextureHandle{0, 0};
-            });
+            return std::ranges::any_of(
+                slot.textures(),
+                [](auto texture) { return texture == render::RTextureHandle{0, 0}; }
+            );
         };
         assert(has_image()); // Slot zero/generation zero must not become the font token.
         one.setImage({});

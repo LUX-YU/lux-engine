@@ -18,11 +18,14 @@ namespace lux::window
     {
         valid_ = (glfwInit() == GLFW_TRUE);
         if (valid_)
-            glfwSetMonitorCallback([](GLFWmonitor*, int) {
-                if (display_revision == UINT64_MAX)
-                    std::abort();
-                ++display_revision;
-            });
+            glfwSetMonitorCallback(
+                [](GLFWmonitor*, int)
+                {
+                    if (display_revision == UINT64_MAX)
+                        std::abort();
+                    ++display_revision;
+                }
+            );
     }
 
     GlfwRuntime::~GlfwRuntime()

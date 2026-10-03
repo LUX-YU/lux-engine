@@ -32,7 +32,7 @@ namespace
         {},
         lux::editor::commands::ECommandScope::SESSION
     };
-}
+} // namespace
 namespace lux::meta
 {
     template <> struct TTypeStaticInfo<Configuration>
@@ -43,7 +43,7 @@ namespace lux::meta
             typeStaticField<&Configuration::scale>("scale")
         );
     };
-}
+} // namespace lux::meta
 void registerConfiguration(lux::meta::ReflectionRegistry& registry, lux::meta::qual_type_index_fix_list&)
 {
     auto value = std::make_unique<lux::meta::RefClass>();
@@ -74,7 +74,8 @@ namespace
     public:
         explicit Window(const views::ViewFactoryInput& input)
             : Pane(input.dispatcher(), input.paneId(), ui::PaneTypeId{"qualification.window"}, "Extension")
-        {}
+        {
+        }
         ~Window() override
         {
             ++facts->panes_destroyed;
@@ -88,8 +89,10 @@ namespace
         configuration.code = code;
         draft.configurations.push_back(std::move(configuration));
         draft.sessions.push_back(lux::editor::material::makeMaterialSessionFactory(code));
-        draft.commands.push_back(CommandEntry::bind<command_qualification_inspect>(code,
-            [](const CommandQuery& input) -> CommandResult<CommandState> {
+        draft.commands.push_back(CommandEntry::bind<command_qualification_inspect>(
+            code,
+            [](const CommandQuery& input) -> CommandResult<CommandState>
+            {
                 ++facts->queries;
                 if (facts->fail_query)
                     throw std::runtime_error("foreign query failure"); // Containment negative, test DLL only.
@@ -99,7 +102,8 @@ namespace
                     return cxx::unexpected(CommandFailure{ECommandError::STALE_TARGET, "probe.session"});
                 return CommandState{true};
             },
-            [](const CommandInvocation&) -> CommandResult<DispatchReceipt> {
+            [](const CommandInvocation&) -> CommandResult<DispatchReceipt>
+            {
                 ++facts->executions;
                 return DispatchReceipt{ImmediateCompletion{}};
             }
@@ -111,9 +115,8 @@ namespace
                 "Extension",
                 cxx::typeToken<probe::Binding>()
             },
-            [code](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
-                return views::DetachedView{code, std::make_unique<Window>(input)};
-            }
+            [code](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView>
+            { return views::DetachedView{code, std::make_unique<Window>(input)}; }
         ));
         return {};
     }
@@ -121,7 +124,10 @@ namespace
     {
         sessions::SessionStore& sessions;
         explicit Activation(sessions::SessionStore& value) : sessions(value) {}
-        ~Activation() { ++facts->activations_destroyed; }
+        ~Activation()
+        {
+            ++facts->activations_destroyed;
+        }
     };
     extensions::ContributionResult<void> activate(
         extensions::ContributionDraft& draft,
@@ -133,17 +139,20 @@ namespace
             std::abort();
         ++facts->activations;
         auto state = std::make_shared<Activation>(capabilities.sessions->sessions);
-        draft.commands.push_back(commands::CommandEntry::bind<command_qualification_activated>(code,
-            [state](const commands::CommandQuery& input) -> commands::CommandResult<commands::CommandState> {
+        draft.commands.push_back(commands::CommandEntry::bind<command_qualification_activated>(
+            code,
+            [state](const commands::CommandQuery& input) -> commands::CommandResult<commands::CommandState>
+            {
                 ++facts->activation_queries;
                 auto content = state->sessions.describe(std::get<commands::SessionTarget>(input.target).id);
                 if (!content)
-                    return cxx::unexpected(commands::CommandFailure{
-                        commands::ECommandError::STALE_TARGET, "activation.session"
-                    });
+                    return cxx::unexpected(
+                        commands::CommandFailure{commands::ECommandError::STALE_TARGET, "activation.session"}
+                    );
                 return commands::CommandState{true};
             },
-            [state](const commands::CommandInvocation&) -> commands::CommandResult<commands::DispatchReceipt> {
+            [state](const commands::CommandInvocation&) -> commands::CommandResult<commands::DispatchReceipt>
+            {
                 ++facts->activation_executions;
                 return commands::DispatchReceipt{commands::ImmediateCompletion{}};
             }
@@ -151,20 +160,26 @@ namespace
         draft.views.push_back(views::ViewFactoryEntry::create(
             code,
             views::ViewFactoryDescriptor{
-                views::ViewTypeIdView{"qualification.free"}, "Free window", cxx::typeToken<std::monostate>()
+                views::ViewTypeIdView{"qualification.free"},
+                "Free window",
+                cxx::typeToken<std::monostate>()
             },
-            [state, code](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
+            [state, code](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView>
+            {
                 return views::DetachedView{
                     code,
                     std::make_unique<ui::Pane>(
-                        input.dispatcher(), input.paneId(), ui::PaneTypeId{"qualification.free"}, "Free window"
+                        input.dispatcher(),
+                        input.paneId(),
+                        ui::PaneTypeId{"qualification.free"},
+                        "Free window"
                     )
                 };
             }
         ));
         return {};
     }
-}
+} // namespace
 extern "C" PROBE_EXPORT void p11_probe(probe::Facts* value) noexcept
 {
     facts = value;

@@ -26,9 +26,12 @@ namespace lux::editor::workspace
         {
             using E = settings::ESettingsError;
             auto code = EWorkspaceError::INVALID_DATA;
-            if (error.code == E::UNSUPPORTED_VERSION) code = EWorkspaceError::UNSUPPORTED_VERSION;
-            if (error.code == E::CAPACITY) code = EWorkspaceError::CAPACITY;
-            if (error.code == E::CONFLICT) code = EWorkspaceError::CONFLICT;
+            if (error.code == E::UNSUPPORTED_VERSION)
+                code = EWorkspaceError::UNSUPPORTED_VERSION;
+            if (error.code == E::CAPACITY)
+                code = EWorkspaceError::CAPACITY;
+            if (error.code == E::CONFLICT)
+                code = EWorkspaceError::CONFLICT;
             return {code, error.detail};
         }
         std::string layoutPath(const LayoutId& id)
@@ -37,7 +40,7 @@ namespace lux::editor::workspace
         }
         constexpr std::string_view preferencesPath = ".lux/workspace/preferences.toml";
         constexpr std::string_view recoveryPath = ".lux/workspace/recovery.toml";
-    }
+    } // namespace
     WorkspaceStore::WorkspaceStore(
         std::filesystem::path root,
         persistence::WriteCoordinator& coordinator,
@@ -45,7 +48,8 @@ namespace lux::editor::workspace
         WorkspaceLimits limits
     )
         : root_(std::move(root)), coordinator_(coordinator), artifacts_(artifacts), limits_(limits)
-    {}
+    {
+    }
     WorkspaceResult<persistence::WriteTarget> WorkspaceStore::target(std::string_view relative) const
     {
         auto canonical = storage::publicationTargetKey(root_, std::filesystem::u8path(relative));
@@ -136,8 +140,8 @@ namespace lux::editor::workspace
         const settings::SettingsDocument& value
     )
     {
-        const bool is_read_only_scope = value.scope == settings::ESettingsScope::INSTALLATION ||
-            value.scope >= settings::ESettingsScope::LAUNCH;
+        const bool is_read_only_scope =
+            value.scope == settings::ESettingsScope::INSTALLATION || value.scope >= settings::ESettingsScope::LAUNCH;
         if (is_read_only_scope)
             return failed(EWorkspaceError::INVALID_DATA, "settings scope is not writable");
         auto encoded = settings::encodeSettings(value);
@@ -292,4 +296,4 @@ namespace lux::editor::workspace
             return lux::cxx::unexpected(encoded.error());
         return write(recoveryPath, std::move(version), std::move(*encoded));
     }
-}
+} // namespace lux::editor::workspace

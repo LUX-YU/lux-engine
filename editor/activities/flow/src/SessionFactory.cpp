@@ -9,10 +9,12 @@ namespace lux::editor::flowforge
     {
         constexpr std::string_view extensions[]{"luxflow"};
         constexpr sessions::SessionKindDescriptor descriptor{
-            sessions::SessionKindIdView{"lux.editor.flowforge"}, "Flow", extensions,
+            sessions::SessionKindIdView{"lux.editor.flowforge"},
+            "Flow",
+            extensions,
             sessions::SourceAuthoring{"lux.flowforge.source", 1, ".flow"}
         };
-    }
+    } // namespace
     sessions::SessionPreparation prepareFlowSession(
         PreparedFlowData data,
         sessions::SourceBinding binding,
@@ -27,7 +29,8 @@ namespace lux::editor::flowforge
             [code, environment, data = std::move(data), binding = std::move(binding), target = std::move(target)](
                 SessionStore& store,
                 persistence::SaveService& saves
-            ) mutable -> SessionFactoryResult<PreparedSessionInstallation> {
+            ) mutable -> SessionFactoryResult<PreparedSessionInstallation>
+            {
                 auto construct = [&](SessionId id) { return std::move(data).createSession(id, binding, environment); };
                 return sessions::detail::prepareSession<FlowSession, FlowSaveSource>(
                     store,
@@ -49,7 +52,8 @@ namespace lux::editor::flowforge
         return SessionFactoryEntry::bind<descriptor>(
             code,
             [environment, code](const SessionLoadInput& input, std::span<const std::byte> bytes, std::stop_token stop)
-                -> SessionFactoryResult<SessionPreparation> {
+                -> SessionFactoryResult<SessionPreparation>
+            {
                 auto decoded = FlowCodec::decode(bytes, stop);
                 if (!decoded)
                     return cxx::unexpected(SessionFactoryFailure{
@@ -70,21 +74,26 @@ namespace lux::editor::flowforge
                          expected = *input.reload,
                          binding = input.binding,
                          target =
-                             input.target](SessionStore& store) mutable -> SessionFactoryResult<PreparedSessionReload> {
-                            auto construct = [&](FlowSession& session) -> FlowEditResult<PreparedFlowReload> {
+                             input.target](SessionStore& store) mutable -> SessionFactoryResult<PreparedSessionReload>
+                        {
+                            auto construct = [&](FlowSession& session) -> FlowEditResult<PreparedFlowReload>
+                            {
                                 auto view = session.read();
                                 if (!view)
                                     return cxx::unexpected(view.error());
-                                auto source = view->withRead([&]() -> FlowEditResult<FlowAuthoringSource> {
-                                    auto graph = lux::flowforge::materializeFlowSource(data.source, environment);
-                                    if (!graph)
+                                auto source = view->withRead(
+                                    [&]() -> FlowEditResult<FlowAuthoringSource>
                                     {
-                                        FlowEditError failure;
-                                        failure.source = std::move(graph.error());
-                                        return cxx::unexpected(std::move(failure));
+                                        auto graph = lux::flowforge::materializeFlowSource(data.source, environment);
+                                        if (!graph)
+                                        {
+                                            FlowEditError failure;
+                                            failure.source = std::move(graph.error());
+                                            return cxx::unexpected(std::move(failure));
+                                        }
+                                        return FlowAuthoringSource{data.source.id, data.source.name, std::move(*graph)};
                                     }
-                                    return FlowAuthoringSource{data.source.id, data.source.name, std::move(*graph)};
-                                });
+                                );
                                 if (!source)
                                     return cxx::unexpected(source.error());
                                 return PreparedFlowReload::prepare(
@@ -109,23 +118,30 @@ namespace lux::editor::flowforge
             }
         );
     }
-}
+} // namespace lux::editor::flowforge
 
 namespace lux::editor::flowforge
 {
     namespace
     {
         constexpr commands::CommandDescriptor kNewCommand{
-            commands::CommandIdView{"lux.editor.new.flow"}, "New Flow", "File"
+            commands::CommandIdView{"lux.editor.new.flow"},
+            "New Flow",
+            "File"
         };
     }
     std::shared_ptr<commands::CommandEntry> makeNewFlowCommand(
-        commands::CommandEntry::Query query, sessions::SessionCreation receiver, lux::flowforge::FlowSourceEnvironment environment
+        commands::CommandEntry::Query query,
+        sessions::SessionCreation receiver,
+        lux::flowforge::FlowSourceEnvironment environment
     )
     {
         return commands::CommandEntry::bind<kNewCommand>(
-            contracts::CodeLease::builtin(), std::move(query),
-            [create = std::move(receiver), environment = std::move(environment)](const commands::CommandInvocation&) mutable {
+            contracts::CodeLease::builtin(),
+            std::move(query),
+            [create = std::move(receiver),
+             environment = std::move(environment)](const commands::CommandInvocation&) mutable
+            {
                 std::mt19937 random{std::random_device{}()};
                 const asset::AssetId id{uuids::uuid_random_generator{random}()};
                 lux::flowforge::FlowSource source;
@@ -135,4 +151,4 @@ namespace lux::editor::flowforge
             }
         );
     }
-}
+} // namespace lux::editor::flowforge

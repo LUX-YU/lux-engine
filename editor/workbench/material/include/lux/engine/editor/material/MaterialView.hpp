@@ -14,9 +14,12 @@ namespace lux::editor::persistence
 {
     class WriteCoordinator;
     class IArtifactStore;
-}
+} // namespace lux::editor::persistence
 
-namespace lux::editor::views { class ViewFactoryEntry; }
+namespace lux::editor::views
+{
+    class ViewFactoryEntry;
+}
 
 namespace lux::editor::material
 {
@@ -91,17 +94,8 @@ namespace lux::editor::material
         [[nodiscard]] MaterialPreviewStatus previewStatus() const;
 
     private:
-        friend MaterialViewResult<views::DetachedView> makeMaterialContentView(
-        object::ObjectDispatcherRef,
-        lux::ui::PaneId,
-        sessions::TSessionAccess<MaterialSession>,
-        lux::scene::SceneRuntime&,
-        MaterialCompilationService&,
-        const scene::ProjectionEnvironment&,
-        std::span<const render::RenderFeatureRegistration>,
-        project::ProjectCatalogModel*,
-        const views::ViewContent&
-        );
+        friend MaterialViewResult<views::DetachedView>
+        makeMaterialContentView(object::ObjectDispatcherRef, lux::ui::PaneId, sessions::TSessionAccess<MaterialSession>, lux::scene::SceneRuntime&, MaterialCompilationService&, const scene::ProjectionEnvironment&, std::span<const render::RenderFeatureRegistration>, project::ProjectCatalogModel*, const views::ViewContent&);
         MaterialView(object::ObjectDispatcherRef, lux::ui::PaneId, MaterialViewServices, MaterialViewState);
         void update() noexcept override;
         struct Impl;
@@ -116,17 +110,8 @@ namespace lux::editor::material
     );
     // A complete content view owns its interaction and preview target. Low-level makeMaterialView
     // remains available for explicitly borrowed tools using an independently owned preview target.
-    [[nodiscard]] MaterialViewResult<views::DetachedView> makeMaterialContentView(
-        object::ObjectDispatcherRef,
-        lux::ui::PaneId,
-        sessions::TSessionAccess<MaterialSession>,
-        lux::scene::SceneRuntime&,
-        MaterialCompilationService&,
-        const scene::ProjectionEnvironment&,
-        std::span<const render::RenderFeatureRegistration>,
-        project::ProjectCatalogModel*,
-        const views::ViewContent&
-    );
+    [[nodiscard]] MaterialViewResult<views::DetachedView>
+    makeMaterialContentView(object::ObjectDispatcherRef, lux::ui::PaneId, sessions::TSessionAccess<MaterialSession>, lux::scene::SceneRuntime&, MaterialCompilationService&, const scene::ProjectionEnvironment&, std::span<const render::RenderFeatureRegistration>, project::ProjectCatalogModel*, const views::ViewContent&);
 
     [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> makeMaterialViewFactory(
         sessions::TSessionAccess<material::MaterialSession> sessions,
@@ -137,4 +122,4 @@ namespace lux::editor::material
         project::ProjectCatalogModel* assets,
         cxx::move_only_function<void(const persistence::DerivedArtifact&)> = {}
     );
-}
+} // namespace lux::editor::material

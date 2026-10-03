@@ -16,7 +16,7 @@ namespace
         return std::move(*value);
     }
 
-}
+} // namespace
 int main()
 {
     auto messages = take(object::ObjectMessageQueue::create(64));
@@ -29,11 +29,15 @@ int main()
     assert(source.replace("test", {{asset, {}, 13, "UserPackage/test.asset"}}));
     auto candidate = project::makeProjectView(messages.dispatcherRef(), ui::PaneId{"project"}, source);
     auto* view = static_cast<project::ProjectView*>(candidate.pane());
-    auto open =
-        take(object::LuxObject::connect(view, &project::ProjectView::openRequested, [&](AssetReference value) noexcept {
+    auto open = take(object::LuxObject::connect(
+        view,
+        &project::ProjectView::openRequested,
+        [&](AssetReference value) noexcept
+        {
             ++opens;
             opened = value;
-        }));
+        }
+    ));
     assert(root->panes().empty() && view->catalog().assets().size() == 1);
     const auto id = take(host.adopt(candidate, views::ViewRestoreKey{"project"})).id;
     const auto ref = source.reference(asset);
@@ -57,7 +61,8 @@ int main()
     auto connection = take(object::LuxObject::connect(
         &picker,
         &project::AssetPickerElement::edited,
-        [&](ui::EditResult result) noexcept {
+        [&](ui::EditResult result) noexcept
+        {
             assert(result.changed && result.committed);
             ++edits;
         }
@@ -128,10 +133,11 @@ int main()
     auto intent_queue = take(object::ObjectMessageQueue::create(1));
     object::LuxObject intent_receiver(intent_queue.dispatcherRef());
     unsigned synchronous{}, asynchronous{};
-    auto direct_intent =
-        take(object::LuxObject::connect(&intents, &project::ProjectView::openRequested, [&](AssetReference) noexcept {
-            ++synchronous;
-        }));
+    auto direct_intent = take(object::LuxObject::connect(
+        &intents,
+        &project::ProjectView::openRequested,
+        [&](AssetReference) noexcept { ++synchronous; }
+    ));
     auto delayed_intent = take(object::LuxObject::connect(
         &intents,
         &project::ProjectView::openRequested,
@@ -153,19 +159,28 @@ int main()
     unsigned received{};
     auto lifetime = std::make_shared<int>(17);
     std::weak_ptr<int> weak = lifetime;
-    auto factory = project::makeProjectViewFactory(source, [pin = lifetime, &received](const AssetReference&) {
-        assert(*pin == 17);
-        ++received;
-    });
+    auto factory = project::makeProjectViewFactory(
+        source,
+        [pin = lifetime, &received](const AssetReference&)
+        {
+            assert(*pin == 17);
+            ++received;
+        }
+    );
     lifetime.reset();
     auto peer_factory = project::makeProjectViewFactory(source, {});
     assert(&factory->descriptor() == &peer_factory->descriptor());
     auto factories = take(views::ViewFactorySnapshot::create({factory}));
-    const auto build = [&](const char* name) {
-        return take(factories.prepare(views::ViewTypeId{"lux.editor.project"}, {
-            messages.dispatcherRef(), ui::PaneId{name}, contracts::CodeLease::builtin(),
-            cxx::typeToken<std::monostate>(), std::make_shared<const std::monostate>()
-        }));
+    const auto build = [&](const char* name)
+    {
+        return take(factories.prepare(
+            views::ViewTypeId{"lux.editor.project"},
+            {messages.dispatcherRef(),
+             ui::PaneId{name},
+             contracts::CodeLease::builtin(),
+             cxx::typeToken<std::monostate>(),
+             std::make_shared<const std::monostate>()}
+        ));
     };
     const auto mounted_before = root->panes().size();
     auto first_bound = build("factory-first");

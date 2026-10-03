@@ -31,7 +31,7 @@ namespace lux::meta
             typeStaticField<&Configuration::layers>("layers")
         );
     };
-}
+} // namespace lux::meta
 
 void registerConfiguration(lux::meta::ReflectionRegistry& registry, lux::meta::qual_type_index_fix_list&)
 {
@@ -54,11 +54,16 @@ public:
         : Element(parent, std::move(id)), value_(value),
           button_(*this, lux::ui::ElementId{"apply"}, "Apply configuration")
     {
-        auto connected = lux::object::LuxObject::connect(&button_, &lux::ui::Button::activated, [this]() noexcept {
-            auto& value = *static_cast<Configuration*>(value_.data());
-            value.label = "owned nontrivial configuration";
-            value.layers = {2, 3, 5};
-        });
+        auto connected = lux::object::LuxObject::connect(
+            &button_,
+            &lux::ui::Button::activated,
+            [this]() noexcept
+            {
+                auto& value = *static_cast<Configuration*>(value_.data());
+                value.label = "owned nontrivial configuration";
+                value.layers = {2, 3, 5};
+            }
+        );
         assert(connected);
         connection_ = std::move(*connected);
     }
@@ -108,9 +113,13 @@ namespace
         auto initial = extensions::ContributionSnapshot::prepare({});
         assert(initial && registry.enqueue(*initial) && registry.applyPending());
         settings::SettingsDescriptor descriptor{
-            settings::SettingsIdView{"plugin.settings"}, "Plugin settings", &configuration,
-            settings::kPersonalScopes, settings::ESettingsApply::RESTART,
-            +[](const ConfigurationValue& value) noexcept -> settings::SettingsResult<void> {
+            settings::SettingsIdView{"plugin.settings"},
+            "Plugin settings",
+            &configuration,
+            settings::kPersonalScopes,
+            settings::ESettingsApply::RESTART,
+            +[](const ConfigurationValue& value) noexcept -> settings::SettingsResult<void>
+            {
                 ++settings_callbacks;
                 assert(static_cast<const Configuration*>(value.data())->label.empty());
                 auto publish = settings_commands->publish(settings_commands->snapshot());
@@ -118,7 +127,8 @@ namespace
                 auto adopt = settings_registry->applyPending();
                 assert(!adopt && adopt.error().code == extensions::EContributionError::BUSY);
                 if (reject_default)
-                    return cxx::unexpected(settings::SettingsFailure{settings::ESettingsError::INVALID_VALUE, "default"});
+                    return cxx::unexpected(settings::SettingsFailure{settings::ESettingsError::INVALID_VALUE, "default"}
+                    );
                 return {};
             }
         };
@@ -153,7 +163,7 @@ namespace
         settings_commands = nullptr;
         settings_registry = nullptr;
     }
-}
+} // namespace
 
 int main()
 {
@@ -173,13 +183,11 @@ int main()
             {"test.configuration",
              1,
              serialization::makePortableValueCodec<Configuration>(),
-             [](meta::ReflectionRegistry& registry) noexcept {
-                 return registry.findClass(cxx::type_name<Configuration>());
-             }},
+             [](meta::ReflectionRegistry& registry) noexcept
+             { return registry.findClass(cxx::type_name<Configuration>()); }},
             +[](ui::Element& parent, ui::ElementId id, editor::ConfigurationValue& value
-             ) noexcept -> editor::EditorResult<std::unique_ptr<ui::Element>> {
-                return std::make_unique<ConfigurationElement>(parent, std::move(id), value);
-            }
+             ) noexcept -> editor::EditorResult<std::unique_ptr<ui::Element>>
+            { return std::make_unique<ConfigurationElement>(parent, std::move(id), value); }
         };
         settingsCases(registration.value);
         auto first = editor::ConfigurationValue::create(registration.value, code);

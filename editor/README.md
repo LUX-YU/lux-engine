@@ -27,7 +27,7 @@ and viewport do not depend on author models. Tests spanning layers are configure
 ## Product assembly
 
 `lux_editor` is the sole installed Editor executable. It constructs EditorApplication, loads the project's
-V7 contributions, and combines the existing content, save, compilation, Run and desktop providers.
+V9 contributions, and combines the existing content, save, compilation, Run and desktop providers.
 With no project it displays the same Launcher composition used by `lux_launcher`; project creation uses
 ProjectCreationView and the existing asynchronous project IO. No old/new product fallback is built.
 The nine old roots and their registration/save bridges have been removed. The formal scene execution

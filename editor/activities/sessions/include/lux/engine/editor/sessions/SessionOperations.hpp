@@ -73,4 +73,4 @@ namespace lux::editor::sessions
         std::vector<SaveAllEntry> saves_;
     };
     [[nodiscard]] SessionFactoryFailure factoryFailure(const persistence::PersistenceFailure&);
-}
+} // namespace lux::editor::sessions

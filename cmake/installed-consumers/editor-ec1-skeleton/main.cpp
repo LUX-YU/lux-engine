@@ -44,13 +44,13 @@ namespace
         if constexpr (!std::is_void_v<typename T::value_type>)
             return std::move(*result);
     }
-    void write(const std::filesystem::path &path, std::span<const std::byte> bytes)
+    void write(const std::filesystem::path& path, std::span<const std::byte> bytes)
     {
         std::filesystem::create_directories(path.parent_path());
         std::ofstream file(path, std::ios::binary | std::ios::trunc);
-        assert(file.write(reinterpret_cast<const char *>(bytes.data()), static_cast<std::streamsize>(bytes.size())));
+        assert(file.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size())));
     }
-    std::vector<std::byte> read(const std::filesystem::path &path)
+    std::vector<std::byte> read(const std::filesystem::path& path)
     {
         std::ifstream file(path, std::ios::binary);
         const std::string data{std::istreambuf_iterator<char>{file}, {}};
@@ -68,45 +68,55 @@ namespace
     std::shared_ptr<const asset::SkeletonAsset> fixture(asset::AssetId id)
     {
         auto data = std::make_shared<rdesc::Skeleton>();
-        data->bones = {{"root", -1, Eigen::Affine3f::Identity(), Eigen::Affine3f::Identity()},
-                       {"arm", 0, Eigen::Affine3f::Identity(), Eigen::Affine3f::Identity()}};
+        data->bones = {
+            {"root", -1, Eigen::Affine3f::Identity(), Eigen::Affine3f::Identity()},
+            {"arm", 0, Eigen::Affine3f::Identity(), Eigen::Affine3f::Identity()}
+        };
         data->bones[1].bind_local.translation().y() = 2;
         data->bones[1].inv_bind_world.translation().y() = -2;
         return take(asset::SkeletonAsset::create({id, asset::SkeletonAsset::asset_type}, data));
     }
-    void verify(const rdesc::Skeleton &value, std::string_view root, float x)
+    void verify(const rdesc::Skeleton& value, std::string_view root, float x)
     {
         assert(value.bones.size() == 2 && value.bones[0].name == root && value.bones[1].name == "arm");
         assert(value.bones[0].parent_index == -1 && value.bones[1].parent_index == 0);
-        assert(value.bones[1].bind_local.translation().y() == 2 &&
-               value.bones[1].inv_bind_world.translation().y() == -2);
+        assert(
+            value.bones[1].bind_local.translation().y() == 2 && value.bones[1].inv_bind_world.translation().y() == -2
+        );
         assert(value.global_transform.translation().x() == x);
         // A mesh's existing bone indices still designate the same two bones; no reorder/reparent operation is offered.
         const std::array<int, 4> mesh_indices{1, 0, -1, -1};
         assert(value.bones[mesh_indices[0]].name == "arm" && value.bones[mesh_indices[1]].parent_index == -1);
     }
-    void verifyFile(const std::filesystem::path &file, asset::AssetId id, std::string_view root, float x)
+    void verifyFile(const std::filesystem::path& file, asset::AssetId id, std::string_view root, float x)
     {
         auto decoded = take(asset::TAssetSerDeser<asset::SkeletonAsset>::decode(
-            id, cxx::SharedBytes<>::copyOf(read(file)), asset::AssetDecodeLimits{16 << 20, 16 << 20, 64}));
+            id,
+            cxx::SharedBytes<>::copyOf(read(file)),
+            asset::AssetDecodeLimits{16 << 20, 16 << 20, 64}
+        ));
         verify(decoded->data(), root, x);
     }
-    void writeManifest(const std::filesystem::path &root, const ProjectManifest &manifest)
+    void writeManifest(const std::filesystem::path& root, const ProjectManifest& manifest)
     {
         const auto json = take(encodeProjectManifest(manifest));
         write(root / "Project.luxproject", std::as_bytes(std::span{json}));
     }
     commands::CommandInvocation rename(sessions::SessionInfo info, std::string value, float x)
     {
-        return commands::CommandInvocation{commands::SessionTarget{info.id, info.current},
-                                           {contracts::CodeLease::builtin(),
-                                            cxx::typeToken<skeleton::Rename>(),
-                                            std::make_shared<const skeleton::Rename>(0, std::move(value), x)}};
+        return commands::CommandInvocation{
+            commands::SessionTarget{info.id, info.current},
+            {contracts::CodeLease::builtin(),
+             cxx::typeToken<skeleton::Rename>(),
+             std::make_shared<const skeleton::Rename>(0, std::move(value), x)}
+        };
     }
-    void settle(persistence::SaveExecution &work,
-                persistence::SaveService &saves,
-                process::ExecutionRuntime &runtime,
-                persistence::SaveId id)
+    void settle(
+        persistence::SaveExecution& work,
+        persistence::SaveService& saves,
+        process::ExecutionRuntime& runtime,
+        persistence::SaveId id
+    )
     {
         for (unsigned i{}; i != 10000; ++i)
         {
@@ -120,7 +130,7 @@ namespace
         std::abort();
     }
 } // namespace
-int main(int argc, char **argv)
+int main(int argc, char** argv)
 {
     assert(argc == 4);
     const auto build = std::filesystem::absolute(argv[1]);
@@ -129,8 +139,10 @@ int main(int argc, char **argv)
     const auto root = build / "projects" / std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
     const std::string source_path = "Content/Characters/hero.luxskeleton";
     auto original = fixture(assetId());
-    write(root / source_path,
-          take(asset::TAssetSerDeser<asset::SkeletonAsset>::encode(*original, asset::AssetEncodeLimits{16 << 20})));
+    write(
+        root / source_path,
+        take(asset::TAssetSerDeser<asset::SkeletonAsset>::encode(*original, asset::AssetEncodeLimits{16 << 20}))
+    );
     ProjectManifest manifest{assetId(), "Skeleton example"};
     manifest.assets.push_back({assetId(), "lux.skeleton", source_path, {}, {}, {}, source_path});
     writeManifest(root, manifest);
@@ -140,7 +152,7 @@ int main(int argc, char **argv)
     skeleton::Facts facts;
     auto runtime_plugin = take(lux::project::PluginLibrary::load(description));
     auto probe = take(lux::project::loadPluginLibrary(description, *description.editor_library));
-    auto get_api = probe->get_symbol<const skeleton::ProbeApi *() noexcept>("skeleton_probe_api");
+    auto get_api = probe->get_symbol<const skeleton::ProbeApi*() noexcept>("skeleton_probe_api");
     assert(get_api);
     auto api = get_api();
     auto set_probe = api->set_facts;
@@ -151,10 +163,12 @@ int main(int argc, char **argv)
     if (mode != "APP")
     {
         auto messages = take(object::ObjectMessageQueue::create(64));
-        auto runtime = take(process::ExecutionRuntime::create({.cpu_concurrency = 2,
-                                                               .cpu_queue_capacity = 32,
-                                                               .timer = {32},
-                                                               .blocking = process::BlockingSchedulerConfig{1, 32}}));
+        auto runtime = take(process::ExecutionRuntime::create(
+            {.cpu_concurrency = 2,
+             .cpu_queue_capacity = 32,
+             .timer = {32},
+             .blocking = process::BlockingSchedulerConfig{1, 32}}
+        ));
         process::TaskScope tasks{runtime};
         asset::AssetVfs vfs;
         auto project_data = take(prepareProjectOpen(root / "Project.luxproject"));
@@ -168,7 +182,8 @@ int main(int argc, char **argv)
         storage::FileArtifactStore disk{root};
         persistence::SaveExecution execution{runtime, saves, writes, disk};
         std::optional<extensions::EditorExtension> extension{
-            take(extensions::EditorExtension::load(description, *runtime_plugin))};
+            take(extensions::EditorExtension::load(description, *runtime_plugin))
+        };
         std::weak_ptr<const void> weak_code = extension->code();
         auto draft = take(extension->contributions());
         const extensions::SessionActivities capabilities{store, saves};
@@ -214,30 +229,35 @@ int main(int argc, char **argv)
         auto provider = take(factories.selectSource("lux.skeleton", 1));
         auto input =
             take(project->captureSource(assetId(), 16 << 20, take(disk.resolve(source_path)).expected_version));
-        sessions::SessionLoadJob job{provider,
-                                     {std::move(input),
-                                      assetId(),
-                                      sessions::BoundSource{assetId(), take(disk.resolve(source_path)).key.value},
-                                      take(disk.resolve(source_path))}};
+        sessions::SessionLoadJob job{
+            provider,
+            {std::move(input),
+             assetId(),
+             sessions::BoundSource{assetId(), take(disk.resolve(source_path)).key.value},
+             take(disk.resolve(source_path))}
+        };
         std::optional<sessions::SessionPreparation> completed;
         const auto owner = std::this_thread::get_id();
         take(tasks.submit(
             {.name = "Skeleton decode"},
-            [scheduler = take(runtime.blocking()), job = std::move(job), owner](
-                process::TaskReporter reporter) mutable noexcept
+            [scheduler = take(runtime.blocking()), job = std::move(job), owner](process::TaskReporter reporter
+            ) mutable noexcept
             {
-                return stdexec::then(stdexec::schedule(scheduler),
-                                     [job = std::move(job), owner, stop = reporter.stopToken()]() mutable
-                                     {
-                                         assert(owner != std::this_thread::get_id());
-                                         return std::move(job).run(stop);
-                                     });
+                return stdexec::then(
+                    stdexec::schedule(scheduler),
+                    [job = std::move(job), owner, stop = reporter.stopToken()]() mutable
+                    {
+                        assert(owner != std::this_thread::get_id());
+                        return std::move(job).run(stop);
+                    }
+                );
             },
-            [&](process::TTaskResult<sessions::SessionPreparation, sessions::SessionFactoryFailure> &&result) noexcept
+            [&](process::TTaskResult<sessions::SessionPreparation, sessions::SessionFactoryFailure>&& result) noexcept
             {
                 assert(owner == std::this_thread::get_id());
                 completed.emplace(take(std::move(result)));
-            }));
+            }
+        ));
         // Removing the activation handle cannot unload code captured by an accepted job, result or factory.
         extension.reset();
         assert(!weak_code.expired());
@@ -253,9 +273,14 @@ int main(int argc, char **argv)
         auto other = sessions::SessionFactoryEntry::create(
             contracts::CodeLease::builtin(),
             sessions::SessionKindDescriptor{
-                sessions::SessionKindIdView{"example.other"}, "Other", {}, sessions::SourceAuthoring{"lux.skeleton", 1, ".luxskeleton"}},
-            [](const auto &, auto, auto) -> sessions::SessionFactoryResult<sessions::SessionPreparation>
-            { return cxx::unexpected(sessions::SessionFactoryFailure{sessions::ESessionFactoryError::DECODE}); });
+                sessions::SessionKindIdView{"example.other"},
+                "Other",
+                {},
+                sessions::SourceAuthoring{"lux.skeleton", 1, ".luxskeleton"}
+            },
+            [](const auto&, auto, auto) -> sessions::SessionFactoryResult<sessions::SessionPreparation>
+            { return cxx::unexpected(sessions::SessionFactoryFailure{sessions::ESessionFactoryError::DECODE}); }
+        );
         auto ambiguous =
             take(sessions::SessionFactorySnapshot::create({provider, other})).selectSource("lux.skeleton", 1);
         assert(!ambiguous && ambiguous.error().code == sessions::ESessionFactoryError::AMBIGUOUS);
@@ -274,7 +299,8 @@ int main(int argc, char **argv)
             {
                 auto rejected = inspect(id);
                 assert(!rejected && rejected.error() == sessions::ESessionError::WRONG_THREAD);
-            });
+            }
+        );
         foreign.join();
         auto stamp = take(store.describe(id));
         auto callback = [&]
@@ -284,9 +310,10 @@ int main(int argc, char **argv)
             auto denied = commands.execute(handle, rename(stamp, "wrong", 8));
             assert(!denied && denied.error().code == commands::ECommandError::BUSY);
         };
-        take(read_guard(id, +[](void *context) { (*static_cast<decltype(callback) *>(context))(); }, &callback));
-        assert(take(store.describe(id)).current == stamp.current &&
-               take(store.describe(id)).observed == stamp.observed);
+        take(read_guard(id, +[](void* context) { (*static_cast<decltype(callback)*>(context))(); }, &callback));
+        assert(
+            take(store.describe(id)).current == stamp.current && take(store.describe(id)).observed == stamp.observed
+        );
         const auto save = take(saves.requestSave({id}));
         settle(execution, saves, runtime, save);
         assert(take(saves.status(save)).outcome->adoption == persistence::EAdoption::APPLIED);
@@ -297,24 +324,23 @@ int main(int argc, char **argv)
         auto reload_input = take(project->captureSource(assetId(), 16 << 20, reload_target.expected_version));
         std::optional<sessions::SessionPreparation> reload_ready;
         process::TaskScope reload_tasks{runtime};
-        sessions::SessionLoadJob reload_job{provider,
-                                            {std::move(reload_input),
-                                             assetId(),
-                                             reload_before.binding,
-                                             reload_target,
-                                             16 << 20,
-                                             reload_before.current}};
+        sessions::SessionLoadJob reload_job{
+            provider,
+            {std::move(reload_input), assetId(), reload_before.binding, reload_target, 16 << 20, reload_before.current}
+        };
         take(reload_tasks.submit(
             {.name = "Skeleton reload"},
             [scheduler = take(runtime.blocking()),
              job = std::move(reload_job)](process::TaskReporter reporter) mutable noexcept
             {
-                return stdexec::then(stdexec::schedule(scheduler),
-                                     [job = std::move(job), stop = reporter.stopToken()]() mutable
-                                     { return std::move(job).run(stop); });
+                return stdexec::then(
+                    stdexec::schedule(scheduler),
+                    [job = std::move(job), stop = reporter.stopToken()]() mutable { return std::move(job).run(stop); }
+                );
             },
-            [&](process::TTaskResult<sessions::SessionPreparation, sessions::SessionFactoryFailure> &&result) noexcept
-            { reload_ready.emplace(take(std::move(result))); }));
+            [&](process::TTaskResult<sessions::SessionPreparation, sessions::SessionFactoryFailure>&& result) noexcept
+            { reload_ready.emplace(take(std::move(result))); }
+        ));
         take(reload_tasks.join());
         auto rejected_reload = [&]
         {
@@ -322,7 +348,10 @@ int main(int argc, char **argv)
             assert(!result && result.error().code == sessions::ESessionFactoryError::BUSY);
         };
         take(read_guard(
-            id, +[](void *value) { (*static_cast<decltype(rejected_reload) *>(value))(); }, &rejected_reload));
+            id,
+            +[](void* value) { (*static_cast<decltype(rejected_reload)*>(value))(); },
+            &rejected_reload
+        ));
         assert(take(store.describe(id)).current == reload_before.current);
         // BUSY retains the admitted decode result; retry needs no second decoder invocation.
         {
@@ -336,8 +365,9 @@ int main(int argc, char **argv)
         settle(execution, saves, runtime, save_as);
         assert(take(saves.status(save_as)).outcome->adoption == persistence::EAdoption::APPLIED);
         take(saves.acknowledge(save_as));
-        assert(take(installed.queryHistory()).content == saved_history.content &&
-               take(installed.queryHistory()).can_undo);
+        assert(
+            take(installed.queryHistory()).content == saved_history.content && take(installed.queryHistory()).can_undo
+        );
         verifyFile(root / copied_path, copyId(), "pelvis", 3);
         auto snapshot = take(views::ViewFactorySnapshot::create(active.views));
         if (mode == "WINDOW")
@@ -348,22 +378,25 @@ int main(int argc, char **argv)
             const auto type = take(snapshot.selectContent(stamp.kind));
             const auto make = [&](std::string name)
             {
-                return take(snapshot.prepare(type,
-                                             {messages.dispatcherRef(),
-                                              ui::PaneId{name},
-                                              contracts::CodeLease::builtin(),
-                                              cxx::typeToken<views::ContentViewInput>(),
-                                              std::make_shared<const views::ContentViewInput>(content, "Skeleton")}));
+                return take(snapshot.prepare(
+                    type,
+                    {messages.dispatcherRef(),
+                     ui::PaneId{name},
+                     contracts::CodeLease::builtin(),
+                     cxx::typeToken<views::ContentViewInput>(),
+                     std::make_shared<const views::ContentViewInput>(content, "Skeleton")}
+                ));
             };
             auto first = make("first"), second = make("second");
             assert(!first.pane()->attachedRoot());
             auto first_id = take(host.adopt(first, views::ViewRestoreKey{"first"})).id;
             auto second_id = take(host.adopt(second, views::ViewRestoreKey{"second"})).id;
-            assert(take(host.describe(first_id)).content == content &&
-                   take(host.describe(second_id)).content == content);
+            assert(
+                take(host.describe(first_id)).content == content && take(host.describe(second_id)).content == content
+            );
             take(host.focus(first_id));
             take(host.drain());
-            auto close_from_callback = [&](ui::Pane &)
+            auto close_from_callback = [&](ui::Pane&)
             {
                 take(host.close(first_id));
                 assert(!host.drain());
@@ -389,7 +422,7 @@ int main(int argc, char **argv)
     {
         using namespace application;
         std::filesystem::create_directories(root / "bin");
-        for (const auto &entry : std::filesystem::directory_iterator{build / "bin"})
+        for (const auto& entry : std::filesystem::directory_iterator{build / "bin"})
             if (entry.path().extension() == ".dll")
                 std::filesystem::copy_file(entry.path(), root / "bin" / entry.path().filename());
         std::filesystem::copy_file(build / "share/lux-engine/plugins/example.skeleton.json", root / "skeleton.json");
@@ -401,7 +434,7 @@ int main(int argc, char **argv)
         take(witness_catalog.read(root / "witness.json", root));
         const auto witness_description = *witness_catalog.find("example.witness");
         auto witness = take(lux::project::loadPluginLibrary(witness_description, *witness_description.editor_library));
-        auto observe = witness->get_symbol<void(skeleton::Facts *) noexcept>("ec1_observe");
+        auto observe = witness->get_symbol<void(skeleton::Facts*) noexcept>("ec1_observe");
         assert(observe);
         observe(&facts);
         auto app_description = description;
@@ -409,7 +442,7 @@ int main(int argc, char **argv)
         // Load the actual project copy, not the SDK fixture's other DLL instance.
         set_probe(nullptr);
         probe = take(lux::project::loadPluginLibrary(app_description, *app_description.editor_library));
-        get_api = probe->get_symbol<const skeleton::ProbeApi *() noexcept>("skeleton_probe_api");
+        get_api = probe->get_symbol<const skeleton::ProbeApi*() noexcept>("skeleton_probe_api");
         assert(get_api);
         api = get_api();
         set_probe = api->set_facts;
@@ -417,19 +450,23 @@ int main(int argc, char **argv)
         describe = api->describe;
         set_probe(&facts);
         std::filesystem::create_directories(root / "user");
-        auto app = take(EditorApplication::create({.project_file = root / "Project.luxproject",
-                                                   .installation = sdk,
-                                                   .title = "SDK Skeleton",
-                                                   .width = 800,
-                                                   .height = 600,
-                                                   .offscreen = true,
-                                                   .user_directory = root / "user"}));
+        auto app = take(EditorApplication::create(
+            {.project_file = root / "Project.luxproject",
+             .installation = sdk,
+             .title = "SDK Skeleton",
+             .width = 800,
+             .height = 600,
+             .offscreen = true,
+             .user_directory = root / "user"}
+        ));
         assert(facts.project && facts.host);
         auto content_views = [&]
         {
             auto all = take(facts.host->describeAll());
-            std::erase_if(all,
-                          [](const auto &view) { return view.type != views::ViewTypeId{"example.skeleton.view"}; });
+            std::erase_if(
+                all,
+                [](const auto& view) { return view.type != views::ViewTypeId{"example.skeleton.view"}; }
+            );
             return all;
         };
         auto until = [&](auto predicate)
@@ -444,12 +481,13 @@ int main(int argc, char **argv)
             std::abort();
         };
         // Exact public entry used by the asset browser's double-click, through its real LuxObject connection.
-        for (const auto &view : take(facts.host->describeAll()))
+        for (const auto& view : take(facts.host->describeAll()))
             if (view.type == views::ViewTypeId{"lux.editor.project"})
             {
-                auto open = [&](ui::Pane &pane) {
-                    take(static_cast<lux::editor::project::ProjectView &>(pane).requestOpen(
-                        facts.project->reference(assetId())));
+                auto open = [&](ui::Pane& pane) {
+                    take(static_cast<lux::editor::project::ProjectView&>(pane).requestOpen(
+                        facts.project->reference(assetId())
+                    ));
                 };
                 take(facts.host->withView(view.id, open));
             }
@@ -465,29 +503,35 @@ int main(int argc, char **argv)
         auto info = take(describe(id));
         take(app->execute(commands::CommandId{"example.skeleton.rename"}, rename(info, "hip", 4)));
         verify(take(inspect(id)), "hip", 4);
-        take(app->execute(commands::CommandId{"lux.editor.undo"},
-                          commands::CommandInvocation{commands::SessionTarget{id}}));
+        take(app->execute(
+            commands::CommandId{"lux.editor.undo"},
+            commands::CommandInvocation{commands::SessionTarget{id}}
+        ));
         verify(take(inspect(id)), "root", 0);
-        take(app->execute(commands::CommandId{"lux.editor.redo"},
-                          commands::CommandInvocation{commands::SessionTarget{id}}));
+        take(app->execute(
+            commands::CommandId{"lux.editor.redo"},
+            commands::CommandInvocation{commands::SessionTarget{id}}
+        ));
         info = take(describe(id));
-        take(app->execute(commands::CommandId{"lux.editor.save"},
-                          commands::CommandInvocation{commands::SessionTarget{id, info.current}}));
+        take(app->execute(
+            commands::CommandId{"lux.editor.save"},
+            commands::CommandInvocation{commands::SessionTarget{id, info.current}}
+        ));
         until(
-            [&] {
-                return !take(describe(id)).dirty && facts.project->manifest().assets.front().source_digest.size() == 64;
-            });
+            [&]
+            { return !take(describe(id)).dirty && facts.project->manifest().assets.front().source_digest.size() == 64; }
+        );
         verifyFile(root / source_path, assetId(), "hip", 4);
         const auto history_before = take(describe(id)).current.state;
         auto answer = [&](desktop::EReviewChoice choice, std::string text = {})
         {
             bool found{};
-            for (const auto &view : take(facts.host->describeAll()))
+            for (const auto& view : take(facts.host->describeAll()))
                 if (view.type == views::ViewTypeId{"lux.editor.review"})
                 {
-                    auto submit = [&](ui::Pane &pane)
+                    auto submit = [&](ui::Pane& pane)
                     {
-                        auto &prompt = static_cast<desktop::ReviewView &>(pane);
+                        auto& prompt = static_cast<desktop::ReviewView&>(pane);
                         if (!text.empty())
                             take(prompt.setText(text));
                         take(prompt.answer(choice));
@@ -497,8 +541,10 @@ int main(int argc, char **argv)
                 }
             assert(found);
         };
-        take(app->execute(commands::CommandId{"lux.editor.save-as"},
-                          commands::CommandInvocation{commands::SessionTarget{id, take(describe(id)).current}}));
+        take(app->execute(
+            commands::CommandId{"lux.editor.save-as"},
+            commands::CommandInvocation{commands::SessionTarget{id, take(describe(id)).current}}
+        ));
         answer(desktop::EReviewChoice::SAVE, "Content/Characters/copied.luxskeleton");
         until([&] { return facts.project->manifest().assets.size() == 2; });
         auto saved_as = take(describe(id));
@@ -506,13 +552,15 @@ int main(int argc, char **argv)
         const auto rebound_id = saved_as.binding->asset;
         verifyFile(root / "Content/Characters/copied.luxskeleton", rebound_id, "hip", 4);
         take(app->execute(commands::CommandId{"example.skeleton.rename"}, rename(saved_as, "discard", 9)));
-        take(app->execute(commands::CommandId{"lux.editor.reload"},
-                          commands::CommandInvocation{commands::SessionTarget{id, take(describe(id)).current}}));
+        take(app->execute(
+            commands::CommandId{"lux.editor.reload"},
+            commands::CommandInvocation{commands::SessionTarget{id, take(describe(id)).current}}
+        ));
         answer(desktop::EReviewChoice::DISCARD);
         until(
-            [&] {
-                return !take(describe(id)).dirty && take(describe(id)).current.state.history != history_before.history;
-            });
+            [&]
+            { return !take(describe(id)).dirty && take(describe(id)).current.state.history != history_before.history; }
+        );
         verify(take(inspect(id)), "hip", 4);
         take(app->execute(commands::CommandId{"lux.editor.recovery.capture"}));
         until([&] { return std::filesystem::exists(root / ".lux/workspace/recovery.toml"); });
@@ -535,19 +583,20 @@ int main(int argc, char **argv)
         // Removing the provider selection leaves both authored files and catalog entries intact.
         auto reopened = take(prepareProjectOpen(root / "Project.luxproject"));
         auto next_manifest = reopened.manifest();
-        std::erase_if(next_manifest.plugins, [](const auto &plugin) { return plugin.id == "example.skeleton"; });
+        std::erase_if(next_manifest.plugins, [](const auto& plugin) { return plugin.id == "example.skeleton"; });
         const auto material_id = asset::AssetId{*uuids::uuid::from_string("691f06e3-8618-4dfe-ae93-4c06b2b0e172")};
         const std::string material_path = "Content/Characters/other.material";
         const auto material_bytes = take(lux::material::encodeMaterialSource({material_id, "Other asset", {}}));
         write(root / material_path, std::as_bytes(std::span{material_bytes}));
-        next_manifest.assets.push_back(
-            {material_id, "lux.material.source", material_path, {}, {}, {}, material_path});
+        next_manifest.assets.push_back({material_id, "lux.material.source", material_path, {}, {}, {}, material_path});
         writeManifest(root, next_manifest);
         std::filesystem::create_directories(root / "missing-user");
-        auto missing = take(EditorApplication::create({.project_file = root / "Project.luxproject",
-                                                       .installation = sdk,
-                                                       .offscreen = true,
-                                                       .user_directory = root / "missing-user"}));
+        auto missing = take(EditorApplication::create(
+            {.project_file = root / "Project.luxproject",
+             .installation = sdk,
+             .offscreen = true,
+             .user_directory = root / "missing-user"}
+        ));
         // Querying through an independent immutable catalog does not need any provider to decode its bytes.
         const auto catalog_only = take(prepareProjectOpen(root / "Project.luxproject"));
         assert(catalog_only.manifest().assets.size() == 3);

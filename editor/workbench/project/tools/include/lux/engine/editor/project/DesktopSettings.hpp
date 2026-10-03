@@ -6,8 +6,15 @@
 #include <lux/engine/meta/TypeStaticInfo.hpp>
 #include <lux/engine/editor/scene/ConfigurationEditor.hpp>
 
-namespace lux::window { class LuxWindow; }
-namespace lux::editor::workspace { class WorkspaceStore; class WorkspaceChanges; }
+namespace lux::window
+{
+    class LuxWindow;
+}
+namespace lux::editor::workspace
+{
+    class WorkspaceStore;
+    class WorkspaceChanges;
+} // namespace lux::editor::workspace
 
 namespace lux::editor::project
 {
@@ -33,7 +40,7 @@ namespace lux::editor::project
         ShortcutSettings shortcuts;
     };
     [[nodiscard]] settings::SettingsResult<DesktopSettingsValues>
-    resolveDesktopSettings(std::span<const settings::SettingsPage>, std::span<const settings::SettingsDocument>);
+        resolveDesktopSettings(std::span<const settings::SettingsPage>, std::span<const settings::SettingsDocument>);
     [[nodiscard]] std::vector<settings::SettingsPage> makeDesktopSettingsPages(settings::SettingsEntry::Apply);
     // Bootstrap and contributions call the same fixed reflection contribution.
     void registerDesktopSettings(meta::ReflectionRegistry&, meta::qual_type_index_fix_list&);
@@ -46,9 +53,8 @@ namespace lux::editor::project
     class WindowSettingsBinding final
     {
     public:
-        [[nodiscard]] static EditorResult<std::unique_ptr<WindowSettingsBinding>> create(
-            window::LuxWindow&, workspace::WorkspaceStore&, workspace::WorkspaceChanges&,
-            std::shared_ptr<const settings::SettingsEntry>, SettingsContentInput&);
+        [[nodiscard]] static EditorResult<std::unique_ptr<WindowSettingsBinding>>
+        create(window::LuxWindow&, workspace::WorkspaceStore&, workspace::WorkspaceChanges&, std::shared_ptr<const settings::SettingsEntry>, SettingsContentInput&);
         ~WindowSettingsBinding();
         WindowSettingsBinding(const WindowSettingsBinding&) = delete;
         WindowSettingsBinding& operator=(const WindowSettingsBinding&) = delete;
@@ -57,12 +63,13 @@ namespace lux::editor::project
         void update(bool allow_new_work = true);
         void retry() noexcept;
         [[nodiscard]] const EditorFailure* failure() const noexcept;
+
     private:
         struct Impl;
         explicit WindowSettingsBinding(std::unique_ptr<Impl>);
         std::unique_ptr<Impl> impl_;
     };
-}
+} // namespace lux::editor::project
 
 namespace lux::meta
 {
@@ -70,8 +77,10 @@ namespace lux::meta
     {
         static constexpr bool available = true;
         static constexpr auto fields = std::make_tuple(
-            typeStaticField<&window::WindowRect::x>("x"), typeStaticField<&window::WindowRect::y>("y"),
-            typeStaticField<&window::WindowRect::width>("width"), typeStaticField<&window::WindowRect::height>("height")
+            typeStaticField<&window::WindowRect::x>("x"),
+            typeStaticField<&window::WindowRect::y>("y"),
+            typeStaticField<&window::WindowRect::width>("width"),
+            typeStaticField<&window::WindowRect::height>("height")
         );
     };
     template <> struct TTypeStaticInfo<window::DisplayHint>
@@ -120,8 +129,7 @@ namespace lux::meta
     template <> struct TTypeStaticInfo<editor::project::ShortcutSettings>
     {
         static constexpr bool available = true;
-        static constexpr auto fields = std::make_tuple(
-            typeStaticField<&editor::project::ShortcutSettings::overrides>("overrides")
-        );
+        static constexpr auto fields =
+            std::make_tuple(typeStaticField<&editor::project::ShortcutSettings::overrides>("overrides"));
     };
-}
+} // namespace lux::meta

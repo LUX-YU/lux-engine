@@ -22,7 +22,8 @@ namespace lux::editor::views::detail
             (void)writer.writeFloat(value);
         (void)writer.writeUnsigned(static_cast<std::uint8_t>(pose.camera.projection.index()));
         std::visit(
-            [&](const auto& projection) {
+            [&](const auto& projection)
+            {
                 using T = std::decay_t<decltype(projection)>;
                 if constexpr (std::same_as<T, lux::scene::PerspectiveProjection>)
                     (void)writer.writeFloat(projection.vertical_fov);
@@ -38,9 +39,14 @@ namespace lux::editor::views::detail
         (void)writer.writeUnsigned(extent.height);
     }
 
-    inline bool readViewportState(serialization::BinaryReader& reader, ViewportCameraState& pose, render::PixelExtent& extent)
+    inline bool readViewportState(
+        serialization::BinaryReader& reader,
+        ViewportCameraState& pose,
+        render::PixelExtent& extent
+    )
     {
-        const auto scalar = [&reader](double& value) {
+        const auto scalar = [&reader](double& value)
+        {
             auto decoded = reader.readFloat<double>();
             if (!decoded || !std::isfinite(*decoded))
                 return false;
@@ -75,4 +81,4 @@ namespace lux::editor::views::detail
         extent = {*width, *height};
         return lux::scene::cameraProjection(pose.camera, double(*width) / *height).has_value();
     }
-}
+} // namespace lux::editor::views::detail

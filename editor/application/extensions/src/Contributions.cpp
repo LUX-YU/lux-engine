@@ -34,8 +34,10 @@ namespace lux::editor::extensions
         auto valid_settings = settings::validateSettingsEntries(setting_entries, capacity);
         if (!valid_settings)
             return cxx::unexpected(ContributionFailure{
-                EContributionError::INVALID_ARGUMENT, "settings",
-                static_cast<std::uint64_t>(valid_settings.error().code), valid_settings.error().detail
+                EContributionError::INVALID_ARGUMENT,
+                "settings",
+                static_cast<std::uint64_t>(valid_settings.error().code),
+                valid_settings.error().detail
             });
         std::vector<std::pair<std::uint64_t, std::size_t>> setting_index;
         setting_index.reserve(draft.settings.size());
@@ -95,8 +97,9 @@ namespace lux::editor::extensions
         for (const auto& entry : draft.reflection)
             if (!entry.code.valid() || !entry.register_types)
                 return cxx::unexpected(ContributionFailure{EContributionError::INVALID_ARGUMENT, "reflection"});
-        auto lifetime = draft.reflection.empty() && draft.configurations.empty() && draft.settings.empty() ? std::shared_ptr<const void>{}
-                                                                                 : acquireEditorReflection();
+        auto lifetime = draft.reflection.empty() && draft.configurations.empty() && draft.settings.empty()
+                            ? std::shared_ptr<const void>{}
+                            : acquireEditorReflection();
         ContributionSnapshot result;
         result.data_ = std::make_shared<Data>(
             std::move(draft.code),
@@ -140,8 +143,8 @@ namespace lux::editor::extensions
     {
         if (!data_)
             return nullptr;
-        auto found = std::ranges::lower_bound(data_->setting_index, id.hash(), {},
-            [](const auto& row) { return row.first; });
+        auto found =
+            std::ranges::lower_bound(data_->setting_index, id.hash(), {}, [](const auto& row) { return row.first; });
         const bool is_missing = found == data_->setting_index.end() || found->first != id.hash();
         if (is_missing)
             return nullptr;
@@ -190,7 +193,8 @@ namespace lux::editor::extensions
         std::size_t capacity
     )
         : LuxObject(dispatcher), impl_(std::make_unique<Impl>(commands, capacity))
-    {}
+    {
+    }
     ContributionRegistry::~ContributionRegistry() = default;
     ContributionResult<void> ContributionRegistry::enqueue(ContributionSnapshot& candidate)
     {
@@ -265,8 +269,10 @@ namespace lux::editor::extensions
                     auto value = item.entry->validateDefault(*reflection.registry());
                     if (!value)
                         return cxx::unexpected(ContributionFailure{
-                            EContributionError::INVALID_ARGUMENT, "settings.default",
-                            static_cast<std::uint64_t>(value.error().code), value.error().detail
+                            EContributionError::INVALID_ARGUMENT,
+                            "settings.default",
+                            static_cast<std::uint64_t>(value.error().code),
+                            value.error().detail
                         });
                 }
                 auto committed = reflection.commit();
@@ -314,4 +320,4 @@ namespace lux::editor::extensions
     {
         return impl_->revision;
     }
-}
+} // namespace lux::editor::extensions

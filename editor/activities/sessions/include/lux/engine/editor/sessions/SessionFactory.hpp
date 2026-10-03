@@ -84,15 +84,20 @@ namespace lux::editor::sessions
         template <const SessionKindDescriptor& Descriptor>
         [[nodiscard]] static std::shared_ptr<SessionFactoryEntry> bind(contracts::CodeLease code, Decode decode)
         {
-            static_assert(Descriptor.kind.isValid() && !Descriptor.label.empty(),
-                          "Fixed session metadata must be a valid constant declaration.");
+            static_assert(
+                Descriptor.kind.isValid() && !Descriptor.label.empty(),
+                "Fixed session metadata must be a valid constant declaration."
+            );
             return std::shared_ptr<SessionFactoryEntry>(
                 new SessionFactoryEntry(std::move(code), Descriptor, std::move(decode))
             );
         }
         // Freezes dynamic text and extension spans once; the input is borrowed only during this call.
-        [[nodiscard]] static std::shared_ptr<SessionFactoryEntry>
-        create(contracts::CodeLease, const SessionKindDescriptor&, Decode);
+        [[nodiscard]] static std::shared_ptr<SessionFactoryEntry> create(
+            contracts::CodeLease,
+            const SessionKindDescriptor&,
+            Decode
+        );
         ~SessionFactoryEntry();
         SessionFactoryEntry(const SessionFactoryEntry&) = delete;
         SessionFactoryEntry& operator=(const SessionFactoryEntry&) = delete;
@@ -151,4 +156,4 @@ namespace lux::editor::sessions
         std::shared_ptr<SessionFactoryEntry> entry_;
         SessionLoadInput input_;
     };
-}
+} // namespace lux::editor::sessions

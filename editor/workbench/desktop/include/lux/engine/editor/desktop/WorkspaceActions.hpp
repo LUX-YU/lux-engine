@@ -9,7 +9,7 @@ namespace lux::editor::workspace
 {
     class WorkspaceStore;
     class WorkspaceChanges;
-}
+} // namespace lux::editor::workspace
 namespace lux::editor::views
 {
     class ViewFactorySnapshot;
@@ -23,7 +23,10 @@ namespace lux::editor::desktop
     {
     public:
         WorkspaceActions(
-            ViewHost&, workspace::WorkspaceStore&, workspace::WorkspaceChanges&, object::ObjectDispatcherRef
+            ViewHost&,
+            workspace::WorkspaceStore&,
+            workspace::WorkspaceChanges&,
+            object::ObjectDispatcherRef
         );
         ~WorkspaceActions();
         WorkspaceActions(const WorkspaceActions&) = delete;
@@ -39,4 +42,4 @@ namespace lux::editor::desktop
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };
-}
+} // namespace lux::editor::desktop

@@ -31,7 +31,8 @@ namespace lux::editor::material
         bool temporary(const VMaterialViewFailure& failure)
         {
             return std::visit(
-                [](const auto& error) {
+                [](const auto& error)
+                {
                     using T = std::decay_t<decltype(error)>;
                     if constexpr (std::same_as<T, MaterialEditError>)
                         return error.code == EMaterialEditError::SESSION &&
@@ -68,8 +69,9 @@ namespace lux::editor::material
             auto read = session.read();
             if (!read)
                 return rejected(read.error());
-            auto values =
-                read->withRead([&](const lux::material::MaterialSource& source) -> MaterialEditResult<Display> {
+            auto values = read->withRead(
+                [&](const lux::material::MaterialSource& source) -> MaterialEditResult<Display>
+                {
                     Display result;
                     result.content = stamp;
                     result.name = source.name;
@@ -95,12 +97,13 @@ namespace lux::editor::material
                     for (const auto& link : source.graph.topology().links())
                         result.links.push_back({link.from.value, link.to.value});
                     return result;
-                });
+                }
+            );
             if (!values)
                 return rejected(values.error());
             return std::move(*values);
         }
-    }
+    } // namespace
     struct MaterialView::Impl final
     {
         enum class EControl : std::uint8_t
@@ -178,7 +181,8 @@ namespace lux::editor::material
                 if (!cancelled)
                     return rejected(cancelled.error());
             }
-            const auto clear = [&] {
+            const auto clear = [&]
+            {
                 canvas_request_.pop_front();
                 graph_.setEnabled(canvas_request_.size() < 60);
             };
@@ -193,10 +197,14 @@ namespace lux::editor::material
             auto read = owner->get().read();
             if (!read)
                 return rejected(read.error());
-            auto cleared = read->withRead([&](const lux::material::MaterialSource&) -> MaterialEditResult<void> {
-                clear(); // A terminal input cannot block later requests; payload destruction keeps the original gate.
-                return {};
-            });
+            auto cleared = read->withRead(
+                [&](const lux::material::MaterialSource&) -> MaterialEditResult<void>
+                {
+                    clear(
+                    ); // A terminal input cannot block later requests; payload destruction keeps the original gate.
+                    return {};
+                }
+            );
             if (!cleared)
                 return rejected(cleared.error());
             return cxx::unexpected(failure);
@@ -233,7 +241,8 @@ namespace lux::editor::material
                     auto connected = connect(
                         value,
                         &project::AssetPickerElement::edited,
-                        [this, index, value](lux::ui::EditResult edit) noexcept {
+                        [this, index, value](lux::ui::EditResult edit) noexcept
+                        {
                             if (edit.changed && index < state_.display_.textures.size())
                                 state_.display_.textures[index].texture = value->value();
                         }
@@ -281,9 +290,11 @@ namespace lux::editor::material
                     {
                         const auto type = static_cast<lux::material::EMatNodeKind>(kind);
                         if (ImGui::Selectable(lux::material::toString(type)))
-                            state_.status_ = state_.enqueue(state_.display_.content, [&] {
-                                return MaterialInsertNode{contracts::CodeLease::builtin(), makeMaterialNode(type)};
-                            });
+                            state_.status_ = state_.enqueue(
+                                state_.display_.content,
+                                [&]
+                                { return MaterialInsertNode{contracts::CodeLease::builtin(), makeMaterialNode(type)}; }
+                            );
                     }
                     ImGui::EndCombo();
                 }
@@ -295,15 +306,17 @@ namespace lux::editor::material
                         auto read = session->get().read();
                         if (read)
                         {
-                            auto rendered =
-                                read->withRead([&](const lux::material::MaterialSource&) -> MaterialEditResult<void> {
+                            auto rendered = read->withRead(
+                                [&](const lux::material::MaterialSource&) -> MaterialEditResult<void>
+                                {
                                     static_cast<void>(editMaterialNodePayload(
                                         *state_.draft_->value.value,
                                         state_.display_.textures,
                                         state_.display_.parameters
                                     ));
                                     return {};
-                                });
+                                }
+                            );
                             if (!rendered)
                                 state_.status_ = rejected(rendered.error());
                         }
@@ -327,18 +340,20 @@ namespace lux::editor::material
                             &shading,
                             "Unlit\0Legacy lit\0PBR metallic / roughness\0Stylized\0Graph\0"
                         ))
-                        state_.status_ = state_.enqueue(state_.display_.content, [&] {
-                            return MaterialSetShading{static_cast<lux::rdesc::ELightingTechnique>(shading)};
-                        });
+                        state_.status_ = state_.enqueue(
+                            state_.display_.content,
+                            [&] { return MaterialSetShading{static_cast<lux::rdesc::ELightingTechnique>(shading)}; }
+                        );
                     int alpha = static_cast<int>(data.render.alpha_mode);
                     if (ImGui::Combo("Alpha", &alpha, "Opaque\0Mask\0Blend\0"))
                         data.render.alpha_mode = static_cast<lux::rdesc::EAlphaMode>(alpha);
                     ImGui::SliderFloat("Cutoff", &data.render.alpha_cutoff, 0, 1);
                     ImGui::Checkbox("Double sided", &data.render.double_sided);
                     if (ImGui::Button("Apply render state"))
-                        state_.status_ = state_.enqueue(state_.display_.content, [&] {
-                            return MaterialSetRenderState{data.render};
-                        });
+                        state_.status_ = state_.enqueue(
+                            state_.display_.content,
+                            [&] { return MaterialSetRenderState{data.render}; }
+                        );
                     if (ImGui::TreeNode("Textures"))
                     {
                         for (std::size_t i{}; i < data.textures.size(); ++i)
@@ -358,17 +373,23 @@ namespace lux::editor::material
                             ImGui::PopID();
                         }
                         if (ImGui::SmallButton("Add texture"))
-                            state_.status_ = state_.enqueue(state_.display_.content, [&] {
-                                return MaterialSetTextureSlots{[&] {
-                                    auto values = data.textures;
-                                    values.push_back({"Texture", {}});
-                                    return values;
-                                }()};
-                            });
+                            state_.status_ = state_.enqueue(
+                                state_.display_.content,
+                                [&]
+                                {
+                                    return MaterialSetTextureSlots{[&]
+                                                                   {
+                                                                       auto values = data.textures;
+                                                                       values.push_back({"Texture", {}});
+                                                                       return values;
+                                                                   }()};
+                                }
+                            );
                         if (ImGui::Button("Apply textures"))
-                            state_.status_ = state_.enqueue(state_.display_.content, [&] {
-                                return MaterialSetTextureSlots{data.textures};
-                            });
+                            state_.status_ = state_.enqueue(
+                                state_.display_.content,
+                                [&] { return MaterialSetTextureSlots{data.textures}; }
+                            );
                         ImGui::TreePop();
                     }
                     if (ImGui::TreeNode("Parameters"))
@@ -389,17 +410,23 @@ namespace lux::editor::material
                             ImGui::PopID();
                         }
                         if (ImGui::SmallButton("Add parameter"))
-                            state_.status_ = state_.enqueue(state_.display_.content, [&] {
-                                return MaterialSetParameterSlots{[&] {
-                                    auto values = data.parameters;
-                                    values.push_back({"Parameter"});
-                                    return values;
-                                }()};
-                            });
+                            state_.status_ = state_.enqueue(
+                                state_.display_.content,
+                                [&]
+                                {
+                                    return MaterialSetParameterSlots{[&]
+                                                                     {
+                                                                         auto values = data.parameters;
+                                                                         values.push_back({"Parameter"});
+                                                                         return values;
+                                                                     }()};
+                                }
+                            );
                         if (ImGui::Button("Apply parameters"))
-                            state_.status_ = state_.enqueue(state_.display_.content, [&] {
-                                return MaterialSetParameterSlots{data.parameters};
-                            });
+                            state_.status_ = state_.enqueue(
+                                state_.display_.content,
+                                [&] { return MaterialSetParameterSlots{data.parameters}; }
+                            );
                         ImGui::TreePop();
                     }
                 }
@@ -421,7 +448,8 @@ namespace lux::editor::material
             auto changed = object::LuxObject::connect(
                 &graph_,
                 &widgets::GraphCanvas::edited,
-                [this](const widgets::CanvasEdit& edit) noexcept {
+                [this](const widgets::CanvasEdit& edit) noexcept
+                {
                     if (canvas_request_.size() >= 64)
                     {
                         status_ = rejected(views::EViewError::CAPACITY);
@@ -437,15 +465,15 @@ namespace lux::editor::material
             auto selected = object::LuxObject::connect(
                 &graph_,
                 &widgets::GraphCanvas::selected,
-                [this](std::span<const std::uint64_t> ids) noexcept {
-                    selection_request_ = ids.size() == 1 ? ids.front() : 0;
-                }
+                [this](std::span<const std::uint64_t> ids) noexcept
+                { selection_request_ = ids.size() == 1 ? ids.front() : 0; }
             );
             viewport_.enableNavigation(true);
             auto navigation = object::LuxObject::connect(
                 &viewport_,
                 &lux::editor::views::ViewportElement::cameraMoved,
-                [this](const lux::editor::views::CameraMotion& motion) noexcept {
+                [this](const lux::editor::views::CameraMotion& motion) noexcept
+                {
                     motion_.angular_delta += motion.angular_delta;
                     motion_.pan_delta += motion.pan_delta;
                     motion_.dolly += motion.dolly;
@@ -479,7 +507,8 @@ namespace lux::editor::material
         }
         MaterialViewResult<void> discardInputs()
         {
-            const auto clear = [&] {
+            const auto clear = [&]
+            {
                 draft_.reset();
                 selection_request_.reset();
                 selected_node_ = {};
@@ -503,10 +532,13 @@ namespace lux::editor::material
             auto read = owner->get().read();
             if (!read)
                 return rejected(read.error());
-            return accepted(read->withRead([&](const lux::material::MaterialSource&) -> MaterialEditResult<void> {
-                clear();
-                return {};
-            }));
+            return accepted(read->withRead(
+                [&](const lux::material::MaterialSource&) -> MaterialEditResult<void>
+                {
+                    clear();
+                    return {};
+                }
+            ));
         }
         MaterialViewResult<void> rebind(std::optional<MaterialViewBinding> binding)
         {
@@ -569,11 +601,15 @@ namespace lux::editor::material
             // The synchronous operations below cannot release the live session: each callback uses
             // its existing admission. Any discarded clone (including the former draft after swap)
             // is destroyed under the same read gate, before its outer code lease.
-            const auto dispose = [&] {
-                auto cleared = read->withRead([&](const lux::material::MaterialSource&) -> MaterialEditResult<void> {
-                    candidate.reset();
-                    return {};
-                });
+            const auto dispose = [&]
+            {
+                auto cleared = read->withRead(
+                    [&](const lux::material::MaterialSource&) -> MaterialEditResult<void>
+                    {
+                        candidate.reset();
+                        return {};
+                    }
+                );
                 if (!cleared)
                     std::terminate();
             };
@@ -590,14 +626,17 @@ namespace lux::editor::material
                 dispose();
                 return rejected(selection.error());
             }
-            auto adopted = read->withRead([&](const lux::material::MaterialSource&) -> MaterialEditResult<void> {
-                canvas_request_.clear();
-                draft_.swap(candidate);
-                candidate.reset();
-                selected_node_ = node;
-                graph_.setEnabled(true);
-                return {};
-            });
+            auto adopted = read->withRead(
+                [&](const lux::material::MaterialSource&) -> MaterialEditResult<void>
+                {
+                    canvas_request_.clear();
+                    draft_.swap(candidate);
+                    candidate.reset();
+                    selected_node_ = node;
+                    graph_.setEnabled(true);
+                    return {};
+                }
+            );
             if (!adopted)
                 dispose();
             return accepted(std::move(adopted));
@@ -658,11 +697,13 @@ namespace lux::editor::material
                     [&] { return validate(pending.based_on); },
                     [&] { return accepted(binding_->interaction->cancel()); },
                     [&] { return view_.beginEdit("Move/connect graph nodes"); },
-                    [&]() -> MaterialViewResult<void> {
+                    [&]() -> MaterialViewResult<void>
+                    {
                         if (pending.edits.empty())
                         {
                             std::visit(
-                                [&](const auto& value) {
+                                [&](const auto& value)
+                                {
                                     using T = std::decay_t<decltype(value)>;
                                     if constexpr (std::same_as<T, widgets::CanvasLink>)
                                         pending.edits.emplace_back(MaterialConnect{{value.from}, {value.to}});
@@ -684,7 +725,8 @@ namespace lux::editor::material
                         }
                         return view_.previewEdit(pending.edits);
                     },
-                    [&] {
+                    [&]
+                    {
                         auto committed = view_.commitEdit();
                         if (committed)
                             status_ = {};
@@ -699,10 +741,13 @@ namespace lux::editor::material
                 auto read = owner->get().read();
                 if (!read)
                     return rejected(read.error());
-                auto cleared = read->withRead([&](const lux::material::MaterialSource&) -> MaterialEditResult<void> {
-                    canvas_request_.pop_front(); // Replaced preview payloads die under the author gate.
-                    return {};
-                });
+                auto cleared = read->withRead(
+                    [&](const lux::material::MaterialSource&) -> MaterialEditResult<void>
+                    {
+                        canvas_request_.pop_front(); // Replaced preview payloads die under the author gate.
+                        return {};
+                    }
+                );
                 if (!cleared)
                     return rejected(cleared.error());
             }
@@ -740,15 +785,17 @@ namespace lux::editor::material
                         return rejected(read.error());
                     if (canvas_request_.size() >= 64)
                         return rejected(views::EViewError::CAPACITY);
-                    command_result =
-                        accepted(read->withRead([&](const lux::material::MaterialSource&) -> MaterialEditResult<void> {
+                    command_result = accepted(read->withRead(
+                        [&](const lux::material::MaterialSource&) -> MaterialEditResult<void>
+                        {
                             canvas_request_.push_back(
                                 {draft_->based_on, widgets::CanvasEdit{{}, true, true, false}, {}, ECanvasStage::BEGIN}
                             );
                             canvas_request_.back().edits.emplace_back(std::move(draft_->value));
                             draft_.reset();
                             return {};
-                        }));
+                        }
+                    ));
                 }
                 break;
             default:
@@ -786,7 +833,8 @@ namespace lux::editor::material
                         operation->get().ready() && operation->get().key() == desired && delivered_ != compile_;
                     if (has_current_completion)
                     {
-                        auto received = services_.preview.receive(*adoption, operation->get().result(), compile_assets_);
+                        auto received =
+                            services_.preview.receive(*adoption, operation->get().result(), compile_assets_);
                         if (received || !temporary(VMaterialViewFailure{received.error()}))
                             delivered_ = compile_;
                         if (!received)
@@ -796,7 +844,8 @@ namespace lux::editor::material
             }
             const auto instance = services_.preview.instance();
             const auto preview = services_.preview.status();
-            const bool same_source = preview.accepted && preview.accepted->input.content.session == binding_->session.id();
+            const bool same_source =
+                preview.accepted && preview.accepted->input.content.session == binding_->session.id();
             if (same_source && instance.valid() && instance != presented_)
             {
                 auto candidate = lux::editor::views::ViewportPresentation::create(
@@ -824,7 +873,8 @@ namespace lux::editor::material
     )
         : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{"lux.editor.material"}, "Material"),
           impl_(std::make_unique<Impl>(*this, services, state))
-    {}
+    {
+    }
     MaterialView::~MaterialView() noexcept = default;
     MaterialViewResult<std::unique_ptr<MaterialView>> MaterialView::create(
         object::ObjectDispatcherRef dispatcher,
@@ -874,10 +924,11 @@ namespace lux::editor::material
             return cxx::unexpected(
                 views::ViewPreparationFailure{"material.view.state", schema, "Invalid camera state", false}
             );
-        return cxx::move_only_function<void()>{[this, candidate]() noexcept {
-            impl_->state_ = candidate;
-            impl_->camera_pending_ = true;
-        }};
+        return cxx::move_only_function<void()>{[this, candidate]() noexcept
+                                               {
+                                                   impl_->state_ = candidate;
+                                                   impl_->camera_pending_ = true;
+                                               }};
     }
     const MaterialViewResult<void>& MaterialView::status() const noexcept
     {
@@ -973,11 +1024,8 @@ namespace lux::editor::material
         auto snapshot = owner->get().capture();
         if (!snapshot)
             return rejected(snapshot.error());
-        auto started = impl_->services_.compilation.start(
-            std::move(*snapshot),
-            {},
-            impl_->services_.environment.version
-        );
+        auto started =
+            impl_->services_.compilation.start(std::move(*snapshot), {}, impl_->services_.environment.version);
         if (!started)
             return rejected(started.error());
         if (!impl_->services_.compilation.releaseResult(impl_->compile_))
@@ -1037,7 +1085,7 @@ namespace lux::editor::material
         if (auto result = impl_->maintain(); !result)
             impl_->status_ = cxx::unexpected(result.error());
     }
-}
+} // namespace lux::editor::material
 
 namespace lux::editor::material
 {
@@ -1052,7 +1100,8 @@ namespace lux::editor::material
         auto created = MaterialView::create(dispatcher, std::move(id), services, binding, state);
         if (!created)
             return cxx::unexpected(created.error());
-        const auto cancel = +[](lux::ui::Pane& pane) -> views::ViewCloseResult {
+        const auto cancel = +[](lux::ui::Pane& pane) -> views::ViewCloseResult
+        {
             auto ended = static_cast<MaterialView&>(pane).cancelEdit();
             if (!ended)
             {
@@ -1078,19 +1127,23 @@ namespace lux::editor::material
             std::move(*created),
             cancel,
             cancel,
-            +[](lux::ui::Pane& pane, std::uint32_t schema, std::span<const std::byte> bytes) {
-                return static_cast<MaterialView&>(pane).prepareState(schema, bytes);
-            },
+            +[](lux::ui::Pane& pane, std::uint32_t schema, std::span<const std::byte> bytes)
+            { return static_cast<MaterialView&>(pane).prepareState(schema, bytes); },
             +[](const lux::ui::Pane& pane) { return static_cast<const MaterialView&>(pane).captureState(); },
-            +[](const lux::ui::Pane& pane) noexcept -> views::ViewContent {
+            +[](const lux::ui::Pane& pane) noexcept -> views::ViewContent
+            {
                 const auto& binding = static_cast<const MaterialView&>(pane).binding();
-                return binding ? views::ViewContent{{binding->session.id()}, binding->session.id()} : views::ViewContent{};
+                return binding ? views::ViewContent{{binding->session.id()}, binding->session.id()}
+                               : views::ViewContent{};
             },
-            +[](lux::ui::Pane& pane, const views::ViewContent& content) -> views::ViewCloseResult {
+            +[](lux::ui::Pane& pane, const views::ViewContent& content) -> views::ViewCloseResult
+            {
                 auto adopted = static_cast<MaterialView&>(pane).rebindContent(content);
                 if (adopted)
                     return {};
-                return cxx::unexpected(workbench::detail::viewPreparationFailure(adopted.error(), temporary(adopted.error())));
+                return cxx::unexpected(
+                    workbench::detail::viewPreparationFailure(adopted.error(), temporary(adopted.error()))
+                );
             }
         };
     }
@@ -1109,15 +1162,25 @@ namespace lux::editor::material
         if (!environment.renderer || !environment.resources)
             return rejected(views::EViewError::NOT_ATTACHED);
         auto preview = std::make_unique<MaterialPreview>(
-            runtime, MaterialPreviewEnvironment{environment, {features.begin(), features.end()}}
+            runtime,
+            MaterialPreviewEnvironment{environment, {features.begin(), features.end()}}
         );
         MaterialViewState state;
         state.camera.transform.translation = {0, 0, 3.5F};
         auto candidate = makeMaterialView(
-            dispatcher, std::move(id),
-            {sessions, runtime, *environment.resources, *environment.renderer, *preview, compilation,
-             environment, assets, {2}},
-            {}, state
+            dispatcher,
+            std::move(id),
+            {sessions,
+             runtime,
+             *environment.resources,
+             *environment.renderer,
+             *preview,
+             compilation,
+             environment,
+             assets,
+             {2}},
+            {},
+            state
         );
         if (!candidate)
             return candidate;
@@ -1129,7 +1192,7 @@ namespace lux::editor::material
         return candidate;
     }
 
-}
+} // namespace lux::editor::material
 
 namespace lux::editor::material
 {
@@ -1137,10 +1200,13 @@ namespace lux::editor::material
     {
         constexpr sessions::SessionKindIdView kContentKinds[]{sessions::SessionKindIdView{"lux.editor.material"}};
         constexpr views::ViewFactoryDescriptor kViewDescriptor{
-            views::ViewTypeIdView{"lux.editor.material"}, "Material",
-            cxx::typeToken<views::ContentViewInput>(), 1, kContentKinds
+            views::ViewTypeIdView{"lux.editor.material"},
+            "Material",
+            cxx::typeToken<views::ContentViewInput>(),
+            1,
+            kContentKinds
         };
-    }
+    } // namespace
     std::shared_ptr<views::ViewFactoryEntry> makeMaterialViewFactory(
         sessions::TSessionAccess<material::MaterialSession> sessions,
         lux::scene::SceneRuntime& runtime,
@@ -1155,19 +1221,29 @@ namespace lux::editor::material
         auto intent = std::make_shared<ArtifactIntent>(std::move(receiver));
         return workbench::detail::bindViewFactory<kViewDescriptor, views::ContentViewInput>(
             [sessions, &runtime, &compilation, &environment, features, assets, intent](
-                const views::ViewFactoryInput& input, const views::ContentViewInput& value
-            ) -> views::ViewFactoryResult<views::DetachedView> {
+                const views::ViewFactoryInput& input,
+                const views::ContentViewInput& value
+            ) -> views::ViewFactoryResult<views::DetachedView>
+            {
                 auto view = material::makeMaterialContentView(
-                    input.dispatcher(), input.paneId(), sessions, runtime, compilation, environment,
-                    features, assets, value.content
+                    input.dispatcher(),
+                    input.paneId(),
+                    sessions,
+                    runtime,
+                    compilation,
+                    environment,
+                    features,
+                    assets,
+                    value.content
                 );
                 if (!view)
                     return cxx::unexpected(workbench::detail::viewFailure(view.error()));
-                auto connected = workbench::detail::connectIntent(*view, &material::MaterialView::publishRequested, intent);
+                auto connected =
+                    workbench::detail::connectIntent(*view, &material::MaterialView::publishRequested, intent);
                 if (!connected)
                     return cxx::unexpected(std::move(connected.error()));
                 return std::move(*view);
             }
         );
     }
-}
+} // namespace lux::editor::material

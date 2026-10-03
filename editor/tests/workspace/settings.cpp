@@ -23,10 +23,11 @@ namespace lux::meta
     {
         static constexpr bool available = true;
         static constexpr auto fields = std::make_tuple(
-            typeStaticField<&SettingsFixtureValue::scale>("scale"), typeStaticField<&SettingsFixtureValue::font>("font")
+            typeStaticField<&SettingsFixtureValue::scale>("scale"),
+            typeStaticField<&SettingsFixtureValue::font>("font")
         );
     };
-}
+} // namespace lux::meta
 namespace
 {
     using namespace lux;
@@ -37,7 +38,12 @@ namespace
         if (!result)
         {
             if constexpr (requires { result.error().detail; })
-                std::fprintf(stderr, "unexpected %u %s\n", unsigned(result.error().code), result.error().detail.c_str());
+                std::fprintf(
+                    stderr,
+                    "unexpected %u %s\n",
+                    unsigned(result.error().code),
+                    result.error().detail.c_str()
+                );
             else
                 std::fprintf(stderr, "unexpected file publication error\n");
             std::abort();
@@ -57,14 +63,20 @@ namespace
         registry.registerClass(std::move(type));
     }
     const ConfigurationDescriptor configuration{
-        "test.settings", 1, serialization::makePortableValueCodec<SettingsFixtureValue>(),
-        +[](meta::ReflectionRegistry& registry) noexcept {
-            return registry.findClass(cxx::type_name<SettingsFixtureValue>());
-        }
+        "test.settings",
+        1,
+        serialization::makePortableValueCodec<SettingsFixtureValue>(),
+        +[](meta::ReflectionRegistry& registry) noexcept
+        { return registry.findClass(cxx::type_name<SettingsFixtureValue>()); }
     };
     constexpr SettingsDescriptor descriptor{
-        SettingsIdView{"test.settings"}, "Settings", &configuration, kPersonalScopes, ESettingsApply::RESTART,
-        +[](const ConfigurationValue& value) noexcept -> SettingsResult<void> {
+        SettingsIdView{"test.settings"},
+        "Settings",
+        &configuration,
+        kPersonalScopes,
+        ESettingsApply::RESTART,
+        +[](const ConfigurationValue& value) noexcept -> SettingsResult<void>
+        {
             const auto& typed = *static_cast<const SettingsFixtureValue*>(value.data());
             if (!(typed.scale >= 0.5F && typed.scale <= 3.0F))
                 return cxx::unexpected(SettingsFailure{ESettingsError::INVALID_VALUE, "scale"});
@@ -126,18 +138,25 @@ namespace
         dynamic_descriptor.id = SettingsIdView{name};
         dynamic_descriptor.label = label;
         auto dynamic = SettingsEntry::create(contracts::CodeLease::builtin(), dynamic_descriptor);
-        name.assign(4096, 'x'); label.clear();
-        assert(dynamic->descriptor().id.name() == "dynamic.settings" && dynamic->descriptor().label == "Dynamic settings");
+        name.assign(4096, 'x');
+        label.clear();
+        assert(
+            dynamic->descriptor().id.name() == "dynamic.settings" && dynamic->descriptor().label == "Dynamic settings"
+        );
         assert(dynamic->defaults());
         auto applied_scale = 1.0F;
         auto immediate = descriptor;
         immediate.apply = ESettingsApply::IMMEDIATE;
         assert(!SettingsEntry::create(contracts::CodeLease::builtin(), immediate)->validateDescriptor());
-        auto active = SettingsEntry::create(contracts::CodeLease::builtin(), immediate,
-            [&](const ConfigurationValue& value) -> SettingsResult<void> {
+        auto active = SettingsEntry::create(
+            contracts::CodeLease::builtin(),
+            immediate,
+            [&](const ConfigurationValue& value) -> SettingsResult<void>
+            {
                 applied_scale = static_cast<const SettingsFixtureValue*>(value.data())->scale;
                 return {};
-            });
+            }
+        );
         assert(active->apply(draft.desired) && applied_scale == 2.0F);
         assert(!draft.applied && draft.persisted == user.values[0].bytes);
         // A page records the actual application receipt; file preparation does not invent one.
@@ -145,11 +164,15 @@ namespace
         assert(draft.desired.encode(applied));
         draft.applied = std::move(applied);
         assert(draft.applied != draft.persisted);
-        std::puts("V26/V30: real ConfigurationValue, ordered scopes, validation, file/descriptor conflict, independent facts");
+        std::puts(
+            "V26/V30: real ConfigurationValue, ordered scopes, validation, file/descriptor conflict, independent facts"
+        );
     }
     void codec()
     {
-        const auto source = bytes("schema=1\nscope=2\nunknown={ nested=[1,2,3] }\n[[values]]\nid='missing.plugin'\nschema=47\nsize=2\nbytes='00ff'\nfuture='keep me'\n");
+        const auto source = bytes(
+            "schema=1\nscope=2\nunknown={ nested=[1,2,3] }\n[[values]]\nid='missing.plugin'\nschema=47\nsize=2\nbytes='00ff'\nfuture='keep me'\n"
+        );
         auto document = take(decodeSettings(source));
         document.values.push_back(payload(1.25F));
         auto encoded = take(encodeSettings(document));
@@ -159,7 +182,9 @@ namespace
         assert(decoded.preserved.find("nested") != std::string::npos);
         auto again = take(encodeSettings(decoded));
         assert(again == encoded);
-        assert(decodeSettings(bytes("schema=9\nscope=2\nvalues=[]")).error().code == ESettingsError::UNSUPPORTED_VERSION);
+        assert(
+            decodeSettings(bytes("schema=9\nscope=2\nvalues=[]")).error().code == ESettingsError::UNSUPPORTED_VERSION
+        );
         assert(!decodeSettings(bytes("invalid TOML [")));
         auto future = document;
         future.preserved = "schema=9\nscope=2\nvalues=[]";
@@ -170,7 +195,9 @@ namespace
         assert(decodeSettings(source, {32, 256, 32}).error().code == ESettingsError::CAPACITY);
         assert(decodeSettings(source, {4096, 0, 32}).error().code == ESettingsError::CAPACITY);
         assert(decodeSettings(source, {4096, 256, 1}).error().code == ESettingsError::CAPACITY);
-        std::puts("V28: unknown rows/fields value-preserved; future/syntax/size/depth reject; no format/comment guarantee");
+        std::puts(
+            "V28: unknown rows/fields value-preserved; future/syntax/size/depth reject; no format/comment guarantee"
+        );
     }
     void io(const std::filesystem::path& base)
     {
@@ -179,7 +206,8 @@ namespace
         persistence::WriteCoordinator coordinator;
         storage::FileArtifactStore backend(root);
         workspace::WorkspaceStore store(root, coordinator, backend);
-        const auto settle = [&](persistence::WriteTicket ticket) {
+        const auto settle = [&](persistence::WriteTicket ticket)
+        {
             auto work = take(coordinator.takeReady());
             assert(work && work->ticket == ticket);
             auto outcome = backend.publish(*work);
@@ -211,7 +239,10 @@ namespace
         auto published = backend.publish(*ready);
         assert(std::holds_alternative<persistence::CommitReceipt>(published));
         // Hide the actual receipt: the original lane must remain occupied until reconciliation.
-        assert(coordinator.complete(second, persistence::PublicationUnknown{{persistence::EPersistenceError::IO, "lost reply"}}));
+        assert(coordinator.complete(
+            second,
+            persistence::PublicationUnknown{{persistence::EPersistenceError::IO, "lost reply"}}
+        ));
         assert(!coordinator.acknowledge(second));
         auto third_value = second_value;
         third_value.file_version = std::get<persistence::CommitReceipt>(published).version;
@@ -224,7 +255,10 @@ namespace
         assert(std::holds_alternative<persistence::CommitReceipt>(settle(third)));
         assert(coordinator.acknowledge(third));
         auto corrupt = root / "corrupt.toml";
-        { std::ofstream out(corrupt); out << "invalid ["; }
+        {
+            std::ofstream out(corrupt);
+            out << "invalid [";
+        }
         const auto before = take(storage::readPublicationFile(corrupt, 4096));
         auto invalid = store.readSettings("corrupt.toml", ESettingsScope::USER);
         assert(!invalid && invalid.error().code == workspace::EWorkspaceError::INVALID_DATA);
@@ -252,14 +286,17 @@ namespace
     }
     void profile(const std::filesystem::path& base)
     {
-        const auto root = base / ("profile-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+        const auto root =
+            base / ("profile-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
         std::filesystem::create_directories(root / "project");
         std::filesystem::create_directories(root / "user");
         persistence::WriteCoordinator coordinator;
         storage::FileArtifactStore backend(root);
-        workspace::WorkspaceStore old(root / "project", coordinator, backend), user(root / "user", coordinator, backend);
+        workspace::WorkspaceStore old(root / "project", coordinator, backend),
+            user(root / "user", coordinator, backend);
         const asset::AssetId project{*uuids::uuid::from_string("491f06e3-8618-4dfe-ae93-4c06b2b0e172")};
-        const auto settle = [&](persistence::WriteTicket ticket) {
+        const auto settle = [&](persistence::WriteTicket ticket)
+        {
             auto ready = take(coordinator.takeReady());
             assert(ready && ready->ticket == ticket);
             auto result = backend.publish(*ready);
@@ -301,23 +338,34 @@ namespace
         assert(unmarked.continueProfileMigration(old, project).error().code == workspace::EWorkspaceError::CONFLICT);
         workspace::WorkspaceStore corrupt(root / "corrupt-profile", coordinator, backend);
         std::filesystem::create_directories(root / "corrupt-profile/.lux/workspace");
-        { std::ofstream file(root / "corrupt-profile/.lux/workspace/preferences.toml"); file << "invalid ["; }
+        {
+            std::ofstream file(root / "corrupt-profile/.lux/workspace/preferences.toml");
+            file << "invalid [";
+        }
         std::filesystem::create_directories(root / "other-user");
         workspace::WorkspaceStore destination(root / "other-user", coordinator, backend);
-        assert(destination.continueProfileMigration(corrupt, project).error().code == workspace::EWorkspaceError::INVALID_DATA);
+        assert(
+            destination.continueProfileMigration(corrupt, project).error().code ==
+            workspace::EWorkspaceError::INVALID_DATA
+        );
         assert(std::filesystem::is_empty(root / "other-user"));
-        std::puts("V29: preferences copy/marker/retry/selected-layout/unknown/origin, personal edits, conflicts and corrupt source");
+        std::puts(
+            "V29: preferences copy/marker/retry/selected-layout/unknown/origin, personal edits, conflicts and corrupt source"
+        );
     }
     void completeProfile(const std::filesystem::path& base)
     {
-        const auto root = base / ("complete-profile-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+        const auto root =
+            base / ("complete-profile-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
         std::filesystem::create_directories(root / "project");
         std::filesystem::create_directories(root / "profile");
         persistence::WriteCoordinator coordinator;
         storage::FileArtifactStore backend(root);
-        workspace::WorkspaceStore source(root / "project", coordinator, backend), target(root / "profile", coordinator, backend);
+        workspace::WorkspaceStore source(root / "project", coordinator, backend),
+            target(root / "profile", coordinator, backend);
         const asset::AssetId project{*uuids::uuid::from_string("591f06e3-8618-4dfe-ae93-4c06b2b0e172")};
-        const auto publish = [&](persistence::WriteTicket ticket, bool acknowledge) {
+        const auto publish = [&](persistence::WriteTicket ticket, bool acknowledge)
+        {
             auto ready = take(coordinator.takeReady());
             assert(ready && ready->ticket == ticket);
             auto outcome = backend.publish(*ready);
@@ -332,8 +380,13 @@ namespace
             workspace::DockLayout layout;
             layout.id.value = "1234567890abcdef1234567890ab" + std::to_string(1000 + i);
             layout.label = "Layout " + std::to_string(i);
-            layout.slots = {{{1}, views::ViewRestoreKey{"material"}, views::ViewTypeId{"test.material"},
-                true, {91, bytes("unknown view payload")}}};
+            layout.slots = {
+                {{1},
+                 views::ViewRestoreKey{"material"},
+                 views::ViewTypeId{"test.material"},
+                 true,
+                 {91, bytes("unknown view payload")}}
+            };
             layout.dock.nodes = {{1, workspace::EDockSplit::LEAF, 0, 0, 0.5, {{1}}}};
             layout.dock.roots = {{1}};
             publish(take(source.saveLayout(layout, "missing")), true);
@@ -345,8 +398,12 @@ namespace
         prefs.opaque.push_back({"unknown", 22, bytes("keep")});
         publish(take(source.writePreferences(prefs, "missing")), true);
         workspace::RecoveryManifest recovery;
-        recovery.entries.push_back({views::ViewRestoreKey{"material"}, views::ViewTypeId{"test.material"},
-            {{"asset:591f06e3-8618-4dfe-ae93-4c06b2b0e172", true}}, 0});
+        recovery.entries.push_back(
+            {views::ViewRestoreKey{"material"},
+             views::ViewTypeId{"test.material"},
+             {{"asset:591f06e3-8618-4dfe-ae93-4c06b2b0e172", true}},
+             0}
+        );
         recovery.opaque = prefs.opaque;
         publish(take(source.writeRecovery(recovery, "missing")), true);
         for (const auto file : {"preferences.toml", "recovery.toml"})
@@ -362,7 +419,10 @@ namespace
         assert(ready && ready->ticket == first);
         auto confirmed = backend.publish(*ready);
         assert(std::holds_alternative<persistence::CommitReceipt>(confirmed));
-        assert(coordinator.complete(first, persistence::PublicationUnknown{{persistence::EPersistenceError::IO, "lost reply"}}));
+        assert(coordinator.complete(
+            first,
+            persistence::PublicationUnknown{{persistence::EPersistenceError::IO, "lost reply"}}
+        ));
         for (int i{}; i < 4; ++i)
             assert(changes.update());
         assert(changes.publications().size() == 1 && !changes.publications().front().result);
@@ -378,8 +438,10 @@ namespace
         assert(changes.migrationComplete() && !changes.migrationPending());
         assert(changes.catalog().layouts.size() == 24 && changes.settled());
         assert(take(target.readPreferences()).value.selected_layout == prefs.selected_layout);
-        assert(take(target.readRecovery()).value.entries.front().contents.front().locator ==
-            recovery.entries.front().contents.front().locator);
+        assert(
+            take(target.readRecovery()).value.entries.front().contents.front().locator ==
+            recovery.entries.front().contents.front().locator
+        );
         for (const auto& [file, original] : originals)
         {
             assert(take(storage::readPublicationFile(root / "project" / file, 4096)) == original);
@@ -391,14 +453,21 @@ namespace
         publish(*take(interrupted.continueProfileMigration(source, project)), true);
         auto original_preferences = take(source.readPreferences());
         original_preferences.value.selected_layout.reset();
-        publish(take(source.writePreferences(original_preferences.value, original_preferences.target.expected_version)), true);
-        assert(interrupted.continueProfileMigration(source, project).error().code == workspace::EWorkspaceError::CONFLICT);
+        publish(
+            take(source.writePreferences(original_preferences.value, original_preferences.target.expected_version)),
+            true
+        );
+        assert(
+            interrupted.continueProfileMigration(source, project).error().code == workspace::EWorkspaceError::CONFLICT
+        );
         assert(!interrupted.readPreferences());
         assert(!take(target.continueProfileMigration(source, project))); // Completed profile is never overwritten.
-        std::puts("V29: complete 24-layout profile, selected/recovery/raw bytes, bounded receipts, Unknown, source pin and idempotency");
+        std::puts(
+            "V29: complete 24-layout profile, selected/recovery/raw bytes, bounded receipts, Unknown, source pin and idempotency"
+        );
     }
 
-}
+} // namespace
 int main(int argc, char** argv)
 {
     assert(argc == 2);

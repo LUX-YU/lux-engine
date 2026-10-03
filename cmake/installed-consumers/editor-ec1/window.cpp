@@ -30,7 +30,7 @@ namespace
         ui::Layout layout_;
         ui::Label label_;
     };
-}
+} // namespace
 int main()
 {
     auto messages = take(object::ObjectMessageQueue::create(32));
@@ -42,15 +42,17 @@ int main()
     draft.views.push_back(views::ViewFactoryEntry::create(
         contracts::CodeLease::builtin(),
         views::ViewFactoryDescriptor{views::ViewTypeIdView{"ec1.free"}, "Free pane", cxx::typeToken<std::monostate>()},
-        [](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
-            return views::DetachedView{contracts::CodeLease::builtin(), std::make_unique<FreePane>(input)};
-        }
+        [](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView>
+        { return views::DetachedView{contracts::CodeLease::builtin(), std::make_unique<FreePane>(input)}; }
     ));
     auto candidate = take(extensions::ContributionSnapshot::prepare(std::move(draft)));
     assert(contributions.enqueue(candidate) && contributions.applyPending());
     views::ViewFactoryInput input{
-        messages.dispatcherRef(), ui::PaneId{"free"}, contracts::CodeLease::builtin(),
-        cxx::typeToken<std::monostate>(), std::make_shared<const std::monostate>()
+        messages.dispatcherRef(),
+        ui::PaneId{"free"},
+        contracts::CodeLease::builtin(),
+        cxx::typeToken<std::monostate>(),
+        std::make_shared<const std::monostate>()
     };
     auto detached = take(contributions.snapshot().views().prepare(views::ViewTypeId{"ec1.free"}, input));
     assert(!detached.pane()->attachedRoot());

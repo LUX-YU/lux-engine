@@ -96,9 +96,6 @@ namespace lux::window
 
     // Pure, bounded policy. Insets reserve the outer decoration inside the work
     // area; after creation the backend supplies its actual frame insets.
-    [[nodiscard]] LUX_PLATFORM_WINDOW_PUBLIC WindowPlacementResult resolveWindowPlacement(
-        const WindowPlacementRequest&,
-        std::span<const DisplayInfo>,
-        WindowInsets = {}
-    ) noexcept;
-}
+    [[nodiscard]] LUX_PLATFORM_WINDOW_PUBLIC WindowPlacementResult
+    resolveWindowPlacement(const WindowPlacementRequest&, std::span<const DisplayInfo>, WindowInsets = {}) noexcept;
+} // namespace lux::window

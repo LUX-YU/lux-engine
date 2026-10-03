@@ -29,7 +29,8 @@ namespace
     public:
         Window(object::ObjectDispatcherRef dispatcher, ui::PaneId id, Facts& facts)
             : Pane(dispatcher, std::move(id), ui::PaneTypeId{"extension.window"}, "Extension"), facts_(facts)
-        {}
+        {
+        }
         ~Window() override
         {
             assert(facts_.code_alive);
@@ -39,20 +40,24 @@ namespace
     private:
         Facts& facts_;
     };
-}
+} // namespace
 int originalCases()
 {
     auto messages = take(object::ObjectMessageQueue::create(32));
     commands::CommandRegistry commands;
     ContributionRegistry registry{messages.dispatcherRef(), commands, 2};
     Facts facts;
-    auto library = std::shared_ptr<const void>(new int{1}, [&](const void* p) {
-        assert(facts.destroyed == 2);
-        facts.code_alive = false;
-        delete static_cast<const int*>(p);
-        auto recursive = registry.applyPending();
-        assert(!recursive && recursive.error().code == EContributionError::BUSY);
-    });
+    auto library = std::shared_ptr<const void>(
+        new int{1},
+        [&](const void* p)
+        {
+            assert(facts.destroyed == 2);
+            facts.code_alive = false;
+            delete static_cast<const int*>(p);
+            auto recursive = registry.applyPending();
+            assert(!recursive && recursive.error().code == EContributionError::BUSY);
+        }
+    );
     auto code = contracts::CodeLease::plugin(library);
     auto empty = take(ContributionSnapshot::prepare({}));
     auto later = empty;
@@ -62,7 +67,8 @@ int originalCases()
     draft.views.push_back(views::ViewFactoryEntry::create(
         code,
         views::ViewFactoryDescriptor{views::ViewTypeIdView{"extension.window"}, "Window", cxx::typeToken<Binding>()},
-        [&, code](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
+        [&, code](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView>
+        {
             ++facts.old_calls;
             if (!replace)
             {
@@ -80,7 +86,8 @@ int originalCases()
     assert(!prepared.valid());
     assert(registry.applyPending());
     std::vector<views::DetachedView> views;
-    auto batch = [&](const ContributionSnapshot& snapshot) -> ContributionResult<void> {
+    auto batch = [&](const ContributionSnapshot& snapshot) -> ContributionResult<void>
+    {
         for (const auto id : {"one", "two"})
         {
             views::ViewFactoryInput input{
@@ -118,7 +125,8 @@ int originalCases()
         &registry,
         &ContributionRegistry::changed,
         &receiver,
-        [&](std::uint64_t value) noexcept {
+        [&](std::uint64_t value) noexcept
+        {
             ++notifications;
             assert(value == registry.revision());
             assert(commands.revision() == value);
@@ -158,9 +166,8 @@ namespace
             contracts::CodeLease::builtin(),
             CommandDescriptor{CommandIdView{id}, std::string{id}},
             [](const CommandQuery&) -> CommandResult<CommandState> { return CommandState{true}; },
-            [](const CommandInvocation&) -> CommandResult<DispatchReceipt> {
-                return DispatchReceipt{ImmediateCompletion{}};
-            }
+            [](const CommandInvocation&) -> CommandResult<DispatchReceipt>
+            { return DispatchReceipt{ImmediateCompletion{}}; }
         );
     }
     ContributionSnapshot catalog(std::string_view id)
@@ -209,7 +216,8 @@ namespace
             first.views.push_back(views::ViewFactoryEntry::create(
                 contracts::CodeLease::builtin(),
                 views::ViewFactoryDescriptor{views::ViewTypeIdView{"test.batch"}, "Batch", cxx::typeToken<Binding>()},
-                [&](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
+                [&](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView>
+                {
                     auto pinned_command = take(commands.snapshot().find(CommandIdView{"A"}));
                     attempt.run();
                     auto recursive = registry.applyPending();
@@ -233,14 +241,17 @@ namespace
         }
         if (mode == "cleanup")
         {
-            first.code
-                .push_back(contracts::CodeLease::plugin(std::shared_ptr<const void>(new int{1}, [&](const void* p) {
+            first.code.push_back(contracts::CodeLease::plugin(std::shared_ptr<const void>(
+                new int{1},
+                [&](const void* p)
+                {
                     attempt.run();
                     assert(registry.snapshot().commands().find(CommandIdView{"B"}));
                     auto next = catalog("D");
                     assert(registry.enqueue(next));
                     delete static_cast<const int*>(p);
-                })));
+                }
+            )));
         }
         auto initial = take(ContributionSnapshot::prepare(std::move(first)));
         assert(registry.enqueue(initial) && registry.applyPending());
@@ -250,7 +261,8 @@ namespace
         {
             auto next = catalog("B");
             assert(registry.enqueue(next));
-            auto batch = [&](const ContributionSnapshot& snapshot) -> ContributionResult<void> {
+            auto batch = [&](const ContributionSnapshot& snapshot) -> ContributionResult<void>
+            {
                 views::ViewFactoryInput input{
                     messages.dispatcherRef(),
                     ui::PaneId{"one"},
@@ -282,7 +294,7 @@ namespace
                     +[](meta::ReflectionRegistry&) noexcept -> const meta::RefClass* { return nullptr; }
                 },
                 +[](ui::Element&, ui::ElementId, ConfigurationValue&) noexcept
-                    -> lux::editor::scene::ConfigurationEditor::CreateResult { return std::unique_ptr<ui::Element>{}; }
+                -> lux::editor::scene::ConfigurationEditor::CreateResult { return std::unique_ptr<ui::Element>{}; }
             });
             auto candidate = take(ContributionSnapshot::prepare(std::move(rejected)));
             const auto reflection_count = meta::ReflectionRegistry::instance().classes().size();
@@ -305,7 +317,8 @@ namespace
                 &registry,
                 &ContributionRegistry::changed,
                 &receiver,
-                [&](std::uint64_t revision) noexcept {
+                [&](std::uint64_t revision) noexcept
+                {
                     ++notifications;
                     if (mode == "notify")
                     {
@@ -335,7 +348,7 @@ namespace
         assert(commands.canPublish() && commands.publish(attempt.candidate));
         assert(commands.snapshot().find(CommandIdView{"C"}));
     }
-}
+} // namespace
 int main(int argc, char** argv)
 {
     if (argc == 2)

@@ -9,9 +9,11 @@ namespace lux::editor::tasks
         : Element(parent, lux::ui::ElementId{"tasks"}), query_(query), rows_(query_.snapshot()),
           revision_(query.revision())
     {
-        auto connected = object::LuxObject::connect(&query_, &TaskMonitor::changed, [this](std::uint64_t) noexcept {
-            revision_.reset();
-        });
+        auto connected = object::LuxObject::connect(
+            &query_,
+            &TaskMonitor::changed,
+            [this](std::uint64_t) noexcept { revision_.reset(); }
+        );
         if (!connected)
             std::terminate();
         changes_ = std::move(*connected);
@@ -91,32 +93,37 @@ namespace lux::editor::tasks
             }
         ImGui::EndTable();
     }
-}
+} // namespace lux::editor::tasks
 
 namespace lux::editor::tasks
 {
     namespace
     {
         constexpr commands::CommandDescriptor kCommand{
-            commands::CommandIdView{"lux.editor.tasks"}, "Background Tasks", "Window"
+            commands::CommandIdView{"lux.editor.tasks"},
+            "Background Tasks",
+            "Window"
         };
         constexpr views::ViewFactoryDescriptor kFactoryDescriptor{
-            views::ViewTypeIdView{"lux.editor.tasks"}, "Tasks", cxx::typeToken<std::monostate>()
+            views::ViewTypeIdView{"lux.editor.tasks"},
+            "Tasks",
+            cxx::typeToken<std::monostate>()
         };
-    }
+    } // namespace
     std::shared_ptr<views::ViewFactoryEntry> makeTaskViewFactory(TaskMonitor& monitor)
     {
-        return views::ViewFactoryEntry::bind<kFactoryDescriptor>(contracts::CodeLease::builtin(),
-            [&monitor](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
-                return makeTaskView(input.dispatcher(), input.paneId(), monitor);
-            }
+        return views::ViewFactoryEntry::bind<kFactoryDescriptor>(
+            contracts::CodeLease::builtin(),
+            [&monitor](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView>
+            { return makeTaskView(input.dispatcher(), input.paneId(), monitor); }
         );
     }
     std::shared_ptr<commands::CommandEntry> makeTasksCommand(
-        commands::CommandEntry::Query query, desktop::ToolOpening open
+        commands::CommandEntry::Query query,
+        desktop::ToolOpening open
     )
     {
         return workbench::detail::bindToolCommand<kCommand, kFactoryDescriptor>(std::move(query), std::move(open));
     }
 
-}
+} // namespace lux::editor::tasks

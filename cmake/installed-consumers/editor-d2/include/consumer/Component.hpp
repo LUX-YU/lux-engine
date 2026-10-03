@@ -31,16 +31,18 @@ namespace consumer
         EMode LUX_MEMBER() mode { EMode::FIRST };
     };
 
-    struct LUX_COMPONENT(schema = "consumer.Component",
-                         version = 1,
-                         snapshot = COPY,
-                         semantic = DOMAIN_CONTRACT,
-                         editor = true) Component final
+    struct LUX_COMPONENT(
+        schema = "consumer.Component",
+        version = 1,
+        snapshot = COPY,
+        semantic = DOMAIN_CONTRACT,
+        editor = true
+    ) Component final
     {
         Settings LUX_MEMBER() settings;
         std::array<double, 3> LUX_MEMBER() fixed { 1, 2, 3 };
         using Grid = int[2][3];
-        Grid LUX_MEMBER() grid{{1, 2, 3}, {4, 5, 6}};
+        Grid LUX_MEMBER() grid { {1, 2, 3}, {4, 5, 6} };
         std::vector<Settings> LUX_MEMBER() sequence { {} };
         std::vector<std::array<int, 2>> LUX_MEMBER() pairs { {11, 12} };
         std::tuple<int, std::vector<int>> LUX_MEMBER() grouped { 13, {14, 15} };
@@ -58,11 +60,13 @@ namespace consumer
         Eigen::Quaterniond LUX_MEMBER() rotation_double { Eigen::Quaterniond::Identity() };
     };
 
-    struct LUX_COMPONENT(schema = "consumer.Derived",
-                         version = 1,
-                         snapshot = REBUILD,
-                         semantic = RUNTIME_DERIVED,
-                         editor = false) Derived final
+    struct LUX_COMPONENT(
+        schema = "consumer.Derived",
+        version = 1,
+        snapshot = REBUILD,
+        semantic = RUNTIME_DERIVED,
+        editor = false
+    ) Derived final
     {
         int cached{};
     };

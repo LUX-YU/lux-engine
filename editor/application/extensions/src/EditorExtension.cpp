@@ -9,7 +9,8 @@ namespace lux::editor::extensions
         bool validCounts(ContributionCounts counts) noexcept
         {
             return counts.commands <= 256 && counts.sessions <= 256 && counts.views <= 256 &&
-                counts.reflection <= 256 && counts.configurations <= 256 && counts.components <= 256 && counts.settings <= 256;
+                   counts.reflection <= 256 && counts.configurations <= 256 && counts.components <= 256 &&
+                   counts.settings <= 256;
         }
         ContributionResult<ContributionDraft> normalizeDraft(
             std::shared_ptr<const void> pinned,
@@ -18,17 +19,19 @@ namespace lux::editor::extensions
         )
         {
             auto draft = std::move(incoming);
-            const bool mismatch = counts.commands != draft.commands.size() || counts.sessions != draft.sessions.size() ||
-                                  counts.reflection != draft.reflection.size() || counts.views != draft.views.size() ||
-                                  counts.configurations != draft.configurations.size() ||
-                                  counts.components != draft.components.size() || counts.settings != draft.settings.size();
+            const bool mismatch =
+                counts.commands != draft.commands.size() || counts.sessions != draft.sessions.size() ||
+                counts.reflection != draft.reflection.size() || counts.views != draft.views.size() ||
+                counts.configurations != draft.configurations.size() || counts.components != draft.components.size() ||
+                counts.settings != draft.settings.size();
             if (mismatch)
                 return cxx::unexpected(ContributionFailure{EContributionError::INVALID_ARGUMENT, "extension.counts"});
             const auto lease = contracts::CodeLease::plugin(pinned);
             draft.code.push_back(lease);
             for (const auto& entry : draft.reflection)
                 if (!entry.code.sameOwner(lease))
-                    return cxx::unexpected(ContributionFailure{EContributionError::INVALID_ARGUMENT, "reflection.code"});
+                    return cxx::unexpected(ContributionFailure{EContributionError::INVALID_ARGUMENT, "reflection.code"}
+                    );
             for (const auto& entry : draft.commands)
                 if (!entry || !entry->usesCode(lease))
                     return cxx::unexpected(ContributionFailure{EContributionError::INVALID_ARGUMENT, "command.code"});
@@ -53,16 +56,15 @@ namespace lux::editor::extensions
             }
             return draft;
         }
-    }
+    } // namespace
     lux::project::PluginResult<EditorExtension> EditorExtension::load(
         const lux::project::PluginDescription& description,
         const lux::project::PluginLibrary& runtime,
         std::span<const EditorExtension> dependencies
     )
     {
-        const auto fail = [&](lux::project::EPluginError code, std::string subject) {
-            return cxx::unexpected(lux::project::PluginFailure{code, description.identity.id, std::move(subject)});
-        };
+        const auto fail = [&](lux::project::EPluginError code, std::string subject)
+        { return cxx::unexpected(lux::project::PluginFailure{code, description.identity.id, std::move(subject)}); };
         if (runtime.identity() != description.identity)
             return fail(lux::project::EPluginError::MODULE_MISMATCH, "runtime");
         if (!description.editor_library)
@@ -101,7 +103,7 @@ namespace lux::editor::extensions
         const bool has_activation_entries = table->activation_counts != ContributionCounts{};
         const bool is_invalid_activation = !has_activation && (has_requirements || has_activation_entries);
         const bool invalid_counts = !validCounts(table->counts) || !validCounts(table->activation_counts) ||
-            !table->contribute || is_invalid_activation;
+                                    !table->contribute || is_invalid_activation;
         if (invalid_counts)
             return fail(lux::project::EPluginError::INVALID_EXPORT, "editor.counts");
         EditorExtension result;
@@ -155,7 +157,9 @@ namespace lux::editor::extensions
                 EContributionError::UNAVAILABLE,
                 "extension.capabilities",
                 0,
-                is_missing_sessions ? "sessions" : is_missing_project ? "project" : "workbench"
+                is_missing_sessions  ? "sessions"
+                : is_missing_project ? "project"
+                                     : "workbench"
             });
         const ExtensionCapabilities selected{
             requirements.sessions ? supplied.sessions : nullptr,
@@ -187,4 +191,4 @@ namespace lux::editor::extensions
     {
         return code_;
     }
-}
+} // namespace lux::editor::extensions

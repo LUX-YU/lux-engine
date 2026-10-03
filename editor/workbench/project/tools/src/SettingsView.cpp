@@ -33,7 +33,8 @@ namespace lux::editor::project
             }
             void draw() noexcept override
             {
-                if (settings && ImGui::CollapsingHeader("Personal and extension settings", ImGuiTreeNodeFlags_DefaultOpen))
+                if (settings &&
+                    ImGui::CollapsingHeader("Personal and extension settings", ImGuiTreeNodeFlags_DefaultOpen))
                 {
                     const float y = ImGui::GetCursorPosY() - rect().position.y;
                     drawChild(*settings, {0, y});
@@ -122,20 +123,25 @@ namespace lux::editor::project
         Impl(SettingsView& view, ProjectStorage& project, const lux::project::PluginManager& plugins)
             : content(view, *this), project(project), plugins(plugins), baseline(project.manifest().plugins),
               selection(baseline)
-        {}
+        {
+        }
     };
     SettingsView::SettingsView(
         object::ObjectDispatcherRef dispatcher,
         lux::ui::PaneId id,
         ProjectStorage& project,
-        const lux::project::PluginManager& plugins, std::shared_ptr<SettingsContentInput> input
+        const lux::project::PluginManager& plugins,
+        std::shared_ptr<SettingsContentInput> input
     )
         : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{"lux.editor.settings"}, "Settings"),
           impl_(std::make_unique<Impl>(*this, project, plugins))
     {
         if (input)
             impl_->content.settings = std::make_unique<SettingsContent>(
-                impl_->content, lux::ui::ElementId{"settings-values"}, std::move(input));
+                impl_->content,
+                lux::ui::ElementId{"settings-values"},
+                std::move(input)
+            );
         setContent(impl_->content);
     }
     SettingsView::~SettingsView() noexcept = default;
@@ -188,24 +194,31 @@ namespace lux::editor::project
         else
             impl_->failure.reset();
     }
-}
+} // namespace lux::editor::project
 
 namespace lux::editor::project
 {
     namespace
     {
         constexpr views::ViewFactoryDescriptor kFactoryDescriptor{
-            views::ViewTypeIdView{"lux.editor.settings"}, "Settings", cxx::typeToken<std::monostate>()
+            views::ViewTypeIdView{"lux.editor.settings"},
+            "Settings",
+            cxx::typeToken<std::monostate>()
         };
         constexpr commands::CommandDescriptor kCommand{
-            commands::CommandIdView{"lux.editor.settings"}, "Project Settings", "Window"
+            commands::CommandIdView{"lux.editor.settings"},
+            "Project Settings",
+            "Window"
         };
-    }
+    } // namespace
     std::shared_ptr<views::ViewFactoryEntry> makeSettingsViewFactory(
-        ProjectStorage& project, const lux::project::PluginManager& plugins,
+        ProjectStorage& project,
+        const lux::project::PluginManager& plugins,
         cxx::move_only_function<void(const PluginSelectionDraft&)> save,
-        cxx::move_only_function<void()> retry, cxx::move_only_function<void()> abandon,
-        cxx::move_only_function<void()> acknowledge, std::shared_ptr<SettingsContentInput> settings
+        cxx::move_only_function<void()> retry,
+        cxx::move_only_function<void()> abandon,
+        cxx::move_only_function<void()> acknowledge,
+        std::shared_ptr<SettingsContentInput> settings
     )
     {
         struct Receivers final
@@ -213,22 +226,36 @@ namespace lux::editor::project
             cxx::move_only_function<void(const PluginSelectionDraft&)> save;
             cxx::move_only_function<void()> retry, abandon, acknowledge;
         };
-        auto receivers = std::make_shared<Receivers>(
-            std::move(save), std::move(retry), std::move(abandon), std::move(acknowledge)
-        );
-        return views::ViewFactoryEntry::bind<kFactoryDescriptor>(contracts::CodeLease::builtin(),
-            [&project, &plugins, receivers, settings](const views::ViewFactoryInput& input)
-                -> views::ViewFactoryResult<views::DetachedView> {
-                auto pane = std::make_unique<SettingsView>(input.dispatcher(), input.paneId(), project, plugins, settings);
+        auto receivers =
+            std::make_shared<Receivers>(std::move(save), std::move(retry), std::move(abandon), std::move(acknowledge));
+        return views::ViewFactoryEntry::bind<kFactoryDescriptor>(
+            contracts::CodeLease::builtin(),
+            [&project, &plugins, receivers, settings](const views::ViewFactoryInput& input
+            ) -> views::ViewFactoryResult<views::DetachedView>
+            {
+                auto pane =
+                    std::make_unique<SettingsView>(input.dispatcher(), input.paneId(), project, plugins, settings);
                 std::array<object::LuxObject::ConnectResult, 4> bindings{
-                    object::LuxObject::connect(pane.get(), &SettingsView::selectionRequested,
-                        [receivers](const PluginSelectionDraft& value) noexcept { receivers->save(value); }),
-                    object::LuxObject::connect(pane.get(), &SettingsView::retryRequested,
-                        [receivers]() noexcept { receivers->retry(); }),
-                    object::LuxObject::connect(pane.get(), &SettingsView::abandonRequested,
-                        [receivers]() noexcept { receivers->abandon(); }),
-                    object::LuxObject::connect(pane.get(), &SettingsView::acknowledgeRequested,
-                        [receivers]() noexcept { receivers->acknowledge(); })
+                    object::LuxObject::connect(
+                        pane.get(),
+                        &SettingsView::selectionRequested,
+                        [receivers](const PluginSelectionDraft& value) noexcept { receivers->save(value); }
+                    ),
+                    object::LuxObject::connect(
+                        pane.get(),
+                        &SettingsView::retryRequested,
+                        [receivers]() noexcept { receivers->retry(); }
+                    ),
+                    object::LuxObject::connect(
+                        pane.get(),
+                        &SettingsView::abandonRequested,
+                        [receivers]() noexcept { receivers->abandon(); }
+                    ),
+                    object::LuxObject::connect(
+                        pane.get(),
+                        &SettingsView::acknowledgeRequested,
+                        [receivers]() noexcept { receivers->acknowledge(); }
+                    )
                 };
                 for (const auto& binding : bindings)
                     if (!binding)
@@ -241,9 +268,10 @@ namespace lux::editor::project
         );
     }
     std::shared_ptr<commands::CommandEntry> makeSettingsCommand(
-        commands::CommandEntry::Query query, desktop::ToolOpening open
+        commands::CommandEntry::Query query,
+        desktop::ToolOpening open
     )
     {
         return workbench::detail::bindToolCommand<kCommand, kFactoryDescriptor>(std::move(query), std::move(open));
     }
-}
+} // namespace lux::editor::project

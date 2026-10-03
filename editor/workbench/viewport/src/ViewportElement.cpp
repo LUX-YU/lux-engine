@@ -75,10 +75,12 @@ namespace lux::editor::views
     }
     ViewportElement::ViewportElement(lux::ui::Pane& parent, lux::ui::ElementId id)
         : Element(parent, std::move(id)), image_(*this, lux::ui::ElementId{"viewport-image"})
-    {}
+    {
+    }
     ViewportElement::ViewportElement(lux::ui::Element& parent, lux::ui::ElementId id)
         : Element(parent, std::move(id)), image_(*this, lux::ui::ElementId{"viewport-image"})
-    {}
+    {
+    }
     void ViewportElement::setPresentation(
         std::unique_ptr<ViewportPresentation> presentation,
         render::PixelExtent extent
@@ -141,9 +143,7 @@ namespace lux::editor::views
         auto presentation = ViewportPresentation::create(runtime, scene, resources, system, camera, config);
         if (!presentation)
             return lux::cxx::unexpected(presentation.error());
-        auto element = std::unique_ptr<ViewportElement>(
-            new ViewportElement(parent, std::move(id))
-        );
+        auto element = std::unique_ptr<ViewportElement>(new ViewportElement(parent, std::move(id)));
         element->presentation_ = std::move(*presentation);
         element->requested_extent_ = config.extent;
         return element;
@@ -195,9 +195,8 @@ namespace lux::editor::views
             navigation_delivery_ = emit(clicked, ViewportPoint{interaction.local_pointer, interaction.size});
         const auto size = image_.displayedSize();
         const auto scale = ImGui::GetIO().DisplayFramebufferScale;
-        const auto pixels = [](float logical, float scale) {
-            return static_cast<std::uint32_t>(std::clamp(std::round(logical * scale), 0.F, 16384.F));
-        };
+        const auto pixels = [](float logical, float scale)
+        { return static_cast<std::uint32_t>(std::clamp(std::round(logical * scale), 0.F, 16384.F)); };
         requested_extent_ = {pixels(size.width, scale.x), pixels(size.height, scale.y)};
     }
 } // namespace lux::editor::views

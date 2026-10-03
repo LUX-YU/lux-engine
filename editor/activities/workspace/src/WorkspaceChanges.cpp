@@ -7,7 +7,7 @@ namespace lux::editor::workspace
 {
     namespace
     {
-        template<class Error> auto failure(std::string domain, const Error& cause)
+        template <class Error> auto failure(std::string domain, const Error& cause)
         {
             auto code = EEditorError::SOURCE_FAILURE;
             if constexpr (requires { cause.code == decltype(cause.code)::BUSY; })
@@ -15,7 +15,7 @@ namespace lux::editor::workspace
                     code = EEditorError::BUSY;
             return cxx::unexpected(EditorFailure{code, std::move(domain), 0, {}, cause});
         }
-    }
+    } // namespace
     struct WorkspaceChanges::Impl final
     {
         static constexpr std::size_t capacity = 16;
@@ -27,15 +27,23 @@ namespace lux::editor::workspace
         LayoutCatalog catalog_;
         std::vector<WorkspacePublication> publications_;
         const WorkspaceStore& legacy_source_;
-        struct ProfileSource final { const WorkspaceStore* store; asset::AssetId project; };
+        struct ProfileSource final
+        {
+            const WorkspaceStore* store;
+            asset::AssetId project;
+        };
         using VMigration = std::variant<LegacyMigration, ProfileSource>;
         std::optional<VMigration> migration_;
         std::optional<persistence::WriteTicket> migration_ticket_;
         std::optional<EditorFailure> migration_failure_;
         bool migration_complete_{};
 
-        Impl(WorkspaceStore& store, persistence::WriteCoordinator& writes, persistence::IArtifactStore& files,
-            const WorkspaceStore* legacy_source)
+        Impl(
+            WorkspaceStore& store,
+            persistence::WriteCoordinator& writes,
+            persistence::IArtifactStore& files,
+            const WorkspaceStore* legacy_source
+        )
             : store_(store), writes_(writes), files_(files), legacy_source_(legacy_source ? *legacy_source : store)
         {
             publications_.reserve(capacity);
@@ -43,8 +51,14 @@ namespace lux::editor::workspace
         struct Dispatch final
         {
             bool& active;
-            explicit Dispatch(bool& value) noexcept : active(value) { active = true; }
-            ~Dispatch() { active = false; }
+            explicit Dispatch(bool& value) noexcept : active(value)
+            {
+                active = true;
+            }
+            ~Dispatch()
+            {
+                active = false;
+            }
             Dispatch(const Dispatch&) = delete;
             Dispatch& operator=(const Dispatch&) = delete;
         };
@@ -60,8 +74,8 @@ namespace lux::editor::workspace
                 return cxx::unexpected(EditorFailure{EEditorError::CAPACITY, "workspace.results"});
             return {};
         }
-        template<class Write> EditorResult<persistence::WriteTicket>
-        accept(std::string label, Write&& write, bool refresh_catalog = true)
+        template <class Write>
+        EditorResult<persistence::WriteTicket> accept(std::string label, Write&& write, bool refresh_catalog = true)
         {
             if (auto ready = admission(true); !ready)
                 return cxx::unexpected(ready.error());
@@ -72,7 +86,7 @@ namespace lux::editor::workspace
             publications_.push_back({std::move(label), *accepted, {}, {}, refresh_catalog});
             return *accepted;
         }
-        template<class Write> EditorResult<void> publish(std::string label, Write&& write)
+        template <class Write> EditorResult<void> publish(std::string label, Write&& write)
         {
             auto accepted = accept(std::move(label), std::forward<Write>(write));
             if (!accepted)
@@ -190,12 +204,16 @@ namespace lux::editor::workspace
             const bool can_start = allow_new_work && publications_.size() < capacity;
             if (!can_start)
                 return;
-            auto next = std::visit([&](const auto& migration) -> WorkspaceResult<std::optional<persistence::WriteTicket>> {
-                if constexpr (std::same_as<std::decay_t<decltype(migration)>, ProfileSource>)
-                    return store_.continueProfileMigration(*migration.store, migration.project);
-                else
-                    return store_.continueMigration(migration, &legacy_source_);
-            }, *migration_);
+            auto next = std::visit(
+                [&](const auto& migration) -> WorkspaceResult<std::optional<persistence::WriteTicket>>
+                {
+                    if constexpr (std::same_as<std::decay_t<decltype(migration)>, ProfileSource>)
+                        return store_.continueProfileMigration(*migration.store, migration.project);
+                    else
+                        return store_.continueMigration(migration, &legacy_source_);
+                },
+                *migration_
+            );
             if (!next)
             {
                 if (next.error().code != EWorkspaceError::BUSY)
@@ -214,8 +232,10 @@ namespace lux::editor::workspace
             else
             {
                 migration_ticket_ = **next;
-                publications_.push_back({"Migrate one workspace record", **next, {}, {},
-                    !std::holds_alternative<ProfileSource>(*migration_)});
+                publications_.push_back(
+                    {"Migrate one workspace record", **next, {}, {}, !std::holds_alternative<ProfileSource>(*migration_)
+                    }
+                );
             }
         }
         EditorResult<void> update(bool allow_new_work)
@@ -249,36 +269,52 @@ namespace lux::editor::workspace
         }
     };
     WorkspaceChanges::WorkspaceChanges(
-        WorkspaceStore& store, persistence::WriteCoordinator& writes, persistence::IArtifactStore& files,
+        WorkspaceStore& store,
+        persistence::WriteCoordinator& writes,
+        persistence::IArtifactStore& files,
         const WorkspaceStore* legacy_source
-    ) : impl_(std::make_unique<Impl>(store, writes, files, legacy_source))
-    {}
+    )
+        : impl_(std::make_unique<Impl>(store, writes, files, legacy_source))
+    {
+    }
     WorkspaceChanges::~WorkspaceChanges() = default;
-    EditorResult<void> WorkspaceChanges::refresh() { return impl_->refresh(); }
+    EditorResult<void> WorkspaceChanges::refresh()
+    {
+        return impl_->refresh();
+    }
     EditorResult<void> WorkspaceChanges::save(const DockLayout& layout)
     {
-        return impl_->publish("Save layout: " + layout.label, [&] {
-            return impl_->store_.saveLayout(layout, "missing");
-        });
+        return impl_->publish(
+            "Save layout: " + layout.label,
+            [&] { return impl_->store_.saveLayout(layout, "missing"); }
+        );
     }
     EditorResult<void> WorkspaceChanges::rename(const LayoutId& id, std::string label)
     {
-        return impl_->publish("Rename layout: " + label, [&] {
-            return impl_->store_.renameLayout(id, std::move(label));
-        });
+        return impl_->publish(
+            "Rename layout: " + label,
+            [&] { return impl_->store_.renameLayout(id, std::move(label)); }
+        );
     }
     EditorResult<void> WorkspaceChanges::remove(const LayoutId& id)
     {
         return impl_->publish("Delete layout: " + id.value, [&] { return impl_->store_.removeLayout(id); });
     }
-    EditorResult<void> WorkspaceChanges::select(const LayoutId& id) { return impl_->select(id); }
+    EditorResult<void> WorkspaceChanges::select(const LayoutId& id)
+    {
+        return impl_->select(id);
+    }
     EditorResult<void> WorkspaceChanges::recordRecovery(const RecoveryManifest& value, std::string version)
     {
-        return impl_->publish("Record recovery locations (not unsaved content)", [&] {
-            return impl_->store_.writeRecovery(value, std::move(version));
-        });
+        return impl_->publish(
+            "Record recovery locations (not unsaved content)",
+            [&] { return impl_->store_.writeRecovery(value, std::move(version)); }
+        );
     }
-    EditorResult<void> WorkspaceChanges::migrate() { return impl_->migrate(); }
+    EditorResult<void> WorkspaceChanges::migrate()
+    {
+        return impl_->migrate();
+    }
     EditorResult<void> WorkspaceChanges::migrateProfile(const WorkspaceStore& source, const asset::AssetId& project)
     {
         return impl_->migrateProfile(source, project);
@@ -287,25 +323,41 @@ namespace lux::editor::workspace
     {
         return impl_->migration_.has_value() && !impl_->migration_complete_;
     }
-    EditorResult<persistence::WriteTicket>
-    WorkspaceChanges::saveSettings(std::string_view relative, const settings::SettingsDocument& value)
+    EditorResult<persistence::WriteTicket> WorkspaceChanges::saveSettings(
+        std::string_view relative,
+        const settings::SettingsDocument& value
+    )
     {
-        return impl_->accept("Save settings: " + std::string(relative), [&] {
-            return impl_->store_.writeSettings(relative, value);
-        }, false);
+        return impl_->accept(
+            "Save settings: " + std::string(relative),
+            [&] { return impl_->store_.writeSettings(relative, value); },
+            false
+        );
     }
-    EditorResult<void> WorkspaceChanges::reconcile(persistence::WriteTicket ticket) { return impl_->reconcile(ticket); }
+    EditorResult<void> WorkspaceChanges::reconcile(persistence::WriteTicket ticket)
+    {
+        return impl_->reconcile(ticket);
+    }
     EditorResult<void> WorkspaceChanges::acknowledge(persistence::WriteTicket ticket)
     {
         return impl_->acknowledge(ticket);
     }
-    EditorResult<void> WorkspaceChanges::update(bool allow_new_work) { return impl_->update(allow_new_work); }
-    bool WorkspaceChanges::hasCapacity() const noexcept { return impl_->publications_.size() < Impl::capacity; }
+    EditorResult<void> WorkspaceChanges::update(bool allow_new_work)
+    {
+        return impl_->update(allow_new_work);
+    }
+    bool WorkspaceChanges::hasCapacity() const noexcept
+    {
+        return impl_->publications_.size() < Impl::capacity;
+    }
     bool WorkspaceChanges::settled() const noexcept
     {
         return std::ranges::all_of(impl_->publications_, [](const auto& report) { return report.result.has_value(); });
     }
-    const LayoutCatalog& WorkspaceChanges::catalog() const noexcept { return impl_->catalog_; }
+    const LayoutCatalog& WorkspaceChanges::catalog() const noexcept
+    {
+        return impl_->catalog_;
+    }
     std::span<const WorkspacePublication> WorkspaceChanges::publications() const noexcept
     {
         return impl_->publications_;
@@ -318,5 +370,8 @@ namespace lux::editor::workspace
     {
         return impl_->migration_failure_ ? &*impl_->migration_failure_ : nullptr;
     }
-    bool WorkspaceChanges::migrationComplete() const noexcept { return impl_->migration_complete_; }
-}
+    bool WorkspaceChanges::migrationComplete() const noexcept
+    {
+        return impl_->migration_complete_;
+    }
+} // namespace lux::editor::workspace

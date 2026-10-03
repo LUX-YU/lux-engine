@@ -61,7 +61,8 @@ namespace
         window.on_placement_changed = [&](const WindowPlacementEvent&) { ++notifications; };
         auto adopted = window.applyPlacement(resolved->placement);
         assert(adopted);
-        const auto settled = [&](EWindowMode mode) {
+        const auto settled = [&](EWindowMode mode)
+        {
             const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
             for (;;)
             {
@@ -90,9 +91,9 @@ namespace
             window.framebufferSize(width, height);
             assert(width && height);
             std::cout << "mode=" << static_cast<int>(mode) << " content=" << actual.content.width << 'x'
-                << actual.content.height << " framebuffer=" << width << 'x' << height << " scale="
-                << actual.scale.x << ',' << actual.scale.y << " restore=" << normal.x << ',' << normal.y << ','
-                << normal.width << ',' << normal.height << '\n';
+                      << actual.content.height << " framebuffer=" << width << 'x' << height
+                      << " scale=" << actual.scale.x << ',' << actual.scale.y << " restore=" << normal.x << ','
+                      << normal.y << ',' << normal.width << ',' << normal.height << '\n';
         }
         assert(notifications > 0);
         const auto before = window.state();
@@ -103,7 +104,7 @@ namespace
         assert(window.state()->placement.normal == before->placement.normal);
         std::cout << "actual platform placement PASS; not a native-input/IME qualification\n";
     }
-}
+} // namespace
 
 int main(int argc, char** argv)
 {

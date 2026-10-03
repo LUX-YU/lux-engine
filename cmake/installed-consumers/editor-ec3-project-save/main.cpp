@@ -30,7 +30,7 @@ namespace es = lux::editor::scene;
 namespace ef = lux::editor::flowforge;
 namespace
 {
-    template<class T> auto take(T result)
+    template <class T> auto take(T result)
     {
         if (!result)
         {
@@ -62,7 +62,8 @@ namespace
     public:
         explicit Files(const std::filesystem::path& root)
             : real_(root), manifest_key_(take(real_.resolve("Project.luxproject")).key)
-        {}
+        {
+        }
         // Only publication result delivery is injected; every successful write uses the real backend.
         std::atomic<int> fault{};
         std::function<void()> during_resolve;
@@ -85,17 +86,21 @@ namespace
                 return p::PublicationUnknown{{p::EPersistenceError::IO, "lost receipt"}, "published"};
             return result;
         }
-        p::Reconciliation reconcile(const p::PublicationQuery& query) override { return real_.reconcile(query); }
+        p::Reconciliation reconcile(const p::PublicationQuery& query) override
+        {
+            return real_.reconcile(query);
+        }
+
     private:
         storage::FileArtifactStore real_;
         p::WriteTargetKey manifest_key_;
     };
-}
+} // namespace
 int main(int argc, char** argv)
 {
     assert(argc == 2);
     const auto root = std::filesystem::absolute(argv[1]) /
-        std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+                      std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
     std::filesystem::create_directories(root / "Content");
     const auto project_file = root / "Project.luxproject";
     {
@@ -107,7 +112,8 @@ int main(int argc, char** argv)
     process::TaskScope tasks{runtime};
     asset::AssetVfs vfs;
     auto prepared_project = take(prepareProjectOpen(project_file));
-    auto project = take(ProjectStorage::open(prepared_project, vfs, *runtime.blocking(), tasks, messages.dispatcherRef()));
+    auto project =
+        take(ProjectStorage::open(prepared_project, vfs, *runtime.blocking(), tasks, messages.dispatcherRef()));
     Files files{root};
     p::WriteCoordinator writes;
     p::SaveService saves{writes};
@@ -116,13 +122,18 @@ int main(int argc, char** argv)
     p::SaveExecution execution{runtime, saves, writes, files};
     ProjectContentSaving saving{store, opening, saves, *project, writes, files};
     auto schemas = take(simulation::ecs::ComponentSchemaSet::build({}));
-    auto factories = take(s::SessionFactorySnapshot::create({
-        es::makeSceneSessionFactory(schemas), em::makeMaterialSessionFactory(), ef::makeFlowSessionFactory({})
-    }));
+    auto factories = take(s::SessionFactorySnapshot::create(
+        {es::makeSceneSessionFactory(schemas), em::makeMaterialSessionFactory(), ef::makeFlowSessionFactory({})}
+    ));
     auto simulation = take(std::move(simulation::SimulationDescriptionBuilder{}).build());
     auto description = take(std::move(lux::scene::SceneDescriptionBuilder{}).buildResolved());
-    auto package = take(lux::scene::createScenePackage(id("scene"), "Scene", {},
-        std::make_shared<const simulation::SimulationDescription>(std::move(simulation)), description));
+    auto package = take(lux::scene::createScenePackage(
+        id("scene"),
+        "Scene",
+        {},
+        std::make_shared<const simulation::SimulationDescription>(std::move(simulation)),
+        description
+    ));
     lux::material::MaterialSource material{id("material"), "Material", {}};
     material.graph.addNode(std::make_unique<lux::material::ConstantNode>());
     lux::flowforge::FlowGraph graph;
@@ -134,7 +145,8 @@ int main(int argc, char** argv)
         ef::prepareFlowSession({std::move(flow)}, {}, {}, {})
     };
     std::array<s::SessionId, 3> sessions;
-    auto turn = [&] {
+    auto turn = [&]
+    {
         assert(runtime.collectCompletions());
         assert(opening.update());
         saves.adoptCompletions();
@@ -145,16 +157,17 @@ int main(int argc, char** argv)
         assert(execution.submitReady());
         std::this_thread::sleep_for(std::chrono::milliseconds{1});
     };
-    auto until = [&](auto ready) {
+    auto until = [&](auto ready)
+    {
         for (unsigned i{}; i < 10000 && !ready(); ++i)
             turn();
         assert(ready());
     };
     for (std::size_t i{}; i < inputs.size(); ++i)
     {
-        const auto request = take(opening.create(
-            project->catalogModel().reference({}).project_instance, std::move(inputs[i]), factories
-        ));
+        const auto request =
+            take(opening.create(project->catalogModel().reference({}).project_instance, std::move(inputs[i]), factories)
+            );
         assert(opening.update());
         const auto result = take(opening.status(request));
         assert(result.stage == s::EOpenAssetStage::PUBLISHED);
@@ -174,7 +187,8 @@ int main(int argc, char** argv)
     assert(take(ef::FlowCodec::decode(read(root / "Content/source-2"))).source.name == "Flow");
     const auto key = take(store.key<em::MaterialSession>(sessions[1]));
     auto& model = take(store.access<em::MaterialSession>().edit(key)).get();
-    auto rename = [&](std::string name) {
+    auto rename = [&](std::string name)
+    {
         em::MaterialEditBatch batch{model.describe().current, "Rename", {}};
         batch.edits.emplace_back(em::MaterialRename{std::move(name)});
         assert(model.apply(std::move(batch)));
@@ -211,21 +225,26 @@ int main(int argc, char** argv)
         files.fault = fault;
         const auto accepted = take(saving.request(model.describe().current, p::ESaveMode::SAVE));
         std::optional<p::WriteTicket> uncertain;
-        until([&] {
-            const auto& report = saving.reports().back();
-            const auto status = take(saves.status(accepted));
-            const auto ticket = report.catalog_ticket.value_or(status.ticket);
-            if (take(writes.status(ticket)).stage == p::EWriteStage::UNKNOWN)
-                uncertain = ticket;
-            return uncertain.has_value();
-        });
+        until(
+            [&]
+            {
+                const auto& report = saving.reports().back();
+                const auto status = take(saves.status(accepted));
+                const auto ticket = report.catalog_ticket.value_or(status.ticket);
+                if (take(writes.status(ticket)).stage == p::EWriteStage::UNKNOWN)
+                    uncertain = ticket;
+                return uncertain.has_value();
+            }
+        );
         assert(!saving.settled() && !saving.acknowledge(accepted));
         assert(writes.reconcile(*uncertain, files));
         until([&] { return saving.settled(); });
         const auto& result = *saving.reports().back().result;
         assert(std::holds_alternative<p::CommitReceipt>(result.publication));
-        assert(project->asset(model.describe().binding->asset)->source_digest ==
-            take(projectFileDigest(root / "Content/uncatalogued")));
+        assert(
+            project->asset(model.describe().binding->asset)->source_digest ==
+            take(projectFileDigest(root / "Content/uncatalogued"))
+        );
     }
     rename("No view Save All");
     const auto unknown_baseline = model.describe();
@@ -236,7 +255,9 @@ int main(int argc, char** argv)
     const auto& conflict = std::get<p::NotPublished>(saving.reports().back().result->publication);
     assert(conflict.failure.code == p::EPersistenceError::CONFLICT);
     assert(model.describe().current == unknown_baseline.current && model.describe().dirty);
-    assert(model.describe().binding == unknown_baseline.binding && read(root / "Content/uncatalogued") == published_bytes);
+    assert(
+        model.describe().binding == unknown_baseline.binding && read(root / "Content/uncatalogued") == published_bytes
+    );
     assert(saving.acknowledgeSaveAll());
     take(saving.request(model.describe().current, p::ESaveMode::SAVE_AS, "Content/recovered"));
     until([&] { return saving.settled(); });
@@ -256,7 +277,8 @@ int main(int argc, char** argv)
         const auto entry = std::ranges::find(assets, path, &ProjectAssetEntry::source_path);
         assert(entry != assets.end());
         const auto source_id = entry->id;
-        const auto request = take(openProjectContent(*project, files, opening, project->reference(source_id), factories));
+        const auto request =
+            take(openProjectContent(*project, files, opening, project->reference(source_id), factories));
         until([&] { return take(opening.status(request)).stage == s::EOpenAssetStage::PUBLISHED; });
         const auto reopened = take(opening.status(request)).session;
         const auto state = take(store.describe(reopened));
@@ -279,28 +301,46 @@ int main(int argc, char** argv)
         auto busy_selection = plugins.request(original, desired);
         assert(!busy_selection && busy_selection.error().code == EEditorError::BUSY);
         assert(project->manifest().plugins == original);
-        until([&] {
-            assert(plugins.update());
-            return plugins.status() && std::holds_alternative<EditorFailure>(*plugins.status());
-        });
+        until(
+            [&]
+            {
+                assert(plugins.update());
+                return plugins.status() && std::holds_alternative<EditorFailure>(*plugins.status());
+            }
+        );
         assert(!plugins.settled() && !plugins.acknowledge());
         assert(project->manifest().plugins == original && writes.size() == 1);
         assert(plugins.retry());
-        until([&] { assert(plugins.update()); return plugins.settled(); });
+        until(
+            [&]
+            {
+                assert(plugins.update());
+                return plugins.settled();
+            }
+        );
         assert(std::holds_alternative<PublicationSucceeded>(*plugins.status()));
         assert(project->manifest().plugins == desired && writes.size() == 0);
         assert(plugins.acknowledge() && !plugins.status());
         stale_selection = plugins.request(original, {});
         assert(!stale_selection && stale_selection.error().code == EEditorError::STALE_REQUEST);
         bool wrong_thread{};
-        std::jthread([&] {
-            const auto refused = plugins.request(desired, {});
-            wrong_thread = !refused && refused.error().domain == "plugins.owner-thread";
-        }).join();
+        std::jthread(
+            [&]
+            {
+                const auto refused = plugins.request(desired, {});
+                wrong_thread = !refused && refused.error().domain == "plugins.owner-thread";
+            }
+        ).join();
         assert(wrong_thread && !plugins.status() && writes.size() == 0);
         assert(plugins.request(desired, {}));
         assert(plugins.abandon());
-        until([&] { assert(plugins.update()); return plugins.settled(); });
+        until(
+            [&]
+            {
+                assert(plugins.update());
+                return plugins.settled();
+            }
+        );
         assert(std::holds_alternative<PublicationAbandoned>(*plugins.status()));
         assert(project->manifest().plugins == desired && plugins.acknowledge() && writes.size() == 0);
     }
@@ -312,7 +352,8 @@ int main(int argc, char** argv)
         p::SaveService user_saves{user_writes};
         p::SaveExecution user_execution{runtime, user_saves, user_writes, user_files};
         const auto path = user_root / "lux/editor/recent-projects.toml";
-        auto settle = [&](RecentProjects& recent, auto ready) {
+        auto settle = [&](RecentProjects& recent, auto ready)
+        {
             for (unsigned i{}; i < 10000 && !ready(); ++i)
             {
                 assert(runtime.collectCompletions());
@@ -346,10 +387,14 @@ int main(int argc, char** argv)
         }
         user_files.fault = 3;
         assert(recent.refresh() && recent.update());
-        settle(recent, [&] {
-            const auto ticket = recent.ticket();
-            return ticket && take(user_writes.status(*ticket)).stage == p::EWriteStage::UNKNOWN;
-        });
+        settle(
+            recent,
+            [&]
+            {
+                const auto ticket = recent.ticket();
+                return ticket && take(user_writes.status(*ticket)).stage == p::EWriteStage::UNKNOWN;
+            }
+        );
         assert(!recent.settled() && recent.entries().size() == 1 && user_writes.size() == 1);
         assert(recent.reconcile());
         settle(recent, [&] { return recent.settled(); });
@@ -365,5 +410,6 @@ int main(int argc, char** argv)
     }
     project->requestClose();
     assert(take(project->advanceClose()));
-    std::cout << "PASS independent three-model project save, checkpoint/history, strict source, partial publication, Unknown and Save All\n";
+    std::cout
+        << "PASS independent three-model project save, checkpoint/history, strict source, partial publication, Unknown and Save All\n";
 }

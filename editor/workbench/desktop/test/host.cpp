@@ -99,15 +99,23 @@ namespace
         {
             explicit Sender(object::ObjectDispatcherRef dispatcher) : LuxObject(dispatcher) {}
             object::TSignal<> changed{*this};
-            void send() noexcept { assert(emit(changed).complete()); }
+            void send() noexcept
+            {
+                assert(emit(changed).complete());
+            }
         } sender(dispatcher);
         Facts first_facts, second_facts;
         unsigned received{};
         auto first = candidate(dispatcher, "connected-first", first_facts);
-        first.addConnection(take(object::LuxObject::connect(&sender, &Sender::changed, [&]() noexcept {
-            assert(first_facts.alive && !first_facts.pane);
-            ++received;
-        })));
+        first.addConnection(take(object::LuxObject::connect(
+            &sender,
+            &Sender::changed,
+            [&]() noexcept
+            {
+                assert(first_facts.alive && !first_facts.pane);
+                ++received;
+            }
+        )));
         auto transferred = std::move(first);
         sender.send();
         assert(received == 1);
@@ -124,7 +132,9 @@ namespace
         struct Comparison final : ui::Pane
         {
             Comparison(object::ObjectDispatcherRef dispatcher, desktop::ViewHost& host)
-                : Pane(dispatcher, ui::PaneId{"compare"}, ui::PaneTypeId{"comparison"}, "Comparison"), host_(host) {}
+                : Pane(dispatcher, ui::PaneId{"compare"}, ui::PaneTypeId{"comparison"}, "Comparison"), host_(host)
+            {
+            }
             views::ViewContent content_;
             views::ViewId id_;
             desktop::ViewHost& host_;
@@ -134,15 +144,22 @@ namespace
         auto pane = std::make_unique<Comparison>(dispatcher, host);
         auto* comparison = pane.get();
         views::DetachedView view{
-            contracts::CodeLease::builtin(), std::move(pane), nullptr, nullptr, nullptr, nullptr,
-            +[](const ui::Pane& pane) noexcept {
+            contracts::CodeLease::builtin(),
+            std::move(pane),
+            nullptr,
+            nullptr,
+            nullptr,
+            nullptr,
+            +[](const ui::Pane& pane) noexcept
+            {
                 const auto& comparison = static_cast<const Comparison&>(pane);
                 // Capturing plugin metadata is also a callback boundary: owner destruction is forbidden.
                 const auto nested = comparison.host_.drain();
                 assert(!nested && nested.error() == views::EViewError::BUSY);
                 return comparison.content_;
             },
-            +[](ui::Pane& pane, const views::ViewContent& content) -> views::ViewCloseResult {
+            +[](ui::Pane& pane, const views::ViewContent& content) -> views::ViewCloseResult
+            {
                 auto& comparison = static_cast<Comparison&>(pane);
                 const auto nested = comparison.host_.rebindContent(comparison.id_, {});
                 assert(!nested && nested.error().retryable);
@@ -235,7 +252,8 @@ namespace
         auto notice = take(object::LuxObject::connect(
             root.get(),
             &ui::Root::attachmentChanged,
-            [&](const ui::AttachmentChanged& changed) noexcept {
+            [&](const ui::AttachmentChanged& changed) noexcept
+            {
                 ++notifications;
                 const auto all = host.describeAll();
                 const auto nested = host.drain();
@@ -249,11 +267,15 @@ namespace
         first_id = take(host.adopt(a, views::ViewRestoreKey{"notice-first"})).id;
         const auto second_id = take(host.adopt(b, views::ViewRestoreKey{"notice-second"})).id;
         assert(saw_busy && notifications == 2 && first.pane == 0);
-        auto after_close =
-            take(object::LuxObject::connect(root.get(), &ui::Root::objectRemoved, [&](object::LuxObject*) noexcept {
+        auto after_close = take(object::LuxObject::connect(
+            root.get(),
+            &ui::Root::objectRemoved,
+            [&](object::LuxObject*) noexcept
+            {
                 assert(host.close(second_id));
                 assert(second.pane == 0);
-            }));
+            }
+        ));
         const auto first_batch = take(host.drain());
         assert(first_batch.completed == 1 && first_batch.pending == 2);
         assert(first.pane == 1 && second.pane == 0);
@@ -348,7 +370,8 @@ namespace
         auto connected = take(object::LuxObject::connect(
             root.get(),
             &ui::Root::attachmentChanged,
-            [&](const ui::AttachmentChanged& change) noexcept {
+            [&](const ui::AttachmentChanged& change) noexcept
+            {
                 if (!change.mounted)
                     return;
                 ++notices;
@@ -386,7 +409,8 @@ namespace
         auto root = take(ui::Root::create(dispatcher));
         Facts first, second;
         desktop::ViewHost host(*root, {2, 8});
-        auto make = [&](const char* name, Facts& facts) {
+        auto make = [&](const char* name, Facts& facts)
+        {
             auto code = std::make_shared<Code>(facts);
             return views::DetachedView{
                 contracts::CodeLease::plugin(code),
@@ -411,7 +435,8 @@ namespace
         auto observer = take(object::LuxObject::connect(
             root.get(),
             &ui::Root::attachmentChanged,
-            [&](const ui::AttachmentChanged& change) noexcept {
+            [&](const ui::AttachmentChanged& change) noexcept
+            {
                 if (change.mounted)
                     return;
                 ++detached;
@@ -421,7 +446,8 @@ namespace
             }
         ));
         unsigned handed_off{};
-        const auto handoff = [&]() noexcept {
+        const auto handoff = [&]() noexcept
+        {
             ++handed_off;
             assert(detached == 2 && first.pane == 0 && second.pane == 0);
             assert(!host.describe(one) && !host.describe(two));
@@ -436,7 +462,8 @@ namespace
     {
         auto root = take(ui::Root::create(dispatcher));
         desktop::ViewHost host(*root, {8, 32});
-        auto make = [&](std::string name) {
+        auto make = [&](std::string name)
+        {
             return views::DetachedView{
                 contracts::CodeLease::builtin(),
                 std::make_unique<ui::Pane>(dispatcher, ui::PaneId{name}, ui::PaneTypeId{"layout.test"}, name)
@@ -475,7 +502,8 @@ namespace
         auto entry = views::ViewFactoryEntry::create(
             contracts::CodeLease::builtin(),
             views::ViewFactoryDescriptor{views::ViewTypeIdView{"layout.test"}, "Layout test", cxx::typeToken<int>()},
-            [&](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
+            [&](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView>
+            {
                 ++creations;
                 assert(*static_cast<const int*>(input.binding()) == 0); // Unbound, not a recovered asset locator.
                 if (reject_second && creations == 2)
@@ -489,7 +517,8 @@ namespace
             }
         );
         auto factories = take(views::ViewFactorySnapshot::create({entry}));
-        const auto input = [&](views::ViewTypeId, ui::PaneId id) -> views::ViewFactoryResult<views::ViewFactoryInput> {
+        const auto input = [&](views::ViewTypeId, ui::PaneId id) -> views::ViewFactoryResult<views::ViewFactoryInput>
+        {
             ++inputs;
             return views::ViewFactoryInput{
                 dispatcher,
@@ -564,7 +593,8 @@ namespace
         views::DetachedView candidate{contracts::CodeLease::builtin(), std::move(view)};
         auto id = take(host.adopt(candidate, views::ViewRestoreKey{"review"})).id;
         bool visited{};
-        const auto borrow = [&](ui::Pane& pane) {
+        const auto borrow = [&](ui::Pane& pane)
+        {
             visited = true;
             assert(pane.type() == ui::PaneTypeId{"lux.editor.review"});
             auto& modal = static_cast<desktop::ReviewView&>(pane);
@@ -587,28 +617,30 @@ namespace
         question.choices = {CANCEL, CANCEL};
         assert(!desktop::ReviewView::create(dispatcher, ui::PaneId{"invalid"}, question));
     }
-}
+} // namespace
 void toolCommandFactory(object::ObjectDispatcherRef dispatcher)
 {
     auto root = take(ui::Root::create(dispatcher));
     desktop::ViewHost host(*root);
     unsigned constructions{};
     std::string type{"p10.test"}, label{"External tool"};
-    auto factory = views::ViewFactoryEntry::create(contracts::CodeLease::builtin(),
+    auto factory = views::ViewFactoryEntry::create(
+        contracts::CodeLease::builtin(),
         {views::ViewTypeIdView{type}, label, cxx::typeToken<std::monostate>()},
-        [&constructions](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
+        [&constructions](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView>
+        {
             ++constructions;
-            return views::DetachedView{contracts::CodeLease::builtin(), std::make_unique<ui::Pane>(
-                input.dispatcher(), input.paneId(), ui::PaneTypeId{"p10.test"}, "Tool"
-            )};
+            return views::DetachedView{
+                contracts::CodeLease::builtin(),
+                std::make_unique<ui::Pane>(input.dispatcher(), input.paneId(), ui::PaneTypeId{"p10.test"}, "Tool")
+            };
         }
     );
     type.clear();
     label.assign(1000, 'x');
     const auto factories = take(views::ViewFactorySnapshot::create({factory}));
-    auto query = [](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
-        return commands::CommandState{true};
-    };
+    auto query = [](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
+    { return commands::CommandState{true}; };
     auto open = [&](views::ViewTypeId id) { return desktop::showTool(host, factories, dispatcher, std::move(id)); };
     auto entries = take(desktop::makeToolCommands(std::array{factory}, query, open));
     assert(entries.size() == 1 && entries.front()->descriptor().label == "External tool");
@@ -625,14 +657,18 @@ void toolCommandFactory(object::ObjectDispatcherRef dispatcher)
     assert(second.size() == 1 && constructions == 1 && second.front().id == first.front().id);
     assert(!desktop::showTool(host, factories, dispatcher, views::ViewTypeId{"absent"}));
     assert(!desktop::makeToolCommands(std::array<std::shared_ptr<views::ViewFactoryEntry>, 1>{}, query, open));
-    auto close = desktop::makeCloseViewCommand(query, [&](views::ViewId id) -> commands::CommandResult<void> {
-        auto batch = host.prepareClose(std::span{&id, 1});
-        if (!batch)
-            return cxx::unexpected(commands::CommandFailure{commands::ECommandError::STALE_TARGET});
-        auto committed = host.commit(*batch);
-        assert(committed);
-        return {};
-    });
+    auto close = desktop::makeCloseViewCommand(
+        query,
+        [&](views::ViewId id) -> commands::CommandResult<void>
+        {
+            auto batch = host.prepareClose(std::span{&id, 1});
+            if (!batch)
+                return cxx::unexpected(commands::CommandFailure{commands::ECommandError::STALE_TARGET});
+            auto committed = host.commit(*batch);
+            assert(committed);
+            return {};
+        }
+    );
     const auto closing = take(commands::CommandRegistrySnapshot::create({close}));
     commands::CommandInvocation target{first.front().id};
     assert(registry.execute(take(closing.at(0)), target));
@@ -643,14 +679,20 @@ void toolCommandFactory(object::ObjectDispatcherRef dispatcher)
 int main()
 {
     {
-        const auto entry = [](std::string name, bool is_default) {
+        const auto entry = [](std::string name, bool is_default)
+        {
             return views::ViewFactoryEntry::create(
                 contracts::CodeLease::builtin(),
                 views::ViewFactoryDescriptor{
-                    views::ViewTypeIdView{name}, name, cxx::typeToken<std::monostate>(), 1,
-                    std::array{sessions::SessionKindIdView{"test.author"}}, is_default
+                    views::ViewTypeIdView{name},
+                    name,
+                    cxx::typeToken<std::monostate>(),
+                    1,
+                    std::array{sessions::SessionKindIdView{"test.author"}},
+                    is_default
                 },
-                [](const views::ViewFactoryInput&) -> views::ViewFactoryResult<views::DetachedView> {
+                [](const views::ViewFactoryInput&) -> views::ViewFactoryResult<views::DetachedView>
+                {
                     std::abort(); // Metadata lookup cannot construct a window.
                 }
             );
@@ -659,12 +701,13 @@ int main()
         const auto b = entry("test.second", true);
         for (bool reverse : {false, true})
         {
-            auto catalog = take(views::ViewFactorySnapshot::create(reverse
-                ? std::vector{b, a} : std::vector{a, b}));
+            auto catalog = take(views::ViewFactorySnapshot::create(reverse ? std::vector{b, a} : std::vector{a, b}));
             const auto ambiguous = catalog.selectContent({"test.author"});
             assert(!ambiguous && ambiguous.error().code == views::EViewFactoryError::AMBIGUOUS);
-            assert(take(catalog.selectContent({"test.author"}, views::ViewTypeId{"test.second"})) ==
-                views::ViewTypeId{"test.second"});
+            assert(
+                take(catalog.selectContent({"test.author"}, views::ViewTypeId{"test.second"})) ==
+                views::ViewTypeId{"test.second"}
+            );
             assert(!catalog.selectContent({"test.other"}));
             assert(!catalog.selectContent({"test.author"}, views::ViewTypeId{"test.missing"}));
         }

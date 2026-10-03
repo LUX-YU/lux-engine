@@ -84,10 +84,11 @@ namespace lux::editor::project
             std::array<lux::ui::Button*, 6> buttons{&back_, &next_, &create_, &launch_, &cancel_, &new_};
             for (std::size_t i{}; i < buttons.size(); ++i)
             {
-                auto connected =
-                    object::LuxObject::connect(buttons[i], &lux::ui::Button::activated, [this, i]() noexcept {
-                        action_ = static_cast<EAction>(i);
-                    });
+                auto connected = object::LuxObject::connect(
+                    buttons[i],
+                    &lux::ui::Button::activated,
+                    [this, i]() noexcept { action_ = static_cast<EAction>(i); }
+                );
                 if (!connected)
                 {
                     status = cxx::unexpected(EditorFailure{EEditorError::FRONTEND_FAILURE, "creation.connect"});
@@ -304,34 +305,42 @@ namespace lux::editor::project
     )
         : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{"lux.editor.project.creation"}, "New project"),
           impl_(std::make_unique<Impl>(*this, std::move(requests), status))
-    {}
+    {
+    }
     ProjectCreationView::~ProjectCreationView() noexcept = default;
     void ProjectCreationView::update() noexcept
     {
         impl_->update();
     }
-}
+} // namespace lux::editor::project
 
 namespace lux::editor::project
 {
     namespace
     {
         constexpr commands::CommandDescriptor kCommand{
-            commands::CommandIdView{"lux.editor.project.create"}, "New Project", "File"
+            commands::CommandIdView{"lux.editor.project.create"},
+            "New Project",
+            "File"
         };
         constexpr views::ViewFactoryDescriptor kFactoryDescriptor{
-            views::ViewTypeIdView{"lux.editor.project.creation"}, "New project", cxx::typeToken<std::monostate>()
+            views::ViewTypeIdView{"lux.editor.project.creation"},
+            "New project",
+            cxx::typeToken<std::monostate>()
         };
-    }
+    } // namespace
     std::shared_ptr<views::ViewFactoryEntry> makeProjectCreationViewFactory(
         cxx::move_only_function<ProjectCreationRequests()> requests
     )
     {
-        return views::ViewFactoryEntry::bind<kFactoryDescriptor>(contracts::CodeLease::builtin(),
-            [requests = std::move(requests)](const views::ViewFactoryInput& input) mutable
-                -> views::ViewFactoryResult<views::DetachedView> {
+        return views::ViewFactoryEntry::bind<kFactoryDescriptor>(
+            contracts::CodeLease::builtin(),
+            [requests = std::move(requests)](const views::ViewFactoryInput& input
+            ) mutable -> views::ViewFactoryResult<views::DetachedView>
+            {
                 EditorResult<void> ready;
-                auto pane = std::make_unique<ProjectCreationView>(input.dispatcher(), input.paneId(), requests(), ready);
+                auto pane =
+                    std::make_unique<ProjectCreationView>(input.dispatcher(), input.paneId(), requests(), ready);
                 if (!ready)
                     return cxx::unexpected(workbench::detail::viewFailure(ready.error()));
                 return views::DetachedView{contracts::CodeLease::builtin(), std::move(pane)};
@@ -339,13 +348,16 @@ namespace lux::editor::project
         );
     }
     std::shared_ptr<commands::CommandEntry> makeProjectCreationCommand(
-        commands::CommandEntry::Query query, desktop::ToolOpening open,
+        commands::CommandEntry::Query query,
+        desktop::ToolOpening open,
         cxx::move_only_function<commands::CommandResult<void>()> start
     )
     {
-        return workbench::detail::bindCommand<kCommand>(std::move(query),
-            [open = std::move(open), start = std::move(start)](const commands::CommandInvocation&) mutable
-                -> commands::CommandResult<void> {
+        return workbench::detail::bindCommand<kCommand>(
+            std::move(query),
+            [open = std::move(open),
+             start = std::move(start)](const commands::CommandInvocation&) mutable -> commands::CommandResult<void>
+            {
                 auto shown = open(views::ViewTypeId{kFactoryDescriptor.type.name()});
                 if (!shown)
                     return cxx::unexpected(shown.error());
@@ -355,4 +367,4 @@ namespace lux::editor::project
         );
     }
 
-}
+} // namespace lux::editor::project

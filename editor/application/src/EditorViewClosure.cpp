@@ -46,9 +46,11 @@ namespace lux::editor::application
             if (!all_views)
                 return applicationFailure("close.view.references", all_views.error());
             const auto primary = *information->content.primary;
-            const auto count = std::ranges::count_if(*all_views, [&](const auto& view) {
-                return std::ranges::find(view.content.sessions, primary) != view.content.sessions.end();
-            });
+            const auto count = std::ranges::count_if(
+                *all_views,
+                [&](const auto& view)
+                { return std::ranges::find(view.content.sessions, primary) != view.content.sessions.end(); }
+            );
             if (count == 1)
             {
                 auto author = sessions_.describe(primary);
@@ -89,7 +91,8 @@ namespace lux::editor::application
         if (last_view_)
         {
             std::optional<desktop::ReviewAnswer> answer;
-            auto read_answer = [&](lux::ui::Pane& pane) {
+            auto read_answer = [&](lux::ui::Pane& pane)
+            {
                 if (pane.type() == lux::ui::PaneTypeId{"lux.editor.review"})
                     answer = static_cast<desktop::ReviewView&>(pane).response();
             };
@@ -138,11 +141,13 @@ namespace lux::editor::application
     }
     desktop::ToolOpening EditorApplication::Impl::toolOpening()
     {
-        return [host = &desktop_->views(), catalog = &contributions_, dispatcher = messages_.dispatcherRef()]
-            (views::ViewTypeId type) -> commands::CommandResult<views::ViewId> {
+        return [host = &desktop_->views(), catalog = &contributions_, dispatcher = messages_.dispatcherRef()](
+                   views::ViewTypeId type
+               ) -> commands::CommandResult<views::ViewId>
+        {
             // Executed inside the original CommandRegistry dispatch, which excludes contribution
             // publication. Pin the current catalog without attempting a recursive read batch.
             return desktop::showTool(*host, catalog->snapshot().views(), dispatcher, std::move(type));
         };
     }
-}
+} // namespace lux::editor::application

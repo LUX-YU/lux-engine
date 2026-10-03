@@ -14,12 +14,18 @@ namespace
     constexpr CommandDescriptor declaration{CommandIdView{"ec3.command"}, "Command", "Tests", "Ctrl+T"};
     constexpr std::string_view discovery[]{"ec3source"};
     constexpr sessions::SessionKindDescriptor source_declaration{
-        sessions::SessionKindIdView{"ec3.source"}, "Source", discovery,
+        sessions::SessionKindIdView{"ec3.source"},
+        "Source",
+        discovery,
         sessions::SourceAuthoring{"ec3.source.format", 1, ".ec3"}
     };
     constexpr sessions::SessionKindIdView view_kinds[]{sessions::SessionKindIdView{"ec3.source"}};
     constexpr views::ViewFactoryDescriptor view_declaration{
-        views::ViewTypeIdView{"ec3.view"}, "View", lux::cxx::typeToken<std::monostate>(), 1, view_kinds
+        views::ViewTypeIdView{"ec3.view"},
+        "View",
+        lux::cxx::typeToken<std::monostate>(),
+        1,
+        view_kinds
     };
     views::ViewFactoryDescriptor mutable_view = view_declaration;
     sessions::SessionKindDescriptor mutable_source = source_declaration;
@@ -33,12 +39,15 @@ namespace
         std::abort(); // Metadata registration and selection must not execute decode callbacks.
     }
     CommandDescriptor mutable_declaration{CommandIdView{"ec3.mutable"}, "Mutable"};
-    auto query(const CommandQuery&) -> CommandResult<CommandState> { return CommandState{true}; }
+    auto query(const CommandQuery&) -> CommandResult<CommandState>
+    {
+        return CommandState{true};
+    }
     auto execute(const CommandInvocation&) -> CommandResult<DispatchReceipt>
     {
         return DispatchReceipt{ImmediateCompletion{}};
     }
-}
+} // namespace
 int main()
 {
 #if EC3_INVALID_DECLARATION == 1
@@ -69,9 +78,8 @@ int main()
     std::shared_ptr<CommandEntry> dynamic;
     {
         std::string name{"ec3.dynamic"}, label{"Small"}, group{"Group"}, shortcut{"Ctrl+D"}, argument{"argument"};
-        const CommandDescriptor input{
-            CommandIdView{name}, label, group, shortcut, ECommandScope::APPLICATION, 2, {7, argument}
-        };
+        const CommandDescriptor
+            input{CommandIdView{name}, label, group, shortcut, ECommandScope::APPLICATION, 2, {7, argument}};
         dynamic = CommandEntry::create(CodeLease::builtin(), input, query, execute);
         name.assign(4096, 'x');
         label.clear();
@@ -116,12 +124,17 @@ int main()
             decode
         );
         kind.assign(4096, 'x');
-        label.clear(); extension.clear(); format.clear(); suffix.clear();
+        label.clear();
+        extension.clear();
+        format.clear();
+        suffix.clear();
     }
     const auto& source_info = dynamic_source->descriptor();
     assert(source_info.kind.name() == "ec3.dynamic.source" && source_info.label == "Dynamic source");
     assert(source_info.extensions.size() == 1 && source_info.extensions[0] == "ec3dynamic");
-    assert(source_info.source->canonical_name == "ec3.dynamic.format" && source_info.source->save_extension == ".dynamic");
+    assert(
+        source_info.source->canonical_name == "ec3.dynamic.format" && source_info.source->save_extension == ".dynamic"
+    );
     auto sources = sessions::SessionFactorySnapshot::create({source, dynamic_source});
     assert(sources && sources->find({"ec3.source"}) && sources->find({"ec3.dynamic.source"}));
     assert(sources->selectSource("ec3.dynamic.format", 2) && !sources->selectSource("ec3.dynamic.format", 1));
@@ -134,10 +147,14 @@ int main()
         std::string type{"ec3.dynamic.view"}, label{"Dynamic view"}, kind{"ec3.dynamic.source"}, binding{"Binding"};
         const std::array kinds{sessions::SessionKindIdView{kind}};
         dynamic_view = views::ViewFactoryEntry::create(
-            CodeLease::builtin(), {views::ViewTypeIdView{type}, label, {42, binding}, 2, kinds}, createView
+            CodeLease::builtin(),
+            {views::ViewTypeIdView{type}, label, {42, binding}, 2, kinds},
+            createView
         );
         type.assign(4096, 'x');
-        label.clear(); kind.clear(); binding.clear();
+        label.clear();
+        kind.clear();
+        binding.clear();
     }
     const auto& view_info = dynamic_view->descriptor();
     assert(view_info.type.name() == "ec3.dynamic.view" && view_info.label == "Dynamic view");
@@ -151,7 +168,11 @@ int main()
     // Dynamic arrays and TypeToken names are both part of the one frozen descriptor owner.
     dynamic_view.reset();
     assert(views_snapshot->entries()[1]->descriptor().content_kinds[0].name() == "ec3.dynamic.source");
-    std::printf("PASS installed descriptor lifetime: Descriptor=%zu Entry=%zu Handle=%zu\n",
-                sizeof(CommandDescriptor), sizeof(CommandEntry), sizeof(CommandHandle));
+    std::printf(
+        "PASS installed descriptor lifetime: Descriptor=%zu Entry=%zu Handle=%zu\n",
+        sizeof(CommandDescriptor),
+        sizeof(CommandEntry),
+        sizeof(CommandHandle)
+    );
 #endif
 }

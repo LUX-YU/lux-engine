@@ -7,7 +7,10 @@
 #include <lux/engine/editor/persistence/ArtifactStore.hpp>
 #include <lux/engine/editor/workspace/LayoutCatalog.hpp>
 
-namespace lux::editor::views { class ViewFactoryEntry; }
+namespace lux::editor::views
+{
+    class ViewFactoryEntry;
+}
 
 namespace lux::editor::project
 {
@@ -58,8 +61,7 @@ namespace lux::editor::project
         ReconcileWorkspace,
         CaptureRecovery,
         RestoreRecovery,
-        MigrateWorkspace
-    >;
+        MigrateWorkspace>;
 
     struct WorkspacePublicationInfo final
     {
@@ -92,18 +94,24 @@ namespace lux::editor::project
         [[nodiscard]] EditorResult<void> request(VWorkspaceIntent);
         [[nodiscard]] const WorkspaceSnapshot& snapshot() const noexcept;
         [[nodiscard]] const std::optional<EditorFailure>& observationFailure() const noexcept;
+
     private:
         void update() noexcept override;
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };
-    [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> makeWorkspaceViewFactory(WorkspaceView::Observe observe, WorkspaceView::Request request);
+    [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> makeWorkspaceViewFactory(
+        WorkspaceView::Observe observe,
+        WorkspaceView::Request request
+    );
     [[nodiscard]] std::shared_ptr<commands::CommandEntry> makeWorkspaceCommand(
-        commands::CommandEntry::Query, desktop::ToolOpening
+        commands::CommandEntry::Query,
+        desktop::ToolOpening
     );
 
     [[nodiscard]] std::vector<std::shared_ptr<commands::CommandEntry>> makeRecoveryCommands(
-        commands::CommandEntry::Query, WorkspaceView::Request
+        commands::CommandEntry::Query,
+        WorkspaceView::Request
     );
 
-}
+} // namespace lux::editor::project

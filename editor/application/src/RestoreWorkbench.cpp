@@ -46,7 +46,7 @@ namespace lux::editor::application
                     code = EEditorError::BUSY;
             return cxx::unexpected(EditorFailure{code, std::move(domain), 0, {}, cause});
         }
-    }
+    } // namespace
     struct RestoreWorkbench::Impl final
     {
         struct RecoveryPresentation final
@@ -65,17 +65,29 @@ namespace lux::editor::application
         bool dispatching_{};
         std::optional<RecoveryPresentation> recovery_;
         Impl(
-            ProjectStorage& project, persistence::IArtifactStore& files, sessions::SessionStore& sessions,
-            sessions::SessionOpening& opening, workspace::WorkspaceStore& workspace,
-            workspace::WorkspaceChanges& changes, extensions::ContributionRegistry& contributions
-        ) : project_(project), files_(files), sessions_(sessions), opening_(opening), workspace_(workspace),
-            workspace_changes_(changes), contributions_(contributions)
-        {}
+            ProjectStorage& project,
+            persistence::IArtifactStore& files,
+            sessions::SessionStore& sessions,
+            sessions::SessionOpening& opening,
+            workspace::WorkspaceStore& workspace,
+            workspace::WorkspaceChanges& changes,
+            extensions::ContributionRegistry& contributions
+        )
+            : project_(project), files_(files), sessions_(sessions), opening_(opening), workspace_(workspace),
+              workspace_changes_(changes), contributions_(contributions)
+        {
+        }
         struct Dispatch final
         {
             bool& active;
-            explicit Dispatch(bool& value) noexcept : active(value) { active = true; }
-            ~Dispatch() { active = false; }
+            explicit Dispatch(bool& value) noexcept : active(value)
+            {
+                active = true;
+            }
+            ~Dispatch()
+            {
+                active = false;
+            }
             Dispatch(const Dispatch&) = delete;
             Dispatch& operator=(const Dispatch&) = delete;
         };
@@ -88,7 +100,8 @@ namespace lux::editor::application
             return {};
         }
         EditorResult<void> captureCore(
-            std::span<const views::ViewInfo> views, const extensions::ContributionSnapshot& catalog
+            std::span<const views::ViewInfo> views,
+            const extensions::ContributionSnapshot& catalog
         )
         {
             if (workspace_changes_.migrationPending())
@@ -103,10 +116,14 @@ namespace lux::editor::application
             {
                 if (view.content.sessions.empty())
                     continue;
-                const auto factory = std::ranges::find_if(catalog.views().entries(), [&](const auto& entry) {
-                    return entry->descriptor().type == view.type.view() &&
-                           entry->descriptor().binding_type == cxx::typeToken<views::ContentViewInput>();
-                });
+                const auto factory = std::ranges::find_if(
+                    catalog.views().entries(),
+                    [&](const auto& entry)
+                    {
+                        return entry->descriptor().type == view.type.view() &&
+                               entry->descriptor().binding_type == cxx::typeToken<views::ContentViewInput>();
+                    }
+                );
                 if (factory == catalog.views().entries().end())
                     continue; // Contextual auxiliary windows are layout entries, not content creation factories.
                 workspace::RecoveryEntry next{view.restore_key, view.type};
@@ -117,16 +134,20 @@ namespace lux::editor::application
                         return failure("recovery.source", source.error());
                     if (!source->binding)
                         return cxx::unexpected(EditorFailure{
-                            EEditorError::INVALID_ARGUMENT, "recovery.unbound", 0,
+                            EEditorError::INVALID_ARGUMENT,
+                            "recovery.unbound",
+                            0,
                             "Save unbound content before recording its recovery location."
                         });
                     if (view.content.primary == id)
                         next.primary = static_cast<std::uint32_t>(next.contents.size());
-                    next.contents.push_back({"asset:" + uuids::to_string(source->binding->asset.uuid()), source->dirty});
+                    next.contents.push_back({"asset:" + uuids::to_string(source->binding->asset.uuid()), source->dirty}
+                    );
                 }
-                auto found = std::ranges::find_if(value.entries, [&](const auto& entry) {
-                    return entry.restore_key == next.restore_key && entry.type == next.type;
-                });
+                auto found = std::ranges::find_if(
+                    value.entries,
+                    [&](const auto& entry) { return entry.restore_key == next.restore_key && entry.type == next.type; }
+                );
                 if (found == value.entries.end())
                     value.entries.push_back(std::move(next));
                 else
@@ -178,16 +199,19 @@ namespace lux::editor::application
                     const auto& completed = item.sources.back();
                     if (completed.stage != sessions::EOpenAssetStage::PUBLISHED)
                     {
-                        item.result.emplace(completed.failure
-                            ? failure("recovery.open", *completed.failure)
-                            : cxx::unexpected(EditorFailure{EEditorError::CANCELLED, "recovery.open"}));
+                        item.result.emplace(
+                            completed.failure ? failure("recovery.open", *completed.failure)
+                                              : cxx::unexpected(EditorFailure{EEditorError::CANCELLED, "recovery.open"})
+                        );
                         continue;
                     }
                 }
                 if (progress != ERestorationProgress::ACTIVE)
                 {
                     if (progress == ERestorationProgress::CLOSING)
-                        item.result.emplace(cxx::unexpected(EditorFailure{EEditorError::CLOSING, "recovery.presentation"}));
+                        item.result.emplace(
+                            cxx::unexpected(EditorFailure{EEditorError::CLOSING, "recovery.presentation"})
+                        );
                     continue;
                 }
                 if (item.sources.size() < item.entry.contents.size())
@@ -199,36 +223,47 @@ namespace lux::editor::application
                                                                       : std::optional<uuids::uuid>{};
                     if (!parsed)
                     {
-                        item.result.emplace(cxx::unexpected(EditorFailure{
-                            EEditorError::INVALID_ARGUMENT, "recovery.locator", 0, locator
-                        }));
+                        item.result.emplace(cxx::unexpected(
+                            EditorFailure{EEditorError::INVALID_ARGUMENT, "recovery.locator", 0, locator}
+                        ));
                         continue;
                     }
                     const auto asset_id = asset::AssetId{*parsed};
                     const auto* asset = project_.asset(asset_id);
-                    const auto factory = asset
-                        ? recovery_->catalog.sessions().selectSource(asset->source_type, asset->source_version)
-                        : sessions::SessionFactoryResult<std::shared_ptr<sessions::SessionFactoryEntry>>{
-                            cxx::unexpected(sessions::SessionFactoryFailure{
-                                sessions::ESessionFactoryError::NOT_FOUND, "recovery.asset"
-                            })
-                        };
-                    const bool matching = factory && recovery_->catalog.views().selectContent(
-                        sessions::SessionKindId{std::string{(*factory)->descriptor().kind.name()}},
-                        recoveryType(item.entry.type)
-                    ).has_value();
+                    const auto factory =
+                        asset ? recovery_->catalog.sessions().selectSource(asset->source_type, asset->source_version)
+                              : sessions::SessionFactoryResult<std::shared_ptr<sessions::SessionFactoryEntry>>{
+                                    cxx::unexpected(sessions::SessionFactoryFailure{
+                                        sessions::ESessionFactoryError::NOT_FOUND,
+                                        "recovery.asset"
+                                    })
+                                };
+                    const bool matching =
+                        factory && recovery_->catalog.views()
+                                       .selectContent(
+                                           sessions::SessionKindId{std::string{(*factory)->descriptor().kind.name()}},
+                                           recoveryType(item.entry.type)
+                                       )
+                                       .has_value();
                     if (!matching)
                     {
                         item.result.emplace(cxx::unexpected(EditorFailure{
-                            EEditorError::MISSING_PROVIDER, "recovery.type-or-asset", 0,
+                            EEditorError::MISSING_PROVIDER,
+                            "recovery.type-or-asset",
+                            0,
                             "Entry retained: its asset or exact content view type is unavailable."
                         }));
                         continue;
                     }
                     std::optional<EditorResult<sessions::OpenAssetId>> admitted;
-                    auto prepare = [&](const extensions::ContributionSnapshot&) -> extensions::ContributionResult<void> {
+                    auto prepare = [&](const extensions::ContributionSnapshot&) -> extensions::ContributionResult<void>
+                    {
                         admitted.emplace(openProjectContent(
-                            project_, files_, opening_, project_.reference(asset_id), recovery_->catalog.sessions()
+                            project_,
+                            files_,
+                            opening_,
+                            project_.reference(asset_id),
+                            recovery_->catalog.sessions()
                         ));
                         return {};
                     };
@@ -254,10 +289,11 @@ namespace lux::editor::application
                 if (item.entry.primary)
                     association.primary = association.sessions[*item.entry.primary];
                 std::optional<EditorResult<views::ViewId>> displayed;
-                auto prepare = [&](const extensions::ContributionSnapshot&) -> extensions::ContributionResult<void> {
-                    displayed.emplace(present(
-                        association, recovery_->catalog, item.entry.restore_key, recoveryType(item.entry.type)
-                    ));
+                auto prepare = [&](const extensions::ContributionSnapshot&) -> extensions::ContributionResult<void>
+                {
+                    displayed.emplace(
+                        present(association, recovery_->catalog, item.entry.restore_key, recoveryType(item.entry.type))
+                    );
                     return {};
                 };
                 auto guarded = contributions_.withSnapshot(prepare);
@@ -275,11 +311,17 @@ namespace lux::editor::application
         }
     };
     RestoreWorkbench::RestoreWorkbench(
-        ProjectStorage& project, persistence::IArtifactStore& files, sessions::SessionStore& sessions,
-        sessions::SessionOpening& opening, workspace::WorkspaceStore& workspace, workspace::WorkspaceChanges& changes,
+        ProjectStorage& project,
+        persistence::IArtifactStore& files,
+        sessions::SessionStore& sessions,
+        sessions::SessionOpening& opening,
+        workspace::WorkspaceStore& workspace,
+        workspace::WorkspaceChanges& changes,
         extensions::ContributionRegistry& contributions
-    ) : impl_(std::make_unique<Impl>(project, files, sessions, opening, workspace, changes, contributions))
-    {}
+    )
+        : impl_(std::make_unique<Impl>(project, files, sessions, opening, workspace, changes, contributions))
+    {
+    }
     RestoreWorkbench::~RestoreWorkbench() = default;
     EditorResult<void> RestoreWorkbench::capture(std::span<const views::ViewInfo> views)
     {
@@ -287,7 +329,8 @@ namespace lux::editor::application
             return ready;
         const Impl::Dispatch scope{impl_->dispatching_};
         EditorResult<void> result;
-        auto capture = [&](const extensions::ContributionSnapshot& catalog) -> extensions::ContributionResult<void> {
+        auto capture = [&](const extensions::ContributionSnapshot& catalog) -> extensions::ContributionResult<void>
+        {
             result = impl_->captureCore(views, catalog);
             return {};
         };
@@ -310,6 +353,7 @@ namespace lux::editor::application
     }
     std::span<const RestoredView> RestoreWorkbench::items() const noexcept
     {
-        return impl_->recovery_ ? std::span<const RestoredView>{impl_->recovery_->items} : std::span<const RestoredView>{};
+        return impl_->recovery_ ? std::span<const RestoredView>{impl_->recovery_->items}
+                                : std::span<const RestoredView>{};
     }
-}
+} // namespace lux::editor::application

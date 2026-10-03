@@ -32,7 +32,7 @@ The integration executable assembles these formal modules for qualification; onl
 installed as the product. No old Context or tool Editor is linked. Inspector generation has one
 implementation, producing author and runtime controls against their distinct field capabilities.
 
-P10 native input tests use actual OS mouse/keyboard events through the new shell. They do not certify system IME candidate composition; that scope must be recorded separately. The installed product uses the same desktop and V7 contribution contracts.
+P10 native input tests use actual OS mouse/keyboard events through the new shell. They do not certify system IME candidate composition; that scope must be recorded separately. The installed product uses the same desktop and V9 contribution contracts.
 
 ## View API（P08）
 

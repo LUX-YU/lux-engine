@@ -20,6 +20,7 @@ def main():
     parser.add_argument("--p11", action="store_true")
     parser.add_argument("--p12", action="store_true")
     parser.add_argument("--ec2", action="store_true")
+    parser.add_argument("--ec3", action="store_true")
     args = parser.parse_args()
     repo = args.source.resolve()
     base_rules = json.loads((repo / "editor/tests/architecture/rules.json").read_text())
@@ -81,7 +82,15 @@ def main():
             ("EC2-08", "project_tools_ui", "editor_bootstrap", "workbench_application_dependency", "include"),
             ("EC2-09", "scene_script_assets", "scene_script_runtime", "data_behavior_dependency", "data"),
         ]
-    folder_name = "ec2-boundaries" if args.ec2 else ("p12-boundaries" if args.p12 else ("p11-boundaries" if args.p11 else "layering-boundaries"))
+    if args.ec3:
+        cases = [
+            ("EC3-save-policy", "editor_storage", "editor_bootstrap", "activity_workbench_dependency", "include"),
+            ("EC3-workspace", "workspace_store", "desktop_shell", "activity_workbench_dependency", "transitive"),
+            ("EC3-settings-data", "layout_model", "project_tools_ui", "authoring_outer_dependency", "link"),
+            ("EC3-viewport", "editor_viewport", "editor_bootstrap", "workbench_application_dependency", "include"),
+        ]
+    folder_name = "ec3-boundaries" if args.ec3 else ("ec2-boundaries" if args.ec2 else (
+        "p12-boundaries" if args.p12 else ("p11-boundaries" if args.p11 else "layering-boundaries")))
     folder = args.build / folder_name
     suffix = 1
     while folder.exists():
@@ -150,6 +159,8 @@ def main():
             top = top.replace("STAGE P10Q", "STAGE P12")
         elif args.ec2:
             top = top.replace("STAGE P10Q", "STAGE EC2")
+        elif args.ec3:
+            top = top.replace("STAGE P10Q", "STAGE EC3")
         top += "".join(f"add_subdirectory({p})\n" for p in declarations)
         legal_edges = f"target_link_libraries({owner} PRIVATE {dependency})\n" if kind == "unknown" else ""
         if kind == "generated":

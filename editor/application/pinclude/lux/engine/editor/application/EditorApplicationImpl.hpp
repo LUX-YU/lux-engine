@@ -179,12 +179,16 @@ namespace lux::editor::application
         class ApplicationFiles final : public persistence::IArtifactStore
         {
         public:
-            ApplicationFiles(std::filesystem::path project, const std::filesystem::path& user_directory,
-                const std::filesystem::path& installation)
+            ApplicationFiles(
+                std::filesystem::path project,
+                const std::filesystem::path& user_directory,
+                const std::filesystem::path& installation
+            )
                 : project_(project), user_(user_directory / "lux/editor"), installation_(installation),
                   project_prefix_(prefix(project)), user_prefix_(prefix(user_directory / "lux/editor")),
                   installation_prefix_(prefix(installation))
-            {}
+            {
+            }
             persistence::PersistenceResult<persistence::WriteTarget> resolve(std::string_view address) override
             {
                 return select(address).resolve(address);
@@ -194,16 +198,21 @@ namespace lux::editor::application
             {
                 auto& target = select(query.target.key.value);
                 if (&target == &installation_)
-                    return persistence::NotPublished{{persistence::EPersistenceError::UNSUPPORTED_TARGET,
-                        "Installation settings are read only"}};
+                    return persistence::NotPublished{
+                        {persistence::EPersistenceError::UNSUPPORTED_TARGET, "Installation settings are read only"}
+                    };
                 return target.publish(query, stop);
             }
             persistence::Reconciliation reconcile(const persistence::PublicationQuery& query) override
             {
                 auto& target = select(query.target.key.value);
                 if (&target == &installation_)
-                    return {true, persistence::NotPublished{{persistence::EPersistenceError::UNSUPPORTED_TARGET,
-                        "Installation settings are read only"}}};
+                    return {
+                        true,
+                        persistence::NotPublished{
+                            {persistence::EPersistenceError::UNSUPPORTED_TARGET, "Installation settings are read only"}
+                        }
+                    };
                 return target.reconcile(query);
             }
 
@@ -312,7 +321,8 @@ namespace lux::editor::application
             std::unique_ptr<engine::EngineContext>,
             object::ObjectMessageQueue,
             lux::project::PluginManager,
-            lux::project::SceneRegistrations, std::filesystem::path profile
+            lux::project::SceneRegistrations,
+            std::filesystem::path profile
         );
         ~Impl();
         [[nodiscard]] EditorResult<void> admission() const noexcept;
@@ -389,4 +399,4 @@ namespace lux::editor::application
         [[nodiscard]] EditorResult<views::ViewId> adopt(views::DetachedView&, std::string key);
         [[nodiscard]] scene::SceneViewServices sceneServices();
     };
-}
+} // namespace lux::editor::application

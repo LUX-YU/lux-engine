@@ -111,4 +111,4 @@ namespace lux::editor::views
         render::RTextureHandle image_;
         render::RenderResult<void> result_;
     };
-}
+} // namespace lux::editor::views

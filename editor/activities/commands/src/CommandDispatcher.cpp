@@ -10,7 +10,7 @@ namespace lux::editor::commands
         {
             return cxx::unexpected(CommandFailure{error, "command.dispatch"});
         }
-    }
+    } // namespace
     struct CommandDispatcher::Impl final
     {
         struct Pending final
@@ -43,7 +43,8 @@ namespace lux::editor::commands
     };
     CommandDispatcher::CommandDispatcher(CommandRegistry& registry, std::size_t capacity)
         : impl_(std::make_unique<Impl>(registry, capacity))
-    {}
+    {
+    }
     CommandDispatcher::~CommandDispatcher() = default;
     CommandResult<std::uint64_t> CommandDispatcher::enqueue(CommandHandle handle, CommandInvocation& input)
     {
@@ -100,4 +101,4 @@ namespace lux::editor::commands
     {
         return impl_->queue.size();
     }
-}
+} // namespace lux::editor::commands

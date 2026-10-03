@@ -11,7 +11,9 @@ namespace lux::editor::application
         if (opens_.size() >= 64)
             return cxx::unexpected(EditorFailure{EEditorError::CAPACITY, "content.create"});
         auto installed = opening_.create(
-            project_->catalogModel().reference({}).project_instance, std::move(data), contributions_.snapshot().sessions()
+            project_->catalogModel().reference({}).project_instance,
+            std::move(data),
+            contributions_.snapshot().sessions()
         );
         if (!installed)
             return applicationFailure("content.create", installed.error());
@@ -20,48 +22,62 @@ namespace lux::editor::application
     }
     void EditorApplication::Impl::installContentCommands(extensions::ContributionDraft& draft)
     {
-        const auto running = [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
-            return commands::CommandState{phase_ == EApplicationPhase::RUNNING && !last_view_};
-        };
-        draft.commands.push_back(desktop::makeCloseViewCommand(running,
-            [this](views::ViewId id) -> commands::CommandResult<void> {
+        const auto running = [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
+        { return commands::CommandState{phase_ == EApplicationPhase::RUNNING && !last_view_}; };
+        draft.commands.push_back(desktop::makeCloseViewCommand(
+            running,
+            [this](views::ViewId id) -> commands::CommandResult<void>
+            {
                 auto result = closeView(id);
                 if (!result)
-                    return cxx::unexpected(commands::CommandFailure{commands::ECommandError::DOMAIN_FAILURE,
-                        result.error().domain, result.error().reason, result.error().message});
+                    return cxx::unexpected(commands::CommandFailure{
+                        commands::ECommandError::DOMAIN_FAILURE,
+                        result.error().domain,
+                        result.error().reason,
+                        result.error().message
+                    });
                 return {};
             }
         ));
-        draft.commands.push_back(desktop::makeAnotherViewCommand(running,
-            [this](commands::SessionTarget target) -> commands::CommandResult<void> {
+        draft.commands.push_back(desktop::makeAnotherViewCommand(
+            running,
+            [this](commands::SessionTarget target) -> commands::CommandResult<void>
+            {
                 auto result = makeContentView({{target.id}, target.id}, true, contributions_.snapshot());
                 if (!result)
-                    return cxx::unexpected(commands::CommandFailure{commands::ECommandError::DOMAIN_FAILURE,
-                        result.error().domain, result.error().reason, result.error().message});
+                    return cxx::unexpected(commands::CommandFailure{
+                        commands::ECommandError::DOMAIN_FAILURE,
+                        result.error().domain,
+                        result.error().reason,
+                        result.error().message
+                    });
                 return {};
             }
         ));
         draft.commands.push_back(project::makeAssetsCommand(running, toolOpening()));
         draft.commands.push_back(tasks::makeTasksCommand(running, toolOpening()));
         auto creation_available =
-            [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
-                return commands::CommandState{phase_ == EApplicationPhase::RUNNING && opens_.size() < 64};
-            };
+            [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
+        { return commands::CommandState{phase_ == EApplicationPhase::RUNNING && opens_.size() < 64}; };
         draft.commands.push_back(material::makeNewMaterialCommand(creation_available, contentCreation()));
-        draft.commands.push_back(flowforge::makeNewFlowCommand(creation_available, contentCreation(), flow_environment_));
+        draft.commands.push_back(flowforge::makeNewFlowCommand(creation_available, contentCreation(), flow_environment_)
+        );
     }
     sessions::SessionCreation EditorApplication::Impl::contentCreation()
     {
-        return [this](sessions::SessionPreparation prepared) -> commands::CommandResult<commands::DispatchReceipt> {
+        return [this](sessions::SessionPreparation prepared) -> commands::CommandResult<commands::DispatchReceipt>
+        {
             auto opened = createContent(std::move(prepared));
             if (!opened)
             {
                 const auto& error = opened.error();
-                const auto code = error.code == EEditorError::BUSY
-                    ? commands::ECommandError::BUSY : commands::ECommandError::DOMAIN_FAILURE;
+                const auto code = error.code == EEditorError::BUSY ? commands::ECommandError::BUSY
+                                                                   : commands::ECommandError::DOMAIN_FAILURE;
                 return cxx::unexpected(commands::CommandFailure{code, error.domain, error.reason, error.message});
             }
-            return commands::DispatchReceipt{commands::AcceptedOperation{commands::OperationKindId{"open"}, opened->value}};
+            return commands::DispatchReceipt{
+                commands::AcceptedOperation{commands::OperationKindId{"open"}, opened->value}
+            };
         };
     }
-}
+} // namespace lux::editor::application

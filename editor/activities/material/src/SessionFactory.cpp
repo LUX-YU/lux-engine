@@ -9,10 +9,12 @@ namespace lux::editor::material
     {
         constexpr std::string_view extensions[]{"luxmaterial"};
         constexpr sessions::SessionKindDescriptor descriptor{
-            sessions::SessionKindIdView{"lux.editor.material"}, "Material", extensions,
+            sessions::SessionKindIdView{"lux.editor.material"},
+            "Material",
+            extensions,
             sessions::SourceAuthoring{"lux.material.source", 1, ".material"}
         };
-    }
+    } // namespace
     sessions::SessionPreparation prepareMaterialSession(
         PreparedMaterialData data,
         sessions::SourceBinding binding,
@@ -26,7 +28,8 @@ namespace lux::editor::material
             [code, data = std::move(data), binding = std::move(binding), target = std::move(target)](
                 SessionStore& store,
                 persistence::SaveService& saves
-            ) mutable -> SessionFactoryResult<PreparedSessionInstallation> {
+            ) mutable -> SessionFactoryResult<PreparedSessionInstallation>
+            {
                 auto construct = [&](SessionId id) { return std::move(data).createSession(id, binding, code); };
                 return sessions::detail::prepareSession<MaterialSession, MaterialSaveSource>(
                     store,
@@ -45,7 +48,8 @@ namespace lux::editor::material
         return SessionFactoryEntry::bind<descriptor>(
             code,
             [code](const SessionLoadInput& input, std::span<const std::byte> bytes, std::stop_token stop)
-                -> SessionFactoryResult<SessionPreparation> {
+                -> SessionFactoryResult<SessionPreparation>
+            {
                 auto decoded = MaterialCodec::decode(bytes, stop);
                 if (!decoded)
                     return cxx::unexpected(SessionFactoryFailure{
@@ -65,9 +69,10 @@ namespace lux::editor::material
                          expected = *input.reload,
                          binding = input.binding,
                          target =
-                             input.target](SessionStore& store) mutable -> SessionFactoryResult<PreparedSessionReload> {
-                            auto construct = [&](MaterialSession& session
-                                             ) -> MaterialEditResult<PreparedMaterialReload> {
+                             input.target](SessionStore& store) mutable -> SessionFactoryResult<PreparedSessionReload>
+                        {
+                            auto construct = [&](MaterialSession& session) -> MaterialEditResult<PreparedMaterialReload>
+                            {
                                 return PreparedMaterialReload::prepare(
                                     session,
                                     std::move(data.source),
@@ -91,23 +96,28 @@ namespace lux::editor::material
             }
         );
     }
-}
+} // namespace lux::editor::material
 
 namespace lux::editor::material
 {
     namespace
     {
         constexpr commands::CommandDescriptor kNewCommand{
-            commands::CommandIdView{"lux.editor.new.material"}, "New Material", "File"
+            commands::CommandIdView{"lux.editor.new.material"},
+            "New Material",
+            "File"
         };
     }
     std::shared_ptr<commands::CommandEntry> makeNewMaterialCommand(
-        commands::CommandEntry::Query query, sessions::SessionCreation receiver
+        commands::CommandEntry::Query query,
+        sessions::SessionCreation receiver
     )
     {
         return commands::CommandEntry::bind<kNewCommand>(
-            contracts::CodeLease::builtin(), std::move(query),
-            [create = std::move(receiver)](const commands::CommandInvocation&) mutable {
+            contracts::CodeLease::builtin(),
+            std::move(query),
+            [create = std::move(receiver)](const commands::CommandInvocation&) mutable
+            {
                 std::mt19937 random{std::random_device{}()};
                 const asset::AssetId id{uuids::uuid_random_generator{random}()};
                 lux::material::MaterialSource source{id, "Untitled Material", {}};
@@ -115,4 +125,4 @@ namespace lux::editor::material
             }
         );
     }
-}
+} // namespace lux::editor::material

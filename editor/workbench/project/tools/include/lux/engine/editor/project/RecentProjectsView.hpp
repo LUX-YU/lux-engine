@@ -11,8 +11,11 @@ namespace lux::editor
     class RecentProjects;
     class ProjectStorage;
     struct AssetReference;
+} // namespace lux::editor
+namespace lux::editor::views
+{
+    class ViewFactoryEntry;
 }
-namespace lux::editor::views { class ViewFactoryEntry; }
 
 namespace lux::editor::project
 {
@@ -34,18 +37,17 @@ namespace lux::editor::project
         std::unique_ptr<Impl> impl_;
     };
     [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> makeRecentProjectsViewFactory(
-        RecentProjects& recent, cxx::move_only_function<EditorResult<void>(const std::filesystem::path&)> open
+        RecentProjects& recent,
+        cxx::move_only_function<EditorResult<void>(const std::filesystem::path&)> open
     );
     [[nodiscard]] std::shared_ptr<commands::CommandEntry> makeRecentProjectsCommand(
-        commands::CommandEntry::Query, desktop::ToolOpening
+        commands::CommandEntry::Query,
+        desktop::ToolOpening
     );
 
-    [[nodiscard]] std::shared_ptr<commands::CommandEntry> makeOpenProjectCommand(
-        commands::CommandEntry::Query, cxx::move_only_function<commands::CommandResult<void>()>
-    );
-    [[nodiscard]] std::shared_ptr<commands::CommandEntry> makeInitialSceneCommand(
-        commands::CommandEntry::Query, ProjectStorage&,
-        cxx::move_only_function<commands::CommandResult<void>(AssetReference)>
-    );
+    [[nodiscard]] std::shared_ptr<commands::CommandEntry>
+        makeOpenProjectCommand(commands::CommandEntry::Query, cxx::move_only_function<commands::CommandResult<void>()>);
+    [[nodiscard]] std::shared_ptr<commands::CommandEntry>
+    makeInitialSceneCommand(commands::CommandEntry::Query, ProjectStorage&, cxx::move_only_function<commands::CommandResult<void>(AssetReference)>);
 
-}
+} // namespace lux::editor::project

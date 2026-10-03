@@ -8,10 +8,12 @@ namespace lux::editor::scene
     {
         constexpr std::string_view extensions[]{"luxscene"};
         constexpr sessions::SessionKindDescriptor descriptor{
-            sessions::SessionKindIdView{"lux.editor.scene"}, "Scene", extensions,
+            sessions::SessionKindIdView{"lux.editor.scene"},
+            "Scene",
+            extensions,
             sessions::SourceAuthoring{"lux.scene.package", 1, ".scene"}
         };
-    }
+    } // namespace
     sessions::SessionPreparation prepareSceneSession(
         PreparedSceneData data,
         sessions::SourceBinding binding,
@@ -26,7 +28,8 @@ namespace lux::editor::scene
             [code, schemas, data = std::move(data), binding = std::move(binding), target = std::move(target)](
                 SessionStore& store,
                 persistence::SaveService& saves
-            ) mutable -> SessionFactoryResult<PreparedSessionInstallation> {
+            ) mutable -> SessionFactoryResult<PreparedSessionInstallation>
+            {
                 auto construct = [&](SessionId id) { return std::move(data).createSession(id, binding, schemas); };
                 return sessions::detail::prepareSession<SceneSession, SceneSaveSource>(
                     store,
@@ -48,7 +51,8 @@ namespace lux::editor::scene
         return SessionFactoryEntry::bind<descriptor>(
             code,
             [schemas, code](const SessionLoadInput& input, std::span<const std::byte> bytes, std::stop_token stop)
-                -> SessionFactoryResult<SessionPreparation> {
+                -> SessionFactoryResult<SessionPreparation>
+            {
                 auto decoded = SceneCodec::decode(bytes, stop);
                 if (!decoded)
                     return cxx::unexpected(SessionFactoryFailure{
@@ -69,14 +73,17 @@ namespace lux::editor::scene
                          expected = *input.reload,
                          binding = input.binding,
                          target =
-                             input.target](SessionStore& store) mutable -> SessionFactoryResult<PreparedSessionReload> {
-                            auto construct = [&](SceneSession& session) -> SceneEditResult<PreparedSceneReload> {
+                             input.target](SessionStore& store) mutable -> SessionFactoryResult<PreparedSessionReload>
+                        {
+                            auto construct = [&](SceneSession& session) -> SceneEditResult<PreparedSceneReload>
+                            {
                                 auto view = session.read();
                                 if (!view)
                                     return cxx::unexpected(view.error());
-                                auto source = view->withRead([&](const SceneReadView&) -> SceneEditResult<SceneSource> {
-                                    return SceneSource::create(data.source, schemas);
-                                });
+                                auto source = view->withRead(
+                                    [&](const SceneReadView&) -> SceneEditResult<SceneSource>
+                                    { return SceneSource::create(data.source, schemas); }
+                                );
                                 if (!source)
                                     return cxx::unexpected(source.error());
                                 return PreparedSceneReload::prepare(session, std::move(*source), expected, binding);
@@ -96,4 +103,4 @@ namespace lux::editor::scene
             }
         );
     }
-}
+} // namespace lux::editor::scene

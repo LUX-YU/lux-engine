@@ -5,7 +5,10 @@
 #include <lux/engine/editor/assets/ModelImporter.hpp>
 #include <lux/engine/editor/views/IViewHost.hpp>
 
-namespace lux::editor::views { class ViewFactoryEntry; }
+namespace lux::editor::views
+{
+    class ViewFactoryEntry;
+}
 
 namespace lux::editor::project
 {
@@ -30,11 +33,13 @@ namespace lux::editor::project
         std::unique_ptr<Impl> impl_;
     };
     [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> makeImportViewFactory(
-        ProjectCatalogModel& catalog, assets::ModelImporter& importer,
+        ProjectCatalogModel& catalog,
+        assets::ModelImporter& importer,
         cxx::move_only_function<void(lux::ui::PaneId)> browse
     );
     [[nodiscard]] std::shared_ptr<commands::CommandEntry> makeImportCommand(
-        commands::CommandEntry::Query, desktop::ToolOpening
+        commands::CommandEntry::Query,
+        desktop::ToolOpening
     );
 
-}
+} // namespace lux::editor::project

@@ -40,7 +40,8 @@ namespace
                 auto connection = lux::object::LuxObject::connect(
                     fields[i],
                     &lux::ui::NumericEdit::edited,
-                    [this](lux::ui::EditResult result) noexcept {
+                    [this](lux::ui::EditResult result) noexcept
+                    {
                         if (!result.changed && !result.cancelled)
                             return;
                         auto& value = config();
@@ -140,7 +141,7 @@ namespace
             lux::editor::EditorFailure{lux::editor::EEditorError::FRONTEND_FAILURE, "physics.configuration.create"}
         );
     }
-}
+} // namespace
 
 extern "C" LUX_PHYSICS2D_EDITOR_PUBLIC const lux::editor::extensions::EditorExtensionExports* lux_editor_exports_v9(
 ) noexcept
@@ -148,8 +149,9 @@ extern "C" LUX_PHYSICS2D_EDITOR_PUBLIC const lux::editor::extensions::EditorExte
     using namespace lux::editor;
     static const extensions::EditorExtensionExports exports{
         .counts = {.configurations = 1, .reflection = 1},
-        .contribute = +[](extensions::ContributionDraft& draft,
-                          contracts::CodeLease code) -> extensions::ContributionResult<void> {
+        .contribute =
+            +[](extensions::ContributionDraft& draft, contracts::CodeLease code) -> extensions::ContributionResult<void>
+        {
             draft.reflection.push_back({code, &lux_physics2d_configuration_meta});
             const auto& system = lux::physics2d::physics2DSystemRegistrations().front();
             draft.configurations.push_back(

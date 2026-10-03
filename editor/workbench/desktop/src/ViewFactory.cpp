@@ -23,7 +23,8 @@ namespace lux::editor::views
         std::uint32_t version
     )
         : data_(std::make_shared<Data>(std::move(code), dispatcher, std::move(pane), type, std::move(binding), version))
-    {}
+    {
+    }
     ViewFactoryInput::~ViewFactoryInput()
     {
         const auto code = data_ ? data_->code : contracts::CodeLease::builtin();
@@ -76,7 +77,8 @@ namespace lux::editor::views
             // All growth precedes views. This allocation and its arrays never move after publication.
             const std::string_view bytes{text};
             std::size_t offset{};
-            const auto take = [&](std::size_t count) {
+            const auto take = [&](std::size_t count)
+            {
                 const auto value = bytes.substr(offset, count);
                 offset += count;
                 return value;
@@ -92,11 +94,18 @@ namespace lux::editor::views
             descriptor.content_kinds = content_kinds;
         }
     };
-    ViewFactoryEntry::ViewFactoryEntry(contracts::CodeLease code, const ViewFactoryDescriptor& descriptor, Create create)
+    ViewFactoryEntry::ViewFactoryEntry(
+        contracts::CodeLease code,
+        const ViewFactoryDescriptor& descriptor,
+        Create create
+    )
         : code_(std::move(code)), descriptor_(&descriptor), create_(std::move(create))
-    {}
+    {
+    }
     std::shared_ptr<ViewFactoryEntry> ViewFactoryEntry::create(
-        contracts::CodeLease code, const ViewFactoryDescriptor& descriptor, Create create
+        contracts::CodeLease code,
+        const ViewFactoryDescriptor& descriptor,
+        Create create
     )
     {
         auto storage = std::make_unique<const DescriptorStorage>(descriptor);
@@ -151,28 +160,26 @@ namespace lux::editor::views
             if (!entry)
                 return cxx::unexpected(ViewFactoryFailure{EViewFactoryError::INVALID_ARGUMENT, "view.entry"});
             const auto& descriptor = entry->descriptor();
-            const bool is_invalid_type = !descriptor.type.isValid() ||
-                descriptor.type.hash() != cxx::Fnv1a64::hash(descriptor.type.name());
+            const bool is_invalid_type =
+                !descriptor.type.isValid() || descriptor.type.hash() != cxx::Fnv1a64::hash(descriptor.type.name());
             const bool is_invalid_binding = !entry->code_.valid() || !entry->create_;
-            const bool is_invalid_description = descriptor.label.empty() || !descriptor.binding_type.isValid() ||
-                !descriptor.input_version;
+            const bool is_invalid_description =
+                descriptor.label.empty() || !descriptor.binding_type.isValid() || !descriptor.input_version;
             const bool is_invalid = is_invalid_type || is_invalid_binding || is_invalid_description;
             if (is_invalid)
                 return cxx::unexpected(ViewFactoryFailure{EViewFactoryError::INVALID_ARGUMENT, "view.descriptor"});
             std::unordered_set<std::string_view> kinds;
             for (const auto& kind : entry->descriptor_->content_kinds)
             {
-                const bool is_invalid_kind = !kind.isValid() ||
-                    kind.hash() != cxx::Fnv1a64::hash(kind.name()) || !kinds.insert(kind.name()).second;
+                const bool is_invalid_kind = !kind.isValid() || kind.hash() != cxx::Fnv1a64::hash(kind.name()) ||
+                                             !kinds.insert(kind.name()).second;
                 if (is_invalid_kind)
                 {
-                    return cxx::unexpected(ViewFactoryFailure{
-                        EViewFactoryError::INVALID_ARGUMENT, "view.content.kind"
-                    });
+                    return cxx::unexpected(ViewFactoryFailure{EViewFactoryError::INVALID_ARGUMENT, "view.content.kind"}
+                    );
                 }
                 content[std::string{kind.name()}].push_back(i);
             }
-
         }
         std::vector<Data::Identity> index;
         index.reserve(entries.size());
@@ -207,7 +214,8 @@ namespace lux::editor::views
                                   input.version() != entry->descriptor().input_version;
             if (mismatch)
                 return cxx::unexpected(ViewFactoryFailure{EViewFactoryError::INVALID_ARGUMENT, "view.binding"});
-            auto invoke = [&]() -> ViewFactoryResult<DetachedView> {
+            auto invoke = [&]() -> ViewFactoryResult<DetachedView>
+            {
                 if (entry->code_.sameOwner(contracts::CodeLease::builtin()))
                     return entry->create_(input);
                 try
@@ -287,8 +295,8 @@ namespace lux::editor::views
         {
             return ViewTypeId{pinned->entries[found->second.front()]->descriptor().type.name()};
         }
-        return cxx::unexpected(ViewFactoryFailure{
-            EViewFactoryError::AMBIGUOUS, "view.content", 0, std::move(candidates)
-        });
+        return cxx::unexpected(
+            ViewFactoryFailure{EViewFactoryError::AMBIGUOUS, "view.content", 0, std::move(candidates)}
+        );
     }
-}
+} // namespace lux::editor::views

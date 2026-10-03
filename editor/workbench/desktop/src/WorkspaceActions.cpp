@@ -10,7 +10,7 @@ namespace lux::editor::desktop
 {
     namespace
     {
-        template<class Error> auto failure(std::string domain, const Error& cause)
+        template <class Error> auto failure(std::string domain, const Error& cause)
         {
             auto code = EEditorError::SOURCE_FAILURE;
             if constexpr (requires { cause.code == decltype(cause.code)::BUSY; })
@@ -28,7 +28,7 @@ namespace lux::editor::desktop
                     code = EEditorError::BUSY;
             return cxx::unexpected(EditorFailure{code, std::move(domain), 0, {}, cause});
         }
-    }
+    } // namespace
     struct WorkspaceActions::Impl final
     {
         ViewHost& host_;
@@ -38,15 +38,25 @@ namespace lux::editor::desktop
         const std::thread::id owner_{std::this_thread::get_id()};
         bool dispatching_{};
         Impl(
-            ViewHost& host, workspace::WorkspaceStore& store, workspace::WorkspaceChanges& changes,
+            ViewHost& host,
+            workspace::WorkspaceStore& store,
+            workspace::WorkspaceChanges& changes,
             object::ObjectDispatcherRef dispatcher
-        ) : host_(host), store_(store), changes_(changes), dispatcher_(dispatcher)
-        {}
+        )
+            : host_(host), store_(store), changes_(changes), dispatcher_(dispatcher)
+        {
+        }
         struct Dispatch final
         {
             bool& active;
-            explicit Dispatch(bool& value) noexcept : active(value) { active = true; }
-            ~Dispatch() { active = false; }
+            explicit Dispatch(bool& value) noexcept : active(value)
+            {
+                active = true;
+            }
+            ~Dispatch()
+            {
+                active = false;
+            }
             Dispatch(const Dispatch&) = delete;
             Dispatch& operator=(const Dispatch&) = delete;
         };
@@ -77,21 +87,26 @@ namespace lux::editor::desktop
         }
         EditorResult<void> commit(workspace::DockLayout layout, const views::ViewFactorySnapshot& catalog)
         {
-            auto create_input = [&](views::ViewTypeId type, lux::ui::PaneId id)
-                -> views::ViewFactoryResult<views::ViewFactoryInput> {
+            auto create_input = [&](views::ViewTypeId type,
+                                    lux::ui::PaneId id) -> views::ViewFactoryResult<views::ViewFactoryInput>
+            {
                 const auto entries = catalog.entries();
-                const auto factory = std::ranges::find_if(entries, [&](const auto& entry) {
-                    return entry->descriptor().type == type.view();
-                });
+                const auto factory = std::ranges::find_if(
+                    entries,
+                    [&](const auto& entry) { return entry->descriptor().type == type.view(); }
+                );
                 if (factory == entries.end())
-                    return cxx::unexpected(views::ViewFactoryFailure{
-                        views::EViewFactoryError::NOT_FOUND, "layout.view"
-                    });
-                const auto make_input = [&](auto value) {
+                    return cxx::unexpected(views::ViewFactoryFailure{views::EViewFactoryError::NOT_FOUND, "layout.view"}
+                    );
+                const auto make_input = [&](auto value)
+                {
                     using Value = decltype(value);
                     return views::ViewFactoryInput{
-                        dispatcher_, id, contracts::CodeLease::builtin(),
-                        cxx::typeToken<Value>(), std::make_shared<const Value>(std::move(value))
+                        dispatcher_,
+                        id,
+                        contracts::CodeLease::builtin(),
+                        cxx::typeToken<Value>(),
+                        std::make_shared<const Value>(std::move(value))
                     };
                 };
                 if ((*factory)->descriptor().binding_type == cxx::typeToken<views::ContentViewInput>())
@@ -130,12 +145,19 @@ namespace lux::editor::desktop
         }
     };
     WorkspaceActions::WorkspaceActions(
-        ViewHost& host, workspace::WorkspaceStore& store, workspace::WorkspaceChanges& changes,
+        ViewHost& host,
+        workspace::WorkspaceStore& store,
+        workspace::WorkspaceChanges& changes,
         object::ObjectDispatcherRef dispatcher
-    ) : impl_(std::make_unique<Impl>(host, store, changes, dispatcher))
-    {}
+    )
+        : impl_(std::make_unique<Impl>(host, store, changes, dispatcher))
+    {
+    }
     WorkspaceActions::~WorkspaceActions() = default;
-    EditorResult<void> WorkspaceActions::save(std::string label) { return impl_->save(std::move(label)); }
+    EditorResult<void> WorkspaceActions::save(std::string label)
+    {
+        return impl_->save(std::move(label));
+    }
     EditorResult<void> WorkspaceActions::apply(const workspace::LayoutId& id, const views::ViewFactorySnapshot& catalog)
     {
         return impl_->apply(id, catalog);
@@ -144,4 +166,4 @@ namespace lux::editor::desktop
     {
         return impl_->apply(std::move(layout), catalog);
     }
-}
+} // namespace lux::editor::desktop

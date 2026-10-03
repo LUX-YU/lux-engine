@@ -4,7 +4,10 @@
 #include <lux/engine/editor/project/ProjectCatalogModel.hpp>
 #include <lux/engine/editor/views/IViewHost.hpp>
 
-namespace lux::editor::views { class ViewFactoryEntry; }
+namespace lux::editor::views
+{
+    class ViewFactoryEntry;
+}
 
 namespace lux::editor::project
 {
@@ -31,10 +34,12 @@ namespace lux::editor::project
     [[nodiscard]] views::DetachedView
     makeProjectView(object::ObjectDispatcherRef, lux::ui::PaneId, ProjectCatalogModel&);
     [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> makeProjectViewFactory(
-        ProjectCatalogModel& catalog, cxx::move_only_function<void(const AssetReference&)> open
+        ProjectCatalogModel& catalog,
+        cxx::move_only_function<void(const AssetReference&)> open
     );
     [[nodiscard]] std::shared_ptr<commands::CommandEntry> makeAssetsCommand(
-        commands::CommandEntry::Query, desktop::ToolOpening
+        commands::CommandEntry::Query,
+        desktop::ToolOpening
     );
 
-}
+} // namespace lux::editor::project

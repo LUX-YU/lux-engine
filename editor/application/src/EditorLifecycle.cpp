@@ -59,7 +59,8 @@ namespace lux::editor::application
         if (review_)
         {
             std::optional<desktop::ReviewAnswer> response;
-            auto read_response = [&](lux::ui::Pane& pane) {
+            auto read_response = [&](lux::ui::Pane& pane)
+            {
                 if (pane.type() == lux::ui::PaneTypeId{"lux.editor.review"})
                     response = static_cast<desktop::ReviewView&>(pane).response();
             };
@@ -75,18 +76,16 @@ namespace lux::editor::application
                     return applicationFailure("close.save.source", info.error());
                 if (!info->binding)
                 {
-                    auto destination = content_saving_->prepare(
-                        *review_content_,
-                        persistence::ESaveMode::SAVE_AS,
-                        response->text
-                    );
+                    auto destination =
+                        content_saving_->prepare(*review_content_, persistence::ESaveMode::SAVE_AS, response->text);
                     if (!destination)
                     {
                         const auto* session_error = std::any_cast<sessions::ESessionError>(&destination.error().cause);
                         if (destination.error().code == EEditorError::BUSY ||
                             (session_error && *session_error == sessions::ESessionError::BUSY))
                             return {};
-                        auto reject = [&](lux::ui::Pane& pane) {
+                        auto reject = [&](lux::ui::Pane& pane)
+                        {
                             static_cast<desktop::ReviewView&>(pane).rejectAnswer(
                                 destination.error().domain + ": " + destination.error().message +
                                 "\nChoose a valid unused source path, or cancel closing."
@@ -214,21 +213,34 @@ namespace lux::editor::application
         ids.reserve(views->size());
         for (const auto& view : *views)
         {
-            const bool closes_content = std::ranges::any_of(close_decisions_, [&](const auto& decision) {
-                return std::ranges::find(view.content.sessions, decision.content.session) != view.content.sessions.end();
-            });
-            const bool stops_run = std::ranges::any_of(run_presentations_, [&](const auto& run) {
-                return run.run && std::ranges::find(run.views, view.id) != run.views.end() &&
-                    std::ranges::any_of(close_run_decisions_, [&](const auto& decision) {
-                        return decision.run == *run.run && decision.choice == desktop::EReviewChoice::STOP_RUN;
-                    });
-            });
+            const bool closes_content = std::ranges::any_of(
+                close_decisions_,
+                [&](const auto& decision) {
+                    return std::ranges::find(view.content.sessions, decision.content.session) !=
+                           view.content.sessions.end();
+                }
+            );
+            const bool stops_run = std::ranges::any_of(
+                run_presentations_,
+                [&](const auto& run)
+                {
+                    return run.run && std::ranges::find(run.views, view.id) != run.views.end() &&
+                           std::ranges::any_of(
+                               close_run_decisions_,
+                               [&](const auto& decision) {
+                                   return decision.run == *run.run &&
+                                          decision.choice == desktop::EReviewChoice::STOP_RUN;
+                               }
+                           );
+                }
+            );
             if (close_application_ || closes_content || stops_run)
                 ids.push_back(view.id);
         }
         // Resolve every already accepted publication before the irreversible window handoff.
         // Unknown needs an explicit user reconciliation while the Results view is still available.
-        const auto ready_save = [&](persistence::SaveId id) -> EditorResult<bool> {
+        const auto ready_save = [&](persistence::SaveId id) -> EditorResult<bool>
+        {
             auto report = std::ranges::find(content_saving_->reports(), id, &ProjectSaveReport::id);
             if (report != content_saving_->reports().end() && report->result)
                 return true;
@@ -289,21 +301,21 @@ namespace lux::editor::application
             }
         if (close_application_)
             for (const auto* changes : {&workspace_changes_, &user_settings_changes_, &project_settings_changes_})
-            for (const auto& publication : changes->publications())
-                if (!publication.result)
-                {
-                    auto status = writes_.status(publication.ticket);
-                    if (!status)
-                        return applicationFailure("exit.workspace.status", status.error());
-                    if (status->stage == persistence::EWriteStage::UNKNOWN)
-                        return cxx::unexpected(EditorFailure{
-                            EEditorError::BUSY,
-                            "exit.workspace.unknown",
-                            0,
-                            "Reconcile the pending workspace publication before exiting."
-                        });
-                    return {};
-                }
+                for (const auto& publication : changes->publications())
+                    if (!publication.result)
+                    {
+                        auto status = writes_.status(publication.ticket);
+                        if (!status)
+                            return applicationFailure("exit.workspace.status", status.error());
+                        if (status->stage == persistence::EWriteStage::UNKNOWN)
+                            return cxx::unexpected(EditorFailure{
+                                EEditorError::BUSY,
+                                "exit.workspace.unknown",
+                                0,
+                                "Reconcile the pending workspace publication before exiting."
+                            });
+                        return {};
+                    }
         if (close_application_)
             if (auto operation = importer_->currentRequest())
             {
@@ -352,7 +364,8 @@ namespace lux::editor::application
             }
         if (close_application_)
             phase_ = EApplicationPhase::COMMITTING_EXIT;
-        auto close_content = [&] {
+        auto close_content = [&]
+        {
             // No intervening business callback: Store validates the entire permit set, then reclaims.
             const auto closed = sessions_.close(*permits);
             if (!closed)
@@ -388,7 +401,8 @@ namespace lux::editor::application
     EditorResult<void> EditorApplication::Impl::settleOperations()
     {
         EditorResult<void> outcome;
-        const auto receive = [&](EditorResult<void> result) {
+        const auto receive = [&](EditorResult<void> result)
+        {
             if (!result && outcome)
                 outcome = std::move(result);
         };
@@ -413,8 +427,12 @@ namespace lux::editor::application
         receive(settleWorkspace());
         const bool operations_settled =
             importer_->closeStatus().state == assets::EModelImportCloseState::CLOSED && material_compilation_.empty() &&
-            flow_compilation_.empty() && user_settings_changes_.settled() && project_settings_changes_.settled() && content_saving_->settled() && opening_.settled() && recent_projects_->settled() && !project_launch_ &&
-            std::ranges::all_of(workspace_changes_.publications(), [](const auto& value) { return value.result.has_value(); }) &&
+            flow_compilation_.empty() && user_settings_changes_.settled() && project_settings_changes_.settled() &&
+            content_saving_->settled() && opening_.settled() && recent_projects_->settled() && !project_launch_ &&
+            std::ranges::all_of(
+                workspace_changes_.publications(),
+                [](const auto& value) { return value.result.has_value(); }
+            ) &&
             std::ranges::all_of(artifacts_, [](const auto& value) { return value.terminal(); }) &&
             std::ranges::none_of(run_presentations_, [](const auto& run) { return bool(run.preparing) || run.run; });
         if (phase_ == EApplicationPhase::DRAINING && operations_settled &&
@@ -441,7 +459,8 @@ namespace lux::editor::application
             return ready;
         Dispatch scope{dispatching_};
         EditorResult<void> outcome;
-        const auto receive = [&](EditorResult<void> result) {
+        const auto receive = [&](EditorResult<void> result)
+        {
             if (!result && outcome)
                 outcome = std::move(result);
         };
@@ -576,4 +595,4 @@ namespace lux::editor::application
             return cxx::unexpected(*impl_->maintenance_failure_);
         return {};
     }
-}
+} // namespace lux::editor::application

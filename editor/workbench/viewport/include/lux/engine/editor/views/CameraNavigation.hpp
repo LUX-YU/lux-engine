@@ -29,4 +29,4 @@ namespace lux::editor::views
         Eigen::Vector2d,
         Eigen::Vector2d
     );
-}
+} // namespace lux::editor::views

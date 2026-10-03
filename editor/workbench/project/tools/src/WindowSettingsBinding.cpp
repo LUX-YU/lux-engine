@@ -13,13 +13,13 @@ namespace lux::editor::project
         bool samePlacement(const window::WindowPlacement& first, const window::WindowPlacement& second)
         {
             return first.normal == second.normal && first.mode == second.mode &&
-                first.display.name == second.display.name && first.display.work_area == second.display.work_area;
+                   first.display.name == second.display.name && first.display.work_area == second.display.work_area;
         }
-        template<class Error> EditorFailure failed(std::string domain, const Error& cause)
+        template <class Error> EditorFailure failed(std::string domain, const Error& cause)
         {
             return {EEditorError::SOURCE_FAILURE, std::move(domain), 0, {}, cause};
         }
-    }
+    } // namespace
     struct WindowSettingsBinding::Impl final
     {
         std::shared_ptr<const settings::SettingsEntry> entry_;
@@ -34,12 +34,22 @@ namespace lux::editor::project
         std::uint64_t displays_{window::GlfwRuntime::displayRevision()};
         bool changed_{};
 
-        Impl(window::LuxWindow& window, workspace::WorkspaceStore& store, workspace::WorkspaceChanges& changes,
-            std::shared_ptr<const settings::SettingsEntry> entry, SettingsContentInput& input, window::WindowPlacement state)
+        Impl(
+            window::LuxWindow& window,
+            workspace::WorkspaceStore& store,
+            workspace::WorkspaceChanges& changes,
+            std::shared_ptr<const settings::SettingsEntry> entry,
+            SettingsContentInput& input,
+            window::WindowPlacement state
+        )
             : entry_(std::move(entry)), window_(window), store_(store), changes_(changes), input_(input),
               observed_(std::move(state))
-        {}
-        ~Impl() { window_.on_placement_changed = {}; }
+        {
+        }
+        ~Impl()
+        {
+            window_.on_placement_changed = {};
+        }
 
         EditorResult<void> observe()
         {
@@ -99,7 +109,8 @@ namespace lux::editor::project
             if (submitted_)
             {
                 const auto reports = changes_.publications();
-                const auto found = std::ranges::find(reports, submitted_->first, &workspace::WorkspacePublication::ticket);
+                const auto found =
+                    std::ranges::find(reports, submitted_->first, &workspace::WorkspacePublication::ticket);
                 if (found == reports.end())
                 {
                     failure_ = EditorFailure{EEditorError::STALE_REQUEST, "window.settings.receipt"};
@@ -120,8 +131,8 @@ namespace lux::editor::project
                 }
                 submitted_.reset();
             }
-            const bool can_publish = allow_new_work && pending_ && !failure_ && changes_.hasCapacity() &&
-                !changes_.migrationPending();
+            const bool can_publish =
+                allow_new_work && pending_ && !failure_ && changes_.hasCapacity() && !changes_.migrationPending();
             if (!can_publish)
                 return;
             // A native event starts a fresh intent. Existing UI drafts keep their own older source
@@ -167,12 +178,16 @@ namespace lux::editor::project
     WindowSettingsBinding::WindowSettingsBinding(std::unique_ptr<Impl> impl) : impl_(std::move(impl)) {}
     WindowSettingsBinding::~WindowSettingsBinding() = default;
     EditorResult<std::unique_ptr<WindowSettingsBinding>> WindowSettingsBinding::create(
-        window::LuxWindow& window, workspace::WorkspaceStore& store, workspace::WorkspaceChanges& changes,
-        std::shared_ptr<const settings::SettingsEntry> entry, SettingsContentInput& input)
+        window::LuxWindow& window,
+        workspace::WorkspaceStore& store,
+        workspace::WorkspaceChanges& changes,
+        std::shared_ptr<const settings::SettingsEntry> entry,
+        SettingsContentInput& input
+    )
     {
         const bool has_configuration = entry && entry->descriptor().configuration;
-        const bool is_invalid_type = !has_configuration ||
-            entry->descriptor().configuration->codec.type != cxx::typeToken<WindowSettings>();
+        const bool is_invalid_type =
+            !has_configuration || entry->descriptor().configuration->codec.type != cxx::typeToken<WindowSettings>();
         if (is_invalid_type)
             return cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "window.settings.type"});
         if (window.on_placement_changed)
@@ -180,14 +195,17 @@ namespace lux::editor::project
         auto state = window.state();
         if (!state)
             return cxx::unexpected(failed("window.observe", state.error()));
-        auto impl = std::make_unique<Impl>(window, store, changes, std::move(entry), input, std::move(state->placement));
+        auto impl =
+            std::make_unique<Impl>(window, store, changes, std::move(entry), input, std::move(state->placement));
         auto result = std::unique_ptr<WindowSettingsBinding>(new WindowSettingsBinding(std::move(impl)));
-        window.on_placement_changed = [owner = result->impl_.get()](const window::WindowPlacementEvent&) {
-            owner->changed_ = true;
-        };
+        window.on_placement_changed = [owner = result->impl_.get()](const window::WindowPlacementEvent&)
+        { owner->changed_ = true; };
         return result;
     }
-    void WindowSettingsBinding::update(bool allow_new_work) { impl_->update(allow_new_work); }
+    void WindowSettingsBinding::update(bool allow_new_work)
+    {
+        impl_->update(allow_new_work);
+    }
     void WindowSettingsBinding::retry() noexcept
     {
         impl_->failure_.reset();
@@ -197,4 +215,4 @@ namespace lux::editor::project
     {
         return impl_->failure_ ? &*impl_->failure_ : nullptr;
     }
-}
+} // namespace lux::editor::project

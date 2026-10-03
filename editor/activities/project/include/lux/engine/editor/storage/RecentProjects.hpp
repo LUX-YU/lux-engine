@@ -17,7 +17,7 @@ namespace lux::editor::persistence
     class WriteCoordinator;
     class IArtifactStore;
     class SaveExecution;
-}
+} // namespace lux::editor::persistence
 namespace lux::editor
 {
     // User-level project browsing data. The original coordinator owns disk publication;
@@ -25,11 +25,7 @@ namespace lux::editor
     class RecentProjects final
     {
     public:
-        RecentProjects(
-            std::filesystem::path user_directory, std::filesystem::path current_project,
-            process::ExecutionRuntime&, persistence::WriteCoordinator&,
-            persistence::IArtifactStore&, persistence::SaveExecution&
-        );
+        RecentProjects(std::filesystem::path user_directory, std::filesystem::path current_project, process::ExecutionRuntime&, persistence::WriteCoordinator&, persistence::IArtifactStore&, persistence::SaveExecution&);
         ~RecentProjects();
         RecentProjects(const RecentProjects&) = delete;
         RecentProjects& operator=(const RecentProjects&) = delete;
@@ -50,4 +46,4 @@ namespace lux::editor
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };
-}
+} // namespace lux::editor

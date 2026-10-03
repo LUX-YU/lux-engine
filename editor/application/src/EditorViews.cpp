@@ -28,7 +28,8 @@ namespace lux::editor::application
     EditorResult<sessions::OpenAssetId> EditorApplication::Impl::open(AssetReference reference)
     {
         std::optional<EditorResult<sessions::OpenAssetId>> result;
-        auto prepare = [&](const extensions::ContributionSnapshot& snapshot) -> extensions::ContributionResult<void> {
+        auto prepare = [&](const extensions::ContributionSnapshot& snapshot) -> extensions::ContributionResult<void>
+        {
             result.emplace(openCaptured(reference, snapshot));
             return {};
         };
@@ -113,7 +114,8 @@ namespace lux::editor::application
     EditorResult<views::ViewId> EditorApplication::Impl::show(sessions::SessionId id, bool another_view)
     {
         std::optional<EditorResult<views::ViewId>> result;
-        auto prepare = [&](const extensions::ContributionSnapshot& snapshot) -> extensions::ContributionResult<void> {
+        auto prepare = [&](const extensions::ContributionSnapshot& snapshot) -> extensions::ContributionResult<void>
+        {
             result.emplace(makeContentView({{id}, id}, another_view, snapshot));
             return {};
         };
@@ -169,7 +171,9 @@ namespace lux::editor::application
             {
                 if (!view.content.sessions.empty() && view.content != association)
                     return cxx::unexpected(EditorFailure{
-                        EEditorError::STALE_REQUEST, "recovery.binding", 0,
+                        EEditorError::STALE_REQUEST,
+                        "recovery.binding",
+                        0,
                         "The matching window already displays different content; original binding retained."
                     });
                 if (view.content == association)
@@ -191,8 +195,11 @@ namespace lux::editor::application
         }
         views::ContentViewInput value{association, title.empty() ? name : std::move(title)};
         const views::ViewFactoryInput input{
-            messages_.dispatcherRef(), lux::ui::PaneId{name}, contracts::CodeLease::builtin(),
-            cxx::typeToken<views::ContentViewInput>(), std::make_shared<const views::ContentViewInput>(std::move(value))
+            messages_.dispatcherRef(),
+            lux::ui::PaneId{name},
+            contracts::CodeLease::builtin(),
+            cxx::typeToken<views::ContentViewInput>(),
+            std::make_shared<const views::ContentViewInput>(std::move(value))
         };
         auto view = snapshot.views().prepare(*selected, input);
         if (!view)
@@ -202,4 +209,4 @@ namespace lux::editor::application
             return cxx::unexpected(adopted.error());
         return *adopted;
     }
-}
+} // namespace lux::editor::application

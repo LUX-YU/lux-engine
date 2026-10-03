@@ -21,7 +21,8 @@ namespace lux::editor
                 std::string expected_digest
             )
                 : root_(std::move(root)), entry_(std::move(entry)), limit_(limit), digest_(std::move(expected_digest))
-            {}
+            {
+            }
 
             std::optional<asset::AssetId> resolve(std::string_view path) const override
             {
@@ -39,8 +40,10 @@ namespace lux::editor
             {
                 visit({entry_.id, 0, entry_.source_path});
             }
-            lux::cxx::expected<asset::AssetBlob, asset::EAssetStorageError>
-            open(const asset::AssetId& id, std::size_t max_bytes) const noexcept override
+            lux::cxx::expected<asset::AssetBlob, asset::EAssetStorageError> open(
+                const asset::AssetId& id,
+                std::size_t max_bytes
+            ) const noexcept override
             {
                 using Error = asset::EAssetStorageError;
                 if (!contains(id))
@@ -82,7 +85,7 @@ namespace lux::editor
             std::size_t limit_;
             std::string digest_;
         };
-    }
+    } // namespace
 
     EditorResult<asset::AssetVfsView> ProjectStorage::captureSource(
         asset::AssetId id,
@@ -103,7 +106,7 @@ namespace lux::editor
             return lux::cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "source.mount"});
         return sources.view().capture();
     }
-}
+} // namespace lux::editor
 
 namespace lux::editor
 {
@@ -132,10 +135,13 @@ namespace lux::editor
                     code = EEditorError::BUSY;
             return cxx::unexpected(EditorFailure{code, std::move(domain), 0, {}, cause});
         }
-    }
+    } // namespace
     EditorResult<sessions::OpenAssetId> openProjectContent(
-        ProjectStorage& project, persistence::IArtifactStore& files, sessions::SessionOpening& opening,
-        AssetReference reference, const sessions::SessionFactorySnapshot& snapshot
+        ProjectStorage& project,
+        persistence::IArtifactStore& files,
+        sessions::SessionOpening& opening,
+        AssetReference reference,
+        const sessions::SessionFactorySnapshot& snapshot
     )
     {
         auto resolved = project.resolveReference(reference, 0);
@@ -179,4 +185,4 @@ namespace lux::editor
         return project.catalogModel().reference(found->id);
     }
 
-}
+} // namespace lux::editor

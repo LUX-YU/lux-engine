@@ -17,7 +17,8 @@ derive from a universal editor or look up services in an application context.
 | Typed command lookup and dispatch | CommandRegistry |
 | Runtime drive, presentation and retirement | Original SceneRuntime and presentation owners |
 
-Editor extension ABI V8 separates immutable cold contributions from activation. The export declares needed
+EC1 introduced the capability split in V8; the current Editor SDK uses V9, adding settings contributions.
+The current ABI separates immutable cold contributions from activation. The export declares needed
 SessionActivities, ProjectActivities and WorkbenchAccess; missing required capabilities reject activation.
 Unrequested groups are not supplied. Activation receives callback-lifetime group pointers and captures only
 explicit provider references in its owned closures. Providers outlive admitted work and mounted views.

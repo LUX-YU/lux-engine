@@ -18,7 +18,8 @@ namespace
             contracts::CodeLease::builtin(),
             descriptor(),
             [](const CommandQuery&) -> CommandResult<CommandState> { return CommandState{true}; },
-            [&calls](const CommandInvocation&) -> CommandResult<DispatchReceipt> {
+            [&calls](const CommandInvocation&) -> CommandResult<DispatchReceipt>
+            {
                 ++calls;
                 return DispatchReceipt{ImmediateCompletion{}};
             }
@@ -26,22 +27,33 @@ namespace
     }
     inline constexpr CommandDescriptor literal{CommandIdView{"test.literal"}, "Static label", "Edit", "Ctrl+L"};
     static_assert(literal.id.hash() == cxx::Fnv1a64::hash("test.literal"));
-    static_assert(!std::is_constructible_v<CommandEntry, contracts::CodeLease, CommandDescriptor,
-                                         CommandEntry::Query, CommandEntry::Execute>);
+    static_assert(!std::is_constructible_v<
+                  CommandEntry,
+                  contracts::CodeLease,
+                  CommandDescriptor,
+                  CommandEntry::Query,
+                  CommandEntry::Execute>);
     void descriptorStorageAndIndex()
     {
         auto query = [](const CommandQuery&) -> CommandResult<CommandState> { return CommandState{true}; };
-        auto execute = [](const CommandInvocation&) -> CommandResult<DispatchReceipt> {
-            return DispatchReceipt{ImmediateCompletion{}};
-        };
+        auto execute = [](const CommandInvocation&) -> CommandResult<DispatchReceipt>
+        { return DispatchReceipt{ImmediateCompletion{}}; };
         auto fixed = CommandEntry::bind<literal>(contracts::CodeLease::builtin(), query, execute);
         assert(&fixed->descriptor() == &literal && fixed->descriptor().label.data() == literal.label.data());
         std::shared_ptr<CommandEntry> dynamic;
         {
             std::string name{"test.dynamic"}, label{"Label"}, group{"A/B"}, key{"Alt+M"}, argument{"payload"};
-            dynamic = CommandEntry::create(contracts::CodeLease::builtin(),
-                {CommandIdView{name}, label, group, key, ECommandScope::APPLICATION, 3, {91, argument}}, query, execute);
-            name.assign(2000, 'n'); label.assign(2000, 'l'); group.clear(); key.clear(); argument.clear();
+            dynamic = CommandEntry::create(
+                contracts::CodeLease::builtin(),
+                {CommandIdView{name}, label, group, key, ECommandScope::APPLICATION, 3, {91, argument}},
+                query,
+                execute
+            );
+            name.assign(2000, 'n');
+            label.assign(2000, 'l');
+            group.clear();
+            key.clear();
+            argument.clear();
         }
         const auto& owned = dynamic->descriptor();
         assert(owned.id.name() == "test.dynamic" && owned.label == "Label" && owned.group == "A/B");
@@ -60,8 +72,15 @@ namespace
         assert(!duplicate && duplicate.error().code == ECommandError::DUPLICATE);
         const auto invalid = CommandIdView::fromVerified("forged", 12);
         assert(!invalid.isValid() && !snapshot->find(invalid));
-        std::puts("PASS static descriptor identity, one frozen dynamic backing, duplicate and public identity validation");
-        std::printf("sizeof Descriptor=%zu Entry=%zu Handle=%zu\n", sizeof(CommandDescriptor), sizeof(CommandEntry), sizeof(CommandHandle));
+        std::puts(
+            "PASS static descriptor identity, one frozen dynamic backing, duplicate and public identity validation"
+        );
+        std::printf(
+            "sizeof Descriptor=%zu Entry=%zu Handle=%zu\n",
+            sizeof(CommandDescriptor),
+            sizeof(CommandEntry),
+            sizeof(CommandHandle)
+        );
     }
     void compoundScope()
     {
@@ -90,19 +109,22 @@ namespace
         assert(registry.canPublish() && dispatcher.drain() && calls == 2);
         unsigned cleaned{};
         {
-            auto code = contracts::CodeLease::plugin(std::shared_ptr<const void>(new int{1}, [&](const void* p) {
-                ++cleaned;
-                auto publish = registry.publish({});
-                assert(!publish && publish.error().code == ECommandError::BUSY);
-                delete static_cast<const int*>(p);
-            }));
+            auto code = contracts::CodeLease::plugin(std::shared_ptr<const void>(
+                new int{1},
+                [&](const void* p)
+                {
+                    ++cleaned;
+                    auto publish = registry.publish({});
+                    assert(!publish && publish.error().code == ECommandError::BUSY);
+                    delete static_cast<const int*>(p);
+                }
+            ));
             auto prepared = CommandRegistrySnapshot::create({CommandEntry::create(
                 std::move(code),
                 descriptor(),
                 [](const CommandQuery&) -> CommandResult<CommandState> { return CommandState{true}; },
-                [](const CommandInvocation&) -> CommandResult<DispatchReceipt> {
-                    return DispatchReceipt{ImmediateCompletion{}};
-                }
+                [](const CommandInvocation&) -> CommandResult<DispatchReceipt>
+                { return DispatchReceipt{ImmediateCompletion{}}; }
             )});
             assert(prepared);
             auto batch = registry.preparePublication(std::move(*prepared));
@@ -116,10 +138,13 @@ namespace
             assert(registry.revision() == 2 && old.entries().size() == 1 && !registry.publish({}));
         }
         assert(registry.canPublish());
-        std::thread foreign([&] {
-            const auto rejected = registry.readBatch();
-            assert(!rejected && rejected.error().code == ECommandError::WRONG_THREAD);
-        });
+        std::thread foreign(
+            [&]
+            {
+                const auto rejected = registry.readBatch();
+                assert(!rejected && rejected.error().code == ECommandError::WRONG_THREAD);
+            }
+        );
         foreign.join();
     }
     void shortcutAdmission()
@@ -135,13 +160,14 @@ namespace
         assert(parseShortcut("Super+A").error() == EShortcutError::UNKNOWN_MODIFIER);
         assert(parseShortcut("Ctrl+").error() == EShortcutError::MISSING_KEY);
         assert(parseShortcut("Ctrl+a").error() == EShortcutError::UNKNOWN_KEY);
-        auto make = [](std::string_view id, std::string_view shortcut) {
+        auto make = [](std::string_view id, std::string_view shortcut)
+        {
             return CommandEntry::create(
-                contracts::CodeLease::builtin(), {CommandIdView{id}, "Shortcut", "Edit", shortcut},
+                contracts::CodeLease::builtin(),
+                {CommandIdView{id}, "Shortcut", "Edit", shortcut},
                 [](const CommandQuery&) -> CommandResult<CommandState> { return CommandState{true}; },
-                [](const CommandInvocation&) -> CommandResult<DispatchReceipt> {
-                    return DispatchReceipt{ImmediateCompletion{}};
-                }
+                [](const CommandInvocation&) -> CommandResult<DispatchReceipt>
+                { return DispatchReceipt{ImmediateCompletion{}}; }
             );
         };
         CommandRegistry registry;
@@ -187,9 +213,8 @@ namespace
             contracts::CodeLease::builtin(),
             incompatible,
             [](const CommandQuery&) -> CommandResult<CommandState> { return CommandState{true}; },
-            [](const CommandInvocation&) -> CommandResult<DispatchReceipt> {
-                return DispatchReceipt{ImmediateCompletion{}};
-            }
+            [](const CommandInvocation&) -> CommandResult<DispatchReceipt>
+            { return DispatchReceipt{ImmediateCompletion{}}; }
         );
         CommandInvocation queued{{}, {}, ERegistryBinding::CURRENT_REGISTRATION};
         assert(dispatcher.enqueue(*handle, queued));
@@ -219,7 +244,8 @@ namespace
         auto record = CommandEntry::create(
             contracts::CodeLease::plugin(code),
             descriptor(),
-            [&](const CommandQuery& query) -> CommandResult<CommandState> {
+            [&](const CommandQuery& query) -> CommandResult<CommandState>
+            {
                 active = true;
                 auto nested = registry.query(*external, query);
                 nested_busy = !nested && nested.error().code == ECommandError::BUSY;
@@ -231,9 +257,8 @@ namespace
                 active = false;
                 return CommandState{true};
             },
-            [](const CommandInvocation&) -> CommandResult<DispatchReceipt> {
-                return DispatchReceipt{ImmediateCompletion{}};
-            }
+            [](const CommandInvocation&) -> CommandResult<DispatchReceipt>
+            { return DispatchReceipt{ImmediateCompletion{}}; }
         );
         snapshot = *CommandRegistrySnapshot::create({record});
         external = *snapshot.find(CommandIdView{"test.command"});
@@ -271,12 +296,14 @@ namespace
         auto record = CommandEntry::create(
             contracts::CodeLease::builtin(),
             descriptor(),
-            [&](const CommandQuery&) -> CommandResult<CommandState> {
+            [&](const CommandQuery&) -> CommandResult<CommandState>
+            {
                 if (busy)
                     return cxx::unexpected(CommandFailure{ECommandError::BUSY, "real.domain", 29, "reading"});
                 return CommandState{true};
             },
-            [&](const CommandInvocation&) -> CommandResult<DispatchReceipt> {
+            [&](const CommandInvocation&) -> CommandResult<DispatchReceipt>
+            {
                 ++calls;
                 auto nested = dispatcher.drain();
                 assert(!nested && nested.error().code == ECommandError::BUSY);
@@ -294,13 +321,16 @@ namespace
         auto second = dispatcher.drain();
         assert(second && second->size() == 1 && calls == 1 && dispatcher.pending() == 0);
         assert(std::get<AcceptedOperation>(*second->front().result).value == 17);
-        std::thread foreign([&] {
-            auto result = registry.query(*handle, input.query());
-            assert(!result && result.error().code == ECommandError::WRONG_THREAD);
-        });
+        std::thread foreign(
+            [&]
+            {
+                auto result = registry.query(*handle, input.query());
+                assert(!result && result.error().code == ECommandError::WRONG_THREAD);
+            }
+        );
         foreign.join();
     }
-}
+} // namespace
 int main()
 {
     descriptorStorageAndIndex();

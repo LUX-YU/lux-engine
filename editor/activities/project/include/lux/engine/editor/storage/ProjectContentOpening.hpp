@@ -13,10 +13,8 @@ namespace lux::editor
     class ProjectStorage;
     // Resolves a versioned project reference and submits its owned source to the original opening
     // service. The returned waiter belongs to the caller; no view or application record is created.
-    [[nodiscard]] EditorResult<sessions::OpenAssetId> openProjectContent(
-        ProjectStorage&, persistence::IArtifactStore&, sessions::SessionOpening&,
-        AssetReference, const sessions::SessionFactorySnapshot&
-    );
+    [[nodiscard]] EditorResult<sessions::OpenAssetId>
+    openProjectContent(ProjectStorage&, persistence::IArtifactStore&, sessions::SessionOpening&, AssetReference, const sessions::SessionFactorySnapshot&);
     [[nodiscard]] EditorResult<AssetReference> initialSceneReference(const ProjectStorage&);
 
-}
+} // namespace lux::editor

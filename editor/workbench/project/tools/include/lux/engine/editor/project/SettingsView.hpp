@@ -20,8 +20,13 @@ namespace lux::editor::project
     public:
         object::TSignal<PluginSelectionDraft> selectionRequested{*this};
         object::TSignal<> retryRequested{*this}, abandonRequested{*this}, acknowledgeRequested{*this};
-        SettingsView(object::ObjectDispatcherRef, lux::ui::PaneId, ProjectStorage&, const lux::project::PluginManager&,
-            std::shared_ptr<SettingsContentInput> = {});
+        SettingsView(
+            object::ObjectDispatcherRef,
+            lux::ui::PaneId,
+            ProjectStorage&,
+            const lux::project::PluginManager&,
+            std::shared_ptr<SettingsContentInput> = {}
+        );
         ~SettingsView() noexcept override;
         SettingsView(const SettingsView&) = delete;
         SettingsView& operator=(const SettingsView&) = delete;
@@ -36,12 +41,16 @@ namespace lux::editor::project
         std::unique_ptr<Impl> impl_;
     };
     [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> makeSettingsViewFactory(
-        ProjectStorage&, const lux::project::PluginManager&,
+        ProjectStorage&,
+        const lux::project::PluginManager&,
         cxx::move_only_function<void(const PluginSelectionDraft&)>,
-        cxx::move_only_function<void()> retry, cxx::move_only_function<void()> abandon,
-        cxx::move_only_function<void()> acknowledge, std::shared_ptr<SettingsContentInput> = {}
+        cxx::move_only_function<void()> retry,
+        cxx::move_only_function<void()> abandon,
+        cxx::move_only_function<void()> acknowledge,
+        std::shared_ptr<SettingsContentInput> = {}
     );
     [[nodiscard]] std::shared_ptr<commands::CommandEntry> makeSettingsCommand(
-        commands::CommandEntry::Query, desktop::ToolOpening
+        commands::CommandEntry::Query,
+        desktop::ToolOpening
     );
-}
+} // namespace lux::editor::project

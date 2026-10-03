@@ -249,4 +249,4 @@ namespace lux::window
         std::vector<VWindowInputEvent> pending_input_events_;
         std::vector<VWindowInputEvent> drained_input_events_;
     };
-} // namespace lux-engine::platform
+} // namespace lux::window

@@ -11,7 +11,8 @@ namespace lux::editor::project
         public:
             ShortcutFields(lux::ui::Element& parent, lux::ui::ElementId id, ConfigurationValue& value)
                 : Element(parent, std::move(id)), value_(value)
-            {}
+            {
+            }
             [[nodiscard]] EditorResult<void> rebuild()
             {
                 auto candidate = std::make_unique<detail::ConfigurationForm>(*this, lux::ui::ElementId{"bindings"});
@@ -23,8 +24,12 @@ namespace lux::editor::project
                 fields_ = std::move(candidate);
                 return {};
             }
+
         private:
-            ShortcutSettings& value() noexcept { return *static_cast<ShortcutSettings*>(value_.data()); }
+            ShortcutSettings& value() noexcept
+            {
+                return *static_cast<ShortcutSettings*>(value_.data());
+            }
             void update() noexcept override
             {
                 if (!change_)
@@ -63,7 +68,9 @@ namespace lux::editor::project
                 if (ImGui::Button("Remove last override"))
                     change_ = -1;
                 ImGui::EndDisabled();
-                ImGui::TextWrapped("Use the stable command ID and its declared scope/version. Empty binding disables it.");
+                ImGui::TextWrapped(
+                    "Use the stable command ID and its declared scope/version. Empty binding disables it."
+                );
                 if (failure_)
                     ImGui::TextWrapped("%s", failure_->domain.c_str());
                 if (fields_)
@@ -74,22 +81,22 @@ namespace lux::editor::project
             std::optional<EditorFailure> failure_;
             int change_{};
         };
-    }
+    } // namespace
     std::vector<settings::SettingsPage> makeDesktopSettingsPages(settings::SettingsEntry::Apply shortcuts)
     {
         return {
             {makeAppearanceSetting(), detail::configurationEditor<AppearanceSettings>("lux.desktop.appearance").create},
             {makeWindowSetting(), detail::configurationEditor<WindowSettings>("lux.desktop.window").create},
             {makeShortcutSetting(std::move(shortcuts)),
-                +[](lux::ui::Element& parent, lux::ui::ElementId id, ConfigurationValue& value) noexcept
-                    -> EditorResult<std::unique_ptr<lux::ui::Element>> {
-                    auto result = std::make_unique<ShortcutFields>(parent, std::move(id), value);
-                    auto created = result->rebuild();
-                    if (!created)
-                        return cxx::unexpected(created.error());
-                    return result;
-                }
-            }
+             +[](lux::ui::Element& parent, lux::ui::ElementId id, ConfigurationValue& value
+              ) noexcept -> EditorResult<std::unique_ptr<lux::ui::Element>>
+             {
+                 auto result = std::make_unique<ShortcutFields>(parent, std::move(id), value);
+                 auto created = result->rebuild();
+                 if (!created)
+                     return cxx::unexpected(created.error());
+                 return result;
+             }}
         };
     }
-}
+} // namespace lux::editor::project

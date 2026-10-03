@@ -1,29 +1,31 @@
-#include <lux/engine/editor/project/DesktopSettings.hpp>
-#include <lux/engine/editor/project/SettingsContent.hpp>
-#include <lux/engine/editor/extensions/Contributions.hpp>
-#include <lux/engine/editor/storage/FileArtifactStore.hpp>
-#include <lux/engine/ui/Root.hpp>
-#include <lux/engine/window/LuxWindow.hpp>
-#include <lux/engine/window/GlfwRuntime.hpp>
-#include <lux/engine/ui/Pane.hpp>
-#include <lux/engine/ui/Layout.hpp>
-#include <lux/engine/ui/Controls.hpp>
-#include <lux/engine/object/ObjectDispatcher.hpp>
 #include "../../../../cmake/installed-consumers/common/ControlsTestAccess.hpp"
 #include <cassert>
 #include <chrono>
 #include <cstdio>
+#include <lux/engine/editor/extensions/Contributions.hpp>
+#include <lux/engine/editor/project/DesktopSettings.hpp>
+#include <lux/engine/editor/project/SettingsContent.hpp>
+#include <lux/engine/editor/storage/FileArtifactStore.hpp>
+#include <lux/engine/object/ObjectDispatcher.hpp>
+#include <lux/engine/ui/Controls.hpp>
+#include <lux/engine/ui/Layout.hpp>
+#include <lux/engine/ui/Pane.hpp>
+#include <lux/engine/ui/Root.hpp>
+#include <lux/engine/window/GlfwRuntime.hpp>
+#include <lux/engine/window/LuxWindow.hpp>
 
 using namespace lux;
 using namespace lux::editor;
 namespace
 {
-    template<class Result> auto take(Result result)
+    template <class Result> auto take(Result result)
     {
         if (!result)
         {
             if constexpr (requires { result.error().domain; })
+            {
                 std::fprintf(stderr, "failure: %s\n", result.error().domain.c_str());
+            }
             std::abort();
         }
         return std::move(*result);
@@ -37,16 +39,26 @@ namespace
             : Pane(dispatcher, ui::PaneId{"settings-test"}, ui::PaneTypeId{"test.settings"}, "Settings"),
               layout(*this, ui::ElementId{"layout"}, ui::ELayoutType::VERTICAL),
               settings(layout, ui::ElementId{"settings"}, std::move(input))
-        { setContent(layout); }
+        {
+            setContent(layout);
+        }
     };
     ui::NumericEdit* numeric(object::LuxObject& node, std::string_view id)
     {
         if (auto* control = dynamic_cast<ui::NumericEdit*>(&node))
+        {
             if (control->id() == ui::ElementId{id})
+            {
                 return control;
+            }
+        }
         for (auto* child = node.firstChild(); child; child = child->nextSibling())
+        {
             if (auto* found = numeric(*child, id))
+            {
                 return found;
+            }
+        }
         return nullptr;
     }
     void changeScale(project::SettingsContent& settings, float scale)
@@ -57,12 +69,12 @@ namespace
         assert(ui::ControlsTestAccess::edited(*control, ui::EditResult{true, true, true}).complete());
         assert(static_cast<const project::AppearanceSettings*>(settings.draft()->desired.data())->scale == scale);
     }
-}
+} // namespace
 int main(int argc, char** argv)
 {
     assert(argc == 2 || argc == 3);
-    const auto root_path = std::filesystem::path(argv[1]) /
-        std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+    const auto root_path =
+        std::filesystem::path(argv[1]) / std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
     const auto user_path = root_path / "user";
     const auto project_path = root_path / "profile";
     std::filesystem::create_directories(user_path);
@@ -77,31 +89,44 @@ int main(int argc, char** argv)
     unsigned shortcut_applies{};
     bool block_apply{true};
     Page* active_page{};
-    const auto publish = [&] {
+    const auto publish = [&]
+    {
         extensions::ContributionDraft draft;
         draft.reflection.push_back({contracts::CodeLease::builtin(), project::registerDesktopSettings});
-        draft.settings = project::makeDesktopSettingsPages([&](const ConfigurationValue&) -> settings::SettingsResult<void> {
-            if (block_apply)
-                return cxx::unexpected(settings::SettingsFailure{settings::ESettingsError::BUSY, "test receiver busy"});
-            if (active_page)
+        draft.settings = project::makeDesktopSettingsPages(
+            [&](const ConfigurationValue&) -> settings::SettingsResult<void>
             {
-                auto nested = active_page->settings.request(project::ESettingsAction::DEFAULTS);
-                assert(!nested && nested.error().code == EEditorError::BUSY);
+                if (block_apply)
+                {
+                    return cxx::unexpected(
+                        settings::SettingsFailure{settings::ESettingsError::BUSY, "test receiver busy"}
+                    );
+                }
+                if (active_page)
+                {
+                    auto nested = active_page->settings.request(project::ESettingsAction::DEFAULTS);
+                    assert(!nested && nested.error().code == EEditorError::BUSY);
+                }
+                ++shortcut_applies;
+                return {};
             }
-            ++shortcut_applies;
-            return {};
-        });
+        );
         auto candidate = take(extensions::ContributionSnapshot::prepare(std::move(draft)));
         assert(registry.enqueue(candidate) && registry.applyPending());
     };
     publish();
     auto input = std::make_shared<project::SettingsContentInput>();
-    input->pages = [&] {
+    unsigned page_queries{};
+    input->pages = [&]
+    {
+        ++page_queries;
         auto snapshot = registry.snapshot();
         return std::vector<settings::SettingsPage>{snapshot.settings().begin(), snapshot.settings().end()};
     };
-    input->locations = std::vector<project::SettingsLocation>{{user, &user_changes, settings::ESettingsScope::USER, "settings.toml"},
-        {project, &project_changes, settings::ESettingsScope::USER_PROJECT, "settings.toml"}};
+    input->locations = std::vector<project::SettingsLocation>{
+        {user, &user_changes, settings::ESettingsScope::USER, "settings.toml"},
+        {project, &project_changes, settings::ESettingsScope::USER_PROJECT, "settings.toml"}
+    };
     const auto initial = registry.snapshot().findSetting(settings::SettingsIdView{"lux.desktop.appearance"})->entry;
     auto defaults = take(initial->defaults());
     std::vector<std::byte> default_bytes;
@@ -114,18 +139,30 @@ int main(int argc, char** argv)
     assert(committed.notifications.complete());
     ui::DrawData draw;
     assert(root->update({{900, 700}, 0.016f}, &draw));
-    const auto select = [&] {
-        assert(page->settings.select(settings::SettingsIdView{"lux.desktop.appearance"},
-            settings::ESettingsScope::USER_PROJECT));
+    const auto initial_page_queries = page_queries;
+    for (unsigned i{}; i < 1000; ++i)
+    {
+        assert(root->update({{900, 700}, 0.016f}, nullptr));
+    }
+    assert(page_queries == initial_page_queries);
+    std::puts("M3 settings: 1000 stable owner updates; catalog queries=0; no user action/read path entered");
+    const auto select = [&]
+    {
+        assert(page->settings
+                   .select(settings::SettingsIdView{"lux.desktop.appearance"}, settings::ESettingsScope::USER_PROJECT));
     };
-    const auto settle = [&] {
+    const auto settle = [&]
+    {
         while (auto work = take(writes.takeReady()))
+        {
             assert(writes.complete(work->ticket, files.publish(*work)));
+        }
         assert(user_changes.update() && project_changes.update());
     };
     active_page = page.get();
-    assert(page->settings.select(settings::SettingsIdView{"lux.desktop.shortcuts"},
-        settings::ESettingsScope::USER_PROJECT));
+    assert(
+        page->settings.select(settings::SettingsIdView{"lux.desktop.shortcuts"}, settings::ESettingsScope::USER_PROJECT)
+    );
     auto busy = page->settings.request(project::ESettingsAction::APPLY);
     assert(!busy && busy.error().code == EEditorError::BUSY && !page->settings.draft()->applied);
     const auto before = page->settings.draft()->based_on;
@@ -180,7 +217,8 @@ int main(int argc, char** argv)
     auto scaled_root = take(ui::Root::create(messages.dispatcherRef(), {.scale = scale}));
     assert(scaled_root->scale() == 1.75f && scaled_root->fontAtlas());
     assert(shortcut_applies == 1 && writes.size() == 0);
-    std::puts("PASS real settings controls, version/registration conflicts, defaults, UI retirement, file IO and Root restart scale");
+    std::puts("PASS real settings controls, version/registration conflicts, defaults, UI retirement, file IO and Root "
+              "restart scale");
     if (argc == 3)
     {
         window::GlfwRuntime platform;
@@ -190,11 +228,16 @@ int main(int argc, char** argv)
         window::LuxWindow::pollEvents();
         project::SettingsContentInput observations;
         auto window_entry = registry.snapshot().findSetting(settings::SettingsIdView{"lux.desktop.window"})->entry;
-        auto binding = take(project::WindowSettingsBinding::create(native, project, project_changes, window_entry, observations));
-        const auto original_version = take(project.readSettings("settings.toml", settings::ESettingsScope::USER_PROJECT)).file_version;
+        auto binding =
+            take(project::WindowSettingsBinding::create(native, project, project_changes, window_entry, observations));
+        const auto original_version =
+            take(project.readSettings("settings.toml", settings::ESettingsScope::USER_PROJECT)).file_version;
         binding->update();
         assert(!binding->failure());
-        assert(take(project.readSettings("settings.toml", settings::ESettingsScope::USER_PROJECT)).file_version == original_version);
+        assert(
+            take(project.readSettings("settings.toml", settings::ESettingsScope::USER_PROJECT)).file_version ==
+            original_version
+        );
         auto normal = take(native.state()).placement;
         normal.normal.width = 760;
         normal.normal.height = 540;
@@ -209,14 +252,16 @@ int main(int argc, char** argv)
         settle();
         binding->update();
         assert(!binding->failure() && project_changes.publications().size() == 1);
-        auto read_window = [&] {
+        auto read_window = [&]
+        {
             auto document = take(project.readSettings("settings.toml", settings::ESettingsScope::USER_PROJECT));
             auto effective = take(settings::resolveSettings(window_entry, std::span{&document, 1}));
             return *static_cast<const project::WindowSettings*>(effective.desired.data());
         };
         auto saved_window = read_window();
         assert(saved_window.restore && saved_window.placement.normal.width == 780);
-        for (auto mode : {window::EWindowMode::MAXIMIZED, window::EWindowMode::FULLSCREEN, window::EWindowMode::ORDINARY})
+        for (auto mode :
+             {window::EWindowMode::MAXIMIZED, window::EWindowMode::FULLSCREEN, window::EWindowMode::ORDINARY})
         {
             auto requested = saved_window.placement;
             requested.mode = mode;
@@ -240,11 +285,14 @@ int main(int argc, char** argv)
         settle();
         saved_window = read_window();
         assert(saved_window.placement.normal.width == 820);
-        window::LuxWindow reopened_window{saved_window.placement.normal.width,
-            saved_window.placement.normal.height, "EC3 restored window"};
+        window::LuxWindow reopened_window{
+            saved_window.placement.normal.width,
+            saved_window.placement.normal.height,
+            "EC3 restored window"
+        };
         assert(reopened_window.applyPlacement(saved_window.placement));
         assert(take(reopened_window.state()).placement.normal == saved_window.placement.normal);
-        std::puts("PASS actual window events -> coalesced file publication -> modes/normal rectangle -> reopen; no native input injected");
+        std::puts("PASS actual window events -> coalesced file publication -> modes/normal rectangle -> reopen; no "
+                  "native input injected");
     }
-
 }

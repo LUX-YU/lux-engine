@@ -13,7 +13,7 @@ namespace lux::editor::application
         {
             return {commands::ECommandError::DOMAIN_FAILURE, failure.domain, failure.reason, failure.message};
         }
-    }
+    } // namespace
     EditorResult<scene::StartRunId> EditorApplication::Impl::play(commands::SessionTarget target)
     {
         if (phase_ != EApplicationPhase::RUNNING || run_presentations_.size() >= 16)
@@ -97,8 +97,11 @@ namespace lux::editor::application
                         return applicationFailure("run.info", information.error());
                     const auto name = "run-" + std::to_string(next_view_++);
                     auto candidate = scene::makeRunSceneView(
-                        messages_.dispatcherRef(), sceneServices(), lux::ui::PaneId{name},
-                        *adopted, information->provenance.configuration.viewport
+                        messages_.dispatcherRef(),
+                        sceneServices(),
+                        lux::ui::PaneId{name},
+                        *adopted,
+                        information->provenance.configuration.viewport
                     );
                     if (!candidate)
                         record.failure = applicationFailure("run.view", candidate.error()).value();
@@ -165,9 +168,17 @@ namespace lux::editor::application
         components.insert(components.end(), snapshot.components().begin(), snapshot.components().end());
         const auto name = "scene-tool-" + std::to_string(next_view_++);
         auto candidate = scene::makeSceneToolView(
-            messages_.dispatcherRef(), lux::ui::PaneId{name}, desktop_->views(), source, kind,
-            {sceneServices(), runs_, registrations_.components, std::move(components),
-             &project_->catalogModel(), sceneConfigurationInputs()}
+            messages_.dispatcherRef(),
+            lux::ui::PaneId{name},
+            desktop_->views(),
+            source,
+            kind,
+            {sceneServices(),
+             runs_,
+             registrations_.components,
+             std::move(components),
+             &project_->catalogModel(),
+             sceneConfigurationInputs()}
         );
         if (!candidate)
             return applicationFailure("scene.tool.create", candidate.error());
@@ -205,7 +216,8 @@ namespace lux::editor::application
                 std::uint32_t version,
                 const serialization::PortableValueCodec&,
                 std::optional<std::span<const std::byte>> initial
-            ) -> scene::SceneConfigurationResult<scene::ConfigurationControl> {
+            ) -> scene::SceneConfigurationResult<scene::ConfigurationControl>
+            {
                 for (const auto& editor : snapshot.configurations())
                     if (editor.value.schema_name == name && editor.value.schema_version == version)
                         return scene::makeConfigurationControl(editor, parent, lux::ui::ElementId{name}, initial);
@@ -228,13 +240,14 @@ namespace lux::editor::application
     }
     void EditorApplication::Impl::installSceneCommands(extensions::ContributionDraft& draft)
     {
-        const auto available = [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
-            return commands::CommandState{phase_ == EApplicationPhase::RUNNING};
-        };
+        const auto available = [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
+        { return commands::CommandState{phase_ == EApplicationPhase::RUNNING}; };
         draft.views.push_back(scene::makeSceneCreationViewFactory(sceneConfigurationInputs(), contentCreation()));
         draft.commands.push_back(scene::makeNewSceneCommand(available, toolOpening()));
         draft.commands.push_back(scene::makePlaySceneCommand(
-            available, [this](commands::SessionTarget target) -> commands::CommandResult<scene::StartRunId> {
+            available,
+            [this](commands::SessionTarget target) -> commands::CommandResult<scene::StartRunId>
+            {
                 auto started = play(target);
                 if (!started)
                     return cxx::unexpected(commandFailure(started.error()));
@@ -242,7 +255,9 @@ namespace lux::editor::application
             }
         ));
         auto tools = scene::makeSceneToolCommands(
-            available, [this](views::ViewId view, scene::ESceneTool kind) -> commands::CommandResult<void> {
+            available,
+            [this](views::ViewId view, scene::ESceneTool kind) -> commands::CommandResult<void>
+            {
                 auto shown = showSceneTool(view, kind);
                 if (!shown)
                     return cxx::unexpected(commandFailure(shown.error()));
@@ -250,8 +265,11 @@ namespace lux::editor::application
             }
         );
         auto runs = scene::makeRunViewCommands(
-            available, desktop_->views(), runs_,
-            [this](scene::RunId id) -> commands::CommandResult<void> {
+            available,
+            desktop_->views(),
+            runs_,
+            [this](scene::RunId id) -> commands::CommandResult<void>
+            {
                 auto result = stepRun(id);
                 if (!result)
                 {
@@ -261,7 +279,8 @@ namespace lux::editor::application
                 }
                 return {};
             },
-            [this](scene::RunId id) -> commands::CommandResult<void> {
+            [this](scene::RunId id) -> commands::CommandResult<void>
+            {
                 auto result = stopRun(id);
                 if (!result)
                     return cxx::unexpected(commandFailure(result.error()));
@@ -271,4 +290,4 @@ namespace lux::editor::application
         draft.commands.insert(draft.commands.end(), tools.begin(), tools.end());
         draft.commands.insert(draft.commands.end(), runs.begin(), runs.end());
     }
-}
+} // namespace lux::editor::application

@@ -4,7 +4,10 @@
 #include <lux/engine/editor/views/IViewHost.hpp>
 #include <lux/engine/editor/sessions/SessionCommands.hpp>
 
-namespace lux::editor::views { class ViewFactoryEntry; }
+namespace lux::editor::views
+{
+    class ViewFactoryEntry;
+}
 
 namespace lux::editor::scene
 {
@@ -38,9 +41,11 @@ namespace lux::editor::scene
         SceneCreationRequests
     );
     [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> makeSceneCreationViewFactory(
-        SceneConfigurationInputs, sessions::SessionCreation
+        SceneConfigurationInputs,
+        sessions::SessionCreation
     );
     [[nodiscard]] std::shared_ptr<commands::CommandEntry> makeNewSceneCommand(
-        commands::CommandEntry::Query, desktop::ToolOpening
+        commands::CommandEntry::Query,
+        desktop::ToolOpening
     );
-}
+} // namespace lux::editor::scene

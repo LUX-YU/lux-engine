@@ -12,7 +12,7 @@ namespace lux::editor::views
         {
             return lux::cxx::unexpected(reason);
         }
-    }
+    } // namespace
     CameraNavigationResult<ViewportCameraState> navigateCamera(
         const lux::simulation::ecs::Transform3D& source,
         const lux::scene::Camera& camera,
@@ -88,4 +88,4 @@ namespace lux::editor::views
         return result;
     }
 
-}
+} // namespace lux::editor::views

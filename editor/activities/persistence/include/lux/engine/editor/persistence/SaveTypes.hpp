@@ -87,4 +87,4 @@ namespace lux::editor::persistence
         WriteTarget target;
         CommitReceipt publication;
     };
-}
+} // namespace lux::editor::persistence

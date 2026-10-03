@@ -2,8 +2,8 @@
 #if defined(LUX_COMMAND_TEST_ACCESS)
 #include <lux/engine/editor/commands/CommandIndexTestAccess.hpp>
 #endif
-#include <lux/engine/editor/commands/CommandIndex.hpp>
 #include <algorithm>
+#include <lux/engine/editor/commands/CommandIndex.hpp>
 #include <thread>
 #include <utility>
 
@@ -11,6 +11,22 @@ namespace lux::editor::commands
 {
     namespace
     {
+#if defined(LUX_COMMAND_TEST_ACCESS)
+        // Qualification counters only; absent from non-test libraries and all installed headers.
+        // Slots: business hashes, name compares, lookups, numeric comparisons, index bytes,
+        // owned text bytes, text backings, entries, shortcut parses. Caller-created IDs are outside scope.
+        thread_local std::uint64_t measurements[9]{};
+        thread_local bool measuring{};
+        void count(std::size_t slot, std::uint64_t amount = 1) noexcept
+        {
+            if (measuring)
+            {
+                measurements[slot] += amount;
+            }
+        }
+#else
+        void count(std::size_t, std::uint64_t = 1) noexcept {}
+#endif
         auto failure(ECommandError error)
         {
             return cxx::unexpected(CommandFailure{error, "command"});
@@ -45,7 +61,15 @@ namespace lux::editor::commands
                 active = false;
             }
         };
+    } // namespace
+#if defined(LUX_COMMAND_TEST_ACCESS)
+    extern "C" void luxEc3CommandCounts(std::uint64_t* output, bool enabled) noexcept
+    {
+        std::copy(std::begin(measurements), std::end(measurements), output);
+        std::fill(std::begin(measurements), std::end(measurements), 0);
+        measuring = enabled;
     }
+#endif
     struct CommandArguments::Data final
     {
         contracts::CodeLease code;
@@ -58,7 +82,8 @@ namespace lux::editor::commands
         std::shared_ptr<const void> value
     )
         : data_(std::make_shared<Data>(std::move(code), type, std::move(value)))
-    {}
+    {
+    }
     CommandArguments::~CommandArguments()
     {
         const auto code = data_ ? data_->code : contracts::CodeLease::builtin();
@@ -87,7 +112,8 @@ namespace lux::editor::commands
         ERegistryBinding registration
     ) noexcept
         : target_(std::move(target)), arguments_(std::move(arguments)), registration_(registration)
-    {}
+    {
+    }
     const VCommandTarget& CommandInvocation::target() const noexcept
     {
         return target_;
@@ -116,7 +142,8 @@ namespace lux::editor::commands
             const auto shortcut_size = input.shortcut.size();
             const auto argument_size = input.argument_type.name().size();
             text.reserve(id_size + label_size + group_size + shortcut_size + argument_size + 5);
-            const auto append = [&](std::string_view value) {
+            const auto append = [&](std::string_view value)
+            {
                 const auto offset = text.size();
                 text.append(value).push_back('\0');
                 return offset;
@@ -128,6 +155,9 @@ namespace lux::editor::commands
             const auto argument = append(input.argument_type.name());
             // Final storage does not move. Display slices also have a terminator for UI backends.
             const std::string_view bytes{text};
+            count(0);
+            count(5, text.size());
+            count(6);
             descriptor = {
                 CommandIdView{bytes.substr(id, id_size)},
                 bytes.substr(label, label_size),
@@ -140,13 +170,22 @@ namespace lux::editor::commands
         }
     };
     CommandEntry::CommandEntry(
-        contracts::CodeLease code, const CommandDescriptor& descriptor, Query query, Execute execute
+        contracts::CodeLease code,
+        const CommandDescriptor& descriptor,
+        Query query,
+        Execute execute
     )
         : code_(std::move(code)), descriptor_(&descriptor), shortcut_(lux::ui::parseShortcut(descriptor.shortcut)),
           query_(std::move(query)), execute_(std::move(execute))
-    {}
+    {
+        count(7);
+        count(8);
+    }
     std::shared_ptr<CommandEntry> CommandEntry::create(
-        contracts::CodeLease code, const CommandDescriptor& descriptor, Query query, Execute execute
+        contracts::CodeLease code,
+        const CommandDescriptor& descriptor,
+        Query query,
+        Execute execute
     )
     {
         auto entry = std::shared_ptr<CommandEntry>(
@@ -176,14 +215,18 @@ namespace lux::editor::commands
     };
 #if defined(LUX_COMMAND_TEST_ACCESS)
     CommandResult<CommandRegistrySnapshot> detail::CommandIndexTestAccess::withSingleHash(
-        const CommandRegistrySnapshot& source, std::uint64_t hash
+        const CommandRegistrySnapshot& source,
+        std::uint64_t hash
     )
     {
         if (source.entries().size() != 1)
+        {
             return failure(ECommandError::INVALID_ARGUMENT);
+        }
         CommandRegistrySnapshot result;
         result.data_ = std::make_shared<CommandRegistrySnapshot::Data>(
-            source.data_->entries, std::vector<detail::CommandIndex>{{hash, 0}}
+            source.data_->entries,
+            std::vector<detail::CommandIndex>{{hash, 0}}
         );
         return result;
     }
@@ -207,9 +250,11 @@ namespace lux::editor::commands
                 return failure(ECommandError::INVALID_ARGUMENT);
             const auto& entry = *entries[i];
             const auto& descriptor = entry.descriptor();
-            const bool is_invalid_identity = !descriptor.id.isValid() ||
-                descriptor.id.hash() != cxx::Fnv1a64::hash(descriptor.id.name());
-            const bool is_invalid_description = descriptor.label.empty() || descriptor.input_version == 0 ||
+            count(0);
+            const bool is_invalid_identity =
+                !descriptor.id.isValid() || descriptor.id.hash() != cxx::Fnv1a64::hash(descriptor.id.name());
+            const bool is_invalid_description =
+                descriptor.label.empty() || descriptor.input_version == 0 ||
                 static_cast<unsigned>(descriptor.scope) > static_cast<unsigned>(ECommandScope::VIEW);
             const bool is_invalid_binding = !entry.code_.valid() || !entry.query_ || !entry.execute_;
             const bool is_invalid = is_invalid_identity || is_invalid_description || is_invalid_binding;
@@ -218,69 +263,117 @@ namespace lux::editor::commands
         }
         auto index = detail::commandIndex(entries, [](CommandIdView id) { return id.hash(); });
         if (!index)
+        {
             return cxx::unexpected(index.error());
+        }
         for (std::size_t i{}; i < entries.size(); ++i)
         {
             const auto& binding = entries[i]->shortcut();
             if (!binding)
+            {
                 return cxx::unexpected(CommandFailure{
-                    ECommandError::INVALID_ARGUMENT, "command.shortcut", static_cast<std::uint64_t>(binding.error())
+                    ECommandError::INVALID_ARGUMENT,
+                    "command.shortcut",
+                    static_cast<std::uint64_t>(binding.error())
                 });
+            }
             if (binding->key == lux::ui::EKey::NONE)
+            {
                 continue;
+            }
             // Bounded cold validation of the effective default set, never part of event dispatch.
             for (std::size_t previous{}; previous < i; ++previous)
+            {
                 if (*binding == *entries[previous]->shortcut())
+                {
                     return cxx::unexpected(CommandFailure{
-                        ECommandError::SHORTCUT_CONFLICT, "command.shortcut", 0,
+                        ECommandError::SHORTCUT_CONFLICT,
+                        "command.shortcut",
+                        0,
                         std::string(entries[previous]->descriptor().id.name()) + " / " +
                             std::string(entries[i]->descriptor().id.name())
                     });
+                }
+            }
         }
         CommandRegistrySnapshot result;
+        count(4, index->capacity() * sizeof(detail::CommandIndex));
         result.data_ = std::make_shared<Data>(std::move(entries), std::move(*index));
         return result;
     }
     std::shared_ptr<CommandEntry> CommandRegistrySnapshot::findHash(std::uint64_t hash) const noexcept
     {
         if (!data_)
+        {
             return {};
-        const auto found = std::ranges::lower_bound(data_->index, hash, {}, &detail::CommandIndex::hash);
+        }
+        count(2);
+        const auto found = std::ranges::lower_bound(
+            data_->index,
+            hash,
+            [](std::uint64_t left, std::uint64_t right)
+            {
+                count(3);
+                return left < right;
+            },
+            &detail::CommandIndex::hash
+        );
         if (found == data_->index.end() || found->hash != hash)
+        {
             return {};
+        }
         return data_->entries[found->entry];
     }
     CommandResult<CommandHandle> CommandRegistrySnapshot::find(CommandIdView id) const
     {
         auto entry = findHash(id.hash());
+        if (entry)
+        {
+            count(1);
+        }
         if (!entry || entry->descriptor().id.name() != id.name())
+        {
             return failure(ECommandError::NOT_FOUND);
+        }
         return CommandHandle{std::move(entry)};
     }
     CommandResult<CommandHandle> CommandRegistrySnapshot::at(std::size_t index) const
     {
         if (!data_ || index >= data_->entries.size())
+        {
             return failure(ECommandError::INVALID_ARGUMENT);
+        }
         return CommandHandle{data_->entries[index]};
     }
     CommandResult<CommandHandle> CommandRegistrySnapshot::resolve(const CommandHandle& original) const
     {
         if (!original.valid())
+        {
             return failure(ECommandError::INVALID_ARGUMENT);
+        }
         const auto& before = original.descriptor();
         auto entry = findHash(before.id.hash());
         if (!entry)
+        {
             return failure(ECommandError::NOT_FOUND);
+        }
         if (entry == original.entry_)
+        {
             return original;
+        }
         // A changed catalog may contain a different canonical name with the same hash.
         const auto& after = entry->descriptor();
+        count(1);
         if (after.id.name() != before.id.name())
+        {
             return failure(ECommandError::NOT_FOUND);
+        }
         const bool is_incompatible = after.scope != before.scope || after.input_version != before.input_version ||
-            after.argument_type != before.argument_type;
+                                     after.argument_type != before.argument_type;
         if (is_incompatible)
+        {
             return failure(ECommandError::INCOMPATIBLE_REGISTRATION);
+        }
         return CommandHandle{std::move(entry)};
     }
     std::span<const std::shared_ptr<CommandEntry>> CommandRegistrySnapshot::entries() const noexcept
@@ -331,7 +424,8 @@ namespace lux::editor::commands
     }
     CommandRegistry::Batch::Batch(Batch&& other) noexcept
         : owner_(std::exchange(other.owner_, nullptr)), candidate_(std::move(other.candidate_))
-    {}
+    {
+    }
     CommandRegistry::Batch::~Batch()
     {
         // Abandoned candidate destructors run while the participating owner still rejects publication.
@@ -357,8 +451,8 @@ namespace lux::editor::commands
             return cxx::unexpected(ready.error());
         return Batch{*this, std::nullopt};
     }
-    CommandResult<CommandRegistry::Batch>
-    CommandRegistry::preparePublication(CommandRegistrySnapshot candidate) noexcept
+    CommandResult<CommandRegistry::Batch> CommandRegistry::preparePublication(CommandRegistrySnapshot candidate
+    ) noexcept
     {
         if (const auto ready = canPublish(); !ready)
             return cxx::unexpected(ready.error());
@@ -431,7 +525,8 @@ namespace lux::editor::commands
             return failure(ECommandError::INVALID_ARGUMENT);
         if (const auto checked = validate(pinned.descriptor(), input.query()); !checked)
             return cxx::unexpected(checked.error());
-        auto invoke = [&]() -> CommandResult<DispatchReceipt> {
+        auto invoke = [&]() -> CommandResult<DispatchReceipt>
+        {
             const auto state = pinned.entry_->query_(input.query());
             if (!state)
                 return cxx::unexpected(state.error());
@@ -454,4 +549,4 @@ namespace lux::editor::commands
             return cxx::unexpected(CommandFailure{ECommandError::DOMAIN_FAILURE, "plugin.command.execute"});
         }
     }
-}
+} // namespace lux::editor::commands

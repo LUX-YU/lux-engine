@@ -7,7 +7,10 @@
 #include <lux/engine/editor/persistence/SaveTypes.hpp>
 #include <lux/engine/editor/scene/RunTypes.hpp>
 
-namespace lux::editor::views { class ViewFactoryEntry; }
+namespace lux::editor::views
+{
+    class ViewFactoryEntry;
+}
 
 namespace lux::editor::project
 {
@@ -22,8 +25,14 @@ namespace lux::editor::project
     {
         std::uint64_t target;
     };
-    struct RetryArtifact final { std::uint64_t target; };
-    struct AbandonArtifact final { std::uint64_t target; };
+    struct RetryArtifact final
+    {
+        std::uint64_t target;
+    };
+    struct AbandonArtifact final
+    {
+        std::uint64_t target;
+    };
     struct CancelSave final
     {
         persistence::SaveId target;
@@ -78,18 +87,28 @@ namespace lux::editor::project
         CancelModel,
         ShowContent,
         SaveContentAs,
-        AcknowledgeSaveAll
-    >;
+        AcknowledgeSaveAll>;
 
-    struct ResultAction final { std::string label; VResultIntent intent; };
+    struct ResultAction final
+    {
+        std::string label;
+        VResultIntent intent;
+    };
     struct ResultRow final
     {
         std::string key;
         std::vector<std::string> messages;
         std::vector<ResultAction> actions;
     };
-    struct ResultSection final { std::string title; std::vector<ResultRow> rows; };
-    struct ResultsSnapshot final { std::vector<ResultSection> sections; };
+    struct ResultSection final
+    {
+        std::string title;
+        std::vector<ResultRow> rows;
+    };
+    struct ResultsSnapshot final
+    {
+        std::vector<ResultSection> sections;
+    };
 
     // A presentation snapshot is not a second result owner. Requests carry their original
     // domain identities; the receiver revalidates and executes them at its safe point.
@@ -107,14 +126,19 @@ namespace lux::editor::project
         [[nodiscard]] EditorResult<void> request(VResultIntent);
         [[nodiscard]] const ResultsSnapshot& snapshot() const noexcept;
         [[nodiscard]] const std::optional<EditorFailure>& observationFailure() const noexcept;
+
     private:
         void update() noexcept override;
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };
-    [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> makeResultsViewFactory(ResultsView::Observe observe, ResultsView::Request request);
+    [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> makeResultsViewFactory(
+        ResultsView::Observe observe,
+        ResultsView::Request request
+    );
     [[nodiscard]] std::shared_ptr<commands::CommandEntry> makeResultsCommand(
-        commands::CommandEntry::Query, desktop::ToolOpening
+        commands::CommandEntry::Query,
+        desktop::ToolOpening
     );
 
-}
+} // namespace lux::editor::project

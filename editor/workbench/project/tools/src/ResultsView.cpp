@@ -13,8 +13,7 @@ namespace lux::editor::project
         ResultsSnapshot snapshot_;
         std::optional<EditorFailure> observation_failure_, request_failure_;
         Impl(ResultsView& view, Observe observe, Request request)
-            : Element(view, lux::ui::ElementId{"results"}), observe_(std::move(observe)),
-              request_(std::move(request))
+            : Element(view, lux::ui::ElementId{"results"}), observe_(std::move(observe)), request_(std::move(request))
         {
             setStretch({1, 1});
             view.setContent(*this);
@@ -59,31 +58,54 @@ namespace lux::editor::project
             }
         }
     };
-    ResultsView::ResultsView(object::ObjectDispatcherRef dispatcher, lux::ui::PaneId id, Observe observe, Request request)
+    ResultsView::ResultsView(
+        object::ObjectDispatcherRef dispatcher,
+        lux::ui::PaneId id,
+        Observe observe,
+        Request request
+    )
         : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{"lux.editor.content.results"}, "Content and Operations"),
-          impl_(std::make_unique<Impl>(*this, std::move(observe), std::move(request))) {}
+          impl_(std::make_unique<Impl>(*this, std::move(observe), std::move(request)))
+    {
+    }
     ResultsView::~ResultsView() noexcept = default;
-    EditorResult<void> ResultsView::request(VResultIntent intent) { return impl_->request(std::move(intent)); }
-    const ResultsSnapshot& ResultsView::snapshot() const noexcept { return impl_->snapshot_; }
+    EditorResult<void> ResultsView::request(VResultIntent intent)
+    {
+        return impl_->request(std::move(intent));
+    }
+    const ResultsSnapshot& ResultsView::snapshot() const noexcept
+    {
+        return impl_->snapshot_;
+    }
     const std::optional<EditorFailure>& ResultsView::observationFailure() const noexcept
     {
         return impl_->observation_failure_;
     }
-    void ResultsView::update() noexcept { impl_->observe(); }
-}
+    void ResultsView::update() noexcept
+    {
+        impl_->observe();
+    }
+} // namespace lux::editor::project
 
 namespace lux::editor::project
 {
     namespace
     {
         constexpr commands::CommandDescriptor kCommand{
-            commands::CommandIdView{"lux.editor.content.results"}, "Content and Operations", "Window"
+            commands::CommandIdView{"lux.editor.content.results"},
+            "Content and Operations",
+            "Window"
         };
         constexpr views::ViewFactoryDescriptor kFactoryDescriptor{
-            views::ViewTypeIdView{"lux.editor.content.results"}, "Content and Operations", cxx::typeToken<std::monostate>()
+            views::ViewTypeIdView{"lux.editor.content.results"},
+            "Content and Operations",
+            cxx::typeToken<std::monostate>()
         };
-    }
-    std::shared_ptr<views::ViewFactoryEntry> makeResultsViewFactory(ResultsView::Observe observe, ResultsView::Request request)
+    } // namespace
+    std::shared_ptr<views::ViewFactoryEntry> makeResultsViewFactory(
+        ResultsView::Observe observe,
+        ResultsView::Request request
+    )
     {
         struct Receivers final
         {
@@ -91,21 +113,28 @@ namespace lux::editor::project
             ResultsView::Request request;
         };
         auto receivers = std::make_shared<Receivers>(std::move(observe), std::move(request));
-        return views::ViewFactoryEntry::bind<kFactoryDescriptor>(contracts::CodeLease::builtin(),
-            [receivers](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
-                return views::DetachedView{contracts::CodeLease::builtin(), std::make_unique<ResultsView>(
-                    input.dispatcher(), input.paneId(),
-                    [receivers] { return receivers->observe(); },
-                    [receivers](VResultIntent intent) { return receivers->request(std::move(intent)); }
-                )};
+        return views::ViewFactoryEntry::bind<kFactoryDescriptor>(
+            contracts::CodeLease::builtin(),
+            [receivers](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView>
+            {
+                return views::DetachedView{
+                    contracts::CodeLease::builtin(),
+                    std::make_unique<ResultsView>(
+                        input.dispatcher(),
+                        input.paneId(),
+                        [receivers] { return receivers->observe(); },
+                        [receivers](VResultIntent intent) { return receivers->request(std::move(intent)); }
+                    )
+                };
             }
         );
     }
     std::shared_ptr<commands::CommandEntry> makeResultsCommand(
-        commands::CommandEntry::Query query, desktop::ToolOpening open
+        commands::CommandEntry::Query query,
+        desktop::ToolOpening open
     )
     {
         return workbench::detail::bindToolCommand<kCommand, kFactoryDescriptor>(std::move(query), std::move(open));
     }
 
-}
+} // namespace lux::editor::project

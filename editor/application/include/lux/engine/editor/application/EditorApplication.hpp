@@ -75,4 +75,4 @@ namespace lux::editor::application
         explicit EditorApplication(std::unique_ptr<Impl>) noexcept;
         std::unique_ptr<Impl> impl_;
     };
-}
+} // namespace lux::editor::application

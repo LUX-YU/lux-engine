@@ -68,4 +68,4 @@ namespace lux::ui
             return cxx::unexpected(EShortcutError::UNKNOWN_KEY);
         return result;
     }
-}
+} // namespace lux::ui

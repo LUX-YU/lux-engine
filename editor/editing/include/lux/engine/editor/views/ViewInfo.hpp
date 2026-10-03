@@ -28,7 +28,8 @@ namespace lux::editor::views
     using ViewTypeIdView = lux::cxx::StableNameIdView<lux::ui::PaneTypeIdTag>;
     using ViewTypeId = lux::cxx::StableNameId<lux::ui::PaneTypeIdTag>;
     struct ViewRestoreKeyTag final
-    {};
+    {
+    };
     using ViewRestoreKey = lux::cxx::StableNameId<ViewRestoreKeyTag>;
     // Content association is independent of window kind. Empty tool windows and comparison views
     // use the same value; the primary target must be one of the explicitly associated sessions.
@@ -63,4 +64,4 @@ namespace lux::editor::views
         bool visible{}, focused{};
         ViewContent content;
     };
-}
+} // namespace lux::editor::views

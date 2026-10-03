@@ -53,13 +53,15 @@ namespace
         const auto object = interaction.target();
         const auto before = session.historyView()->snapshot;
         const auto access = [](auto& value) noexcept { return &value.settings.gain; };
-        const auto read = [&]() {
+        const auto read = [&]()
+        {
             return static_cast<const Component*>(interaction.component(object, lux::cxx::typeToken<Component>()))
                 ->settings.gain;
         };
         const auto original = read();
         ImVec2 center{};
-        const auto draw = [&](bool visible) {
+        const auto draw = [&](bool visible)
+        {
             ImGui::NewFrame();
             ImGui::SetNextWindowPos({0, 0});
             ImGui::SetNextWindowSize({600, 400});
@@ -140,7 +142,7 @@ namespace
                   "completed field edit; redraw does not duplicate history; unchanged click preserves revision; Undo "
                   "restores");
     }
-}
+} // namespace
 void consumer::checkInspector()
 {
     auto queue = take(object::ObjectMessageQueue::create(128));
@@ -202,26 +204,32 @@ void consumer::checkInspector()
     const auto frame = [&] { assert(root->update({{900, 800}, .016F}, nullptr)); };
     frame();
     const auto& schema = schemas.all().front();
-    const auto component = [&]() {
+    const auto component = [&]()
+    {
         auto source = take(session->read());
         auto encoded = take(source.component(target, schema.id));
-        return take(source.withRead([&](const auto&) -> author::SceneEditResult<consumer::Component> {
-            auto decoded = schema.decode_value(encoded.version, encoded.bytes, {}, {});
-            assert(decoded);
-            simulation::ecs::Registry registry;
-            const auto entity = registry.create();
-            std::move(*decoded).installInto(registry, entity);
-            return registry.get<consumer::Component>(entity);
-        }));
+        return take(source.withRead(
+            [&](const auto&) -> author::SceneEditResult<consumer::Component>
+            {
+                auto decoded = schema.decode_value(encoded.version, encoded.bytes, {}, {});
+                assert(decoded);
+                simulation::ecs::Registry registry;
+                const auto entity = registry.create();
+                std::move(*decoded).installInto(registry, entity);
+                return registry.get<consumer::Component>(entity);
+            }
+        ));
     };
-    const auto setField = [&](std::string path, auto value) {
+    const auto setField = [&](std::string path, auto value)
+    {
         author::SceneEditBatch batch{session->describe().current, "SDK field", {}};
         batch.edits.push_back(
             author::SceneSetField::make<consumer::Component>({target, schema.id, std::move(path)}, std::move(value))
         );
         return session->apply(std::move(batch));
     };
-    const auto findControl = [&](auto&& self, object::LuxObject& node) -> ui::NumericEdit* {
+    const auto findControl = [&](auto&& self, object::LuxObject& node) -> ui::NumericEdit*
+    {
         if (auto* control = dynamic_cast<ui::NumericEdit*>(&node))
             return control;
         for (auto* child = node.firstChild(); child; child = child->nextSibling())
@@ -265,7 +273,8 @@ void consumer::checkInspector()
     assert(pane.rebind({key, &interaction}, target));
     frame();
     assert(findControl(findControl, pane));
-    const auto find = [&](auto&& self, lux::object::LuxObject& owner, std::string_view suffix) -> lux::ui::Element* {
+    const auto find = [&](auto&& self, lux::object::LuxObject& owner, std::string_view suffix) -> lux::ui::Element*
+    {
         if (auto* element = dynamic_cast<lux::ui::Element*>(&owner); element && element->id().name().ends_with(suffix))
             return element;
         for (auto* child = owner.firstChild(); child; child = child->nextSibling())
@@ -383,7 +392,8 @@ void consumer::checkInspector()
     assert(component().flags == (std::vector<bool>{false, true, false}));
     assert(session->undo() && component().flags == flags_before);
     frame();
-    const auto countObjects = [&](auto&& self, const lux::object::LuxObject& owner) -> std::size_t {
+    const auto countObjects = [&](auto&& self, const lux::object::LuxObject& owner) -> std::size_t
+    {
         std::size_t count{1};
         for (auto* child = owner.firstChild(); child; child = child->nextSibling())
             count += self(self, *child);
@@ -446,7 +456,8 @@ void consumer::checkInspector()
         bool& released;
         Probe(ui::Element& parent, ui::ElementId id, bool& d, bool& r)
             : Element(parent, std::move(id)), destroyed(d), released(r)
-        {}
+        {
+        }
         ~Probe() noexcept override
         {
             assert(!released);
@@ -461,18 +472,21 @@ void consumer::checkInspector()
     };
     static State state;
     state = {&destroyed, &released};
-    auto code = std::shared_ptr<const void>(new int{1}, [&](const void* value) {
-        assert(destroyed);
-        released = true;
-        delete static_cast<const int*>(value);
-    });
+    auto code = std::shared_ptr<const void>(
+        new int{1},
+        [&](const void* value)
+        {
+            assert(destroyed);
+            released = true;
+            delete static_cast<const int*>(value);
+        }
+    );
     auto registration = consumer::binding();
     registration.code = code;
     registration.create = +[](ui::Element& parent,
                               ui::ElementId id,
-                              author::InspectorFields&) noexcept -> author::InspectorComponent::CreateResult {
-        return std::make_unique<Probe>(parent, std::move(id), *state.destroyed, *state.released);
-    };
+                              author::InspectorFields&) noexcept -> author::InspectorComponent::CreateResult
+    { return std::make_unique<Probe>(parent, std::move(id), *state.destroyed, *state.released); };
     auto candidate = take(author::makeInspectorView(
         queue.dispatcherRef(),
         ui::PaneId{"code-owner"},

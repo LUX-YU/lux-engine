@@ -9,122 +9,134 @@ namespace lux::editor::application
         if (!result_intent_)
             return {};
         const auto intent = std::exchange(result_intent_, {});
-        return std::visit([&](const auto& action) -> EditorResult<void> {
-            using Action = std::decay_t<decltype(action)>;
-            if constexpr (std::same_as<Action, AcknowledgeMaintenance>)
+        return std::visit(
+            [&](const auto& action) -> EditorResult<void>
             {
-                maintenance_failure_.reset();
-            }
-            else if constexpr (std::same_as<Action, AcknowledgeArtifact>)
-            {
-                std::erase_if(artifacts_, [&](const auto& entry) {
-                    return entry.id == action.target && entry.terminal();
-                });
-            }
-            else if constexpr (std::same_as<Action, RetryArtifact> || std::same_as<Action, AbandonArtifact>)
-            {
-                const auto found = std::ranges::find(artifacts_, action.target, &ArtifactPresentation::id);
-                if (found == artifacts_.end() || !found->operation)
-                    return cxx::unexpected(EditorFailure{EEditorError::STALE_REQUEST, "artifact.result"});
-                if constexpr (std::same_as<Action, RetryArtifact>)
-                    return found->operation->retry();
+                using Action = std::decay_t<decltype(action)>;
+                if constexpr (std::same_as<Action, AcknowledgeMaintenance>)
+                {
+                    maintenance_failure_.reset();
+                }
+                else if constexpr (std::same_as<Action, AcknowledgeArtifact>)
+                {
+                    std::erase_if(
+                        artifacts_,
+                        [&](const auto& entry) { return entry.id == action.target && entry.terminal(); }
+                    );
+                }
+                else if constexpr (std::same_as<Action, RetryArtifact> || std::same_as<Action, AbandonArtifact>)
+                {
+                    const auto found = std::ranges::find(artifacts_, action.target, &ArtifactPresentation::id);
+                    if (found == artifacts_.end() || !found->operation)
+                        return cxx::unexpected(EditorFailure{EEditorError::STALE_REQUEST, "artifact.result"});
+                    if constexpr (std::same_as<Action, RetryArtifact>)
+                        return found->operation->retry();
+                    else
+                        found->operation->abandon();
+                }
+                else if constexpr (std::same_as<Action, AcknowledgeSave>)
+                {
+                    return content_saving_->acknowledge(action.target);
+                }
+                else if constexpr (std::same_as<Action, CancelSave>)
+                {
+                    auto cancelled = saves_.requestCancel(action.target);
+                    if (!cancelled)
+                        return applicationFailure("save.cancel", cancelled.error());
+                }
+                else if constexpr (std::same_as<Action, ReconcilePublication>)
+                {
+                    auto reconciled = writes_.reconcile(action.target, files_);
+                    if (!reconciled)
+                        return applicationFailure("publication.reconcile", reconciled.error());
+                }
+                else if constexpr (std::same_as<Action, AcknowledgeReload>)
+                {
+                    std::erase_if(
+                        reloads_,
+                        [&](const auto& reload) { return reload.source == action.target && reload.result.has_value(); }
+                    );
+                }
+                else if constexpr (std::same_as<Action, AcknowledgeRunFailure>)
+                {
+                    std::erase_if(
+                        run_presentations_,
+                        [&](const auto& run)
+                        {
+                            const bool is_target = run.start == action.target;
+                            const bool is_failed = run.failure.has_value();
+                            const bool is_released = !run.preparing && !run.run;
+                            return is_target && is_failed && is_released;
+                        }
+                    );
+                }
+                else if constexpr (std::same_as<Action, AcknowledgeStep>)
+                {
+                    const auto ticket = action.target;
+                    auto acknowledged = runs_.acknowledgeStep(ticket);
+                    if (!acknowledged)
+                        return applicationFailure("run.step.acknowledge", acknowledged.error());
+                    for (auto& run : run_presentations_)
+                        if (run.run == ticket.run)
+                            std::erase(run.steps, ticket);
+                }
+                else if constexpr (std::same_as<Action, AcknowledgeModel>)
+                {
+                    std::erase_if(
+                        model_placements_,
+                        [&](const auto& model)
+                        {
+                            const bool is_target = model.id == action.target;
+                            const bool has_result = model.result || model.failure;
+                            return is_target && !model.operation && has_result;
+                        }
+                    );
+                }
+                else if constexpr (std::same_as<Action, CancelModel>)
+                {
+                    for (auto& model : model_placements_)
+                        if (model.id == action.target)
+                            model.cancel_requested = true;
+                }
+                else if constexpr (std::same_as<Action, ShowContent>)
+                {
+                    const auto target = action.target;
+                    auto current = sessions_.describe(target.session);
+                    if (!current)
+                        return applicationFailure("content.show", current.error());
+                    if (current->current != target)
+                        return applicationFailure("content.show", sessions::ESessionError::STALE_CONTENT);
+                    auto shown = show(target.session, false);
+                    if (!shown)
+                        return cxx::unexpected(shown.error());
+                }
+                else if constexpr (std::same_as<Action, SaveContentAs>)
+                {
+                    const auto target = action.target;
+                    return askSave({target.session, target}, persistence::ESaveMode::SAVE_AS);
+                }
+                else if constexpr (std::same_as<Action, AcknowledgeSaveAll>)
+                {
+                    return content_saving_->acknowledgeSaveAll();
+                }
                 else
-                    found->operation->abandon();
-            }
-            else if constexpr (std::same_as<Action, AcknowledgeSave>)
-            {
-                return content_saving_->acknowledge(action.target);
-            }
-            else if constexpr (std::same_as<Action, CancelSave>)
-            {
-                auto cancelled = saves_.requestCancel(action.target);
-                if (!cancelled)
-                    return applicationFailure("save.cancel", cancelled.error());
-            }
-            else if constexpr (std::same_as<Action, ReconcilePublication>)
-            {
-                auto reconciled = writes_.reconcile(action.target, files_);
-                if (!reconciled)
-                    return applicationFailure("publication.reconcile", reconciled.error());
-            }
-            else if constexpr (std::same_as<Action, AcknowledgeReload>)
-            {
-                std::erase_if(reloads_, [&](const auto& reload) {
-                    return reload.source == action.target && reload.result.has_value();
-                });
-            }
-            else if constexpr (std::same_as<Action, AcknowledgeRunFailure>)
-            {
-                std::erase_if(run_presentations_, [&](const auto& run) {
-                    const bool is_target = run.start == action.target;
-                    const bool is_failed = run.failure.has_value();
-                    const bool is_released = !run.preparing && !run.run;
-                    return is_target && is_failed && is_released;
-                });
-            }
-            else if constexpr (std::same_as<Action, AcknowledgeStep>)
-            {
-                const auto ticket = action.target;
-                auto acknowledged = runs_.acknowledgeStep(ticket);
-                if (!acknowledged)
-                    return applicationFailure("run.step.acknowledge", acknowledged.error());
-                for (auto& run : run_presentations_)
-                    if (run.run == ticket.run)
-                        std::erase(run.steps, ticket);
-            }
-            else if constexpr (std::same_as<Action, AcknowledgeModel>)
-            {
-                std::erase_if(model_placements_, [&](const auto& model) {
-                    const bool is_target = model.id == action.target;
-                    const bool has_result = model.result || model.failure;
-                    return is_target && !model.operation && has_result;
-                });
-            }
-            else if constexpr (std::same_as<Action, CancelModel>)
-            {
-                for (auto& model : model_placements_)
-                    if (model.id == action.target)
-                        model.cancel_requested = true;
-            }
-            else if constexpr (std::same_as<Action, ShowContent>)
-            {
-                const auto target = action.target;
-                auto current = sessions_.describe(target.session);
-                if (!current)
-                    return applicationFailure("content.show", current.error());
-                if (current->current != target)
-                    return applicationFailure("content.show", sessions::ESessionError::STALE_CONTENT);
-                auto shown = show(target.session, false);
-                if (!shown)
-                    return cxx::unexpected(shown.error());
-            }
-            else if constexpr (std::same_as<Action, SaveContentAs>)
-            {
-                const auto target = action.target;
-                return askSave({target.session, target}, persistence::ESaveMode::SAVE_AS);
-            }
-            else if constexpr (std::same_as<Action, AcknowledgeSaveAll>)
-            {
-                return content_saving_->acknowledgeSaveAll();
-            }
-            else
-                static_assert(sizeof(Action) == 0, "Every result action requires an explicit receiver");
-            return {};
-        }, *intent);
+                    static_assert(sizeof(Action) == 0, "Every result action requires an explicit receiver");
+                return {};
+            },
+            *intent
+        );
     }
     EditorResult<project::ResultsSnapshot> EditorApplication::Impl::observeResults()
     {
         project::ResultsSnapshot snapshot;
-        const auto session_key = [](sessions::SessionId id) {
-            return std::to_string(id.domain) + "/" + std::to_string(id.slot) + "/" + std::to_string(id.generation);
-        };
-        const auto row = [&](std::string key) -> project::ResultRow& {
-            return snapshot.sections.back().rows.emplace_back(project::ResultRow{std::move(key)});
-        };
-        const auto diagnostic = [](project::ResultRow& to, const EditorFailure& error) {
-            to.messages.push_back(error.domain + ": " + error.message);
-        };
-        const auto publication = [&](project::ResultRow& to, persistence::WriteTicket ticket) -> EditorResult<void> {
+        const auto session_key = [](sessions::SessionId id)
+        { return std::to_string(id.domain) + "/" + std::to_string(id.slot) + "/" + std::to_string(id.generation); };
+        const auto row = [&](std::string key) -> project::ResultRow&
+        { return snapshot.sections.back().rows.emplace_back(project::ResultRow{std::move(key)}); };
+        const auto diagnostic = [](project::ResultRow& to, const EditorFailure& error)
+        { to.messages.push_back(error.domain + ": " + error.message); };
+        const auto publication = [&](project::ResultRow& to, persistence::WriteTicket ticket) -> EditorResult<void>
+        {
             auto status = writes_.status(ticket);
             if (!status)
                 return applicationFailure("results.publication", status.error());
@@ -179,8 +191,8 @@ namespace lux::editor::application
                 const auto name = "Step " + std::to_string(ticket.step.serial);
                 to.messages.push_back(name + ": " + std::to_string(static_cast<unsigned>(step->state)));
                 const bool completed = step->state == lux::scene::ESceneStepState::COMPLETED ||
-                    step->state == lux::scene::ESceneStepState::FAILED ||
-                    step->state == lux::scene::ESceneStepState::CANCELLED;
+                                       step->state == lux::scene::ESceneStepState::FAILED ||
+                                       step->state == lux::scene::ESceneStepState::CANCELLED;
                 if (completed)
                     to.actions.push_back({"Acknowledge " + name, AcknowledgeStep{ticket}});
             }
@@ -204,8 +216,10 @@ namespace lux::editor::application
                 else if (std::holds_alternative<PublicationSucceeded>(status))
                     to.messages.emplace_back("Package and catalog published. Author save baseline is unchanged.");
                 else if (const auto* abandoned = std::get_if<PublicationAbandoned>(&status))
-                    to.messages.push_back("Publication stopped; " + std::to_string(abandoned->published_files) +
-                        " files already published remain on disk.");
+                    to.messages.push_back(
+                        "Publication stopped; " + std::to_string(abandoned->published_files) +
+                        " files already published remain on disk."
+                    );
             }
             if (report.terminal())
                 to.actions.push_back({"Acknowledge publication", AcknowledgeArtifact{report.id}});
@@ -218,9 +232,11 @@ namespace lux::editor::application
             if (report.result)
             {
                 const auto& outcome = report.result->publication;
-                to.messages.push_back(std::string("Disk: ") +
+                to.messages.push_back(
+                    std::string("Disk: ") +
                     (std::holds_alternative<persistence::CommitReceipt>(outcome) ? "published" : "not published") +
-                    "; baseline adoption: " + std::to_string(static_cast<unsigned>(report.result->adoption)));
+                    "; baseline adoption: " + std::to_string(static_cast<unsigned>(report.result->adoption))
+                );
                 if (const auto* failed = std::get_if<persistence::NotPublished>(&outcome))
                     to.messages.push_back(failed->failure.detail);
                 if (report.failure)
@@ -247,36 +263,48 @@ namespace lux::editor::application
             for (const auto& entry : content_saving_->saveAllEntries())
             {
                 auto& to = row(session_key(entry.session));
-                to.messages.push_back("Content " + to.key + ": " +
-                    (entry.already_clean ? "already clean" : entry.save ? "accepted (see save result)" : "not admitted"));
+                to.messages.push_back(
+                    "Content " + to.key + ": " +
+                    (entry.already_clean ? "already clean"
+                     : entry.save        ? "accepted (see save result)"
+                                         : "not admitted")
+                );
                 if (entry.failure)
                     to.messages.push_back(entry.failure->domain + ": " + entry.failure->detail);
             }
             auto& to = row("report");
-            to.messages.emplace_back("Unbound content: use Save As above. Other accepted saves continue independently.");
+            to.messages.emplace_back("Unbound content: use Save As above. Other accepted saves continue independently."
+            );
             to.actions.push_back({"Acknowledge Save All report", AcknowledgeSaveAll{}});
         }
         snapshot.sections.push_back({"Model insertion"});
         for (const auto& model : model_placements_)
         {
             auto& to = row(std::to_string(model.id));
-            const auto state = model.result && *model.result ? "inserted"
-                : model.result || model.failure ? "not inserted"
-                : model.cancel_requested ? "cancelling; waiting for completion" : "loading / waiting for the target gate";
+            const auto state = model.result && *model.result   ? "inserted"
+                               : model.result || model.failure ? "not inserted"
+                               : model.cancel_requested        ? "cancelling; waiting for completion"
+                                                               : "loading / waiting for the target gate";
             to.messages.push_back("Content " + session_key(model.placement.target.id()) + ": " + state);
             if (model.failure)
                 diagnostic(to, *model.failure);
             if (model.result && !*model.result)
-                std::visit([&](const auto& error) {
-                    using Error = std::decay_t<decltype(error)>;
-                    if constexpr (std::same_as<Error, scene::SceneEditError>)
-                        to.messages.push_back("Scene edit rejected (" + std::to_string(static_cast<unsigned>(error.code)) +
-                            "); the captured target was not rebased.");
-                    else if constexpr (std::same_as<Error, process::TaskCancelled>)
-                        to.messages.emplace_back("Cancelled; no author edit was committed.");
-                    else
-                        to.messages.emplace_back("Model read or dependency validation failed; source retained.");
-                }, model.result->error().cause);
+                std::visit(
+                    [&](const auto& error)
+                    {
+                        using Error = std::decay_t<decltype(error)>;
+                        if constexpr (std::same_as<Error, scene::SceneEditError>)
+                            to.messages.push_back(
+                                "Scene edit rejected (" + std::to_string(static_cast<unsigned>(error.code)) +
+                                "); the captured target was not rebased."
+                            );
+                        else if constexpr (std::same_as<Error, process::TaskCancelled>)
+                            to.messages.emplace_back("Cancelled; no author edit was committed.");
+                        else
+                            to.messages.emplace_back("Model read or dependency validation failed; source retained.");
+                    },
+                    model.result->error().cause
+                );
             if (model.result || model.failure)
                 to.actions.push_back({"Acknowledge insertion", AcknowledgeModel{model.id}});
             else
@@ -287,8 +315,11 @@ namespace lux::editor::application
         {
             const auto& reload = reloads_[index];
             auto& to = row(session_key(reload.source.session) + "/" + std::to_string(index));
-            to.messages.emplace_back(!reload.result ? "reading / preparing" : *reload.result ? "reloaded" :
-                "original content retained");
+            to.messages.emplace_back(
+                !reload.result   ? "reading / preparing"
+                : *reload.result ? "reloaded"
+                                 : "original content retained"
+            );
             if (reload.result)
             {
                 if (!*reload.result)
@@ -305,7 +336,8 @@ namespace lux::editor::application
         // service calls and structural changes run after Root returns from draw/update.
         draft.views.push_back(project::makeResultsViewFactory(
             [this] { return observeResults(); },
-            [this](VResultIntent intent) -> EditorResult<void> {
+            [this](VResultIntent intent) -> EditorResult<void>
+            {
                 if (result_intent_)
                     return cxx::unexpected(EditorFailure{EEditorError::BUSY, "result.intent.capacity"});
                 result_intent_ = std::move(intent);
@@ -313,9 +345,9 @@ namespace lux::editor::application
             }
         ));
         draft.commands.push_back(project::makeResultsCommand(
-            [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
-                return commands::CommandState{phase_ == EApplicationPhase::RUNNING};
-            }, toolOpening()
+            [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
+            { return commands::CommandState{phase_ == EApplicationPhase::RUNNING}; },
+            toolOpening()
         ));
     }
-}
+} // namespace lux::editor::application

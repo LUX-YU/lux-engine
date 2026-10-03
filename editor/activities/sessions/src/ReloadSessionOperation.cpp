@@ -22,7 +22,8 @@ namespace lux::editor::sessions
             persistence::WriteObservation watch
         )
             : store(sessions), expected(reviewed), writes(std::move(watch)), tasks(runtime)
-        {}
+        {
+        }
         ~Impl()
         {
             tasks.requestStop();
@@ -45,8 +46,8 @@ namespace lux::editor::sessions
         if (!current)
             return cxx::unexpected(factoryFailure(current.error()));
         const bool is_content_stale = current->current != *input.reload || current->binding != input.binding;
-        const bool is_identity_mismatch = current->kind.name != factory->descriptor().kind.name() ||
-                                         input.asset != input.binding->asset;
+        const bool is_identity_mismatch =
+            current->kind.name != factory->descriptor().kind.name() || input.asset != input.binding->asset;
         const bool is_stale = is_content_stale || is_identity_mismatch;
         if (is_stale)
             return cxx::unexpected(factoryFailure(ESessionError::STALE_CONTENT));
@@ -61,14 +62,16 @@ namespace lux::editor::sessions
         auto submitted = impl->tasks.submit(
             {.name = "Reload asset source"},
             [scheduler = *scheduler,
-             job = SessionLoadJob{std::move(factory), std::move(input)}](process::TaskReporter reporter
-            ) mutable noexcept {
+             job =
+                 SessionLoadJob{std::move(factory), std::move(input)}](process::TaskReporter reporter) mutable noexcept
+            {
                 return stdexec::then(
                     stdexec::schedule(scheduler),
                     [job = std::move(job), stop = reporter.stopToken()]() mutable { return std::move(job).run(stop); }
                 );
             },
-            [receiving](process::TTaskResult<SessionPreparation, SessionFactoryFailure>&& result) noexcept {
+            [receiving](process::TTaskResult<SessionPreparation, SessionFactoryFailure>&& result) noexcept
+            {
                 if (result)
                     receiving->loaded.emplace(std::move(*result));
                 else if (auto* error = result.error().domainFailure())
@@ -104,7 +107,8 @@ namespace lux::editor::sessions
                 flag = false;
             }
         } scope{impl_->dispatching};
-        const auto fail = [&](SessionFactoryFailure failure) {
+        const auto fail = [&](SessionFactoryFailure failure)
+        {
             impl_->result.emplace(cxx::unexpected(std::move(failure)));
             impl_->prepared.reset();
             impl_->loaded.reset();
@@ -158,4 +162,4 @@ namespace lux::editor::sessions
     {
         return impl_->result;
     }
-}
+} // namespace lux::editor::sessions

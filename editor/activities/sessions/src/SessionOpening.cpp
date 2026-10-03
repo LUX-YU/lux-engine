@@ -92,9 +92,10 @@ namespace lux::editor::sessions
         }
         bool wanted(const std::shared_ptr<Work>& work) const
         {
-            return std::ranges::any_of(waiters, [&](const auto& waiter) {
-                return waiter.work == work && !waiter.cancelled;
-            });
+            return std::ranges::any_of(
+                waiters,
+                [&](const auto& waiter) { return waiter.work == work && !waiter.cancelled; }
+            );
         }
         void fail(Work& work, SessionFactoryFailure failure)
         {
@@ -112,10 +113,13 @@ namespace lux::editor::sessions
         std::size_t capacity
     )
         : impl_(std::make_unique<Impl>(runtime, store, saves, capacity))
-    {}
+    {
+    }
     SessionOpening::~SessionOpening() = default;
     SessionFactoryResult<OpenAssetId> SessionOpening::create(
-        std::uint64_t project_instance, SessionPreparation input, const SessionFactorySnapshot& factories
+        std::uint64_t project_instance,
+        SessionPreparation input,
+        const SessionFactorySnapshot& factories
     )
     {
         if (auto entered = impl_->enter(); !entered)
@@ -218,14 +222,15 @@ namespace lux::editor::sessions
         auto submitted = impl_->tasks.submit(
             {.name = "Open asset source"},
             [scheduler = *scheduler,
-             job =
-                 SessionLoadJob{*factory, std::move(request.input)}](process::TaskReporter reporter) mutable noexcept {
+             job = SessionLoadJob{*factory, std::move(request.input)}](process::TaskReporter reporter) mutable noexcept
+            {
                 return stdexec::then(
                     stdexec::schedule(scheduler),
                     [job = std::move(job), stop = reporter.stopToken()]() mutable { return std::move(job).run(stop); }
                 );
             },
-            [work](process::TTaskResult<SessionPreparation, SessionFactoryFailure>&& completed) noexcept {
+            [work](process::TTaskResult<SessionPreparation, SessionFactoryFailure>&& completed) noexcept
+            {
                 // Accepted facts are received regardless of business dispatch/admission; never call a factory here.
                 if (completed)
                     work->result.emplace(std::move(*completed));
@@ -355,12 +360,16 @@ namespace lux::editor::sessions
             work->prepared.reset();
             work->result.reset();
         }
-        std::erase_if(impl_->works, [&](const auto& work) {
-            const bool terminal =
-                work->status.stage != EOpenAssetStage::READING && work->status.stage != EOpenAssetStage::PREPARING;
-            return terminal &&
-                   std::ranges::none_of(impl_->waiters, [&](const auto& waiter) { return waiter.work == work; });
-        });
+        std::erase_if(
+            impl_->works,
+            [&](const auto& work)
+            {
+                const bool terminal =
+                    work->status.stage != EOpenAssetStage::READING && work->status.stage != EOpenAssetStage::PREPARING;
+                return terminal &&
+                       std::ranges::none_of(impl_->waiters, [&](const auto& waiter) { return waiter.work == work; });
+            }
+        );
         return {};
     }
     InstalledSession* SessionOpening::find(SessionId id) noexcept
@@ -396,8 +405,12 @@ namespace lux::editor::sessions
     }
     bool SessionOpening::settled() const noexcept
     {
-        return std::ranges::none_of(impl_->works, [](const auto& work) {
-            return work->status.stage == EOpenAssetStage::READING || work->status.stage == EOpenAssetStage::PREPARING;
-        });
+        return std::ranges::none_of(
+            impl_->works,
+            [](const auto& work) {
+                return work->status.stage == EOpenAssetStage::READING ||
+                       work->status.stage == EOpenAssetStage::PREPARING;
+            }
+        );
     }
-}
+} // namespace lux::editor::sessions

@@ -17,7 +17,7 @@ namespace lux::editor
         {
             return cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, std::move(domain), 0, {}, cause});
         }
-    }
+    } // namespace
     struct RecentProjects::Impl final
     {
         struct Prepared final
@@ -42,18 +42,28 @@ namespace lux::editor
         std::optional<EditorFailure> recent_failure_;
 
         Impl(
-            std::filesystem::path directory, std::filesystem::path project, process::ExecutionRuntime& runtime,
-            persistence::WriteCoordinator& writes, persistence::IArtifactStore& files,
+            std::filesystem::path directory,
+            std::filesystem::path project,
+            process::ExecutionRuntime& runtime,
+            persistence::WriteCoordinator& writes,
+            persistence::IArtifactStore& files,
             persistence::SaveExecution& execution
         )
-            : directory_(directory.lexically_normal()), project_(project.lexically_normal()), writes_(writes), files_(files),
-              execution_(execution), tasks_(runtime)
-        {}
+            : directory_(directory.lexically_normal()), project_(project.lexically_normal()), writes_(writes),
+              files_(files), execution_(execution), tasks_(runtime)
+        {
+        }
         struct Dispatch final
         {
             bool& active;
-            explicit Dispatch(bool& value) noexcept : active(value) { active = true; }
-            ~Dispatch() { active = false; }
+            explicit Dispatch(bool& value) noexcept : active(value)
+            {
+                active = true;
+            }
+            ~Dispatch()
+            {
+                active = false;
+            }
             Dispatch(const Dispatch&) = delete;
             Dispatch& operator=(const Dispatch&) = delete;
         };
@@ -104,31 +114,34 @@ namespace lux::editor
                 std::terminate();
             // RAII uses the original execution/completion path. No accepted disk fact is forgotten
             // when a caller destroys this activity before its ordinary maintenance has settled it.
-            auto drained = tasks_.execution().waitUntil([this]() noexcept {
-                updateCore(false);
-                if (settled())
-                    return true;
-                if (recent_ticket_)
+            auto drained = tasks_.execution().waitUntil(
+                [this]() noexcept
                 {
-                    auto status = writes_.status(*recent_ticket_);
-                    if (!status)
-                        std::terminate();
-                    if (status->stage == persistence::EWriteStage::UNKNOWN)
+                    updateCore(false);
+                    if (settled())
+                        return true;
+                    if (recent_ticket_)
                     {
-                        if (!writes_.reconcile(*recent_ticket_, files_))
+                        auto status = writes_.status(*recent_ticket_);
+                        if (!status)
                             std::terminate();
-                        status = writes_.status(*recent_ticket_);
-                        if (!status || status->stage == persistence::EWriteStage::UNKNOWN)
-                            std::terminate();
-                        updateCore(false);
-                        if (settled())
-                            return true;
+                        if (status->stage == persistence::EWriteStage::UNKNOWN)
+                        {
+                            if (!writes_.reconcile(*recent_ticket_, files_))
+                                std::terminate();
+                            status = writes_.status(*recent_ticket_);
+                            if (!status || status->stage == persistence::EWriteStage::UNKNOWN)
+                                std::terminate();
+                            updateCore(false);
+                            if (settled())
+                                return true;
+                        }
                     }
+                    if (!execution_.submitReady())
+                        std::terminate();
+                    return false;
                 }
-                if (!execution_.submitReady())
-                    std::terminate();
-                return false;
-            });
+            );
             if (!drained)
                 std::terminate();
         }
@@ -172,7 +185,7 @@ namespace lux::editor
                     else
                     {
                         const bool is_retryable = ticket.error().code == persistence::EPersistenceError::BUSY ||
-                            ticket.error().code == persistence::EPersistenceError::CAPACITY;
+                                                  ticket.error().code == persistence::EPersistenceError::CAPACITY;
                         if (!is_retryable)
                         {
                             recent_failure_ = recentFailure("recent.publish", ticket.error()).value();
@@ -202,14 +215,15 @@ namespace lux::editor
             const auto path = directory_ / "lux/editor/recent-projects.toml";
             auto accepted = tasks_.submit(
                 {"Read recent projects", "Preferences"},
-                [path,
-                 directory = directory_,
-                 project = project_,
-                 scheduler = *blocking](process::TaskReporter) noexcept {
+                [path, directory = directory_, project = project_, scheduler = *blocking](process::TaskReporter
+                ) noexcept
+                {
                     return stdexec::then(
                         stdexec::schedule(scheduler),
-                        [path, directory, project]() -> EditorResult<Prepared> {
-                            const auto utf8 = [](const std::filesystem::path& value) {
+                        [path, directory, project]() -> EditorResult<Prepared>
+                        {
+                            const auto utf8 = [](const std::filesystem::path& value)
+                            {
                                 const auto bytes = value.generic_u8string();
                                 return std::string{bytes.begin(), bytes.end()};
                             };
@@ -224,22 +238,31 @@ namespace lux::editor
                                 if (!bytes)
                                     return recentFailure("recent.read", bytes.error());
                                 if (storage::publicationDigest(*bytes) != target->expected_version)
-                                    return cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "recent.changed"});
-                                const std::string_view text{reinterpret_cast<const char*>(bytes->data()), bytes->size()};
+                                    return cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "recent.changed"}
+                                    );
+                                const std::string_view text{
+                                    reinterpret_cast<const char*>(bytes->data()),
+                                    bytes->size()
+                                };
                                 auto parsed = toml::parse(text);
-                                const bool is_valid = parsed && parsed["version"].value_or(0) == 1 &&
-                                    parsed["projects"].is_array();
+                                const bool is_valid =
+                                    parsed && parsed["version"].value_or(0) == 1 && parsed["projects"].is_array();
                                 if (!is_valid)
-                                    return cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "recent.format"});
+                                    return cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "recent.format"}
+                                    );
                                 for (const auto& row : *parsed["projects"].as_array())
                                 {
                                     auto value = row.value<std::string>();
                                     const bool is_invalid = !value || value->empty() || value->size() > 4096;
                                     if (is_invalid)
-                                        return cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "recent.entry"});
+                                        return cxx::unexpected(
+                                            EditorFailure{EEditorError::SOURCE_FAILURE, "recent.entry"}
+                                        );
                                     auto candidate = std::filesystem::u8path(*value).lexically_normal();
                                     if (!candidate.is_absolute())
-                                        return cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "recent.path"});
+                                        return cxx::unexpected(
+                                            EditorFailure{EEditorError::SOURCE_FAILURE, "recent.path"}
+                                        );
                                     const bool has_capacity = paths.size() < 20;
                                     const bool is_unique = std::ranges::find(paths, candidate) == paths.end();
                                     if (has_capacity && is_unique)
@@ -263,7 +286,8 @@ namespace lux::editor
                         }
                     );
                 },
-                [this](process::TTaskResult<Prepared, EditorFailure>&& result) noexcept {
+                [this](process::TTaskResult<Prepared, EditorFailure>&& result) noexcept
+                {
                     recent_task_.reset();
                     if (result)
                         recent_result_.emplace(std::move(*result));
@@ -283,17 +307,41 @@ namespace lux::editor
         }
     };
     RecentProjects::RecentProjects(
-        std::filesystem::path directory, std::filesystem::path project, process::ExecutionRuntime& runtime,
-        persistence::WriteCoordinator& writes, persistence::IArtifactStore& files, persistence::SaveExecution& execution
-    ) : impl_(std::make_unique<Impl>(std::move(directory), std::move(project), runtime, writes, files, execution))
-    {}
+        std::filesystem::path directory,
+        std::filesystem::path project,
+        process::ExecutionRuntime& runtime,
+        persistence::WriteCoordinator& writes,
+        persistence::IArtifactStore& files,
+        persistence::SaveExecution& execution
+    )
+        : impl_(std::make_unique<Impl>(std::move(directory), std::move(project), runtime, writes, files, execution))
+    {
+    }
     RecentProjects::~RecentProjects() = default;
-    EditorResult<void> RecentProjects::refresh() { return impl_->refresh(); }
-    EditorResult<void> RecentProjects::reconcile() { return impl_->reconcile(); }
-    EditorResult<void> RecentProjects::update(bool allow_new_work) { return impl_->update(allow_new_work); }
-    bool RecentProjects::settled() const noexcept { return impl_->settled(); }
-    std::span<const std::filesystem::path> RecentProjects::entries() const noexcept { return impl_->recent_projects_; }
-    std::optional<persistence::WriteTicket> RecentProjects::ticket() const noexcept { return impl_->recent_ticket_; }
+    EditorResult<void> RecentProjects::refresh()
+    {
+        return impl_->refresh();
+    }
+    EditorResult<void> RecentProjects::reconcile()
+    {
+        return impl_->reconcile();
+    }
+    EditorResult<void> RecentProjects::update(bool allow_new_work)
+    {
+        return impl_->update(allow_new_work);
+    }
+    bool RecentProjects::settled() const noexcept
+    {
+        return impl_->settled();
+    }
+    std::span<const std::filesystem::path> RecentProjects::entries() const noexcept
+    {
+        return impl_->recent_projects_;
+    }
+    std::optional<persistence::WriteTicket> RecentProjects::ticket() const noexcept
+    {
+        return impl_->recent_ticket_;
+    }
     const persistence::VPublicationOutcome* RecentProjects::publication() const noexcept
     {
         return impl_->recent_publication_ ? &*impl_->recent_publication_ : nullptr;
@@ -302,4 +350,4 @@ namespace lux::editor
     {
         return impl_->recent_failure_ ? &*impl_->recent_failure_ : nullptr;
     }
-}
+} // namespace lux::editor

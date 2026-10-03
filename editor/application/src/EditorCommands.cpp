@@ -9,12 +9,8 @@
 
 namespace
 {
-    constexpr lux::editor::commands::CommandDescriptor command_lux_editor_exit{
-        lux::editor::commands::CommandIdView{"lux.editor.exit"},
-        "Exit",
-        "File",
-        "Alt+X"
-    };
+    constexpr lux::editor::commands::CommandDescriptor
+        command_lux_editor_exit{lux::editor::commands::CommandIdView{"lux.editor.exit"}, "Exit", "File", "Alt+X"};
 }
 namespace lux::editor::application
 {
@@ -24,7 +20,7 @@ namespace lux::editor::application
         {
             to.insert(to.end(), std::make_move_iterator(from.begin()), std::make_move_iterator(from.end()));
         }
-    }
+    } // namespace
     commands::CommandResult<commands::DispatchReceipt> EditorApplication::execute(
         commands::CommandId id,
         commands::CommandInvocation invocation
@@ -63,15 +59,14 @@ namespace lux::editor::application
         extensions::ContributionDraft draft;
         draft.reflection.push_back({contracts::CodeLease::builtin(), project::registerDesktopSettings});
         draft.settings = builtin_settings_;
-        draft.commands =
-            sessions::makeHistoryCommands(sessions_, [this](auto id) { return opening_.find(id); });
+        draft.commands = sessions::makeHistoryCommands(sessions_, [this](auto id) { return opening_.find(id); });
 
         auto exit = commands::CommandEntry::bind<command_lux_editor_exit>(
             contracts::CodeLease::builtin(),
-            [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
-                return commands::CommandState{phase_ == EApplicationPhase::RUNNING};
-            },
-            [this](const commands::CommandInvocation&) -> commands::CommandResult<commands::DispatchReceipt> {
+            [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
+            { return commands::CommandState{phase_ == EApplicationPhase::RUNNING}; },
+            [this](const commands::CommandInvocation&) -> commands::CommandResult<commands::DispatchReceipt>
+            {
                 auto requested = requestExit();
                 if (!requested)
                     return cxx::unexpected(
@@ -85,8 +80,10 @@ namespace lux::editor::application
         installResultView(draft);
         installWorkspaceView(draft);
         installProjectTools(draft);
-        draft.views.push_back(project::makeProjectViewFactory(project_->catalogModel(),
-            [this](const AssetReference& ref) {
+        draft.views.push_back(project::makeProjectViewFactory(
+            project_->catalogModel(),
+            [this](const AssetReference& ref)
+            {
                 if (phase_ != EApplicationPhase::RUNNING || open_intents_.size() == 64)
                     log::error("application.open", "Asset open intent rejected: application closing or queue full");
                 else
@@ -113,10 +110,11 @@ namespace lux::editor::application
             append(contributed->configurations, activated->configurations);
             append(contributed->components, activated->components);
             append(contributed->settings, activated->settings);
-            auto tools = desktop::makeToolCommands(contributed->views,
-                [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
-                    return commands::CommandState{phase_ == EApplicationPhase::RUNNING};
-                }, toolOpening()
+            auto tools = desktop::makeToolCommands(
+                contributed->views,
+                [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
+                { return commands::CommandState{phase_ == EApplicationPhase::RUNNING}; },
+                toolOpening()
             );
             if (!tools)
                 return applicationFailure("extension.tool-commands", tools.error());
@@ -166,11 +164,16 @@ namespace lux::editor::application
         if (!valid)
             return applicationFailure("flow.metadata", valid.error());
         draft.views.push_back(scene::makeSceneViewFactory(
-            sceneServices(), [this](const scene::ModelPlacement& value) { receiveModel(value); }
+            sceneServices(),
+            [this](const scene::ModelPlacement& value) { receiveModel(value); }
         ));
         draft.views.push_back(material::makeMaterialViewFactory(
-            sessions_.access<material::MaterialSession>(), engine_->sceneRuntime(), material_compilation_,
-            environment_, registrations_.features, &project_->catalogModel(),
+            sessions_.access<material::MaterialSession>(),
+            engine_->sceneRuntime(),
+            material_compilation_,
+            environment_,
+            registrations_.features,
+            &project_->catalogModel(),
             [this](const persistence::DerivedArtifact& value) { receiveArtifact(value); }
         ));
         draft.views.push_back(flowforge::makeFlowViewFactory(
@@ -205,12 +208,16 @@ namespace lux::editor::application
         auto views = desktop_->views().describeAll();
         if (!views)
             return cxx::unexpected(commands::CommandFailure{commands::ECommandError::BUSY, "menu.views"});
-        const auto focused = std::ranges::find_if(*views, [&](const auto& view) {
-            bool same{};
-            auto compare = [&](lux::ui::Pane& target) { same = &target == pane; };
-            auto visited = desktop_->views().withView(view.id, compare);
-            return visited && same;
-        });
+        const auto focused = std::ranges::find_if(
+            *views,
+            [&](const auto& view)
+            {
+                bool same{};
+                auto compare = [&](lux::ui::Pane& target) { same = &target == pane; };
+                auto visited = desktop_->views().withView(view.id, compare);
+                return visited && same;
+            }
+        );
         if (focused == views->end())
             return cxx::unexpected(commands::CommandFailure{commands::ECommandError::STALE_TARGET, "menu.view"});
         if (descriptor.scope == commands::ECommandScope::VIEW)
@@ -226,4 +233,4 @@ namespace lux::editor::application
             });
         return commands::CommandInvocation{commands::SessionTarget{*focused->content.primary, content->current}};
     }
-}
+} // namespace lux::editor::application

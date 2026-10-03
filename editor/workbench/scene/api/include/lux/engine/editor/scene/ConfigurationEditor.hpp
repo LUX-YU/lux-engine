@@ -20,7 +20,7 @@ namespace lux::editor::scene
         ConfigurationDescriptor value;
         Create create{};
     };
-}
+} // namespace lux::editor::scene
 
 namespace lux::editor::settings
 {
@@ -32,4 +32,4 @@ namespace lux::editor::settings
         std::shared_ptr<SettingsEntry> entry;
         scene::ConfigurationEditor::Create create{};
     };
-}
+} // namespace lux::editor::settings

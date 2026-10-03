@@ -37,23 +37,27 @@ namespace lux::editor::sessions
                 );
             return std::move(*info);
         }
-    }
+    } // namespace
     std::shared_ptr<commands::CommandEntry> makeSourceSaveCommand(
-        SessionStore& store, persistence::SaveService& saves, HistoryActionLookup lookup
+        SessionStore& store,
+        persistence::SaveService& saves,
+        HistoryActionLookup lookup
     )
     {
         using namespace commands;
         auto roles = std::make_shared<HistoryActionLookup>(std::move(lookup));
         return CommandEntry::bind<kSaveCommand>(
             contracts::CodeLease::builtin(),
-            [&store, roles](const CommandQuery& input) -> CommandResult<CommandState> {
+            [&store, roles](const CommandQuery& input) -> CommandResult<CommandState>
+            {
                 auto info = targetInfo(store, input.target);
                 if (!info)
                     return cxx::unexpected(info.error());
                 const bool available = bool(*roles) && (*roles)(info->id);
                 return CommandState{available, false, available ? "" : "No save role"};
             },
-            [&saves](const CommandInvocation& input) -> CommandResult<DispatchReceipt> {
+            [&saves](const CommandInvocation& input) -> CommandResult<DispatchReceipt>
+            {
                 // The menu fixes the session; requestSave freezes the content current at actual admission.
                 auto admitted = saves.requestSave({std::get<SessionTarget>(input.target()).id});
                 if (!admitted)
@@ -69,7 +73,8 @@ namespace lux::editor::sessions
         );
     }
     std::vector<std::shared_ptr<commands::CommandEntry>> makeHistoryCommands(
-        SessionStore& store, HistoryActionLookup lookup
+        SessionStore& store,
+        HistoryActionLookup lookup
     )
     {
         using namespace commands;
@@ -77,10 +82,12 @@ namespace lux::editor::sessions
         std::vector<std::shared_ptr<CommandEntry>> entries;
         for (bool forward : {false, true})
         {
-            const auto bind = [&]<const CommandDescriptor& Descriptor>() {
+            const auto bind = [&]<const CommandDescriptor & Descriptor>()
+            {
                 return CommandEntry::bind<Descriptor>(
                     contracts::CodeLease::builtin(),
-                    [&store, roles, forward](const CommandQuery& input) -> CommandResult<CommandState> {
+                    [&store, roles, forward](const CommandQuery& input) -> CommandResult<CommandState>
+                    {
                         auto info = targetInfo(store, input.target);
                         if (!info)
                             return cxx::unexpected(info.error());
@@ -92,7 +99,8 @@ namespace lux::editor::sessions
                             return cxx::unexpected(commandFailure(history.error()));
                         return CommandState{forward ? history->can_redo : history->can_undo};
                     },
-                    [roles, forward](const CommandInvocation& input) -> CommandResult<DispatchReceipt> {
+                    [roles, forward](const CommandInvocation& input) -> CommandResult<DispatchReceipt>
+                    {
                         auto* role = (*roles) ? (*roles)(std::get<SessionTarget>(input.target()).id) : nullptr;
                         if (!role)
                             return cxx::unexpected(CommandFailure{ECommandError::STALE_TARGET, "session.role"});
@@ -103,9 +111,10 @@ namespace lux::editor::sessions
                     }
                 );
             };
-            entries.push_back(forward ? bind.template operator()<kRedoCommand>()
-                                     : bind.template operator()<kUndoCommand>());
+            entries.push_back(
+                forward ? bind.template operator()<kRedoCommand>() : bind.template operator()<kUndoCommand>()
+            );
         }
         return entries;
     }
-}
+} // namespace lux::editor::sessions

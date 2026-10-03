@@ -113,6 +113,43 @@ try:
     assert outputs() == before and not list(build.glob('inspector_gen/*/inspector.complete'))
     template.write_bytes(original)
     compile('template-recovery')
+    unchanged('after-template-recovery')
+
+    # Drive the installed publication script with its real formatter and generated sidecar/config.
+    # This avoids modifying the live SDK, and exercises errors after a successful host render.
+    config_file = next(build.glob('lux_codegen/*.inspector.json'))
+    generator_config = json.loads(config_file.read_text())
+    sidecar = next((build/'inspector_ir'/generator_config['name']).rglob('*.editor-ir.json'))
+    cache = (build/'CMakeCache.txt').read_text()
+    formatter = next(line.split('=', 1)[1] for line in cache.splitlines()
+                     if line.startswith('LUX_EDITOR_CLANG_FORMAT:'))
+    style = next(codegen.glob('*clang-format*'))
+    definitions = dict(GENERATOR=str(generator), CONFIG=str(config_file), IR=str(sidecar),
+                       TEMPLATES=str(codegen/'templates'), OUTPUT_ROOT=generator_config['output_root'],
+                       FORMATTER=formatter, STYLE=str(style))
+    output_root = Path(definitions['OUTPUT_ROOT'])
+    stamp = output_root/'inspector.complete'
+    def publish(label, overrides, success):
+        values = definitions | overrides
+        return run(label, ['cmake', *[f'-D{k}={v}' for k, v in values.items()],
+                           '-P', str(codegen/'GenerateInspector.cmake')], success)
+    before = outputs()
+    publish('formatter-failure', {'FORMATTER': str(work/'missing-formatter')}, False)
+    assert outputs() == before and not stamp.exists()
+    publish('formatter-recovery', {}, True)
+    # A directory at a generated file destination is a real filesystem publication failure.
+    victim = next(path for path in output_root.glob('*.cpp'))
+    original = victim.read_bytes()
+    victim.unlink()
+    victim.mkdir()
+    (victim/'occupied').write_text('destination is not a file', encoding='utf-8')
+    publish('publication-failure', {}, False)
+    assert not stamp.exists()
+    (victim/'occupied').unlink()
+    victim.rmdir()
+    publish('publication-recovery', {}, True)
+    assert victim.read_bytes() == original and stamp.exists()
+    compile('after-publication-recovery')
     unchanged('final-no-change')
 finally:
     (work/'events.json').write_text(json.dumps(events, indent=2)+'\n', encoding='utf-8')

@@ -185,7 +185,7 @@ namespace lux::ui
             style.Colors[ImGuiCol_HeaderActive] = toImGuiColor(theme.palette.selection);
         }
 
-    }
+    } // namespace
 
     struct PreparedDockTree::Data final
     {
@@ -755,7 +755,8 @@ namespace lux::ui
         const bool control = (routed_modifiers & ImGuiMod_Ctrl) != 0;
         const bool shift = (routed_modifiers & ImGuiMod_Shift) != 0;
         const bool alt = (routed_modifiers & ImGuiMod_Alt) != 0;
-        const auto find = [&](auto&& self, std::span<const MenuItem> items) -> const MenuItem* {
+        const auto find = [&](auto&& self, std::span<const MenuItem> items) -> const MenuItem*
+        {
             for (const auto& item : items)
             {
                 const auto& binding = item.shortcut;
@@ -805,9 +806,11 @@ namespace lux::ui
             if (changes[index].target == &target)
                 changes[index] = {};
         const auto pending = changes.begin() + change_batch_size;
-        const auto end = std::remove_if(pending, changes.end(), [&target](const Change& change) noexcept {
-            return change.target == &target;
-        });
+        const auto end = std::remove_if(
+            pending,
+            changes.end(),
+            [&target](const Change& change) noexcept { return change.target == &target; }
+        );
         changes.erase(end, changes.end());
     }
 
@@ -926,7 +929,8 @@ namespace lux::ui
 
     PreparedAttachment::PreparedAttachment(std::unique_ptr<detail::AttachmentState> state) noexcept
         : state_(std::move(state))
-    {}
+    {
+    }
     PreparedAttachment::~PreparedAttachment() noexcept
     {
         if (!state_)
@@ -1012,7 +1016,8 @@ namespace lux::ui
         }
         std::size_t windows{};
         bool invalid{};
-        const auto visit = [&](auto&& self, object::LuxObject& node) -> void {
+        const auto visit = [&](auto&& self, object::LuxObject& node) -> void
+        {
             if (auto* window = dynamic_cast<Pane*>(&node))
             {
                 const bool wrong_root = mount ? window->attachedRoot() != nullptr : window->attachedRoot() != this;
@@ -1144,7 +1149,8 @@ namespace lux::ui
             }
         adopt();
         AttachmentCommit result{mount, {}};
-        const auto append = [&](object::SignalDelivery delivered) {
+        const auto append = [&](object::SignalDelivery delivered)
+        {
             result.notifications.direct += delivered.direct;
             result.notifications.queued += delivered.queued;
             result.notifications.full += delivered.full;
@@ -1558,7 +1564,8 @@ namespace lux::ui
             auto& layout = *impl_->split_layout;
             const auto size = ImGui::GetIO().DisplaySize;
             const float top = impl_->menu_height + (layout.toolbar.empty() ? 0 : 38.0F);
-            const auto visible = [&](const std::string& id) {
+            const auto visible = [&](const std::string& id)
+            {
                 const auto* pane = findPane(PaneIdView{id});
                 return pane && pane->visible();
             };
@@ -1568,7 +1575,8 @@ namespace lux::ui
                 size.x >= 1000 && visible(layout.right) ? std::clamp(layout.right_width, 220.0F, size.x * 0.35F) : 0;
             const float bottom =
                 size.y >= 450 && visible(layout.bottom) ? std::clamp(layout.bottom_height, 100.0F, size.y * 0.4F) : 0;
-            const auto splitter = [&](const char* id, ImVec2 pos, ImVec2 extent, bool vertical, float& value) {
+            const auto splitter = [&](const char* id, ImVec2 pos, ImVec2 extent, bool vertical, float& value)
+            {
                 ImGui::SetNextWindowPos(pos);
                 ImGui::SetNextWindowSize(extent);
                 ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2{0, 0});
@@ -1794,7 +1802,8 @@ namespace lux::ui
         object::LuxObject& boundary = modal ? static_cast<object::LuxObject&>(*modal) : *this;
         // The association table stores only native identity/IME facts. ImGui's
         // queue remains the source of actual key, pointer and character events.
-        const auto route = [&](const ImGuiInputEvent& input) noexcept {
+        const auto route = [&](const ImGuiInputEvent& input) noexcept
+        {
             // An earlier handler can acquire, transfer or release capture. Resolve
             // the current owner for each event, never cache it for the whole batch.
             auto capture = impl_->pointer_capture;
@@ -1933,7 +1942,8 @@ namespace lux::ui
         if (!io.AppAcceptingEvents)
             return lux::cxx::unexpected(EInputError::CLOSED);
         const bool valid = std::visit(
-            [](const auto& value) noexcept {
+            [](const auto& value) noexcept
+            {
                 using Value = std::remove_cvref_t<decltype(value)>;
                 if constexpr (std::same_as<Value, PointerMove>)
                     return std::isfinite(value.position.x) && std::isfinite(value.position.y);
@@ -1966,7 +1976,8 @@ namespace lux::ui
             return lux::cxx::unexpected(EInputError::FULL);
         const auto first = impl_->native->InputEventsNextEventId;
         std::visit(
-            [&](const auto& value) {
+            [&](const auto& value)
+            {
                 using Value = std::remove_cvref_t<decltype(value)>;
                 if constexpr (std::same_as<Value, PointerMove>)
                 {
@@ -2176,7 +2187,8 @@ namespace lux::ui
         DockTree result;
         std::map<const ImGuiDockNode*, std::uint32_t> nodes;
         std::vector<const ImGuiDockNode*> pending;
-        const auto insert = [&](const ImGuiDockNode* node) {
+        const auto insert = [&](const ImGuiDockNode* node)
+        {
             auto [it, fresh] = nodes.emplace(node, static_cast<std::uint32_t>(result.nodes.size()));
             if (fresh)
             {
@@ -2221,9 +2233,8 @@ namespace lux::ui
             output.split = node->SplitAxis == ImGuiAxis_X ? EDockSplit::HORIZONTAL : EDockSplit::VERTICAL;
             output.first = first;
             output.second = second;
-            const auto extent = [&](const ImGuiDockNode* child) {
-                return node->SplitAxis == ImGuiAxis_X ? child->Size.x : child->Size.y;
-            };
+            const auto extent = [&](const ImGuiDockNode* child)
+            { return node->SplitAxis == ImGuiAxis_X ? child->Size.x : child->Size.y; };
             const auto total = extent(node->ChildNodes[0]) + extent(node->ChildNodes[1]);
             output.ratio = total > 0 ? std::clamp(extent(node->ChildNodes[0]) / total, .001F, .999F) : .5F;
         }

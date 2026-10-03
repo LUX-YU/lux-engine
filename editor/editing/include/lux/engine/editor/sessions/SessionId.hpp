@@ -60,4 +60,4 @@ namespace lux::editor::sessions
         explicit TSessionKey(SessionId id) noexcept : id_(id) {}
         SessionId id_;
     };
-}
+} // namespace lux::editor::sessions

@@ -11,7 +11,7 @@ namespace lux::editor::application
         {
             return {commands::ECommandError::DOMAIN_FAILURE, error.domain, error.reason, error.message};
         }
-    }
+    } // namespace
 
     EditorResult<persistence::SaveId> EditorApplication::Impl::save(
         commands::SessionTarget target,
@@ -102,7 +102,8 @@ namespace lux::editor::application
                     (session && *session == sessions::ESessionError::BUSY);
                 if (temporary)
                     return {}; // Retain the answered draft and exact source until admission is available.
-                auto reject = [&](lux::ui::Pane& pane) {
+                auto reject = [&](lux::ui::Pane& pane)
+                {
                     static_cast<desktop::ReviewView&>(pane).rejectAnswer(
                         admitted.error().domain + ": " + admitted.error().message +
                         "\nThe original content and target were retained. Correct the path, or Cancel and start again."
@@ -125,25 +126,25 @@ namespace lux::editor::application
     {
         draft.commands.push_back(commands::CommandEntry::bind<kReloadCommand>(
             contracts::CodeLease::builtin(),
-            [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
-                return commands::CommandState{phase_ == EApplicationPhase::RUNNING && !reload_question_};
-            },
-            [this](const commands::CommandInvocation& invocation
-            ) -> commands::CommandResult<commands::DispatchReceipt> {
+            [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
+            { return commands::CommandState{phase_ == EApplicationPhase::RUNNING && !reload_question_}; },
+            [this](const commands::CommandInvocation& invocation) -> commands::CommandResult<commands::DispatchReceipt>
+            {
                 auto accepted = askReload(std::get<commands::SessionTarget>(invocation.target()));
                 if (!accepted)
                     return cxx::unexpected(saveFailure(accepted.error()));
                 return commands::DispatchReceipt{commands::ImmediateCompletion{}};
             }
         ));
-        const auto bindSave = [&]<const commands::CommandDescriptor& Descriptor>(persistence::ESaveMode mode) {
+        const auto bindSave = [&]<const commands::CommandDescriptor & Descriptor>(persistence::ESaveMode mode)
+        {
             return commands::CommandEntry::bind<Descriptor>(
                 contracts::CodeLease::builtin(),
-                [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
-                    return commands::CommandState{phase_ == EApplicationPhase::RUNNING && !save_question_};
-                },
+                [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
+                { return commands::CommandState{phase_ == EApplicationPhase::RUNNING && !save_question_}; },
                 [this, mode](const commands::CommandInvocation& invocation
-                ) -> commands::CommandResult<commands::DispatchReceipt> {
+                ) -> commands::CommandResult<commands::DispatchReceipt>
+                {
                     const auto target = std::get<commands::SessionTarget>(invocation.target());
                     auto info = sessions_.describe(target.id);
                     if (!info)
@@ -153,7 +154,9 @@ namespace lux::editor::application
                         auto admitted = save(target, mode);
                         if (!admitted)
                             return cxx::unexpected(saveFailure(admitted.error()));
-                        return commands::DispatchReceipt{commands::AcceptedOperation{commands::OperationKindId{"save"}, admitted->value}};
+                        return commands::DispatchReceipt{
+                            commands::AcceptedOperation{commands::OperationKindId{"save"}, admitted->value}
+                        };
                     }
                     auto asked =
                         askSave(target, mode == persistence::ESaveMode::SAVE ? persistence::ESaveMode::SAVE_AS : mode);
@@ -168,10 +171,10 @@ namespace lux::editor::application
         draft.commands.push_back(bindSave.template operator()<kExportCopyCommand>(persistence::ESaveMode::EXPORT_COPY));
         draft.commands.push_back(commands::CommandEntry::bind<kSaveAllCommand>(
             contracts::CodeLease::builtin(),
-            [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
-                return commands::CommandState{phase_ == EApplicationPhase::RUNNING};
-            },
-            [this](const commands::CommandInvocation&) -> commands::CommandResult<commands::DispatchReceipt> {
+            [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
+            { return commands::CommandState{phase_ == EApplicationPhase::RUNNING}; },
+            [this](const commands::CommandInvocation&) -> commands::CommandResult<commands::DispatchReceipt>
+            {
                 auto ids = sessions_.snapshotIds();
                 if (!ids)
                     return cxx::unexpected(saveFailure(applicationFailure("save-all.contents", ids.error()).value()));
@@ -187,4 +190,4 @@ namespace lux::editor::application
             }
         ));
     }
-}
+} // namespace lux::editor::application

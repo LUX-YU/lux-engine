@@ -35,4 +35,4 @@ namespace lux::editor::desktop
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };
-}
+} // namespace lux::editor::desktop

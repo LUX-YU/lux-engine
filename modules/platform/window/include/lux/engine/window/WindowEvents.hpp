@@ -20,7 +20,8 @@ namespace lux::window
     };
 
     struct WindowCloseEvent
-    {};
+    {
+    };
     struct WindowFocusEvent
     {
         std::uint64_t sequence{};
@@ -38,11 +39,14 @@ namespace lux::window
         bool minimized{};
     };
     struct WindowPlacementEvent
-    {};
+    {
+    };
     struct CursorEnterEvent
-    {};
+    {
+    };
     struct CursorLeaveEvent
-    {};
+    {
+    };
 
     struct CursorMoveEvent
     {
@@ -107,12 +111,14 @@ namespace lux::window
         WindowCompositionEvent>;
 
     struct DrawReadyEvent
-    {};
+    {
+    };
     struct DrawFinishedEvent
-    {};
+    {
+    };
 
     struct FileDropEvent
     {
         std::vector<std::filesystem::path> paths;
     };
-}
+} // namespace lux::window

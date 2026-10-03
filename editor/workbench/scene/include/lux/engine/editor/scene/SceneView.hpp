@@ -8,7 +8,10 @@
 #include <lux/engine/editor/views/IViewHost.hpp>
 #include <lux/engine/scene/MeshQuery.hpp>
 
-namespace lux::editor::views { class ViewFactoryEntry; }
+namespace lux::editor::views
+{
+    class ViewFactoryEntry;
+}
 
 namespace lux::editor::scene
 {
@@ -118,6 +121,7 @@ namespace lux::editor::scene
         SceneViewCreateInfo
     );
     [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> makeSceneViewFactory(
-        SceneViewServices, cxx::move_only_function<void(const ModelPlacement&)> = {}
+        SceneViewServices,
+        cxx::move_only_function<void(const ModelPlacement&)> = {}
     );
-}
+} // namespace lux::editor::scene

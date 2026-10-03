@@ -28,13 +28,13 @@ namespace lux::editor::application
           projections_(engine_->sceneRuntime(), engine_->execution()),
           runs_(engine_->sceneRuntime(), engine_->execution()), material_compilation_(engine_->execution()),
           flow_compilation_(engine_->execution()), contributions_(messages_.dispatcherRef(), commands_),
-          workspace_(config_.project_file.parent_path(), writes_, files_)
+          workspace_(config_.project_file.parent_path(), writes_, files_),
+          workspace_changes_(workspace_, writes_, files_)
     {
         opens_.reserve(64);
         open_intents_.reserve(64);
         model_placements_.reserve(32);
         artifacts_.reserve(64);
-        workspace_publications_.reserve(16);
     }
     EditorApplication::Impl::~Impl()
     {
@@ -208,6 +208,9 @@ namespace lux::editor::application
         if (!desktop)
             return applicationFailure(std::string(desktop.error().operation), desktop.error().cause);
         desktop_ = std::move(*desktop);
+        workspace_actions_ = std::make_unique<desktop::WorkspaceActions>(
+            desktop_->views(), workspace_, workspace_changes_, messages_.dispatcherRef()
+        );
         auto contributions = installContributions();
         if (!contributions)
             return contributions;

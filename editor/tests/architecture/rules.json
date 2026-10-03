@@ -5236,7 +5236,10 @@
       "filesystem",
       "charconv",
       "lux/engine/editor/storage/FilePublication.hpp",
-      "lux/engine/editor/persistence/WriteCoordinator.hpp"
+      "lux/engine/editor/persistence/WriteCoordinator.hpp",
+      "thread",
+      "memory",
+      "lux/engine/editor/EditorError.hpp"
     ],
     "prefixes": [
       "lux/engine/editor/workspace/"
@@ -5247,7 +5250,9 @@
       "editor/activities/workspace/src/LegacyWorkspaceImporter.cpp",
       "editor/activities/workspace/src/WorkspaceStore.cpp",
       "editor/activities/workspace/src/WorkspaceMigration.cpp",
-      "editor/activities/workspace/include/lux/engine/editor/workspace/LegacyWorkspaceMigration.hpp"
+      "editor/activities/workspace/include/lux/engine/editor/workspace/LegacyWorkspaceMigration.hpp",
+      "editor/activities/workspace/include/lux/engine/editor/workspace/WorkspaceChanges.hpp",
+      "editor/activities/workspace/src/WorkspaceChanges.cpp"
     ],
     "native_libraries": [
       "ole32",
@@ -5435,7 +5440,8 @@
       "ui_rendering",
       "view_host",
       "window",
-      "editor_commands"
+      "editor_commands",
+      "workspace_store"
     ],
     "closure": {
       "Eigen3::Eigen": {
@@ -5767,10 +5773,24 @@
       },
       "edit_history": {
         "path": "editor/editing"
+      },
+      "workspace_store": {
+        "path": "editor/activities/workspace"
+      },
+      "editor_persistence": {
+        "path": "editor/activities/persistence"
+      },
+      "editor_file_publication": {
+        "path": "editor/activities/persistence"
+      },
+      "platform_process": {
+        "path": "modules/platform/process"
       }
     },
     "native_libraries": [
-      "comctl32"
+      "comctl32",
+      "ole32",
+      "shell32"
     ],
     "headers": [
       "algorithm",
@@ -5817,7 +5837,16 @@
       "lux/engine/ui/Docking.hpp",
       "lux/engine/editor/desktop/ReviewView.hpp",
       "lux/engine/ui/Controls.hpp",
-      "lux/engine/ui/Layout.hpp"
+      "lux/engine/ui/Layout.hpp",
+      "lux/engine/editor/desktop/WorkspaceActions.hpp",
+      "lux/engine/editor/workspace/WorkspaceChanges.hpp",
+      "lux/engine/editor/workspace/DockLayout.hpp",
+      "lux/engine/object/ObjectDispatcher.hpp",
+      "lux/engine/editor/EditorError.hpp",
+      "memory",
+      "thread",
+      "random",
+      "uuid.h"
     ],
     "prefixes": [],
     "test_headers": {
@@ -5851,7 +5880,9 @@
       "editor/workbench/desktop/src/CommandMenu.cpp",
       "editor/workbench/desktop/include/lux/engine/editor/desktop/CommandMenu.hpp",
       "editor/workbench/desktop/src/ReviewView.cpp",
-      "editor/workbench/desktop/include/lux/engine/editor/desktop/ReviewView.hpp"
+      "editor/workbench/desktop/include/lux/engine/editor/desktop/ReviewView.hpp",
+      "editor/workbench/desktop/include/lux/engine/editor/desktop/WorkspaceActions.hpp",
+      "editor/workbench/desktop/src/WorkspaceActions.cpp"
     ]
   },
   "editor_widgets": {
@@ -9134,6 +9165,9 @@
       },
       "simulation_script_script_abilities_generate": {
         "path": "engine/domain/simulation/builtin_systems/script"
+      },
+      "workspace_store": {
+        "path": "editor/activities/workspace"
       }
     },
     "native_libraries": [
@@ -18265,6 +18299,18 @@
       ],
       "editor/workbench/project/tools/src/RecentProjectsView.cpp": [
         "project_tools_ui"
+      ],
+      "editor/activities/workspace/include/lux/engine/editor/workspace/WorkspaceChanges.hpp": [
+        "workspace_store"
+      ],
+      "editor/activities/workspace/src/WorkspaceChanges.cpp": [
+        "workspace_store"
+      ],
+      "editor/workbench/desktop/include/lux/engine/editor/desktop/WorkspaceActions.hpp": [
+        "desktop_shell"
+      ],
+      "editor/workbench/desktop/src/WorkspaceActions.cpp": [
+        "desktop_shell"
       ]
     },
     "native_libraries": [

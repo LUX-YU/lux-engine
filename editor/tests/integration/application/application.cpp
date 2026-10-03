@@ -326,21 +326,21 @@ int main(int argc, char** argv)
     using ApplicationImpl = std::remove_reference_t<decltype(impl)>;
     const auto settle_workspace = [&] {
         const auto limit = std::chrono::steady_clock::now() + std::chrono::seconds(15);
-        while (std::ranges::any_of(impl.workspace_publications_, [](const auto& item) { return !item.result; }))
+        while (std::ranges::any_of(impl.workspace_changes_.publications(), [](const auto& item) { return !item.result; }))
         {
             assert(std::chrono::steady_clock::now() < limit);
             assert(app->update());
             std::this_thread::yield();
         }
-        for (const auto& report : impl.workspace_publications_)
+        for (const auto& report : impl.workspace_changes_.publications())
             assert(report.result && std::holds_alternative<persistence::CommitReceipt>(*report.result));
     };
     assert(app->execute(commands::CommandId{"lux.editor.workspace"}));
     assert(app->update());
     assert(impl.executeWorkspaceIntent(lux::editor::project::SaveLayout{"Quality workspace"}));
     settle_workspace();
-    assert(impl.layout_catalog_.layouts.size() == 1);
-    const auto stored_id = impl.layout_catalog_.layouts.front().id;
+    assert(impl.workspace_changes_.catalog().layouts.size() == 1);
+    const auto stored_id = impl.workspace_changes_.catalog().layouts.front().id;
     auto stored = impl.workspace_.readLayout(stored_id);
     assert(stored && stored->value.label == "Quality workspace");
     assert(impl.executeWorkspaceIntent(lux::editor::project::RenameLayout{stored_id, "Renamed"}));
@@ -373,15 +373,15 @@ int main(int argc, char** argv)
     }
     assert(impl.executeWorkspaceIntent(lux::editor::project::RemoveLayout{stored_id}));
     settle_workspace();
-    assert(impl.layout_catalog_.layouts.empty());
+    assert(impl.workspace_changes_.catalog().layouts.empty());
     for (auto ticket : [&] {
              std::vector<persistence::WriteTicket> ids;
-             for (const auto& report : impl.workspace_publications_)
+             for (const auto& report : impl.workspace_changes_.publications())
                  ids.push_back(report.ticket);
              return ids;
          }())
         assert(impl.executeWorkspaceIntent(lux::editor::project::AcknowledgeWorkspace{ticket}));
-    assert(impl.workspace_publications_.empty());
+    assert(impl.workspace_changes_.publications().empty());
     std::cout << "Workspace UI uses stable layout IDs and one publication coordinator; preference failure preserves UI "
                  "commit\n";
     const auto create_content = [&](const char* command) {
@@ -506,9 +506,7 @@ int main(int argc, char** argv)
         {views::ViewRestoreKey{"future-window"}, views::ViewTypeId{"future.provider"}, {{"future:opaque", false}}, 0}
     };
     recovery_manifest.opaque.push_back({"future-data", 4, {std::byte{5}, std::byte{9}}});
-    auto recovery_write = impl.workspace_.writeRecovery(recovery_manifest, "missing");
-    assert(recovery_write);
-    impl.workspace_publications_.push_back({"Recovery fixture", *recovery_write});
+    assert(impl.workspace_changes_.recordRecovery(recovery_manifest, "missing"));
     settle_workspace();
     auto recovery_before = workspace::encodeRecovery(impl.workspace_.readRecovery()->value);
     assert(recovery_before);
@@ -778,9 +776,7 @@ int main(int argc, char** argv)
         const auto publish = [&] {
             const auto stored = impl.workspace_.readRecovery();
             assert(stored);
-            auto ticket = impl.workspace_.writeRecovery(composite, stored->target.expected_version);
-            assert(ticket);
-            impl.workspace_publications_.push_back({"Composite recovery", *ticket});
+            assert(impl.workspace_changes_.recordRecovery(composite, stored->target.expected_version));
             settle_workspace();
         };
         publish();

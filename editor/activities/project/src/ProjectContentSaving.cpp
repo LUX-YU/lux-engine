@@ -25,6 +25,9 @@ namespace lux::editor
                 if (cause == Error::BUSY)
                     code = EEditorError::BUSY;
             }
+            if constexpr (requires { cause.session == decltype(cause.session)::BUSY; })
+                if (cause.session == decltype(cause.session)::BUSY)
+                    code = EEditorError::BUSY;
             return cxx::unexpected(EditorFailure{code, std::move(domain), 0, {}, cause});
         }
     }

@@ -1,4 +1,6 @@
 #pragma once
+#include <lux/engine/editor/workspace/WorkspaceChanges.hpp>
+#include <lux/engine/editor/desktop/WorkspaceActions.hpp>
 #include <lux/engine/editor/project/ResultsView.hpp>
 #include <lux/engine/editor/project/WorkspaceView.hpp>
 #include <lux/engine/editor/storage/ArtifactPublicationOperation.hpp>
@@ -139,13 +141,6 @@ namespace lux::editor::application
             sessions::ContentStamp content;
             views::ViewId question;
         };
-        struct WorkspacePublication final
-        {
-            std::string label;
-            persistence::WriteTicket ticket;
-            std::optional<persistence::VPublicationOutcome> result;
-            std::optional<workspace::WorkspaceFailure> catalog_failure;
-        };
         struct RecoveryItem final
         {
             workspace::RecoveryEntry entry;
@@ -258,15 +253,11 @@ namespace lux::editor::application
         commands::CommandDispatcher command_dispatcher_{commands_};
         extensions::ContributionRegistry contributions_;
         workspace::WorkspaceStore workspace_;
-        workspace::LayoutCatalog layout_catalog_;
+        workspace::WorkspaceChanges workspace_changes_;
+        std::unique_ptr<desktop::WorkspaceActions> workspace_actions_;
         std::optional<EditorFailure> workspace_failure_;
         std::optional<project::VWorkspaceIntent> workspace_intent_;
-        std::vector<WorkspacePublication> workspace_publications_;
         std::optional<RecoveryPresentation> recovery_;
-        std::optional<workspace::LegacyMigration> migration_;
-        std::optional<persistence::WriteTicket> migration_ticket_;
-        std::optional<EditorFailure> migration_failure_;
-        bool migration_complete_{};
         std::vector<RunPresentation> run_presentations_;
         std::vector<OpenPresentation> opens_;
         std::vector<AssetReference> open_intents_;
@@ -337,7 +328,6 @@ namespace lux::editor::application
         [[nodiscard]] EditorResult<void> captureRecovery();
         [[nodiscard]] EditorResult<void> restoreRecovery();
         [[nodiscard]] EditorResult<void> settleRecovery();
-        [[nodiscard]] EditorResult<void> settleMigration();
         [[nodiscard]] EditorResult<sessions::OpenAssetId>
         openCaptured(AssetReference, const extensions::ContributionSnapshot&);
         [[nodiscard]] EditorResult<void> receiveResultIntent();

@@ -1,6 +1,5 @@
 #include <lux/engine/editor/application/EditorApplicationImpl.hpp>
 #include <algorithm>
-#include <random>
 
 namespace
 {
@@ -26,37 +25,7 @@ namespace lux::editor::application
             return cxx::unexpected(EditorFailure{EEditorError::CLOSING, "layout.application"});
         EditorResult<void> result;
         auto apply = [&](const extensions::ContributionSnapshot& snapshot) -> extensions::ContributionResult<void> {
-            auto create_input = [&](views::ViewTypeId type, lux::ui::PaneId id)
-                -> views::ViewFactoryResult<views::ViewFactoryInput> {
-                const auto entries = snapshot.views().entries();
-                const auto factory = std::ranges::find_if(entries, [&](const auto& entry) {
-                    return entry->descriptor().type == type;
-                });
-                if (factory == entries.end())
-                    return cxx::unexpected(views::ViewFactoryFailure{views::EViewFactoryError::NOT_FOUND, "layout.view"});
-                const auto make_input = [&](auto value) {
-                    using Value = decltype(value);
-                    return views::ViewFactoryInput{
-                        messages_.dispatcherRef(), id, contracts::CodeLease::builtin(),
-                        cxx::typeToken<Value>(), std::make_shared<const Value>(std::move(value))
-                    };
-                };
-                if ((*factory)->descriptor().binding_type == cxx::typeToken<views::ContentViewInput>())
-                    return make_input(views::ContentViewInput{});
-                return make_input(std::monostate{});
-            };
-            auto prepared = desktop_->views().prepareLayout(std::move(layout), snapshot.views(), create_input);
-            if (!prepared)
-            {
-                result = applicationFailure("layout.prepare", prepared.error());
-                return {};
-            }
-            auto committed = desktop_->views().commit(*prepared);
-            if (!committed)
-            {
-                result = applicationFailure("layout.commit", committed.error());
-                return {};
-            }
+            result = workspace_actions_->apply(std::move(layout), snapshot.views());
             return {};
         };
         auto entered = contributions_.withSnapshot(apply);
@@ -66,107 +35,47 @@ namespace lux::editor::application
     }
     EditorResult<void> EditorApplication::Impl::executeWorkspaceIntent(const VWorkspaceIntent& request)
     {
-        using namespace workspace;
-        using namespace persistence;
-        const auto refresh = [&]() -> EditorResult<void> {
-            auto catalog = workspace_.listLayouts();
-            if (!catalog)
-                return applicationFailure("workspace.catalog", catalog.error());
-            layout_catalog_ = std::move(*catalog); // Partial catalogs retain their per-file diagnostics.
-            return {};
-        };
         return std::visit([&](const auto& intent) -> EditorResult<void> {
             using Intent = std::decay_t<decltype(intent)>;
             if constexpr (std::same_as<Intent, RefreshWorkspace>)
-                return refresh();
+                return workspace_changes_.refresh();
             else if constexpr (std::same_as<Intent, AcknowledgeWorkspace>)
-            {
-                std::erase_if(workspace_publications_, [&](const auto& report) {
-                    return report.ticket == intent.ticket && report.result.has_value() &&
-                           migration_ticket_ != report.ticket;
-                });
-                return {};
-            }
+                return workspace_changes_.acknowledge(intent.ticket);
             else if constexpr (std::same_as<Intent, ReconcileWorkspace>)
-            {
-                auto reconciled = writes_.reconcile(intent.ticket, files_);
-                return reconciled ? EditorResult<void>{} : applicationFailure("workspace.reconcile", reconciled.error());
-            }
+                return workspace_changes_.reconcile(intent.ticket);
             else
             {
-                const bool is_stopping = phase_ != EApplicationPhase::RUNNING;
-                const bool is_full = workspace_publications_.size() >= 16;
-                if (is_stopping || is_full)
-                    return cxx::unexpected(EditorFailure{EEditorError::BUSY, "workspace.admission"});
+                if (phase_ != EApplicationPhase::RUNNING)
+                    return cxx::unexpected(EditorFailure{EEditorError::CLOSING, "workspace.admission"});
                 if constexpr (std::same_as<Intent, CaptureRecovery>)
                     return captureRecovery();
                 else if constexpr (std::same_as<Intent, RestoreRecovery>)
                     return restoreRecovery();
                 else if constexpr (std::same_as<Intent, MigrateWorkspace>)
+                    return workspace_changes_.migrate();
+                else if constexpr (std::same_as<Intent, SaveLayout>)
+                    return workspace_actions_->save(intent.label);
+                else if constexpr (std::same_as<Intent, RenameLayout>)
+                    return workspace_changes_.rename(intent.layout, intent.label);
+                else if constexpr (std::same_as<Intent, RemoveLayout>)
+                    return workspace_changes_.remove(intent.layout);
+                else if constexpr (std::same_as<Intent, ApplyLayout>)
                 {
-                    if (migration_ticket_)
-                        return cxx::unexpected(EditorFailure{EEditorError::BUSY, "workspace.migration.pending"});
-                    auto input = workspace_.prepareLegacyMigration();
-                    if (!input)
-                        return applicationFailure("workspace.migration.read", input.error());
-                    migration_ = std::move(*input);
-                    migration_failure_.reset();
-                    migration_complete_ = false;
-                    return {};
+                    EditorResult<void> result;
+                    auto apply = [&](const extensions::ContributionSnapshot& snapshot)
+                        -> extensions::ContributionResult<void> {
+                        result = workspace_actions_->apply(intent.layout, snapshot.views());
+                        return {};
+                    };
+                    auto guarded = contributions_.withSnapshot(apply);
+                    return guarded ? std::move(result) : applicationFailure("layout.catalog", guarded.error());
                 }
                 else
-                {
-                    WorkspaceResult<WriteTicket> publication = cxx::unexpected(WorkspaceFailure{EWorkspaceError::INVALID_DATA});
-                    std::string label;
-                    if constexpr (std::same_as<Intent, SaveLayout>)
-                    {
-                        std::mt19937 random{std::random_device{}()};
-                        workspace::LayoutId id{uuids::to_string(uuids::uuid_random_generator{random}())};
-                        std::erase(id.value, '-');
-                        auto layout = desktop_->views().captureLayout(id, intent.label);
-                        if (!layout)
-                            return applicationFailure("workspace.capture", layout.error());
-                        publication = workspace_.saveLayout(*layout, "missing");
-                        label = "Save layout: " + intent.label;
-                    }
-                    else if constexpr (std::same_as<Intent, ApplyLayout>)
-                    {
-                        auto layout = workspace_.readLayout(intent.layout);
-                        if (!layout)
-                            return applicationFailure("workspace.read", layout.error());
-                        auto applied = applyLayout(std::move(layout->value));
-                        if (!applied)
-                            return applied;
-                        // UI commit is a fact. Preferences are a separate write, with their own retained result.
-                        auto previous = workspace_.readPreferences();
-                        if (!previous && previous.error().code != EWorkspaceError::NOT_FOUND)
-                            return applicationFailure("workspace.applied.preferences-read", previous.error());
-                        auto preferences = previous ? std::move(previous->value) : UserPreferences{};
-                        const auto version = previous ? previous->target.expected_version : "missing";
-                        preferences.selected_layout = intent.layout;
-                        publication = workspace_.writePreferences(preferences, version);
-                        label = "Applied layout; persist selection";
-                    }
-                    else if constexpr (std::same_as<Intent, RenameLayout>)
-                    {
-                        publication = workspace_.renameLayout(intent.layout, intent.label);
-                        label = "Rename layout: " + intent.label;
-                    }
-                    else if constexpr (std::same_as<Intent, RemoveLayout>)
-                    {
-                        publication = workspace_.removeLayout(intent.layout);
-                        label = "Delete layout: " + intent.layout.value;
-                    }
-                    else
-                        static_assert(sizeof(Intent) == 0, "Every workspace action requires an explicit receiver");
-                    if (!publication)
-                        return applicationFailure("workspace.publication", publication.error());
-                    workspace_publications_.push_back({std::move(label), *publication});
-                    return {};
-                }
+                    static_assert(sizeof(Intent) == 0, "Every workspace intent needs an explicit receiver");
             }
         }, request);
     }
+
     EditorResult<void> EditorApplication::Impl::settleWorkspace()
     {
         if (workspace_intent_)
@@ -178,44 +87,25 @@ namespace lux::editor::application
             else
                 workspace_failure_.reset();
         }
-        for (auto& report : workspace_publications_)
-        {
-            if (report.result)
-                continue;
-            auto status = writes_.status(report.ticket);
-            if (!status)
-                return applicationFailure("workspace.status", status.error());
-            if (status->stage != persistence::EWriteStage::TERMINAL)
-                continue;
-            report.result = status->outcome;
-            auto acknowledged = writes_.acknowledge(report.ticket);
-            if (!acknowledged)
-                return applicationFailure("workspace.acknowledge", acknowledged.error());
-            auto catalog = workspace_.listLayouts();
-            if (catalog)
-                layout_catalog_ = std::move(*catalog);
-            else
-                report.catalog_failure = catalog.error(); // Never replace the last catalog with an empty one.
-        }
-        auto migrated = settleMigration();
-        if (!migrated)
-            return migrated;
+        auto updated = workspace_changes_.update(phase_ == EApplicationPhase::RUNNING);
+        if (!updated)
+            return updated;
         return settleRecovery();
     }
     EditorResult<project::WorkspaceSnapshot> EditorApplication::Impl::observeWorkspace()
     {
         project::WorkspaceSnapshot snapshot;
-        snapshot.catalog = layout_catalog_;
+        snapshot.catalog = workspace_changes_.catalog();
         if (workspace_failure_)
             snapshot.diagnostics.push_back(workspace_failure_->domain + ": " + workspace_failure_->message);
-        if (migration_)
+        if (const auto* migration = workspace_changes_.migration())
         {
-            snapshot.diagnostics.insert(snapshot.diagnostics.end(), migration_->diagnostics().begin(),
-                migration_->diagnostics().end());
-            if (migration_complete_)
+            snapshot.diagnostics.insert(snapshot.diagnostics.end(), migration->diagnostics().begin(),
+                migration->diagnostics().end());
+            if (workspace_changes_.migrationComplete())
                 snapshot.diagnostics.emplace_back("Migration verified complete");
-            if (migration_failure_)
-                snapshot.diagnostics.push_back(migration_failure_->domain + ": " + migration_failure_->message);
+            if (const auto* error = workspace_changes_.migrationFailure())
+                snapshot.diagnostics.push_back(error->domain + ": " + error->message);
         }
         if (recovery_)
             for (const auto& item : recovery_->items)
@@ -237,7 +127,7 @@ namespace lux::editor::application
                     if (source.failure)
                         snapshot.recovery.push_back(source.failure->domain + ": " + source.failure->detail);
             }
-        for (const auto& report : workspace_publications_)
+        for (const auto& report : workspace_changes_.publications())
         {
             project::WorkspacePublicationInfo row{report.label, report.ticket, report.result};
             if (report.catalog_failure)

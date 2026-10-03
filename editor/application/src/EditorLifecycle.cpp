@@ -288,7 +288,7 @@ namespace lux::editor::application
                     return {};
             }
         if (close_application_)
-            for (const auto& publication : workspace_publications_)
+            for (const auto& publication : workspace_changes_.publications())
                 if (!publication.result)
                 {
                     auto status = writes_.status(publication.ticket);
@@ -413,7 +413,7 @@ namespace lux::editor::application
         const bool operations_settled =
             importer_->closeStatus().state == assets::EModelImportCloseState::CLOSED && material_compilation_.empty() &&
             flow_compilation_.empty() && content_saving_->settled() && opening_.settled() && recent_projects_->settled() && !project_launch_ &&
-            std::ranges::all_of(workspace_publications_, [](const auto& value) { return value.result.has_value(); }) &&
+            std::ranges::all_of(workspace_changes_.publications(), [](const auto& value) { return value.result.has_value(); }) &&
             std::ranges::all_of(artifacts_, [](const auto& value) { return value.terminal(); }) &&
             std::ranges::none_of(run_presentations_, [](const auto& run) { return bool(run.preparing) || run.run; });
         if (phase_ == EApplicationPhase::DRAINING && operations_settled &&

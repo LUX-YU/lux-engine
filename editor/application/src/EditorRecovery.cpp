@@ -62,12 +62,9 @@ namespace lux::editor::application
             else
                 *found = std::move(next);
         }
-        auto written = workspace_.writeRecovery(value, version);
-        if (!written)
-            return applicationFailure("recovery.capture", written.error());
-        workspace_publications_.push_back({"Record recovery locations (not unsaved content)", *written});
-        return {};
+        return workspace_changes_.recordRecovery(value, version);
     }
+
     EditorResult<void> EditorApplication::Impl::restoreRecovery()
     {
         if (recovery_ &&
@@ -204,42 +201,6 @@ namespace lux::editor::application
             if (!*displayed && displayed->error().code == EEditorError::BUSY)
                 continue;
             item.result = std::move(displayed);
-        }
-        return {};
-    }
-    EditorResult<void> EditorApplication::Impl::settleMigration()
-    {
-        if (!migration_ || migration_complete_ || migration_failure_)
-            return {};
-        if (migration_ticket_)
-        {
-            const auto found =
-                std::ranges::find(workspace_publications_, *migration_ticket_, &WorkspacePublication::ticket);
-            if (found == workspace_publications_.end() || !found->result)
-                return {};
-            if (!std::holds_alternative<persistence::CommitReceipt>(*found->result))
-            {
-                migration_failure_ = applicationFailure("workspace.migration.publication", *found->result).value();
-                migration_ticket_.reset();
-                return {};
-            }
-            migration_ticket_.reset();
-        }
-        if (phase_ != EApplicationPhase::RUNNING || workspace_publications_.size() >= 16)
-            return {};
-        auto next = workspace_.continueMigration(*migration_);
-        if (!next)
-        {
-            if (next.error().code != workspace::EWorkspaceError::BUSY)
-                migration_failure_ = applicationFailure("workspace.migration", next.error()).value();
-            return {};
-        }
-        if (!*next)
-            migration_complete_ = true;
-        else
-        {
-            migration_ticket_ = **next;
-            workspace_publications_.push_back({"Migrate one legacy record", **next});
         }
         return {};
     }

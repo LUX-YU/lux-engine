@@ -8,7 +8,7 @@ add_component(
     COMPONENT_NAME scene_script_assets
     NAMESPACE lux::engine::scene
     OUTPUT_NAME lux_engine_scene_script_assets
-    SOURCE_FILES src/ScriptAssetAccess.cpp
+    SOURCE_FILES src/ScriptAssetAccess.cpp src/AssetAbility.cpp
 )
 component_include_directories(
     scene_script_assets
@@ -23,6 +23,18 @@ target_link_libraries(scene_script_assets PUBLIC
 component_add_transitive_commands(scene_script_assets
     "find_package(lux-engine-process-asset-loading REQUIRED COMPONENTS process_asset_loading)"
     "find_package(lux-engine-simulation REQUIRED COMPONENTS simulation_scripting_core)"
+)
+include_component_cmake_scripts(script_core)
+lux_script_abilities(
+    TARGET scene_script_assets
+    SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/scene/scripting/AssetAbility.hpp
+    LOGICAL_PATHS lux/engine/scene/scripting/AssetAbility.hpp
+)
+get_target_property(_asset_ability_generated_dir scene_script_assets LUX_SCRIPT_ABILITY_GENERATED_DIR)
+install(FILES
+    ${_asset_ability_generated_dir}/AssetAbility.ability.generated.hpp
+    ${_asset_ability_generated_dir}/AssetAbility.ability.lua.generated.hpp
+    DESTINATION include/lux/engine/scene/scripting COMPONENT lux_sdk
 )
 lux_engine_install_components(
     PROJECT_NAME lux-engine-scene-script-assets

@@ -5,6 +5,7 @@
 #include <lux/cxx/compile_time/expected.hpp>
 
 #include <array>
+#include <bit>
 #include <cmath>
 #include <concepts>
 #include <cstddef>
@@ -203,6 +204,13 @@ namespace lux::script::lua
             [[nodiscard]] static bool number(lua_State*, int, double&) noexcept;
             [[nodiscard]] static bool pushBoolean(lua_State*, bool) noexcept;
             [[nodiscard]] static bool pushNumber(lua_State*, double) noexcept;
+            [[nodiscard]] static bool prepareOpaque(lua_State*) noexcept;
+            [[nodiscard]] static bool readOpaque(
+                lua_State*, int, lux::semantic::TypeId, std::uint64_t, std::size_t, std::span<std::byte>
+            ) noexcept;
+            [[nodiscard]] static bool pushOpaque(
+                lua_State*, lux::semantic::TypeId, std::uint64_t, std::size_t, std::span<const std::byte>
+            ) noexcept;
             [[nodiscard]] static int failure(lua_State*, const char*) noexcept;
             [[nodiscard]] static bool table(lua_State*, int fields) noexcept;
             [[nodiscard]] static bool prepare(lua_State*, const LuaCodecPlan&) noexcept;
@@ -249,6 +257,16 @@ namespace lux::script::lua
                 return lux::cxx::unexpected(LuaValueFailure{});
             return value;
         }
+        template <class T>
+            requires std::is_trivially_copyable_v<T>
+        [[nodiscard]] LuaValueResult<T> opaque(lux::semantic::TypeId type, std::uint64_t representation) const noexcept
+        {
+            static_assert(sizeof(T) <= 65536U);
+            std::array<std::byte, sizeof(T)> bytes{};
+            if (!detail::LuaValueAccess::readOpaque(state_, index_, type, representation, alignof(T), bytes))
+                return lux::cxx::unexpected(LuaValueFailure{ELuaValueError::TYPE});
+            return std::bit_cast<T>(bytes);
+        }
         template <class T> [[nodiscard]] LuaValueResult<T> number() const noexcept
         {
             static_assert(LuaValueScalar<T> && !std::is_same_v<T, bool>);
@@ -294,6 +312,18 @@ namespace lux::script::lua
     {
     public:
         explicit LuaValueWriter(lua_State* state, std::size_t depth = 0) noexcept : state_(state), depth_(depth) {}
+        template <class T>
+            requires std::is_trivially_copyable_v<T>
+        [[nodiscard]] LuaValueResult<void> opaque(
+            const T& value, lux::semantic::TypeId type, std::uint64_t representation
+        ) noexcept
+        {
+            static_assert(sizeof(T) <= 65536U);
+            const auto bytes = std::as_bytes(std::span{&value, 1U});
+            if (!detail::LuaValueAccess::pushOpaque(state_, type, representation, alignof(T), bytes))
+                return lux::cxx::unexpected(LuaValueFailure{ELuaValueError::VM_FAILURE});
+            return {};
+        }
         [[nodiscard]] LuaValueResult<void> boolean(bool value) noexcept
         {
             if (!detail::LuaValueAccess::pushBoolean(state_, value))
@@ -562,8 +592,10 @@ namespace lux::script::lua
         }
         static bool prepare(lua_State* state) noexcept
         {
-            if constexpr (!custom && requires { Rule::template prepare<Policy>(state); })
+            if constexpr (requires { { Rule::template prepare<Policy>(state) } noexcept -> std::same_as<bool>; })
                 return Rule::template prepare<Policy>(state);
+            else if constexpr (requires { { Rule::prepare(state) } noexcept -> std::same_as<bool>; })
+                return Rule::prepare(state);
             else
                 return true;
         }
@@ -588,6 +620,32 @@ namespace lux::script::lua
                 return Rule::push(output, value);
             else
                 return lux::cxx::unexpected(LuaValueFailure{ELuaValueError::UNSUPPORTED});
+        }
+    };
+
+    // Opt-in representation for bounded trivial values. Lua owns a copy, never a native owner.
+    // Semantic identity and codec representation are both checked before reconstructing T.
+    template <class T> requires(lux::semantic::TypeDeclared<T> && std::is_trivially_copyable_v<T>)
+    struct TLuaOpaqueValue
+    {
+        inline static constexpr std::string_view name = "lux.lua.opaque-value";
+        inline static constexpr std::uint32_t version = 1;
+        inline static constexpr std::size_t storage = sizeof(T);
+        inline static constexpr std::size_t depth = 0;
+        static bool prepare(lua_State* state) noexcept { return detail::LuaValueAccess::prepareOpaque(state); }
+        template <class Policy> static LuaValueResult<T> read(LuaValueReader& input) noexcept
+        {
+            return input.template opaque<T>(
+                lux::semantic::typeId(lux::semantic::TTypeTraits<T>::CanonicalName),
+                TLuaValueCodec<T, Policy>::representation()
+            );
+        }
+        template <class Policy> static LuaValueResult<void> push(LuaValueWriter& output, const T& value) noexcept
+        {
+            return output.opaque(value,
+                lux::semantic::typeId(lux::semantic::TTypeTraits<T>::CanonicalName),
+                TLuaValueCodec<T, Policy>::representation()
+            );
         }
     };
 

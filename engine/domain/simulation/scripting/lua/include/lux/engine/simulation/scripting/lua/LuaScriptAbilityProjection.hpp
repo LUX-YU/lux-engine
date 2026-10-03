@@ -227,15 +227,16 @@ namespace lux::simulation::script::detail
             return LuaAbilityProjectionAccess::fail(state, -1, "async Script Ability requires coroutine execution");
         if (access.argument_count != static_cast<int>(sizeof...(Arguments)))
             return LuaAbilityProjectionAccess::fail(state, -3, "Script Ability argument count mismatch");
-        // New record/enum async protocols are not part of SR-5's first batch.
-        if constexpr (!((LuaValueScalar<std::remove_cvref_t<Arguments>> &&
-                         !TLuaValueCodec<std::remove_cvref_t<Arguments>, Policy>::custom) &&
-                        ...))
+        // Argument values live only until the provider accepts its owned request. They are
+        // destroyed before the original C boundary suspends; no Lua stack address is retained.
+        if constexpr (!((std::is_trivially_copyable_v<std::remove_cvref_t<Arguments>> &&
+                         TLuaValueCodec<std::remove_cvref_t<Arguments>, Policy>::can_read &&
+                         TLuaValueCodec<std::remove_cvref_t<Arguments>, Policy>::bounded) && ...))
             return LuaAbilityProjectionAccess::fail(state, -5, "unsupported async Ability value");
         else
         {
             ScriptStepResult result;
-            const auto converted = [&]() noexcept {
+            const auto converted = [&]() noexcept -> int {
                 TLuaValueSlots<std::remove_cvref_t<Arguments>...> values;
                 const bool read = readLuaAbilityArguments<Policy, Arguments...>(
                     state,
@@ -243,7 +244,13 @@ namespace lux::simulation::script::detail
                     std::index_sequence_for<Arguments...>{}
                 );
                 if (!read)
-                    return false;
+                    return -3;
+                constexpr bool can_reenter =
+                    !((LuaValueScalar<std::remove_cvref_t<Arguments>> &&
+                       !TLuaValueCodec<std::remove_cvref_t<Arguments>, Policy>::custom) && ...);
+                if constexpr (can_reenter)
+                    if (!LuaAbilityProjectionAccess::revalidate(state, access))
+                        return -1;
                 result = values.apply([&](auto&... arguments) noexcept {
                     return invokePreparedScriptAbilityAsync<Result>(
                         *access.step,
@@ -254,10 +261,10 @@ namespace lux::simulation::script::detail
                         arguments...
                     );
                 });
-                return true;
+                return 0;
             }();
-            if (!converted)
-                return LuaAbilityProjectionAccess::fail(state, -3, "Script Ability argument type mismatch");
+            if (converted != 0)
+                return LuaAbilityProjectionAccess::fail(state, converted, "Script Ability argument or authority failure");
             return LuaAbilityProjectionAccess::suspend(state, result, access.local_slot);
         }
     }

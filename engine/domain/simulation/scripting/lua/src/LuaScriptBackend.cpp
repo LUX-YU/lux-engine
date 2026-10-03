@@ -236,6 +236,7 @@ namespace lux::simulation::script
             const lux::script::ScriptAbilityDescription* ability{};
             const lux::script::ScriptAbilityMethodDescription* method{};
             LuxLuaTypedWorker entry{};
+            lux::script::lua::LuaResumeValuePush push_resume{};
         };
 
         struct PreparedAbility final
@@ -245,6 +246,7 @@ namespace lux::simulation::script
             const lux::script::ScriptAbilityErasedMethodBinding* method{};
             const lux::script::ScriptAbilityMethodDescription* semantic{};
             PreparedLocalAsyncStart local_async;
+            lux::script::lua::LuaResumeValuePush push_resume{};
         };
 
         struct PreparedEventSource final
@@ -508,7 +510,9 @@ namespace lux::simulation::script
                     ability_methods.push_back(
                         {contribution.description,
                          std::addressof(contribution.description->methods[index]),
-                         contribution.methods[index].entry}
+                         contribution.methods[index].entry,
+                         contribution.methods[index].results.empty() ? nullptr :
+                             contribution.methods[index].results.front().push_resume}
                     );
                 }
             }
@@ -960,24 +964,6 @@ namespace lux::simulation::script
             }
         }
 
-        [[nodiscard]] static bool supportedType(const lux::script::ScriptAbilityValueDescription& type) noexcept
-        {
-            switch (type.abi_kind)
-            {
-            case LUX_SCRIPT_VK_BOOL:
-                return type.size == sizeof(bool) && type.alignment == alignof(bool);
-            case LUX_SCRIPT_VK_INT32:
-                return type.size == sizeof(std::int32_t) && type.alignment == alignof(std::int32_t);
-            case LUX_SCRIPT_VK_UINT32:
-                return type.size == sizeof(std::uint32_t) && type.alignment == alignof(std::uint32_t);
-            case LUX_SCRIPT_VK_FLOAT:
-                return type.size == sizeof(float) && type.alignment == alignof(float);
-            case LUX_SCRIPT_VK_DOUBLE:
-                return type.size == sizeof(double) && type.alignment == alignof(double);
-            default:
-                return false;
-            }
-        }
 
         [[nodiscard]] EScriptBackendResult prepareAbilities(
             Instance& instance,
@@ -1027,7 +1013,8 @@ namespace lux::simulation::script
                     capability->dispatch,
                     std::addressof(*method),
                     projected.method,
-                    capability->local_async.resolve(method->method, capability->context, capability->dispatch)
+                    capability->local_async.resolve(method->method, capability->context, capability->dispatch),
+                    projected.push_resume
                 };
             }
             return EScriptBackendResult::SUCCESS;
@@ -1530,14 +1517,6 @@ namespace lux::simulation::script
             }
         }
 
-        [[nodiscard]] static bool pushAbilityResult(
-            lua_State* state,
-            const lux::script::ScriptAbilityValueDescription& description,
-            const void* value
-        ) noexcept
-        {
-            return pushComponentValue(state, description.abi_kind, value);
-        }
 
         static LuxLuaBoundaryOutcome abilityFailure(
             lua_State* state,
@@ -2163,7 +2142,8 @@ namespace lux::simulation::script
             const auto& actual = packet.value->type;
             const bool is_mismatch = actual.type_id != expected.type_id || actual.abi_kind != expected.abi_kind ||
                                      actual.size != expected.size || actual.alignment != expected.alignment;
-            if (is_mismatch || !pushAbilityResult(continuation.thread, expected, packet.value->bytes.data()))
+            if (is_mismatch || prepared->push_resume == nullptr ||
+                !prepared->push_resume(continuation.thread, packet.value->bytes.span()))
                 return false;
             argument_count = 1;
             return true;
@@ -2642,7 +2622,8 @@ namespace lux::simulation::script
                 return true;
             return left.canonical_name == right.canonical_name && left.size == right.size &&
                    left.alignment == right.alignment && left.representation == right.representation &&
-                   left.readable == right.readable && left.writable == right.writable;
+                   left.readable == right.readable && left.writable == right.writable &&
+                   (left.push_resume != nullptr) == (right.push_resume != nullptr);
         };
         const auto each_operation = [&](auto&& visit) noexcept {
             for (const auto& value : config.values)
@@ -2714,7 +2695,10 @@ namespace lux::simulation::script
                                           operation.size != value.size || operation.alignment != value.alignment ||
                                           operation.frame_bytes > 65536 - frame_bytes;
                     const bool invalid_async = method.kind == lux::script::EScriptApiMethodKind::ASYNC_OPERATION &&
-                                               (!Impl::supportedType(value) || !operation.native_scalar);
+                                               (operation.push_resume == nullptr ||
+                                                value.pass != lux::semantic::EValuePass::VALUE ||
+                                                (value.lifetime != lux::script::EScriptAbilityValueLifetime::OWNED_VALUE &&
+                                                 value.lifetime != lux::script::EScriptAbilityValueLifetime::STABLE_ID));
                     if (mismatch || invalid_async)
                         return lux::cxx::unexpected(ELuaScriptBindingBackendError::UNSUPPORTED_ABILITY_TYPE);
                     frame_bytes += operation.frame_bytes;
@@ -2731,7 +2715,7 @@ namespace lux::simulation::script
                                           operation.size != value.size || operation.alignment != value.alignment ||
                                           operation.frame_bytes > 65536 - frame_bytes;
                     const bool invalid_async = method.kind == lux::script::EScriptApiMethodKind::ASYNC_OPERATION &&
-                                               (!Impl::supportedType(value) || !operation.native_scalar ||
+                                               (operation.push_resume == nullptr ||
                                                 value.pass != lux::semantic::EValuePass::VALUE ||
                                                 value.lifetime != lux::script::EScriptAbilityValueLifetime::AWAITABLE);
                     if (mismatch || invalid_async)

@@ -12,6 +12,13 @@
 
 namespace lux::scene::script
 {
+    class ScriptAssetAccess;
+
+    // Binding preparation substitutes the original provider with the instance-owned scope.
+    // The generated descriptor/erased adapters are shared by native and Lua consumers.
+    [[nodiscard]] LUX_SCENE_SCRIPT_ASSETS_PUBLIC lux::simulation::script::ScriptApiCapabilityPublication
+    publishAssetAbility(ScriptAssetAccess& access) noexcept;
+
     struct ScriptAssetLimits final
     {
         std::size_t scopes{64};
@@ -19,8 +26,6 @@ namespace lux::scene::script
         std::size_t retained_bytes_per_scope{64U * 1024U * 1024U};
         lux::asset::AssetDecodeLimits decode{8U * 1024U * 1024U, 32U * 1024U * 1024U, 32};
     };
-
-    class ScriptAssetAccess;
 
     // Owner-thread capability. A token is an alias into this scope, never an asset owner.
     // Revoke is nonblocking. Accepted TaskScope work retains only native records and settles normally.

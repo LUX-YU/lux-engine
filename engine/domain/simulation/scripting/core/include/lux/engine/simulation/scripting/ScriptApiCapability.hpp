@@ -63,7 +63,7 @@ namespace lux::simulation::script
     {
         const bool is_invalid_binding = !owner || context == nullptr || revoke == nullptr;
         if (is_invalid_binding)
-            return lux::cxx::unexpected(EScriptApiPrepareError::INVALID_INSTANCE);
+            return lux::cxx::unexpected<EScriptApiPrepareError>(EScriptApiPrepareError::INVALID_INSTANCE);
         return ScriptApiInstanceBinding{std::move(owner), context, revoke};
     }
 

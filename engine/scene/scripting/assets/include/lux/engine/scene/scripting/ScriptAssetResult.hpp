@@ -91,6 +91,18 @@ namespace lux::scene::script
         std::array<std::byte, Capacity> bytes{};
         std::uint32_t size{};
     };
+    struct ScriptAssetInspection final
+    {
+        ScriptAssetDescription value;
+        std::uint32_t error{};
+    };
+
+    struct ScriptAssetBytes final
+    {
+        AssetByteChunk value;
+        std::uint32_t error{};
+    };
+
 }
 
 namespace lux::semantic
@@ -101,5 +113,33 @@ namespace lux::semantic
         inline static constexpr std::uint8_t AbiKind = static_cast<std::uint8_t>(EAbiKind::STRUCT_REF);
         inline static constexpr std::uint32_t Size = sizeof(lux::scene::script::ScriptAssetReadOutcome);
         inline static constexpr std::uint32_t Alignment = alignof(lux::scene::script::ScriptAssetReadOutcome);
+    };
+    template <> struct TTypeTraits<lux::asset::AssetId> final
+    {
+        inline static constexpr std::string_view CanonicalName = "lux.resource.AssetId.v1";
+        inline static constexpr std::uint8_t AbiKind = static_cast<std::uint8_t>(EAbiKind::STRUCT_REF);
+        inline static constexpr std::uint32_t Size = sizeof(lux::asset::AssetId);
+        inline static constexpr std::uint32_t Alignment = alignof(lux::asset::AssetId);
+    };
+    template <> struct TTypeTraits<lux::scene::script::ScriptAssetHandle> final
+    {
+        inline static constexpr std::string_view CanonicalName = "lux.scene.script.AssetHandle.v1";
+        inline static constexpr std::uint8_t AbiKind = static_cast<std::uint8_t>(EAbiKind::STRUCT_REF);
+        inline static constexpr std::uint32_t Size = sizeof(lux::scene::script::ScriptAssetHandle);
+        inline static constexpr std::uint32_t Alignment = alignof(lux::scene::script::ScriptAssetHandle);
+    };
+    template <> struct TTypeTraits<lux::scene::script::ScriptAssetInspection> final
+    {
+        inline static constexpr std::string_view CanonicalName = "lux.scene.script.AssetInspection.v1";
+        inline static constexpr std::uint8_t AbiKind = static_cast<std::uint8_t>(EAbiKind::STRUCT_REF);
+        inline static constexpr std::uint32_t Size = sizeof(lux::scene::script::ScriptAssetInspection);
+        inline static constexpr std::uint32_t Alignment = alignof(lux::scene::script::ScriptAssetInspection);
+    };
+    template <> struct TTypeTraits<lux::scene::script::ScriptAssetBytes> final
+    {
+        inline static constexpr std::string_view CanonicalName = "lux.scene.script.AssetBytes.v1";
+        inline static constexpr std::uint8_t AbiKind = static_cast<std::uint8_t>(EAbiKind::STRUCT_REF);
+        inline static constexpr std::uint32_t Size = sizeof(lux::scene::script::ScriptAssetBytes);
+        inline static constexpr std::uint32_t Alignment = alignof(lux::scene::script::ScriptAssetBytes);
     };
 }

@@ -5,12 +5,28 @@
 #include <lux/engine/function/script/lua/LuaBoundary.h>
 
 #include <memory>
+#include <cstring>
 #include <span>
 
 struct lua_State;
 
 namespace lux::script::lua
 {
+    using LuaResumeValuePush = bool (*)(lua_State*, std::span<const std::byte>) noexcept;
+
+    namespace detail
+    {
+        template <class T, class Policy> bool pushValue(lua_State* state, const T& value) noexcept
+        {
+            const auto top = LuaValueAccess::top(state);
+            LuaValueWriter output{state};
+            const auto result = TLuaValueCodec<T, Policy>::push(output, value);
+            const bool valid = result && LuaValueAccess::top(state) == top + 1;
+            if (!valid) LuaValueAccess::restoreScratch(state, top);
+            return valid;
+        }
+    }
+
     struct LuaValueOperation final
     {
         std::uint64_t semantic_type{};
@@ -25,6 +41,9 @@ namespace lux::script::lua
         bool (*push)(lua_State*, const void*) noexcept {};
         bool native_scalar{};
         bool (*prepare)(lua_State*) noexcept {};
+        // Present only for a bounded trivially-copyable native value. Resume bytes are
+        // reconstructed into an aligned T, then passed through the same protected codec.
+        LuaResumeValuePush push_resume{};
     };
     template <class T, class Policy = LuaValuePolicy>
     [[nodiscard]] consteval LuaValueOperation makeLuaValueOperation() noexcept
@@ -43,16 +62,22 @@ namespace lux::script::lua
             Codec::can_read && Codec::bounded,
             Codec::can_push && Codec::bounded,
             [](lua_State* state, const void* value) noexcept {
-                const auto top = detail::LuaValueAccess::top(state);
-                LuaValueWriter output{state};
-                const auto result = Codec::push(output, *static_cast<const V*>(value));
-                const bool valid = result && detail::LuaValueAccess::top(state) == top + 1;
-                if (!valid)
-                    detail::LuaValueAccess::restoreScratch(state, top);
-                return valid;
+                return detail::pushValue<V, Policy>(state, *static_cast<const V*>(value));
             },
             LuaValueScalar<V> && !Codec::custom,
-            &Codec::prepare
+            &Codec::prepare,
+            []() consteval -> LuaResumeValuePush {
+                if constexpr (std::is_trivially_copyable_v<V> && Codec::can_push && Codec::bounded)
+                    return [](lua_State* state, std::span<const std::byte> bytes) noexcept {
+                        if (bytes.size() != sizeof(V)) return false;
+                        std::array<std::byte, sizeof(V)> owned{};
+                        std::memcpy(owned.data(), bytes.data(), owned.size());
+                        const auto value = std::bit_cast<V>(owned);
+                        return detail::pushValue<V, Policy>(state, value);
+                    };
+                else
+                    return nullptr;
+            }()
         };
     }
     template <class Ability> struct TScriptAbilityLuaPolicy

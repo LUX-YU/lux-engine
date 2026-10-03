@@ -37,6 +37,16 @@ namespace lux::script::lua
     {
         namespace
         {
+            // One metatable in the existing codec module. A value owns only trivial bytes;
+            // no native result owner, pointer capability, __gc callback or asset dispatch lives here.
+            const char OpaqueMetatableKey{};
+            struct OpaqueHeader final
+            {
+                lux::semantic::TypeId type{};
+                std::uint64_t representation{};
+                std::uint32_t size{};
+                std::uint32_t alignment{};
+            };
             struct Operation final : LuaCodecFrame
             {
                 explicit Operation(int (*entry)(lua_State*, Operation&)) noexcept : execute(entry) {}
@@ -50,7 +60,11 @@ namespace lux::script::lua
                 const LuaCodecPlan* plan{};
                 const LuaCodecShape* shape{};
                 const void* object{};
+                OpaqueHeader opaque;
+                std::span<std::byte> output_bytes;
+                std::span<const std::byte> input_bytes;
             };
+            static_assert(std::is_trivially_destructible_v<Operation>);
             // Lua55 C errors may jump only over trivial, non-owning callback frames.
             int trampoline(lua_State* state)
             {
@@ -98,6 +112,81 @@ namespace lux::script::lua
             {
                 lua_createtable(state, 0, operation.count);
                 return 1;
+            }
+            void pushOpaqueMetatable(lua_State* state)
+            {
+                lua_rawgetp(state, LUA_REGISTRYINDEX, &OpaqueMetatableKey);
+                if (!lua_isnil(state, -1))
+                    return;
+                lua_pop(state, 1);
+                lua_createtable(state, 0, 2);
+                lua_pushliteral(state, "lux.opaque.value");
+                lua_setfield(state, -2, "__metatable");
+                lua_pushliteral(state, "lux.opaque.value");
+                lua_setfield(state, -2, "__name");
+                lua_pushvalue(state, -1);
+                lua_rawsetp(state, LUA_REGISTRYINDEX, &OpaqueMetatableKey);
+            }
+            int prepareOpaqueValue(lua_State* state, Operation&)
+            {
+                pushOpaqueMetatable(state);
+                return 0;
+            }
+            int writeOpaqueValue(lua_State* state, Operation& operation)
+            {
+                auto* bytes = static_cast<std::byte*>(
+                    lua_newuserdatauv(state, sizeof(OpaqueHeader) + operation.input_bytes.size(), 0)
+                );
+                std::memcpy(bytes, &operation.opaque, sizeof(OpaqueHeader));
+                std::memcpy(bytes + sizeof(OpaqueHeader), operation.input_bytes.data(), operation.input_bytes.size());
+                pushOpaqueMetatable(state);
+                lua_setmetatable(state, -2);
+                return 1;
+            }
+            int readOpaqueValue(lua_State* state, Operation& operation)
+            {
+                const bool is_userdata = lua_type(state, 2) == LUA_TUSERDATA;
+                const bool has_exact_size = is_userdata &&
+                    lua_rawlen(state, 2) == sizeof(OpaqueHeader) + operation.output_bytes.size();
+                if (!has_exact_size || !lua_getmetatable(state, 2))
+                {
+                    operation.success = false;
+                    return 0;
+                }
+                lua_rawgetp(state, LUA_REGISTRYINDEX, &OpaqueMetatableKey);
+                if (!lua_rawequal(state, -1, -2))
+                {
+                    operation.success = false;
+                    return 0;
+                }
+                const auto* bytes = static_cast<const std::byte*>(lua_touserdata(state, 2));
+                OpaqueHeader header;
+                std::memcpy(&header, bytes, sizeof(header));
+                const bool has_wrong_type = header.type != operation.opaque.type;
+                const bool has_wrong_representation = header.representation != operation.opaque.representation;
+                const bool has_wrong_layout = header.size != operation.opaque.size ||
+                    header.alignment != operation.opaque.alignment;
+                const bool is_invalid_value = has_wrong_type || has_wrong_representation || has_wrong_layout;
+                if (is_invalid_value)
+                {
+                    operation.success = false;
+                    return 0;
+                }
+                std::memcpy(operation.output_bytes.data(), bytes + sizeof(header), operation.output_bytes.size());
+                return 0;
+            }
+            bool validOpaque(
+                lux::semantic::TypeId type,
+                std::uint64_t representation,
+                std::size_t alignment,
+                std::size_t size
+            ) noexcept
+            {
+                const bool has_invalid_identity = type == lux::semantic::InvalidTypeId || representation == 0;
+                const bool has_invalid_size = size == 0 || size > 65536U;
+                const bool has_invalid_alignment = alignment == 0 || alignment > 65536U ||
+                    (alignment & (alignment - 1U)) != 0;
+                return !has_invalid_identity && !has_invalid_size && !has_invalid_alignment;
             }
             int failureValues(lua_State* state, Operation& operation)
             {
@@ -385,6 +474,39 @@ namespace lux::script::lua
         {
             Operation operation{makeTable};
             operation.count = fields;
+            return run(state, operation, 0, 0, 1);
+        }
+        bool LuaValueAccess::prepareOpaque(lua_State* state) noexcept
+        {
+            Operation operation{prepareOpaqueValue};
+            return state != nullptr && run(state, operation, 0, 0, 0);
+        }
+        bool LuaValueAccess::readOpaque(
+            lua_State* state, int index, lux::semantic::TypeId type, std::uint64_t representation,
+            std::size_t alignment, std::span<std::byte> bytes
+        ) noexcept
+        {
+            if (!validOpaque(type, representation, alignment, bytes.size()))
+                return false;
+            Operation operation{readOpaqueValue};
+            operation.opaque = {type, representation, static_cast<std::uint32_t>(bytes.size()),
+                static_cast<std::uint32_t>(alignment)
+            };
+            operation.output_bytes = bytes;
+            return run(state, operation, index, 0, 0);
+        }
+        bool LuaValueAccess::pushOpaque(
+            lua_State* state, lux::semantic::TypeId type, std::uint64_t representation,
+            std::size_t alignment, std::span<const std::byte> bytes
+        ) noexcept
+        {
+            if (!validOpaque(type, representation, alignment, bytes.size()))
+                return false;
+            Operation operation{writeOpaqueValue};
+            operation.opaque = {type, representation, static_cast<std::uint32_t>(bytes.size()),
+                static_cast<std::uint32_t>(alignment)
+            };
+            operation.input_bytes = bytes;
             return run(state, operation, 0, 0, 1);
         }
         LuaValueResult<void> LuaValueAccess::writePlan(

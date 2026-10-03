@@ -159,6 +159,7 @@ namespace lux::scene::script
         std::size_t bytes{};
         bool stopping{};
         bool delivering{};
+        std::weak_ptr<ScriptAssetScope> scope;
     };
 
     struct ScriptAssetAccess::Impl final
@@ -236,11 +237,26 @@ namespace lux::scene::script
         if (!instance.valid())
             return unexpected(EScriptAssetError::INVALID_INPUT);
         std::erase_if(impl_->scopes, [](const auto& weak) noexcept { return weak.expired(); });
+        // Several independently declared abilities may project the same instance-owned scope.
+        // One Access belongs to one ScriptSystem; it must not merge IDs from different systems.
+        for (const auto& weak : impl_->scopes)
+        {
+            auto state = weak.lock();
+            if (!state || state->instance != instance)
+                continue;
+            if (state->stopping)
+                return unexpected(EScriptAssetError::STOPPING);
+            if (auto scope = state->scope.lock())
+                return scope;
+            return unexpected(EScriptAssetError::STOPPING);
+        }
         if (impl_->scopes.size() >= access.limits.scopes)
             return unexpected(EScriptAssetError::CAPACITY_EXCEEDED);
         auto state = std::make_shared<ScriptAssetScope::State>(impl_->access, instance);
+        auto scope = std::shared_ptr<ScriptAssetScope>{new ScriptAssetScope{state}};
+        state->scope = scope;
         impl_->scopes.push_back(state);
-        return std::shared_ptr<ScriptAssetScope>{new ScriptAssetScope{std::move(state)}};
+        return scope;
     }
 
     lux::simulation::script::ScriptApiInstanceResult ScriptAssetAccess::prepareInstance(

@@ -1,10 +1,11 @@
 add_component(COMPONENT_NAME session_factories NAMESPACE lux::engine::editor STATIC
-    SOURCE_FILES src/SessionInstallation.cpp src/SessionFactory.cpp src/SessionOperations.cpp)
+    SOURCE_FILES src/SessionInstallation.cpp src/SessionFactory.cpp src/SessionOperations.cpp src/SessionCommands.cpp)
 component_include_directories(session_factories BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include
     INSTALL_TIME include)
-target_link_libraries(session_factories PUBLIC lux::engine::editor::editor_persistence
+target_link_libraries(session_factories PUBLIC lux::engine::editor::editor_commands lux::engine::editor::editor_persistence
     lux::engine::editor::edit_sessions lux::engine::resource::asset lux::cxx::core)
 component_add_transitive_commands(session_factories
+    "find_package(lux-engine-editor-commands REQUIRED COMPONENTS editor_commands)"
     "find_package(lux-engine-editor-persistence REQUIRED COMPONENTS editor_persistence)"
     "find_package(lux-engine-edit-sessions REQUIRED COMPONENTS edit_sessions)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"

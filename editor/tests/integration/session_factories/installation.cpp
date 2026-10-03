@@ -1,3 +1,4 @@
+#include <lux/engine/editor/sessions/SessionCommands.hpp>
 #include <lux/engine/editor/scene/SceneSessionFactory.hpp>
 #include <lux/engine/editor/sessions/SessionOperations.hpp>
 #include <lux/engine/editor/sessions/SessionOpening.hpp>
@@ -810,7 +811,9 @@ int main(int argc, char** argv)
                     return &entry;
             return nullptr;
         };
-        auto snapshot = take(CommandRegistrySnapshot::create(extensions::builtinSessionCommands({store, saves}, find)));
+        auto entries = sessions::makeHistoryCommands(store, find);
+        entries.insert(entries.begin(), sessions::makeSourceSaveCommand(store, saves, find));
+        auto snapshot = take(CommandRegistrySnapshot::create(std::move(entries)));
         assert(registry.publish(snapshot));
         auto messages = take(object::ObjectMessageQueue::create(64));
         CommandRoot root{messages.dispatcherRef()};

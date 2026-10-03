@@ -2081,6 +2081,9 @@
       },
       "session_factories": {
         "path": "editor/activities/sessions"
+      },
+      "editor_commands": {
+        "path": "editor/activities/commands"
       }
     },
     "headers": [
@@ -2247,6 +2250,9 @@
       },
       "lux::cxx::binary": {
         "imported": true
+      },
+      "editor_commands": {
+        "path": "editor/activities/commands"
       }
     },
     "headers": [
@@ -2404,6 +2410,9 @@
       },
       "serialization": {
         "path": "modules/core/serialization"
+      },
+      "editor_commands": {
+        "path": "editor/activities/commands"
       }
     },
     "headers": [
@@ -18320,6 +18329,15 @@
       ],
       "editor/application/src/RestoreWorkbench.cpp": [
         "editor_bootstrap"
+      ],
+      "editor/activities/sessions/include/lux/engine/editor/sessions/SessionCommands.hpp": [
+        "session_factories"
+      ],
+      "editor/activities/sessions/src/SessionCommands.cpp": [
+        "session_factories"
+      ],
+      "editor/activities/project/include/lux/engine/editor/storage/ProjectCommands.hpp": [
+        "editor_storage"
       ]
     },
     "native_libraries": [

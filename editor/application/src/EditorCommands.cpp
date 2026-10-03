@@ -1,5 +1,6 @@
 #include <lux/engine/editor/application/EditorApplicationImpl.hpp>
 #include <algorithm>
+#include <lux/engine/editor/sessions/SessionCommands.hpp>
 #include <lux/engine/editor/configuration/EditorReflection.hpp>
 #include <lux/engine/meta/Meta.hpp>
 #include <lux/engine/editor/project/ProjectView.hpp>
@@ -71,7 +72,7 @@ namespace lux::editor::application
     {
         extensions::ContributionDraft draft;
         draft.commands =
-            extensions::builtinSessionCommands({sessions_, saves_}, [this](auto id) { return opening_.find(id); });
+            sessions::makeHistoryCommands(sessions_, [this](auto id) { return opening_.find(id); });
 
         auto exit = commands::CommandEntry::bind<command_lux_editor_exit>(
             contracts::CodeLease::builtin(),
@@ -88,9 +89,6 @@ namespace lux::editor::application
             }
         );
         draft.commands.push_back(std::move(exit));
-        std::erase_if(draft.commands, [](const auto& entry) {
-            return entry->descriptor().id == commands::CommandIdView{"lux.editor.save"};
-        });
         installSaveCommands(draft);
         installResultView(draft);
         installWorkspaceView(draft);

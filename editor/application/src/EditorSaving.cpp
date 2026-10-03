@@ -1,21 +1,8 @@
 #include <lux/engine/editor/application/EditorApplicationImpl.hpp>
 #include <algorithm>
+#include <lux/engine/editor/storage/ProjectCommands.hpp>
+#include <lux/engine/editor/sessions/SessionCommands.hpp>
 
-namespace
-{
-    constexpr lux::editor::commands::CommandDescriptor command_lux_editor_reload{
-        lux::editor::commands::CommandIdView{"lux.editor.reload"},
-        "Reload",
-        "File",
-        "",
-        lux::editor::commands::ECommandScope::SESSION
-    };
-    constexpr lux::editor::commands::CommandDescriptor command_lux_editor_save_all{
-        lux::editor::commands::CommandIdView{"lux.editor.save-all"},
-        "Save All",
-        "File"
-    };
-}
 namespace lux::editor::application
 {
     namespace
@@ -136,7 +123,7 @@ namespace lux::editor::application
 
     void EditorApplication::Impl::installSaveCommands(extensions::ContributionDraft& draft)
     {
-        draft.commands.push_back(commands::CommandEntry::bind<command_lux_editor_reload>(
+        draft.commands.push_back(commands::CommandEntry::bind<kReloadCommand>(
             contracts::CodeLease::builtin(),
             [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
                 return commands::CommandState{phase_ == EApplicationPhase::RUNNING && !reload_question_};
@@ -149,25 +136,9 @@ namespace lux::editor::application
                 return commands::DispatchReceipt{commands::ImmediateCompletion{}};
             }
         ));
-        for (auto mode :
-             {persistence::ESaveMode::SAVE, persistence::ESaveMode::SAVE_AS, persistence::ESaveMode::EXPORT_COPY})
-        {
-            const bool ordinary = mode == persistence::ESaveMode::SAVE;
-            draft.commands.push_back(commands::CommandEntry::create(
+        const auto bindSave = [&]<const commands::CommandDescriptor& Descriptor>(persistence::ESaveMode mode) {
+            return commands::CommandEntry::bind<Descriptor>(
                 contracts::CodeLease::builtin(),
-                commands::CommandDescriptor{
-                    commands::CommandIdView{
-                        ordinary                                  ? "lux.editor.save"
-                        : mode == persistence::ESaveMode::SAVE_AS ? "lux.editor.save-as"
-                                                                  : "lux.editor.export-copy"
-                    },
-                    ordinary                                  ? "Save"
-                    : mode == persistence::ESaveMode::SAVE_AS ? "Save As"
-                                                              : "Export Copy",
-                    "File",
-                    ordinary ? "Ctrl+S" : "",
-                    commands::ECommandScope::SESSION
-                },
                 [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
                     return commands::CommandState{phase_ == EApplicationPhase::RUNNING && !save_question_};
                 },
@@ -190,9 +161,12 @@ namespace lux::editor::application
                         return cxx::unexpected(saveFailure(asked.error()));
                     return commands::DispatchReceipt{commands::ImmediateCompletion{}};
                 }
-            ));
-        }
-        draft.commands.push_back(commands::CommandEntry::bind<command_lux_editor_save_all>(
+            );
+        };
+        draft.commands.push_back(bindSave.template operator()<sessions::kSaveCommand>(persistence::ESaveMode::SAVE));
+        draft.commands.push_back(bindSave.template operator()<kSaveAsCommand>(persistence::ESaveMode::SAVE_AS));
+        draft.commands.push_back(bindSave.template operator()<kExportCopyCommand>(persistence::ESaveMode::EXPORT_COPY));
+        draft.commands.push_back(commands::CommandEntry::bind<kSaveAllCommand>(
             contracts::CodeLease::builtin(),
             [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
                 return commands::CommandState{phase_ == EApplicationPhase::RUNNING};

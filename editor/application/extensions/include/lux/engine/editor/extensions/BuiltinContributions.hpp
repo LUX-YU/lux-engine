@@ -26,7 +26,6 @@ namespace lux::editor::extensions
 {
     using ArtifactIntent = cxx::move_only_function<void(const persistence::DerivedArtifact&)>;
     using ModelIntent = cxx::move_only_function<void(const scene::ModelPlacement&)>;
-    using HistoryActionLookup = cxx::move_only_function<sessions::InstalledSession*(sessions::SessionId)>;
     using ContentCreation = cxx::move_only_function<
         commands::CommandResult<commands::DispatchReceipt>(sessions::SessionPreparation)
     >;
@@ -35,10 +34,6 @@ namespace lux::editor::extensions
     );
     [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> builtinSceneCreationFactory(
         scene::SceneConfigurationInputs, ContentCreation
-    );
-    [[nodiscard]] std::vector<std::shared_ptr<commands::CommandEntry>> builtinSessionCommands(
-        SessionActivities,
-        HistoryActionLookup
     );
     [[nodiscard]] std::vector<std::shared_ptr<sessions::SessionFactoryEntry>> builtinSessionFactories(
         simulation::ecs::ComponentSchemaSet,

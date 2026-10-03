@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/editor/desktop/ViewCommands.hpp>
 #include <lux/cxx/core/move_only_function.hpp>
 #include <lux/engine/editor/project/ProjectCatalogModel.hpp>
 #include <lux/engine/editor/views/IViewHost.hpp>
@@ -32,4 +33,8 @@ namespace lux::editor::project
     [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> makeProjectViewFactory(
         ProjectCatalogModel& catalog, cxx::move_only_function<void(const AssetReference&)> open
     );
+    [[nodiscard]] std::shared_ptr<commands::CommandEntry> makeAssetsCommand(
+        commands::CommandEntry::Query, desktop::ToolOpening
+    );
+
 }

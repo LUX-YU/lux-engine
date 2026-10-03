@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/editor/desktop/ViewCommands.hpp>
 #include <lux/engine/editor/storage/ProjectPublication.hpp>
 #include <lux/engine/ui/Pane.hpp>
 namespace lux::project
@@ -32,4 +33,13 @@ namespace lux::editor::project
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };
+    [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> makeSettingsViewFactory(
+        ProjectStorage&, const lux::project::PluginManager&,
+        cxx::move_only_function<void(const PluginSelectionDraft&)>,
+        cxx::move_only_function<void()> retry, cxx::move_only_function<void()> abandon,
+        cxx::move_only_function<void()> acknowledge
+    );
+    [[nodiscard]] std::shared_ptr<commands::CommandEntry> makeSettingsCommand(
+        commands::CommandEntry::Query, desktop::ToolOpening
+    );
 }

@@ -1,5 +1,6 @@
 #include <lux/engine/editor/desktop/ViewHost.hpp>
 #include <lux/engine/editor/desktop/ReviewView.hpp>
+#include <lux/engine/editor/desktop/ViewCommands.hpp>
 #include <lux/engine/ui/Root.hpp>
 #include <lux/engine/ui/Element.hpp>
 #include <cassert>
@@ -587,6 +588,58 @@ namespace
         assert(!desktop::ReviewView::create(dispatcher, ui::PaneId{"invalid"}, question));
     }
 }
+void toolCommandFactory(object::ObjectDispatcherRef dispatcher)
+{
+    auto root = take(ui::Root::create(dispatcher));
+    desktop::ViewHost host(*root);
+    unsigned constructions{};
+    std::string type{"p10.test"}, label{"External tool"};
+    auto factory = views::ViewFactoryEntry::create(contracts::CodeLease::builtin(),
+        {views::ViewTypeIdView{type}, label, cxx::typeToken<std::monostate>()},
+        [&constructions](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
+            ++constructions;
+            return views::DetachedView{contracts::CodeLease::builtin(), std::make_unique<ui::Pane>(
+                input.dispatcher(), input.paneId(), ui::PaneTypeId{"p10.test"}, "Tool"
+            )};
+        }
+    );
+    type.clear();
+    label.assign(1000, 'x');
+    const auto factories = take(views::ViewFactorySnapshot::create({factory}));
+    auto query = [](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
+        return commands::CommandState{true};
+    };
+    auto open = [&](views::ViewTypeId id) { return desktop::showTool(host, factories, dispatcher, std::move(id)); };
+    auto entries = take(desktop::makeToolCommands(std::array{factory}, query, open));
+    assert(entries.size() == 1 && entries.front()->descriptor().label == "External tool");
+    commands::CommandRegistry registry;
+    auto snapshot = take(commands::CommandRegistrySnapshot::create(std::move(entries)));
+    assert(registry.publish(snapshot));
+    const auto handle = take(snapshot.find(commands::CommandIdView{"lux.editor.tool/p10.test"}));
+    commands::CommandInvocation input;
+    assert(registry.execute(handle, input));
+    const auto first = take(host.describeAll());
+    assert(first.size() == 1 && constructions == 1);
+    assert(registry.execute(handle, input));
+    const auto second = take(host.describeAll());
+    assert(second.size() == 1 && constructions == 1 && second.front().id == first.front().id);
+    assert(!desktop::showTool(host, factories, dispatcher, views::ViewTypeId{"absent"}));
+    assert(!desktop::makeToolCommands(std::array<std::shared_ptr<views::ViewFactoryEntry>, 1>{}, query, open));
+    auto close = desktop::makeCloseViewCommand(query, [&](views::ViewId id) -> commands::CommandResult<void> {
+        auto batch = host.prepareClose(std::span{&id, 1});
+        if (!batch)
+            return cxx::unexpected(commands::CommandFailure{commands::ECommandError::STALE_TARGET});
+        auto committed = host.commit(*batch);
+        assert(committed);
+        return {};
+    });
+    const auto closing = take(commands::CommandRegistrySnapshot::create({close}));
+    commands::CommandInvocation target{first.front().id};
+    assert(registry.execute(take(closing.at(0)), target));
+    assert(take(host.describeAll()).empty());
+    assert(!registry.execute(take(closing.at(0)), target));
+    std::puts("PASS module tool command, frozen dynamic text, actual Host reuse/adoption, close and stale target");
+}
 int main()
 {
     {
@@ -621,6 +674,7 @@ int main()
     static_assert(!std::is_copy_constructible_v<desktop::ViewHost>);
     static_assert(!std::is_move_constructible_v<desktop::ViewHost>);
     auto queue = take(object::ObjectMessageQueue::create(32));
+    toolCommandFactory(queue.dispatcherRef());
     completeViewConnections(queue.dispatcherRef());
     contentAssociations(queue.dispatcherRef());
     ownership(queue.dispatcherRef());

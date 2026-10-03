@@ -136,7 +136,7 @@ namespace lux::editor::scene
                 auto result = start(std::get<commands::SessionTarget>(input.target()));
                 if (!result)
                     return cxx::unexpected(result.error());
-                return commands::DispatchReceipt{commands::AcceptedOperation{"run", result->serial}};
+                return commands::DispatchReceipt{commands::AcceptedOperation{commands::OperationKindId{"run"}, result->serial}};
             }
         );
     }

@@ -16,16 +16,8 @@ namespace
         "Open Project in New Editor",
         "File"
     };
-    constexpr lux::editor::commands::CommandDescriptor command_lux_editor_import{
-        lux::editor::commands::CommandIdView{"lux.editor.import"},
-        "Import Assets",
-        "File"
-    };
-    constexpr lux::editor::commands::CommandDescriptor command_lux_editor_project_recent{
-        lux::editor::commands::CommandIdView{"lux.editor.project.recent"},
-        "Recent Projects",
-        "File"
-    };
+
+
 }
 namespace lux::editor::application
 {
@@ -78,22 +70,10 @@ namespace lux::editor::application
         draft.views.push_back(project::makeImportViewFactory(project_->catalogModel(), *importer_,
             [this](lux::ui::PaneId pane) { import_browse_ = std::move(pane); }
         ));
-        draft.commands.push_back(commands::CommandEntry::bind<command_lux_editor_import>(
-            contracts::CodeLease::builtin(),
+        draft.commands.push_back(project::makeImportCommand(
             [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
                 return commands::CommandState{phase_ == EApplicationPhase::RUNNING};
-            },
-            [this](const commands::CommandInvocation&) -> commands::CommandResult<commands::DispatchReceipt> {
-                auto shown = showTool(views::ViewTypeId{"lux.editor.import"});
-                if (!shown)
-                    return cxx::unexpected(commands::CommandFailure{
-                        commands::ECommandError::DOMAIN_FAILURE,
-                        shown.error().domain,
-                        shown.error().reason,
-                        shown.error().message
-                    });
-                return commands::DispatchReceipt{commands::ImmediateCompletion{}};
-            }
+            }, toolOpening()
         ));
     }
     EditorResult<void> EditorApplication::Impl::receiveProjectIntents()
@@ -181,19 +161,10 @@ namespace lux::editor::application
                 return {};
             }
         ));
-        draft.commands.push_back(commands::CommandEntry::bind<command_lux_editor_project_recent>(
-            contracts::CodeLease::builtin(),
+        draft.commands.push_back(project::makeRecentProjectsCommand(
             [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
                 return commands::CommandState{phase_ == EApplicationPhase::RUNNING};
-            },
-            [this](const commands::CommandInvocation&) -> commands::CommandResult<commands::DispatchReceipt> {
-                auto shown = showTool(views::ViewTypeId{"lux.editor.recent-projects"});
-                if (!shown)
-                    return cxx::unexpected(
-                        commands::CommandFailure{commands::ECommandError::DOMAIN_FAILURE, shown.error().domain}
-                    );
-                return commands::DispatchReceipt{commands::ImmediateCompletion{}};
-            }
+            }, toolOpening()
         ));
         draft.commands.push_back(commands::CommandEntry::create(
             contracts::CodeLease::builtin(),

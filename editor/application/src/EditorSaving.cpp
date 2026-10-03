@@ -153,7 +153,7 @@ namespace lux::editor::application
                         auto admitted = save(target, mode);
                         if (!admitted)
                             return cxx::unexpected(saveFailure(admitted.error()));
-                        return commands::DispatchReceipt{commands::AcceptedOperation{"save", admitted->value}};
+                        return commands::DispatchReceipt{commands::AcceptedOperation{commands::OperationKindId{"save"}, admitted->value}};
                     }
                     auto asked =
                         askSave(target, mode == persistence::ESaveMode::SAVE ? persistence::ESaveMode::SAVE_AS : mode);

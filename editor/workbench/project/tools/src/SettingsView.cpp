@@ -1,3 +1,4 @@
+#include <lux/engine/editor/workbench/CommandSupport.hpp>
 #include <lux/engine/editor/project/SettingsView.hpp>
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
 #include <lux/engine/project/PluginManager.hpp>
@@ -168,5 +169,63 @@ namespace lux::editor::project
             impl_->failure = result.error();
         else
             impl_->failure.reset();
+    }
+}
+
+namespace lux::editor::project
+{
+    namespace
+    {
+        constexpr views::ViewFactoryDescriptor kFactoryDescriptor{
+            views::ViewTypeIdView{"lux.editor.settings"}, "Settings", cxx::typeToken<std::monostate>()
+        };
+        constexpr commands::CommandDescriptor kCommand{
+            commands::CommandIdView{"lux.editor.settings"}, "Project Settings", "Window"
+        };
+    }
+    std::shared_ptr<views::ViewFactoryEntry> makeSettingsViewFactory(
+        ProjectStorage& project, const lux::project::PluginManager& plugins,
+        cxx::move_only_function<void(const PluginSelectionDraft&)> save,
+        cxx::move_only_function<void()> retry, cxx::move_only_function<void()> abandon,
+        cxx::move_only_function<void()> acknowledge
+    )
+    {
+        struct Receivers final
+        {
+            cxx::move_only_function<void(const PluginSelectionDraft&)> save;
+            cxx::move_only_function<void()> retry, abandon, acknowledge;
+        };
+        auto receivers = std::make_shared<Receivers>(
+            std::move(save), std::move(retry), std::move(abandon), std::move(acknowledge)
+        );
+        return views::ViewFactoryEntry::bind<kFactoryDescriptor>(contracts::CodeLease::builtin(),
+            [&project, &plugins, receivers](const views::ViewFactoryInput& input)
+                -> views::ViewFactoryResult<views::DetachedView> {
+                auto pane = std::make_unique<SettingsView>(input.dispatcher(), input.paneId(), project, plugins);
+                std::array<object::LuxObject::ConnectResult, 4> bindings{
+                    object::LuxObject::connect(pane.get(), &SettingsView::selectionRequested,
+                        [receivers](const PluginSelectionDraft& value) noexcept { receivers->save(value); }),
+                    object::LuxObject::connect(pane.get(), &SettingsView::retryRequested,
+                        [receivers]() noexcept { receivers->retry(); }),
+                    object::LuxObject::connect(pane.get(), &SettingsView::abandonRequested,
+                        [receivers]() noexcept { receivers->abandon(); }),
+                    object::LuxObject::connect(pane.get(), &SettingsView::acknowledgeRequested,
+                        [receivers]() noexcept { receivers->acknowledge(); })
+                };
+                for (const auto& binding : bindings)
+                    if (!binding)
+                        return cxx::unexpected(workbench::detail::viewFailure(binding.error()));
+                views::DetachedView result{contracts::CodeLease::builtin(), std::move(pane)};
+                for (auto& binding : bindings)
+                    result.addConnection(std::move(*binding));
+                return result;
+            }
+        );
+    }
+    std::shared_ptr<commands::CommandEntry> makeSettingsCommand(
+        commands::CommandEntry::Query query, desktop::ToolOpening open
+    )
+    {
+        return workbench::detail::bindToolCommand<kCommand, kFactoryDescriptor>(std::move(query), std::move(open));
     }
 }

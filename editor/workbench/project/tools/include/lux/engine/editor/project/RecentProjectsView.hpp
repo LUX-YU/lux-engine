@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/editor/desktop/ViewCommands.hpp>
 #include <lux/cxx/core/move_only_function.hpp>
 
 #include <lux/engine/editor/EditorError.hpp>
@@ -33,4 +34,8 @@ namespace lux::editor::project
     [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> makeRecentProjectsViewFactory(
         RecentProjects& recent, cxx::move_only_function<EditorResult<void>(const std::filesystem::path&)> open
     );
+    [[nodiscard]] std::shared_ptr<commands::CommandEntry> makeRecentProjectsCommand(
+        commands::CommandEntry::Query, desktop::ToolOpening
+    );
+
 }

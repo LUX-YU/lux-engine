@@ -126,9 +126,11 @@ namespace lux::editor::commands
     struct ImmediateCompletion final
     {};
     // An existing business identity for observation, never a second copy of its state or cancellation.
+    struct OperationKindIdTag;
+    using OperationKindId = cxx::StableNameId<OperationKindIdTag>;
     struct AcceptedOperation final
     {
-        std::string kind;
+        OperationKindId kind;
         std::uint64_t value{};
     };
     using DispatchReceipt = std::variant<ImmediateCompletion, AcceptedOperation>;

@@ -136,36 +136,22 @@ namespace lux::editor::application
         }
         return {};
     }
+    desktop::ToolOpening EditorApplication::Impl::toolOpening()
+    {
+        return [host = &desktop_->views(), catalog = &contributions_, dispatcher = messages_.dispatcherRef()]
+            (views::ViewTypeId type) -> commands::CommandResult<views::ViewId> {
+            // Executed inside the original CommandRegistry dispatch, which excludes contribution
+            // publication. Pin the current catalog without attempting a recursive read batch.
+            return desktop::showTool(*host, catalog->snapshot().views(), dispatcher, std::move(type));
+        };
+    }
     EditorResult<views::ViewId> EditorApplication::Impl::showTool(views::ViewTypeId type)
     {
-        auto existing = desktop_->views().describeAll();
-        if (!existing)
-            return applicationFailure("tool.views", existing.error());
-        for (const auto& view : *existing)
-            if (view.type == type)
-            {
-                auto shown = desktop_->views().show(view.id);
-                if (!shown)
-                    return applicationFailure("tool.show", shown.error());
-                auto focused = desktop_->views().focus(view.id);
-                if (!focused)
-                    return applicationFailure("tool.focus", focused.error());
-                return view.id;
-            }
-        // This private entry runs inside CommandRegistry::execute. That owner's dispatch already
-        // excludes compound contribution publication. Pin the immutable factory catalog; attempting
-        // to acquire a second CommandRegistry batch here would reject our own command as BUSY.
-        const auto snapshot = contributions_.snapshot();
-        views::ViewFactoryInput input{
-            messages_.dispatcherRef(),
-            lux::ui::PaneId{type.name()},
-            contracts::CodeLease::builtin(),
-            cxx::typeToken<std::monostate>(),
-            std::make_shared<const std::monostate>()
-        };
-        auto candidate = snapshot.views().prepare(type, input);
-        if (!candidate)
-            return applicationFailure("tool.factory", candidate.error());
-        return adopt(*candidate, std::string(type.name()));
+        auto result = desktop::showTool(
+            desktop_->views(), contributions_.snapshot().views(), messages_.dispatcherRef(), std::move(type)
+        );
+        if (!result)
+            return applicationFailure("tool.show", result.error());
+        return *result;
     }
 }

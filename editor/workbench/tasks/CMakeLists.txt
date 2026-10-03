@@ -1,7 +1,7 @@
 find_package(imgui REQUIRED COMPONENTS core)
 add_component(COMPONENT_NAME tasks_ui NAMESPACE lux::engine::editor STATIC SOURCE_FILES src/TaskView.cpp)
 component_include_directories(tasks_ui BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
-target_link_libraries(tasks_ui PUBLIC lux::engine::editor::view_api lux::engine::editor::editor_tasks PRIVATE lux::engine::editor::view_host imgui::core)
+target_link_libraries(tasks_ui PUBLIC lux::engine::editor::view_api lux::engine::editor::editor_tasks lux::engine::editor::view_host PRIVATE imgui::core)
 component_add_transitive_commands(tasks_ui
     "find_package(lux-engine-editor-view-api REQUIRED COMPONENTS view_api)"
     "find_package(lux-engine-editor-tasks REQUIRED COMPONENTS editor_tasks)"

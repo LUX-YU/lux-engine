@@ -5283,7 +5283,8 @@
   "view_host": {
     "direct": [
       "layout_model",
-      "view_api"
+      "view_api",
+      "editor_commands"
     ],
     "closure": {
       "Eigen3::Eigen": {
@@ -5369,6 +5370,15 @@
       },
       "ui_input": {
         "path": "modules/function/ui"
+      },
+      "editor_commands": {
+        "path": "editor/activities/commands"
+      },
+      "edit_sessions": {
+        "path": "editor/editing"
+      },
+      "edit_history": {
+        "path": "editor/editing"
       }
     },
     "native_libraries": [
@@ -5422,7 +5432,9 @@
       "lux/engine/ui/Layout.hpp",
       "unordered_map",
       "unordered_set",
-      "lux/engine/editor/sessions/SessionId.hpp"
+      "lux/engine/editor/sessions/SessionId.hpp",
+      "lux/engine/editor/desktop/ViewCommands.hpp",
+      "lux/engine/editor/workbench/CommandSupport.hpp"
     ],
     "prefixes": [],
     "test_headers": {
@@ -5454,7 +5466,12 @@
       "editor/workbench/desktop/src/WindowOutput.cpp",
       "editor/workbench/desktop/test/host.cpp",
       "editor/workbench/desktop/src/ReviewView.cpp",
-      "editor/workbench/desktop/include/lux/engine/editor/desktop/ReviewView.hpp"
+      "editor/workbench/desktop/include/lux/engine/editor/desktop/ReviewView.hpp",
+      "editor/workbench/desktop/src/ViewCommands.cpp",
+      "editor/workbench/desktop/include/lux/engine/editor/desktop/ViewCommands.hpp"
+    ],
+    "project_include_dirs": [
+      "editor/workbench/sinclude"
     ]
   },
   "desktop_shell": {
@@ -5874,7 +5891,9 @@
       "thread",
       "random",
       "uuid.h",
-      "deque"
+      "deque",
+      "lux/engine/editor/desktop/ViewCommands.hpp",
+      "lux/engine/editor/workbench/CommandSupport.hpp"
     ],
     "prefixes": [],
     "test_headers": {
@@ -6647,7 +6666,9 @@
       "lux/engine/editor/workbench/ViewFactorySupport.hpp",
       "lux/engine/editor/sessions/SessionCommands.hpp",
       "lux/engine/editor/scene/SceneSessionFactory.hpp",
-      "lux/engine/editor/commands/CommandRegistry.hpp"
+      "lux/engine/editor/commands/CommandRegistry.hpp",
+      "lux/engine/editor/desktop/ViewCommands.hpp",
+      "lux/engine/editor/workbench/CommandSupport.hpp"
     ],
     "prefixes": [],
     "test_headers": {
@@ -7205,6 +7226,9 @@
       },
       "ui_input": {
         "path": "modules/function/ui"
+      },
+      "editor_commands": {
+        "path": "editor/activities/commands"
       }
     },
     "native_libraries": [
@@ -7242,7 +7266,9 @@
       "lux/engine/editor/workbench/ViewPreparation.hpp",
       "lux/engine/editor/persistence/DerivedArtifact.hpp",
       "lux/engine/editor/views/ViewFactory.hpp",
-      "lux/engine/editor/workbench/ViewFactorySupport.hpp"
+      "lux/engine/editor/workbench/ViewFactorySupport.hpp",
+      "lux/engine/editor/desktop/ViewCommands.hpp",
+      "lux/engine/editor/workbench/CommandSupport.hpp"
     ],
     "prefixes": [],
     "test_headers": {},
@@ -7800,6 +7826,9 @@
       },
       "ui_input": {
         "path": "modules/function/ui"
+      },
+      "editor_commands": {
+        "path": "editor/activities/commands"
       }
     },
     "native_libraries": [
@@ -7844,7 +7873,9 @@
       "lux/engine/editor/persistence/DerivedArtifact.hpp",
       "lux/engine/flowforge/graph/FlowSource.hpp",
       "lux/engine/editor/views/ViewFactory.hpp",
-      "lux/engine/editor/workbench/ViewFactorySupport.hpp"
+      "lux/engine/editor/workbench/ViewFactorySupport.hpp",
+      "lux/engine/editor/desktop/ViewCommands.hpp",
+      "lux/engine/editor/workbench/CommandSupport.hpp"
     ],
     "prefixes": [],
     "test_headers": {},
@@ -7967,6 +7998,15 @@
       },
       "ui_input": {
         "path": "modules/function/ui"
+      },
+      "editor_commands": {
+        "path": "editor/activities/commands"
+      },
+      "edit_sessions": {
+        "path": "editor/editing"
+      },
+      "edit_history": {
+        "path": "editor/editing"
       }
     },
     "native_libraries": [
@@ -7985,7 +8025,9 @@
       "vector",
       "memory",
       "lux/engine/editor/workbench/ViewFactorySupport.hpp",
-      "lux/cxx/core/move_only_function.hpp"
+      "lux/cxx/core/move_only_function.hpp",
+      "lux/engine/editor/desktop/ViewCommands.hpp",
+      "lux/engine/editor/workbench/CommandSupport.hpp"
     ],
     "prefixes": [],
     "test_headers": {
@@ -8176,6 +8218,15 @@
       },
       "ui_input": {
         "path": "modules/function/ui"
+      },
+      "editor_commands": {
+        "path": "editor/activities/commands"
+      },
+      "edit_sessions": {
+        "path": "editor/editing"
+      },
+      "edit_history": {
+        "path": "editor/editing"
       }
     },
     "native_libraries": [
@@ -8198,7 +8249,9 @@
       "span",
       "variant",
       "lux/engine/editor/workbench/ViewFactorySupport.hpp",
-      "lux/cxx/core/move_only_function.hpp"
+      "lux/cxx/core/move_only_function.hpp",
+      "lux/engine/editor/desktop/ViewCommands.hpp",
+      "lux/engine/editor/workbench/CommandSupport.hpp"
     ],
     "prefixes": [],
     "test_headers": {
@@ -9285,7 +9338,9 @@
       "lux/engine/editor/scene/RunInspectorView.hpp",
       "lux/engine/editor/editing/EditExecutor.hpp",
       "lux/engine/editor/scene/SceneTools.hpp",
-      "lux/engine/editor/views/ViewFactory.hpp"
+      "lux/engine/editor/views/ViewFactory.hpp",
+      "lux/engine/editor/desktop/ViewCommands.hpp",
+      "lux/engine/editor/workbench/CommandSupport.hpp"
     ],
     "prefixes": [],
     "test_headers": {
@@ -18442,6 +18497,18 @@
       ],
       "modules/function/ui/include/lux/engine/ui/Geometry.hpp": [
         "ui_input"
+      ],
+      "editor/workbench/desktop/src/ViewCommands.cpp": [
+        "view_host"
+      ],
+      "editor/workbench/desktop/include/lux/engine/editor/desktop/ViewCommands.hpp": [
+        "view_host"
+      ],
+      "editor/workbench/sinclude/lux/engine/editor/workbench/CommandSupport.hpp": [
+        "view_host",
+        "project_ui",
+        "project_tools_ui",
+        "tasks_ui"
       ]
     },
     "native_libraries": [
@@ -18538,7 +18605,17 @@
           "flow_ui",
           "project_ui",
           "tasks_ui",
-          "project_tools_ui"
+          "project_tools_ui",
+          "view_host"
+        ]
+      },
+      "editor/workbench/sinclude/lux/engine/editor/workbench/CommandSupport.hpp": {
+        "layer": "E3",
+        "consumers": [
+          "view_host",
+          "project_ui",
+          "project_tools_ui",
+          "tasks_ui"
         ]
       }
     },

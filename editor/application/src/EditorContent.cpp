@@ -1,22 +1,7 @@
+#include <lux/engine/editor/project/ProjectView.hpp>
+#include <lux/engine/editor/tasks/TaskView.hpp>
 #include <lux/engine/editor/application/EditorApplicationImpl.hpp>
 
-namespace
-{
-    constexpr lux::editor::commands::CommandDescriptor command_lux_editor_close_view{
-        lux::editor::commands::CommandIdView{"lux.editor.close-view"},
-        "Close View",
-        "Window",
-        "Ctrl+W",
-        lux::editor::commands::ECommandScope::VIEW
-    };
-    constexpr lux::editor::commands::CommandDescriptor command_lux_editor_another_view{
-        lux::editor::commands::CommandIdView{"lux.editor.another-view"},
-        "Another View",
-        "Window",
-        "",
-        lux::editor::commands::ECommandScope::SESSION
-    };
-}
 namespace lux::editor::application
 {
     EditorResult<sessions::OpenAssetId> EditorApplication::Impl::createContent(sessions::SessionPreparation data)
@@ -38,65 +23,26 @@ namespace lux::editor::application
         const auto running = [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
             return commands::CommandState{phase_ == EApplicationPhase::RUNNING && !last_view_};
         };
-        draft.commands.push_back(commands::CommandEntry::bind<command_lux_editor_close_view>(
-            contracts::CodeLease::builtin(),
-            running,
-            [this](const commands::CommandInvocation& invocation
-            ) -> commands::CommandResult<commands::DispatchReceipt> {
-                auto result = closeView(std::get<views::ViewId>(invocation.target()));
+        draft.commands.push_back(desktop::makeCloseViewCommand(running,
+            [this](views::ViewId id) -> commands::CommandResult<void> {
+                auto result = closeView(id);
                 if (!result)
-                    return cxx::unexpected(commands::CommandFailure{
-                        commands::ECommandError::DOMAIN_FAILURE,
-                        result.error().domain,
-                        result.error().reason,
-                        result.error().message
-                    });
-                return commands::DispatchReceipt{commands::ImmediateCompletion{}};
+                    return cxx::unexpected(commands::CommandFailure{commands::ECommandError::DOMAIN_FAILURE,
+                        result.error().domain, result.error().reason, result.error().message});
+                return {};
             }
         ));
-        draft.commands.push_back(commands::CommandEntry::bind<command_lux_editor_another_view>(
-            contracts::CodeLease::builtin(),
-            running,
-            [this](const commands::CommandInvocation& invocation
-            ) -> commands::CommandResult<commands::DispatchReceipt> {
-                auto result = makeContentView(
-                    {{std::get<commands::SessionTarget>(invocation.target()).id},
-                     std::get<commands::SessionTarget>(invocation.target()).id},
-                    true,
-                    contributions_.snapshot()
-                );
+        draft.commands.push_back(desktop::makeAnotherViewCommand(running,
+            [this](commands::SessionTarget target) -> commands::CommandResult<void> {
+                auto result = makeContentView({{target.id}, target.id}, true, contributions_.snapshot());
                 if (!result)
-                    return cxx::unexpected(commands::CommandFailure{
-                        commands::ECommandError::DOMAIN_FAILURE,
-                        result.error().domain,
-                        result.error().reason,
-                        result.error().message
-                    });
-                return commands::DispatchReceipt{commands::ImmediateCompletion{}};
+                    return cxx::unexpected(commands::CommandFailure{commands::ECommandError::DOMAIN_FAILURE,
+                        result.error().domain, result.error().reason, result.error().message});
+                return {};
             }
         ));
-        for (bool project : {true, false})
-            draft.commands.push_back(commands::CommandEntry::create(
-                contracts::CodeLease::builtin(),
-                commands::CommandDescriptor{
-                    commands::CommandIdView{project ? "lux.editor.assets" : "lux.editor.tasks"},
-                    project ? "Assets" : "Background Tasks",
-                    "Window"
-                },
-                running,
-                [this,
-                 project](const commands::CommandInvocation&) -> commands::CommandResult<commands::DispatchReceipt> {
-                    auto result = showTool(views::ViewTypeId{project ? "lux.editor.project" : "lux.editor.tasks"});
-                    if (!result)
-                        return cxx::unexpected(commands::CommandFailure{
-                            commands::ECommandError::DOMAIN_FAILURE,
-                            result.error().domain,
-                            result.error().reason,
-                            result.error().message
-                        });
-                    return commands::DispatchReceipt{commands::ImmediateCompletion{}};
-                }
-            ));
+        draft.commands.push_back(project::makeAssetsCommand(running, toolOpening()));
+        draft.commands.push_back(tasks::makeTasksCommand(running, toolOpening()));
         auto creation_available =
             [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
                 return commands::CommandState{phase_ == EApplicationPhase::RUNNING && opens_.size() < 64};
@@ -115,7 +61,7 @@ namespace lux::editor::application
                     ? commands::ECommandError::BUSY : commands::ECommandError::DOMAIN_FAILURE;
                 return cxx::unexpected(commands::CommandFailure{code, error.domain, error.reason, error.message});
             }
-            return commands::DispatchReceipt{commands::AcceptedOperation{"open", opened->value}};
+            return commands::DispatchReceipt{commands::AcceptedOperation{commands::OperationKindId{"open"}, opened->value}};
         };
     }
 }

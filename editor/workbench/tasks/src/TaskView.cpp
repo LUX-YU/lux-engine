@@ -1,3 +1,4 @@
+#include <lux/engine/editor/workbench/CommandSupport.hpp>
 #include <lux/engine/editor/workbench/ViewFactorySupport.hpp>
 #include <lux/engine/editor/tasks/TaskView.hpp>
 #include <imgui.h>
@@ -96,6 +97,9 @@ namespace lux::editor::tasks
 {
     namespace
     {
+        constexpr commands::CommandDescriptor kCommand{
+            commands::CommandIdView{"lux.editor.tasks"}, "Background Tasks", "Window"
+        };
         constexpr views::ViewFactoryDescriptor kFactoryDescriptor{
             views::ViewTypeIdView{"lux.editor.tasks"}, "Tasks", cxx::typeToken<std::monostate>()
         };
@@ -108,4 +112,11 @@ namespace lux::editor::tasks
             }
         );
     }
+    std::shared_ptr<commands::CommandEntry> makeTasksCommand(
+        commands::CommandEntry::Query query, desktop::ToolOpening open
+    )
+    {
+        return workbench::detail::bindToolCommand<kCommand, kFactoryDescriptor>(std::move(query), std::move(open));
+    }
+
 }

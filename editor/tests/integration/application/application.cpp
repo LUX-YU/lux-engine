@@ -389,7 +389,7 @@ int main(int argc, char** argv)
         auto accepted = app->execute(commands::CommandId{command});
         assert(accepted);
         auto operation = std::get<commands::AcceptedOperation>(*accepted);
-        assert(operation.kind == "open");
+        assert(operation.kind == commands::OperationKindId{"open"});
         const sessions::OpenAssetId open{operation.value};
         const auto limit = std::chrono::steady_clock::now() + std::chrono::seconds(15);
         while (true)

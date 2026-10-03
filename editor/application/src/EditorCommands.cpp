@@ -110,35 +110,14 @@ namespace lux::editor::application
             append(contributed->views, activated->views);
             append(contributed->configurations, activated->configurations);
             append(contributed->components, activated->components);
-            for (const auto& entry : contributed->views)
-            {
-                const auto& descriptor = entry->descriptor();
-                if (descriptor.binding_type != cxx::typeToken<std::monostate>())
-                    continue;
-                draft.commands.push_back(commands::CommandEntry::create(
-                    contracts::CodeLease::builtin(),
-                    commands::CommandDescriptor{
-                        commands::CommandIdView{std::string("lux.editor.tool/") + std::string(descriptor.type.name())},
-                        descriptor.label,
-                        "Window"
-                    },
-                    [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
-                        return commands::CommandState{phase_ == EApplicationPhase::RUNNING};
-                    },
-                    [this, type = views::ViewTypeId{descriptor.type.name()}](const commands::CommandInvocation&)
-                        -> commands::CommandResult<commands::DispatchReceipt> {
-                        auto shown = showTool(type);
-                        if (!shown)
-                            return cxx::unexpected(commands::CommandFailure{
-                                commands::ECommandError::DOMAIN_FAILURE,
-                                shown.error().domain,
-                                shown.error().reason,
-                                shown.error().message
-                            });
-                        return commands::DispatchReceipt{commands::ImmediateCompletion{}};
-                    }
-                ));
-            }
+            auto tools = desktop::makeToolCommands(contributed->views,
+                [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
+                    return commands::CommandState{phase_ == EApplicationPhase::RUNNING};
+                }, toolOpening()
+            );
+            if (!tools)
+                return applicationFailure("extension.tool-commands", tools.error());
+            append(draft.commands, *tools);
             append(draft.code, contributed->code);
             append(draft.reflection, contributed->reflection);
             append(draft.commands, contributed->commands);

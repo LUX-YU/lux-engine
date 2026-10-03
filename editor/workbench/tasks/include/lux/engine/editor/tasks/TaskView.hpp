@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/editor/desktop/ViewCommands.hpp>
 #include <lux/cxx/core/move_only_function.hpp>
 #include <lux/engine/editor/tasks/TaskMonitor.hpp>
 #include <lux/engine/editor/views/IViewHost.hpp>
@@ -53,4 +54,8 @@ namespace lux::editor::tasks
     };
     [[nodiscard]] views::DetachedView makeTaskView(object::ObjectDispatcherRef, lux::ui::PaneId, TaskMonitor&);
     [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> makeTaskViewFactory(TaskMonitor& monitor);
+    [[nodiscard]] std::shared_ptr<commands::CommandEntry> makeTasksCommand(
+        commands::CommandEntry::Query, desktop::ToolOpening
+    );
+
 }

@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/editor/desktop/ViewCommands.hpp>
 #include <lux/cxx/core/move_only_function.hpp>
 #include <lux/engine/editor/EditorError.hpp>
 #include <lux/engine/ui/Pane.hpp>
@@ -112,4 +113,8 @@ namespace lux::editor::project
         std::unique_ptr<Impl> impl_;
     };
     [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> makeResultsViewFactory(ResultsView::Observe observe, ResultsView::Request request);
+    [[nodiscard]] std::shared_ptr<commands::CommandEntry> makeResultsCommand(
+        commands::CommandEntry::Query, desktop::ToolOpening
+    );
+
 }

@@ -1,97 +1,36 @@
 #include <lux/engine/editor/application/EditorApplicationImpl.hpp>
 #include <lux/engine/editor/project/SettingsView.hpp>
-namespace
-{
-    constexpr lux::editor::commands::CommandDescriptor command_lux_editor_settings{
-        lux::editor::commands::CommandIdView{"lux.editor.settings"},
-        "Project Settings",
-        "Window"
-    };
-}
 namespace lux::editor::application
 {
     void EditorApplication::Impl::installSettingsView(extensions::ContributionDraft& draft)
     {
-        draft.views.push_back(views::ViewFactoryEntry::create(
-            contracts::CodeLease::builtin(),
-            views::ViewFactoryDescriptor{
-                views::ViewTypeIdView{"lux.editor.settings"},
-                "Settings",
-                cxx::typeToken<std::monostate>()
+        draft.views.push_back(project::makeSettingsViewFactory(*project_, plugins_,
+            [this](const project::PluginSelectionDraft& draft) noexcept {
+                if (plugin_action_ || phase_ != EApplicationPhase::RUNNING)
+                    plugin_failure_ = EditorFailure{EEditorError::BUSY, "settings.admission"};
+                else
+                {
+                    plugin_selection_ = PluginSelection{draft.based_on, draft.desired};
+                    plugin_action_ = EPluginAction::SAVE;
+                }
             },
-            [this](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
-                std::erase_if(connections_, [](const auto& value) { return !value.connected(); });
-                if (connections_.size() > 60)
-                    return cxx::unexpected(
-                        views::ViewFactoryFailure{views::EViewFactoryError::CONSTRUCT, "settings.connections"}
-                    );
-                auto view =
-                    std::make_unique<project::SettingsView>(input.dispatcher(), input.paneId(), *project_, plugins_);
-                std::array<object::LuxObject::ConnectResult, 4> bindings{
-                    object::LuxObject::connect(
-                        view.get(),
-                        &project::SettingsView::selectionRequested,
-                        [this](const project::PluginSelectionDraft& draft) noexcept {
-                            if (plugin_action_ || phase_ != EApplicationPhase::RUNNING)
-                                plugin_failure_ = EditorFailure{EEditorError::BUSY, "settings.admission"};
-                            else
-                            {
-                                plugin_selection_ = PluginSelection{draft.based_on, draft.desired};
-                                plugin_action_ = EPluginAction::SAVE;
-                            }
-                        }
-                    ),
-                    object::LuxObject::connect(
-                        view.get(),
-                        &project::SettingsView::retryRequested,
-                        [this]() noexcept {
-                            if (!plugin_action_)
-                                plugin_action_ = EPluginAction::RETRY;
-                        }
-                    ),
-                    object::LuxObject::connect(
-                        view.get(),
-                        &project::SettingsView::abandonRequested,
-                        [this]() noexcept {
-                            if (!plugin_action_)
-                                plugin_action_ = EPluginAction::ABANDON;
-                        }
-                    ),
-                    object::LuxObject::connect(
-                        view.get(),
-                        &project::SettingsView::acknowledgeRequested,
-                        [this]() noexcept {
-                            if (!plugin_action_)
-                                plugin_action_ = EPluginAction::ACKNOWLEDGE;
-                        }
-                    )
-                };
-                for (const auto& binding : bindings)
-                    if (!binding)
-                        return cxx::unexpected(
-                            views::ViewFactoryFailure{views::EViewFactoryError::CONSTRUCT, "settings.connect"}
-                        );
-                for (auto& binding : bindings)
-                    connections_.push_back(std::move(*binding));
-                return views::DetachedView{contracts::CodeLease::builtin(), std::move(view)};
+            [this]() noexcept {
+                if (!plugin_action_)
+                    plugin_action_ = EPluginAction::RETRY;
+            },
+            [this]() noexcept {
+                if (!plugin_action_)
+                    plugin_action_ = EPluginAction::ABANDON;
+            },
+            [this]() noexcept {
+                if (!plugin_action_)
+                    plugin_action_ = EPluginAction::ACKNOWLEDGE;
             }
         ));
-        draft.commands.push_back(commands::CommandEntry::bind<command_lux_editor_settings>(
-            contracts::CodeLease::builtin(),
+        draft.commands.push_back(project::makeSettingsCommand(
             [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
                 return commands::CommandState{phase_ == EApplicationPhase::RUNNING};
-            },
-            [this](const commands::CommandInvocation&) -> commands::CommandResult<commands::DispatchReceipt> {
-                auto shown = showTool(views::ViewTypeId{"lux.editor.settings"});
-                if (!shown)
-                    return cxx::unexpected(commands::CommandFailure{
-                        commands::ECommandError::DOMAIN_FAILURE,
-                        shown.error().domain,
-                        shown.error().reason,
-                        shown.error().message
-                    });
-                return commands::DispatchReceipt{commands::ImmediateCompletion{}};
-            }
+            }, toolOpening()
         ));
     }
     EditorResult<void> EditorApplication::Impl::maintainProjectSettings()

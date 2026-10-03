@@ -1,3 +1,4 @@
+#include <lux/engine/editor/workbench/CommandSupport.hpp>
 #include <lux/engine/editor/workbench/ViewFactorySupport.hpp>
 #include <lux/engine/editor/project/ImportView.hpp>
 #include <lux/engine/ui/Element.hpp>
@@ -208,6 +209,9 @@ namespace lux::editor::project
 {
     namespace
     {
+        constexpr commands::CommandDescriptor kCommand{
+            commands::CommandIdView{"lux.editor.import"}, "Import Assets", "File"
+        };
         constexpr views::ViewFactoryDescriptor kFactoryDescriptor{
             views::ViewTypeIdView{"lux.editor.import"}, "Import Assets", cxx::typeToken<std::monostate>()
         };
@@ -233,4 +237,11 @@ namespace lux::editor::project
             }
         );
     }
+    std::shared_ptr<commands::CommandEntry> makeImportCommand(
+        commands::CommandEntry::Query query, desktop::ToolOpening open
+    )
+    {
+        return workbench::detail::bindToolCommand<kCommand, kFactoryDescriptor>(std::move(query), std::move(open));
+    }
+
 }

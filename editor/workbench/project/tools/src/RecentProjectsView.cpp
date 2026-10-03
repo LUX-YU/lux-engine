@@ -1,3 +1,4 @@
+#include <lux/engine/editor/workbench/CommandSupport.hpp>
 #include <lux/engine/editor/workbench/ViewFactorySupport.hpp>
 #include <lux/engine/editor/project/RecentProjectsView.hpp>
 #include <lux/engine/editor/storage/RecentProjects.hpp>
@@ -84,6 +85,9 @@ namespace lux::editor::project
 {
     namespace
     {
+        constexpr commands::CommandDescriptor kCommand{
+            commands::CommandIdView{"lux.editor.project.recent"}, "Recent Projects", "File"
+        };
         constexpr views::ViewFactoryDescriptor kFactoryDescriptor{
             views::ViewTypeIdView{"lux.editor.recent-projects"}, "Recent Projects", cxx::typeToken<std::monostate>()
         };
@@ -113,4 +117,11 @@ namespace lux::editor::project
             }
         );
     }
+    std::shared_ptr<commands::CommandEntry> makeRecentProjectsCommand(
+        commands::CommandEntry::Query query, desktop::ToolOpening open
+    )
+    {
+        return workbench::detail::bindToolCommand<kCommand, kFactoryDescriptor>(std::move(query), std::move(open));
+    }
+
 }

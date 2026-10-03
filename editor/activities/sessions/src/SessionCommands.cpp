@@ -64,7 +64,7 @@ namespace lux::editor::sessions
                         static_cast<std::uint64_t>(admitted.error().code),
                         admitted.error().detail
                     });
-                return DispatchReceipt{AcceptedOperation{"save", admitted->value}};
+                return DispatchReceipt{AcceptedOperation{OperationKindId{"save"}, admitted->value}};
             }
         );
     }

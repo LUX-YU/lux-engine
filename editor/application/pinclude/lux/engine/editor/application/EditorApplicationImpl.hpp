@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/editor/desktop/ViewCommands.hpp>
 #include <lux/engine/editor/application/RestoreWorkbench.hpp>
 #include <lux/engine/editor/workspace/WorkspaceChanges.hpp>
 #include <lux/engine/editor/desktop/WorkspaceActions.hpp>
@@ -276,7 +277,6 @@ namespace lux::editor::application
         EApplicationPhase phase_{EApplicationPhase::RUNNING};
         bool dispatching_{};
         input::Input input_;
-        std::vector<object::Connection> connections_;
         // Last owner: views release borrows before interactions, code, services and content.
         lux::ui::FontSource font_;
         std::unique_ptr<desktop::DesktopShell> desktop_;
@@ -356,6 +356,7 @@ namespace lux::editor::application
         [[nodiscard]] EditorResult<void> closeView(views::ViewId);
         [[nodiscard]] EditorResult<void> receiveViewClose();
         [[nodiscard]] EditorResult<views::ViewId> showTool(views::ViewTypeId);
+        [[nodiscard]] desktop::ToolOpening toolOpening();
         [[nodiscard]] EditorResult<void> settleOperations();
         void receiveModel(scene::ModelPlacement);
         void settleModels();

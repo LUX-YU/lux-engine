@@ -280,7 +280,7 @@ namespace
                 ++calls;
                 auto nested = dispatcher.drain();
                 assert(!nested && nested.error().code == ECommandError::BUSY);
-                return DispatchReceipt{AcceptedOperation{"save", 17}};
+                return DispatchReceipt{AcceptedOperation{OperationKindId{"save"}, 17}};
             }
         );
         auto snapshot = CommandRegistrySnapshot::create({record});

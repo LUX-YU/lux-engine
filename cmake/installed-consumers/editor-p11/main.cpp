@@ -49,11 +49,14 @@ namespace
         {
             return id == assetId();
         }
-        cxx::expected<asset::AssetBlob, asset::EAssetStorageError> open(const asset::AssetId& id) const override
+        cxx::expected<asset::AssetBlob, asset::EAssetStorageError>
+        open(const asset::AssetId& id, std::size_t max_bytes) const override
         {
             assert(std::this_thread::get_id() != owner_);
             if (!contains(id))
                 return cxx::unexpected(asset::EAssetStorageError::NOT_FOUND);
+            if (std::filesystem::file_size(file_) > max_bytes)
+                return cxx::unexpected(asset::EAssetStorageError::LIMIT_EXCEEDED);
             std::ifstream file(file_, std::ios::binary);
             std::string bytes{std::istreambuf_iterator<char>(file), {}};
             return asset::AssetBlob::fromShared(cxx::SharedBytes<>::copyOf(std::as_bytes(std::span{bytes})));

@@ -54,7 +54,8 @@ namespace lux::asset
         // Providers still define content immutability (e.g. a versioned LUXPAK).
         [[nodiscard]] AssetVfsView capture() const;
         [[nodiscard]] AssetId resolve(std::string_view vpath) const;
-        [[nodiscard]] lux::cxx::expected<AssetBlob, EAssetStorageError> open(AssetId id) const;
+        [[nodiscard]] lux::cxx::expected<AssetBlob, EAssetStorageError>
+        open(AssetId id, std::size_t max_bytes = SIZE_MAX) const;
         void enumerate(const std::function<void(const ProviderEntry&)>& fn) const;
         [[nodiscard]] std::optional<std::string> pathOf(AssetId id) const;
 

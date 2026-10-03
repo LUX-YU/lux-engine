@@ -52,13 +52,19 @@ namespace
         asset::AssetBlob bytes{image(std::byte{7})};
         unsigned requests{};
         async::SubmitResult submit(
-            ReadAssetImage,
+            ReadAssetImage operation,
             void* state,
             void (*complete)(void*, Outcome&&) noexcept,
             async::SubmitOptions
         ) noexcept override
         {
             ++requests;
+            if (bytes.bytes.size() > operation.max_bytes)
+            {
+                using Failure = async::TOperationFailure<asset::EAssetStorageError>;
+                complete(state, cxx::unexpected(Failure::domain(asset::EAssetStorageError::LIMIT_EXCEEDED)));
+                return {};
+            }
             complete(state, Outcome{bytes});
             return {};
         }
@@ -121,6 +127,13 @@ int main()
         }));
     };
     const auto before_failure = asset::DecodeProbe::decodes.load();
+    auto oversized = reject(loadAsset<asset::DecodeProbe>(
+        AssetReadPort{fallback}, runtime->cpu(), identity(2), asset::AssetDecodeLimits{15, 1024, 0}
+    ));
+    assert(oversized && !std::get<0>(*oversized));
+    assert(failure.code == EAssetLoadError::STORAGE_FAILURE);
+    assert(failure.storage_error == asset::EAssetStorageError::LIMIT_EXCEEDED);
+    assert(asset::DecodeProbe::decodes == before_failure);
     auto no_scheduler = reject(loadAsset<asset::DecodeProbe>(AssetReadPort{fallback}, {}, identity(2), limits));
     assert(no_scheduler && !std::get<0>(*no_scheduler));
     assert(

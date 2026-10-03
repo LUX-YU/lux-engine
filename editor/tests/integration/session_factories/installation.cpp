@@ -95,12 +95,15 @@ namespace
         {
             return pathOf(id).has_value();
         }
-        cxx::expected<asset::AssetBlob, asset::EAssetStorageError> open(const asset::AssetId& id) const override
+        cxx::expected<asset::AssetBlob, asset::EAssetStorageError>
+        open(const asset::AssetId& id, std::size_t max_bytes) const override
         {
             assert(std::this_thread::get_id() != owner_);
             const auto path = pathOf(id);
             if (!path)
                 return cxx::unexpected(asset::EAssetStorageError::NOT_FOUND);
+            if (std::filesystem::file_size(root_ / *path) > max_bytes)
+                return cxx::unexpected(asset::EAssetStorageError::LIMIT_EXCEEDED);
             return asset::AssetBlob::fromShared(cxx::SharedBytes<>::copyOf(read(root_ / *path)));
         }
         void enumerate(const std::function<void(const asset::ProviderEntry&)>& fn) const override

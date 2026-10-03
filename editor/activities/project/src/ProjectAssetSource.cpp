@@ -37,8 +37,8 @@ namespace lux::editor
             {
                 visit({entry_.id, 0, entry_.source_path});
             }
-            lux::cxx::expected<asset::AssetBlob, asset::EAssetStorageError> open(const asset::AssetId& id
-            ) const noexcept override
+            lux::cxx::expected<asset::AssetBlob, asset::EAssetStorageError>
+            open(const asset::AssetId& id, std::size_t max_bytes) const noexcept override
             {
                 using Error = asset::EAssetStorageError;
                 if (!contains(id))
@@ -62,7 +62,7 @@ namespace lux::editor
                 const auto size = std::filesystem::file_size(native_path, error);
                 if (error)
                     return lux::cxx::unexpected(Error::IO_FAILURE);
-                if (size > limit_)
+                if (size > std::min(limit_, max_bytes))
                     return lux::cxx::unexpected(Error::LIMIT_EXCEEDED);
                 auto bytes = std::make_shared<std::vector<std::byte>>(static_cast<std::size_t>(size));
                 std::ifstream file(native_path, std::ios::binary);

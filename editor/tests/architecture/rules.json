@@ -15583,6 +15583,15 @@
           "TOOLCHAIN"
         ],
         "path": "editor/tests/integration/project"
+      },
+      "asset_bounded_read_test": {
+        "layer": "TEST",
+        "role": "TEST",
+        "capabilities": [
+          "CPU",
+          "PROCESS"
+        ],
+        "path": "engine/process/asset_loading"
       }
     },
     "files": {

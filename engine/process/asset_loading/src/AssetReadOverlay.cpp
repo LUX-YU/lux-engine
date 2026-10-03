@@ -21,6 +21,12 @@ namespace lux::process::asset_loading
                 const auto found = std::ranges::find(images_, request.id, &MemoryAssetImage::id);
                 if (found == images_.end())
                     return fallback_.submit(request, state, complete, options);
+                if (found->image.bytes.size() > request.max_bytes)
+                {
+                    using Failure = lux::async::TOperationFailure<asset::EAssetStorageError>;
+                    complete(state, lux::cxx::unexpected(Failure::domain(asset::EAssetStorageError::LIMIT_EXCEEDED)));
+                    return {};
+                }
                 // This port transports bytes only. loadAsset schedules decoding on CPU.
                 auto image = found->image;
                 complete(state, Outcome{std::move(image)});

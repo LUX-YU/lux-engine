@@ -281,7 +281,8 @@ namespace lux::asset
         return result && result.value().has_value();
     }
 
-    lux::cxx::expected<AssetBlob, EAssetStorageError> PakAssetProvider::open(const AssetId& id) const
+    lux::cxx::expected<AssetBlob, EAssetStorageError>
+    PakAssetProvider::open(const AssetId& id, std::size_t max_bytes) const
     {
         const auto found = d_->findEntry(id);
         if (!found)
@@ -300,6 +301,8 @@ namespace lux::asset
             return lux::cxx::unexpected(EAssetStorageError::CORRUPT_IMAGE);
         }
 
+        if (entry.size > max_bytes)
+            return lux::cxx::unexpected(EAssetStorageError::LIMIT_EXCEEDED);
         auto bytes = std::shared_ptr<std::byte[]>(new std::byte[static_cast<std::size_t>(entry.size)]());
         std::ifstream stream(d_->pak_path, std::ios::binary);
         if (!stream)

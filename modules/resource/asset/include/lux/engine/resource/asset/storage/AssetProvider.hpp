@@ -75,7 +75,10 @@ namespace lux::asset
 
         [[nodiscard]] virtual bool contains(const AssetId& id) const = 0;
 
-        [[nodiscard]] virtual lux::cxx::expected<AssetBlob, EAssetStorageError> open(const AssetId& id) const = 0;
+        // Reject oversized records before allocating/reading their payload. The bound applies
+        // to the uncompressed image, including providers with compressed storage.
+        [[nodiscard]] virtual lux::cxx::expected<AssetBlob, EAssetStorageError>
+        open(const AssetId& id, std::size_t max_bytes = SIZE_MAX) const = 0;
 
         virtual void enumerate(const std::function<void(const ProviderEntry&)>& fn) const = 0;
 

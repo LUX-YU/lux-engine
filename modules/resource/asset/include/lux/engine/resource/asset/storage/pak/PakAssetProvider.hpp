@@ -59,7 +59,8 @@ namespace lux::asset
 
         [[nodiscard]] bool contains(const AssetId& id) const override;
 
-        [[nodiscard]] lux::cxx::expected<AssetBlob, EAssetStorageError> open(const AssetId& id) const override;
+        [[nodiscard]] lux::cxx::expected<AssetBlob, EAssetStorageError>
+        open(const AssetId& id, std::size_t max_bytes = SIZE_MAX) const override;
 
         void enumerate(const std::function<void(const ProviderEntry&)>& fn) const override;
 

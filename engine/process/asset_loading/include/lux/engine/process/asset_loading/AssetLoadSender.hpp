@@ -23,6 +23,7 @@ namespace lux::process::asset_loading
         using Error = lux::asset::EAssetStorageError;
 
         lux::asset::AssetId id;
+        std::size_t max_bytes{SIZE_MAX};
     };
 
     using AssetReadPort = lux::async::TOperationPort<ReadAssetImage>;
@@ -123,7 +124,7 @@ namespace lux::process::asset_loading
                     : receiver_(std::move(receiver)), id_(id), limits_(limits), stop_(stop),
                       read_state_(stdexec::connect(
                           stdexec::continues_on(
-                              lux::process::portSender(std::move(read), ReadAssetImage{id}),
+                              lux::process::portSender(std::move(read), ReadAssetImage{id, limits.max_image_bytes}),
                               std::move(cpu)
                           ),
                           ReadReceiver{this, stdexec::get_env(receiver_)}

@@ -90,7 +90,7 @@ namespace lux::asset
         return {};
     }
 
-    lux::cxx::expected<AssetBlob, EAssetStorageError> AssetVfsView::open(AssetId id) const
+    lux::cxx::expected<AssetBlob, EAssetStorageError> AssetVfsView::open(AssetId id, std::size_t max_bytes) const
     {
         const auto table = snapshot(state_);
         if (id.isNull() || !table)
@@ -102,7 +102,7 @@ namespace lux::asset
         {
             if (mount.provider->contains(id))
             {
-                return mount.provider->open(id);
+                return mount.provider->open(id, max_bytes);
             }
         }
         return lux::cxx::unexpected(EAssetStorageError::NOT_FOUND);

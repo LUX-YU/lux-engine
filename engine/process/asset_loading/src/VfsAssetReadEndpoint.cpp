@@ -130,9 +130,9 @@ namespace lux::process::asset_loading
         auto request = std::make_shared<Impl::Request>(Impl::Request{shared_from_this(), completion_state, complete});
         const auto started = impl_->tasks.submit(
             {"Read asset image", "asset", correlatedTask(options.correlation)},
-            [scheduler = impl_->blocking, endpoint = request->endpoint, id = operation.id](TaskReporter) noexcept {
-                return stdexec::then(stdexec::schedule(scheduler), [endpoint, id]() noexcept {
-                    return endpoint->impl_->vfs.open(id);
+            [scheduler = impl_->blocking, endpoint = request->endpoint, operation](TaskReporter) noexcept {
+                return stdexec::then(stdexec::schedule(scheduler), [endpoint, operation]() noexcept {
+                    return endpoint->impl_->vfs.open(operation.id, operation.max_bytes);
                 });
             },
             [request](auto&& result) noexcept {

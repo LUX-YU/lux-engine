@@ -102,51 +102,29 @@ namespace lux::editor::application
             if (*action == EPluginAction::SAVE)
             {
                 auto input = std::exchange(plugin_selection_, {});
-                if (phase_ != EApplicationPhase::RUNNING || plugin_publication_)
+                if (phase_ != EApplicationPhase::RUNNING)
                     result = cxx::unexpected(EditorFailure{EEditorError::BUSY, "settings.publication"});
-                else if (!input || input->based_on != project_->manifest().plugins)
-                    result = cxx::unexpected(EditorFailure{
-                        EEditorError::STALE_REQUEST,
-                        "settings.source",
-                        0,
-                        "Project selection changed. Revert the draft before trying again."
-                    });
+                else if (input)
+                    result = plugin_saving_->request(input->based_on, std::move(input->desired));
                 else
-                {
-                    ProjectUpdate update;
-                    update.plugins = std::move(input->desired);
-                    auto publication = project_->preparePublication(update);
-                    if (!publication)
-                        result = cxx::unexpected(publication.error());
-                    else
-                        plugin_publication_ = std::make_unique<ProjectPublicationOperation>(
-                            *project_,
-                            engine_->execution(),
-                            writes_,
-                            files_,
-                            save_execution_,
-                            std::move(*publication)
-                        );
-                }
+                    result = cxx::unexpected(EditorFailure{EEditorError::STALE_REQUEST, "settings.input"});
             }
-            else if (plugin_publication_)
+            else
             {
                 if (*action == EPluginAction::RETRY)
-                    result = plugin_publication_->retry();
+                    result = plugin_saving_->retry();
                 else if (*action == EPluginAction::ABANDON)
-                    plugin_publication_->abandon();
-                else if (!plugin_publication_->terminal())
-                    result = cxx::unexpected(EditorFailure{EEditorError::BUSY, "settings.acknowledge"});
+                    result = plugin_saving_->abandon();
                 else
-                    plugin_publication_.reset();
+                    result = plugin_saving_->acknowledge();
             }
             if (!result)
                 plugin_failure_ = result.error();
             else
                 plugin_failure_.reset();
         }
-        if (plugin_publication_)
-            plugin_publication_->update();
+        if (auto updated = plugin_saving_->update(); !updated)
+            return updated;
         if (!desktop_)
             return {};
         auto all = desktop_->views().describeAll();
@@ -160,8 +138,8 @@ namespace lux::editor::application
                 std::optional<VPublicationStatus> status;
                 if (plugin_failure_)
                     status = *plugin_failure_;
-                else if (plugin_publication_)
-                    status = plugin_publication_->status();
+                else if (const auto* publication = plugin_saving_->status())
+                    status = *publication;
                 static_cast<project::SettingsView&>(pane).setPublicationStatus(std::move(status));
             };
             auto received = desktop_->views().withView(info.id, receive);

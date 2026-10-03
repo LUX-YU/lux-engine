@@ -1,6 +1,5 @@
 #include <lux/engine/editor/application/EditorApplicationImpl.hpp>
 #include <algorithm>
-#include <random>
 
 namespace
 {
@@ -26,76 +25,7 @@ namespace lux::editor::application
             return {commands::ECommandError::DOMAIN_FAILURE, error.domain, error.reason, error.message};
         }
     }
-    EditorResult<EditorApplication::Impl::PreparedSave> EditorApplication::Impl::prepareSave(
-        commands::SessionTarget target,
-        persistence::ESaveMode mode,
-        std::string destination
-    )
-    {
-        auto info = sessions_.describe(target.id);
-        if (!info)
-            return applicationFailure("save.session", info.error());
-        if (!target.based_on || *target.based_on != info->current)
-            return applicationFailure("save.source", sessions::ESessionError::STALE_CONTENT);
-        if (save_reports_.size() >= 128)
-            return cxx::unexpected(EditorFailure{EEditorError::CAPACITY, "save.reports"});
-        const auto factory = opening_.factory(target.id);
-        if (!factory || !(*factory)->descriptor().source)
-            return cxx::unexpected(EditorFailure{EEditorError::MISSING_PROVIDER, "save.project.kind"});
-        const auto& source = *(*factory)->descriptor().source;
-        persistence::SaveRequest request{target.id, mode};
-        ProjectAssetEntry entry;
-        if (mode == persistence::ESaveMode::SAVE)
-        {
-            if (!info->binding)
-                return applicationFailure("save.unbound", persistence::EPersistenceError::UNBOUND);
-            const auto* existing = project_->asset(info->binding->asset);
-            if (existing)
-                entry = *existing;
-            else
-            {
-                // Save As may have published the source while its catalog publication failed.
-                // Recover only from the original physical binding, not a guessed current asset.
-                const auto relative = std::filesystem::u8path(info->binding->location)
-                                          .lexically_relative(project_->root())
-                                          .generic_string();
-                if (!validProjectPath(relative))
-                    return cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "save.binding.path"});
-                auto physical = files_.resolve(relative);
-                if (!physical)
-                    return applicationFailure("save.binding.path", physical.error());
-                if (physical->key.value != info->binding->location)
-                    return cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "save.binding.identity"});
-                entry = {info->binding->asset, source.canonical_name, relative, {}, {}, {}, {}, source.version};
-                entry.mount_path = relative;
-            }
-        }
-        else
-        {
-            if (!validProjectPath(destination))
-                return cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "save.destination"});
-            auto resolved = files_.resolve(destination);
-            if (!resolved)
-                return applicationFailure("save.destination", resolved.error());
-            if (resolved->expected_version != "missing")
-                return applicationFailure("save.destination.exists", persistence::EPersistenceError::CONFLICT);
-            // Naming another registered source is not permission to overwrite its identity.
-            for (const auto& other : project_->manifest().assets)
-            {
-                auto physical = files_.resolve(other.source_path);
-                if (!physical)
-                    return applicationFailure("save.catalog.target", physical.error());
-                if (physical->key == resolved->key)
-                    return applicationFailure("save.destination.owned", persistence::EPersistenceError::CONFLICT);
-            }
-            std::mt19937 random{std::random_device{}()};
-            request.asset = asset::AssetId{uuids::uuid_random_generator{random}()};
-            request.destination = std::move(*resolved);
-            entry = {request.asset, source.canonical_name, std::move(destination), {}, {}, {}, {}, source.version};
-            entry.mount_path = entry.source_path;
-        }
-        return PreparedSave{std::move(request), std::move(entry)};
-    }
+
     EditorResult<persistence::SaveId> EditorApplication::Impl::save(
         commands::SessionTarget target,
         persistence::ESaveMode mode,
@@ -104,16 +34,9 @@ namespace lux::editor::application
     {
         if (auto ended = cancelContentPreview(target.id); !ended)
             return cxx::unexpected(ended.error());
-        auto prepared = prepareSave(target, mode, std::move(destination));
-        if (!prepared)
-            return cxx::unexpected(prepared.error());
-        auto accepted = saves_.requestSave(std::move(prepared->request));
-        if (!accepted)
-            return applicationFailure("save.admission", accepted.error());
-        save_reports_.push_back({*accepted, std::move(prepared->asset)});
-        if (std::ranges::find(pending_saves_, *accepted) == pending_saves_.end())
-            pending_saves_.push_back(*accepted);
-        return *accepted;
+        if (!target.based_on)
+            return applicationFailure("save.source", sessions::ESessionError::STALE_CONTENT);
+        return content_saving_->request(*target.based_on, mode, std::move(destination));
     }
     EditorResult<void> EditorApplication::Impl::cancelContentPreview(sessions::SessionId id)
     {
@@ -210,166 +133,7 @@ namespace lux::editor::application
         save_question_.reset();
         return {};
     }
-    EditorResult<void> EditorApplication::Impl::rememberSave(persistence::SaveId id)
-    {
-        if (std::ranges::find(save_reports_, id, &SavePresentation::id) != save_reports_.end())
-            return {};
-        auto status = saves_.status(id);
-        if (!status)
-            return applicationFailure("save.status", status.error());
-        // Resolve from the immutable physical destination (including a reviewed unbound close),
-        // so closing or rebinding the Session cannot relabel a late disk fact.
-        auto remember = [&](const auto& entries) -> EditorResult<bool> {
-            for (const auto& entry : entries)
-            {
-                auto target = files_.resolve(entry.source_path);
-                if (!target)
-                    return applicationFailure("save.catalog.target", target.error());
-                if (target->key == status->target.key)
-                {
-                    save_reports_.push_back({id, entry});
-                    return true;
-                }
-            }
-            return false;
-        };
-        auto existing = remember(project_->manifest().assets);
-        if (!existing)
-            return cxx::unexpected(existing.error());
-        if (*existing)
-            return {};
-        auto closing = remember(close_destinations_);
-        if (!closing)
-            return cxx::unexpected(closing.error());
-        if (*closing)
-            return {};
-        return cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "save.catalog.source"});
-    }
-    EditorResult<void> EditorApplication::Impl::settleSaves()
-    {
-        for (auto iterator = pending_saves_.begin(); iterator != pending_saves_.end();)
-        {
-            const auto id = *iterator;
-            auto remembered = rememberSave(id);
-            if (!remembered)
-                return remembered;
-            auto& report = *std::ranges::find(save_reports_, id, &SavePresentation::id);
-            const bool close_borrows = closing_ && std::ranges::any_of(closing_->saves(), [id](const auto& entry) {
-                                           return entry.save == id;
-                                       });
-            if (report.result)
-            {
-                if (close_borrows)
-                {
-                    ++iterator;
-                    continue;
-                }
-                auto acknowledged = saves_.acknowledge(id);
-                if (!acknowledged)
-                    return applicationFailure("save.acknowledge", acknowledged.error());
-                iterator = pending_saves_.erase(iterator);
-                continue;
-            }
-            auto status = saves_.status(id);
-            if (!status)
-                return applicationFailure("save.status", status.error());
-            if (status->stage != persistence::ESaveStage::TERMINAL)
-            {
-                ++iterator;
-                continue;
-            }
-            const auto* published =
-                status->outcome ? std::get_if<persistence::CommitReceipt>(&status->outcome->publication) : nullptr;
-            if (published && !report.failure)
-            {
-                if (!report.catalog)
-                {
-                    // Preserve any newer compiled package information while applying this source publication.
-                    if (const auto* existing = project_->asset(report.asset.id))
-                        report.asset = *existing;
-                    report.asset.source_digest = published->version;
-                    ProjectUpdate update;
-                    update.assets.push_back(report.asset);
-                    auto candidate = project_->preparePublication(update);
-                    if (!candidate)
-                    {
-                        if (candidate.error().code == EEditorError::BUSY)
-                        {
-                            ++iterator;
-                            continue;
-                        }
-                        report.failure = candidate.error();
-                    }
-                    else
-                    {
-                        auto target = files_.resolve(candidate->plan().manifestPath());
-                        if (!target)
-                            report.failure = applicationFailure("catalog.target", target.error()).value();
-                        else
-                        {
-                            target->expected_version = candidate->plan().beforeManifestDigest();
-                            auto ticket = persistence::publishEncodedArtifact(
-                                writes_, std::move(*target),
-                                persistence::EncodedArtifact{candidate->plan().manifestBytes()}
-                            );
-                            if (!ticket)
-                                report.failure = applicationFailure("catalog.publish", ticket.error()).value();
-                            else
-                            {
-                                report.catalog = std::move(*candidate);
-                                report.catalog_ticket = *ticket;
-                            }
-                        }
-                    }
-                }
-                if (report.catalog_ticket)
-                {
-                    auto written = writes_.status(*report.catalog_ticket);
-                    if (!written)
-                        return applicationFailure("catalog.status", written.error());
-                    // Unknown is still a live lane and still owns the Project reservation.
-                    if (written->stage != persistence::EWriteStage::TERMINAL)
-                    {
-                        ++iterator;
-                        continue;
-                    }
-                    if (auto* receipt = std::get_if<persistence::CommitReceipt>(&*written->outcome))
-                    {
-                        ProjectPublicationReceipt adopted{
-                            report.catalog->plan().manifest(),
-                            receipt->version,
-                            1,
-                            {},
-                            {{report.asset.source_path, published->version}},
-                            {},
-                            report.catalog->sharePlan()
-                        };
-                        auto result = project_->adoptPublication(*report.catalog, adopted);
-                        if (!result)
-                            report.failure = std::move(result.error());
-                    }
-                    else
-                        report.failure = applicationFailure("catalog.publication", *written->outcome).value();
-                    auto acknowledged = writes_.acknowledge(*report.catalog_ticket);
-                    if (!acknowledged)
-                        return applicationFailure("catalog.acknowledge", acknowledged.error());
-                    report.catalog_ticket.reset();
-                    report.catalog.reset();
-                }
-            }
-            report.result = status->outcome;
-            if (close_borrows)
-            {
-                ++iterator;
-                continue;
-            }
-            auto acknowledged = saves_.acknowledge(id);
-            if (!acknowledged)
-                return applicationFailure("save.acknowledge", acknowledged.error());
-            iterator = pending_saves_.erase(iterator);
-        }
-        return {};
-    }
+
     void EditorApplication::Impl::installSaveCommands(extensions::ContributionDraft& draft)
     {
         draft.commands.push_back(commands::CommandEntry::bind<command_lux_editor_reload>(
@@ -437,18 +201,14 @@ namespace lux::editor::application
                 auto ids = sessions_.snapshotIds();
                 if (!ids)
                     return cxx::unexpected(saveFailure(applicationFailure("save-all.contents", ids.error()).value()));
-                if (save_reports_.size() + ids->size() > 128)
+                if (!content_saving_->hasCapacity(ids->size()))
                     return cxx::unexpected(commands::CommandFailure{commands::ECommandError::BUSY, "save-all.results"});
                 for (auto id : *ids)
                     if (auto ended = cancelContentPreview(id); !ended)
                         return cxx::unexpected(saveFailure(ended.error()));
-                auto operation = sessions::SaveAllOperation::begin(sessions_, saves_);
+                auto operation = content_saving_->saveAll();
                 if (!operation)
-                    return cxx::unexpected(saveFailure(applicationFailure("save-all", operation.error()).value()));
-                for (const auto& entry : operation->entries())
-                    if (entry.save)
-                        pending_saves_.push_back(*entry.save);
-                save_all_ = std::move(*operation);
+                    return cxx::unexpected(saveFailure(operation.error()));
                 return commands::DispatchReceipt{commands::ImmediateCompletion{}};
             }
         ));

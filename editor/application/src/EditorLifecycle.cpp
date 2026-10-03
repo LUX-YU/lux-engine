@@ -12,7 +12,7 @@ namespace lux::editor::application
         auto ids = sessions_.snapshotIds();
         if (!ids)
             return applicationFailure("exit.sessions", ids.error());
-        if (save_reports_.size() + ids->size() > 128)
+        if (!content_saving_->hasCapacity(ids->size()))
             return cxx::unexpected(EditorFailure{EEditorError::CAPACITY, "exit.save-results"});
         std::vector<sessions::SessionCloseDecision> decisions;
         decisions.reserve(ids->size());
@@ -75,8 +75,8 @@ namespace lux::editor::application
                     return applicationFailure("close.save.source", info.error());
                 if (!info->binding)
                 {
-                    auto destination = prepareSave(
-                        {review_content_->session, *review_content_},
+                    auto destination = content_saving_->prepare(
+                        *review_content_,
                         persistence::ESaveMode::SAVE_AS,
                         response->text
                     );
@@ -120,11 +120,10 @@ namespace lux::editor::application
                 close_run_decisions_.clear();
                 if (closing_)
                     for (const auto& saved : closing_->saves())
-                        if (saved.save && std::ranges::find(pending_saves_, *saved.save) == pending_saves_.end())
+                        if (saved.save)
                         {
-                            if (auto remembered = rememberSave(*saved.save); !remembered)
+                            if (auto remembered = content_saving_->track(*saved.save, close_destinations_); !remembered)
                                 return remembered;
-                            pending_saves_.push_back(*saved.save);
                         }
                 closing_.reset();
                 exit_failure_.reset();
@@ -230,14 +229,14 @@ namespace lux::editor::application
         // Resolve every already accepted publication before the irreversible window handoff.
         // Unknown needs an explicit user reconciliation while the Results view is still available.
         const auto ready_save = [&](persistence::SaveId id) -> EditorResult<bool> {
-            auto report = std::ranges::find(save_reports_, id, &SavePresentation::id);
-            if (report != save_reports_.end() && report->result)
+            auto report = std::ranges::find(content_saving_->reports(), id, &ProjectSaveReport::id);
+            if (report != content_saving_->reports().end() && report->result)
                 return true;
             auto status = saves_.status(id);
             if (!status)
                 return applicationFailure("close.save.status", status.error());
-            const auto ticket =
-                report != save_reports_.end() && report->catalog_ticket ? *report->catalog_ticket : status->ticket;
+            const bool has_catalog_ticket = report != content_saving_->reports().end() && report->catalog_ticket;
+            const auto ticket = has_catalog_ticket ? *report->catalog_ticket : status->ticket;
             auto written = writes_.status(ticket);
             if (!written)
                 return applicationFailure("close.publication.status", written.error());
@@ -249,7 +248,7 @@ namespace lux::editor::application
                     "Cancel closing and reconcile the retained publication in Operation Results."
                 });
             return status->stage == persistence::ESaveStage::TERMINAL &&
-                   (report == save_reports_.end() || report->result.has_value());
+                   (report == content_saving_->reports().end() || report->result.has_value());
         };
         for (const auto& artifact : artifacts_)
         {
@@ -271,7 +270,7 @@ namespace lux::editor::application
             }
             return {}; // Keep the desktop available until accepted artifact and catalog publications settle.
         }
-        for (auto id : pending_saves_)
+        for (auto id : content_saving_->pending())
         {
             auto ready = ready_save(id);
             if (!ready)
@@ -315,9 +314,9 @@ namespace lux::editor::application
                 if (std::holds_alternative<assets::ModelImportPending>(*state))
                     return {}; // Keep import controls until accepted publication is settled.
             }
-        if (close_application_ && plugin_publication_ && !plugin_publication_->terminal())
+        if (close_application_ && !plugin_saving_->settled())
         {
-            if (const auto* failure = std::get_if<EditorFailure>(&plugin_publication_->status()))
+            if (const auto* failure = std::get_if<EditorFailure>(plugin_saving_->status()))
                 return cxx::unexpected(*failure);
             return {};
         }
@@ -334,10 +333,8 @@ namespace lux::editor::application
         for (const auto& entry : closing_->saves())
             if (entry.save)
             {
-                if (auto remembered = rememberSave(*entry.save); !remembered)
+                if (auto remembered = content_saving_->track(*entry.save, close_destinations_); !remembered)
                     return remembered;
-                if (std::ranges::find(pending_saves_, *entry.save) == pending_saves_.end())
-                    pending_saves_.push_back(*entry.save);
             }
         if (!permits)
         {
@@ -348,16 +345,12 @@ namespace lux::editor::application
         for (const auto& entry : closing_->saves())
             if (entry.save)
             {
-                const auto report = std::ranges::find(save_reports_, *entry.save, &SavePresentation::id);
-                if (report == save_reports_.end() || !report->result)
+                const auto report = std::ranges::find(content_saving_->reports(), *entry.save, &ProjectSaveReport::id);
+                if (report == content_saving_->reports().end() || !report->result)
                     return {}; // Keep the UI until this source's catalog publication is settled too.
             }
         if (close_application_)
             phase_ = EApplicationPhase::COMMITTING_EXIT;
-        for (const auto& save : closing_->saves())
-            if (save.save)
-                if (auto remembered = rememberSave(*save.save); !remembered)
-                    return remembered;
         auto close_content = [&] {
             // No intervening business callback: Store validates the entire permit set, then reclaims.
             const auto closed = sessions_.close(*permits);
@@ -367,12 +360,6 @@ namespace lux::editor::application
         auto committed = desktop_->views().commitClose(*closing_views, close_content);
         if (!committed)
             return applicationFailure("exit.views.commit", committed.error());
-        for (const auto& save : closing_->saves())
-            if (save.save)
-            {
-                if (std::ranges::find(pending_saves_, *save.save) == pending_saves_.end())
-                    pending_saves_.push_back(*save.save);
-            }
         closing_.reset();
         for (auto& run : run_presentations_)
             std::erase_if(run.views, [&](auto view) { return std::ranges::find(ids, view) != ids.end(); });
@@ -420,13 +407,12 @@ namespace lux::editor::application
             receive(applicationFailure("material.release", received.error()));
         if (auto received = flow_compilation_.collectReleased(); !received)
             receive(applicationFailure("flow.release", received.error()));
-        receive(settleSaves());
+        receive(content_saving_->update(closing_ ? closing_->saves() : std::span<const sessions::SaveAllEntry>{}));
         receive(settleArtifacts());
         receive(settleWorkspace());
         const bool operations_settled =
             importer_->closeStatus().state == assets::EModelImportCloseState::CLOSED && material_compilation_.empty() &&
-            flow_compilation_.empty() && pending_saves_.empty() && opening_.settled() && !recent_task_ &&
-            !recent_result_ && !recent_ticket_ && !project_launch_ &&
+            flow_compilation_.empty() && content_saving_->settled() && opening_.settled() && recent_projects_->settled() && !project_launch_ &&
             std::ranges::all_of(workspace_publications_, [](const auto& value) { return value.result.has_value(); }) &&
             std::ranges::all_of(artifacts_, [](const auto& value) { return value.terminal(); }) &&
             std::ranges::none_of(run_presentations_, [](const auto& run) { return bool(run.preparing) || run.run; });
@@ -490,7 +476,7 @@ namespace lux::editor::application
         (void)messages_.dispatchPending();
         if (auto result = std::exchange(project_launch_result_, {}))
             receive(std::move(*result));
-        maintainRecentProjects();
+        receive(recent_projects_->update(phase_ == EApplicationPhase::RUNNING));
         importer_->update();
         if (project_creation_)
             project_creation_->update();
@@ -526,10 +512,6 @@ namespace lux::editor::application
             {
                 if (!completion.result)
                     receive(applicationFailure("application.command", completion.result.error()));
-                else if (const auto* admitted = std::get_if<commands::AcceptedOperation>(&*completion.result);
-                         admitted && admitted->kind == "save")
-                    if (std::ranges::find(pending_saves_, persistence::SaveId{admitted->value}) == pending_saves_.end())
-                        pending_saves_.push_back({admitted->value});
             }
         }
         if (result_intent_)

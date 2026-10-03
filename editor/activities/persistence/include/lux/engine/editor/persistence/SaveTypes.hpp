@@ -22,6 +22,9 @@ namespace lux::editor::persistence
         ESaveMode mode{ESaveMode::SAVE};
         std::optional<WriteTarget> destination;
         asset::AssetId asset;
+        // Absent captures the current source at admission. Explicit review/draft requests retain
+        // their source through extensible target resolution and the final source describe boundary.
+        std::optional<sessions::ContentStamp> based_on;
     };
     enum class EAdoption : std::uint8_t
     {

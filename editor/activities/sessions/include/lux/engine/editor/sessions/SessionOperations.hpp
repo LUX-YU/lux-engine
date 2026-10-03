@@ -1,5 +1,6 @@
 #pragma once
 #include <lux/engine/editor/sessions/SessionInstallation.hpp>
+#include <lux/cxx/core/function_ref.hpp>
 #include <span>
 
 namespace lux::editor::sessions
@@ -17,6 +18,10 @@ namespace lux::editor::sessions
     {
     public:
         [[nodiscard]] static SessionFactoryResult<SaveAllOperation> begin(SessionStore&, persistence::SaveService&);
+        // Synchronously admit each dirty member of the fixed set through its actual save owner.
+        // The callback is borrowed only for begin(); successful IDs remain owned by that receiver.
+        using Request = cxx::function_ref<SessionFactoryResult<persistence::SaveId>(ContentStamp)>;
+        [[nodiscard]] static SessionFactoryResult<SaveAllOperation> begin(SessionStore&, Request);
         SaveAllOperation(const SaveAllOperation&) = delete;
         SaveAllOperation& operator=(const SaveAllOperation&) = delete;
         SaveAllOperation(SaveAllOperation&&) noexcept = default;

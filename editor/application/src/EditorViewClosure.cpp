@@ -14,7 +14,7 @@ namespace lux::editor::application
     {
         if (phase_ != EApplicationPhase::RUNNING || last_view_ || save_question_ || reload_question_)
             return cxx::unexpected(EditorFailure{EEditorError::BUSY, "close.review"});
-        if (save_reports_.size() >= 128)
+        if (!content_saving_->hasCapacity(1))
             return cxx::unexpected(EditorFailure{EEditorError::CAPACITY, "close.save-results"});
         auto current = sessions_.describe(expected.session);
         if (!current)

@@ -65,14 +65,7 @@ namespace lux::editor::application
         auto handle = impl_->commands_.snapshot().find(id.view());
         if (!handle)
             return cxx::unexpected(handle.error());
-        auto result = impl_->commands_.execute(std::move(*handle), invocation);
-        if (result)
-            if (const auto* operation = std::get_if<commands::AcceptedOperation>(&*result);
-                operation && operation->kind == "save")
-                if (std::ranges::find(impl_->pending_saves_, persistence::SaveId{operation->value}) ==
-                    impl_->pending_saves_.end())
-                    impl_->pending_saves_.push_back({operation->value});
-        return result;
+        return impl_->commands_.execute(std::move(*handle), invocation);
     }
     EditorResult<void> EditorApplication::Impl::installContributions()
     {

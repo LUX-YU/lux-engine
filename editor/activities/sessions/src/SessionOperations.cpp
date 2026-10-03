@@ -32,6 +32,16 @@ namespace lux::editor::sessions
     }
     SessionFactoryResult<SaveAllOperation> SaveAllOperation::begin(SessionStore& store, persistence::SaveService& saves)
     {
+        auto request = [&saves](ContentStamp content) -> SessionFactoryResult<persistence::SaveId> {
+            auto saved = saves.requestSave({content.session});
+            if (!saved)
+                return cxx::unexpected(factoryFailure(saved.error()));
+            return *saved;
+        };
+        return begin(store, Request{request});
+    }
+    SessionFactoryResult<SaveAllOperation> SaveAllOperation::begin(SessionStore& store, Request request)
+    {
         auto ids = store.snapshotIds();
         if (!ids)
             return cxx::unexpected(factoryFailure(ids.error()));
@@ -47,11 +57,11 @@ namespace lux::editor::sessions
                 entry.already_clean = true;
             else
             {
-                auto requested = saves.requestSave({id});
+                auto requested = request(current->current);
                 if (requested)
                     entry.save = *requested;
                 else
-                    entry.failure = factoryFailure(requested.error());
+                    entry.failure = requested.error();
             }
             operation.entries_.push_back(std::move(entry));
         }
@@ -113,6 +123,7 @@ namespace lux::editor::sessions
                     continue;
                 }
                 persistence::SaveRequest request{decision.content.session};
+                request.based_on = decision.content;
                 if (decision.destination)
                 {
                     request.mode = persistence::ESaveMode::SAVE_AS;

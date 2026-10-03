@@ -2,6 +2,9 @@
 #include <lux/engine/editor/project/ResultsView.hpp>
 #include <lux/engine/editor/project/WorkspaceView.hpp>
 #include <lux/engine/editor/storage/ArtifactPublicationOperation.hpp>
+#include <lux/engine/editor/storage/ProjectContentSaving.hpp>
+#include <lux/engine/editor/storage/ProjectPluginSelection.hpp>
+#include <lux/engine/editor/storage/RecentProjects.hpp>
 #include <lux/engine/editor/application/ProjectCreation.hpp>
 #include <lux/engine/editor/application/EditorApplication.hpp>
 #include <lux/engine/EngineContext.hpp>
@@ -94,26 +97,14 @@ namespace lux::editor::application
                 return failure.has_value() || (operation && operation->terminal());
             }
         };
-        struct SavePresentation final
-        {
-            persistence::SaveId id;
-            ProjectAssetEntry asset;
-            std::optional<persistence::SaveOutcome> result;
-            std::optional<PreparedProjectPublication> catalog;
-            std::optional<persistence::WriteTicket> catalog_ticket;
-            std::optional<EditorFailure> failure;
-        };
+
         struct SaveQuestion final
         {
             commands::SessionTarget target;
             persistence::ESaveMode mode;
             views::ViewId view;
         };
-        struct PreparedSave final
-        {
-            persistence::SaveRequest request;
-            ProjectAssetEntry asset;
-        };
+
         struct ReloadPresentation final
         {
             sessions::ContentStamp source;
@@ -236,19 +227,7 @@ namespace lux::editor::application
         std::optional<lux::ui::PaneId> import_browse_;
         bool project_open_requested_{};
         std::optional<std::filesystem::path> project_launch_intent_;
-        struct RecentProjects final
-        {
-            std::vector<std::filesystem::path> paths;
-            persistence::WriteTarget target;
-            persistence::EncodedArtifact encoded;
-        };
-        bool recent_requested_{true}, recent_reconcile_{};
-        std::optional<process::TaskId> recent_task_;
-        std::optional<EditorResult<RecentProjects>> recent_result_;
-        std::vector<std::filesystem::path> recent_projects_;
-        std::optional<persistence::WriteTicket> recent_ticket_;
-        std::optional<persistence::VPublicationOutcome> recent_publication_;
-        std::optional<EditorFailure> recent_failure_;
+        std::unique_ptr<RecentProjects> recent_projects_;
         std::optional<process::TaskId> project_launch_;
         std::optional<EditorResult<void>> project_launch_result_;
         struct PluginSelection final
@@ -264,9 +243,10 @@ namespace lux::editor::application
         };
         std::optional<PluginSelection> plugin_selection_;
         std::optional<EPluginAction> plugin_action_;
-        std::unique_ptr<ProjectPublicationOperation> plugin_publication_;
+        std::unique_ptr<ProjectPluginSelection> plugin_saving_;
         std::optional<EditorFailure> plugin_failure_;
         sessions::SessionOpening opening_;
+        std::unique_ptr<ProjectContentSaving> content_saving_;
         scene::ScenePresentationHub projections_;
         scene::RunStore runs_;
         scene::RunController run_controller_{runs_};
@@ -292,8 +272,6 @@ namespace lux::editor::application
         std::vector<AssetReference> open_intents_;
         std::vector<ModelPresentation> model_placements_;
         std::uint64_t next_model_{1};
-        std::vector<persistence::SaveId> pending_saves_;
-        std::vector<SavePresentation> save_reports_;
         std::vector<ArtifactPresentation> artifacts_;
         std::uint64_t next_artifact_{1};
         std::optional<SaveQuestion> save_question_;
@@ -302,7 +280,6 @@ namespace lux::editor::application
         std::optional<project::VResultIntent> result_intent_;
         std::optional<EditorFailure> result_failure_;
         std::optional<EditorFailure> maintenance_failure_;
-        std::optional<sessions::SaveAllOperation> save_all_;
         std::vector<sessions::SessionCloseDecision> close_decisions_;
         std::vector<ProjectAssetEntry> close_destinations_;
         std::unique_ptr<sessions::CloseSessionsOperation> closing_;
@@ -354,7 +331,6 @@ namespace lux::editor::application
         void installSettingsView(extensions::ContributionDraft&);
         [[nodiscard]] EditorResult<void> maintainProjectSettings();
         [[nodiscard]] EditorResult<void> receiveProjectIntents();
-        void maintainRecentProjects();
         void installRecentProjects(extensions::ContributionDraft&);
         [[nodiscard]] EditorResult<void> executeWorkspaceIntent(const project::VWorkspaceIntent&);
         [[nodiscard]] EditorResult<void> settleWorkspace();
@@ -365,11 +341,7 @@ namespace lux::editor::application
         [[nodiscard]] EditorResult<sessions::OpenAssetId>
         openCaptured(AssetReference, const extensions::ContributionSnapshot&);
         [[nodiscard]] EditorResult<void> receiveResultIntent();
-        [[nodiscard]] EditorResult<PreparedSave> prepareSave(
-            commands::SessionTarget,
-            persistence::ESaveMode,
-            std::string destination
-        );
+
         [[nodiscard]] EditorResult<persistence::SaveId> save(
             commands::SessionTarget,
             persistence::ESaveMode,
@@ -377,10 +349,8 @@ namespace lux::editor::application
         );
         [[nodiscard]] EditorResult<void> askSave(commands::SessionTarget, persistence::ESaveMode);
         [[nodiscard]] EditorResult<void> receiveSaveAnswer();
-        [[nodiscard]] EditorResult<void> settleSaves();
         void receiveArtifact(persistence::DerivedArtifact);
         [[nodiscard]] EditorResult<void> settleArtifacts();
-        [[nodiscard]] EditorResult<void> rememberSave(persistence::SaveId);
         [[nodiscard]] EditorResult<void> cancelContentPreview(sessions::SessionId);
         [[nodiscard]] EditorResult<void> reload(commands::SessionTarget);
         [[nodiscard]] EditorResult<void> askReload(commands::SessionTarget);

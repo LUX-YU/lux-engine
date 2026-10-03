@@ -41,12 +41,7 @@ namespace lux::editor::application
             }
             else if constexpr (std::same_as<Action, AcknowledgeSave>)
             {
-                std::erase_if(save_reports_, [&](const auto& report) {
-                    const bool is_target = report.id == action.target;
-                    const bool is_complete = report.result.has_value();
-                    const bool is_pending = std::ranges::find(pending_saves_, report.id) != pending_saves_.end();
-                    return is_target && is_complete && !is_pending;
-                });
+                return content_saving_->acknowledge(action.target);
             }
             else if constexpr (std::same_as<Action, CancelSave>)
             {
@@ -118,7 +113,7 @@ namespace lux::editor::application
             }
             else if constexpr (std::same_as<Action, AcknowledgeSaveAll>)
             {
-                save_all_.reset(); // The accepted SaveIds remain in their original operation/report owners.
+                return content_saving_->acknowledgeSaveAll();
             }
             else
                 static_assert(sizeof(Action) == 0, "Every result action requires an explicit receiver");
@@ -224,7 +219,7 @@ namespace lux::editor::application
                 to.actions.push_back({"Acknowledge publication", AcknowledgeArtifact{report.id}});
         }
         snapshot.sections.push_back({"Save results"});
-        for (const auto& report : save_reports_)
+        for (const auto& report : content_saving_->reports())
         {
             auto& to = row(std::to_string(report.id.value));
             to.messages.push_back(report.asset.source_path);
@@ -254,10 +249,10 @@ namespace lux::editor::application
                         return cxx::unexpected(observed.error());
             }
         }
-        if (save_all_)
+        if (content_saving_->hasSaveAll())
         {
             snapshot.sections.push_back({"Save All fixed set"});
-            for (const auto& entry : save_all_->entries())
+            for (const auto& entry : content_saving_->saveAllEntries())
             {
                 auto& to = row(session_key(entry.session));
                 to.messages.push_back("Content " + to.key + ": " +

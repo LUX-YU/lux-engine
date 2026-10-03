@@ -163,7 +163,8 @@ int main(int argc, char** argv)
         assert(output);
     }
     EditorApplicationConfig config{file, argv[1], "Application qualification", 640, 480, true};
-    config.user_directory = root;
+    config.user_directory = root.parent_path() / (root.filename().string() + "-user");
+    std::filesystem::create_directories(*config.user_directory);
     config.font = root / "missing-font.ttf";
     auto missing_font = EditorApplication::create(config);
     assert(!missing_font && missing_font.error().domain == "editor.font.read");
@@ -254,38 +255,37 @@ int main(int argc, char** argv)
     assert(impl.desktop_ && impl.desktop_->commands());
     assert(app->execute(commands::CommandId{"lux.editor.project.recent"}));
     const auto recent_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
-    while (!impl.recent_publication_)
+    while (!impl.recent_projects_->publication())
     {
         assert(app->update());
         assert(std::chrono::steady_clock::now() < recent_deadline);
         std::this_thread::yield();
     }
-    assert(std::holds_alternative<persistence::CommitReceipt>(*impl.recent_publication_));
-    assert(impl.recent_projects_.size() == 1 && impl.recent_projects_.front() == config.project_file);
+    assert(std::holds_alternative<persistence::CommitReceipt>(*impl.recent_projects_->publication()));
+    assert(impl.recent_projects_->entries().size() == 1 && impl.recent_projects_->entries().front() == config.project_file);
     const auto recent_file = *config.user_directory / "lux/editor/recent-projects.toml";
     const auto recent_before = storage::readPublicationFile(recent_file, 64 * 1024);
     assert(recent_before && !recent_before->empty());
     const std::string bad_recent = "version = 9\nprojects = []\n";
     assert(storage::writePublicationFile(recent_file, std::as_bytes(std::span{bad_recent})));
-    impl.recent_requested_ = true;
-    while (!impl.recent_failure_)
+    assert(impl.recent_projects_->refresh());
+    while (!impl.recent_projects_->failure())
     {
         assert(app->update());
         assert(std::chrono::steady_clock::now() < recent_deadline);
     }
-    assert(impl.recent_failure_->domain == "recent.format" && impl.recent_projects_.size() == 1);
+    assert(impl.recent_projects_->failure()->domain == "recent.format" && impl.recent_projects_->entries().size() == 1);
     const auto refused = storage::readPublicationFile(recent_file, 64 * 1024);
     assert(refused && std::string(reinterpret_cast<const char*>(refused->data()), refused->size()) == bad_recent);
     assert(storage::writePublicationFile(recent_file, *recent_before));
-    impl.recent_requested_ = true;
-    while (impl.recent_failure_ || impl.recent_requested_ || impl.recent_task_ || impl.recent_result_ ||
-           impl.recent_ticket_)
+    assert(impl.recent_projects_->refresh());
+    do
     {
         assert(app->update());
         assert(std::chrono::steady_clock::now() < recent_deadline);
-    }
+    } while (impl.recent_projects_->failure() || !impl.recent_projects_->settled());
     assert(
-        impl.recent_projects_.size() == 1 &&
+        impl.recent_projects_->entries().size() == 1 &&
         !impl.files_.resolve((root.parent_path() / "outside-user-root.txt").generic_string())
     );
     std::cout << "Recent projects: real legacy-format read, one coordinator publication, malformed input preserves "
@@ -435,7 +435,7 @@ int main(int argc, char** argv)
         assert(question.answer(desktop::EReviewChoice::SAVE));
     };
     assert(impl.desktop_->views().withView(impl.save_question_->view, invalid_path));
-    assert(app->update() && impl.save_question_ && impl.pending_saves_.empty());
+    assert(app->update() && impl.save_question_ && impl.content_saving_->pending().empty());
     assert(impl.save_question_->target.based_on == original_save_target.based_on);
     auto choose_source = [&](ui::Pane& pane) {
         auto& question = static_cast<desktop::ReviewView&>(pane);
@@ -445,7 +445,7 @@ int main(int argc, char** argv)
     assert(impl.desktop_->views().withView(impl.save_question_->view, choose_source));
     assert(app->update());
     const auto save_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
-    while (!impl.pending_saves_.empty())
+    while (!impl.content_saving_->pending().empty())
     {
         assert(std::chrono::steady_clock::now() < save_deadline);
         auto frame = app->update();
@@ -454,7 +454,7 @@ int main(int argc, char** argv)
         assert(frame);
         std::this_thread::yield();
     }
-    assert(!impl.save_reports_.empty() && !impl.save_reports_.back().failure && impl.save_reports_.back().result);
+    assert(!impl.content_saving_->reports().empty() && !impl.content_saving_->reports().back().failure && impl.content_saving_->reports().back().result);
     const auto saved_material = impl.sessions_.describe(material_id);
     assert(saved_material && !saved_material->dirty && saved_material->current == save_material_stamp);
     assert(saved_material->binding && impl.project_->asset(saved_material->binding->asset));
@@ -607,7 +607,7 @@ int main(int argc, char** argv)
     };
     assert(impl.desktop_->views().withView(impl.save_question_->view, export_path));
     assert(app->update());
-    while (!impl.pending_saves_.empty())
+    while (!impl.content_saving_->pending().empty())
     {
         assert(std::chrono::steady_clock::now() < save_deadline);
         assert(app->update());
@@ -716,7 +716,7 @@ int main(int argc, char** argv)
         assert(app->update());
         assert(!impl.exit_failure_);
         std::this_thread::yield();
-    } while (app->phase() != EApplicationPhase::RUNNING || !impl.pending_saves_.empty());
+    } while (app->phase() != EApplicationPhase::RUNNING || !impl.content_saving_->pending().empty());
     assert(std::filesystem::exists(impl.project_->root() / "Content/Beginner/Flow.source"));
     assert(!impl.sessions_.describe(flow_id) && !impl.desktop_->views().describe(flow_view_id));
     assert(impl.sessions_.describe(material_id)->current == material_before);
@@ -759,13 +759,13 @@ int main(int argc, char** argv)
         ));
         auto extended = extensions::ContributionSnapshot::prepare(std::move(draft));
         assert(extended && impl.contributions_.enqueue(*extended) && impl.contributions_.applyPending());
-        for (const auto& report : impl.save_reports_)
+        for (const auto& report : impl.content_saving_->reports())
             assert(report.result && !report.failure);
         const auto& assets = impl.project_->manifest().assets;
         const auto flow_asset = std::ranges::find(assets, std::string{"Content/Beginner/Flow.source"},
                                                 &ProjectAssetEntry::source_path);
         if (flow_asset == assets.end())
-            for (const auto& report : impl.save_reports_)
+            for (const auto& report : impl.content_saving_->reports())
                 std::cerr << "save source=" << report.asset.source_path << " type=" << report.asset.source_type
                           << " failure=" << (report.failure ? report.failure->domain + ":" + report.failure->message : "none")
                           << " result=" << bool(report.result) << '\n';
@@ -999,14 +999,14 @@ int main(int argc, char** argv)
     auto failed_frame = app->update();
     assert(!failed_frame && failed_frame.error().domain == "scene.execution");
     auto failed_save =
-        std::ranges::find(impl.save_reports_, *saving, &std::remove_reference_t<decltype(impl)>::SavePresentation::id);
-    assert(failed_save != impl.save_reports_.end() && failed_save->catalog_ticket);
+        std::ranges::find(impl.content_saving_->reports(), *saving, &ProjectSaveReport::id);
+    assert(failed_save != impl.content_saving_->reports().end() && failed_save->catalog_ticket);
     using Failures = std::remove_reference_t<decltype(impl)>::SceneFailures;
     auto retained = std::any_cast<std::shared_ptr<const Failures>>(failed_frame.error().cause);
     assert(retained && retained->values.size() == 1);
     const auto failed_instance = retained->values.front().scene;
     auto retired_failure = failing->retire();
-    while (!retired_failure.complete() || std::ranges::find(impl.pending_saves_, *saving) != impl.pending_saves_.end())
+    while (!retired_failure.complete() || std::ranges::find(impl.content_saving_->pending(), *saving) != impl.content_saving_->pending().end())
     {
         assert(std::chrono::steady_clock::now() < saving_deadline);
         auto updated = app->update();
@@ -1206,13 +1206,13 @@ int main(int argc, char** argv)
         assert(static_cast<lux::editor::project::SettingsView&>(pane).requestSave({}));
     };
     assert(impl.desktop_->views().withView(settings_view, choose_plugins));
-    assert(app->update() && impl.plugin_publication_);
+    assert(app->update() && impl.plugin_saving_->status());
     assert(app->closeView(settings_view));
-    while (!impl.plugin_publication_->terminal())
+    while (!impl.plugin_saving_->settled())
     {
         assert(std::chrono::steady_clock::now() < import_deadline);
         assert(app->update());
-        assert(!std::holds_alternative<EditorFailure>(impl.plugin_publication_->status()));
+        assert(!std::holds_alternative<EditorFailure>(*impl.plugin_saving_->status()));
         std::this_thread::yield();
     }
     assert(impl.project_->manifest().plugins.empty() && impl.plugins_.libraries().size() == active_plugins);
@@ -1256,13 +1256,13 @@ int main(int argc, char** argv)
     const auto exit_completed = impl.engine_->execution().taskInfo(exit_task);
     assert(exit_completed && exit_completed->finished && exit_completed->state == process::ETaskState::SUCCEEDED);
     const auto exit_saved = std::ranges::find(
-        impl.save_reports_,
+        impl.content_saving_->reports(),
         *exit_save,
-        &std::remove_reference_t<decltype(impl)>::SavePresentation::id
+        &ProjectSaveReport::id
     );
-    assert(exit_saved != impl.save_reports_.end() && exit_saved->result);
+    assert(exit_saved != impl.content_saving_->reports().end() && exit_saved->result);
     assert(std::holds_alternative<persistence::CommitReceipt>(exit_saved->result->publication));
-    assert(impl.pending_saves_.empty() && impl.sessions_.size() == 0);
+    assert(impl.content_saving_->pending().empty() && impl.sessions_.size() == 0);
     std::cout << "X12-09: accepted encode/compile, independent Run and GPU drain; source publication retained\n";
     std::cout << "Application: formal service assembly, frames, and asynchronous exit drain complete\n";
     // Reopen the actual Builder-created project rather than inventing a catalog entry.

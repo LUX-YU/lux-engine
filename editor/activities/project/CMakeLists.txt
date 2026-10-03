@@ -2,12 +2,17 @@ generate_visibility_header(ENABLE_MACRO_NAME LUX_EDITOR_STORAGE_LIBRARY
     PUBLIC_MACRO_NAME LUX_EDITOR_STORAGE_PUBLIC DISABLE_DLL_MACRO_NAME LUX_EDITOR_STORAGE_DLL_DISABLE
     GENERATE_FILE_PATH lux/engine/editor/storage/visibility.h)
 add_component(COMPONENT_NAME editor_storage NAMESPACE lux::engine::editor STATIC
-    SOURCE_FILES src/ProjectStorage.cpp src/PreparedProjectOpen.cpp src/ProjectAssetSource.cpp src/ProjectPublication.cpp src/ProjectCreation.cpp src/ProjectPlugins.cpp src/ProjectPublicationOperation.cpp src/ArtifactPublicationOperation.cpp)
+    SOURCE_FILES src/ProjectStorage.cpp src/ProjectContentSaving.cpp src/ProjectPluginSelection.cpp src/RecentProjects.cpp
+        src/PreparedProjectOpen.cpp src/ProjectAssetSource.cpp src/ProjectPublication.cpp src/ProjectCreation.cpp
+        src/ProjectPlugins.cpp src/ProjectPublicationOperation.cpp src/ArtifactPublicationOperation.cpp)
 component_include_directories(editor_storage
     BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR}
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude ${CMAKE_CURRENT_SOURCE_DIR}/sinclude
         ${PROJECT_SOURCE_DIR}/editor/activities/sinclude
     INSTALL_TIME include)
+target_link_libraries(editor_storage PUBLIC lux::engine::editor::session_execution)
+component_add_transitive_commands(editor_storage
+    "find_package(lux-engine-editor-session-factories REQUIRED COMPONENTS session_execution)")
 target_compile_definitions(editor_storage PUBLIC LUX_EDITOR_STORAGE_DLL_DISABLE)
 find_package(tomlplusplus CONFIG REQUIRED)
 target_compile_definitions(editor_storage PRIVATE TOML_HEADER_ONLY=1 TOML_EXCEPTIONS=0)
@@ -107,6 +112,9 @@ install(FILES
     DESTINATION include/lux/engine/editor/assets COMPONENT lux_engine_editor_assets)
 install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/storage/ArtifactPublicationOperation.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/storage/ProjectContentSaving.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/storage/RecentProjects.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/storage/ProjectPluginSelection.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/storage/ProjectCreation.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/storage/ProjectPlugins.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/storage/PreparedProjectOpen.hpp

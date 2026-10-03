@@ -353,6 +353,8 @@ namespace lux::editor::persistence
             return lux::cxx::unexpected(info.error());
         if (info->content.session != request.session)
             return failed(EPersistenceError::STALE_SOURCE);
+        if (request.based_on && *request.based_on != info->content)
+            return failed(EPersistenceError::STALE_SOURCE);
         auto target = request.mode == ESaveMode::SAVE ? info->target : request.destination;
         if (!target)
             return failed(EPersistenceError::UNBOUND);

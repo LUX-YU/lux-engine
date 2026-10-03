@@ -18241,6 +18241,30 @@
       ],
       "editor/tests/integration/project/model_recipe.cpp": [
         "editor_model_recipe"
+      ],
+      "editor/activities/project/include/lux/engine/editor/storage/ProjectContentSaving.hpp": [
+        "editor_storage"
+      ],
+      "editor/activities/project/src/ProjectContentSaving.cpp": [
+        "editor_storage"
+      ],
+      "editor/activities/project/include/lux/engine/editor/storage/ProjectPluginSelection.hpp": [
+        "editor_storage"
+      ],
+      "editor/activities/project/src/ProjectPluginSelection.cpp": [
+        "editor_storage"
+      ],
+      "editor/activities/project/include/lux/engine/editor/storage/RecentProjects.hpp": [
+        "editor_storage"
+      ],
+      "editor/activities/project/src/RecentProjects.cpp": [
+        "editor_storage"
+      ],
+      "editor/workbench/project/tools/include/lux/engine/editor/project/RecentProjectsView.hpp": [
+        "project_tools_ui"
+      ],
+      "editor/workbench/project/tools/src/RecentProjectsView.cpp": [
+        "project_tools_ui"
       ]
     },
     "native_libraries": [

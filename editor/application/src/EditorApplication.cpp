@@ -124,6 +124,15 @@ namespace lux::editor::application
         if (!project)
             return cxx::unexpected(project.error());
         project_ = std::move(*project);
+        content_saving_ = std::make_unique<ProjectContentSaving>(
+            sessions_, opening_, saves_, *project_, writes_, files_
+        );
+        plugin_saving_ = std::make_unique<ProjectPluginSelection>(
+            *project_, engine_->execution(), writes_, files_, save_execution_
+        );
+        recent_projects_ = std::make_unique<RecentProjects>(
+            *config_.user_directory, config_.project_file, engine_->execution(), writes_, files_, save_execution_
+        );
         importer_ =
             std::make_unique<assets::ModelImporter>(*project_, engine_->execution(), writes_, files_, save_execution_);
         for (const auto& runtime : plugins_.libraries())

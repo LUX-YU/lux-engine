@@ -24,7 +24,8 @@ namespace lux::scene::script
                     result = (result << 8U) | std::to_integer<std::uint8_t>(bytes[word * 4 + i]);
                 return result;
             },
-            [](void* context, lux::asset::AssetId id, Completion completion) noexcept -> lux::script::ScriptAbilityStartResult {
+            [](void* context, lux::asset::AssetId id, Completion completion) noexcept
+                -> lux::script::ScriptAbilityStartResult {
                 auto result = scope(context).readAsset(id, std::move(completion));
                 if (!result)
                     return lux::cxx::unexpected(lux::script::ScriptAbilityOperationError{
@@ -34,7 +35,9 @@ namespace lux::scene::script
             },
             [](void*, ScriptAssetReadOutcome value) noexcept { return value.succeeded(); },
             [](void*, ScriptAssetReadOutcome value) noexcept { return value.handle(); },
-            [](void*, ScriptAssetReadOutcome value) noexcept { return static_cast<std::uint32_t>(value.errorDomain()); },
+            [](void*, ScriptAssetReadOutcome value) noexcept {
+                return static_cast<std::uint32_t>(value.errorDomain());
+            },
             [](void*, ScriptAssetReadOutcome value) noexcept { return value.errorCode(); },
             [](void* context, ScriptAssetHandle handle) noexcept {
                 auto result = scope(context).describeAsset(handle);
@@ -47,7 +50,8 @@ namespace lux::scene::script
                 if (word >= 2U) return std::uint32_t{};
                 return static_cast<std::uint32_t>(value.value.image_bytes >> (word == 0U ? 32U : 0U));
             },
-            [](void* context, ScriptAssetHandle handle, std::uint32_t high, std::uint32_t low, std::uint32_t count) noexcept {
+            [](void* context, ScriptAssetHandle handle, std::uint32_t high, std::uint32_t low,
+               std::uint32_t count) noexcept {
                 auto result = scope(context).copyAssetBytes(handle, (std::uint64_t{high} << 32U) | low, count);
                 if (!result) return ScriptAssetBytes{{}, static_cast<std::uint32_t>(result.error())};
                 return ScriptAssetBytes{*result, 0};

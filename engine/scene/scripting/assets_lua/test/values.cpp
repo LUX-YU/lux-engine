@@ -2,6 +2,7 @@
 #include <lux/cxx/container/ScopeId.hpp>
 #include <lua.hpp>
 #include <cassert>
+#include <bit>
 #include <cstdio>
 #include <cstring>
 
@@ -34,6 +35,11 @@ int main()
     cxx::ScopeIdSource<ScriptAssetScopeTag> domains;
     const ScriptAssetHandle handle{domains.acquire(), {0xfedcba98U, 0xfffffffeU}};
     roundTrip(state, handle);
+    // Transport qualification only: this arbitrary full-width domain grants no native scope authority.
+    using Domain = cxx::ScopeId<ScriptAssetScopeTag>;
+    const ScriptAssetHandle wide{std::bit_cast<Domain>(std::uint64_t{0xfedcba9876543210ULL}),
+        {0xfedcba98U, 0xfffffffeU}};
+    roundTrip(state, wide);
     roundTrip(state, ScriptAssetReadOutcome::success(handle));
     roundTrip(state, ScriptAssetReadOutcome::failure(EScriptAssetFailureDomain::STORAGE, 0xfffffffeU));
     const ScriptAssetInspection inspected{{id, {}, 0xffffffffffffffffULL, false, true}, 0};

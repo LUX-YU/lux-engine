@@ -2694,12 +2694,15 @@ namespace lux::simulation::script
                                           operation.canonical_name != value.canonical_name ||
                                           operation.size != value.size || operation.alignment != value.alignment ||
                                           operation.frame_bytes > 65536 - frame_bytes;
+                    const bool has_stable_lifetime =
+                        value.lifetime == lux::script::EScriptAbilityValueLifetime::OWNED_VALUE ||
+                        value.lifetime == lux::script::EScriptAbilityValueLifetime::STABLE_ID;
                     const bool invalid_async = method.kind == lux::script::EScriptApiMethodKind::ASYNC_OPERATION &&
                                                (operation.push_resume == nullptr ||
                                                 value.pass != lux::semantic::EValuePass::VALUE ||
-                                                (value.lifetime != lux::script::EScriptAbilityValueLifetime::OWNED_VALUE &&
-                                                 value.lifetime != lux::script::EScriptAbilityValueLifetime::STABLE_ID));
-                    if (mismatch || invalid_async)
+                                                !has_stable_lifetime);
+                    const bool is_invalid_projection = mismatch || invalid_async;
+                    if (is_invalid_projection)
                         return lux::cxx::unexpected(ELuaScriptBindingBackendError::UNSUPPORTED_ABILITY_TYPE);
                     frame_bytes += operation.frame_bytes;
                     if (operation.alignment > (65536 - frame_bytes) / 2)

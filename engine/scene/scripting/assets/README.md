@@ -34,6 +34,9 @@ IO. A completion accepted before coroutine resumption remains covered by scope r
 Typed payloads retain their code owner until after the final asset deleter. `withAsset<T>` takes
 a temporary owning read reference before invoking a nonthrowing callback, so reentrant release
 cannot destroy its current value or code. The callback cannot retain the borrowed reference.
+The shared control block for that payload is allocated by the native library, not by the caller's
+template instantiation in a plugin. Its final code release can therefore unload a plugin only after
+the plugin value deleter has returned; no plugin control-block function remains on the return path.
 
 ## Bounds
 
@@ -48,5 +51,32 @@ temporary codec allocations are separate from retained-result accounting; this i
 Typed results have a known type, but no promised raw-image size (`has_image == false`). Byte chunks
 are bounded to 256 bytes with checked range arithmetic. Typed access never reinterprets a raw image.
 
-The native tests exercise actual Process, asset codec and C++ ScriptSystem backend lifetimes.
-They do not establish Lua projection, PLAYER composition or GPU qualification.
+## Composition and supported script access
+
+`AssetAbility` exposes asynchronous raw image reads, bounded byte queries and explicit release.
+`SkeletonAbility` is an independent example of typed CPU decoding and bone queries; it uses the
+same instance scope. Neither capability compiles assets, traverses project directories, opens
+native paths or controls a renderer. Importing a native capability does not load Lua or Editor.
+
+The optional `scene_script_assets_lua` target registers the two generated projections and bounded
+opaque value codecs. Full IDs never pass through floating-point Lua numbers. The original
+ScriptAbility invocation, awaitable, LuaBoundary and Delay remain responsible for suspension and
+resumption. Userdata transports trivial values only, never an asset, owner, callback or component
+address. Expected read/decode failures are inspectable outcomes and do not fault a coroutine.
+
+`ScriptRuntimeHost` explicitly borrows backend/component descriptors and artifact/world resolvers,
+and owns a captured read port. Those borrowed objects and their code must outlive every installed
+instance. An empty port grants no asset capability. Independent typed capabilities are provided by
+factory functions, without changing a host asset enum or the generic VM. `ScriptRuntimeSystem`
+constructs the native provider, receives completions in maintenance while paused, and runs script
+rules only through the original Simulation graph. Shutdown retires bindings before joining tasks.
+
+Editor Run can retain this same host through `RunEnvironment::scripts`; the shared host does not
+extend the lifetime of its borrowed spans or resolver contexts. The composition owner supplies
+those lifetimes. Run reads its frozen source and the engine capability; it never borrows the live
+author model or an Editor project service. No automatic Editor-specific script discovery is added.
+
+`cmake/installed-consumers/editor-ec2` qualifies native reads without Lua, generated Lua execution,
+and SDK-only generation/packaging of the same asset script into an actual Scene. Tests separately
+cover native capacities, transport errors, foreign IDs, stop timing, and a dynamically loaded
+nontrivial codec/deleter. These tests are not GPU or desktop-input qualification.

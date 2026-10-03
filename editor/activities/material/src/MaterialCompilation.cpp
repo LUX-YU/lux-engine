@@ -5,9 +5,12 @@ namespace lux::editor::material
 {
     struct detail::MaterialCompilation final
     {
-        static std::shared_ptr<const CompiledMaterial> finish(MaterialCompileInputKey key,
-            std::shared_ptr<const lux::material::MaterialSource> source, std::shared_ptr<const asset::MaterialAsset> artifact,
-            lux::cxx::SharedBytes<> bytes)
+        static std::shared_ptr<const CompiledMaterial> finish(
+            MaterialCompileInputKey key,
+            std::shared_ptr<const lux::material::MaterialSource> source,
+            std::shared_ptr<const asset::MaterialAsset> artifact,
+            lux::cxx::SharedBytes<> bytes
+        )
         {
             return std::shared_ptr<const CompiledMaterial>(
                 new CompiledMaterial(key, std::move(source), std::move(artifact), std::move(bytes))

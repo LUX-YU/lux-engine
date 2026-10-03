@@ -18710,6 +18710,55 @@
       ],
       "modules/resource/identity/": [
         "identity"
+      ],
+      "engine/scene/scripting/assets/": [
+        "scene_script_assets"
+      ],
+      "engine/scene/scripting/assets_lua/": [
+        "scene_script_assets_lua"
+      ],
+      "engine/scene/scripting/skeleton/": [
+        "scene_script_skeleton"
+      ]
+    },
+    "script_boundaries": {
+      "header_owners": [
+        "scene_script_assets",
+        "scene_script_skeleton",
+        "scene_script_assets_lua",
+        "scene_script_runtime",
+        "script_core",
+        "script_lua",
+        "simulation_scripting_core",
+        "simulation_script_lua"
+      ],
+      "native_owners": [
+        "scene_script_assets",
+        "scene_script_skeleton",
+        "scene_script_runtime"
+      ],
+      "language_providers": [
+        "script_lua",
+        "simulation_script_lua",
+        "LuxLua55::Runtime",
+        "scene_script_assets_lua"
+      ],
+      "generic_owners": [
+        "script_core",
+        "script_lua",
+        "simulation_scripting_core",
+        "simulation_script_lua"
+      ],
+      "concrete_providers": [
+        "scene_script_skeleton",
+        "scene_script_assets",
+        "toolchain_material_compiler"
+      ],
+      "projection_owners": [
+        "scene_script_assets_lua"
+      ],
+      "data_headers": [
+        "engine/scene/scripting/assets/include/lux/engine/scene/scripting/ScriptAssetResult.hpp"
       ]
     }
   }

@@ -6,6 +6,7 @@
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include <lux/engine/simulation/scripting/cpp_static/CppStaticScriptBridge.hpp>
 
+#include <algorithm>
 #include <cassert>
 #include <cstdio>
 

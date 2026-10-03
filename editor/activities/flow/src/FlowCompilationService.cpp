@@ -42,9 +42,12 @@ namespace lux::editor::flowforge
     }
     struct detail::FlowCompilation final
     {
-        static std::shared_ptr<const CompiledFlow> finish(FlowCompileKey key,
-            std::shared_ptr<const lux::flowforge::FlowSource> source, std::shared_ptr<const lux::script::ScriptArtifactAsset> artifact,
-            lux::cxx::SharedBytes<> bytes)
+        static std::shared_ptr<const CompiledFlow> finish(
+            FlowCompileKey key,
+            std::shared_ptr<const lux::flowforge::FlowSource> source,
+            std::shared_ptr<const lux::script::ScriptArtifactAsset> artifact,
+            lux::cxx::SharedBytes<> bytes
+        )
         {
             return std::shared_ptr<const CompiledFlow>(
                 new CompiledFlow(key, std::move(source), std::move(artifact), std::move(bytes))

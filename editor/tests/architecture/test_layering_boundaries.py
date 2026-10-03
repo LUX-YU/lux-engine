@@ -19,6 +19,7 @@ def main():
     parser.add_argument("--cmake", default="cmake")
     parser.add_argument("--p11", action="store_true")
     parser.add_argument("--p12", action="store_true")
+    parser.add_argument("--ec2", action="store_true")
     args = parser.parse_args()
     repo = args.source.resolve()
     base_rules = json.loads((repo / "editor/tests/architecture/rules.json").read_text())
@@ -64,7 +65,23 @@ def main():
             ("N12-04", "editor_tasks", "tasks_ui", "task_monitor_ui_dependency", "link"),
             ("N12-05", "world_storage", "editor_contracts", "product_reverse_dependency", "link"),
         ]
-    folder_name = "p12-boundaries" if args.p12 else ("p11-boundaries" if args.p11 else "layering-boundaries")
+    if args.ec2:
+        assert not args.p11 and not args.p12
+        cases = [
+            ("EC2-01-direct", "scene_script_assets", "editor_storage", "product_reverse_dependency", "link"),
+            ("EC2-01-indirect", "scene_script_assets", "editor_persistence", "product_reverse_dependency", "transitive"),
+            ("EC2-02", "scene_script_runtime", "edit_sessions", "product_reverse_dependency", "include"),
+            ("EC2-03", "scene_execution", "scene_ui", "activity_workbench_dependency", "include"),
+            ("EC2-04", "scene_script_assets", "edit_sessions", "product_reverse_dependency", "include"),
+            ("EC2-04-lua", "scene_script_assets", "script_lua", "native_script_language_dependency", "lua-header"),
+            ("EC2-05", "script_lua", "scene_script_skeleton", "generic_script_domain_dependency", "link"),
+            ("EC2-05-core", "script_core", "toolchain_material_compiler", "generic_script_domain_dependency", "link"),
+            ("EC2-06", "scene_script_assets", "script_lua", "native_script_language_dependency", "link"),
+            ("EC2-07", "scene_script_assets_lua", "scene_script_assets", "script_projection_execution_dependency", "source"),
+            ("EC2-08", "project_tools_ui", "editor_bootstrap", "workbench_application_dependency", "include"),
+            ("EC2-09", "scene_script_assets", "scene_script_runtime", "data_behavior_dependency", "data"),
+        ]
+    folder_name = "ec2-boundaries" if args.ec2 else ("p12-boundaries" if args.p12 else ("p11-boundaries" if args.p11 else "layering-boundaries"))
     folder = args.build / folder_name
     suffix = 1
     while folder.exists():
@@ -131,6 +148,8 @@ def main():
             top = top.replace("STAGE P10Q", "STAGE P11")
         elif args.p12:
             top = top.replace("STAGE P10Q", "STAGE P12")
+        elif args.ec2:
+            top = top.replace("STAGE P10Q", "STAGE EC2")
         top += "".join(f"add_subdirectory({p})\n" for p in declarations)
         legal_edges = f"target_link_libraries({owner} PRIVATE {dependency})\n" if kind == "unknown" else ""
         if kind == "generated":
@@ -147,7 +166,18 @@ def main():
         positive = configure()
         positive_build = run([args.cmake, "--build", build, "--target", "all", "-j", "4", "--", "-k", "0"]) if positive.returncode == 0 else positive
         changed = ""
-        if include:
+        if kind == "source":
+            unit.write_text(original + "\n#include <fstream>\nvoid bad() { std::ifstream file(\"asset\"); }\n")
+        elif kind == "lua-header":
+            unit.write_text(original + "\n#include <lua.h>\n")
+        elif kind == "data":
+            data = rules["editor_layering"]["script_boundaries"]["data_headers"][0]
+            header = root / data
+            header.parent.mkdir(parents=True, exist_ok=True)
+            header.write_text('#pragma once\n#include <BehaviorSystem.hpp>\n')
+            rules["editor_layering"]["files"][data] = [owner]
+            rules_file.write_text(json.dumps(rules, indent=2))
+        elif include:
             include_name = "lux/engine/editor/detail/PrepareSession.hpp" if kind == "private" else "layering/Foreign.hpp"
             unit.write_text(f"#include <{include_name}>\n" +
                            ("template<class T> int size() { return sizeof(T); }\nint instantiation = size<ForeignValue>();\n" if kind == "template" else original))
@@ -177,6 +207,8 @@ def main():
                 result = configure()
                 extra_negatives.append((label, result))
         unit.write_text(original)
+        if kind == "data":
+            header.write_text("#pragma once\n")
         if kind == "unknown":
             rules["editor_layering"]["targets"][dependency] = {
                 "layer": "EXTERNAL", "role": "VALUE", "capabilities": ["CPU"], "imported": True}

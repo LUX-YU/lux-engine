@@ -17,6 +17,8 @@ def check(repo, records, sources, rules, mode, report, compiler_dependencies=Non
     files = policy["files"]
     native = set(policy["native_libraries"])
     formal = {name for name, value in declared.items() if value["layer"] in ("E0", "E1", "E2", "E3", "E4")}
+    script = policy["script_boundaries"]
+    inspected = formal | set(script["header_owners"])
     exceptions = policy["construction_exceptions"] if mode == "CONSTRUCTION" else []
 
     def issue(rule, owner, detail):
@@ -61,6 +63,10 @@ def check(repo, records, sources, rules, mode, report, compiler_dependencies=Non
             return "generated_provider_mismatch" if generated else "new_legacy_dependency"
         if generated:
             return None  # Build tools are not runtime capabilities; their identity still matters.
+        if owner in script["native_owners"] and dependency in script["language_providers"]:
+            return "native_script_language_dependency"
+        if owner in script["generic_owners"] and dependency in script["concrete_providers"]:
+            return "generic_script_domain_dependency"
         if layer == "E0" and dest in ("E1", "E2", "E3", "E4"):
             return "editing_domain_dependency"
         if layer in ("E0", "E1") and (dest in ("E2", "E3", "E4") or
@@ -74,6 +80,8 @@ def check(repo, records, sources, rules, mode, report, compiler_dependencies=Non
             return "extension_optional_capability_leak"
         if layer == "E2" and dest in ("E3", "E4"):
             return "activity_workbench_dependency"
+        if layer == "E3" and dest == "E4":
+            return "workbench_application_dependency"
         if owner in ("editor_commands", "session_factories") and caps.intersection(("GUI", "GPU")):
             return "activity_ui_dependency"
         if owner == "editor_persistence" and (dependency in policy["concrete_save_providers"] or
@@ -144,8 +152,10 @@ def check(repo, records, sources, rules, mode, report, compiler_dependencies=Non
         if path.startswith(("engine/", "modules/")) and "/include/" in path:
             logical.setdefault(path.split("/include/", 1)[1], []).append(path)
     for name, paths in owned.items():
-        if name in formal:
+        if name in inspected:
             paths.update(path for path, providers in files.items() if name in providers)
+            paths.update(path for path in sources if "/include/" in path and any(
+                path.startswith(prefix) and name in providers for prefix, providers in policy["header_roots"].items()))
 
     def inspect_header(owner, path, header_path, generated=False, template=False):
         shared = policy["shared_headers"].get(header_path)
@@ -174,12 +184,19 @@ def check(repo, records, sources, rules, mode, report, compiler_dependencies=Non
                     broken = "policy_instantiation_leak"
                 issue(broken, owner, path + " -> " + header_path + " (" + dependency + ")")
 
-    for owner in formal.intersection(actual):
+    for owner in inspected.intersection(actual):
         for path in sorted(owned[owner]):
             source = sources.get(path)
             if source is None:
                 continue
+            if owner in script["projection_owners"] and re.search(
+                    r'\b(?:ifstream|ofstream|fstream|fopen|CreateFile[AW]?|jthread|thread_pool|static_thread_pool)\b', source):
+                issue("script_projection_execution_dependency", owner, path)
             for delimiter, header in re.findall(r'^\s*#\s*include\s*([<"])([^>"\n]+)', source, re.M):
+                if owner in script["native_owners"] and header in ("lua.h", "lauxlib.h", "lualib.h", "lua.hpp"):
+                    issue("native_script_language_dependency", owner, path + " -> " + header)
+                if path in script["data_headers"] and re.search(r'(?:System|Feature|Binding)\.hpp$', header):
+                    issue("data_behavior_dependency", owner, path + " -> " + header)
                 candidates = list(logical.get(header, []))
                 if delimiter == '"':
                     local = relative((repo / path).parent / header)
@@ -194,7 +211,7 @@ def check(repo, records, sources, rules, mode, report, compiler_dependencies=Non
             if owner not in declared:
                 issue("unclassified_dependency", owner, "compiler dependency owner is unknown")
                 continue
-            if owner not in formal:
+            if owner not in inspected:
                 continue
             for include in unit["includes"]:
                 path = relative(include)

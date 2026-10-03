@@ -64,8 +64,14 @@ namespace lux::editor::flowforge
         CompiledFlow& operator=(const CompiledFlow&) = delete;
         CompiledFlow& operator=(CompiledFlow&&) = delete;
         [[nodiscard]] const FlowCompileKey& key() const noexcept { return key_; }
-        [[nodiscard]] const std::shared_ptr<const lux::flowforge::FlowSource>& source() const noexcept { return source_; }
-        [[nodiscard]] const std::shared_ptr<const lux::script::ScriptArtifactAsset>& artifact() const noexcept { return artifact_; }
+        [[nodiscard]] const std::shared_ptr<const lux::flowforge::FlowSource>& source() const noexcept
+        {
+            return source_;
+        }
+        [[nodiscard]] const std::shared_ptr<const lux::script::ScriptArtifactAsset>& artifact() const noexcept
+        {
+            return artifact_;
+        }
         [[nodiscard]] const lux::cxx::SharedBytes<>& bytes() const noexcept { return bytes_; }
 
     private:

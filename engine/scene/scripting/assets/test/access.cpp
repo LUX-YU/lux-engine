@@ -2,8 +2,10 @@
 #include <lux/engine/process/asset_loading/AssetReadOverlay.hpp>
 #include <lux/engine/process/asset_loading/VfsAssetReadEndpoint.hpp>
 #include <lux/engine/resource/asset/animation/SkeletonAsset.hpp>
+#include <lux/engine/resource/asset/mesh/MeshAsset.hpp>
 
 #include <cassert>
+#include <atomic>
 #include <iostream>
 #include <semaphore>
 #include <thread>
@@ -14,6 +16,27 @@ void qualifyInstanceBindings();
 
 namespace
 {
+    class CountedRead final : public process::asset_loading::AssetReadPort::Endpoint
+    {
+    public:
+        explicit CountedRead(process::asset_loading::AssetReadPort port) : port_(std::move(port)) {}
+        lux::async::SubmitResult submit(process::asset_loading::ReadAssetImage request, void* state,
+            void (*complete)(void*, Outcome&&) noexcept, lux::async::SubmitOptions options) noexcept override
+        {
+            ++calls;
+            if (fail_io)
+            {
+                complete(state, cxx::unexpected(lux::async::TOperationFailure<asset::EAssetStorageError>::domain(
+                    asset::EAssetStorageError::IO_FAILURE)));
+                return {};
+            }
+            return port_.submit(request, state, complete, options);
+        }
+        std::atomic_size_t calls{};
+        bool fail_io{};
+    private:
+        process::asset_loading::AssetReadPort port_;
+    };
     struct Reply final : std::enable_shared_from_this<Reply>
     {
         std::optional<ScriptAssetReadOutcome> value;
@@ -204,6 +227,56 @@ int main()
         assert((*replacement)->readAsset(id, late->completion()).error() == EScriptAssetError::STOPPING);
     }
 
+    {
+        auto counted = std::make_shared<CountedRead>(*reads);
+        auto access = ScriptAssetAccess::create(*execution, process::asset_loading::AssetReadPort{counted},
+            {1, 1, 24576, {8192, 16384, 8}});
+        assert(access);
+        auto scope = (*access)->prepare({9, 1}); assert(scope);
+        auto reply = std::make_shared<Reply>();
+        assert((*scope)->readAsset(id, reply->completion())); settle(*execution);
+        assert(reply->value && reply->value->succeeded() && counted->calls == 1);
+        const auto handle = reply->value->handle();
+        for (std::size_t i = 0; i != 10000; ++i)
+        {
+            assert((*scope)->describeAsset(handle)->image_bytes == image.size());
+            assert((*scope)->copyAssetBytes(handle, 0, 8)->size == 8);
+        }
+        assert(counted->calls == 1 && (*scope)->retainedResults() == 1);
+        assert((*scope)->releaseAsset(handle));
+        auto wrong = std::make_shared<Reply>();
+        assert((*scope)->readTyped<asset::MeshAsset>(id, wrong->completion())); settle(*execution);
+        assert(wrong->value && wrong->value->errorDomain() == EScriptAssetFailureDomain::DECODE);
+        assert((*scope)->lastFailure()->code == process::asset_loading::EAssetLoadError::DECODE_FAILURE);
+        assert((*scope)->retainedResults() == 0 && counted->calls == 2);
+        counted->fail_io = true;
+        auto io = std::make_shared<Reply>();
+        assert((*scope)->readAsset(id, io->completion())); settle(*execution);
+        assert(io->value && io->value->errorDomain() == EScriptAssetFailureDomain::STORAGE);
+        assert(io->value->errorCode() == static_cast<std::uint32_t>(asset::EAssetStorageError::IO_FAILURE));
+        assert((*scope)->retainedResults() == 0 && counted->calls == 3);
+        std::cout << "EC2 counts: warm queries=20000 extra_reads=0 retained=1; "
+                     "wrong-type reads=1; IO-failure reads=1; final retained=0\n";
+    }
+    // A malformed image and a transport limit are distinct accepted outcomes, not admission failures.
+    {
+        auto truncated = process::asset_loading::makeAssetReadOverlay({{id, {image.subspan(0, 1)}}}, *reads);
+        assert(truncated);
+        auto access = ScriptAssetAccess::create(*execution, *truncated, {1, 1, 24576, {8192, 16384, 8}});
+        assert(access);
+        auto scope = (*access)->prepare({10, 1}); assert(scope);
+        auto broken = std::make_shared<Reply>();
+        assert((*scope)->readTyped<asset::SkeletonAsset>(id, broken->completion())); settle(*execution);
+        assert(broken->value && broken->value->errorDomain() == EScriptAssetFailureDomain::DECODE);
+        auto small = ScriptAssetAccess::create(*execution, *reads, {1, 1, 8193, {1, 8192, 8}});
+        assert(small);
+        auto small_scope = (*small)->prepare({10, 2}); assert(small_scope);
+        auto oversized = std::make_shared<Reply>();
+        assert((*small_scope)->readAsset(id, oversized->completion())); settle(*execution);
+        assert(oversized->value && oversized->value->errorDomain() == EScriptAssetFailureDomain::STORAGE);
+        assert(oversized->value->errorCode() == static_cast<std::uint32_t>(asset::EAssetStorageError::LIMIT_EXCEEDED));
+        assert((*scope)->retainedResults() == 0 && (*small_scope)->reservedBytes() == 0);
+    }
     // Hold the actual blocking scheduler: revoke while the accepted VFS read has not executed.
     {
         process::TaskScope blocker{*execution};

@@ -12,6 +12,7 @@
 #include <DelayAbility.ability.lua.generated.hpp>
 
 #include <cassert>
+#include <atomic>
 #include <fstream>
 #include <iostream>
 #include <thread>
@@ -23,6 +24,18 @@ using namespace lux::simulation::script;
 
 namespace
 {
+    struct ReadCount final : process::asset_loading::AssetReadPort::Endpoint
+    {
+        process::asset_loading::AssetReadPort read;
+        std::atomic_size_t calls{};
+        explicit ReadCount(process::asset_loading::AssetReadPort port) : read(std::move(port)) {}
+        lux::async::SubmitResult submit(process::asset_loading::ReadAssetImage request, void* state,
+            void (*complete)(void*, Outcome&&) noexcept, lux::async::SubmitOptions options) noexcept override
+        {
+            ++calls;
+            return read.submit(request, state, complete, options);
+        }
+    };
     // A real public endpoint consumer. Only ScriptSystem's own connected lane is invoked,
     // inside its mandatory ExecutionRegion; no private runtime/VM entry or fake completion.
     struct Endpoint final
@@ -167,7 +180,9 @@ int main(int argc, char** argv)
     const std::array capacities{ecs::EcsCommandProducerCapacity{16, 4096}};
     for (int stop_window = 0; stop_window != 3; ++stop_window)
     {
-        auto access = ScriptAssetAccess::create(*execution, *read, {1, 2, 49152, {8192, 16384, 8}});
+        auto counted = std::make_shared<ReadCount>(*read);
+        auto access = ScriptAssetAccess::create(*execution, process::asset_loading::AssetReadPort{counted},
+            {1, 2, 49152, {8192, 16384, 8}});
         require(access, "asset access");
         ecs::Registry registry;
         const auto entity = registry.create(); registry.emplace<std::int32_t>(entity, 7);
@@ -240,6 +255,14 @@ int main(int argc, char** argv)
             }
             assert(system->activeContinuationCount() == 0 && system->activeAwaitableCount() == 0);
             assert(registry.get<std::int32_t>(entity) == 9 && (*scope)->retainedResults() == 0);
+            assert(counted->calls == 3); // One typed read, one missing image, one raw read; queries add none.
+            const auto stats = backend->stats();
+            std::cout << "EC2 Lua counts: reads=" << counted->calls
+                << " ability_slots=" << stats.prepared_ability_slots
+                << " ability_high_water=" << stats.prepared_ability_high_water
+                << " coroutine_resumes=" << stats.vm_coroutine_resumes
+                << " awaitables=" << system->activeAwaitableCount()
+                << " retained=" << (*scope)->retainedResults() << '\n';
             require(system->requestStop(), "stop"); require(system->processLifecycle(), "retire");
         }
         require(system->shutdown(), "shutdown");

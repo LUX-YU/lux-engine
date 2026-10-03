@@ -79,7 +79,9 @@ lux_script_abilities(
 )
 get_target_property(_delay_ability_generated_dir simulation_script LUX_SCRIPT_ABILITY_GENERATED_DIR)
 install(
-    FILES ${_delay_ability_generated_dir}/DelayAbility.ability.generated.hpp
+    FILES
+        ${_delay_ability_generated_dir}/DelayAbility.ability.generated.hpp
+        ${_delay_ability_generated_dir}/DelayAbility.ability.lua.generated.hpp
     DESTINATION include/lux/engine/simulation/abilities
     COMPONENT lux_sdk
 )

@@ -48,7 +48,10 @@ namespace lux::editor::material
         CompiledMaterial& operator=(const CompiledMaterial&) = delete;
         CompiledMaterial& operator=(CompiledMaterial&&) = delete;
         [[nodiscard]] const MaterialCompileInputKey& key() const noexcept { return key_; }
-        [[nodiscard]] const std::shared_ptr<const lux::material::MaterialSource>& source() const noexcept { return source_; }
+        [[nodiscard]] const std::shared_ptr<const lux::material::MaterialSource>& source() const noexcept
+        {
+            return source_;
+        }
         [[nodiscard]] const std::shared_ptr<const asset::MaterialAsset>& artifact() const noexcept { return artifact_; }
         [[nodiscard]] const lux::cxx::SharedBytes<>& bytes() const noexcept { return bytes_; }
 

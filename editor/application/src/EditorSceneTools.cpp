@@ -5,6 +5,21 @@
 #include <lux/engine/editor/scene/SceneConfigurationView.hpp>
 #include <algorithm>
 
+namespace
+{
+    constexpr lux::editor::commands::CommandDescriptor command_lux_editor_new_scene{
+        lux::editor::commands::CommandIdView{"lux.editor.new.scene"},
+        "New Scene",
+        "File"
+    };
+    constexpr lux::editor::commands::CommandDescriptor command_lux_editor_play{
+        lux::editor::commands::CommandIdView{"lux.editor.play"},
+        "Play Frozen Scene",
+        "Scene",
+        "Ctrl+P",
+        lux::editor::commands::ECommandScope::SESSION
+    };
+}
 namespace lux::editor::application
 {
     namespace
@@ -221,9 +236,8 @@ namespace lux::editor::application
     void EditorApplication::Impl::installSceneCommands(extensions::ContributionDraft& draft)
     {
         draft.views.push_back(extensions::builtinSceneCreationFactory(sceneConfigurationInputs(), contentCreation()));
-        draft.commands.push_back(std::make_shared<commands::CommandEntry>(
+        draft.commands.push_back(commands::CommandEntry::bind<command_lux_editor_new_scene>(
             contracts::CodeLease::builtin(),
-            commands::CommandDescriptor{commands::CommandId{"lux.editor.new.scene"}, "New Scene", "File"},
             [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
                 return commands::CommandState{phase_ == EApplicationPhase::RUNNING};
             },
@@ -234,15 +248,8 @@ namespace lux::editor::application
                 return commands::DispatchReceipt{commands::ImmediateCompletion{}};
             }
         ));
-        draft.commands.push_back(std::make_shared<commands::CommandEntry>(
+        draft.commands.push_back(commands::CommandEntry::bind<command_lux_editor_play>(
             contracts::CodeLease::builtin(),
-            commands::CommandDescriptor{
-                commands::CommandId{"lux.editor.play"},
-                "Play Frozen Scene",
-                "Scene",
-                "Ctrl+P",
-                commands::ECommandScope::SESSION
-            },
             [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
                 return commands::CommandState{phase_ == EApplicationPhase::RUNNING};
             },
@@ -256,10 +263,10 @@ namespace lux::editor::application
         ));
         for (const auto role :
              {"outliner", "inspector", "resources", "configuration", "pause", "resume", "step", "stop"})
-            draft.commands.push_back(std::make_shared<commands::CommandEntry>(
+            draft.commands.push_back(commands::CommandEntry::create(
                 contracts::CodeLease::builtin(),
                 commands::CommandDescriptor{
-                    commands::CommandId{std::string("lux.editor.scene.") + role},
+                    commands::CommandIdView{std::string("lux.editor.scene.") + role},
                     role,
                     "Scene",
                     "",

@@ -197,10 +197,10 @@ namespace
         };
         CommandRegistry registry;
         CommandDispatcher dispatcher{registry};
-        auto action = std::make_shared<CommandEntry>(
+        auto action = CommandEntry::create(
             contracts::CodeLease::builtin(),
             CommandDescriptor{
-                CommandId{"test.delete"},
+                CommandIdView{"test.delete"},
                 "Delete",
                 "Edit",
                 "",

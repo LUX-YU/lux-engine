@@ -16,6 +16,23 @@ struct Configuration final
     bool enabled{true};
     float scale{2.0f};
 };
+namespace
+{
+    constexpr lux::editor::commands::CommandDescriptor command_qualification_inspect{
+        lux::editor::commands::CommandIdView{"qualification.inspect"},
+        "Inspect content",
+        "Extension",
+        "Ctrl+I",
+        lux::editor::commands::ECommandScope::SESSION
+    };
+    constexpr lux::editor::commands::CommandDescriptor command_qualification_activated{
+        lux::editor::commands::CommandIdView{"qualification.activated"},
+        "Inspect through injected capability",
+        "Extension",
+        {},
+        lux::editor::commands::ECommandScope::SESSION
+    };
+}
 namespace lux::meta
 {
     template <> struct TTypeStaticInfo<Configuration>
@@ -71,15 +88,7 @@ namespace
         configuration.code = code;
         draft.configurations.push_back(std::move(configuration));
         draft.sessions.push_back(lux::editor::material::makeMaterialSessionFactory(code));
-        draft.commands.push_back(std::make_shared<CommandEntry>(
-            code,
-            CommandDescriptor{
-                CommandId{"qualification.inspect"},
-                "Inspect content",
-                "Extension",
-                "Ctrl+I",
-                ECommandScope::SESSION
-            },
+        draft.commands.push_back(CommandEntry::bind<command_qualification_inspect>(code,
             [](const CommandQuery& input) -> CommandResult<CommandState> {
                 ++facts->queries;
                 if (facts->fail_query)
@@ -124,15 +133,7 @@ namespace
             std::abort();
         ++facts->activations;
         auto state = std::make_shared<Activation>(capabilities.sessions->sessions);
-        draft.commands.push_back(std::make_shared<commands::CommandEntry>(
-            code,
-            commands::CommandDescriptor{
-                commands::CommandId{"qualification.activated"},
-                "Inspect through injected capability",
-                "Extension",
-                {},
-                commands::ECommandScope::SESSION
-            },
+        draft.commands.push_back(commands::CommandEntry::bind<command_qualification_activated>(code,
             [state](const commands::CommandQuery& input) -> commands::CommandResult<commands::CommandState> {
                 ++facts->activation_queries;
                 auto content = state->sessions.describe(std::get<commands::SessionTarget>(input.target).id);

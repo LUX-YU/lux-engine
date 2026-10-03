@@ -12,6 +12,14 @@
 #include <lux/engine/process/TaskScope.hpp>
 #include <cstdio>
 
+namespace
+{
+    constexpr lux::editor::commands::CommandDescriptor command_lux_project_open{
+        lux::editor::commands::CommandIdView{"lux.project.open"},
+        "Open Project",
+        "File"
+    };
+}
 namespace lux::editor::application
 {
     int runLauncher(const std::filesystem::path& installation, unsigned smoke_frames)
@@ -68,9 +76,8 @@ namespace lux::editor::application
         if (!adopted)
             return 3;
         std::vector<std::shared_ptr<commands::CommandEntry>> entries;
-        entries.push_back(std::make_shared<commands::CommandEntry>(
+        entries.push_back(commands::CommandEntry::bind<command_lux_project_open>(
             contracts::CodeLease::builtin(),
-            commands::CommandDescriptor{commands::CommandId{"lux.project.open"}, "Open Project", "File"},
             [&](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
                 return commands::CommandState{!closing && !launching};
             },

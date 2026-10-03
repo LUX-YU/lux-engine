@@ -2,6 +2,14 @@
 #include <algorithm>
 #include <random>
 
+namespace
+{
+    constexpr lux::editor::commands::CommandDescriptor command_lux_editor_workspace{
+        lux::editor::commands::CommandIdView{"lux.editor.workspace"},
+        "Layouts and Recovery",
+        "Window"
+    };
+}
 namespace lux::editor::application
 {
     using namespace lux::editor::project;
@@ -251,9 +259,9 @@ namespace lux::editor::application
         // The same recovery operations are available to menus, scripts and installed workbench consumers.
         // Commands retain the existing workspace owner, admission and publication path.
         const auto recovery_command = [&](const char* id, const char* label, VWorkspaceIntent intent) {
-            draft.commands.push_back(std::make_shared<commands::CommandEntry>(
+            draft.commands.push_back(commands::CommandEntry::create(
                 contracts::CodeLease::builtin(),
-                commands::CommandDescriptor{commands::CommandId{id}, label, "Workspace"},
+                commands::CommandDescriptor{commands::CommandIdView{id}, label, "Workspace"},
                 [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
                     return commands::CommandState{phase_ == EApplicationPhase::RUNNING};
                 },
@@ -295,9 +303,8 @@ namespace lux::editor::application
                 };
             }
         ));
-        draft.commands.push_back(std::make_shared<commands::CommandEntry>(
+        draft.commands.push_back(commands::CommandEntry::bind<command_lux_editor_workspace>(
             contracts::CodeLease::builtin(),
-            commands::CommandDescriptor{commands::CommandId{"lux.editor.workspace"}, "Layouts and Recovery", "Window"},
             [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
                 return commands::CommandState{phase_ == EApplicationPhase::RUNNING};
             },

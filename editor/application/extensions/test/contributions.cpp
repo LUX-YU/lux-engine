@@ -154,9 +154,9 @@ namespace
     using namespace commands;
     std::shared_ptr<CommandEntry> command(std::string_view id)
     {
-        return std::make_shared<CommandEntry>(
+        return CommandEntry::create(
             contracts::CodeLease::builtin(),
-            CommandDescriptor{CommandId{id}, std::string{id}},
+            CommandDescriptor{CommandIdView{id}, std::string{id}},
             [](const CommandQuery&) -> CommandResult<CommandState> { return CommandState{true}; },
             [](const CommandInvocation&) -> CommandResult<DispatchReceipt> {
                 return DispatchReceipt{ImmediateCompletion{}};

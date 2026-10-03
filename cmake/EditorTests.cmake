@@ -1,6 +1,6 @@
 include_guard(GLOBAL)
 include(CMakeDependentOption)
-set(LUX_EDITOR_MIGRATION_STAGE P01 CACHE STRING "Current Editor migration gate (P00..P10, P10Q, P11..P13, EC1, EC2)")
+set(LUX_EDITOR_MIGRATION_STAGE P01 CACHE STRING "Current Editor migration gate (P00..P10, P10Q, P11..P13, EC1, EC2, EC3)")
 
 # One explicit order shared with source and evidence validators. Unknown stages never fall back.
 file(READ "${CMAKE_CURRENT_LIST_DIR}/../editor/tests/architecture/rules.json" _editor_rules)

@@ -4,8 +4,22 @@
 #include <lux/engine/ui/Layout.hpp>
 #include <lux/engine/ui/Controls.hpp>
 
+namespace
+{
+    constexpr lux::editor::commands::CommandDescriptor command_example_skeleton_rename{
+        lux::editor::commands::CommandIdView{"example.skeleton.rename"},
+        "Edit skeleton",
+        "Skeleton",
+        {},
+        lux::editor::commands::ECommandScope::SESSION,
+        1,
+        cxx::typeToken<Rename>()
+    };
+}
 namespace skeleton
 {
+
+
     using namespace sessions;
     using namespace extensions;
     namespace
@@ -156,15 +170,7 @@ namespace skeleton
                 ++facts->activations;
             }
             const auto access = observed_store->access<Session>();
-            draft.commands.push_back(std::make_shared<commands::CommandEntry>(
-                code,
-                commands::CommandDescriptor{commands::CommandId{"example.skeleton.rename"},
-                                            "Edit skeleton",
-                                            "Skeleton",
-                                            {},
-                                            commands::ECommandScope::SESSION,
-                                            1,
-                                            cxx::typeToken<Rename>()},
+            draft.commands.push_back(commands::CommandEntry::bind<command_example_skeleton_rename>(code,
                 [access](const commands::CommandQuery &input) -> commands::CommandResult<commands::CommandState>
                 {
                     auto key = access.key(std::get<commands::SessionTarget>(input.target).id);

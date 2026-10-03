@@ -1812,9 +1812,9 @@ int main(int argc, char** argv)
     // The actual DesktopShell menu submits a pinned view command; execution still enters the
     // same SceneView/domain undo path that this dual-viewport regression has always observed.
     using namespace editor::commands;
-    auto undo = std::make_shared<CommandEntry>(
+    auto undo = CommandEntry::create(
         contracts::CodeLease::builtin(),
-        CommandDescriptor{CommandId{"p11.undo"}, "Undo", "Edit", "Ctrl+Z", ECommandScope::VIEW},
+        CommandDescriptor{CommandIdView{"p11.undo"}, "Undo", "Edit", "Ctrl+Z", ECommandScope::VIEW},
         [&](const CommandQuery& input) -> CommandResult<CommandState> {
             if (std::get<views::ViewId>(input.target) != id_b || !f.desktop->views().describe(id_b))
                 return cxx::unexpected(CommandFailure{ECommandError::STALE_TARGET, "scene.view"});

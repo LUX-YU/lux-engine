@@ -31,7 +31,9 @@ namespace lux::editor::commands
         INCOMPATIBLE_REGISTRATION,
         DISABLED,
         CLOSED,
-        DOMAIN_FAILURE
+        DOMAIN_FAILURE,
+        DUPLICATE,
+        HASH_COLLISION
     };
     struct CommandFailure final
     {
@@ -55,11 +57,11 @@ namespace lux::editor::commands
     };
     struct CommandDescriptor final
     {
-        CommandId id;
-        std::string label;
-        std::string group;
+        CommandIdView id;
+        std::string_view label;
+        std::string_view group;
         // Canonical modifiers followed by an ASCII letter or a named key; interpreted by workbench.
-        std::string shortcut;
+        std::string_view shortcut;
         ECommandScope scope{ECommandScope::APPLICATION};
         std::uint32_t input_version{1};
         cxx::TypeToken argument_type;

@@ -1,5 +1,22 @@
 #include <lux/engine/editor/application/EditorApplicationImpl.hpp>
 
+namespace
+{
+    constexpr lux::editor::commands::CommandDescriptor command_lux_editor_close_view{
+        lux::editor::commands::CommandIdView{"lux.editor.close-view"},
+        "Close View",
+        "Window",
+        "Ctrl+W",
+        lux::editor::commands::ECommandScope::VIEW
+    };
+    constexpr lux::editor::commands::CommandDescriptor command_lux_editor_another_view{
+        lux::editor::commands::CommandIdView{"lux.editor.another-view"},
+        "Another View",
+        "Window",
+        "",
+        lux::editor::commands::ECommandScope::SESSION
+    };
+}
 namespace lux::editor::application
 {
     EditorResult<sessions::OpenAssetId> EditorApplication::Impl::createContent(sessions::SessionPreparation data)
@@ -21,15 +38,8 @@ namespace lux::editor::application
         const auto running = [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
             return commands::CommandState{phase_ == EApplicationPhase::RUNNING && !last_view_};
         };
-        draft.commands.push_back(std::make_shared<commands::CommandEntry>(
+        draft.commands.push_back(commands::CommandEntry::bind<command_lux_editor_close_view>(
             contracts::CodeLease::builtin(),
-            commands::CommandDescriptor{
-                commands::CommandId{"lux.editor.close-view"},
-                "Close View",
-                "Window",
-                "Ctrl+W",
-                commands::ECommandScope::VIEW
-            },
             running,
             [this](const commands::CommandInvocation& invocation
             ) -> commands::CommandResult<commands::DispatchReceipt> {
@@ -44,15 +54,8 @@ namespace lux::editor::application
                 return commands::DispatchReceipt{commands::ImmediateCompletion{}};
             }
         ));
-        draft.commands.push_back(std::make_shared<commands::CommandEntry>(
+        draft.commands.push_back(commands::CommandEntry::bind<command_lux_editor_another_view>(
             contracts::CodeLease::builtin(),
-            commands::CommandDescriptor{
-                commands::CommandId{"lux.editor.another-view"},
-                "Another View",
-                "Window",
-                "",
-                commands::ECommandScope::SESSION
-            },
             running,
             [this](const commands::CommandInvocation& invocation
             ) -> commands::CommandResult<commands::DispatchReceipt> {
@@ -73,10 +76,10 @@ namespace lux::editor::application
             }
         ));
         for (bool project : {true, false})
-            draft.commands.push_back(std::make_shared<commands::CommandEntry>(
+            draft.commands.push_back(commands::CommandEntry::create(
                 contracts::CodeLease::builtin(),
                 commands::CommandDescriptor{
-                    commands::CommandId{project ? "lux.editor.assets" : "lux.editor.tasks"},
+                    commands::CommandIdView{project ? "lux.editor.assets" : "lux.editor.tasks"},
                     project ? "Assets" : "Background Tasks",
                     "Window"
                 },

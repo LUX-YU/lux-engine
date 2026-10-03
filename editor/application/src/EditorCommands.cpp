@@ -5,6 +5,15 @@
 #include <lux/engine/editor/project/ProjectView.hpp>
 #include <lux/engine/editor/tasks/TaskView.hpp>
 
+namespace
+{
+    constexpr lux::editor::commands::CommandDescriptor command_lux_editor_exit{
+        lux::editor::commands::CommandIdView{"lux.editor.exit"},
+        "Exit",
+        "File",
+        "Alt+X"
+    };
+}
 namespace lux::editor::application
 {
     namespace
@@ -71,9 +80,8 @@ namespace lux::editor::application
         draft.commands =
             extensions::builtinSessionCommands({sessions_, saves_}, [this](auto id) { return opening_.find(id); });
 
-        auto exit = std::make_shared<commands::CommandEntry>(
+        auto exit = commands::CommandEntry::bind<command_lux_editor_exit>(
             contracts::CodeLease::builtin(),
-            commands::CommandDescriptor{commands::CommandId{"lux.editor.exit"}, "Exit", "File", "Alt+X"},
             [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
                 return commands::CommandState{phase_ == EApplicationPhase::RUNNING};
             },
@@ -88,7 +96,7 @@ namespace lux::editor::application
         );
         draft.commands.push_back(std::move(exit));
         std::erase_if(draft.commands, [](const auto& entry) {
-            return entry->descriptor().id == commands::CommandId{"lux.editor.save"};
+            return entry->descriptor().id == commands::CommandIdView{"lux.editor.save"};
         });
         installSaveCommands(draft);
         installResultView(draft);
@@ -139,10 +147,10 @@ namespace lux::editor::application
                 const auto& descriptor = entry->descriptor();
                 if (descriptor.binding_type != cxx::typeToken<std::monostate>())
                     continue;
-                draft.commands.push_back(std::make_shared<commands::CommandEntry>(
+                draft.commands.push_back(commands::CommandEntry::create(
                     contracts::CodeLease::builtin(),
                     commands::CommandDescriptor{
-                        commands::CommandId{std::string("lux.editor.tool/") + std::string(descriptor.type.name())},
+                        commands::CommandIdView{std::string("lux.editor.tool/") + std::string(descriptor.type.name())},
                         descriptor.label,
                         "Window"
                     },

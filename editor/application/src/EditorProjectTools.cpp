@@ -8,6 +8,29 @@
 #include <imgui.h>
 #include <sstream>
 
+namespace
+{
+    constexpr lux::editor::commands::CommandDescriptor command_lux_editor_initial_scene{
+        lux::editor::commands::CommandIdView{"lux.editor.initial-scene"},
+        "Open Initial Scene",
+        "File"
+    };
+    constexpr lux::editor::commands::CommandDescriptor command_lux_editor_project_open{
+        lux::editor::commands::CommandIdView{"lux.editor.project.open"},
+        "Open Project in New Editor",
+        "File"
+    };
+    constexpr lux::editor::commands::CommandDescriptor command_lux_editor_import{
+        lux::editor::commands::CommandIdView{"lux.editor.import"},
+        "Import Assets",
+        "File"
+    };
+    constexpr lux::editor::commands::CommandDescriptor command_lux_editor_project_recent{
+        lux::editor::commands::CommandIdView{"lux.editor.project.recent"},
+        "Recent Projects",
+        "File"
+    };
+}
 namespace lux::editor::application
 {
     void EditorApplication::Impl::installProjectTools(extensions::ContributionDraft& draft)
@@ -15,9 +38,8 @@ namespace lux::editor::application
         installRecentProjects(draft);
         installSettingsView(draft);
         installProjectCreation(draft);
-        draft.commands.push_back(std::make_shared<commands::CommandEntry>(
+        draft.commands.push_back(commands::CommandEntry::bind<command_lux_editor_initial_scene>(
             contracts::CodeLease::builtin(),
-            commands::CommandDescriptor{commands::CommandId{"lux.editor.initial-scene"}, "Open Initial Scene", "File"},
             [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
                 return commands::CommandState{
                     phase_ == EApplicationPhase::RUNNING && !project_->manifest().default_scene.empty()
@@ -41,13 +63,8 @@ namespace lux::editor::application
             }
         ));
 
-        draft.commands.push_back(std::make_shared<commands::CommandEntry>(
+        draft.commands.push_back(commands::CommandEntry::bind<command_lux_editor_project_open>(
             contracts::CodeLease::builtin(),
-            commands::CommandDescriptor{
-                commands::CommandId{"lux.editor.project.open"},
-                "Open Project in New Editor",
-                "File"
-            },
             [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
                 return commands::CommandState{
                     phase_ == EApplicationPhase::RUNNING && !project_launch_ && !project_open_requested_ &&
@@ -94,9 +111,8 @@ namespace lux::editor::application
                 return views::DetachedView{contracts::CodeLease::builtin(), std::move(view)};
             }
         ));
-        draft.commands.push_back(std::make_shared<commands::CommandEntry>(
+        draft.commands.push_back(commands::CommandEntry::bind<command_lux_editor_import>(
             contracts::CodeLease::builtin(),
-            commands::CommandDescriptor{commands::CommandId{"lux.editor.import"}, "Import Assets", "File"},
             [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
                 return commands::CommandState{phase_ == EApplicationPhase::RUNNING};
             },
@@ -384,9 +400,8 @@ namespace lux::editor::application
                 };
             }
         ));
-        draft.commands.push_back(std::make_shared<commands::CommandEntry>(
+        draft.commands.push_back(commands::CommandEntry::bind<command_lux_editor_project_recent>(
             contracts::CodeLease::builtin(),
-            commands::CommandDescriptor{commands::CommandId{"lux.editor.project.recent"}, "Recent Projects", "File"},
             [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
                 return commands::CommandState{phase_ == EApplicationPhase::RUNNING};
             },
@@ -399,10 +414,10 @@ namespace lux::editor::application
                 return commands::DispatchReceipt{commands::ImmediateCompletion{}};
             }
         ));
-        draft.commands.push_back(std::make_shared<commands::CommandEntry>(
+        draft.commands.push_back(commands::CommandEntry::create(
             contracts::CodeLease::builtin(),
             commands::CommandDescriptor{
-                commands::CommandId{"lux.editor.about"},
+                commands::CommandIdView{"lux.editor.about"},
                 "Lux Editor " LUX_EDITOR_VERSION,
                 "Help"
             },

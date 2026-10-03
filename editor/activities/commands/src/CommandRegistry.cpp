@@ -1,4 +1,5 @@
 #include <lux/engine/editor/commands/CommandRegistry.hpp>
+#include <lux/engine/editor/commands/CommandIndex.hpp>
 #include <algorithm>
 #include <thread>
 #include <utility>
@@ -111,14 +112,52 @@ namespace lux::editor::commands
     {
         return {target_, arguments_};
     }
-    CommandEntry::CommandEntry(contracts::CodeLease code, CommandDescriptor descriptor, Query query, Execute execute)
-        : code_(std::move(code)), descriptor_(std::move(descriptor)), query_(std::move(query)),
-          execute_(std::move(execute))
+    struct CommandEntry::DescriptorStorage final
+    {
+        std::string text;
+        CommandDescriptor descriptor;
+        explicit DescriptorStorage(const CommandDescriptor& input)
+        {
+            const auto id_size = input.id.name().size();
+            const auto label_size = input.label.size();
+            const auto group_size = input.group.size();
+            const auto shortcut_size = input.shortcut.size();
+            text.reserve(id_size + label_size + group_size + shortcut_size + input.argument_type.name().size());
+            text.append(input.id.name()).append(input.label).append(input.group).append(input.shortcut);
+            text.append(input.argument_type.name());
+            // Build views only after the last growth; this storage is never moved or mutated again.
+            const std::string_view bytes{text};
+            descriptor = {
+                CommandIdView{bytes.substr(0, id_size)},
+                bytes.substr(id_size, label_size),
+                bytes.substr(id_size + label_size, group_size),
+                bytes.substr(id_size + label_size + group_size, shortcut_size),
+                input.scope,
+                input.input_version,
+                {input.argument_type.hash(), bytes.substr(id_size + label_size + group_size + shortcut_size)}
+            };
+        }
+    };
+    CommandEntry::CommandEntry(
+        contracts::CodeLease code, const CommandDescriptor& descriptor, Query query, Execute execute
+    )
+        : code_(std::move(code)), descriptor_(&descriptor), query_(std::move(query)), execute_(std::move(execute))
     {}
+    std::shared_ptr<CommandEntry> CommandEntry::create(
+        contracts::CodeLease code, const CommandDescriptor& descriptor, Query query, Execute execute
+    )
+    {
+        auto entry = std::shared_ptr<CommandEntry>(
+            new CommandEntry(std::move(code), descriptor, std::move(query), std::move(execute))
+        );
+        entry->storage_ = std::make_unique<const DescriptorStorage>(descriptor);
+        entry->descriptor_ = &entry->storage_->descriptor;
+        return entry;
+    }
     CommandEntry::~CommandEntry() = default;
     const CommandDescriptor& CommandEntry::descriptor() const noexcept
     {
-        return descriptor_;
+        return *descriptor_;
     }
     const CommandDescriptor& CommandHandle::descriptor() const noexcept
     {
@@ -127,6 +166,7 @@ namespace lux::editor::commands
     struct CommandRegistrySnapshot::Data final
     {
         std::vector<std::shared_ptr<CommandEntry>> entries;
+        std::vector<detail::CommandIndex> index;
     };
     CommandResult<CommandRegistrySnapshot> CommandRegistrySnapshot::create(
         std::vector<std::shared_ptr<CommandEntry>> entries,
@@ -146,27 +186,59 @@ namespace lux::editor::commands
             if (!entries[i])
                 return failure(ECommandError::INVALID_ARGUMENT);
             const auto& entry = *entries[i];
-            const bool is_invalid =
-                !entry.code_.valid() || !entry.descriptor_.id.isValid() || entry.descriptor_.label.empty() ||
-                entry.descriptor_.input_version == 0 ||
-                static_cast<unsigned>(entry.descriptor_.scope) > static_cast<unsigned>(ECommandScope::VIEW) ||
-                !validShortcut(entry.descriptor_.shortcut) || !entry.query_ || !entry.execute_;
+            const auto& descriptor = entry.descriptor();
+            const bool is_invalid_identity = !descriptor.id.isValid() ||
+                descriptor.id.hash() != cxx::Fnv1a64::hash(descriptor.id.name());
+            const bool is_invalid_description = descriptor.label.empty() || descriptor.input_version == 0 ||
+                static_cast<unsigned>(descriptor.scope) > static_cast<unsigned>(ECommandScope::VIEW);
+            const bool is_invalid_binding = !entry.code_.valid() || !entry.query_ || !entry.execute_;
+            const bool is_invalid = is_invalid_identity || is_invalid_description || is_invalid_binding ||
+                !validShortcut(descriptor.shortcut);
             if (is_invalid)
                 return failure(ECommandError::INVALID_ARGUMENT);
-            for (std::size_t j{}; j < i; ++j)
-                if (entries[j]->descriptor().id == entry.descriptor().id)
-                    return failure(ECommandError::INVALID_ARGUMENT);
         }
+        auto index = detail::commandIndex(entries, [](CommandIdView id) { return id.hash(); });
+        if (!index)
+            return cxx::unexpected(index.error());
         CommandRegistrySnapshot result;
-        result.data_ = std::make_shared<Data>(std::move(entries));
+        result.data_ = std::make_shared<Data>(std::move(entries), std::move(*index));
         return result;
+    }
+    std::shared_ptr<CommandEntry> CommandRegistrySnapshot::findHash(std::uint64_t hash) const noexcept
+    {
+        if (!data_)
+            return {};
+        const auto found = std::ranges::lower_bound(data_->index, hash, {}, &detail::CommandIndex::hash);
+        if (found == data_->index.end() || found->hash != hash)
+            return {};
+        return data_->entries[found->entry];
     }
     CommandResult<CommandHandle> CommandRegistrySnapshot::find(CommandIdView id) const
     {
-        for (const auto& entry : entries())
-            if (entry->descriptor().id.name() == id.name())
-                return CommandHandle{entry};
-        return failure(ECommandError::NOT_FOUND);
+        auto entry = findHash(id.hash());
+        if (!entry || entry->descriptor().id.name() != id.name())
+            return failure(ECommandError::NOT_FOUND);
+        return CommandHandle{std::move(entry)};
+    }
+    CommandResult<CommandHandle> CommandRegistrySnapshot::resolve(const CommandHandle& original) const
+    {
+        if (!original.valid())
+            return failure(ECommandError::INVALID_ARGUMENT);
+        const auto& before = original.descriptor();
+        auto entry = findHash(before.id.hash());
+        if (!entry)
+            return failure(ECommandError::NOT_FOUND);
+        if (entry == original.entry_)
+            return original;
+        // A changed catalog may contain a different canonical name with the same hash.
+        const auto& after = entry->descriptor();
+        if (after.id.name() != before.id.name())
+            return failure(ECommandError::NOT_FOUND);
+        const bool is_incompatible = after.scope != before.scope || after.input_version != before.input_version ||
+            after.argument_type != before.argument_type;
+        if (is_incompatible)
+            return failure(ECommandError::INCOMPATIBLE_REGISTRATION);
+        return CommandHandle{std::move(entry)};
     }
     std::span<const std::shared_ptr<CommandEntry>> CommandRegistrySnapshot::entries() const noexcept
     {

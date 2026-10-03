@@ -38,17 +38,7 @@ namespace lux::editor::commands
         {
             if (pending.input.registration() == ERegistryBinding::PINNED)
                 return pending.handle;
-            const auto& original = pending.handle.descriptor();
-            auto current = registry.snapshot().find(CommandIdView{original.id.name()});
-            if (!current)
-                return cxx::unexpected(current.error());
-            const auto& replacement = current->descriptor();
-            const bool is_incompatible = replacement.scope != original.scope ||
-                                         replacement.input_version != original.input_version ||
-                                         replacement.argument_type != original.argument_type;
-            if (is_incompatible)
-                return failure(ECommandError::INCOMPATIBLE_REGISTRATION);
-            return current;
+            return registry.snapshot().resolve(pending.handle);
         }
     };
     CommandDispatcher::CommandDispatcher(CommandRegistry& registry, std::size_t capacity)

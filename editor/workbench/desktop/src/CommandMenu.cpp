@@ -80,7 +80,8 @@ namespace lux::editor::desktop
                     group.remove_prefix(slash + 1);
                 }
                 children->push_back(
-                    {descriptor.id, descriptor.label, descriptor.shortcut, shortcut(descriptor.shortcut)}
+                    {lux::ui::CommandId{descriptor.id.name()}, std::string{descriptor.label},
+                     std::string{descriptor.shortcut}, shortcut(descriptor.shortcut)}
                 );
             }
             root.setMenu(std::move(menu));
@@ -106,7 +107,7 @@ namespace lux::editor::desktop
             self.items.reserve(snapshot.entries().size());
             for (const auto& entry : snapshot.entries())
             {
-                auto handle = snapshot.find(entry->descriptor().id.view());
+                auto handle = snapshot.find(entry->descriptor().id);
                 if (!handle)
                     std::terminate(); // A validated snapshot must resolve every own entry.
                 auto input = self.capture(entry->descriptor(), request.pane, request.element);
@@ -122,7 +123,7 @@ namespace lux::editor::desktop
             return;
         }
         const auto found = std::ranges::find_if(self.items, [&](const auto& item) {
-            return item.handle.descriptor().id.view() == request.command.id;
+            return item.handle.descriptor().id == request.command.id;
         });
         request.command.enabled = false;
         if (found == self.items.end())

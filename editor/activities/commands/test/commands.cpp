@@ -1,4 +1,5 @@
 #include <lux/engine/editor/commands/CommandRegistry.hpp>
+#include <lux/engine/editor/commands/CommandIndex.hpp>
 #include <cassert>
 #include <cstdio>
 #include <thread>
@@ -10,11 +11,11 @@ namespace
 {
     CommandDescriptor descriptor()
     {
-        return {CommandId{"test.command"}, "Command", "Edit", "Ctrl+S"};
+        return {CommandIdView{"test.command"}, "Command", "Edit", "Ctrl+S"};
     }
     auto entry(int& calls)
     {
-        return std::make_shared<CommandEntry>(
+        return CommandEntry::create(
             contracts::CodeLease::builtin(),
             descriptor(),
             [](const CommandQuery&) -> CommandResult<CommandState> { return CommandState{true}; },
@@ -23,6 +24,45 @@ namespace
                 return DispatchReceipt{ImmediateCompletion{}};
             }
         );
+    }
+    inline constexpr CommandDescriptor literal{CommandIdView{"test.literal"}, "Static label", "Edit", "Ctrl+L"};
+    static_assert(literal.id.hash() == cxx::Fnv1a64::hash("test.literal"));
+    static_assert(!std::is_constructible_v<CommandEntry, contracts::CodeLease, CommandDescriptor,
+                                         CommandEntry::Query, CommandEntry::Execute>);
+    void descriptorStorageAndIndex()
+    {
+        auto query = [](const CommandQuery&) -> CommandResult<CommandState> { return CommandState{true}; };
+        auto execute = [](const CommandInvocation&) -> CommandResult<DispatchReceipt> {
+            return DispatchReceipt{ImmediateCompletion{}};
+        };
+        auto fixed = CommandEntry::bind<literal>(contracts::CodeLease::builtin(), query, execute);
+        assert(&fixed->descriptor() == &literal && fixed->descriptor().label.data() == literal.label.data());
+        std::shared_ptr<CommandEntry> dynamic;
+        {
+            std::string name{"test.dynamic"}, label{"Label"}, group{"A/B"}, key{"Alt+M"}, argument{"payload"};
+            dynamic = CommandEntry::create(contracts::CodeLease::builtin(),
+                {CommandIdView{name}, label, group, key, ECommandScope::APPLICATION, 3, {91, argument}}, query, execute);
+            name.assign(2000, 'n'); label.assign(2000, 'l'); group.clear(); key.clear(); argument.clear();
+        }
+        const auto& owned = dynamic->descriptor();
+        assert(owned.id.name() == "test.dynamic" && owned.label == "Label" && owned.group == "A/B");
+        assert(owned.shortcut == "Alt+M" && owned.argument_type.name() == "payload" && owned.input_version == 3);
+        const auto snapshot = CommandRegistrySnapshot::create({fixed, dynamic});
+        assert(snapshot && snapshot->entries()[0].get() == fixed.get());
+        assert(snapshot->find(literal.id) && !snapshot->find(CommandIdView{"test.missing"}));
+        auto handle = snapshot->find(literal.id);
+        assert(handle && snapshot->resolve(*handle));
+        assert(&snapshot->resolve(*handle)->descriptor() == &literal);
+        const auto duplicate = CommandRegistrySnapshot::create({fixed, fixed});
+        assert(!duplicate && duplicate.error().code == ECommandError::DUPLICATE);
+        const std::vector<std::shared_ptr<CommandEntry>> candidates{fixed, dynamic};
+        const auto collision = detail::commandIndex(candidates, [](CommandIdView) { return std::uint64_t{17}; });
+        assert(!collision && collision.error().code == ECommandError::HASH_COLLISION);
+        assert(snapshot->entries().size() == 2 && snapshot->find(literal.id));
+        const auto invalid = CommandIdView::fromVerified("forged", 12);
+        assert(!invalid.isValid() && !snapshot->find(invalid));
+        std::puts("PASS static descriptor identity, one frozen dynamic backing, duplicate and controlled collision");
+        std::printf("sizeof Descriptor=%zu Entry=%zu Handle=%zu\n", sizeof(CommandDescriptor), sizeof(CommandEntry), sizeof(CommandHandle));
     }
     void compoundScope()
     {
@@ -57,7 +97,7 @@ namespace
                 assert(!publish && publish.error().code == ECommandError::BUSY);
                 delete static_cast<const int*>(p);
             }));
-            auto prepared = CommandRegistrySnapshot::create({std::make_shared<CommandEntry>(
+            auto prepared = CommandRegistrySnapshot::create({CommandEntry::create(
                 std::move(code),
                 descriptor(),
                 [](const CommandQuery&) -> CommandResult<CommandState> { return CommandState{true}; },
@@ -108,7 +148,7 @@ namespace
 
         auto incompatible = descriptor();
         incompatible.input_version = 2;
-        auto changed = std::make_shared<CommandEntry>(
+        auto changed = CommandEntry::create(
             contracts::CodeLease::builtin(),
             incompatible,
             [](const CommandQuery&) -> CommandResult<CommandState> { return CommandState{true}; },
@@ -141,7 +181,7 @@ namespace
             }
         };
         auto code = std::make_shared<Witness>(released, active, early);
-        auto record = std::make_shared<CommandEntry>(
+        auto record = CommandEntry::create(
             contracts::CodeLease::plugin(code),
             descriptor(),
             [&](const CommandQuery& query) -> CommandResult<CommandState> {
@@ -193,7 +233,7 @@ namespace
         CommandDispatcher dispatcher{registry};
         bool busy{true};
         int calls{};
-        auto record = std::make_shared<CommandEntry>(
+        auto record = CommandEntry::create(
             contracts::CodeLease::builtin(),
             descriptor(),
             [&](const CommandQuery&) -> CommandResult<CommandState> {
@@ -228,6 +268,7 @@ namespace
 }
 int main()
 {
+    descriptorStorageAndIndex();
     compoundScope();
     pinnedAndCurrent();
     queryLifetime();

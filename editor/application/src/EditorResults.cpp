@@ -1,6 +1,14 @@
 #include <lux/engine/editor/application/EditorApplicationImpl.hpp>
 #include <algorithm>
 
+namespace
+{
+    constexpr lux::editor::commands::CommandDescriptor command_lux_editor_content_results{
+        lux::editor::commands::CommandIdView{"lux.editor.content.results"},
+        "Content and Operations",
+        "Window"
+    };
+}
 namespace lux::editor::application
 {
     using namespace lux::editor::project;
@@ -330,13 +338,8 @@ namespace lux::editor::application
                 };
             }
         ));
-        draft.commands.push_back(std::make_shared<commands::CommandEntry>(
+        draft.commands.push_back(commands::CommandEntry::bind<command_lux_editor_content_results>(
             contracts::CodeLease::builtin(),
-            commands::CommandDescriptor{
-                commands::CommandId{"lux.editor.content.results"},
-                "Content and Operations",
-                "Window"
-            },
             [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
                 return commands::CommandState{phase_ == EApplicationPhase::RUNNING};
             },

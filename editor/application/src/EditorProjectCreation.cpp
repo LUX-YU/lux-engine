@@ -1,5 +1,13 @@
 #include <lux/engine/editor/application/EditorApplicationImpl.hpp>
 
+namespace
+{
+    constexpr lux::editor::commands::CommandDescriptor command_lux_editor_project_create{
+        lux::editor::commands::CommandIdView{"lux.editor.project.create"},
+        "New Project",
+        "File"
+    };
+}
 namespace lux::editor::application
 {
     void EditorApplication::Impl::installProjectCreation(extensions::ContributionDraft& draft)
@@ -36,9 +44,8 @@ namespace lux::editor::application
                 return views::DetachedView{contracts::CodeLease::builtin(), std::move(pane)};
             }
         ));
-        draft.commands.push_back(std::make_shared<commands::CommandEntry>(
+        draft.commands.push_back(commands::CommandEntry::bind<command_lux_editor_project_create>(
             contracts::CodeLease::builtin(),
-            commands::CommandDescriptor{commands::CommandId{"lux.editor.project.create"}, "New Project", "File"},
             [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
                 return commands::CommandState{phase_ == EApplicationPhase::RUNNING};
             },

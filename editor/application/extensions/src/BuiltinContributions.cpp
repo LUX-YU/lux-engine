@@ -9,6 +9,26 @@
 #include <algorithm>
 #include <random>
 
+namespace
+{
+    constexpr lux::editor::commands::CommandDescriptor command_lux_editor_new_material{
+        lux::editor::commands::CommandIdView{"lux.editor.new.material"},
+        "New Material",
+        "File"
+    };
+    constexpr lux::editor::commands::CommandDescriptor command_lux_editor_new_flow{
+        lux::editor::commands::CommandIdView{"lux.editor.new.flow"},
+        "New Flow",
+        "File"
+    };
+    constexpr lux::editor::commands::CommandDescriptor command_lux_editor_save{
+        lux::editor::commands::CommandIdView{"lux.editor.save"},
+        "Save",
+        "File",
+        "Ctrl+S",
+        lux::editor::commands::ECommandScope::SESSION
+    };
+}
 namespace lux::editor::extensions
 {
     namespace
@@ -146,18 +166,16 @@ namespace lux::editor::extensions
         auto create = std::make_shared<ContentCreation>(std::move(receiver));
         const auto state = [available](const commands::CommandQuery& input) { return (*available)(input); };
         return {
-            std::make_shared<commands::CommandEntry>(
-                contracts::CodeLease::builtin(),
-                commands::CommandDescriptor{commands::CommandId{"lux.editor.new.material"}, "New Material", "File"},
+            commands::CommandEntry::bind<command_lux_editor_new_material>(
+            contracts::CodeLease::builtin(),
                 state,
                 [create](const commands::CommandInvocation&) {
                     lux::material::MaterialSource source{newAssetId(), "Untitled Material", {}};
                     return (*create)(material::prepareMaterialSession({std::move(source)}, {}, {}));
                 }
             ),
-            std::make_shared<commands::CommandEntry>(
-                contracts::CodeLease::builtin(),
-                commands::CommandDescriptor{commands::CommandId{"lux.editor.new.flow"}, "New Flow", "File"},
+            commands::CommandEntry::bind<command_lux_editor_new_flow>(
+            contracts::CodeLease::builtin(),
                 state,
                 [create, environment = std::move(environment)](const commands::CommandInvocation&) {
                     lux::flowforge::FlowSource source;
@@ -223,9 +241,8 @@ namespace lux::editor::extensions
         auto& saves = activities.saves;
         auto roles = std::make_shared<HistoryActionLookup>(std::move(lookup));
         std::vector<std::shared_ptr<CommandEntry>> entries;
-        entries.push_back(std::make_shared<CommandEntry>(
+        entries.push_back(CommandEntry::bind<command_lux_editor_save>(
             contracts::CodeLease::builtin(),
-            CommandDescriptor{CommandId{"lux.editor.save"}, "Save", "File", "Ctrl+S", ECommandScope::SESSION},
             [&store, roles](const CommandQuery& input) -> CommandResult<CommandState> {
                 auto info = targetInfo(store, input.target);
                 if (!info)
@@ -249,10 +266,10 @@ namespace lux::editor::extensions
         ));
         for (bool forward : {false, true})
         {
-            entries.push_back(std::make_shared<CommandEntry>(
+            entries.push_back(CommandEntry::create(
                 contracts::CodeLease::builtin(),
                 CommandDescriptor{
-                    CommandId{forward ? "lux.editor.redo" : "lux.editor.undo"},
+                    CommandIdView{forward ? "lux.editor.redo" : "lux.editor.undo"},
                     forward ? "Redo" : "Undo",
                     "Edit",
                     forward ? "Ctrl+Y" : "Ctrl+Z",

@@ -12,7 +12,20 @@ namespace lux::editor::commands
     public:
         using Query = cxx::move_only_function<CommandResult<CommandState>(const CommandQuery&)>;
         using Execute = cxx::move_only_function<CommandResult<DispatchReceipt>(const CommandInvocation&)>;
-        CommandEntry(contracts::CodeLease, CommandDescriptor, Query, Execute);
+        // Fixed declarations have static storage, including plugin literals retained by code.
+        template <const CommandDescriptor& Descriptor>
+        [[nodiscard]] static std::shared_ptr<CommandEntry> bind(contracts::CodeLease code, Query query, Execute execute)
+        {
+            static_assert(Descriptor.id.isValid() && !Descriptor.label.empty() && Descriptor.input_version != 0,
+                          "Fixed command metadata must be a valid constant declaration.");
+            return std::shared_ptr<CommandEntry>(
+                new CommandEntry(std::move(code), Descriptor, std::move(query), std::move(execute))
+            );
+        }
+        // Copies dynamic text once into immutable entry-owned storage before returning.
+        // Every view in the input must be valid for this call; no input view escapes.
+        [[nodiscard]] static std::shared_ptr<CommandEntry>
+        create(contracts::CodeLease, const CommandDescriptor&, Query, Execute);
         ~CommandEntry();
         CommandEntry(const CommandEntry&) = delete;
         CommandEntry& operator=(const CommandEntry&) = delete;
@@ -28,8 +41,11 @@ namespace lux::editor::commands
     private:
         friend class CommandRegistry;
         friend class CommandRegistrySnapshot;
+        CommandEntry(contracts::CodeLease, const CommandDescriptor&, Query, Execute);
+        struct DescriptorStorage;
         contracts::CodeLease code_;
-        CommandDescriptor descriptor_;
+        std::unique_ptr<const DescriptorStorage> storage_;
+        const CommandDescriptor* descriptor_;
         Query query_;
         Execute execute_;
     };
@@ -42,11 +58,15 @@ namespace lux::editor::commands
             std::vector<std::shared_ptr<CommandEntry>>,
             std::size_t capacity = 256
         );
+        // External identity resolution: hash lookup followed by exact canonical-name validation.
         [[nodiscard]] CommandResult<CommandHandle> find(CommandIdView) const;
+        // Current-registration resolution. An unchanged entry does not compare or hash names.
+        [[nodiscard]] CommandResult<CommandHandle> resolve(const CommandHandle&) const;
         [[nodiscard]] std::span<const std::shared_ptr<CommandEntry>> entries() const noexcept;
 
     private:
         struct Data;
+        [[nodiscard]] std::shared_ptr<CommandEntry> findHash(std::uint64_t) const noexcept;
         std::shared_ptr<const Data> data_;
     };
     class CommandHandle final

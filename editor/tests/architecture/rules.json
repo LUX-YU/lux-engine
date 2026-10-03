@@ -9849,7 +9849,8 @@
     "P12",
     "P13",
     "EC1",
-    "EC2"
+    "EC2",
+    "EC3"
   ],
   "relocated_pure_definitions": [
     {
@@ -17837,6 +17838,9 @@
         "editor_commands_test"
       ],
       "editor/activities/commands/include/lux/engine/editor/commands/Command.hpp": [
+        "editor_commands"
+      ],
+      "editor/activities/commands/pinclude/lux/engine/editor/commands/CommandIndex.hpp": [
         "editor_commands"
       ],
       "editor/activities/commands/include/lux/engine/editor/commands/CommandRegistry.hpp": [

@@ -1,5 +1,13 @@
 #include <lux/engine/editor/application/EditorApplicationImpl.hpp>
 #include <lux/engine/editor/project/SettingsView.hpp>
+namespace
+{
+    constexpr lux::editor::commands::CommandDescriptor command_lux_editor_settings{
+        lux::editor::commands::CommandIdView{"lux.editor.settings"},
+        "Project Settings",
+        "Window"
+    };
+}
 namespace lux::editor::application
 {
     void EditorApplication::Impl::installSettingsView(extensions::ContributionDraft& draft)
@@ -68,9 +76,8 @@ namespace lux::editor::application
                 return views::DetachedView{contracts::CodeLease::builtin(), std::move(view)};
             }
         ));
-        draft.commands.push_back(std::make_shared<commands::CommandEntry>(
+        draft.commands.push_back(commands::CommandEntry::bind<command_lux_editor_settings>(
             contracts::CodeLease::builtin(),
-            commands::CommandDescriptor{commands::CommandId{"lux.editor.settings"}, "Project Settings", "Window"},
             [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
                 return commands::CommandState{phase_ == EApplicationPhase::RUNNING};
             },

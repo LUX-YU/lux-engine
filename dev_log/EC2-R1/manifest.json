@@ -1,4 +1,5 @@
 {
+  ".gitattributes": "8b9c3028d6467ff3be7c793141927841d70f47f52d0590677438f488ca154992",
   "archive-checks.json": "f4bc68c9c856c1c0f8e5f521aa9c7bbf9fea53a32044a9fdc7f4ab9745b7403f",
   "baseline.json": "f996b93cdead619aac9543a47d22f3984e4c6e6934a45ccf85cba41c5d6d4dfa",
   "before/CMakeLists.txt": "f104648e6728005791267f357b701398d53d5548098f4820ac2e4b07dc587373",
@@ -13,6 +14,7 @@
   "final-ctest-details.log": "fe4daa3a6c1323390de3dea566c12e3602f5c70fbac6b1109d812d69bb19c2b8",
   "final-dependency-seed.json": "be8eb37e9b51772c164647f81ba372e51d65fd8a1f208a6c458cfb67fa0f36ad",
   "final-install-manifest.txt": "2e81a94f9b88f4e796a1f12ba3f48f4ee6cd565b93394de6cd1f7e3c8ad07244",
+  "git-byte-preservation.json": "254133d91d8b6034c1fa7045e614009fd03e3138a402096e8b2f2dbe12d84422",
   "headers.py": "a91ae7c9a7f7e590c53c1651e3520cb45ecbc4009fb8534d250d0f2c099f4e5f",
   "logs/archive-first-freeze.log": "7030c3f6ed5ee038bc62414d03c2d88ad9def64a2a73486c8720adfec37aff34",
   "logs/before-sdk-build.log": "106502a46b47bb0219e3fa9d98ef99cc3c469b9782e9725f1168dff47f835b4f",

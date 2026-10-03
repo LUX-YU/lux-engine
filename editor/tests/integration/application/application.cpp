@@ -337,19 +337,19 @@ int main(int argc, char** argv)
     };
     assert(app->execute(commands::CommandId{"lux.editor.workspace"}));
     assert(app->update());
-    assert(impl.executeWorkspaceIntent(ApplicationImpl::SaveLayout{"Quality workspace"}));
+    assert(impl.executeWorkspaceIntent(lux::editor::project::SaveLayout{"Quality workspace"}));
     settle_workspace();
     assert(impl.layout_catalog_.layouts.size() == 1);
     const auto stored_id = impl.layout_catalog_.layouts.front().id;
     auto stored = impl.workspace_.readLayout(stored_id);
     assert(stored && stored->value.label == "Quality workspace");
-    assert(impl.executeWorkspaceIntent(ApplicationImpl::RenameLayout{stored_id, "Renamed"}));
+    assert(impl.executeWorkspaceIntent(lux::editor::project::RenameLayout{stored_id, "Renamed"}));
     settle_workspace();
     auto renamed = impl.workspace_.readLayout(stored_id);
     assert(renamed && renamed->value.id == stored_id && renamed->value.label == "Renamed");
     assert(renamed->target.key == stored->target.key);
     assert(impl.desktop_->views().show(views->front().id));
-    assert(impl.executeWorkspaceIntent(ApplicationImpl::ApplyLayout{stored_id}));
+    assert(impl.executeWorkspaceIntent(lux::editor::project::ApplyLayout{stored_id}));
     assert(!impl.desktop_->views().describe(views->front().id)->visible);
     settle_workspace();
     assert(impl.workspace_.readPreferences()->value.selected_layout == stored_id);
@@ -361,7 +361,7 @@ int main(int argc, char** argv)
         output << "bad = [";
     }
     assert(impl.desktop_->views().show(views->front().id));
-    auto applied_with_bad_preferences = impl.executeWorkspaceIntent(ApplicationImpl::ApplyLayout{stored_id});
+    auto applied_with_bad_preferences = impl.executeWorkspaceIntent(lux::editor::project::ApplyLayout{stored_id});
     assert(
         !applied_with_bad_preferences &&
         applied_with_bad_preferences.error().domain == "workspace.applied.preferences-read"
@@ -371,7 +371,7 @@ int main(int argc, char** argv)
         std::ofstream output(preferences_file, std::ios::binary | std::ios::trunc);
         output.write(reinterpret_cast<const char*>(preferences_before->data()), preferences_before->size());
     }
-    assert(impl.executeWorkspaceIntent(ApplicationImpl::RemoveLayout{stored_id}));
+    assert(impl.executeWorkspaceIntent(lux::editor::project::RemoveLayout{stored_id}));
     settle_workspace();
     assert(impl.layout_catalog_.layouts.empty());
     for (auto ticket : [&] {
@@ -380,7 +380,7 @@ int main(int argc, char** argv)
                  ids.push_back(report.ticket);
              return ids;
          }())
-        assert(impl.executeWorkspaceIntent(ApplicationImpl::AcknowledgeWorkspace{ticket}));
+        assert(impl.executeWorkspaceIntent(lux::editor::project::AcknowledgeWorkspace{ticket}));
     assert(impl.workspace_publications_.empty());
     std::cout << "Workspace UI uses stable layout IDs and one publication coordinator; preference failure preserves UI "
                  "commit\n";
@@ -467,7 +467,7 @@ int main(int argc, char** argv)
     assert(app->acknowledgeOpen(*reopened));
     std::cout << "Real Save As preserves author history, publishes source/catalog and reopens the same Session\n";
     // Layouts prepare unbound windows. Only the independent recovery manifest opens author content.
-    auto unbound_capture = impl.executeWorkspaceIntent(ApplicationImpl::CaptureRecovery{});
+    auto unbound_capture = impl.executeWorkspaceIntent(lux::editor::project::CaptureRecovery{});
     assert(!unbound_capture && unbound_capture.error().domain == "recovery.unbound");
     assert(!impl.workspace_.readRecovery()); // Unsaved Flow prevented any partial manifest publication.
     const auto material_window = *impl.desktop_->views().describe(material_view);
@@ -512,7 +512,7 @@ int main(int argc, char** argv)
     settle_workspace();
     auto recovery_before = workspace::encodeRecovery(impl.workspace_.readRecovery()->value);
     assert(recovery_before);
-    assert(impl.executeWorkspaceIntent(ApplicationImpl::RestoreRecovery{}));
+    assert(impl.executeWorkspaceIntent(lux::editor::project::RestoreRecovery{}));
     auto while_catalog_busy = [&](const extensions::ContributionSnapshot&) -> extensions::ContributionResult<void> {
         assert(impl.settleRecovery());
         assert(!impl.recovery_->items.front().opening && !impl.recovery_->items.front().result);
@@ -568,13 +568,13 @@ int main(int argc, char** argv)
     material_action([&](lux::editor::material::MaterialView& view) { assert(view.requestPublication()); });
     rename_material();
     assert(app->update());
-    assert(impl.artifacts_.back().settled && impl.artifacts_.back().failure && !impl.artifacts_.back().ticket);
+    assert(impl.artifacts_.back().terminal() && impl.artifacts_.back().failure && !impl.artifacts_.back().operation);
     material_action([&](lux::editor::material::MaterialView& view) { assert(view.undo() && view.requestPublication()); }
     );
-    assert(app->update() && impl.artifacts_.back().ticket);
+    assert(app->update() && impl.artifacts_.back().operation && !impl.artifacts_.back().pending);
     rename_material(); // Already admitted work owns the older capture, not this live source.
     const auto newer_material = impl.sessions_.describe(material_id);
-    while (!impl.artifacts_.back().settled)
+    while (!impl.artifacts_.back().terminal())
     {
         assert(std::chrono::steady_clock::now() < compile_deadline);
         assert(app->update());
@@ -582,8 +582,8 @@ int main(int argc, char** argv)
     const auto& published_material = impl.artifacts_.back();
     if (published_material.failure)
         std::cerr << published_material.failure->domain << ": " << published_material.failure->message << '\n';
-    assert(!published_material.failure && published_material.result);
-    assert(std::holds_alternative<persistence::CommitReceipt>(*published_material.result));
+    assert(!published_material.failure && published_material.operation);
+    assert(std::holds_alternative<PublicationSucceeded>(published_material.operation->status()));
     auto* compiled_entry = impl.project_->asset(saved_material->binding->asset);
     assert(compiled_entry && !compiled_entry->cooked_path.empty());
     assert(compiled_entry->compiled_source_digest == compiled_entry->source_digest);
@@ -909,7 +909,7 @@ int main(int argc, char** argv)
         assert(author->get().describe().current == model_source);
         assert(author->get().redo());
     }
-    impl.result_intent_ = std::remove_reference_t<decltype(impl)>::AcknowledgeModel{
+    impl.result_intent_ = lux::editor::project::AcknowledgeModel{
         impl.model_placements_.front().id
     };
     assert(app->update() && impl.model_placements_.empty());
@@ -1024,7 +1024,7 @@ int main(int argc, char** argv)
     const auto& drive_failure = std::get<lux::scene::SceneDriveFailure>(retained->values.front().cause);
     assert(retained->values.front().scene == failed_instance);
     assert(std::any_cast<int>(std::get<lux::scene::SceneExecutionFailure>(drive_failure.cause).cause) == 731);
-    impl.result_intent_ = std::remove_reference_t<decltype(impl)>::AcknowledgeMaintenance{
+    impl.result_intent_ = lux::editor::project::AcknowledgeMaintenance{
     };
     assert(app->update() && !impl.maintenance_failure_);
     std::cout << "Scene failure keeps an owning diagnostic and independent save completion; empty selection clears "

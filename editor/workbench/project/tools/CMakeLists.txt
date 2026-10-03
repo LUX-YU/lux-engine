@@ -1,6 +1,6 @@
 # Query-only project_ui stays usable by field pickers without import/toolchain dependencies.
 add_component(COMPONENT_NAME project_tools_ui NAMESPACE lux::engine::editor STATIC
-    SOURCE_FILES src/ImportView.cpp src/SettingsView.cpp src/ProjectCreationView.cpp)
+    SOURCE_FILES src/ImportView.cpp src/SettingsView.cpp src/ProjectCreationView.cpp src/ResultsView.cpp src/WorkspaceView.cpp)
 component_include_directories(project_tools_ui BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
 target_link_libraries(project_tools_ui PUBLIC lux::engine::editor::view_api lux::engine::editor::editor_assets
     lux::engine::editor::editor_project lux::engine::editor::scene_ui PRIVATE imgui::core)

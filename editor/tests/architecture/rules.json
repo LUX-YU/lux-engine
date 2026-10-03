@@ -15547,6 +15547,26 @@
           "CPU"
         ],
         "path": "editor/tests/integration/project"
+      },
+      "editor_project_panels": {
+        "layer": "TEST",
+        "role": "TEST",
+        "capabilities": [
+          "CPU",
+          "PROCESS",
+          "GPU"
+        ],
+        "path": "editor/tests/integration/project"
+      },
+      "editor_artifact_publication": {
+        "layer": "TEST",
+        "role": "TEST",
+        "capabilities": [
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN"
+        ],
+        "path": "editor/tests/integration/project"
       }
     },
     "files": {
@@ -17893,6 +17913,30 @@
       ],
       "editor/activities/scene/test/configuration.cpp": [
         "editor_scene_configuration_native"
+      ],
+      "editor/activities/project/include/lux/engine/editor/storage/ArtifactPublicationOperation.hpp": [
+        "editor_storage"
+      ],
+      "editor/activities/project/src/ArtifactPublicationOperation.cpp": [
+        "editor_storage"
+      ],
+      "editor/workbench/project/tools/include/lux/engine/editor/project/ResultsView.hpp": [
+        "project_tools_ui"
+      ],
+      "editor/workbench/project/tools/src/ResultsView.cpp": [
+        "project_tools_ui"
+      ],
+      "editor/workbench/project/tools/include/lux/engine/editor/project/WorkspaceView.hpp": [
+        "project_tools_ui"
+      ],
+      "editor/workbench/project/tools/src/WorkspaceView.cpp": [
+        "project_tools_ui"
+      ],
+      "editor/tests/integration/project/panels.cpp": [
+        "editor_project_panels"
+      ],
+      "editor/tests/integration/project/artifact_publication.cpp": [
+        "editor_artifact_publication"
       ]
     },
     "native_libraries": [

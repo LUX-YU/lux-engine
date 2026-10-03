@@ -1,4 +1,7 @@
 #pragma once
+#include <lux/engine/editor/project/ResultsView.hpp>
+#include <lux/engine/editor/project/WorkspaceView.hpp>
+#include <lux/engine/editor/storage/ArtifactPublicationOperation.hpp>
 #include <lux/engine/editor/application/ProjectCreation.hpp>
 #include <lux/engine/editor/application/EditorApplication.hpp>
 #include <lux/engine/EngineContext.hpp>
@@ -80,24 +83,16 @@ namespace lux::editor::application
             std::optional<EditorFailure> failure;
             bool cancel_requested{};
         };
-        struct CompiledPackage final
-        {
-            cxx::SharedBytes<> bytes;
-            std::string source_digest;
-        };
         struct ArtifactPresentation final
         {
             std::uint64_t id;
-            persistence::DerivedArtifact source;
-            ProjectAssetEntry asset;
-            std::optional<persistence::WriteTicket> ticket;
-            std::optional<persistence::PersistenceResult<CompiledPackage>> encoded;
-            std::optional<persistence::VPublicationOutcome> result;
-            std::optional<EditorResult<ProjectPackage>> package;
-            std::optional<PreparedProjectPublication> catalog;
-            std::optional<persistence::WriteTicket> catalog_ticket;
+            std::optional<persistence::DerivedArtifact> pending;
+            std::unique_ptr<ArtifactPublicationOperation> operation;
             std::optional<EditorFailure> failure;
-            bool encoding{}, reading{}, settled{};
+            [[nodiscard]] bool terminal() const noexcept
+            {
+                return failure.has_value() || (operation && operation->terminal());
+            }
         };
         struct SavePresentation final
         {
@@ -130,71 +125,6 @@ namespace lux::editor::application
             commands::SessionTarget target;
             views::ViewId view;
         };
-        struct AcknowledgeMaintenance final
-        {
-        };
-        struct AcknowledgeSave final
-        {
-            persistence::SaveId target;
-        };
-        struct AcknowledgeArtifact final
-        {
-            std::uint64_t target;
-        };
-        struct CancelSave final
-        {
-            persistence::SaveId target;
-        };
-        struct ReconcilePublication final
-        {
-            persistence::WriteTicket target;
-        };
-        struct AcknowledgeReload final
-        {
-            sessions::ContentStamp target;
-        };
-        struct AcknowledgeModel final
-        {
-            std::uint64_t target;
-        };
-        struct AcknowledgeRunFailure final
-        {
-            scene::StartRunId target;
-        };
-        struct AcknowledgeStep final
-        {
-            scene::StepTicket target;
-        };
-        struct CancelModel final
-        {
-            std::uint64_t target;
-        };
-        struct ShowContent final
-        {
-            sessions::ContentStamp target;
-        };
-        struct SaveContentAs final
-        {
-            sessions::ContentStamp target;
-        };
-        struct AcknowledgeSaveAll final
-        {
-        };
-        using VResultIntent = std::variant<
-            AcknowledgeMaintenance,
-            AcknowledgeSave,
-            AcknowledgeArtifact,
-            CancelSave,
-            ReconcilePublication,
-            AcknowledgeReload,
-            AcknowledgeModel,
-            AcknowledgeRunFailure,
-            AcknowledgeStep,
-            CancelModel,
-            ShowContent,
-            SaveContentAs,
-            AcknowledgeSaveAll
-        >;
         struct RunPresentation final
         {
             scene::StartRunId start;
@@ -218,55 +148,6 @@ namespace lux::editor::application
             sessions::ContentStamp content;
             views::ViewId question;
         };
-        struct RefreshWorkspace final
-        {
-        };
-        struct SaveLayout final
-        {
-            std::string label;
-        };
-        struct ApplyLayout final
-        {
-            workspace::LayoutId layout;
-        };
-        struct RenameLayout final
-        {
-            workspace::LayoutId layout;
-            std::string label;
-        };
-        struct RemoveLayout final
-        {
-            workspace::LayoutId layout;
-        };
-        struct AcknowledgeWorkspace final
-        {
-            persistence::WriteTicket ticket;
-        };
-        struct ReconcileWorkspace final
-        {
-            persistence::WriteTicket ticket;
-        };
-        struct CaptureRecovery final
-        {
-        };
-        struct RestoreRecovery final
-        {
-        };
-        struct MigrateWorkspace final
-        {
-        };
-        using VWorkspaceIntent = std::variant<
-            RefreshWorkspace,
-            SaveLayout,
-            ApplyLayout,
-            RenameLayout,
-            RemoveLayout,
-            AcknowledgeWorkspace,
-            ReconcileWorkspace,
-            CaptureRecovery,
-            RestoreRecovery,
-            MigrateWorkspace
-        >;
         struct WorkspacePublication final
         {
             std::string label;
@@ -399,7 +280,7 @@ namespace lux::editor::application
         workspace::WorkspaceStore workspace_;
         workspace::LayoutCatalog layout_catalog_;
         std::optional<EditorFailure> workspace_failure_;
-        std::optional<VWorkspaceIntent> workspace_intent_;
+        std::optional<project::VWorkspaceIntent> workspace_intent_;
         std::vector<WorkspacePublication> workspace_publications_;
         std::optional<RecoveryPresentation> recovery_;
         std::optional<workspace::LegacyMigration> migration_;
@@ -418,7 +299,7 @@ namespace lux::editor::application
         std::optional<SaveQuestion> save_question_;
         std::vector<ReloadPresentation> reloads_;
         std::optional<ReloadQuestion> reload_question_;
-        std::optional<VResultIntent> result_intent_;
+        std::optional<project::VResultIntent> result_intent_;
         std::optional<EditorFailure> result_failure_;
         std::optional<EditorFailure> maintenance_failure_;
         std::optional<sessions::SaveAllOperation> save_all_;
@@ -464,6 +345,8 @@ namespace lux::editor::application
         void installContentCommands(extensions::ContributionDraft&);
         void installSceneCommands(extensions::ContributionDraft&);
         void installSaveCommands(extensions::ContributionDraft&);
+        [[nodiscard]] EditorResult<project::ResultsSnapshot> observeResults();
+        [[nodiscard]] EditorResult<project::WorkspaceSnapshot> observeWorkspace();
         void installResultView(extensions::ContributionDraft&);
         void installWorkspaceView(extensions::ContributionDraft&);
         void installProjectCreation(extensions::ContributionDraft&);
@@ -473,7 +356,7 @@ namespace lux::editor::application
         [[nodiscard]] EditorResult<void> receiveProjectIntents();
         void maintainRecentProjects();
         void installRecentProjects(extensions::ContributionDraft&);
-        [[nodiscard]] EditorResult<void> executeWorkspaceIntent(const VWorkspaceIntent&);
+        [[nodiscard]] EditorResult<void> executeWorkspaceIntent(const project::VWorkspaceIntent&);
         [[nodiscard]] EditorResult<void> settleWorkspace();
         [[nodiscard]] EditorResult<void> captureRecovery();
         [[nodiscard]] EditorResult<void> restoreRecovery();

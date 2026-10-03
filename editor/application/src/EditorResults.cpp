@@ -1,10 +1,9 @@
 #include <lux/engine/editor/application/EditorApplicationImpl.hpp>
-#include <lux/engine/ui/Element.hpp>
-#include <imgui.h>
 #include <algorithm>
 
 namespace lux::editor::application
 {
+    using namespace lux::editor::project;
     EditorResult<void> EditorApplication::Impl::receiveResultIntent()
     {
         if (!result_intent_)
@@ -19,8 +18,18 @@ namespace lux::editor::application
             else if constexpr (std::same_as<Action, AcknowledgeArtifact>)
             {
                 std::erase_if(artifacts_, [&](const auto& entry) {
-                    return entry.id == action.target && entry.settled;
+                    return entry.id == action.target && entry.terminal();
                 });
+            }
+            else if constexpr (std::same_as<Action, RetryArtifact> || std::same_as<Action, AbandonArtifact>)
+            {
+                const auto found = std::ranges::find(artifacts_, action.target, &ArtifactPresentation::id);
+                if (found == artifacts_.end() || !found->operation)
+                    return cxx::unexpected(EditorFailure{EEditorError::STALE_REQUEST, "artifact.result"});
+                if constexpr (std::same_as<Action, RetryArtifact>)
+                    return found->operation->retry();
+                else
+                    found->operation->abandon();
             }
             else if constexpr (std::same_as<Action, AcknowledgeSave>)
             {
@@ -108,274 +117,197 @@ namespace lux::editor::application
             return {};
         }, *intent);
     }
+    EditorResult<project::ResultsSnapshot> EditorApplication::Impl::observeResults()
+    {
+        project::ResultsSnapshot snapshot;
+        const auto session_key = [](sessions::SessionId id) {
+            return std::to_string(id.domain) + "/" + std::to_string(id.slot) + "/" + std::to_string(id.generation);
+        };
+        const auto row = [&](std::string key) -> project::ResultRow& {
+            return snapshot.sections.back().rows.emplace_back(project::ResultRow{std::move(key)});
+        };
+        const auto diagnostic = [](project::ResultRow& to, const EditorFailure& error) {
+            to.messages.push_back(error.domain + ": " + error.message);
+        };
+        const auto publication = [&](project::ResultRow& to, persistence::WriteTicket ticket) -> EditorResult<void> {
+            auto status = writes_.status(ticket);
+            if (!status)
+                return applicationFailure("results.publication", status.error());
+            if (status->stage == persistence::EWriteStage::UNKNOWN)
+            {
+                to.messages.emplace_back("Publication unknown; this physical target remains reserved.");
+                to.actions.push_back({"Reconcile disk result", ReconcilePublication{ticket}});
+            }
+            return {};
+        };
+        snapshot.sections.push_back({"Diagnostics"});
+        if (result_failure_)
+            diagnostic(row("request"), *result_failure_);
+        if (maintenance_failure_)
+        {
+            auto& to = row("maintenance");
+            diagnostic(to, *maintenance_failure_);
+            to.actions.push_back({"Acknowledge maintenance error", AcknowledgeMaintenance{}});
+        }
+        snapshot.sections.push_back({"Open content (including content without a window)"});
+        auto ids = sessions_.snapshotIds();
+        if (!ids)
+            return applicationFailure("results.contents", ids.error());
+        for (auto id : *ids)
+        {
+            auto info = sessions_.describe(id);
+            if (!info)
+                return applicationFailure("results.content", info.error());
+            auto& to = row(session_key(id));
+            to.messages.push_back(info->kind.name + (info->dirty ? " *" : ""));
+            if (info->binding)
+                to.messages.push_back(info->binding->location);
+            to.actions.push_back({"Show", ShowContent{info->current}});
+            if (!info->binding)
+                to.actions.push_back({"Save As", SaveContentAs{info->current}});
+        }
+        snapshot.sections.push_back({"Run results"});
+        for (const auto& run : run_presentations_)
+        {
+            auto& to = row(std::to_string(run.start.domain) + "/" + std::to_string(run.start.serial));
+            if (run.failure)
+            {
+                diagnostic(to, *run.failure);
+                if (!run.preparing && !run.run)
+                    to.actions.push_back({"Acknowledge failed Run", AcknowledgeRunFailure{run.start}});
+            }
+            for (const auto& ticket : run.steps)
+            {
+                auto step = runs_.stepStatus(ticket);
+                if (!step)
+                    return applicationFailure("results.step", step.error());
+                const auto name = "Step " + std::to_string(ticket.step.serial);
+                to.messages.push_back(name + ": " + std::to_string(static_cast<unsigned>(step->state)));
+                const bool completed = step->state == lux::scene::ESceneStepState::COMPLETED ||
+                    step->state == lux::scene::ESceneStepState::FAILED ||
+                    step->state == lux::scene::ESceneStepState::CANCELLED;
+                if (completed)
+                    to.actions.push_back({"Acknowledge " + name, AcknowledgeStep{ticket}});
+            }
+        }
+        snapshot.sections.push_back({"Compiled publications"});
+        for (const auto& report : artifacts_)
+        {
+            auto& to = row(std::to_string(report.id));
+            if (report.failure)
+                diagnostic(to, *report.failure);
+            if (report.operation)
+            {
+                to.messages.emplace_back(report.operation->path());
+                const auto& status = report.operation->status();
+                if (const auto* failed = std::get_if<EditorFailure>(&status))
+                {
+                    diagnostic(to, *failed);
+                    to.actions.push_back({"Retry retained publication", RetryArtifact{report.id}});
+                    to.actions.push_back({"Abandon remaining publication", AbandonArtifact{report.id}});
+                }
+                else if (std::holds_alternative<PublicationSucceeded>(status))
+                    to.messages.emplace_back("Package and catalog published. Author save baseline is unchanged.");
+                else if (const auto* abandoned = std::get_if<PublicationAbandoned>(&status))
+                    to.messages.push_back("Publication stopped; " + std::to_string(abandoned->published_files) +
+                        " files already published remain on disk.");
+            }
+            if (report.terminal())
+                to.actions.push_back({"Acknowledge publication", AcknowledgeArtifact{report.id}});
+        }
+        snapshot.sections.push_back({"Save results"});
+        for (const auto& report : save_reports_)
+        {
+            auto& to = row(std::to_string(report.id.value));
+            to.messages.push_back(report.asset.source_path);
+            if (report.result)
+            {
+                const auto& outcome = report.result->publication;
+                to.messages.push_back(std::string("Disk: ") +
+                    (std::holds_alternative<persistence::CommitReceipt>(outcome) ? "published" : "not published") +
+                    "; baseline adoption: " + std::to_string(static_cast<unsigned>(report.result->adoption)));
+                if (const auto* failed = std::get_if<persistence::NotPublished>(&outcome))
+                    to.messages.push_back(failed->failure.detail);
+                if (report.failure)
+                    diagnostic(to, *report.failure);
+                to.actions.push_back({"Acknowledge result", AcknowledgeSave{report.id}});
+            }
+            else
+            {
+                auto status = saves_.status(report.id);
+                if (!status)
+                    return applicationFailure("results.save", status.error());
+                to.messages.push_back("Accepted save, stage " + std::to_string(static_cast<unsigned>(status->stage)));
+                if (auto observed = publication(to, status->ticket); !observed)
+                    return cxx::unexpected(observed.error());
+                to.actions.push_back({"Cancel before publication", CancelSave{report.id}});
+                if (report.catalog_ticket)
+                    if (auto observed = publication(to, *report.catalog_ticket); !observed)
+                        return cxx::unexpected(observed.error());
+            }
+        }
+        if (save_all_)
+        {
+            snapshot.sections.push_back({"Save All fixed set"});
+            for (const auto& entry : save_all_->entries())
+            {
+                auto& to = row(session_key(entry.session));
+                to.messages.push_back("Content " + to.key + ": " +
+                    (entry.already_clean ? "already clean" : entry.save ? "accepted (see save result)" : "not admitted"));
+                if (entry.failure)
+                    to.messages.push_back(entry.failure->domain + ": " + entry.failure->detail);
+            }
+            auto& to = row("report");
+            to.messages.emplace_back("Unbound content: use Save As above. Other accepted saves continue independently.");
+            to.actions.push_back({"Acknowledge Save All report", AcknowledgeSaveAll{}});
+        }
+        snapshot.sections.push_back({"Model insertion"});
+        for (const auto& model : model_placements_)
+        {
+            auto& to = row(std::to_string(model.id));
+            const auto state = model.result && *model.result ? "inserted"
+                : model.result || model.failure ? "not inserted"
+                : model.cancel_requested ? "cancelling; waiting for completion" : "loading / waiting for the target gate";
+            to.messages.push_back("Content " + session_key(model.placement.target.id()) + ": " + state);
+            if (model.failure)
+                diagnostic(to, *model.failure);
+            if (model.result && !*model.result)
+                std::visit([&](const auto& error) {
+                    using Error = std::decay_t<decltype(error)>;
+                    if constexpr (std::same_as<Error, scene::SceneEditError>)
+                        to.messages.push_back("Scene edit rejected (" + std::to_string(static_cast<unsigned>(error.code)) +
+                            "); the captured target was not rebased.");
+                    else if constexpr (std::same_as<Error, process::TaskCancelled>)
+                        to.messages.emplace_back("Cancelled; no author edit was committed.");
+                    else
+                        to.messages.emplace_back("Model read or dependency validation failed; source retained.");
+                }, model.result->error().cause);
+            if (model.result || model.failure)
+                to.actions.push_back({"Acknowledge insertion", AcknowledgeModel{model.id}});
+            else
+                to.actions.push_back({"Cancel insertion", CancelModel{model.id}});
+        }
+        snapshot.sections.push_back({"Reload results"});
+        for (std::size_t index{}; index < reloads_.size(); ++index)
+        {
+            const auto& reload = reloads_[index];
+            auto& to = row(session_key(reload.source.session) + "/" + std::to_string(index));
+            to.messages.emplace_back(!reload.result ? "reading / preparing" : *reload.result ? "reloaded" :
+                "original content retained");
+            if (reload.result)
+            {
+                if (!*reload.result)
+                    to.messages.push_back(reload.result->error().domain + ": " + reload.result->error().detail);
+                to.actions.push_back({"Acknowledge reload", AcknowledgeReload{reload.source}});
+            }
+        }
+        return snapshot;
+    }
+
     void EditorApplication::Impl::installResultView(extensions::ContributionDraft& draft)
     {
         // An application composition view, not another operation owner. It records button intents only;
         // service calls and structural changes run after Root returns from draw/update.
-        class ResultsPane final : public lux::ui::Pane
-        {
-            struct Content final : lux::ui::Element
-            {
-                Impl& app_;
-                Content(ResultsPane& pane, Impl& app) : Element(pane, lux::ui::ElementId{"results"}), app_(app)
-                {
-                    setStretch({1, 1});
-                }
-                void draw() noexcept override
-                {
-                    auto button = [&](const char* label, VResultIntent intent) {
-                        ImGui::BeginDisabled(app_.result_intent_.has_value());
-                        if (ImGui::Button(label))
-                            app_.result_intent_ = std::move(intent);
-                        ImGui::EndDisabled();
-                    };
-                    auto publication = [&](persistence::WriteTicket ticket) {
-                        auto status = app_.writes_.status(ticket);
-                        if (!status)
-                            return;
-                        if (status->stage == persistence::EWriteStage::UNKNOWN)
-                        {
-                            ImGui::TextUnformatted("Publication unknown; this physical target remains reserved.");
-                            button("Reconcile disk result", ReconcilePublication{ticket});
-                        }
-                    };
-                    if (app_.result_failure_)
-                        ImGui::TextWrapped(
-                            "%s: %s",
-                            app_.result_failure_->domain.c_str(),
-                            app_.result_failure_->message.c_str()
-                        );
-                    if (app_.maintenance_failure_)
-                    {
-                        ImGui::TextWrapped(
-                            "%s: %s",
-                            app_.maintenance_failure_->domain.c_str(),
-                            app_.maintenance_failure_->message.c_str()
-                        );
-                        button("Acknowledge maintenance error", AcknowledgeMaintenance{});
-                    }
-                    ImGui::SeparatorText("Open content (including content without a window)");
-                    auto ids = app_.sessions_.snapshotIds();
-                    if (!ids)
-                        ImGui::TextUnformatted("Content temporarily unavailable; no empty-list inference.");
-                    else
-                        for (auto id : *ids)
-                        {
-                            auto info = app_.sessions_.describe(id);
-                            if (!info)
-                                continue;
-                            ImGui::PushID(static_cast<int>(id.slot));
-                            ImGui::Text("%s%s", info->kind.name.c_str(), info->dirty ? " *" : "");
-                            if (info->binding)
-                                ImGui::TextWrapped("%s", info->binding->location.c_str());
-                            button("Show", ShowContent{info->current});
-                            if (!info->binding)
-                            {
-                                ImGui::SameLine();
-                                button("Save As", SaveContentAs{info->current});
-                            }
-                            ImGui::PopID();
-                        }
-                    ImGui::SeparatorText("Run results");
-                    for (const auto& run : app_.run_presentations_)
-                    {
-                        ImGui::PushID(static_cast<int>(run.start.serial));
-                        if (run.failure)
-                        {
-                            ImGui::TextWrapped("%s: %s", run.failure->domain.c_str(), run.failure->message.c_str());
-                            if (!run.preparing && !run.run)
-                                button("Acknowledge failed Run", AcknowledgeRunFailure{run.start});
-                        }
-                        for (const auto& ticket : run.steps)
-                        {
-                            ImGui::PushID(static_cast<int>(ticket.step.serial));
-                            auto step = app_.runs_.stepStatus(ticket);
-                            if (step)
-                            {
-                                ImGui::Text(
-                                    "Step %llu: %u",
-                                    static_cast<unsigned long long>(ticket.step.serial),
-                                    static_cast<unsigned>(step->state)
-                                );
-                                const bool completed = step->state == lux::scene::ESceneStepState::COMPLETED ||
-                                                       step->state == lux::scene::ESceneStepState::FAILED ||
-                                                       step->state == lux::scene::ESceneStepState::CANCELLED;
-                                if (completed)
-                                    button("Acknowledge step", AcknowledgeStep{ticket});
-                            }
-                            ImGui::PopID();
-                        }
-                        ImGui::PopID();
-                    }
-                    ImGui::SeparatorText("Compiled publications");
-                    for (const auto& report : app_.artifacts_)
-                    {
-                        ImGui::PushID(static_cast<int>(report.id));
-                        ImGui::TextWrapped("%s", report.asset.cooked_path.c_str());
-                        if (report.failure)
-                            ImGui::TextWrapped(
-                                "%s: %s",
-                                report.failure->domain.c_str(),
-                                report.failure->message.c_str()
-                            );
-                        if (report.settled)
-                        {
-                            ImGui::TextUnformatted(
-                                report.result && std::holds_alternative<persistence::CommitReceipt>(*report.result)
-                                    ? "Package published. Author save baseline is unchanged."
-                                    : "Publication rejected or failed."
-                            );
-                            button("Acknowledge publication", AcknowledgeArtifact{report.id});
-                        }
-                        else
-                        {
-                            if (report.ticket)
-                                publication(*report.ticket);
-                            if (report.catalog_ticket)
-                                publication(*report.catalog_ticket);
-                        }
-                        ImGui::PopID();
-                    }
-                    ImGui::SeparatorText("Save results");
-                    for (const auto& report : app_.save_reports_)
-                    {
-                        ImGui::PushID(static_cast<int>(report.id.value));
-                        ImGui::TextWrapped("%s", report.asset.source_path.c_str());
-                        if (report.result)
-                        {
-                            const auto& outcome = report.result->publication;
-                            ImGui::Text(
-                                "Disk: %s; baseline adoption: %u",
-                                std::holds_alternative<persistence::CommitReceipt>(outcome) ? "published"
-                                                                                            : "not published",
-                                static_cast<unsigned>(report.result->adoption)
-                            );
-                            if (const auto* failed = std::get_if<persistence::NotPublished>(&outcome))
-                                ImGui::TextWrapped("%s", failed->failure.detail.c_str());
-                            if (report.failure)
-                                ImGui::TextWrapped(
-                                    "Catalog: %s: %s",
-                                    report.failure->domain.c_str(),
-                                    report.failure->message.c_str()
-                                );
-                            button("Acknowledge result", AcknowledgeSave{report.id});
-                        }
-                        else
-                        {
-                            auto status = app_.saves_.status(report.id);
-                            if (status)
-                            {
-                                ImGui::Text("Accepted save, stage %u", static_cast<unsigned>(status->stage));
-                                publication(status->ticket);
-                                button("Cancel before publication", CancelSave{report.id});
-                            }
-                            if (report.catalog_ticket)
-                                publication(*report.catalog_ticket);
-                        }
-                        ImGui::PopID();
-                    }
-                    if (app_.save_all_)
-                    {
-                        ImGui::SeparatorText("Save All fixed set");
-                        for (const auto& entry : app_.save_all_->entries())
-                        {
-                            ImGui::Text(
-                                "Content %u: %s",
-                                entry.session.slot,
-                                entry.already_clean ? "already clean"
-                                : entry.save        ? "accepted (see save result)"
-                                                    : "not admitted"
-                            );
-                            if (entry.failure)
-                                ImGui::TextWrapped(
-                                    "%s: %s",
-                                    entry.failure->domain.c_str(),
-                                    entry.failure->detail.c_str()
-                                );
-                        }
-                        ImGui::TextUnformatted(
-                            "Unbound content: use Save As above. Other accepted saves continue independently."
-                        );
-                        button("Acknowledge Save All report", AcknowledgeSaveAll{});
-                    }
-                    ImGui::SeparatorText("Model insertion");
-                    for (const auto& model : app_.model_placements_)
-                    {
-                        ImGui::PushID(static_cast<int>(model.id));
-                        ImGui::Text(
-                            "Content %u: %s",
-                            model.placement.target.id().slot,
-                            model.result && *model.result   ? "inserted"
-                            : model.result || model.failure ? "not inserted"
-                            : model.cancel_requested        ? "cancelling; waiting for completion"
-                                                            : "loading / waiting for the target gate"
-                        );
-                        if (model.failure)
-                            ImGui::TextWrapped("%s: %s", model.failure->domain.c_str(), model.failure->message.c_str());
-                        if (model.result && !*model.result)
-                            std::visit(
-                                [](const auto& error) {
-                                    using Error = std::decay_t<decltype(error)>;
-                                    if constexpr (std::same_as<Error, scene::SceneEditError>)
-                                        ImGui::Text(
-                                            "Scene edit rejected (%u); the captured target was not rebased.",
-                                            static_cast<unsigned>(error.code)
-                                        );
-                                    else if constexpr (std::same_as<Error, process::TaskCancelled>)
-                                        ImGui::TextUnformatted("Cancelled; no author edit was committed.");
-                                    else
-                                        ImGui::TextUnformatted(
-                                            "Model read or dependency validation failed; source retained."
-                                        );
-                                },
-                                model.result->error().cause
-                            );
-                        if (model.result || model.failure)
-                            button("Acknowledge insertion", AcknowledgeModel{model.id});
-                        else
-                            button("Cancel insertion", CancelModel{model.id});
-                        ImGui::PopID();
-                    }
-                    ImGui::SeparatorText("Reload results");
-                    for (std::size_t index{}; index < app_.reloads_.size(); ++index)
-                    {
-                        const auto& reload = app_.reloads_[index];
-                        ImGui::PushID(static_cast<int>(index));
-                        ImGui::Text(
-                            "Content %u: %s",
-                            reload.source.session.slot,
-                            !reload.result   ? "reading / preparing"
-                            : *reload.result ? "reloaded"
-                                             : "original content retained"
-                        );
-                        if (reload.result)
-                        {
-                            if (!*reload.result)
-                                ImGui::TextWrapped(
-                                    "%s: %s",
-                                    reload.result->error().domain.c_str(),
-                                    reload.result->error().detail.c_str()
-                                );
-                            button("Acknowledge reload", AcknowledgeReload{reload.source});
-                        }
-                        ImGui::PopID();
-                    }
-                }
-            } content_;
-
-        public:
-            ResultsPane(object::ObjectDispatcherRef dispatcher, lux::ui::PaneId id, Impl& app)
-                : Pane(
-                      dispatcher,
-                      std::move(id),
-                      lux::ui::PaneTypeId{"lux.editor.content.results"},
-                      "Content and Operations"
-                  ),
-                  content_(*this, app)
-            {
-                setContent(content_);
-            }
-        };
         draft.views.push_back(std::make_shared<views::ViewFactoryEntry>(
             contracts::CodeLease::builtin(),
             views::ViewFactoryDescriptor{
@@ -386,7 +318,15 @@ namespace lux::editor::application
             [this](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
                 return views::DetachedView{
                     contracts::CodeLease::builtin(),
-                    std::make_unique<ResultsPane>(input.dispatcher(), input.paneId(), *this)
+                    std::make_unique<project::ResultsView>(input.dispatcher(), input.paneId(),
+                        [this] { return observeResults(); },
+                        [this](VResultIntent intent) -> EditorResult<void> {
+                            if (result_intent_)
+                                return cxx::unexpected(EditorFailure{EEditorError::BUSY, "result.intent.capacity"});
+                            result_intent_ = std::move(intent);
+                            return {};
+                        }
+                    )
                 };
             }
         ));

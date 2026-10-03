@@ -253,9 +253,9 @@ namespace lux::editor::application
         };
         for (const auto& artifact : artifacts_)
         {
-            if (artifact.settled)
+            if (artifact.terminal())
                 continue;
-            auto ticket = artifact.catalog_ticket ? artifact.catalog_ticket : artifact.ticket;
+            auto ticket = artifact.operation ? artifact.operation->ticket() : std::nullopt;
             if (ticket)
             {
                 auto status = writes_.status(*ticket);
@@ -428,7 +428,7 @@ namespace lux::editor::application
             flow_compilation_.empty() && pending_saves_.empty() && opening_.settled() && !recent_task_ &&
             !recent_result_ && !recent_ticket_ && !project_launch_ &&
             std::ranges::all_of(workspace_publications_, [](const auto& value) { return value.result.has_value(); }) &&
-            std::ranges::all_of(artifacts_, [](const auto& value) { return value.settled; }) &&
+            std::ranges::all_of(artifacts_, [](const auto& value) { return value.terminal(); }) &&
             std::ranges::none_of(run_presentations_, [](const auto& run) { return bool(run.preparing) || run.run; });
         if (phase_ == EApplicationPhase::DRAINING && operations_settled &&
             std::ranges::none_of(reloads_, [](const auto& reload) { return bool(reload.operation); }) &&

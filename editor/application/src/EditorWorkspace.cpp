@@ -1,12 +1,10 @@
 #include <lux/engine/editor/application/EditorApplicationImpl.hpp>
 #include <algorithm>
 #include <random>
-#include <lux/engine/ui/Element.hpp>
-#include <imgui.h>
-#include <imgui_stdlib.h>
 
 namespace lux::editor::application
 {
+    using namespace lux::editor::project;
     EditorResult<void> EditorApplication::applyLayout(workspace::DockLayout layout)
     {
         if (auto ready = impl_->admission(); !ready)
@@ -196,6 +194,58 @@ namespace lux::editor::application
             return migrated;
         return settleRecovery();
     }
+    EditorResult<project::WorkspaceSnapshot> EditorApplication::Impl::observeWorkspace()
+    {
+        project::WorkspaceSnapshot snapshot;
+        snapshot.catalog = layout_catalog_;
+        if (workspace_failure_)
+            snapshot.diagnostics.push_back(workspace_failure_->domain + ": " + workspace_failure_->message);
+        if (migration_)
+        {
+            snapshot.diagnostics.insert(snapshot.diagnostics.end(), migration_->diagnostics.begin(),
+                migration_->diagnostics.end());
+            if (migration_complete_)
+                snapshot.diagnostics.emplace_back("Migration verified complete");
+            if (migration_failure_)
+                snapshot.diagnostics.push_back(migration_failure_->domain + ": " + migration_failure_->message);
+        }
+        if (recovery_)
+            for (const auto& item : recovery_->items)
+            {
+                snapshot.recovery.emplace_back(item.entry.restore_key.name());
+                for (const auto& content : item.entry.contents)
+                {
+                    snapshot.recovery.push_back(content.locator);
+                    if (content.unpersisted_changes)
+                        snapshot.recovery.emplace_back("Only saved content can be restored; unsaved edits are not in this manifest.");
+                }
+                if (!item.result)
+                    snapshot.recovery.emplace_back("Recovery pending");
+                else if (!*item.result)
+                    snapshot.recovery.push_back(item.result->error().domain + ": " + item.result->error().message);
+                else
+                    snapshot.recovery.emplace_back("Content presented");
+                for (const auto& source : item.sources)
+                    if (source.failure)
+                        snapshot.recovery.push_back(source.failure->domain + ": " + source.failure->detail);
+            }
+        for (const auto& report : workspace_publications_)
+        {
+            project::WorkspacePublicationInfo row{report.label, report.ticket, report.result};
+            if (report.catalog_failure)
+                row.catalog_failure = report.catalog_failure->detail;
+            if (!report.result)
+            {
+                auto status = writes_.status(report.ticket);
+                if (!status)
+                    return applicationFailure("workspace.observation", status.error());
+                row.unknown = status->stage == persistence::EWriteStage::UNKNOWN;
+            }
+            snapshot.publications.push_back(std::move(row));
+        }
+        return snapshot;
+    }
+
     void EditorApplication::Impl::installWorkspaceView(extensions::ContributionDraft& draft)
     {
         // The same recovery operations are available to menus, scripts and installed workbench consumers.
@@ -223,142 +273,6 @@ namespace lux::editor::application
         };
         recovery_command("lux.editor.recovery.capture", "Record content locations", CaptureRecovery{});
         recovery_command("lux.editor.recovery.restore", "Restore recorded content", RestoreRecovery{});
-        class WorkspacePane final : public lux::ui::Pane
-        {
-            struct Content final : lux::ui::Element
-            {
-                Impl& app_;
-                std::string label_{"Workspace"};
-                Content(WorkspacePane& parent, Impl& app) : Element(parent, lux::ui::ElementId{"workspace"}), app_(app)
-                {
-                    setStretch({1, 1});
-                }
-                void draw() noexcept override
-                {
-                    auto button = [&](const char* label, VWorkspaceIntent intent) {
-                        ImGui::BeginDisabled(app_.workspace_intent_.has_value());
-                        if (ImGui::Button(label))
-                            app_.workspace_intent_ = std::move(intent);
-                        ImGui::EndDisabled();
-                    };
-                    ImGui::InputText("Layout label", &label_);
-                    button("Save current layout as new", SaveLayout{label_});
-                    ImGui::SameLine();
-                    button("Refresh directory", RefreshWorkspace{});
-                    if (app_.workspace_failure_)
-                        ImGui::TextWrapped(
-                            "%s: %s",
-                            app_.workspace_failure_->domain.c_str(),
-                            app_.workspace_failure_->message.c_str()
-                        );
-                    for (const auto& diagnostic : app_.layout_catalog_.diagnostics)
-                        ImGui::TextWrapped("%s: %s", diagnostic.file.c_str(), diagnostic.failure.detail.c_str());
-                    for (const auto& layout : app_.layout_catalog_.layouts)
-                    {
-                        ImGui::PushID(layout.id.value.c_str());
-                        ImGui::SeparatorText(layout.label.c_str());
-                        button("Apply", ApplyLayout{layout.id});
-                        ImGui::SameLine();
-                        button("Rename to label", RenameLayout{layout.id, label_});
-                        ImGui::SameLine();
-                        button("Delete", RemoveLayout{layout.id});
-                        ImGui::PopID();
-                    }
-                    ImGui::SeparatorText("Content recovery (independent of layouts)");
-                    button("Record current locations", CaptureRecovery{});
-                    button("Restore recorded content", RestoreRecovery{});
-                    button("Import old workspace data", MigrateWorkspace{});
-                    if (app_.migration_)
-                    {
-                        for (const auto& diagnostic : app_.migration_->diagnostics)
-                            ImGui::TextWrapped("%s", diagnostic.c_str());
-                        if (app_.migration_complete_)
-                            ImGui::TextUnformatted("Migration verified complete");
-                        if (app_.migration_failure_)
-                            ImGui::TextWrapped("%s", app_.migration_failure_->domain.c_str());
-                    }
-                    if (app_.recovery_)
-                        for (const auto& item : app_.recovery_->items)
-                        {
-                            ImGui::TextUnformatted(std::string(item.entry.restore_key.name()).c_str());
-                            for (const auto& content : item.entry.contents)
-                            {
-                                ImGui::TextWrapped("%s", content.locator.c_str());
-                                if (content.unpersisted_changes)
-                                    ImGui::TextUnformatted(
-                                        "Only saved content can be restored; unsaved edits are not in this manifest."
-                                    );
-                            }
-                            if (!item.result)
-                                ImGui::TextUnformatted("Recovery pending");
-                            else if (!*item.result)
-                                ImGui::TextWrapped("%s: %s", item.result->error().domain.c_str(),
-                                                   item.result->error().message.c_str());
-                            else
-                                ImGui::TextUnformatted("Content presented");
-                            for (const auto& source : item.sources)
-                                if (source.failure)
-                                    ImGui::TextWrapped("%s: %s", source.failure->domain.c_str(),
-                                                       source.failure->detail.c_str());
-                        }
-                    ImGui::SeparatorText("Publication results");
-                    for (const auto& report : app_.workspace_publications_)
-                    {
-                        ImGui::PushID(static_cast<int>(report.ticket.value));
-                        ImGui::TextUnformatted(report.label.c_str());
-                        if (report.result)
-                        {
-                            std::visit(
-                                [](const auto& result) {
-                                    if constexpr (std::same_as<
-                                                      std::decay_t<decltype(result)>,
-                                                      persistence::CommitReceipt>)
-                                        ImGui::TextUnformatted("Published");
-                                    else
-                                        ImGui::TextWrapped("%s", result.failure.detail.c_str());
-                                },
-                                *report.result
-                            );
-                            if (report.catalog_failure)
-                                ImGui::TextWrapped(
-                                    "Directory refresh failed: %s",
-                                    report.catalog_failure->detail.c_str()
-                                );
-                            button("Acknowledge", AcknowledgeWorkspace{report.ticket});
-                        }
-                        else
-                        {
-                            auto current = app_.writes_.status(report.ticket);
-                            if (current && current->stage == persistence::EWriteStage::UNKNOWN)
-                            {
-                                ImGui::TextUnformatted("Unknown publication; target remains reserved.");
-                                button("Reconcile", ReconcileWorkspace{report.ticket});
-                            }
-                            else
-                                ImGui::TextUnformatted("Publication pending");
-                        }
-                        ImGui::PopID();
-                    }
-                }
-            } content_;
-            bool initialized_{};
-            void update() noexcept override
-            {
-                if (!initialized_ && !content_.app_.workspace_intent_)
-                {
-                    content_.app_.workspace_intent_ = RefreshWorkspace{};
-                    initialized_ = true;
-                }
-            }
-
-        public:
-            WorkspacePane(object::ObjectDispatcherRef dispatcher, lux::ui::PaneId id, Impl& app)
-                : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{"lux.editor.workspace"}, "Workspace"),
-                  content_(*this, app)
-            {
-                setContent(content_);
-            }
-        };
         draft.views.push_back(std::make_shared<views::ViewFactoryEntry>(
             contracts::CodeLease::builtin(),
             views::ViewFactoryDescriptor{
@@ -369,7 +283,15 @@ namespace lux::editor::application
             [this](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
                 return views::DetachedView{
                     contracts::CodeLease::builtin(),
-                    std::make_unique<WorkspacePane>(input.dispatcher(), input.paneId(), *this)
+                    std::make_unique<project::WorkspaceView>(input.dispatcher(), input.paneId(),
+                        [this] { return observeWorkspace(); },
+                        [this](VWorkspaceIntent intent) -> EditorResult<void> {
+                            if (workspace_intent_)
+                                return cxx::unexpected(EditorFailure{EEditorError::BUSY, "workspace.intent.capacity"});
+                            workspace_intent_ = std::move(intent);
+                            return {};
+                        }
+                    )
                 };
             }
         ));

@@ -1,5 +1,6 @@
 #include <lux/engine/editor/workbench/CommandSupport.hpp>
 #include <lux/engine/editor/project/SettingsView.hpp>
+#include <lux/engine/editor/project/SettingsContent.hpp>
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
 #include <lux/engine/project/PluginManager.hpp>
 #include <lux/engine/ui/Element.hpp>
@@ -20,12 +21,26 @@ namespace lux::editor::project
         struct Content final : lux::ui::Element
         {
             Impl& data;
+            std::unique_ptr<SettingsContent> settings;
             Content(SettingsView& view, Impl& owner) : Element(view, lux::ui::ElementId{"settings"}), data(owner)
             {
                 setStretch({1, 1});
             }
+            void arrangeContent() noexcept override
+            {
+                if (settings)
+                    settings->arrange({{}, {rect().size.width, std::max(360.f, rect().size.height * 0.7f)}});
+            }
             void draw() noexcept override
             {
+                if (settings && ImGui::CollapsingHeader("Personal and extension settings", ImGuiTreeNodeFlags_DefaultOpen))
+                {
+                    const float y = ImGui::GetCursorPosY() - rect().position.y;
+                    drawChild(*settings, {0, y});
+                    ImGui::SetCursorPosY(y + rect().position.y + settings->rect().size.height);
+                }
+                if (!ImGui::CollapsingHeader("Project plugins"))
+                    return;
                 ImGui::TextWrapped(
                     "Plugin selection is saved to the project. Changes take effect next time the project opens."
                 );
@@ -113,11 +128,14 @@ namespace lux::editor::project
         object::ObjectDispatcherRef dispatcher,
         lux::ui::PaneId id,
         ProjectStorage& project,
-        const lux::project::PluginManager& plugins
+        const lux::project::PluginManager& plugins, std::shared_ptr<SettingsContentInput> input
     )
         : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{"lux.editor.settings"}, "Settings"),
           impl_(std::make_unique<Impl>(*this, project, plugins))
     {
+        if (input)
+            impl_->content.settings = std::make_unique<SettingsContent>(
+                impl_->content, lux::ui::ElementId{"settings-values"}, std::move(input));
         setContent(impl_->content);
     }
     SettingsView::~SettingsView() noexcept = default;
@@ -187,7 +205,7 @@ namespace lux::editor::project
         ProjectStorage& project, const lux::project::PluginManager& plugins,
         cxx::move_only_function<void(const PluginSelectionDraft&)> save,
         cxx::move_only_function<void()> retry, cxx::move_only_function<void()> abandon,
-        cxx::move_only_function<void()> acknowledge
+        cxx::move_only_function<void()> acknowledge, std::shared_ptr<SettingsContentInput> settings
     )
     {
         struct Receivers final
@@ -199,9 +217,9 @@ namespace lux::editor::project
             std::move(save), std::move(retry), std::move(abandon), std::move(acknowledge)
         );
         return views::ViewFactoryEntry::bind<kFactoryDescriptor>(contracts::CodeLease::builtin(),
-            [&project, &plugins, receivers](const views::ViewFactoryInput& input)
+            [&project, &plugins, receivers, settings](const views::ViewFactoryInput& input)
                 -> views::ViewFactoryResult<views::DetachedView> {
-                auto pane = std::make_unique<SettingsView>(input.dispatcher(), input.paneId(), project, plugins);
+                auto pane = std::make_unique<SettingsView>(input.dispatcher(), input.paneId(), project, plugins, settings);
                 std::array<object::LuxObject::ConnectResult, 4> bindings{
                     object::LuxObject::connect(pane.get(), &SettingsView::selectionRequested,
                         [receivers](const PluginSelectionDraft& value) noexcept { receivers->save(value); }),

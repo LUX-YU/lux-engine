@@ -77,6 +77,18 @@ namespace lux::editor::project
 
     void registerDesktopSettings(meta::ReflectionRegistry& registry, meta::qual_type_index_fix_list&)
     {
+        const auto add_enum = [&](auto tag, std::vector<meta::RefEnumValue> values) {
+            using Enum = decltype(tag);
+            if (registry.findEnum(cxx::type_name<Enum>()))
+                return;
+            auto type = std::make_unique<meta::RefEnum>();
+            type->name = type->full_name = cxx::type_name<Enum>();
+            type->is_scoped = true;
+            type->values = std::move(values);
+            registry.registerEnum(std::move(type));
+        };
+        add_enum(window::EWindowMode::ORDINARY, {{"Ordinary", 0}, {"Maximized", 1}, {"Fullscreen", 2}});
+        add_enum(commands::ECommandScope::APPLICATION, {{"Application", 0}, {"Session", 1}, {"View", 2}});
         registerValue<AppearanceSettings>(registry);
         registerValue<WindowSettings>(registry);
         registerValue<ShortcutSettings>(registry);

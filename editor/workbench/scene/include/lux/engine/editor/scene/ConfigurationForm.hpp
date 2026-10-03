@@ -65,6 +65,20 @@ namespace lux::editor::detail
                     sync_.push_back([access, control] { control->setValue(access()); });
                     fields_.push_back(std::move(field));
                 }
+                else if constexpr (std::is_same_v<Value, std::string>)
+                {
+                    auto field = std::make_unique<lux::ui::TextEdit>(layout_, lux::ui::ElementId{name}, access());
+                    auto* control = field.get();
+                    connect(*control, [access, control](lux::ui::EditResult result) noexcept {
+                        if (result.changed || result.cancelled)
+                            access() = control->value();
+                    }, status);
+                    sync_.push_back([access, control] {
+                        if (!control->editing())
+                            control->setValue(access());
+                    });
+                    fields_.push_back(std::move(field));
+                }
                 else if constexpr (std::is_enum_v<Value>)
                 {
                     const auto* enumeration =

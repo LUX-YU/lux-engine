@@ -8,6 +8,7 @@ namespace lux::project
 }
 namespace lux::editor::project
 {
+    struct SettingsContentInput;
     struct PluginSelectionDraft final
     {
         std::vector<ProjectPluginEntry> based_on, desired;
@@ -19,7 +20,8 @@ namespace lux::editor::project
     public:
         object::TSignal<PluginSelectionDraft> selectionRequested{*this};
         object::TSignal<> retryRequested{*this}, abandonRequested{*this}, acknowledgeRequested{*this};
-        SettingsView(object::ObjectDispatcherRef, lux::ui::PaneId, ProjectStorage&, const lux::project::PluginManager&);
+        SettingsView(object::ObjectDispatcherRef, lux::ui::PaneId, ProjectStorage&, const lux::project::PluginManager&,
+            std::shared_ptr<SettingsContentInput> = {});
         ~SettingsView() noexcept override;
         SettingsView(const SettingsView&) = delete;
         SettingsView& operator=(const SettingsView&) = delete;
@@ -37,7 +39,7 @@ namespace lux::editor::project
         ProjectStorage&, const lux::project::PluginManager&,
         cxx::move_only_function<void(const PluginSelectionDraft&)>,
         cxx::move_only_function<void()> retry, cxx::move_only_function<void()> abandon,
-        cxx::move_only_function<void()> acknowledge
+        cxx::move_only_function<void()> acknowledge, std::shared_ptr<SettingsContentInput> = {}
     );
     [[nodiscard]] std::shared_ptr<commands::CommandEntry> makeSettingsCommand(
         commands::CommandEntry::Query, desktop::ToolOpening

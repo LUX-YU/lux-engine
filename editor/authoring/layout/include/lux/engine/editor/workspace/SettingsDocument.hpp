@@ -11,7 +11,7 @@ namespace lux::editor::settings
     enum class ESettingsError : std::uint8_t
     {
         INVALID_DESCRIPTOR, DUPLICATE, COLLISION, INVALID_VALUE, INVALID_SCOPE, UNSUPPORTED_VERSION,
-        CAPACITY, CONFLICT, UNAVAILABLE, CALLBACK
+        CAPACITY, CONFLICT, UNAVAILABLE, CALLBACK, BUSY
     };
     struct SettingsFailure final
     {

@@ -4,6 +4,7 @@
 #include <lux/engine/editor/commands/Command.hpp>
 #include <lux/engine/window/WindowPlacement.hpp>
 #include <lux/engine/meta/TypeStaticInfo.hpp>
+#include <lux/engine/editor/scene/ConfigurationEditor.hpp>
 
 namespace lux::editor::project
 {
@@ -21,6 +22,7 @@ namespace lux::editor::project
     {
         std::vector<commands::ShortcutOverride> overrides;
     };
+    [[nodiscard]] std::vector<settings::SettingsPage> makeDesktopSettingsPages(settings::SettingsEntry::Apply);
     // Bootstrap and contributions call the same fixed reflection contribution.
     void registerDesktopSettings(meta::ReflectionRegistry&, meta::qual_type_index_fix_list&);
     [[nodiscard]] std::shared_ptr<settings::SettingsEntry> makeAppearanceSetting();

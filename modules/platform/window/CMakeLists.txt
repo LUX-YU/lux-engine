@@ -47,7 +47,7 @@ generate_visibility_header(
 add_component(
     COMPONENT_NAME window
     NAMESPACE      lux::engine::platform
-    SOURCE_FILES   ${WINDOW_SRCS}
+    SOURCE_FILES   ${WINDOW_SRCS} src/WindowPlacement.cpp
 )
 
 component_include_directories(
@@ -101,3 +101,16 @@ endif()
 
 
 target_link_libraries(window PUBLIC lux::cxx::compile_time)
+
+if(BUILD_TESTING AND NOT ANDROID)
+    add_executable(window_placement_test test/placement.cpp)
+    target_link_libraries(window_placement_test PRIVATE window)
+    if(MSVC)
+        target_compile_options(window_placement_test PRIVATE /UNDEBUG /utf-8)
+    else()
+        target_compile_options(window_placement_test PRIVATE -UNDEBUG)
+    endif()
+    add_test(NAME window.placement COMMAND window_placement_test)
+    set_tests_properties(window.placement PROPERTIES TIMEOUT 20)
+    # --desktop is an explicit real-window mode, never part of CPU default CTest.
+endif()

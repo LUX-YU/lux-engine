@@ -6,6 +6,7 @@
 #include <span>
 #include <vector>
 #include <lux/engine/window/WindowEvents.hpp>
+#include <lux/engine/window/WindowPlacement.hpp>
 #include <lux/engine/window/visibility.h>
 
 struct GLFWwindow;
@@ -26,15 +27,6 @@ namespace lux::window
         int width;
         int height;
         std::string title;
-    };
-
-    enum class EWindowMode
-    {
-        HEADLESS,
-        FULLSCREEN,
-        FULLSCREEN_BORDERLESS,
-        FULLSCREEN_STRETCH,
-        DEFAULT
     };
 
     enum class EWindowInitError : std::uint8_t
@@ -93,6 +85,14 @@ namespace lux::window
         [[nodiscard]] bool focused() const noexcept;
         [[nodiscard]] bool visible() const noexcept;
         [[nodiscard]] bool minimized() const noexcept;
+
+        // Owner-thread snapshots. Applying returns observed platform facts, not
+        // a promise that the OS adopted every requested position/size exactly.
+        using DisplaysResult = lux::cxx::expected<std::vector<DisplayInfo>, WindowPlacementFailure>;
+        using StateResult = lux::cxx::expected<WindowState, WindowPlacementFailure>;
+        [[nodiscard]] static DisplaysResult displays() noexcept;
+        [[nodiscard]] StateResult state() const noexcept;
+        [[nodiscard]] StateResult applyPlacement(const WindowPlacement&) noexcept;
 
         // Platform-adapter borrow; valid only during this window's lifetime.
         [[nodiscard]] void* nativeHandle() const noexcept;
@@ -197,6 +197,8 @@ namespace lux::window
         EventSlot<WindowLostFocusEvent> on_lost_focus;
         EventSlot<WindowMovedEvent> on_moved;
         EventSlot<WindowMinimizedEvent> on_minimized;
+        // Coalescible fact notification; query state at the host's safe point.
+        EventSlot<WindowPlacementEvent> on_placement_changed;
         EventSlot<CursorEnterEvent> on_cursor_enter;
         EventSlot<CursorLeaveEvent> on_cursor_leave;
         EventSlot<CursorMoveEvent> on_cursor_move;
@@ -212,6 +214,7 @@ namespace lux::window
 
     private:
         void recordInput(VWindowInputEvent);
+        void placementChanged() noexcept;
         void subscribeKeyEvent();
 
         void subscribeCursorPositionCallback();
@@ -241,6 +244,8 @@ namespace lux::window
 
         std::uint64_t input_sequence_{};
         bool composing_{};
+        WindowRect normal_rect_;
+        bool changing_placement_{};
         std::vector<VWindowInputEvent> pending_input_events_;
         std::vector<VWindowInputEvent> drained_input_events_;
     };

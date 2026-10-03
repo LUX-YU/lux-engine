@@ -30,8 +30,14 @@ namespace lux::window
         std::uint64_t sequence{};
     };
     struct WindowMovedEvent
-    {};
+    {
+        int x{}, y{};
+    };
     struct WindowMinimizedEvent
+    {
+        bool minimized{};
+    };
+    struct WindowPlacementEvent
     {};
     struct CursorEnterEvent
     {};

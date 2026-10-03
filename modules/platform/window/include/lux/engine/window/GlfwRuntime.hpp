@@ -1,5 +1,6 @@
 #pragma once
 #include <lux/engine/window/visibility.h>
+#include <cstdint>
 
 struct GLFWwindow;
 
@@ -18,6 +19,10 @@ namespace lux::window
         {
             return valid_;
         }
+
+        // Owner-thread fact generation. A host re-queries displays only when this
+        // changes; it need not enumerate monitors on every frame.
+        [[nodiscard]] static std::uint64_t displayRevision() noexcept;
 
         // Non-copyable, non-movable.
         GlfwRuntime(const GlfwRuntime&) = delete;

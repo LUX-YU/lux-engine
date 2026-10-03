@@ -9,3 +9,18 @@ Windows 通过原窗口过程的 subclass 记录 IME STARTED/UPDATED/COMMITTED/C
 subclass 在原生窗口销毁期间解除，晚到消息不会持有已销毁的 LuxWindow。
 
 window.input_batch 验证顺序、序号、缓冲复用和 Windows composition 消息；真实输入法候选位置与 UI 行为仍由桌面验收覆盖。
+
+Desktop placement uses signed window content coordinates, separate from framebuffer pixels and content scale.
+`resolveWindowPlacement` is pure and does not query a monitor. A persisted display name is disambiguated by
+its work area; disconnected displays fall back to a usable primary work area. Explicit invalid sizes are
+rejected, while stale saved rectangles can be repaired. Tiny work areas degrade to positive content sizes.
+
+`LuxWindow::displays`, `state` and `applyPlacement` are owner-thread platform operations. Ordinary restore
+rectangles survive maximization and fullscreen. `applyPlacement` reports observed state; hosts must compare
+actual facts with their desired values when the window manager constrains a request. Placement notifications
+are coalescible: inspect the facts at the host's safe point, never persist from the native callback. Display
+hotplug advances `GlfwRuntime::displayRevision`; this does not require enumerating video modes every frame.
+The Android stub reports these desktop operations as unsupported.
+
+`window.placement` is the pure CPU policy test. `window_placement_test --desktop` is an explicit real-window
+qualification, separate from native keyboard/mouse and IME testing.

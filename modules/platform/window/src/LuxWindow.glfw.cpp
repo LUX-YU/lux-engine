@@ -3,11 +3,15 @@
 #include <thread>
 #include <utility>
 #include <cstdlib>
+#include <algorithm>
 
 // Include Windows headers before GLFW to avoid APIENTRY macro redefinition warning.
 // minwindef.h (pulled in by windows.h) and glfw3.h both define APIENTRY; whichever
 // comes second triggers C4005.  Windows SDK headers must win.
 #ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
@@ -30,6 +34,184 @@
 
 namespace lux::window
 {
+    namespace
+    {
+        WindowRect windowRect(GLFWwindow* window) noexcept
+        {
+            WindowRect result;
+            glfwGetWindowPos(window, &result.x, &result.y);
+            glfwGetWindowSize(window, &result.width, &result.height);
+            return result;
+        }
+
+        DisplayHint displayHint(GLFWmonitor* monitor)
+        {
+            DisplayHint result;
+            const char* name = glfwGetMonitorName(monitor);
+            result.name = name ? name : "";
+            auto& work = result.work_area;
+            glfwGetMonitorWorkarea(monitor, &work.x, &work.y, &work.width, &work.height);
+            return result;
+        }
+
+        DisplayInfo displayInfo(GLFWmonitor* monitor)
+        {
+            DisplayInfo result;
+            result.hint = displayHint(monitor);
+            glfwGetMonitorPos(monitor, &result.bounds.x, &result.bounds.y);
+            glfwGetMonitorContentScale(monitor, &result.scale.x, &result.scale.y);
+            if (const auto* mode = glfwGetVideoMode(monitor))
+            {
+                result.current_mode = {mode->width, mode->height, mode->refreshRate};
+                result.bounds.width = mode->width;
+                result.bounds.height = mode->height;
+            }
+            int count{};
+            const auto* modes = glfwGetVideoModes(monitor, &count);
+            result.modes.reserve(static_cast<std::size_t>(std::max(0, count)));
+            for (int i = 0; i < count; ++i)
+                result.modes.push_back({modes[i].width, modes[i].height, modes[i].refreshRate});
+            result.primary = monitor == glfwGetPrimaryMonitor();
+            return result;
+        }
+
+        WindowPlacementFailure placementFailure(EWindowPlacementError code, const char* message)
+        {
+            return {code, message};
+        }
+    }
+
+    LuxWindow::DisplaysResult LuxWindow::displays() noexcept
+    {
+        int count{};
+        const auto* monitors = glfwGetMonitors(&count);
+        if (!monitors)
+            return lux::cxx::unexpected(placementFailure(EWindowPlacementError::NO_DISPLAY,
+                "No initialized desktop displays"));
+        std::vector<DisplayInfo> result;
+        result.reserve(static_cast<std::size_t>(count));
+        for (int i = 0; i < count; ++i)
+            result.push_back(displayInfo(monitors[i]));
+        return result;
+    }
+
+    LuxWindow::StateResult LuxWindow::state() const noexcept
+    {
+        if (!_glfw_window)
+            return lux::cxx::unexpected(placementFailure(EWindowPlacementError::NOT_INITIALIZED,
+                "Window has no native resource"));
+        WindowState result;
+        result.content = windowRect(_glfw_window);
+        result.placement.normal = normal_rect_;
+        auto* monitor = glfwGetWindowMonitor(_glfw_window);
+        result.placement.mode = monitor ? EWindowMode::FULLSCREEN :
+            (glfwGetWindowAttrib(_glfw_window, GLFW_MAXIMIZED) ? EWindowMode::MAXIMIZED : EWindowMode::ORDINARY);
+        glfwGetWindowContentScale(_glfw_window, &result.scale.x, &result.scale.y);
+        auto& insets = result.insets;
+        glfwGetWindowFrameSize(_glfw_window, &insets.left, &insets.top, &insets.right, &insets.bottom);
+        result.minimized = minimized();
+        if (monitor)
+            result.placement.display = displayHint(monitor);
+        else
+        {
+            int count{};
+            auto* const* monitors = glfwGetMonitors(&count);
+            if (!monitors)
+                return lux::cxx::unexpected(placementFailure(EWindowPlacementError::NO_DISPLAY,
+                    "Window has no available desktop display"));
+            std::int64_t best_area{-1};
+            for (int i = 0; i < count; ++i)
+            {
+                auto hint = displayHint(monitors[i]);
+                const auto& area = hint.work_area;
+                const auto& rect = result.content;
+                const auto width = std::max<std::int64_t>(0, std::min(std::int64_t{rect.x} + rect.width,
+                    std::int64_t{area.x} + area.width) - std::max(rect.x, area.x));
+                const auto height = std::max<std::int64_t>(0, std::min(std::int64_t{rect.y} + rect.height,
+                    std::int64_t{area.y} + area.height) - std::max(rect.y, area.y));
+                if (width * height > best_area)
+                {
+                    best_area = width * height;
+                    result.placement.display = std::move(hint);
+                }
+            }
+        }
+        return result;
+    }
+
+    LuxWindow::StateResult LuxWindow::applyPlacement(const WindowPlacement& request) noexcept
+    {
+        if (!_glfw_window)
+            return lux::cxx::unexpected(placementFailure(EWindowPlacementError::NOT_INITIALIZED,
+                "Window has no native resource"));
+        auto available = displays();
+        if (!available)
+            return lux::cxx::unexpected(available.error());
+        WindowInsets insets;
+        if (!glfwGetWindowMonitor(_glfw_window))
+            glfwGetWindowFrameSize(_glfw_window, &insets.left, &insets.top, &insets.right, &insets.bottom);
+        // Saved values may be repaired by policy. Explicit mode and size must be valid.
+        auto resolved = resolveWindowPlacement({request, WindowSize{request.normal.width, request.normal.height},
+            request.mode, request.display}, *available, insets);
+        if (!resolved)
+            return lux::cxx::unexpected(resolved.error());
+        const auto& placement = resolved->placement;
+        int count{};
+        auto* const* monitors = glfwGetMonitors(&count);
+        GLFWmonitor* target{};
+        for (int i = 0; i < count; ++i)
+        {
+            const auto current = displayHint(monitors[i]);
+            const bool is_match = current.name == placement.display.name &&
+                current.work_area == placement.display.work_area;
+            if (is_match)
+            {
+                target = monitors[i];
+                break;
+            }
+        }
+        if (!target)
+            return lux::cxx::unexpected(placementFailure(EWindowPlacementError::NO_DISPLAY,
+                "Selected display was disconnected"));
+        const auto* mode = glfwGetVideoMode(target);
+        if (!mode)
+            return lux::cxx::unexpected(placementFailure(EWindowPlacementError::UNSUPPORTED,
+                "Selected display has no current mode"));
+        glfwGetError(nullptr);
+        changing_placement_ = true;
+        glfwRestoreWindow(_glfw_window);
+        normal_rect_ = placement.normal;
+        if (placement.mode == EWindowMode::FULLSCREEN)
+            glfwSetWindowMonitor(_glfw_window, target, 0, 0, mode->width, mode->height, mode->refreshRate);
+        else
+        {
+            const auto& rect = placement.normal;
+            glfwSetWindowMonitor(_glfw_window, nullptr, rect.x, rect.y, rect.width, rect.height, GLFW_DONT_CARE);
+            if (placement.mode == EWindowMode::MAXIMIZED)
+                glfwMaximizeWindow(_glfw_window);
+        }
+        changing_placement_ = false;
+        const char* message{};
+        const int error = glfwGetError(&message);
+        placementChanged();
+        if (error != GLFW_NO_ERROR)
+            return lux::cxx::unexpected(placementFailure(EWindowPlacementError::PLATFORM,
+                message ? message : "Platform rejected window placement"));
+        return state();
+    }
+
+    void LuxWindow::placementChanged() noexcept
+    {
+        if (changing_placement_)
+            return;
+        const bool is_normal = !glfwGetWindowMonitor(_glfw_window) &&
+            !glfwGetWindowAttrib(_glfw_window, GLFW_MAXIMIZED) && !minimized();
+        if (is_normal)
+            normal_rect_ = windowRect(_glfw_window);
+        if (on_placement_changed)
+            on_placement_changed({});
+    }
+
     void LuxWindow::window_close_callback(GLFWwindow* window)
     {
         // hide the window
@@ -138,6 +320,25 @@ namespace lux::window
 
         glfwSetWindowUserPointer(_glfw_window, this);
         glfwSetWindowCloseCallback(_glfw_window, &LuxWindow::window_close_callback);
+        normal_rect_ = windowRect(_glfw_window);
+        glfwSetWindowPosCallback(_glfw_window, [](GLFWwindow* window, int x, int y) {
+            auto& self = *static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
+            self.placementChanged();
+            if (self.on_moved)
+                self.on_moved({x, y});
+        });
+        glfwSetWindowMaximizeCallback(_glfw_window, [](GLFWwindow* window, int) {
+            static_cast<LuxWindow*>(glfwGetWindowUserPointer(window))->placementChanged();
+        });
+        glfwSetWindowIconifyCallback(_glfw_window, [](GLFWwindow* window, int minimized) {
+            auto& self = *static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
+            self.placementChanged();
+            if (self.on_minimized)
+                self.on_minimized({minimized == GLFW_TRUE});
+        });
+        glfwSetWindowContentScaleCallback(_glfw_window, [](GLFWwindow* window, float, float) {
+            static_cast<LuxWindow*>(glfwGetWindowUserPointer(window))->placementChanged();
+        });
         glfwSetWindowFocusCallback(_glfw_window, [](GLFWwindow* window, int focused) {
             auto* self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
             if (focused)
@@ -415,6 +616,7 @@ namespace lux::window
     {
         glfwSetWindowSizeCallback(_glfw_window, [](GLFWwindow* window, int width, int height) {
             auto self = static_cast<LuxWindow*>(glfwGetWindowUserPointer(window));
+            self->placementChanged();
             if (self->on_resize)
             {
                 self->on_resize(WindowResizeEvent{static_cast<std::uint32_t>(width), static_cast<std::uint32_t>(height)}

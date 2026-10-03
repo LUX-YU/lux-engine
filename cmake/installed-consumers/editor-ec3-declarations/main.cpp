@@ -1,12 +1,25 @@
 #include <lux/engine/editor/commands/CommandRegistry.hpp>
+#include <lux/engine/editor/sessions/SessionFactory.hpp>
 #include <cassert>
+#include <array>
 #include <cstdio>
 
 using namespace lux::editor::commands;
 using lux::editor::contracts::CodeLease;
+namespace sessions = lux::editor::sessions;
 namespace
 {
     constexpr CommandDescriptor declaration{CommandIdView{"ec3.command"}, "Command", "Tests", "Ctrl+T"};
+    constexpr std::string_view discovery[]{"ec3source"};
+    constexpr sessions::SessionKindDescriptor source_declaration{
+        sessions::SessionKindIdView{"ec3.source"}, "Source", discovery,
+        sessions::SourceAuthoring{"ec3.source.format", 1, ".ec3"}
+    };
+    auto decode(const sessions::SessionLoadInput&, std::span<const std::byte>, std::stop_token)
+        -> sessions::SessionFactoryResult<sessions::SessionPreparation>
+    {
+        std::abort(); // Metadata registration and selection must not execute decode callbacks.
+    }
     CommandDescriptor mutable_declaration{CommandIdView{"ec3.mutable"}, "Mutable"};
     auto query(const CommandQuery&) -> CommandResult<CommandState> { return CommandState{true}; }
     auto execute(const CommandInvocation&) -> CommandResult<DispatchReceipt>
@@ -63,6 +76,30 @@ int main()
     snapshot = CommandRegistrySnapshot{};
     assert(registry.execute(copy, invocation));
     assert(!registry.snapshot().resolve(copy));
+    auto source = sessions::SessionFactoryEntry::bind<source_declaration>(CodeLease::builtin(), decode);
+    assert(&source->descriptor() == &source_declaration);
+    assert(source->descriptor().extensions.data() == discovery);
+    std::shared_ptr<sessions::SessionFactoryEntry> dynamic_source;
+    {
+        std::string kind{"ec3.dynamic.source"}, label{"Dynamic source"}, extension{"ec3dynamic"};
+        std::string format{"ec3.dynamic.format"}, suffix{".dynamic"};
+        const std::array<std::string_view, 1> extensions{extension};
+        dynamic_source = sessions::SessionFactoryEntry::create(
+            CodeLease::builtin(),
+            {sessions::SessionKindIdView{kind}, label, extensions, sessions::SourceAuthoring{format, 2, suffix}},
+            decode
+        );
+        kind.assign(4096, 'x');
+        label.clear(); extension.clear(); format.clear(); suffix.clear();
+    }
+    const auto& source_info = dynamic_source->descriptor();
+    assert(source_info.kind.name() == "ec3.dynamic.source" && source_info.label == "Dynamic source");
+    assert(source_info.extensions.size() == 1 && source_info.extensions[0] == "ec3dynamic");
+    assert(source_info.source->canonical_name == "ec3.dynamic.format" && source_info.source->save_extension == ".dynamic");
+    auto sources = sessions::SessionFactorySnapshot::create({source, dynamic_source});
+    assert(sources && sources->find({"ec3.source"}) && sources->find({"ec3.dynamic.source"}));
+    assert(sources->selectSource("ec3.dynamic.format", 2) && !sources->selectSource("ec3.dynamic.format", 1));
+    assert(!sessions::SessionFactorySnapshot::create({source, source}));
     std::printf("PASS installed descriptor lifetime: Descriptor=%zu Entry=%zu Handle=%zu\n",
                 sizeof(CommandDescriptor), sizeof(CommandEntry), sizeof(CommandHandle));
 #endif

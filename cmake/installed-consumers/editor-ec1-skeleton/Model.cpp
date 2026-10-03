@@ -410,10 +410,10 @@ namespace skeleton
     };
     std::shared_ptr<SessionFactoryEntry> factory(contracts::CodeLease code)
     {
-        return std::make_shared<SessionFactoryEntry>(
+        return SessionFactoryEntry::create(
             code,
             SessionKindDescriptor{
-                kind, "Skeleton", {"luxskeleton"}, SourceAuthoring{"lux.skeleton", 1, ".luxskeleton"}},
+                SessionKindIdView{kind.name}, "Skeleton", std::array{std::string_view{"luxskeleton"}}, SourceAuthoring{"lux.skeleton", 1, ".luxskeleton"}},
             [code](const SessionLoadInput &input,
                    std::span<const std::byte> image,
                    std::stop_token stop) -> SessionFactoryResult<SessionPreparation>

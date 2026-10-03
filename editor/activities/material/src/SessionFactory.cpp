@@ -4,6 +4,14 @@
 #include <lux/engine/editor/detail/PrepareSession.hpp>
 namespace lux::editor::material
 {
+    namespace
+    {
+        constexpr std::string_view extensions[]{"luxmaterial"};
+        constexpr sessions::SessionKindDescriptor descriptor{
+            sessions::SessionKindIdView{"lux.editor.material"}, "Material", extensions,
+            sessions::SourceAuthoring{"lux.material.source", 1, ".material"}
+        };
+    }
     sessions::SessionPreparation prepareMaterialSession(
         PreparedMaterialData data,
         sessions::SourceBinding binding,
@@ -33,11 +41,8 @@ namespace lux::editor::material
     std::shared_ptr<sessions::SessionFactoryEntry> makeMaterialSessionFactory(contracts::CodeLease code)
     {
         using namespace sessions;
-        return std::make_shared<SessionFactoryEntry>(
+        return SessionFactoryEntry::bind<descriptor>(
             code,
-            SessionKindDescriptor{
-                {"lux.editor.material"}, "Material", {"luxmaterial"}, SourceAuthoring{"lux.material.source", 1, ".material"}
-            },
             [code](const SessionLoadInput& input, std::span<const std::byte> bytes, std::stop_token stop)
                 -> SessionFactoryResult<SessionPreparation> {
                 auto decoded = MaterialCodec::decode(bytes, stop);

@@ -210,7 +210,8 @@ namespace lux::editor::application
                             })
                         };
                     const bool matching = factory && recovery_->catalog.views().selectContent(
-                        (*factory)->descriptor().kind, recoveryType(item.entry.type)
+                        sessions::SessionKindId{std::string{(*factory)->descriptor().kind.name()}},
+                        recoveryType(item.entry.type)
                     ).has_value();
                     if (!matching)
                     {

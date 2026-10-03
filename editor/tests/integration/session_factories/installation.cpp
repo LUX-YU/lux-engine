@@ -655,16 +655,17 @@ int main(int argc, char** argv)
     auto schemas = take(simulation::ecs::ComponentSchemaSet::build({}));
     auto factories = take(SessionFactorySnapshot::create(extensions::builtinSessionFactories(schemas, {})));
     {
-        assert(take(factories.selectSource("lux.scene.package", 1))->descriptor().kind.name == "lux.editor.scene");
-        assert(take(factories.selectSource("lux.material.source", 1))->descriptor().kind.name == "lux.editor.material");
-        assert(take(factories.selectSource("lux.flowforge.source", 1))->descriptor().kind.name == "lux.editor.flowforge");
+        assert(take(factories.selectSource("lux.scene.package", 1))->descriptor().kind.name() == "lux.editor.scene");
+        assert(take(factories.selectSource("lux.material.source", 1))->descriptor().kind.name() == "lux.editor.material");
+        assert(take(factories.selectSource("lux.flowforge.source", 1))->descriptor().kind.name() == "lux.editor.flowforge");
         assert(!factories.selectSource("lux.material", 1)); // Runtime asset is not the author source.
         assert(!factories.selectSource("lux.material.source", 2));
         assert(!factories.selectSource("org.vendor.missing", 1));
-        auto alternate = std::make_shared<SessionFactoryEntry>(
+        auto alternate = SessionFactoryEntry::create(
             contracts::CodeLease::builtin(),
             SessionKindDescriptor{
-                {"test.material.alternative"}, "Alternative material", {"material"},
+                SessionKindIdView{"test.material.alternative"}, "Alternative material",
+                std::array{std::string_view{"material"}},
                 SourceAuthoring{"lux.material.source", 1, ".material"}
             },
             [](const SessionLoadInput&, std::span<const std::byte>, std::stop_token)
@@ -685,7 +686,7 @@ int main(int argc, char** argv)
             assert(!rejected && rejected.error().code == ESessionFactoryError::AMBIGUOUS);
             assert(rejected.error().detail.find("test.material.alternative") != std::string::npos);
             assert(take(ambiguous.selectSource("lux.material.source", 1, SessionKindId{"lux.editor.material"}))
-                ->descriptor().kind.name == "lux.editor.material");
+                ->descriptor().kind.name() == "lux.editor.material");
         }
     }
     std::array<SessionKindId, 3> kinds{{{"lux.editor.scene"}, {"lux.editor.material"}, {"lux.editor.flowforge"}}};

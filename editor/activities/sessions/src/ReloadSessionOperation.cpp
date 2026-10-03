@@ -44,8 +44,10 @@ namespace lux::editor::sessions
         auto current = store.describe(input.reload->session);
         if (!current)
             return cxx::unexpected(factoryFailure(current.error()));
-        const bool is_stale = current->current != *input.reload || current->binding != input.binding ||
-                              current->kind != factory->descriptor().kind || input.asset != input.binding->asset;
+        const bool is_content_stale = current->current != *input.reload || current->binding != input.binding;
+        const bool is_identity_mismatch = current->kind.name != factory->descriptor().kind.name() ||
+                                         input.asset != input.binding->asset;
+        const bool is_stale = is_content_stale || is_identity_mismatch;
         if (is_stale)
             return cxx::unexpected(factoryFailure(ESessionError::STALE_CONTENT));
         auto scheduler = runtime.blocking();

@@ -153,7 +153,7 @@ namespace lux::editor
                         return failure("save.binding.path", physical.error());
                     if (physical->key.value != info->binding->location)
                         return cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "save.binding.identity"});
-                    entry = {info->binding->asset, source.canonical_name, relative, {}, {}, {}, {}, source.version};
+                    entry = {info->binding->asset, std::string{source.canonical_name}, relative, {}, {}, {}, {}, source.version};
                     entry.mount_path = relative;
                 }
             }
@@ -178,7 +178,7 @@ namespace lux::editor
                 std::mt19937 random{std::random_device{}()};
                 request.asset = asset::AssetId{uuids::uuid_random_generator{random}()};
                 request.destination = std::move(*resolved);
-                entry = {request.asset, source.canonical_name, std::move(destination), {}, {}, {}, {}, source.version};
+                entry = {request.asset, std::string{source.canonical_name}, std::move(destination), {}, {}, {}, {}, source.version};
                 entry.mount_path = entry.source_path;
             }
             return PreparedProjectSave{std::move(request), std::move(entry)};

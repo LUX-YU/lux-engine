@@ -4,14 +4,18 @@
 #include <lux/engine/resource/asset/AssetTypeId.hpp>
 #include <lux/cxx/core/move_only_function.hpp>
 #include <stop_token>
+#include <lux/cxx/core/StableNameId.hpp>
 namespace lux::editor::sessions
 {
+    struct SessionKindIdTag;
+    using SessionKindIdView = cxx::StableNameIdView<SessionKindIdTag>;
+
     // Exact source-format relationship and save naming policy. A file suffix is only a discovery hint.
     struct SourceAuthoring final
     {
-        std::string canonical_name;
+        std::string_view canonical_name;
         std::uint32_t version{1};
-        std::string save_extension;
+        std::string_view save_extension;
         bool is_default{true};
         [[nodiscard]] asset::AssetTypeId type() const noexcept
         {
@@ -20,9 +24,9 @@ namespace lux::editor::sessions
     };
     struct SessionKindDescriptor final
     {
-        SessionKindId kind;
-        std::string label;
-        std::vector<std::string> extensions;
+        SessionKindIdView kind;
+        std::string_view label;
+        std::span<const std::string_view> extensions;
         std::optional<SourceAuthoring> source;
     };
     struct SessionLoadInput final
@@ -81,7 +85,18 @@ namespace lux::editor::sessions
     public:
         using Decode = cxx::move_only_function<SessionFactoryResult<
             SessionPreparation>(const SessionLoadInput&, std::span<const std::byte>, std::stop_token)>;
-        SessionFactoryEntry(contracts::CodeLease, SessionKindDescriptor, Decode);
+        template <const SessionKindDescriptor& Descriptor>
+        [[nodiscard]] static std::shared_ptr<SessionFactoryEntry> bind(contracts::CodeLease code, Decode decode)
+        {
+            static_assert(Descriptor.kind.isValid() && !Descriptor.label.empty(),
+                          "Fixed session metadata must be a valid constant declaration.");
+            return std::shared_ptr<SessionFactoryEntry>(
+                new SessionFactoryEntry(std::move(code), Descriptor, std::move(decode))
+            );
+        }
+        // Freezes dynamic text and extension spans once; the input is borrowed only during this call.
+        [[nodiscard]] static std::shared_ptr<SessionFactoryEntry>
+        create(contracts::CodeLease, const SessionKindDescriptor&, Decode);
         ~SessionFactoryEntry();
         SessionFactoryEntry(const SessionFactoryEntry&) = delete;
         SessionFactoryEntry& operator=(const SessionFactoryEntry&) = delete;
@@ -96,8 +111,11 @@ namespace lux::editor::sessions
     private:
         friend class SessionFactorySnapshot;
         friend class SessionLoadJob;
+        SessionFactoryEntry(contracts::CodeLease, const SessionKindDescriptor&, Decode);
         contracts::CodeLease code_;
-        SessionKindDescriptor descriptor_;
+        struct DescriptorStorage;
+        std::unique_ptr<const DescriptorStorage> storage_;
+        const SessionKindDescriptor* descriptor_;
         Decode decode_;
     };
     class SessionFactorySnapshot final

@@ -133,17 +133,74 @@ namespace lux::editor::sessions
     {
         return data_ && data_->code.sameOwner(code);
     }
-    SessionFactoryEntry::SessionFactoryEntry(contracts::CodeLease code, SessionKindDescriptor descriptor, Decode decode)
-        : code_(std::move(code)), descriptor_(std::move(descriptor)), decode_(std::move(decode))
+    struct SessionFactoryEntry::DescriptorStorage final
+    {
+        std::string text;
+        std::vector<std::string_view> extensions;
+        SessionKindDescriptor descriptor;
+        explicit DescriptorStorage(const SessionKindDescriptor& input)
+        {
+            auto size = input.kind.name().size() + input.label.size();
+            if (input.source)
+                size += input.source->canonical_name.size() + input.source->save_extension.size();
+            for (const auto extension : input.extensions)
+                size += extension.size();
+            text.reserve(size);
+            text.append(input.kind.name()).append(input.label);
+            for (const auto extension : input.extensions)
+                text.append(extension);
+            if (input.source)
+                text.append(input.source->canonical_name).append(input.source->save_extension);
+            const std::string_view bytes{text};
+            std::size_t offset{};
+            const auto take = [&](std::size_t count) {
+                const auto value = bytes.substr(offset, count);
+                offset += count;
+                return value;
+            };
+            descriptor.kind = SessionKindIdView{take(input.kind.name().size())};
+            descriptor.label = take(input.label.size());
+            extensions.reserve(input.extensions.size());
+            for (const auto extension : input.extensions)
+                extensions.push_back(take(extension.size()));
+            descriptor.extensions = extensions;
+            if (input.source)
+                descriptor.source = SourceAuthoring{
+                    take(input.source->canonical_name.size()), input.source->version,
+                    take(input.source->save_extension.size()), input.source->is_default
+                };
+        }
+    };
+    std::shared_ptr<SessionFactoryEntry> SessionFactoryEntry::create(
+        contracts::CodeLease code, const SessionKindDescriptor& descriptor, Decode decode
+    )
+    {
+        auto storage = std::make_unique<const DescriptorStorage>(descriptor);
+        auto entry = std::shared_ptr<SessionFactoryEntry>(
+            new SessionFactoryEntry(std::move(code), storage->descriptor, std::move(decode))
+        );
+        entry->storage_ = std::move(storage);
+        return entry;
+    }
+    SessionFactoryEntry::SessionFactoryEntry(
+        contracts::CodeLease code, const SessionKindDescriptor& descriptor, Decode decode
+    )
+        : code_(std::move(code)), descriptor_(&descriptor), decode_(std::move(decode))
     {}
     SessionFactoryEntry::~SessionFactoryEntry() = default;
     const SessionKindDescriptor& SessionFactoryEntry::descriptor() const noexcept
     {
-        return descriptor_;
+        return *descriptor_;
     }
     struct SessionFactorySnapshot::Data final
     {
+        struct Identity final
+        {
+            std::uint64_t hash;
+            std::size_t entry;
+        };
         std::vector<std::shared_ptr<SessionFactoryEntry>> entries;
+        std::vector<Identity> index;
         std::unordered_map<asset::AssetTypeId, std::vector<std::size_t>> sources;
     };
     SessionFactoryResult<SessionFactorySnapshot> SessionFactorySnapshot::create(
@@ -165,11 +222,15 @@ namespace lux::editor::sessions
             if (!entries[i])
                 return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::INVALID_ARGUMENT, "factory"});
             const auto& entry = *entries[i];
-            const bool invalid = !entry.code_.valid() || entry.descriptor_.kind.name.empty() ||
-                                 entry.descriptor_.label.empty() || !entry.decode_;
-            if (invalid)
+            const auto& descriptor = entry.descriptor();
+            const bool is_invalid_identity = !descriptor.kind.isValid() ||
+                descriptor.kind.hash() != cxx::Fnv1a64::hash(descriptor.kind.name());
+            const bool is_invalid_binding = !entry.code_.valid() || !entry.decode_;
+            const bool is_invalid_description = descriptor.label.empty();
+            const bool is_invalid = is_invalid_identity || is_invalid_binding || is_invalid_description;
+            if (is_invalid)
                 return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::INVALID_ARGUMENT, "factory"});
-            if (const auto& source = entry.descriptor_.source)
+            if (const auto& source = entry.descriptor_->source)
             {
                 const auto& name = source->canonical_name;
                 const auto& suffix = source->save_extension;
@@ -191,7 +252,7 @@ namespace lux::editor::sessions
                     });
                 }
                 auto& indices = sources[source->type()];
-                if (!indices.empty() && entries[indices.front()]->descriptor_.source->canonical_name != name)
+                if (!indices.empty() && entries[indices.front()]->descriptor_->source->canonical_name != name)
                 {
                     return cxx::unexpected(SessionFactoryFailure{
                         ESessionFactoryError::INVALID_ARGUMENT, "factory.source.collision"
@@ -199,21 +260,42 @@ namespace lux::editor::sessions
                 }
                 indices.push_back(i);
             }
-            for (std::size_t j{}; j < i; ++j)
-                if (entries[j]->descriptor_.kind == entry.descriptor_.kind)
-                    return cxx::unexpected(
-                        SessionFactoryFailure{ESessionFactoryError::INVALID_ARGUMENT, "factory.duplicate"}
-                    );
+        }
+        std::vector<Data::Identity> index;
+        index.reserve(entries.size());
+        for (std::size_t i{}; i < entries.size(); ++i)
+            index.push_back({entries[i]->descriptor().kind.hash(), i});
+        std::ranges::sort(index, {}, &Data::Identity::hash);
+        for (std::size_t i = 1; i < index.size(); ++i)
+        {
+            if (index[i - 1].hash != index[i].hash)
+                continue;
+            const bool is_duplicate = entries[index[i - 1].entry]->descriptor().kind.name() ==
+                                      entries[index[i].entry]->descriptor().kind.name();
+            return cxx::unexpected(SessionFactoryFailure{
+                is_duplicate ? ESessionFactoryError::INVALID_ARGUMENT : ESessionFactoryError::HASH_COLLISION,
+                is_duplicate ? "factory.duplicate" : "factory.identity.collision"
+            });
         }
         SessionFactorySnapshot result;
-        result.data_ = std::make_shared<Data>(std::move(entries), std::move(sources));
+        result.data_ = std::make_shared<Data>(std::move(entries), std::move(index), std::move(sources));
         return result;
     }
     SessionFactoryResult<std::shared_ptr<SessionFactoryEntry>> SessionFactorySnapshot::find(SessionKindId kind) const
     {
-        for (const auto& entry : entries())
-            if (entry->descriptor().kind == kind)
-                return entry;
+        const auto pinned = data_;
+        if (pinned)
+        {
+            const auto hash = cxx::Fnv1a64::hash(kind.name);
+            const auto found = std::ranges::lower_bound(pinned->index, hash, {}, &Data::Identity::hash);
+            if (found != pinned->index.end() && found->hash == hash)
+            {
+                const auto& entry = pinned->entries[found->entry];
+                // Source/open requests are cold text boundaries; do not accept a colliding external name.
+                if (entry->descriptor().kind.name() == kind.name)
+                    return entry;
+            }
+        }
         return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::NOT_FOUND, "factory"});
     }
     SessionFactoryResult<std::shared_ptr<SessionFactoryEntry>> SessionFactorySnapshot::selectSource(
@@ -242,12 +324,12 @@ namespace lux::editor::sessions
         for (const auto index : found->second)
         {
             const auto& entry = pinned->entries[index];
-            const auto& source = *entry->descriptor_.source;
+            const auto& source = *entry->descriptor_->source;
             if (source.canonical_name != canonical_name || source.version != version)
             {
                 continue;
             }
-            if (preferred && entry->descriptor_.kind == *preferred)
+            if (preferred && entry->descriptor_->kind.name() == preferred->name)
             {
                 return entry;
             }
@@ -262,7 +344,7 @@ namespace lux::editor::sessions
             {
                 candidates += ", ";
             }
-            candidates += entry->descriptor_.kind.name;
+            candidates += entry->descriptor_->kind.name();
         }
         if (!matches || preferred)
         {

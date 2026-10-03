@@ -4,6 +4,14 @@
 #include <lux/engine/editor/detail/PrepareSession.hpp>
 namespace lux::editor::flowforge
 {
+    namespace
+    {
+        constexpr std::string_view extensions[]{"luxflow"};
+        constexpr sessions::SessionKindDescriptor descriptor{
+            sessions::SessionKindIdView{"lux.editor.flowforge"}, "Flow", extensions,
+            sessions::SourceAuthoring{"lux.flowforge.source", 1, ".flow"}
+        };
+    }
     sessions::SessionPreparation prepareFlowSession(
         PreparedFlowData data,
         sessions::SourceBinding binding,
@@ -37,11 +45,8 @@ namespace lux::editor::flowforge
     )
     {
         using namespace sessions;
-        return std::make_shared<SessionFactoryEntry>(
+        return SessionFactoryEntry::bind<descriptor>(
             code,
-            SessionKindDescriptor{
-                {"lux.editor.flowforge"}, "Flow", {"luxflow"}, SourceAuthoring{"lux.flowforge.source", 1, ".flow"}
-            },
             [environment, code](const SessionLoadInput& input, std::span<const std::byte> bytes, std::stop_token stop)
                 -> SessionFactoryResult<SessionPreparation> {
                 auto decoded = FlowCodec::decode(bytes, stop);

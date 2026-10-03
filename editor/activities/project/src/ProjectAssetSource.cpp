@@ -162,7 +162,7 @@ namespace lux::editor
             return cxx::unexpected(source.error());
         sessions::OpenAssetRequest request{
             reference.project_instance,
-            (*factory)->descriptor().kind,
+            sessions::SessionKindId{std::string{(*factory)->descriptor().kind.name()}},
             {std::move(*source), entry.id, sessions::BoundSource{entry.id, target->key.value}, *target}
         };
         auto opened = opening.open(std::move(request), snapshot);

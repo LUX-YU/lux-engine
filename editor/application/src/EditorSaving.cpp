@@ -63,7 +63,7 @@ namespace lux::editor::application
              "Choose a project-relative source path. The captured target is checked again before saving.",
              {desktop::EReviewChoice::SAVE, desktop::EReviewChoice::CANCEL},
              "Source path",
-             std::string("Content/Untitled") + suffix}
+             std::string("Content/Untitled").append(suffix)}
         );
         if (!question)
             return applicationFailure("save.question.create", question.error());

@@ -212,10 +212,10 @@ int main(int argc, char **argv)
         verify(take(inspect(id)), "root", 0);
         auto missing_view = take(views::ViewFactorySnapshot::create({})).selectContent(before.kind);
         assert(!missing_view && store.size() == 1 && take(store.describe(id)).current == before.current);
-        auto other = std::make_shared<sessions::SessionFactoryEntry>(
+        auto other = sessions::SessionFactoryEntry::create(
             contracts::CodeLease::builtin(),
             sessions::SessionKindDescriptor{
-                {"example.other"}, "Other", {}, sessions::SourceAuthoring{"lux.skeleton", 1, ".luxskeleton"}},
+                sessions::SessionKindIdView{"example.other"}, "Other", {}, sessions::SourceAuthoring{"lux.skeleton", 1, ".luxskeleton"}},
             [](const auto &, auto, auto) -> sessions::SessionFactoryResult<sessions::SessionPreparation>
             { return cxx::unexpected(sessions::SessionFactoryFailure{sessions::ESessionFactoryError::DECODE}); });
         auto ambiguous =

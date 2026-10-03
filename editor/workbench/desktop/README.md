@@ -48,3 +48,9 @@ ViewRequests 的 close/show/focus 接收 ViewId，宿主排队，在安全点重
 
 `test/lifecycle.cpp` 同时用于安装消费者，执行真实 ImGui Root 的绘制、注册、焦点撤销、离树析构与通知故障。
 这不是 P10/P13 GPU 像素、IME 或新产品资格。
+
+`CommandMenu::setShortcuts` prepares a bounded set of user overrides at a safe point. Each row carries the
+stable canonical command ID, expected scope and input version; absent extensions keep their inactive rows.
+Conflicting effective bindings reject the complete candidate. Fixed command declarations are never edited.
+Open menus return BUSY and retain their original handles and text. A rejected registry refresh preserves
+the last accepted menu and reports the incompatibility; it does not reparse the same failed version each frame.

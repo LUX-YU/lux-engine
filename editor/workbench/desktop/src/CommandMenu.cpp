@@ -12,11 +12,19 @@ namespace lux::editor::desktop
             CommandHandle handle;
             CommandResult<CommandInvocation> input;
         };
+        struct ParsedOverride final
+        {
+            ShortcutOverride value;
+            std::uint64_t hash;
+            lux::ui::Shortcut shortcut;
+        };
+        using Overrides = std::vector<ParsedOverride>;
         struct Source final
         {
             // Handles pin each original defining code owner; nodes borrow only their immutable text.
             std::vector<CommandHandle> handles;
             std::deque<std::string> groups;
+            std::shared_ptr<const Overrides> overrides;
         };
         std::shared_ptr<Source> source;
         lux::ui::Root& root;
@@ -28,19 +36,48 @@ namespace lux::editor::desktop
         std::vector<Item> items;
         std::vector<CommandCompletion> completed;
         CommandResult<void> status;
-        void refresh()
+        std::shared_ptr<const Overrides> overrides;
+        CommandResult<void> rebuild(std::shared_ptr<const Overrides> requested)
         {
-            if (open || revision == registry.revision())
-                return;
             auto snapshot = registry.snapshot();
             auto candidate = std::make_shared<Source>();
             candidate->handles.reserve(snapshot.entries().size());
+            candidate->overrides = std::move(requested);
+            std::vector<lux::ui::Shortcut> effective;
+            effective.reserve(snapshot.entries().size());
             std::vector<lux::ui::MenuItem> menu;
             for (const auto& entry : snapshot.entries())
             {
                 const auto index = candidate->handles.size();
                 candidate->handles.push_back(*snapshot.at(index));
                 const auto& descriptor = entry->descriptor();
+                std::string_view label = descriptor.shortcut;
+                auto shortcut = *entry->shortcut();
+                if (candidate->overrides)
+                {
+                    const auto& values = *candidate->overrides;
+                    const auto found = std::ranges::lower_bound(values, descriptor.id.hash(), {}, &ParsedOverride::hash);
+                    if (found != values.end() && found->hash == descriptor.id.hash())
+                    {
+                        const bool is_identity_mismatch = found->value.command != descriptor.id.name();
+                        if (is_identity_mismatch)
+                            return cxx::unexpected(CommandFailure{ECommandError::HASH_COLLISION, "shortcut.identity"});
+                        const bool is_incompatible = found->value.scope != descriptor.scope ||
+                            found->value.input_version != descriptor.input_version;
+                        if (is_incompatible)
+                            return cxx::unexpected(CommandFailure{ECommandError::INCOMPATIBLE_REGISTRATION,
+                                "shortcut.version", 0, found->value.command});
+                        label = found->value.binding;
+                        shortcut = found->shortcut;
+                    }
+                }
+                if (shortcut.key != lux::ui::EKey::NONE)
+                {
+                    if (std::ranges::find(effective, shortcut) != effective.end())
+                        return cxx::unexpected(CommandFailure{ECommandError::SHORTCUT_CONFLICT,
+                            "shortcut.effective", 0, std::string{descriptor.id.name()}});
+                }
+                effective.push_back(shortcut);
                 if (descriptor.group.empty())
                     continue;
                 auto* children = &menu;
@@ -48,11 +85,11 @@ namespace lux::editor::desktop
                 while (!group.empty())
                 {
                     const auto slash = group.find('/');
-                    auto label = group.substr(0, slash);
-                    auto found = std::ranges::find(*children, label, &lux::ui::MenuItem::label);
+                    auto group_label = group.substr(0, slash);
+                    auto found = std::ranges::find(*children, group_label, &lux::ui::MenuItem::label);
                     if (found == children->end())
                     {
-                        candidate->groups.emplace_back(label);
+                        candidate->groups.emplace_back(group_label);
                         children->push_back({{}, candidate->groups.back()});
                         found = children->end() - 1;
                     }
@@ -62,12 +99,23 @@ namespace lux::editor::desktop
                     group.remove_prefix(slash + 1);
                 }
                 children->push_back(
-                    {descriptor.id, descriptor.label, descriptor.shortcut, *entry->shortcut(), {}, index}
+                    {descriptor.id, descriptor.label, label, shortcut, {}, index}
                 );
             }
             root.setMenu(std::move(menu), candidate);
             source = std::move(candidate);
             revision = registry.revision();
+            return {};
+        }
+        void refresh()
+        {
+            if (open || revision == registry.revision())
+                return;
+            auto prepared = rebuild(overrides);
+            // Rejected new registration/settings keep the last published menu. Do not reparse or
+            // retry an unchanged failure every frame; explicit settings edits can prepare again.
+            revision = registry.revision();
+            status = std::move(prepared);
         }
     };
     CommandMenu::CommandMenu(
@@ -79,6 +127,45 @@ namespace lux::editor::desktop
         : impl_(std::make_unique<Impl>(nullptr, root, registry, dispatcher, std::move(capture)))
     {}
     CommandMenu::~CommandMenu() = default;
+    CommandResult<void> CommandMenu::setShortcuts(std::span<const ShortcutOverride> input)
+    {
+        if (impl_->open)
+            return cxx::unexpected(CommandFailure{ECommandError::BUSY, "shortcut.open-menu"});
+        if (input.size() > 256)
+            return cxx::unexpected(CommandFailure{ECommandError::CAPACITY, "shortcut.capacity"});
+        auto candidate = std::make_shared<Impl::Overrides>();
+        candidate->reserve(input.size());
+        for (const auto& value : input)
+        {
+            const bool is_invalid_scope = value.scope != ECommandScope::APPLICATION &&
+                value.scope != ECommandScope::SESSION && value.scope != ECommandScope::VIEW;
+            const bool is_invalid_identity = value.command.empty() || value.command.size() > 512 ||
+                value.command.find('\0') != std::string::npos || value.input_version == 0;
+            if (is_invalid_scope || is_invalid_identity)
+                return cxx::unexpected(CommandFailure{ECommandError::INVALID_ARGUMENT, "shortcut.identity"});
+            auto parsed = lux::ui::parseShortcut(value.binding);
+            if (!parsed)
+                return cxx::unexpected(CommandFailure{ECommandError::INVALID_ARGUMENT, "shortcut.syntax",
+                    static_cast<std::uint64_t>(parsed.error()), value.command});
+            candidate->push_back({value, CommandIdView{value.command}.hash(), *parsed});
+        }
+        std::ranges::sort(*candidate, {}, &Impl::ParsedOverride::hash);
+        for (std::size_t i = 1; i < candidate->size(); ++i)
+        {
+            const auto& a = (*candidate)[i - 1];
+            const auto& b = (*candidate)[i];
+            if (a.hash != b.hash)
+                continue;
+            const auto code = a.value.command == b.value.command ? ECommandError::DUPLICATE : ECommandError::HASH_COLLISION;
+            return cxx::unexpected(CommandFailure{code, "shortcut.identity"});
+        }
+        auto prepared = impl_->rebuild(candidate);
+        if (!prepared)
+            return prepared;
+        impl_->overrides = std::move(candidate);
+        impl_->status = {};
+        return {};
+    }
     void CommandMenu::receive(lux::ui::MenuRequest& request)
     {
         auto& self = *impl_;

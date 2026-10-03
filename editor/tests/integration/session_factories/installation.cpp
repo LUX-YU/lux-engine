@@ -152,6 +152,86 @@ namespace
         second.menu = nullptr;
         std::cout << "PASS EC3 two menus share original text; source/index rejection and queued code lifetime\n";
     }
+    void shortcutOverrides()
+    {
+        using namespace commands;
+        unsigned calls{};
+        CommandRegistry registry;
+        CommandDispatcher dispatcher{registry};
+        auto messages = take(object::ObjectMessageQueue::create(64));
+        CommandRoot root{messages.dispatcherRef()};
+        desktop::CommandMenu menu{root, registry, dispatcher,
+            [](const CommandDescriptor&, const ui::Pane*, const ui::Element*) -> CommandResult<CommandInvocation> {
+                return CommandInvocation{};
+            }};
+        root.menu = &menu;
+        auto make = [&](CommandIdView id, std::string_view shortcut, std::uint32_t version = 1) {
+            return CommandEntry::create(contracts::CodeLease::builtin(),
+                {id, "Test command", "Tools", shortcut, ECommandScope::APPLICATION, version},
+                [](const CommandQuery&) -> CommandResult<CommandState> { return CommandState{true}; },
+                [&](const CommandInvocation&) -> CommandResult<DispatchReceipt> {
+                    ++calls;
+                    return DispatchReceipt{ImmediateCompletion{}};
+                });
+        };
+        auto a = make(CommandIdView{"shortcut.a"}, "Ctrl+A");
+        auto b = make(CommandIdView{"shortcut.b"}, "Ctrl+B");
+        assert(registry.publish(take(CommandRegistrySnapshot::create({a, b}))));
+        assert(menu.update());
+        {
+            const std::array overrides{desktop::ShortcutOverride{"shortcut.a", "Alt+M"},
+                                      desktop::ShortcutOverride{"extension.absent", "Ctrl+P"}};
+            assert(menu.setShortcuts(overrides));
+        }
+        assert(menuItem(root, ui::CommandIdView{"shortcut.a"}).shortcut_label == "Alt+M");
+        assert(a->descriptor().shortcut == "Ctrl+A");
+        auto invalid = menu.setShortcuts(std::array{desktop::ShortcutOverride{"shortcut.a", "Ctrl+B"}});
+        assert(!invalid && invalid.error().code == ECommandError::SHORTCUT_CONFLICT);
+        invalid = menu.setShortcuts(std::array{desktop::ShortcutOverride{"shortcut.a", "Shift+Ctrl+A"}});
+        assert(!invalid && invalid.error().domain == "shortcut.syntax");
+        invalid = menu.setShortcuts(std::array{desktop::ShortcutOverride{"shortcut.a", "Alt+M", ECommandScope::VIEW}});
+        assert(!invalid && invalid.error().code == ECommandError::INCOMPATIBLE_REGISTRATION);
+        assert(menuItem(root, ui::CommandIdView{"shortcut.a"}).shortcut_label == "Alt+M");
+        ui::MenuRequest open;
+        assert(object::sendEvent(root, open));
+        invalid = menu.setShortcuts({});
+        assert(!invalid && invalid.error().code == ECommandError::BUSY);
+        ui::MenuRequest close{ui::EMenuAction::CLOSE, {}, {}, {}, open.source};
+        assert(object::sendEvent(root, close));
+        ui::Pane pane{messages.dispatcherRef(), ui::PaneId{"shortcut.target"}, ui::PaneTypeId{"test"}, "Target"};
+        auto mounted = take(root.prepareMount(pane));
+        assert(root.commit(mounted));
+        ui::DrawData draw;
+        assert(root.feedInput(ui::WindowFocus{true}));
+        for (unsigned frame{}; frame != 3; ++frame)
+            assert(root.update({{640, 480}, 0.016f}, &draw));
+        assert(root.requestFocus(pane));
+        assert(root.feedInput(ui::Key{ui::EKey::LEFT_ALT, true}));
+        assert(root.feedInput(ui::Key{ui::EKey::M, true}));
+        assert(root.update({{640, 480}, 0.016f}, &draw));
+        assert(menu.update());
+        auto results = menu.takeCompletions();
+        assert(results.size() == 1 && results.front().result && calls == 1);
+        auto plugin = make(CommandIdView{"extension.absent"}, "Ctrl+E");
+        assert(registry.publish(take(CommandRegistrySnapshot::create({a, b, plugin}))));
+        assert(menu.update());
+        assert(menuItem(root, ui::CommandIdView{"extension.absent"}).shortcut_label == "Ctrl+P");
+        assert(registry.publish(take(CommandRegistrySnapshot::create({a, b}))));
+        assert(menu.update());
+        assert(registry.publish(take(CommandRegistrySnapshot::create({a, b, plugin}))));
+        assert(menu.update());
+        assert(menuItem(root, ui::CommandIdView{"extension.absent"}).shortcut_label == "Ctrl+P");
+        auto changed = make(CommandIdView{"extension.absent"}, "Ctrl+E", 2);
+        assert(registry.publish(take(CommandRegistrySnapshot::create({a, b, changed}))));
+        assert(menu.update());
+        assert(!menu.status() && menu.status().error().code == ECommandError::INCOMPATIBLE_REGISTRATION);
+        // The failed replacement did not publish a partially changed menu, or rewrite the saved override.
+        assert(menuItem(root, ui::CommandIdView{"extension.absent"}).shortcut_label == "Ctrl+P");
+        assert(menu.setShortcuts({}));
+        assert(menuItem(root, ui::CommandIdView{"shortcut.a"}).shortcut_label == "Ctrl+A");
+        root.menu = nullptr;
+        std::cout << "PASS EC3 effective shortcuts: original identity, real Root input, BUSY, conflict and reload\n";
+    }
     asset::AssetId identity(std::string_view value)
     {
         return asset::AssetId{
@@ -719,6 +799,7 @@ int main(int argc, char** argv)
 {
     assert(argc == 2 || argc == 3);
     menuDescriptorLifetime();
+    shortcutOverrides();
     const auto root =
         std::filesystem::path(argv[1]) / std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
     std::filesystem::create_directories(root);

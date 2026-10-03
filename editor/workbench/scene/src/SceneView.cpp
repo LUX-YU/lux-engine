@@ -282,6 +282,30 @@ namespace lux::editor::scene
             state_.camera = std::move(*candidate);
             return {};
         }
+        SceneViewResult<lux::math::Ray3d> imageRay(Eigen::Vector2d position, Eigen::Vector2d extent)
+        {
+            const bool is_valid_input = position.allFinite() && extent.allFinite() &&
+                (extent.array() > 0).all() && (position.array() >= 0).all() &&
+                (position.array() <= extent.array()).all();
+            if (!is_valid_input || !viewport_.bound())
+                return rejected(render::RendererFailure{render::ERendererError::INVALID_ARGUMENT});
+            if (camera_pending_ || motion_pending_)
+                return rejected(render::RendererFailure{render::ERendererError::NOT_READY});
+            auto output = viewport_.presentation().currentImageExtent();
+            if (!output)
+                return rejected(output.error());
+            // The displayed image may be stretched while resize is pending. Normalize once, then
+            // use the sampled output's aspect; framebuffer scale is not applied again here.
+            const Eigen::Vector2d pixels{double(output->width), double(output->height)};
+            const Eigen::Vector2d point = position.cwiseQuotient(extent).cwiseProduct(pixels);
+            simulation::ecs::WorldTransform3D camera;
+            camera.value = Eigen::Translation3d(state_.camera.transform.translation) *
+                state_.camera.transform.rotation * Eigen::Scaling(state_.camera.transform.scale);
+            auto ray = views::cameraRay(camera, state_.camera.camera, point, pixels);
+            if (!ray)
+                return rejected(ray.error());
+            return *ray;
+        }
         SceneViewResult<void> pick(Eigen::Vector2d position, Eigen::Vector2d extent)
         {
             auto* selected = interaction(binding_);
@@ -302,12 +326,9 @@ namespace lux::editor::scene
             const auto* query = registry->get().ctx().find<lux::scene::MeshQuery>();
             if (!query)
                 return rejected(lux::scene::MeshQueryFailure{lux::scene::EMeshQueryError::NOT_READY});
-            simulation::ecs::WorldTransform3D camera;
-            camera.value = Eigen::Translation3d(state_.camera.transform.translation) *
-                           state_.camera.transform.rotation * Eigen::Scaling(state_.camera.transform.scale);
-            auto ray = lux::editor::views::cameraRay(camera, state_.camera.camera, position, extent);
+            auto ray = imageRay(position, extent);
             if (!ray)
-                return rejected(ray.error());
+                return cxx::unexpected(ray.error());
             lux::scene::RayHit3D hit;
             auto found = query->raycastNearest(*ray, 1.0e12, hit);
             if (!found)
@@ -364,12 +385,9 @@ namespace lux::editor::scene
             });
             if (!single)
                 return rejected(single.error());
-            simulation::ecs::WorldTransform3D camera;
-            camera.value = Eigen::Translation3d(state_.camera.transform.translation) *
-                           state_.camera.transform.rotation * Eigen::Scaling(state_.camera.transform.scale);
-            auto ray = lux::editor::views::cameraRay(camera, state_.camera.camera, position, extent);
+            auto ray = imageRay(position, extent);
             if (!ray)
-                return rejected(ray.error());
+                return cxx::unexpected(ray.error());
             auto registry = std::as_const(services_.runtime).borrowInstance(presented_);
             if (!registry)
                 return rejected(ProjectionFailure{registry.error()});

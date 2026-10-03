@@ -82,6 +82,9 @@ namespace lux::editor::views
         [[nodiscard]] render::RenderResult<void> setCamera(simulation::ecs::Entity) noexcept;
         [[nodiscard]] render::RenderResult<void>
         setCameraPose(const simulation::ecs::Transform3D&, const lux::scene::Camera&) noexcept;
+        // For local-camera input only: reject while the retained output precedes a camera/extent
+        // change. Borrowed game cameras are not writable or a source of historical picking state.
+        [[nodiscard]] render::RenderResult<render::PixelExtent> currentImageExtent() const noexcept;
         [[nodiscard]] render::ERenderClose close() noexcept;
         void update(render::PixelExtent) noexcept;
         [[nodiscard]] render::RenderResult<EOverlaySubmit> updateOverlay(render::RenderRuntime&, OverlayConfiguration);

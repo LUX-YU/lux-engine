@@ -113,15 +113,6 @@ namespace lux::editor::views
             lux::simulation::ecs::Entity,
             lux::scene::ViewConfig
         ) noexcept;
-        template <class Parent>
-        ViewportElement(
-            Parent&,
-            lux::ui::ElementId,
-            lux::scene::SceneRuntime&,
-            lux::scene::SceneInstanceId,
-            lux::scene::RenderResources&,
-            lux::simulation::ecs::Entity
-        );
         lux::ui::SizeHint sizeHintContent() noexcept override;
         lux::ui::SizeHint measureContent(float width) noexcept override;
         void arrangeContent() noexcept override;

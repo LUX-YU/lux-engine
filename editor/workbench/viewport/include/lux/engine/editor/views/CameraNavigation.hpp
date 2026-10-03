@@ -13,7 +13,7 @@ namespace lux::editor::views
         double dolly{};
     };
 
-    struct CameraPose final
+    struct ViewportCameraState final
     {
         lux::simulation::ecs::Transform3D transform;
         lux::scene::Camera camera;
@@ -21,7 +21,7 @@ namespace lux::editor::views
 
     // Failure text is a static diagnostic; no UI, Registry access or allocation is involved.
     template <class T> using CameraNavigationResult = lux::cxx::expected<T, std::string_view>;
-    [[nodiscard]] CameraNavigationResult<CameraPose>
+    [[nodiscard]] CameraNavigationResult<ViewportCameraState>
     navigateCamera(const simulation::ecs::Transform3D&, const lux::scene::Camera&, const CameraMotion&);
     [[nodiscard]] CameraNavigationResult<lux::math::Ray3d> cameraRay(
         const simulation::ecs::WorldTransform3D&,

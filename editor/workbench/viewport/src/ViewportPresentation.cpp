@@ -4,6 +4,7 @@
 #include <lux/engine/scene/RenderViewRequest.hpp>
 #include <lux/engine/scene/SceneRuntime.hpp>
 #include <utility>
+#include <limits>
 #include "HighlightRenderer.hpp"
 namespace lux::editor::views
 {
@@ -142,9 +143,50 @@ namespace lux::editor::views
             registry.all_of<simulation::ecs::Transform3D, lux::scene::Camera, lux::scene::RenderViewRequest>(request_);
         if (!has_target)
             return lux::cxx::unexpected(render::RendererFailure{render::ERendererError::INVALID_ARGUMENT});
+        if (registry.get<lux::scene::RenderViewRequest>(request_).revision == std::numeric_limits<std::uint64_t>::max())
+            return lux::cxx::unexpected(render::RendererFailure{render::ERendererError::CAPACITY});
         registry.patch<simulation::ecs::Transform3D>(request_, [&](auto& value) { value = transform; });
         registry.patch<lux::scene::Camera>(request_, [&](auto& value) { value = camera; });
+        registry.patch<lux::scene::RenderViewRequest>(request_, [](auto& value) { ++value.revision; });
         return {};
+    }
+
+    render::RenderResult<render::PixelExtent> ViewportPresentation::currentImageExtent() const noexcept
+    {
+        const bool is_local_camera = scene_.valid() && camera_ == request_;
+        if (!is_local_camera)
+            return lux::cxx::unexpected(render::RendererFailure{render::ERendererError::INVALID_ARGUMENT});
+        const auto borrowed = std::as_const(runtime_).borrowInstance(scene_);
+        if (!borrowed)
+        {
+            const auto* cause = std::get_if<lux::scene::ESceneRuntimeError>(&borrowed.error().cause);
+            const bool is_busy = cause && *cause == lux::scene::ESceneRuntimeError::BUSY;
+            return lux::cxx::unexpected(render::RendererFailure{
+                is_busy ? render::ERendererError::BUSY : render::ERendererError::INVALID_ARGUMENT
+            });
+        }
+        const auto& registry = borrowed->get();
+        const bool has_camera = registry.valid(camera_) &&
+            registry.all_of<lux::scene::Camera, simulation::ecs::WorldTransform3D>(camera_);
+        const auto* request = registry.try_get<lux::scene::RenderViewRequest>(request_);
+        const auto* adopted = registry.try_get<lux::scene::RenderViewResult>(request_);
+        const bool has_request = has_camera && request && adopted;
+        const bool is_current = has_request && !adopted->failure && adopted->view == view_ &&
+            adopted->adopted_revision == request->revision && adopted->published_revision == request->revision &&
+            adopted->published_sequence != 0 && receipt_.status().render_sequence == adopted->published_sequence;
+        if (!is_current || !image_resource_.isValid())
+            return lux::cxx::unexpected(render::RendererFailure{render::ERendererError::NOT_READY});
+        const auto info = resources_.outputInfo(image_resource_);
+        if (!info)
+            return lux::cxx::unexpected(info.error());
+        const auto& stamp = info->content;
+        const bool is_sampleable = info->texture == image_ && info->extent == request->configuration.extent &&
+            stamp.source.session == scene_.domain && stamp.source.view_revision == request->revision &&
+            stamp.source.surface_generation == adopted->published_sequence && stamp.frame_serial != 0 &&
+            stamp.evidence >= lux::scene::EImageEvidence::RECORDED;
+        if (!is_sampleable)
+            return lux::cxx::unexpected(render::RendererFailure{render::ERendererError::NOT_READY});
+        return info->extent;
     }
 
     render::RenderResult<void> ViewportPresentation::setCamera(lux::simulation::ecs::Entity camera) noexcept

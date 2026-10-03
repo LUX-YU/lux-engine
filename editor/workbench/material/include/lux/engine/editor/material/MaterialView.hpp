@@ -40,7 +40,7 @@ namespace lux::editor::material
     };
     struct MaterialViewState final
     {
-        lux::editor::views::CameraPose camera;
+        lux::editor::views::ViewportCameraState camera;
         render::PixelExtent extent{400, 400};
     };
     using VMaterialViewFailure = std::variant<

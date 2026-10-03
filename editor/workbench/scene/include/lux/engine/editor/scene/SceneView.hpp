@@ -31,7 +31,7 @@ namespace lux::editor::scene
     using VSceneViewBinding = std::variant<UnboundSceneBinding, EditedSceneBinding, RunningSceneBinding>;
     struct SceneViewState final
     {
-        lux::editor::views::CameraPose camera;
+        lux::editor::views::ViewportCameraState camera;
         render::PixelExtent extent{640, 480};
         float work_plane_height{};
     };

@@ -91,19 +91,6 @@ namespace lux::editor::views
         presentation_ = std::move(presentation);
         requested_extent_ = extent;
     }
-    template <class Parent>
-    ViewportElement::ViewportElement(
-        Parent& parent,
-        lux::ui::ElementId id,
-        lux::scene::SceneRuntime& runtime,
-        lux::scene::SceneInstanceId scene,
-        lux::scene::RenderResources& resources,
-        lux::simulation::ecs::Entity camera
-    )
-        : lux::ui::Element(parent, std::move(id)),
-          image_(*this, lux::ui::ElementId{std::string(this->id().name()) + ".image"})
-    {}
-
     ViewportElement::CreateResult ViewportElement::create(
         lux::ui::Pane& parent,
         lux::ui::ElementId id,
@@ -155,7 +142,7 @@ namespace lux::editor::views
         if (!presentation)
             return lux::cxx::unexpected(presentation.error());
         auto element = std::unique_ptr<ViewportElement>(
-            new ViewportElement(parent, std::move(id), runtime, scene, resources, camera)
+            new ViewportElement(parent, std::move(id))
         );
         element->presentation_ = std::move(*presentation);
         element->requested_extent_ = config.extent;

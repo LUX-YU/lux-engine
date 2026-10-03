@@ -10,7 +10,7 @@ namespace lux::editor::views::detail
     // Private shared codec for the two actual viewport owners. No binding, author content or asset locator.
     inline void writeViewportState(
         serialization::BinaryWriter& writer,
-        const CameraPose& pose,
+        const ViewportCameraState& pose,
         render::PixelExtent extent
     )
     {
@@ -38,7 +38,7 @@ namespace lux::editor::views::detail
         (void)writer.writeUnsigned(extent.height);
     }
 
-    inline bool readViewportState(serialization::BinaryReader& reader, CameraPose& pose, render::PixelExtent& extent)
+    inline bool readViewportState(serialization::BinaryReader& reader, ViewportCameraState& pose, render::PixelExtent& extent)
     {
         const auto scalar = [&reader](double& value) {
             auto decoded = reader.readFloat<double>();

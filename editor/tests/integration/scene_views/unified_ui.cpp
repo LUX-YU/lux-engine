@@ -396,6 +396,9 @@ int main(int argc, char** argv)
         assert(one && two);
         first_pane = std::move(*one);
         second_pane = std::move(*two);
+        const auto borrowed_pose = first_pane->presentation().setCameraPose({}, {});
+        assert(!borrowed_pose && borrowed_pose.error().code == render::ERendererError::INVALID_ARGUMENT);
+        assert(scenes->borrowInstance(content->id())->get().valid(camera));
         first_window.setContent(*first_pane);
         second_window.setContent(*second_pane);
         root->setDockLayout({.left = "scene-one", .center = "scene-two", .left_width = 200.F});

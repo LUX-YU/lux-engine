@@ -13,7 +13,7 @@ namespace lux::editor::views
             return lux::cxx::unexpected(reason);
         }
     }
-    CameraNavigationResult<CameraPose> navigateCamera(
+    CameraNavigationResult<ViewportCameraState> navigateCamera(
         const lux::simulation::ecs::Transform3D& source,
         const lux::scene::Camera& camera,
         const CameraMotion& motion
@@ -55,7 +55,7 @@ namespace lux::editor::views
         pose.translation += right * (motion.local_translation.x() + motion.pan_delta.x()) +
                             Eigen::Vector3d::UnitY() * motion.local_translation.y() +
                             forward * (motion.local_translation.z() + dolly) + up * motion.pan_delta.y();
-        return CameraPose{pose, projection};
+        return ViewportCameraState{pose, projection};
     }
 
     CameraNavigationResult<lux::math::Ray3d> cameraRay(

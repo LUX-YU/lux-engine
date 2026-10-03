@@ -42,6 +42,8 @@ namespace lux::editor::material
                         const auto* code = std::get_if<EMaterialCompileRequestError>(&error);
                         return code && *code == EMaterialCompileRequestError::BUSY;
                     }
+                    else if constexpr (std::same_as<T, MaterialPreviewFailure>)
+                        return error.code == EMaterialPreviewError::BUSY;
                     else
                         return false;
                 },
@@ -112,7 +114,7 @@ namespace lux::editor::material
             REVERT_NODE
         };
         MaterialView& view_;
-        std::unique_ptr<MaterialPreviewStore> preview_owner_;
+        std::unique_ptr<MaterialPreview> preview_owner_;
         std::unique_ptr<MaterialInteraction> interaction_;
         MaterialViewServices services_;
         MaterialCompileId compile_;
@@ -774,14 +776,16 @@ namespace lux::editor::material
                 {
                     auto desired = operation->get().key();
                     desired.content = info.current;
-                    if (services_.preview.status().desired != desired)
+                    if (services_.preview.status().desired.input != desired)
                         delivered_ = {}; // A discarded candidate may be requested again after Undo restores its source.
-                    services_.preview.setDesired(desired);
+                    auto adoption = services_.preview.setDesired(desired);
+                    if (!adoption)
+                        return rejected(adoption.error());
                     const bool has_current_completion =
                         operation->get().ready() && operation->get().key() == desired && delivered_ != compile_;
                     if (has_current_completion)
                     {
-                        auto received = services_.preview.receive(operation->get(), compile_assets_);
+                        auto received = services_.preview.receive(*adoption, operation->get().result(), compile_assets_);
                         if (received || !temporary(VMaterialViewFailure{received.error()}))
                             delivered_ = compile_;
                         if (!received)
@@ -791,7 +795,7 @@ namespace lux::editor::material
             }
             const auto instance = services_.preview.instance();
             const auto preview = services_.preview.status();
-            const bool same_source = preview.accepted && preview.accepted->content.session == binding_->session.id();
+            const bool same_source = preview.accepted && preview.accepted->input.content.session == binding_->session.id();
             if (same_source && instance.valid() && instance != presented_)
             {
                 auto candidate = lux::editor::views::ViewportPresentation::create(
@@ -971,8 +975,7 @@ namespace lux::editor::material
         auto started = impl_->services_.compilation.start(
             std::move(*snapshot),
             {},
-            impl_->services_.environment.version,
-            impl_->services_.preview.target()
+            impl_->services_.environment.version
         );
         if (!started)
             return rejected(started.error());
@@ -981,7 +984,9 @@ namespace lux::editor::material
         impl_->compile_ = *started;
         impl_->compile_assets_ = impl_->services_.environment.assets;
         const auto operation = impl_->services_.compilation.operation(*started);
-        impl_->services_.preview.setDesired(operation->get().key());
+        auto adoption = impl_->services_.preview.setDesired(operation->get().key());
+        if (!adoption)
+            return rejected(adoption.error());
         return *started;
     }
     MaterialCompileId MaterialView::compilation() const noexcept
@@ -1102,7 +1107,7 @@ namespace lux::editor::material
     {
         if (!environment.renderer || !environment.resources)
             return rejected(views::EViewError::NOT_ATTACHED);
-        auto preview = std::make_unique<MaterialPreviewStore>(
+        auto preview = std::make_unique<MaterialPreview>(
             runtime, MaterialPreviewEnvironment{environment, {features.begin(), features.end()}}
         );
         MaterialViewState state;

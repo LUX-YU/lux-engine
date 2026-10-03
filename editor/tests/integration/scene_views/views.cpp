@@ -237,7 +237,7 @@ namespace
         author::SceneSession* session{};
         world::WorldObjectId object{uuid("object")};
         std::uint64_t frames{};
-        editor::material::MaterialPreviewStore* material_preview{};
+        editor::material::MaterialPreview* material_preview{};
         author::RunStore* runs{};
         std::filesystem::path files{
             std::filesystem::temp_directory_path() /
@@ -1022,7 +1022,7 @@ namespace
                 assert(result.valid() && result.info().content == published_author.current);
                 assert(result.info().type() == script::ScriptArtifactAsset::asset_type);
                 const auto encoded_source = take(result.encodeSource({}));
-                const auto expected_source = take(lux::flowforge::encodeFlowSource(*take(completed.result())->source));
+                const auto expected_source = take(lux::flowforge::encodeFlowSource(*take(completed.result())->source()));
                 assert(std::ranges::equal(encoded_source.bytes.view(), std::as_bytes(std::span(expected_source))));
                 published_ticket = take(persistence::publishEncodedArtifact(
                     f.writes, take(f.disk.resolve("derived.flow")), {result.bytes()}
@@ -1037,7 +1037,7 @@ namespace
         assert(take(compilation.operation(operation)).get().object() == object);
         f.wait([&] { return take(f.writes.status(publication)).stage == persistence::EWriteStage::TERMINAL; });
         assert(std::holds_alternative<persistence::CommitReceipt>(*take(f.writes.status(publication)).outcome));
-        assert(std::filesystem::file_size(f.files / "derived.flow") == take(completed.result())->bytes.size());
+        assert(std::filesystem::file_size(f.files / "derived.flow") == take(completed.result())->bytes().size());
         assert(author->describe().current == initial.current && author->describe().dirty == initial.dirty);
         assert(f.writes.acknowledge(publication));
         assert(compilation.acknowledge(operation));
@@ -1069,7 +1069,8 @@ namespace
         em::MaterialPreviewEnvironment environment{f.environment, {}};
         for (const auto& feature : render::builtinRenderFeatureRegistrations())
             environment.features.push_back(feature);
-        em::MaterialPreviewStore preview{*f.runtime, std::move(environment)};
+        const auto shared_environment = environment;
+        em::MaterialPreview preview{*f.runtime, std::move(environment)};
         f.material_preview = &preview;
         em::MaterialCompilationService compilation(f.execution);
         em::MaterialSaveSource save_source(
@@ -1145,7 +1146,7 @@ namespace
                 assert(result.valid() && result.info().content == unsaved.current);
                 assert(result.info().type() == asset::MaterialAsset::asset_type);
                 const auto encoded_source = take(result.encodeSource({}));
-                const auto expected_source = take(lux::material::encodeMaterialSource(*compiled->source));
+                const auto expected_source = take(lux::material::encodeMaterialSource(*compiled->source()));
                 assert(std::ranges::equal(encoded_source.bytes.view(), std::as_bytes(std::span(expected_source))));
                 published_ticket = take(persistence::publishEncodedArtifact(
                     f.writes, take(f.disk.resolve("derived.material")), {result.bytes()}
@@ -1156,16 +1157,49 @@ namespace
         const auto publication = *published_ticket;
         f.wait([&] { return take(f.writes.status(publication)).stage == persistence::EWriteStage::TERMINAL; });
         assert(std::holds_alternative<persistence::CommitReceipt>(*take(f.writes.status(publication)).outcome));
-        assert(std::filesystem::file_size(f.files / "derived.material") == compiled->bytes.size());
+        assert(std::filesystem::file_size(f.files / "derived.material") == compiled->bytes().size());
         assert(author->describe().current == unsaved.current && author->describe().dirty == unsaved.dirty);
         assert(f.writes.acknowledge(publication));
         auto reads = take(process::asset_loading::makeAssetReadOverlay({}, {}));
-        assert(preview.receive(*operation, {{9, 1}, 1, std::move(reads), {}}));
+        const lux::scene::RenderAssetInput preview_assets{{9, 1}, 1, std::move(reads), {}};
+        assert(preview.receive(preview.status().desired, operation->result(), preview_assets));
         f.wait([&] { return preview.status().accepted.has_value() && view->image().isValid(); });
-        assert(preview.status().accepted == operation->key());
+        assert(preview.status().accepted->input == operation->key());
         assert(compilation.acknowledge(compile_id));
         operation = nullptr;
         assert(view->image().isValid());
+        // Both real GPU targets consume one immutable compilation, after task acknowledgement.
+        // Closing one target retires only its own scene/view; the first remains rendered.
+        {
+            em::MaterialPreview second{*f.runtime, shared_environment};
+            const auto adoption = take(second.setDesired(compiled->key()));
+            assert(adoption.target != preview.status().desired.target);
+            assert(second.receive(adoption, compiled, preview_assets));
+            f.wait([&] {
+                second.update();
+                const auto status = second.status();
+                if (status.failure)
+                    std::fprintf(stderr, "Second preview failed: %s\n", status.failure->domain.c_str());
+                assert(!status.failure);
+                return second.instance().valid();
+            });
+            assert(second.instance() != preview.instance());
+            auto presentation = take(views::ViewportPresentation::create(
+                *f.runtime, second.instance(), *f.resources, {2}, second.camera(),
+                lux::scene::ViewConfig{.extent = {320, 240}}
+            ));
+            f.wait([&] {
+                second.update();
+                presentation->update({320, 240});
+                return second.status().accepted == adoption && presentation->image().isValid();
+            });
+            assert(view->image().isValid() && preview.status().accepted->input == compiled->key());
+            f.wait([&] { return presentation->close() == render::ERenderClose::COMPLETE; });
+            presentation.reset();
+            const auto retired = second.close();
+            f.wait([&] { return retired.complete(); });
+            assert(view->image().isValid() && preview.status().accepted->input == compiled->key());
+        }
         auto resource_candidate = take(editor::scene::makeResourceView(
             f.messages.dispatcherRef(),
             ui::PaneId{"resources"},
@@ -1242,7 +1276,7 @@ namespace
             take(asset::TAssetSerDeser<asset::MeshAsset>::encode(*mesh_asset, asset::AssetEncodeLimits{1024 * 1024}))
         );
         auto assets = take(process::asset_loading::makeAssetReadOverlay(
-            {{material.artifact->id(), {material.bytes}}, {mesh_id, {cxx::SharedBytes<>::fromOwner(bytes, *bytes)}}},
+            {{material.artifact()->id(), {material.bytes()}}, {mesh_id, {cxx::SharedBytes<>::fromOwner(bytes, *bytes)}}},
             {}
         ));
         struct FailingRead final : process::asset_loading::AssetReadPort::Endpoint
@@ -1274,7 +1308,7 @@ namespace
         };
         auto failing = std::make_shared<FailingRead>();
         failing->source = std::move(assets);
-        failing->material = material.artifact->id();
+        failing->material = material.artifact()->id();
         auto environment = f.environment;
         environment.version = 2;
         environment.assets = {{30, 1}, 1, process::asset_loading::AssetReadPort{failing}, {}};
@@ -1367,7 +1401,7 @@ namespace
              {0},
              {take(author::encodeSceneValue(ecs::Transform3D{}, environment.components, identities, 4096)),
               take(author::encodeSceneValue(
-                  ecs::Mesh3D{rdesc::MeshVisualDescription{mesh_id, material.artifact->id(), true, false, false}},
+                  ecs::Mesh3D{rdesc::MeshVisualDescription{mesh_id, material.artifact()->id(), true, false, false}},
                   environment.components,
                   identities,
                   4096

@@ -1,4 +1,4 @@
-#include <lux/engine/editor/material/MaterialPreviewStore.hpp>
+#include <lux/engine/editor/material/MaterialPreview.hpp>
 #include <lux/engine/editor/sessions/SessionStore.hpp>
 #include <lux/engine/editor/material/MaterialSession.hpp>
 #include <lux/engine/editor/material/PublishCompiledMaterial.hpp>
@@ -87,7 +87,7 @@ int main(int argc, char** argv)
     );
     auto* mat = material.get();
     assert(authors.prepare(mr, material) && authors.publish(mr));
-    em::MaterialPreviewStore preview{*runtime, {}};
+    em::MaterialPreview preview{*runtime, {}};
     std::atomic_bool entered{}, release{};
     auto block = take(late_execution.submit(
         {"test ordered CPU", "test"},
@@ -103,58 +103,75 @@ int main(int argc, char** argv)
     ));
     until([&] { return entered.load(); });
     rename(*mat, "S10");
-    auto s10 = take(em::MaterialCompileOperation::start(late_execution, take(mat->capture()), {}, 1, preview.target()));
+    auto s10 = take(em::MaterialCompileOperation::start(late_execution, take(mat->capture()), {}, 1));
+    const auto s10_adoption = take(preview.setDesired(s10->key()));
     rename(*mat, "S12");
     const auto before = mat->describe();
     const auto before_source = take(take(mat->read()).encode());
-    auto s12 = take(em::MaterialCompileOperation::start(execution, take(mat->capture()), {}, 1, preview.target()));
-    preview.setDesired(s12->key());
+    auto s12 = take(em::MaterialCompileOperation::start(execution, take(mat->capture()), {}, 1));
+    const auto s12_adoption = take(preview.setDesired(s12->key()));
     until([&] {
         assert(execution.collectCompletions());
         assert(execution.dispatchTaskEvents());
         return s12->ready();
     });
     auto compiled = take(s12->result());
-    assert(compiled->source->name == "S12");
-    assert(preview.receive(*s12, {}));
-    assert(preview.status().prepared == s12->key());
+    assert(compiled->source()->name == "S12");
+    assert(preview.receive(s12_adoption, s12->result(), {}));
+    assert(preview.status().prepared == s12_adoption);
     release = true;
     until([&] {
         assert(late_execution.collectCompletions());
         assert(late_execution.dispatchTaskEvents());
         return s10->ready();
     });
-    assert(preview.receive(*s10, {}));
-    assert(preview.status().prepared == s12->key());
+    assert(preview.receive(s10_adoption, s10->result(), {}));
+    assert(preview.status().prepared == s12_adoption);
     auto stale_key = s12->key();
     ++stale_key.environment;
-    preview.setDesired(stale_key);
-    assert(preview.receive(*s12, {}));
+    assert(preview.setDesired(stale_key));
+    assert(preview.receive(s12_adoption, s12->result(), {}));
     preview.update();
     assert(!preview.status().prepared);
-    auto mismatch = s12->key();
-    ++mismatch.target;
-    preview.setDesired(mismatch);
-    assert(preview.receive(*s12, {}));
-    mismatch = s12->key();
-    ++mismatch.settings.version;
-    preview.setDesired(mismatch);
-    assert(preview.receive(*s12, {}));
+    auto mismatch = s12_adoption;
+    mismatch.target = s10_adoption.target;
+    ++mismatch.generation;
+    assert(preview.receive(mismatch, s12->result(), {}));
+    assert(!preview.status().prepared);
+    auto changed_settings = s12->key();
+    ++changed_settings.settings.version;
+    assert(preview.setDesired(changed_settings));
+    assert(preview.receive(s12_adoption, s12->result(), {}));
+    assert(!preview.status().prepared);
+    em::MaterialPreview second{*runtime, {}};
+    const auto first_target = take(preview.setDesired(s12->key()));
+    const auto second_target = take(second.setDesired(s12->key()));
+    assert(first_target.target != second_target.target && first_target.input == second_target.input);
+    assert(preview.receive(first_target, compiled, {}) && second.receive(second_target, compiled, {}));
+    assert(preview.status().prepared == first_target && second.status().prepared == second_target);
+    assert(second.reset({}));
+    const auto rebound = take(second.setDesired(s12->key()));
+    assert(rebound.generation > second_target.generation);
+    assert(second.receive(second_target, compiled, {}) && !second.status().prepared);
+    assert(second.receive(rebound, compiled, {}) && second.status().prepared == rebound);
+    (void)second.close();
+    assert(!second.setDesired(s12->key()) && preview.status().prepared == first_target);
     assert(mat->describe().current == before.current && mat->describe().dirty == before.dirty);
     assert(take(take(mat->read()).encode()) == before_source);
     // A real compiler failure must not cause the older successful completion to be relabelled current.
     em::MaterialEditBatch broken{mat->describe().current, "remove output", {}};
     broken.edits.push_back(em::MaterialEraseNode{lux::material::NodeId{2}});
     assert(mat->apply(std::move(broken)));
-    auto bad = take(em::MaterialCompileOperation::start(execution, take(mat->capture()), {}, 1, preview.target()));
-    preview.setDesired(bad->key());
+    auto bad = take(em::MaterialCompileOperation::start(execution, take(mat->capture()), {}, 1));
+    const auto bad_adoption = take(preview.setDesired(bad->key()));
     until([&] {
         assert(execution.collectCompletions());
         assert(execution.dispatchTaskEvents());
         return bad->ready();
     });
-    assert(!bad->result() && !preview.receive(*bad, {}));
-    assert(preview.receive(*s10, {}));
+    assert(!bad->result() && preview.receive(bad_adoption, bad->result(), {}));
+    assert(preview.status().compilation_failure);
+    assert(preview.receive(s10_adoption, s10->result(), {}));
     assert(!preview.status().diagnostic.empty());
     auto fr = take(authors.reserve<ef::FlowSession>({"lux.editor.flowforge"}, contracts::CodeLease::builtin()));
     ef::FlowAuthoringSource flow_source{identity(), "Flow S10", {}};
@@ -192,7 +209,7 @@ int main(int argc, char** argv)
         return operation.ready();
     });
     const auto artifact = take(operation.result());
-    assert(operation.object() == object && operation.key().content == frozen && artifact->source->name == "Flow S10");
+    assert(operation.object() == object && operation.key().content == frozen && artifact->source()->name == "Flow S10");
     assert(operation.attempts().size() == 2 && operation.attempts()[0].failure && !operation.attempts()[1].failure);
     assert(author->describe().current == flow_before.current && take(take(author->read()).encode()) == flow_bytes);
     // Real file IO on the same coordinator/execution adapter used by source saves.
@@ -221,8 +238,8 @@ int main(int argc, char** argv)
         std::get<persistence::NotPublished>(*take(writes.status(conflict)).outcome).failure.code ==
         persistence::EPersistenceError::CONFLICT
     );
-    assert(std::filesystem::file_size(root / "derived.material") == compiled->bytes.size());
-    assert(std::filesystem::file_size(root / "derived.flow") == artifact->bytes.size());
+    assert(std::filesystem::file_size(root / "derived.material") == compiled->bytes().size());
+    assert(std::filesystem::file_size(root / "derived.flow") == artifact->bytes().size());
     assert(mat->describe().current == material_state.current && mat->describe().dirty == material_state.dirty);
     assert(author->describe().current == flow_before.current && author->describe().dirty == flow_before.dirty);
     assert(writes.acknowledge(first) && writes.acknowledge(conflict) && writes.acknowledge(flow_ticket));

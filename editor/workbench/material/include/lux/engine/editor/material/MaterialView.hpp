@@ -1,6 +1,6 @@
 #pragma once
 #include <lux/engine/editor/material/MaterialInteraction.hpp>
-#include <lux/engine/editor/material/MaterialPreviewStore.hpp>
+#include <lux/engine/editor/material/MaterialPreview.hpp>
 #include <lux/engine/editor/material/MaterialCompilationService.hpp>
 #include <lux/engine/editor/persistence/DerivedArtifact.hpp>
 #include <lux/engine/editor/views/CameraNavigation.hpp>
@@ -30,7 +30,7 @@ namespace lux::editor::material
         lux::scene::SceneRuntime& runtime;
         lux::scene::RenderResources& resources;
         render::RenderRuntime& renderer;
-        MaterialPreviewStore& preview;
+        MaterialPreview& preview;
         MaterialCompilationService& compilation;
         const scene::ProjectionEnvironment& environment;
         project::ProjectCatalogModel* assets{};
@@ -44,6 +44,7 @@ namespace lux::editor::material
     using VMaterialViewFailure = std::variant<
         MaterialEditError,
         VMaterialCompileFailure,
+        MaterialPreviewFailure,
         persistence::PersistenceFailure,
         scene::ProjectionFailure,
         render::RendererFailure,

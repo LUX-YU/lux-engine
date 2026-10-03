@@ -29,15 +29,14 @@ namespace lux::editor::material
     MaterialCompileResult<MaterialCompileId> MaterialCompilationService::start(
         MaterialSnapshot snapshot,
         MaterialCompileSettings settings,
-        std::uint64_t environment,
-        std::uint64_t target
+        std::uint64_t environment
     )
     {
         if (owner_ != std::this_thread::get_id())
             return rejected(EMaterialCompileRequestError::WRONG_THREAD);
         if (operations_.size() == capacity_)
             return rejected(EMaterialCompileRequestError::CAPACITY);
-        auto operation = MaterialCompileOperation::start(runtime_, std::move(snapshot), settings, environment, target);
+        auto operation = MaterialCompileOperation::start(runtime_, std::move(snapshot), settings, environment);
         if (!operation)
             return cxx::unexpected(operation.error());
         const auto id = (*operation)->id();

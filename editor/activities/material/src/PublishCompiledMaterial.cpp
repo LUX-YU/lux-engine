@@ -14,7 +14,7 @@ namespace lux::editor::material
             {
                 if (stop.stop_requested())
                     return cxx::unexpected(persistence::PersistenceFailure{persistence::EPersistenceError::CANCELLED});
-                auto encoded = lux::material::encodeMaterialSource(*compiled_->source);
+                auto encoded = lux::material::encodeMaterialSource(*compiled_->source());
                 if (!encoded)
                     return cxx::unexpected(persistence::PersistenceFailure{
                         persistence::EPersistenceError::ENCODE, encoded.error().field
@@ -33,14 +33,13 @@ namespace lux::editor::material
         std::shared_ptr<const CompiledMaterial> compiled
     )
     {
-        const bool is_invalid = !compiled || !compiled->source || !compiled->artifact || compiled->bytes.empty();
-        if (is_invalid)
+        if (!compiled)
             return cxx::unexpected(persistence::PersistenceFailure{persistence::EPersistenceError::INVALID_ARGUMENT});
         return persistence::DerivedArtifact{
             contracts::CodeLease::builtin(),
-            {compiled->key.content, compiled->source->id, std::string(lux::asset::MaterialAsset::canonical_name), 1,
+            {compiled->key().content, compiled->source()->id, std::string(lux::asset::MaterialAsset::canonical_name), 1,
              lux::asset::MaterialAsset::primary_magic},
-            compiled->bytes, std::make_shared<const MaterialArtifactSource>(compiled)
+            compiled->bytes(), std::make_shared<const MaterialArtifactSource>(compiled)
         };
     }
     persistence::PersistenceResult<persistence::WriteTicket> publishCompiledMaterial(
@@ -50,8 +49,8 @@ namespace lux::editor::material
     )
     {
         using namespace persistence;
-        if (!compiled || !compiled->artifact || !compiled->source || compiled->bytes.empty())
+        if (!compiled)
             return lux::cxx::unexpected(PersistenceFailure{EPersistenceError::INVALID_ARGUMENT});
-        return publishEncodedArtifact(writes, std::move(target), EncodedArtifact{compiled->bytes});
+        return publishEncodedArtifact(writes, std::move(target), EncodedArtifact{compiled->bytes()});
     }
 }

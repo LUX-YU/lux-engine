@@ -3957,7 +3957,9 @@
       "variant",
       "vector",
       "lux/engine/editor/persistence/DerivedArtifact.hpp",
-      "lux/engine/material/graph/MaterialSource.hpp"
+      "lux/engine/material/graph/MaterialSource.hpp",
+      "random",
+      "lux/engine/description/Visual.hpp"
     ],
     "prefixes": [
       "lux/cxx/",
@@ -3989,14 +3991,16 @@
     "files": [
       "editor/activities/material/include/lux/engine/editor/material/MaterialCompilation.hpp",
       "editor/activities/material/include/lux/engine/editor/material/MaterialCompilationService.hpp",
-      "editor/activities/material/include/lux/engine/editor/material/MaterialPreviewStore.hpp",
+      "editor/activities/material/include/lux/engine/editor/material/MaterialPreview.hpp",
       "editor/activities/material/include/lux/engine/editor/material/PublishCompiledMaterial.hpp",
       "editor/activities/material/src/MaterialCompilation.cpp",
       "editor/activities/material/src/MaterialCompilationService.cpp",
-      "editor/activities/material/src/MaterialPreviewStore.cpp",
+      "editor/activities/material/src/MaterialPreview.cpp",
       "editor/activities/material/src/PublishCompiledMaterial.cpp",
       "editor/tests/integration/material_activity/compilation.cpp",
-      "editor/tests/integration/material_activity/ownership.cpp"
+      "editor/tests/integration/material_activity/ownership.cpp",
+      "editor/activities/material/src/MaterialPreviewRecipe.cpp",
+      "editor/activities/material/pinclude/lux/engine/editor/material/MaterialPreviewRecipe.hpp"
     ]
   },
   "flowforge_compilation": {
@@ -7082,7 +7086,7 @@
       "lux/engine/editor/material/MaterialCompilationService.hpp",
       "lux/engine/editor/material/MaterialInteraction.hpp",
       "lux/engine/editor/material/MaterialNodeControls.hpp",
-      "lux/engine/editor/material/MaterialPreviewStore.hpp",
+      "lux/engine/editor/material/MaterialPreview.hpp",
       "lux/engine/editor/material/MaterialView.hpp",
       "lux/engine/editor/material/PublishCompiledMaterial.hpp",
       "lux/engine/editor/persistence/WriteCoordinator.hpp",
@@ -15619,7 +15623,7 @@
       "editor/activities/material/include/lux/engine/editor/material/MaterialCompilationService.hpp": [
         "material_preview"
       ],
-      "editor/activities/material/include/lux/engine/editor/material/MaterialPreviewStore.hpp": [
+      "editor/activities/material/include/lux/engine/editor/material/MaterialPreview.hpp": [
         "material_preview"
       ],
       "editor/activities/material/include/lux/engine/editor/material/MaterialSaveSource.hpp": [
@@ -15637,7 +15641,7 @@
       "editor/activities/material/src/MaterialCompilationService.cpp": [
         "material_preview"
       ],
-      "editor/activities/material/src/MaterialPreviewStore.cpp": [
+      "editor/activities/material/src/MaterialPreview.cpp": [
         "material_preview"
       ],
       "editor/activities/material/src/MaterialSaveSource.cpp": [
@@ -17937,6 +17941,12 @@
       ],
       "editor/tests/integration/project/artifact_publication.cpp": [
         "editor_artifact_publication"
+      ],
+      "editor/activities/material/src/MaterialPreviewRecipe.cpp": [
+        "material_preview"
+      ],
+      "editor/activities/material/pinclude/lux/engine/editor/material/MaterialPreviewRecipe.hpp": [
+        "material_preview"
       ]
     },
     "native_libraries": [

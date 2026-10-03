@@ -110,9 +110,9 @@ namespace
         auto value_result = *result;
         owner.reset();
         result.reset();
-        assert(shared_result->source->name == "Ownership" && !shared_result->bytes.empty());
-        assert(value_result.key == key && std::ranges::equal(value_result.bytes.view(), shared_result->bytes.view()));
-        assert(value_result.source == shared_result->source);
+        assert(shared_result->source()->name == "Ownership" && !shared_result->bytes().empty());
+        assert(value_result.key() == key && std::ranges::equal(value_result.bytes().view(), shared_result->bytes().view()));
+        assert(value_result.source() == shared_result->source());
         // A later independent operation is still admitted and delivered exactly once.
         auto next = take(em::MaterialCompileOperation::start(execution, take(author->capture())));
         assert(next->id() != id);
@@ -121,7 +121,7 @@ namespace
             delivered += dispatch(execution);
             return next->ready();
         });
-        assert(delivered == 1 && take(next->result())->source->name == "Ownership");
+        assert(delivered == 1 && take(next->result())->source()->name == "Ownership");
         em::MaterialCompilationService service(execution, 1);
         assert(take(service.snapshotIds()).empty());
         const auto controlled = take(service.start(take(author->capture())));
@@ -138,7 +138,7 @@ namespace
         });
         auto retained = take(operation.result());
         assert(service.acknowledge(controlled) && !service.operation(controlled));
-        assert(!retained->bytes.empty() && retained->source->name == "Ownership");
+        assert(!retained->bytes().empty() && retained->source()->name == "Ownership");
         const auto again = take(service.start(take(author->capture())));
         assert(again != controlled);
         until([&] {
@@ -160,7 +160,7 @@ namespace
             return true;
         });
         assert(service.collectReleased() && service.empty());
-        assert(service.releaseResult(released) && !after_release->bytes.empty());
+        assert(service.releaseResult(released) && !after_release->bytes().empty());
         assert(author->describe().current == before.current && author->describe().dirty == before.dirty);
         assert(author->describe().observed == before.observed);
         assert(take(take(author->read()).encode()) == bytes);
@@ -232,13 +232,13 @@ namespace
         auto value_result = *result;
         assert(service.acknowledge(id) && !service.operation(id));
         result.reset();
-        assert(!shared_result->bytes.empty() && shared_result->source->name == "Ownership");
+        assert(!shared_result->bytes().empty() && shared_result->source()->name == "Ownership");
         assert(
-            std::ranges::equal(value_result.bytes.view(), shared_result->bytes.view()) &&
-            value_result.artifact == shared_result->artifact
+            std::ranges::equal(value_result.bytes().view(), shared_result->bytes().view()) &&
+            value_result.artifact() == shared_result->artifact()
         );
         assert(take(service.operation(recovered)).get().ready());
-        assert(take(take(service.operation(recovered)).get().result())->source->name == "Ownership");
+        assert(take(take(service.operation(recovered)).get().result())->source()->name == "Ownership");
         assert(service.acknowledge(recovered));
         assert(take(service.snapshotIds()).empty());
         const auto released = take(service.start(take(author->capture()), ef::FlowCompileEnvironment{}, {}, {linker}));
@@ -254,7 +254,7 @@ namespace
             return true;
         });
         assert(service.collectReleased() && service.empty());
-        assert(service.releaseResult(released) && !after_release->bytes.empty());
+        assert(service.releaseResult(released) && !after_release->bytes().empty());
         assert(author->describe().current == before.current && author->describe().dirty == before.dirty);
         assert(author->describe().observed == before.observed);
         assert(take(take(author->read()).encode()) == bytes);

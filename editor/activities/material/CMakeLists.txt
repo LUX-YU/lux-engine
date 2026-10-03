@@ -15,7 +15,8 @@ lux_engine_install_components(PROJECT_NAME lux-engine-editor-material-persistenc
     NAMESPACE lux::engine::editor COMPONENTS material_persistence)
 
 add_component(COMPONENT_NAME material_preview NAMESPACE lux::engine::editor STATIC
-    SOURCE_FILES src/PublishCompiledMaterial.cpp src/MaterialCompilation.cpp src/MaterialCompilationService.cpp src/MaterialPreviewStore.cpp)
+    SOURCE_FILES src/PublishCompiledMaterial.cpp src/MaterialCompilation.cpp src/MaterialCompilationService.cpp src/MaterialPreview.cpp src/MaterialPreviewRecipe.cpp)
+target_include_directories(material_preview PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude)
 component_include_directories(material_preview BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
 target_link_libraries(material_preview PUBLIC lux::engine::editor::editor_persistence lux::engine::editor::material_model
     lux::engine::toolchain::toolchain_material_compiler lux::engine::process::process_execution
@@ -44,7 +45,7 @@ install(FILES
 install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/material/MaterialCompilation.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/material/MaterialCompilationService.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/material/MaterialPreviewStore.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/material/MaterialPreview.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/material/PublishCompiledMaterial.hpp
     DESTINATION include/lux/engine/editor/material COMPONENT lux_engine_editor_material_preview)
 

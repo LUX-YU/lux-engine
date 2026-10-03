@@ -55,12 +55,28 @@ namespace lux::editor::flowforge
         std::uint64_t configuration{1}, environment{1};
         friend bool operator==(FlowCompileKey, FlowCompileKey) = default;
     };
-    struct CompiledFlow final
+    namespace detail { struct FlowCompilation; }
+    class CompiledFlow final
     {
-        FlowCompileKey key;
-        std::shared_ptr<const lux::flowforge::FlowSource> source;
-        std::shared_ptr<const lux::script::ScriptArtifactAsset> artifact;
-        lux::cxx::SharedBytes<> bytes;
+    public:
+        CompiledFlow(const CompiledFlow&) = default;
+        CompiledFlow(CompiledFlow&&) = default;
+        CompiledFlow& operator=(const CompiledFlow&) = delete;
+        CompiledFlow& operator=(CompiledFlow&&) = delete;
+        [[nodiscard]] const FlowCompileKey& key() const noexcept { return key_; }
+        [[nodiscard]] const std::shared_ptr<const lux::flowforge::FlowSource>& source() const noexcept { return source_; }
+        [[nodiscard]] const std::shared_ptr<const lux::script::ScriptArtifactAsset>& artifact() const noexcept { return artifact_; }
+        [[nodiscard]] const lux::cxx::SharedBytes<>& bytes() const noexcept { return bytes_; }
+
+    private:
+        friend struct detail::FlowCompilation;
+        CompiledFlow(FlowCompileKey key, std::shared_ptr<const lux::flowforge::FlowSource> source,
+            std::shared_ptr<const lux::script::ScriptArtifactAsset> artifact, lux::cxx::SharedBytes<> bytes)
+            : key_(key), source_(std::move(source)), artifact_(std::move(artifact)), bytes_(std::move(bytes)) {}
+        const FlowCompileKey key_;
+        const std::shared_ptr<const lux::flowforge::FlowSource> source_;
+        const std::shared_ptr<const lux::script::ScriptArtifactAsset> artifact_;
+        const lux::cxx::SharedBytes<> bytes_;
     };
     struct FlowLinkAttempt final
     {

@@ -606,7 +606,7 @@ namespace draft_test
         assert(f.store.prepare(reservation, model));
         const auto key = take(f.store.key<em::MaterialSession>(take(f.store.publish(reservation))));
         em::MaterialInteraction interaction(f.store.access<em::MaterialSession>(), key);
-        em::MaterialPreviewStore preview{*f.runtime, {f.environment, {}}};
+        em::MaterialPreview preview{*f.runtime, {f.environment, {}}};
         em::MaterialCompilationService compilation(f.execution);
         auto detached = take(em::makeMaterialView(
             f.messages.dispatcherRef(),

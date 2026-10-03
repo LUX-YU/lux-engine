@@ -16,8 +16,7 @@ namespace lux::editor::material
         [[nodiscard]] MaterialCompileResult<MaterialCompileId> start(
             MaterialSnapshot,
             MaterialCompileSettings = {},
-            std::uint64_t environment = 1,
-            std::uint64_t target = 1
+            std::uint64_t environment = 1
         );
         [[nodiscard]] MaterialCompileResult<std::reference_wrapper<const MaterialCompileOperation>> operation(
             MaterialCompileId

@@ -1,0 +1,342 @@
+[
+  {
+    "name": "projection-compilation-configure",
+    "argv": [
+      "cmake",
+      "-S",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\ec2-r1-sdk\\projection-compilation-source",
+      "-B",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\ec2-r1-sdk\\projection-compilation",
+      "-G",
+      "Ninja",
+      "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+      "-DCMAKE_CXX_STANDARD=20",
+      "-DCMAKE_CXX_EXTENSIONS=OFF",
+      "-DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/EC2-R1-ead7e59514a5",
+      "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+      "-DVCPKG_TARGET_TRIPLET=x64-windows",
+      "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine-ec2-r1-qualified",
+    "started": "2026-10-03T09:54:22.009453+00:00",
+    "ended": "2026-10-03T09:54:26.004115+00:00",
+    "exit_code": 0,
+    "log": "projection-compilation-configure.log",
+    "sha256": "b84fe2116a903cf3e7c361090704bd67629e6d3614fd3c06f7e26bed86a1cb35"
+  },
+  {
+    "name": "projection-compilation-build",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\ec2-r1-sdk\\projection-compilation",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine-ec2-r1-qualified",
+    "started": "2026-10-03T09:54:26.008512+00:00",
+    "ended": "2026-10-03T09:54:34.054721+00:00",
+    "exit_code": 0,
+    "log": "projection-compilation-build.log",
+    "sha256": "a515dc6efa94baa2ea66e70f820e56cbf70f0473716dfd1c1cd49f48519ffdb5"
+  },
+  {
+    "name": "projection-compilation-no-work",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\ec2-r1-sdk\\projection-compilation",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine-ec2-r1-qualified",
+    "started": "2026-10-03T09:54:34.058804+00:00",
+    "ended": "2026-10-03T09:54:34.115815+00:00",
+    "exit_code": 0,
+    "log": "projection-compilation-no-work.log",
+    "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6"
+  },
+  {
+    "name": "projection-compilation-ctest",
+    "argv": [
+      "ctest",
+      "--test-dir",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\ec2-r1-sdk\\projection-compilation",
+      "--output-on-failure",
+      "-j",
+      "1"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine-ec2-r1-qualified",
+    "started": "2026-10-03T09:54:34.119910+00:00",
+    "ended": "2026-10-03T09:54:47.528954+00:00",
+    "exit_code": 0,
+    "log": "projection-compilation-ctest.log",
+    "sha256": "f2ad07947d5c3c54e8cf69b4882709279185d9b8dda680259d9bd4f48fe368ac"
+  },
+  {
+    "name": "desktop-views-configure",
+    "argv": [
+      "cmake",
+      "-S",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-ec2-r1-qualified\\cmake\\installed-consumers\\desktop-views",
+      "-B",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\ec2-r1-sdk\\desktop-views",
+      "-G",
+      "Ninja",
+      "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+      "-DCMAKE_CXX_STANDARD=20",
+      "-DCMAKE_CXX_EXTENSIONS=OFF",
+      "-DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/EC2-R1-ead7e59514a5",
+      "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+      "-DVCPKG_TARGET_TRIPLET=x64-windows",
+      "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine-ec2-r1-qualified",
+    "started": "2026-10-03T09:54:47.571624+00:00",
+    "ended": "2026-10-03T09:54:55.933063+00:00",
+    "exit_code": 0,
+    "log": "desktop-views-configure.log",
+    "sha256": "11f78bebf4d483cf7e13c4b2b51ab4a4947f6f54317ef1df69c8e42798b7afbb"
+  },
+  {
+    "name": "desktop-views-build",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\ec2-r1-sdk\\desktop-views",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine-ec2-r1-qualified",
+    "started": "2026-10-03T09:54:55.939527+00:00",
+    "ended": "2026-10-03T09:55:14.864098+00:00",
+    "exit_code": 0,
+    "log": "desktop-views-build.log",
+    "sha256": "9623ab2e64ae254e2bab68b76c7e8cab1dc9d95d589d32a8535709036dda70ad"
+  },
+  {
+    "name": "desktop-views-no-work",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\ec2-r1-sdk\\desktop-views",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine-ec2-r1-qualified",
+    "started": "2026-10-03T09:55:14.868479+00:00",
+    "ended": "2026-10-03T09:55:14.956276+00:00",
+    "exit_code": 0,
+    "log": "desktop-views-no-work.log",
+    "sha256": "7716162f3cd3b99cf3b8a8dd6decf324e08c7e941aae7e730baba5e4fc8c075b"
+  },
+  {
+    "name": "desktop-views-ctest",
+    "argv": [
+      "ctest",
+      "--test-dir",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\ec2-r1-sdk\\desktop-views",
+      "--output-on-failure",
+      "-j",
+      "1",
+      "-E",
+      "^installed.desktop.native_input$"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine-ec2-r1-qualified",
+    "started": "2026-10-03T09:55:14.957278+00:00",
+    "ended": "2026-10-03T09:55:21.402416+00:00",
+    "exit_code": 0,
+    "log": "desktop-views-ctest.log",
+    "sha256": "40e21420a1e1bf23cf015d8b6ed759f2243bac0d02065806e4e9a1ff85b8803a"
+  },
+  {
+    "name": "gpu-ui-configure",
+    "argv": [
+      "cmake",
+      "-S",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-ec2-r1-qualified\\cmake\\installed-consumers\\scene-ui",
+      "-B",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\ec2-r1-sdk\\gpu-ui",
+      "-G",
+      "Ninja",
+      "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+      "-DCMAKE_CXX_STANDARD=20",
+      "-DCMAKE_CXX_EXTENSIONS=OFF",
+      "-DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/EC2-R1-ead7e59514a5",
+      "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+      "-DVCPKG_TARGET_TRIPLET=x64-windows",
+      "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+      "-DCONSUMER_MODE=GPU_UI"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine-ec2-r1-qualified",
+    "started": "2026-10-03T09:55:21.407440+00:00",
+    "ended": "2026-10-03T09:55:22.699668+00:00",
+    "exit_code": 0,
+    "log": "gpu-ui-configure.log",
+    "sha256": "73f6da955895976375f5ac18ec50b8a75040d5e4b820eec259c2750fc4e483eb"
+  },
+  {
+    "name": "gpu-ui-build",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\ec2-r1-sdk\\gpu-ui",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine-ec2-r1-qualified",
+    "started": "2026-10-03T09:55:22.704065+00:00",
+    "ended": "2026-10-03T09:55:25.333145+00:00",
+    "exit_code": 0,
+    "log": "gpu-ui-build.log",
+    "sha256": "95e95626631f83d20362ae43d7c8aeab5c6524f6195a73860cace13bb52709f9"
+  },
+  {
+    "name": "gpu-ui-no-work",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\ec2-r1-sdk\\gpu-ui",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine-ec2-r1-qualified",
+    "started": "2026-10-03T09:55:25.337752+00:00",
+    "ended": "2026-10-03T09:55:25.384950+00:00",
+    "exit_code": 0,
+    "log": "gpu-ui-no-work.log",
+    "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6"
+  },
+  {
+    "name": "gpu-ui-ctest",
+    "argv": [
+      "ctest",
+      "--test-dir",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\ec2-r1-sdk\\gpu-ui",
+      "--output-on-failure",
+      "-j",
+      "1"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine-ec2-r1-qualified",
+    "started": "2026-10-03T09:55:25.385974+00:00",
+    "ended": "2026-10-03T09:55:25.761276+00:00",
+    "exit_code": 0,
+    "log": "gpu-ui-ctest.log",
+    "sha256": "c7580f64b3aa26e4cc556180bd1acde15972541c2000351619bfd0adbc0987c0"
+  },
+  {
+    "name": "editor-scene-pane-configure",
+    "argv": [
+      "cmake",
+      "-S",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-ec2-r1-qualified\\cmake\\installed-consumers\\scene-ui",
+      "-B",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\ec2-r1-sdk\\editor-scene-pane",
+      "-G",
+      "Ninja",
+      "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+      "-DCMAKE_CXX_STANDARD=20",
+      "-DCMAKE_CXX_EXTENSIONS=OFF",
+      "-DCMAKE_PREFIX_PATH=E:/SyncForder/CodeRepos/install/EC2-R1-ead7e59514a5",
+      "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+      "-DVCPKG_TARGET_TRIPLET=x64-windows",
+      "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+      "-DCONSUMER_MODE=EDITOR_SCENE_PANE"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine-ec2-r1-qualified",
+    "started": "2026-10-03T09:55:25.770805+00:00",
+    "ended": "2026-10-03T09:55:29.145190+00:00",
+    "exit_code": 0,
+    "log": "editor-scene-pane-configure.log",
+    "sha256": "341c62f0e3af64038f2fd1ebc6895cfbc32b6928681a2bab4f859125710a659e"
+  },
+  {
+    "name": "editor-scene-pane-build",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\ec2-r1-sdk\\editor-scene-pane",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine-ec2-r1-qualified",
+    "started": "2026-10-03T09:55:29.150002+00:00",
+    "ended": "2026-10-03T09:55:35.144986+00:00",
+    "exit_code": 0,
+    "log": "editor-scene-pane-build.log",
+    "sha256": "19b288e47fb7d1bf33a9f6045eaad5ee9f5f19d8824e3a05368ab68b0b1ab50c"
+  },
+  {
+    "name": "editor-scene-pane-no-work",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\ec2-r1-sdk\\editor-scene-pane",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine-ec2-r1-qualified",
+    "started": "2026-10-03T09:55:35.149060+00:00",
+    "ended": "2026-10-03T09:55:35.263512+00:00",
+    "exit_code": 0,
+    "log": "editor-scene-pane-no-work.log",
+    "sha256": "71aa391ec7d7e291b419a7f40fba91919e14ac2394ab4e8b66ed126e267d70f6"
+  },
+  {
+    "name": "editor-scene-pane-ctest",
+    "argv": [
+      "ctest",
+      "--test-dir",
+      "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\ec2-r1-sdk\\editor-scene-pane",
+      "--output-on-failure",
+      "-j",
+      "1"
+    ],
+    "cwd": "E:\\SyncForder\\CodeRepos\\lux-engine-ec2-r1-qualified",
+    "started": "2026-10-03T09:55:35.264521+00:00",
+    "ended": "2026-10-03T09:55:36.124332+00:00",
+    "exit_code": 0,
+    "log": "editor-scene-pane-ctest.log",
+    "sha256": "be8613666b2a6178f0c4003581177d40b36094d9a72af9330be62bde99324733"
+  }
+]

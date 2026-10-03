@@ -1,0 +1,212 @@
+Start testing: Oct 03 10:54 GMT 夏令时
+----------------------------------------------------------
+1/12 Testing: installed.projection.reset_capacity
+1/12 Test: installed.projection.reset_capacity
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-sdk/projection-compilation/projection_consumer.exe"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-sdk/projection-compilation
+"installed.projection.reset_capacity" start time: Oct 03 10:54 GMT 夏令时
+Output:
+----------------------------------------------------------
+X07-07 actual CPU scene: shared instance, RESET_REQUIRED rebuild, correct values, bounded retirement recovery
+<end of output>
+Test time =   0.05 sec
+----------------------------------------------------------
+Test Passed.
+"installed.projection.reset_capacity" end time: Oct 03 10:54 GMT 夏令时
+"installed.projection.reset_capacity" time elapsed: 00:00:00
+----------------------------------------------------------
+
+2/12 Testing: installed.compilation.actual_publish
+2/12 Test: installed.compilation.actual_publish
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-sdk/projection-compilation/compilation_consumer.exe" "D:/Development/vcpkg/installed/x64-windows/tools/llvm/lld-link.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-sdk/projection-compilation/publication"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-sdk/projection-compilation
+"installed.compilation.actual_publish" start time: Oct 03 10:54 GMT 夏令时
+Output:
+----------------------------------------------------------
+Waiting at 104
+Waiting at 113
+Waiting at 123
+Waiting at 192
+Waiting at 217
+Waiting at 231
+Waiting at 253
+Waiting at 279
+Waiting at 296
+Waiting at 296
+Waiting at 296
+Waiting at 296
+Waiting at 296
+Waiting at 296
+Waiting at 296
+X07-04 real Material compilers completed out of order; desired/content/config/environment/target/failure verified.
+X07-05 real Flow compile, failed linker, fixed-object retry, bounded records and attempt history.
+X07-06 real IO and same WriteCoordinator conflict: derived publication preserves both author checkpoints.
+<end of output>
+Test time =   0.52 sec
+----------------------------------------------------------
+Test Passed.
+"installed.compilation.actual_publish" end time: Oct 03 10:54 GMT 夏令时
+"installed.compilation.actual_publish" time elapsed: 00:00:00
+----------------------------------------------------------
+
+3/12 Testing: installed.compilation.ownership_material
+3/12 Test: installed.compilation.ownership_material
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-sdk/projection-compilation/ownership_consumer.exe" "material" "D:/Development/vcpkg/installed/x64-windows/tools/llvm/lld-link.exe"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-sdk/projection-compilation
+"installed.compilation.ownership_material" start time: Oct 03 10:54 GMT 夏令时
+Output:
+----------------------------------------------------------
+Material: worker-finished handoff, unique_ptr moves, independent cleanup, exactly-once completion, owning result after owner destruction; author unchanged.
+<end of output>
+Test time =   0.69 sec
+----------------------------------------------------------
+Test Passed.
+"installed.compilation.ownership_material" end time: Oct 03 10:54 GMT 夏令时
+"installed.compilation.ownership_material" time elapsed: 00:00:00
+----------------------------------------------------------
+
+4/12 Testing: installed.compilation.reject_material_copy_construct
+4/12 Test: installed.compilation.reject_material_copy_construct
+Command: "D:/Development/CMake/bin/cmake.exe" "-DBUILD_DIR=E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-sdk/projection-compilation" "-DPROBE=reject_material_copy_construct" "-P" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-sdk/projection-compilation-source/reject_copy.cmake"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-sdk/projection-compilation
+"installed.compilation.reject_material_copy_construct" start time: Oct 03 10:54 GMT 夏令时
+Output:
+----------------------------------------------------------
+-- reject_material_copy_construct: compiler rejected the deleted special member
+<end of output>
+Test time =   1.50 sec
+----------------------------------------------------------
+Test Passed.
+"installed.compilation.reject_material_copy_construct" end time: Oct 03 10:54 GMT 夏令时
+"installed.compilation.reject_material_copy_construct" time elapsed: 00:00:01
+----------------------------------------------------------
+
+5/12 Testing: installed.compilation.reject_material_copy_assign
+5/12 Test: installed.compilation.reject_material_copy_assign
+Command: "D:/Development/CMake/bin/cmake.exe" "-DBUILD_DIR=E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-sdk/projection-compilation" "-DPROBE=reject_material_copy_assign" "-P" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-sdk/projection-compilation-source/reject_copy.cmake"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-sdk/projection-compilation
+"installed.compilation.reject_material_copy_assign" start time: Oct 03 10:54 GMT 夏令时
+Output:
+----------------------------------------------------------
+-- reject_material_copy_assign: compiler rejected the deleted special member
+<end of output>
+Test time =   1.51 sec
+----------------------------------------------------------
+Test Passed.
+"installed.compilation.reject_material_copy_assign" end time: Oct 03 10:54 GMT 夏令时
+"installed.compilation.reject_material_copy_assign" time elapsed: 00:00:01
+----------------------------------------------------------
+
+6/12 Testing: installed.compilation.reject_material_move_construct
+6/12 Test: installed.compilation.reject_material_move_construct
+Command: "D:/Development/CMake/bin/cmake.exe" "-DBUILD_DIR=E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-sdk/projection-compilation" "-DPROBE=reject_material_move_construct" "-P" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-sdk/projection-compilation-source/reject_copy.cmake"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-sdk/projection-compilation
+"installed.compilation.reject_material_move_construct" start time: Oct 03 10:54 GMT 夏令时
+Output:
+----------------------------------------------------------
+-- reject_material_move_construct: compiler rejected the deleted special member
+<end of output>
+Test time =   1.50 sec
+----------------------------------------------------------
+Test Passed.
+"installed.compilation.reject_material_move_construct" end time: Oct 03 10:54 GMT 夏令时
+"installed.compilation.reject_material_move_construct" time elapsed: 00:00:01
+----------------------------------------------------------
+
+7/12 Testing: installed.compilation.reject_material_move_assign
+7/12 Test: installed.compilation.reject_material_move_assign
+Command: "D:/Development/CMake/bin/cmake.exe" "-DBUILD_DIR=E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-sdk/projection-compilation" "-DPROBE=reject_material_move_assign" "-P" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-sdk/projection-compilation-source/reject_copy.cmake"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-sdk/projection-compilation
+"installed.compilation.reject_material_move_assign" start time: Oct 03 10:54 GMT 夏令时
+Output:
+----------------------------------------------------------
+-- reject_material_move_assign: compiler rejected the deleted special member
+<end of output>
+Test time =   1.50 sec
+----------------------------------------------------------
+Test Passed.
+"installed.compilation.reject_material_move_assign" end time: Oct 03 10:54 GMT 夏令时
+"installed.compilation.reject_material_move_assign" time elapsed: 00:00:01
+----------------------------------------------------------
+
+8/12 Testing: installed.compilation.ownership_flow
+8/12 Test: installed.compilation.ownership_flow
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-sdk/projection-compilation/ownership_consumer.exe" "flow" "D:/Development/vcpkg/installed/x64-windows/tools/llvm/lld-link.exe"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-sdk/projection-compilation
+"installed.compilation.ownership_flow" start time: Oct 03 10:54 GMT 夏令时
+Output:
+----------------------------------------------------------
+Flow: const borrowing, BUSY/capacity before dispatch, exactly-once completion, independent records, fixed-object retry, capacity recovery, owning result after acknowledge; author unchanged.
+<end of output>
+Test time =   0.13 sec
+----------------------------------------------------------
+Test Passed.
+"installed.compilation.ownership_flow" end time: Oct 03 10:54 GMT 夏令时
+"installed.compilation.ownership_flow" time elapsed: 00:00:00
+----------------------------------------------------------
+
+9/12 Testing: installed.compilation.reject_flow_copy_construct
+9/12 Test: installed.compilation.reject_flow_copy_construct
+Command: "D:/Development/CMake/bin/cmake.exe" "-DBUILD_DIR=E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-sdk/projection-compilation" "-DPROBE=reject_flow_copy_construct" "-P" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-sdk/projection-compilation-source/reject_copy.cmake"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-sdk/projection-compilation
+"installed.compilation.reject_flow_copy_construct" start time: Oct 03 10:54 GMT 夏令时
+Output:
+----------------------------------------------------------
+-- reject_flow_copy_construct: compiler rejected the deleted special member
+<end of output>
+Test time =   1.50 sec
+----------------------------------------------------------
+Test Passed.
+"installed.compilation.reject_flow_copy_construct" end time: Oct 03 10:54 GMT 夏令时
+"installed.compilation.reject_flow_copy_construct" time elapsed: 00:00:01
+----------------------------------------------------------
+
+10/12 Testing: installed.compilation.reject_flow_copy_assign
+10/12 Test: installed.compilation.reject_flow_copy_assign
+Command: "D:/Development/CMake/bin/cmake.exe" "-DBUILD_DIR=E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-sdk/projection-compilation" "-DPROBE=reject_flow_copy_assign" "-P" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-sdk/projection-compilation-source/reject_copy.cmake"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-sdk/projection-compilation
+"installed.compilation.reject_flow_copy_assign" start time: Oct 03 10:54 GMT 夏令时
+Output:
+----------------------------------------------------------
+-- reject_flow_copy_assign: compiler rejected the deleted special member
+<end of output>
+Test time =   1.50 sec
+----------------------------------------------------------
+Test Passed.
+"installed.compilation.reject_flow_copy_assign" end time: Oct 03 10:54 GMT 夏令时
+"installed.compilation.reject_flow_copy_assign" time elapsed: 00:00:01
+----------------------------------------------------------
+
+11/12 Testing: installed.compilation.reject_flow_move_construct
+11/12 Test: installed.compilation.reject_flow_move_construct
+Command: "D:/Development/CMake/bin/cmake.exe" "-DBUILD_DIR=E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-sdk/projection-compilation" "-DPROBE=reject_flow_move_construct" "-P" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-sdk/projection-compilation-source/reject_copy.cmake"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-sdk/projection-compilation
+"installed.compilation.reject_flow_move_construct" start time: Oct 03 10:54 GMT 夏令时
+Output:
+----------------------------------------------------------
+-- reject_flow_move_construct: compiler rejected the deleted special member
+<end of output>
+Test time =   1.49 sec
+----------------------------------------------------------
+Test Passed.
+"installed.compilation.reject_flow_move_construct" end time: Oct 03 10:54 GMT 夏令时
+"installed.compilation.reject_flow_move_construct" time elapsed: 00:00:01
+----------------------------------------------------------
+
+12/12 Testing: installed.compilation.reject_flow_move_assign
+12/12 Test: installed.compilation.reject_flow_move_assign
+Command: "D:/Development/CMake/bin/cmake.exe" "-DBUILD_DIR=E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-sdk/projection-compilation" "-DPROBE=reject_flow_move_assign" "-P" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-sdk/projection-compilation-source/reject_copy.cmake"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-sdk/projection-compilation
+"installed.compilation.reject_flow_move_assign" start time: Oct 03 10:54 GMT 夏令时
+Output:
+----------------------------------------------------------
+-- reject_flow_move_assign: compiler rejected the deleted special member
+<end of output>
+Test time =   1.49 sec
+----------------------------------------------------------
+Test Passed.
+"installed.compilation.reject_flow_move_assign" end time: Oct 03 10:54 GMT 夏令时
+"installed.compilation.reject_flow_move_assign" time elapsed: 00:00:01
+----------------------------------------------------------
+
+End testing: Oct 03 10:54 GMT 夏令时

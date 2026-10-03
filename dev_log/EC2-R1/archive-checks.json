@@ -1,0 +1,50 @@
+[
+  {
+    "name": "portable relative archive",
+    "argv": [
+      "C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC2-R1\\portable 中文 空格\\verify.py",
+      "--repo",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-ec2"
+    ],
+    "exit_code": 0,
+    "stdout": "EC2 R1 archived commands, real GPU/source+SDK, preserved history and source SHA verified: ead7e59514a5b9a5d0dc65307e7c9e2a792b69f4\n",
+    "stderr": ""
+  },
+  {
+    "name": "missing actual test log rejected",
+    "argv": [
+      "C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC2-R1\\portable 中文 空格\\verify.py",
+      "--repo",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-ec2"
+    ],
+    "exit_code": 1,
+    "stdout": "",
+    "stderr": "Traceback (most recent call last):\n  File \"E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC2-R1\\portable 中文 空格\\verify.py\", line 9, in <module>\n    assert path.is_file(),f'missing evidence: {name}'\n           ^^^^^^^^^^^^^^\nAssertionError: missing evidence: logs/final-ctest.log\n"
+  },
+  {
+    "name": "tampered actual test log rejected",
+    "argv": [
+      "C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC2-R1\\portable 中文 空格\\verify.py",
+      "--repo",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-ec2"
+    ],
+    "exit_code": 1,
+    "stdout": "",
+    "stderr": "Traceback (most recent call last):\n  File \"E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC2-R1\\portable 中文 空格\\verify.py\", line 10, in <module>\n    assert hashlib.sha256(path.read_bytes()).hexdigest()==digest,f'changed evidence: {name}'\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: changed evidence: logs/final-ctest.log\n"
+  },
+  {
+    "name": "restored original evidence",
+    "argv": [
+      "C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC2-R1\\portable 中文 空格\\verify.py",
+      "--repo",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-ec2"
+    ],
+    "exit_code": 0,
+    "stdout": "EC2 R1 archived commands, real GPU/source+SDK, preserved history and source SHA verified: ead7e59514a5b9a5d0dc65307e7c9e2a792b69f4\n",
+    "stderr": ""
+  }
+]

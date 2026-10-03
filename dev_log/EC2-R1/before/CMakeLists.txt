@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.24)
+project(ec2_r1_recipe_consumer LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 20)
+find_package(lux-engine-editor-material-preview REQUIRED COMPONENTS material_preview)
+add_library(recipe_consumer OBJECT recipe.cpp)
+target_link_libraries(recipe_consumer PRIVATE lux::engine::editor::material_preview)

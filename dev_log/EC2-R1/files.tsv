@@ -1,0 +1,8 @@
+M	editor/activities/material/README.md
+M	editor/activities/material/include/lux/engine/editor/material/MaterialPreview.hpp
+R071	editor/activities/material/pinclude/lux/engine/editor/material/MaterialPreviewRecipe.hpp	editor/activities/material/pinclude/lux/engine/editor/material/MaterialPreviewScene.hpp
+M	editor/activities/material/src/MaterialPreview.cpp
+M	editor/activities/material/src/MaterialPreviewRecipe.cpp
+M	editor/tests/architecture/rules.json
+M	editor/tests/integration/material_activity/compilation.cpp
+M	editor/tests/integration/scene_views/views.cpp

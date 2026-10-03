@@ -1,0 +1,273 @@
+Start testing: Oct 03 10:51 GMT 夏令时
+----------------------------------------------------------
+113/236 Testing: editor.projection.reset_capacity
+113/236 Test: editor.projection.reset_capacity
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-ead7e59514a5/bin/editor_projection_test.exe"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-ead7e59514a5/editor/tests/integration/projection
+"editor.projection.reset_capacity" start time: Oct 03 10:51 GMT 夏令时
+Output:
+----------------------------------------------------------
+X07-07 actual CPU scene: shared instance, RESET_REQUIRED rebuild, correct values, bounded retirement recovery
+<end of output>
+Test time =   0.06 sec
+----------------------------------------------------------
+Test Passed.
+"editor.projection.reset_capacity" end time: Oct 03 10:51 GMT 夏令时
+"editor.projection.reset_capacity" time elapsed: 00:00:00
+----------------------------------------------------------
+
+115/236 Testing: editor.compilation.actual_publish
+115/236 Test: editor.compilation.actual_publish
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-ead7e59514a5/bin/editor_compilation_p07_test.exe" "D:/Development/vcpkg/installed/x64-windows/tools/llvm/lld-link.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-ead7e59514a5/editor/tests/integration/material_activity/publication"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-ead7e59514a5/editor/tests/integration/material_activity
+"editor.compilation.actual_publish" start time: Oct 03 10:51 GMT 夏令时
+Output:
+----------------------------------------------------------
+Waiting at 104
+Waiting at 113
+Waiting at 123
+Waiting at 192
+Waiting at 217
+Waiting at 231
+Waiting at 253
+Waiting at 279
+Waiting at 296
+Waiting at 296
+Waiting at 296
+Waiting at 296
+Waiting at 296
+Waiting at 296
+Waiting at 296
+X07-04 real Material compilers completed out of order; desired/content/config/environment/target/failure verified.
+X07-05 real Flow compile, failed linker, fixed-object retry, bounded records and attempt history.
+X07-06 real IO and same WriteCoordinator conflict: derived publication preserves both author checkpoints.
+<end of output>
+Test time =   0.52 sec
+----------------------------------------------------------
+Test Passed.
+"editor.compilation.actual_publish" end time: Oct 03 10:51 GMT 夏令时
+"editor.compilation.actual_publish" time elapsed: 00:00:00
+----------------------------------------------------------
+
+116/236 Testing: editor.compilation.ownership_material
+116/236 Test: editor.compilation.ownership_material
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-ead7e59514a5/bin/editor_compilation_ownership_test.exe" "material" "D:/Development/vcpkg/installed/x64-windows/tools/llvm/lld-link.exe"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-ead7e59514a5/editor/tests/integration/material_activity
+"editor.compilation.ownership_material" start time: Oct 03 10:51 GMT 夏令时
+Output:
+----------------------------------------------------------
+Material: worker-finished handoff, unique_ptr moves, independent cleanup, exactly-once completion, owning result after owner destruction; author unchanged.
+<end of output>
+Test time =   0.69 sec
+----------------------------------------------------------
+Test Passed.
+"editor.compilation.ownership_material" end time: Oct 03 10:51 GMT 夏令时
+"editor.compilation.ownership_material" time elapsed: 00:00:00
+----------------------------------------------------------
+
+117/236 Testing: editor.compilation.ownership_flow
+117/236 Test: editor.compilation.ownership_flow
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-ead7e59514a5/bin/editor_compilation_ownership_test.exe" "flow" "D:/Development/vcpkg/installed/x64-windows/tools/llvm/lld-link.exe"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-ead7e59514a5/editor/tests/integration/material_activity
+"editor.compilation.ownership_flow" start time: Oct 03 10:51 GMT 夏令时
+Output:
+----------------------------------------------------------
+Flow: const borrowing, BUSY/capacity before dispatch, exactly-once completion, independent records, fixed-object retry, capacity recovery, owning result after acknowledge; author unchanged.
+<end of output>
+Test time =   0.14 sec
+----------------------------------------------------------
+Test Passed.
+"editor.compilation.ownership_flow" end time: Oct 03 10:51 GMT 夏令时
+"editor.compilation.ownership_flow" time elapsed: 00:00:00
+----------------------------------------------------------
+
+120/236 Testing: editor.scene_views_gpu
+120/236 Test: editor.scene_views_gpu
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-ead7e59514a5/bin/editor_scene_views_test.exe" "D:/Development/vcpkg/installed/x64-windows/tools/llvm/lld-link.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-ead7e59514a5"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-ead7e59514a5/editor/tests/integration/scene_views
+"editor.scene_views_gpu" start time: Oct 03 10:51 GMT 夏令时
+Output:
+----------------------------------------------------------
+EC1 complete Scene tools: owner lifetime, no-target association, BUSY retry and release
+PASS P12 real Inspector abandonable close preparation and guarded content retirement handoff
+EC2-R1 XEC2-12 public sphere/quad recipe GPU readbacks differ; same-input adoption, late completion, failed bytes, last-success pixels and retry PASS
+P10 actual services: timer cancellation after view close; catalog BUSY/IO/permission preserves rows; saved Material decoded through asset-open request; picker revision/type/project checked.
+P10 dual SceneView GPU readback: failed material read -> ResourceView retry -> ready after close; actual mesh pick, left/right highlight isolation and retirement verified.
+P10 DEV SceneView GPU: shared author edit/undo, independent cameras, failed rebind gesture, close/reopen; frames=1373 validation_errors=0
+<end of output>
+Test time =   2.42 sec
+----------------------------------------------------------
+Test Passed.
+"editor.scene_views_gpu" end time: Oct 03 10:51 GMT 夏令时
+"editor.scene_views_gpu" time elapsed: 00:00:02
+----------------------------------------------------------
+
+132/236 Testing: editor.presentation_backpressure
+132/236 Test: editor.presentation_backpressure
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-ead7e59514a5/bin/editor_ui_presentation.exe" "--backpressure"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-ead7e59514a5/editor/tests/integration/scene_views
+"editor.presentation_backpressure" start time: Oct 03 10:51 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS UI FRAME real transport backpressure: fixed input, no redraw, eventual GPU frame
+PASS Presentation/RenderFeature through SceneRuntime: 12 GPU frames, publication without redraw, rejected frame, Scene exits before View and GPU retirement
+<end of output>
+Test time =   0.56 sec
+----------------------------------------------------------
+Test Passed.
+"editor.presentation_backpressure" end time: Oct 03 10:51 GMT 夏令时
+"editor.presentation_backpressure" time elapsed: 00:00:00
+----------------------------------------------------------
+
+133/236 Testing: editor.presentation_scene-panes
+133/236 Test: editor.presentation_scene-panes
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-ead7e59514a5/bin/editor_ui_presentation.exe" "--scene-panes"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-ead7e59514a5/editor/tests/integration/scene_views
+"editor.presentation_scene-panes" start time: Oct 03 10:51 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS lux::editor::views::ViewportElement framebuffer scale 125/150/200/100 percent: pixel extent adopted without tick
+PASS Presentation/RenderFeature through SceneRuntime: 12 GPU frames, publication without redraw, rejected frame, Scene exits before View and GPU retirement
+<end of output>
+Test time =   0.74 sec
+----------------------------------------------------------
+Test Passed.
+"editor.presentation_scene-panes" end time: Oct 03 10:51 GMT 夏令时
+"editor.presentation_scene-panes" time elapsed: 00:00:00
+----------------------------------------------------------
+
+146/236 Testing: editor.architecture_current
+146/236 Test: editor.architecture_current
+Command: "C:/Users/ChenHui/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe" "E:/SyncForder/CodeRepos/lux-engine-ec2-r1-qualified/editor/tests/architecture/check_editor_boundaries.py" "--repo" "E:/SyncForder/CodeRepos/lux-engine-ec2-r1-qualified" "--graph" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-ead7e59514a5/editor-architecture/targets.json" "--compile-db" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-ead7e59514a5/compile_commands.json" "--stage" "EC2" "--layering-mode" "STRICT"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-ead7e59514a5/editor/tests/architecture
+"editor.architecture_current" start time: Oct 03 10:51 GMT 夏令时
+Output:
+----------------------------------------------------------
+{"status": "PASS", "findings": []}
+<end of output>
+Test time =  12.81 sec
+----------------------------------------------------------
+Test Passed.
+"editor.architecture_current" end time: Oct 03 10:51 GMT 夏令时
+"editor.architecture_current" time elapsed: 00:00:12
+----------------------------------------------------------
+
+153/236 Testing: editor.projection_compilation_boundaries
+153/236 Test: editor.projection_compilation_boundaries
+Command: "C:/Users/ChenHui/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe" "E:/SyncForder/CodeRepos/lux-engine-ec2-r1-qualified/editor/tests/architecture/test_projection_compilation_boundaries.py" "--source" "E:/SyncForder/CodeRepos/lux-engine-ec2-r1-qualified" "--cmake" "D:/Development/CMake/bin/cmake.exe" "--evidence" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-ead7e59514a5/editor/tests/architecture/projection-compilation-boundaries.json"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-ead7e59514a5/editor/tests/architecture
+"editor.projection_compilation_boundaries" start time: Oct 03 10:51 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS author-projection
+PASS author-material-preview
+PASS author-flow-compilation
+PASS material-direct-storage
+PASS flow-direct-storage
+PASS projection-ui
+PASS projection-transitive-context
+PASS projection-bridge
+PASS material-context
+PASS material-transitive-ui
+PASS material-bridge
+PASS flow-ui
+PASS flow-transitive-context
+PASS flow-bridge
+PASS projection-legal
+PASS material-legal
+PASS flow-legal
+<end of output>
+Test time =  34.16 sec
+----------------------------------------------------------
+Test Passed.
+"editor.projection_compilation_boundaries" end time: Oct 03 10:52 GMT 夏令时
+"editor.projection_compilation_boundaries" time elapsed: 00:00:34
+----------------------------------------------------------
+
+156/236 Testing: editor.desktop_view_boundaries
+156/236 Test: editor.desktop_view_boundaries
+Command: "C:/Users/ChenHui/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe" "E:/SyncForder/CodeRepos/lux-engine-ec2-r1-qualified/editor/tests/architecture/test_interaction_view_boundaries.py" "--stage" "P10" "--source" "E:/SyncForder/CodeRepos/lux-engine-ec2-r1-qualified" "--cmake" "D:/Development/CMake/bin/cmake.exe" "--evidence" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-ead7e59514a5/editor/tests/architecture/desktop-view-boundaries.json"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-ead7e59514a5/editor/tests/architecture
+"editor.desktop_view_boundaries" start time: Oct 03 10:52 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS host-scene-owner
+PASS host-run-owner
+PASS host-old-editor
+PASS widgets-runtime
+PASS widgets-model
+PASS scene-old-ui
+PASS material-transitive-old
+PASS flow-old-editor
+PASS harness-transitive-old
+PASS harness-imported-old
+PASS engine-ui-new-editor
+PASS model-new-ui
+PASS view-api-desktop
+PASS project-storage
+PASS host-model-header
+PASS scene-old-header
+PASS widgets-private-header
+PASS scene-rooted-factory
+PASS host-legal
+PASS desktop-legal
+PASS widgets-legal
+PASS scene-legal
+PASS material-legal
+PASS flow-legal
+PASS harness-legal
+<end of output>
+Test time =  49.20 sec
+----------------------------------------------------------
+Test Passed.
+"editor.desktop_view_boundaries" end time: Oct 03 10:53 GMT 夏令时
+"editor.desktop_view_boundaries" time elapsed: 00:00:49
+----------------------------------------------------------
+
+165/236 Testing: editor.ec2.boundaries
+165/236 Test: editor.ec2.boundaries
+Command: "C:/Users/ChenHui/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe" "E:/SyncForder/CodeRepos/lux-engine-ec2-r1-qualified/editor/tests/architecture/test_layering_boundaries.py" "--source" "E:/SyncForder/CodeRepos/lux-engine-ec2-r1-qualified" "--build" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-ead7e59514a5" "--cmake" "D:/Development/CMake/bin/cmake.exe" "--ec2"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-r1-ead7e59514a5/editor/tests/architecture
+"editor.ec2.boundaries" start time: Oct 03 10:53 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS EC2-01-direct
+PASS EC2-01-indirect
+PASS EC2-02
+PASS EC2-03
+PASS EC2-04
+PASS EC2-04-lua
+PASS EC2-05
+PASS EC2-05-core
+PASS EC2-06
+PASS EC2-07
+PASS EC2-08
+PASS EC2-09
+<end of output>
+Test time =  35.98 sec
+----------------------------------------------------------
+Test Passed.
+"editor.ec2.boundaries" end time: Oct 03 10:53 GMT 夏令时
+"editor.ec2.boundaries" time elapsed: 00:00:35
+----------------------------------------------------------
+
+End testing: Oct 03 10:53 GMT 夏令时
+
+EC2 =  35.98 sec*proc
+
+P07 =  35.57 sec*proc
+
+P10 =  51.61 sec*proc
+
+architecture =  12.81 sec*proc
+
+desktop =   1.30 sec*proc
+
+editor = 137.26 sec*proc
+
+gpu =   3.72 sec*proc
+
+native = 133.55 sec*proc
+
+toolchain =   1.35 sec*proc
+

@@ -1,6 +1,7 @@
 #include <lux/engine/editor/desktop/CommandMenu.hpp>
 #include <lux/engine/ui/Root.hpp>
 #include <algorithm>
+#include <deque>
 namespace lux::editor::desktop
 {
     using namespace commands;
@@ -42,6 +43,13 @@ namespace lux::editor::desktop
             CommandHandle handle;
             CommandResult<CommandInvocation> input;
         };
+        struct Source final
+        {
+            // Handles pin each original defining code owner; nodes borrow only their immutable text.
+            std::vector<CommandHandle> handles;
+            std::deque<std::string> groups;
+        };
+        std::shared_ptr<Source> source;
         lux::ui::Root& root;
         CommandRegistry& registry;
         CommandDispatcher& dispatcher;
@@ -56,9 +64,13 @@ namespace lux::editor::desktop
             if (open || revision == registry.revision())
                 return;
             auto snapshot = registry.snapshot();
+            auto candidate = std::make_shared<Source>();
+            candidate->handles.reserve(snapshot.entries().size());
             std::vector<lux::ui::MenuItem> menu;
             for (const auto& entry : snapshot.entries())
             {
+                const auto index = candidate->handles.size();
+                candidate->handles.push_back(*snapshot.at(index));
                 const auto& descriptor = entry->descriptor();
                 if (descriptor.group.empty())
                     continue;
@@ -71,7 +83,8 @@ namespace lux::editor::desktop
                     auto found = std::ranges::find(*children, label, &lux::ui::MenuItem::label);
                     if (found == children->end())
                     {
-                        children->push_back({{}, std::string(label)});
+                        candidate->groups.emplace_back(label);
+                        children->push_back({{}, candidate->groups.back()});
                         found = children->end() - 1;
                     }
                     children = &found->children;
@@ -80,11 +93,11 @@ namespace lux::editor::desktop
                     group.remove_prefix(slash + 1);
                 }
                 children->push_back(
-                    {lux::ui::CommandId{descriptor.id.name()}, std::string{descriptor.label},
-                     std::string{descriptor.shortcut}, shortcut(descriptor.shortcut)}
+                    {descriptor.id, descriptor.label, descriptor.shortcut, shortcut(descriptor.shortcut), {}, index}
                 );
             }
-            root.setMenu(std::move(menu));
+            root.setMenu(std::move(menu), candidate);
+            source = std::move(candidate);
             revision = registry.revision();
         }
     };
@@ -94,7 +107,7 @@ namespace lux::editor::desktop
         CommandDispatcher& dispatcher,
         Capture capture
     )
-        : impl_(std::make_unique<Impl>(root, registry, dispatcher, std::move(capture)))
+        : impl_(std::make_unique<Impl>(nullptr, root, registry, dispatcher, std::move(capture)))
     {}
     CommandMenu::~CommandMenu() = default;
     void CommandMenu::receive(lux::ui::MenuRequest& request)
@@ -102,18 +115,21 @@ namespace lux::editor::desktop
         auto& self = *impl_;
         if (request.action == lux::ui::EMenuAction::OPEN)
         {
-            self.items.clear();
-            auto snapshot = self.registry.snapshot();
-            self.items.reserve(snapshot.entries().size());
-            for (const auto& entry : snapshot.entries())
+            // The displayed menu is authoritative even if a new catalog has since been published.
+            if (!self.source || (request.source && request.source != self.source.get()))
             {
-                auto handle = snapshot.find(entry->descriptor().id);
-                if (!handle)
-                    std::terminate(); // A validated snapshot must resolve every own entry.
-                auto input = self.capture(entry->descriptor(), request.pane, request.element);
-                self.items.push_back({std::move(*handle), std::move(input)});
+                self.status = cxx::unexpected(CommandFailure{ECommandError::STALE_TARGET, "menu.source"});
+                return;
             }
+            self.items.clear();
+            self.items.reserve(self.source->handles.size());
             self.open = true;
+            request.source = self.source.get();
+            for (const auto& handle : self.source->handles)
+            {
+                auto input = self.capture(handle.descriptor(), request.pane, request.element);
+                self.items.push_back({handle, std::move(input)});
+            }
             return;
         }
         if (request.action == lux::ui::EMenuAction::CLOSE)
@@ -122,12 +138,16 @@ namespace lux::editor::desktop
             self.items.clear();
             return;
         }
-        const auto found = std::ranges::find_if(self.items, [&](const auto& item) {
-            return item.handle.descriptor().id == request.command.id;
-        });
         request.command.enabled = false;
-        if (found == self.items.end())
+        const bool is_stale_source = request.source != self.source.get();
+        const bool is_invalid_index = request.index >= self.items.size();
+        if (is_stale_source || is_invalid_index)
+        {
+            self.status = cxx::unexpected(CommandFailure{ECommandError::STALE_TARGET, "menu.source"});
+            request.command.result = lux::ui::ECommandDispatchResult::FAILED;
             return;
+        }
+        const auto* found = &self.items[request.index];
         if (!found->input)
         {
             self.status = cxx::unexpected(found->input.error());

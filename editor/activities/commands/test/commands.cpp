@@ -48,6 +48,10 @@ namespace
         assert(owned.shortcut == "Alt+M" && owned.argument_type.name() == "payload" && owned.input_version == 3);
         const auto snapshot = CommandRegistrySnapshot::create({fixed, dynamic});
         assert(snapshot && snapshot->entries()[0].get() == fixed.get());
+        assert(!snapshot->at(2) && !CommandRegistrySnapshot{}.at(0));
+        assert(&snapshot->at(0)->descriptor() == &literal);
+        assert(owned.label.data()[owned.label.size()] == '\0');
+        assert(owned.shortcut.data()[owned.shortcut.size()] == '\0');
         assert(snapshot->find(literal.id) && !snapshot->find(CommandIdView{"test.missing"}));
         auto handle = snapshot->find(literal.id);
         assert(handle && snapshot->resolve(*handle));

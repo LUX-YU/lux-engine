@@ -92,7 +92,8 @@ namespace lux::ui
         void applyPendingChanges() noexcept;
         [[nodiscard]] bool hasPendingChanges() const noexcept;
 
-        void setMenu(std::vector<MenuItem>);
+        // One source keeps all borrowed IDs/text alive. Empty owner is only for static menu data.
+        void setMenu(std::vector<MenuItem>, std::shared_ptr<const void> source);
         [[nodiscard]] std::span<const MenuItem> menu() const noexcept;
         [[nodiscard]] std::span<Pane* const> panes() const noexcept;
         [[nodiscard]] std::uint64_t windowRevision() const noexcept;

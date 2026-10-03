@@ -206,8 +206,9 @@ namespace lux::ui
         void applyPendingChanges() noexcept;
         void drawMenu(Root&) noexcept;
         void drawMenuItems(Root&, std::span<const MenuItem>) noexcept;
-        void menuCommand(Root&, Command&) noexcept;
+        void menuCommand(Root&, Command&, std::size_t) noexcept;
         bool shortcut(Root&, const Key&) noexcept;
+        std::shared_ptr<const void> menu_source;
         std::vector<MenuItem> menu;
         Pane* menu_pane{};
         Element* menu_element{};
@@ -620,9 +621,10 @@ namespace lux::ui
         impl_->queueChange(target, apply);
     }
 
-    void Root::setMenu(std::vector<MenuItem> menu)
+    void Root::setMenu(std::vector<MenuItem> menu, std::shared_ptr<const void> source)
     {
         checkContentChange();
+        const auto old_source = std::exchange(impl_->menu_source, std::move(source));
         impl_->menu = std::move(menu);
     }
     std::span<const MenuItem> Root::menu() const noexcept
@@ -645,9 +647,9 @@ namespace lux::ui
         requireOwner();
         return impl_->menu_open && impl_->menu_element == &element;
     }
-    void Root::Impl::menuCommand(Root& root, Command& command) noexcept
+    void Root::Impl::menuCommand(Root& root, Command& command, std::size_t index) noexcept
     {
-        MenuRequest request{EMenuAction::COMMAND, menu_pane, menu_element, command};
+        MenuRequest request{EMenuAction::COMMAND, menu_pane, menu_element, command, menu_source.get(), index};
         if (object::sendEvent(root, request))
         {
             command = request.command;
@@ -668,9 +670,10 @@ namespace lux::ui
     {
         for (const auto& item : items)
         {
+            const auto* label = item.label.empty() ? "" : item.label.data();
             if (!item.children.empty())
             {
-                if (ImGui::BeginMenu(item.label.c_str()))
+                if (ImGui::BeginMenu(label))
                 {
                     drawMenuItems(root, item.children);
                     ImGui::EndMenu();
@@ -682,15 +685,16 @@ namespace lux::ui
                 if (item.label.empty())
                     ImGui::Separator();
                 else
-                    ImGui::TextDisabled("%s", item.label.c_str());
+                    ImGui::TextDisabled("%s", label);
                 continue;
             }
-            Command command{item.command.view()};
-            menuCommand(root, command);
-            if (ImGui::MenuItem(item.label.c_str(), item.shortcut_label.c_str(), command.checked, command.enabled))
+            Command command{item.command};
+            menuCommand(root, command, item.index);
+            const auto* shortcut = item.shortcut_label.empty() ? "" : item.shortcut_label.data();
+            if (ImGui::MenuItem(label, shortcut, command.checked, command.enabled))
             {
                 command.phase = ECommandPhase::EXECUTE;
-                menuCommand(root, command);
+                menuCommand(root, command, item.index);
             }
         }
     }
@@ -702,14 +706,14 @@ namespace lux::ui
         {
             menu_height = ImGui::GetWindowHeight();
             for (const auto& item : menu)
-                if (ImGui::BeginMenu(item.label.c_str(), !modal))
+                if (ImGui::BeginMenu((item.label.empty() ? "" : item.label.data()), !modal))
                 {
                     opened = true;
                     if (!menu_open)
                     {
                         menu_pane = focused;
                         menu_element = focused_element;
-                        MenuRequest request{EMenuAction::OPEN, menu_pane, menu_element};
+                        MenuRequest request{EMenuAction::OPEN, menu_pane, menu_element, {}, menu_source.get()};
                         static_cast<void>(object::sendEvent(root, request));
                         menu_open = true;
                     }
@@ -720,7 +724,7 @@ namespace lux::ui
         }
         if (menu_open && !opened)
         {
-            MenuRequest request{EMenuAction::CLOSE, menu_pane, menu_element};
+            MenuRequest request{EMenuAction::CLOSE, menu_pane, menu_element, {}, menu_source.get()};
             static_cast<void>(object::sendEvent(root, request));
             menu_pane = nullptr;
             menu_element = nullptr;
@@ -752,14 +756,14 @@ namespace lux::ui
             return false;
         menu_pane = focused;
         menu_element = focused_element;
-        MenuRequest opened{EMenuAction::OPEN, menu_pane, menu_element};
+        MenuRequest opened{EMenuAction::OPEN, menu_pane, menu_element, {}, menu_source.get()};
         static_cast<void>(object::sendEvent(root, opened));
-        Command command{item->command.view()};
-        menuCommand(root, command);
+        Command command{item->command};
+        menuCommand(root, command, item->index);
         if (command.enabled)
         {
             command.phase = ECommandPhase::EXECUTE;
-            menuCommand(root, command);
+            menuCommand(root, command, item->index);
         }
         return true;
     }

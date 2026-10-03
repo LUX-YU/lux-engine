@@ -1906,7 +1906,8 @@ int main(int argc, char** argv)
     ui::MenuRequest open_menu;
     assert(object::sendEvent(f.desktop->root(), open_menu));
     ui::MenuRequest
-        invoke{ui::EMenuAction::COMMAND, {}, {}, {ui::CommandIdView{"p11.undo"}, ui::ECommandPhase::EXECUTE}};
+        invoke{ui::EMenuAction::COMMAND, {}, {}, {ui::CommandIdView{"p11.undo"}, ui::ECommandPhase::EXECUTE},
+               open_menu.source, 0};
     assert(object::sendEvent(f.desktop->root(), invoke));
     assert(f.dispatcher.pending() == 1);
     f.wait([&] {

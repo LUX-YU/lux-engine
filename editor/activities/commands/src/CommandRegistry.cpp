@@ -122,19 +122,28 @@ namespace lux::editor::commands
             const auto label_size = input.label.size();
             const auto group_size = input.group.size();
             const auto shortcut_size = input.shortcut.size();
-            text.reserve(id_size + label_size + group_size + shortcut_size + input.argument_type.name().size());
-            text.append(input.id.name()).append(input.label).append(input.group).append(input.shortcut);
-            text.append(input.argument_type.name());
-            // Build views only after the last growth; this storage is never moved or mutated again.
+            const auto argument_size = input.argument_type.name().size();
+            text.reserve(id_size + label_size + group_size + shortcut_size + argument_size + 5);
+            const auto append = [&](std::string_view value) {
+                const auto offset = text.size();
+                text.append(value).push_back('\0');
+                return offset;
+            };
+            const auto id = append(input.id.name());
+            const auto label = append(input.label);
+            const auto group = append(input.group);
+            const auto shortcut = append(input.shortcut);
+            const auto argument = append(input.argument_type.name());
+            // Final storage does not move. Display slices also have a terminator for UI backends.
             const std::string_view bytes{text};
             descriptor = {
-                CommandIdView{bytes.substr(0, id_size)},
-                bytes.substr(id_size, label_size),
-                bytes.substr(id_size + label_size, group_size),
-                bytes.substr(id_size + label_size + group_size, shortcut_size),
+                CommandIdView{bytes.substr(id, id_size)},
+                bytes.substr(label, label_size),
+                bytes.substr(group, group_size),
+                bytes.substr(shortcut, shortcut_size),
                 input.scope,
                 input.input_version,
-                {input.argument_type.hash(), bytes.substr(id_size + label_size + group_size + shortcut_size)}
+                {input.argument_type.hash(), bytes.substr(argument, argument_size)}
             };
         }
     };
@@ -219,6 +228,12 @@ namespace lux::editor::commands
         if (!entry || entry->descriptor().id.name() != id.name())
             return failure(ECommandError::NOT_FOUND);
         return CommandHandle{std::move(entry)};
+    }
+    CommandResult<CommandHandle> CommandRegistrySnapshot::at(std::size_t index) const
+    {
+        if (!data_ || index >= data_->entries.size())
+            return failure(ECommandError::INVALID_ARGUMENT);
+        return CommandHandle{data_->entries[index]};
     }
     CommandResult<CommandHandle> CommandRegistrySnapshot::resolve(const CommandHandle& original) const
     {

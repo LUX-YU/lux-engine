@@ -18,6 +18,12 @@ namespace lux::editor::commands
         {
             static_assert(Descriptor.id.isValid() && !Descriptor.label.empty() && Descriptor.input_version != 0,
                           "Fixed command metadata must be a valid constant declaration.");
+            // The UI borrows these literals directly for its C-string backend. Dynamic declarations
+            // use create(), which freezes and terminates arbitrary input views in its single backing.
+            static_assert(Descriptor.label.data()[Descriptor.label.size()] == '\0',
+                          "Fixed display labels must be terminated static text.");
+            static_assert(Descriptor.shortcut.empty() || Descriptor.shortcut.data()[Descriptor.shortcut.size()] == '\0',
+                          "Fixed shortcut labels must be terminated static text.");
             return std::shared_ptr<CommandEntry>(
                 new CommandEntry(std::move(code), Descriptor, std::move(query), std::move(execute))
             );
@@ -60,6 +66,8 @@ namespace lux::editor::commands
         );
         // External identity resolution: hash lookup followed by exact canonical-name validation.
         [[nodiscard]] CommandResult<CommandHandle> find(CommandIdView) const;
+        // Index belongs to this immutable snapshot. Retain the resulting handle across publication.
+        [[nodiscard]] CommandResult<CommandHandle> at(std::size_t) const;
         // Current-registration resolution. An unchanged entry does not compare or hash names.
         [[nodiscard]] CommandResult<CommandHandle> resolve(const CommandHandle&) const;
         [[nodiscard]] std::span<const std::shared_ptr<CommandEntry>> entries() const noexcept;

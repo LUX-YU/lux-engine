@@ -2,7 +2,8 @@
 
 #include <lux/engine/ui/Command.hpp>
 #include <lux/engine/ui/InputEvent.hpp>
-#include <string>
+#include <memory>
+#include <string_view>
 #include <vector>
 
 namespace lux::ui
@@ -18,11 +19,13 @@ namespace lux::ui
 
     struct MenuItem final
     {
-        CommandId command;
-        std::string label;
-        std::string shortcut_label;
+        CommandIdView command;
+        // Terminated text borrowed from Root's menu source (or static literals).
+        std::string_view label;
+        std::string_view shortcut_label;
         Shortcut shortcut;
         std::vector<MenuItem> children;
+        std::size_t index{static_cast<std::size_t>(-1)};
     };
 
     enum class EMenuAction : std::uint8_t
@@ -40,5 +43,8 @@ namespace lux::ui
         Pane* pane{};
         Element* element{};
         Command command;
+        // Borrowed only for this synchronous dispatch. index is local to this exact source.
+        const void* source{};
+        std::size_t index{static_cast<std::size_t>(-1)};
     };
 }

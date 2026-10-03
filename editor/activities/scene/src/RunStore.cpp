@@ -5,6 +5,7 @@
 #include <lux/engine/process/world_loading/WorldMemoryStorageSource.hpp>
 #include <lux/engine/scene/WorldLoadingSystem.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
+#include <lux/engine/scene/ScriptRuntimeSystem.hpp>
 #include <lux/engine/simulation/ecs/Parent.hpp>
 #include <lux/cxx/container/SlotMap.hpp>
 #include <atomic>
@@ -623,6 +624,7 @@ namespace lux::editor::scene
             return rejected(ERunError::INVALID_CONFIGURATION);
         lux::scene::WorldLoadingServices loading{std::move(*storage), *store.tasks};
         auto bindings = lux::scene::RenderFeatureSceneBindings(environment.render_bindings);
+        auto timer = store.execution.timer();
         std::vector<lux::scene::SceneCapabilityProvider> providers;
         providers.push_back(lux::scene::makeSceneCapabilityProvider<lux::scene::WorldLoadingServices>(
             "world-storage",
@@ -650,6 +652,15 @@ namespace lux::editor::scene
                 "assets",
                 "lux.render.assets",
                 environment.assets
+            ));
+        }
+        if (environment.scripts)
+        {
+            providers.push_back(lux::scene::makeSceneCapabilityProvider<lux::scene::ScriptRuntimeHost>(
+                "script-runtime", "lux.script.runtime.host", *environment.scripts
+            ));
+            providers.push_back(lux::scene::makeSceneCapabilityProvider<process::TimerClient>(
+                "timer", "lux.process.timer", timer
             ));
         }
         const auto clock = lux::scene::FixedStepClock::create(prepared.provenance.configuration.fixed_step);

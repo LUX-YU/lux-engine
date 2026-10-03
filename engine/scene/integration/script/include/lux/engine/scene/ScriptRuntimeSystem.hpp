@@ -2,9 +2,11 @@
 
 #include <lux/cxx/concurrent/LatestSpscExchange.hpp>
 #include <lux/engine/process/ExecutionRuntime.hpp>
+#include <lux/engine/scene/SceneSystem.hpp>
 #include <lux/engine/scene/SceneSystemRegistration.hpp>
 #include <lux/engine/scene/script/ScriptRuntimeAssembly.hpp>
 #include <lux/engine/scene/script/ScriptSystemDescriptionCodec.hpp>
+#include <lux/engine/scene/scripting/ScriptAssetAccess.hpp>
 #include <lux/engine/scene/script_runtime/visibility.h>
 #include <lux/engine/simulation/ScriptSystem.hpp>
 #include <lux/engine/simulation/Simulation.hpp>
@@ -61,6 +63,9 @@ namespace lux::scene
 
     struct ScriptRuntimeHost final
     {
+        using AssetCapabilityFactory = simulation::script::ScriptApiCapabilityPublication (*)(
+            script::ScriptAssetAccess&
+        ) noexcept;
         process::ExecutionRuntime& execution;
         simulation::script::ScriptRuntimeLimits limits;
         scene::script::ScriptSystemCodecLimits codec_limits;
@@ -70,6 +75,11 @@ namespace lux::scene
         std::span<const simulation::script::ScriptBackendDescriptor> backends;
         std::span<const simulation::script::ScriptDeferredComponent> components;
         simulation::ecs::EcsCommandProducerCapacity command_capacity{1024U, 65536U};
+        // Fixed runtime read capability. An absent port grants no asset ability.
+        process::asset_loading::AssetReadPort assets;
+        script::ScriptAssetLimits asset_limits;
+        // Explicit independent capabilities; the host has no asset-type dispatch.
+        std::span<const AssetCapabilityFactory> asset_capabilities;
     };
 
     struct ScriptRuntimeCommandStats final
@@ -101,7 +111,8 @@ namespace lux::scene
             script::WorldObjectResolver world,
             simulation::ecs::Registry& registry,
             std::unique_ptr<simulation::ecs::EcsCommandBuffer> commands,
-            std::unique_ptr<simulation::script::DeferredScriptHost> host
+            std::unique_ptr<simulation::script::DeferredScriptHost> host,
+            std::unique_ptr<script::ScriptAssetAccess> assets
         ) noexcept;
         ~ScriptRuntimeSystem() noexcept;
 
@@ -114,6 +125,8 @@ namespace lux::scene
         [[nodiscard]] ScriptRuntimeCommandStats commandStats() const noexcept;
         // One observation consumer may call this on another thread; no live runtime storage is borrowed.
         [[nodiscard]] bool acquireStats(simulation::script::ScriptRuntimeStats& output) noexcept;
+        // Receives native outcomes without running gameplay or entering a VM, also while paused.
+        [[nodiscard]] SceneStageResult maintain(SceneStageContext&) noexcept;
 
     private:
         struct Loader;
@@ -129,6 +142,8 @@ namespace lux::scene
         std::unique_ptr<scene::script::ScriptSystemDescription> description_;
         std::unique_ptr<simulation::ecs::EcsCommandBuffer> commands_;
         std::unique_ptr<simulation::script::DeferredScriptHost> host_;
+        // System bindings are retired before the native task scope joins at destruction.
+        std::unique_ptr<script::ScriptAssetAccess> assets_;
         simulation::script::ScriptSystem system_;
         std::optional<simulation::script::ScriptSystem::ExecutionRegion> execution_region_;
         std::optional<simulation::ecs::EcsCommandWriter> command_writer_;

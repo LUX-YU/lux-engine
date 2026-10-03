@@ -64,6 +64,9 @@ lux_classify_target(TARGET scene_execution_api LAYER EDITOR PRODUCT EDITOR ROLE 
 
 add_component(COMPONENT_NAME scene_execution NAMESPACE lux::engine::editor STATIC SOURCE_FILES src/SceneConfigurationPreparation.cpp src/RunStore.cpp src/ModelCreationOperation.cpp)
 target_link_libraries(scene_execution PRIVATE lux::engine::scene::scene_transform)
+target_link_libraries(scene_execution PRIVATE lux::engine::scene::scene_script_runtime)
+component_add_transitive_commands(scene_execution
+    "find_package(lux-engine-scene-script-runtime REQUIRED COMPONENTS scene_script_runtime)")
 component_add_transitive_commands(scene_execution "find_package(lux-engine-scene-transform REQUIRED COMPONENTS scene_transform)")
 component_include_directories(scene_execution
     BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)

@@ -9,3 +9,4 @@ add_subdirectory(application)
 add_subdirectory(project)
 
 add_subdirectory(components)
+add_subdirectory(scene_script)

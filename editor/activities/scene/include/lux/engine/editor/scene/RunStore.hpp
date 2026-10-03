@@ -7,6 +7,11 @@
 #include <lux/engine/editor/editing/EditHistory.hpp>
 #include <lux/cxx/core/function_ref.hpp>
 
+namespace lux::scene
+{
+    struct ScriptRuntimeHost;
+}
+
 namespace lux::editor::scene
 {
     class RunController;
@@ -20,6 +25,8 @@ namespace lux::editor::scene
         render::RenderRuntime* renderer{};
         lux::scene::RenderResources* resources{};
         lux::scene::RenderAssetInput assets;
+        // Fixed engine-only script inputs; retained through this Run's instance retirement.
+        std::shared_ptr<lux::scene::ScriptRuntimeHost> scripts;
     };
 
     // Owns runs and their sole instance leases. Never drives SceneRuntime or borrows live author state.

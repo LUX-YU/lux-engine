@@ -77,7 +77,7 @@ namespace lux::scene::script
                         completeFailure(state, handle, completion, std::move(result.error()));
                         return;
                     }
-                    auto held = std::make_shared<HeldAsset>(std::move(code), std::move(*result));
+                    auto held = holdAsset(std::move(code), std::move(*result));
                     completeTyped(state, handle, completion, std::move(held));
                 }
             );
@@ -132,6 +132,11 @@ namespace lux::scene::script
             lux::process::CpuScheduler cpu;
             lux::asset::AssetDecodeLimits limits;
         };
+        // The control block must live in this native library. Instantiating make_shared in a
+        // plugin can unload that plugin before its control-block destruction returns.
+        [[nodiscard]] static std::shared_ptr<const HeldAsset> holdAsset(
+            std::shared_ptr<const void> code, std::shared_ptr<const lux::asset::Asset> asset
+        ) noexcept;
         explicit ScriptAssetScope(std::shared_ptr<State> state) noexcept : state_(std::move(state)) {}
         [[nodiscard]] lux::cxx::expected<Reservation, EScriptAssetError>
         reserve(lux::asset::AssetId id, bool typed, bool completion_active) noexcept;

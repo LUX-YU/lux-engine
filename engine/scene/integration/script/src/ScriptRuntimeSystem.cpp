@@ -183,6 +183,37 @@ namespace lux::scene
                     deferred_host =
                         std::make_unique<simulation::script::DeferredScriptHost>(builder.registry(), host->components);
                 }
+                std::unique_ptr<script::ScriptAssetAccess> assets;
+                const auto provided = builder.simulation().scriptApiCapabilities();
+                std::vector<simulation::script::ScriptApiCapabilityPublication> capabilities{
+                    provided.begin(), provided.end()
+                };
+                const bool has_unbound_asset_capabilities = !host->assets && !host->asset_capabilities.empty();
+                if (has_unbound_asset_capabilities)
+                    return lux::cxx::unexpected(failure(
+                        ESceneSystemBuildError::MISSING_REQUIREMENT, description.instanceId()
+                    ));
+                if (host->assets)
+                {
+                    auto prepared_assets = script::ScriptAssetAccess::create(
+                        host->execution, host->assets, host->asset_limits
+                    );
+                    if (!prepared_assets)
+                        return lux::cxx::unexpected(failure(
+                            ESceneSystemBuildError::CONSTRUCTION_FAILURE, description.instanceId(),
+                            static_cast<std::uint64_t>(prepared_assets.error())
+                        ));
+                    assets = std::move(*prepared_assets);
+                    capabilities.push_back(script::publishAssetAbility(*assets));
+                    for (const auto factory : host->asset_capabilities)
+                    {
+                        if (factory == nullptr)
+                            return lux::cxx::unexpected(failure(
+                                ESceneSystemBuildError::INVALID_DESCRIPTION, description.instanceId()
+                            ));
+                        capabilities.push_back(factory(*assets));
+                    }
+                }
                 auto created = simulation::script::ScriptSystem::create(
                     builder.simulation().description(),
                     *capacity,
@@ -191,7 +222,7 @@ namespace lux::scene
                     builder.simulation().time(),
                     host->limits,
                     host->artifacts,
-                    builder.simulation().scriptApiCapabilities(),
+                    capabilities,
                     host->backends,
                     builder.simulation().scriptHookEndpoints(),
                     builder.simulation().scriptEventEndpoints(),
@@ -236,7 +267,8 @@ namespace lux::scene
                     host->world,
                     builder.registry(),
                     std::move(commands),
-                    std::move(deferred_host)
+                    std::move(deferred_host),
+                    std::move(assets)
                 );
                 if (!installed)
                     return lux::cxx::unexpected(installed.error());
@@ -245,7 +277,12 @@ namespace lux::scene
                     return lux::cxx::unexpected(
                         failure(ESceneSystemBuildError::CONSTRUCTION_FAILURE, description.instanceId())
                     );
-                return {};
+                return builder.addMaintenanceTask<ScriptRuntimeSystem>(
+                    description.instanceId(),
+                    [](ScriptRuntimeSystem& runtime, SceneStageContext& context) noexcept {
+                        return runtime.maintain(context);
+                    }
+                );
             }
         }
     } // namespace
@@ -564,10 +601,11 @@ namespace lux::scene
         script::WorldObjectResolver world,
         simulation::ecs::Registry& registry,
         std::unique_ptr<simulation::ecs::EcsCommandBuffer> commands,
-        std::unique_ptr<simulation::script::DeferredScriptHost> host
+        std::unique_ptr<simulation::script::DeferredScriptHost> host,
+        std::unique_ptr<script::ScriptAssetAccess> assets
     ) noexcept
         : world_(world), registry_(&registry), real_delay_(std::move(real_delay)), description_(std::move(description)),
-          commands_(std::move(commands)), host_(std::move(host)), system_(std::move(system))
+          commands_(std::move(commands)), host_(std::move(host)), assets_(std::move(assets)), system_(std::move(system))
     {}
 
     ScriptRuntimeSystem::~ScriptRuntimeSystem() noexcept
@@ -603,6 +641,22 @@ namespace lux::scene
         return true;
     }
 
+    SceneStageResult ScriptRuntimeSystem::maintain(SceneStageContext& context) noexcept
+    {
+        if (context.stop.stop_requested())
+        {
+            // Record stop now; destruction at the original retirement point completes shutdown.
+            const auto stopped = system_.requestStop();
+            if (!stopped)
+                return lux::cxx::unexpected(SceneExecutionFailure{
+                    ESceneExecutionError::SYSTEM_FAILURE, {}, stopped.error()
+                });
+        }
+        if (assets_)
+            assets_->deliverCompletions();
+        return ESceneProgress::COMPLETE;
+    }
+
     void ScriptRuntimeSystem::endCommands() noexcept
     {
         command_batch_.reset();
@@ -631,6 +685,8 @@ namespace lux::scene
                      return false;
                  if (stable)
                  {
+                     if (runtime.assets_)
+                         runtime.assets_->deliverCompletions();
                      if (!runtime.real_delay_->drainCompletions())
                          return false;
                      system.beginStableAdmission();

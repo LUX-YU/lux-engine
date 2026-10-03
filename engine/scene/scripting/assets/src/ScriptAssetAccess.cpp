@@ -7,6 +7,13 @@
 
 namespace lux::scene::script
 {
+    std::shared_ptr<const ScriptAssetScope::HeldAsset> ScriptAssetScope::holdAsset(
+        std::shared_ptr<const void> code, std::shared_ptr<const lux::asset::Asset> asset
+    ) noexcept
+    {
+        return std::make_shared<const HeldAsset>(std::move(code), std::move(asset));
+    }
+
     namespace
     {
         using namespace lux::process::asset_loading;

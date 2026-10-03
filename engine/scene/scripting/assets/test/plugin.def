@@ -1,0 +1,2 @@
+EXPORTS
+    ec2_start_asset_read

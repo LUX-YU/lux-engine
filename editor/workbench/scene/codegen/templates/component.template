@@ -1,0 +1,71 @@
+// Generated persistent controls. Author and paused-Run projections share semantics, not mutable state.
+#include "{{ name }}.inspector.generated.hpp"
+#include <InspectorAssociativeElement.hpp>
+#include <numbers>
+#include <tuple>
+#include <exception>
+#include <new>
+{% for header in custom_headers %}#include <{{ header }}>
+{% endfor %}
+{% for p in projections %}
+namespace lux::editor::scene::{{ p.namespace }}
+{
+namespace
+{
+using namespace lux::editor::ui;
+using namespace lux::editor::ui::generated_support;
+{% for n in c.nodes %}
+{% if n.kind == "composite" %}{% include "composite.template" %}{% endif %}
+{% include "factory.template" %}
+{% endfor %}
+class Element_{{ c.symbol }} final : public lux::ui::Element
+{
+public:
+    Element_{{ c.symbol }}(lux::ui::Element& parent, lux::ui::ElementId id, {{ p.fields }}& editing,
+        {{ p.target }} target, {{ p.fields }}& interaction, {{ p.result }}& status)
+        : lux::ui::Element(parent, std::move(id)), layout_(*this, lux::ui::ElementId{"fields"})
+{% for f in c.fields %}
+{% set n = at(c.nodes, f.node) %}
+        , field{{ f.index }}_(layout_, lux::ui::ElementId{ {{ literal(f.identity) }} }, editing, target, interaction,
+            status, {{ literal(f.label) }}, {{ f.read_only }}, Access{{ f.index }}{}{% include "options.template" %})
+{% endfor %}
+    {
+        setStretch({1, 0});
+{% for f in c.fields %}
+{% set n = at(c.nodes, f.node) %}{% set v = concat("Value", string(f.index)) %}
+{% set control = concat("field", string(f.index), "_.control()") %}
+{% include "numeric.template" %}
+{% endfor %}
+    }
+private:
+    lux::ui::SizeHint sizeHintContent() noexcept override { return layout_.sizeHint(); }
+    lux::ui::SizeHint measureContent(float width) noexcept override { return layout_.measure(width); }
+    void arrangeContent() noexcept override { layout_.arrange({ {}, rect().size }); }
+    void draw() noexcept override { drawChild(layout_); }
+    lux::ui::Layout layout_;
+{% for f in c.fields %}
+{% set n = at(c.nodes, f.node) %}{% set a = concat("Access", string(f.index)) %}{% set v = concat("Value", string(f.index)) %}
+    using {{ a }} = decltype([](auto& component) noexcept { return std::addressof({{ f.access }}); });
+    using {{ v }} = std::remove_cvref_t<decltype(*{{ a }}{}(std::declval<{{ c.type }}&>()))>;
+    {% include "field-type.template" %} field{{ f.index }}_;
+{% endfor %}
+};
+{{ p.binding }}::CreateResult create_{{ c.symbol }}(lux::ui::Element& parent, lux::ui::ElementId id,
+    {{ p.fields }}& interaction) noexcept
+{
+    try
+    {
+        {{ p.result }} status;
+        auto result = std::unique_ptr<lux::ui::Element>(new Element_{{ c.symbol }}(
+            parent, std::move(id), interaction, interaction.target(), interaction, status));
+        if (!status)
+            return lux::cxx::unexpected(status.error());
+        return result;
+    }
+    catch (const std::bad_alloc&) { std::terminate(); }
+    catch (...) { return lux::cxx::unexpected({{ p.fields }}::constructionFailure().error()); }
+}
+}
+{% if p.run %}{% include "run-binding.template" %}{% else %}{% include "author-binding.template" %}{% endif %}
+}
+{% endfor %}

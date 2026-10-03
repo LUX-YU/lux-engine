@@ -273,6 +273,23 @@ void consumer::checkInspector()
                 return result;
         return nullptr;
     };
+    auto* array_field = find(find, pane, "::grid[1][2]");
+    auto* array_control = array_field ? findControl(findControl, *array_field) : nullptr;
+    assert(array_control && std::get<std::int32_t>(array_control->value()) == 6);
+    const auto array_before = session->describe();
+    array_control->setValue(std::int32_t{19});
+    static_cast<void>(ui::ControlsTestAccess::edited(*array_control, {true, true, false, false}));
+    frame();
+    assert(interaction.overlay() && component().grid[1][2] == 6);
+    assert(session->describe().current == array_before.current);
+    assert(pane.finishEditing() && component().grid[1][2] == 19);
+    assert(session->undo() && component().grid[1][2] == 6);
+    frame();
+    assert(session->redo() && component().grid[1][2] == 19);
+    assert(session->undo());
+    frame();
+    assert(std::get<std::int32_t>(array_control->value()) == 6);
+    std::puts("PASS canonical typedef C array: real generated preview/commit/Undo/Redo through SceneSession");
     auto* sequence = find(find, pane, "::sequence");
     assert(sequence);
     // Fixed arrays inside a dynamic row and tuples containing a dynamic field

@@ -1,0 +1,14 @@
+{% if length(n.numeric) > 0 and n.kind == "control" %}
+{
+    lux::ui::NumericSpec spec;
+    spec.mode = lux::ui::EScalarEditMode::{{ n.numeric.mode }};
+    spec.speed = static_cast<float>({{ n.numeric.speed }});
+{% for member in ["minimum", "maximum", "step"] %}
+{% if at(n.numeric, member) != "" %}
+    spec.{{ member }} = NumericStorage<{{ v }}>({{ at(n.numeric, member) }});
+{% endif %}
+{% endfor %}
+    if (!{{ control }}.setSpec(std::move(spec)))
+        status = {{ p.fields }}::constructionFailure();
+}
+{% endif %}

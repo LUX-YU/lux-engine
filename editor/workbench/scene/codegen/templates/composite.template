@@ -1,0 +1,71 @@
+lux::ui::EditResult draw{{ n.index }}(std::type_identity_t<{{ n.type }}>& value, {{ p.fields }}& state)
+{
+    ReadOnlyScope read_only{state.readOnly()};
+    lux::ui::EditResult result;
+{% if n.composite == "custom" %}
+    result = TInspectorControl<{{ n.type }}, {{ n.tag }}>::draw(value, state,
+        InspectorField{"##value", nullptr, {{ n.speed }}, state.readOnly()});
+{% else if n.composite == "color" %}
+    const auto original = value;
+    result = edited(ImGui::ColorEdit{{ n.rows }}("##value", value.data()));
+    result.changed = state.changed(value, original, result.changed);
+{% else if n.composite == "empty" %}
+    ImGui::TextUnformatted("Empty");
+{% else if n.composite == "quaternion" %}
+    using Scalar = {{ n.scalar }};
+    auto degrees = (value.toRotationMatrix().eulerAngles(0, 1, 2) * (Scalar{180} / std::numbers::pi_v<Scalar>)).eval();
+    ImGui::BeginGroup();
+    const auto& style = ImGui::GetStyle();
+    const float labels_width = ImGui::CalcTextSize("X").x + ImGui::CalcTextSize("Y").x + ImGui::CalcTextSize("Z").x;
+    const float spacing = style.ItemInnerSpacing.x * 3.F + style.ItemSpacing.x * 2.F;
+    const float item_width = std::max(1.F, (ImGui::GetContentRegionAvail().x - labels_width - spacing) / 3.F);
+{% for axis in ["X", "Y", "Z"] %}
+    {
+{% if not loop.is_first %} ImGui::SameLine(); {% endif %}
+        IdScope id{ {{ loop.index }} };
+        ImGui::SetNextItemWidth(item_width);
+        auto& coordinate = degrees[{{ loop.index }}];
+        const auto original = coordinate;
+{% for member in ["minimum", "maximum", "step"] %}
+{% if at(n.numeric, member) != "" %}
+        const Scalar {{ member }}_value = static_cast<Scalar>({{ at(n.numeric, member) }});
+{% endif %}
+{% endfor %}
+{% if n.numeric.mode == "INPUT" %}
+        auto change = edited(ImGui::InputScalar({{ literal(axis) }}, ImGuiDataType_{% if n.scalar == "float" %}Float{% else %}Double{% endif %},
+            &coordinate, {% if n.numeric.step != "" %}&step_value{% else %}nullptr{% endif %}, nullptr,
+            {% if n.scalar == "float" %}"%.9g"{% else %}"%.17g"{% endif %}));
+{% else %}
+        auto change = edited(ImGui::DragScalar({{ literal(axis) }}, ImGuiDataType_{% if n.scalar == "float" %}Float{% else %}Double{% endif %},
+            &coordinate, static_cast<float>({{ n.numeric.speed }}),
+            {% if n.numeric.minimum != "" %}&minimum_value{% else %}nullptr{% endif %},
+            {% if n.numeric.maximum != "" %}&maximum_value{% else %}nullptr{% endif %},
+            {% if n.scalar == "float" %}"%.9g"{% else %}"%.17g"{% endif %}));
+{% endif %}
+        const bool invalid = !std::isfinite(coordinate)
+{% if n.numeric.minimum != "" %} || coordinate < minimum_value {% endif %}
+{% if n.numeric.maximum != "" %} || coordinate > maximum_value {% endif %};
+        if (change.changed && invalid)
+        {
+            coordinate = original;
+            state.fail("The value is outside the declared range.");
+            change.changed = false;
+        }
+        change.changed = state.changed(coordinate, original, change.changed);
+        merge(result, change);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Degrees");
+    }
+{% endfor %}
+    ImGui::EndGroup();
+    if (result.changed)
+    {
+        const auto radians = (degrees * (std::numbers::pi_v<Scalar> / Scalar{180})).eval();
+        value = Eigen::Quaternion<Scalar>{
+            Eigen::AngleAxis<Scalar>{radians[0], Eigen::Matrix<Scalar, 3, 1>::UnitX()} *
+            Eigen::AngleAxis<Scalar>{radians[1], Eigen::Matrix<Scalar, 3, 1>::UnitY()} *
+            Eigen::AngleAxis<Scalar>{radians[2], Eigen::Matrix<Scalar, 3, 1>::UnitZ()}}.normalized();
+    }
+{% endif %}
+    return result;
+}

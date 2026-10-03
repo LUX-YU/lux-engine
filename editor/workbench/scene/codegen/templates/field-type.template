@@ -1,0 +1,12 @@
+{% if n.kind == "control" %}
+TFieldElement<{{ p.fields }}, {{ c.type }}, {{ v }}, {{ a }}, {{ n.control }}>
+{% else if n.kind == "sequence" %}
+TSequenceFieldElement<{{ p.fields }}, {{ c.type }}, {{ v }}, {{ a }}, Factory{{ n.item }}>
+{% else if n.kind == "alternative" %}
+TAlternativeFieldElement<{{ p.fields }}, {{ c.type }}, {{ v }}, {{ a }}, {{ n.optional }},
+{% for item in n.items %}Factory{{ item }}{% if not loop.is_last %},{% endif %}{% endfor %}>
+{% else if n.kind == "associative" %}
+TAssociativeFieldElement<{{ p.fields }}, {{ c.type }}, {{ v }}, {{ a }}, {% if n.mapping %}Factory{{ n.item }}{% else %}void{% endif %}>
+{% else if n.kind == "composite" %}
+TCompositeFieldElement<{{ p.fields }}, {{ c.type }}, {{ v }}, {{ a }}, draw{{ n.index }}>
+{% endif %}

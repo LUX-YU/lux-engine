@@ -39,6 +39,8 @@ namespace consumer
     {
         Settings LUX_MEMBER() settings;
         std::array<double, 3> LUX_MEMBER() fixed { 1, 2, 3 };
+        using Grid = int[2][3];
+        Grid LUX_MEMBER() grid{{1, 2, 3}, {4, 5, 6}};
         std::vector<Settings> LUX_MEMBER() sequence { {} };
         std::vector<std::array<int, 2>> LUX_MEMBER() pairs { {11, 12} };
         std::tuple<int, std::vector<int>> LUX_MEMBER() grouped { 13, {14, 15} };

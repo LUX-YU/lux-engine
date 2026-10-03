@@ -19,14 +19,26 @@ function(engine_target_add_imgui_inspector_codegen)
         list(APPEND owned_components "${component}")
     endforeach()
     set_property(TARGET ${ARG_TARGET} PROPERTY LUX_EDITOR_INSPECTOR_COMPONENTS ${owned_components})
-    find_package(Python3 REQUIRED COMPONENTS Interpreter)
     find_program(LUX_EDITOR_CLANG_FORMAT NAMES clang-format REQUIRED)
     find_package(imgui REQUIRED COMPONENTS core)
     set(backend imgui::core)
-    if(EXISTS "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../codegen/inspector_codegen.py")
+    if(EXISTS "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../codegen/GenerateInspector.cmake")
         set(generator_dir "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../codegen")
     else()
         set(generator_dir "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/codegen")
+    endif()
+    if(TARGET lux_inspector_generator)
+        set(inspector_generator "$<TARGET_FILE:lux_inspector_generator>")
+    else()
+        get_filename_component(sdk_prefix "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../../../.." ABSOLUTE)
+        find_program(LUX_INSPECTOR_GENERATOR_EXECUTABLE NAMES lux_inspector_generator
+            HINTS "${sdk_prefix}/bin" REQUIRED NO_DEFAULT_PATH)
+        set(inspector_generator "${LUX_INSPECTOR_GENERATOR_EXECUTABLE}")
+    endif()
+    if(EXISTS "${PROJECT_SOURCE_DIR}/.clang-format" AND TARGET lux_inspector_generator)
+        set(format_style "${PROJECT_SOURCE_DIR}/.clang-format")
+    else()
+        set(format_style "${generator_dir}/.clang-format")
     endif()
     if(NOT ARG_OUTPUT_ROOT)
         set(ARG_OUTPUT_ROOT "${CMAKE_CURRENT_BINARY_DIR}/inspector_gen/${ARG_NAME}")
@@ -56,7 +68,7 @@ function(engine_target_add_imgui_inspector_codegen)
         endforeach()
         string(APPEND json "]")
     endforeach()
-    string(APPEND json ",\"format_style\":\"{BasedOnStyle: Microsoft, NamespaceIndentation: All, IndentWidth: 4, ContinuationIndentWidth: 4, AlignAfterOpenBracket: BlockIndent, ColumnLimit: 120, BreakBeforeBraces: Allman, InsertBraces: true, AccessModifierOffset: -4, IndentAccessModifiers: false, PointerAlignment: Left, ReferenceAlignment: Left, BinPackArguments: false, BinPackParameters: false, AllowAllArgumentsOnNextLine: false, AllowAllParametersOfDeclarationOnNextLine: false, AllowShortFunctionsOnASingleLine: Empty, AllowShortBlocksOnASingleLine: Never}\"}\n")
+    string(APPEND json "}\n")
     file(GENERATE OUTPUT "${config}" CONTENT "${json}")
     set(outputs "${ARG_OUTPUT_ROOT}/${ARG_NAME}.inspector.generated.hpp")
     foreach(component IN LISTS ARG_COMPONENTS)
@@ -65,21 +77,19 @@ function(engine_target_add_imgui_inspector_codegen)
         string(SUBSTRING "${digest}" 0 8 digest)
         list(APPEND outputs "${ARG_OUTPUT_ROOT}/${component_symbol}_${digest}.inspector.generated.cpp")
     endforeach()
-    # The SDK parser owns the IR projection; its installed version has no depfile output.
-    # Track the public input headers explicitly so a byte-identical marker cannot hide a changed sidecar.
-    file(GLOB_RECURSE inspector_headers CONFIGURE_DEPENDS
-        "${PROJECT_SOURCE_DIR}/modules/*.hpp" "${PROJECT_SOURCE_DIR}/engine/*.hpp")
-    list(FILTER inspector_headers INCLUDE REGEX "/include/[^;]+\\.hpp$")
-    get_target_property(meta_generator ${ARG_NAME}_ir LUX_CODEGEN_GENERATOR)
     file(GLOB support_headers CONFIGURE_DEPENDS "${generator_dir}/support/*.hpp")
-    add_custom_command(OUTPUT ${outputs} "${ir}"
-        COMMAND "${Python3_EXECUTABLE}" "${generator_dir}/inspector_codegen.py" --config "${config}" --ir "${ir}" --formatter "${LUX_EDITOR_CLANG_FORMAT}"
-            --meta-generator "${meta_generator}" --meta-config "${CMAKE_CURRENT_BINARY_DIR}/lux_codegen/${ARG_NAME}_ir.json"
-        DEPENDS "${ir_root}/${logical_dir}/${stem}.editor-ir" "${config}" "${ARG_HEADER}" ${ARG_DEPENDS} ${inspector_headers}
-            "${CMAKE_BINARY_DIR}/compile_commands.json"
-            "${CMAKE_CURRENT_BINARY_DIR}/lux_codegen/${ARG_NAME}_ir.json"
-            "${generator_dir}/inspector_codegen.py" ${support_headers} "${LUX_EDITOR_CLANG_FORMAT}"
-        COMMENT "Generate Editor-only ImGui Inspector: ${ARG_NAME}" VERBATIM)
+    file(GLOB templates CONFIGURE_DEPENDS "${generator_dir}/templates/*.template")
+    set(stamp "${ARG_OUTPUT_ROOT}/inspector.complete")
+    add_custom_command(OUTPUT ${outputs} "${stamp}"
+        COMMAND ${CMAKE_COMMAND} "-DGENERATOR=${inspector_generator}" "-DCONFIG=${config}" "-DIR=${ir}"
+            "-DTEMPLATES=${generator_dir}/templates" "-DOUTPUT_ROOT=${ARG_OUTPUT_ROOT}"
+            "-DFORMATTER=${LUX_EDITOR_CLANG_FORMAT}" "-DSTYLE=${format_style}"
+            -P "${generator_dir}/GenerateInspector.cmake"
+        DEPENDS "${ir}" "${config}" ${ARG_DEPENDS} "${inspector_generator}"
+            "${generator_dir}/GenerateInspector.cmake" ${support_headers} ${templates}
+            "${format_style}" "${LUX_EDITOR_CLANG_FORMAT}"
+        BYPRODUCTS "${ARG_OUTPUT_ROOT}/staging/outputs.json" "${ARG_OUTPUT_ROOT}/staging/semantics.json"
+        COMMENT "Generate Inspector MetaUnit/inja author and Run projections: ${ARG_NAME}" VERBATIM)
     target_sources(${ARG_TARGET} PRIVATE ${outputs})
     set_source_files_properties(${outputs} PROPERTIES GENERATED TRUE)
     if(MSVC)

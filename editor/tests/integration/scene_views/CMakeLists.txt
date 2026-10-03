@@ -34,7 +34,7 @@ endif()
 if(LUX_EDITOR_TEST_DESKTOP_GPU)
     add_executable(editor_ui_presentation unified_ui.cpp)
     target_link_libraries(editor_ui_presentation PRIVATE desktop_shell editor_viewport lux::engine::platform::window
-        lux::engine::function::render_features lux::engine::scene::scene_transform)
+        lux::engine::function::render_features lux::engine::scene::scene_transform imgui::core)
     lux_editor_test_options(editor_ui_presentation)
     foreach(mode backpressure scene-panes)
         add_test(NAME editor.presentation_${mode} COMMAND editor_ui_presentation --${mode})

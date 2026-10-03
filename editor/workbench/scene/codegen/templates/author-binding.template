@@ -1,0 +1,4 @@
+InspectorComponent binding_{{ c.symbol }}()
+{
+    return {lux::cxx::typeToken<{{ c.type }}>(), {{ literal(c.label) }}, create_{{ c.symbol }}};
+}

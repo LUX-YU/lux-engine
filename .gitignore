@@ -6,7 +6,6 @@ CMakeSettings.json
 .vscode
 .idea
 .cache
-.clang-format
 imgui.ini
 __pycache__
 build

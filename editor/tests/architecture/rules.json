@@ -6036,7 +6036,6 @@
       "cstddef",
       "cstdint",
       "imgui.h",
-      "limits",
       "imgui_node_editor.h",
       "lux/engine/editor/widgets/GraphCanvas.hpp",
       "lux/engine/editor/widgets/NodeCanvas.hpp",
@@ -9980,6 +9979,7 @@
       "algorithm",
       "cmath",
       "imgui.h",
+      "limits",
       "lux/engine/editor/views/CameraNavigation.hpp",
       "lux/engine/editor/views/ViewportElement.hpp",
       "lux/engine/editor/views/ViewportPresentation.hpp",
@@ -16072,6 +16072,23 @@
           "CPU"
         ],
         "path": "editor/tests/integration/application"
+      },
+      "lux_inspector_generator": {
+        "layer": "E3",
+        "role": "GENERATOR",
+        "capabilities": [
+          "CPU",
+          "TOOLCHAIN"
+        ],
+        "path": "editor/workbench/scene"
+      },
+      "pantor::inja": {
+        "layer": "EXTERNAL",
+        "role": "PROVIDER",
+        "capabilities": [
+          "CPU"
+        ],
+        "imported": true
       }
     },
     "files": {
@@ -18578,6 +18595,15 @@
       ],
       "editor/workbench/project/tools/src/WindowSettingsBinding.cpp": [
         "project_tools_ui"
+      ],
+      "editor/workbench/scene/codegen/InspectorGenerator.cpp": [
+        "lux_inspector_generator"
+      ],
+      "editor/workbench/scene/codegen/InspectorModel.cpp": [
+        "lux_inspector_generator"
+      ],
+      "editor/workbench/scene/codegen/InspectorModel.hpp": [
+        "lux_inspector_generator"
       ]
     },
     "native_libraries": [

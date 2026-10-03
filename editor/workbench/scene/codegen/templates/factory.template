@@ -1,0 +1,31 @@
+struct Factory{{ n.index }}
+{
+    template<class Access>
+    static std::unique_ptr<lux::ui::Element> create(lux::ui::Element& parent, lux::ui::ElementId id,
+        {{ p.fields }}& editing, {{ p.target }} target, {{ p.fields }}& interaction, {{ p.result }}& status,
+        std::string label, bool read_only, Access access)
+    {
+{% if n.kind == "group" %}
+        auto group = std::make_unique<FieldGroup>(parent, std::move(id));
+{% for child in n.children %}
+        group->add(Factory{{ child.node }}::create(group->layout(),
+            lux::ui::ElementId{std::string(group->id().name()) + {{ literal(child.suffix) }}},
+            editing, target, interaction, status, label + " / " + {{ literal(child.label) }},
+            read_only || {{ child.read_only }}, [access](auto& component) noexcept {
+                auto* value = access(component);
+                using Result = decltype(std::addressof({{ access(child.expression, "*value") }}));
+                return value ? std::addressof({{ access(child.expression, "*value") }}) : Result{};
+            }));
+{% endfor %}
+        return group;
+{% else %}
+{% set a = "Access" %}{% set v = n.type %}
+        auto result = std::make_unique<{% include "field-type.template" %}>(
+            parent, std::move(id), editing, target, interaction, status, std::move(label),
+            read_only || {{ n.read_only }}, std::move(access){% include "options.template" %});
+{% set control = "result->control()" %}
+{% include "numeric.template" %}
+        return result;
+{% endif %}
+    }
+};

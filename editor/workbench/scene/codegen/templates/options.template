@@ -1,0 +1,6 @@
+{% if n.custom_control %}, interaction, status
+{% else if n.kind == "control" and n.control == "lux::ui::CheckBox" %}, std::string{}
+{% else if length(n.options) > 0 %}, std::vector<lux::ui::ChoiceOption>{
+{% for option in n.options %}{ {{ option.value }}, {{ literal(option.label) }} }{% if not loop.is_last %},{% endif %}{% endfor %}}
+{% else if n.kind == "composite" %}, {% if n.composite == "custom" %}6.F{% else %}3.F{% endif %}
+{% endif %}

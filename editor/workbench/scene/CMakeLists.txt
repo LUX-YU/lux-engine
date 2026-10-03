@@ -27,6 +27,26 @@ component_add_transitive_commands(scene_ui
 lux_classify_target(TARGET scene_ui LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 target_link_libraries(scene_ui PUBLIC lux::engine::editor::editor_commands)
 
+# Host-only semantic/template tool. It consumes the original MetaUnit and never links UI/runtime libraries.
+if(CMAKE_CROSSCOMPILING)
+    if(NOT LUX_INSPECTOR_GENERATOR_EXECUTABLE)
+        message(FATAL_ERROR "Cross builds require an explicit host LUX_INSPECTOR_GENERATOR_EXECUTABLE")
+    endif()
+else()
+    find_package(inja CONFIG REQUIRED)
+    find_package(nlohmann_json CONFIG REQUIRED)
+    add_executable(lux_inspector_generator codegen/InspectorGenerator.cpp codegen/InspectorModel.cpp)
+    target_link_libraries(lux_inspector_generator PRIVATE lux::cxx::reflection_runtime pantor::inja nlohmann_json::nlohmann_json)
+    lux_classify_target(TARGET lux_inspector_generator LAYER EDITOR PRODUCT TOOLCHAIN ROLE GENERATOR)
+    if(WIN32)
+        add_custom_command(TARGET lux_inspector_generator POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_RUNTIME_DLLS:lux_inspector_generator>
+                $<TARGET_FILE_DIR:lux_inspector_generator> COMMAND_EXPAND_LISTS VERBATIM)
+    endif()
+    install(TARGETS lux_inspector_generator RUNTIME DESTINATION bin COMPONENT lux_editor)
+    install(FILES $<TARGET_RUNTIME_DLLS:lux_inspector_generator> DESTINATION bin COMPONENT lux_editor)
+endif()
+
 include_component_cmake_scripts(meta)
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/engine_editor_imgui_inspector_codegen.cmake)
 engine_target_add_imgui_inspector_codegen(NAME scene_fields_transform TARGET scene_ui
@@ -56,12 +76,17 @@ engine_target_add_imgui_inspector_codegen(NAME scene_fields_camera TARGET scene_
     COMPONENTS lux::scene::Camera)
 
 component_add_cmake_scripts(scene_ui ${CMAKE_CURRENT_SOURCE_DIR}/cmake/engine_editor_imgui_inspector_codegen.cmake)
-install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/codegen/ DESTINATION share/lux-engine-editor-scene-ui/scene_ui/cmake_scripts/codegen PATTERN "__pycache__" EXCLUDE)
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/codegen/templates ${CMAKE_CURRENT_SOURCE_DIR}/codegen/support
+    DESTINATION share/lux-engine-editor-scene-ui/scene_ui/cmake_scripts/codegen)
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/codegen/ir.template ${CMAKE_CURRENT_SOURCE_DIR}/codegen/GenerateInspector.cmake
+    DESTINATION share/lux-engine-editor-scene-ui/scene_ui/cmake_scripts/codegen)
+install(FILES ${PROJECT_SOURCE_DIR}/.clang-format DESTINATION share/lux-engine-editor-scene-ui/scene_ui/cmake_scripts/codegen)
 lux_engine_install_components(PROJECT_NAME lux-engine-editor-scene-ui VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS scene_ui)
 
 if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     find_package(Python3 REQUIRED COMPONENTS Interpreter)
-    add_test(NAME editor.inspector_codegen COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test/inspector_codegen.py")
+    add_test(NAME editor.inspector_codegen COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/test/inspector_codegen.py"
+        "$<TARGET_FILE:lux_inspector_generator>" "${CMAKE_CURRENT_SOURCE_DIR}/codegen/templates")
     set_tests_properties(editor.inspector_codegen PROPERTIES LABELS "editor;native")
 endif()

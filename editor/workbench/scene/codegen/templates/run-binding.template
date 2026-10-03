@@ -1,0 +1,7 @@
+RunInspectorComponent binding_{{ c.symbol }}()
+{
+    return {lux::cxx::typeToken<{{ c.type }}>(), {{ literal(c.label) }}, create_{{ c.symbol }},
+        +[](const void* value) -> std::shared_ptr<void> {
+            return std::make_shared<{{ c.type }}>(*static_cast<const {{ c.type }}*>(value));
+        }};
+}

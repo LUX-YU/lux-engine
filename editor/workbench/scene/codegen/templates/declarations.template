@@ -1,0 +1,21 @@
+#pragma once
+#include <lux/engine/editor/scene/InspectorView.hpp>
+#include <lux/engine/editor/scene/RunInspectorView.hpp>
+#include <array>
+#include <{{ logical_path }}>
+{% for p in projections %}
+namespace lux::editor::scene::{{ p.namespace }}
+{
+{% for c in components %}
+{{ p.binding }} binding_{{ c.symbol }}();
+{% endfor %}
+inline auto {{ name }}Bindings()
+{
+    return std::array{
+{% for c in components %}
+        binding_{{ c.symbol }}(){% if not loop.is_last %},{% endif %}
+{% endfor %}
+    };
+}
+}
+{% endfor %}

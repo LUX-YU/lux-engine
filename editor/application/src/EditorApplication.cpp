@@ -226,14 +226,20 @@ namespace lux::editor::application
         );
         if (!menu)
             return applicationFailure(menu.error().domain, menu.error());
-        auto browser = makeProjectView(lux::ui::PaneId{"project"});
-        if (!browser)
-            return applicationFailure("project.view", browser.error());
-        if (auto adopted = adopt(*browser, "project"); !adopted)
-            return cxx::unexpected(adopted.error());
-        auto tasks = tasks::makeTaskView(messages_.dispatcherRef(), lux::ui::PaneId{"tasks"}, task_monitor_);
-        if (auto adopted = adopt(tasks, "tasks"); !adopted)
-            return cxx::unexpected(adopted.error());
+        const auto factories = contributions_.snapshot().views();
+        for (const auto& [type, key] : std::array{
+                 std::pair{"lux.editor.project", "project"}, std::pair{"lux.editor.tasks", "tasks"}
+             })
+        {
+            auto candidate = factories.prepare(views::ViewTypeId{type}, {
+                messages_.dispatcherRef(), lux::ui::PaneId{key}, contracts::CodeLease::builtin(),
+                cxx::typeToken<std::monostate>(), std::make_shared<const std::monostate>()
+            });
+            if (!candidate)
+                return applicationFailure("startup.view.factory", candidate.error());
+            if (auto adopted = adopt(*candidate, key); !adopted)
+                return cxx::unexpected(adopted.error());
+        }
         const auto& manifest = project_->manifest();
         if (!manifest.default_scene.empty())
         {
@@ -249,33 +255,6 @@ namespace lux::editor::application
                     log::error("application.exit", "Exit review rejected: {}", requested.error().domain);
             };
         return {};
-    }
-    views::ViewFactoryResult<views::DetachedView> EditorApplication::Impl::makeProjectView(lux::ui::PaneId id)
-    {
-        std::erase_if(connections_, [](const auto& connection) { return !connection.connected(); });
-        if (connections_.size() >= 64)
-            return cxx::unexpected(
-                views::ViewFactoryFailure{views::EViewFactoryError::CONSTRUCT, "project.view.capacity"}
-            );
-        auto browser = project::makeProjectView(messages_.dispatcherRef(), std::move(id), project_->catalogModel());
-        auto connected = object::LuxObject::connect(
-            static_cast<project::ProjectView*>(browser.pane()),
-            &project::ProjectView::openRequested,
-            [this](AssetReference ref) noexcept {
-                if (phase_ != EApplicationPhase::RUNNING || open_intents_.size() == 64)
-                    log::error("application.open", "Asset open intent rejected: application closing or queue full");
-                else
-                    open_intents_.push_back(ref);
-            }
-        );
-        if (!connected)
-            return cxx::unexpected(views::ViewFactoryFailure{
-                views::EViewFactoryError::CONSTRUCT,
-                "object.connect",
-                static_cast<std::uint64_t>(connected.error())
-            });
-        connections_.push_back(std::move(*connected));
-        return browser;
     }
     EditorResult<void> EditorApplication::Impl::admission() const noexcept
     {

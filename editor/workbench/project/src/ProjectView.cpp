@@ -1,3 +1,4 @@
+#include <lux/engine/editor/workbench/ViewFactorySupport.hpp>
 #include <lux/engine/editor/project/ProjectView.hpp>
 #include <lux/engine/ui/Element.hpp>
 #include <imgui.h>
@@ -143,5 +144,30 @@ namespace lux::editor::project
     )
     {
         return {contracts::CodeLease::builtin(), std::make_unique<ProjectView>(dispatcher, std::move(id), query)};
+    }
+}
+
+namespace lux::editor::project
+{
+    namespace
+    {
+        constexpr views::ViewFactoryDescriptor kFactoryDescriptor{
+            views::ViewTypeIdView{"lux.editor.project"}, "Assets", cxx::typeToken<std::monostate>()
+        };
+    }
+    std::shared_ptr<views::ViewFactoryEntry> makeProjectViewFactory(
+        ProjectCatalogModel& catalog, cxx::move_only_function<void(const AssetReference&)> open
+    )
+    {
+        auto receiver = std::make_shared<cxx::move_only_function<void(const AssetReference&)>>(std::move(open));
+        return views::ViewFactoryEntry::bind<kFactoryDescriptor>(contracts::CodeLease::builtin(),
+            [&catalog, receiver](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
+                auto view = makeProjectView(input.dispatcher(), input.paneId(), catalog);
+                auto connected = workbench::detail::connectIntent(view, &ProjectView::openRequested, receiver);
+                if (!connected)
+                    return cxx::unexpected(connected.error());
+                return view;
+            }
+        );
     }
 }

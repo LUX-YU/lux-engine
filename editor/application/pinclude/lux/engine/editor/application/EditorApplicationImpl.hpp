@@ -294,7 +294,6 @@ namespace lux::editor::application
         [[nodiscard]] EditorResult<void> applyLayout(workspace::DockLayout);
         [[nodiscard]] EditorResult<void> assemble(PreparedProjectOpen&);
         [[nodiscard]] EditorResult<void> installContributions();
-        [[nodiscard]] views::ViewFactoryResult<views::DetachedView> makeProjectView(lux::ui::PaneId);
         [[nodiscard]] commands::CommandResult<commands::CommandInvocation>
         captureCommand(const commands::CommandDescriptor&, const lux::ui::Pane*, const lux::ui::Element*);
         [[nodiscard]] EditorResult<sessions::OpenAssetId> open(AssetReference);

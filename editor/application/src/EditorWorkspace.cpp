@@ -170,26 +170,13 @@ namespace lux::editor::application
         };
         recovery_command("lux.editor.recovery.capture", "Record content locations", CaptureRecovery{});
         recovery_command("lux.editor.recovery.restore", "Restore recorded content", RestoreRecovery{});
-        draft.views.push_back(views::ViewFactoryEntry::create(
-            contracts::CodeLease::builtin(),
-            views::ViewFactoryDescriptor{
-                views::ViewTypeIdView{"lux.editor.workspace"},
-                "Workspace",
-                cxx::typeToken<std::monostate>()
-            },
-            [this](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
-                return views::DetachedView{
-                    contracts::CodeLease::builtin(),
-                    std::make_unique<project::WorkspaceView>(input.dispatcher(), input.paneId(),
-                        [this] { return observeWorkspace(); },
-                        [this](VWorkspaceIntent intent) -> EditorResult<void> {
-                            if (workspace_intent_)
-                                return cxx::unexpected(EditorFailure{EEditorError::BUSY, "workspace.intent.capacity"});
-                            workspace_intent_ = std::move(intent);
-                            return {};
-                        }
-                    )
-                };
+        draft.views.push_back(project::makeWorkspaceViewFactory(
+            [this] { return observeWorkspace(); },
+            [this](VWorkspaceIntent intent) -> EditorResult<void> {
+                if (workspace_intent_)
+                    return cxx::unexpected(EditorFailure{EEditorError::BUSY, "workspace.intent.capacity"});
+                workspace_intent_ = std::move(intent);
+                return {};
             }
         ));
         draft.commands.push_back(commands::CommandEntry::bind<command_lux_editor_workspace>(

@@ -12,38 +12,13 @@ namespace lux::editor::application
 {
     void EditorApplication::Impl::installProjectCreation(extensions::ContributionDraft& draft)
     {
-        draft.views.push_back(views::ViewFactoryEntry::create(
-            contracts::CodeLease::builtin(),
-            views::ViewFactoryDescriptor{
-                views::ViewTypeIdView{"lux.editor.project.creation"},
-                "New project",
-                cxx::typeToken<std::monostate>()
-            },
-            [this](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
-                if (!project_creation_)
-                    project_creation_ = std::make_unique<ProjectCreation>(
-                        engine_->execution(),
-                        messages_.dispatcherRef(),
-                        config_.installation,
-                        !config_.offscreen
-                    );
-                EditorResult<void> ready;
-                auto pane = std::make_unique<project::ProjectCreationView>(
-                    input.dispatcher(),
-                    input.paneId(),
-                    project_creation_->requests(),
-                    ready
+        draft.views.push_back(project::makeProjectCreationViewFactory([this] {
+            if (!project_creation_)
+                project_creation_ = std::make_unique<ProjectCreation>(
+                    engine_->execution(), messages_.dispatcherRef(), config_.installation, !config_.offscreen
                 );
-                if (!ready)
-                    return cxx::unexpected(views::ViewFactoryFailure{
-                        views::EViewFactoryError::CONSTRUCT,
-                        ready.error().domain,
-                        ready.error().reason,
-                        ready.error().message
-                    });
-                return views::DetachedView{contracts::CodeLease::builtin(), std::move(pane)};
-            }
-        ));
+            return project_creation_->requests();
+        }));
         draft.commands.push_back(commands::CommandEntry::bind<command_lux_editor_project_create>(
             contracts::CodeLease::builtin(),
             [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {

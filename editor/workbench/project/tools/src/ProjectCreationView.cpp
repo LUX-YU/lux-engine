@@ -1,3 +1,4 @@
+#include <lux/engine/editor/workbench/ViewFactorySupport.hpp>
 #include <lux/engine/editor/project/ProjectCreationView.hpp>
 #include <lux/engine/ui/Controls.hpp>
 #include <lux/engine/ui/Layout.hpp>
@@ -307,5 +308,30 @@ namespace lux::editor::project
     void ProjectCreationView::update() noexcept
     {
         impl_->update();
+    }
+}
+
+namespace lux::editor::project
+{
+    namespace
+    {
+        constexpr views::ViewFactoryDescriptor kFactoryDescriptor{
+            views::ViewTypeIdView{"lux.editor.project.creation"}, "New project", cxx::typeToken<std::monostate>()
+        };
+    }
+    std::shared_ptr<views::ViewFactoryEntry> makeProjectCreationViewFactory(
+        cxx::move_only_function<ProjectCreationRequests()> requests
+    )
+    {
+        return views::ViewFactoryEntry::bind<kFactoryDescriptor>(contracts::CodeLease::builtin(),
+            [requests = std::move(requests)](const views::ViewFactoryInput& input) mutable
+                -> views::ViewFactoryResult<views::DetachedView> {
+                EditorResult<void> ready;
+                auto pane = std::make_unique<ProjectCreationView>(input.dispatcher(), input.paneId(), requests(), ready);
+                if (!ready)
+                    return cxx::unexpected(workbench::detail::viewFailure(ready.error()));
+                return views::DetachedView{contracts::CodeLease::builtin(), std::move(pane)};
+            }
+        );
     }
 }

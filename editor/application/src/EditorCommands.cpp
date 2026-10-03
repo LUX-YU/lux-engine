@@ -1,5 +1,6 @@
 #include <lux/engine/editor/application/EditorApplicationImpl.hpp>
 #include <algorithm>
+#include <lux/engine/log/Log.hpp>
 #include <lux/engine/editor/sessions/SessionCommands.hpp>
 #include <lux/engine/editor/configuration/EditorReflection.hpp>
 #include <lux/engine/meta/Meta.hpp>
@@ -22,17 +23,6 @@ namespace lux::editor::application
         template <class T> void append(std::vector<T>& to, std::vector<T>& from)
         {
             to.insert(to.end(), std::make_move_iterator(from.begin()), std::make_move_iterator(from.end()));
-        }
-        template <class Error> views::ViewFactoryFailure constructionFailure(std::string domain, const Error& error)
-        {
-            if constexpr (requires { error.index(); })
-                return std::visit([&](const auto& value) { return constructionFailure(domain, value); }, error);
-            else if constexpr (std::is_enum_v<Error>)
-                return {views::EViewFactoryError::CONSTRUCT, std::move(domain), static_cast<std::uint64_t>(error)};
-            else if constexpr (requires { error.code; })
-                return {views::EViewFactoryError::CONSTRUCT, std::move(domain), static_cast<std::uint64_t>(error.code)};
-            else
-                return {views::EViewFactoryError::CONSTRUCT, std::move(domain)};
         }
     }
     commands::CommandResult<commands::DispatchReceipt> EditorApplication::execute(
@@ -93,28 +83,15 @@ namespace lux::editor::application
         installResultView(draft);
         installWorkspaceView(draft);
         installProjectTools(draft);
-        draft.views.push_back(views::ViewFactoryEntry::create(
-            contracts::CodeLease::builtin(),
-            views::ViewFactoryDescriptor{
-                views::ViewTypeIdView{"lux.editor.project"},
-                "Assets",
-                cxx::typeToken<std::monostate>()
-            },
-            [this](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
-                return makeProjectView(input.paneId());
+        draft.views.push_back(project::makeProjectViewFactory(project_->catalogModel(),
+            [this](const AssetReference& ref) {
+                if (phase_ != EApplicationPhase::RUNNING || open_intents_.size() == 64)
+                    log::error("application.open", "Asset open intent rejected: application closing or queue full");
+                else
+                    open_intents_.push_back(ref);
             }
         ));
-        draft.views.push_back(views::ViewFactoryEntry::create(
-            contracts::CodeLease::builtin(),
-            views::ViewFactoryDescriptor{
-                views::ViewTypeIdView{"lux.editor.tasks"},
-                "Tasks",
-                cxx::typeToken<std::monostate>()
-            },
-            [this](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
-                return tasks::makeTaskView(input.dispatcher(), input.paneId(), task_monitor_);
-            }
-        ));
+        draft.views.push_back(tasks::makeTaskViewFactory(task_monitor_));
         const extensions::SessionActivities session_activities{sessions_, saves_};
         const extensions::ProjectActivities project_activities{*project_, writes_, engine_->execution()};
         const extensions::WorkbenchAccess workbench{messages_.dispatcherRef(), desktop_->views(), commands_};

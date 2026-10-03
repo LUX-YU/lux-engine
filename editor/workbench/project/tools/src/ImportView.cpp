@@ -1,3 +1,4 @@
+#include <lux/engine/editor/workbench/ViewFactorySupport.hpp>
 #include <lux/engine/editor/project/ImportView.hpp>
 #include <lux/engine/ui/Element.hpp>
 #include <imgui.h>
@@ -200,5 +201,36 @@ namespace lux::editor::project
         }
         else
             impl_->status.reset();
+    }
+}
+
+namespace lux::editor::project
+{
+    namespace
+    {
+        constexpr views::ViewFactoryDescriptor kFactoryDescriptor{
+            views::ViewTypeIdView{"lux.editor.import"}, "Import Assets", cxx::typeToken<std::monostate>()
+        };
+    }
+    std::shared_ptr<views::ViewFactoryEntry> makeImportViewFactory(
+        ProjectCatalogModel& catalog, assets::ModelImporter& importer,
+        cxx::move_only_function<void(lux::ui::PaneId)> browse
+    )
+    {
+        auto receiver = std::make_shared<cxx::move_only_function<void(lux::ui::PaneId)>>(std::move(browse));
+        return views::ViewFactoryEntry::bind<kFactoryDescriptor>(contracts::CodeLease::builtin(),
+            [&catalog, &importer, receiver](const views::ViewFactoryInput& input)
+                -> views::ViewFactoryResult<views::DetachedView> {
+                auto pane = std::make_unique<ImportView>(input.dispatcher(), input.paneId(), catalog, importer);
+                auto connection = object::LuxObject::connect(pane.get(), &ImportView::browseRequested,
+                    [id = input.paneId(), receiver]() noexcept { (*receiver)(id); }
+                );
+                if (!connection)
+                    return cxx::unexpected(workbench::detail::viewFailure(connection.error()));
+                views::DetachedView view{contracts::CodeLease::builtin(), std::move(pane)};
+                view.addConnection(std::move(*connection));
+                return view;
+            }
+        );
     }
 }

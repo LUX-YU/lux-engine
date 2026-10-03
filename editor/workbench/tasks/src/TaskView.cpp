@@ -1,3 +1,4 @@
+#include <lux/engine/editor/workbench/ViewFactorySupport.hpp>
 #include <lux/engine/editor/tasks/TaskView.hpp>
 #include <imgui.h>
 #include <algorithm>
@@ -88,5 +89,23 @@ namespace lux::editor::tasks
                 ImGui::PopID();
             }
         ImGui::EndTable();
+    }
+}
+
+namespace lux::editor::tasks
+{
+    namespace
+    {
+        constexpr views::ViewFactoryDescriptor kFactoryDescriptor{
+            views::ViewTypeIdView{"lux.editor.tasks"}, "Tasks", cxx::typeToken<std::monostate>()
+        };
+    }
+    std::shared_ptr<views::ViewFactoryEntry> makeTaskViewFactory(TaskMonitor& monitor)
+    {
+        return views::ViewFactoryEntry::bind<kFactoryDescriptor>(contracts::CodeLease::builtin(),
+            [&monitor](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
+                return makeTaskView(input.dispatcher(), input.paneId(), monitor);
+            }
+        );
     }
 }

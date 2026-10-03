@@ -1,3 +1,4 @@
+#include <lux/engine/editor/workbench/ViewFactorySupport.hpp>
 #include <lux/engine/editor/project/ResultsView.hpp>
 #include <lux/engine/ui/Element.hpp>
 #include <imgui.h>
@@ -68,4 +69,32 @@ namespace lux::editor::project
         return impl_->observation_failure_;
     }
     void ResultsView::update() noexcept { impl_->observe(); }
+}
+
+namespace lux::editor::project
+{
+    namespace
+    {
+        constexpr views::ViewFactoryDescriptor kFactoryDescriptor{
+            views::ViewTypeIdView{"lux.editor.content.results"}, "Content and Operations", cxx::typeToken<std::monostate>()
+        };
+    }
+    std::shared_ptr<views::ViewFactoryEntry> makeResultsViewFactory(ResultsView::Observe observe, ResultsView::Request request)
+    {
+        struct Receivers final
+        {
+            ResultsView::Observe observe;
+            ResultsView::Request request;
+        };
+        auto receivers = std::make_shared<Receivers>(std::move(observe), std::move(request));
+        return views::ViewFactoryEntry::bind<kFactoryDescriptor>(contracts::CodeLease::builtin(),
+            [receivers](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
+                return views::DetachedView{contracts::CodeLease::builtin(), std::make_unique<ResultsView>(
+                    input.dispatcher(), input.paneId(),
+                    [receivers] { return receivers->observe(); },
+                    [receivers](VResultIntent intent) { return receivers->request(std::move(intent)); }
+                )};
+            }
+        );
+    }
 }

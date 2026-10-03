@@ -1,7 +1,10 @@
 #pragma once
+#include <lux/cxx/core/move_only_function.hpp>
 #include <lux/engine/editor/scene/SceneConfigurationElement.hpp>
 #include <lux/engine/editor/storage/ProjectCreation.hpp>
 #include <lux/engine/ui/Pane.hpp>
+
+namespace lux::editor::views { class ViewFactoryEntry; }
 
 namespace lux::editor::project
 {
@@ -50,4 +53,7 @@ namespace lux::editor::project
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };
+    [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> makeProjectCreationViewFactory(
+        cxx::move_only_function<ProjectCreationRequests()> requests
+    );
 }

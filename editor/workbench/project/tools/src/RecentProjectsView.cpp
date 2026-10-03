@@ -1,3 +1,4 @@
+#include <lux/engine/editor/workbench/ViewFactorySupport.hpp>
 #include <lux/engine/editor/project/RecentProjectsView.hpp>
 #include <lux/engine/editor/storage/RecentProjects.hpp>
 #include <lux/engine/ui/Element.hpp>
@@ -77,4 +78,39 @@ namespace lux::editor::project
     RecentProjectsView::~RecentProjectsView() noexcept = default;
     void RecentProjectsView::update() noexcept { impl_->update(); }
     void RecentProjectsView::showFailure(EditorFailure failure) { impl_->failure_ = std::move(failure); }
+}
+
+namespace lux::editor::project
+{
+    namespace
+    {
+        constexpr views::ViewFactoryDescriptor kFactoryDescriptor{
+            views::ViewTypeIdView{"lux.editor.recent-projects"}, "Recent Projects", cxx::typeToken<std::monostate>()
+        };
+    }
+    std::shared_ptr<views::ViewFactoryEntry> makeRecentProjectsViewFactory(
+        RecentProjects& recent, cxx::move_only_function<EditorResult<void>(const std::filesystem::path&)> open
+    )
+    {
+        auto receiver = std::make_shared<cxx::move_only_function<EditorResult<void>(const std::filesystem::path&)>>(
+            std::move(open)
+        );
+        return views::ViewFactoryEntry::bind<kFactoryDescriptor>(contracts::CodeLease::builtin(),
+            [&recent, receiver](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
+                auto pane = std::make_unique<RecentProjectsView>(input.dispatcher(), input.paneId(), recent);
+                auto connection = object::LuxObject::connect(pane.get(), &RecentProjectsView::openRequested,
+                    [target = pane.get(), receiver](const std::filesystem::path& path) noexcept {
+                        auto result = (*receiver)(path);
+                        if (!result)
+                            target->showFailure(std::move(result.error()));
+                    }
+                );
+                if (!connection)
+                    return cxx::unexpected(workbench::detail::viewFailure(connection.error()));
+                views::DetachedView view{contracts::CodeLease::builtin(), std::move(pane)};
+                view.addConnection(std::move(*connection));
+                return view;
+            }
+        );
+    }
 }

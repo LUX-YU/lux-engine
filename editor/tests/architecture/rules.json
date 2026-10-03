@@ -6055,7 +6055,7 @@
     ],
     "closure": {
       "Eigen3::Eigen": {
-        "imported": true
+        "path": "."
       },
       "EnTT::EnTT": {
         "imported": true
@@ -6070,7 +6070,7 @@
         "imported": true
       },
       "Vulkan::Headers": {
-        "imported": true
+        "path": "."
       },
       "Vulkan::Vulkan": {
         "imported": true
@@ -6118,7 +6118,7 @@
         "path": "modules/platform/gapi"
       },
       "glfw": {
-        "imported": true
+        "path": "."
       },
       "hierarchy": {
         "path": "engine/domain/simulation/ecs/hierarchy"
@@ -6130,7 +6130,7 @@
         "path": "modules/resource/identity"
       },
       "imgui::core": {
-        "imported": true
+        "path": "modules/function/ui"
       },
       "imgui::node_editor": {
         "path": "editor/workbench/widgets"
@@ -6139,28 +6139,28 @@
         "imported": true
       },
       "lux::cxx::binary": {
-        "imported": true
+        "path": "."
       },
       "lux::cxx::compile_time": {
-        "imported": true
+        "path": "."
       },
       "lux::cxx::concurrent": {
-        "imported": true
+        "path": "modules/function/render/client"
       },
       "lux::cxx::container": {
-        "imported": true
+        "path": "modules/core/meta"
       },
       "lux::cxx::core": {
-        "imported": true
+        "path": "."
       },
       "lux::cxx::memory": {
-        "imported": true
+        "path": "."
       },
       "math": {
         "path": "modules/core/math"
       },
       "nfd::nfd": {
-        "imported": true
+        "path": "."
       },
       "object": {
         "path": "modules/core/object"
@@ -6385,7 +6385,7 @@
         "path": "engine/domain/simulation/ecs/snapshot"
       },
       "stduuid": {
-        "imported": true
+        "path": "."
       },
       "system": {
         "path": "engine/domain/simulation/system"
@@ -6747,7 +6747,7 @@
     ],
     "closure": {
       "Eigen3::Eigen": {
-        "imported": true
+        "path": "."
       },
       "EnTT::EnTT": {
         "imported": true
@@ -6762,7 +6762,7 @@
         "imported": true
       },
       "Vulkan::Headers": {
-        "imported": true
+        "path": "."
       },
       "Vulkan::Vulkan": {
         "imported": true
@@ -6816,7 +6816,7 @@
         "path": "modules/platform/gapi"
       },
       "glfw": {
-        "imported": true
+        "path": "."
       },
       "graph": {
         "path": "modules/function/graph"
@@ -6831,7 +6831,7 @@
         "path": "modules/resource/identity"
       },
       "imgui::core": {
-        "imported": true
+        "path": "modules/function/ui"
       },
       "imgui::node_editor": {
         "path": "editor/workbench/widgets"
@@ -6840,22 +6840,22 @@
         "imported": true
       },
       "lux::cxx::binary": {
-        "imported": true
+        "path": "."
       },
       "lux::cxx::compile_time": {
-        "imported": true
+        "path": "."
       },
       "lux::cxx::concurrent": {
-        "imported": true
+        "path": "modules/function/render/client"
       },
       "lux::cxx::container": {
-        "imported": true
+        "path": "modules/core/meta"
       },
       "lux::cxx::core": {
-        "imported": true
+        "path": "."
       },
       "lux::cxx::memory": {
-        "imported": true
+        "path": "."
       },
       "material_graph": {
         "path": "modules/function/material"
@@ -6873,7 +6873,7 @@
         "path": "modules/core/math"
       },
       "nfd::nfd": {
-        "imported": true
+        "path": "."
       },
       "object": {
         "path": "modules/core/object"
@@ -7101,7 +7101,7 @@
         "path": "."
       },
       "stduuid": {
-        "imported": true
+        "path": "."
       },
       "system": {
         "path": "engine/domain/simulation/system"
@@ -7828,7 +7828,8 @@
     "direct": [
       "imgui::core",
       "view_api",
-      "editor_tasks"
+      "editor_tasks",
+      "view_host"
     ],
     "closure": {
       "Eigen3::Eigen": {
@@ -7926,6 +7927,9 @@
       },
       "layout_model": {
         "path": "editor/authoring/layout"
+      },
+      "view_host": {
+        "path": "editor/workbench/desktop"
       }
     },
     "native_libraries": [
@@ -7942,7 +7946,9 @@
       "lux/engine/object/LuxObject.hpp",
       "lux/engine/process/TaskInfo.hpp",
       "vector",
-      "memory"
+      "memory",
+      "lux/engine/editor/workbench/ViewFactorySupport.hpp",
+      "lux/cxx/core/move_only_function.hpp"
     ],
     "prefixes": [],
     "test_headers": {
@@ -7964,6 +7970,9 @@
       "editor/activities/tasks/src/TaskMonitor.cpp",
       "editor/workbench/tasks/src/TaskView.cpp",
       "editor/tests/integration/tasks/monitor.cpp"
+    ],
+    "project_include_dirs": [
+      "editor/workbench/sinclude"
     ]
   },
   "project_ui": {
@@ -7971,7 +7980,8 @@
       "editor_project",
       "imgui::core",
       "ui",
-      "view_api"
+      "view_api",
+      "view_host"
     ],
     "closure": {
       "Eigen3::Eigen": {
@@ -8123,6 +8133,9 @@
       },
       "layout_model": {
         "path": "editor/authoring/layout"
+      },
+      "view_host": {
+        "path": "editor/workbench/desktop"
       }
     },
     "native_libraries": [
@@ -8143,7 +8156,9 @@
       "lux/engine/ui/Element.hpp",
       "optional",
       "span",
-      "variant"
+      "variant",
+      "lux/engine/editor/workbench/ViewFactorySupport.hpp",
+      "lux/cxx/core/move_only_function.hpp"
     ],
     "prefixes": [],
     "test_headers": {
@@ -8154,7 +8169,8 @@
         "lux/engine/editor/project/ProjectView.hpp",
         "lux/engine/ui/Layout.hpp",
         "lux/engine/ui/Root.hpp",
-        "lux/engine/editor/desktop/ReviewView.hpp"
+        "lux/engine/editor/desktop/ReviewView.hpp",
+        "cstdio"
       ]
     },
     "files": [
@@ -8163,6 +8179,9 @@
       "editor/workbench/project/src/AssetPickerElement.cpp",
       "editor/workbench/project/src/ProjectView.cpp",
       "editor/workbench/project/test/catalog.cpp"
+    ],
+    "project_include_dirs": [
+      "editor/workbench/sinclude"
     ]
   },
   "editor_scene_views_test": {
@@ -8184,7 +8203,7 @@
     ],
     "closure": {
       "Eigen3::Eigen": {
-        "imported": true
+        "path": "."
       },
       "EnTT::EnTT": {
         "path": "."
@@ -8571,7 +8590,7 @@
         "imported": true
       },
       "Vulkan::Headers": {
-        "imported": true
+        "path": "."
       },
       "Vulkan::Vulkan": {
         "path": "."
@@ -8658,7 +8677,7 @@
         "path": "modules/platform/gapi"
       },
       "glfw": {
-        "imported": true
+        "path": "."
       },
       "graph": {
         "path": "modules/function/graph"
@@ -8673,7 +8692,7 @@
         "path": "modules/resource/identity"
       },
       "imgui::core": {
-        "imported": true
+        "path": "modules/function/ui"
       },
       "imgui::node_editor": {
         "path": "editor/workbench/widgets"
@@ -8691,22 +8710,22 @@
         "imported": true
       },
       "lux::cxx::binary": {
-        "imported": true
+        "path": "."
       },
       "lux::cxx::compile_time": {
-        "imported": true
+        "path": "."
       },
       "lux::cxx::concurrent": {
-        "imported": true
+        "path": "modules/function/render/client"
       },
       "lux::cxx::container": {
-        "imported": true
+        "path": "modules/core/meta"
       },
       "lux::cxx::core": {
-        "imported": true
+        "path": "."
       },
       "lux::cxx::memory": {
-        "imported": true
+        "path": "."
       },
       "lux::cxx::reflection_runtime": {
         "path": "."
@@ -8739,7 +8758,7 @@
         "path": "modules/core/meta"
       },
       "nfd::nfd": {
-        "imported": true
+        "path": "."
       },
       "object": {
         "path": "modules/core/object"
@@ -9054,7 +9073,7 @@
         "path": "."
       },
       "stduuid": {
-        "imported": true
+        "path": "."
       },
       "system": {
         "path": "engine/domain/simulation/system"
@@ -18450,7 +18469,10 @@
         "consumers": [
           "scene_ui",
           "material_ui",
-          "flow_ui"
+          "flow_ui",
+          "project_ui",
+          "tasks_ui",
+          "project_tools_ui"
         ]
       }
     },

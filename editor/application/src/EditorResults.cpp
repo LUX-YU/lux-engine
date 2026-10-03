@@ -311,26 +311,13 @@ namespace lux::editor::application
     {
         // An application composition view, not another operation owner. It records button intents only;
         // service calls and structural changes run after Root returns from draw/update.
-        draft.views.push_back(views::ViewFactoryEntry::create(
-            contracts::CodeLease::builtin(),
-            views::ViewFactoryDescriptor{
-                views::ViewTypeIdView{"lux.editor.content.results"},
-                "Content and Operations",
-                cxx::typeToken<std::monostate>()
-            },
-            [this](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
-                return views::DetachedView{
-                    contracts::CodeLease::builtin(),
-                    std::make_unique<project::ResultsView>(input.dispatcher(), input.paneId(),
-                        [this] { return observeResults(); },
-                        [this](VResultIntent intent) -> EditorResult<void> {
-                            if (result_intent_)
-                                return cxx::unexpected(EditorFailure{EEditorError::BUSY, "result.intent.capacity"});
-                            result_intent_ = std::move(intent);
-                            return {};
-                        }
-                    )
-                };
+        draft.views.push_back(project::makeResultsViewFactory(
+            [this] { return observeResults(); },
+            [this](VResultIntent intent) -> EditorResult<void> {
+                if (result_intent_)
+                    return cxx::unexpected(EditorFailure{EEditorError::BUSY, "result.intent.capacity"});
+                result_intent_ = std::move(intent);
+                return {};
             }
         ));
         draft.commands.push_back(commands::CommandEntry::bind<command_lux_editor_content_results>(

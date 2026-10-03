@@ -1,3 +1,4 @@
+#include <lux/engine/editor/workbench/ViewFactorySupport.hpp>
 #include <lux/engine/editor/project/WorkspaceView.hpp>
 #include <lux/engine/ui/Element.hpp>
 #include <imgui.h>
@@ -113,4 +114,32 @@ namespace lux::editor::project
         return impl_->observation_failure_;
     }
     void WorkspaceView::update() noexcept { impl_->observe(); }
+}
+
+namespace lux::editor::project
+{
+    namespace
+    {
+        constexpr views::ViewFactoryDescriptor kFactoryDescriptor{
+            views::ViewTypeIdView{"lux.editor.workspace"}, "Workspace", cxx::typeToken<std::monostate>()
+        };
+    }
+    std::shared_ptr<views::ViewFactoryEntry> makeWorkspaceViewFactory(WorkspaceView::Observe observe, WorkspaceView::Request request)
+    {
+        struct Receivers final
+        {
+            WorkspaceView::Observe observe;
+            WorkspaceView::Request request;
+        };
+        auto receivers = std::make_shared<Receivers>(std::move(observe), std::move(request));
+        return views::ViewFactoryEntry::bind<kFactoryDescriptor>(contracts::CodeLease::builtin(),
+            [receivers](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
+                return views::DetachedView{contracts::CodeLease::builtin(), std::make_unique<WorkspaceView>(
+                    input.dispatcher(), input.paneId(),
+                    [receivers] { return receivers->observe(); },
+                    [receivers](VWorkspaceIntent intent) { return receivers->request(std::move(intent)); }
+                )};
+            }
+        );
+    }
 }

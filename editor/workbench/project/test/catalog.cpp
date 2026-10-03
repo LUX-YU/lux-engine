@@ -4,6 +4,7 @@
 #include <lux/engine/ui/Root.hpp>
 #include <lux/engine/ui/Layout.hpp>
 #include <cassert>
+#include <cstdio>
 
 using namespace lux;
 using namespace lux::editor;
@@ -148,4 +149,39 @@ int main()
     rejected_intent = intents.requestOpen(current_reference);
     assert(!rejected_intent && synchronous == 3 && asynchronous == 1);
     assert(std::get<project::EProjectQueryError>(rejected_intent.error()) == project::EProjectQueryError::CLOSED);
+    // Production descriptor binding: no Application, and each detached owner owns its own connection.
+    unsigned received{};
+    auto lifetime = std::make_shared<int>(17);
+    std::weak_ptr<int> weak = lifetime;
+    auto factory = project::makeProjectViewFactory(source, [pin = lifetime, &received](const AssetReference&) {
+        assert(*pin == 17);
+        ++received;
+    });
+    lifetime.reset();
+    auto peer_factory = project::makeProjectViewFactory(source, {});
+    assert(&factory->descriptor() == &peer_factory->descriptor());
+    auto factories = take(views::ViewFactorySnapshot::create({factory}));
+    const auto build = [&](const char* name) {
+        return take(factories.prepare(views::ViewTypeId{"lux.editor.project"}, {
+            messages.dispatcherRef(), ui::PaneId{name}, contracts::CodeLease::builtin(),
+            cxx::typeToken<std::monostate>(), std::make_shared<const std::monostate>()
+        }));
+    };
+    const auto mounted_before = root->panes().size();
+    auto first_bound = build("factory-first");
+    auto second_bound = build("factory-second");
+    std::printf("Detached tool factories: Root windows before=%zu after=%zu\n", mounted_before, root->panes().size());
+    assert(root->panes().size() == mounted_before);
+    auto* first_pane = static_cast<project::ProjectView*>(first_bound.pane());
+    auto* second_pane = static_cast<project::ProjectView*>(second_bound.pane());
+    const auto first_id = take(host.adopt(first_bound, views::ViewRestoreKey{"factory-first"})).id;
+    const auto last_id = take(host.adopt(second_bound, views::ViewRestoreKey{"factory-second"})).id;
+    factory.reset();
+    factories = {};
+    assert(!weak.expired());
+    assert(first_pane->requestOpen(current_reference) && received == 1);
+    assert(host.close(first_id) && host.drain());
+    assert(!weak.expired() && second_pane->requestOpen(current_reference) && received == 2);
+    assert(host.close(last_id) && host.drain());
+    assert(weak.expired());
 }

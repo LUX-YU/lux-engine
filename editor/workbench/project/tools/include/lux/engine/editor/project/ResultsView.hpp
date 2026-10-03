@@ -1,9 +1,12 @@
 #pragma once
+#include <lux/cxx/core/move_only_function.hpp>
 #include <lux/engine/editor/EditorError.hpp>
 #include <lux/engine/ui/Pane.hpp>
 #include <lux/cxx/core/move_only_function.hpp>
 #include <lux/engine/editor/persistence/SaveTypes.hpp>
 #include <lux/engine/editor/scene/RunTypes.hpp>
+
+namespace lux::editor::views { class ViewFactoryEntry; }
 
 namespace lux::editor::project
 {
@@ -108,4 +111,5 @@ namespace lux::editor::project
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };
+    [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> makeResultsViewFactory(ResultsView::Observe observe, ResultsView::Request request);
 }

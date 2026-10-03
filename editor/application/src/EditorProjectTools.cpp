@@ -75,37 +75,8 @@ namespace lux::editor::application
             }
         ));
 
-        draft.views.push_back(views::ViewFactoryEntry::create(
-            contracts::CodeLease::builtin(),
-            views::ViewFactoryDescriptor{
-                views::ViewTypeIdView{"lux.editor.import"},
-                "Import Assets",
-                cxx::typeToken<std::monostate>()
-            },
-            [this](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
-                std::erase_if(connections_, [](const auto& value) { return !value.connected(); });
-                if (connections_.size() >= 64)
-                    return cxx::unexpected(
-                        views::ViewFactoryFailure{views::EViewFactoryError::CONSTRUCT, "import.connections"}
-                    );
-                auto view = std::make_unique<project::ImportView>(
-                    input.dispatcher(),
-                    input.paneId(),
-                    project_->catalogModel(),
-                    *importer_
-                );
-                auto connected = object::LuxObject::connect(
-                    view.get(),
-                    &project::ImportView::browseRequested,
-                    [this, pane = input.paneId()]() noexcept { import_browse_ = pane; }
-                );
-                if (!connected)
-                    return cxx::unexpected(
-                        views::ViewFactoryFailure{views::EViewFactoryError::CONSTRUCT, "import.browse"}
-                    );
-                connections_.push_back(std::move(*connected));
-                return views::DetachedView{contracts::CodeLease::builtin(), std::move(view)};
-            }
+        draft.views.push_back(project::makeImportViewFactory(project_->catalogModel(), *importer_,
+            [this](lux::ui::PaneId pane) { import_browse_ = std::move(pane); }
         ));
         draft.commands.push_back(commands::CommandEntry::bind<command_lux_editor_import>(
             contracts::CodeLease::builtin(),
@@ -200,39 +171,14 @@ namespace lux::editor::application
 {
     void EditorApplication::Impl::installRecentProjects(extensions::ContributionDraft& draft)
     {
-        draft.views.push_back(views::ViewFactoryEntry::create(
-            contracts::CodeLease::builtin(),
-            views::ViewFactoryDescriptor{
-                views::ViewTypeIdView{"lux.editor.recent-projects"},
-                "Recent Projects",
-                cxx::typeToken<std::monostate>()
-            },
-            [this](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
-                std::erase_if(connections_, [](const auto& connection) { return !connection.connected(); });
-                if (connections_.size() >= 64)
-                    return cxx::unexpected(views::ViewFactoryFailure{
-                        views::EViewFactoryError::CONSTRUCT, "recent.connections"
-                    });
-                auto view = std::make_unique<project::RecentProjectsView>(
-                    input.dispatcher(), input.paneId(), *recent_projects_
-                );
-                auto connected = object::LuxObject::connect(
-                    view.get(), &project::RecentProjectsView::openRequested,
-                    [this, receiver = view.get()](const std::filesystem::path& path) noexcept {
-                        const bool is_unavailable = phase_ != EApplicationPhase::RUNNING ||
-                            project_launch_.has_value() || project_launch_intent_.has_value();
-                        if (is_unavailable)
-                            receiver->showFailure({EEditorError::BUSY, "recent.open"});
-                        else
-                            project_launch_intent_ = path;
-                    }
-                );
-                if (!connected)
-                    return cxx::unexpected(views::ViewFactoryFailure{
-                        views::EViewFactoryError::CONSTRUCT, "recent.connect"
-                    });
-                connections_.push_back(std::move(*connected));
-                return views::DetachedView{contracts::CodeLease::builtin(), std::move(view)};
+        draft.views.push_back(project::makeRecentProjectsViewFactory(*recent_projects_,
+            [this](const std::filesystem::path& path) -> EditorResult<void> {
+                const bool is_unavailable = phase_ != EApplicationPhase::RUNNING ||
+                    project_launch_.has_value() || project_launch_intent_.has_value();
+                if (is_unavailable)
+                    return cxx::unexpected(EditorFailure{EEditorError::BUSY, "recent.open"});
+                project_launch_intent_ = path;
+                return {};
             }
         ));
         draft.commands.push_back(commands::CommandEntry::bind<command_lux_editor_project_recent>(

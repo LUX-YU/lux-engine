@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/cxx/core/move_only_function.hpp>
 
 #include <lux/engine/editor/EditorError.hpp>
 #include <lux/engine/ui/Pane.hpp>
@@ -8,6 +9,8 @@ namespace lux::editor
 {
     class RecentProjects;
 }
+namespace lux::editor::views { class ViewFactoryEntry; }
+
 namespace lux::editor::project
 {
     class RecentProjectsView final : public lux::ui::Pane
@@ -27,4 +30,7 @@ namespace lux::editor::project
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };
+    [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> makeRecentProjectsViewFactory(
+        RecentProjects& recent, cxx::move_only_function<EditorResult<void>(const std::filesystem::path&)> open
+    );
 }

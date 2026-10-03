@@ -1,7 +1,10 @@
 #pragma once
+#include <lux/cxx/core/move_only_function.hpp>
 #include <lux/engine/editor/project/ProjectCatalogModel.hpp>
 #include <lux/engine/editor/assets/ModelImporter.hpp>
 #include <lux/engine/editor/views/IViewHost.hpp>
+
+namespace lux::editor::views { class ViewFactoryEntry; }
 
 namespace lux::editor::project
 {
@@ -25,4 +28,8 @@ namespace lux::editor::project
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };
+    [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> makeImportViewFactory(
+        ProjectCatalogModel& catalog, assets::ModelImporter& importer,
+        cxx::move_only_function<void(lux::ui::PaneId)> browse
+    );
 }

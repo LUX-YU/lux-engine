@@ -38,8 +38,19 @@ int main()
         [&](std::uint64_t) noexcept { ++notifications; },
         object::EDelivery::QUEUED
     ));
-    auto first = tasks::makeTaskView(messages.dispatcherRef(), ui::PaneId{"first"}, monitor);
-    auto second = tasks::makeTaskView(messages.dispatcherRef(), ui::PaneId{"second"}, monitor);
+    auto factory = tasks::makeTaskViewFactory(monitor);
+    auto peer = tasks::makeTaskViewFactory(monitor);
+    assert(&factory->descriptor() == &peer->descriptor());
+    auto factories = take(views::ViewFactorySnapshot::create({factory}));
+    const auto create = [&](const char* id) {
+        return take(factories.prepare(views::ViewTypeId{"lux.editor.tasks"}, {
+            messages.dispatcherRef(), ui::PaneId{id}, contracts::CodeLease::builtin(),
+            cxx::typeToken<std::monostate>(), std::make_shared<const std::monostate>()
+        }));
+    };
+    auto first = create("first");
+    auto second = create("second");
+    assert(root->panes().empty());
     auto* a = static_cast<tasks::TaskView*>(first.pane());
     auto* b = static_cast<tasks::TaskView*>(second.pane());
     const auto aid = take(host.adopt(first, views::ViewRestoreKey{"first"})).id;

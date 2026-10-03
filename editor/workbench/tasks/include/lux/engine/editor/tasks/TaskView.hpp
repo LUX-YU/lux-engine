@@ -1,7 +1,10 @@
 #pragma once
+#include <lux/cxx/core/move_only_function.hpp>
 #include <lux/engine/editor/tasks/TaskMonitor.hpp>
 #include <lux/engine/editor/views/IViewHost.hpp>
 #include <lux/engine/ui/Element.hpp>
+namespace lux::editor::views { class ViewFactoryEntry; }
+
 namespace lux::editor::tasks
 {
     // Shared task table; observation and cancellation remain with TaskMonitor and ExecutionRuntime.
@@ -49,4 +52,5 @@ namespace lux::editor::tasks
         TaskListElement content_;
     };
     [[nodiscard]] views::DetachedView makeTaskView(object::ObjectDispatcherRef, lux::ui::PaneId, TaskMonitor&);
+    [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> makeTaskViewFactory(TaskMonitor& monitor);
 }

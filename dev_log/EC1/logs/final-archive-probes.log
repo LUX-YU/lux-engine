@@ -1,0 +1,4 @@
+relocated 0 expected True
+missing 1 expected True
+tampered 1 expected True
+Actual archive relocation and missing/tamper rejection PASS; P12 historical waiver unchanged

@@ -1,0 +1,22 @@
+{
+  "phase": "EC1",
+  "migration_stage": "EC1",
+  "layering_mode": "STRICT",
+  "stop_after": "EC1",
+  "status": "PASS",
+  "input_sha": "54f8a56354b8cdf3caebce7dcfaa873d4da0b2e8",
+  "implementation_sha": "137b8f441faa1dbb7dfa792b6f01b513327e6248",
+  "user_patch_applied": false,
+  "frozen_at": "2026-10-03T00:54:13.851038+00:00",
+  "checkout": "E:\\SyncForder\\CodeRepos\\lux-engine-p12",
+  "qualification_checkout": "E:\\SyncForder\\CodeRepos\\lux-engine-ec1",
+  "inherited": {
+    "P12": "PARTIAL_USER_WAIVER",
+    "linux": "NOT_RUN",
+    "system_ime": "NOT_RUN",
+    "old_50k": "PARTIAL_NO_MORE_SAMPLES"
+  },
+  "scope": "EC1 S0-S7 Windows and installed external Skeleton DLL; no main merge or release",
+  "review_checkout": "E:/SyncForder/CodeRepos/lux-engine-ec1",
+  "archive_probes": "PASS"
+}

@@ -1,0 +1,42 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev
+    Start 127: editor.application
+1/1 Test #127: editor.application ...............Exit code 0xc0000409
+***Exception:   4.32 sec
+Application construction: object.connect: 
+C04: actual EditorApplication::create rejects required menu connection failure
+P13 foreign command lux.editor.new.material code=1 domain=application.thread
+P13 foreign command lux.editor.exit code=1 domain=application.thread
+P13 foreign command test.missing code=1 domain=application.thread
+P13 foreign command lux.editor.new.material code=1 domain=application.thread
+P13 foreign command lux.editor.exit code=1 domain=application.thread
+P13 foreign command test.missing code=1 domain=application.thread
+P13 command admission: owner recovers; sessions, content and views unchanged
+Application direct destruction: formal content, tools and GPU presentation released
+Recent projects: real legacy-format read, one coordinator publication, malformed input preserves file/list, explicit retry
+C01: malformed product layout preserves hidden state, count and exact dock encoding
+Workspace UI uses stable layout IDs and one publication coordinator; preference failure preserves UI commit
+Real Save As preserves author history, publishes source/catalog and reopens the same Session
+Recovery uses an independent immutable manifest, keeps BUSY input, reuses exact windows and preserves unknown bytes/camera
+Real compile intent publishes a readable versioned package; stale intent rejected and baseline unchanged
+Export Copy leaves the baseline intact; actual Reload keeps SessionId and replaces history
+Actual new commands, shared content views and cancel exit preserve all author state
+Last-view Cancel/Keep/Close use real modals; closing one content preserves another
+save source=Content/Beginner/Material.source type=lux.material.source failure=none result=1
+save source=Content/Beginner/MaterialCopy.source type=lux.material.source failure=project.manifest:mount_path result=1
+save source=Content/Beginner/Flow.source type=lux.flowforge.source failure=project.manifest:mount_path result=1
+Assertion failed: flow_asset != assets.end(), file E:\SyncForder\CodeRepos\lux-engine-p12\editor\tests\integration\application\application.cpp, line 770
+
+
+0% tests passed, 1 tests failed out of 1
+
+Label Time Summary:
+P12       =   4.32 sec*proc (1 test)
+editor    =   4.32 sec*proc (1 test)
+gpu       =   4.32 sec*proc (1 test)
+
+Total Test time (real) =   4.36 sec
+
+The following tests FAILED:
+	127 - editor.application (Exit code 0xc0000409
+)        P12 editor gpu
+Errors while running CTest

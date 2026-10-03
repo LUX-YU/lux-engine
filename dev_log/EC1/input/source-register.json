@@ -1,0 +1,301 @@
+{
+  "repository": "LUX-YU/lux-engine",
+  "reviewed_sha": "54f8a56354b8cdf3caebce7dcfaa873d4da0b2e8",
+  "kind": "design-source-index-not-implementation-receipt",
+  "sources": [
+    {
+      "id": "S01",
+      "path": "editor/editing/include/lux/engine/editor/editing/EditHistory.hpp",
+      "symbols": "EditHistory public mutations",
+      "read_scope": "本次读取",
+      "url": "https://github.com/LUX-YU/lux-engine/blob/54f8a56354b8cdf3caebce7dcfaa873d4da0b2e8/editor/editing/include/lux/engine/editor/editing/EditHistory.hpp"
+    },
+    {
+      "id": "S02",
+      "path": "editor/editing/src/history/EditHistory.cpp",
+      "symbols": "Impl; execute; replay; clear; close",
+      "read_scope": "本次读取完整算法段",
+      "url": "https://github.com/LUX-YU/lux-engine/blob/54f8a56354b8cdf3caebce7dcfaa873d4da0b2e8/editor/editing/src/history/EditHistory.cpp"
+    },
+    {
+      "id": "S03",
+      "path": "editor/editing/include/lux/engine/editor/editing/EditOperation.hpp",
+      "symbols": "EditOperation; PreparedEdit; friend boundary",
+      "read_scope": "本次读取",
+      "url": "https://github.com/LUX-YU/lux-engine/blob/54f8a56354b8cdf3caebce7dcfaa873d4da0b2e8/editor/editing/include/lux/engine/editor/editing/EditOperation.hpp"
+    },
+    {
+      "id": "S04",
+      "path": "editor/authoring/project/include/lux/engine/editor/project/ProjectManifest.hpp",
+      "symbols": "EProjectAssetKind; ProjectAssetEntry",
+      "read_scope": "固定 SHA 上下文中已读",
+      "url": "https://github.com/LUX-YU/lux-engine/blob/54f8a56354b8cdf3caebce7dcfaa873d4da0b2e8/editor/authoring/project/include/lux/engine/editor/project/ProjectManifest.hpp"
+    },
+    {
+      "id": "S05",
+      "path": "editor/authoring/project/src/ProjectManifest.cpp",
+      "symbols": "kinds; validation/codec helpers",
+      "read_scope": "本次读取 1–235 行",
+      "url": "https://github.com/LUX-YU/lux-engine/blob/54f8a56354b8cdf3caebce7dcfaa873d4da0b2e8/editor/authoring/project/src/ProjectManifest.cpp"
+    },
+    {
+      "id": "S06",
+      "path": "editor/application/src/EditorViews.cpp",
+      "symbols": "openCaptured; makeContentView; wireContentView",
+      "read_scope": "固定 SHA 上下文中已读",
+      "url": "https://github.com/LUX-YU/lux-engine/blob/54f8a56354b8cdf3caebce7dcfaa873d4da0b2e8/editor/application/src/EditorViews.cpp"
+    },
+    {
+      "id": "S07",
+      "path": "editor/application/src/EditorSaving.cpp",
+      "symbols": "assetKind; prepareSave; askSave; cancelContentPreview",
+      "read_scope": "固定 SHA 上下文中已读",
+      "url": "https://github.com/LUX-YU/lux-engine/blob/54f8a56354b8cdf3caebce7dcfaa873d4da0b2e8/editor/application/src/EditorSaving.cpp"
+    },
+    {
+      "id": "S08",
+      "path": "editor/application/src/EditorRecovery.cpp",
+      "symbols": "recoveryType; settleRecovery; captureRecovery",
+      "read_scope": "本次读取 1–220 行",
+      "url": "https://github.com/LUX-YU/lux-engine/blob/54f8a56354b8cdf3caebce7dcfaa873d4da0b2e8/editor/application/src/EditorRecovery.cpp"
+    },
+    {
+      "id": "S09",
+      "path": "editor/application/pinclude/lux/engine/editor/application/EditorApplicationImpl.hpp",
+      "symbols": "ContentView; VCompiledSource; ResultIntent; WorkspaceIntent",
+      "read_scope": "固定 SHA 上下文中已读",
+      "url": "https://github.com/LUX-YU/lux-engine/blob/54f8a56354b8cdf3caebce7dcfaa873d4da0b2e8/editor/application/pinclude/lux/engine/editor/application/EditorApplicationImpl.hpp"
+    },
+    {
+      "id": "S10",
+      "path": "editor/application/extensions/include/lux/engine/editor/extensions/EditorExtension.hpp",
+      "symbols": "V7 exports; contribute(Draft&, CodeLease)",
+      "read_scope": "本次读取",
+      "url": "https://github.com/LUX-YU/lux-engine/blob/54f8a56354b8cdf3caebce7dcfaa873d4da0b2e8/editor/application/extensions/include/lux/engine/editor/extensions/EditorExtension.hpp"
+    },
+    {
+      "id": "S11",
+      "path": "editor/application/extensions/include/lux/engine/editor/extensions/Contributions.hpp",
+      "symbols": "ContributionDraft; ContributionSnapshot; ContributionRegistry",
+      "read_scope": "固定 SHA 上下文中已读",
+      "url": "https://github.com/LUX-YU/lux-engine/blob/54f8a56354b8cdf3caebce7dcfaa873d4da0b2e8/editor/application/extensions/include/lux/engine/editor/extensions/Contributions.hpp"
+    },
+    {
+      "id": "S12",
+      "path": "editor/activities/sessions/include/lux/engine/editor/sessions/SessionFactory.hpp",
+      "symbols": "PreparedSessionData; SessionFactoryEntry; SessionLoadJob",
+      "read_scope": "固定 SHA 上下文中已读",
+      "url": "https://github.com/LUX-YU/lux-engine/blob/54f8a56354b8cdf3caebce7dcfaa873d4da0b2e8/editor/activities/sessions/include/lux/engine/editor/sessions/SessionFactory.hpp"
+    },
+    {
+      "id": "S13",
+      "path": "editor/workbench/desktop/include/lux/engine/editor/views/ViewFactory.hpp",
+      "symbols": "ViewFactoryDescriptor; ViewFactoryInput; ViewFactorySnapshot",
+      "read_scope": "固定 SHA 上下文中已读",
+      "url": "https://github.com/LUX-YU/lux-engine/blob/54f8a56354b8cdf3caebce7dcfaa873d4da0b2e8/editor/workbench/desktop/include/lux/engine/editor/views/ViewFactory.hpp"
+    },
+    {
+      "id": "S14",
+      "path": "editor/workbench/desktop/include/lux/engine/editor/views/IViewHost.hpp",
+      "symbols": "DetachedView; PreparedViewState; ViewRequests; IViewHost",
+      "read_scope": "本次读取",
+      "url": "https://github.com/LUX-YU/lux-engine/blob/54f8a56354b8cdf3caebce7dcfaa873d4da0b2e8/editor/workbench/desktop/include/lux/engine/editor/views/IViewHost.hpp"
+    },
+    {
+      "id": "S15",
+      "path": "editor/activities/project/include/lux/engine/editor/storage/ProjectStorage.hpp",
+      "symbols": "captureSource; captureAssetReads; assets; preparePublication",
+      "read_scope": "本次读取",
+      "url": "https://github.com/LUX-YU/lux-engine/blob/54f8a56354b8cdf3caebce7dcfaa873d4da0b2e8/editor/activities/project/include/lux/engine/editor/storage/ProjectStorage.hpp"
+    },
+    {
+      "id": "S16",
+      "path": "editor/authoring/project/include/lux/engine/editor/project/ProjectCatalogModel.hpp",
+      "symbols": "ProjectCatalogSnapshot; ProjectCatalogModel",
+      "read_scope": "固定 SHA 上下文中已读",
+      "url": "https://github.com/LUX-YU/lux-engine/blob/54f8a56354b8cdf3caebce7dcfaa873d4da0b2e8/editor/authoring/project/include/lux/engine/editor/project/ProjectCatalogModel.hpp"
+    },
+    {
+      "id": "S17",
+      "path": "editor/activities/tasks/include/lux/engine/editor/tasks/TaskMonitor.hpp",
+      "symbols": "Snapshot; snapshot; requestCancel; observer lifetime",
+      "read_scope": "本次读取",
+      "url": "https://github.com/LUX-YU/lux-engine/blob/54f8a56354b8cdf3caebce7dcfaa873d4da0b2e8/editor/activities/tasks/include/lux/engine/editor/tasks/TaskMonitor.hpp"
+    },
+    {
+      "id": "S18",
+      "path": "editor/workbench/scene/src/InspectorView.cpp",
+      "symbols": "options; changeComponent; clear; rebind",
+      "read_scope": "固定 SHA 上下文中已读",
+      "url": "https://github.com/LUX-YU/lux-engine/blob/54f8a56354b8cdf3caebce7dcfaa873d4da0b2e8/editor/workbench/scene/src/InspectorView.cpp"
+    },
+    {
+      "id": "S19",
+      "path": "editor/workbench/scene/include/lux/engine/editor/scene/InspectorView.hpp",
+      "symbols": "InspectorComponent colocated with concrete view",
+      "read_scope": "固定 SHA 上下文中已读",
+      "url": "https://github.com/LUX-YU/lux-engine/blob/54f8a56354b8cdf3caebce7dcfaa873d4da0b2e8/editor/workbench/scene/include/lux/engine/editor/scene/InspectorView.hpp"
+    },
+    {
+      "id": "S20",
+      "path": "editor/workbench/scene/src/OutlinerView.cpp",
+      "symbols": "readRows; update; draw; reparent",
+      "read_scope": "固定 SHA 上下文中已读",
+      "url": "https://github.com/LUX-YU/lux-engine/blob/54f8a56354b8cdf3caebce7dcfaa873d4da0b2e8/editor/workbench/scene/src/OutlinerView.cpp"
+    },
+    {
+      "id": "S21",
+      "path": "editor/workbench/scene/src/SceneConfigurationElement.cpp",
+      "symbols": "FeatureField; system config; encode; presetFeatures",
+      "read_scope": "固定 SHA 上下文中已读",
+      "url": "https://github.com/LUX-YU/lux-engine/blob/54f8a56354b8cdf3caebce7dcfaa873d4da0b2e8/editor/workbench/scene/src/SceneConfigurationElement.cpp"
+    },
+    {
+      "id": "S22",
+      "path": "editor/workbench/scene/include/lux/engine/editor/scene/SceneConfigurationElement.hpp",
+      "symbols": "SceneConfigurationInputs; ConfigurationControl",
+      "read_scope": "固定 SHA 上下文中已读",
+      "url": "https://github.com/LUX-YU/lux-engine/blob/54f8a56354b8cdf3caebce7dcfaa873d4da0b2e8/editor/workbench/scene/include/lux/engine/editor/scene/SceneConfigurationElement.hpp"
+    },
+    {
+      "id": "S23",
+      "path": "editor/authoring/scene/src/SceneSource.cpp",
+      "symbols": "objects; validate; build; capture; copyOpaque",
+      "read_scope": "固定 SHA 上下文中已读",
+      "url": "https://github.com/LUX-YU/lux-engine/blob/54f8a56354b8cdf3caebce7dcfaa873d4da0b2e8/editor/authoring/scene/src/SceneSource.cpp"
+    },
+    {
+      "id": "S24",
+      "path": "editor/activities/scene/src/SceneProjection.cpp",
+      "symbols": "update; replace; instantiateAuthorProjection",
+      "read_scope": "固定 SHA 上下文中已读",
+      "url": "https://github.com/LUX-YU/lux-engine/blob/54f8a56354b8cdf3caebce7dcfaa873d4da0b2e8/editor/activities/scene/src/SceneProjection.cpp"
+    },
+    {
+      "id": "S25",
+      "path": "editor/activities/scene/src/ModelCreationOperation.cpp",
+      "symbols": "commit dependency scan; captured catalog; codec recheck",
+      "read_scope": "固定 SHA 上下文中已读",
+      "url": "https://github.com/LUX-YU/lux-engine/blob/54f8a56354b8cdf3caebce7dcfaa873d4da0b2e8/editor/activities/scene/src/ModelCreationOperation.cpp"
+    },
+    {
+      "id": "S26",
+      "path": "editor/workbench/flow/src/FlowView.cpp",
+      "symbols": "NodePropertiesDraft; CanvasRequest; shared delivery",
+      "read_scope": "固定 SHA 上下文中已读",
+      "url": "https://github.com/LUX-YU/lux-engine/blob/54f8a56354b8cdf3caebce7dcfaa873d4da0b2e8/editor/workbench/flow/src/FlowView.cpp"
+    },
+    {
+      "id": "S27",
+      "path": "editor/workbench/material/src/MaterialView.cpp",
+      "symbols": "Properties; node/settings UI; delivery",
+      "read_scope": "固定 SHA 上下文中已读",
+      "url": "https://github.com/LUX-YU/lux-engine/blob/54f8a56354b8cdf3caebce7dcfaa873d4da0b2e8/editor/workbench/material/src/MaterialView.cpp"
+    },
+    {
+      "id": "S28",
+      "path": "engine/domain/world/description/include/lux/engine/world/WorldDescription.hpp",
+      "symbols": "schemas; partitioner; partitionIndexes",
+      "read_scope": "固定 SHA 上下文中已读",
+      "url": "https://github.com/LUX-YU/lux-engine/blob/54f8a56354b8cdf3caebce7dcfaa873d4da0b2e8/engine/domain/world/description/include/lux/engine/world/WorldDescription.hpp"
+    },
+    {
+      "id": "S29",
+      "path": "engine/domain/world/README.md",
+      "symbols": "persistent identity; dimensions; declared design limitations",
+      "read_scope": "固定 SHA 上下文中已读；设计文字不视为实现证明",
+      "url": "https://github.com/LUX-YU/lux-engine/blob/54f8a56354b8cdf3caebce7dcfaa873d4da0b2e8/engine/domain/world/README.md"
+    },
+    {
+      "id": "S30",
+      "path": "engine/domain/spatial/README.md",
+      "symbols": "partition index versus active-entity queries",
+      "read_scope": "固定 SHA 上下文中已读；设计文字不视为实现证明",
+      "url": "https://github.com/LUX-YU/lux-engine/blob/54f8a56354b8cdf3caebce7dcfaa873d4da0b2e8/engine/domain/spatial/README.md"
+    },
+    {
+      "id": "S31",
+      "path": "engine/domain/simulation/ecs/schema/include/lux/engine/simulation/ecs/ComponentSchema.hpp",
+      "symbols": "author construction; snapshot and semantic kinds",
+      "read_scope": "固定 SHA 上下文中已读",
+      "url": "https://github.com/LUX-YU/lux-engine/blob/54f8a56354b8cdf3caebce7dcfaa873d4da0b2e8/engine/domain/simulation/ecs/schema/include/lux/engine/simulation/ecs/ComponentSchema.hpp"
+    },
+    {
+      "id": "S32",
+      "path": "modules/function/render/client/include/lux/engine/function/render/client/core/RenderFeatureRegistration.hpp",
+      "symbols": "scene_configurable; codec",
+      "read_scope": "固定 SHA 上下文中已读",
+      "url": "https://github.com/LUX-YU/lux-engine/blob/54f8a56354b8cdf3caebce7dcfaa873d4da0b2e8/modules/function/render/client/include/lux/engine/function/render/client/core/RenderFeatureRegistration.hpp"
+    },
+    {
+      "id": "S33",
+      "path": "modules/function/render/client/include/lux/engine/function/render/client/core/FeatureDescriptor.hpp",
+      "symbols": "dependencies; conflicts; multiplicity; device profiles",
+      "read_scope": "固定 SHA 上下文中已读",
+      "url": "https://github.com/LUX-YU/lux-engine/blob/54f8a56354b8cdf3caebce7dcfaa873d4da0b2e8/modules/function/render/client/include/lux/engine/function/render/client/core/FeatureDescriptor.hpp"
+    },
+    {
+      "id": "S34",
+      "path": "modules/resource/asset/include/lux/engine/resource/asset/AssetTypeId.hpp",
+      "symbols": "stable type token from canonical name",
+      "read_scope": "本次读取",
+      "url": "https://github.com/LUX-YU/lux-engine/blob/54f8a56354b8cdf3caebce7dcfaa873d4da0b2e8/modules/resource/asset/include/lux/engine/resource/asset/AssetTypeId.hpp"
+    },
+    {
+      "id": "S35",
+      "path": "modules/resource/asset/include/lux/engine/resource/asset/animation/SkeletonAsset.hpp",
+      "symbols": "existing SkeletonAsset; lux::rdesc::Skeleton; codec",
+      "read_scope": "本次读取",
+      "url": "https://github.com/LUX-YU/lux-engine/blob/54f8a56354b8cdf3caebce7dcfaa873d4da0b2e8/modules/resource/asset/include/lux/engine/resource/asset/animation/SkeletonAsset.hpp"
+    },
+    {
+      "id": "S36",
+      "path": "docs/editor-quality.md",
+      "symbols": "QR01–QR22",
+      "read_scope": "本次读取全部 QR01–QR22；末尾继承表不作为新证据",
+      "url": "https://github.com/LUX-YU/lux-engine/blob/54f8a56354b8cdf3caebce7dcfaa873d4da0b2e8/docs/editor-quality.md"
+    },
+    {
+      "id": "S37",
+      "path": "AGENTS.md",
+      "symbols": "repository engineering baseline",
+      "read_scope": "本次读取前 145 行；上传完整文件 LF 规范化 Git blob 与远端一致",
+      "url": "https://github.com/LUX-YU/lux-engine/blob/54f8a56354b8cdf3caebce7dcfaa873d4da0b2e8/AGENTS.md"
+    },
+    {
+      "id": "S38",
+      "path": "editor/application/src/EditorArtifacts.cpp",
+      "symbols": "artifact product composition",
+      "read_scope": "本轮仅沿用已读类型与调用背景；具体全函数需 S0 再核对",
+      "url": "https://github.com/LUX-YU/lux-engine/blob/54f8a56354b8cdf3caebce7dcfaa873d4da0b2e8/editor/application/src/EditorArtifacts.cpp"
+    },
+    {
+      "id": "S39",
+      "path": "editor/application/src/EditorSceneTools.cpp",
+      "symbols": "showSceneTool; runtime/author distinction",
+      "read_scope": "固定 SHA 上下文中已读",
+      "url": "https://github.com/LUX-YU/lux-engine/blob/54f8a56354b8cdf3caebce7dcfaa873d4da0b2e8/editor/application/src/EditorSceneTools.cpp"
+    },
+    {
+      "id": "S40",
+      "path": "editor/workbench/scene/src/SceneView.cpp",
+      "symbols": "model drop; projection; camera/picking",
+      "read_scope": "固定 SHA 上下文中已读",
+      "url": "https://github.com/LUX-YU/lux-engine/blob/54f8a56354b8cdf3caebce7dcfaa873d4da0b2e8/editor/workbench/scene/src/SceneView.cpp"
+    },
+    {
+      "id": "S41",
+      "path": "modules/resource/description/include/lux/engine/description/Skeleton.hpp",
+      "symbols": "Bone_t; Skeleton; parent ordering; bind transforms",
+      "read_scope": "本次读取",
+      "url": "https://github.com/LUX-YU/lux-engine/blob/54f8a56354b8cdf3caebce7dcfaa873d4da0b2e8/modules/resource/description/include/lux/engine/description/Skeleton.hpp"
+    }
+  ],
+  "uploaded_agents": {
+    "path": "references/AGENTS.user.md",
+    "sha256": "4ac02b300d99fd05ff7bcb5bced4bfc6f47b8e30caaa1a8821ace240e8f75357",
+    "normalized_git_blob": "1fd3123156dc7f59f98cbcd422f227a16352cddc",
+    "original_line_endings": "CRLF"
+  },
+  "runtime_validation_performed": false
+}

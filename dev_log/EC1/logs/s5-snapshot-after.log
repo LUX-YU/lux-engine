@@ -1,0 +1,1 @@
+Assertion failed: opaque.volumes[0].view()[0] == std::byte{42}, file E:\SyncForder\CodeRepos\lux-engine-p12\editor\authoring\scene\test\scene_session.cpp, line 164

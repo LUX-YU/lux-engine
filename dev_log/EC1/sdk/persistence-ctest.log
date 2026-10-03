@@ -1,0 +1,63 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec1-final-sdk/persistence
+      Start  1: persistence_consumer.r2-accept-success
+ 1/29 Test  #1: persistence_consumer.r2-accept-success ......   Passed    0.08 sec
+      Start  2: persistence_consumer.r2-accept-error
+ 2/29 Test  #2: persistence_consumer.r2-accept-error ........   Passed    0.03 sec
+      Start  3: persistence_consumer.r2-accept-cancel
+ 3/29 Test  #3: persistence_consumer.r2-accept-cancel .......   Passed    0.03 sec
+      Start  4: persistence_consumer.r2-accept-drain
+ 4/29 Test  #4: persistence_consumer.r2-accept-drain ........   Passed    0.03 sec
+      Start  5: persistence_consumer.r2-admission
+ 5/29 Test  #5: persistence_consumer.r2-admission ...........   Passed    1.36 sec
+      Start  6: persistence_consumer.models
+ 6/29 Test  #6: persistence_consumer.models .................   Passed    0.04 sec
+      Start  7: persistence_consumer.save-as
+ 7/29 Test  #7: persistence_consumer.save-as ................   Passed    0.07 sec
+      Start  8: persistence_consumer.unknown
+ 8/29 Test  #8: persistence_consumer.unknown ................   Passed    0.04 sec
+      Start  9: persistence_consumer.order
+ 9/29 Test  #9: persistence_consumer.order ..................   Passed    0.06 sec
+      Start 10: persistence_consumer.close
+10/29 Test #10: persistence_consumer.close ..................   Passed    0.04 sec
+      Start 11: persistence_consumer.close-key
+11/29 Test #11: persistence_consumer.close-key ..............   Passed    0.03 sec
+      Start 12: persistence_consumer.capacity
+12/29 Test #12: persistence_consumer.capacity ...............   Passed    0.02 sec
+      Start 13: persistence_consumer.execution
+13/29 Test #13: persistence_consumer.execution ..............   Passed    0.04 sec
+      Start 14: persistence_consumer.decoded
+14/29 Test #14: persistence_consumer.decoded ................   Passed    0.04 sec
+      Start 15: persistence_consumer.receipts
+15/29 Test #15: persistence_consumer.receipts ...............   Passed    0.05 sec
+      Start 16: persistence_consumer.identities
+16/29 Test #16: persistence_consumer.identities .............   Passed    0.03 sec
+      Start 17: persistence_consumer.conflict
+17/29 Test #17: persistence_consumer.conflict ...............   Passed    0.03 sec
+      Start 18: persistence_consumer.r1-revoke
+18/29 Test #18: persistence_consumer.r1-revoke ..............   Passed    0.03 sec
+      Start 19: persistence_consumer.r1-recursive
+19/29 Test #19: persistence_consumer.r1-recursive ...........   Passed    0.03 sec
+      Start 20: persistence_consumer.r1-chain
+20/29 Test #20: persistence_consumer.r1-chain ...............   Passed    0.07 sec
+      Start 21: persistence_consumer.r1-chain-control
+21/29 Test #21: persistence_consumer.r1-chain-control .......   Passed    0.07 sec
+      Start 22: persistence_consumer.r1-callbacks
+22/29 Test #22: persistence_consumer.r1-callbacks ...........   Passed    0.04 sec
+      Start 23: persistence_consumer.r1-reading
+23/29 Test #23: persistence_consumer.r1-reading .............   Passed    0.04 sec
+      Start 24: persistence_consumer.r1-conflicts
+24/29 Test #24: persistence_consumer.r1-conflicts ...........   Passed    0.05 sec
+      Start 25: persistence_consumer.r11-input-duplicate
+25/29 Test #25: persistence_consumer.r11-input-duplicate ....   Passed    0.03 sec
+      Start 26: persistence_consumer.r11-input-invalid
+26/29 Test #26: persistence_consumer.r11-input-invalid ......   Passed    0.03 sec
+      Start 27: persistence_consumer.r11-input-busy
+27/29 Test #27: persistence_consumer.r11-input-busy .........   Passed    0.03 sec
+      Start 28: persistence_consumer.r11-input-success
+28/29 Test #28: persistence_consumer.r11-input-success ......   Passed    0.03 sec
+      Start 29: persistence_consumer.r11-input-completion
+29/29 Test #29: persistence_consumer.r11-input-completion ...   Passed    0.03 sec
+
+100% tests passed, 0 tests failed out of 29
+
+Total Test time (real) =   2.49 sec

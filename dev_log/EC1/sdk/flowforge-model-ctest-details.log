@@ -1,0 +1,20 @@
+Start testing: Oct 03 01:43 GMT 夏令时
+----------------------------------------------------------
+1/1 Testing: flowforge_model_consumer
+1/1 Test: flowforge_model_consumer
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec1-final-sdk/flowforge-model/flowforge_model_consumer.exe"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec1-final-sdk/flowforge-model
+"flowforge_model_consumer" start time: Oct 03 01:43 GMT 夏令时
+Output:
+----------------------------------------------------------
+installed R04-01 PASS: automatic NodeId/all PinIds retained across Undo; old pin rejected
+installed FlowSession actual CPU graph/edit/history/capture/close PASS; no linker or UI
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"flowforge_model_consumer" end time: Oct 03 01:43 GMT 夏令时
+"flowforge_model_consumer" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Oct 03 01:43 GMT 夏令时

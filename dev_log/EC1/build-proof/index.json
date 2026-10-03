@@ -1,0 +1,30 @@
+[
+  {
+    "path": "editor/tests/architecture/desktop-view-boundaries.json",
+    "sha256": "8d31f4af6a9609f33e2ae02a7c1f03ec00de697a3df817192a0f29caad16a078"
+  },
+  {
+    "path": "editor/tests/architecture/interaction-view-boundaries.json",
+    "sha256": "3a051707b5150998d20952c883e38f15f6c3ad5e04821a061fd83cee81171cf3"
+  },
+  {
+    "path": "editor/tests/architecture/persistence-boundaries.json",
+    "sha256": "98358e0d8e239f7a68e1d984c712b450073f4139635f4ccf77346f972569fc7d"
+  },
+  {
+    "path": "editor/tests/architecture/projection-compilation-boundaries.json",
+    "sha256": "fb7766d9fdd43f723d6179138a6bdc74924027287e1d717500eaad4909cb65ed"
+  },
+  {
+    "path": "editor/tests/architecture/quality-boundaries.json",
+    "sha256": "57a56a74020532a357448f4ebbb29672dfd4715ad1bc4cfab1602d770474540d"
+  },
+  {
+    "path": "editor/tests/architecture/scene-execution-boundaries.json",
+    "sha256": "d9eb2a335e9cf5fb24a3eee850370d976824469bc6092836f7ad70363aec1831"
+  },
+  {
+    "path": "editor/tests/architecture/workspace-boundaries.json",
+    "sha256": "1eaeed15c579923dfcce38992dd9d235ddfbdb955f32f4cda938c666a75e6b00"
+  }
+]

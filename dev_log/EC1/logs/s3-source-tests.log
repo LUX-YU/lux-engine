@@ -1,0 +1,25 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev
+    Start  83: editor.project_publication_operation
+1/6 Test  #83: editor.project_publication_operation ...   Passed    0.48 sec
+    Start  84: editor.project_creation
+2/6 Test  #84: editor.project_creation ................   Passed    0.13 sec
+    Start  87: editor.detached_views
+3/6 Test  #87: editor.detached_views ..................   Passed    0.03 sec
+    Start  88: editor.view_host
+4/6 Test  #88: editor.view_host .......................   Passed    0.10 sec
+    Start 125: editor.sessions.installation
+5/6 Test #125: editor.sessions.installation ...........   Passed    0.46 sec
+    Start 126: editor.sessions.content_operations
+6/6 Test #126: editor.sessions.content_operations .....   Passed    1.36 sec
+
+100% tests passed, 0 tests failed out of 6
+
+Label Time Summary:
+P08       =   0.03 sec*proc (1 test)
+P10       =   0.10 sec*proc (1 test)
+P11       =   0.46 sec*proc (1 test)
+P12       =   1.85 sec*proc (2 tests)
+editor    =   2.57 sec*proc (6 tests)
+native    =   2.57 sec*proc (6 tests)
+
+Total Test time (real) =   3.06 sec

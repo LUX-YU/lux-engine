@@ -1,0 +1,57 @@
+-- The CXX compiler identification is MSVC 19.44.35228.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: D:/Development/Mircosoft/VisualStudio/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Found Python3: D:/Development/Python/Python313/python.exe (found version "3.13.0") found components: Interpreter
+---- Importing lux-cxx-core
+---- Importing lux-cxx-compile_time
+---- Importing lux-cxx-memory
+---- Importing lux-cxx-algorithm
+---- Importing lux-cxx-binary
+---- Importing lux-cxx-container
+---- Importing lux-cxx-concurrent
+---- Importing lux-cxx-reflection_runtime
+-- Found nlohmann_json: D:/Development/vcpkg/installed/x64-windows/share/nlohmann_json/nlohmann_jsonConfig.cmake (found version "3.12.0")
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Failed
+-- Looking for pthread_create in pthreads
+-- Looking for pthread_create in pthreads - not found
+-- Looking for pthread_create in pthread
+-- Looking for pthread_create in pthread - not found
+-- Found Threads: TRUE
+-- Found stdexec: D:/Development/vcpkg/installed/x64-windows/share/stdexec/stdexec-config.cmake (found version "0.10.0")
+---- Importing imgui-core
+---- Importing node_editor-node_editor
+CMake Error at D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake:908 (_find_package):
+  By not providing "Findlux-engine-editor-view-host.cmake" in
+  CMAKE_MODULE_PATH this project has asked CMake to find a package
+  configuration file provided by "lux-engine-editor-view-host", but CMake did
+  not find one.
+
+  Could not find a package configuration file provided by
+  "lux-engine-editor-view-host" with any of the following names:
+
+    lux-engine-editor-view-hostConfig.cmake
+    lux-engine-editor-view-host-config.cmake
+
+  Add the installation prefix of "lux-engine-editor-view-host" to
+  CMAKE_PREFIX_PATH or set "lux-engine-editor-view-host_DIR" to a directory
+  containing one of the above files.  If "lux-engine-editor-view-host"
+  provides a separate development package or SDK, be sure it has been
+  installed.
+Call Stack (most recent call first):
+  E:/SyncForder/CodeRepos/install/EC1-development/share/lux-engine-editor-scene-ui/scene_ui/lux-engine-editor-scene-ui-scene_ui-import.cmake:16 (find_package)
+  E:/SyncForder/CodeRepos/install/EC1-development/share/lux-engine-editor-scene-ui/lux-engine-editor-scene-ui-config.cmake:34 (include)
+  D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake:908 (_find_package)
+  E:/SyncForder/CodeRepos/install/EC1-development/share/lux-engine-editor-extensions/editor_builtin_contributions/lux-engine-editor-extensions-editor_builtin_contributions-import.cmake:5 (find_package)
+  E:/SyncForder/CodeRepos/install/EC1-development/share/lux-engine-editor-extensions/lux-engine-editor-extensions-config.cmake:34 (include)
+  D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake:908 (_find_package)
+  E:/SyncForder/CodeRepos/install/EC1-development/share/lux-engine-editor-application/editor_bootstrap/lux-engine-editor-application-editor_bootstrap-import.cmake:11 (find_package)
+  E:/SyncForder/CodeRepos/install/EC1-development/share/lux-engine-editor-application/lux-engine-editor-application-config.cmake:34 (include)
+  D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake:908 (_find_package)
+  CMakeLists.txt:29 (find_package)
+
+
+-- Configuring incomplete, errors occurred!

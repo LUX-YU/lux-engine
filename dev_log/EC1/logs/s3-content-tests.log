@@ -1,0 +1,29 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev
+    Start  87: editor.detached_views
+1/7 Test  #87: editor.detached_views ...................   Passed    0.05 sec
+    Start  88: editor.view_host
+2/7 Test  #88: editor.view_host ........................   Passed    0.10 sec
+    Start 111: editor.scene_views_gpu
+3/7 Test #111: editor.scene_views_gpu ..................   Passed    1.78 sec
+    Start 118: editor.draft_source_material-lifetime
+4/7 Test #118: editor.draft_source_material-lifetime ...   Passed    0.33 sec
+    Start 119: editor.draft_source_lifecycle
+5/7 Test #119: editor.draft_source_lifecycle ...........   Passed    0.56 sec
+    Start 125: editor.sessions.installation
+6/7 Test #125: editor.sessions.installation ............   Passed    0.44 sec
+    Start 127: editor.application
+7/7 Test #127: editor.application ......................   Passed    1.37 sec
+
+100% tests passed, 0 tests failed out of 7
+
+Label Time Summary:
+P08       =   0.05 sec*proc (1 test)
+P10       =   2.77 sec*proc (4 tests)
+P11       =   0.44 sec*proc (1 test)
+P12       =   1.37 sec*proc (1 test)
+R1        =   0.89 sec*proc (2 tests)
+editor    =   4.63 sec*proc (7 tests)
+gpu       =   4.04 sec*proc (4 tests)
+native    =   0.59 sec*proc (3 tests)
+
+Total Test time (real) =   5.05 sec

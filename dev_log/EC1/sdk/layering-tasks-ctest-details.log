@@ -1,0 +1,19 @@
+Start testing: Oct 03 01:45 GMT 夏令时
+----------------------------------------------------------
+1/1 Testing: installed.layering.TASKS
+1/1 Test: installed.layering.TASKS
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec1-final-sdk/layering-tasks/layering_consumer.exe"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec1-final-sdk/layering-tasks
+"installed.layering.TASKS" start time: Oct 03 01:45 GMT 夏令时
+Output:
+----------------------------------------------------------
+XL13 actual CPU Runtime: two subscribers share rows; FULL/CLOSED preserve terminal facts; detach does not cancel observer/tasks
+<end of output>
+Test time =   0.09 sec
+----------------------------------------------------------
+Test Passed.
+"installed.layering.TASKS" end time: Oct 03 01:45 GMT 夏令时
+"installed.layering.TASKS" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Oct 03 01:45 GMT 夏令时

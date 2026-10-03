@@ -1,0 +1,8 @@
+[1/5] Building CXX object CMakeFiles\p11_runtime.dir\Identity.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[2/5] Building CXX object CMakeFiles\p11_runtime.dir\E_\SyncForder\CodeRepos\lux-engine-ec1\cmake\installed-consumers\editor-p11\Runtime.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[3/5] Building CXX object CMakeFiles\p11_runtime_consumer.dir\main.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[4/5] Linking CXX shared library bin\p11_runtime.dll
+[5/5] Linking CXX executable bin\p11_runtime_consumer.exe

@@ -1,0 +1,24 @@
+[1/8] Generating plugin/skeleton_runtime/identity.cpp, share/lux-engine/plugins/example.skeleton.json
+[2/8] Building CXX object CMakeFiles\skeleton_extension.dir\plugin\skeleton_runtime\identity.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[3/8] Building CXX object CMakeFiles\skeleton_runtime.dir\plugin\skeleton_runtime\identity.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[4/8] Linking CXX shared library bin\skeleton_runtime.dll
+[5/8] Building CXX object CMakeFiles\skeleton_extension.dir\Extension.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+E:\SyncForder\CodeRepos\lux-engine-p12\cmake\installed-consumers\editor-ec1-skeleton\Extension.cpp(175): warning C4190: 'skeleton_read' has C-linkage specified, but returns 'tl::expected<lux::rdesc::Skeleton,lux::editor::sessions::ESessionError>' which is incompatible with C
+E:\SyncForder\CodeRepos\install\EC1-development\include\lux\cxx\compile_time\expected_impl.hpp(1285): note: see declaration of 'tl::expected<lux::rdesc::Skeleton,lux::editor::sessions::ESessionError>'
+E:\SyncForder\CodeRepos\lux-engine-p12\cmake\installed-consumers\editor-ec1-skeleton\Extension.cpp(177): warning C4190: 'skeleton_read' has C-linkage specified, but returns 'tl::expected<lux::rdesc::Skeleton,lux::editor::sessions::ESessionError>' which is incompatible with C
+E:\SyncForder\CodeRepos\install\EC1-development\include\lux\cxx\compile_time\expected_impl.hpp(1285): note: see declaration of 'tl::expected<lux::rdesc::Skeleton,lux::editor::sessions::ESessionError>'
+E:\SyncForder\CodeRepos\lux-engine-p12\cmake\installed-consumers\editor-ec1-skeleton\Extension.cpp(186): warning C4190: 'skeleton_describe' has C-linkage specified, but returns 'tl::expected<lux::editor::sessions::SessionInfo,lux::editor::sessions::ESessionError>' which is incompatible with C
+E:\SyncForder\CodeRepos\install\EC1-development\include\lux\cxx\compile_time\expected_impl.hpp(1285): note: see declaration of 'tl::expected<lux::editor::sessions::SessionInfo,lux::editor::sessions::ESessionError>'
+E:\SyncForder\CodeRepos\lux-engine-p12\cmake\installed-consumers\editor-ec1-skeleton\Extension.cpp(188): warning C4190: 'skeleton_describe' has C-linkage specified, but returns 'tl::expected<lux::editor::sessions::SessionInfo,lux::editor::sessions::ESessionError>' which is incompatible with C
+E:\SyncForder\CodeRepos\install\EC1-development\include\lux\cxx\compile_time\expected_impl.hpp(1285): note: see declaration of 'tl::expected<lux::editor::sessions::SessionInfo,lux::editor::sessions::ESessionError>'
+E:\SyncForder\CodeRepos\lux-engine-p12\cmake\installed-consumers\editor-ec1-skeleton\Extension.cpp(189): warning C4190: 'skeleton_read_guard' has C-linkage specified, but returns 'tl::expected<void,lux::editor::sessions::ESessionError>' which is incompatible with C
+E:\SyncForder\CodeRepos\install\EC1-development\include\lux\cxx\compile_time\expected_impl.hpp(1285): note: see declaration of 'tl::expected<void,lux::editor::sessions::ESessionError>'
+E:\SyncForder\CodeRepos\lux-engine-p12\cmake\installed-consumers\editor-ec1-skeleton\Extension.cpp(191): warning C4190: 'skeleton_read_guard' has C-linkage specified, but returns 'tl::expected<void,lux::editor::sessions::ESessionError>' which is incompatible with C
+E:\SyncForder\CodeRepos\install\EC1-development\include\lux\cxx\compile_time\expected_impl.hpp(1285): note: see declaration of 'tl::expected<void,lux::editor::sessions::ESessionError>'
+[6/8] Linking CXX shared library bin\skeleton_extension.dll
+[7/8] Building CXX object CMakeFiles\skeleton_consumer.dir\main.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[8/8] Linking CXX executable bin\skeleton_consumer.exe

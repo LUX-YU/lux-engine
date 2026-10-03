@@ -1,0 +1,17 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec1-skeleton
+    Start 1: installed.ec1.skeleton.HEADLESS
+1/1 Test #1: installed.ec1.skeleton.HEADLESS ...Exit code 0xc0000409
+***Exception:   2.71 sec
+code=7
+bin/skeleton_extension.dll
+找不到指定的模块。
+
+
+0% tests passed, 1 tests failed out of 1
+
+Total Test time (real) =   2.71 sec
+
+The following tests FAILED:
+	  1 - installed.ec1.skeleton.HEADLESS (Exit code 0xc0000409
+)
+Errors while running CTest

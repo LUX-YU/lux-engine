@@ -1,0 +1,113 @@
+
+Microsoft (R) Windows Debugger Version 10.0.17763.132 AMD64
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+CommandLine: E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev/bin/editor_application_test.exe
+Symbol search path is: srv*
+Executable search path is: 
+ModLoad: 00007ff6`b8d20000 00007ff6`b9b18000   editor_application_test.exe
+ModLoad: 00007ffa`edc80000 00007ffa`edee7000   ntdll.dll
+ModLoad: 00007ffa`ecb10000 00007ffa`ecbdb000   C:\WINDOWS\System32\KERNEL32.DLL
+ModLoad: 00007ffa`eb590000 00007ffa`eb992000   C:\WINDOWS\System32\KERNELBASE.dll
+ModLoad: 00007ffa`e6f50000 00007ffa`e6fef000   C:\WINDOWS\SYSTEM32\apphelp.dll
+ModLoad: 00007ffa`ece60000 00007ffa`ed5f8000   C:\WINDOWS\System32\SHELL32.dll
+ModLoad: 00007ffa`eaf40000 00007ffa`eafe3000   C:\WINDOWS\System32\msvcp_win.dll
+ModLoad: 00007ffa`ad8a0000 00007ffa`ad8b8000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\editor_configuration.dll
+ModLoad: 00007ffa`64230000 00007ffa`642f8000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\lux_engine_scene_world_loading.dll
+ModLoad: 00007ffa`aa390000 00007ffa`aa3c0000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\lux_engine_scene_world_materialization.dll
+ModLoad: 00007ffa`eaff0000 00007ffa`eb13c000   C:\WINDOWS\System32\ucrtbase.dll
+ModLoad: 00007ffa`ecc70000 00007ffa`ece3f000   C:\WINDOWS\System32\USER32.dll
+ModLoad: 00007ffa`eb410000 00007ffa`eb437000   C:\WINDOWS\System32\win32u.dll
+ModLoad: 00007ffa`ec0e0000 00007ffa`ec10b000   C:\WINDOWS\System32\GDI32.dll
+ModLoad: 00007ffa`eb150000 00007ffa`eb279000   C:\WINDOWS\System32\gdi32full.dll
+ModLoad: 00007ffa`ad6a0000 00007ffa`ad6bb000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\lux_engine_process_world_loading.dll
+ModLoad: 00007ffa`87340000 00007ffa`873b2000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\lux_engine_scene_transform.dll
+ModLoad: 00007ffa`ebf30000 00007ffa`ec0ca000   C:\WINDOWS\System32\ole32.dll
+ModLoad: 00007ffa`ebaf0000 00007ffa`ebe75000   C:\WINDOWS\System32\combase.dll
+ModLoad: 00007ff9`c7990000 00007ff9`cbc86000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\lux_engine_flowforge_compiler.dll
+ModLoad: 00007ffa`ec130000 00007ffa`ec248000   C:\WINDOWS\System32\RPCRT4.dll
+ModLoad: 00007ffa`8de90000 00007ffa`8deda000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\ui_rendering.dll
+ModLoad: 00007ffa`eb9a0000 00007ffa`eba5c000   C:\WINDOWS\System32\ADVAPI32.dll
+ModLoad: 00007ffa`aa140000 00007ffa`aa17f000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\lux_engine_function_input.dll
+ModLoad: 00007ffa`eda50000 00007ffa`edaf9000   C:\WINDOWS\System32\msvcrt.dll
+ModLoad: 00007ffa`60400000 00007ffa`604ee000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\lux_engine_function_material_graph.dll
+ModLoad: 00007ffa`ebe80000 00007ffa`ebf29000   C:\WINDOWS\System32\sechost.dll
+ModLoad: 00007ffa`eca80000 00007ffa`ecb00000   C:\WINDOWS\System32\WS2_32.dll
+ModLoad: 00007ffa`1c8f0000 00007ffa`1d1d9000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\lux_engine_toolchain_material_compiler.dll
+ModLoad: 00007ffa`ed670000 00007ffa`ed749000   C:\WINDOWS\System32\OLEAUT32.dll
+ModLoad: 00007ffa`aa200000 00007ffa`aa22c000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\lux_engine_function_graph.dll
+ModLoad: 00007ffa`a2c20000 00007ffa`a2c4d000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\meshoptimizer.dll
+ModLoad: 00007ffa`87000000 00007ffa`87073000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\lux_engine_core_meta.dll
+ModLoad: 00007ffa`67110000 00007ffa`671b8000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\ui.dll
+ModLoad: 00007ffa`225d0000 00007ffa`22b13000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\assimp-vc143-mt.dll
+ModLoad: 00007ffa`65b90000 00007ffa`65c1e000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\lux_engine_core_log.dll
+ModLoad: 00007ffa`46150000 00007ffa`462e7000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\lux_engine_scene_render.dll
+ModLoad: 00007ffa`a0cb0000 00007ffa`a0cda000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\lux_engine_process_asset_loading.dll
+ModLoad: 00007ffa`64d40000 00007ffa`64dbb000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\render_runtime.dll
+ModLoad: 00007ffa`9b180000 00007ffa`9b1b3000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\window.dll
+ModLoad: 00007ffa`4b960000 00007ffa`4ba62000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\render_feature_client.dll
+ModLoad: 00007ffa`63030000 00007ffa`630ce000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\lux_engine_scene_mesh_query.dll
+ModLoad: 00007ffa`45fb0000 00007ffa`46146000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\render_client.dll
+ModLoad: 00007ffa`5e1d0000 00007ffa`5e244000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\lux_engine_scene_composition.dll
+ModLoad: 00007ffa`8b600000 00007ffa`8b656000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\dynamic_library.dll
+ModLoad: 00007ffa`991c0000 00007ffa`991fe000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\lux_engine_function_script_artifact.dll
+ModLoad: 00007ffa`a28d0000 00007ffa`a28eb000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\lux_engine_simulation_system.dll
+ModLoad: 00007ffa`94400000 00007ffa`94440000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\lux_engine_process_execution.dll
+ModLoad: 00007ffa`9fcf0000 00007ffa`9fd10000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\lux_engine_core_object.dll
+ModLoad: 00007ffa`5cb20000 00007ffa`5cbb0000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\lux_engine_scene_asset.dll
+ModLoad: 00007ffa`9eee0000 00007ffa`9eeff000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\lux_engine_simulation_ecs_schema.dll
+ModLoad: 00007ffa`8a090000 00007ffa`8a0c5000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\lux_engine_scene_description.dll
+ModLoad: 00007ffa`8a8c0000 00007ffa`8a8e4000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\lux_engine_world_asset.dll
+ModLoad: 00007ffa`89aa0000 00007ffa`89ae4000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\lux_engine_simulation_asset.dll
+ModLoad: 00007ffa`3ef40000 00007ffa`3f0ca000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\lux_engine_asset.dll
+ModLoad: 00007ffa`8a060000 00007ffa`8a087000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\description.dll
+ModLoad: 00007ffa`d1df0000 00007ffa`d1e00000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\lux_engine_domain_system_identity.dll
+ModLoad: 00007ffa`69840000 00007ffa`698a8000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\lux_engine_simulation_description.dll
+ModLoad: 00007ffa`87df0000 00007ffa`87e23000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\lux_engine_world_storage.dll
+ModLoad: 00007ffa`65460000 00007ffa`654b7000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\lux_engine_world_description.dll
+ModLoad: 00007ffa`875f0000 00007ffa`87621000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\lux_engine_world_partition.dll
+ModLoad: 00007ffa`80690000 00007ffa`806dd000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\lux_engine_edit_history.dll
+ModLoad: 00007ffa`889d0000 00007ffa`889f4000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\lux_engine_edit_sessions.dll
+ModLoad: 00007ffa`c3180000 00007ffa`c321d000   C:\WINDOWS\SYSTEM32\MSVCP140.dll
+ModLoad: 00007ffa`c2df0000 00007ffa`c2e1c000   C:\WINDOWS\SYSTEM32\VCRUNTIME140.dll
+ModLoad: 00007ffa`c71c0000 00007ffa`c71cc000   C:\WINDOWS\SYSTEM32\VCRUNTIME140_1.dll
+ModLoad: 00007ffa`9ecd0000 00007ffa`9ece6000   C:\WINDOWS\SYSTEM32\MSVCP140_ATOMIC_WAIT.dll
+ModLoad: 00007ffa`9c970000 00007ffa`9c990000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\lux_engine_simulation_ecs_core.dll
+ModLoad: 00007ffa`3edd0000 00007ffa`3ef37000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\imgui_core.dll
+ModLoad: 00007ffa`51f10000 00007ffa`51f95000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\lux_engine_simulation_ecs_transform.dll
+ModLoad: 00007ffa`644a0000 00007ffa`644ec000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\lux_engine_simulation_ecs_hierarchy.dll
+ModLoad: 00007ffa`edb00000 00007ffa`edb31000   C:\WINDOWS\System32\IMM32.dll
+ModLoad: 00007ffa`2c6a0000 00007ffa`2c832000   C:\WINDOWS\SYSTEM32\vulkan-1.dll
+ModLoad: 00007ffa`9c600000 00007ffa`9c61a000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\zlib1.dll
+ModLoad: 00007ffa`51450000 00007ffa`514f6000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\zstd.dll
+ModLoad: 00007ffa`203e0000 00007ffa`2088a000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\render_vulkan.dll
+ModLoad: 00007ffa`99590000 00007ffa`995a1000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\minizip.dll
+ModLoad: 00007ffa`c6210000 00007ffa`c6220000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\poly2tri.dll
+ModLoad: 00007ffa`8cc90000 00007ffa`8cca8000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\kubazip.dll
+ModLoad: 00007ffa`69d30000 00007ffa`69d66000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\pugixml.dll
+ModLoad: 00007ffa`d0250000 00007ffa`d0305000   C:\WINDOWS\WinSxS\amd64_microsoft.windows.common-controls_6595b64144ccf1df_5.82.26100.8328_none_87eede957a2ccddd\COMCTL32.dll
+ModLoad: 00007ffa`61e20000 00007ffa`61e61000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\glfw3.dll
+ModLoad: 00007ffa`c3b90000 00007ffa`c3b9a000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\nfd.dll
+ModLoad: 00007ffa`506a0000 00007ffa`50728000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\lux_engine_simulation_composition.dll
+ModLoad: 00007ffa`67a20000 00007ffa`67a48000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\lux_engine_core_task.dll
+ModLoad: 00007ffa`8c760000 00007ffa`8c773000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\lux_engine_domain_system_description.dll
+ModLoad: 00007ffa`eaa50000 00007ffa`eaaa2000   C:\WINDOWS\SYSTEM32\CFGMGR32.dll
+ModLoad: 00007ffa`571d0000 00007ffa`57228000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\p12-dev\bin\render_graph.dll
+(ed9c.b820): Break instruction exception - code 80000003 (first chance)
+ntdll!LdrpDoDebuggerBreak+0x35:
+00007ffa`edda2239 cc              int     3
+0:000> cdb: Reading initial command 'sxe -c ".ecxr; k; q" av; g'
+Assertion failed: argc == 3, file E:\SyncForder\CodeRepos\lux-engine-p12\editor\tests\integration\application\application.cpp, line 96
+(ed9c.b820): Security check failure or stack buffer overrun - code c0000409 (!!! second chance !!!)
+ucrtbase!abort+0x4e:
+00007ffa`eb09527e cd29            int     29h
+0:000> NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\atlmfc.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\concurrency.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\cpp_rest.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\stl.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Data.Json.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Geolocation.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Sensors.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Media.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\windows.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\winrt.natvis'

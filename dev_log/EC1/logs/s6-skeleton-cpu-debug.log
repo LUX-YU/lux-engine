@@ -1,0 +1,75 @@
+
+Microsoft (R) Windows Debugger Version 10.0.17763.132 AMD64
+Copyright (c) Microsoft Corporation. All rights reserved.
+
+CommandLine: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec1-skeleton/bin/skeleton_consumer.exe E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec1-skeleton E:/SyncForder/CodeRepos/install/EC1-development HEADLESS
+Symbol search path is: srv*
+Executable search path is: 
+ModLoad: 00007ff6`6a800000 00007ff6`6ab29000   skeleton_consumer.exe
+ModLoad: 00007ffa`edc80000 00007ffa`edee7000   ntdll.dll
+ModLoad: 00007ffa`ecb10000 00007ffa`ecbdb000   C:\WINDOWS\System32\KERNEL32.DLL
+ModLoad: 00007ffa`eb590000 00007ffa`eb992000   C:\WINDOWS\System32\KERNELBASE.dll
+ModLoad: 00007ffa`e6f50000 00007ffa`e6fef000   C:\WINDOWS\SYSTEM32\apphelp.dll
+ModLoad: 00007ffa`eaff0000 00007ffa`eb13c000   C:\WINDOWS\System32\ucrtbase.dll
+ModLoad: 00007ffa`8b600000 00007ffa`8b656000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\ec1-skeleton\bin\dynamic_library.dll
+ModLoad: 00007ffa`a2c20000 00007ffa`a2c44000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\ec1-skeleton\bin\lux_engine_edit_sessions.dll
+ModLoad: 00007ffa`5e1a0000 00007ffa`5e248000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\ec1-skeleton\bin\ui.dll
+ModLoad: 00007ffa`a28d0000 00007ffa`a28eb000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\ec1-skeleton\bin\lux_engine_simulation_system.dll
+ModLoad: 00007ffa`67a20000 00007ffa`67aae000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\ec1-skeleton\bin\lux_engine_core_log.dll
+ModLoad: 00007ffa`a0cc0000 00007ffa`a0ce0000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\ec1-skeleton\bin\lux_engine_core_object.dll
+ModLoad: 00007ffa`991d0000 00007ffa`991fa000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\ec1-skeleton\bin\lux_engine_process_asset_loading.dll
+ModLoad: 00007ffa`94400000 00007ffa`94440000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\ec1-skeleton\bin\lux_engine_process_execution.dll
+ModLoad: 00007ffa`3ef40000 00007ffa`3f0ca000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\ec1-skeleton\bin\lux_engine_asset.dll
+ModLoad: 00007ffa`c3180000 00007ffa`c321d000   C:\WINDOWS\SYSTEM32\MSVCP140.dll
+ModLoad: 00007ffa`c3b90000 00007ffa`c3ba0000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\ec1-skeleton\bin\lux_engine_domain_system_identity.dll
+ModLoad: 00007ffa`a0ca0000 00007ffa`a0cb6000   C:\WINDOWS\SYSTEM32\MSVCP140_ATOMIC_WAIT.dll
+ModLoad: 00007ffa`c2df0000 00007ffa`c2e1c000   C:\WINDOWS\SYSTEM32\VCRUNTIME140.dll
+ModLoad: 00007ffa`eb9a0000 00007ffa`eba5c000   C:\WINDOWS\System32\ADVAPI32.dll
+ModLoad: 00007ffa`c71c0000 00007ffa`c71cc000   C:\WINDOWS\SYSTEM32\VCRUNTIME140_1.dll
+ModLoad: 00007ffa`eda50000 00007ffa`edaf9000   C:\WINDOWS\System32\msvcrt.dll
+ModLoad: 00007ffa`ebe80000 00007ffa`ebf29000   C:\WINDOWS\System32\sechost.dll
+ModLoad: 00007ffa`ec130000 00007ffa`ec248000   C:\WINDOWS\System32\RPCRT4.dll
+ModLoad: 00007ffa`481f0000 00007ffa`48357000   E:\SyncForder\CodeRepos\install\EC1-development\bin\imgui_core.dll
+ModLoad: 00007ffa`89ab0000 00007ffa`89ae3000   E:\SyncForder\CodeRepos\install\EC1-development\bin\window.dll
+ModLoad: 00007ffa`ecc70000 00007ffa`ece3f000   C:\WINDOWS\System32\USER32.dll
+ModLoad: 00007ffa`eb410000 00007ffa`eb437000   C:\WINDOWS\System32\win32u.dll
+ModLoad: 00007ffa`ece60000 00007ffa`ed5f8000   C:\WINDOWS\System32\SHELL32.dll
+ModLoad: 00007ffa`ec0e0000 00007ffa`ec10b000   C:\WINDOWS\System32\GDI32.dll
+ModLoad: 00007ffa`eaf40000 00007ffa`eafe3000   C:\WINDOWS\System32\msvcp_win.dll
+ModLoad: 00007ffa`eb150000 00007ffa`eb279000   C:\WINDOWS\System32\gdi32full.dll
+ModLoad: 00007ffa`edb00000 00007ffa`edb31000   C:\WINDOWS\System32\IMM32.dll
+ModLoad: 00007ffa`8a8c0000 00007ffa`8a8e7000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\ec1-skeleton\bin\description.dll
+ModLoad: 00007ffa`d0250000 00007ffa`d0305000   C:\WINDOWS\WinSxS\amd64_microsoft.windows.common-controls_6595b64144ccf1df_5.82.26100.8328_none_87eede957a2ccddd\COMCTL32.dll
+ModLoad: 00007ffa`c3b60000 00007ffa`c3b6a000   E:\SyncForder\CodeRepos\install\EC1-development\bin\nfd.dll
+ModLoad: 00007ffa`87de0000 00007ffa`87e21000   E:\SyncForder\CodeRepos\install\EC1-development\bin\glfw3.dll
+ModLoad: 00007ffa`ebf30000 00007ffa`ec0ca000   C:\WINDOWS\System32\ole32.dll
+ModLoad: 00007ffa`ebaf0000 00007ffa`ebe75000   C:\WINDOWS\System32\combase.dll
+(6414.c4f4): Break instruction exception - code 80000003 (first chance)
+ntdll!LdrpDoDebuggerBreak+0x35:
+00007ffa`edda2239 cc              int     3
+0:000> cdb: Reading initial command 'sxe 0xc0000409; g; kp; q'
+ModLoad: 00007ffa`c36d0000 00007ffa`c36df000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\ec1-skeleton\bin\skeleton_runtime.dll
+ModLoad: 00007ffa`54410000 00007ffa`544e0000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\ec1-skeleton\bin\skeleton_extension.dll
+ModLoad: 00007ffa`80690000 00007ffa`806dd000   E:\SyncForder\CodeRepos\build\RelWithDebInfo\ec1-skeleton\bin\lux_engine_edit_history.dll
+ModLoad: 00007ffa`e9b50000 00007ffa`e9b6b000   C:\WINDOWS\SYSTEM32\kernel.appcore.dll
+(6414.c4f4): Security check failure or stack buffer overrun - code c0000409 (!!! second chance !!!)
+*** WARNING: Unable to verify checksum for skeleton_consumer.exe
+Child-SP          RetAddr           Call Site
+000000cc`14b0e020 00007ff6`6a890520 ucrtbase!abort+0x4e
+000000cc`14b0e050 00007ff6`6aa5cce8 skeleton_consumer!`anonymous namespace'::take<tl::expected<lux::process::TaskId,enum lux::process::EExecutionError> >(class tl::expected<lux::process::TaskId,enum lux::process::EExecutionError> * result = <Value unavailable error>)+0x10
+000000cc`14b0e080 00007ff6`6aa58b40 skeleton_consumer!main(int argc = <Value unavailable error>, char ** argv = <Value unavailable error>)+0x2438
+(Inline Function) --------`-------- skeleton_consumer!invoke_main+0x22
+000000cc`14b0fb20 00007ffa`ecb3cd87 skeleton_consumer!__scrt_common_main_seh(void)+0x10c
+000000cc`14b0fb60 00007ffa`edd2caec KERNEL32!BaseThreadInitThunk+0x17
+000000cc`14b0fb90 00000000`00000000 ntdll!RtlUserThreadStart+0x2c
+quit:
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\atlmfc.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\concurrency.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\cpp_rest.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\stl.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Data.Json.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Geolocation.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Devices.Sensors.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\Windows.Media.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\windows.natvis'
+NatVis script unloaded from 'C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\Visualizers\winrt.natvis'

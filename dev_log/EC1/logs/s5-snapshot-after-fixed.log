@@ -1,0 +1,14 @@
+EC1 snapshot sample=0 warmup=1 n=1000 schemas=6 components=1250 encoded_bytes=84000 objects_us=556.400 opaque_us=1.400 opaque_copied_bytes=0 logical_budget=8633132
+EC1 snapshot sample=1 warmup=1 n=1000 schemas=6 components=1250 encoded_bytes=84000 objects_us=484.300 opaque_us=0.600 opaque_copied_bytes=0 logical_budget=8633132
+EC1 snapshot sample=2 warmup=0 n=1000 schemas=6 components=1250 encoded_bytes=84000 objects_us=488.500 opaque_us=0.400 opaque_copied_bytes=0 logical_budget=8633132
+EC1 snapshot sample=3 warmup=0 n=1000 schemas=6 components=1250 encoded_bytes=84000 objects_us=485.900 opaque_us=0.400 opaque_copied_bytes=0 logical_budget=8633132
+EC1 snapshot sample=4 warmup=0 n=1000 schemas=6 components=1250 encoded_bytes=84000 objects_us=483.200 opaque_us=0.400 opaque_copied_bytes=0 logical_budget=8633132
+EC1 snapshot sample=5 warmup=0 n=1000 schemas=6 components=1250 encoded_bytes=84000 objects_us=488.800 opaque_us=0.400 opaque_copied_bytes=0 logical_budget=8633132
+EC1 snapshot sample=6 warmup=0 n=1000 schemas=6 components=1250 encoded_bytes=84000 objects_us=483.800 opaque_us=0.400 opaque_copied_bytes=0 logical_budget=8633132
+EC1 snapshot sample=0 warmup=1 n=10000 schemas=6 components=12500 encoded_bytes=840000 objects_us=4996.000 opaque_us=2.100 opaque_copied_bytes=0 logical_budget=10833632
+EC1 snapshot sample=1 warmup=1 n=10000 schemas=6 components=12500 encoded_bytes=840000 objects_us=4915.100 opaque_us=1.500 opaque_copied_bytes=0 logical_budget=10833632
+EC1 snapshot sample=2 warmup=0 n=10000 schemas=6 components=12500 encoded_bytes=840000 objects_us=4839.300 opaque_us=1.200 opaque_copied_bytes=0 logical_budget=10833632
+EC1 snapshot sample=3 warmup=0 n=10000 schemas=6 components=12500 encoded_bytes=840000 objects_us=5015.200 opaque_us=1.000 opaque_copied_bytes=0 logical_budget=10833632
+EC1 snapshot sample=4 warmup=0 n=10000 schemas=6 components=12500 encoded_bytes=840000 objects_us=4913.400 opaque_us=0.900 opaque_copied_bytes=0 logical_budget=10833632
+EC1 snapshot sample=5 warmup=0 n=10000 schemas=6 components=12500 encoded_bytes=840000 objects_us=4919.800 opaque_us=2.800 opaque_copied_bytes=0 logical_budget=10833632
+EC1 snapshot sample=6 warmup=0 n=10000 schemas=6 components=12500 encoded_bytes=840000 objects_us=5028.800 opaque_us=3.600 opaque_copied_bytes=0 logical_budget=10833632

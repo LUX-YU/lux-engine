@@ -1,0 +1,31 @@
+[0/2] Re-checking globbed directories...
+[1/28] Building CXX object editor\activities\persistence\CMakeFiles\editor_persistence.dir\src\DerivedArtifact.cpp.obj
+[2/28] Linking CXX static library lib\editor_persistence.lib
+[3/28] Building CXX object editor\activities\persistence\CMakeFiles\editor_write_coordinator_test.dir\test\write_coordinator.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[4/28] Linking CXX executable bin\editor_publication_test.exe
+[5/28] Linking CXX executable bin\editor_write_coordinator_test.exe
+[6/28] Linking CXX executable bin\editor_project_publication_operation_test.exe
+[7/28] Linking CXX executable bin\editor_project_creation_test.exe
+[8/28] Linking CXX executable bin\editor_plugin_publication_test.exe
+[9/28] Linking CXX executable bin\editor_contributions_test.exe
+[10/28] Linking CXX shared library bin\lux_engine_scene_render_meta.dll
+[11/28] Linking CXX shared library bin\lux_engine_function_render_feature_meta.dll
+[12/28] Linking CXX shared library bin\physics2d_editor.dll
+[13/28] Linking CXX executable bin\plugin_configuration_test.exe
+[14/28] Linking CXX executable bin\plugin_library_test.exe
+[15/28] Linking CXX executable bin\editor_compilation_ownership_test.exe
+[16/28] Linking CXX executable bin\editor_compilation_p07_test.exe
+[17/28] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorViews.cpp.obj
+[18/28] Linking CXX static library lib\editor_bootstrap.lib
+[19/28] Linking CXX executable bin\editor_scene_configuration.exe
+[20/28] Linking CXX executable bin\editor_session_installation_test.exe
+[21/28] Linking CXX executable bin\lux_editor.exe
+[22/28] Linking CXX executable bin\lux_launcher.exe
+[23/28] Linking CXX executable bin\editor_quality_test.exe
+[24/28] Linking CXX executable bin\editor_workspace_test.exe
+[25/28] Linking CXX executable bin\editor_persistence_models_test.exe
+[26/28] Linking CXX executable bin\editor_application_test.exe
+[27/28] Building CXX object editor\tests\integration\scene_views\CMakeFiles\editor_scene_views_test.dir\views.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[28/28] Linking CXX executable bin\editor_scene_views_test.exe

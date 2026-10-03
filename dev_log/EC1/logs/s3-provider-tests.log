@@ -1,0 +1,30 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev
+    Start 106: editor.compilation.actual_publish
+1/7 Test #106: editor.compilation.actual_publish .......   Passed    0.53 sec
+    Start 107: editor.compilation.ownership_material
+2/7 Test #107: editor.compilation.ownership_material ...   Passed    0.67 sec
+    Start 108: editor.compilation.ownership_flow
+3/7 Test #108: editor.compilation.ownership_flow .......   Passed    0.14 sec
+    Start 111: editor.scene_views_gpu
+4/7 Test #111: editor.scene_views_gpu ..................   Passed    1.71 sec
+    Start 118: editor.draft_source_material-lifetime
+5/7 Test #118: editor.draft_source_material-lifetime ...   Passed    0.33 sec
+    Start 125: editor.sessions.installation
+6/7 Test #125: editor.sessions.installation ............   Passed    0.44 sec
+    Start 127: editor.application
+7/7 Test #127: editor.application ......................   Passed    1.36 sec
+
+100% tests passed, 0 tests failed out of 7
+
+Label Time Summary:
+P07          =   1.34 sec*proc (3 tests)
+P10          =   2.04 sec*proc (2 tests)
+P11          =   0.44 sec*proc (1 test)
+P12          =   1.36 sec*proc (1 test)
+R1           =   0.33 sec*proc (1 test)
+editor       =   5.18 sec*proc (7 tests)
+gpu          =   3.40 sec*proc (3 tests)
+native       =   1.78 sec*proc (4 tests)
+toolchain    =   1.34 sec*proc (3 tests)
+
+Total Test time (real) =   5.50 sec

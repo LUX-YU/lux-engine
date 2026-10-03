@@ -1,0 +1,14 @@
+EC1 snapshot sample=0 warmup=1 n=1000 schemas=6 components=1250 encoded_bytes=84000 objects_us=631.400 opaque_us=1500.300 opaque_copied_bytes=8388608 logical_budget=8633132
+EC1 snapshot sample=1 warmup=1 n=1000 schemas=6 components=1250 encoded_bytes=84000 objects_us=564.500 opaque_us=1436.600 opaque_copied_bytes=8388608 logical_budget=8633132
+EC1 snapshot sample=2 warmup=0 n=1000 schemas=6 components=1250 encoded_bytes=84000 objects_us=606.900 opaque_us=1505.500 opaque_copied_bytes=8388608 logical_budget=8633132
+EC1 snapshot sample=3 warmup=0 n=1000 schemas=6 components=1250 encoded_bytes=84000 objects_us=555.600 opaque_us=1483.400 opaque_copied_bytes=8388608 logical_budget=8633132
+EC1 snapshot sample=4 warmup=0 n=1000 schemas=6 components=1250 encoded_bytes=84000 objects_us=553.700 opaque_us=1325.500 opaque_copied_bytes=8388608 logical_budget=8633132
+EC1 snapshot sample=5 warmup=0 n=1000 schemas=6 components=1250 encoded_bytes=84000 objects_us=562.200 opaque_us=1333.700 opaque_copied_bytes=8388608 logical_budget=8633132
+EC1 snapshot sample=6 warmup=0 n=1000 schemas=6 components=1250 encoded_bytes=84000 objects_us=554.300 opaque_us=1325.800 opaque_copied_bytes=8388608 logical_budget=8633132
+EC1 snapshot sample=0 warmup=1 n=10000 schemas=6 components=12500 encoded_bytes=840000 objects_us=5543.000 opaque_us=1495.400 opaque_copied_bytes=8388608 logical_budget=10833632
+EC1 snapshot sample=1 warmup=1 n=10000 schemas=6 components=12500 encoded_bytes=840000 objects_us=5348.500 opaque_us=1757.200 opaque_copied_bytes=8388608 logical_budget=10833632
+EC1 snapshot sample=2 warmup=0 n=10000 schemas=6 components=12500 encoded_bytes=840000 objects_us=6597.100 opaque_us=1509.100 opaque_copied_bytes=8388608 logical_budget=10833632
+EC1 snapshot sample=3 warmup=0 n=10000 schemas=6 components=12500 encoded_bytes=840000 objects_us=5591.100 opaque_us=1517.100 opaque_copied_bytes=8388608 logical_budget=10833632
+EC1 snapshot sample=4 warmup=0 n=10000 schemas=6 components=12500 encoded_bytes=840000 objects_us=5456.500 opaque_us=1481.100 opaque_copied_bytes=8388608 logical_budget=10833632
+EC1 snapshot sample=5 warmup=0 n=10000 schemas=6 components=12500 encoded_bytes=840000 objects_us=5392.700 opaque_us=1483.500 opaque_copied_bytes=8388608 logical_budget=10833632
+EC1 snapshot sample=6 warmup=0 n=10000 schemas=6 components=12500 encoded_bytes=840000 objects_us=5334.600 opaque_us=1436.900 opaque_copied_bytes=8388608 logical_budget=10833632

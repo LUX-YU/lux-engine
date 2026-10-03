@@ -1,0 +1,19 @@
+[0/2] Re-checking globbed directories...
+[1/16] Building CXX object editor\authoring\scene\CMakeFiles\editor_scene_model_test.dir\test\scene_session.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[2/16] Linking CXX executable bin\editor_scene_model_test.exe
+[3/16] Building CXX object editor\tests\integration\projection\CMakeFiles\editor_projection_test.dir\projection.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[4/16] Building CXX object editor\workbench\scene\CMakeFiles\scene_ui.dir\src\OutlinerView.cpp.obj
+[5/16] Linking CXX static library lib\scene_ui.lib
+[6/16] Linking CXX executable bin\editor_projection_test.exe
+[7/16] Linking CXX shared library bin\lux_engine_function_render_feature_meta.dll
+[8/16] Linking CXX executable bin\plugin_configuration_test.exe
+[9/16] Linking CXX executable bin\lux_launcher.exe
+[10/16] Linking CXX executable bin\lux_editor.exe
+[11/16] Linking CXX executable bin\editor_session_installation_test.exe
+[12/16] Linking CXX executable bin\editor_scene_views_test.exe
+[13/16] Linking CXX executable bin\editor_scene_configuration.exe
+[14/16] Linking CXX executable bin\editor_application_test.exe
+[15/16] Linking CXX shared library bin\consumer_gui.dll
+[16/16] Linking CXX executable bin\consumer_protocol.exe

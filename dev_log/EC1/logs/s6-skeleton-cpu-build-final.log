@@ -1,0 +1,26 @@
+---- Importing lux-cxx-core
+---- Importing lux-cxx-compile_time
+---- Importing lux-cxx-memory
+---- Importing lux-cxx-algorithm
+---- Importing lux-cxx-binary
+---- Importing lux-cxx-container
+---- Importing lux-cxx-concurrent
+---- Importing lux-cxx-reflection_runtime
+-- Configuring done (0.5s)
+-- Generating done (0.1s)
+-- Build files have been written to: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec1-skeleton
+[0/1] Re-running CMake...
+[1/9] Generating plugin/skeleton_runtime/identity.cpp, share/lux-engine/plugins/example.skeleton.json
+[2/9] Building CXX object CMakeFiles\skeleton_runtime.dir\plugin\skeleton_runtime\identity.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[3/9] Linking CXX shared library bin\skeleton_runtime.dll
+[4/9] Building CXX object CMakeFiles\skeleton_extension.dir\plugin\skeleton_runtime\identity.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[5/9] Building CXX object CMakeFiles\skeleton_extension.dir\Model.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[6/9] Building CXX object CMakeFiles\skeleton_extension.dir\Extension.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[7/9] Linking CXX shared library bin\skeleton_extension.dll
+[8/9] Building CXX object CMakeFiles\skeleton_consumer.dir\main.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[9/9] Linking CXX executable bin\skeleton_consumer.exe

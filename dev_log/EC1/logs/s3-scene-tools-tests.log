@@ -1,0 +1,21 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev
+    Start  87: editor.detached_views
+1/4 Test  #87: editor.detached_views ............   Passed    0.03 sec
+    Start  88: editor.view_host
+2/4 Test  #88: editor.view_host .................   Passed    0.03 sec
+    Start 111: editor.scene_views_gpu
+3/4 Test #111: editor.scene_views_gpu ...........   Passed    1.62 sec
+    Start 127: editor.application
+4/4 Test #127: editor.application ...............   Passed    1.45 sec
+
+100% tests passed, 0 tests failed out of 4
+
+Label Time Summary:
+P08       =   0.03 sec*proc (1 test)
+P10       =   1.64 sec*proc (2 tests)
+P12       =   1.45 sec*proc (1 test)
+editor    =   3.13 sec*proc (4 tests)
+gpu       =   3.07 sec*proc (2 tests)
+native    =   0.06 sec*proc (2 tests)
+
+Total Test time (real) =   3.52 sec

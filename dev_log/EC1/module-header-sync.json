@@ -1,0 +1,47 @@
+[
+  {
+    "source": "modules/function/ui/include/lux/engine/ui/Controls.hpp",
+    "destination": "E:\\SyncForder\\CodeRepos\\install\\Debug\\include\\lux\\engine\\ui\\Controls.hpp",
+    "sha256": "f44db269312313b5ee623aa208ea25ff9b56171e8184c26e4cde302e5a701013"
+  },
+  {
+    "source": "modules/function/ui/include/lux/engine/ui/Controls.hpp",
+    "destination": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\ui\\Controls.hpp",
+    "sha256": "f44db269312313b5ee623aa208ea25ff9b56171e8184c26e4cde302e5a701013"
+  },
+  {
+    "source": "modules/function/ui/include/lux/engine/ui/Controls.hpp",
+    "destination": "E:\\SyncForder\\CodeRepos\\install\\Android\\lux-engine\\include\\lux\\engine\\ui\\Controls.hpp",
+    "sha256": "f44db269312313b5ee623aa208ea25ff9b56171e8184c26e4cde302e5a701013"
+  },
+  {
+    "source": "modules/resource/description/include/lux/engine/description/Skeleton.hpp",
+    "destination": "E:\\SyncForder\\CodeRepos\\install\\Debug\\include\\lux\\engine\\description\\Skeleton.hpp",
+    "sha256": "4a0cfd7b083f1271440ed520832328b2df22444797df8c8a7b56d2b1a17e8481"
+  },
+  {
+    "source": "modules/resource/description/include/lux/engine/description/Skeleton.hpp",
+    "destination": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\description\\Skeleton.hpp",
+    "sha256": "4a0cfd7b083f1271440ed520832328b2df22444797df8c8a7b56d2b1a17e8481"
+  },
+  {
+    "source": "modules/resource/description/include/lux/engine/description/Skeleton.hpp",
+    "destination": "E:\\SyncForder\\CodeRepos\\install\\Android\\lux-engine\\include\\lux\\engine\\description\\Skeleton.hpp",
+    "sha256": "4a0cfd7b083f1271440ed520832328b2df22444797df8c8a7b56d2b1a17e8481"
+  },
+  {
+    "source": "modules/resource/identity/include/lux/engine/resource/asset/AssetTypeId.hpp",
+    "destination": "E:\\SyncForder\\CodeRepos\\install\\Debug\\include\\lux\\engine\\resource\\asset\\AssetTypeId.hpp",
+    "sha256": "12d23bb85d4e1c5dd287b1b50d2e8d91e25c372ee0371b6f5b965ce4733175d6"
+  },
+  {
+    "source": "modules/resource/identity/include/lux/engine/resource/asset/AssetTypeId.hpp",
+    "destination": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\resource\\asset\\AssetTypeId.hpp",
+    "sha256": "12d23bb85d4e1c5dd287b1b50d2e8d91e25c372ee0371b6f5b965ce4733175d6"
+  },
+  {
+    "source": "modules/resource/identity/include/lux/engine/resource/asset/AssetTypeId.hpp",
+    "destination": "E:\\SyncForder\\CodeRepos\\install\\Android\\lux-engine\\include\\lux\\engine\\resource\\asset\\AssetTypeId.hpp",
+    "sha256": "12d23bb85d4e1c5dd287b1b50d2e8d91e25c372ee0371b6f5b965ce4733175d6"
+  }
+]

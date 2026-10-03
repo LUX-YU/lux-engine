@@ -1,0 +1,41 @@
+-- The CXX compiler identification is MSVC 19.44.35228.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: D:/Development/Mircosoft/VisualStudio/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Found Python3: C:\Users\ChenHui\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe (found version "3.12.14") found components: Interpreter
+---- Importing lux-cxx-core
+---- Importing lux-cxx-compile_time
+---- Importing lux-cxx-memory
+---- Importing lux-cxx-algorithm
+---- Importing lux-cxx-binary
+---- Importing lux-cxx-container
+---- Importing lux-cxx-concurrent
+---- Importing lux-cxx-reflection_runtime
+-- Found nlohmann_json: D:/Development/vcpkg/installed/x64-windows/share/nlohmann_json/nlohmann_jsonConfig.cmake (found version "3.12.0")
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Failed
+-- Looking for pthread_create in pthreads
+-- Looking for pthread_create in pthreads - not found
+-- Looking for pthread_create in pthread
+-- Looking for pthread_create in pthread - not found
+-- Found Threads: TRUE
+-- Found stdexec: D:/Development/vcpkg/installed/x64-windows/share/stdexec/stdexec-config.cmake (found version "0.10.0")
+-- Configuring done (4.6s)
+-- Generating done (0.3s)
+CMake Warning:
+  Manually-specified variables were not used by the project:
+
+    BUILD_TESTING
+    LLVM_DIR
+    LUX_BUILD_COMPONENT_LUA_META
+    LUX_BUILD_PACKED_RENDER_CONTENT
+    LUX_BUILD_PHYSICS2D
+    LUX_EDITOR_LAYERING_MODE
+    LUX_EDITOR_MIGRATION_STAGE
+    LuxLua55_DIR
+    MLIR_DIR
+
+
+-- Build files have been written to: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec1-final-skeleton-headless

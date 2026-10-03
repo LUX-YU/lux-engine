@@ -1,0 +1,60 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev
+      Start   5: ui.root
+ 1/23 Test   #5: ui.root ..............................   Passed    0.02 sec
+      Start  18: editor.scene_model.applicability
+ 2/23 Test  #18: editor.scene_model.applicability .....   Passed    0.02 sec
+      Start  19: editor.scene_model.content
+ 3/23 Test  #19: editor.scene_model.content ...........   Passed    0.02 sec
+      Start  20: editor.scene_model.atomic
+ 4/23 Test  #20: editor.scene_model.atomic ............   Passed    0.02 sec
+      Start  21: editor.scene_model.identity
+ 5/23 Test  #21: editor.scene_model.identity ..........   Passed    0.02 sec
+      Start  22: editor.scene_model.changes
+ 6/23 Test  #22: editor.scene_model.changes ...........   Passed    0.02 sec
+      Start  23: editor.scene_model.plugin
+ 7/23 Test  #23: editor.scene_model.plugin ............   Passed    0.02 sec
+      Start  24: editor.scene_model.mixed-1
+ 8/23 Test  #24: editor.scene_model.mixed-1 ...........   Passed    0.02 sec
+      Start  25: editor.scene_model.mixed-2
+ 9/23 Test  #25: editor.scene_model.mixed-2 ...........   Passed    0.02 sec
+      Start  26: editor.scene_model.mixed-3
+10/23 Test  #26: editor.scene_model.mixed-3 ...........   Passed    0.02 sec
+      Start  27: editor.scene_model.mixed-4
+11/23 Test  #27: editor.scene_model.mixed-4 ...........   Passed    0.02 sec
+      Start  28: editor.scene_model.read-5
+12/23 Test  #28: editor.scene_model.read-5 ............   Passed    0.02 sec
+      Start  29: editor.scene_model.read-6
+13/23 Test  #29: editor.scene_model.read-6 ............   Passed    0.02 sec
+      Start  30: editor.scene_model.read-7
+14/23 Test  #30: editor.scene_model.read-7 ............   Passed    0.02 sec
+      Start  31: editor.scene_model.read-8
+15/23 Test  #31: editor.scene_model.read-8 ............   Passed    0.02 sec
+      Start  32: editor.scene_model.hierarchy_chain
+16/23 Test  #32: editor.scene_model.hierarchy_chain ...   Passed    0.10 sec
+      Start  33: editor.scene_model.hierarchy_wide
+17/23 Test  #33: editor.scene_model.hierarchy_wide ....   Passed    0.09 sec
+      Start  34: editor.scene_model.hierarchy_roots
+18/23 Test  #34: editor.scene_model.hierarchy_roots ...   Passed    0.10 sec
+      Start  35: editor.scene_model.hierarchy_cycle
+19/23 Test  #35: editor.scene_model.hierarchy_cycle ...   Passed    0.10 sec
+      Start 112: editor.scene_views_gpu
+20/23 Test #112: editor.scene_views_gpu ...............   Passed    1.72 sec
+      Start 128: editor.application
+21/23 Test #128: editor.application ...................   Passed    1.35 sec
+      Start 129: editor.scene_configuration
+22/23 Test #129: editor.scene_configuration ...........   Passed    0.04 sec
+      Start 131: editor.scene_model_boundaries
+23/23 Test #131: editor.scene_model_boundaries ........   Passed   13.16 sec
+
+100% tests passed, 0 tests failed out of 23
+
+Label Time Summary:
+P02       =  13.42 sec*proc (15 tests)
+P10       =   1.72 sec*proc (1 test)
+P10Q      =   0.39 sec*proc (4 tests)
+P12       =   1.35 sec*proc (1 test)
+editor    =  16.92 sec*proc (22 tests)
+gpu       =   3.07 sec*proc (2 tests)
+native    =  13.85 sec*proc (20 tests)
+
+Total Test time (real) =  17.00 sec

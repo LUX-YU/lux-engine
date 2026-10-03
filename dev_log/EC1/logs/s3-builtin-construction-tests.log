@@ -1,0 +1,42 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/p12-dev
+    Start  97: editor.contributions
+1/8 Test  #97: editor.contributions ..................   Passed    0.09 sec
+    Start  98: editor.contributions.r11-factory
+2/8 Test  #98: editor.contributions.r11-factory ......   Passed    0.02 sec
+    Start  99: editor.contributions.r11-reflection
+3/8 Test  #99: editor.contributions.r11-reflection ...   Passed    0.07 sec
+    Start 100: editor.contributions.r11-cleanup
+4/8 Test #100: editor.contributions.r11-cleanup ......   Passed    0.02 sec
+    Start 101: editor.contributions.r11-notify
+5/8 Test #101: editor.contributions.r11-notify .......   Passed    0.07 sec
+    Start 111: editor.scene_views_gpu
+6/8 Test #111: editor.scene_views_gpu ................   Passed    1.73 sec
+    Start 127: editor.application
+7/8 Test #127: editor.application ....................***Exception: SegFault  4.44 sec
+Application construction: object.connect: 
+C04: actual EditorApplication::create rejects required menu connection failure
+P13 foreign command lux.editor.new.material code=1 domain=application.thread
+P13 foreign command lux.editor.exit code=1 domain=application.thread
+P13 foreign command test.missing code=1 domain=application.thread
+P13 foreign command lux.editor.new.material code=1 domain=application.thread
+P13 foreign command lux.editor.exit code=1 domain=application.thread
+P13 foreign command test.missing code=1 domain=application.thread
+
+    Start 128: editor.scene_configuration
+8/8 Test #128: editor.scene_configuration ............   Passed    0.07 sec
+
+88% tests passed, 1 tests failed out of 8
+
+Label Time Summary:
+P10       =   1.73 sec*proc (1 test)
+P11       =   0.09 sec*proc (1 test)
+P12       =   4.44 sec*proc (1 test)
+editor    =   6.34 sec*proc (4 tests)
+gpu       =   6.18 sec*proc (2 tests)
+native    =   0.16 sec*proc (2 tests)
+
+Total Test time (real) =   6.90 sec
+
+The following tests FAILED:
+	127 - editor.application (SEGFAULT)                     P12 editor gpu
+Errors while running CTest

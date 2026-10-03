@@ -1,4 +1,4 @@
-#include <lux/engine/editor/material/MaterialPreviewRecipe.hpp>
+#include <lux/engine/editor/material/MaterialPreviewScene.hpp>
 #include <lux/engine/scene/RenderSceneState.hpp>
 #include <lux/engine/scene/RenderAssets.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
@@ -25,6 +25,7 @@ namespace lux::editor::material
         {
             PreviewAdoptionKey key;
             std::shared_ptr<const CompiledMaterial> compiled;
+            MaterialPreviewRecipe recipe;
         };
     }
     struct MaterialPreview::Impl final
@@ -34,10 +35,9 @@ namespace lux::editor::material
             explicit Preview(lux::scene::SceneRuntime& host) : runtime(host) {}
             lux::scene::SceneRuntime& runtime;
             std::optional<lux::scene::SceneInstanceLease> scene;
-            simulation::ecs::Entity camera{simulation::ecs::NullEntity}, sphere{simulation::ecs::NullEntity};
+            simulation::ecs::Entity camera{simulation::ecs::NullEntity}, surface{simulation::ecs::NullEntity};
             lux::scene::RenderSceneReceipt receipt;
-            asset::AssetId mesh;
-            lux::cxx::SharedBytes<> mesh_image, world_volume;
+            lux::cxx::SharedBytes<> world_volume;
             lux::scene::RenderAssetInput successful, candidate;
             std::uint64_t generation{};
             std::optional<PreparedPreview> displayed, pending;
@@ -48,6 +48,7 @@ namespace lux::editor::material
         lux::scene::RenderAssetInput base_;
         const uuids::uuid target_;
         PreviewAdoptionKey desired_;
+        std::optional<MaterialPreviewRecipe> recipe_;
         std::optional<PreparedPreview> prepared_;
         std::optional<VMaterialCompileFailure> compilation_failure_;
         std::optional<MaterialPreviewFailure> failure_;
@@ -61,6 +62,7 @@ namespace lux::editor::material
         { desired_.target = target; }
         MaterialPreviewResult<void> createPreview();
         void update();
+        void restoreDisplayed(simulation::ecs::Registry&);
     };
     MaterialPreviewResult<void> MaterialPreview::Impl::createPreview()
     {
@@ -73,11 +75,9 @@ namespace lux::editor::material
         auto preview = std::make_unique<Preview>(runtime);
         auto* base = &base_;
         preview->successful = *base;
-        auto recipe = makeMaterialPreviewRecipe(environment_.features);
+        auto recipe = makeMaterialPreviewScene(environment_.features);
         if (!recipe)
             return cxx::unexpected(recipe.error());
-        preview->mesh = recipe->mesh;
-        preview->mesh_image = recipe->mesh_image;
         preview->world_volume = recipe->world_volume;
         lux::scene::RenderFeatureSceneBindings bindings = registrations.render_bindings;
         std::array providers{
@@ -115,14 +115,14 @@ namespace lux::editor::material
         preview->scene = std::move(*instance);
         static_cast<void>(runtime.pauseSimulation(preview->scene->id()));
         auto& registry = runtime.borrowInstance(preview->scene->id())->get();
-        const auto sphere = registry.create(), camera = registry.create(), light = registry.create();
-        registry.emplace<ecs::Transform3D>(sphere);
+        const auto surface = registry.create(), camera = registry.create(), light = registry.create();
+        registry.emplace<ecs::Transform3D>(surface);
         registry.emplace<ecs::Transform3D>(camera, recipe->camera_pose);
         registry.emplace<lux::scene::Camera>(camera, recipe->camera);
         registry.emplace<ecs::Transform3D>(light, recipe->light_pose);
         registry.emplace<ecs::Light3D>(light, recipe->light);
         preview->camera = camera;
-        preview->sphere = sphere;
+        preview->surface = surface;
         const auto* render = lux::scene::RenderSceneState::find(registry, preview_render_system_);
         preview->receipt = resources.sceneReceipt(render->resource);
         preview_ = std::move(preview);
@@ -139,17 +139,46 @@ namespace lux::editor::material
         impl_ = std::make_unique<Impl>(runtime, std::move(environment), target);
     }
     MaterialPreview::~MaterialPreview() { static_cast<void>(close()); }
-    MaterialPreviewResult<PreviewAdoptionKey> MaterialPreview::setDesired(MaterialCompileInputKey input) noexcept
+    MaterialPreviewResult<PreviewAdoptionKey> MaterialPreview::setDesired(
+        MaterialCompileInputKey input,
+        std::optional<MaterialPreviewRecipe> recipe
+    ) noexcept
     {
         if (impl_->closing_)
             return cxx::unexpected(MaterialPreviewFailure{EMaterialPreviewError::CLOSED, "preview.closed"});
-        if (impl_->desired_.generation && impl_->desired_.input == input)
+        if (!recipe && !impl_->recipe_)
+        {
+            auto sphere = makeSphereMaterialPreviewRecipe();
+            if (!sphere)
+                return cxx::unexpected(sphere.error());
+            recipe = std::move(*sphere);
+        }
+        bool recipe_changed{};
+        if (recipe)
+        {
+            const bool is_invalid_recipe = recipe->mesh.isNull() || recipe->mesh_image.empty();
+            if (is_invalid_recipe)
+                return cxx::unexpected(MaterialPreviewFailure{EMaterialPreviewError::INVALID_INPUT, "preview.recipe"});
+            recipe_changed = !impl_->recipe_ || impl_->recipe_->mesh != recipe->mesh ||
+                !std::ranges::equal(impl_->recipe_->mesh_image.view(), recipe->mesh_image.view());
+        }
+        const bool is_current = impl_->desired_.generation && impl_->desired_.input == input && !recipe_changed;
+        if (is_current)
             return impl_->desired_;
         if (impl_->desired_.generation == UINT64_MAX)
             return cxx::unexpected(MaterialPreviewFailure{EMaterialPreviewError::CAPACITY, "preview.generation"});
-        impl_->desired_ = {impl_->target_, impl_->desired_.generation + 1, input, 1, impl_->environment_.scene.version};
+        if (recipe_changed)
+        {
+            impl_->recipe_ = std::move(recipe);
+            ++impl_->desired_.recipe; // Bounded by the adoption generation, which advances for every recipe change.
+        }
+        impl_->desired_ = {
+            impl_->target_, impl_->desired_.generation + 1, input, impl_->desired_.recipe,
+            impl_->environment_.scene.version
+        };
         impl_->compilation_failure_.reset();
         impl_->failure_.reset();
+        impl_->preview_failure_.clear();
         return impl_->desired_;
     }
     MaterialPreviewResult<void> MaterialPreview::receive(PreviewAdoptionKey key,
@@ -165,7 +194,7 @@ namespace lux::editor::material
         }
         if (!*result || (*result)->key() != key.input)
             return cxx::unexpected(MaterialPreviewFailure{EMaterialPreviewError::INVALID_INPUT, "preview.source"});
-        impl_->prepared_ = PreparedPreview{key, std::move(*result)};
+        impl_->prepared_ = PreparedPreview{key, std::move(*result), *impl_->recipe_};
         impl_->base_ = std::move(assets);
         impl_->compilation_failure_.reset();
         impl_->preview_failure_.clear();
@@ -201,8 +230,7 @@ namespace lux::editor::material
                 return;
             p.candidate = {};
             p.pending.reset();
-            if (!p.displayed)
-                registry.remove<ecs::Mesh3D>(p.sphere);
+            restoreDisplayed(registry);
         }
         if (prepared_ && !p.candidate)
         {
@@ -213,7 +241,10 @@ namespace lux::editor::material
                 return;
             }
             auto port = process::asset_loading::makeAssetReadOverlay(
-                {{prepared_->compiled->artifact()->id(), {prepared_->compiled->bytes()}}, {p.mesh, {p.mesh_image}}},
+                {
+                    {prepared_->compiled->artifact()->id(), {prepared_->compiled->bytes()}},
+                    {prepared_->recipe.mesh, {prepared_->recipe.mesh_image}}
+                },
                 base_.reads
             );
             if (!port)
@@ -233,8 +264,10 @@ namespace lux::editor::material
             if (!assets.replaceInput(candidate))
                 return;
             registry.emplace_or_replace<ecs::Mesh3D>(
-                p.sphere,
-                lux::rdesc::MeshVisualDescription{p.mesh, prepared_->compiled->artifact()->id(), true, false, false}
+                p.surface,
+                lux::rdesc::MeshVisualDescription{
+                    prepared_->recipe.mesh, prepared_->compiled->artifact()->id(), true, false, false
+                }
             );
             p.pending = std::exchange(prepared_, {});
             p.candidate = std::move(candidate);
@@ -244,7 +277,7 @@ namespace lux::editor::material
         if (p.candidate)
             for (const auto& row : assets.statuses())
             {
-                if (row.key.entity != p.sphere || row.key.source_version != p.candidate.version)
+                if (row.key.entity != p.surface || row.key.source_version != p.candidate.version)
                     continue;
                 if (row.state == lux::scene::ERenderAssetState::READY)
                 {
@@ -260,12 +293,25 @@ namespace lux::editor::material
                     failure_ = MaterialPreviewFailure{EMaterialPreviewError::PREPARATION, "preview.resources", row};
                     p.candidate = {};
                     p.pending.reset();
-                    if (!p.displayed)
-                        registry.remove<ecs::Mesh3D>(p.sphere);
+                    restoreDisplayed(registry);
                 }
                 break;
             }
     }
+    void MaterialPreview::Impl::restoreDisplayed(simulation::ecs::Registry& registry)
+    {
+        const auto& p = *preview_;
+        if (p.displayed)
+            registry.emplace_or_replace<ecs::Mesh3D>(
+                p.surface,
+                lux::rdesc::MeshVisualDescription{
+                    p.displayed->recipe.mesh, p.displayed->compiled->artifact()->id(), true, false, false
+                }
+            );
+        else
+            registry.remove<ecs::Mesh3D>(p.surface);
+    }
+
     void MaterialPreview::update() noexcept
     {
         impl_->update();
@@ -281,7 +327,7 @@ namespace lux::editor::material
             auto& assets = *lux::scene::RenderAssets::find(registry->get(), Impl::preview_render_system_);
             if (!assets.replaceInput(base))
                 return busy();
-            registry->get().remove<ecs::Mesh3D>(p.sphere);
+            registry->get().remove<ecs::Mesh3D>(p.surface);
             p.successful = base;
             p.candidate = {};
             p.displayed.reset();

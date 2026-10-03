@@ -1,4 +1,4 @@
-#include <lux/engine/editor/material/MaterialPreviewRecipe.hpp>
+#include <lux/engine/editor/material/MaterialPreviewScene.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
 #include <lux/engine/resource/asset/mesh/MeshAsset.hpp>
 #include <lux/engine/scene/RenderSystemConfiguration.hpp>
@@ -115,15 +115,19 @@ namespace lux::editor::material
             return std::make_shared<const WorldDescription>(std::move(*result));
         }
     }
-    MaterialPreviewResult<MaterialPreviewRecipe>
-    makeMaterialPreviewRecipe(std::span<const render::RenderFeatureRegistration> features)
+    MaterialPreviewResult<MaterialPreviewRecipe> makeSphereMaterialPreviewRecipe()
     {
-        MaterialPreviewRecipe recipe;
-        recipe.mesh = previewIdentity<asset::AssetId>(4);
-        auto mesh = sphereImage(recipe.mesh);
-        if (!mesh)
-            return cxx::unexpected(mesh.error());
-        recipe.mesh_image = std::move(*mesh);
+        const auto id = previewIdentity<asset::AssetId>(4);
+        auto image = sphereImage(id);
+        if (!image)
+            return cxx::unexpected(image.error());
+        return MaterialPreviewRecipe{id, std::move(*image)};
+    }
+
+    MaterialPreviewResult<MaterialPreviewScene>
+    makeMaterialPreviewScene(std::span<const render::RenderFeatureRegistration> features)
+    {
+        MaterialPreviewScene recipe;
         auto world = previewWorld(recipe.world_volume);
         if (!world)
             return cxx::unexpected(world.error());

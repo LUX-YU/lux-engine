@@ -1044,6 +1044,30 @@ namespace
         assert(take(take(author->read()).encode()) == encoded);
     }
 
+    editor::material::MaterialPreviewRecipe quadPreviewRecipe()
+    {
+        const asset::AssetId mesh_id{uuid("dual-viewport-mesh")};
+        auto mesh = std::make_shared<rdesc::Mesh>();
+        for (const Eigen::Vector3f position :
+             {Eigen::Vector3f{-1, -1, 0}, Eigen::Vector3f{1, -1, 0}, Eigen::Vector3f{1, 1, 0}, Eigen::Vector3f{-1, 1, 0}
+             })
+        {
+            rdesc::Vertex vertex{};
+            vertex.position = position;
+            vertex.normal = {0, 0, 1};
+            vertex.tangent = {1, 0, 0};
+            vertex.bitangent = {0, 1, 0};
+            vertex.uv = {0, 0};
+            mesh->vertices.push_back(vertex);
+        }
+        mesh->indices = {0, 1, 2, 0, 2, 3};
+        auto mesh_asset = take(asset::MeshAsset::create({mesh_id, asset::MeshAsset::asset_type}, mesh));
+        auto bytes = std::make_shared<const std::vector<std::byte>>(
+            take(asset::TAssetSerDeser<asset::MeshAsset>::encode(*mesh_asset, asset::AssetEncodeLimits{1024 * 1024}))
+        );
+        return {mesh_id, cxx::SharedBytes<>::fromOwner(bytes, *bytes)};
+    }
+
     std::shared_ptr<const editor::material::CompiledMaterial> materialView(Fixture& f)
     {
         namespace em = editor::material;
@@ -1172,7 +1196,9 @@ namespace
         // Closing one target retires only its own scene/view; the first remains rendered.
         {
             em::MaterialPreview second{*f.runtime, shared_environment};
-            const auto adoption = take(second.setDesired(compiled->key()));
+            const auto quad = quadPreviewRecipe();
+            const auto sphere = take(em::makeSphereMaterialPreviewRecipe());
+            const auto adoption = take(second.setDesired(compiled->key(), quad));
             assert(adoption.target != preview.status().desired.target);
             assert(second.receive(adoption, compiled, preview_assets));
             f.wait([&] {
@@ -1194,6 +1220,90 @@ namespace
                 return second.status().accepted == adoption && presentation->image().isValid();
             });
             assert(view->image().isValid() && preview.status().accepted->input == compiled->key());
+            const auto pixels = [&] {
+                for (int i{}; i < 8; ++i)
+                {
+                    second.update();
+                    presentation->update({320, 240});
+                    f.frame();
+                }
+                const auto output = take(f.resources->outputInfo(take(f.resources->viewOutput(presentation->view()))));
+                std::vector<std::byte> buffer(std::size_t(output.extent.width) * output.extent.height * 8);
+                auto request = f.renderer->control()->get().readbackTargetAsync(
+                    output.target, buffer.data(), buffer.size(), 4
+                );
+                f.wait([&] { return request.isReady(); });
+                const auto result = request.tryResult();
+                assert(result && result->get().status == 0 && result->get().bytes_written > 0);
+                assert(result->get().bytes_written <= buffer.size());
+                buffer.resize(static_cast<std::size_t>(result->get().bytes_written));
+                return buffer;
+            };
+            const auto quad_pixels = pixels();
+            const auto instance = second.instance();
+            const auto sphere_adoption = take(second.setDesired(compiled->key(), sphere));
+            assert(sphere_adoption.input == adoption.input && sphere_adoption.recipe > adoption.recipe);
+            assert(second.receive(adoption, compiled, preview_assets)); // Late old recipe result must only settle.
+            assert(second.status().accepted == adoption && !second.status().prepared && second.status().stale);
+            assert(second.receive(sphere_adoption, compiled, preview_assets));
+            f.wait([&] {
+                second.update();
+                presentation->update({320, 240});
+                return second.status().accepted == sphere_adoption;
+            });
+            const auto sphere_pixels = pixels();
+            assert(sphere_pixels != quad_pixels && second.instance() == instance);
+            // The same existing quad now replaces the sphere through the identical public entry.
+            const auto again = take(second.setDesired(compiled->key(), quad));
+            assert(second.receive(again, compiled, preview_assets));
+            f.wait([&] {
+                second.update();
+                presentation->update({320, 240});
+                return second.status().accepted == again;
+            });
+            assert(pixels() == quad_pixels);
+            // Replace a queued resource candidate before Runtime maintenance can consume it.
+            const auto superseded = take(second.setDesired(compiled->key(), sphere));
+            assert(second.receive(superseded, compiled, preview_assets));
+            second.update();
+            assert(second.status().prepared == superseded && second.status().accepted == again);
+            const auto latest = take(second.setDesired(compiled->key(), quad));
+            assert(second.receive(latest, compiled, preview_assets));
+            f.wait([&] {
+                second.update();
+                presentation->update({320, 240});
+                return second.status().accepted == latest;
+            });
+            assert(second.receive(superseded, compiled, preview_assets));
+            assert(second.status().accepted == latest && !second.status().prepared && pixels() == quad_pixels);
+            // Same mesh ID, different owning bytes: a real decode failure, not a key-only change.
+            auto corrupt = std::make_shared<const std::vector<std::byte>>(32, std::byte{0xff});
+            const auto broken = take(second.setDesired(
+                compiled->key(), em::MaterialPreviewRecipe{quad.mesh, cxx::SharedBytes<>::fromOwner(corrupt, *corrupt)}
+            ));
+            corrupt.reset();
+            assert(broken.recipe > latest.recipe && broken.input == latest.input);
+            assert(second.receive(broken, compiled, preview_assets));
+            f.wait([&] {
+                second.update();
+                presentation->update({320, 240});
+                return second.status().failure.has_value();
+            });
+            assert(second.status().accepted == latest && second.status().stale && !second.status().prepared);
+            assert(pixels() == quad_pixels); // Last successful geometry and material survived actual resource failure.
+            assert(second.receive(sphere_adoption, compiled, preview_assets));
+            assert(second.status().accepted == latest && !second.status().prepared);
+            const auto recovered = take(second.setDesired(compiled->key(), sphere));
+            assert(second.receive(recovered, compiled, preview_assets));
+            f.wait([&] {
+                second.update();
+                presentation->update({320, 240});
+                return second.status().accepted == recovered;
+            });
+            assert(!second.status().failure && pixels() == sphere_pixels && second.instance() == instance);
+            assert(author->describe().current == unsaved.current && author->describe().dirty == unsaved.dirty);
+            std::printf("EC2-R1 XEC2-12 public sphere/quad recipe GPU readbacks differ; same-input adoption, "
+                        "late completion, failed bytes, last-success pixels and retry PASS\n");
             f.wait([&] { return presentation->close() == render::ERenderClose::COMPLETE; });
             presentation.reset();
             const auto retired = second.close();
@@ -1256,27 +1366,10 @@ namespace
 {
     void meshViews(Fixture& f, const editor::material::CompiledMaterial& material)
     {
-        const asset::AssetId mesh_id{uuid("dual-viewport-mesh")};
-        auto mesh = std::make_shared<rdesc::Mesh>();
-        for (const Eigen::Vector3f position :
-             {Eigen::Vector3f{-1, -1, 0}, Eigen::Vector3f{1, -1, 0}, Eigen::Vector3f{1, 1, 0}, Eigen::Vector3f{-1, 1, 0}
-             })
-        {
-            rdesc::Vertex vertex{};
-            vertex.position = position;
-            vertex.normal = {0, 0, 1};
-            vertex.tangent = {1, 0, 0};
-            vertex.bitangent = {0, 1, 0};
-            vertex.uv = {0, 0};
-            mesh->vertices.push_back(vertex);
-        }
-        mesh->indices = {0, 1, 2, 0, 2, 3};
-        auto mesh_asset = take(asset::MeshAsset::create({mesh_id, asset::MeshAsset::asset_type}, mesh));
-        auto bytes = std::make_shared<const std::vector<std::byte>>(
-            take(asset::TAssetSerDeser<asset::MeshAsset>::encode(*mesh_asset, asset::AssetEncodeLimits{1024 * 1024}))
-        );
+        const auto recipe = quadPreviewRecipe();
+        const auto mesh_id = recipe.mesh;
         auto assets = take(process::asset_loading::makeAssetReadOverlay(
-            {{material.artifact()->id(), {material.bytes()}}, {mesh_id, {cxx::SharedBytes<>::fromOwner(bytes, *bytes)}}},
+            {{material.artifact()->id(), {material.bytes()}}, {mesh_id, {recipe.mesh_image}}},
             {}
         ));
         struct FailingRead final : process::asset_loading::AssetReadPort::Endpoint

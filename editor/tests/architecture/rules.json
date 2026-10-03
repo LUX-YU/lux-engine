@@ -4020,7 +4020,7 @@
       "editor/tests/integration/material_activity/compilation.cpp",
       "editor/tests/integration/material_activity/ownership.cpp",
       "editor/activities/material/src/MaterialPreviewRecipe.cpp",
-      "editor/activities/material/pinclude/lux/engine/editor/material/MaterialPreviewRecipe.hpp"
+      "editor/activities/material/pinclude/lux/engine/editor/material/MaterialPreviewScene.hpp"
     ]
   },
   "flowforge_compilation": {
@@ -18220,7 +18220,7 @@
       "editor/activities/material/src/MaterialPreviewRecipe.cpp": [
         "material_preview"
       ],
-      "editor/activities/material/pinclude/lux/engine/editor/material/MaterialPreviewRecipe.hpp": [
+      "editor/activities/material/pinclude/lux/engine/editor/material/MaterialPreviewScene.hpp": [
         "material_preview"
       ],
       "editor/activities/workspace/src/WorkspaceMigration.cpp": [

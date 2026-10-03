@@ -158,6 +158,31 @@ int main(int argc, char** argv)
     assert(!second.setDesired(s12->key()) && preview.status().prepared == first_target);
     assert(mat->describe().current == before.current && mat->describe().dirty == before.dirty);
     assert(take(take(mat->read()).encode()) == before_source);
+    // Real compiled input, two owned mesh recipes; no target key is hand-adjusted here.
+    {
+        em::MaterialPreview recipes{*runtime, {}};
+        const auto sphere = take(em::makeSphereMaterialPreviewRecipe());
+        const auto original = take(recipes.setDesired(compiled->key(), sphere));
+        assert(recipes.receive(original, compiled, {}));
+        auto bytes = std::make_shared<const std::vector<std::byte>>(16, std::byte{0x7f});
+        const em::MaterialPreviewRecipe other{sphere.mesh, cxx::SharedBytes<>::fromOwner(bytes, *bytes)};
+        const auto changed = take(recipes.setDesired(compiled->key(), other));
+        assert(changed.input == original.input && changed.recipe > original.recipe);
+        assert(changed.generation > original.generation);
+        recipes.update();
+        assert(!recipes.status().prepared && recipes.receive(original, compiled, {}));
+        assert(!recipes.status().prepared);
+        assert(recipes.receive(changed, compiled, {}) && recipes.status().prepared == changed);
+        assert(take(recipes.setDesired(compiled->key(), other)) == changed);
+        assert(take(recipes.setDesired(compiled->key())) == changed); // Compile edits retain the chosen recipe.
+        assert(!recipes.setDesired(compiled->key(), em::MaterialPreviewRecipe{}));
+        assert(recipes.status().desired == changed && recipes.status().prepared == changed);
+        const auto restored = take(recipes.setDesired(compiled->key(), sphere));
+        assert(restored.recipe > changed.recipe && recipes.receive(changed, compiled, {}));
+        recipes.update();
+        assert(!recipes.status().prepared);
+        assert(recipes.receive(restored, compiled, {}) && recipes.status().prepared == restored);
+    }
     // A real compiler failure must not cause the older successful completion to be relabelled current.
     em::MaterialEditBatch broken{mat->describe().current, "remove output", {}};
     broken.edits.push_back(em::MaterialEraseNode{lux::material::NodeId{2}});

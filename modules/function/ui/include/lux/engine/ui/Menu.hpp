@@ -1,7 +1,7 @@
 #pragma once
 
 #include <lux/engine/ui/Command.hpp>
-#include <lux/engine/ui/InputEvent.hpp>
+#include <lux/engine/ui/Shortcut.hpp>
 #include <memory>
 #include <string_view>
 #include <vector>
@@ -10,12 +10,6 @@ namespace lux::ui
 {
     class Pane;
     class Element;
-
-    struct Shortcut final
-    {
-        EKey key{EKey::NONE};
-        bool control{}, shift{}, alt{};
-    };
 
     struct MenuItem final
     {

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/editor/commands/Command.hpp>
+#include <lux/engine/ui/Shortcut.hpp>
 #include <lux/cxx/core/move_only_function.hpp>
 #include <span>
 #include <vector>
@@ -38,6 +39,7 @@ namespace lux::editor::commands
         CommandEntry(CommandEntry&&) = delete;
         CommandEntry& operator=(CommandEntry&&) = delete;
         [[nodiscard]] const CommandDescriptor& descriptor() const noexcept;
+        [[nodiscard]] const lux::ui::ShortcutResult& shortcut() const noexcept;
 
         [[nodiscard]] bool usesCode(const contracts::CodeLease& code) const noexcept
         {
@@ -52,6 +54,7 @@ namespace lux::editor::commands
         contracts::CodeLease code_;
         std::unique_ptr<const DescriptorStorage> storage_;
         const CommandDescriptor* descriptor_;
+        lux::ui::ShortcutResult shortcut_;
         Query query_;
         Execute execute_;
     };

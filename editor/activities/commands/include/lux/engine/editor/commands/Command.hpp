@@ -33,7 +33,8 @@ namespace lux::editor::commands
         CLOSED,
         DOMAIN_FAILURE,
         DUPLICATE,
-        HASH_COLLISION
+        HASH_COLLISION,
+        SHORTCUT_CONFLICT
     };
     struct CommandFailure final
     {
@@ -60,7 +61,7 @@ namespace lux::editor::commands
         CommandIdView id;
         std::string_view label;
         std::string_view group;
-        // Canonical modifiers followed by an ASCII letter or a named key; interpreted by workbench.
+        // Canonical default binding; parsed once by CommandEntry, never by event dispatch.
         std::string_view shortcut;
         ECommandScope scope{ECommandScope::APPLICATION};
         std::uint32_t input_version{1};

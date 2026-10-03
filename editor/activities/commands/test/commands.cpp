@@ -122,6 +122,42 @@ namespace
         });
         foreign.join();
     }
+    void shortcutAdmission()
+    {
+        using namespace lux::ui;
+        assert(parseShortcut("")->key == EKey::NONE);
+        assert((*parseShortcut("Ctrl+Shift+Alt+Z") == Shortcut{EKey::Z, true, true, true}));
+        assert(parseShortcut("Delete")->key == EKey::DELETE_KEY);
+        assert(parseShortcut("Enter")->key == EKey::ENTER);
+        assert(parseShortcut("Escape")->key == EKey::ESCAPE);
+        assert(parseShortcut("Ctrl+Ctrl+A").error() == EShortcutError::DUPLICATE_MODIFIER);
+        assert(parseShortcut("Shift+Ctrl+A").error() == EShortcutError::MODIFIER_ORDER);
+        assert(parseShortcut("Super+A").error() == EShortcutError::UNKNOWN_MODIFIER);
+        assert(parseShortcut("Ctrl+").error() == EShortcutError::MISSING_KEY);
+        assert(parseShortcut("Ctrl+a").error() == EShortcutError::UNKNOWN_KEY);
+        auto make = [](std::string_view id, std::string_view shortcut) {
+            return CommandEntry::create(
+                contracts::CodeLease::builtin(), {CommandIdView{id}, "Shortcut", "Edit", shortcut},
+                [](const CommandQuery&) -> CommandResult<CommandState> { return CommandState{true}; },
+                [](const CommandInvocation&) -> CommandResult<DispatchReceipt> {
+                    return DispatchReceipt{ImmediateCompletion{}};
+                }
+            );
+        };
+        CommandRegistry registry;
+        auto original = CommandRegistrySnapshot::create({make("first", "Ctrl+A"), make("unbound", "")});
+        assert(original && registry.publish(*original));
+        const auto version = registry.revision();
+        auto conflict = CommandRegistrySnapshot::create({make("first", "Ctrl+A"), make("second", "Ctrl+A")});
+        assert(!conflict && conflict.error().code == ECommandError::SHORTCUT_CONFLICT);
+        auto malformed = CommandRegistrySnapshot::create({make("bad", "Shift+Ctrl+A")});
+        assert(!malformed && malformed.error().code == ECommandError::INVALID_ARGUMENT);
+        assert(registry.revision() == version && original->find(CommandIdView{"first"}));
+        auto valid = CommandRegistrySnapshot::create({make("first", "Ctrl+A"), make("second", "Ctrl+Shift+A")});
+        assert(valid && registry.publish(*valid));
+        assert(CommandRegistrySnapshot::create({make("empty1", ""), make("empty2", "")}));
+        std::puts("PASS one shortcut parser, precise syntax failures, cold conflict refusal, unchanged published set");
+    }
     void pinnedAndCurrent()
     {
         int old_calls{}, new_calls{};
@@ -268,6 +304,7 @@ namespace
 int main()
 {
     descriptorStorageAndIndex();
+    shortcutAdmission();
     compoundScope();
     pinnedAndCurrent();
     queryLifetime();

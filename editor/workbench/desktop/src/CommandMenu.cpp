@@ -5,37 +5,6 @@
 namespace lux::editor::desktop
 {
     using namespace commands;
-    namespace
-    {
-        lux::ui::Shortcut shortcut(std::string_view text)
-        {
-            lux::ui::Shortcut result;
-            if (text.starts_with("Ctrl+"))
-            {
-                result.control = true;
-                text.remove_prefix(5);
-            }
-            if (text.starts_with("Shift+"))
-            {
-                result.shift = true;
-                text.remove_prefix(6);
-            }
-            if (text.starts_with("Alt+"))
-            {
-                result.alt = true;
-                text.remove_prefix(4);
-            }
-            if (text.size() == 1 && text.front() >= 'A' && text.front() <= 'Z')
-                result.key = static_cast<lux::ui::EKey>(static_cast<unsigned>(lux::ui::EKey::A) + text.front() - 'A');
-            else if (text == "Delete")
-                result.key = lux::ui::EKey::DELETE_KEY;
-            else if (text == "Enter")
-                result.key = lux::ui::EKey::ENTER;
-            else if (text == "Escape")
-                result.key = lux::ui::EKey::ESCAPE;
-            return result;
-        }
-    }
     struct CommandMenu::Impl final
     {
         struct Item final
@@ -93,7 +62,7 @@ namespace lux::editor::desktop
                     group.remove_prefix(slash + 1);
                 }
                 children->push_back(
-                    {descriptor.id, descriptor.label, descriptor.shortcut, shortcut(descriptor.shortcut), {}, index}
+                    {descriptor.id, descriptor.label, descriptor.shortcut, *entry->shortcut(), {}, index}
                 );
             }
             root.setMenu(std::move(menu), candidate);

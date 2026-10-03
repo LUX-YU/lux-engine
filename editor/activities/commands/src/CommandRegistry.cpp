@@ -12,17 +12,6 @@ namespace lux::editor::commands
         {
             return cxx::unexpected(CommandFailure{error, "command"});
         }
-        bool validShortcut(std::string_view shortcut)
-        {
-            if (shortcut.empty())
-                return true;
-            for (const auto modifier : {"Ctrl+", "Shift+", "Alt+"})
-                if (shortcut.starts_with(modifier))
-                    shortcut.remove_prefix(std::char_traits<char>::length(modifier));
-            const bool is_letter = shortcut.size() == 1 && shortcut.front() >= 'A' && shortcut.front() <= 'Z';
-            const bool is_named = shortcut == "Delete" || shortcut == "Enter" || shortcut == "Escape";
-            return is_letter || is_named;
-        }
         CommandResult<void> validate(const CommandDescriptor& entry, const CommandQuery& query)
         {
             const bool is_scope_mismatch = static_cast<std::size_t>(entry.scope) != query.target.index();
@@ -150,7 +139,8 @@ namespace lux::editor::commands
     CommandEntry::CommandEntry(
         contracts::CodeLease code, const CommandDescriptor& descriptor, Query query, Execute execute
     )
-        : code_(std::move(code)), descriptor_(&descriptor), query_(std::move(query)), execute_(std::move(execute))
+        : code_(std::move(code)), descriptor_(&descriptor), shortcut_(lux::ui::parseShortcut(descriptor.shortcut)),
+          query_(std::move(query)), execute_(std::move(execute))
     {}
     std::shared_ptr<CommandEntry> CommandEntry::create(
         contracts::CodeLease code, const CommandDescriptor& descriptor, Query query, Execute execute
@@ -167,6 +157,10 @@ namespace lux::editor::commands
     const CommandDescriptor& CommandEntry::descriptor() const noexcept
     {
         return *descriptor_;
+    }
+    const lux::ui::ShortcutResult& CommandEntry::shortcut() const noexcept
+    {
+        return shortcut_;
     }
     const CommandDescriptor& CommandHandle::descriptor() const noexcept
     {
@@ -201,14 +195,31 @@ namespace lux::editor::commands
             const bool is_invalid_description = descriptor.label.empty() || descriptor.input_version == 0 ||
                 static_cast<unsigned>(descriptor.scope) > static_cast<unsigned>(ECommandScope::VIEW);
             const bool is_invalid_binding = !entry.code_.valid() || !entry.query_ || !entry.execute_;
-            const bool is_invalid = is_invalid_identity || is_invalid_description || is_invalid_binding ||
-                !validShortcut(descriptor.shortcut);
+            const bool is_invalid = is_invalid_identity || is_invalid_description || is_invalid_binding;
             if (is_invalid)
                 return failure(ECommandError::INVALID_ARGUMENT);
         }
         auto index = detail::commandIndex(entries, [](CommandIdView id) { return id.hash(); });
         if (!index)
             return cxx::unexpected(index.error());
+        for (std::size_t i{}; i < entries.size(); ++i)
+        {
+            const auto& binding = entries[i]->shortcut();
+            if (!binding)
+                return cxx::unexpected(CommandFailure{
+                    ECommandError::INVALID_ARGUMENT, "command.shortcut", static_cast<std::uint64_t>(binding.error())
+                });
+            if (binding->key == lux::ui::EKey::NONE)
+                continue;
+            // Bounded cold validation of the effective default set, never part of event dispatch.
+            for (std::size_t previous{}; previous < i; ++previous)
+                if (*binding == *entries[previous]->shortcut())
+                    return cxx::unexpected(CommandFailure{
+                        ECommandError::SHORTCUT_CONFLICT, "command.shortcut", 0,
+                        std::string(entries[previous]->descriptor().id.name()) + " / " +
+                            std::string(entries[i]->descriptor().id.name())
+                    });
+        }
         CommandRegistrySnapshot result;
         result.data_ = std::make_shared<Data>(std::move(entries), std::move(*index));
         return result;

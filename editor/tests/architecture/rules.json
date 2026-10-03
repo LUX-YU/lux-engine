@@ -2084,6 +2084,9 @@
       },
       "editor_commands": {
         "path": "editor/activities/commands"
+      },
+      "ui_input": {
+        "path": "modules/function/ui"
       }
     },
     "headers": [
@@ -2253,6 +2256,9 @@
       },
       "editor_commands": {
         "path": "editor/activities/commands"
+      },
+      "ui_input": {
+        "path": "modules/function/ui"
       }
     },
     "headers": [
@@ -2413,6 +2419,9 @@
       },
       "editor_commands": {
         "path": "editor/activities/commands"
+      },
+      "ui_input": {
+        "path": "modules/function/ui"
       }
     },
     "headers": [
@@ -5091,6 +5100,9 @@
       },
       "layout_model": {
         "path": "editor/authoring/layout"
+      },
+      "ui_input": {
+        "path": "modules/function/ui"
       }
     },
     "native_libraries": [
@@ -5354,6 +5366,9 @@
       },
       "window": {
         "path": "modules/platform/window"
+      },
+      "ui_input": {
+        "path": "modules/function/ui"
       }
     },
     "native_libraries": [
@@ -5794,6 +5809,9 @@
       },
       "platform_process": {
         "path": "modules/platform/process"
+      },
+      "ui_input": {
+        "path": "modules/function/ui"
       }
     },
     "native_libraries": [
@@ -5979,6 +5997,9 @@
       },
       "nlohmann_json::nlohmann_json": {
         "imported": true
+      },
+      "ui_input": {
+        "path": "modules/function/ui"
       }
     },
     "native_libraries": [
@@ -6499,6 +6520,9 @@
       },
       "editor_commands": {
         "path": "editor/activities/commands"
+      },
+      "ui_input": {
+        "path": "modules/function/ui"
       }
     },
     "native_libraries": [
@@ -7178,6 +7202,9 @@
       },
       "view_host": {
         "path": "editor/workbench/desktop"
+      },
+      "ui_input": {
+        "path": "modules/function/ui"
       }
     },
     "native_libraries": [
@@ -7770,6 +7797,9 @@
       },
       "view_host": {
         "path": "editor/workbench/desktop"
+      },
+      "ui_input": {
+        "path": "modules/function/ui"
       }
     },
     "native_libraries": [
@@ -7934,6 +7964,9 @@
       },
       "view_host": {
         "path": "editor/workbench/desktop"
+      },
+      "ui_input": {
+        "path": "modules/function/ui"
       }
     },
     "native_libraries": [
@@ -8140,6 +8173,9 @@
       },
       "view_host": {
         "path": "editor/workbench/desktop"
+      },
+      "ui_input": {
+        "path": "modules/function/ui"
       }
     },
     "native_libraries": [
@@ -9225,6 +9261,9 @@
       },
       "workspace_store": {
         "path": "editor/activities/workspace"
+      },
+      "ui_input": {
+        "path": "modules/function/ui"
       }
     },
     "native_libraries": [
@@ -9869,6 +9908,9 @@
       },
       "partition_identity": {
         "path": "engine/domain/partition/identity"
+      },
+      "ui_input": {
+        "path": "modules/function/ui"
       }
     },
     "headers": [
@@ -15935,6 +15977,14 @@
           "CPU"
         ],
         "path": "editor/activities/commands"
+      },
+      "ui_input": {
+        "layer": "ENGINE",
+        "role": "PROVIDER",
+        "capabilities": [
+          "CPU"
+        ],
+        "path": "modules/function/ui"
       }
     },
     "files": {
@@ -18383,6 +18433,15 @@
       ],
       "editor/activities/commands/test/index.cpp": [
         "editor_command_index_test"
+      ],
+      "modules/function/ui/include/lux/engine/ui/Shortcut.hpp": [
+        "ui_input"
+      ],
+      "modules/function/ui/include/lux/engine/ui/InputEvent.hpp": [
+        "ui_input"
+      ],
+      "modules/function/ui/include/lux/engine/ui/Geometry.hpp": [
+        "ui_input"
       ]
     },
     "native_libraries": [

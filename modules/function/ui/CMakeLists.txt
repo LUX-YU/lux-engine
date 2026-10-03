@@ -1,6 +1,16 @@
 find_package(imgui REQUIRED COMPONENTS core)
 find_package(lux-cxx REQUIRED COMPONENTS core compile_time)
 
+# Value-only input protocol and cold shortcut parsing. Command providers can use these exact
+# keys without importing Root, ImGui, a window or any rendering library.
+add_interface_component(COMPONENT_NAME ui_input NAMESPACE lux::engine::function)
+component_include_directories(ui_input
+    BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
+target_link_libraries(ui_input INTERFACE lux::cxx::compile_time)
+component_add_transitive_commands(ui_input "find_package(lux-cxx REQUIRED COMPONENTS compile_time)")
+install(FILES include/lux/engine/ui/InputEvent.hpp include/lux/engine/ui/Geometry.hpp
+    include/lux/engine/ui/Shortcut.hpp DESTINATION include/lux/engine/ui COMPONENT lux_engine_function)
+
 add_library(
     ui_imgui_backend
     OBJECT
@@ -26,6 +36,7 @@ target_link_libraries(
     ui_imgui_backend
     PRIVATE
         imgui::core
+        lux::engine::function::ui_input
         lux::cxx::core
         lux::cxx::compile_time
         lux::engine::core::object
@@ -57,6 +68,7 @@ target_link_libraries(
     ui
     PRIVATE ui_imgui_backend
     PUBLIC
+        lux::engine::function::ui_input
         lux::cxx::core
         lux::cxx::compile_time
         lux::engine::core::object
@@ -72,6 +84,7 @@ add_custom_command(
 
 component_add_transitive_commands(
     ui
+    "find_package(lux-engine-function REQUIRED COMPONENTS ui_input)"
     "find_package(lux-cxx REQUIRED COMPONENTS core compile_time)"
     "find_package(lux-engine-core REQUIRED COMPONENTS object)"
     "find_package(lux-engine-function REQUIRED COMPONENTS render_client)"

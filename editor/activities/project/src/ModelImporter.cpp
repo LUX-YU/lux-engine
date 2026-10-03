@@ -1,22 +1,17 @@
 #include <lux/engine/platform/FilePath.hpp>
 #include <algorithm>
-#include <array>
 #include <atomic>
-#include <cmath>
 #include <fstream>
-#include <limits>
 #include <lux/cxx/algorithm/Sha256.hpp>
 #include <lux/engine/editor/storage/ProjectPublicationOperation.hpp>
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
 #include <lux/engine/editor/persistence/SaveExecution.hpp>
 #include <lux/engine/editor/detail/SignalDelivery.hpp>
 #include <lux/engine/editor/detail/TaskResult.hpp>
-#include <lux/engine/editor/assets/AssetImporter.hpp>
+#include <lux/engine/editor/assets/ModelImporter.hpp>
+#include <lux/engine/editor/assets/ModelImportRecipe.hpp>
 #include <lux/engine/resource/asset/AssetSerDeser.hpp>
 #include <lux/engine/resource/asset/storage/pak/PakArchive.hpp>
-#include <set>
-#include <sstream>
-#include <toml++/toml.hpp>
 
 namespace lux::editor::assets
 {
@@ -41,11 +36,6 @@ namespace lux::editor::assets
         {
             auto owner = std::make_shared<const std::vector<std::byte>>(std::move(bytes));
             return lux::cxx::SharedBytes<>::fromOwner(owner, *owner);
-        }
-        lux::cxx::SharedBytes<> own(std::string text)
-        {
-            auto owner = std::make_shared<const std::string>(std::move(text));
-            return lux::cxx::SharedBytes<>::fromOwner(owner, std::as_bytes(std::span(*owner)));
         }
         struct Source final
         {
@@ -90,136 +80,18 @@ namespace lux::editor::assets
                 {
                     return failed(EEditorError::SOURCE_FAILURE, "model.recipe.conflict", file.string());
                 }
-                auto parsed = toml::parse(bytes);
-                if (!parsed)
-                {
-                    return failed(
-                        EEditorError::SOURCE_FAILURE,
-                        "model.recipe.parse",
-                        std::string(parsed.error().description())
-                    );
-                }
-                auto& table = parsed.table();
-                constexpr std::array known_fields{
-                    "format",
-                    "version",
-                    "root",
-                    "entry",
-                    "scale",
-                    "left_handed",
-                    "animations",
-                    "rotation",
-                    "files"
+                auto recipe_value = decodeModelImportRecipe(std::as_bytes(std::span(bytes)));
+                if (!recipe_value)
+                    return lux::cxx::unexpected(std::move(recipe_value.error()));
+                Source result{
+                    file.parent_path() / recipe_value->root,
+                    {recipe_value->entry, {}},
+                    recipe_value->configuration
                 };
-                for (const auto& [key, value] : table)
-                {
-                    if (std::ranges::find(known_fields, key.str()) == known_fields.end())
-                    {
-                        return failed(
-                            EEditorError::SOURCE_FAILURE,
-                            "model.recipe.unknown-field",
-                            std::string(key.str())
-                        );
-                    }
-                }
-                const auto format = table["format"].value<std::string>();
-                const auto version = table["version"].value<std::int64_t>();
-                const auto root = table["root"].value<std::string>();
-                const auto entry = table["entry"].value<std::string>();
-                const auto scale = table["scale"].value<double>();
-                const auto handed = table["left_handed"].value<bool>();
-                const auto animated = table["animations"].value<bool>();
-                const auto* rotation = table["rotation"].as_array();
-                const auto* files = table["files"].as_array();
-                const bool is_invalid_format = !format || *format != "lux.editor.model-source";
-                const bool is_invalid_version = !version || *version != 1;
-                const bool is_missing_path = !root || !entry;
-                const bool is_invalid_path =
-                    !is_missing_path && (!validProjectPath(*root) || !validProjectPath(*entry));
-                const bool is_missing_config = !scale || !handed || !animated;
-                const bool is_invalid_rotation = !rotation || rotation->size() != 4;
-                const bool is_invalid_file_list = !files || files->size() > 4096;
-                const bool is_invalid_schema = is_invalid_format || is_invalid_version || is_missing_path ||
-                                               is_invalid_path || is_missing_config || is_invalid_rotation ||
-                                               is_invalid_file_list;
-                if (is_invalid_schema)
-                {
-                    return failed(EEditorError::SOURCE_FAILURE, "model.recipe.schema");
-                }
-                const bool is_nonfinite_scale = !std::isfinite(*scale);
-                const bool is_nonpositive_scale = *scale <= 0.0;
-                const bool is_excessive_scale = *scale > std::numeric_limits<float>::max();
-                const bool is_invalid_scale = is_nonfinite_scale || is_nonpositive_scale || is_excessive_scale;
-                if (is_invalid_scale)
-                {
-                    return failed(EEditorError::SOURCE_FAILURE, "model.recipe.scale");
-                }
-                std::vector<std::string> paths, digests;
-                std::set<std::string> unique_paths;
-                for (const auto& item : *files)
-                {
-                    const auto* record = item.as_table();
-                    const bool is_missing_record = record == nullptr;
-                    const bool is_invalid_record_size = !is_missing_record && record->size() != 2;
-                    const bool is_invalid_record = is_missing_record || is_invalid_record_size;
-                    if (is_invalid_record)
-                    {
-                        return failed(EEditorError::SOURCE_FAILURE, "model.recipe.files");
-                    }
-                    const auto path = (*record)["path"].value<std::string>();
-                    const auto digest = (*record)["digest"].value<std::string>();
-                    const bool is_missing_field = !path || !digest;
-                    const bool is_invalid_path = path && !validProjectPath(*path);
-                    const bool is_invalid_digest_length = digest && digest->size() != 64;
-                    const bool is_invalid_digest_chars = digest && !std::ranges::all_of(*digest, [](char c) {
-                                                             return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
-                                                         });
-                    const bool is_invalid_file =
-                        is_missing_field || is_invalid_path || is_invalid_digest_length || is_invalid_digest_chars;
-                    if (is_invalid_file)
-                    {
-                        return failed(EEditorError::SOURCE_FAILURE, "model.recipe.files");
-                    }
-                    auto folded = *path;
-                    for (auto& character : folded)
-                    {
-                        if (character >= 'A' && character <= 'Z')
-                        {
-                            character = static_cast<char>(character - 'A' + 'a');
-                        }
-                    }
-                    if (!unique_paths.insert(folded).second)
-                    {
-                        return failed(EEditorError::SOURCE_FAILURE, "model.recipe.duplicate-path", *path);
-                    }
-                    paths.push_back(*path);
-                    digests.push_back(*digest);
-                }
-                if (std::ranges::find(paths, *entry) == paths.end())
-                {
-                    return failed(EEditorError::SOURCE_FAILURE, "model.recipe.entry", *entry);
-                }
-                Source result{file.parent_path() / *root, {*entry, {}}, {}};
-                result.config.uniform_scale = static_cast<float>(*scale);
-                result.config.make_left_handed = *handed;
-                result.config.import_animations = *animated;
-                for (std::size_t index{}; index < 4; ++index)
-                {
-                    const auto value = (*rotation)[index].value<double>();
-                    const bool is_missing_value = !value;
-                    const bool is_nonfinite_value = value && !std::isfinite(*value);
-                    const bool is_excessive_value = value && std::abs(*value) > 1.0;
-                    const bool is_invalid_value = is_missing_value || is_nonfinite_value || is_excessive_value;
-                    if (is_invalid_value)
-                    {
-                        return failed(EEditorError::SOURCE_FAILURE, "model.recipe.rotation");
-                    }
-                    result.config.pre_rotation.coeffs()[index] = static_cast<float>(*value);
-                }
-                if (std::abs(result.config.pre_rotation.squaredNorm() - 1.0F) > 0.0001F)
-                {
-                    return failed(EEditorError::SOURCE_FAILURE, "model.recipe.rotation");
-                }
+                std::vector<std::string> paths;
+                paths.reserve(recipe_value->files.size());
+                for (const auto& file : recipe_value->files)
+                    paths.push_back(file.path);
                 if (replacement.empty())
                 {
                     std::error_code ec;
@@ -253,7 +125,7 @@ namespace lux::editor::assets
                         const bool is_missing_source =
                             captured_file.state != lux::toolchain::EModelSourceState::PRESENT;
                         const bool is_digest_mismatch =
-                            !is_missing_source && projectContentDigest(captured_file.bytes.view()) != digests[index];
+                            !is_missing_source && projectContentDigest(captured_file.bytes.view()) != recipe_value->files[index].digest;
                         const bool has_source_conflict = is_missing_source || is_digest_mismatch;
                         if (has_source_conflict)
                         {
@@ -330,34 +202,19 @@ namespace lux::editor::assets
                 const auto directory = "Sources/" + source_generation;
                 const auto recipe_parent = std::filesystem::path(entry.source_path).parent_path().generic_string();
                 Output result;
-                toml::array source_files;
+                ModelImportRecipe recipe{directory, source->capture.entry, source->config};
                 for (const auto* file : ordered)
                 {
                     const auto content_digest = projectContentDigest(file->bytes.view());
-                    source_files.push_back(toml::table{{"path", file->path}, {"digest", content_digest}});
+                    recipe.files.push_back({file->path, content_digest});
                     result.update.files.push_back(
                         {recipe_parent + "/" + directory + "/" + file->path, "missing", file->bytes, true}
                     );
                 }
-                toml::array rotation;
-                for (const auto value : source->config.pre_rotation.coeffs())
-                {
-                    rotation.push_back(static_cast<double>(value));
-                }
-                toml::table recipe{
-                    {"format", "lux.editor.model-source"},
-                    {"version", 1},
-                    {"root", directory},
-                    {"entry", source->capture.entry},
-                    {"rotation", std::move(rotation)},
-                    {"scale", static_cast<double>(source->config.uniform_scale)},
-                    {"left_handed", source->config.make_left_handed},
-                    {"animations", source->config.import_animations},
-                    {"files", std::move(source_files)}
-                };
-                std::ostringstream text;
-                text << recipe;
-                auto encoded_source = own(text.str());
+                auto recipe_bytes = encodeModelImportRecipe(recipe);
+                if (!recipe_bytes)
+                    return lux::cxx::unexpected(std::move(recipe_bytes.error()));
+                auto encoded_source = own(std::move(*recipe_bytes));
                 std::vector<asset::PakWriteEntry> entries;
                 const auto append = [&]<class Asset>(const std::shared_ptr<const Asset>& value, std::string path)
                     -> EditorResult<void> {
@@ -437,22 +294,22 @@ namespace lux::editor::assets
         };
     } // namespace
 
-    struct AssetImporter::Impl final
+    struct ModelImporter::Impl final
     {
-        EditorResult<AssetImportId> requestModel(const ModelImportRequest&);
-        EditorResult<AssetImportId> reimportModel(asset::AssetId, const std::filesystem::path&);
-        std::optional<AssetImportId> currentRequest() const noexcept
+        EditorResult<ModelImportId> requestModel(const ModelImportRequest&);
+        EditorResult<ModelImportId> reimportModel(asset::AssetId, const std::filesystem::path&);
+        std::optional<ModelImportId> currentRequest() const noexcept
         {
             const auto* active = std::get_if<Request>(&request);
             return active ? std::optional{active->id} : std::nullopt;
         }
-        EditorResult<VAssetImportStatus> status(AssetImportId) const;
-        EditorResult<void> retry(AssetImportId);
-        EditorResult<void> abandon(AssetImportId);
-        EditorResult<void> acknowledge(AssetImportId);
+        EditorResult<VModelImportStatus> status(ModelImportId) const;
+        EditorResult<void> retry(ModelImportId);
+        EditorResult<void> abandon(ModelImportId);
+        EditorResult<void> acknowledge(ModelImportId);
         void adoptCompleted() noexcept;
         void requestClose() noexcept;
-        AssetImportCloseStatus closeStatus() const;
+        ModelImportCloseStatus closeStatus() const;
         struct Idle final
         {};
         struct Working final
@@ -460,7 +317,7 @@ namespace lux::editor::assets
         struct Request final
         {
             Impl& owner;
-            AssetImportId id;
+            ModelImportId id;
             ProjectAssetEntry entry;
             std::string before;
             Load load;
@@ -468,7 +325,7 @@ namespace lux::editor::assets
             std::vector<std::string> requested;
             lux::toolchain::ModelCookProduct product;
             Output output;
-            VAssetImportStatus status{AssetImportPending{EAssetImportStage::READING}};
+            VModelImportStatus status{ModelImportPending{EModelImportStage::READING}};
             std::size_t bytes{}, rounds{};
             bool abandoning{};
             std::variant<Idle, Working, ProjectPublicationOperation> work;
@@ -480,19 +337,19 @@ namespace lux::editor::assets
                 EditorResult<Output>>
                 result;
             process::TaskScope tasks;
-            EAssetImportStage failed_stage{EAssetImportStage::READING};
+            EModelImportStage failed_stage{EModelImportStage::READING};
             bool loaded{};
 
-            Request(Impl& data, AssetImportId request, ProjectAssetEntry asset, Load input)
+            Request(Impl& data, ModelImportId request, ProjectAssetEntry asset, Load input)
                 : owner(data), id(request), entry(std::move(asset)),
                   before(data.project.sourceDigest(entry.source_path)), load(std::move(input)), tasks(data.runtime)
             {
                 load.expected_digest = before;
                 startLoad();
             }
-            void pending(EAssetImportStage stage)
+            void pending(EModelImportStage stage)
             {
-                status = AssetImportPending{stage, source.capture.files.size(), bytes};
+                status = ModelImportPending{stage, source.capture.files.size(), bytes};
                 failed_stage = stage;
             }
             template <class Scheduler, class Work>
@@ -534,17 +391,17 @@ namespace lux::editor::assets
             }
             void startLoad()
             {
-                pending(EAssetImportStage::READING);
+                pending(EModelImportStage::READING);
                 submit("Read model recipe", *owner.runtime.blocking(), load);
             }
             void read()
             {
-                pending(EAssetImportStage::READING);
+                pending(EModelImportStage::READING);
                 submit("Read model sources", *owner.runtime.blocking(), Read{&source, requested, source_limit - bytes});
             }
             void cook()
             {
-                pending(EAssetImportStage::COOKING);
+                pending(EModelImportStage::COOKING);
                 asset::AssetInfo info;
                 info.id = entry.id;
                 info.type = asset::ModelAsset::asset_type;
@@ -558,7 +415,7 @@ namespace lux::editor::assets
             }
             void encode()
             {
-                pending(EAssetImportStage::COOKING);
+                pending(EModelImportStage::COOKING);
                 submit("Encode model", owner.runtime.cpu(), Encode{&source, &product, entry});
             }
             bool terminal() const
@@ -574,7 +431,7 @@ namespace lux::editor::assets
                 }
                 else if (work.index() == 0)
                 {
-                    status = AssetImportAbandoned{};
+                    status = ModelImportAbandoned{};
                 }
             }
             EditorResult<void> retry()
@@ -588,24 +445,24 @@ namespace lux::editor::assets
                     auto result = publication->retry();
                     if (result)
                     {
-                        pending(abandoning ? EAssetImportStage::ABANDONING : EAssetImportStage::PUBLISHING);
+                        pending(abandoning ? EModelImportStage::ABANDONING : EModelImportStage::PUBLISHING);
                     }
                     return result;
                 }
                 if (abandoning)
                 {
-                    status = AssetImportAbandoned{};
+                    status = ModelImportAbandoned{};
                     return {};
                 }
                 if (!loaded)
                 {
                     startLoad();
                 }
-                else if (failed_stage == EAssetImportStage::READING)
+                else if (failed_stage == EModelImportStage::READING)
                 {
                     read();
                 }
-                else if (failed_stage == EAssetImportStage::COOKING)
+                else if (failed_stage == EModelImportStage::COOKING)
                 {
                     if (product.model)
                     {
@@ -634,7 +491,7 @@ namespace lux::editor::assets
                 }
                 else
                 {
-                    pending(EAssetImportStage::WAITING_FOR_PROJECT);
+                    pending(EModelImportStage::WAITING_FOR_PROJECT);
                 }
                 return {};
             }
@@ -647,7 +504,7 @@ namespace lux::editor::assets
                     work.emplace<Idle>();
                     if (abandoning)
                     {
-                        status = AssetImportAbandoned{};
+                        status = ModelImportAbandoned{};
                         return;
                     }
                     if (!result)
@@ -682,7 +539,7 @@ namespace lux::editor::assets
                     work.emplace<Idle>();
                     if (abandoning)
                     {
-                        status = AssetImportAbandoned{};
+                        status = ModelImportAbandoned{};
                         return;
                     }
                     if (!result)
@@ -716,7 +573,7 @@ namespace lux::editor::assets
                     work.emplace<Idle>();
                     if (abandoning)
                     {
-                        status = AssetImportAbandoned{};
+                        status = ModelImportAbandoned{};
                         return;
                     }
                     if (!result)
@@ -745,7 +602,7 @@ namespace lux::editor::assets
                     work.emplace<Idle>();
                     if (abandoning)
                     {
-                        status = AssetImportAbandoned{};
+                        status = ModelImportAbandoned{};
                         return;
                     }
                     if (!result)
@@ -755,7 +612,7 @@ namespace lux::editor::assets
                     else
                     {
                         output = std::move(*result);
-                        pending(EAssetImportStage::WAITING_FOR_PROJECT);
+                        pending(EModelImportStage::WAITING_FOR_PROJECT);
                     }
                 }
                 if (auto* publication = std::get_if<ProjectPublicationOperation>(&work))
@@ -768,12 +625,12 @@ namespace lux::editor::assets
                     }
                     if (const auto* done = std::get_if<PublicationSucceeded>(&state))
                     {
-                        status = AssetImportSucceeded{entry.id, output.model, done->cleanup};
+                        status = ModelImportSucceeded{entry.id, output.model, done->cleanup};
                         work.emplace<Idle>();
                     }
                     else if (const auto* abandoned = std::get_if<PublicationAbandoned>(&state))
                     {
-                        status = AssetImportAbandoned{abandoned->published_files};
+                        status = ModelImportAbandoned{abandoned->published_files};
                         work.emplace<Idle>();
                     }
                 }
@@ -781,12 +638,12 @@ namespace lux::editor::assets
                 {
                     if (work.index() == 0 && !terminal())
                     {
-                        status = AssetImportAbandoned{};
+                        status = ModelImportAbandoned{};
                     }
                     return;
                 }
-                const auto* state = std::get_if<AssetImportPending>(&status);
-                if (state && state->stage == EAssetImportStage::WAITING_FOR_PROJECT)
+                const auto* state = std::get_if<ModelImportPending>(&status);
+                if (state && state->stage == EModelImportStage::WAITING_FOR_PROJECT)
                 {
                     if (owner.project.sourceDigest(entry.source_path) != before)
                     {
@@ -812,7 +669,7 @@ namespace lux::editor::assets
                             owner.project.whenPublicationAvailable(owner.adoption.requester());
                         return;
                     }
-                    pending(EAssetImportStage::PUBLISHING);
+                    pending(EModelImportStage::PUBLISHING);
                     work.emplace<ProjectPublicationOperation>(
                         owner.project,
                         owner.runtime,
@@ -868,19 +725,19 @@ namespace lux::editor::assets
             }
             adoption.cancel();
         }
-        const Request* find(AssetImportId id) const
+        const Request* find(ModelImportId id) const
         {
             const auto* active = std::get_if<Request>(&request);
             return active && active->id == id ? active : nullptr;
         }
-        Request* find(AssetImportId id)
+        Request* find(ModelImportId id)
         {
             auto* active = std::get_if<Request>(&request);
             return active && active->id == id ? active : nullptr;
         }
     };
 
-    AssetImporter::AssetImporter(
+    ModelImporter::ModelImporter(
         ProjectStorage& project,
         process::ExecutionRuntime& runtime,
         persistence::WriteCoordinator& writes,
@@ -889,8 +746,8 @@ namespace lux::editor::assets
     )
         : impl_(std::make_unique<Impl>(project, runtime, writes, files, execution))
     {}
-    AssetImporter::~AssetImporter() = default;
-    EditorResult<AssetImportId> AssetImporter::Impl::requestModel(const ModelImportRequest& input)
+    ModelImporter::~ModelImporter() = default;
+    EditorResult<ModelImportId> ModelImporter::Impl::requestModel(const ModelImportRequest& input)
     {
         if (!setup)
             return lux::cxx::unexpected(setup.error());
@@ -923,7 +780,7 @@ namespace lux::editor::assets
         {
             return failed(EEditorError::INVALID_ARGUMENT, "model.import.request");
         }
-        const auto id = AssetImportId{owner, ++serial};
+        const auto id = ModelImportId{owner, ++serial};
         ProjectAssetEntry entry{
             input.asset,
             "lux.model.source",
@@ -936,7 +793,7 @@ namespace lux::editor::assets
         request.emplace<Impl::Request>(*this, id, std::move(entry), Load{input.file, input.configuration, false});
         return id;
     }
-    EditorResult<AssetImportId> AssetImporter::Impl::reimportModel(
+    EditorResult<ModelImportId> ModelImporter::Impl::reimportModel(
         asset::AssetId asset,
         const std::filesystem::path& replacement
     )
@@ -972,7 +829,7 @@ namespace lux::editor::assets
         {
             return failed(EEditorError::INVALID_ARGUMENT, "model.reimport.request");
         }
-        const auto id = AssetImportId{owner, ++serial};
+        const auto id = ModelImportId{owner, ++serial};
         request.emplace<Impl::Request>(
             *this,
             id,
@@ -981,7 +838,7 @@ namespace lux::editor::assets
         );
         return id;
     }
-    EditorResult<VAssetImportStatus> AssetImporter::Impl::status(AssetImportId id) const
+    EditorResult<VModelImportStatus> ModelImporter::Impl::status(ModelImportId id) const
     {
         const auto* active = find(id);
         if (!active)
@@ -990,7 +847,7 @@ namespace lux::editor::assets
         }
         return active->status;
     }
-    EditorResult<void> AssetImporter::Impl::retry(AssetImportId id)
+    EditorResult<void> ModelImporter::Impl::retry(ModelImportId id)
     {
         auto* active = find(id);
         if (!active)
@@ -1000,7 +857,7 @@ namespace lux::editor::assets
         adoption.request();
         return active->retry();
     }
-    EditorResult<void> AssetImporter::Impl::abandon(AssetImportId id)
+    EditorResult<void> ModelImporter::Impl::abandon(ModelImportId id)
     {
         auto* active = find(id);
         if (!active)
@@ -1010,7 +867,7 @@ namespace lux::editor::assets
         active->abandon();
         return {};
     }
-    EditorResult<void> AssetImporter::Impl::acknowledge(AssetImportId id)
+    EditorResult<void> ModelImporter::Impl::acknowledge(ModelImportId id)
     {
         auto* active = find(id);
         if (!active)
@@ -1024,12 +881,12 @@ namespace lux::editor::assets
         this->request.emplace<Impl::Idle>();
         return {};
     }
-    void AssetImporter::Impl::adoptCompleted() noexcept
+    void ModelImporter::Impl::adoptCompleted() noexcept
     {
         if (auto* active = std::get_if<Request>(&request))
             active->adoptCompleted();
     }
-    void AssetImporter::Impl::requestClose() noexcept
+    void ModelImporter::Impl::requestClose() noexcept
     {
         closing = true;
         if (auto* active = std::get_if<Impl::Request>(&this->request); active && !active->terminal())
@@ -1039,7 +896,7 @@ namespace lux::editor::assets
             adoption.request();
         }
     }
-    AssetImportCloseStatus AssetImporter::Impl::closeStatus() const
+    ModelImportCloseStatus ModelImporter::Impl::closeStatus() const
     {
         if (!closing)
         {
@@ -1048,51 +905,51 @@ namespace lux::editor::assets
         const auto* active = std::get_if<Impl::Request>(&this->request);
         if (!active || active->terminal())
         {
-            return {EAssetImportCloseState::CLOSED};
+            return {EModelImportCloseState::CLOSED};
         }
         if (const auto* error = std::get_if<EditorFailure>(&active->status))
         {
             return {
-                EAssetImportCloseState::CLOSING,
+                EModelImportCloseState::CLOSING,
                 "Model publication requires reconciliation or abandonment",
                 lux::cxx::unexpected(*error)
             };
         }
-        return {EAssetImportCloseState::CLOSING, "Model import and project publication"};
+        return {EModelImportCloseState::CLOSING, "Model import and project publication"};
     }
-    EditorResult<AssetImportId> AssetImporter::requestModel(const ModelImportRequest& input)
+    EditorResult<ModelImportId> ModelImporter::requestModel(const ModelImportRequest& input)
     {
         return impl_->requestModel(input);
     }
-    EditorResult<AssetImportId> AssetImporter::reimportModel(asset::AssetId id, const std::filesystem::path& file)
+    EditorResult<ModelImportId> ModelImporter::reimportModel(asset::AssetId id, const std::filesystem::path& file)
     {
         return impl_->reimportModel(id, file);
     }
-    EditorResult<VAssetImportStatus> AssetImporter::status(AssetImportId id) const
+    EditorResult<VModelImportStatus> ModelImporter::status(ModelImportId id) const
     {
         return impl_->status(id);
     }
-    EditorResult<void> AssetImporter::retry(AssetImportId id)
+    EditorResult<void> ModelImporter::retry(ModelImportId id)
     {
         return impl_->retry(id);
     }
-    EditorResult<void> AssetImporter::abandon(AssetImportId id)
+    EditorResult<void> ModelImporter::abandon(ModelImportId id)
     {
         return impl_->abandon(id);
     }
-    EditorResult<void> AssetImporter::acknowledge(AssetImportId id)
+    EditorResult<void> ModelImporter::acknowledge(ModelImportId id)
     {
         return impl_->acknowledge(id);
     }
-    void AssetImporter::update() noexcept
+    void ModelImporter::update() noexcept
     {
         impl_->adoptCompleted();
     }
-    void AssetImporter::requestClose() noexcept
+    void ModelImporter::requestClose() noexcept
     {
         impl_->requestClose();
     }
-    AssetImportCloseStatus AssetImporter::closeStatus() const
+    ModelImportCloseStatus ModelImporter::closeStatus() const
     {
         return impl_->closeStatus();
     }
@@ -1100,7 +957,7 @@ namespace lux::editor::assets
 
 namespace lux::editor::assets
 {
-    std::optional<AssetImportId> AssetImporter::currentRequest() const noexcept
+    std::optional<ModelImportId> ModelImporter::currentRequest() const noexcept
     {
         return impl_->currentRequest();
     }

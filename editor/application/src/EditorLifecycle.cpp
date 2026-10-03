@@ -312,7 +312,7 @@ namespace lux::editor::application
                     return cxx::unexpected(state.error());
                 if (auto* error = std::get_if<EditorFailure>(&*state))
                     return cxx::unexpected(*error);
-                if (std::holds_alternative<assets::AssetImportPending>(*state))
+                if (std::holds_alternative<assets::ModelImportPending>(*state))
                     return {}; // Keep import controls until accepted publication is settled.
             }
         if (close_application_ && plugin_publication_ && !plugin_publication_->terminal())
@@ -424,7 +424,7 @@ namespace lux::editor::application
         receive(settleArtifacts());
         receive(settleWorkspace());
         const bool operations_settled =
-            importer_->closeStatus().state == assets::EAssetImportCloseState::CLOSED && material_compilation_.empty() &&
+            importer_->closeStatus().state == assets::EModelImportCloseState::CLOSED && material_compilation_.empty() &&
             flow_compilation_.empty() && pending_saves_.empty() && opening_.settled() && !recent_task_ &&
             !recent_result_ && !recent_ticket_ && !project_launch_ &&
             std::ranges::all_of(workspace_publications_, [](const auto& value) { return value.result.has_value(); }) &&

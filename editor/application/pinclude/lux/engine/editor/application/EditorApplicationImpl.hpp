@@ -14,7 +14,7 @@
 #include <lux/engine/editor/storage/ProjectPlugins.hpp>
 #include <lux/engine/editor/storage/ProjectPublicationOperation.hpp>
 #include <lux/engine/editor/storage/FileArtifactStore.hpp>
-#include <lux/engine/editor/assets/AssetImporter.hpp>
+#include <lux/engine/editor/assets/ModelImporter.hpp>
 #include <lux/engine/editor/persistence/SaveExecution.hpp>
 #include <lux/engine/editor/sessions/SessionOperations.hpp>
 #include <lux/engine/editor/sessions/ReloadSessionOperation.hpp>
@@ -231,7 +231,7 @@ namespace lux::editor::application
         persistence::SaveService saves_{writes_};
         sessions::SessionStore sessions_{128};
         persistence::SaveExecution save_execution_;
-        std::unique_ptr<assets::AssetImporter> importer_;
+        std::unique_ptr<assets::ModelImporter> importer_;
         std::unique_ptr<ProjectCreation> project_creation_;
         std::optional<lux::ui::PaneId> import_browse_;
         bool project_open_requested_{};

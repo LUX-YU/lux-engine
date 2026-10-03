@@ -81,7 +81,7 @@ endif()
 generate_visibility_header(ENABLE_MACRO_NAME LUX_EDITOR_ASSETS_LIBRARY
     PUBLIC_MACRO_NAME LUX_EDITOR_ASSETS_PUBLIC DISABLE_DLL_MACRO_NAME LUX_EDITOR_ASSETS_DLL_DISABLE
     GENERATE_FILE_PATH lux/engine/editor/assets/visibility.h)
-add_component(COMPONENT_NAME editor_assets NAMESPACE lux::engine::editor STATIC SOURCE_FILES src/AssetImporter.cpp)
+add_component(COMPONENT_NAME editor_assets NAMESPACE lux::engine::editor STATIC SOURCE_FILES src/ModelImporter.cpp src/ModelImportRecipe.cpp)
 component_include_directories(editor_assets
     BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR}
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/sinclude
@@ -102,7 +102,8 @@ lux_engine_install_components(PROJECT_NAME lux-engine-editor-assets VERSION ${PR
 
 # Exact SDK ownership: sibling providers share a build include root, never an install manifest.
 install(FILES
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/assets/AssetImporter.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/assets/ModelImportRecipe.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/assets/ModelImporter.hpp
     DESTINATION include/lux/engine/editor/assets COMPONENT lux_engine_editor_assets)
 install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/storage/ArtifactPublicationOperation.hpp

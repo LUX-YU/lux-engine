@@ -1091,7 +1091,7 @@ int main(int argc, char** argv)
         std::ofstream file(import_file);
         file << "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n";
     }
-    std::optional<assets::AssetImportId> importing;
+    std::optional<assets::ModelImportId> importing;
     auto request_import = [&](ui::Pane& pane) {
         auto accepted = static_cast<lux::editor::project::ImportView&>(pane).importModel(
             {imported_id, std::filesystem::absolute(import_file), "Content/Imported/Triangle", {}}
@@ -1102,7 +1102,7 @@ int main(int argc, char** argv)
     assert(impl.desktop_->views().withView(import_view, request_import));
     assert(app->closeView(import_view));
     const auto import_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
-    while (!std::holds_alternative<assets::AssetImportSucceeded>(*impl.importer_->status(*importing)))
+    while (!std::holds_alternative<assets::ModelImportSucceeded>(*impl.importer_->status(*importing)))
     {
         assert(std::chrono::steady_clock::now() < import_deadline);
         assert(app->update());

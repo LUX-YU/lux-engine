@@ -50,7 +50,7 @@ namespace lux::editor::project
                     data.intent = EAction::REPLACE;
                 if (data.status)
                 {
-                    if (const auto* pending = std::get_if<assets::AssetImportPending>(&*data.status))
+                    if (const auto* pending = std::get_if<assets::ModelImportPending>(&*data.status))
                         ImGui::Text(
                             "Stage %u: %zu files, %zu bytes",
                             unsigned(pending->stage),
@@ -63,9 +63,9 @@ namespace lux::editor::project
                         if (ImGui::Button("Retry / reconcile"))
                             data.intent = EAction::RETRY;
                     }
-                    else if (std::holds_alternative<assets::AssetImportSucceeded>(*data.status))
+                    else if (std::holds_alternative<assets::ModelImportSucceeded>(*data.status))
                         ImGui::TextUnformatted("Import published. The project catalog has been updated.");
-                    else if (const auto* abandoned = std::get_if<assets::AssetImportAbandoned>(&*data.status))
+                    else if (const auto* abandoned = std::get_if<assets::ModelImportAbandoned>(&*data.status))
                         ImGui::Text(
                             "Abandoned; %zu immutable files had already reached disk.",
                             abandoned->published_files
@@ -81,15 +81,15 @@ namespace lux::editor::project
             }
         } content;
         ProjectCatalogModel& model;
-        assets::AssetImporter& importer;
+        assets::ModelImporter& importer;
         ProjectCatalogSnapshot catalog;
         std::optional<AssetReference> selected;
-        std::optional<assets::VAssetImportStatus> status;
+        std::optional<assets::VModelImportStatus> status;
         std::optional<EAction> intent;
         std::optional<EditorFailure> failure;
         std::string source, destination{"Content/Models/Model"};
         toolchain::ModelCookConfiguration configuration;
-        Impl(ImportView& pane, ProjectCatalogModel& model, assets::AssetImporter& importer)
+        Impl(ImportView& pane, ProjectCatalogModel& model, assets::ModelImporter& importer)
             : content(pane, *this), model(model), importer(importer)
         {}
     };
@@ -97,7 +97,7 @@ namespace lux::editor::project
         object::ObjectDispatcherRef dispatcher,
         lux::ui::PaneId id,
         ProjectCatalogModel& catalog,
-        assets::AssetImporter& importer
+        assets::ModelImporter& importer
     )
         : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{"lux.editor.import"}, "Import Assets"),
           impl_(std::make_unique<Impl>(*this, catalog, importer))
@@ -113,11 +113,11 @@ namespace lux::editor::project
     {
         impl_->failure = std::move(error);
     }
-    EditorResult<assets::AssetImportId> ImportView::importModel(assets::ModelImportRequest request)
+    EditorResult<assets::ModelImportId> ImportView::importModel(assets::ModelImportRequest request)
     {
         return impl_->importer.requestModel(request);
     }
-    EditorResult<assets::AssetImportId> ImportView::reimportModel(
+    EditorResult<assets::ModelImportId> ImportView::reimportModel(
         AssetReference reference,
         std::filesystem::path replacement
     )

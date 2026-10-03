@@ -15573,6 +15573,16 @@
           "TOOLCHAIN"
         ],
         "path": "editor/tests/integration/project"
+      },
+      "editor_model_recipe": {
+        "layer": "TEST",
+        "role": "TEST",
+        "capabilities": [
+          "CPU",
+          "PROCESS",
+          "TOOLCHAIN"
+        ],
+        "path": "editor/tests/integration/project"
       }
     },
     "files": {
@@ -15706,7 +15716,7 @@
       "editor/activities/persistence/test/write_coordinator.cpp": [
         "editor_write_coordinator_test"
       ],
-      "editor/activities/project/include/lux/engine/editor/assets/AssetImporter.hpp": [
+      "editor/activities/project/include/lux/engine/editor/assets/ModelImporter.hpp": [
         "editor_assets"
       ],
       "editor/activities/project/include/lux/engine/editor/storage/ProjectCreation.hpp": [
@@ -15724,7 +15734,7 @@
       "editor/activities/project/pinclude/lux/engine/editor/PublicationProbe.hpp": [
         "editor_storage"
       ],
-      "editor/activities/project/src/AssetImporter.cpp": [
+      "editor/activities/project/src/ModelImporter.cpp": [
         "editor_assets"
       ],
       "editor/activities/project/src/ProjectAssetSource.cpp": [
@@ -17955,6 +17965,15 @@
       ],
       "editor/activities/workspace/include/lux/engine/editor/workspace/LegacyWorkspaceMigration.hpp": [
         "workspace_store"
+      ],
+      "editor/activities/project/src/ModelImportRecipe.cpp": [
+        "editor_assets"
+      ],
+      "editor/activities/project/include/lux/engine/editor/assets/ModelImportRecipe.hpp": [
+        "editor_assets"
+      ],
+      "editor/tests/integration/project/model_recipe.cpp": [
+        "editor_model_recipe"
       ]
     },
     "native_libraries": [

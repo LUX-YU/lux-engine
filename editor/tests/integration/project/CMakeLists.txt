@@ -1,4 +1,10 @@
 if(LUX_EDITOR_BUILD_NATIVE_TESTS)
+    add_executable(editor_model_recipe model_recipe.cpp)
+    target_link_libraries(editor_model_recipe PRIVATE editor_assets)
+    lux_editor_test_options(editor_model_recipe)
+    add_test(NAME editor.model_recipe COMMAND editor_model_recipe)
+    set_tests_properties(editor.model_recipe PROPERTIES TIMEOUT 30 LABELS "editor;native;EC2")
+
     add_executable(editor_scene_configuration scene_configuration.cpp)
     target_link_libraries(editor_scene_configuration PRIVATE scene_ui editor_extensions lux::engine::project::project_plugin_rendering lux::engine::scene::scene_asset)
     lux_editor_test_options(editor_scene_configuration)

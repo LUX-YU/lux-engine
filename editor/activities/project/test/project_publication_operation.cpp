@@ -1,5 +1,5 @@
 #include <lux/engine/editor/storage/ProjectPublicationOperation.hpp>
-#include <lux/engine/editor/assets/AssetImporter.hpp>
+#include <lux/engine/editor/assets/ModelImporter.hpp>
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
 #include <lux/engine/editor/storage/FileArtifactStore.hpp>
 #include <lux/engine/editor/persistence/SaveExecution.hpp>
@@ -252,7 +252,7 @@ int main(int argc, char** argv)
         assert(operation.terminal());
     }
     {
-        assets::AssetImporter importer{*project, *runtime, writes, files, execution};
+        assets::ModelImporter importer{*project, *runtime, writes, files, execution};
         const auto input = root / "triangle.obj";
         {
             std::ofstream obj(input);
@@ -260,7 +260,7 @@ int main(int argc, char** argv)
         }
         auto importing = importer.requestModel({id, input, "Content/Beginner/Triangle", {}});
         assert(importing);
-        const auto await_import = [&](assets::AssetImportId request) {
+        const auto await_import = [&](assets::ModelImportId request) {
             const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
             for (;;)
             {
@@ -284,7 +284,7 @@ int main(int argc, char** argv)
                         );
                 }
                 assert(!std::holds_alternative<EditorFailure>(*state));
-                if (std::holds_alternative<assets::AssetImportSucceeded>(*state))
+                if (std::holds_alternative<assets::ModelImportSucceeded>(*state))
                     break;
                 std::this_thread::yield();
             }
@@ -313,7 +313,7 @@ int main(int argc, char** argv)
         assert(project->asset(id)->source_path == second.source_path);
         assert(importer.acknowledge(*captured));
         importer.requestClose();
-        assert(importer.closeStatus().state == assets::EAssetImportCloseState::CLOSED && writes.size() == 0);
+        assert(importer.closeStatus().state == assets::EModelImportCloseState::CLOSED && writes.size() == 0);
     }
     {
         ProjectUpdate update;

@@ -24,15 +24,15 @@ namespace lux::editor::persistence
 
 namespace lux::editor::assets
 {
-    enum class EAssetImportCloseState : std::uint8_t
+    enum class EModelImportCloseState : std::uint8_t
     {
         OPEN,
         CLOSING,
         CLOSED
     };
-    struct AssetImportCloseStatus final
+    struct ModelImportCloseStatus final
     {
-        EAssetImportCloseState state{EAssetImportCloseState::OPEN};
+        EModelImportCloseState state{EModelImportCloseState::OPEN};
         std::string waiting_for;
         EditorResult<void> progress;
     };
@@ -44,13 +44,13 @@ namespace lux::editor::assets
         lux::toolchain::ModelCookConfiguration configuration;
     };
 
-    struct AssetImportId final
+    struct ModelImportId final
     {
         std::uint64_t owner{}, serial{};
-        friend bool operator==(AssetImportId, AssetImportId) = default;
+        friend bool operator==(ModelImportId, ModelImportId) = default;
     };
 
-    enum class EAssetImportStage : std::uint8_t
+    enum class EModelImportStage : std::uint8_t
     {
         READING,
         COOKING,
@@ -58,50 +58,50 @@ namespace lux::editor::assets
         PUBLISHING,
         ABANDONING
     };
-    struct AssetImportPending final
+    struct ModelImportPending final
     {
-        EAssetImportStage stage;
+        EModelImportStage stage;
         std::size_t files{}, bytes{};
     };
-    struct AssetImportSucceeded final
+    struct ModelImportSucceeded final
     {
         asset::AssetId asset;
         std::shared_ptr<const asset::ModelAsset> model;
         EditorResult<void> cleanup;
     };
-    struct AssetImportAbandoned final
+    struct ModelImportAbandoned final
     {
         std::size_t published_files{};
     };
-    using VAssetImportStatus =
-        std::variant<AssetImportPending, EditorFailure, AssetImportSucceeded, AssetImportAbandoned>;
+    using VModelImportStatus =
+        std::variant<ModelImportPending, EditorFailure, ModelImportSucceeded, ModelImportAbandoned>;
 
     // A project-bound import owner. It retains source bytes, compiled output and publication
     // effects through retry/close. No Window, Scene, or second asset catalog is owned here.
-    class LUX_EDITOR_ASSETS_PUBLIC AssetImporter final
+    class LUX_EDITOR_ASSETS_PUBLIC ModelImporter final
     {
     public:
-        AssetImporter(ProjectStorage&, process::ExecutionRuntime&, persistence::WriteCoordinator&, persistence::IArtifactStore&, persistence::SaveExecution&);
-        ~AssetImporter();
-        AssetImporter(const AssetImporter&) = delete;
-        AssetImporter(AssetImporter&&) = delete;
-        AssetImporter& operator=(const AssetImporter&) = delete;
-        AssetImporter& operator=(AssetImporter&&) = delete;
+        ModelImporter(ProjectStorage&, process::ExecutionRuntime&, persistence::WriteCoordinator&, persistence::IArtifactStore&, persistence::SaveExecution&);
+        ~ModelImporter();
+        ModelImporter(const ModelImporter&) = delete;
+        ModelImporter(ModelImporter&&) = delete;
+        ModelImporter& operator=(const ModelImporter&) = delete;
+        ModelImporter& operator=(ModelImporter&&) = delete;
 
-        [[nodiscard]] EditorResult<AssetImportId> requestModel(const ModelImportRequest&);
-        [[nodiscard]] EditorResult<AssetImportId> reimportModel(
+        [[nodiscard]] EditorResult<ModelImportId> requestModel(const ModelImportRequest&);
+        [[nodiscard]] EditorResult<ModelImportId> reimportModel(
             asset::AssetId,
             const std::filesystem::path& replacement = {}
         );
         // Reattach a presenter without transferring ownership or losing a terminal result.
-        [[nodiscard]] std::optional<AssetImportId> currentRequest() const noexcept;
-        [[nodiscard]] EditorResult<VAssetImportStatus> status(AssetImportId) const;
-        [[nodiscard]] EditorResult<void> retry(AssetImportId);
-        [[nodiscard]] EditorResult<void> abandon(AssetImportId);
-        [[nodiscard]] EditorResult<void> acknowledge(AssetImportId);
+        [[nodiscard]] std::optional<ModelImportId> currentRequest() const noexcept;
+        [[nodiscard]] EditorResult<VModelImportStatus> status(ModelImportId) const;
+        [[nodiscard]] EditorResult<void> retry(ModelImportId);
+        [[nodiscard]] EditorResult<void> abandon(ModelImportId);
+        [[nodiscard]] EditorResult<void> acknowledge(ModelImportId);
         void update() noexcept;
         void requestClose() noexcept;
-        [[nodiscard]] AssetImportCloseStatus closeStatus() const;
+        [[nodiscard]] ModelImportCloseStatus closeStatus() const;
 
     private:
         struct Impl;

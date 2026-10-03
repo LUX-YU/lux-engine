@@ -31,12 +31,14 @@ FileArtifactStore and SaveExecution are owned there, not by ProjectStorage.
 
 ## 编辑器资产工作流
 
-AssetImporter 借用 ProjectStorage 和执行设施，组合 engine/toolchain 转换与项目发布。
+ModelImporter 借用 ProjectStorage 和执行设施，组合 engine/toolchain 转换与项目发布。
+ModelImportRecipe 只保存源路径、配置和文件摘要；同主题纯 codec 负责字节转换及校验。
+Importer 负责真实读取、cook 和发布，不再内嵌另一份 TOML 配方算法。
 源打开、编译和保存保留固定版本、任务身份与关闭协议，窗口隐藏不终止已经接纳的任务。
 
 纯格式转换位于 engine/toolchain；运行资产读取/解码位于 engine/process/asset_loading。
 本模块只承担编辑器工作流，不建立第二份项目目录或 GPU 资源缓存。
 通用 History 与会话位于 editor/editing；正式保存协议位于 activities/persistence。
-旧 AssetSource/AssetSave 协议已删除。AssetImporter 继续拥有导入任务和完成事实，关闭状态由其自身的 AssetImportCloseStatus 表达。
+旧 AssetSource/AssetSave 协议已删除。ModelImporter 继续拥有导入任务和完成事实，关闭状态由其自身的 ModelImportCloseStatus 表达。
 
 `editor_assets` 为 STATIC，无独立资产 DLL；其安装 include 前缀仍为 lux/engine/editor。

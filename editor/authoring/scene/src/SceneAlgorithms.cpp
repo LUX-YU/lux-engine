@@ -6,35 +6,54 @@
 
 namespace lux::editor::scene
 {
-    editing::EditResult<SceneObjectData> makeSceneObject(world::WorldObjectId id,
-        partition::PartitionOrdinal partition, EObjectSpace space, bool hierarchy,
-        const simulation::ecs::ComponentSchemaSet& schemas)
+    editing::EditResult<SceneObjectData> makeSceneObject(
+        world::WorldObjectId id,
+        partition::PartitionOrdinal partition,
+        EObjectSpace space,
+        bool hierarchy,
+        const simulation::ecs::ComponentSchemaSet& schemas
+    )
     {
         namespace ecs = simulation::ecs;
         const bool is_valid_space = space == EObjectSpace::NONE || space == EObjectSpace::SPACE_2D ||
             space == EObjectSpace::SPACE_3D;
-        if (!id.valid() || !is_valid_space)
+        const bool is_invalid_request = !id.valid() || !is_valid_space;
+        if (is_invalid_request)
             return cxx::unexpected(editing::makeEditFailure(editing::EEditError::INVALID_ARGUMENT));
         try
         {
-        SceneObjectData result{id, partition, {}};
-        const ecs::WorldEntityMap identities;
-        const auto append = [&](const auto& value) -> editing::EditResult<void> {
-            auto encoded = encodeSceneValue(value, schemas, identities, 16 * 1024 * 1024);
-            if (!encoded) return cxx::unexpected(encoded.error());
-            result.components.push_back(std::move(*encoded));
-            return {};
-        };
-        editing::EditResult<void> encoded;
-        if (space == EObjectSpace::SPACE_2D) encoded = append(ecs::Transform2D{});
-        else if (space == EObjectSpace::SPACE_3D) encoded = append(ecs::Transform3D{});
-        if (encoded && hierarchy) encoded = append(ecs::Parent{ecs::NullEntity});
-        if (!encoded) return cxx::unexpected(encoded.error());
-        return result;
+            SceneObjectData result{id, partition, {}};
+            const ecs::WorldEntityMap identities;
+            const auto append = [&](const auto& value) -> editing::EditResult<void> {
+                auto encoded = encodeSceneValue(value, schemas, identities, 16 * 1024 * 1024);
+                if (!encoded)
+                    return cxx::unexpected(encoded.error());
+                result.components.push_back(std::move(*encoded));
+                return {};
+            };
+            editing::EditResult<void> encoded;
+            if (space == EObjectSpace::SPACE_2D)
+                encoded = append(ecs::Transform2D{});
+            else if (space == EObjectSpace::SPACE_3D)
+                encoded = append(ecs::Transform3D{});
+            if (encoded && hierarchy)
+                encoded = append(ecs::Parent{ecs::NullEntity});
+            if (!encoded)
+                return cxx::unexpected(encoded.error());
+            return result;
         }
-        catch (const std::bad_alloc&) { std::terminate(); }
-        catch (...) { return cxx::unexpected(editing::makeEditFailure(editing::EEditError::PRECONDITION_FAILED,
-            static_cast<std::uint64_t>(ESceneStructureError::CODEC_FAILURE), "Object default codec failed")); }
+        catch (const std::bad_alloc&)
+        {
+            std::terminate();
+        }
+        catch (...)
+        {
+            return cxx::unexpected(editing::makeEditFailure(
+                editing::EEditError::PRECONDITION_FAILED,
+                static_cast<std::uint64_t>(ESceneStructureError::CODEC_FAILURE),
+                "Object default codec failed"
+            ));
+        }
     }
     editing::EditResult<std::vector<SceneModelObject>> expandSceneModel(
         const asset::ModelAsset& asset,

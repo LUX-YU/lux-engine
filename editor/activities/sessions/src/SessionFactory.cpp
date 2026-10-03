@@ -41,7 +41,10 @@ namespace lux::editor::sessions
             });
         auto owned = std::move(data_);
         auto* prepare = owned ? std::get_if<Prepare>(&owned->preparation) : nullptr;
-        if (!owned || !owned->code.valid() || !prepare || !*prepare)
+        const bool is_invalid_owner = !owned || !owned->code.valid();
+        const bool is_missing_prepare = !prepare || !*prepare;
+        const bool is_invalid_input = is_invalid_owner || is_missing_prepare;
+        if (is_invalid_input)
             return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::INVALID_ARGUMENT, "prepared.data"});
         auto invoke = [&]() -> SessionFactoryResult<PreparedSessionInstallation> {
             if (owned->code.sameOwner(contracts::CodeLease::builtin()))
@@ -68,7 +71,10 @@ namespace lux::editor::sessions
     SessionFactoryResult<PreparedSessionReload> SessionPreparation::prepareReload(SessionStore& store) &&
     {
         // Store reentry is temporary: keep the accepted decode result intact until owner admission.
-        if (!data_ || !data_->code.valid() || !data_->reload)
+        const bool is_invalid_owner = !data_ || !data_->code.valid();
+        const bool is_missing_reload = data_ && !data_->reload;
+        const bool is_invalid_input = is_invalid_owner || is_missing_reload;
+        if (is_invalid_input)
             return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::INVALID_ARGUMENT, "reload.data"});
         const auto ready = store.describe(data_->reload->session);
         if (!ready)

@@ -67,6 +67,13 @@ namespace lux::editor::commands
         std::uint32_t input_version{1};
         cxx::TypeToken argument_type;
     };
+    struct ShortcutOverride final
+    {
+        std::string command;
+        std::string binding;
+        ECommandScope scope{ECommandScope::APPLICATION};
+        std::uint32_t input_version{1};
+    };
     struct SessionTarget final
     {
         sessions::SessionId id;

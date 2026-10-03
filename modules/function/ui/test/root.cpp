@@ -549,6 +549,25 @@ int main(int argc, char** argv)
         assert(!closed && closed.error() == ui::EInputError::CLOSED);
     }
     assert(slot.valid() && ImGui::GetCurrentContext() == original);
+    for (const float scale : std::array{0.f, -1.f, 4.1f, INFINITY, NAN})
+    {
+        const auto invalid = ui::Root::create(messages.dispatcherRef(), {.scale = scale});
+        assert(!invalid && invalid.error() == ui::EInitError::INVALID_SCALE);
+        assert(ImGui::GetCurrentContext() == original);
+    }
+    {
+        auto normal = ui::Root::create(messages.dispatcherRef(), {.scale = 1.f});
+        auto enlarged = ui::Root::create(messages.dispatcherRef(), {.scale = 2.f});
+        assert(normal && enlarged);
+        auto first = (*normal)->fontAtlas();
+        auto second = (*enlarged)->fontAtlas();
+        assert(first && second && first->pixels != second->pixels);
+        assert(second->pixels.size() > first->pixels.size());
+        assert((*normal)->scale() == 1.f && (*enlarged)->scale() == 2.f);
+        // Framebuffer scale remains independent of font preparation.
+        assert((*enlarged)->update({{640, 480}, 0.016f, {2, 2}}, &slot));
+        assert(ImGui::GetCurrentContext() == original);
+    }
     ui::FontSource invalid_font;
     const auto rejected = ui::Root::create(messages.dispatcherRef(), {.font = &invalid_font});
     assert(!rejected && rejected.error() == ui::EInitError::INVALID_FONT_DATA);

@@ -227,6 +227,7 @@ namespace lux::ui
         std::vector<std::uint8_t> font_bytes;
         std::vector<ImWchar> font_ranges;
         Theme theme;
+        float scale{1.f};
         window::LuxWindow* window{};
         struct Target final
         {
@@ -391,6 +392,9 @@ namespace lux::ui
             detail::failContract();
         if (config.input_capacity < 2 || config.input_capacity > std::size_t(std::numeric_limits<int>::max()))
             return lux::cxx::unexpected(EInitError::INVALID_INPUT_CAPACITY);
+        const bool is_invalid_scale = !std::isfinite(config.scale) || config.scale < 0.5f || config.scale > 4.f;
+        if (is_invalid_scale)
+            return lux::cxx::unexpected(EInitError::INVALID_SCALE);
         const auto* font = config.font;
         {
             if (font)
@@ -413,6 +417,7 @@ namespace lux::ui
             auto data = std::make_unique<Impl>();
             data->attachment_capacity = config.attachment_capacity;
             data->theme = config.theme;
+            data->scale = config.scale;
             data->docking = config.docking;
             data->native = ImGui::CreateContext();
             data->input_capacity = static_cast<int>(config.input_capacity);
@@ -439,21 +444,27 @@ namespace lux::ui
                     data->font_ranges.push_back(static_cast<ImWchar>(range.last));
                 }
                 data->font_ranges.push_back(0);
-                ImFontConfig config;
-                config.FontDataOwnedByAtlas = false;
-                config.FontNo = static_cast<int>(font->face);
-                config.OversampleH = config.OversampleV = 1;
+                ImFontConfig font_config;
+                font_config.FontDataOwnedByAtlas = false;
+                font_config.FontNo = static_cast<int>(font->face);
+                font_config.OversampleH = font_config.OversampleV = 1;
                 atlas->TexDesiredWidth = 4096;
                 if (!atlas->AddFontFromMemoryTTF(
                         data->font_bytes.data(),
                         static_cast<int>(data->font_bytes.size()),
-                        font->size_pixels,
-                        &config,
+                        font->size_pixels * config.scale,
+                        &font_config,
                         data->font_ranges.data()
                     ))
                 {
                     return lux::cxx::unexpected(EInitError::ATLAS_FAILURE);
                 }
+            }
+            else
+            {
+                ImFontConfig font_config;
+                font_config.SizePixels = 13.f * config.scale;
+                atlas->AddFontDefault(&font_config);
             }
             if (!atlas->Build())
             {
@@ -471,6 +482,7 @@ namespace lux::ui
             ImGui::GetIO().Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
 
             applyTheme(data->theme);
+            ImGui::GetStyle().ScaleAllSizes(config.scale);
             impl_ = std::move(data);
             return {};
         }
@@ -485,6 +497,11 @@ namespace lux::ui
     {
         requireOwner();
         return impl_->theme;
+    }
+    float Root::scale() const noexcept
+    {
+        requireOwner();
+        return impl_->scale;
     }
     lux::cxx::expected<FontAtlas, EInitError> Root::fontAtlas() const noexcept
     {

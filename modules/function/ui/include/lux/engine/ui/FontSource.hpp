@@ -16,7 +16,7 @@ namespace lux::ui
         std::vector<std::uint8_t> bytes;
         std::vector<GlyphRange> ranges;
         std::uint32_t face{};
-        float size_pixels{18}; // UI logical pixels. No DPI multiplication is performed during atlas construction.
+        float size_pixels{18}; // UI content units before RootConfig::scale; independent from framebuffer scale.
     };
 
     enum class EInitError : std::uint8_t
@@ -31,6 +31,7 @@ namespace lux::ui
         ATLAS_LIMIT,
         WRONG_THREAD,
         INVALID_DISPATCHER,
-        INVALID_INPUT_CAPACITY
+        INVALID_INPUT_CAPACITY,
+        INVALID_SCALE
     };
 } // namespace lux::ui

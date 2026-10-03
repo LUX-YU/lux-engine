@@ -32,6 +32,8 @@ namespace lux::ui
         const FontSource* font{};
         std::size_t input_capacity{4096};
         std::size_t attachment_capacity{65536};
+        // Explicit content-unit scale. Independent from FrameInfo::framebuffer_scale.
+        float scale{1.f};
     };
 
     struct FrameInfo final
@@ -62,6 +64,7 @@ namespace lux::ui
         void bindWindow(window::LuxWindow*) noexcept;
         [[nodiscard]] window::LuxWindow* window() const noexcept;
         [[nodiscard]] const Theme& theme() const noexcept;
+        [[nodiscard]] float scale() const noexcept;
         [[nodiscard]] lux::cxx::expected<FontAtlas, EInitError> fontAtlas() const noexcept;
         // Optional capture, immediate resource pinning, remaining input, then owner maintenance.
         // A null output maintains owners without generating another frame or replaying input.

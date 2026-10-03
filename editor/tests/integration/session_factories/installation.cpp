@@ -179,17 +179,17 @@ namespace
         assert(registry.publish(take(CommandRegistrySnapshot::create({a, b}))));
         assert(menu.update());
         {
-            const std::array overrides{desktop::ShortcutOverride{"shortcut.a", "Alt+M"},
-                                      desktop::ShortcutOverride{"extension.absent", "Ctrl+P"}};
+            const std::array overrides{commands::ShortcutOverride{"shortcut.a", "Alt+M"},
+                                      commands::ShortcutOverride{"extension.absent", "Ctrl+P"}};
             assert(menu.setShortcuts(overrides));
         }
         assert(menuItem(root, ui::CommandIdView{"shortcut.a"}).shortcut_label == "Alt+M");
         assert(a->descriptor().shortcut == "Ctrl+A");
-        auto invalid = menu.setShortcuts(std::array{desktop::ShortcutOverride{"shortcut.a", "Ctrl+B"}});
+        auto invalid = menu.setShortcuts(std::array{commands::ShortcutOverride{"shortcut.a", "Ctrl+B"}});
         assert(!invalid && invalid.error().code == ECommandError::SHORTCUT_CONFLICT);
-        invalid = menu.setShortcuts(std::array{desktop::ShortcutOverride{"shortcut.a", "Shift+Ctrl+A"}});
+        invalid = menu.setShortcuts(std::array{commands::ShortcutOverride{"shortcut.a", "Shift+Ctrl+A"}});
         assert(!invalid && invalid.error().domain == "shortcut.syntax");
-        invalid = menu.setShortcuts(std::array{desktop::ShortcutOverride{"shortcut.a", "Alt+M", ECommandScope::VIEW}});
+        invalid = menu.setShortcuts(std::array{commands::ShortcutOverride{"shortcut.a", "Alt+M", ECommandScope::VIEW}});
         assert(!invalid && invalid.error().code == ECommandError::INCOMPATIBLE_REGISTRATION);
         assert(menuItem(root, ui::CommandIdView{"shortcut.a"}).shortcut_label == "Alt+M");
         ui::MenuRequest open;

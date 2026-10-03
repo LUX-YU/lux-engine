@@ -7,13 +7,7 @@ namespace lux::ui
 }
 namespace lux::editor::desktop
 {
-    struct ShortcutOverride final
-    {
-        std::string command;
-        std::string binding;
-        commands::ECommandScope scope{commands::ECommandScope::APPLICATION};
-        std::uint32_t input_version{1};
-    };
+    [[nodiscard]] commands::CommandResult<void> validateShortcutOverrides(std::span<const commands::ShortcutOverride>);
     // Owns only the open menu's fixed inputs and UI delivery results. Actual operations remain in services.
     class CommandMenu final
     {
@@ -31,7 +25,7 @@ namespace lux::editor::desktop
         // Cold, atomic menu preparation. Empty binding disables a shortcut. Unknown command rows
         // remain owned and become effective when a compatible registration appears. An open popup
         // retains its original source; BUSY means the caller must retain and retry its desired value.
-        [[nodiscard]] commands::CommandResult<void> setShortcuts(std::span<const ShortcutOverride>);
+        [[nodiscard]] commands::CommandResult<void> setShortcuts(std::span<const commands::ShortcutOverride>);
         // Outer workbench safe point. Uncollected results exert bounded backpressure, never disappear.
         [[nodiscard]] commands::CommandResult<void> update();
         [[nodiscard]] std::vector<commands::CommandCompletion> takeCompletions();

@@ -5,13 +5,8 @@
 namespace lux::editor::desktop
 {
     using namespace commands;
-    struct CommandMenu::Impl final
+    namespace
     {
-        struct Item final
-        {
-            CommandHandle handle;
-            CommandResult<CommandInvocation> input;
-        };
         struct ParsedOverride final
         {
             ShortcutOverride value;
@@ -19,6 +14,14 @@ namespace lux::editor::desktop
             lux::ui::Shortcut shortcut;
         };
         using Overrides = std::vector<ParsedOverride>;
+    }
+    struct CommandMenu::Impl final
+    {
+        struct Item final
+        {
+            CommandHandle handle;
+            CommandResult<CommandInvocation> input;
+        };
         struct Source final
         {
             // Handles pin each original defining code owner; nodes borrow only their immutable text.
@@ -127,38 +130,56 @@ namespace lux::editor::desktop
         : impl_(std::make_unique<Impl>(nullptr, root, registry, dispatcher, std::move(capture)))
     {}
     CommandMenu::~CommandMenu() = default;
+    namespace
+    {
+        CommandResult<std::shared_ptr<const Overrides>> prepareShortcuts(std::span<const ShortcutOverride> input)
+        {
+            if (input.size() > 256)
+                return cxx::unexpected(CommandFailure{ECommandError::CAPACITY, "shortcut.capacity"});
+            auto candidate = std::make_shared<Overrides>();
+            candidate->reserve(input.size());
+            for (const auto& value : input)
+            {
+                const bool is_invalid_scope = value.scope != ECommandScope::APPLICATION &&
+                    value.scope != ECommandScope::SESSION && value.scope != ECommandScope::VIEW;
+                const bool is_invalid_identity = value.command.empty() || value.command.size() > 512 ||
+                    value.command.find('\0') != std::string::npos || value.input_version == 0;
+                if (is_invalid_scope || is_invalid_identity)
+                    return cxx::unexpected(CommandFailure{ECommandError::INVALID_ARGUMENT, "shortcut.identity"});
+                auto parsed = lux::ui::parseShortcut(value.binding);
+                if (!parsed)
+                    return cxx::unexpected(CommandFailure{ECommandError::INVALID_ARGUMENT, "shortcut.syntax",
+                        static_cast<std::uint64_t>(parsed.error()), value.command});
+                candidate->push_back({value, CommandIdView{value.command}.hash(), *parsed});
+            }
+            std::ranges::sort(*candidate, {}, &ParsedOverride::hash);
+            for (std::size_t i = 1; i < candidate->size(); ++i)
+            {
+                const auto& a = (*candidate)[i - 1];
+                const auto& b = (*candidate)[i];
+                if (a.hash != b.hash)
+                    continue;
+                const auto code = a.value.command == b.value.command ? ECommandError::DUPLICATE : ECommandError::HASH_COLLISION;
+                return cxx::unexpected(CommandFailure{code, "shortcut.identity"});
+            }
+            return candidate;
+        }
+    }
+    CommandResult<void> validateShortcutOverrides(std::span<const ShortcutOverride> input)
+    {
+        auto prepared = prepareShortcuts(input);
+        if (!prepared)
+            return cxx::unexpected(prepared.error());
+        return {};
+    }
     CommandResult<void> CommandMenu::setShortcuts(std::span<const ShortcutOverride> input)
     {
         if (impl_->open)
             return cxx::unexpected(CommandFailure{ECommandError::BUSY, "shortcut.open-menu"});
-        if (input.size() > 256)
-            return cxx::unexpected(CommandFailure{ECommandError::CAPACITY, "shortcut.capacity"});
-        auto candidate = std::make_shared<Impl::Overrides>();
-        candidate->reserve(input.size());
-        for (const auto& value : input)
-        {
-            const bool is_invalid_scope = value.scope != ECommandScope::APPLICATION &&
-                value.scope != ECommandScope::SESSION && value.scope != ECommandScope::VIEW;
-            const bool is_invalid_identity = value.command.empty() || value.command.size() > 512 ||
-                value.command.find('\0') != std::string::npos || value.input_version == 0;
-            if (is_invalid_scope || is_invalid_identity)
-                return cxx::unexpected(CommandFailure{ECommandError::INVALID_ARGUMENT, "shortcut.identity"});
-            auto parsed = lux::ui::parseShortcut(value.binding);
-            if (!parsed)
-                return cxx::unexpected(CommandFailure{ECommandError::INVALID_ARGUMENT, "shortcut.syntax",
-                    static_cast<std::uint64_t>(parsed.error()), value.command});
-            candidate->push_back({value, CommandIdView{value.command}.hash(), *parsed});
-        }
-        std::ranges::sort(*candidate, {}, &Impl::ParsedOverride::hash);
-        for (std::size_t i = 1; i < candidate->size(); ++i)
-        {
-            const auto& a = (*candidate)[i - 1];
-            const auto& b = (*candidate)[i];
-            if (a.hash != b.hash)
-                continue;
-            const auto code = a.value.command == b.value.command ? ECommandError::DUPLICATE : ECommandError::HASH_COLLISION;
-            return cxx::unexpected(CommandFailure{code, "shortcut.identity"});
-        }
+        auto parsed = prepareShortcuts(input);
+        if (!parsed)
+            return cxx::unexpected(parsed.error());
+        auto candidate = std::move(*parsed);
         auto prepared = impl_->rebuild(candidate);
         if (!prepared)
             return prepared;

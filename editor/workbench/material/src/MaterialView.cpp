@@ -1,3 +1,4 @@
+#include <lux/engine/editor/workbench/ViewFactorySupport.hpp>
 #include <lux/engine/editor/material/PublishCompiledMaterial.hpp>
 #include <lux/engine/editor/views/ViewportElement.hpp>
 #include <lux/engine/editor/detail/ViewportStateCodec.hpp>
@@ -1128,4 +1129,45 @@ namespace lux::editor::material
         return candidate;
     }
 
+}
+
+namespace lux::editor::material
+{
+    namespace
+    {
+        constexpr sessions::SessionKindIdView kContentKinds[]{sessions::SessionKindIdView{"lux.editor.material"}};
+        constexpr views::ViewFactoryDescriptor kViewDescriptor{
+            views::ViewTypeIdView{"lux.editor.material"}, "Material",
+            cxx::typeToken<views::ContentViewInput>(), 1, kContentKinds
+        };
+    }
+    std::shared_ptr<views::ViewFactoryEntry> makeMaterialViewFactory(
+        sessions::TSessionAccess<material::MaterialSession> sessions,
+        lux::scene::SceneRuntime& runtime,
+        material::MaterialCompilationService& compilation,
+        const scene::ProjectionEnvironment& environment,
+        std::span<const render::RenderFeatureRegistration> features,
+        project::ProjectCatalogModel* assets,
+        cxx::move_only_function<void(const persistence::DerivedArtifact&)> receiver
+    )
+    {
+        using ArtifactIntent = cxx::move_only_function<void(const persistence::DerivedArtifact&)>;
+        auto intent = std::make_shared<ArtifactIntent>(std::move(receiver));
+        return workbench::detail::bindViewFactory<kViewDescriptor, views::ContentViewInput>(
+            [sessions, &runtime, &compilation, &environment, features, assets, intent](
+                const views::ViewFactoryInput& input, const views::ContentViewInput& value
+            ) -> views::ViewFactoryResult<views::DetachedView> {
+                auto view = material::makeMaterialContentView(
+                    input.dispatcher(), input.paneId(), sessions, runtime, compilation, environment,
+                    features, assets, value.content
+                );
+                if (!view)
+                    return cxx::unexpected(workbench::detail::viewFailure(view.error()));
+                auto connected = workbench::detail::connectIntent(*view, &material::MaterialView::publishRequested, intent);
+                if (!connected)
+                    return cxx::unexpected(std::move(connected.error()));
+                return std::move(*view);
+            }
+        );
+    }
 }

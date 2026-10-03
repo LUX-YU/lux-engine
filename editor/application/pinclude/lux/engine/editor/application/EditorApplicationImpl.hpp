@@ -24,7 +24,9 @@
 #include <lux/engine/editor/persistence/SaveExecution.hpp>
 #include <lux/engine/editor/sessions/SessionOperations.hpp>
 #include <lux/engine/editor/sessions/ReloadSessionOperation.hpp>
-#include <lux/engine/editor/extensions/BuiltinContributions.hpp>
+#include <lux/engine/editor/scene/SceneSessionFactory.hpp>
+#include <lux/engine/editor/material/MaterialSessionFactory.hpp>
+#include <lux/engine/editor/flowforge/FlowSessionFactory.hpp>
 #include <lux/engine/editor/scene/SceneView.hpp>
 #include <lux/engine/editor/material/MaterialView.hpp>
 #include <lux/engine/editor/flowforge/FlowView.hpp>
@@ -297,7 +299,7 @@ namespace lux::editor::application
         captureCommand(const commands::CommandDescriptor&, const lux::ui::Pane*, const lux::ui::Element*);
         [[nodiscard]] EditorResult<sessions::OpenAssetId> open(AssetReference);
         [[nodiscard]] EditorResult<sessions::OpenAssetId> createContent(sessions::SessionPreparation);
-        [[nodiscard]] extensions::ContentCreation contentCreation();
+        [[nodiscard]] sessions::SessionCreation contentCreation();
         void installContentCommands(extensions::ContributionDraft&);
         void installSceneCommands(extensions::ContributionDraft&);
         void installSaveCommands(extensions::ContributionDraft&);

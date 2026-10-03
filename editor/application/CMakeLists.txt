@@ -7,7 +7,7 @@ component_include_directories(editor_bootstrap BUILD_TIME_EXPORT ${CMAKE_CURRENT
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude ${CMAKE_CURRENT_SOURCE_DIR}/sinclude INSTALL_TIME include)
 target_link_libraries(editor_bootstrap PUBLIC lux::engine::editor::session_execution lux::engine::editor::editor_project lux::engine::editor::editor_commands
     PRIVATE lux::engine::platform::platform_process lux::engine::editor::editor_launch lux::engine::engine_context_render lux::engine::project::project_plugin_rendering
-    lux::engine::editor::editor_builtin_contributions lux::engine::editor::desktop_shell
+    lux::engine::editor::editor_extensions lux::engine::editor::scene_ui lux::engine::editor::material_ui lux::engine::editor::flow_ui lux::engine::editor::scene_persistence lux::engine::editor::material_persistence lux::engine::editor::flowforge_persistence lux::engine::editor::desktop_shell
     lux::engine::editor::editor_assets lux::engine::editor::editor_storage
     lux::engine::editor::editor_file_publication lux::engine::editor::editor_persistence_execution
     lux::engine::editor::project_tools_ui lux::engine::editor::workspace_store lux::engine::editor::project_ui lux::engine::editor::tasks_ui imgui::core)
@@ -19,7 +19,13 @@ component_add_transitive_commands(editor_bootstrap
     "find_package(lux-engine-editor-project REQUIRED COMPONENTS editor_project)"
     "find_package(lux-engine-context-render REQUIRED COMPONENTS engine_context_render)"
     "find_package(lux-engine-project-plugin-rendering REQUIRED COMPONENTS project_plugin_rendering)"
-    "find_package(lux-engine-editor-extensions REQUIRED COMPONENTS editor_builtin_contributions)"
+    "find_package(lux-engine-editor-extensions REQUIRED COMPONENTS editor_extensions)"
+    "find_package(lux-engine-editor-scene-ui REQUIRED COMPONENTS scene_ui)"
+    "find_package(lux-engine-editor-material-ui REQUIRED COMPONENTS material_ui)"
+    "find_package(lux-engine-editor-flow-ui REQUIRED COMPONENTS flow_ui)"
+    "find_package(lux-engine-editor-scene-persistence REQUIRED COMPONENTS scene_persistence)"
+    "find_package(lux-engine-editor-material-persistence REQUIRED COMPONENTS material_persistence)"
+    "find_package(lux-engine-editor-flowforge-persistence REQUIRED COMPONENTS flowforge_persistence)"
     "find_package(lux-engine-editor-desktop REQUIRED COMPONENTS desktop_shell)"
     "find_package(lux-engine-editor-assets REQUIRED COMPONENTS editor_assets)"
     "find_package(lux-engine-editor-storage REQUIRED COMPONENTS editor_storage)"

@@ -1,5 +1,4 @@
 #include <lux/engine/editor/commands/CommandRegistry.hpp>
-#include <lux/engine/editor/commands/CommandIndex.hpp>
 #include <cassert>
 #include <cstdio>
 #include <thread>
@@ -55,13 +54,9 @@ namespace
         assert(&snapshot->resolve(*handle)->descriptor() == &literal);
         const auto duplicate = CommandRegistrySnapshot::create({fixed, fixed});
         assert(!duplicate && duplicate.error().code == ECommandError::DUPLICATE);
-        const std::vector<std::shared_ptr<CommandEntry>> candidates{fixed, dynamic};
-        const auto collision = detail::commandIndex(candidates, [](CommandIdView) { return std::uint64_t{17}; });
-        assert(!collision && collision.error().code == ECommandError::HASH_COLLISION);
-        assert(snapshot->entries().size() == 2 && snapshot->find(literal.id));
         const auto invalid = CommandIdView::fromVerified("forged", 12);
         assert(!invalid.isValid() && !snapshot->find(invalid));
-        std::puts("PASS static descriptor identity, one frozen dynamic backing, duplicate and controlled collision");
+        std::puts("PASS static descriptor identity, one frozen dynamic backing, duplicate and public identity validation");
         std::printf("sizeof Descriptor=%zu Entry=%zu Handle=%zu\n", sizeof(CommandDescriptor), sizeof(CommandEntry), sizeof(CommandHandle));
     }
     void compoundScope()

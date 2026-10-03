@@ -205,15 +205,15 @@ namespace lux::editor::application
         auto valid = lux::flowforge::validateFlowSourceEnvironment(flow_environment_);
         if (!valid)
             return applicationFailure("flow.metadata", valid.error());
-        draft.views.push_back(extensions::builtinSceneViewFactory(
+        draft.views.push_back(scene::makeSceneViewFactory(
             sceneServices(), [this](const scene::ModelPlacement& value) { receiveModel(value); }
         ));
-        draft.views.push_back(extensions::builtinMaterialViewFactory(
+        draft.views.push_back(material::makeMaterialViewFactory(
             sessions_.access<material::MaterialSession>(), engine_->sceneRuntime(), material_compilation_,
             environment_, registrations_.features, &project_->catalogModel(),
             [this](const persistence::DerivedArtifact& value) { receiveArtifact(value); }
         ));
-        draft.views.push_back(extensions::builtinFlowViewFactory(
+        draft.views.push_back(flowforge::makeFlowViewFactory(
             {sessions_.access<flowforge::FlowSession>(), flow_compilation_, flow_environment_},
             [this](const persistence::DerivedArtifact& value) { receiveArtifact(value); }
         ));
@@ -221,8 +221,9 @@ namespace lux::editor::application
         // startup catalog. Their controls and new-content preparations retain the same defining code.
         installContentCommands(draft);
         installSceneCommands(draft);
-        auto builtins = extensions::builtinSessionFactories(registrations_.components, flow_environment_);
-        append(draft.sessions, builtins);
+        draft.sessions.push_back(scene::makeSceneSessionFactory(registrations_.components));
+        draft.sessions.push_back(material::makeMaterialSessionFactory());
+        draft.sessions.push_back(flowforge::makeFlowSessionFactory(flow_environment_));
         auto prepared = extensions::ContributionSnapshot::prepare(std::move(draft));
         if (!prepared)
             return applicationFailure("contributions.prepare", prepared.error());

@@ -10,6 +10,8 @@ namespace lux::editor::persistence
     class IArtifactStore;
 }
 
+namespace lux::editor::views { class ViewFactoryEntry; }
+
 namespace lux::editor::flowforge
 {
     struct FlowViewBinding final
@@ -77,5 +79,8 @@ namespace lux::editor::flowforge
         FlowViewServices,
         std::optional<FlowViewBinding> = {},
         FlowViewState = {}
+    );
+    [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> makeFlowViewFactory(
+        FlowViewServices, cxx::move_only_function<void(const persistence::DerivedArtifact&)> = {}
     );
 }

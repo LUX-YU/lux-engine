@@ -21,6 +21,8 @@ namespace
     constexpr views::ViewFactoryDescriptor view_declaration{
         views::ViewTypeIdView{"ec3.view"}, "View", lux::cxx::typeToken<std::monostate>(), 1, view_kinds
     };
+    views::ViewFactoryDescriptor mutable_view = view_declaration;
+    sessions::SessionKindDescriptor mutable_source = source_declaration;
     auto createView(const views::ViewFactoryInput&) -> views::ViewFactoryResult<views::DetachedView>
     {
         std::abort(); // Selection does not construct or register a Root node.
@@ -46,6 +48,20 @@ int main()
     auto rejected = CommandEntry::bind<mutable_declaration>(CodeLease::builtin(), query, execute);
 #elif EC3_INVALID_DECLARATION == 3
     auto rejected = std::make_shared<CommandEntry>(CodeLease::builtin(), declaration, query, execute);
+#elif EC3_INVALID_DECLARATION == 4
+    const auto local = source_declaration;
+    auto rejected = sessions::SessionFactoryEntry::bind<local>(CodeLease::builtin(), decode);
+#elif EC3_INVALID_DECLARATION == 5
+    auto rejected = sessions::SessionFactoryEntry::bind<mutable_source>(CodeLease::builtin(), decode);
+#elif EC3_INVALID_DECLARATION == 6
+    auto rejected = std::make_shared<sessions::SessionFactoryEntry>(CodeLease::builtin(), source_declaration, decode);
+#elif EC3_INVALID_DECLARATION == 7
+    const auto local = view_declaration;
+    auto rejected = views::ViewFactoryEntry::bind<local>(CodeLease::builtin(), createView);
+#elif EC3_INVALID_DECLARATION == 8
+    auto rejected = views::ViewFactoryEntry::bind<mutable_view>(CodeLease::builtin(), createView);
+#elif EC3_INVALID_DECLARATION == 9
+    auto rejected = std::make_shared<views::ViewFactoryEntry>(CodeLease::builtin(), view_declaration, createView);
 #else
     auto fixed = CommandEntry::bind<declaration>(CodeLease::builtin(), query, execute);
     assert(&fixed->descriptor() == &declaration);

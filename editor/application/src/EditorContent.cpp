@@ -97,15 +97,14 @@ namespace lux::editor::application
                     return commands::DispatchReceipt{commands::ImmediateCompletion{}};
                 }
             ));
-        auto commands = extensions::builtinContentCommands(
+        auto creation_available =
             [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
                 return commands::CommandState{phase_ == EApplicationPhase::RUNNING && opens_.size() < 64};
-            },
-            contentCreation(), flow_environment_
-        );
-        draft.commands.insert(draft.commands.end(), commands.begin(), commands.end());
+            };
+        draft.commands.push_back(material::makeNewMaterialCommand(creation_available, contentCreation()));
+        draft.commands.push_back(flowforge::makeNewFlowCommand(creation_available, contentCreation(), flow_environment_));
     }
-    extensions::ContentCreation EditorApplication::Impl::contentCreation()
+    sessions::SessionCreation EditorApplication::Impl::contentCreation()
     {
         return [this](sessions::SessionPreparation prepared) -> commands::CommandResult<commands::DispatchReceipt> {
             auto opened = createContent(std::move(prepared));

@@ -14,8 +14,8 @@ The application keeps the actual providers alive until accepted work, views and 
 This is lifetime-aware dependency injection, not a security sandbox or an arbitrary hot-unload API.
 
 `editor_extensions` has no concrete tool UI, renderer implementation or LLVM dependency.
-`editor_builtin_contributions` holds the actual built-in factory composition. Control factory
-descriptions live in `scene_control_api`; using them does not import a concrete Inspector or viewport.
+Each Scene, Material and Flow provider declares and binds its own factories and commands.
+Application composes these exact providers. Control factory descriptions live in `scene_control_api`; using them does not import a concrete Inspector or viewport.
 LuxWindow's Vulkan surface type declarations remain a header-only platform dependency.
 
 The runtime fingerprint covers modules/engine public contracts; the Editor fingerprint additionally covers the formal five-layer public contracts and toolchain. They are independent compatibility checks, not a guarantee of cross-compiler C++ ABI compatibility. External extensions use the same configured compiler, CRT and SDK.
@@ -34,7 +34,10 @@ Configuration values retain the shared reflection environment independently of t
 
 ## Actual consumers
 
-`BuiltinContributions` installs Save/Undo/Redo and all three real content factories. Scene, Material and Flow view factories call the existing workbench implementations. The integration harness uses those formal factories and DesktopShell command routing; installed consumers load a real V8 extension, decode a Material source on a worker, install it on the owner, edit/save it and unload all contributions safely. A separate runtime-only installed consumer imports no Editor target.
+`session_factories` provides Save/Undo/Redo; each concrete author activity provides its source factory
+and creation command. Each workbench tool constructs its own detached view and signal connections.
+There is no central built-in factory archive. External extensions use the same immutable descriptors
+and Entry binding API, retaining their original code lease and activation dependencies.
 
 The installed `lux_editor` uses EditorApplication and the same formal providers. Original Context,
 mutable registration aggregates and V6 assembly have been deleted. Standalone V8 view factories take

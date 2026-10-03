@@ -8,6 +8,8 @@
 #include <lux/engine/editor/views/IViewHost.hpp>
 #include <lux/engine/scene/MeshQuery.hpp>
 
+namespace lux::editor::views { class ViewFactoryEntry; }
+
 namespace lux::editor::scene
 {
     struct UnboundSceneBinding final
@@ -114,5 +116,8 @@ namespace lux::editor::scene
         object::ObjectDispatcherRef,
         SceneViewServices,
         SceneViewCreateInfo
+    );
+    [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> makeSceneViewFactory(
+        SceneViewServices, cxx::move_only_function<void(const ModelPlacement&)> = {}
     );
 }

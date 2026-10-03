@@ -235,7 +235,7 @@ namespace lux::editor::application
     }
     void EditorApplication::Impl::installSceneCommands(extensions::ContributionDraft& draft)
     {
-        draft.views.push_back(extensions::builtinSceneCreationFactory(sceneConfigurationInputs(), contentCreation()));
+        draft.views.push_back(scene::makeSceneCreationViewFactory(sceneConfigurationInputs(), contentCreation()));
         draft.commands.push_back(commands::CommandEntry::bind<command_lux_editor_new_scene>(
             contracts::CodeLease::builtin(),
             [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {

@@ -1,5 +1,5 @@
 #include <lux/engine/editor/editing/EditExecutor.hpp>
-#include <lux/engine/editor/extensions/BuiltinContributions.hpp>
+#include <lux/engine/editor/views/ViewFactory.hpp>
 #include <lux/engine/object/ObjectEvent.hpp>
 #include <lux/engine/editor/storage/FileArtifactStore.hpp>
 #include <lux/engine/editor/persistence/SaveExecution.hpp>

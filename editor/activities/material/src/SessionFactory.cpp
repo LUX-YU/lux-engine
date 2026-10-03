@@ -1,3 +1,4 @@
+#include <random>
 #include <lux/engine/editor/material/PreparedMaterialReload.hpp>
 #include <lux/engine/editor/material/MaterialSessionFactory.hpp>
 #include <lux/engine/editor/material/MaterialSaveSource.hpp>
@@ -87,6 +88,30 @@ namespace lux::editor::material
                         }
                     };
                 return prepareMaterialSession(std::move(*decoded), input.binding, input.target, code);
+            }
+        );
+    }
+}
+
+namespace lux::editor::material
+{
+    namespace
+    {
+        constexpr commands::CommandDescriptor kNewCommand{
+            commands::CommandIdView{"lux.editor.new.material"}, "New Material", "File"
+        };
+    }
+    std::shared_ptr<commands::CommandEntry> makeNewMaterialCommand(
+        commands::CommandEntry::Query query, sessions::SessionCreation receiver
+    )
+    {
+        return commands::CommandEntry::bind<kNewCommand>(
+            contracts::CodeLease::builtin(), std::move(query),
+            [create = std::move(receiver)](const commands::CommandInvocation&) mutable {
+                std::mt19937 random{std::random_device{}()};
+                const asset::AssetId id{uuids::uuid_random_generator{random}()};
+                lux::material::MaterialSource source{id, "Untitled Material", {}};
+                return create(prepareMaterialSession({std::move(source)}, {}, {}));
             }
         );
     }

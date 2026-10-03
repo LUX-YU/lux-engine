@@ -1,3 +1,4 @@
+#include <lux/engine/editor/workbench/ViewFactorySupport.hpp>
 #include <lux/engine/editor/scene/SceneView.hpp>
 #include <lux/engine/editor/workbench/ViewPreparation.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
@@ -775,5 +776,41 @@ namespace lux::editor::scene
                 ));
             }
         };
+    }
+}
+
+namespace lux::editor::scene
+{
+    namespace
+    {
+        constexpr sessions::SessionKindIdView kContentKinds[]{sessions::SessionKindIdView{"lux.editor.scene"}};
+        constexpr views::ViewFactoryDescriptor kViewDescriptor{
+            views::ViewTypeIdView{"lux.editor.scene.view"}, "Scene", cxx::typeToken<views::ContentViewInput>(), 1, kContentKinds
+        };
+    }
+    std::shared_ptr<views::ViewFactoryEntry> makeSceneViewFactory(scene::SceneViewServices scene, cxx::move_only_function<void(const ModelPlacement&)> receiver)
+    {
+        auto intent = std::make_shared<cxx::move_only_function<void(const ModelPlacement&)>>(std::move(receiver));
+        return workbench::detail::bindViewFactory<kViewDescriptor, views::ContentViewInput>(
+            [scene, intent](const views::ViewFactoryInput& input, const views::ContentViewInput& value)
+                -> views::ViewFactoryResult<views::DetachedView> {
+                scene::SceneViewCreateInfo info;
+                info.id = input.paneId();
+                info.title = value.title.empty() ? "Scene" : value.title;
+                info.state.camera.transform.translation = {0, 3, 8};
+                auto view = scene::makeSceneView(input.dispatcher(), scene, std::move(info));
+                if (!view)
+                    return cxx::unexpected(workbench::detail::viewFailure(view.error()));
+                auto bound = view->rebindContent(value.content);
+                if (!bound)
+                    return cxx::unexpected(views::ViewFactoryFailure{
+                        views::EViewFactoryError::CONSTRUCT, bound.error().domain, bound.error().code, bound.error().message
+                    });
+                auto connected = workbench::detail::connectIntent(*view, &scene::SceneView::modelDropped, intent);
+                if (!connected)
+                    return cxx::unexpected(std::move(connected.error()));
+                return std::move(*view);
+            }
+        );
     }
 }

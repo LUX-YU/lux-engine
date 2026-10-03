@@ -8,7 +8,7 @@
 #include <lux/engine/editor/flowforge/FlowSessionFactory.hpp>
 #include <lux/engine/editor/storage/FileArtifactStore.hpp>
 #include <lux/engine/editor/persistence/SaveExecution.hpp>
-#include <lux/engine/editor/extensions/BuiltinContributions.hpp>
+#include <lux/engine/editor/extensions/Contributions.hpp>
 #include <lux/engine/editor/desktop/CommandMenu.hpp>
 #include <lux/engine/editor/desktop/ViewHost.hpp>
 #include <lux/engine/ui/Root.hpp>
@@ -653,7 +653,8 @@ int main(int argc, char** argv)
     const auto flow_bytes = take(lux::flowforge::encodeFlowSource(source));
     write(root / SourceFiles::names[2], std::as_bytes(std::span{flow_bytes}));
     auto schemas = take(simulation::ecs::ComponentSchemaSet::build({}));
-    auto factories = take(SessionFactorySnapshot::create(extensions::builtinSessionFactories(schemas, {})));
+    auto factories = take(SessionFactorySnapshot::create(std::vector{lux::editor::scene::makeSceneSessionFactory(schemas), lux::editor::material::makeMaterialSessionFactory(),
+                lux::editor::flowforge::makeFlowSessionFactory({})}));
     {
         assert(take(factories.selectSource("lux.scene.package", 1))->descriptor().kind.name() == "lux.editor.scene");
         assert(take(factories.selectSource("lux.material.source", 1))->descriptor().kind.name() == "lux.editor.material");
@@ -675,7 +676,8 @@ int main(int argc, char** argv)
         );
         for (bool reverse : {false, true})
         {
-            auto entries = extensions::builtinSessionFactories(schemas, {});
+            auto entries = std::vector{lux::editor::scene::makeSceneSessionFactory(schemas), lux::editor::material::makeMaterialSessionFactory(),
+                lux::editor::flowforge::makeFlowSessionFactory({})};
             entries.push_back(alternate);
             if (reverse)
             {

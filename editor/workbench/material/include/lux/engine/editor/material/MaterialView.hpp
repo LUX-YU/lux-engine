@@ -16,6 +16,8 @@ namespace lux::editor::persistence
     class IArtifactStore;
 }
 
+namespace lux::editor::views { class ViewFactoryEntry; }
+
 namespace lux::editor::material
 {
     struct MaterialViewBinding final
@@ -126,4 +128,13 @@ namespace lux::editor::material
         const views::ViewContent&
     );
 
+    [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> makeMaterialViewFactory(
+        sessions::TSessionAccess<material::MaterialSession> sessions,
+        lux::scene::SceneRuntime& runtime,
+        material::MaterialCompilationService& compilation,
+        const scene::ProjectionEnvironment& environment,
+        std::span<const render::RenderFeatureRegistration> features,
+        project::ProjectCatalogModel* assets,
+        cxx::move_only_function<void(const persistence::DerivedArtifact&)> = {}
+    );
 }

@@ -1,3 +1,4 @@
+#include <lux/engine/editor/workbench/ViewFactorySupport.hpp>
 #include <lux/engine/editor/flowforge/PublishFlowArtifact.hpp>
 #include <lux/engine/editor/workbench/InteractionDelivery.hpp>
 #include <lux/engine/editor/flowforge/FlowView.hpp>
@@ -968,5 +969,39 @@ namespace lux::editor::flowforge
                 return cxx::unexpected(workbench::detail::viewPreparationFailure(adopted.error(), temporary(adopted.error())));
             }
         };
+    }
+}
+
+namespace lux::editor::flowforge
+{
+    namespace
+    {
+        constexpr sessions::SessionKindIdView kContentKinds[]{sessions::SessionKindIdView{"lux.editor.flowforge"}};
+        constexpr views::ViewFactoryDescriptor kViewDescriptor{
+            views::ViewTypeIdView{"lux.editor.flowforge"}, "FlowForge",
+            cxx::typeToken<views::ContentViewInput>(), 1, kContentKinds
+        };
+    }
+    std::shared_ptr<views::ViewFactoryEntry> makeFlowViewFactory(flowforge::FlowViewServices flow, cxx::move_only_function<void(const persistence::DerivedArtifact&)> receiver)
+    {
+        using ArtifactIntent = cxx::move_only_function<void(const persistence::DerivedArtifact&)>;
+        auto intent = std::make_shared<ArtifactIntent>(std::move(receiver));
+        return workbench::detail::bindViewFactory<kViewDescriptor, views::ContentViewInput>(
+            [flow, intent](const views::ViewFactoryInput& input, const views::ContentViewInput& value)
+                -> views::ViewFactoryResult<views::DetachedView> {
+                auto view = flowforge::makeFlowView(input.dispatcher(), input.paneId(), flow);
+                if (!view)
+                    return cxx::unexpected(workbench::detail::viewFailure(view.error()));
+                auto bound = view->rebindContent(value.content);
+                if (!bound)
+                    return cxx::unexpected(views::ViewFactoryFailure{
+                        views::EViewFactoryError::CONSTRUCT, bound.error().domain, bound.error().code, bound.error().message
+                    });
+                auto connected = workbench::detail::connectIntent(*view, &flowforge::FlowView::publishRequested, intent);
+                if (!connected)
+                    return cxx::unexpected(std::move(connected.error()));
+                return std::move(*view);
+            }
+        );
     }
 }

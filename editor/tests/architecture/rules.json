@@ -6049,7 +6049,9 @@
       "editor_configuration",
       "scene_execution",
       "scene_control_api",
-      "view_host"
+      "view_host",
+      "session_factories",
+      "scene_persistence"
     ],
     "closure": {
       "Eigen3::Eigen": {
@@ -6483,6 +6485,18 @@
       },
       "simulation_script_script_abilities_generate": {
         "path": "engine/domain/simulation/builtin_systems/script"
+      },
+      "session_factories": {
+        "path": "editor/activities/sessions"
+      },
+      "scene_persistence": {
+        "path": "editor/activities/scene"
+      },
+      "editor_persistence": {
+        "path": "editor/activities/persistence"
+      },
+      "editor_commands": {
+        "path": "editor/activities/commands"
       }
     },
     "native_libraries": [
@@ -6603,7 +6617,10 @@
       "lux/engine/editor/scene/SceneTools.hpp",
       "lux/engine/editor/scene/AuthoringFacts.hpp",
       "lux/engine/scene/RenderFeatureSceneBinding.hpp",
-      "lux/engine/editor/scene/SceneConfigurationPreparation.hpp"
+      "lux/engine/editor/scene/SceneConfigurationPreparation.hpp",
+      "lux/engine/editor/workbench/ViewFactorySupport.hpp",
+      "lux/engine/editor/sessions/SessionCommands.hpp",
+      "lux/engine/editor/scene/SceneSessionFactory.hpp"
     ],
     "prefixes": [],
     "test_headers": {
@@ -6725,7 +6742,8 @@
       "material_interaction",
       "material_preview",
       "project_ui",
-      "editor_viewport"
+      "editor_viewport",
+      "view_host"
     ],
     "closure": {
       "Eigen3::Eigen": {
@@ -7153,6 +7171,9 @@
       },
       "layout_model": {
         "path": "editor/authoring/layout"
+      },
+      "view_host": {
+        "path": "editor/workbench/desktop"
       }
     },
     "native_libraries": [
@@ -7188,7 +7209,9 @@
       "lux/engine/serialization/BinaryReader.hpp",
       "cmath",
       "lux/engine/editor/workbench/ViewPreparation.hpp",
-      "lux/engine/editor/persistence/DerivedArtifact.hpp"
+      "lux/engine/editor/persistence/DerivedArtifact.hpp",
+      "lux/engine/editor/views/ViewFactory.hpp",
+      "lux/engine/editor/workbench/ViewFactorySupport.hpp"
     ],
     "prefixes": [],
     "test_headers": {},
@@ -7209,7 +7232,8 @@
       "flowforge_compilation",
       "flowforge_interaction",
       "imgui::core",
-      "view_api"
+      "view_api",
+      "view_host"
     ],
     "closure": {
       "Eigen3::Eigen": {
@@ -7739,6 +7763,9 @@
       },
       "layout_model": {
         "path": "editor/authoring/layout"
+      },
+      "view_host": {
+        "path": "editor/workbench/desktop"
       }
     },
     "native_libraries": [
@@ -7781,7 +7808,9 @@
       "lux/engine/serialization/BinaryReader.hpp",
       "lux/engine/editor/workbench/ViewPreparation.hpp",
       "lux/engine/editor/persistence/DerivedArtifact.hpp",
-      "lux/engine/flowforge/graph/FlowSource.hpp"
+      "lux/engine/flowforge/graph/FlowSource.hpp",
+      "lux/engine/editor/views/ViewFactory.hpp",
+      "lux/engine/editor/workbench/ViewFactorySupport.hpp"
     ],
     "prefixes": [],
     "test_headers": {},
@@ -8151,8 +8180,7 @@
       "tasks_ui",
       "material_persistence",
       "editor_persistence_execution",
-      "editor_file_publication",
-      "editor_builtin_contributions"
+      "editor_file_publication"
     ],
     "closure": {
       "Eigen3::Eigen": {
@@ -9154,9 +9182,6 @@
       "scene_control_api": {
         "path": "editor/workbench/scene/api"
       },
-      "editor_builtin_contributions": {
-        "path": "editor/application/extensions"
-      },
       "scene_script_assets": {
         "path": "engine/scene/scripting/assets"
       },
@@ -9197,7 +9222,8 @@
       "lux/engine/editor/flowforge/PreparedFlowReload.hpp",
       "lux/engine/editor/scene/RunInspectorView.hpp",
       "lux/engine/editor/editing/EditExecutor.hpp",
-      "lux/engine/editor/scene/SceneTools.hpp"
+      "lux/engine/editor/scene/SceneTools.hpp",
+      "lux/engine/editor/views/ViewFactory.hpp"
     ],
     "prefixes": [],
     "test_headers": {
@@ -9266,7 +9292,6 @@
         "lux/engine/editor/material/MaterialSession.hpp",
         "lux/engine/editor/sessions/SessionStore.hpp",
         "lux/engine/editor/views/ViewportElement.hpp",
-        "lux/engine/editor/extensions/BuiltinContributions.hpp",
         "../../../authoring/flow/src/FlowSessionData.hpp",
         "lux/engine/editor/scene/AuthoringFacts.hpp",
         "lux/engine/scene/RenderFeatureSceneBinding.hpp"
@@ -15635,17 +15660,6 @@
         ],
         "path": "editor/workbench/scene/api"
       },
-      "editor_builtin_contributions": {
-        "layer": "E4",
-        "role": "COMPOSITION",
-        "capabilities": [
-          "CPU",
-          "PROCESS",
-          "TOOLCHAIN",
-          "GPU"
-        ],
-        "path": "editor/application/extensions"
-      },
       "editor_scene_configuration_native": {
         "layer": "TEST",
         "role": "TEST",
@@ -15890,6 +15904,14 @@
           "PROCESS"
         ],
         "path": "engine/scene/scripting/assets"
+      },
+      "editor_command_index_test": {
+        "layer": "TEST",
+        "role": "TEST",
+        "capabilities": [
+          "CPU"
+        ],
+        "path": "editor/activities/commands"
       }
     },
     "files": {
@@ -17967,12 +17989,6 @@
       "editor/application/extensions/include/lux/engine/editor/extensions/EditorExtension.hpp": [
         "editor_extensions"
       ],
-      "editor/application/extensions/include/lux/engine/editor/extensions/BuiltinContributions.hpp": [
-        "editor_builtin_contributions"
-      ],
-      "editor/application/extensions/src/BuiltinContributions.cpp": [
-        "editor_builtin_contributions"
-      ],
       "editor/application/extensions/test/contributions.cpp": [
         "editor_contributions_test"
       ],
@@ -18338,6 +18354,9 @@
       ],
       "editor/activities/project/include/lux/engine/editor/storage/ProjectCommands.hpp": [
         "editor_storage"
+      ],
+      "editor/activities/commands/test/index.cpp": [
+        "editor_command_index_test"
       ]
     },
     "native_libraries": [
@@ -18419,6 +18438,14 @@
         ]
       },
       "editor/workbench/sinclude/lux/engine/editor/workbench/ViewPreparation.hpp": {
+        "layer": "E3",
+        "consumers": [
+          "scene_ui",
+          "material_ui",
+          "flow_ui"
+        ]
+      },
+      "editor/workbench/sinclude/lux/engine/editor/workbench/ViewFactorySupport.hpp": {
         "layer": "E3",
         "consumers": [
           "scene_ui",

@@ -14,6 +14,10 @@ namespace lux::editor::sessions
     inline constexpr commands::CommandDescriptor kRedoCommand{
         commands::CommandIdView{"lux.editor.redo"}, "Redo", "Edit", "Ctrl+Y", commands::ECommandScope::SESSION
     };
+    class SessionPreparation;
+    using SessionCreation = cxx::move_only_function<
+        commands::CommandResult<commands::DispatchReceipt>(SessionPreparation)
+    >;
     using HistoryActionLookup = cxx::move_only_function<InstalledSession*(SessionId)>;
 
     // Product composition selects a source-save or project-save receiver for kSaveCommand, never both.

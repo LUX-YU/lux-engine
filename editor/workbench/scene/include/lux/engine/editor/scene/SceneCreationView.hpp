@@ -1,6 +1,9 @@
 #pragma once
 #include <lux/engine/editor/scene/SceneConfigurationElement.hpp>
 #include <lux/engine/editor/views/IViewHost.hpp>
+#include <lux/engine/editor/sessions/SessionCommands.hpp>
+
+namespace lux::editor::views { class ViewFactoryEntry; }
 
 namespace lux::editor::scene
 {
@@ -32,5 +35,8 @@ namespace lux::editor::scene
         lux::ui::PaneId,
         SceneConfigurationInputs,
         SceneCreationRequests
+    );
+    [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> makeSceneCreationViewFactory(
+        SceneConfigurationInputs, sessions::SessionCreation
     );
 }

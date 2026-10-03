@@ -1,3 +1,4 @@
+#include <random>
 #include <lux/engine/editor/flowforge/PreparedFlowReload.hpp>
 #include <lux/engine/editor/flowforge/FlowSessionFactory.hpp>
 #include <lux/engine/editor/flowforge/FlowSaveSource.hpp>
@@ -105,6 +106,32 @@ namespace lux::editor::flowforge
                         }
                     };
                 return prepareFlowSession(std::move(*decoded), input.binding, input.target, environment, code);
+            }
+        );
+    }
+}
+
+namespace lux::editor::flowforge
+{
+    namespace
+    {
+        constexpr commands::CommandDescriptor kNewCommand{
+            commands::CommandIdView{"lux.editor.new.flow"}, "New Flow", "File"
+        };
+    }
+    std::shared_ptr<commands::CommandEntry> makeNewFlowCommand(
+        commands::CommandEntry::Query query, sessions::SessionCreation receiver, lux::flowforge::FlowSourceEnvironment environment
+    )
+    {
+        return commands::CommandEntry::bind<kNewCommand>(
+            contracts::CodeLease::builtin(), std::move(query),
+            [create = std::move(receiver), environment = std::move(environment)](const commands::CommandInvocation&) mutable {
+                std::mt19937 random{std::random_device{}()};
+                const asset::AssetId id{uuids::uuid_random_generator{random}()};
+                lux::flowforge::FlowSource source;
+                source.id = id;
+                source.name = "Untitled Flow";
+                return create(prepareFlowSession({std::move(source)}, {}, {}, environment));
             }
         );
     }

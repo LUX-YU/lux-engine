@@ -30,26 +30,9 @@ component_add_transitive_commands(editor_extensions
     "find_package(lux-engine-editor-desktop REQUIRED COMPONENTS view_host)"
     "find_package(lux-engine-editor-scene-controls REQUIRED COMPONENTS scene_control_api)"
     "find_package(lux-engine-project-plugins REQUIRED COMPONENTS project_plugins)")
-add_component(COMPONENT_NAME editor_builtin_contributions NAMESPACE lux::engine::editor STATIC
-    SOURCE_FILES src/BuiltinContributions.cpp)
-component_include_directories(editor_builtin_contributions BUILD_TIME_EXPORT
-    ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
-target_link_libraries(editor_builtin_contributions PUBLIC lux::engine::editor::editor_extensions
-    lux::engine::editor::scene_ui lux::engine::editor::scene_persistence
-    lux::engine::editor::material_persistence lux::engine::editor::flowforge_persistence
-    lux::engine::editor::material_ui lux::engine::editor::flow_ui)
-component_add_transitive_commands(editor_builtin_contributions
-    "find_package(lux-engine-editor-extensions REQUIRED COMPONENTS editor_extensions)"
-    "find_package(lux-engine-editor-scene-ui REQUIRED COMPONENTS scene_ui)"
-    "find_package(lux-engine-editor-scene-persistence REQUIRED COMPONENTS scene_persistence)"
-    "find_package(lux-engine-editor-material-persistence REQUIRED COMPONENTS material_persistence)"
-    "find_package(lux-engine-editor-flowforge-persistence REQUIRED COMPONENTS flowforge_persistence)"
-    "find_package(lux-engine-editor-material-ui REQUIRED COMPONENTS material_ui)"
-    "find_package(lux-engine-editor-flow-ui REQUIRED COMPONENTS flow_ui)")
-lux_classify_target(TARGET editor_builtin_contributions LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 lux_classify_target(TARGET editor_extensions LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 lux_engine_install_components(PROJECT_NAME lux-engine-editor-extensions VERSION ${PROJECT_VERSION}
-    NAMESPACE lux::engine::editor COMPONENTS editor_extensions editor_builtin_contributions)
+    NAMESPACE lux::engine::editor COMPONENTS editor_extensions)
 install(FILES "${_abi_file}" DESTINATION include/lux/engine/editor/extensions COMPONENT lux_engine_editor_extensions)
 
 if(LUX_EDITOR_BUILD_NATIVE_TESTS)

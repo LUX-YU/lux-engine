@@ -5,13 +5,16 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
-find_package(lux-engine-editor-extensions REQUIRED COMPONENTS editor_builtin_contributions)
+find_package(lux-engine-editor-extensions REQUIRED COMPONENTS editor_extensions)
+find_package(lux-engine-editor-scene-persistence REQUIRED COMPONENTS scene_persistence)
+find_package(lux-engine-editor-material-persistence REQUIRED COMPONENTS material_persistence)
+find_package(lux-engine-editor-flowforge-persistence REQUIRED COMPONENTS flowforge_persistence)
 find_package(lux-engine-editor-desktop REQUIRED COMPONENTS desktop_shell)
 find_package(lux-engine-editor-persistence REQUIRED COMPONENTS editor_persistence_execution)
 find_package(lux-engine-editor-file-publication REQUIRED COMPONENTS editor_file_publication)
 find_package(lux-engine-editor-session-factories REQUIRED COMPONENTS session_execution)
 add_executable(p11_models installation.cpp)
-target_link_libraries(p11_models PRIVATE lux::engine::editor::editor_builtin_contributions
+target_link_libraries(p11_models PRIVATE lux::engine::editor::scene_persistence lux::engine::editor::material_persistence lux::engine::editor::flowforge_persistence lux::engine::editor::editor_extensions
     lux::engine::editor::desktop_shell lux::engine::editor::editor_persistence_execution
     lux::engine::editor::editor_file_publication lux::engine::editor::session_execution)
 if(MSVC)
@@ -26,7 +29,7 @@ add_test(NAME installed.p12.content_operations COMMAND p11_models "${CMAKE_BINAR
 # Same maintained regression bodies, compiled solely against installed public headers/libraries.
 foreach(name contributions commands)
     add_executable(p11_${name} ${name}.cpp)
-    target_link_libraries(p11_${name} PRIVATE lux::engine::editor::editor_builtin_contributions)
+    target_link_libraries(p11_${name} PRIVATE lux::engine::editor::editor_extensions)
     if(MSVC)
         target_compile_options(p11_${name} PRIVATE /UNDEBUG /utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor)
     else()

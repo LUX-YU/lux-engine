@@ -1,0 +1,166 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install",
+			"__install_export_header_dirs",
+			"lux_engine_install_components"
+		],
+		"files" : 
+		[
+			"engine/scene/scripting/assets/CMakeLists.txt",
+			"E:/SyncForder/CodeRepos/install/EC2-dd54847ee281/share/lux-cmake-toolset/component/install_components.cmake",
+			"cmake/InstallComponents.cmake"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 34,
+				"parent" : 0
+			},
+			{
+				"command" : 2,
+				"file" : 0,
+				"line" : 39,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 2,
+				"line" : 25,
+				"parent" : 2
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 49,
+				"parent" : 3
+			},
+			{
+				"command" : 0,
+				"file" : 2,
+				"line" : 47,
+				"parent" : 2
+			},
+			{
+				"command" : 0,
+				"file" : 2,
+				"line" : 52,
+				"parent" : 2
+			},
+			{
+				"command" : 0,
+				"file" : 2,
+				"line" : 54,
+				"parent" : 2
+			},
+			{
+				"command" : 0,
+				"file" : 2,
+				"line" : 64,
+				"parent" : 2
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 1,
+			"component" : "lux_sdk",
+			"destination" : "include/lux/engine/scene/scripting",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/scene/scripting/assets/generated/scene_script_assets/script_abilities/AssetAbility.ability.generated.hpp",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/scene/scripting/assets/generated/scene_script_assets/script_abilities/AssetAbility.ability.lua.generated.hpp"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 4,
+			"component" : "lux_engine_scene_script_assets",
+			"destination" : ".",
+			"paths" : 
+			[
+				"engine/scene/scripting/assets/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 5,
+			"component" : "lux_engine_scene_script_assets",
+			"destination" : "share/lux-engine-scene-script-assets/scene_script_assets",
+			"exportName" : "scene_script_assets",
+			"exportTargets" : 
+			[
+				{
+					"id" : "scene_script_assets::@a6060cc0a1c9202afbe8",
+					"index" : 384
+				}
+			],
+			"paths" : 
+			[
+				"engine/scene/scripting/assets/CMakeFiles/Export/8b119b83ee322df0806ec51522c0a653/lux-engine-scene-script-assets-scene_script_assets-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 6,
+			"component" : "lux_engine_scene_script_assets",
+			"destination" : "share/lux-engine-scene-script-assets/scene_script_assets",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/scene/scripting/assets/lux-engine-scene-script-assets-scene_script_assets-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 7,
+			"component" : "lux_engine_scene_script_assets",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/lux_engine_scene_script_assets.lib"
+			],
+			"targetId" : "scene_script_assets::@a6060cc0a1c9202afbe8",
+			"targetIndex" : 384,
+			"targetIsImportLibrary" : true,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 7,
+			"component" : "lux_engine_scene_script_assets",
+			"destination" : "bin",
+			"paths" : 
+			[
+				"bin/lux_engine_scene_script_assets.dll"
+			],
+			"targetId" : "scene_script_assets::@a6060cc0a1c9202afbe8",
+			"targetIndex" : 384,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 8,
+			"component" : "lux_engine_scene_script_assets",
+			"destination" : "share/lux-engine-scene-script-assets",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/scene/scripting/assets/lux-engine-scene-script-assets-config.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/scene/scripting/assets/lux-engine-scene-script-assets-config-version.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/scene/scripting/assets/lux-engine-scene-script-assets-available-components.cmake"
+			],
+			"type" : "file"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "engine/scene/scripting/assets",
+		"source" : "engine/scene/scripting/assets"
+	}
+}

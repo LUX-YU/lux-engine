@@ -1,0 +1,1445 @@
+{
+	"artifacts" : 
+	[
+		{
+			"path" : "bin/lux_engine_flowforge_compiler.dll"
+		},
+		{
+			"path" : "lib/lux_engine_flowforge_compiler.lib"
+		},
+		{
+			"path" : "bin/lux_engine_flowforge_compiler.pdb"
+		}
+	],
+	"backtrace" : 3,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"_add_library",
+			"add_library",
+			"add_component",
+			"install",
+			"lux_engine_install_components",
+			"target_link_libraries",
+			"set_target_properties",
+			"include",
+			"_find_package",
+			"find_package",
+			"add_dependencies",
+			"add_compile_options",
+			"target_compile_definitions",
+			"target_include_directories",
+			"__component_set_include_directories",
+			"component_include_directories"
+		],
+		"files" : 
+		[
+			"D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+			"E:/SyncForder/CodeRepos/install/EC2-dd54847ee281/share/lux-cmake-toolset/component/component.cmake",
+			"engine/toolchain/flowforge/CMakeLists.txt",
+			"cmake/InstallComponents.cmake",
+			"modules/function/flowforge/CMakeLists.txt",
+			"modules/function/script/artifact/CMakeLists.txt",
+			"engine/toolchain/flowforge/src/mlir/CMakeLists.txt",
+			"D:/Development/vcpkg/installed/x64-windows/share/mlir/MLIRTargets.cmake",
+			"D:/Development/vcpkg/installed/x64-windows/share/mlir/MLIRConfig.cmake",
+			"D:/Development/vcpkg/installed/x64-windows/share/llvm/LLVMExports.cmake",
+			"D:/Development/vcpkg/installed/x64-windows/share/llvm/LLVMConfig.cmake",
+			"CMakeLists.txt",
+			"E:/SyncForder/CodeRepos/install/EC2-dd54847ee281/share/lux-cmake-toolset/component/component_include_directories.cmake"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 8,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 99,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 653,
+				"parent" : 2
+			},
+			{
+				"command" : 4,
+				"file" : 2,
+				"line" : 58,
+				"parent" : 0
+			},
+			{
+				"command" : 3,
+				"file" : 3,
+				"line" : 54,
+				"parent" : 4
+			},
+			{
+				"command" : 5,
+				"file" : 2,
+				"line" : 32,
+				"parent" : 0
+			},
+			{
+				"command" : 5,
+				"file" : 2,
+				"line" : 52,
+				"parent" : 0
+			},
+			{
+				"file" : 4
+			},
+			{
+				"command" : 5,
+				"file" : 4,
+				"line" : 47,
+				"parent" : 8
+			},
+			{
+				"file" : 5
+			},
+			{
+				"command" : 5,
+				"file" : 5,
+				"line" : 26,
+				"parent" : 10
+			},
+			{
+				"file" : 6
+			},
+			{
+				"command" : 5,
+				"file" : 6,
+				"line" : 129,
+				"parent" : 12
+			},
+			{
+				"command" : 9,
+				"file" : 2,
+				"line" : 40,
+				"parent" : 0
+			},
+			{
+				"command" : 8,
+				"file" : 0,
+				"line" : 908,
+				"parent" : 14
+			},
+			{
+				"file" : 8,
+				"parent" : 15
+			},
+			{
+				"command" : 7,
+				"file" : 8,
+				"line" : 37,
+				"parent" : 16
+			},
+			{
+				"file" : 7,
+				"parent" : 17
+			},
+			{
+				"command" : 6,
+				"file" : 7,
+				"line" : 1207,
+				"parent" : 18
+			},
+			{
+				"command" : 6,
+				"file" : 7,
+				"line" : 591,
+				"parent" : 18
+			},
+			{
+				"command" : 6,
+				"file" : 7,
+				"line" : 143,
+				"parent" : 18
+			},
+			{
+				"command" : 6,
+				"file" : 7,
+				"line" : 654,
+				"parent" : 18
+			},
+			{
+				"command" : 6,
+				"file" : 7,
+				"line" : 1903,
+				"parent" : 18
+			},
+			{
+				"command" : 6,
+				"file" : 7,
+				"line" : 1728,
+				"parent" : 18
+			},
+			{
+				"command" : 6,
+				"file" : 7,
+				"line" : 1053,
+				"parent" : 18
+			},
+			{
+				"command" : 9,
+				"file" : 2,
+				"line" : 39,
+				"parent" : 0
+			},
+			{
+				"command" : 8,
+				"file" : 0,
+				"line" : 908,
+				"parent" : 26
+			},
+			{
+				"file" : 10,
+				"parent" : 27
+			},
+			{
+				"command" : 7,
+				"file" : 10,
+				"line" : 252,
+				"parent" : 28
+			},
+			{
+				"file" : 9,
+				"parent" : 29
+			},
+			{
+				"command" : 6,
+				"file" : 9,
+				"line" : 507,
+				"parent" : 30
+			},
+			{
+				"command" : 6,
+				"file" : 9,
+				"line" : 535,
+				"parent" : 30
+			},
+			{
+				"command" : 6,
+				"file" : 9,
+				"line" : 521,
+				"parent" : 30
+			},
+			{
+				"command" : 6,
+				"file" : 9,
+				"line" : 577,
+				"parent" : 30
+			},
+			{
+				"command" : 6,
+				"file" : 9,
+				"line" : 605,
+				"parent" : 30
+			},
+			{
+				"command" : 6,
+				"file" : 9,
+				"line" : 311,
+				"parent" : 30
+			},
+			{
+				"command" : 6,
+				"file" : 9,
+				"line" : 647,
+				"parent" : 30
+			},
+			{
+				"command" : 6,
+				"file" : 7,
+				"line" : 1756,
+				"parent" : 18
+			},
+			{
+				"command" : 6,
+				"file" : 7,
+				"line" : 1889,
+				"parent" : 18
+			},
+			{
+				"command" : 6,
+				"file" : 7,
+				"line" : 906,
+				"parent" : 18
+			},
+			{
+				"command" : 6,
+				"file" : 7,
+				"line" : 913,
+				"parent" : 18
+			},
+			{
+				"command" : 6,
+				"file" : 7,
+				"line" : 1550,
+				"parent" : 18
+			},
+			{
+				"command" : 6,
+				"file" : 9,
+				"line" : 262,
+				"parent" : 30
+			},
+			{
+				"command" : 6,
+				"file" : 9,
+				"line" : 360,
+				"parent" : 30
+			},
+			{
+				"command" : 6,
+				"file" : 9,
+				"line" : 633,
+				"parent" : 30
+			},
+			{
+				"command" : 6,
+				"file" : 9,
+				"line" : 486,
+				"parent" : 30
+			},
+			{
+				"command" : 6,
+				"file" : 9,
+				"line" : 479,
+				"parent" : 30
+			},
+			{
+				"command" : 6,
+				"file" : 9,
+				"line" : 409,
+				"parent" : 30
+			},
+			{
+				"command" : 6,
+				"file" : 9,
+				"line" : 94,
+				"parent" : 30
+			},
+			{
+				"command" : 6,
+				"file" : 9,
+				"line" : 192,
+				"parent" : 30
+			},
+			{
+				"command" : 6,
+				"file" : 9,
+				"line" : 374,
+				"parent" : 30
+			},
+			{
+				"command" : 6,
+				"file" : 9,
+				"line" : 185,
+				"parent" : 30
+			},
+			{
+				"command" : 6,
+				"file" : 7,
+				"line" : 1882,
+				"parent" : 18
+			},
+			{
+				"command" : 6,
+				"file" : 7,
+				"line" : 1585,
+				"parent" : 18
+			},
+			{
+				"command" : 6,
+				"file" : 7,
+				"line" : 1557,
+				"parent" : 18
+			},
+			{
+				"command" : 6,
+				"file" : 7,
+				"line" : 73,
+				"parent" : 18
+			},
+			{
+				"command" : 6,
+				"file" : 7,
+				"line" : 1389,
+				"parent" : 18
+			},
+			{
+				"command" : 6,
+				"file" : 9,
+				"line" : 63,
+				"parent" : 30
+			},
+			{
+				"command" : 10,
+				"file" : 2,
+				"line" : 51,
+				"parent" : 0
+			},
+			{
+				"file" : 11
+			},
+			{
+				"command" : 11,
+				"file" : 11,
+				"line" : 25,
+				"parent" : 60
+			},
+			{
+				"command" : 12,
+				"file" : 2,
+				"line" : 28,
+				"parent" : 0
+			},
+			{
+				"command" : 15,
+				"file" : 2,
+				"line" : 21,
+				"parent" : 0
+			},
+			{
+				"command" : 14,
+				"file" : 12,
+				"line" : 67,
+				"parent" : 63
+			},
+			{
+				"command" : 13,
+				"file" : 12,
+				"line" : 25,
+				"parent" : 64
+			},
+			{
+				"command" : 13,
+				"file" : 2,
+				"line" : 43,
+				"parent" : 0
+			}
+		]
+	},
+	"compileGroups" : 
+	[
+		{
+			"compileCommandFragments" : 
+			[
+				{
+					"fragment" : "/DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD"
+				},
+				{
+					"backtrace" : 61,
+					"fragment" : "/utf-8"
+				},
+				{
+					"backtrace" : 61,
+					"fragment" : "/permissive-"
+				},
+				{
+					"backtrace" : 61,
+					"fragment" : "/Zc:__cplusplus"
+				},
+				{
+					"backtrace" : 61,
+					"fragment" : "/Zc:preprocessor"
+				}
+			],
+			"defines" : 
+			[
+				{
+					"backtrace" : 62,
+					"define" : "LUX_ENGINE_FLOWFORGE_COMPILER_LIBRARY"
+				},
+				{
+					"backtrace" : 6,
+					"define" : "LUX_ENGINE_FLOWFORGE_DLL_DISABLE"
+				},
+				{
+					"define" : "flowforge_compiler_EXPORTS"
+				}
+			],
+			"includes" : 
+			[
+				{
+					"backtrace" : 65,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/toolchain/flowforge/include"
+				},
+				{
+					"backtrace" : 65,
+					"path" : "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/gen/include"
+				},
+				{
+					"backtrace" : 66,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/toolchain/flowforge/pinclude"
+				},
+				{
+					"backtrace" : 66,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/toolchain/flowforge/src/mlir"
+				},
+				{
+					"backtrace" : 66,
+					"path" : "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/toolchain/flowforge/src/mlir"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/function/flowforge/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/function/graph/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/core/meta/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/core/type_info/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/function/script/core/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/core/semantic/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/resource/description/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/core/math/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/resource/identity/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/function/script/artifact/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/resource/asset/include"
+				},
+				{
+					"backtrace" : 66,
+					"isSystem" : true,
+					"path" : "D:/Development/vcpkg/installed/x64-windows/include"
+				},
+				{
+					"backtrace" : 6,
+					"isSystem" : true,
+					"path" : "E:/SyncForder/CodeRepos/install/EC2-dd54847ee281/include"
+				},
+				{
+					"backtrace" : 6,
+					"isSystem" : true,
+					"path" : "D:/Development/vcpkg/installed/x64-windows/include/eigen3"
+				},
+				{
+					"backtrace" : 6,
+					"isSystem" : true,
+					"path" : "D:/Development/vcpkg/installed/x64-windows/include/stduuid"
+				}
+			],
+			"language" : "CXX",
+			"languageStandard" : 
+			{
+				"backtraces" : 
+				[
+					6,
+					6
+				],
+				"standard" : "20"
+			},
+			"sourceIndexes" : 
+			[
+				0,
+				1,
+				2,
+				3,
+				4,
+				5,
+				6
+			]
+		}
+	],
+	"dependencies" : 
+	[
+		{
+			"backtrace" : 6,
+			"id" : "script_core::@023ad226eeb1dfda479d"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "meta::@48360a740c97bcb8cc30"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "description::@7b719127e839b48d783c"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "asset::@f166380fe378b4529061"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "graph::@5661790dfa04b0db40a7"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "flowforge::@01a5a9daa526672cfac5"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "script_artifact::@6f6baf858afc44774b73"
+		},
+		{
+			"backtrace" : 59,
+			"id" : "FlowForgeDialectIncGen::@b2c85f2b9978259a9e90"
+		},
+		{
+			"backtrace" : 7,
+			"id" : "_flowforge_dialect::@b2c85f2b9978259a9e90"
+		}
+	],
+	"id" : "flowforge_compiler::@cc5ba2351c5c06732301",
+	"install" : 
+	{
+		"destinations" : 
+		[
+			{
+				"backtrace" : 5,
+				"path" : "lib"
+			},
+			{
+				"backtrace" : 5,
+				"path" : "bin"
+			}
+		],
+		"prefix" : 
+		{
+			"path" : "E:/SyncForder/CodeRepos/install/EC2-dd54847ee281"
+		}
+	},
+	"link" : 
+	{
+		"commandFragments" : 
+		[
+			{
+				"fragment" : "/machine:x64 /debug /INCREMENTAL",
+				"role" : "flags"
+			},
+			{
+				"backtrace" : 6,
+				"fragment" : "lib\\lux_engine_function_flowforge.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 6,
+				"fragment" : "lib\\lux_engine_function_script_artifact.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 7,
+				"fragment" : "lib\\_flowforge_dialect.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 9,
+				"fragment" : "lib\\lux_engine_function_graph.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 9,
+				"fragment" : "lib\\lux_engine_core_meta.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 9,
+				"fragment" : "E:\\SyncForder\\CodeRepos\\install\\EC2-dd54847ee281\\lib\\reflection_runtime.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 11,
+				"fragment" : "lib\\lux_engine_asset.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 9,
+				"fragment" : "lib\\description.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 9,
+				"fragment" : "lib\\lux_engine_function_script_core.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 13,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRSCFToControlFlow.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 13,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRSCFDialect.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 13,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRTensorDialect.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 19,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRAffineDialect.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 20,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRMemRefDialect.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 19,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRParallelCombiningOpInterface.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 19,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRShapedOpInterfaces.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 19,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRDialectUtils.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 19,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRArithUtils.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 19,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRComplexDialect.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 13,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRFuncToLLVM.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 13,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRArithToLLVM.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 21,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRArithAttrToLLVMConversion.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 13,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRControlFlowToLLVM.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 13,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRControlFlowDialect.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 13,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRArithDialect.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 22,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRCastInterfaces.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 22,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRDialect.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 22,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRInferIntRangeCommon.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 22,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRUBDialect.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 21,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRLLVMCommonConversion.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 13,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRReconcileUnrealizedCasts.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 13,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRExecutionEngine.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 23,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRExecutionEngineUtils.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 23,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIROpenMPToLLVMIRTranslation.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 24,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIROpenMPDialect.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 25,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIROpenACCMPCommon.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 23,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMOrcJIT.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 23,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMExecutionEngine.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 31,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMRuntimeDyld.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 32,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMWindowsDriver.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 23,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMJITLink.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 31,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMOrcTargetProcess.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 32,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMOrcShared.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 33,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMOption.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 23,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMX86CodeGen.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 34,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMAsmPrinter.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 34,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMGlobalISel.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 34,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMSelectionDAG.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 23,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMX86Desc.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 35,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMMCDisassembler.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 23,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMX86Info.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 23,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMPasses.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 23,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMCoroutines.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 23,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMipo.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 23,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMVectorize.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 36,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMLinker.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 34,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMCFGuard.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 34,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMCodeGen.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 23,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMTarget.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 34,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMCodeGenTypes.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 34,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMIRPrinter.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 34,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMInstrumentation.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 37,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMHipStdPar.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 37,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMObjCARCOpts.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 13,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRBuiltinToLLVMIRTranslation.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 13,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRLLVMToLLVMIRTranslation.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 23,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRTargetLLVMIRExport.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 38,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRDLTIDialect.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 38,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRLLVMIRTransforms.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 13,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRTransforms.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 39,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRCopyOpInterface.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 39,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRRuntimeVerifiableOpInterface.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 13,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRFuncDialect.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 40,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRNVVMDialect.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 13,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRLLVMDialect.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 39,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRMemorySlotInterfaces.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 41,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMBitWriter.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 38,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRTranslateLib.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 13,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRParser.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 42,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRBytecodeReader.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 42,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRAsmParser.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 38,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMFrontendOpenMP.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 23,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMScalarOpts.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 23,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMAggressiveInstCombine.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 23,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMInstCombine.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 43,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMFrontendOffloading.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 23,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMTransformUtils.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 23,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMAnalysis.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 44,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMProfileData.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 45,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMSymbolize.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 46,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMDebugInfoPDB.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 47,
+				"fragment" : "\"D:\\Development\\Mircosoft\\VisualStudio\\DIA SDK\\lib\\amd64\\diaguids.lib\"",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 47,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMDebugInfoMSF.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 46,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMDebugInfoBTF.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 45,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMDebugInfoDWARF.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 23,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMObject.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 48,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMIRReader.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 41,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMAsmParser.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 41,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMBitReader.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 41,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMCore.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 49,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMRemarks.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 50,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMBitstreamReader.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 48,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMMCParser.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 23,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMMC.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 51,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMDebugInfoCodeView.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 48,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMTextAPI.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 41,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMBinaryFormat.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 52,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMTargetParser.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 13,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRTransformUtils.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 53,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRSubsetOpInterface.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 19,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRValueBoundsOpInterface.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 19,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRDestinationStyleOpInterface.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 53,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRRewrite.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 54,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRRewritePDL.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 54,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRPDLToPDLInterp.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 13,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRPass.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 55,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRAnalysis.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 13,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRControlFlowInterfaces.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 39,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRLoopLikeInterface.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 41,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRCallInterfaces.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 41,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRDataLayoutInterfaces.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 22,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRInferIntRangeInterface.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 19,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRViewLikeInterface.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 56,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRPresburger.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 54,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRPDLInterpDialect.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 39,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRFunctionInterfaces.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 54,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRPDLDialect.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 13,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRSideEffectInterfaces.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 41,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRInferTypeOpInterface.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 13,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRIR.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 13,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\MLIRSupport.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 57,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMSupport.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 58,
+				"fragment" : "psapi.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 58,
+				"fragment" : "shell32.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 58,
+				"fragment" : "ole32.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 58,
+				"fragment" : "uuid.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 58,
+				"fragment" : "advapi32.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 58,
+				"fragment" : "ws2_32.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 58,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\zlib.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 58,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\zstd.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 58,
+				"fragment" : "delayimp.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 58,
+				"fragment" : "-delayload:shell32.dll",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 58,
+				"fragment" : "-delayload:ole32.dll",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 58,
+				"fragment" : "D:\\Development\\vcpkg\\installed\\x64-windows\\lib\\LLVMDemangle.lib",
+				"role" : "libraries"
+			},
+			{
+				"fragment" : "kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib",
+				"role" : "libraries"
+			}
+		],
+		"language" : "CXX"
+	},
+	"name" : "flowforge_compiler",
+	"nameOnDisk" : "lux_engine_flowforge_compiler.dll",
+	"paths" : 
+	{
+		"build" : "engine/toolchain/flowforge",
+		"source" : "engine/toolchain/flowforge"
+	},
+	"sourceGroups" : 
+	[
+		{
+			"name" : "Source Files",
+			"sourceIndexes" : 
+			[
+				0,
+				1,
+				2,
+				3,
+				4,
+				5,
+				6
+			]
+		}
+	],
+	"sources" : 
+	[
+		{
+			"backtrace" : 3,
+			"compileGroupIndex" : 0,
+			"path" : "engine/toolchain/flowforge/src/Compiler.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 3,
+			"compileGroupIndex" : 0,
+			"path" : "engine/toolchain/flowforge/src/IR.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 3,
+			"compileGroupIndex" : 0,
+			"path" : "engine/toolchain/flowforge/src/IRContext.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 3,
+			"compileGroupIndex" : 0,
+			"path" : "engine/toolchain/flowforge/src/Passes.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 3,
+			"compileGroupIndex" : 0,
+			"path" : "engine/toolchain/flowforge/src/ScriptInstance.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 3,
+			"compileGroupIndex" : 0,
+			"path" : "engine/toolchain/flowforge/src/SuspensionAnalysis.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 3,
+			"compileGroupIndex" : 0,
+			"path" : "engine/toolchain/flowforge/src/AOT.cpp",
+			"sourceGroupIndex" : 0
+		}
+	],
+	"type" : "SHARED_LIBRARY"
+}

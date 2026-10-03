@@ -1,0 +1,149 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install",
+			"__install_export_header_dirs",
+			"lux_engine_install_components"
+		],
+		"files" : 
+		[
+			"E:/SyncForder/CodeRepos/install/EC2-dd54847ee281/share/lux-cmake-toolset/component/install_components.cmake",
+			"cmake/InstallComponents.cmake",
+			"engine/domain/simulation/asset/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 46,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 2
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 64,
+				"parent" : 1
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 3,
+			"component" : "lux_engine_simulation_asset",
+			"destination" : ".",
+			"paths" : 
+			[
+				"engine/domain/simulation/asset/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 4,
+			"component" : "lux_engine_simulation_asset",
+			"destination" : "share/lux-engine-simulation-asset/simulation_asset",
+			"exportName" : "simulation_asset",
+			"exportTargets" : 
+			[
+				{
+					"id" : "simulation_asset::@cccd20810dfaf5f762a3",
+					"index" : 413
+				}
+			],
+			"paths" : 
+			[
+				"engine/domain/simulation/asset/CMakeFiles/Export/09dc88fe28fbce449f8f50aa7d2f6131/lux-engine-simulation-asset-simulation_asset-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 5,
+			"component" : "lux_engine_simulation_asset",
+			"destination" : "share/lux-engine-simulation-asset/simulation_asset",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/domain/simulation/asset/lux-engine-simulation-asset-simulation_asset-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 6,
+			"component" : "lux_engine_simulation_asset",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/lux_engine_simulation_asset.lib"
+			],
+			"targetId" : "simulation_asset::@cccd20810dfaf5f762a3",
+			"targetIndex" : 413,
+			"targetIsImportLibrary" : true,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 6,
+			"component" : "lux_engine_simulation_asset",
+			"destination" : "bin",
+			"paths" : 
+			[
+				"bin/lux_engine_simulation_asset.dll"
+			],
+			"targetId" : "simulation_asset::@cccd20810dfaf5f762a3",
+			"targetIndex" : 413,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 7,
+			"component" : "lux_engine_simulation_asset",
+			"destination" : "share/lux-engine-simulation-asset",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/domain/simulation/asset/lux-engine-simulation-asset-config.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/domain/simulation/asset/lux-engine-simulation-asset-config-version.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/domain/simulation/asset/lux-engine-simulation-asset-available-components.cmake"
+			],
+			"type" : "file"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "engine/domain/simulation/asset",
+		"source" : "engine/domain/simulation/asset"
+	}
+}

@@ -1,0 +1,997 @@
+[
+  {
+    "id": "host-scene-owner",
+    "passed": true,
+    "expected_rule": "VIEW_HOST_FORBIDDEN_DEPENDENCY",
+    "exit_code": 1,
+    "log": "-- The CXX compiler identification is MSVC 19.44.35228.0\n-- Detecting CXX compiler ABI info\n-- Detecting CXX compiler ABI info - done\n-- Check for working CXX compiler: D:/Development/Mircosoft/VisualStudio/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe - skipped\n-- Detecting CXX compile features\n-- Detecting CXX compile features - done\n-- Found Python3: D:/Development/Python/Python313/python.exe (found version \"3.13.0\") found components: Interpreter\n-- Configuring incomplete, errors occurred!\nCMake Error at E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/cmake/EditorArchitectureChecks.cmake:167 (message):\n  Editor migration boundary check failed:\n\n  {\"status\": \"FAIL\", \"findings\": [{\"rule\": \"VIEW_HOST_FORBIDDEN_DEPENDENCY\",\n  \"path\": \"view_host\", \"detail\": \"view_host -> scene_model\n  (LINK_LIBRARIES)\"}, {\"rule\": \"VIEW_HOST_DIRECT_DEPENDENCY\", \"path\":\n  \"view_host\", \"detail\": \"view_host -> scene_model (LINK_LIBRARIES)\"},\n  {\"rule\": \"VIEW_HOST_FORBIDDEN_DEPENDENCY\", \"path\": \"view_host\", \"detail\":\n  \"view_host -> scene_model (INTERFACE_LINK_LIBRARIES)\"}, {\"rule\":\n  \"VIEW_HOST_DIRECT_DEPENDENCY\", \"path\": \"view_host\", \"detail\": \"view_host ->\n  scene_model (INTERFACE_LINK_LIBRARIES)\"}]}\n\nCall Stack (most recent call first):\n  CMakeLists.txt:8 (lux_editor_check_architecture)\n\n\n",
+    "graph": [
+      {
+        "name": "view_host",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-41edlxm_/editor/workbench/desktop",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-41edlxm_/build/editor/workbench/desktop",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp;C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-41edlxm_/editor/workbench/desktop/probe.hpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "::@(0000028619348780);$<LINK_ONLY:fixture::scene_model>;::@",
+        "INTERFACE_LINK_LIBRARIES": "::@(0000028619348780);$<LINK_ONLY:$<LINK_ONLY:fixture::scene_model>>;::@",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": "LINK_LIBRARIES:scene_model;INTERFACE_LINK_LIBRARIES:scene_model"
+      },
+      {
+        "name": "scene_model",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-41edlxm_/editor/authoring/scene",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-41edlxm_/build/editor/authoring/scene",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "",
+        "INTERFACE_LINK_LIBRARIES": "",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": ""
+      }
+    ],
+    "repaired_exit_code": 0,
+    "repaired_log": "-- Configuring done (0.5s)\n-- Generating done (0.0s)\n-- Build files have been written to: C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-41edlxm_/build\n"
+  },
+  {
+    "id": "host-run-owner",
+    "passed": true,
+    "expected_rule": "VIEW_HOST_FORBIDDEN_DEPENDENCY",
+    "exit_code": 1,
+    "log": "-- The CXX compiler identification is MSVC 19.44.35228.0\n-- Detecting CXX compiler ABI info\n-- Detecting CXX compiler ABI info - done\n-- Check for working CXX compiler: D:/Development/Mircosoft/VisualStudio/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe - skipped\n-- Detecting CXX compile features\n-- Detecting CXX compile features - done\n-- Found Python3: D:/Development/Python/Python313/python.exe (found version \"3.13.0\") found components: Interpreter\n-- Configuring incomplete, errors occurred!\nCMake Error at E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/cmake/EditorArchitectureChecks.cmake:167 (message):\n  Editor migration boundary check failed:\n\n  {\"status\": \"FAIL\", \"findings\": [{\"rule\": \"VIEW_HOST_FORBIDDEN_DEPENDENCY\",\n  \"path\": \"view_host\", \"detail\": \"view_host -> scene_execution\n  (LINK_LIBRARIES)\"}, {\"rule\": \"VIEW_HOST_DIRECT_DEPENDENCY\", \"path\":\n  \"view_host\", \"detail\": \"view_host -> scene_execution (LINK_LIBRARIES)\"},\n  {\"rule\": \"VIEW_HOST_FORBIDDEN_DEPENDENCY\", \"path\": \"view_host\", \"detail\":\n  \"view_host -> scene_execution (INTERFACE_LINK_LIBRARIES)\"}, {\"rule\":\n  \"VIEW_HOST_DIRECT_DEPENDENCY\", \"path\": \"view_host\", \"detail\": \"view_host ->\n  scene_execution (INTERFACE_LINK_LIBRARIES)\"}]}\n\nCall Stack (most recent call first):\n  CMakeLists.txt:8 (lux_editor_check_architecture)\n\n\n",
+    "graph": [
+      {
+        "name": "view_host",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-o_ko6lho/editor/workbench/desktop",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-o_ko6lho/build/editor/workbench/desktop",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp;C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-o_ko6lho/editor/workbench/desktop/probe.hpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "::@(0000029EB7208780);$<LINK_ONLY:fixture::scene_execution>;::@",
+        "INTERFACE_LINK_LIBRARIES": "::@(0000029EB7208780);$<LINK_ONLY:$<LINK_ONLY:fixture::scene_execution>>;::@",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": "LINK_LIBRARIES:scene_execution;INTERFACE_LINK_LIBRARIES:scene_execution"
+      },
+      {
+        "name": "scene_execution",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-o_ko6lho/editor/activities/scene",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-o_ko6lho/build/editor/activities/scene",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "",
+        "INTERFACE_LINK_LIBRARIES": "",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": ""
+      }
+    ],
+    "repaired_exit_code": 0,
+    "repaired_log": "-- Configuring done (0.5s)\n-- Generating done (0.0s)\n-- Build files have been written to: C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-o_ko6lho/build\n"
+  },
+  {
+    "id": "host-old-editor",
+    "passed": true,
+    "expected_rule": "VIEW_HOST_FORBIDDEN_DEPENDENCY",
+    "exit_code": 1,
+    "log": "-- The CXX compiler identification is MSVC 19.44.35228.0\n-- Detecting CXX compiler ABI info\n-- Detecting CXX compiler ABI info - done\n-- Check for working CXX compiler: D:/Development/Mircosoft/VisualStudio/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe - skipped\n-- Detecting CXX compile features\n-- Detecting CXX compile features - done\n-- Found Python3: D:/Development/Python/Python313/python.exe (found version \"3.13.0\") found components: Interpreter\n-- Configuring incomplete, errors occurred!\nCMake Error at E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/cmake/EditorArchitectureChecks.cmake:167 (message):\n  Editor migration boundary check failed:\n\n  {\"status\": \"FAIL\", \"findings\": [{\"rule\": \"VIEW_HOST_FORBIDDEN_DEPENDENCY\",\n  \"path\": \"view_host\", \"detail\": \"view_host -> editor_context\n  (LINK_LIBRARIES)\"}, {\"rule\": \"VIEW_HOST_DIRECT_DEPENDENCY\", \"path\":\n  \"view_host\", \"detail\": \"view_host -> editor_context (LINK_LIBRARIES)\"},\n  {\"rule\": \"VIEW_HOST_FORBIDDEN_DEPENDENCY\", \"path\": \"view_host\", \"detail\":\n  \"view_host -> editor_context (INTERFACE_LINK_LIBRARIES)\"}, {\"rule\":\n  \"VIEW_HOST_DIRECT_DEPENDENCY\", \"path\": \"view_host\", \"detail\": \"view_host ->\n  editor_context (INTERFACE_LINK_LIBRARIES)\"}, {\"rule\":\n  \"NEW_DEPENDS_ON_OLD_TARGET\", \"path\": \"view_host\", \"detail\": \"view_host ->\n  editor_context (LINK_LIBRARIES)\"}, {\"rule\": \"NEW_DEPENDS_ON_OLD_TARGET\",\n  \"path\": \"view_host\", \"detail\": \"view_host -> editor_context\n  (INTERFACE_LINK_LIBRARIES)\"}]}\n\nCall Stack (most recent call first):\n  CMakeLists.txt:8 (lux_editor_check_architecture)\n\n\n",
+    "graph": [
+      {
+        "name": "view_host",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-ngs359dm/editor/workbench/desktop",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-ngs359dm/build/editor/workbench/desktop",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp;C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-ngs359dm/editor/workbench/desktop/probe.hpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "::@(0000023782628B80);$<LINK_ONLY:fixture::editor_context>;::@",
+        "INTERFACE_LINK_LIBRARIES": "::@(0000023782628B80);$<LINK_ONLY:$<LINK_ONLY:fixture::editor_context>>;::@",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": "LINK_LIBRARIES:editor_context;INTERFACE_LINK_LIBRARIES:editor_context"
+      },
+      {
+        "name": "editor_context",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-ngs359dm/editor/context",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-ngs359dm/build/editor/context",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "",
+        "INTERFACE_LINK_LIBRARIES": "",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": ""
+      }
+    ],
+    "repaired_exit_code": 0,
+    "repaired_log": "-- Configuring done (0.5s)\n-- Generating done (0.0s)\n-- Build files have been written to: C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-ngs359dm/build\n"
+  },
+  {
+    "id": "widgets-runtime",
+    "passed": true,
+    "expected_rule": "EDITOR_WIDGETS_FORBIDDEN_DEPENDENCY",
+    "exit_code": 1,
+    "log": "-- The CXX compiler identification is MSVC 19.44.35228.0\n-- Detecting CXX compiler ABI info\n-- Detecting CXX compiler ABI info - done\n-- Check for working CXX compiler: D:/Development/Mircosoft/VisualStudio/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe - skipped\n-- Detecting CXX compile features\n-- Detecting CXX compile features - done\n-- Found Python3: D:/Development/Python/Python313/python.exe (found version \"3.13.0\") found components: Interpreter\n-- Configuring incomplete, errors occurred!\nCMake Error at E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/cmake/EditorArchitectureChecks.cmake:167 (message):\n  Editor migration boundary check failed:\n\n  {\"status\": \"FAIL\", \"findings\": [{\"rule\":\n  \"EDITOR_WIDGETS_FORBIDDEN_DEPENDENCY\", \"path\": \"editor_widgets\", \"detail\":\n  \"editor_widgets -> scene_composition (LINK_LIBRARIES)\"}, {\"rule\":\n  \"EDITOR_WIDGETS_DIRECT_DEPENDENCY\", \"path\": \"editor_widgets\", \"detail\":\n  \"editor_widgets -> scene_composition (LINK_LIBRARIES)\"}, {\"rule\":\n  \"EDITOR_WIDGETS_FORBIDDEN_DEPENDENCY\", \"path\": \"editor_widgets\", \"detail\":\n  \"editor_widgets -> scene_composition (INTERFACE_LINK_LIBRARIES)\"}, {\"rule\":\n  \"EDITOR_WIDGETS_DIRECT_DEPENDENCY\", \"path\": \"editor_widgets\", \"detail\":\n  \"editor_widgets -> scene_composition (INTERFACE_LINK_LIBRARIES)\"}]}\n\nCall Stack (most recent call first):\n  CMakeLists.txt:8 (lux_editor_check_architecture)\n\n\n",
+    "graph": [
+      {
+        "name": "editor_widgets",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-gjkvwo57/editor/workbench/widgets",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-gjkvwo57/build/editor/workbench/widgets",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp;C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-gjkvwo57/editor/workbench/widgets/probe.hpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "::@(000002453AC50880);$<LINK_ONLY:fixture::scene_composition>;::@",
+        "INTERFACE_LINK_LIBRARIES": "::@(000002453AC50880);$<LINK_ONLY:$<LINK_ONLY:fixture::scene_composition>>;::@",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": "LINK_LIBRARIES:scene_composition;INTERFACE_LINK_LIBRARIES:scene_composition"
+      },
+      {
+        "name": "scene_composition",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-gjkvwo57/engine/scene/composition",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-gjkvwo57/build/engine/scene/composition",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "",
+        "INTERFACE_LINK_LIBRARIES": "",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": ""
+      }
+    ],
+    "repaired_exit_code": 0,
+    "repaired_log": "-- Configuring done (0.6s)\n-- Generating done (0.0s)\n-- Build files have been written to: C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-gjkvwo57/build\n"
+  },
+  {
+    "id": "widgets-model",
+    "passed": true,
+    "expected_rule": "EDITOR_WIDGETS_FORBIDDEN_DEPENDENCY",
+    "exit_code": 1,
+    "log": "-- The CXX compiler identification is MSVC 19.44.35228.0\n-- Detecting CXX compiler ABI info\n-- Detecting CXX compiler ABI info - done\n-- Check for working CXX compiler: D:/Development/Mircosoft/VisualStudio/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe - skipped\n-- Detecting CXX compile features\n-- Detecting CXX compile features - done\n-- Found Python3: D:/Development/Python/Python313/python.exe (found version \"3.13.0\") found components: Interpreter\n-- Configuring incomplete, errors occurred!\nCMake Error at E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/cmake/EditorArchitectureChecks.cmake:167 (message):\n  Editor migration boundary check failed:\n\n  {\"status\": \"FAIL\", \"findings\": [{\"rule\":\n  \"EDITOR_WIDGETS_FORBIDDEN_DEPENDENCY\", \"path\": \"editor_widgets\", \"detail\":\n  \"editor_widgets -> material_model (LINK_LIBRARIES)\"}, {\"rule\":\n  \"EDITOR_WIDGETS_DIRECT_DEPENDENCY\", \"path\": \"editor_widgets\", \"detail\":\n  \"editor_widgets -> material_model (LINK_LIBRARIES)\"}, {\"rule\":\n  \"EDITOR_WIDGETS_FORBIDDEN_DEPENDENCY\", \"path\": \"editor_widgets\", \"detail\":\n  \"editor_widgets -> material_model (INTERFACE_LINK_LIBRARIES)\"}, {\"rule\":\n  \"EDITOR_WIDGETS_DIRECT_DEPENDENCY\", \"path\": \"editor_widgets\", \"detail\":\n  \"editor_widgets -> material_model (INTERFACE_LINK_LIBRARIES)\"}]}\n\nCall Stack (most recent call first):\n  CMakeLists.txt:8 (lux_editor_check_architecture)\n\n\n",
+    "graph": [
+      {
+        "name": "editor_widgets",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-hgaw7m08/editor/workbench/widgets",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-hgaw7m08/build/editor/workbench/widgets",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp;C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-hgaw7m08/editor/workbench/widgets/probe.hpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "::@(0000025BA473C8C0);$<LINK_ONLY:fixture::material_model>;::@",
+        "INTERFACE_LINK_LIBRARIES": "::@(0000025BA473C8C0);$<LINK_ONLY:$<LINK_ONLY:fixture::material_model>>;::@",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": "LINK_LIBRARIES:material_model;INTERFACE_LINK_LIBRARIES:material_model"
+      },
+      {
+        "name": "material_model",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-hgaw7m08/editor/authoring/material",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-hgaw7m08/build/editor/authoring/material",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "",
+        "INTERFACE_LINK_LIBRARIES": "",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": ""
+      }
+    ],
+    "repaired_exit_code": 0,
+    "repaired_log": "-- Configuring done (0.5s)\n-- Generating done (0.0s)\n-- Build files have been written to: C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-hgaw7m08/build\n"
+  },
+  {
+    "id": "scene-old-ui",
+    "passed": true,
+    "expected_rule": "SCENE_UI_FORBIDDEN_DEPENDENCY",
+    "exit_code": 1,
+    "log": "-- The CXX compiler identification is MSVC 19.44.35228.0\n-- Detecting CXX compiler ABI info\n-- Detecting CXX compiler ABI info - done\n-- Check for working CXX compiler: D:/Development/Mircosoft/VisualStudio/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe - skipped\n-- Detecting CXX compile features\n-- Detecting CXX compile features - done\n-- Found Python3: D:/Development/Python/Python313/python.exe (found version \"3.13.0\") found components: Interpreter\n-- Configuring incomplete, errors occurred!\nCMake Error at E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/cmake/EditorArchitectureChecks.cmake:167 (message):\n  Editor migration boundary check failed:\n\n  {\"status\": \"FAIL\", \"findings\": [{\"rule\": \"SCENE_UI_FORBIDDEN_DEPENDENCY\",\n  \"path\": \"scene_ui\", \"detail\": \"scene_ui -> editor_ui (LINK_LIBRARIES)\"},\n  {\"rule\": \"SCENE_UI_DIRECT_DEPENDENCY\", \"path\": \"scene_ui\", \"detail\":\n  \"scene_ui -> editor_ui (LINK_LIBRARIES)\"}, {\"rule\":\n  \"SCENE_UI_FORBIDDEN_DEPENDENCY\", \"path\": \"scene_ui\", \"detail\": \"scene_ui ->\n  editor_ui (INTERFACE_LINK_LIBRARIES)\"}, {\"rule\":\n  \"SCENE_UI_DIRECT_DEPENDENCY\", \"path\": \"scene_ui\", \"detail\": \"scene_ui ->\n  editor_ui (INTERFACE_LINK_LIBRARIES)\"}, {\"rule\":\n  \"NEW_DEPENDS_ON_OLD_TARGET\", \"path\": \"scene_ui\", \"detail\": \"scene_ui ->\n  editor_ui (LINK_LIBRARIES)\"}, {\"rule\": \"NEW_DEPENDS_ON_OLD_TARGET\", \"path\":\n  \"scene_ui\", \"detail\": \"scene_ui -> editor_ui (INTERFACE_LINK_LIBRARIES)\"}]}\n\nCall Stack (most recent call first):\n  CMakeLists.txt:8 (lux_editor_check_architecture)\n\n\n",
+    "graph": [
+      {
+        "name": "scene_ui",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-zy6d42j1/editor/workbench/scene",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-zy6d42j1/build/editor/workbench/scene",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp;C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-zy6d42j1/editor/workbench/scene/probe.hpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "::@(0000026A503A8770);$<LINK_ONLY:fixture::editor_ui>;::@",
+        "INTERFACE_LINK_LIBRARIES": "::@(0000026A503A8770);$<LINK_ONLY:$<LINK_ONLY:fixture::editor_ui>>;::@",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": "LINK_LIBRARIES:editor_ui;INTERFACE_LINK_LIBRARIES:editor_ui"
+      },
+      {
+        "name": "editor_ui",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-zy6d42j1/editor/ui",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-zy6d42j1/build/editor/ui",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "",
+        "INTERFACE_LINK_LIBRARIES": "",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": ""
+      }
+    ],
+    "repaired_exit_code": 0,
+    "repaired_log": "-- Configuring done (0.5s)\n-- Generating done (0.0s)\n-- Build files have been written to: C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-zy6d42j1/build\n"
+  },
+  {
+    "id": "material-transitive-old",
+    "passed": true,
+    "expected_rule": "MATERIAL_UI_FORBIDDEN_DEPENDENCY",
+    "exit_code": 1,
+    "log": "-- The CXX compiler identification is MSVC 19.44.35228.0\n-- Detecting CXX compiler ABI info\n-- Detecting CXX compiler ABI info - done\n-- Check for working CXX compiler: D:/Development/Mircosoft/VisualStudio/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe - skipped\n-- Detecting CXX compile features\n-- Detecting CXX compile features - done\n-- Found Python3: D:/Development/Python/Python313/python.exe (found version \"3.13.0\") found components: Interpreter\n-- Configuring incomplete, errors occurred!\nCMake Error at E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/cmake/EditorArchitectureChecks.cmake:167 (message):\n  Editor migration boundary check failed:\n\n  {\"status\": \"FAIL\", \"findings\": [{\"rule\": \"SCENE_UI_FORBIDDEN_DEPENDENCY\",\n  \"path\": \"scene_ui\", \"detail\": \"scene_ui -> editor_context\n  (LINK_LIBRARIES)\"}, {\"rule\": \"SCENE_UI_DIRECT_DEPENDENCY\", \"path\":\n  \"scene_ui\", \"detail\": \"scene_ui -> editor_context (LINK_LIBRARIES)\"},\n  {\"rule\": \"SCENE_UI_FORBIDDEN_DEPENDENCY\", \"path\": \"scene_ui\", \"detail\":\n  \"scene_ui -> editor_context (INTERFACE_LINK_LIBRARIES)\"}, {\"rule\":\n  \"SCENE_UI_DIRECT_DEPENDENCY\", \"path\": \"scene_ui\", \"detail\": \"scene_ui ->\n  editor_context (INTERFACE_LINK_LIBRARIES)\"}, {\"rule\":\n  \"MATERIAL_UI_FORBIDDEN_DEPENDENCY\", \"path\": \"material_ui\", \"detail\":\n  \"material_ui -> scene_ui (LINK_LIBRARIES)\"}, {\"rule\":\n  \"MATERIAL_UI_DIRECT_DEPENDENCY\", \"path\": \"material_ui\", \"detail\":\n  \"material_ui -> scene_ui (LINK_LIBRARIES)\"}, {\"rule\":\n  \"MATERIAL_UI_FORBIDDEN_DEPENDENCY\", \"path\": \"material_ui\", \"detail\":\n  \"material_ui -> scene_ui (INTERFACE_LINK_LIBRARIES)\"}, {\"rule\":\n  \"MATERIAL_UI_DIRECT_DEPENDENCY\", \"path\": \"material_ui\", \"detail\":\n  \"material_ui -> scene_ui (INTERFACE_LINK_LIBRARIES)\"}, {\"rule\":\n  \"MATERIAL_UI_FORBIDDEN_DEPENDENCY\", \"path\": \"material_ui\", \"detail\":\n  \"material_ui -> scene_ui -> editor_context (LINK_LIBRARIES)\"}, {\"rule\":\n  \"MATERIAL_UI_FORBIDDEN_DEPENDENCY\", \"path\": \"material_ui\", \"detail\":\n  \"material_ui -> scene_ui -> editor_context (INTERFACE_LINK_LIBRARIES)\"},\n  {\"rule\": \"NEW_DEPENDS_ON_OLD_TARGET\", \"path\": \"material_ui\", \"detail\":\n  \"material_ui -> scene_ui -> editor_context (LINK_LIBRARIES)\"}, {\"rule\":\n  \"NEW_DEPENDS_ON_OLD_TARGET\", \"path\": \"material_ui\", \"detail\": \"material_ui\n  -> scene_ui -> editor_context (INTERFACE_LINK_LIBRARIES)\"}, {\"rule\":\n  \"NEW_DEPENDS_ON_OLD_TARGET\", \"path\": \"scene_ui\", \"detail\": \"scene_ui ->\n  editor_context (LINK_LIBRARIES)\"}, {\"rule\": \"NEW_DEPENDS_ON_OLD_TARGET\",\n  \"path\": \"scene_ui\", \"detail\": \"scene_ui -> editor_context\n  (INTERFACE_LINK_LIBRARIES)\"}]}\n\nCall Stack (most recent call first):\n  CMakeLists.txt:10 (lux_editor_check_architecture)\n\n\n",
+    "graph": [
+      {
+        "name": "material_ui",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-mphcowvw/editor/workbench/material",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-mphcowvw/build/editor/workbench/material",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp;C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-mphcowvw/editor/workbench/material/probe.hpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "::@(000002679DA22870);fixture::scene_ui;::@",
+        "INTERFACE_LINK_LIBRARIES": "::@(000002679DA22870);$<LINK_ONLY:fixture::scene_ui>;::@",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": "LINK_LIBRARIES:scene_ui;INTERFACE_LINK_LIBRARIES:scene_ui"
+      },
+      {
+        "name": "scene_ui",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-mphcowvw/editor/workbench/scene",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-mphcowvw/build/editor/workbench/scene",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "::@(000002679DA22870);$<LINK_ONLY:fixture::editor_context>;::@",
+        "INTERFACE_LINK_LIBRARIES": "::@(000002679DA22870);$<LINK_ONLY:$<LINK_ONLY:fixture::editor_context>>;::@",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": "LINK_LIBRARIES:editor_context;INTERFACE_LINK_LIBRARIES:editor_context"
+      },
+      {
+        "name": "editor_context",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-mphcowvw/editor/context",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-mphcowvw/build/editor/context",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "",
+        "INTERFACE_LINK_LIBRARIES": "",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": ""
+      }
+    ],
+    "repaired_exit_code": 0,
+    "repaired_log": "-- Configuring done (0.5s)\n-- Generating done (0.0s)\n-- Build files have been written to: C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-mphcowvw/build\n"
+  },
+  {
+    "id": "flow-old-editor",
+    "passed": true,
+    "expected_rule": "FLOW_UI_FORBIDDEN_DEPENDENCY",
+    "exit_code": 1,
+    "log": "-- The CXX compiler identification is MSVC 19.44.35228.0\n-- Detecting CXX compiler ABI info\n-- Detecting CXX compiler ABI info - done\n-- Check for working CXX compiler: D:/Development/Mircosoft/VisualStudio/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe - skipped\n-- Detecting CXX compile features\n-- Detecting CXX compile features - done\n-- Found Python3: D:/Development/Python/Python313/python.exe (found version \"3.13.0\") found components: Interpreter\n-- Configuring incomplete, errors occurred!\nCMake Error at E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/cmake/EditorArchitectureChecks.cmake:167 (message):\n  Editor migration boundary check failed:\n\n  {\"status\": \"FAIL\", \"findings\": [{\"rule\": \"FLOW_UI_FORBIDDEN_DEPENDENCY\",\n  \"path\": \"flow_ui\", \"detail\": \"flow_ui -> editor_flowforge\n  (LINK_LIBRARIES)\"}, {\"rule\": \"FLOW_UI_DIRECT_DEPENDENCY\", \"path\":\n  \"flow_ui\", \"detail\": \"flow_ui -> editor_flowforge (LINK_LIBRARIES)\"},\n  {\"rule\": \"FLOW_UI_FORBIDDEN_DEPENDENCY\", \"path\": \"flow_ui\", \"detail\":\n  \"flow_ui -> editor_flowforge (INTERFACE_LINK_LIBRARIES)\"}, {\"rule\":\n  \"FLOW_UI_DIRECT_DEPENDENCY\", \"path\": \"flow_ui\", \"detail\": \"flow_ui ->\n  editor_flowforge (INTERFACE_LINK_LIBRARIES)\"}, {\"rule\":\n  \"NEW_DEPENDS_ON_OLD_TARGET\", \"path\": \"flow_ui\", \"detail\": \"flow_ui ->\n  editor_flowforge (LINK_LIBRARIES)\"}, {\"rule\": \"NEW_DEPENDS_ON_OLD_TARGET\",\n  \"path\": \"flow_ui\", \"detail\": \"flow_ui -> editor_flowforge\n  (INTERFACE_LINK_LIBRARIES)\"}]}\n\nCall Stack (most recent call first):\n  CMakeLists.txt:8 (lux_editor_check_architecture)\n\n\n",
+    "graph": [
+      {
+        "name": "flow_ui",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-2xkzs0f0/editor/workbench/flow",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-2xkzs0f0/build/editor/workbench/flow",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp;C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-2xkzs0f0/editor/workbench/flow/probe.hpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "::@(000002B11659DF40);$<LINK_ONLY:fixture::editor_flowforge>;::@",
+        "INTERFACE_LINK_LIBRARIES": "::@(000002B11659DF40);$<LINK_ONLY:$<LINK_ONLY:fixture::editor_flowforge>>;::@",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": "LINK_LIBRARIES:editor_flowforge;INTERFACE_LINK_LIBRARIES:editor_flowforge"
+      },
+      {
+        "name": "editor_flowforge",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-2xkzs0f0/editor/tools/flowforge",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-2xkzs0f0/build/editor/tools/flowforge",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "",
+        "INTERFACE_LINK_LIBRARIES": "",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": ""
+      }
+    ],
+    "repaired_exit_code": 0,
+    "repaired_log": "-- Configuring done (0.5s)\n-- Generating done (0.0s)\n-- Build files have been written to: C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-2xkzs0f0/build\n"
+  },
+  {
+    "id": "harness-transitive-old",
+    "passed": true,
+    "expected_rule": "EDITOR_SCENE_VIEWS_TEST_FORBIDDEN_DEPENDENCY",
+    "exit_code": 1,
+    "log": "-- The CXX compiler identification is MSVC 19.44.35228.0\n-- Detecting CXX compiler ABI info\n-- Detecting CXX compiler ABI info - done\n-- Check for working CXX compiler: D:/Development/Mircosoft/VisualStudio/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe - skipped\n-- Detecting CXX compile features\n-- Detecting CXX compile features - done\n-- Found Python3: D:/Development/Python/Python313/python.exe (found version \"3.13.0\") found components: Interpreter\n-- Configuring incomplete, errors occurred!\nCMake Error at E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/cmake/EditorArchitectureChecks.cmake:167 (message):\n  Editor migration boundary check failed:\n\n  {\"status\": \"FAIL\", \"findings\": [{\"rule\":\n  \"MATERIAL_UI_FORBIDDEN_DEPENDENCY\", \"path\": \"material_ui\", \"detail\":\n  \"material_ui -> editor_context (LINK_LIBRARIES)\"}, {\"rule\":\n  \"MATERIAL_UI_DIRECT_DEPENDENCY\", \"path\": \"material_ui\", \"detail\":\n  \"material_ui -> editor_context (LINK_LIBRARIES)\"}, {\"rule\":\n  \"MATERIAL_UI_FORBIDDEN_DEPENDENCY\", \"path\": \"material_ui\", \"detail\":\n  \"material_ui -> editor_context (INTERFACE_LINK_LIBRARIES)\"}, {\"rule\":\n  \"MATERIAL_UI_DIRECT_DEPENDENCY\", \"path\": \"material_ui\", \"detail\":\n  \"material_ui -> editor_context (INTERFACE_LINK_LIBRARIES)\"}, {\"rule\":\n  \"EDITOR_SCENE_VIEWS_TEST_FORBIDDEN_DEPENDENCY\", \"path\":\n  \"editor_scene_views_test\", \"detail\": \"editor_scene_views_test ->\n  material_ui -> editor_context (LINK_LIBRARIES)\"}, {\"rule\":\n  \"EDITOR_SCENE_VIEWS_TEST_FORBIDDEN_DEPENDENCY\", \"path\":\n  \"editor_scene_views_test\", \"detail\": \"editor_scene_views_test ->\n  material_ui -> editor_context (INTERFACE_LINK_LIBRARIES)\"}, {\"rule\":\n  \"NEW_DEPENDS_ON_OLD_TARGET\", \"path\": \"editor_scene_views_test\", \"detail\":\n  \"editor_scene_views_test -> material_ui -> editor_context\n  (LINK_LIBRARIES)\"}, {\"rule\": \"NEW_DEPENDS_ON_OLD_TARGET\", \"path\":\n  \"editor_scene_views_test\", \"detail\": \"editor_scene_views_test ->\n  material_ui -> editor_context (INTERFACE_LINK_LIBRARIES)\"}, {\"rule\":\n  \"NEW_DEPENDS_ON_OLD_TARGET\", \"path\": \"material_ui\", \"detail\": \"material_ui\n  -> editor_context (LINK_LIBRARIES)\"}, {\"rule\": \"NEW_DEPENDS_ON_OLD_TARGET\",\n  \"path\": \"material_ui\", \"detail\": \"material_ui -> editor_context\n  (INTERFACE_LINK_LIBRARIES)\"}]}\n\nCall Stack (most recent call first):\n  CMakeLists.txt:10 (lux_editor_check_architecture)\n\n\n",
+    "graph": [
+      {
+        "name": "editor_scene_views_test",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-pwphpjkq/editor/tests/integration/scene_views",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-pwphpjkq/build/editor/tests/integration/scene_views",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp;C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-pwphpjkq/editor/tests/integration/scene_views/probe.hpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "::@(0000028C761EDAF0);fixture::material_ui;::@",
+        "INTERFACE_LINK_LIBRARIES": "::@(0000028C761EDAF0);$<LINK_ONLY:fixture::material_ui>;::@",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": "LINK_LIBRARIES:material_ui;INTERFACE_LINK_LIBRARIES:material_ui"
+      },
+      {
+        "name": "material_ui",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-pwphpjkq/editor/workbench/material",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-pwphpjkq/build/editor/workbench/material",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "::@(0000028C761EDAF0);$<LINK_ONLY:fixture::editor_context>;::@",
+        "INTERFACE_LINK_LIBRARIES": "::@(0000028C761EDAF0);$<LINK_ONLY:$<LINK_ONLY:fixture::editor_context>>;::@",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": "LINK_LIBRARIES:editor_context;INTERFACE_LINK_LIBRARIES:editor_context"
+      },
+      {
+        "name": "editor_context",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-pwphpjkq/editor/context",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-pwphpjkq/build/editor/context",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "",
+        "INTERFACE_LINK_LIBRARIES": "",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": ""
+      }
+    ],
+    "repaired_exit_code": 0,
+    "repaired_log": "-- Configuring done (0.5s)\n-- Generating done (0.0s)\n-- Build files have been written to: C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-pwphpjkq/build\n"
+  },
+  {
+    "id": "harness-imported-old",
+    "passed": true,
+    "expected_rule": "EDITOR_SCENE_VIEWS_TEST_FORBIDDEN_DEPENDENCY",
+    "exit_code": 1,
+    "log": "-- The CXX compiler identification is MSVC 19.44.35228.0\n-- Detecting CXX compiler ABI info\n-- Detecting CXX compiler ABI info - done\n-- Check for working CXX compiler: D:/Development/Mircosoft/VisualStudio/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe - skipped\n-- Detecting CXX compile features\n-- Detecting CXX compile features - done\n-- Found Python3: D:/Development/Python/Python313/python.exe (found version \"3.13.0\") found components: Interpreter\n-- Configuring incomplete, errors occurred!\nCMake Error at E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/cmake/EditorArchitectureChecks.cmake:167 (message):\n  Editor migration boundary check failed:\n\n  {\"status\": \"FAIL\", \"findings\": [{\"rule\":\n  \"EDITOR_SCENE_VIEWS_TEST_FORBIDDEN_DEPENDENCY\", \"path\":\n  \"editor_scene_views_test\", \"detail\": \"editor_scene_views_test ->\n  p10_imported_bridge -> editor_context (INTERFACE_LINK_LIBRARIES)\"},\n  {\"rule\": \"NEW_DEPENDS_ON_OLD_TARGET\", \"path\": \"editor_scene_views_test\",\n  \"detail\": \"editor_scene_views_test -> p10_imported_bridge -> editor_context\n  (INTERFACE_LINK_LIBRARIES)\"}]}\n\nCall Stack (most recent call first):\n  CMakeLists.txt:10 (lux_editor_check_architecture)\n\n\n",
+    "graph": [
+      {
+        "name": "editor_scene_views_test",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-rcwgugb7/editor/tests/integration/scene_views",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-rcwgugb7/build/editor/tests/integration/scene_views",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp;C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-rcwgugb7/editor/tests/integration/scene_views/probe.hpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "::@(0000025223FB0C50);fixture::p10_imported_bridge;::@",
+        "INTERFACE_LINK_LIBRARIES": "::@(0000025223FB0C50);$<LINK_ONLY:fixture::p10_imported_bridge>;::@",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": "LINK_LIBRARIES:p10_imported_bridge;INTERFACE_LINK_LIBRARIES:p10_imported_bridge"
+      },
+      {
+        "name": "editor_context",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-rcwgugb7/editor/context",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-rcwgugb7/build/editor/context",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "",
+        "INTERFACE_LINK_LIBRARIES": "",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": ""
+      },
+      {
+        "name": "p10_imported_bridge",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-rcwgugb7/external/p10",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-rcwgugb7/build/external/p10",
+        "TYPE": "INTERFACE_LIBRARY",
+        "IMPORTED": "TRUE",
+        "SOURCES": "",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "",
+        "INTERFACE_LINK_LIBRARIES": "::@(0000025223FB0C50);$<LINK_ONLY:fixture::editor_context>;::@",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": "INTERFACE_LINK_LIBRARIES:editor_context"
+      }
+    ],
+    "repaired_exit_code": 0,
+    "repaired_log": "-- Configuring done (0.5s)\n-- Generating done (0.0s)\n-- Build files have been written to: C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-rcwgugb7/build\n"
+  },
+  {
+    "id": "engine-ui-new-editor",
+    "passed": true,
+    "expected_rule": "ENGINE_DEPENDS_ON_EDITOR",
+    "exit_code": 1,
+    "log": "-- The CXX compiler identification is MSVC 19.44.35228.0\n-- Detecting CXX compiler ABI info\n-- Detecting CXX compiler ABI info - done\n-- Check for working CXX compiler: D:/Development/Mircosoft/VisualStudio/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe - skipped\n-- Detecting CXX compile features\n-- Detecting CXX compile features - done\n-- Found Python3: D:/Development/Python/Python313/python.exe (found version \"3.13.0\") found components: Interpreter\n-- Configuring incomplete, errors occurred!\nCMake Error at E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/cmake/EditorArchitectureChecks.cmake:167 (message):\n  Editor migration boundary check failed:\n\n  {\"status\": \"FAIL\", \"findings\": [{\"rule\": \"ENGINE_DEPENDS_ON_EDITOR\",\n  \"path\": \"ui_fixture\", \"detail\": \"ui_fixture -> scene_ui (LINK_LIBRARIES)\"},\n  {\"rule\": \"ENGINE_DEPENDS_ON_EDITOR\", \"path\": \"ui_fixture\", \"detail\":\n  \"ui_fixture -> scene_ui (INTERFACE_LINK_LIBRARIES)\"}]}\n\nCall Stack (most recent call first):\n  CMakeLists.txt:8 (lux_editor_check_architecture)\n\n\n",
+    "graph": [
+      {
+        "name": "ui_fixture",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-pjkywzw6/modules/function/ui",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-pjkywzw6/build/modules/function/ui",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp;C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-pjkywzw6/modules/function/ui/probe.hpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "::@(000002ADEABCFF60);$<LINK_ONLY:fixture::scene_ui>;::@",
+        "INTERFACE_LINK_LIBRARIES": "::@(000002ADEABCFF60);$<LINK_ONLY:$<LINK_ONLY:fixture::scene_ui>>;::@",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": "LINK_LIBRARIES:scene_ui;INTERFACE_LINK_LIBRARIES:scene_ui"
+      },
+      {
+        "name": "scene_ui",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-pjkywzw6/editor/workbench/scene",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-pjkywzw6/build/editor/workbench/scene",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "",
+        "INTERFACE_LINK_LIBRARIES": "",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": ""
+      }
+    ],
+    "repaired_exit_code": 0,
+    "repaired_log": "-- Configuring done (0.5s)\n-- Generating done (0.0s)\n-- Build files have been written to: C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-pjkywzw6/build\n"
+  },
+  {
+    "id": "model-new-ui",
+    "passed": true,
+    "expected_rule": "SCENE_MODEL_FORBIDDEN_DEPENDENCY",
+    "exit_code": 1,
+    "log": "-- The CXX compiler identification is MSVC 19.44.35228.0\n-- Detecting CXX compiler ABI info\n-- Detecting CXX compiler ABI info - done\n-- Check for working CXX compiler: D:/Development/Mircosoft/VisualStudio/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe - skipped\n-- Detecting CXX compile features\n-- Detecting CXX compile features - done\n-- Found Python3: D:/Development/Python/Python313/python.exe (found version \"3.13.0\") found components: Interpreter\n-- Configuring incomplete, errors occurred!\nCMake Error at E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/cmake/EditorArchitectureChecks.cmake:167 (message):\n  Editor migration boundary check failed:\n\n  {\"status\": \"FAIL\", \"findings\": [{\"rule\":\n  \"SCENE_MODEL_FORBIDDEN_DEPENDENCY\", \"path\": \"scene_model\", \"detail\":\n  \"scene_model -> scene_ui (LINK_LIBRARIES)\"}, {\"rule\":\n  \"SCENE_MODEL_DIRECT_DEPENDENCY\", \"path\": \"scene_model\", \"detail\":\n  \"scene_model -> scene_ui (LINK_LIBRARIES)\"}, {\"rule\":\n  \"SCENE_MODEL_FORBIDDEN_DEPENDENCY\", \"path\": \"scene_model\", \"detail\":\n  \"scene_model -> scene_ui (INTERFACE_LINK_LIBRARIES)\"}, {\"rule\":\n  \"SCENE_MODEL_DIRECT_DEPENDENCY\", \"path\": \"scene_model\", \"detail\":\n  \"scene_model -> scene_ui (INTERFACE_LINK_LIBRARIES)\"}]}\n\nCall Stack (most recent call first):\n  CMakeLists.txt:8 (lux_editor_check_architecture)\n\n\n",
+    "graph": [
+      {
+        "name": "scene_model",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-3c49lurz/editor/authoring/scene",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-3c49lurz/build/editor/authoring/scene",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp;C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-3c49lurz/editor/authoring/scene/probe.hpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "::@(0000026F2E7C8780);$<LINK_ONLY:fixture::scene_ui>;::@",
+        "INTERFACE_LINK_LIBRARIES": "::@(0000026F2E7C8780);$<LINK_ONLY:$<LINK_ONLY:fixture::scene_ui>>;::@",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": "LINK_LIBRARIES:scene_ui;INTERFACE_LINK_LIBRARIES:scene_ui"
+      },
+      {
+        "name": "scene_ui",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-3c49lurz/editor/workbench/scene",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-3c49lurz/build/editor/workbench/scene",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "",
+        "INTERFACE_LINK_LIBRARIES": "",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": ""
+      }
+    ],
+    "repaired_exit_code": 0,
+    "repaired_log": "-- Configuring done (0.5s)\n-- Generating done (0.0s)\n-- Build files have been written to: C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-3c49lurz/build\n"
+  },
+  {
+    "id": "view-api-desktop",
+    "passed": true,
+    "expected_rule": "VIEW_API_FORBIDDEN_DEPENDENCY",
+    "exit_code": 1,
+    "log": "-- The CXX compiler identification is MSVC 19.44.35228.0\n-- Detecting CXX compiler ABI info\n-- Detecting CXX compiler ABI info - done\n-- Check for working CXX compiler: D:/Development/Mircosoft/VisualStudio/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe - skipped\n-- Detecting CXX compile features\n-- Detecting CXX compile features - done\n-- Found Python3: D:/Development/Python/Python313/python.exe (found version \"3.13.0\") found components: Interpreter\n-- Configuring incomplete, errors occurred!\nCMake Error at E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/cmake/EditorArchitectureChecks.cmake:167 (message):\n  Editor migration boundary check failed:\n\n  {\"status\": \"FAIL\", \"findings\": [{\"rule\": \"VIEW_API_FORBIDDEN_DEPENDENCY\",\n  \"path\": \"view_api\", \"detail\": \"view_api -> desktop_shell\n  (LINK_LIBRARIES)\"}, {\"rule\": \"VIEW_API_DIRECT_DEPENDENCY\", \"path\":\n  \"view_api\", \"detail\": \"view_api -> desktop_shell (LINK_LIBRARIES)\"},\n  {\"rule\": \"VIEW_API_FORBIDDEN_DEPENDENCY\", \"path\": \"view_api\", \"detail\":\n  \"view_api -> desktop_shell (INTERFACE_LINK_LIBRARIES)\"}, {\"rule\":\n  \"VIEW_API_DIRECT_DEPENDENCY\", \"path\": \"view_api\", \"detail\": \"view_api ->\n  desktop_shell (INTERFACE_LINK_LIBRARIES)\"}]}\n\nCall Stack (most recent call first):\n  CMakeLists.txt:7 (lux_editor_check_architecture)\n\n\n",
+    "graph": [
+      {
+        "name": "view_api",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-75qx6lqc/editor/workbench/desktop",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-75qx6lqc/build/editor/workbench/desktop",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp;C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-75qx6lqc/editor/workbench/desktop/probe.hpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "::@(00000231E3A07B70);$<LINK_ONLY:fixture::desktop_shell>;::@",
+        "INTERFACE_LINK_LIBRARIES": "::@(00000231E3A07B70);$<LINK_ONLY:$<LINK_ONLY:fixture::desktop_shell>>;::@",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": "LINK_LIBRARIES:desktop_shell;INTERFACE_LINK_LIBRARIES:desktop_shell"
+      },
+      {
+        "name": "desktop_shell",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-75qx6lqc/editor/workbench/desktop",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-75qx6lqc/build/editor/workbench/desktop",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "",
+        "INTERFACE_LINK_LIBRARIES": "",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": ""
+      }
+    ],
+    "repaired_exit_code": 0,
+    "repaired_log": "-- Configuring done (0.5s)\n-- Generating done (0.0s)\n-- Build files have been written to: C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-75qx6lqc/build\n"
+  },
+  {
+    "id": "project-storage",
+    "passed": true,
+    "expected_rule": "PROJECT_UI_FORBIDDEN_DEPENDENCY",
+    "exit_code": 1,
+    "log": "-- The CXX compiler identification is MSVC 19.44.35228.0\n-- Detecting CXX compiler ABI info\n-- Detecting CXX compiler ABI info - done\n-- Check for working CXX compiler: D:/Development/Mircosoft/VisualStudio/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe - skipped\n-- Detecting CXX compile features\n-- Detecting CXX compile features - done\n-- Found Python3: D:/Development/Python/Python313/python.exe (found version \"3.13.0\") found components: Interpreter\n-- Configuring incomplete, errors occurred!\nCMake Error at E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/cmake/EditorArchitectureChecks.cmake:167 (message):\n  Editor migration boundary check failed:\n\n  {\"status\": \"FAIL\", \"findings\": [{\"rule\": \"PROJECT_UI_FORBIDDEN_DEPENDENCY\",\n  \"path\": \"project_ui\", \"detail\": \"project_ui -> editor_storage\n  (LINK_LIBRARIES)\"}, {\"rule\": \"PROJECT_UI_DIRECT_DEPENDENCY\", \"path\":\n  \"project_ui\", \"detail\": \"project_ui -> editor_storage (LINK_LIBRARIES)\"},\n  {\"rule\": \"PROJECT_UI_FORBIDDEN_DEPENDENCY\", \"path\": \"project_ui\", \"detail\":\n  \"project_ui -> editor_storage (INTERFACE_LINK_LIBRARIES)\"}, {\"rule\":\n  \"PROJECT_UI_DIRECT_DEPENDENCY\", \"path\": \"project_ui\", \"detail\": \"project_ui\n  -> editor_storage (INTERFACE_LINK_LIBRARIES)\"}]}\n\nCall Stack (most recent call first):\n  CMakeLists.txt:8 (lux_editor_check_architecture)\n\n\n",
+    "graph": [
+      {
+        "name": "project_ui",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-y909ewdu/editor/workbench/project",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-y909ewdu/build/editor/workbench/project",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp;C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-y909ewdu/editor/workbench/project/probe.hpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "::@(000001C4C3C5EF00);$<LINK_ONLY:fixture::editor_storage>;::@",
+        "INTERFACE_LINK_LIBRARIES": "::@(000001C4C3C5EF00);$<LINK_ONLY:$<LINK_ONLY:fixture::editor_storage>>;::@",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": "LINK_LIBRARIES:editor_storage;INTERFACE_LINK_LIBRARIES:editor_storage"
+      },
+      {
+        "name": "editor_storage",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-y909ewdu/editor/activities/project",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-y909ewdu/build/editor/activities/project",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "",
+        "INTERFACE_LINK_LIBRARIES": "",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": ""
+      }
+    ],
+    "repaired_exit_code": 0,
+    "repaired_log": "-- Configuring done (0.5s)\n-- Generating done (0.0s)\n-- Build files have been written to: C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-y909ewdu/build\n"
+  },
+  {
+    "id": "host-model-header",
+    "passed": true,
+    "expected_rule": "VIEW_HOST_FORBIDDEN_INCLUDE",
+    "exit_code": 1,
+    "log": "-- The CXX compiler identification is MSVC 19.44.35228.0\n-- Detecting CXX compiler ABI info\n-- Detecting CXX compiler ABI info - done\n-- Check for working CXX compiler: D:/Development/Mircosoft/VisualStudio/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe - skipped\n-- Detecting CXX compile features\n-- Detecting CXX compile features - done\n-- Found Python3: D:/Development/Python/Python313/python.exe (found version \"3.13.0\") found components: Interpreter\n-- Configuring incomplete, errors occurred!\nCMake Error at E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/cmake/EditorArchitectureChecks.cmake:167 (message):\n  Editor migration boundary check failed:\n\n  {\"status\": \"FAIL\", \"findings\": [{\"rule\": \"VIEW_HOST_FORBIDDEN_INCLUDE\",\n  \"path\": \"editor/workbench/desktop/probe.hpp\", \"detail\":\n  \"lux/engine/editor/scene/SceneSession.hpp\"}]}\n\nCall Stack (most recent call first):\n  CMakeLists.txt:6 (lux_editor_check_architecture)\n\n\n",
+    "graph": [
+      {
+        "name": "view_host",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-j9fns_8k/editor/workbench/desktop",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-j9fns_8k/build/editor/workbench/desktop",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp;C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-j9fns_8k/editor/workbench/desktop/probe.hpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "",
+        "INTERFACE_LINK_LIBRARIES": "",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": ""
+      }
+    ],
+    "repaired_exit_code": 0,
+    "repaired_log": "-- Configuring done (0.4s)\n-- Generating done (0.1s)\n-- Build files have been written to: C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-j9fns_8k/build\n"
+  },
+  {
+    "id": "scene-old-header",
+    "passed": true,
+    "expected_rule": "SCENE_UI_FORBIDDEN_INCLUDE",
+    "exit_code": 1,
+    "log": "-- The CXX compiler identification is MSVC 19.44.35228.0\n-- Detecting CXX compiler ABI info\n-- Detecting CXX compiler ABI info - done\n-- Check for working CXX compiler: D:/Development/Mircosoft/VisualStudio/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe - skipped\n-- Detecting CXX compile features\n-- Detecting CXX compile features - done\n-- Found Python3: D:/Development/Python/Python313/python.exe (found version \"3.13.0\") found components: Interpreter\n-- Configuring incomplete, errors occurred!\nCMake Error at E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/cmake/EditorArchitectureChecks.cmake:167 (message):\n  Editor migration boundary check failed:\n\n  {\"status\": \"FAIL\", \"findings\": [{\"rule\": \"SCENE_UI_FORBIDDEN_INCLUDE\",\n  \"path\": \"editor/workbench/scene/probe.hpp\", \"detail\":\n  \"lux/engine/editor/scene/SceneEditor.hpp\"}, {\"rule\": \"NEW_DEPENDS_ON_OLD\",\n  \"path\": \"editor/workbench/scene/probe.hpp\", \"detail\":\n  \"lux/engine/editor/scene/SceneEditor.hpp\"}]}\n\nCall Stack (most recent call first):\n  CMakeLists.txt:6 (lux_editor_check_architecture)\n\n\n",
+    "graph": [
+      {
+        "name": "scene_ui",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-zupjlt8u/editor/workbench/scene",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-zupjlt8u/build/editor/workbench/scene",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp;C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-zupjlt8u/editor/workbench/scene/probe.hpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "",
+        "INTERFACE_LINK_LIBRARIES": "",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": ""
+      }
+    ],
+    "repaired_exit_code": 0,
+    "repaired_log": "-- Configuring done (0.4s)\n-- Generating done (0.0s)\n-- Build files have been written to: C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-zupjlt8u/build\n"
+  },
+  {
+    "id": "widgets-private-header",
+    "passed": true,
+    "expected_rule": "EDITOR_WIDGETS_FORBIDDEN_INCLUDE",
+    "exit_code": 1,
+    "log": "-- The CXX compiler identification is MSVC 19.44.35228.0\n-- Detecting CXX compiler ABI info\n-- Detecting CXX compiler ABI info - done\n-- Check for working CXX compiler: D:/Development/Mircosoft/VisualStudio/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe - skipped\n-- Detecting CXX compile features\n-- Detecting CXX compile features - done\n-- Found Python3: D:/Development/Python/Python313/python.exe (found version \"3.13.0\") found components: Interpreter\n-- Configuring incomplete, errors occurred!\nCMake Error at E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/cmake/EditorArchitectureChecks.cmake:167 (message):\n  Editor migration boundary check failed:\n\n  {\"status\": \"FAIL\", \"findings\": [{\"rule\":\n  \"EDITOR_WIDGETS_FORBIDDEN_INCLUDE\", \"path\":\n  \"editor/workbench/widgets/probe.hpp\", \"detail\":\n  \"../../tools/scene/pinclude/SceneEditorData.hpp\"}, {\"rule\":\n  \"PRIVATE_INCLUDE\", \"path\": \"editor/workbench/widgets/probe.hpp\", \"detail\":\n  \"../../tools/scene/pinclude/SceneEditorData.hpp\"}]}\n\nCall Stack (most recent call first):\n  CMakeLists.txt:6 (lux_editor_check_architecture)\n\n\n",
+    "graph": [
+      {
+        "name": "editor_widgets",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-008vqlxd/editor/workbench/widgets",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-008vqlxd/build/editor/workbench/widgets",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp;C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-008vqlxd/editor/workbench/widgets/probe.hpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "",
+        "INTERFACE_LINK_LIBRARIES": "",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": ""
+      }
+    ],
+    "repaired_exit_code": 0,
+    "repaired_log": "-- Configuring done (0.5s)\n-- Generating done (0.0s)\n-- Build files have been written to: C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-008vqlxd/build\n"
+  },
+  {
+    "id": "scene-rooted-factory",
+    "passed": true,
+    "expected_rule": "NEW_ROOTED_FACTORY",
+    "exit_code": 1,
+    "log": "-- The CXX compiler identification is MSVC 19.44.35228.0\n-- Detecting CXX compiler ABI info\n-- Detecting CXX compiler ABI info - done\n-- Check for working CXX compiler: D:/Development/Mircosoft/VisualStudio/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe - skipped\n-- Detecting CXX compile features\n-- Detecting CXX compile features - done\n-- Found Python3: D:/Development/Python/Python313/python.exe (found version \"3.13.0\") found components: Interpreter\n-- Configuring incomplete, errors occurred!\nCMake Error at E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/cmake/EditorArchitectureChecks.cmake:167 (message):\n  Editor migration boundary check failed:\n\n  {\"status\": \"FAIL\", \"findings\": [{\"rule\": \"NEW_ROOTED_FACTORY\", \"path\":\n  \"editor/workbench/scene/probe.hpp\", \"detail\": \"P10 factories must assemble\n  detached subtrees\"}]}\n\nCall Stack (most recent call first):\n  CMakeLists.txt:6 (lux_editor_check_architecture)\n\n\n",
+    "graph": [
+      {
+        "name": "scene_ui",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-xtgyy9wu/editor/workbench/scene",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-xtgyy9wu/build/editor/workbench/scene",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp;C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-xtgyy9wu/editor/workbench/scene/probe.hpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "",
+        "INTERFACE_LINK_LIBRARIES": "",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": ""
+      }
+    ],
+    "repaired_exit_code": 0,
+    "repaired_log": "-- Configuring done (0.9s)\n-- Generating done (0.0s)\n-- Build files have been written to: C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-xtgyy9wu/build\n"
+  },
+  {
+    "id": "host-legal",
+    "passed": true,
+    "expected_rule": null,
+    "exit_code": 0,
+    "log": "-- The CXX compiler identification is MSVC 19.44.35228.0\n-- Detecting CXX compiler ABI info\n-- Detecting CXX compiler ABI info - done\n-- Check for working CXX compiler: D:/Development/Mircosoft/VisualStudio/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe - skipped\n-- Detecting CXX compile features\n-- Detecting CXX compile features - done\n-- Found Python3: D:/Development/Python/Python313/python.exe (found version \"3.13.0\") found components: Interpreter\n-- Configuring done (1.3s)\n-- Generating done (0.0s)\n-- Build files have been written to: C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-qtjosinl/build\n",
+    "graph": [
+      {
+        "name": "view_host",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-qtjosinl/editor/workbench/desktop",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-qtjosinl/build/editor/workbench/desktop",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp;C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-qtjosinl/editor/workbench/desktop/probe.hpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "::@(00000150A6567770);fixture::view_api;::@",
+        "INTERFACE_LINK_LIBRARIES": "::@(00000150A6567770);$<LINK_ONLY:fixture::view_api>;::@",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": "LINK_LIBRARIES:view_api;INTERFACE_LINK_LIBRARIES:view_api"
+      },
+      {
+        "name": "view_api",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-qtjosinl/editor/workbench/desktop",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-qtjosinl/build/editor/workbench/desktop",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "",
+        "INTERFACE_LINK_LIBRARIES": "",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": ""
+      }
+    ],
+    "repaired_exit_code": 0,
+    "repaired_log": "-- Configuring done (0.5s)\n-- Generating done (0.0s)\n-- Build files have been written to: C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-qtjosinl/build\n"
+  },
+  {
+    "id": "desktop-legal",
+    "passed": true,
+    "expected_rule": null,
+    "exit_code": 0,
+    "log": "-- The CXX compiler identification is MSVC 19.44.35228.0\n-- Detecting CXX compiler ABI info\n-- Detecting CXX compiler ABI info - done\n-- Check for working CXX compiler: D:/Development/Mircosoft/VisualStudio/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe - skipped\n-- Detecting CXX compile features\n-- Detecting CXX compile features - done\n-- Found Python3: D:/Development/Python/Python313/python.exe (found version \"3.13.0\") found components: Interpreter\n-- Configuring done (1.3s)\n-- Generating done (0.0s)\n-- Build files have been written to: C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-pmljfavi/build\n",
+    "graph": [
+      {
+        "name": "desktop_shell",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-pmljfavi/editor/workbench/desktop",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-pmljfavi/build/editor/workbench/desktop",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp;C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-pmljfavi/editor/workbench/desktop/probe.hpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "::@(0000022B8E84C400);fixture::view_host;::@",
+        "INTERFACE_LINK_LIBRARIES": "::@(0000022B8E84C400);$<LINK_ONLY:fixture::view_host>;::@",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": "LINK_LIBRARIES:view_host;INTERFACE_LINK_LIBRARIES:view_host"
+      },
+      {
+        "name": "view_host",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-pmljfavi/editor/workbench/desktop",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-pmljfavi/build/editor/workbench/desktop",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "",
+        "INTERFACE_LINK_LIBRARIES": "",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": ""
+      }
+    ],
+    "repaired_exit_code": 0,
+    "repaired_log": "-- Configuring done (0.5s)\n-- Generating done (0.0s)\n-- Build files have been written to: C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-pmljfavi/build\n"
+  },
+  {
+    "id": "widgets-legal",
+    "passed": true,
+    "expected_rule": null,
+    "exit_code": 0,
+    "log": "-- The CXX compiler identification is MSVC 19.44.35228.0\n-- Detecting CXX compiler ABI info\n-- Detecting CXX compiler ABI info - done\n-- Check for working CXX compiler: D:/Development/Mircosoft/VisualStudio/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe - skipped\n-- Detecting CXX compile features\n-- Detecting CXX compile features - done\n-- Found Python3: D:/Development/Python/Python313/python.exe (found version \"3.13.0\") found components: Interpreter\n-- Configuring done (1.3s)\n-- Generating done (0.0s)\n-- Build files have been written to: C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-n2hn93g4/build\n",
+    "graph": [
+      {
+        "name": "editor_widgets",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-n2hn93g4/editor/workbench/widgets",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-n2hn93g4/build/editor/workbench/widgets",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp;C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-n2hn93g4/editor/workbench/widgets/probe.hpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "",
+        "INTERFACE_LINK_LIBRARIES": "",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": ""
+      }
+    ],
+    "repaired_exit_code": 0,
+    "repaired_log": "-- Configuring done (0.5s)\n-- Generating done (0.0s)\n-- Build files have been written to: C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-n2hn93g4/build\n"
+  },
+  {
+    "id": "scene-legal",
+    "passed": true,
+    "expected_rule": null,
+    "exit_code": 0,
+    "log": "-- The CXX compiler identification is MSVC 19.44.35228.0\n-- Detecting CXX compiler ABI info\n-- Detecting CXX compiler ABI info - done\n-- Check for working CXX compiler: D:/Development/Mircosoft/VisualStudio/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe - skipped\n-- Detecting CXX compile features\n-- Detecting CXX compile features - done\n-- Found Python3: D:/Development/Python/Python313/python.exe (found version \"3.13.0\") found components: Interpreter\n-- Configuring done (1.4s)\n-- Generating done (0.0s)\n-- Build files have been written to: C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-30cj5m_f/build\n",
+    "graph": [
+      {
+        "name": "scene_ui",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-30cj5m_f/editor/workbench/scene",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-30cj5m_f/build/editor/workbench/scene",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp;C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-30cj5m_f/editor/workbench/scene/probe.hpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "::@(000002AD0EF28780);fixture::scene_interaction;::@",
+        "INTERFACE_LINK_LIBRARIES": "::@(000002AD0EF28780);$<LINK_ONLY:fixture::scene_interaction>;::@",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": "LINK_LIBRARIES:scene_interaction;INTERFACE_LINK_LIBRARIES:scene_interaction"
+      },
+      {
+        "name": "scene_interaction",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-30cj5m_f/editor/workbench/scene/interaction",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-30cj5m_f/build/editor/workbench/scene/interaction",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "",
+        "INTERFACE_LINK_LIBRARIES": "",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": ""
+      }
+    ],
+    "repaired_exit_code": 0,
+    "repaired_log": "-- Configuring done (0.5s)\n-- Generating done (0.0s)\n-- Build files have been written to: C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-30cj5m_f/build\n"
+  },
+  {
+    "id": "material-legal",
+    "passed": true,
+    "expected_rule": null,
+    "exit_code": 0,
+    "log": "-- The CXX compiler identification is MSVC 19.44.35228.0\n-- Detecting CXX compiler ABI info\n-- Detecting CXX compiler ABI info - done\n-- Check for working CXX compiler: D:/Development/Mircosoft/VisualStudio/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe - skipped\n-- Detecting CXX compile features\n-- Detecting CXX compile features - done\n-- Found Python3: D:/Development/Python/Python313/python.exe (found version \"3.13.0\") found components: Interpreter\n-- Configuring done (1.6s)\n-- Generating done (0.0s)\n-- Build files have been written to: C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-0bm6n65o/build\n",
+    "graph": [
+      {
+        "name": "material_ui",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-0bm6n65o/editor/workbench/material",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-0bm6n65o/build/editor/workbench/material",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp;C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-0bm6n65o/editor/workbench/material/probe.hpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "::@(000002D7A47ECFB0);fixture::material_interaction;::@",
+        "INTERFACE_LINK_LIBRARIES": "::@(000002D7A47ECFB0);$<LINK_ONLY:fixture::material_interaction>;::@",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": "LINK_LIBRARIES:material_interaction;INTERFACE_LINK_LIBRARIES:material_interaction"
+      },
+      {
+        "name": "material_interaction",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-0bm6n65o/editor/workbench/material/interaction",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-0bm6n65o/build/editor/workbench/material/interaction",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "",
+        "INTERFACE_LINK_LIBRARIES": "",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": ""
+      }
+    ],
+    "repaired_exit_code": 0,
+    "repaired_log": "-- Configuring done (0.5s)\n-- Generating done (0.0s)\n-- Build files have been written to: C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-0bm6n65o/build\n"
+  },
+  {
+    "id": "flow-legal",
+    "passed": true,
+    "expected_rule": null,
+    "exit_code": 0,
+    "log": "-- The CXX compiler identification is MSVC 19.44.35228.0\n-- Detecting CXX compiler ABI info\n-- Detecting CXX compiler ABI info - done\n-- Check for working CXX compiler: D:/Development/Mircosoft/VisualStudio/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe - skipped\n-- Detecting CXX compile features\n-- Detecting CXX compile features - done\n-- Found Python3: D:/Development/Python/Python313/python.exe (found version \"3.13.0\") found components: Interpreter\n-- Configuring done (1.3s)\n-- Generating done (0.0s)\n-- Build files have been written to: C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-oc5hwrqk/build\n",
+    "graph": [
+      {
+        "name": "flow_ui",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-oc5hwrqk/editor/workbench/flow",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-oc5hwrqk/build/editor/workbench/flow",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp;C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-oc5hwrqk/editor/workbench/flow/probe.hpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "::@(000001DDE5460F10);fixture::flowforge_interaction;::@",
+        "INTERFACE_LINK_LIBRARIES": "::@(000001DDE5460F10);$<LINK_ONLY:fixture::flowforge_interaction>;::@",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": "LINK_LIBRARIES:flowforge_interaction;INTERFACE_LINK_LIBRARIES:flowforge_interaction"
+      },
+      {
+        "name": "flowforge_interaction",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-oc5hwrqk/editor/workbench/flow/interaction",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-oc5hwrqk/build/editor/workbench/flow/interaction",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "",
+        "INTERFACE_LINK_LIBRARIES": "",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": ""
+      }
+    ],
+    "repaired_exit_code": 0,
+    "repaired_log": "-- Configuring done (0.5s)\n-- Generating done (0.0s)\n-- Build files have been written to: C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-oc5hwrqk/build\n"
+  },
+  {
+    "id": "harness-legal",
+    "passed": true,
+    "expected_rule": null,
+    "exit_code": 0,
+    "log": "-- The CXX compiler identification is MSVC 19.44.35228.0\n-- Detecting CXX compiler ABI info\n-- Detecting CXX compiler ABI info - done\n-- Check for working CXX compiler: D:/Development/Mircosoft/VisualStudio/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe - skipped\n-- Detecting CXX compile features\n-- Detecting CXX compile features - done\n-- Found Python3: D:/Development/Python/Python313/python.exe (found version \"3.13.0\") found components: Interpreter\n-- Configuring done (1.3s)\n-- Generating done (0.0s)\n-- Build files have been written to: C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-u__c0vb3/build\n",
+    "graph": [
+      {
+        "name": "editor_scene_views_test",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-u__c0vb3/editor/tests/integration/scene_views",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-u__c0vb3/build/editor/tests/integration/scene_views",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp;C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-u__c0vb3/editor/tests/integration/scene_views/probe.hpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "::@(00000182571A1D70);fixture::scene_ui;::@",
+        "INTERFACE_LINK_LIBRARIES": "::@(00000182571A1D70);$<LINK_ONLY:fixture::scene_ui>;::@",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": "LINK_LIBRARIES:scene_ui;INTERFACE_LINK_LIBRARIES:scene_ui"
+      },
+      {
+        "name": "scene_ui",
+        "SOURCE_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-u__c0vb3/editor/workbench/scene",
+        "BINARY_DIR": "C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-u__c0vb3/build/editor/workbench/scene",
+        "TYPE": "STATIC_LIBRARY",
+        "IMPORTED": "FALSE",
+        "SOURCES": "dummy.cpp",
+        "INTERFACE_SOURCES": "",
+        "INCLUDE_DIRECTORIES": "",
+        "INTERFACE_INCLUDE_DIRECTORIES": "",
+        "LINK_LIBRARIES": "",
+        "INTERFACE_LINK_LIBRARIES": "",
+        "MANUALLY_ADDED_DEPENDENCIES": "",
+        "edges": ""
+      }
+    ],
+    "repaired_exit_code": 0,
+    "repaired_log": "-- Configuring done (0.5s)\n-- Generating done (0.0s)\n-- Build files have been written to: C:/Users/ChenHui/AppData/Local/Temp/lux-p08-boundary-u__c0vb3/build\n"
+  }
+]

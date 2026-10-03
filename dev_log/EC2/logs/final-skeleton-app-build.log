@@ -1,0 +1,27 @@
+[1/17] Generating plugin/skeleton_runtime/identity.cpp, share/lux-engine/plugins/example.skeleton.json
+[2/17] Generating plugin/witness_runtime/identity.cpp, share/lux-engine/plugins/example.witness.json
+[3/17] Building CXX object CMakeFiles\skeleton_runtime.dir\plugin\skeleton_runtime\identity.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[4/17] Building CXX object CMakeFiles\skeleton_runtime.dir\Runtime.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[5/17] Linking CXX shared library bin\skeleton_runtime.dll
+[6/17] Building CXX object CMakeFiles\skeleton_extension.dir\plugin\skeleton_runtime\identity.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[7/17] Building CXX object CMakeFiles\skeleton_extension.dir\Model.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[8/17] Building CXX object CMakeFiles\witness_runtime.dir\plugin\witness_runtime\identity.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[9/17] Building CXX object CMakeFiles\skeleton_extension.dir\Extension.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[10/17] Building CXX object CMakeFiles\witness_runtime.dir\Runtime.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[11/17] Linking CXX shared library bin\skeleton_extension.dll
+[12/17] Linking CXX shared library bin\witness_runtime.dll
+[13/17] Building CXX object CMakeFiles\witness_extension.dir\Witness.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[14/17] Building CXX object CMakeFiles\witness_extension.dir\plugin\witness_runtime\identity.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[15/17] Linking CXX shared library bin\witness_extension.dll
+[16/17] Building CXX object CMakeFiles\skeleton_consumer.dir\main.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[17/17] Linking CXX executable bin\skeleton_consumer.exe

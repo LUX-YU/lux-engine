@@ -1,0 +1,8 @@
+{
+  "files_sha256": {
+    "EC1_DELTA.md": "e9cdbe204168c4192939d1d8702bf1fccf26fa401852df8d8279b7a22b2099c9",
+    "SOURCE_INDEX.json": "1a9de4acc7449df5f515b6fd7a88f4114d53bf5c0a59142ea2e6d8453c06f8ba",
+    "RESPONSIBILITY_AUDIT.md": "9fdc6736805351e2b8244fa576226b19f574f2f7fc576575109ab932feea5d5d"
+  },
+  "scope": "Documentation only; no source changes or engine tests."
+}

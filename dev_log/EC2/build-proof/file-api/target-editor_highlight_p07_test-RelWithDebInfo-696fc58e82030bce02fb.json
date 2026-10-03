@@ -1,0 +1,799 @@
+{
+	"artifacts" : 
+	[
+		{
+			"path" : "bin/editor_highlight_p07_test.exe"
+		},
+		{
+			"path" : "bin/editor_highlight_p07_test.pdb"
+		}
+	],
+	"backtrace" : 2,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"_add_executable",
+			"add_executable",
+			"target_link_libraries",
+			"add_compile_options",
+			"target_compile_options",
+			"lux_editor_test_options"
+		],
+		"files" : 
+		[
+			"D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+			"editor/workbench/viewport/CMakeLists.txt",
+			"engine/scene/builtin_systems/render/CMakeLists.txt",
+			"engine/scene/composition/CMakeLists.txt",
+			"engine/domain/world/description/CMakeLists.txt",
+			"engine/domain/simulation/composition/CMakeLists.txt",
+			"engine/domain/simulation/scripting/core/CMakeLists.txt",
+			"engine/scene/description/CMakeLists.txt",
+			"engine/domain/simulation/ecs/transform/CMakeLists.txt",
+			"modules/function/ui/CMakeLists.txt",
+			"engine/scene/system/CMakeLists.txt",
+			"engine/domain/simulation/ecs/visual/CMakeLists.txt",
+			"engine/domain/simulation/description/CMakeLists.txt",
+			"CMakeLists.txt",
+			"cmake/EditorTests.cmake"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 17,
+				"parent" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 612,
+				"parent" : 1
+			},
+			{
+				"command" : 2,
+				"file" : 1,
+				"line" : 18,
+				"parent" : 0
+			},
+			{
+				"command" : 2,
+				"file" : 1,
+				"line" : 5,
+				"parent" : 0
+			},
+			{
+				"file" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 42,
+				"parent" : 5
+			},
+			{
+				"file" : 3
+			},
+			{
+				"command" : 2,
+				"file" : 3,
+				"line" : 28,
+				"parent" : 7
+			},
+			{
+				"file" : 4
+			},
+			{
+				"command" : 2,
+				"file" : 4,
+				"line" : 28,
+				"parent" : 9
+			},
+			{
+				"file" : 5
+			},
+			{
+				"command" : 2,
+				"file" : 5,
+				"line" : 26,
+				"parent" : 11
+			},
+			{
+				"file" : 6
+			},
+			{
+				"command" : 2,
+				"file" : 6,
+				"line" : 13,
+				"parent" : 13
+			},
+			{
+				"file" : 7
+			},
+			{
+				"command" : 2,
+				"file" : 7,
+				"line" : 24,
+				"parent" : 15
+			},
+			{
+				"file" : 8
+			},
+			{
+				"command" : 2,
+				"file" : 8,
+				"line" : 31,
+				"parent" : 17
+			},
+			{
+				"file" : 9
+			},
+			{
+				"command" : 2,
+				"file" : 9,
+				"line" : 56,
+				"parent" : 19
+			},
+			{
+				"file" : 10
+			},
+			{
+				"command" : 2,
+				"file" : 10,
+				"line" : 12,
+				"parent" : 21
+			},
+			{
+				"file" : 11
+			},
+			{
+				"command" : 2,
+				"file" : 11,
+				"line" : 20,
+				"parent" : 23
+			},
+			{
+				"file" : 12
+			},
+			{
+				"command" : 2,
+				"file" : 12,
+				"line" : 41,
+				"parent" : 25
+			},
+			{
+				"file" : 13
+			},
+			{
+				"command" : 3,
+				"file" : 13,
+				"line" : 25,
+				"parent" : 27
+			},
+			{
+				"command" : 5,
+				"file" : 1,
+				"line" : 19,
+				"parent" : 0
+			},
+			{
+				"command" : 4,
+				"file" : 14,
+				"line" : 42,
+				"parent" : 29
+			}
+		]
+	},
+	"compileGroups" : 
+	[
+		{
+			"compileCommandFragments" : 
+			[
+				{
+					"fragment" : "/DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD"
+				},
+				{
+					"backtrace" : 28,
+					"fragment" : "/utf-8"
+				},
+				{
+					"backtrace" : 28,
+					"fragment" : "/permissive-"
+				},
+				{
+					"backtrace" : 28,
+					"fragment" : "/Zc:__cplusplus"
+				},
+				{
+					"backtrace" : 28,
+					"fragment" : "/Zc:preprocessor"
+				},
+				{
+					"backtrace" : 30,
+					"fragment" : "/UNDEBUG"
+				},
+				{
+					"backtrace" : 3,
+					"fragment" : "/Zc:externConstexpr"
+				}
+			],
+			"defines" : 
+			[
+				{
+					"backtrace" : 3,
+					"define" : "ENTT_NO_ETO"
+				},
+				{
+					"backtrace" : 3,
+					"define" : "STDEXEC_ENABLE_WINDOWS_THREAD_POOL"
+				}
+			],
+			"includes" : 
+			[
+				{
+					"backtrace" : 3,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/editor/workbench/viewport/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/scene/composition/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/gen/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/domain/world/description/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/domain/world/partition/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/domain/world/identity/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/domain/partition/identity/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/domain/simulation/composition/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/domain/simulation/description/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/core/semantic/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/function/script/core/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/domain/system/identity/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/domain/system/description/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/domain/simulation/system/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/core/serialization/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/core/type_info/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/domain/simulation/ecs/core/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/domain/simulation/ecs/task/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/core/task/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/domain/simulation/scripting/core/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/resource/identity/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/function/script/artifact/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/resource/asset/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/resource/description/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/core/math/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/scene/description/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/scene/system/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/domain/simulation/ecs/schema/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/process/execution/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/core/async_port/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/scene/builtin_systems/render/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/function/render/features/cmake/../include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/function/render/comm_gen"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/function/render/client/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/function/render/runtime/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/scene/components/camera/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/domain/simulation/ecs/transform/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/domain/simulation/ecs/snapshot/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/domain/simulation/ecs/hierarchy/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/domain/simulation/ecs/visual/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/scene/builtin_systems/mesh_query/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/process/asset_loading/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/function/ui/include"
+				},
+				{
+					"backtrace" : 3,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/core/object/include"
+				},
+				{
+					"backtrace" : 3,
+					"isSystem" : true,
+					"path" : "D:/Development/vcpkg/installed/x64-windows/include"
+				},
+				{
+					"backtrace" : 3,
+					"isSystem" : true,
+					"path" : "D:/Development/vcpkg/installed/x64-windows/include/stduuid"
+				},
+				{
+					"backtrace" : 3,
+					"isSystem" : true,
+					"path" : "E:/SyncForder/CodeRepos/install/EC2-dd54847ee281/include"
+				},
+				{
+					"backtrace" : 3,
+					"isSystem" : true,
+					"path" : "D:/Development/vcpkg/installed/x64-windows/include/eigen3"
+				}
+			],
+			"language" : "CXX",
+			"languageStandard" : 
+			{
+				"backtraces" : 
+				[
+					3,
+					3,
+					3
+				],
+				"standard" : "20"
+			},
+			"sourceIndexes" : 
+			[
+				0
+			]
+		}
+	],
+	"dependencies" : 
+	[
+		{
+			"backtrace" : 3,
+			"id" : "script_core::@023ad226eeb1dfda479d"
+		},
+		{
+			"backtrace" : 3,
+			"id" : "object::@3f64c795d72938f03de3"
+		},
+		{
+			"backtrace" : 3,
+			"id" : "serialization::@f3d74b591e1fe7bce8e4"
+		},
+		{
+			"backtrace" : 3,
+			"id" : "task::@a744d1e69ed1d016bf33"
+		},
+		{
+			"backtrace" : 3,
+			"id" : "description::@7b719127e839b48d783c"
+		},
+		{
+			"backtrace" : 3,
+			"id" : "asset::@f166380fe378b4529061"
+		},
+		{
+			"backtrace" : 3,
+			"id" : "render_feature_client::@2609240a746559cdd999"
+		},
+		{
+			"backtrace" : 3,
+			"id" : "script_artifact::@6f6baf858afc44774b73"
+		},
+		{
+			"backtrace" : 3,
+			"id" : "ui::@744f77519ad4bbba6e0c"
+		},
+		{
+			"backtrace" : 3,
+			"id" : "render_client::@286ca0d662065846abce"
+		},
+		{
+			"backtrace" : 3,
+			"id" : "render_runtime::@3ae72fd365b4f844e41a"
+		},
+		{
+			"backtrace" : 3,
+			"id" : "world_partition::@b2bf7258a6f54d64eb47"
+		},
+		{
+			"backtrace" : 3,
+			"id" : "world_description::@7b5a068d3155bc794235"
+		},
+		{
+			"backtrace" : 3,
+			"id" : "domain_system_identity::@8abaa8f9c34049f562d6"
+		},
+		{
+			"backtrace" : 3,
+			"id" : "domain_system_description::@818797bdb0d364f70801"
+		},
+		{
+			"backtrace" : 3,
+			"id" : "simulation_description::@16f04bd09344fd38a478"
+		},
+		{
+			"backtrace" : 3,
+			"id" : "core::@a1d6ad1aaaa1edf8dea2"
+		},
+		{
+			"backtrace" : 3,
+			"id" : "schema::@187f79f90f03b4c383fe"
+		},
+		{
+			"backtrace" : 3,
+			"id" : "snapshot::@86be79d033cd538a5c0c"
+		},
+		{
+			"backtrace" : 3,
+			"id" : "system::@fb57201a0f01b24d4dc5"
+		},
+		{
+			"backtrace" : 3,
+			"id" : "simulation_composition::@0f0ae8ba3480bc9a566a"
+		},
+		{
+			"backtrace" : 3,
+			"id" : "transform::@71f4d9a52806caffce99"
+		},
+		{
+			"backtrace" : 3,
+			"id" : "hierarchy::@b994b6ea6b99d505d4d9"
+		},
+		{
+			"backtrace" : 3,
+			"id" : "visual::@d5d51b856f9def0240f8"
+		},
+		{
+			"backtrace" : 3,
+			"id" : "process_execution::@7d9faf53d58f8d22d002"
+		},
+		{
+			"backtrace" : 3,
+			"id" : "process_asset_loading::@389202a59089a91e47ad"
+		},
+		{
+			"backtrace" : 3,
+			"id" : "scene_description::@b521ca423a5f32fb134d"
+		},
+		{
+			"backtrace" : 3,
+			"id" : "scene_composition::@b5238a990fe5d6742dbe"
+		},
+		{
+			"backtrace" : 3,
+			"id" : "scene_camera::@9971a90ed4b5c5aeb023"
+		},
+		{
+			"backtrace" : 3,
+			"id" : "scene_mesh_query::@18c5cf92ebd161cc3658"
+		},
+		{
+			"backtrace" : 3,
+			"id" : "scene_render::@a1398ed24068bb3cf327"
+		},
+		{
+			"backtrace" : 3,
+			"id" : "editor_viewport::@0c1f4824f6bf9de68839"
+		}
+	],
+	"id" : "editor_highlight_p07_test::@0c1f4824f6bf9de68839",
+	"link" : 
+	{
+		"commandFragments" : 
+		[
+			{
+				"fragment" : "/DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -MD",
+				"role" : "flags"
+			},
+			{
+				"fragment" : "/machine:x64 /debug /INCREMENTAL",
+				"role" : "flags"
+			},
+			{
+				"fragment" : "/subsystem:console",
+				"role" : "flags"
+			},
+			{
+				"backtrace" : 3,
+				"fragment" : "lib\\editor_viewport.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 4,
+				"fragment" : "lib\\lux_engine_scene_render.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 6,
+				"fragment" : "lib\\render_runtime.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 6,
+				"fragment" : "lib\\render_feature_client.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 6,
+				"fragment" : "lib\\lux_engine_scene_camera.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 6,
+				"fragment" : "lib\\lux_engine_scene_mesh_query.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 4,
+				"fragment" : "lib\\lux_engine_scene_composition.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 8,
+				"fragment" : "lib\\lux_engine_world_description.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 10,
+				"fragment" : "lib\\lux_engine_world_partition.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 8,
+				"fragment" : "lib\\lux_engine_simulation_composition.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 12,
+				"fragment" : "lib\\lux_engine_core_task.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 12,
+				"fragment" : "lib\\lux_engine_simulation_system.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 12,
+				"fragment" : "lib\\lux_engine_simulation_description.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 14,
+				"fragment" : "lib\\lux_engine_function_script_artifact.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 8,
+				"fragment" : "lib\\lux_engine_scene_description.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 16,
+				"fragment" : "lib\\lux_engine_domain_system_description.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 16,
+				"fragment" : "lib\\lux_engine_domain_system_identity.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 6,
+				"fragment" : "lib\\lux_engine_simulation_ecs_transform.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 18,
+				"fragment" : "lib\\lux_engine_simulation_ecs_hierarchy.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 6,
+				"fragment" : "lib\\lux_engine_simulation_ecs_visual.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 18,
+				"fragment" : "lib\\lux_engine_simulation_ecs_snapshot.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 8,
+				"fragment" : "lib\\lux_engine_simulation_ecs_schema.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 6,
+				"fragment" : "lib\\lux_engine_simulation_ecs_core.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 6,
+				"fragment" : "lib\\lux_engine_process_asset_loading.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 8,
+				"fragment" : "lib\\lux_engine_process_execution.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 6,
+				"fragment" : "lib\\lux_engine_asset.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 4,
+				"fragment" : "lib\\ui.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 20,
+				"fragment" : "lib\\lux_engine_core_object.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 20,
+				"fragment" : "lib\\render_client.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 22,
+				"fragment" : "lib\\lux_engine_core_serialization.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 24,
+				"fragment" : "lib\\description.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 26,
+				"fragment" : "lib\\lux_engine_function_script_core.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 4,
+				"fragment" : "E:\\SyncForder\\CodeRepos\\install\\EC2-dd54847ee281\\lib\\imgui_core.lib",
+				"role" : "libraries"
+			},
+			{
+				"fragment" : "kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib",
+				"role" : "libraries"
+			}
+		],
+		"language" : "CXX"
+	},
+	"name" : "editor_highlight_p07_test",
+	"nameOnDisk" : "editor_highlight_p07_test.exe",
+	"paths" : 
+	{
+		"build" : "editor/workbench/viewport",
+		"source" : "editor/workbench/viewport"
+	},
+	"sourceGroups" : 
+	[
+		{
+			"name" : "Source Files",
+			"sourceIndexes" : 
+			[
+				0
+			]
+		}
+	],
+	"sources" : 
+	[
+		{
+			"backtrace" : 2,
+			"compileGroupIndex" : 0,
+			"path" : "editor/workbench/viewport/test/highlight.cpp",
+			"sourceGroupIndex" : 0
+		}
+	],
+	"type" : "EXECUTABLE"
+}

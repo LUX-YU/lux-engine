@@ -1,0 +1,37 @@
+-- Configuring incomplete, errors occurred!
+CMake Error at E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/cmake/EditorArchitectureChecks.cmake:167 (message):
+  Editor migration boundary check failed:
+
+  {"status": "FAIL", "findings": [{"rule": "FOUNDATION_FORBIDDEN_DEPENDENCY",
+  "path": "editor_contracts", "detail": "editor_contracts -> ui
+  (LINK_LIBRARIES)"}, {"rule": "FOUNDATION_DIRECT_DEPENDENCY", "path":
+  "editor_contracts", "detail": "editor_contracts -> ui (LINK_LIBRARIES)"},
+  {"rule": "FOUNDATION_FORBIDDEN_DEPENDENCY", "path": "editor_contracts",
+  "detail": "editor_contracts -> ui (INTERFACE_LINK_LIBRARIES)"}, {"rule":
+  "FOUNDATION_DIRECT_DEPENDENCY", "path": "editor_contracts", "detail":
+  "editor_contracts -> ui (INTERFACE_LINK_LIBRARIES)"}, {"rule":
+  "MATERIAL_INTERACTION_DIRECT_DEPENDENCY", "path": "material_interaction",
+  "detail": "material_interaction -> editor_contracts (LINK_LIBRARIES)"},
+  {"rule": "MATERIAL_INTERACTION_DIRECT_DEPENDENCY", "path":
+  "material_interaction", "detail": "material_interaction -> editor_contracts
+  (INTERFACE_LINK_LIBRARIES)"}, {"rule":
+  "MATERIAL_INTERACTION_FORBIDDEN_DEPENDENCY", "path":
+  "material_interaction", "detail": "material_interaction -> editor_contracts
+  -> ui (LINK_LIBRARIES)"}, {"rule":
+  "MATERIAL_INTERACTION_FORBIDDEN_DEPENDENCY", "path":
+  "material_interaction", "detail": "material_interaction -> editor_contracts
+  -> ui (INTERFACE_LINK_LIBRARIES)"}, {"rule": "editing_capability_leak",
+  "path": "editor_contracts", "detail": "editor_contracts -> ui
+  (LINK_LIBRARIES)"}, {"rule": "editing_capability_leak", "path":
+  "editor_contracts", "detail": "editor_contracts -> ui
+  (INTERFACE_LINK_LIBRARIES)"}, {"rule": "interaction_capability_leak",
+  "path": "material_interaction", "detail": "material_interaction ->
+  editor_contracts -> ui (LINK_LIBRARIES)"}, {"rule":
+  "interaction_capability_leak", "path": "material_interaction", "detail":
+  "material_interaction -> editor_contracts -> ui
+  (INTERFACE_LINK_LIBRARIES)"}]}
+
+Call Stack (most recent call first):
+  CMakeLists.txt:13 (lux_editor_check_architecture)
+
+

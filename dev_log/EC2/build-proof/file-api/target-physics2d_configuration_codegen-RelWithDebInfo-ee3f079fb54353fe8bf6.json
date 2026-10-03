@@ -1,0 +1,51 @@
+{
+	"backtrace" : 3,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"add_custom_target",
+			"lux_add_codegen_job",
+			"engine_target_add_static_type_info"
+		],
+		"files" : 
+		[
+			"E:/SyncForder/CodeRepos/install/EC2-dd54847ee281/share/lux-cxx/reflection_generator/cmake_scripts/meta.cmake",
+			"modules/core/meta/cmake/engine_add_type_info.cmake",
+			"engine/domain/simulation/builtin_systems/physics2d/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 75,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 34,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 91,
+				"parent" : 2
+			}
+		]
+	},
+	"id" : "physics2d_configuration_codegen::@9212da38fdace1afab5e",
+	"name" : "physics2d_configuration_codegen",
+	"paths" : 
+	{
+		"build" : "engine/domain/simulation/builtin_systems/physics2d",
+		"source" : "engine/domain/simulation/builtin_systems/physics2d"
+	},
+	"sources" : [],
+	"type" : "UTILITY"
+}

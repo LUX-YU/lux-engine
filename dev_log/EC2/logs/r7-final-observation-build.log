@@ -1,0 +1,10 @@
+[0/2] Re-checking globbed directories...
+[1/6] Building CXX object engine\scene\scripting\assets\CMakeFiles\scene_script_asset_plugin_test.dir\test\plugin_lifetime.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[2/6] Linking CXX executable bin\scene_script_asset_plugin_test.exe
+[3/6] Building CXX object engine\scene\integration\script\CMakeFiles\scene_script_asset_scene_test.dir\test\asset_scene.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[4/6] Building CXX object editor\tests\integration\scene_script\CMakeFiles\editor_script_run_test.dir\main.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[5/6] Linking CXX executable bin\scene_script_asset_scene_test.exe
+[6/6] Linking CXX executable bin\editor_script_run_test.exe

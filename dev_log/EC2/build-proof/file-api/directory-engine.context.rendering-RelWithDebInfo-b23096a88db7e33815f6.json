@@ -1,0 +1,135 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install",
+			"__install_export_header_dirs",
+			"lux_engine_install_components"
+		],
+		"files" : 
+		[
+			"E:/SyncForder/CodeRepos/install/EC2-dd54847ee281/share/lux-cmake-toolset/component/install_components.cmake",
+			"cmake/InstallComponents.cmake",
+			"engine/context/rendering/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 11,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 2
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 64,
+				"parent" : 1
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 3,
+			"component" : "lux_engine_context_render",
+			"destination" : ".",
+			"paths" : 
+			[
+				"engine/context/rendering/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 4,
+			"component" : "lux_engine_context_render",
+			"destination" : "share/lux-engine-context-render/engine_context_render",
+			"exportName" : "engine_context_render",
+			"exportTargets" : 
+			[
+				{
+					"id" : "engine_context_render::@797d05ff33a20d45d116",
+					"index" : 101
+				}
+			],
+			"paths" : 
+			[
+				"engine/context/rendering/CMakeFiles/Export/2c8ead9a86fdfab27df9c3568ab26926/lux-engine-context-render-engine_context_render-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 5,
+			"component" : "lux_engine_context_render",
+			"destination" : "share/lux-engine-context-render/engine_context_render",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/context/rendering/lux-engine-context-render-engine_context_render-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 6,
+			"component" : "lux_engine_context_render",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/engine_context_render.lib"
+			],
+			"targetId" : "engine_context_render::@797d05ff33a20d45d116",
+			"targetIndex" : 101,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 7,
+			"component" : "lux_engine_context_render",
+			"destination" : "share/lux-engine-context-render",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/context/rendering/lux-engine-context-render-config.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/context/rendering/lux-engine-context-render-config-version.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/context/rendering/lux-engine-context-render-available-components.cmake"
+			],
+			"type" : "file"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "engine/context/rendering",
+		"source" : "engine/context/rendering"
+	}
+}

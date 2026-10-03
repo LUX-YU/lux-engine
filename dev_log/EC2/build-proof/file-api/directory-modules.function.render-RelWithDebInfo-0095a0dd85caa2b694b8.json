@@ -1,0 +1,66 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install",
+			"engine_add_comm_ops",
+			"include"
+		],
+		"files" : 
+		[
+			"modules/function/render/cmake/engine_render_codegen.cmake",
+			"modules/function/render/features/cmake/feature_client.cmake",
+			"modules/function/render/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 2,
+				"parent" : 0
+			},
+			{
+				"file" : 1,
+				"parent" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 33,
+				"parent" : 2
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 291,
+				"parent" : 3
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 4,
+			"component" : "Unspecified",
+			"destination" : "include",
+			"paths" : 
+			[
+				{
+					"from" : "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/function/render/comm_gen",
+					"to" : "."
+				}
+			],
+			"type" : "directory"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "modules/function/render",
+		"source" : "modules/function/render"
+	}
+}

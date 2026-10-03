@@ -1,0 +1,907 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install",
+			"__install_export_header_dirs",
+			"lux_engine_install_components",
+			"__install_assets"
+		],
+		"files" : 
+		[
+			"E:/SyncForder/CodeRepos/install/EC2-dd54847ee281/share/lux-cmake-toolset/component/install_components.cmake",
+			"cmake/InstallComponents.cmake",
+			"modules/core/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 20,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 2
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 6
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 10
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 14
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 3,
+				"file" : 1,
+				"line" : 24,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 32,
+				"parent" : 18
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 32,
+				"parent" : 18
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 21
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 26
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 31
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 36
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 41
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 46
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 64,
+				"parent" : 1
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 3,
+			"component" : "lux_engine_core",
+			"destination" : ".",
+			"paths" : 
+			[
+				"modules/core/math/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 4,
+			"component" : "lux_engine_core",
+			"destination" : "share/lux-engine-core/math",
+			"exportName" : "math",
+			"exportTargets" : 
+			[
+				{
+					"id" : "math::@4ea165163d0b76b360df",
+					"index" : 0
+				}
+			],
+			"paths" : 
+			[
+				"modules/core/CMakeFiles/Export/93640ef30d18dce68e0034bd73b45861/lux-engine-core-math-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 5,
+			"component" : "lux_engine_core",
+			"destination" : "share/lux-engine-core/math",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/core/lux-engine-core-math-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 7,
+			"component" : "lux_engine_core",
+			"destination" : ".",
+			"paths" : 
+			[
+				"modules/core/async_port/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 8,
+			"component" : "lux_engine_core",
+			"destination" : "share/lux-engine-core/async_port",
+			"exportName" : "async_port",
+			"exportTargets" : 
+			[
+				{
+					"id" : "async_port::@4f2f9a2f9421cfee8b37",
+					"index" : 0
+				}
+			],
+			"paths" : 
+			[
+				"modules/core/CMakeFiles/Export/7f550b5d1e0dfc47859a45dd1e7a0522/lux-engine-core-async_port-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 9,
+			"component" : "lux_engine_core",
+			"destination" : "share/lux-engine-core/async_port",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/core/lux-engine-core-async_port-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 11,
+			"component" : "lux_engine_core",
+			"destination" : ".",
+			"paths" : 
+			[
+				"modules/core/semantic/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 12,
+			"component" : "lux_engine_core",
+			"destination" : "share/lux-engine-core/semantic",
+			"exportName" : "semantic",
+			"exportTargets" : 
+			[
+				{
+					"id" : "semantic::@a1f1d75b6feb0e9cef8e",
+					"index" : 0
+				}
+			],
+			"paths" : 
+			[
+				"modules/core/CMakeFiles/Export/4564223ac7455397b655b86061e31ccf/lux-engine-core-semantic-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 13,
+			"component" : "lux_engine_core",
+			"destination" : "share/lux-engine-core/semantic",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/core/lux-engine-core-semantic-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 15,
+			"component" : "lux_engine_core",
+			"destination" : ".",
+			"paths" : 
+			[
+				"modules/core/type_info/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 16,
+			"component" : "lux_engine_core",
+			"destination" : "share/lux-engine-core/type_info",
+			"exportName" : "type_info",
+			"exportTargets" : 
+			[
+				{
+					"id" : "type_info::@783bf5ccf8f550cc35bf",
+					"index" : 0
+				}
+			],
+			"paths" : 
+			[
+				"modules/core/CMakeFiles/Export/92ff96377b28ed7a796b2d4703a6edd7/lux-engine-core-type_info-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 17,
+			"component" : "lux_engine_core",
+			"destination" : "share/lux-engine-core/type_info",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/core/lux-engine-core-type_info-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 19,
+			"component" : "lux_engine_core",
+			"destination" : "share/lux-engine-core/meta/cmake_scripts",
+			"paths" : 
+			[
+				"modules/core/meta/cmake/engine_type_runtime_info.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 20,
+			"component" : "lux_engine_core",
+			"destination" : "share/lux-engine-core/meta/cmake_scripts",
+			"paths" : 
+			[
+				"modules/core/meta/cmake/engine_add_type_info.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 22,
+			"component" : "lux_engine_core",
+			"destination" : ".",
+			"paths" : 
+			[
+				"modules/core/meta/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 23,
+			"component" : "lux_engine_core",
+			"destination" : "share/lux-engine-core/meta",
+			"exportName" : "meta",
+			"exportTargets" : 
+			[
+				{
+					"id" : "meta::@48360a740c97bcb8cc30",
+					"index" : 132
+				}
+			],
+			"paths" : 
+			[
+				"modules/core/CMakeFiles/Export/0531f2ef794c9b087964bffb8495181c/lux-engine-core-meta-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 24,
+			"component" : "lux_engine_core",
+			"destination" : "share/lux-engine-core/meta",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/core/lux-engine-core-meta-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 25,
+			"component" : "lux_engine_core",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/lux_engine_core_meta.lib"
+			],
+			"targetId" : "meta::@48360a740c97bcb8cc30",
+			"targetIndex" : 132,
+			"targetIsImportLibrary" : true,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 25,
+			"component" : "lux_engine_core",
+			"destination" : "bin",
+			"paths" : 
+			[
+				"bin/lux_engine_core_meta.dll"
+			],
+			"targetId" : "meta::@48360a740c97bcb8cc30",
+			"targetIndex" : 132,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 27,
+			"component" : "lux_engine_core",
+			"destination" : ".",
+			"paths" : 
+			[
+				"modules/core/object/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 28,
+			"component" : "lux_engine_core",
+			"destination" : "share/lux-engine-core/object",
+			"exportName" : "object",
+			"exportTargets" : 
+			[
+				{
+					"id" : "object::@3f64c795d72938f03de3",
+					"index" : 138
+				}
+			],
+			"paths" : 
+			[
+				"modules/core/CMakeFiles/Export/e497aa9ea598c030685eb5df19c9374b/lux-engine-core-object-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 29,
+			"component" : "lux_engine_core",
+			"destination" : "share/lux-engine-core/object",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/core/lux-engine-core-object-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 30,
+			"component" : "lux_engine_core",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/lux_engine_core_object.lib"
+			],
+			"targetId" : "object::@3f64c795d72938f03de3",
+			"targetIndex" : 138,
+			"targetIsImportLibrary" : true,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 30,
+			"component" : "lux_engine_core",
+			"destination" : "bin",
+			"paths" : 
+			[
+				"bin/lux_engine_core_object.dll"
+			],
+			"targetId" : "object::@3f64c795d72938f03de3",
+			"targetIndex" : 138,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 32,
+			"component" : "lux_engine_core",
+			"destination" : ".",
+			"paths" : 
+			[
+				"modules/core/serialization/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 33,
+			"component" : "lux_engine_core",
+			"destination" : "share/lux-engine-core/serialization",
+			"exportName" : "serialization",
+			"exportTargets" : 
+			[
+				{
+					"id" : "serialization::@f3d74b591e1fe7bce8e4",
+					"index" : 410
+				}
+			],
+			"paths" : 
+			[
+				"modules/core/CMakeFiles/Export/a813743be5ed6ed17b041bbe9c32f2b2/lux-engine-core-serialization-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 34,
+			"component" : "lux_engine_core",
+			"destination" : "share/lux-engine-core/serialization",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/core/lux-engine-core-serialization-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 35,
+			"component" : "lux_engine_core",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/lux_engine_core_serialization.lib"
+			],
+			"targetId" : "serialization::@f3d74b591e1fe7bce8e4",
+			"targetIndex" : 410,
+			"targetIsImportLibrary" : true,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 35,
+			"component" : "lux_engine_core",
+			"destination" : "bin",
+			"paths" : 
+			[
+				"bin/lux_engine_core_serialization.dll"
+			],
+			"targetId" : "serialization::@f3d74b591e1fe7bce8e4",
+			"targetIndex" : 410,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 37,
+			"component" : "lux_engine_core",
+			"destination" : ".",
+			"paths" : 
+			[
+				"modules/core/log/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 38,
+			"component" : "lux_engine_core",
+			"destination" : "share/lux-engine-core/log",
+			"exportName" : "log",
+			"exportTargets" : 
+			[
+				{
+					"id" : "log::@76211867b20e47e8b1d2",
+					"index" : 119
+				}
+			],
+			"paths" : 
+			[
+				"modules/core/CMakeFiles/Export/3b8672881db0085907ddbd48b50107da/lux-engine-core-log-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 39,
+			"component" : "lux_engine_core",
+			"destination" : "share/lux-engine-core/log",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/core/lux-engine-core-log-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 40,
+			"component" : "lux_engine_core",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/lux_engine_core_log.lib"
+			],
+			"targetId" : "log::@76211867b20e47e8b1d2",
+			"targetIndex" : 119,
+			"targetIsImportLibrary" : true,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 40,
+			"component" : "lux_engine_core",
+			"destination" : "bin",
+			"paths" : 
+			[
+				"bin/lux_engine_core_log.dll"
+			],
+			"targetId" : "log::@76211867b20e47e8b1d2",
+			"targetIndex" : 119,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 42,
+			"component" : "lux_engine_core",
+			"destination" : ".",
+			"paths" : 
+			[
+				"modules/core/events/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 43,
+			"component" : "lux_engine_core",
+			"destination" : "share/lux-engine-core/events",
+			"exportName" : "events",
+			"exportTargets" : 
+			[
+				{
+					"id" : "events::@c52d2299a6c69ae7f76d",
+					"index" : 103
+				}
+			],
+			"paths" : 
+			[
+				"modules/core/CMakeFiles/Export/55ab8fa4dff1f2ef16470e734eebd84a/lux-engine-core-events-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 44,
+			"component" : "lux_engine_core",
+			"destination" : "share/lux-engine-core/events",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/core/lux-engine-core-events-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 45,
+			"component" : "lux_engine_core",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/lux_engine_core_events.lib"
+			],
+			"targetId" : "events::@c52d2299a6c69ae7f76d",
+			"targetIndex" : 103,
+			"targetIsImportLibrary" : true,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 45,
+			"component" : "lux_engine_core",
+			"destination" : "bin",
+			"paths" : 
+			[
+				"bin/lux_engine_core_events.dll"
+			],
+			"targetId" : "events::@c52d2299a6c69ae7f76d",
+			"targetIndex" : 103,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 47,
+			"component" : "lux_engine_core",
+			"destination" : ".",
+			"paths" : 
+			[
+				"modules/core/task/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 48,
+			"component" : "lux_engine_core",
+			"destination" : "share/lux-engine-core/task",
+			"exportName" : "task",
+			"exportTargets" : 
+			[
+				{
+					"id" : "task::@a744d1e69ed1d016bf33",
+					"index" : 429
+				}
+			],
+			"paths" : 
+			[
+				"modules/core/CMakeFiles/Export/aed37819937dcb0406ce260b5cc4a030/lux-engine-core-task-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 49,
+			"component" : "lux_engine_core",
+			"destination" : "share/lux-engine-core/task",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/core/lux-engine-core-task-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 50,
+			"component" : "lux_engine_core",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/lux_engine_core_task.lib"
+			],
+			"targetId" : "task::@a744d1e69ed1d016bf33",
+			"targetIndex" : 429,
+			"targetIsImportLibrary" : true,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 50,
+			"component" : "lux_engine_core",
+			"destination" : "bin",
+			"paths" : 
+			[
+				"bin/lux_engine_core_task.dll"
+			],
+			"targetId" : "task::@a744d1e69ed1d016bf33",
+			"targetIndex" : 429,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 51,
+			"component" : "lux_engine_core",
+			"destination" : "share/lux-engine-core",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/core/lux-engine-core-config.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/core/lux-engine-core-config-version.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/core/lux-engine-core-available-components.cmake"
+			],
+			"type" : "file"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "modules/core",
+		"source" : "modules/core"
+	}
+}

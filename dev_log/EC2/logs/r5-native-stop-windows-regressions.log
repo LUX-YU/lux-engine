@@ -1,0 +1,25 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dev
+    Start   7: process.asset_read_overlay
+1/6 Test   #7: process.asset_read_overlay ...........   Passed    0.01 sec
+    Start   8: process.asset_bounded_read
+2/6 Test   #8: process.asset_bounded_read ...........   Passed    0.03 sec
+    Start  11: scene.script_asset_scopes
+3/6 Test  #11: scene.script_asset_scopes ............   Passed    0.05 sec
+    Start 130: editor.sessions.installation
+4/6 Test #130: editor.sessions.installation .........   Passed    0.44 sec
+    Start 131: editor.sessions.content_operations
+5/6 Test #131: editor.sessions.content_operations ...   Passed    1.40 sec
+    Start 132: editor.application
+6/6 Test #132: editor.application ...................   Passed    1.49 sec
+
+100% tests passed, 0 tests failed out of 6
+
+Label Time Summary:
+EC2       =   0.08 sec*proc (2 tests)
+P11       =   0.44 sec*proc (1 test)
+P12       =   2.89 sec*proc (2 tests)
+editor    =   3.33 sec*proc (3 tests)
+gpu       =   1.49 sec*proc (1 test)
+native    =   1.93 sec*proc (4 tests)
+
+Total Test time (real) =   3.76 sec

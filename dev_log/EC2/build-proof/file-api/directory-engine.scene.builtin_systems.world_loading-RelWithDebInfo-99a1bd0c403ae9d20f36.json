@@ -1,0 +1,149 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install",
+			"__install_export_header_dirs",
+			"lux_engine_install_components"
+		],
+		"files" : 
+		[
+			"E:/SyncForder/CodeRepos/install/EC2-dd54847ee281/share/lux-cmake-toolset/component/install_components.cmake",
+			"cmake/InstallComponents.cmake",
+			"engine/scene/builtin_systems/world_loading/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 32,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 2
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 64,
+				"parent" : 1
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 3,
+			"component" : "lux_engine_scene_world_loading",
+			"destination" : ".",
+			"paths" : 
+			[
+				"engine/scene/builtin_systems/world_loading/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 4,
+			"component" : "lux_engine_scene_world_loading",
+			"destination" : "share/lux-engine-scene-world-loading/scene_world_loading",
+			"exportName" : "scene_world_loading",
+			"exportTargets" : 
+			[
+				{
+					"id" : "scene_world_loading::@e94b32764bc1932b0cb1",
+					"index" : 402
+				}
+			],
+			"paths" : 
+			[
+				"engine/scene/builtin_systems/world_loading/CMakeFiles/Export/ddae75775ba95e52dbc4f52eea8df58c/lux-engine-scene-world-loading-scene_world_loading-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 5,
+			"component" : "lux_engine_scene_world_loading",
+			"destination" : "share/lux-engine-scene-world-loading/scene_world_loading",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/scene/builtin_systems/world_loading/lux-engine-scene-world-loading-scene_world_loading-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 6,
+			"component" : "lux_engine_scene_world_loading",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/lux_engine_scene_world_loading.lib"
+			],
+			"targetId" : "scene_world_loading::@e94b32764bc1932b0cb1",
+			"targetIndex" : 402,
+			"targetIsImportLibrary" : true,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 6,
+			"component" : "lux_engine_scene_world_loading",
+			"destination" : "bin",
+			"paths" : 
+			[
+				"bin/lux_engine_scene_world_loading.dll"
+			],
+			"targetId" : "scene_world_loading::@e94b32764bc1932b0cb1",
+			"targetIndex" : 402,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 7,
+			"component" : "lux_engine_scene_world_loading",
+			"destination" : "share/lux-engine-scene-world-loading",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/scene/builtin_systems/world_loading/lux-engine-scene-world-loading-config.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/scene/builtin_systems/world_loading/lux-engine-scene-world-loading-config-version.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/scene/builtin_systems/world_loading/lux-engine-scene-world-loading-available-components.cmake"
+			],
+			"type" : "file"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "engine/scene/builtin_systems/world_loading",
+		"source" : "engine/scene/builtin_systems/world_loading"
+	}
+}

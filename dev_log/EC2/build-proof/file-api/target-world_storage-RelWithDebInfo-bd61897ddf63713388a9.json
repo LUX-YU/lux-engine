@@ -1,0 +1,349 @@
+{
+	"artifacts" : 
+	[
+		{
+			"path" : "bin/lux_engine_world_storage.dll"
+		},
+		{
+			"path" : "lib/lux_engine_world_storage.lib"
+		},
+		{
+			"path" : "bin/lux_engine_world_storage.pdb"
+		}
+	],
+	"backtrace" : 3,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"_add_library",
+			"add_library",
+			"add_component",
+			"install",
+			"lux_engine_install_components",
+			"target_link_libraries",
+			"add_compile_options",
+			"target_compile_definitions",
+			"target_include_directories",
+			"__component_set_include_directories",
+			"component_include_directories"
+		],
+		"files" : 
+		[
+			"D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+			"E:/SyncForder/CodeRepos/install/EC2-dd54847ee281/share/lux-cmake-toolset/component/component.cmake",
+			"engine/domain/world/storage/CMakeLists.txt",
+			"cmake/InstallComponents.cmake",
+			"engine/domain/world/description/CMakeLists.txt",
+			"CMakeLists.txt",
+			"E:/SyncForder/CodeRepos/install/EC2-dd54847ee281/share/lux-cmake-toolset/component/component_include_directories.cmake"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 10,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 99,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 653,
+				"parent" : 2
+			},
+			{
+				"command" : 4,
+				"file" : 2,
+				"line" : 54,
+				"parent" : 0
+			},
+			{
+				"command" : 3,
+				"file" : 3,
+				"line" : 54,
+				"parent" : 4
+			},
+			{
+				"command" : 5,
+				"file" : 2,
+				"line" : 35,
+				"parent" : 0
+			},
+			{
+				"file" : 4
+			},
+			{
+				"command" : 5,
+				"file" : 4,
+				"line" : 28,
+				"parent" : 7
+			},
+			{
+				"file" : 5
+			},
+			{
+				"command" : 6,
+				"file" : 5,
+				"line" : 25,
+				"parent" : 9
+			},
+			{
+				"command" : 7,
+				"file" : 2,
+				"line" : 34,
+				"parent" : 0
+			},
+			{
+				"command" : 10,
+				"file" : 2,
+				"line" : 21,
+				"parent" : 0
+			},
+			{
+				"command" : 9,
+				"file" : 6,
+				"line" : 67,
+				"parent" : 12
+			},
+			{
+				"command" : 8,
+				"file" : 6,
+				"line" : 25,
+				"parent" : 13
+			},
+			{
+				"command" : 8,
+				"file" : 2,
+				"line" : 28,
+				"parent" : 0
+			}
+		]
+	},
+	"compileGroups" : 
+	[
+		{
+			"compileCommandFragments" : 
+			[
+				{
+					"fragment" : "/DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD"
+				},
+				{
+					"backtrace" : 10,
+					"fragment" : "/utf-8"
+				},
+				{
+					"backtrace" : 10,
+					"fragment" : "/permissive-"
+				},
+				{
+					"backtrace" : 10,
+					"fragment" : "/Zc:__cplusplus"
+				},
+				{
+					"backtrace" : 10,
+					"fragment" : "/Zc:preprocessor"
+				}
+			],
+			"defines" : 
+			[
+				{
+					"backtrace" : 11,
+					"define" : "LUX_ENGINE_WORLD_STORAGE_LIBRARY"
+				},
+				{
+					"define" : "world_storage_EXPORTS"
+				}
+			],
+			"includes" : 
+			[
+				{
+					"backtrace" : 14,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/domain/world/storage/include"
+				},
+				{
+					"backtrace" : 14,
+					"path" : "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/gen/include"
+				},
+				{
+					"backtrace" : 15,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/domain/world/storage/sinclude"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/domain/world/description/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/domain/world/partition/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/domain/world/identity/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/domain/partition/identity/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/core/serialization/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/core/type_info/include"
+				},
+				{
+					"backtrace" : 6,
+					"isSystem" : true,
+					"path" : "D:/Development/vcpkg/installed/x64-windows/include"
+				},
+				{
+					"backtrace" : 6,
+					"isSystem" : true,
+					"path" : "D:/Development/vcpkg/installed/x64-windows/include/stduuid"
+				},
+				{
+					"backtrace" : 6,
+					"isSystem" : true,
+					"path" : "E:/SyncForder/CodeRepos/install/EC2-dd54847ee281/include"
+				},
+				{
+					"backtrace" : 6,
+					"isSystem" : true,
+					"path" : "D:/Development/vcpkg/installed/x64-windows/include/eigen3"
+				}
+			],
+			"language" : "CXX",
+			"languageStandard" : 
+			{
+				"backtraces" : 
+				[
+					6,
+					6
+				],
+				"standard" : "20"
+			},
+			"sourceIndexes" : 
+			[
+				0,
+				1,
+				2
+			]
+		}
+	],
+	"dependencies" : 
+	[
+		{
+			"backtrace" : 6,
+			"id" : "serialization::@f3d74b591e1fe7bce8e4"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "world_partition::@b2bf7258a6f54d64eb47"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "world_description::@7b5a068d3155bc794235"
+		}
+	],
+	"id" : "world_storage::@a3e8a7fef1bb9389b4da",
+	"install" : 
+	{
+		"destinations" : 
+		[
+			{
+				"backtrace" : 5,
+				"path" : "lib"
+			},
+			{
+				"backtrace" : 5,
+				"path" : "bin"
+			}
+		],
+		"prefix" : 
+		{
+			"path" : "E:/SyncForder/CodeRepos/install/EC2-dd54847ee281"
+		}
+	},
+	"link" : 
+	{
+		"commandFragments" : 
+		[
+			{
+				"fragment" : "/machine:x64 /debug /INCREMENTAL",
+				"role" : "flags"
+			},
+			{
+				"backtrace" : 6,
+				"fragment" : "lib\\lux_engine_world_description.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 6,
+				"fragment" : "lib\\lux_engine_core_serialization.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 8,
+				"fragment" : "lib\\lux_engine_world_partition.lib",
+				"role" : "libraries"
+			},
+			{
+				"fragment" : "kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib",
+				"role" : "libraries"
+			}
+		],
+		"language" : "CXX"
+	},
+	"name" : "world_storage",
+	"nameOnDisk" : "lux_engine_world_storage.dll",
+	"paths" : 
+	{
+		"build" : "engine/domain/world/storage",
+		"source" : "engine/domain/world/storage"
+	},
+	"sourceGroups" : 
+	[
+		{
+			"name" : "Source Files",
+			"sourceIndexes" : 
+			[
+				0,
+				1,
+				2
+			]
+		}
+	],
+	"sources" : 
+	[
+		{
+			"backtrace" : 3,
+			"compileGroupIndex" : 0,
+			"path" : "engine/domain/world/storage/src/WorldPartitionData.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 3,
+			"compileGroupIndex" : 0,
+			"path" : "engine/domain/world/storage/src/WorldStorageCodec.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 3,
+			"compileGroupIndex" : 0,
+			"path" : "engine/domain/world/storage/src/WorldPartitionDecoder.cpp",
+			"sourceGroupIndex" : 0
+		}
+	],
+	"type" : "SHARED_LIBRARY"
+}

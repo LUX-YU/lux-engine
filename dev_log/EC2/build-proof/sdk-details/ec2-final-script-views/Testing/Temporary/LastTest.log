@@ -1,0 +1,19 @@
+Start testing: Oct 03 08:34 GMT 夏令时
+----------------------------------------------------------
+1/1 Testing: installed.ec2.scene
+1/1 Test: installed.ec2.scene
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-final-script-views/bin/ec2_consumer.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-final-script-views/assets.lux" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-final-script-views/assets.pak"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-final-script-views
+"installed.ec2.scene" start time: Oct 03 08:34 GMT 夏令时
+Output:
+----------------------------------------------------------
+XEC2-32 installed: same packaged Lua + one Run + two real GPU SceneViews; close one, resume, stop, final code/GPU retirement; validation_errors=0 PASS
+<end of output>
+Test time =   0.44 sec
+----------------------------------------------------------
+Test Passed.
+"installed.ec2.scene" end time: Oct 03 08:34 GMT 夏令时
+"installed.ec2.scene" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Oct 03 08:34 GMT 夏令时

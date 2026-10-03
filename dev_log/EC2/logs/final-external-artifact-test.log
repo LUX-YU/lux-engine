@@ -1,0 +1,7 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-final-external-artifact
+    Start 1: installed.ec2.foreign_artifact
+1/1 Test #1: installed.ec2.foreign_artifact ...   Passed    0.31 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) =   0.31 sec

@@ -1,0 +1,358 @@
+[
+  {
+    "id": "XEC2-01",
+    "status": "PASS",
+    "meaning": "Prepared publication failure/move/self-move/reentrant cleanup keeps one reservation.",
+    "commands": [
+      "final-ctest",
+      "final-publication-sdk-positive"
+    ]
+  },
+  {
+    "id": "XEC2-02",
+    "status": "PASS",
+    "meaning": "Workers share immutable plans without Storage release rights; move-only and three actual immutable-input compile negatives.",
+    "commands": [
+      "final-ctest",
+      "final-contracts"
+    ]
+  },
+  {
+    "id": "XEC2-03",
+    "status": "PASS",
+    "meaning": "Wrong receipt identity and digest leave manifest/catalog/source unchanged.",
+    "commands": [
+      "final-ctest"
+    ]
+  },
+  {
+    "id": "XEC2-04",
+    "status": "PASS",
+    "meaning": "Actual file publication with lost receipt and manifest failure preserves Unknown and retries without a second successful package write.",
+    "commands": [
+      "final-ctest",
+      "final-ec2-sdk"
+    ]
+  },
+  {
+    "id": "XEC2-05",
+    "status": "PASS",
+    "meaning": "Actual SceneConfigurationElement and pure draft share one preparation algorithm; headless SDK has no UI imports.",
+    "commands": [
+      "final-ctest",
+      "final-ec2-sdk"
+    ]
+  },
+  {
+    "id": "XEC2-06",
+    "status": "PASS",
+    "meaning": "Missing providers, cycles, unsupported partitions and opaque configurations retain their original rejection/preservation semantics.",
+    "commands": [
+      "final-ctest",
+      "final-ec2-sdk"
+    ]
+  },
+  {
+    "id": "XEC2-07",
+    "status": "PASS",
+    "meaning": "GUI, native SDK and loaded plugin registrations use the same public configuration preparation.",
+    "commands": [
+      "final-ctest",
+      "final-ec2-sdk"
+    ]
+  },
+  {
+    "id": "XEC2-08",
+    "status": "PASS",
+    "meaning": "Actual builtin artifact and independent foreign IArtifactSource/custom cooked type publish without a window through the original operation.",
+    "commands": [
+      "final-ctest",
+      "final-external-artifact-test"
+    ]
+  },
+  {
+    "id": "XEC2-09",
+    "status": "PASS",
+    "meaning": "Source S1 is saved after S0 capture; late S0 artifact publication retains S1 source digest and separate S0 compiled digest.",
+    "commands": [
+      "final-ctest",
+      "final-ec2-sdk",
+      "final-external-artifact-test"
+    ]
+  },
+  {
+    "id": "XEC2-10",
+    "status": "PASS",
+    "meaning": "Standalone installed ResultsView/WorkspaceView retain prior display on BUSY/IO and emit fixed typed intents; no Application link.",
+    "commands": [
+      "final-ctest",
+      "final-ec2-sdk"
+    ]
+  },
+  {
+    "id": "XEC2-11",
+    "status": "PASS",
+    "meaning": "One fixed compilation feeds two actual previews with distinct adoption identity and output resources; stale keys reject.",
+    "commands": [
+      "final-ctest",
+      "final-sdk"
+    ]
+  },
+  {
+    "id": "XEC2-12",
+    "status": "PASS",
+    "meaning": "Actual GPU previews use shared recipe generation, second mesh recipe, retained successful resources, close and retirement.",
+    "commands": [
+      "final-ctest",
+      "final-sdk"
+    ]
+  },
+  {
+    "id": "XEC2-13",
+    "status": "PASS",
+    "meaning": "Compilation failures and preview/navigation readiness are distinct owning diagnostics in actual services/views.",
+    "commands": [
+      "final-ctest",
+      "final-sdk"
+    ]
+  },
+  {
+    "id": "XEC2-14",
+    "status": "PASS",
+    "meaning": "Workspace status does not refresh catalog; real selected-only migration, marker and source-change/conflict regressions retained.",
+    "commands": [
+      "final-ctest",
+      "final-sdk"
+    ]
+  },
+  {
+    "id": "XEC2-15",
+    "status": "PASS",
+    "meaning": "ModelImportRecipe pure codec and real ModelImporter initial/reimport/captured-source paths use original cooking/publication.",
+    "commands": [
+      "final-ctest",
+      "final-ec2-sdk"
+    ]
+  },
+  {
+    "id": "XEC2-16",
+    "status": "PASS",
+    "meaning": "Installed native capability reads/decodes through original Process without Lua/Editor/GPU/LLVM imports.",
+    "commands": [
+      "final-ec2-sdk",
+      "final-dll-closure"
+    ]
+  },
+  {
+    "id": "XEC2-17",
+    "status": "PASS",
+    "meaning": "Actual generated Lua Asset/Skeleton methods execute through original ScriptSystem, package generation and original resume path.",
+    "commands": [
+      "final-ctest",
+      "final-ec2-sdk",
+      "final-player-ctest"
+    ]
+  },
+  {
+    "id": "XEC2-18",
+    "status": "PASS",
+    "meaning": "Native actual missing/type/decode/IO/limit outcomes; Lua handles NOT_FOUND and continues. Admission and accepted outcomes differ.",
+    "commands": [
+      "final-ctest",
+      "final-ec2-sdk"
+    ]
+  },
+  {
+    "id": "XEC2-19",
+    "status": "PASS",
+    "meaning": "Full-width IDs, domain above 2^53 and generation survive opaque Lua value transport; wrong type/table/version and foreign native handles reject.",
+    "commands": [
+      "final-ctest",
+      "final-ec2-sdk"
+    ]
+  },
+  {
+    "id": "XEC2-20",
+    "status": "PASS",
+    "meaning": "Capacities 1/2 reject before submission, recover after release, preserve successful and failed completions through backpressure.",
+    "commands": [
+      "final-ctest",
+      "final-ec2-sdk"
+    ]
+  },
+  {
+    "id": "XEC2-21",
+    "status": "PASS",
+    "meaning": "Synchronous memory endpoint and blocked/background CPU paths settle only at original completion ingress; no provider callback enters VM.",
+    "commands": [
+      "final-ctest",
+      "final-ec2-sdk"
+    ]
+  },
+  {
+    "id": "XEC2-22",
+    "status": "PASS",
+    "meaning": "Stop before IO, before decode, after worker and before delivery/resume drains original tasks and invalidates only the original scope.",
+    "commands": [
+      "final-ctest",
+      "final-ec2-sdk"
+    ]
+  },
+  {
+    "id": "XEC2-23",
+    "status": "PASS",
+    "meaning": "Token aliases, duplicate release, slot reuse and cross-instance queries preserve full identity; no implicit ownership by token.",
+    "commands": [
+      "final-ctest",
+      "final-ec2-sdk"
+    ]
+  },
+  {
+    "id": "XEC2-24",
+    "status": "PASS",
+    "meaning": "Real ScriptSystem retirement revokes unreleased results before backend/code teardown, releases capacity and does not revive old domains.",
+    "commands": [
+      "final-ctest",
+      "final-ec2-sdk"
+    ]
+  },
+  {
+    "id": "XEC2-25",
+    "status": "PASS",
+    "meaning": "Bounded byte copy checks overflow/zero/end/oversize, rejects typed-image confusion; warm queries perform no additional IO.",
+    "commands": [
+      "final-ctest",
+      "final-ec2-sdk"
+    ]
+  },
+  {
+    "id": "XEC2-26",
+    "status": "PASS",
+    "meaning": "Asset await followed by original Delay updates Counter through deferred command barrier; Run source bytes/history/binding unchanged.",
+    "commands": [
+      "final-ctest",
+      "final-player-ctest",
+      "final-ec2-sdk"
+    ]
+  },
+  {
+    "id": "XEC2-27",
+    "status": "PASS",
+    "meaning": "Original provider admission plus new Lua schema/representation/layout failures reject at prepare/call boundaries; empty read port grants no assets.",
+    "commands": [
+      "final-ctest",
+      "final-sdk"
+    ]
+  },
+  {
+    "id": "XEC2-28",
+    "status": "PASS",
+    "meaning": "Independent Skeleton ability uses installed generator/normal projection; generic backend has no concrete asset switch.",
+    "commands": [
+      "final-ec2-sdk",
+      "final-source-audit"
+    ]
+  },
+  {
+    "id": "XEC2-29",
+    "status": "PASS",
+    "meaning": "Real DLL decoder/nontrivial deleter is pinned through value destruction on the owner thread; native control block fixes actual unload crash.",
+    "commands": [
+      "final-ctest"
+    ]
+  },
+  {
+    "id": "XEC2-30",
+    "status": "PASS",
+    "meaning": "Original LuaBoundary and error/yield regressions plus new rejected values and stop outcomes; no raw nontrivial async transport.",
+    "commands": [
+      "final-ctest",
+      "final-ec2-sdk"
+    ]
+  },
+  {
+    "id": "XEC2-31",
+    "status": "PASS",
+    "meaning": "PLAYER profile builds/runs same packaged Lua from pak/VFS, with no Editor source/includes and native result retirement.",
+    "commands": [
+      "final-player-build",
+      "final-player-ctest",
+      "final-dll-closure"
+    ]
+  },
+  {
+    "id": "XEC2-32",
+    "status": "PASS",
+    "meaning": "The same packaged Lua runs in one actual RunStore instance shown by two installed GPU SceneViews; closing one retains the other, resume completes the script, stop retires slots/resources and leaves full author state unchanged.",
+    "commands": [
+      "final-script-views-settled-test",
+      "final-ctest",
+      "final-sdk"
+    ]
+  },
+  {
+    "id": "XEC2-33",
+    "status": "PASS",
+    "meaning": "All original test names retained, existing bodies migrated without removing behavior; installed Skeleton HEADLESS/WINDOW/APP remain actual DLL cases.",
+    "commands": [
+      "final-ctest",
+      "final-skeleton-headless",
+      "final-skeleton-window",
+      "final-skeleton-app",
+      "final-sdk"
+    ]
+  },
+  {
+    "id": "XEC2-34",
+    "status": "PASS",
+    "meaning": "Actual EC2 boundary positive/illegal/restored fixtures, native import checks, runtime rejection and installed constraint/retired-header negatives.",
+    "commands": [
+      "final-ctest",
+      "final-ec2-sdk",
+      "final-contracts"
+    ]
+  },
+  {
+    "id": "XEC2-35",
+    "status": "PASS",
+    "meaning": "Fresh SDK generators and standalone C++20 public header parse; no old package/header dependency; changed modules synchronized to three prefixes.",
+    "commands": [
+      "final-headers",
+      "final-sdk",
+      "final-ec2-sdk",
+      "final-installed-audit",
+      "final-module-sync"
+    ]
+  },
+  {
+    "id": "XEC2-36",
+    "status": "PASS",
+    "meaning": "Actual counted warm native queries, Lua reads/prepared slots/resumes, capacities and code/result retirement; not an RSS or latency-percentile claim.",
+    "commands": [
+      "final-ctest",
+      "final-ec2-sdk"
+    ]
+  },
+  {
+    "id": "XEC2-37",
+    "status": "PARTIAL",
+    "meaning": "Clean all build and no-work; tests include real new/old GPU modes and PLAYER. Native source and SDK input runs are NOT_RUN_USER_DEFERRED: user explicitly selected later, not waived or passed.",
+    "commands": [
+      "final-build",
+      "final-no-work",
+      "final-ctest",
+      "final-player-ctest"
+    ]
+  },
+  {
+    "id": "XEC2-38",
+    "status": "PASS",
+    "meaning": "Single final SHA, original patch/main/history unchanged; archive verifier tests relocation/missing/tampered evidence; inherited waivers remain distinct.",
+    "commands": [
+      "final-tracked",
+      "final-source-audit",
+      "final-installed-audit",
+      "final-module-sync"
+    ]
+  }
+]

@@ -1,0 +1,230 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install",
+			"__install_export_header_dirs",
+			"lux_engine_install_components"
+		],
+		"files" : 
+		[
+			"E:/SyncForder/CodeRepos/install/EC2-dd54847ee281/share/lux-cmake-toolset/component/install_components.cmake",
+			"cmake/InstallComponents.cmake",
+			"engine/toolchain/material/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 176,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 2
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 7
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 64,
+				"parent" : 1
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 3,
+			"component" : "lux_engine_toolchain_material",
+			"destination" : ".",
+			"paths" : 
+			[
+				"engine/toolchain/material/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 4,
+			"component" : "lux_engine_toolchain_material",
+			"destination" : "share/lux-engine-toolchain-material/toolchain_material_compiler",
+			"exportName" : "toolchain_material_compiler",
+			"exportTargets" : 
+			[
+				{
+					"id" : "toolchain_material_compiler::@f630d307355ef18b3721",
+					"index" : 431
+				}
+			],
+			"paths" : 
+			[
+				"engine/toolchain/material/CMakeFiles/Export/ffea9afdb033faf4b20111eb5f12d5ba/lux-engine-toolchain-material-toolchain_material_compiler-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 5,
+			"component" : "lux_engine_toolchain_material",
+			"destination" : "share/lux-engine-toolchain-material/toolchain_material_compiler",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/toolchain/material/lux-engine-toolchain-material-toolchain_material_compiler-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 6,
+			"component" : "lux_engine_toolchain_material",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/lux_engine_toolchain_material_compiler.lib"
+			],
+			"targetId" : "toolchain_material_compiler::@f630d307355ef18b3721",
+			"targetIndex" : 431,
+			"targetIsImportLibrary" : true,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 6,
+			"component" : "lux_engine_toolchain_material",
+			"destination" : "bin",
+			"paths" : 
+			[
+				"bin/lux_engine_toolchain_material_compiler.dll"
+			],
+			"targetId" : "toolchain_material_compiler::@f630d307355ef18b3721",
+			"targetIndex" : 431,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 8,
+			"component" : "lux_engine_toolchain_material",
+			"destination" : ".",
+			"paths" : 
+			[
+				"engine/toolchain/material/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 9,
+			"component" : "lux_engine_toolchain_material",
+			"destination" : "share/lux-engine-toolchain-material/toolchain_material_cooker",
+			"exportName" : "toolchain_material_cooker",
+			"exportTargets" : 
+			[
+				{
+					"id" : "toolchain_material_cooker::@f630d307355ef18b3721",
+					"index" : 432
+				}
+			],
+			"paths" : 
+			[
+				"engine/toolchain/material/CMakeFiles/Export/913ccb6135942d552a342f7f2c014209/lux-engine-toolchain-material-toolchain_material_cooker-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 10,
+			"component" : "lux_engine_toolchain_material",
+			"destination" : "share/lux-engine-toolchain-material/toolchain_material_cooker",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/toolchain/material/lux-engine-toolchain-material-toolchain_material_cooker-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 11,
+			"component" : "lux_engine_toolchain_material",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/lux_engine_toolchain_material_cooker.lib"
+			],
+			"targetId" : "toolchain_material_cooker::@f630d307355ef18b3721",
+			"targetIndex" : 432,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 12,
+			"component" : "lux_engine_toolchain_material",
+			"destination" : "share/lux-engine-toolchain-material",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/toolchain/material/lux-engine-toolchain-material-config.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/toolchain/material/lux-engine-toolchain-material-config-version.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/toolchain/material/lux-engine-toolchain-material-available-components.cmake"
+			],
+			"type" : "file"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "engine/toolchain/material",
+		"source" : "engine/toolchain/material"
+	}
+}

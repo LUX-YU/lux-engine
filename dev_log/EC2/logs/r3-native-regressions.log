@@ -1,0 +1,25 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dev
+    Start  85: editor.project_publication_operation
+1/6 Test  #85: editor.project_publication_operation ...   Passed    0.46 sec
+    Start 130: editor.application
+2/6 Test #130: editor.application .....................   Passed    1.49 sec
+    Start 131: editor.scene_configuration
+3/6 Test #131: editor.scene_configuration .............   Passed    0.05 sec
+    Start 132: editor.project_panels
+4/6 Test #132: editor.project_panels ..................   Passed    0.02 sec
+    Start 133: editor.artifact_publication
+5/6 Test #133: editor.artifact_publication ............   Passed    0.46 sec
+    Start 134: editor.scene_configuration_native
+6/6 Test #134: editor.scene_configuration_native ......   Passed    0.05 sec
+
+100% tests passed, 0 tests failed out of 6
+
+Label Time Summary:
+EC2          =   0.53 sec*proc (3 tests)
+P12          =   1.95 sec*proc (2 tests)
+editor       =   2.53 sec*proc (6 tests)
+gpu          =   1.49 sec*proc (1 test)
+native       =   1.04 sec*proc (5 tests)
+toolchain    =   0.46 sec*proc (1 test)
+
+Total Test time (real) =   2.58 sec

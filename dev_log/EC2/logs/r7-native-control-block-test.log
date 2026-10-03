@@ -1,0 +1,32 @@
+UpdateCTestConfiguration  from :E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dev/DartConfiguration.tcl
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dev
+Constructing a list of tests
+Done constructing a list of tests
+Updating test list for fixtures
+Added 0 tests to meet fixture requirements
+Checking test dependency graph...
+Checking test dependency graph end
+test 12
+    Start 12: scene.script_asset_plugin
+
+12: Test command: E:\SyncForder\CodeRepos\build\RelWithDebInfo\ec2-dev\bin\scene_script_asset_plugin_test.exe "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dev/bin/scene_script_asset_plugin.dll"
+12: Working Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dev/engine/scene/scripting/assets
+12: Test timeout computed to be: 45
+12: Assertion failed: counts.decoded == 1 && !weak.expired(), file E:\SyncForder\CodeRepos\lux-engine-ec2\engine\scene\scripting\assets\test\plugin_lifetime.cpp, line 139
+1/1 Test #12: scene.script_asset_plugin ........Exit code 0xc0000409
+***Exception:   2.93 sec
+Assertion failed: counts.decoded == 1 && !weak.expired(), file E:\SyncForder\CodeRepos\lux-engine-ec2\engine\scene\scripting\assets\test\plugin_lifetime.cpp, line 139
+
+
+0% tests passed, 1 tests failed out of 1
+
+Label Time Summary:
+EC2       =   2.93 sec*proc (1 test)
+native    =   2.93 sec*proc (1 test)
+
+Total Test time (real) =   3.24 sec
+
+The following tests FAILED:
+	 12 - scene.script_asset_plugin (Exit code 0xc0000409
+) EC2 native
+Errors while running CTest

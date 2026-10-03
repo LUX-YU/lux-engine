@@ -1,0 +1,19 @@
+{
+  "name": "final-installed-audit",
+  "argv": [
+    "C:/Users/ChenHui/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe",
+    "E:/SyncForder/CodeRepos/lux-engine/.internal/editor-redesign/EC2/verify_audit_part.py",
+    "installed"
+  ],
+  "cwd": "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified",
+  "runtime_path": "E:/SyncForder/CodeRepos/install/EC2-dd54847ee281/bin",
+  "started": "2026-10-03T07:40:02.653865+00:00",
+  "ended": "2026-10-03T07:40:02.705558+00:00",
+  "exit_code": 1,
+  "source_head": "dd54847ee281f5e96adf4ebeba2f6c06bc858515",
+  "source_head_after": "dd54847ee281f5e96adf4ebeba2f6c06bc858515",
+  "source_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "source_untracked_sha256": {},
+  "log": "logs/final-installed-audit.log",
+  "sha256": "e685e8f892293aacc81b787dfeb5af7058ac5672c626bd79dae5e140d22da239"
+}

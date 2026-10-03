@@ -1,0 +1,313 @@
+{
+	"archive" : 
+	{
+		"commandFragments" : 
+		[
+			{
+				"fragment" : "/machine:x64",
+				"role" : "flags"
+			}
+		]
+	},
+	"artifacts" : 
+	[
+		{
+			"path" : "lib/flowforge_interaction.lib"
+		}
+	],
+	"backtrace" : 3,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"_add_library",
+			"add_library",
+			"add_component",
+			"install",
+			"lux_engine_install_components",
+			"target_link_libraries",
+			"add_compile_options",
+			"target_include_directories",
+			"__component_set_include_directories",
+			"component_include_directories"
+		],
+		"files" : 
+		[
+			"D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+			"E:/SyncForder/CodeRepos/install/EC2-dd54847ee281/share/lux-cmake-toolset/component/component.cmake",
+			"editor/workbench/flow/interaction/CMakeLists.txt",
+			"cmake/InstallComponents.cmake",
+			"CMakeLists.txt",
+			"E:/SyncForder/CodeRepos/install/EC2-dd54847ee281/share/lux-cmake-toolset/component/component_include_directories.cmake"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 1,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 99,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 653,
+				"parent" : 2
+			},
+			{
+				"command" : 4,
+				"file" : 2,
+				"line" : 6,
+				"parent" : 0
+			},
+			{
+				"command" : 3,
+				"file" : 3,
+				"line" : 54,
+				"parent" : 4
+			},
+			{
+				"command" : 5,
+				"file" : 2,
+				"line" : 3,
+				"parent" : 0
+			},
+			{
+				"file" : 4
+			},
+			{
+				"command" : 6,
+				"file" : 4,
+				"line" : 25,
+				"parent" : 7
+			},
+			{
+				"command" : 9,
+				"file" : 2,
+				"line" : 2,
+				"parent" : 0
+			},
+			{
+				"command" : 8,
+				"file" : 5,
+				"line" : 67,
+				"parent" : 9
+			},
+			{
+				"command" : 7,
+				"file" : 5,
+				"line" : 25,
+				"parent" : 10
+			}
+		]
+	},
+	"compileGroups" : 
+	[
+		{
+			"compileCommandFragments" : 
+			[
+				{
+					"fragment" : "/DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD"
+				},
+				{
+					"backtrace" : 8,
+					"fragment" : "/utf-8"
+				},
+				{
+					"backtrace" : 8,
+					"fragment" : "/permissive-"
+				},
+				{
+					"backtrace" : 8,
+					"fragment" : "/Zc:__cplusplus"
+				},
+				{
+					"backtrace" : 8,
+					"fragment" : "/Zc:preprocessor"
+				}
+			],
+			"defines" : 
+			[
+				{
+					"backtrace" : 6,
+					"define" : "LUX_ENGINE_FLOWFORGE_DLL_DISABLE"
+				}
+			],
+			"includes" : 
+			[
+				{
+					"backtrace" : 11,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/editor/workbench/flow/interaction/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/editor/authoring/flow/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/editor/editing/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/gen/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/resource/identity/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/function/flowforge/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/function/graph/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/core/meta/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/core/type_info/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/function/script/core/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/core/semantic/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/resource/description/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/core/math/include"
+				},
+				{
+					"backtrace" : 6,
+					"isSystem" : true,
+					"path" : "E:/SyncForder/CodeRepos/install/EC2-dd54847ee281/include"
+				},
+				{
+					"backtrace" : 6,
+					"isSystem" : true,
+					"path" : "D:/Development/vcpkg/installed/x64-windows/include"
+				},
+				{
+					"backtrace" : 6,
+					"isSystem" : true,
+					"path" : "D:/Development/vcpkg/installed/x64-windows/include/stduuid"
+				},
+				{
+					"backtrace" : 6,
+					"isSystem" : true,
+					"path" : "D:/Development/vcpkg/installed/x64-windows/include/eigen3"
+				}
+			],
+			"language" : "CXX",
+			"languageStandard" : 
+			{
+				"backtraces" : 
+				[
+					6,
+					6
+				],
+				"standard" : "20"
+			},
+			"sourceIndexes" : 
+			[
+				0
+			]
+		}
+	],
+	"dependencies" : 
+	[
+		{
+			"backtrace" : 6,
+			"id" : "script_core::@023ad226eeb1dfda479d"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "meta::@48360a740c97bcb8cc30"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "description::@7b719127e839b48d783c"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "graph::@5661790dfa04b0db40a7"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "flowforge::@01a5a9daa526672cfac5"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "edit_history::@80f09fafaae80a9309ab"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "edit_sessions::@80f09fafaae80a9309ab"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "flowforge_model::@26f35bf441d30e98c4bf"
+		}
+	],
+	"id" : "flowforge_interaction::@99a767b90e50f11debbc",
+	"install" : 
+	{
+		"destinations" : 
+		[
+			{
+				"backtrace" : 5,
+				"path" : "lib"
+			}
+		],
+		"prefix" : 
+		{
+			"path" : "E:/SyncForder/CodeRepos/install/EC2-dd54847ee281"
+		}
+	},
+	"name" : "flowforge_interaction",
+	"nameOnDisk" : "flowforge_interaction.lib",
+	"paths" : 
+	{
+		"build" : "editor/workbench/flow/interaction",
+		"source" : "editor/workbench/flow/interaction"
+	},
+	"sourceGroups" : 
+	[
+		{
+			"name" : "Source Files",
+			"sourceIndexes" : 
+			[
+				0
+			]
+		}
+	],
+	"sources" : 
+	[
+		{
+			"backtrace" : 3,
+			"compileGroupIndex" : 0,
+			"path" : "editor/workbench/flow/interaction/src/FlowInteraction.cpp",
+			"sourceGroupIndex" : 0
+		}
+	],
+	"type" : "STATIC_LIBRARY"
+}

@@ -1,0 +1,16 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dev
+    Start 85: editor.project_publication_operation
+1/3 Test #85: editor.project_publication_operation ...   Passed    0.48 sec
+    Start 86: editor.project_creation
+2/3 Test #86: editor.project_creation ................   Passed    0.10 sec
+    Start 87: editor.plugin_publication
+3/3 Test #87: editor.plugin_publication ..............   Passed    0.09 sec
+
+100% tests passed, 0 tests failed out of 3
+
+Label Time Summary:
+P12       =   0.48 sec*proc (1 test)
+editor    =   0.67 sec*proc (3 tests)
+native    =   0.67 sec*proc (3 tests)
+
+Total Test time (real) =   1.29 sec

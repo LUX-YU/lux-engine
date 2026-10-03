@@ -1,0 +1,21 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dev
+    Start 133: editor.artifact_publication
+1/1 Test #133: editor.artifact_publication ......Exit code 0xc0000409
+***Exception:  22.68 sec
+Timed out at line 145
+
+
+0% tests passed, 1 tests failed out of 1
+
+Label Time Summary:
+EC2          =  22.68 sec*proc (1 test)
+editor       =  22.68 sec*proc (1 test)
+native       =  22.68 sec*proc (1 test)
+toolchain    =  22.68 sec*proc (1 test)
+
+Total Test time (real) =  22.73 sec
+
+The following tests FAILED:
+	133 - editor.artifact_publication (Exit code 0xc0000409
+) EC2 editor native toolchain
+Errors while running CTest

@@ -1,0 +1,51 @@
+{
+	"backtrace" : 3,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"add_custom_target",
+			"add_asset",
+			"compile_and_pack_shader_variants"
+		],
+		"files" : 
+		[
+			"modules/resource/asset/cmake/add_asset.cmake",
+			"modules/function/render/features/cmake/compile_glsl_shaders.cmake",
+			"modules/function/render/features/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 598,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 306,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 40,
+				"parent" : 2
+			}
+		]
+	},
+	"id" : "render_shaders_shadow_depth_vp_variants::@a4379987959f75cb1921",
+	"name" : "render_shaders_shadow_depth_vp_variants",
+	"paths" : 
+	{
+		"build" : "modules/function/render/features",
+		"source" : "modules/function/render/features"
+	},
+	"sources" : [],
+	"type" : "UTILITY"
+}

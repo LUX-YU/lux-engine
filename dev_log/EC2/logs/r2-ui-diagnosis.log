@@ -1,0 +1,20 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dev
+    Start 131: editor.scene_configuration
+1/1 Test #131: editor.scene_configuration .......Exit code 0xc0000409
+***Exception:   3.34 sec
+configuration row 2 lux.builtin.system.render: name=1 bytes=0 providers=1
+Assertion failed: captured_draft->systems == pure_draft->systems, file E:\SyncForder\CodeRepos\lux-engine-ec2\editor\tests\integration\project\scene_configuration.cpp, line 149
+
+
+0% tests passed, 1 tests failed out of 1
+
+Label Time Summary:
+editor    =   3.34 sec*proc (1 test)
+native    =   3.34 sec*proc (1 test)
+
+Total Test time (real) =   3.39 sec
+
+The following tests FAILED:
+	131 - editor.scene_configuration (Exit code 0xc0000409
+) editor native
+Errors while running CTest

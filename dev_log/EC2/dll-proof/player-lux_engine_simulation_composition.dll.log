@@ -1,0 +1,30 @@
+
+Dump of file E:\SyncForder\CodeRepos\build\RelWithDebInfo\ec2-final-player\bin\lux_engine_simulation_composition.dll
+
+File Type: DLL
+
+  Image has the following dependencies:
+
+    lux_engine_core_task.dll
+    lux_engine_simulation_system.dll
+    lux_engine_simulation_description.dll
+    lux_engine_domain_system_description.dll
+    lux_engine_simulation_ecs_core.dll
+    MSVCP140.dll
+    VCRUNTIME140.dll
+    VCRUNTIME140_1.dll
+    api-ms-win-crt-runtime-l1-1-0.dll
+    api-ms-win-crt-heap-l1-1-0.dll
+    api-ms-win-crt-string-l1-1-0.dll
+    KERNEL32.dll
+
+  Summary
+
+        1000 .00cfg
+        1000 .data
+        4000 .idata
+        5000 .pdata
+        F000 .rdata
+        1000 .reloc
+        1000 .rsrc
+       6B000 .text

@@ -1,0 +1,245 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install",
+			"lux_engine_install_components"
+		],
+		"files" : 
+		[
+			"cmake/InstallComponents.cmake",
+			"editor/activities/material/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 14,
+				"parent" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 64,
+				"parent" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 36,
+				"parent" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 47,
+				"parent" : 6
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 52,
+				"parent" : 6
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 54,
+				"parent" : 6
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 64,
+				"parent" : 6
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 41,
+				"parent" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 45,
+				"parent" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 0
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 2,
+			"component" : "lux_engine_editor_material_persistence",
+			"destination" : "share/lux-engine-editor-material-persistence/material_persistence",
+			"exportName" : "material_persistence",
+			"exportTargets" : 
+			[
+				{
+					"id" : "material_persistence::@fa5d939f8fdbe0fb3ae1",
+					"index" : 129
+				}
+			],
+			"paths" : 
+			[
+				"editor/activities/material/CMakeFiles/Export/16f9dce71e572b3c08df20826aba0246/lux-engine-editor-material-persistence-material_persistence-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 3,
+			"component" : "lux_engine_editor_material_persistence",
+			"destination" : "share/lux-engine-editor-material-persistence/material_persistence",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/editor/activities/material/lux-engine-editor-material-persistence-material_persistence-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 4,
+			"component" : "lux_engine_editor_material_persistence",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/material_persistence.lib"
+			],
+			"targetId" : "material_persistence::@fa5d939f8fdbe0fb3ae1",
+			"targetIndex" : 129,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 5,
+			"component" : "lux_engine_editor_material_persistence",
+			"destination" : "share/lux-engine-editor-material-persistence",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/editor/activities/material/lux-engine-editor-material-persistence-config.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/editor/activities/material/lux-engine-editor-material-persistence-config-version.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/editor/activities/material/lux-engine-editor-material-persistence-available-components.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 7,
+			"component" : "lux_engine_editor_material_preview",
+			"destination" : "share/lux-engine-editor-material-preview/material_preview",
+			"exportName" : "material_preview",
+			"exportTargets" : 
+			[
+				{
+					"id" : "material_preview::@fa5d939f8fdbe0fb3ae1",
+					"index" : 130
+				}
+			],
+			"paths" : 
+			[
+				"editor/activities/material/CMakeFiles/Export/ff8d9ba3539e1a7a957978ea24755556/lux-engine-editor-material-preview-material_preview-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 8,
+			"component" : "lux_engine_editor_material_preview",
+			"destination" : "share/lux-engine-editor-material-preview/material_preview",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/editor/activities/material/lux-engine-editor-material-preview-material_preview-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 9,
+			"component" : "lux_engine_editor_material_preview",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/material_preview.lib"
+			],
+			"targetId" : "material_preview::@fa5d939f8fdbe0fb3ae1",
+			"targetIndex" : 130,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 10,
+			"component" : "lux_engine_editor_material_preview",
+			"destination" : "share/lux-engine-editor-material-preview",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/editor/activities/material/lux-engine-editor-material-preview-config.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/editor/activities/material/lux-engine-editor-material-preview-config-version.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/editor/activities/material/lux-engine-editor-material-preview-available-components.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 11,
+			"component" : "lux_engine_editor_material_persistence",
+			"destination" : "include/lux/engine/editor/material",
+			"paths" : 
+			[
+				"editor/activities/material/include/lux/engine/editor/material/MaterialCodec.hpp",
+				"editor/activities/material/include/lux/engine/editor/material/MaterialSaveSource.hpp"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 12,
+			"component" : "lux_engine_editor_material_preview",
+			"destination" : "include/lux/engine/editor/material",
+			"paths" : 
+			[
+				"editor/activities/material/include/lux/engine/editor/material/MaterialCompilation.hpp",
+				"editor/activities/material/include/lux/engine/editor/material/MaterialCompilationService.hpp",
+				"editor/activities/material/include/lux/engine/editor/material/MaterialPreview.hpp",
+				"editor/activities/material/include/lux/engine/editor/material/PublishCompiledMaterial.hpp"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 13,
+			"component" : "lux_engine_editor_material_persistence",
+			"destination" : "include/lux/engine/editor/material",
+			"paths" : 
+			[
+				"editor/activities/material/include/lux/engine/editor/material/MaterialSessionFactory.hpp"
+			],
+			"type" : "file"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "editor/activities/material",
+		"source" : "editor/activities/material"
+	}
+}

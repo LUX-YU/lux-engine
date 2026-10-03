@@ -1,0 +1,4 @@
+[1/4] Building CXX object editor\application\extensions\CMakeFiles\editor_extensions.dir\editor_extensions.cpp.obj
+[2/4] Building CXX object editor\workbench\scene\CMakeFiles\scene_ui.dir\scene_ui.cpp.obj
+[3/4] Linking CXX static library editor\application\extensions\editor_extensions.lib
+[4/4] Linking CXX static library editor\workbench\scene\scene_ui.lib

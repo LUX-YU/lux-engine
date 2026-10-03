@@ -1,0 +1,4 @@
+[1/4] Building CXX object modules\function\script\core\CMakeFiles\script_core.dir\script_core.cpp.obj
+[2/4] Building CXX object engine\toolchain\material\CMakeFiles\toolchain_material_compiler.dir\toolchain_material_compiler.cpp.obj
+[3/4] Linking CXX static library modules\function\script\core\script_core.lib
+[4/4] Linking CXX static library engine\toolchain\material\toolchain_material_compiler.lib

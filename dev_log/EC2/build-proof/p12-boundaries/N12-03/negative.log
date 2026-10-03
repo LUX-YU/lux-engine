@@ -1,0 +1,22 @@
+-- Configuring incomplete, errors occurred!
+CMake Error at E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/cmake/EditorArchitectureChecks.cmake:167 (message):
+  Editor migration boundary check failed:
+
+  {"status": "FAIL", "findings": [{"rule":
+  "MATERIAL_UI_FORBIDDEN_DEPENDENCY", "path": "material_ui", "detail":
+  "material_ui -> scene_ui (LINK_LIBRARIES)"}, {"rule":
+  "MATERIAL_UI_DIRECT_DEPENDENCY", "path": "material_ui", "detail":
+  "material_ui -> scene_ui (LINK_LIBRARIES)"}, {"rule":
+  "MATERIAL_UI_FORBIDDEN_DEPENDENCY", "path": "material_ui", "detail":
+  "material_ui -> scene_ui (INTERFACE_LINK_LIBRARIES)"}, {"rule":
+  "MATERIAL_UI_DIRECT_DEPENDENCY", "path": "material_ui", "detail":
+  "material_ui -> scene_ui (INTERFACE_LINK_LIBRARIES)"}, {"rule":
+  "cross_tool_ui_dependency", "path": "material_ui", "detail": "material_ui
+  -> scene_ui (LINK_LIBRARIES)"}, {"rule": "cross_tool_ui_dependency",
+  "path": "material_ui", "detail": "material_ui -> scene_ui
+  (INTERFACE_LINK_LIBRARIES)"}]}
+
+Call Stack (most recent call first):
+  CMakeLists.txt:11 (lux_editor_check_architecture)
+
+

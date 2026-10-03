@@ -1,0 +1,164 @@
+[
+  {
+    "id": "N12-01-context",
+    "passed": true,
+    "expected_rule": "new_legacy_dependency",
+    "phases": {
+      "positive": {
+        "exit_code": 0,
+        "log": "N12-01-context/positive.log"
+      },
+      "positive-build": {
+        "exit_code": 0,
+        "log": "N12-01-context/positive-build.log"
+      },
+      "negative": {
+        "exit_code": 1,
+        "log": "N12-01-context/negative.log"
+      },
+      "repaired": {
+        "exit_code": 0,
+        "log": "N12-01-context/repaired.log"
+      },
+      "repaired-build": {
+        "exit_code": 0,
+        "log": "N12-01-context/repaired-build.log"
+      }
+    }
+  },
+  {
+    "id": "N12-01-ui",
+    "passed": true,
+    "expected_rule": "new_legacy_dependency",
+    "phases": {
+      "positive": {
+        "exit_code": 0,
+        "log": "N12-01-ui/positive.log"
+      },
+      "positive-build": {
+        "exit_code": 0,
+        "log": "N12-01-ui/positive-build.log"
+      },
+      "negative": {
+        "exit_code": 1,
+        "log": "N12-01-ui/negative.log"
+      },
+      "repaired": {
+        "exit_code": 0,
+        "log": "N12-01-ui/repaired.log"
+      },
+      "repaired-build": {
+        "exit_code": 0,
+        "log": "N12-01-ui/repaired-build.log"
+      }
+    }
+  },
+  {
+    "id": "N12-02",
+    "passed": true,
+    "expected_rule": "authoring_outer_dependency",
+    "phases": {
+      "positive": {
+        "exit_code": 0,
+        "log": "N12-02/positive.log"
+      },
+      "positive-build": {
+        "exit_code": 0,
+        "log": "N12-02/positive-build.log"
+      },
+      "negative": {
+        "exit_code": 1,
+        "log": "N12-02/negative.log"
+      },
+      "repaired": {
+        "exit_code": 0,
+        "log": "N12-02/repaired.log"
+      },
+      "repaired-build": {
+        "exit_code": 0,
+        "log": "N12-02/repaired-build.log"
+      }
+    }
+  },
+  {
+    "id": "N12-03",
+    "passed": true,
+    "expected_rule": "cross_tool_ui_dependency",
+    "phases": {
+      "positive": {
+        "exit_code": 0,
+        "log": "N12-03/positive.log"
+      },
+      "positive-build": {
+        "exit_code": 0,
+        "log": "N12-03/positive-build.log"
+      },
+      "negative": {
+        "exit_code": 1,
+        "log": "N12-03/negative.log"
+      },
+      "repaired": {
+        "exit_code": 0,
+        "log": "N12-03/repaired.log"
+      },
+      "repaired-build": {
+        "exit_code": 0,
+        "log": "N12-03/repaired-build.log"
+      }
+    }
+  },
+  {
+    "id": "N12-04",
+    "passed": true,
+    "expected_rule": "task_monitor_ui_dependency",
+    "phases": {
+      "positive": {
+        "exit_code": 0,
+        "log": "N12-04/positive.log"
+      },
+      "positive-build": {
+        "exit_code": 0,
+        "log": "N12-04/positive-build.log"
+      },
+      "negative": {
+        "exit_code": 1,
+        "log": "N12-04/negative.log"
+      },
+      "repaired": {
+        "exit_code": 0,
+        "log": "N12-04/repaired.log"
+      },
+      "repaired-build": {
+        "exit_code": 0,
+        "log": "N12-04/repaired-build.log"
+      }
+    }
+  },
+  {
+    "id": "N12-05",
+    "passed": true,
+    "expected_rule": "product_reverse_dependency",
+    "phases": {
+      "positive": {
+        "exit_code": 0,
+        "log": "N12-05/positive.log"
+      },
+      "positive-build": {
+        "exit_code": 0,
+        "log": "N12-05/positive-build.log"
+      },
+      "negative": {
+        "exit_code": 1,
+        "log": "N12-05/negative.log"
+      },
+      "repaired": {
+        "exit_code": 0,
+        "log": "N12-05/repaired.log"
+      },
+      "repaired-build": {
+        "exit_code": 0,
+        "log": "N12-05/repaired-build.log"
+      }
+    }
+  }
+]

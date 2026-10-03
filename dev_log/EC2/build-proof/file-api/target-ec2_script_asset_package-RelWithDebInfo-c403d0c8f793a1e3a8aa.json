@@ -1,0 +1,210 @@
+{
+	"backtrace" : 2,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"add_custom_target",
+			"lux_package_lua_script",
+			"add_dependencies",
+			"add_custom_command",
+			"lux_materialize_script_ability_schemas",
+			"lux_script_semantic_schema"
+		],
+		"files" : 
+		[
+			"engine/toolchain/lua/cmake/lux_package_lua_script.cmake",
+			"engine/scene/integration/script/CMakeLists.txt",
+			"modules/function/script/core/cmake/engine_script_ability_codegen.cmake",
+			"modules/function/script/core/cmake/engine_script_semantic_schema.cmake"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 109,
+				"parent" : 1
+			},
+			{
+				"command" : 2,
+				"file" : 0,
+				"line" : 112,
+				"parent" : 1
+			},
+			{
+				"command" : 4,
+				"file" : 0,
+				"line" : 45,
+				"parent" : 1
+			},
+			{
+				"command" : 3,
+				"file" : 2,
+				"line" : 153,
+				"parent" : 4
+			},
+			{
+				"command" : 5,
+				"file" : 0,
+				"line" : 67,
+				"parent" : 1
+			},
+			{
+				"command" : 3,
+				"file" : 3,
+				"line" : 26,
+				"parent" : 6
+			},
+			{
+				"command" : 2,
+				"file" : 0,
+				"line" : 110,
+				"parent" : 1
+			},
+			{
+				"command" : 4,
+				"file" : 0,
+				"line" : 45,
+				"parent" : 1
+			},
+			{
+				"command" : 3,
+				"file" : 2,
+				"line" : 153,
+				"parent" : 9
+			},
+			{
+				"command" : 4,
+				"file" : 0,
+				"line" : 45,
+				"parent" : 1
+			},
+			{
+				"command" : 3,
+				"file" : 2,
+				"line" : 153,
+				"parent" : 11
+			}
+		]
+	},
+	"dependencies" : 
+	[
+		{
+			"backtrace" : 3,
+			"id" : "scene_script_assets_script_ability_schemas::@58c33dd8f002647c3e23"
+		},
+		{
+			"backtrace" : 3,
+			"id" : "simulation_script_script_ability_schemas::@58c33dd8f002647c3e23"
+		},
+		{
+			"backtrace" : 3,
+			"id" : "scene_script_skeleton_script_ability_schemas::@58c33dd8f002647c3e23"
+		},
+		{
+			"backtrace" : 5,
+			"id" : "scene_script_skeleton_script_ability_schema_0::@58c33dd8f002647c3e23"
+		},
+		{
+			"backtrace" : 7,
+			"id" : "ec2_script_asset_package_semantics_writer::@58c33dd8f002647c3e23"
+		},
+		{
+			"backtrace" : 8,
+			"id" : "ec2_script_asset_package_semantics::@58c33dd8f002647c3e23"
+		},
+		{
+			"backtrace" : 10,
+			"id" : "scene_script_assets_script_ability_schema_0::@58c33dd8f002647c3e23"
+		},
+		{
+			"backtrace" : 12,
+			"id" : "simulation_script_script_ability_schema_0::@58c33dd8f002647c3e23"
+		}
+	],
+	"id" : "ec2_script_asset_package::@58c33dd8f002647c3e23",
+	"name" : "ec2_script_asset_package",
+	"paths" : 
+	{
+		"build" : "engine/scene/integration/script",
+		"source" : "engine/scene/integration/script"
+	},
+	"sourceGroups" : 
+	[
+		{
+			"name" : "",
+			"sourceIndexes" : 
+			[
+				0
+			]
+		},
+		{
+			"name" : "CMake Rules",
+			"sourceIndexes" : 
+			[
+				1,
+				2,
+				3,
+				4,
+				5,
+				6
+			]
+		}
+	],
+	"sources" : 
+	[
+		{
+			"backtrace" : 2,
+			"isGenerated" : true,
+			"path" : "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/scene/integration/script/CMakeFiles/ec2_script_asset_package",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 0,
+			"isGenerated" : true,
+			"path" : "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/scene/integration/script/CMakeFiles/ec2_script_asset_package.rule",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 0,
+			"isGenerated" : true,
+			"path" : "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/scene/integration/script/ec2-assets.lux.rule",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 0,
+			"isGenerated" : true,
+			"path" : "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/domain/simulation/builtin_systems/script/generated/simulation_script/script_abilities/schema/DelayAbility.ability.schema.json.rule",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 0,
+			"isGenerated" : true,
+			"path" : "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/scene/integration/script/ec2_script_asset_package.semantic.json.rule",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 0,
+			"isGenerated" : true,
+			"path" : "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/scene/scripting/assets/generated/scene_script_assets/script_abilities/schema/AssetAbility.ability.schema.json.rule",
+			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 0,
+			"isGenerated" : true,
+			"path" : "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/scene/scripting/skeleton/generated/scene_script_skeleton/script_abilities/schema/SkeletonAbility.ability.schema.json.rule",
+			"sourceGroupIndex" : 1
+		}
+	],
+	"type" : "UTILITY"
+}

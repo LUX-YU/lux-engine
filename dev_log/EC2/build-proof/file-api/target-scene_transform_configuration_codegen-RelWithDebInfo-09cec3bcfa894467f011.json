@@ -1,0 +1,51 @@
+{
+	"backtrace" : 3,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"add_custom_target",
+			"lux_add_codegen_job",
+			"engine_target_add_static_type_info"
+		],
+		"files" : 
+		[
+			"E:/SyncForder/CodeRepos/install/EC2-dd54847ee281/share/lux-cxx/reflection_generator/cmake_scripts/meta.cmake",
+			"modules/core/meta/cmake/engine_add_type_info.cmake",
+			"engine/scene/builtin_systems/transform/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 17,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 34,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 91,
+				"parent" : 2
+			}
+		]
+	},
+	"id" : "scene_transform_configuration_codegen::@5f4777d37b076b800592",
+	"name" : "scene_transform_configuration_codegen",
+	"paths" : 
+	{
+		"build" : "engine/scene/builtin_systems/transform",
+		"source" : "engine/scene/builtin_systems/transform"
+	},
+	"sources" : [],
+	"type" : "UTILITY"
+}

@@ -1,0 +1,9 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-final-sdk/p11-runtime
+    Start 1: installed.p11.runtime
+1/2 Test #1: installed.p11.runtime ..................   Passed    0.03 sec
+    Start 2: installed.p12.builtin_plugin_closure
+2/2 Test #2: installed.p12.builtin_plugin_closure ...   Passed    0.14 sec
+
+100% tests passed, 0 tests failed out of 2
+
+Total Test time (real) =   0.18 sec

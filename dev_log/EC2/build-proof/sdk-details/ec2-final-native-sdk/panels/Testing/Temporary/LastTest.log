@@ -1,0 +1,19 @@
+Start testing: Oct 03 08:31 GMT 夏令时
+----------------------------------------------------------
+1/1 Testing: installed.ec2.panels
+1/1 Test: installed.ec2.panels
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-final-native-sdk/panels/panels.exe"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-final-native-sdk/panels
+"installed.ec2.panels" start time: Oct 03 08:31 GMT 夏令时
+Output:
+----------------------------------------------------------
+EC2 independent panels: owning display, BUSY/IO retention, full typed targets, bounded receiver
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"installed.ec2.panels" end time: Oct 03 08:31 GMT 夏令时
+"installed.ec2.panels" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Oct 03 08:31 GMT 夏令时

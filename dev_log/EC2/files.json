@@ -1,0 +1,782 @@
+[
+  {
+    "path": "cmake/EditorTests.cmake",
+    "deleted": false,
+    "sha256": "897282e6f4f684123a558a5cb38b6784b13f44826a587c5eb161743aaf9816a8"
+  },
+  {
+    "path": "cmake/installed-consumers/editor-ec1-skeleton/main.cpp",
+    "deleted": false,
+    "sha256": "76f9f15094240377d242f42eb8594cd51ba83bed58b58304341460c613cfee7a"
+  },
+  {
+    "path": "cmake/installed-consumers/editor-ec1/headless.cpp",
+    "deleted": false,
+    "sha256": "f7060df56e2dc2028bbc367aaa21b5865be1d70f55cb64bd23cb243213a587ad"
+  },
+  {
+    "path": "cmake/installed-consumers/editor-ec2/CMakeLists.txt",
+    "deleted": false,
+    "sha256": "4588d4a8d2fdf90706ba25733a283d1f875141ac38c8b1ecbca5f4c2c365796a"
+  },
+  {
+    "path": "cmake/installed-consumers/editor-ec2/activities/CMakeLists.txt",
+    "deleted": false,
+    "sha256": "aebefd79d5e7ab67146a9242ee6eecffa408c522fc138b11b73651a7ef89ce10"
+  },
+  {
+    "path": "cmake/installed-consumers/editor-ec2/constraints.cpp",
+    "deleted": false,
+    "sha256": "be388da8479d365ead5f49e1030bf4b8693538657585b18dbba324bcdd5bc309"
+  },
+  {
+    "path": "cmake/installed-consumers/editor-ec2/reject.cmake",
+    "deleted": false,
+    "sha256": "901e4228192c8c495e2517b1721c60483ec71dce3e4ed7678a74ded988014436"
+  },
+  {
+    "path": "cmake/installed-consumers/editor-p11/main.cpp",
+    "deleted": false,
+    "sha256": "d1bf79ae60c3919893b89fd265dc17ef691e12e042e98e2069e2e12dd68b9b02"
+  },
+  {
+    "path": "editor/activities/flow/include/lux/engine/editor/flowforge/FlowCompilationService.hpp",
+    "deleted": false,
+    "sha256": "435aea50902160046dfa6ff55ad5949dae21d7415fc2220d7491762143dc98e1"
+  },
+  {
+    "path": "editor/activities/flow/src/FlowCompilationService.cpp",
+    "deleted": false,
+    "sha256": "86ffa42b82083ee2ea0d82d0cedc3bd265c201c136dbaa80a16c54341727b525"
+  },
+  {
+    "path": "editor/activities/flow/src/PublishFlowArtifact.cpp",
+    "deleted": false,
+    "sha256": "657f60075a6a94390b23bf40e9fc1786f6afe0a400701f314c7beaf6ed156738"
+  },
+  {
+    "path": "editor/activities/material/CMakeLists.txt",
+    "deleted": false,
+    "sha256": "90ddc1624537f426b18f0d6c322c922a0a87830538994ee8aab20255bb448274"
+  },
+  {
+    "path": "editor/activities/material/README.md",
+    "deleted": false,
+    "sha256": "14671bbeb1f4b1cf6a983bbbdf8a658ae375bfcb47eec3900a471568586e9513"
+  },
+  {
+    "path": "editor/activities/material/include/lux/engine/editor/material/MaterialCompilation.hpp",
+    "deleted": false,
+    "sha256": "5d710ffefb08f2b9abdfb5008ed026e13df3228aec2538b0af39a46015e80b75"
+  },
+  {
+    "path": "editor/activities/material/include/lux/engine/editor/material/MaterialCompilationService.hpp",
+    "deleted": false,
+    "sha256": "6e1fbd3c546f87269b0fb5a968ad0a978f4c1ce9c149ecd53d907f106ca985fc"
+  },
+  {
+    "path": "editor/activities/material/include/lux/engine/editor/material/MaterialPreview.hpp",
+    "deleted": false,
+    "sha256": "04330420762d97e729c492cc2ddcce73109e66a68dfdd0834688a279de5ed23c"
+  },
+  {
+    "path": "editor/activities/material/include/lux/engine/editor/material/MaterialPreviewStore.hpp",
+    "deleted": true,
+    "sha256": null
+  },
+  {
+    "path": "editor/activities/material/pinclude/lux/engine/editor/material/MaterialPreviewRecipe.hpp",
+    "deleted": false,
+    "sha256": "28567d850c8e5b2a52978aab72cfd3d707e1d46cb1604279ba73180b075aa563"
+  },
+  {
+    "path": "editor/activities/material/src/MaterialCompilation.cpp",
+    "deleted": false,
+    "sha256": "9d402b7e252b4d686b280cb82f84f507f1fde75c066fe7301126cb8800ea1016"
+  },
+  {
+    "path": "editor/activities/material/src/MaterialCompilationService.cpp",
+    "deleted": false,
+    "sha256": "1239edf1e93a1c102c4086932ee513a82f2f06c1a5d997a966d200d15cecbba1"
+  },
+  {
+    "path": "editor/activities/material/src/MaterialPreview.cpp",
+    "deleted": false,
+    "sha256": "fd1a5c32ac45d136c29d7bc72181c96043bc8428817f1213484f82d33bacfe15"
+  },
+  {
+    "path": "editor/activities/material/src/MaterialPreviewRecipe.cpp",
+    "deleted": false,
+    "sha256": "5de1196f110dde197230c1923ef20d93156a1a2490d211f1cc4a509fa3f0f83b"
+  },
+  {
+    "path": "editor/activities/material/src/MaterialPreviewStore.cpp",
+    "deleted": true,
+    "sha256": null
+  },
+  {
+    "path": "editor/activities/material/src/PublishCompiledMaterial.cpp",
+    "deleted": false,
+    "sha256": "87e57707bad96a75678c4dde1b53eabc9115e96c77aa9de98522846e43d4dd10"
+  },
+  {
+    "path": "editor/activities/project/CMakeLists.txt",
+    "deleted": false,
+    "sha256": "7664a09ebe81646a9dc2e0c8a62b4caca619b74aebeea8c3077adb883b42e807"
+  },
+  {
+    "path": "editor/activities/project/README.md",
+    "deleted": false,
+    "sha256": "e11cfa1e657835b58b495112faa5788cfcfab6d7044e2c6635641ccb3b0d0adc"
+  },
+  {
+    "path": "editor/activities/project/include/lux/engine/editor/assets/ModelImportRecipe.hpp",
+    "deleted": false,
+    "sha256": "2de63f3a8229796837b5eb0c8cd39b0e97352cfcda67465003cfa63042ac3024"
+  },
+  {
+    "path": "editor/activities/project/include/lux/engine/editor/assets/ModelImporter.hpp",
+    "deleted": false,
+    "sha256": "1eaa6326797dd6aaafb7947bd73a3999824f4a29bed5f9c51995aacbcd978763"
+  },
+  {
+    "path": "editor/activities/project/include/lux/engine/editor/storage/ArtifactPublicationOperation.hpp",
+    "deleted": false,
+    "sha256": "a7f2aca1876ed3701ee5713ac29d7944ae48187ff3603d0da77cfe19efbca526"
+  },
+  {
+    "path": "editor/activities/project/include/lux/engine/editor/storage/PreparedProjectOpen.hpp",
+    "deleted": false,
+    "sha256": "edfc0581bfd48ca99cd6782d798dd82f68de316c5729598fc59caea2281852bf"
+  },
+  {
+    "path": "editor/activities/project/include/lux/engine/editor/storage/ProjectCreation.hpp",
+    "deleted": false,
+    "sha256": "2c8d753d24af78cb638b364a592a911dc1088a1edce01492ea4e6502d0897ce2"
+  },
+  {
+    "path": "editor/activities/project/include/lux/engine/editor/storage/ProjectOpenData.hpp",
+    "deleted": true,
+    "sha256": null
+  },
+  {
+    "path": "editor/activities/project/include/lux/engine/editor/storage/ProjectPublication.hpp",
+    "deleted": false,
+    "sha256": "a789837368ab28389b2d38702b0d618f4504dae95be7258085dd485854c4db14"
+  },
+  {
+    "path": "editor/activities/project/include/lux/engine/editor/storage/ProjectPublicationOperation.hpp",
+    "deleted": false,
+    "sha256": "2b1a871edc8e91f9f9da78008553aee8535b3ce1017c2b6e44bdb1979eead88b"
+  },
+  {
+    "path": "editor/activities/project/include/lux/engine/editor/storage/ProjectStorage.hpp",
+    "deleted": false,
+    "sha256": "b963eb1fa1745c3525ebe41ae2637f04ab5f2edc98b9eb5392297a1ba60c53a1"
+  },
+  {
+    "path": "editor/activities/project/src/ArtifactPublicationOperation.cpp",
+    "deleted": false,
+    "sha256": "071558089dfd919256bd754448578bbee4ca4f18b8d1a794c7b003d7b1e38b07"
+  },
+  {
+    "path": "editor/activities/project/src/ModelImportRecipe.cpp",
+    "deleted": false,
+    "sha256": "6d2d6f4727bc6dbba786f84bd88833242fb83abb612a18dde102b372b956649b"
+  },
+  {
+    "path": "editor/activities/project/src/ModelImporter.cpp",
+    "deleted": false,
+    "sha256": "ae864096c360e3057416480efd3aebd7b5ad2e2dde91c1623a4af9d154afe149"
+  },
+  {
+    "path": "editor/activities/project/src/PreparedProjectOpen.cpp",
+    "deleted": false,
+    "sha256": "be4df56e7628726bf316a386d665771a8427aa1db04064b05b942be25b9fb816"
+  },
+  {
+    "path": "editor/activities/project/src/ProjectAssetSource.cpp",
+    "deleted": false,
+    "sha256": "7c6e36689482e69ae279f20ae361a786f784fd3a98f1e7a4669098fc72bf745c"
+  },
+  {
+    "path": "editor/activities/project/src/ProjectCreation.cpp",
+    "deleted": false,
+    "sha256": "24ac130043ac2ba99a1f78b6da50ebb0992be0c6be4e59275c637e7a8293008f"
+  },
+  {
+    "path": "editor/activities/project/src/ProjectPublication.cpp",
+    "deleted": false,
+    "sha256": "50f3d6fe78c32a7f8579e873fc2d9481c85d1a60658a6dc4a847345c619876ba"
+  },
+  {
+    "path": "editor/activities/project/src/ProjectPublicationOperation.cpp",
+    "deleted": false,
+    "sha256": "71e85792206d4d0a023e5c7edee4d57527a47fc59a4072a71dc35f0ce6fe9786"
+  },
+  {
+    "path": "editor/activities/project/src/ProjectStorage.cpp",
+    "deleted": false,
+    "sha256": "95b02878be72ef53df8bbd933e4afc6d0831a1ef45b339d92bb78d2e52f538dd"
+  },
+  {
+    "path": "editor/activities/project/test/plugin_publication.cpp",
+    "deleted": false,
+    "sha256": "3a48109289f131c3f5f187cc9ab15b2c6c55595ff7abd11c265e1bc567b719ab"
+  },
+  {
+    "path": "editor/activities/project/test/project_creation.cpp",
+    "deleted": false,
+    "sha256": "29c619f79fe6758a736c67069911c8f8c504734c4dcabf25fd301ed328fffe72"
+  },
+  {
+    "path": "editor/activities/project/test/project_publication_operation.cpp",
+    "deleted": false,
+    "sha256": "828bbe01d0904f8ec9d1e0671d1517d14273bb93f70046c586c964bd4acc73b7"
+  },
+  {
+    "path": "editor/activities/scene/CMakeLists.txt",
+    "deleted": false,
+    "sha256": "56325735a668d2c9d0b5daa15a6b07f625f6983178f4ca0a47e9544508bf3705"
+  },
+  {
+    "path": "editor/activities/scene/include/lux/engine/editor/scene/RunStore.hpp",
+    "deleted": false,
+    "sha256": "929fc49c1005b45af66fe7111d297941583d2e5e69de7baa6ee32073a3fad6d1"
+  },
+  {
+    "path": "editor/activities/scene/include/lux/engine/editor/scene/SceneConfigurationPreparation.hpp",
+    "deleted": false,
+    "sha256": "20a89ba27594fbfd7dac3faa58b868ccfec9167334dfa49703d1d50e5b1543cb"
+  },
+  {
+    "path": "editor/activities/scene/src/RunStore.cpp",
+    "deleted": false,
+    "sha256": "946b508591eceb6a638aa120fe2c6b80c7a901404b75403adf23e74f5dcfe89a"
+  },
+  {
+    "path": "editor/activities/scene/src/SceneConfigurationPreparation.cpp",
+    "deleted": false,
+    "sha256": "e995d3e9e7492568f111e98c8cad6647e65f190e0c8dba2c2ad9e12a58b872d0"
+  },
+  {
+    "path": "editor/activities/scene/test/configuration.cpp",
+    "deleted": false,
+    "sha256": "c4e4bfe5607305c132e6276a7b0a027deff3dfa46c39ddea43d8063497afe141"
+  },
+  {
+    "path": "editor/activities/workspace/CMakeLists.txt",
+    "deleted": false,
+    "sha256": "009873b5c07a1926de6cdeb0dd115ed36f0acf7e672524b367da933d031aeb09"
+  },
+  {
+    "path": "editor/activities/workspace/README.md",
+    "deleted": false,
+    "sha256": "4e67c2bf2060e2a0c02b65c0d37b73a509979c5a0f484f4ee312399084fb4e1e"
+  },
+  {
+    "path": "editor/activities/workspace/include/lux/engine/editor/workspace/LegacyWorkspaceMigration.hpp",
+    "deleted": false,
+    "sha256": "5938a9373e2fb39f7451bcf547141a56e362de387679e6882c864b03eb4d4230"
+  },
+  {
+    "path": "editor/activities/workspace/include/lux/engine/editor/workspace/WorkspaceStore.hpp",
+    "deleted": false,
+    "sha256": "6af6b605cb06c9f1de890eae9aae9b85143552280c1ce176d1aba1bdc82072e0"
+  },
+  {
+    "path": "editor/activities/workspace/src/LegacyWorkspaceImporter.cpp",
+    "deleted": false,
+    "sha256": "1d5d251c5f80003132fd9c6df2f3fa7d6748e19113543d7b8bb381a0797555f7"
+  },
+  {
+    "path": "editor/activities/workspace/src/WorkspaceMigration.cpp",
+    "deleted": false,
+    "sha256": "8180451c545ce20f28a35f1b505ec142682444e27b154870be46c485b236dc63"
+  },
+  {
+    "path": "editor/activities/workspace/src/WorkspaceStore.cpp",
+    "deleted": false,
+    "sha256": "c685957811392d5a0f6284749c62ce8bca6526ead86058e3e386cda33447107e"
+  },
+  {
+    "path": "editor/application/pinclude/lux/engine/editor/application/EditorApplicationImpl.hpp",
+    "deleted": false,
+    "sha256": "4129e934c01552ef3dbd220618799f626effcef4f6fbf06dd4b55dee7aafbe75"
+  },
+  {
+    "path": "editor/application/src/EditorApplication.cpp",
+    "deleted": false,
+    "sha256": "0304cf8178284d6245d668d97b628cc93f2340181e9afe680a63aed841e2f372"
+  },
+  {
+    "path": "editor/application/src/EditorArtifacts.cpp",
+    "deleted": false,
+    "sha256": "85393151f98bfec5dad6a0036af7480fdeb514997aff3791647e0f45266444f8"
+  },
+  {
+    "path": "editor/application/src/EditorLifecycle.cpp",
+    "deleted": false,
+    "sha256": "bec393fa77aee9a9a0355a8db9aae4f0f07e266e3583c74b5eb64cc9afe4cdfb"
+  },
+  {
+    "path": "editor/application/src/EditorResults.cpp",
+    "deleted": false,
+    "sha256": "07096fa04c574454e204271cb6d54ac74873e12de3900b57072680dc284890dc"
+  },
+  {
+    "path": "editor/application/src/EditorSaving.cpp",
+    "deleted": false,
+    "sha256": "434e9a50c3ce9ab6049425bd3f3c54142aa24e2ef3b3d4d7e099691ca2cf5478"
+  },
+  {
+    "path": "editor/application/src/EditorWorkspace.cpp",
+    "deleted": false,
+    "sha256": "5838fa5ec4232d64b03dda9f5aa7c216403dcca592e420a760dbc5896add5c96"
+  },
+  {
+    "path": "editor/application/src/ProjectCreation.cpp",
+    "deleted": false,
+    "sha256": "6fe9239f4ca021177870b99d231c35e88d55f012fd47b7da9fb2148d17b0997a"
+  },
+  {
+    "path": "editor/authoring/layout/README.md",
+    "deleted": false,
+    "sha256": "e03a0d42784a9e65e483585248ccbcfeb4b6973a4aa87d9693f970b425b3750c"
+  },
+  {
+    "path": "editor/authoring/project/README.md",
+    "deleted": false,
+    "sha256": "b9fcc81dcf0528f0e6b0b2234321e738ef5a0b8ad66750622245af2365fd7e68"
+  },
+  {
+    "path": "editor/authoring/scene/CMakeLists.txt",
+    "deleted": false,
+    "sha256": "1e581292774c3041ee3deb3a57cd3f4829970c68c85e8696e13bd1cc4fcd8fe0"
+  },
+  {
+    "path": "editor/authoring/scene/include/lux/engine/editor/scene/SceneConfigurationDraft.hpp",
+    "deleted": false,
+    "sha256": "b5b59708639f7bb962787f14b2b0f633d2f8452741d14b2d015ea045c995ee28"
+  },
+  {
+    "path": "editor/authoring/scene/src/SceneConfigurationDraft.cpp",
+    "deleted": false,
+    "sha256": "12a02a8e92618b2485c6f7b5d90753f3ec19d5ee66db684baadc62bac62c74f1"
+  },
+  {
+    "path": "editor/tests/architecture/CMakeLists.txt",
+    "deleted": false,
+    "sha256": "748660a40ea5132e952170f64e4fb64d33f728026479d5bf15ddc5418854ed40"
+  },
+  {
+    "path": "editor/tests/architecture/editor_layering.py",
+    "deleted": false,
+    "sha256": "33d7bcc17cf13f43ad8cbbe3ae37b985da4517cf8ff44107f59a7a609930be16"
+  },
+  {
+    "path": "editor/tests/architecture/rules.json",
+    "deleted": false,
+    "sha256": "c2d245c3f8af45e111687ef10352c229a96e2d504553cf296d1a95e9cfc9cd21"
+  },
+  {
+    "path": "editor/tests/architecture/test_layering_boundaries.py",
+    "deleted": false,
+    "sha256": "f28c653adfb196257c4a4fe74c423bfb8dc511e01d476bdb51d9a45028d49d47"
+  },
+  {
+    "path": "editor/tests/architecture/validate_ec2_evidence.py",
+    "deleted": false,
+    "sha256": "a9fca4896ee92fd1ffe06594f2c3dc7ed5ab5b9cf9985b0e73c241acfdc820fd"
+  },
+  {
+    "path": "editor/tests/integration/CMakeLists.txt",
+    "deleted": false,
+    "sha256": "35f4f1b3c0295b8c338d30c18ff5e3e7cbecc396c6e3203df66ce48ccad5a0b8"
+  },
+  {
+    "path": "editor/tests/integration/application/application.cpp",
+    "deleted": false,
+    "sha256": "0e80b82b068b828eb52a5b7f3f270790d96d4d83336d578b90eb156823eac3e4"
+  },
+  {
+    "path": "editor/tests/integration/material_activity/compilation.cpp",
+    "deleted": false,
+    "sha256": "65b246dadb746d194a36793a8aa55bc6d4c4948550eec706a1cbb2c6dce76d63"
+  },
+  {
+    "path": "editor/tests/integration/material_activity/ownership.cpp",
+    "deleted": false,
+    "sha256": "faee5c7b659a5b3212265821b0117a2a19ea261eaeba59a26dd6aa56837b216e"
+  },
+  {
+    "path": "editor/tests/integration/project/CMakeLists.txt",
+    "deleted": false,
+    "sha256": "bd9e8c9ffffd165caf16eaeec13d8fcbccdc4be5d05330500a77b67915d48ea5"
+  },
+  {
+    "path": "editor/tests/integration/project/artifact_publication.cpp",
+    "deleted": false,
+    "sha256": "efbf55294a2a49c4e01d34e59eb0a2b6d75b1ddb13ce04716c100ccf35884957"
+  },
+  {
+    "path": "editor/tests/integration/project/model_recipe.cpp",
+    "deleted": false,
+    "sha256": "2c82477459bb8c8e019d0cd90962d36e6504262461954d930ec7302922d7dca2"
+  },
+  {
+    "path": "editor/tests/integration/project/panels.cpp",
+    "deleted": false,
+    "sha256": "4fb61f73b86e96feb3f9315dc42bfcc5276f93b55844f787954d530e5175d633"
+  },
+  {
+    "path": "editor/tests/integration/project/scene_configuration.cpp",
+    "deleted": false,
+    "sha256": "fb8776649ec7e4122249a2ab5a24de304acdb553d8cfa1cb4efec8e7d6cf5b5f"
+  },
+  {
+    "path": "editor/tests/integration/scene_script/CMakeLists.txt",
+    "deleted": false,
+    "sha256": "f6317b6db53894041f4b2e86812f6139ec7217f8b3a4fefe8ca61fa6976fde87"
+  },
+  {
+    "path": "editor/tests/integration/scene_script/main.cpp",
+    "deleted": false,
+    "sha256": "f78156ae4c8f53e9b759a80557b7cdf64b96683ebf5f40bd581a0b0276741fe2"
+  },
+  {
+    "path": "editor/tests/integration/scene_views/DraftSources.hpp",
+    "deleted": false,
+    "sha256": "23df302db3f7c82311fd0a16eab9f8e7b9c50e7edb388ad9834a0aabed94c7db"
+  },
+  {
+    "path": "editor/tests/integration/scene_views/views.cpp",
+    "deleted": false,
+    "sha256": "abf6036a3b44f2a32fc3a60b7e2f08e32a49e41bbfd76b4771022e57f6381942"
+  },
+  {
+    "path": "editor/tests/integration/session_factories/installation.cpp",
+    "deleted": false,
+    "sha256": "49b9de43c332e086ad1f25dab03d6729887a263a2d974fb25d2c9e5302285d5b"
+  },
+  {
+    "path": "editor/tests/workspace/CMakeLists.txt",
+    "deleted": false,
+    "sha256": "6198870e002ab8fb67d110b177555af550ab670be9a1c9f6fdf9b40a9a241f31"
+  },
+  {
+    "path": "editor/tests/workspace/workspace.cpp",
+    "deleted": false,
+    "sha256": "4431027a14eb36c3568a2d2f17a45f796fa1347077fc88b76620556c435193ed"
+  },
+  {
+    "path": "editor/workbench/material/include/lux/engine/editor/material/MaterialView.hpp",
+    "deleted": false,
+    "sha256": "837bc93f7e53c2e4c19fd6ad0106542ff8d4fd18db4e6277f35d42ad9947f737"
+  },
+  {
+    "path": "editor/workbench/material/src/MaterialView.cpp",
+    "deleted": false,
+    "sha256": "19b08db6347d33bcd5e668b59f4411f9c131fc217dd689d77ab7275c8d59954f"
+  },
+  {
+    "path": "editor/workbench/project/tools/CMakeLists.txt",
+    "deleted": false,
+    "sha256": "ebec364ed921b2ba99ee8f648d4bca5998ad18303bd4e6dd9254edc376034cd8"
+  },
+  {
+    "path": "editor/workbench/project/tools/include/lux/engine/editor/project/ImportView.hpp",
+    "deleted": false,
+    "sha256": "dadc220398e9271f5315b9f1ece679cc550996cd840a301fb3257960ab52fced"
+  },
+  {
+    "path": "editor/workbench/project/tools/include/lux/engine/editor/project/ResultsView.hpp",
+    "deleted": false,
+    "sha256": "ba20000a7de8de6e74d2046ad8d8b123fba861e2cf04a3bf04427bb6890a2b81"
+  },
+  {
+    "path": "editor/workbench/project/tools/include/lux/engine/editor/project/WorkspaceView.hpp",
+    "deleted": false,
+    "sha256": "61f1c5fc8de55e9e2ad058ad749fe100be5881bf43ad1dd363032ed37f3e159b"
+  },
+  {
+    "path": "editor/workbench/project/tools/src/ImportView.cpp",
+    "deleted": false,
+    "sha256": "82132b99277d26d80b0746a7ae55d0a1f2f724c1040ef0f8313b0506979a8d19"
+  },
+  {
+    "path": "editor/workbench/project/tools/src/ResultsView.cpp",
+    "deleted": false,
+    "sha256": "5890a5004095ceabf8f95cf0679faa9cf44b7383829f5ee5fdc58e4a5cd52f12"
+  },
+  {
+    "path": "editor/workbench/project/tools/src/WorkspaceView.cpp",
+    "deleted": false,
+    "sha256": "16cead677ceca3470b596358afa6be49d174c5dda209afabb0bb889fd859376e"
+  },
+  {
+    "path": "editor/workbench/scene/include/lux/engine/editor/scene/SceneConfigurationElement.hpp",
+    "deleted": false,
+    "sha256": "c072e9990f422a41083295a97a6cc6f3ffe667eee9408b45401c10b4977df4f5"
+  },
+  {
+    "path": "editor/workbench/scene/src/SceneConfigurationElement.cpp",
+    "deleted": false,
+    "sha256": "9af4039a96dc477733c6c3acd23941108b4919e1d765e11cd8124f485670d34a"
+  },
+  {
+    "path": "editor/workbench/scene/src/SceneConfigurationView.cpp",
+    "deleted": false,
+    "sha256": "e720a01968b060d72ef9974b20377c6855df99e944b17dd3b798bb278e3e71d6"
+  },
+  {
+    "path": "engine/domain/simulation/builtin_systems/script/CMakeLists.txt",
+    "deleted": false,
+    "sha256": "fdffc2ea790eda061019cd2b7e0296293a59443c49e70409452ac63343bd0330"
+  },
+  {
+    "path": "engine/domain/simulation/builtin_systems/script/pinclude/lux/engine/simulation/script/ScriptInstances.hpp",
+    "deleted": false,
+    "sha256": "8276bb779da6012d2cc388e4087ecb597467e1293e41a1e82508af38852a4737"
+  },
+  {
+    "path": "engine/domain/simulation/builtin_systems/script/src/ScriptInstances.cpp",
+    "deleted": false,
+    "sha256": "954780720e3ad6e7a126d9fcaee867daed81b19bfbbb088ef886df2b711265bb"
+  },
+  {
+    "path": "engine/domain/simulation/builtin_systems/script/src/ScriptPreparer.cpp",
+    "deleted": false,
+    "sha256": "82efbf0115b6569e25e7d7b3289869c960885e43bd6bd4dd538f2ebf7b92b394"
+  },
+  {
+    "path": "engine/domain/simulation/scripting/core/include/lux/engine/simulation/scripting/ScriptApiCapability.hpp",
+    "deleted": false,
+    "sha256": "1d75c169ce0ea84794cf535babaea0dc5ac419872dc059b26118f49e19d666e0"
+  },
+  {
+    "path": "engine/domain/simulation/scripting/lua/include/lux/engine/simulation/scripting/lua/LuaScriptAbilityProjection.hpp",
+    "deleted": false,
+    "sha256": "cc873c475ae31e3e334b04214d37e467506d9fd949a9842938be7984140fa8dc"
+  },
+  {
+    "path": "engine/domain/simulation/scripting/lua/src/LuaScriptBackend.cpp",
+    "deleted": false,
+    "sha256": "f1f6cb8fb4fc122717102d12891769480a0eebdc842123e92fb7f29175f34779"
+  },
+  {
+    "path": "engine/process/asset_loading/CMakeLists.txt",
+    "deleted": false,
+    "sha256": "64ae7c07f7413a55dfe8acb796c51f6eb5bd67036c4cf92c23d2658f65c4d37a"
+  },
+  {
+    "path": "engine/process/asset_loading/include/lux/engine/process/asset_loading/AssetLoadSender.hpp",
+    "deleted": false,
+    "sha256": "e93a1b9d41cd75e2a627e5215d4080c152ed3a05f892842839601ac5441952f8"
+  },
+  {
+    "path": "engine/process/asset_loading/src/AssetReadOverlay.cpp",
+    "deleted": false,
+    "sha256": "a9e23dfe239fb85c1d321513ae572427d4ea0d8d298ad2b557cca960533c5d63"
+  },
+  {
+    "path": "engine/process/asset_loading/src/VfsAssetReadEndpoint.cpp",
+    "deleted": false,
+    "sha256": "272e75a9728bc4048c9f03964035acab78619ebff88c32c0078309252538f511"
+  },
+  {
+    "path": "engine/process/asset_loading/test/bounded_read.cpp",
+    "deleted": false,
+    "sha256": "e0f682701762fe32b83c8f3955204860cf58ee440bd18d06a986f40763ba386c"
+  },
+  {
+    "path": "engine/process/asset_loading/test/overlay.cpp",
+    "deleted": false,
+    "sha256": "b6fd0e0d2e96e27473fe9e55b88dd9971fbfb1d7d525f0ce221238455ff374c4"
+  },
+  {
+    "path": "engine/scene/CMakeLists.txt",
+    "deleted": false,
+    "sha256": "3fe8c385ec08f9f93bcea570154b04a8c49834f846fd6c08fc9a89f915d27079"
+  },
+  {
+    "path": "engine/scene/integration/script/CMakeLists.txt",
+    "deleted": false,
+    "sha256": "79cf1b98dc4f2e009e52a610e9595f2dbf89e017f574af4d0436e0fcc3b42dcd"
+  },
+  {
+    "path": "engine/scene/integration/script/include/lux/engine/scene/ScriptRuntimeSystem.hpp",
+    "deleted": false,
+    "sha256": "70814953782160a4fd41c5d6fa862fc0ce03e1e0c7b3dce67ce241d2b22682d5"
+  },
+  {
+    "path": "engine/scene/integration/script/src/ScriptRuntimeSystem.cpp",
+    "deleted": false,
+    "sha256": "1e6bde6c1106a3a11ba0f4d8f54fd7755f6cba37951e565030d82052adf3d69b"
+  },
+  {
+    "path": "engine/scene/integration/script/test/AssetSceneFixture.hpp",
+    "deleted": false,
+    "sha256": "47c3f46f01ea58e049ca0a19303e07be5dbf425537fdc75ec73a04b202e23faf"
+  },
+  {
+    "path": "engine/scene/integration/script/test/asset_scene.cpp",
+    "deleted": false,
+    "sha256": "869fe1e14fdbaa93b13f2d282fc398fe00c3b92b9b7c280924fac4c7e92ff382"
+  },
+  {
+    "path": "engine/scene/integration/script/test/symbols.json",
+    "deleted": false,
+    "sha256": "5d82ec0dcf98a9b4f0e4a81bff8ba0c5dcd37b5453824b2ba1bff0aef7e5c96c"
+  },
+  {
+    "path": "engine/scene/scripting/assets/CMakeLists.txt",
+    "deleted": false,
+    "sha256": "ab356d346af93b266cbddffc1c2ebba203c9aed94efbd516347f3c7d773b7dfe"
+  },
+  {
+    "path": "engine/scene/scripting/assets/README.md",
+    "deleted": false,
+    "sha256": "79abf005b0ad452fed0cb6f2f80d102926f6daf51d6a517cd0a5f75b8a617df2"
+  },
+  {
+    "path": "engine/scene/scripting/assets/include/lux/engine/scene/scripting/AssetAbility.hpp",
+    "deleted": false,
+    "sha256": "63c4ef342130efbef4ae93cb0691d4751913aa51f6070ddc549ea9141a96a59f"
+  },
+  {
+    "path": "engine/scene/scripting/assets/include/lux/engine/scene/scripting/ScriptAssetAccess.hpp",
+    "deleted": false,
+    "sha256": "e3f0481978bda7fe9b714c67e6c38c93426a78c872e77930174af9ef929a5ffb"
+  },
+  {
+    "path": "engine/scene/scripting/assets/include/lux/engine/scene/scripting/ScriptAssetResult.hpp",
+    "deleted": false,
+    "sha256": "6028e4f01d6864e499e3ed377a5c32d06dff643222ffce687a3bbf99f615855e"
+  },
+  {
+    "path": "engine/scene/scripting/assets/src/AssetAbility.cpp",
+    "deleted": false,
+    "sha256": "7fec2e4da016fa12f51b5bdfa82b2957a7019e0c22ab99e5bedb33352a3a49f9"
+  },
+  {
+    "path": "engine/scene/scripting/assets/src/ScriptAssetAccess.cpp",
+    "deleted": false,
+    "sha256": "dd56f1f453ae7ab7eca1220c3af241e40780fab133d86c24ce2a9f28455d34ba"
+  },
+  {
+    "path": "engine/scene/scripting/assets/test/PluginProbe.hpp",
+    "deleted": false,
+    "sha256": "7e8fa09e742537298a4262006e2dd045d2973ed557d01b1f357462ea2b7ce184"
+  },
+  {
+    "path": "engine/scene/scripting/assets/test/access.cpp",
+    "deleted": false,
+    "sha256": "20659cea912aad7421fe81ddc81ad15d6739a4f6bc115cb8c3fa71288ef254ed"
+  },
+  {
+    "path": "engine/scene/scripting/assets/test/lifecycle.cpp",
+    "deleted": false,
+    "sha256": "4251ec6ea4c3d6a4afd5cf02d080303fcca7981af919b1fe251af08b59179ad3"
+  },
+  {
+    "path": "engine/scene/scripting/assets/test/plugin.cpp",
+    "deleted": false,
+    "sha256": "39c5decfa48b92c068feee8e10584be11df41adb244b8216393c6b14f9e08e13"
+  },
+  {
+    "path": "engine/scene/scripting/assets/test/plugin.def",
+    "deleted": false,
+    "sha256": "51380497f25fd972b8c5440776a8207f8f0c4d49b070d3adc0b64ca73d948fb4"
+  },
+  {
+    "path": "engine/scene/scripting/assets/test/plugin_lifetime.cpp",
+    "deleted": false,
+    "sha256": "3f6e7a7b052f269b7663ecbea39b62d026f618fc8e612d1f792e6b756aeccd60"
+  },
+  {
+    "path": "engine/scene/scripting/assets_lua/CMakeLists.txt",
+    "deleted": false,
+    "sha256": "fa4611a0193bbbc6809e41aaa55ec89e530407ddb97e70843098aeab90416bcd"
+  },
+  {
+    "path": "engine/scene/scripting/assets_lua/include/lux/engine/scene/scripting/AssetAbilityLua.hpp",
+    "deleted": false,
+    "sha256": "87ab99de53bbc178b4f2e98654e8a45286c93f2ff17044a8268d8ef038e272ac"
+  },
+  {
+    "path": "engine/scene/scripting/assets_lua/src/AssetAbilityLua.cpp",
+    "deleted": false,
+    "sha256": "02a394b001402fdbcd3a71bf08c273f6f58e3312ae4809269518b12b8e9a34cc"
+  },
+  {
+    "path": "engine/scene/scripting/assets_lua/test/assets.lua",
+    "deleted": false,
+    "sha256": "5b8be980987dc98fda1bc01650ff1c473541bd6ff8fcbb4a3836c2a24784cf83"
+  },
+  {
+    "path": "engine/scene/scripting/assets_lua/test/runtime.cpp",
+    "deleted": false,
+    "sha256": "d7d4f933cad8322cf64a7262f59bc3a9a3cf058b82eea30b1f5366e277414442"
+  },
+  {
+    "path": "engine/scene/scripting/assets_lua/test/values.cpp",
+    "deleted": false,
+    "sha256": "1687bd6b61254f0f66bb8050dd2bb37f5259efc13e8957611deceff94c4ccc9d"
+  },
+  {
+    "path": "engine/scene/scripting/skeleton/CMakeLists.txt",
+    "deleted": false,
+    "sha256": "40a3d976970d450313bd76e8321ea30c81fa205292d9f6d9c51c715d8d740fdc"
+  },
+  {
+    "path": "engine/scene/scripting/skeleton/include/lux/engine/scene/scripting/SkeletonAbility.hpp",
+    "deleted": false,
+    "sha256": "dcfdae5cc1ab24722454782cc935b618d8a68180f607c938f4378fe84bf40633"
+  },
+  {
+    "path": "engine/scene/scripting/skeleton/src/SkeletonAbility.cpp",
+    "deleted": false,
+    "sha256": "c13f69882319888ae000c86ea545796fc294ae72ec6b66c983cb24b4d9387e61"
+  },
+  {
+    "path": "modules/function/script/lua/include/lux/engine/function/script/lua/LuaValue.hpp",
+    "deleted": false,
+    "sha256": "e9980310a4d7240b63b544300562d68c7862725a2ac700818f150117fabbde50"
+  },
+  {
+    "path": "modules/function/script/lua/include/lux/engine/function/script/lua/ScriptAbilityLua.hpp",
+    "deleted": false,
+    "sha256": "e0928c059a8d13858ecdc2bf04199b2f704feba232ed990574daeef14fff8e46"
+  },
+  {
+    "path": "modules/function/script/lua/src/LuaValue.cpp",
+    "deleted": false,
+    "sha256": "cd15ccf0b3ef16e5f5e81a9472d67e6a9e233f710c7865c0205221cd599ba591"
+  },
+  {
+    "path": "modules/resource/asset/include/lux/engine/resource/asset/storage/AssetProvider.hpp",
+    "deleted": false,
+    "sha256": "23ad98ef2c6020176ad768f3e4c983babffe7584559530f4b5396833d6c7c5d4"
+  },
+  {
+    "path": "modules/resource/asset/include/lux/engine/resource/asset/storage/AssetVfs.hpp",
+    "deleted": false,
+    "sha256": "d3ba7668274f07c53f7e82e83897c55e3f681a19871b075e453f3708e150de67"
+  },
+  {
+    "path": "modules/resource/asset/include/lux/engine/resource/asset/storage/pak/PakAssetProvider.hpp",
+    "deleted": false,
+    "sha256": "5707cde6c266b50d0841242419d069f108c749571f337ccefd235854f31be11e"
+  },
+  {
+    "path": "modules/resource/asset/src/storage/AssetVfs.cpp",
+    "deleted": false,
+    "sha256": "1698129ceeda2d0e56fd08267131574bc080c6f8b9fdd4531371e7b588c7c188"
+  },
+  {
+    "path": "modules/resource/asset/src/storage/pak/PakAssetProvider.cpp",
+    "deleted": false,
+    "sha256": "4ffefc21021e2dddad89e71591225c633d76abdae1b67fefea86f797c76f12be"
+  }
+]

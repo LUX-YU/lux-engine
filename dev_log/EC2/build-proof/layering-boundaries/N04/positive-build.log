@@ -1,0 +1,4 @@
+[1/4] Building CXX object editor\workbench\desktop\CMakeFiles\view_api.dir\view_api.cpp.obj
+[2/4] Building CXX object editor\activities\workspace\CMakeFiles\workspace_store.dir\workspace_store.cpp.obj
+[3/4] Linking CXX static library editor\workbench\desktop\view_api.lib
+[4/4] Linking CXX static library editor\activities\workspace\workspace_store.lib

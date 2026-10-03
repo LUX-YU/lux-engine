@@ -1,0 +1,6 @@
+[1/6] Building CXX object editor\editing\CMakeFiles\editor_contracts.dir\editor_contracts.cpp.obj
+[2/6] Building CXX object editor\activities\persistence\CMakeFiles\editor_persistence.dir\editor_persistence.cpp.obj
+[3/6] Building CXX object engine\scene\scripting\assets\CMakeFiles\scene_script_assets.dir\scene_script_assets.cpp.obj
+[4/6] Linking CXX static library editor\editing\editor_contracts.lib
+[5/6] Linking CXX static library editor\activities\persistence\editor_persistence.lib
+[6/6] Linking CXX static library engine\scene\scripting\assets\scene_script_assets.lib

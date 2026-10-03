@@ -1,0 +1,18 @@
+-- Configuring incomplete, errors occurred!
+CMake Error at E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/cmake/EditorArchitectureChecks.cmake:167 (message):
+  Editor migration boundary check failed:
+
+  {"status": "FAIL", "findings": [{"rule":
+  "FOUNDATION_UNRESOLVED_DEPENDENCY", "path": "editor_contracts", "detail":
+  "editor_contracts -> missing::imported (LINK_LIBRARIES)"}, {"rule":
+  "FOUNDATION_UNRESOLVED_DEPENDENCY", "path": "editor_contracts", "detail":
+  "editor_contracts -> missing::imported (INTERFACE_LINK_LIBRARIES)"},
+  {"rule": "unclassified_dependency", "path": "editor_contracts", "detail":
+  "editor_contracts -> missing::imported (LINK_LIBRARIES)"}, {"rule":
+  "unclassified_dependency", "path": "editor_contracts", "detail":
+  "editor_contracts -> missing::imported (INTERFACE_LINK_LIBRARIES)"}]}
+
+Call Stack (most recent call first):
+  CMakeLists.txt:12 (lux_editor_check_architecture)
+
+

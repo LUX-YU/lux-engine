@@ -1,0 +1,12 @@
+-- Configuring incomplete, errors occurred!
+CMake Error at E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/cmake/EditorArchitectureChecks.cmake:167 (message):
+  Editor migration boundary check failed:
+
+  {"status": "FAIL", "findings": [{"rule": "unclassified_dependency", "path":
+  "layering_new_target", "detail": "target has no reviewed
+  layer/role/capability"}]}
+
+Call Stack (most recent call first):
+  CMakeLists.txt:12 (lux_editor_check_architecture)
+
+

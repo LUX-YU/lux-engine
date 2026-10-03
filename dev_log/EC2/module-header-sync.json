@@ -1,0 +1,77 @@
+[
+  {
+    "source": "modules/function/script/lua/include/lux/engine/function/script/lua/LuaValue.hpp",
+    "destination": "E:\\SyncForder\\CodeRepos\\install\\Debug\\include\\lux\\engine\\function\\script\\lua\\LuaValue.hpp",
+    "sha256": "35699047e824f4e4377014f4098a850971e9d5e8e6008d548bade10a7611ac55"
+  },
+  {
+    "source": "modules/function/script/lua/include/lux/engine/function/script/lua/LuaValue.hpp",
+    "destination": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\function\\script\\lua\\LuaValue.hpp",
+    "sha256": "35699047e824f4e4377014f4098a850971e9d5e8e6008d548bade10a7611ac55"
+  },
+  {
+    "source": "modules/function/script/lua/include/lux/engine/function/script/lua/LuaValue.hpp",
+    "destination": "E:\\SyncForder\\CodeRepos\\install\\Android\\lux-engine\\include\\lux\\engine\\function\\script\\lua\\LuaValue.hpp",
+    "sha256": "35699047e824f4e4377014f4098a850971e9d5e8e6008d548bade10a7611ac55"
+  },
+  {
+    "source": "modules/function/script/lua/include/lux/engine/function/script/lua/ScriptAbilityLua.hpp",
+    "destination": "E:\\SyncForder\\CodeRepos\\install\\Debug\\include\\lux\\engine\\function\\script\\lua\\ScriptAbilityLua.hpp",
+    "sha256": "f2999aaf50a7a9f79eff696ce6f0586b81e686101ea534f5b97150d11436afbb"
+  },
+  {
+    "source": "modules/function/script/lua/include/lux/engine/function/script/lua/ScriptAbilityLua.hpp",
+    "destination": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\function\\script\\lua\\ScriptAbilityLua.hpp",
+    "sha256": "f2999aaf50a7a9f79eff696ce6f0586b81e686101ea534f5b97150d11436afbb"
+  },
+  {
+    "source": "modules/function/script/lua/include/lux/engine/function/script/lua/ScriptAbilityLua.hpp",
+    "destination": "E:\\SyncForder\\CodeRepos\\install\\Android\\lux-engine\\include\\lux\\engine\\function\\script\\lua\\ScriptAbilityLua.hpp",
+    "sha256": "f2999aaf50a7a9f79eff696ce6f0586b81e686101ea534f5b97150d11436afbb"
+  },
+  {
+    "source": "modules/resource/asset/include/lux/engine/resource/asset/storage/AssetProvider.hpp",
+    "destination": "E:\\SyncForder\\CodeRepos\\install\\Debug\\include\\lux\\engine\\resource\\asset\\storage\\AssetProvider.hpp",
+    "sha256": "7d192f1e6775ab01b6cf9d0dbcca940fcda5a79ed5372ebf2467ceb5e82b8b10"
+  },
+  {
+    "source": "modules/resource/asset/include/lux/engine/resource/asset/storage/AssetProvider.hpp",
+    "destination": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\resource\\asset\\storage\\AssetProvider.hpp",
+    "sha256": "7d192f1e6775ab01b6cf9d0dbcca940fcda5a79ed5372ebf2467ceb5e82b8b10"
+  },
+  {
+    "source": "modules/resource/asset/include/lux/engine/resource/asset/storage/AssetProvider.hpp",
+    "destination": "E:\\SyncForder\\CodeRepos\\install\\Android\\lux-engine\\include\\lux\\engine\\resource\\asset\\storage\\AssetProvider.hpp",
+    "sha256": "7d192f1e6775ab01b6cf9d0dbcca940fcda5a79ed5372ebf2467ceb5e82b8b10"
+  },
+  {
+    "source": "modules/resource/asset/include/lux/engine/resource/asset/storage/AssetVfs.hpp",
+    "destination": "E:\\SyncForder\\CodeRepos\\install\\Debug\\include\\lux\\engine\\resource\\asset\\storage\\AssetVfs.hpp",
+    "sha256": "fe631954cbfc71191484d5191804540e34452f777129cc8b9ccdc0dfbf270ec5"
+  },
+  {
+    "source": "modules/resource/asset/include/lux/engine/resource/asset/storage/AssetVfs.hpp",
+    "destination": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\resource\\asset\\storage\\AssetVfs.hpp",
+    "sha256": "fe631954cbfc71191484d5191804540e34452f777129cc8b9ccdc0dfbf270ec5"
+  },
+  {
+    "source": "modules/resource/asset/include/lux/engine/resource/asset/storage/AssetVfs.hpp",
+    "destination": "E:\\SyncForder\\CodeRepos\\install\\Android\\lux-engine\\include\\lux\\engine\\resource\\asset\\storage\\AssetVfs.hpp",
+    "sha256": "fe631954cbfc71191484d5191804540e34452f777129cc8b9ccdc0dfbf270ec5"
+  },
+  {
+    "source": "modules/resource/asset/include/lux/engine/resource/asset/storage/pak/PakAssetProvider.hpp",
+    "destination": "E:\\SyncForder\\CodeRepos\\install\\Debug\\include\\lux\\engine\\resource\\asset\\storage\\pak\\PakAssetProvider.hpp",
+    "sha256": "bf63e9a524ca7b80030c573270389b6802a0412eeacc033103dfb591ce5ed452"
+  },
+  {
+    "source": "modules/resource/asset/include/lux/engine/resource/asset/storage/pak/PakAssetProvider.hpp",
+    "destination": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\resource\\asset\\storage\\pak\\PakAssetProvider.hpp",
+    "sha256": "bf63e9a524ca7b80030c573270389b6802a0412eeacc033103dfb591ce5ed452"
+  },
+  {
+    "source": "modules/resource/asset/include/lux/engine/resource/asset/storage/pak/PakAssetProvider.hpp",
+    "destination": "E:\\SyncForder\\CodeRepos\\install\\Android\\lux-engine\\include\\lux\\engine\\resource\\asset\\storage\\pak\\PakAssetProvider.hpp",
+    "sha256": "bf63e9a524ca7b80030c573270389b6802a0412eeacc033103dfb591ce5ed452"
+  }
+]

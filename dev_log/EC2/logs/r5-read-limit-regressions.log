@@ -1,0 +1,28 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dev
+    Start   7: process.asset_read_overlay
+1/4 Test   #7: process.asset_read_overlay .............   Passed    0.03 sec
+    Start   8: process.asset_bounded_read
+2/4 Test   #8: process.asset_bounded_read .............Exit code 0xc0000409
+***Exception:   2.60 sec
+Assertion failed: asset::writePakFile(path, {{id, 0, "payload", {}, image}}), file E:\SyncForder\CodeRepos\lux-engine-ec2\engine\process\asset_loading\test\bounded_read.cpp, line 20
+
+    Start  86: editor.project_publication_operation
+3/4 Test  #86: editor.project_publication_operation ...   Passed    0.55 sec
+    Start 131: editor.application
+4/4 Test #131: editor.application .....................   Passed    1.53 sec
+
+75% tests passed, 1 tests failed out of 4
+
+Label Time Summary:
+EC2       =   2.60 sec*proc (1 test)
+P12       =   2.07 sec*proc (2 tests)
+editor    =   2.07 sec*proc (2 tests)
+gpu       =   1.53 sec*proc (1 test)
+native    =   3.14 sec*proc (2 tests)
+
+Total Test time (real) =   5.06 sec
+
+The following tests FAILED:
+	  8 - process.asset_bounded_read (Exit code 0xc0000409
+) EC2 native
+Errors while running CTest

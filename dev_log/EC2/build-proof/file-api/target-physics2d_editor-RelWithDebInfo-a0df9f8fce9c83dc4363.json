@@ -1,0 +1,1214 @@
+{
+	"artifacts" : 
+	[
+		{
+			"path" : "bin/physics2d_editor.dll"
+		},
+		{
+			"path" : "lib/physics2d_editor.lib"
+		},
+		{
+			"path" : "bin/physics2d_editor.pdb"
+		}
+	],
+	"backtrace" : 3,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"_add_library",
+			"add_library",
+			"add_component",
+			"install",
+			"lux_engine_install_components",
+			"target_link_libraries",
+			"lux_add_plugin_exports",
+			"include",
+			"add_dependencies",
+			"lux_target_add_codegen",
+			"engine_target_add_type_runtime_info",
+			"add_compile_options",
+			"target_compile_definitions",
+			"target_include_directories",
+			"__component_set_include_directories",
+			"component_include_directories",
+			"target_sources"
+		],
+		"files" : 
+		[
+			"D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+			"E:/SyncForder/CodeRepos/install/EC2-dd54847ee281/share/lux-cmake-toolset/component/component.cmake",
+			"editor/application/extensions/builtin/CMakeLists.txt",
+			"cmake/InstallComponents.cmake",
+			"editor/application/extensions/CMakeLists.txt",
+			"editor/activities/sessions/CMakeLists.txt",
+			"editor/workbench/desktop/CMakeLists.txt",
+			"modules/function/ui/CMakeLists.txt",
+			"editor/workbench/scene/api/CMakeLists.txt",
+			"editor/authoring/configuration/CMakeLists.txt",
+			"modules/core/meta/CMakeLists.txt",
+			"engine/domain/simulation/builtin_systems/physics2d/CMakeLists.txt",
+			"engine/domain/simulation/ecs/transform/CMakeLists.txt",
+			"editor/activities/commands/CMakeLists.txt",
+			"editor/editing/CMakeLists.txt",
+			"editor/authoring/scene/CMakeLists.txt",
+			"engine/scene/asset/CMakeLists.txt",
+			"engine/domain/world/asset/CMakeLists.txt",
+			"engine/domain/world/description/CMakeLists.txt",
+			"cmake/LuxPlugins.cmake",
+			"cmake/BuiltinPlugins.cmake",
+			"CMakeLists.txt",
+			"engine/project/plugins/CMakeLists.txt",
+			"engine/domain/simulation/composition/CMakeLists.txt",
+			"engine/domain/simulation/system/CMakeLists.txt",
+			"engine/domain/simulation/scripting/core/CMakeLists.txt",
+			"modules/function/render/client/CMakeLists.txt",
+			"engine/scene/system/CMakeLists.txt",
+			"engine/domain/simulation/description/CMakeLists.txt",
+			"E:/SyncForder/CodeRepos/install/EC2-dd54847ee281/share/lux-cxx/reflection_generator/cmake_scripts/meta.cmake",
+			"modules/core/meta/cmake/engine_type_runtime_info.cmake",
+			"E:/SyncForder/CodeRepos/install/EC2-dd54847ee281/share/lux-cmake-toolset/component/component_include_directories.cmake"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 47,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 99,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 653,
+				"parent" : 2
+			},
+			{
+				"command" : 4,
+				"file" : 2,
+				"line" : 63,
+				"parent" : 0
+			},
+			{
+				"command" : 3,
+				"file" : 3,
+				"line" : 54,
+				"parent" : 4
+			},
+			{
+				"command" : 5,
+				"file" : 2,
+				"line" : 52,
+				"parent" : 0
+			},
+			{
+				"file" : 4
+			},
+			{
+				"command" : 5,
+				"file" : 4,
+				"line" : 24,
+				"parent" : 7
+			},
+			{
+				"file" : 5
+			},
+			{
+				"command" : 5,
+				"file" : 5,
+				"line" : 5,
+				"parent" : 9
+			},
+			{
+				"file" : 6
+			},
+			{
+				"command" : 5,
+				"file" : 6,
+				"line" : 22,
+				"parent" : 11
+			},
+			{
+				"file" : 7
+			},
+			{
+				"command" : 5,
+				"file" : 7,
+				"line" : 56,
+				"parent" : 13
+			},
+			{
+				"file" : 8
+			},
+			{
+				"command" : 5,
+				"file" : 8,
+				"line" : 3,
+				"parent" : 15
+			},
+			{
+				"file" : 9
+			},
+			{
+				"command" : 5,
+				"file" : 9,
+				"line" : 11,
+				"parent" : 17
+			},
+			{
+				"file" : 10
+			},
+			{
+				"command" : 5,
+				"file" : 10,
+				"line" : 54,
+				"parent" : 19
+			},
+			{
+				"file" : 11
+			},
+			{
+				"command" : 5,
+				"file" : 11,
+				"line" : 46,
+				"parent" : 21
+			},
+			{
+				"file" : 12
+			},
+			{
+				"command" : 5,
+				"file" : 12,
+				"line" : 31,
+				"parent" : 23
+			},
+			{
+				"file" : 13
+			},
+			{
+				"command" : 5,
+				"file" : 13,
+				"line" : 5,
+				"parent" : 25
+			},
+			{
+				"file" : 14
+			},
+			{
+				"command" : 5,
+				"file" : 14,
+				"line" : 53,
+				"parent" : 27
+			},
+			{
+				"file" : 15
+			},
+			{
+				"command" : 5,
+				"file" : 15,
+				"line" : 6,
+				"parent" : 29
+			},
+			{
+				"file" : 16
+			},
+			{
+				"command" : 5,
+				"file" : 16,
+				"line" : 21,
+				"parent" : 31
+			},
+			{
+				"file" : 17
+			},
+			{
+				"command" : 5,
+				"file" : 17,
+				"line" : 29,
+				"parent" : 33
+			},
+			{
+				"file" : 18
+			},
+			{
+				"command" : 5,
+				"file" : 18,
+				"line" : 28,
+				"parent" : 35
+			},
+			{
+				"file" : 21
+			},
+			{
+				"command" : 7,
+				"file" : 21,
+				"line" : 114,
+				"parent" : 37
+			},
+			{
+				"file" : 20,
+				"parent" : 38
+			},
+			{
+				"command" : 6,
+				"file" : 20,
+				"line" : 27,
+				"parent" : 39
+			},
+			{
+				"command" : 5,
+				"file" : 19,
+				"line" : 59,
+				"parent" : 40
+			},
+			{
+				"file" : 22
+			},
+			{
+				"command" : 5,
+				"file" : 22,
+				"line" : 10,
+				"parent" : 42
+			},
+			{
+				"file" : 23
+			},
+			{
+				"command" : 5,
+				"file" : 23,
+				"line" : 26,
+				"parent" : 44
+			},
+			{
+				"file" : 24
+			},
+			{
+				"command" : 5,
+				"file" : 24,
+				"line" : 28,
+				"parent" : 46
+			},
+			{
+				"file" : 25
+			},
+			{
+				"command" : 5,
+				"file" : 25,
+				"line" : 13,
+				"parent" : 48
+			},
+			{
+				"file" : 26
+			},
+			{
+				"command" : 5,
+				"file" : 26,
+				"line" : 38,
+				"parent" : 50
+			},
+			{
+				"file" : 27
+			},
+			{
+				"command" : 5,
+				"file" : 27,
+				"line" : 12,
+				"parent" : 52
+			},
+			{
+				"file" : 28
+			},
+			{
+				"command" : 5,
+				"file" : 28,
+				"line" : 41,
+				"parent" : 54
+			},
+			{
+				"command" : 8,
+				"file" : 19,
+				"line" : 78,
+				"parent" : 40
+			},
+			{
+				"command" : 10,
+				"file" : 2,
+				"line" : 56,
+				"parent" : 0
+			},
+			{
+				"command" : 9,
+				"file" : 30,
+				"line" : 186,
+				"parent" : 57
+			},
+			{
+				"command" : 8,
+				"file" : 29,
+				"line" : 378,
+				"parent" : 58
+			},
+			{
+				"command" : 11,
+				"file" : 21,
+				"line" : 25,
+				"parent" : 37
+			},
+			{
+				"command" : 12,
+				"file" : 2,
+				"line" : 51,
+				"parent" : 0
+			},
+			{
+				"command" : 15,
+				"file" : 2,
+				"line" : 49,
+				"parent" : 0
+			},
+			{
+				"command" : 14,
+				"file" : 31,
+				"line" : 67,
+				"parent" : 62
+			},
+			{
+				"command" : 13,
+				"file" : 31,
+				"line" : 25,
+				"parent" : 63
+			},
+			{
+				"command" : 13,
+				"file" : 29,
+				"line" : 386,
+				"parent" : 58
+			},
+			{
+				"command" : 13,
+				"file" : 30,
+				"line" : 235,
+				"parent" : 57
+			},
+			{
+				"command" : 16,
+				"file" : 29,
+				"line" : 380,
+				"parent" : 58
+			},
+			{
+				"command" : 16,
+				"file" : 19,
+				"line" : 58,
+				"parent" : 40
+			}
+		]
+	},
+	"compileGroups" : 
+	[
+		{
+			"compileCommandFragments" : 
+			[
+				{
+					"fragment" : "/DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD"
+				},
+				{
+					"backtrace" : 60,
+					"fragment" : "/utf-8"
+				},
+				{
+					"backtrace" : 60,
+					"fragment" : "/permissive-"
+				},
+				{
+					"backtrace" : 60,
+					"fragment" : "/Zc:__cplusplus"
+				},
+				{
+					"backtrace" : 60,
+					"fragment" : "/Zc:preprocessor"
+				}
+			],
+			"defines" : 
+			[
+				{
+					"backtrace" : 6,
+					"define" : "ENTT_NO_ETO"
+				},
+				{
+					"backtrace" : 61,
+					"define" : "LUX_PHYSICS2D_EDITOR_LIBRARY"
+				},
+				{
+					"define" : "physics2d_editor_EXPORTS"
+				}
+			],
+			"includes" : 
+			[
+				{
+					"backtrace" : 64,
+					"path" : "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/gen/include"
+				},
+				{
+					"backtrace" : 65,
+					"path" : "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/editor/application/extensions/builtin/meta_gen"
+				},
+				{
+					"backtrace" : 66,
+					"path" : "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/editor/application/extensions/builtin/physics_gen"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/domain/simulation/builtin_systems/physics2d/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/domain/simulation/builtin_systems/physics2d/generated/physics2d_simulation/script_abilities"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/function/script/core/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/core/semantic/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/domain/simulation/system/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/domain/simulation/description/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/domain/system/identity/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/domain/system/description/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/core/serialization/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/core/type_info/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/domain/simulation/ecs/core/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/domain/simulation/ecs/transform/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/domain/simulation/ecs/schema/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/domain/world/identity/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/domain/simulation/ecs/snapshot/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/domain/simulation/ecs/hierarchy/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/core/math/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/editor/application/extensions/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/editor/activities/commands/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/editor/editing/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/resource/identity/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/editor/activities/sessions/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/editor/activities/persistence/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/resource/asset/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/resource/description/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/editor/workbench/desktop/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/function/ui/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/core/object/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/function/render/client/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/editor/authoring/layout/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/editor/workbench/scene/api/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/editor/authoring/configuration/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/core/meta/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/editor/authoring/scene/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/scene/asset/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/scene/description/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/domain/world/asset/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/domain/world/description/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/domain/world/partition/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/domain/partition/identity/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/domain/simulation/asset/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/domain/world/storage/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/scene/integration/world_materialization/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/scene/components/camera/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/domain/simulation/ecs/visual/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/project/plugins/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/platform/dynamic_library/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/domain/simulation/composition/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/domain/simulation/ecs/task/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/core/task/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/domain/simulation/scripting/core/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/modules/function/script/artifact/include"
+				},
+				{
+					"backtrace" : 6,
+					"path" : "E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/engine/scene/system/include"
+				},
+				{
+					"backtrace" : 6,
+					"isSystem" : true,
+					"path" : "E:/SyncForder/CodeRepos/install/EC2-dd54847ee281/include"
+				},
+				{
+					"backtrace" : 6,
+					"isSystem" : true,
+					"path" : "D:/Development/vcpkg/installed/x64-windows/include/eigen3"
+				},
+				{
+					"backtrace" : 6,
+					"isSystem" : true,
+					"path" : "D:/Development/vcpkg/installed/x64-windows/include"
+				},
+				{
+					"backtrace" : 6,
+					"isSystem" : true,
+					"path" : "D:/Development/vcpkg/installed/x64-windows/include/stduuid"
+				}
+			],
+			"language" : "CXX",
+			"languageStandard" : 
+			{
+				"backtraces" : 
+				[
+					6,
+					6,
+					6
+				],
+				"standard" : "20"
+			},
+			"sourceIndexes" : 
+			[
+				0,
+				1,
+				2
+			]
+		}
+	],
+	"dependencies" : 
+	[
+		{
+			"backtrace" : 56,
+			"id" : "physics2d_simulation_plugin_identity::@6890427a1f51a3e7e1df"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "dynamic_library::@17926f360554c679ac00"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "script_core::@023ad226eeb1dfda479d"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "object::@3f64c795d72938f03de3"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "meta::@48360a740c97bcb8cc30"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "serialization::@f3d74b591e1fe7bce8e4"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "task::@a744d1e69ed1d016bf33"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "description::@7b719127e839b48d783c"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "asset::@f166380fe378b4529061"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "script_artifact::@6f6baf858afc44774b73"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "ui::@744f77519ad4bbba6e0c"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "render_client::@286ca0d662065846abce"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "world_partition::@b2bf7258a6f54d64eb47"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "world_description::@7b5a068d3155bc794235"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "world_storage::@a3e8a7fef1bb9389b4da"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "world_asset::@f2c87c8d3f11d681617c"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "domain_system_identity::@8abaa8f9c34049f562d6"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "domain_system_description::@818797bdb0d364f70801"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "simulation_description::@16f04bd09344fd38a478"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "simulation_asset::@cccd20810dfaf5f762a3"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "core::@a1d6ad1aaaa1edf8dea2"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "schema::@187f79f90f03b4c383fe"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "snapshot::@86be79d033cd538a5c0c"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "system::@fb57201a0f01b24d4dc5"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "simulation_composition::@0f0ae8ba3480bc9a566a"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "transform::@71f4d9a52806caffce99"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "hierarchy::@b994b6ea6b99d505d4d9"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "visual::@d5d51b856f9def0240f8"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "physics2d_simulation::@9212da38fdace1afab5e"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "scene_description::@b521ca423a5f32fb134d"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "scene_asset::@ac0feaa506c8c1254603"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "scene_world_materialization::@899e763dcf783829eb82"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "scene_camera::@9971a90ed4b5c5aeb023"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "project_plugins::@fec646640f59547ea209"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "edit_history::@80f09fafaae80a9309ab"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "edit_sessions::@80f09fafaae80a9309ab"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "editor_configuration::@07e3ba29d5ed9fd6901f"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "scene_model::@f7d8f94b87546c6dde97"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "layout_model::@1f730f15664d75f61532"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "editor_persistence::@8e90a241f17365e37f57"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "editor_commands::@554362bfd8948d349368"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "session_factories::@db90c3d6a5eada47f2db"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "editor_extensions::@7d4524ea74d5c4118a54"
+		},
+		{
+			"backtrace" : 6,
+			"id" : "view_host::@88052dbb842e9ea35b88"
+		},
+		{
+			"backtrace" : 59,
+			"id" : "physics2d_editor_configuration_generate::@07ec2ac793a97e147ded"
+		}
+	],
+	"id" : "physics2d_editor::@07ec2ac793a97e147ded",
+	"install" : 
+	{
+		"destinations" : 
+		[
+			{
+				"backtrace" : 5,
+				"path" : "lib"
+			},
+			{
+				"backtrace" : 5,
+				"path" : "bin"
+			}
+		],
+		"prefix" : 
+		{
+			"path" : "E:/SyncForder/CodeRepos/install/EC2-dd54847ee281"
+		}
+	},
+	"link" : 
+	{
+		"commandFragments" : 
+		[
+			{
+				"fragment" : "/machine:x64 /debug /INCREMENTAL",
+				"role" : "flags"
+			},
+			{
+				"backtrace" : 6,
+				"fragment" : "lib\\lux_engine_physics2d_simulation.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 6,
+				"fragment" : "lib\\editor_extensions.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 8,
+				"fragment" : "lib\\editor_commands.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 8,
+				"fragment" : "lib\\session_factories.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 10,
+				"fragment" : "lib\\editor_persistence.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 8,
+				"fragment" : "lib\\view_host.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 12,
+				"fragment" : "lib\\layout_model.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 6,
+				"fragment" : "lib\\ui.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 14,
+				"fragment" : "lib\\lux_engine_core_object.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 14,
+				"fragment" : "lib\\render_client.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 16,
+				"fragment" : "lib\\editor_configuration.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 18,
+				"fragment" : "lib\\lux_engine_core_meta.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 20,
+				"fragment" : "E:\\SyncForder\\CodeRepos\\install\\EC2-dd54847ee281\\lib\\reflection_runtime.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 16,
+				"fragment" : "lib\\scene_model.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 22,
+				"fragment" : "lib\\lux_engine_simulation_ecs_transform.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 24,
+				"fragment" : "lib\\lux_engine_simulation_ecs_hierarchy.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 26,
+				"fragment" : "lib\\lux_engine_edit_sessions.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 28,
+				"fragment" : "lib\\lux_engine_edit_history.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 30,
+				"fragment" : "lib\\lux_engine_scene_asset.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 32,
+				"fragment" : "lib\\lux_engine_world_asset.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 32,
+				"fragment" : "lib\\lux_engine_simulation_asset.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 30,
+				"fragment" : "lib\\lux_engine_scene_world_materialization.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 32,
+				"fragment" : "lib\\lux_engine_world_storage.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 34,
+				"fragment" : "lib\\lux_engine_world_description.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 36,
+				"fragment" : "lib\\lux_engine_world_partition.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 30,
+				"fragment" : "lib\\lux_engine_scene_camera.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 30,
+				"fragment" : "lib\\lux_engine_simulation_ecs_visual.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 24,
+				"fragment" : "lib\\lux_engine_simulation_ecs_snapshot.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 8,
+				"fragment" : "lib\\project_plugins.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 41,
+				"fragment" : "lib\\dynamic_library.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 24,
+				"fragment" : "lib\\lux_engine_simulation_ecs_schema.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 43,
+				"fragment" : "lib\\lux_engine_simulation_composition.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 45,
+				"fragment" : "lib\\lux_engine_core_task.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 22,
+				"fragment" : "lib\\lux_engine_simulation_system.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 47,
+				"fragment" : "lib\\lux_engine_simulation_description.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 22,
+				"fragment" : "lib\\lux_engine_simulation_ecs_core.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 49,
+				"fragment" : "lib\\lux_engine_function_script_artifact.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 10,
+				"fragment" : "lib\\lux_engine_asset.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 51,
+				"fragment" : "lib\\description.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 22,
+				"fragment" : "lib\\lux_engine_function_script_core.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 47,
+				"fragment" : "lib\\lux_engine_core_serialization.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 53,
+				"fragment" : "lib\\lux_engine_scene_description.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 55,
+				"fragment" : "lib\\lux_engine_domain_system_description.lib",
+				"role" : "libraries"
+			},
+			{
+				"backtrace" : 55,
+				"fragment" : "lib\\lux_engine_domain_system_identity.lib",
+				"role" : "libraries"
+			},
+			{
+				"fragment" : "kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib",
+				"role" : "libraries"
+			}
+		],
+		"language" : "CXX"
+	},
+	"name" : "physics2d_editor",
+	"nameOnDisk" : "physics2d_editor.dll",
+	"paths" : 
+	{
+		"build" : "editor/application/extensions/builtin",
+		"source" : "editor/application/extensions/builtin"
+	},
+	"sourceGroups" : 
+	[
+		{
+			"name" : "Source Files",
+			"sourceIndexes" : 
+			[
+				0,
+				1,
+				2
+			]
+		},
+		{
+			"name" : "CMake Rules",
+			"sourceIndexes" : 
+			[
+				3
+			]
+		}
+	],
+	"sources" : 
+	[
+		{
+			"backtrace" : 3,
+			"compileGroupIndex" : 0,
+			"path" : "editor/application/extensions/builtin/src/Physics2DEditorExports.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 67,
+			"compileGroupIndex" : 0,
+			"isGenerated" : true,
+			"path" : "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/editor/application/extensions/builtin/meta_gen/Physics2DSystem.meta.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 68,
+			"compileGroupIndex" : 0,
+			"isGenerated" : true,
+			"path" : "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/plugin/physics2d_simulation/identity.cpp",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 0,
+			"isGenerated" : true,
+			"path" : "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/editor/application/extensions/builtin/meta_gen/Physics2DSystem.meta.cpp.rule",
+			"sourceGroupIndex" : 1
+		}
+	],
+	"type" : "SHARED_LIBRARY"
+}

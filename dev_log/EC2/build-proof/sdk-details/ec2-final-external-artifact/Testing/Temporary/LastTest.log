@@ -1,0 +1,19 @@
+Start testing: Oct 03 08:38 GMT 夏令时
+----------------------------------------------------------
+1/1 Testing: installed.ec2.foreign_artifact
+1/1 Test: installed.ec2.foreign_artifact
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-final-external-artifact/consumer.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-final-external-artifact/files" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-final-external-artifact/artifact_source.dll"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-final-external-artifact
+"installed.ec2.foreign_artifact" start time: Oct 03 08:38 GMT 夏令时
+Output:
+----------------------------------------------------------
+EC2 external artifact: actual DLL encoder, arbitrary cooked type, source save, Unknown, manifest failure, fixed retry, closed author
+<end of output>
+Test time =   0.31 sec
+----------------------------------------------------------
+Test Passed.
+"installed.ec2.foreign_artifact" end time: Oct 03 08:38 GMT 夏令时
+"installed.ec2.foreign_artifact" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Oct 03 08:38 GMT 夏令时

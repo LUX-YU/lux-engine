@@ -1,0 +1,51 @@
+{
+	"backtrace" : 3,
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"add_custom_target",
+			"lux_add_codegen_job",
+			"engine_add_comm_ops"
+		],
+		"files" : 
+		[
+			"E:/SyncForder/CodeRepos/install/EC2-dd54847ee281/share/lux-cxx/reflection_generator/cmake_scripts/meta.cmake",
+			"modules/function/render/cmake/engine_render_codegen.cmake",
+			"modules/function/ui/rendering/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 17,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 169,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 91,
+				"parent" : 2
+			}
+		]
+	},
+	"id" : "ui_render_ops_UiRenderOperation_comm_codegen::@acd468146784c6e2a607",
+	"name" : "ui_render_ops_UiRenderOperation_comm_codegen",
+	"paths" : 
+	{
+		"build" : "modules/function/ui/rendering",
+		"source" : "modules/function/ui/rendering"
+	},
+	"sources" : [],
+	"type" : "UTILITY"
+}

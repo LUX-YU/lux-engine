@@ -1,0 +1,521 @@
+---- Importing lux-cxx-core
+---- Importing lux-cxx-compile_time
+---- Importing lux-cxx-memory
+---- Importing lux-cxx-binary
+---- Importing lux-cxx-time
+---- Importing lux-cxx-units
+---- Importing lux-cxx-diagnostic
+---- Importing lux-cxx-abi
+---- Importing lux-cxx-algorithm
+---- Importing lux-cxx-reflection_generator
+---- Importing lux-cxx-reflection_runtime
+-------- Plaform Layer --------
+-------- Core Layer --------
+---- Importing lux-cxx-container
+-- Found LibClang:
+--   Version: 0.64
+--   Include directory: D:/Development/vcpkg/installed/x64-windows/include
+--   Library: D:/Development/vcpkg/installed/x64-windows/lib/libclang.lib
+-------- Resource Layer --------
+-------- Function Layer --------
+---- Importing lux-cxx-concurrent
+-- Found LibClang:
+--   Version: 0.64
+--   Include directory: D:/Development/vcpkg/installed/x64-windows/include
+--   Library: D:/Development/vcpkg/installed/x64-windows/lib/libclang.lib
+-- [comm-ops] render_feature_client:client <- render_comm_ops (E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dev/modules/function/render/comm_gen/lux/engine/function/render/features/genops)
+---- GLSL Compiler path: D:/Development/VulkanSDK/1.4.304.0/Bin/glslc.exe
+-- [pass-params] 解析用 Vulkan 头: D:\Development\VulkanSDK\1.4.304.0/include
+-- [pass-params] render_features <- render_highlight_pass_params (E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dev/modules/function/render/features/pass_gen)
+-- [comm-ops] render_features:implementation <- render_comm_ops (E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dev/modules/function/render/features/comm_gen/lux/engine/function/render/features/genops)
+-- Performing Test LUX_LUA55_CAPABLE
+-- Performing Test LUX_LUA55_CAPABLE - Success
+---- Importing imgui-core
+---- Importing imgui-vulkan
+-- [comm-ops] ui_rendering:client <- ui_render_ops (E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dev/modules/function/ui/rendering/comm_gen/lux/engine/ui/rendering/genops)
+-- [comm-ops] ui_rendering:implementation <- ui_render_ops (E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dev/modules/function/ui/rendering/comm_gen/lux/engine/ui/rendering/genops)
+-- Found LibClang:
+--   Version: 0.64
+--   Include directory: D:/Development/vcpkg/installed/x64-windows/include
+--   Library: D:/Development/vcpkg/installed/x64-windows/lib/libclang.lib
+-- Found LibClang:
+--   Version: 0.64
+--   Include directory: D:/Development/vcpkg/installed/x64-windows/include
+--   Library: D:/Development/vcpkg/installed/x64-windows/lib/libclang.lib
+-- Found LibClang:
+--   Version: 0.64
+--   Include directory: D:/Development/vcpkg/installed/x64-windows/include
+--   Library: D:/Development/vcpkg/installed/x64-windows/lib/libclang.lib
+-- Found LibClang:
+--   Version: 0.64
+--   Include directory: D:/Development/vcpkg/installed/x64-windows/include
+--   Library: D:/Development/vcpkg/installed/x64-windows/lib/libclang.lib
+-- Found LibClang:
+--   Version: 0.64
+--   Include directory: D:/Development/vcpkg/installed/x64-windows/include
+--   Library: D:/Development/vcpkg/installed/x64-windows/lib/libclang.lib
+-- Found LibClang:
+--   Version: 0.64
+--   Include directory: D:/Development/vcpkg/installed/x64-windows/include
+--   Library: D:/Development/vcpkg/installed/x64-windows/lib/libclang.lib
+-- Found LibClang:
+--   Version: 0.64
+--   Include directory: D:/Development/vcpkg/installed/x64-windows/include
+--   Library: D:/Development/vcpkg/installed/x64-windows/lib/libclang.lib
+-- Found LibClang:
+--   Version: 0.64
+--   Include directory: D:/Development/vcpkg/installed/x64-windows/include
+--   Library: D:/Development/vcpkg/installed/x64-windows/lib/libclang.lib
+-- Using MLIRConfig.cmake in: D:/Development/vcpkg/installed/x64-windows/share/mlir
+-- Using LLVMConfig.cmake in: D:/Development/vcpkg/installed/x64-windows/share/llvm
+-- Detected MLIR version: 18.1
+-- Using MLIR 16+ compatibility mode
+-- MLIR_INCLUDE_DIRS: D:/Development/vcpkg/installed/x64-windows/include
+-- LLVM_INCLUDE_DIRS: D:/Development/vcpkg/installed/x64-windows/include
+-- Found LibClang:
+--   Version: 0.64
+--   Include directory: D:/Development/vcpkg/installed/x64-windows/include
+--   Library: D:/Development/vcpkg/installed/x64-windows/lib/libclang.lib
+-- [meta] editor_storage <- editor_storage_meta
+-- [meta] editor_storage -> meta_registration.hpp
+---- Importing node_editor-node_editor
+-- Found LibClang:
+--   Version: 0.64
+--   Include directory: D:/Development/vcpkg/installed/x64-windows/include
+--   Library: D:/Development/vcpkg/installed/x64-windows/lib/libclang.lib
+-- Found LibClang:
+--   Version: 0.64
+--   Include directory: D:/Development/vcpkg/installed/x64-windows/include
+--   Library: D:/Development/vcpkg/installed/x64-windows/lib/libclang.lib
+-- [meta] scene_render_meta <- scene_runtime_render_configuration_meta
+-- [meta] scene_render_meta -> meta_registration.hpp
+-- [meta] render_feature_meta <- render_feature_client_grid3_d_operation_meta, render_feature_client_grid2_d_operation_meta, render_feature_client_line_list_operation_meta, render_feature_client_tri_overlay_operation_meta, render_feature_client_trajectory_operation_meta, render_feature_client_skybox_operation_meta, render_feature_client_skinning_operation_meta, render_feature_client_point_cloud_operation_meta, render_feature_client_tonemap_operation_meta, render_feature_client_shadow_map_operation_meta, render_feature_client_view_camera_operation_meta, render_feature_client_light_operation_meta, render_feature_client_mesh_stack_operation_meta, render_feature_client_material_operation_meta, render_feature_client_deferred_g_buffer_operation_meta, render_feature_client_deferred_lighting_operation_meta, render_feature_client_depth_prepass_operation_meta, render_feature_client_forward_mesh_operation_meta, render_feature_client_highlight_operation_meta, render_feature_client_streaming_feedback_operation_meta, render_feature_client_hzb_operation_meta, render_feature_client_linear_depth_operation_meta, render_feature_client_ssao_operation_meta, render_feature_client_fog_operation_meta, render_feature_client_canvas2_d_operation_meta, render_feature_client_mesh_shadow_operation_meta, render_feature_client_spatial_cull_operation_meta, render_feature_client_render_cluster_operation_meta, render_feature_client_terrain_operation_meta, render_feature_client_water_operation_meta, render_feature_client_tonemap_params_meta, render_feature_client_spatial_cull_params_meta, render_feature_client_shadow_quality_params_meta
+-- [meta] render_feature_meta -> render_feature_client_meta_registration.hpp
+-- [meta] physics2d_editor <- physics2d_editor_configuration
+-- [meta] physics2d_editor -> meta_registration.hpp
+---- Importing lux-cxx-arguments
+-- Found LibClang:
+--   Version: 0.64
+--   Include directory: D:/Development/vcpkg/installed/x64-windows/include
+--   Library: D:/Development/vcpkg/installed/x64-windows/lib/libclang.lib
+-- Configuring done (21.0s)
+-- Generating done (2.3s)
+-- Build files have been written to: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dev
+[0/2] Re-checking globbed directories...
+[1/2] Re-running CMake...
+[0/2] Re-checking globbed directories...
+[1/781] [lux_target_add_codegen] render_comm_ops_Grid2DOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[2/778] [lux_target_add_codegen] render_comm_ops_Grid3DOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[3/775] [lux_target_add_codegen] render_comm_ops_LineListOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[4/771] [lux_target_add_codegen] render_comm_ops_TriOverlayOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[5/767] [lux_target_add_codegen] render_comm_ops_SkyboxOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[6/763] [lux_target_add_codegen] render_comm_ops_TrajectoryOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[7/759] [lux_target_add_codegen] render_comm_ops_SkinningOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[8/756] [lux_target_add_codegen] render_comm_ops_PointCloudOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[9/752] [lux_target_add_codegen] render_comm_ops_TonemapOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[10/749] [lux_target_add_codegen] render_comm_ops_ViewCameraOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[11/743] [lux_target_add_codegen] render_comm_ops_ShadowMapOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[12/740] [lux_target_add_codegen] render_comm_ops_MeshStackOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[13/734] [lux_target_add_codegen] render_comm_ops_MaterialOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[14/724] [lux_target_add_codegen] render_comm_ops_DeferredGBufferOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[15/721] [lux_target_add_codegen] render_comm_ops_DeferredLightingOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[16/717] [lux_target_add_codegen] render_comm_ops_DepthPrepassOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[17/714] [lux_target_add_codegen] render_comm_ops_LightOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[18/709] [lux_target_add_codegen] render_comm_ops_HzbOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[19/706] [lux_target_add_codegen] render_comm_ops_ForwardMeshOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[20/703] [lux_target_add_codegen] render_comm_ops_SsaoOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[21/700] [lux_target_add_codegen] render_comm_ops_HighlightOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[22/697] [lux_target_add_codegen] render_comm_ops_StreamingFeedbackOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[23/694] [lux_target_add_codegen] render_comm_ops_LinearDepthOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[24/691] [lux_target_add_codegen] render_comm_ops_SpatialCullOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[25/687] [lux_target_add_codegen] render_comm_ops_FogOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[26/684] [lux_target_add_codegen] render_comm_ops_MeshShadowOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[27/681] [lux_target_add_codegen] render_comm_ops_Canvas2DOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[28/676] [lux_target_add_codegen] render_comm_ops_RenderClusterOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[29/672] [lux_target_add_codegen] render_comm_ops_TerrainOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[30/668] [lux_target_add_codegen] simulation_script_script_abilities: parse once, render 5 projection(s)
+[Info] Parsed 1 target file(s) for 5 projection(s).
+[31/668] [lux_target_add_codegen] render_comm_ops_WaterOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[32/657] [lux_target_add_codegen] ui_render_ops_UiRenderOperation_comm_codegen: parse once, render 6 projection(s)
+[Info] Parsed 1 target file(s) for 6 projection(s).
+[33/650] Building CXX object engine\domain\simulation\scripting\cpp_static\CMakeFiles\simulation_script_cpp_static.dir\src\CppStaticScriptBridge.cpp.obj
+[34/650] Building CXX object engine\domain\simulation\scripting\native\CMakeFiles\simulation_script_native.dir\src\NativeScriptBackend.cpp.obj
+[35/650] [lux_target_add_codegen] render_highlight_pass_params_pass_codegen: parse once, render 2 projection(s)
+[Info] Parsed 4 target file(s) for 2 projection(s).
+[36/377] Building CXX object engine\domain\simulation\scripting\lua\CMakeFiles\simulation_script_lua.dir\src\LuaScriptBackend.cpp.obj
+[37/377] Building CXX object engine\domain\simulation\builtin_systems\script\CMakeFiles\simulation_script.dir\src\ScriptBindings.cpp.obj
+[38/377] Building CXX object engine\domain\simulation\scripting\native_lua_tasks\CMakeFiles\simulation_script_native_lua_tasks.dir\src\NativeLuaTaskBackend.cpp.obj
+[39/377] Building CXX object engine\domain\simulation\builtin_systems\script\CMakeFiles\simulation_script.dir\src\ScriptInstances.cpp.obj
+[40/377] Building CXX object engine\domain\simulation\builtin_systems\script\CMakeFiles\simulation_script.dir\src\ScriptPreparer.cpp.obj
+[41/377] Building CXX object engine\domain\simulation\builtin_systems\script\CMakeFiles\simulation_script.dir\src\ScriptEventWaits.cpp.obj
+[42/377] Building CXX object engine\domain\simulation\builtin_systems\script\CMakeFiles\simulation_script.dir\src\ScriptExecution.cpp.obj
+[43/377] Building CXX object engine\domain\simulation\builtin_systems\script\CMakeFiles\simulation_script.dir\src\ScriptCompletionIngress.cpp.obj
+[44/377] Building CXX object engine\domain\simulation\builtin_systems\script\CMakeFiles\simulation_script.dir\src\ScriptTimers.cpp.obj
+[45/377] [lux_target_add_codegen] hierarchy_component_codegen: parse once, render 5 projection(s)
+[Info] Parsed 1 target file(s) for 5 projection(s).
+[46/371] [lux_target_add_codegen] transform_component_codegen: parse once, render 5 projection(s)
+[Info] Parsed 1 target file(s) for 5 projection(s).
+[47/368] [lux_target_add_codegen] visual_component_codegen: parse once, render 5 projection(s)
+[Info] Parsed 1 target file(s) for 5 projection(s).
+[48/363] Building CXX object engine\domain\simulation\builtin_systems\script\CMakeFiles\simulation_script.dir\src\ScriptSystem.cpp.obj
+[49/363] [lux_target_add_codegen] physics2d_component_codegen: parse once, render 5 projection(s)
+[Info] Parsed 1 target file(s) for 5 projection(s).
+[50/360] Building CXX object engine\domain\simulation\composition\CMakeFiles\simulation_composition.dir\src\Simulation.cpp.obj
+[51/360] [lux_target_add_codegen] physics2d_simulation_script_abilities: parse once, render 5 projection(s)
+[Info] Parsed 1 target file(s) for 5 projection(s).
+[52/359] [lux_target_add_codegen] physics2d_configuration_codegen: parse once, render 2 projection(s)
+[Info] Parsed 1 target file(s) for 2 projection(s).
+[53/356] Linking CXX shared library bin\lux_engine_simulation_script.dll
+[54/356] Linking CXX shared library bin\lux_engine_simulation_composition.dll
+[55/356] Linking CXX shared library bin\lux_engine_simulation_script_cpp_static.dll
+[56/356] Linking CXX shared library bin\lux_engine_simulation_script_native.dll
+[57/356] Building CXX object engine\scene\composition\CMakeFiles\scene_composition.dir\src\SceneInstance.cpp.obj
+[58/356] Linking CXX shared library bin\lux_engine_simulation_script_lua.dll
+[59/356] Building CXX object engine\scene\composition\CMakeFiles\scene_composition.dir\src\SceneRuntime.cpp.obj
+[60/356] Building CXX object engine\scene\composition\CMakeFiles\scene_composition.dir\src\SceneSystemInstaller.cpp.obj
+[61/356] Linking CXX shared library bin\lux_engine_simulation_script_native_lua_tasks.dll
+[62/356] Building CXX object engine\scene\integration\script_description\CMakeFiles\scene_script_description.dir\src\ScriptRuntimeAssembly.cpp.obj
+[63/356] Building CXX object engine\scene\composition\CMakeFiles\scene_composition.dir\src\SceneDriver.cpp.obj
+[64/356] [lux_target_add_codegen] scene_script_assets_script_abilities: parse once, render 5 projection(s)
+[Info] Parsed 1 target file(s) for 5 projection(s).
+[65/356] [lux_target_add_codegen] scene_script_skeleton_script_abilities: parse once, render 5 projection(s)
+[Info] Parsed 1 target file(s) for 5 projection(s).
+[66/356] Linking CXX shared library bin\lux_engine_scene_script_description.dll
+[67/356] Linking CXX shared library bin\lux_engine_scene_composition.dll
+[68/356] Building CXX object engine\scene\scripting\assets\CMakeFiles\scene_script_assets.dir\src\AssetAbility.cpp.obj
+[69/356] Building CXX object engine\scene\scripting\assets\CMakeFiles\scene_script_assets.dir\src\ScriptAssetAccess.cpp.obj
+[70/356] Building CXX object engine\scene\scripting\assets\CMakeFiles\scene_script_assets_test.dir\test\lifecycle.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[71/356] Linking CXX shared library bin\lux_engine_scene_script_assets.dll
+[72/356] Building CXX object engine\scene\scripting\assets_lua\CMakeFiles\scene_script_asset_values_test.dir\test\values.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[73/356] Building CXX object engine\scene\scripting\assets\CMakeFiles\scene_script_assets_test.dir\test\access.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[74/356] Building CXX object engine\scene\scripting\skeleton\CMakeFiles\scene_script_skeleton.dir\src\SkeletonAbility.cpp.obj
+[75/356] Linking CXX static library lib\lux_engine_scene_script_skeleton.lib
+[76/356] Building CXX object engine\scene\scripting\assets_lua\CMakeFiles\scene_script_assets_lua.dir\src\AssetAbilityLua.cpp.obj
+[77/356] Linking CXX static library lib\lux_engine_scene_script_assets_lua.lib
+[78/356] Linking CXX executable bin\scene_script_assets_test.exe
+[79/356] [lux_target_add_codegen] scene_transform_configuration_codegen: parse once, render 2 projection(s)
+[Info] Parsed 1 target file(s) for 2 projection(s).
+[80/356] Linking CXX executable bin\scene_script_asset_values_test.exe
+[81/356] Building CXX object engine\scene\integration\script\CMakeFiles\scene_script_runtime.dir\src\ScriptRuntimeSystem.cpp.obj
+[82/356] Building CXX object engine\scene\composition\CMakeFiles\scene_driver_test.dir\test\driver.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[83/356] Building CXX object engine\scene\builtin_systems\mesh_query\CMakeFiles\scene_mesh_query.dir\src\MeshQuerySystem.cpp.obj
+[84/356] Linking CXX shared library bin\lux_engine_scene_script_runtime.dll
+[85/356] Building CXX object engine\scene\composition\CMakeFiles\scene_driver_test.dir\test\transform.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[86/356] Building CXX object engine\scene\composition\CMakeFiles\scene_runtime_test.dir\test\runtime.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[87/356] [lux_target_add_codegen] scene_camera_component_codegen: parse once, render 5 projection(s)
+[Info] Parsed 1 target file(s) for 5 projection(s).
+[88/339] Linking CXX shared library bin\lux_engine_scene_mesh_query.dll
+[89/339] [lux_target_add_codegen] scene_render_configuration_codegen: parse once, render 2 projection(s)
+[Info] Parsed 1 target file(s) for 2 projection(s).
+[90/339] [lux_target_add_codegen] world_loading_configuration_codegen: parse once, render 2 projection(s)
+[Info] Parsed 1 target file(s) for 2 projection(s).
+[91/339] Building CXX object engine\scene\builtin_systems\transform\CMakeFiles\scene_transform.dir\src\TransformSystem.cpp.obj
+[92/339] [lux_target_add_codegen] scene_observer_component_codegen: parse once, render 5 projection(s)
+[Info] Parsed 1 target file(s) for 5 projection(s).
+[93/335] Linking CXX shared library bin\lux_engine_scene_transform.dll
+[94/335] Building CXX object engine\context\CMakeFiles\engine_context.dir\src\EngineContext.cpp.obj
+[95/335] Building CXX object engine\scene\builtin_systems\world_loading\CMakeFiles\scene_world_loading.dir\src\WorldLoadingSystem.cpp.obj
+[96/335] Linking CXX executable bin\scene_driver_test.exe
+[97/335] Linking CXX executable bin\scene_runtime_test.exe
+[98/335] Linking CXX static library lib\engine_context.lib
+[99/335] Building CXX object engine\scene\builtin_systems\render\CMakeFiles\scene_render.dir\src\RenderSystem.cpp.obj
+[100/335] Linking CXX shared library bin\lux_engine_scene_world_loading.dll
+[101/333] Building CXX object engine\context\rendering\CMakeFiles\engine_context_render.dir\src\EngineRendering.cpp.obj
+[102/333] Linking CXX shared library bin\lux_engine_scene_render.dll
+[103/333] Linking CXX static library lib\engine_context_render.lib
+[104/333] Building CXX object engine\project\plugins\CMakeFiles\project_plugins.dir\src\PluginCatalog.cpp.obj
+[105/333] Building CXX object engine\project\plugins\CMakeFiles\project_plugins.dir\src\PluginManager.cpp.obj
+[106/333] Building CXX object engine\project\plugins\CMakeFiles\project_plugins.dir\src\PluginLibrary.cpp.obj
+[107/333] Linking CXX static library lib\project_plugins.lib
+[108/333] Building CXX object engine\scene\builtin_systems\world_loading\CMakeFiles\scene_world_loading_test.dir\test\world_loading.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[109/333] Linking CXX executable bin\plugin_scene_registrations_test.exe
+[110/333] Linking CXX executable bin\scene_world_loading_test.exe
+[111/333] Building CXX object editor\activities\scene\CMakeFiles\editor_editing_scene.dir\src\SceneEditing.cpp.obj
+[112/333] Building CXX object editor\activities\scene\CMakeFiles\editor_editing_scene.dir\src\ComponentEdit.cpp.obj
+[113/333] Building CXX object engine\project\plugins\CMakeFiles\engine_headless_test.dir\__\__\context\test\headless.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[114/333] Linking CXX static library lib\editor_editing_scene.lib
+[115/333] Linking CXX executable bin\engine_headless_test.exe
+[116/333] Building CXX object editor\activities\scene\CMakeFiles\editor_scene_editing_test.dir\test\editing.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[117/333] Linking CXX executable bin\editor_scene_editing_test.exe
+[118/333] Building CXX object editor\activities\scene\CMakeFiles\scene_execution.dir\src\RunStore.cpp.obj
+[119/333] Linking CXX static library lib\scene_execution.lib
+[120/333] Building CXX object editor\activities\scene\CMakeFiles\scene_projection.dir\src\ResourceStatus.cpp.obj
+[121/333] Building CXX object editor\activities\scene\CMakeFiles\editor_scene_execution_test.dir\test\runs.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[122/333] Building CXX object editor\activities\scene\CMakeFiles\scene_projection.dir\src\SceneProjection.cpp.obj
+[123/333] Linking CXX static library lib\scene_projection.lib
+[124/333] Linking CXX executable bin\editor_scene_execution_test.exe
+[125/333] [lux_target_add_codegen] editor_storage_meta: parse once, render 1 projection(s)
+[Parser] E:/SyncForder/CodeRepos/lux-engine-ec2/editor/activities/project/include/lux/engine/editor/storage/ProjectStorage.hpp: warning: -fdelayed-template-parsing is deprecated after C++20 [-Wdelayed-template-parsing-in-cxx20]
+[Parser] E:/SyncForder/CodeRepos/lux-engine-ec2/editor/activities/project/include/lux/engine/editor/storage/ProjectStorage.hpp: E:\SyncForder\CodeRepos\lux-engine-ec2\engine\process\execution\include\lux/engine/process/Timer.hpp:183:32: warning: 'empty_env' is deprecated: STDEXEC::empty_env is now spelled STDEXEC::env<> [-Wdeprecated-declarations]
+[Parser] E:/SyncForder/CodeRepos/lux-engine-ec2/editor/activities/project/include/lux/engine/editor/storage/ProjectStorage.hpp: E:\SyncForder\CodeRepos\lux-engine-ec2\engine\process\execution\include\lux/engine/process/ExecutionRuntime.hpp:276:26: warning: unqualified friend declaration referring to type outside of the nearest enclosing namespace is a Microsoft extension; add a nested name specifier [-Wmicrosoft-unqualified-friend]
+[Parser] E:/SyncForder/CodeRepos/lux-engine-ec2/editor/activities/project/include/lux/engine/editor/storage/ProjectStorage.hpp: E:\SyncForder\CodeRepos\lux-engine-ec2\engine\process\execution\include\lux/engine/process/ExecutionRuntime.hpp:277:26: warning: unqualified friend declaration referring to type outside of the nearest enclosing namespace is a Microsoft extension; add a nested name specifier [-Wmicrosoft-unqualified-friend]
+[Parser] E:/SyncForder/CodeRepos/lux-engine-ec2/editor/activities/project/include/lux/engine/editor/storage/ProjectStorage.hpp: E:\SyncForder\CodeRepos\lux-engine-ec2\engine\process\execution\include\lux/engine/process/PortSender.hpp:162:32: warning: 'empty_env' is deprecated: STDEXEC::empty_env is now spelled STDEXEC::env<> [-Wdeprecated-declarations]
+[Parser] E:/SyncForder/CodeRepos/lux-engine-ec2/editor/activities/project/include/lux/engine/editor/storage/ProjectStorage.hpp: E:\SyncForder\CodeRepos\lux-engine-ec2\engine\process\asset_loading\include\lux/engine/process/asset_loading/AssetLoadSender.hpp:229:36: warning: 'empty_env' is deprecated: STDEXEC::empty_env is now spelled STDEXEC::env<> [-Wdeprecated-declarations]
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[126/331] Building CXX object editor\activities\material\CMakeFiles\material_preview.dir\src\MaterialPreview.cpp.obj
+[127/331] Building CXX object editor\activities\material\CMakeFiles\material_preview.dir\src\MaterialPreviewRecipe.cpp.obj
+[128/331] Linking CXX static library lib\material_preview.lib
+[129/331] Linking CXX executable bin\editor_project_publication_operation_test.exe
+[130/331] Linking CXX executable bin\editor_project_creation_test.exe
+[131/331] Linking CXX executable bin\editor_plugin_publication_test.exe
+[132/331] Building CXX object editor\workbench\desktop\CMakeFiles\desktop_shell.dir\src\Presentation.cpp.obj
+[133/331] Linking CXX static library lib\desktop_shell.lib
+[134/331] Building CXX object editor\workbench\viewport\CMakeFiles\editor_viewport.dir\src\ViewportElement.cpp.obj
+[135/331] Building CXX object editor\workbench\viewport\CMakeFiles\editor_highlight_p07_test.dir\test\highlight.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[136/331] Building CXX object editor\workbench\scene\interaction\CMakeFiles\scene_interaction.dir\src\SceneInteraction.cpp.obj
+[137/331] Linking CXX static library lib\scene_interaction.lib
+[138/331] Building CXX object editor\workbench\viewport\CMakeFiles\editor_viewport.dir\src\ViewportPresentation.cpp.obj
+[139/331] Linking CXX static library lib\editor_viewport.lib
+[140/331] Linking CXX executable bin\editor_project_views_test.exe
+[141/331] Linking CXX executable bin\editor_highlight_p07_test.exe
+[142/331] [lux_target_add_codegen] scene_fields_hierarchy_ir: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[143/331] [lux_target_add_codegen] scene_fields_transform_ir: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[144/331] [lux_target_add_codegen] scene_fields_visual_ir: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[145/331] Building CXX object editor\workbench\scene\interaction\CMakeFiles\editor_scene_interaction_test.dir\test\interaction.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[146/331] [lux_target_add_codegen] scene_fields_camera_ir: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[147/331] Generate Editor-only ImGui Inspector: scene_fields_transform
+Editor Inspector: 2 component implementation(s); no runtime target output
+[148/331] Generate Editor-only ImGui Inspector: scene_fields_hierarchy
+Editor Inspector: 1 component implementation(s); no runtime target output
+[149/331] Generate Editor-only ImGui Inspector: scene_fields_visual
+Editor Inspector: 2 component implementation(s); no runtime target output
+[150/331] Generate Editor-only ImGui Inspector: scene_fields_camera
+Editor Inspector: 1 component implementation(s); no runtime target output
+[151/331] Building CXX object editor\workbench\scene\interaction\CMakeFiles\editor_run_selection_test.dir\test\run_selection.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[152/331] Linking CXX executable bin\editor_scene_interaction_test.exe
+[153/331] Building CXX object editor\workbench\project\tools\CMakeFiles\project_tools_ui.dir\src\ResultsView.cpp.obj
+[154/331] Linking CXX executable bin\editor_run_selection_test.exe
+[155/331] Building CXX object editor\workbench\material\CMakeFiles\material_ui.dir\src\MaterialView.cpp.obj
+[156/331] Building CXX object editor\workbench\scene\CMakeFiles\scene_ui.dir\src\SceneView.cpp.obj
+[157/331] Building CXX object editor\workbench\scene\CMakeFiles\scene_ui.dir\src\SceneTools.cpp.obj
+[158/331] Building CXX object editor\workbench\scene\CMakeFiles\scene_ui.dir\src\OutlinerView.cpp.obj
+[159/331] Building CXX object editor\workbench\scene\CMakeFiles\scene_ui.dir\src\ResourceView.cpp.obj
+[160/331] Building CXX object editor\workbench\scene\CMakeFiles\scene_ui.dir\src\InspectorFields.cpp.obj
+[161/331] Building CXX object editor\workbench\scene\CMakeFiles\scene_ui.dir\src\InspectorView.cpp.obj
+[162/331] Building CXX object editor\workbench\scene\CMakeFiles\scene_ui.dir\src\RunInspectorFields.cpp.obj
+[163/331] Building CXX object editor\workbench\scene\CMakeFiles\scene_ui.dir\src\RunInspectorView.cpp.obj
+[164/331] Building CXX object editor\workbench\scene\CMakeFiles\scene_ui.dir\src\ComponentEditors.cpp.obj
+[165/331] Building CXX object editor\workbench\scene\CMakeFiles\scene_ui.dir\src\CodegenInput.cpp.obj
+[166/331] Building CXX object editor\workbench\scene\CMakeFiles\scene_ui.dir\inspector_gen\scene_fields_transform\lux__simulation__ecs__Transform2D_038ea190.inspector.generated.cpp.obj
+[167/331] Building CXX object editor\workbench\scene\CMakeFiles\scene_ui.dir\inspector_gen\scene_fields_hierarchy\lux__simulation__ecs__Parent_4de25119.inspector.generated.cpp.obj
+[168/331] Building CXX object editor\workbench\scene\CMakeFiles\scene_ui.dir\inspector_gen\scene_fields_transform\lux__simulation__ecs__Transform3D_b831b8b5.inspector.generated.cpp.obj
+[169/331] Linking CXX static library lib\material_ui.lib
+[170/331] Building CXX object editor\workbench\scene\CMakeFiles\scene_ui.dir\inspector_gen\scene_fields_visual\lux__simulation__ecs__Mesh3D_5c2b5d9d.inspector.generated.cpp.obj
+[171/331] Building CXX object editor\workbench\scene\CMakeFiles\scene_ui.dir\inspector_gen\scene_fields_visual\lux__simulation__ecs__Light3D_3f6bfbf7.inspector.generated.cpp.obj
+[172/331] Building CXX object editor\workbench\scene\CMakeFiles\scene_ui.dir\inspector_gen\scene_fields_camera\lux__scene__Camera_1804ce33.inspector.generated.cpp.obj
+[173/331] Linking CXX static library lib\scene_ui.lib
+[174/331] Linking CXX static library lib\project_tools_ui.lib
+[175/331] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorApplication.cpp.obj
+[176/331] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorViews.cpp.obj
+[177/331] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorCommands.cpp.obj
+[178/331] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorLifecycle.cpp.obj
+[179/331] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorContent.cpp.obj
+[180/331] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorWorkspace.cpp.obj
+[181/331] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorViewClosure.cpp.obj
+[182/331] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorSceneTools.cpp.obj
+[183/331] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorReload.cpp.obj
+[184/331] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorSaving.cpp.obj
+[185/331] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorResults.cpp.obj
+[186/331] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorModels.cpp.obj
+[187/331] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorArtifacts.cpp.obj
+[188/331] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorRecovery.cpp.obj
+[189/331] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorProjectTools.cpp.obj
+[190/331] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\Launcher.cpp.obj
+[191/331] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorProjectCreation.cpp.obj
+[192/331] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorSettings.cpp.obj
+[193/331] [lux_target_add_codegen] scene_runtime_render_configuration_meta: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[194/330] Linking CXX executable bin\editor_contributions_test.exe
+[195/330] [lux_target_add_codegen] render_feature_client_grid3_d_operation_meta: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[196/329] Linking CXX executable bin\plugin_configuration_test.exe
+[197/329] [lux_target_add_codegen] render_feature_client_grid2_d_operation_meta: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[198/328] [lux_target_add_codegen] render_feature_client_line_list_operation_meta: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[199/327] [lux_target_add_codegen] render_feature_client_tri_overlay_operation_meta: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[200/326] [lux_target_add_codegen] render_feature_client_trajectory_operation_meta: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[201/325] [lux_target_add_codegen] render_feature_client_skybox_operation_meta: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[202/324] [lux_target_add_codegen] render_feature_client_skinning_operation_meta: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[203/323] [lux_target_add_codegen] render_feature_client_tonemap_operation_meta: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[204/322] [lux_target_add_codegen] render_feature_client_point_cloud_operation_meta: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[205/321] [lux_target_add_codegen] render_feature_client_view_camera_operation_meta: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[206/320] [lux_target_add_codegen] render_feature_client_shadow_map_operation_meta: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[207/319] [lux_target_add_codegen] render_feature_client_mesh_stack_operation_meta: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[208/318] [lux_target_add_codegen] render_feature_client_material_operation_meta: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[209/317] [lux_target_add_codegen] render_feature_client_light_operation_meta: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[210/316] [lux_target_add_codegen] render_feature_client_deferred_g_buffer_operation_meta: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[211/315] [lux_target_add_codegen] render_feature_client_deferred_lighting_operation_meta: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[212/314] [lux_target_add_codegen] render_feature_client_depth_prepass_operation_meta: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[213/313] Building CXX object editor\application\extensions\CMakeFiles\editor_builtin_contributions.dir\src\BuiltinContributions.cpp.obj
+[214/313] [lux_target_add_codegen] render_feature_client_forward_mesh_operation_meta: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[215/312] Linking CXX static library lib\editor_builtin_contributions.lib
+[216/312] [lux_target_add_codegen] render_feature_client_hzb_operation_meta: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[217/311] [lux_target_add_codegen] render_feature_client_highlight_operation_meta: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[218/310] Linking CXX static library lib\editor_bootstrap.lib
+[219/310] [lux_target_add_codegen] render_feature_client_ssao_operation_meta: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[220/309] [lux_target_add_codegen] render_feature_client_streaming_feedback_operation_meta: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[221/308] [lux_target_add_codegen] render_feature_client_linear_depth_operation_meta: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[222/307] [lux_target_add_codegen] render_feature_client_fog_operation_meta: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[223/306] [lux_target_add_codegen] render_feature_client_canvas2_d_operation_meta: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[224/305] [lux_target_add_codegen] render_feature_client_spatial_cull_operation_meta: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[225/304] [lux_target_add_codegen] render_feature_client_mesh_shadow_operation_meta: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[226/303] [lux_target_add_codegen] render_feature_client_render_cluster_operation_meta: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[227/302] [lux_target_add_codegen] render_feature_client_terrain_operation_meta: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[228/301] [lux_target_add_codegen] render_feature_client_tonemap_params_meta: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[229/300] [lux_target_add_codegen] render_feature_client_spatial_cull_params_meta: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[230/299] [lux_target_add_codegen] render_feature_client_water_operation_meta: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[231/298] [lux_target_add_codegen] render_feature_client_shadow_quality_params_meta: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[232/297] Linking CXX executable bin\lux_launcher.exe
+[233/297] [lux_target_add_codegen] physics2d_editor_configuration: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[234/296] Linking CXX executable bin\lux_editor.exe
+[235/296] Linking CXX executable bin\editor_compilation_ownership_test.exe
+[236/296] Building CXX object editor\tests\integration\projection\CMakeFiles\editor_projection_test.dir\projection.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[237/296] Linking CXX executable bin\editor_session_installation_test.exe
+[238/296] Linking CXX executable bin\editor_model_recipe.exe
+[239/296] Building CXX object editor\tests\integration\material_activity\CMakeFiles\editor_compilation_p07_test.dir\compilation.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[240/296] Linking CXX executable bin\editor_projection_test.exe
+[241/296] Linking CXX executable bin\editor_scene_configuration.exe
+[242/296] Linking CXX executable bin\editor_compilation_p07_test.exe
+[243/296] Building CXX object editor\tests\integration\project\CMakeFiles\editor_project_panels.dir\panels.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[244/296] Linking CXX executable bin\editor_artifact_publication.exe
+[245/296] [lux_target_add_codegen] consumer_schema: parse once, render 5 projection(s)
+[Info] Parsed 1 target file(s) for 5 projection(s).
+[246/294] Linking CXX executable bin\editor_project_panels.exe
+[247/294] Generating plugin/render_features/identity.cpp, share/lux-engine/plugins/lux.builtin.render.json
+[248/294] Generating plugin/physics2d_simulation/identity.cpp, share/lux-engine/plugins/lux.builtin.physics2d.json
+[249/294] Linking CXX executable bin\editor_scene_configuration_native.exe
+[250/294] Generating plugin/builtin_runtime_plugin/identity.cpp, share/lux-engine/plugins/lux.builtin.runtime.json
+[251/294] Building CXX object modules\function\render\features\CMakeFiles\render_features.dir\__\__\__\__\plugin\render_features\identity.cpp.obj
+[252/294] Building CXX object engine\domain\simulation\builtin_systems\physics2d\CMakeFiles\physics2d_simulation.dir\__\__\__\__\__\plugin\physics2d_simulation\identity.cpp.obj
+[253/294] Linking CXX shared library bin\render_features.dll
+[254/291] Generating plugin/builtin_scene_render_plugin/identity.cpp, share/lux-engine/plugins/lux.builtin.scene_render.json
+[255/291] Generating share/lux-engine/plugins/catalog.json
+[256/291] Building CXX object engine\scene\plugins\CMakeFiles\builtin_runtime_plugin.dir\__\__\__\plugin\builtin_runtime_plugin\identity.cpp.obj
+[257/291] Building CXX object engine\domain\simulation\builtin_systems\physics2d\CMakeFiles\physics2d_simulation.dir\src\Physics2DSystem.cpp.obj
+[258/291] Linking CXX shared library bin\builtin_runtime_plugin.dll
+[259/291] Building CXX object engine\scene\plugins\CMakeFiles\builtin_scene_render_plugin.dir\__\__\__\plugin\builtin_scene_render_plugin\identity.cpp.obj
+[260/291] Linking CXX shared library bin\lux_engine_physics2d_simulation.dll
+[261/289] Building CXX object editor\application\extensions\builtin\CMakeFiles\scene_render_meta.dir\__\__\__\__\plugin\builtin_scene_render_plugin\identity.cpp.obj
+[262/289] Building CXX object engine\scene\builtin_systems\render\CMakeFiles\scene_render_resources_test.dir\test\runtime.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[263/289] Linking CXX shared library bin\builtin_scene_render_plugin.dll
+[264/289] Building CXX object editor\application\extensions\builtin\CMakeFiles\render_feature_meta.dir\__\__\__\__\plugin\render_features\identity.cpp.obj
+[265/289] Linking CXX shared library bin\lux_engine_scene_render_meta.dll
+[266/289] Building CXX object editor\application\extensions\builtin\CMakeFiles\physics2d_editor.dir\__\__\__\__\plugin\physics2d_simulation\identity.cpp.obj
+[267/289] Building CXX object editor\tests\integration\application\CMakeFiles\editor_application_test.dir\application.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[268/289] Linking CXX shared library bin\lux_engine_function_render_feature_meta.dll
+[269/289] Linking CXX executable bin\scene_render_resources_test.exe
+[270/289] Linking CXX shared library bin\physics2d_editor.dll
+[271/289] Building CXX object editor\application\extensions\builtin\CMakeFiles\plugin_library_test.dir\test\plugin.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[272/289] Linking CXX executable bin\plugin_library_test.exe
+[273/289] Building CXX object editor\tests\integration\scene_views\CMakeFiles\editor_ui_presentation.dir\unified_ui.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[274/289] Linking CXX executable bin\editor_ui_presentation.exe
+[275/289] Linking CXX executable bin\editor_application_test.exe
+[276/289] [lux_target_add_codegen] consumer_ir: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[277/289] Generate Editor-only ImGui Inspector: consumer
+Editor Inspector: 1 component implementation(s); no runtime target output
+[278/289] Building CXX object editor\tests\integration\scene_views\CMakeFiles\editor_scene_views_test.dir\views.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[279/289] Building CXX object editor\tests\integration\scene_views\CMakeFiles\editor_scene_fixture.dir\fixture.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[280/289] Building CXX object editor\tests\persistence\CMakeFiles\editor_interaction_reclaim_test.dir\interaction_reclaim.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[281/289] Building CXX object editor\tests\integration\components\CMakeFiles\consumer_gui.dir\__\__\__\__\cmake\installed-consumers\editor-d2\Gui.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[282/289] Linking CXX executable bin\editor_scene_views_test.exe
+[283/289] Linking CXX executable bin\editor_scene_fixture.exe
+[284/289] Linking CXX executable bin\editor_interaction_reclaim_test.exe
+[285/289] Building CXX object editor\tests\integration\components\CMakeFiles\consumer_gui.dir\__\__\__\__\cmake\installed-consumers\editor-d2\GuiGesture.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[286/289] Building CXX object editor\tests\integration\components\CMakeFiles\consumer_protocol.dir\__\__\__\__\cmake\installed-consumers\editor-d2\main.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[287/289] Building CXX object editor\tests\integration\components\CMakeFiles\consumer_gui.dir\inspector_gen\consumer\consumer__Component_2abfe8b5.inspector.generated.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[288/289] Linking CXX shared library bin\consumer_gui.dll
+[289/289] Linking CXX executable bin\consumer_protocol.exe

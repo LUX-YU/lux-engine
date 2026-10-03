@@ -1,0 +1,135 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install",
+			"__install_export_header_dirs",
+			"lux_engine_install_components"
+		],
+		"files" : 
+		[
+			"E:/SyncForder/CodeRepos/install/EC2-dd54847ee281/share/lux-cmake-toolset/component/install_components.cmake",
+			"cmake/InstallComponents.cmake",
+			"engine/scene/scripting/assets_lua/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 24,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 2
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 64,
+				"parent" : 1
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 3,
+			"component" : "lux_engine_scene_script_assets_lua",
+			"destination" : ".",
+			"paths" : 
+			[
+				"engine/scene/scripting/assets_lua/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 4,
+			"component" : "lux_engine_scene_script_assets_lua",
+			"destination" : "share/lux-engine-scene-script-assets-lua/scene_script_assets_lua",
+			"exportName" : "scene_script_assets_lua",
+			"exportTargets" : 
+			[
+				{
+					"id" : "scene_script_assets_lua::@dded4eae40cc7b010901",
+					"index" : 385
+				}
+			],
+			"paths" : 
+			[
+				"engine/scene/scripting/assets_lua/CMakeFiles/Export/8257d7fcf48e25a7a6019d6a4b508eb7/lux-engine-scene-script-assets-lua-scene_script_assets_lua-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 5,
+			"component" : "lux_engine_scene_script_assets_lua",
+			"destination" : "share/lux-engine-scene-script-assets-lua/scene_script_assets_lua",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/scene/scripting/assets_lua/lux-engine-scene-script-assets-lua-scene_script_assets_lua-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 6,
+			"component" : "lux_engine_scene_script_assets_lua",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/lux_engine_scene_script_assets_lua.lib"
+			],
+			"targetId" : "scene_script_assets_lua::@dded4eae40cc7b010901",
+			"targetIndex" : 385,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 7,
+			"component" : "lux_engine_scene_script_assets_lua",
+			"destination" : "share/lux-engine-scene-script-assets-lua",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/scene/scripting/assets_lua/lux-engine-scene-script-assets-lua-config.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/scene/scripting/assets_lua/lux-engine-scene-script-assets-lua-config-version.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/scene/scripting/assets_lua/lux-engine-scene-script-assets-lua-available-components.cmake"
+			],
+			"type" : "file"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "engine/scene/scripting/assets_lua",
+		"source" : "engine/scene/scripting/assets_lua"
+	}
+}

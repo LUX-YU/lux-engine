@@ -1,0 +1,218 @@
+[
+  {
+    "id": "N11-01-context",
+    "passed": true,
+    "expected_rule": "new_legacy_dependency",
+    "phases": {
+      "positive": {
+        "exit_code": 0,
+        "log": "N11-01-context/positive.log"
+      },
+      "positive-build": {
+        "exit_code": 0,
+        "log": "N11-01-context/positive-build.log"
+      },
+      "negative": {
+        "exit_code": 1,
+        "log": "N11-01-context/negative.log"
+      },
+      "repaired": {
+        "exit_code": 0,
+        "log": "N11-01-context/repaired.log"
+      },
+      "repaired-build": {
+        "exit_code": 0,
+        "log": "N11-01-context/repaired-build.log"
+      }
+    }
+  },
+  {
+    "id": "N11-01-ui",
+    "passed": true,
+    "expected_rule": "activity_ui_dependency",
+    "phases": {
+      "positive": {
+        "exit_code": 0,
+        "log": "N11-01-ui/positive.log"
+      },
+      "positive-build": {
+        "exit_code": 0,
+        "log": "N11-01-ui/positive-build.log"
+      },
+      "negative": {
+        "exit_code": 1,
+        "log": "N11-01-ui/negative.log"
+      },
+      "repaired": {
+        "exit_code": 0,
+        "log": "N11-01-ui/repaired.log"
+      },
+      "repaired-build": {
+        "exit_code": 0,
+        "log": "N11-01-ui/repaired-build.log"
+      }
+    }
+  },
+  {
+    "id": "N11-02",
+    "passed": true,
+    "expected_rule": "activity_workbench_dependency",
+    "phases": {
+      "positive": {
+        "exit_code": 0,
+        "log": "N11-02/positive.log"
+      },
+      "positive-build": {
+        "exit_code": 0,
+        "log": "N11-02/positive-build.log"
+      },
+      "negative": {
+        "exit_code": 1,
+        "log": "N11-02/negative.log"
+      },
+      "repaired": {
+        "exit_code": 0,
+        "log": "N11-02/repaired.log"
+      },
+      "repaired-build": {
+        "exit_code": 0,
+        "log": "N11-02/repaired-build.log"
+      }
+    }
+  },
+  {
+    "id": "N11-03",
+    "passed": true,
+    "expected_rule": "activity_workbench_dependency",
+    "phases": {
+      "positive": {
+        "exit_code": 0,
+        "log": "N11-03/positive.log"
+      },
+      "positive-build": {
+        "exit_code": 0,
+        "log": "N11-03/positive-build.log"
+      },
+      "negative": {
+        "exit_code": 1,
+        "log": "N11-03/negative.log"
+      },
+      "repaired": {
+        "exit_code": 0,
+        "log": "N11-03/repaired.log"
+      },
+      "repaired-build": {
+        "exit_code": 0,
+        "log": "N11-03/repaired-build.log"
+      }
+    }
+  },
+  {
+    "id": "N11-04",
+    "passed": true,
+    "expected_rule": "private_support_dependency",
+    "phases": {
+      "positive": {
+        "exit_code": 0,
+        "log": "N11-04/positive.log"
+      },
+      "positive-build": {
+        "exit_code": 0,
+        "log": "N11-04/positive-build.log"
+      },
+      "negative": {
+        "exit_code": 1,
+        "log": "N11-04/negative.log"
+      },
+      "repaired": {
+        "exit_code": 0,
+        "log": "N11-04/repaired.log"
+      },
+      "repaired-build": {
+        "exit_code": 0,
+        "log": "N11-04/repaired-build.log"
+      }
+    }
+  },
+  {
+    "id": "N11-05",
+    "passed": true,
+    "expected_rule": "authoring_outer_dependency",
+    "phases": {
+      "positive": {
+        "exit_code": 0,
+        "log": "N11-05/positive.log"
+      },
+      "positive-build": {
+        "exit_code": 0,
+        "log": "N11-05/positive-build.log"
+      },
+      "negative": {
+        "exit_code": 1,
+        "log": "N11-05/negative.log"
+      },
+      "repaired": {
+        "exit_code": 0,
+        "log": "N11-05/repaired.log"
+      },
+      "repaired-build": {
+        "exit_code": 0,
+        "log": "N11-05/repaired-build.log"
+      }
+    }
+  },
+  {
+    "id": "EC1-extension-gpu",
+    "passed": true,
+    "expected_rule": "extension_optional_capability_leak",
+    "phases": {
+      "positive": {
+        "exit_code": 0,
+        "log": "EC1-extension-gpu/positive.log"
+      },
+      "positive-build": {
+        "exit_code": 0,
+        "log": "EC1-extension-gpu/positive-build.log"
+      },
+      "negative": {
+        "exit_code": 1,
+        "log": "EC1-extension-gpu/negative.log"
+      },
+      "repaired": {
+        "exit_code": 0,
+        "log": "EC1-extension-gpu/repaired.log"
+      },
+      "repaired-build": {
+        "exit_code": 0,
+        "log": "EC1-extension-gpu/repaired-build.log"
+      }
+    }
+  },
+  {
+    "id": "EC1-extension-toolchain",
+    "passed": true,
+    "expected_rule": "extension_optional_capability_leak",
+    "phases": {
+      "positive": {
+        "exit_code": 0,
+        "log": "EC1-extension-toolchain/positive.log"
+      },
+      "positive-build": {
+        "exit_code": 0,
+        "log": "EC1-extension-toolchain/positive-build.log"
+      },
+      "negative": {
+        "exit_code": 1,
+        "log": "EC1-extension-toolchain/negative.log"
+      },
+      "repaired": {
+        "exit_code": 0,
+        "log": "EC1-extension-toolchain/repaired.log"
+      },
+      "repaired-build": {
+        "exit_code": 0,
+        "log": "EC1-extension-toolchain/repaired-build.log"
+      }
+    }
+  }
+]

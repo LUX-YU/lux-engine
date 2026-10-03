@@ -1,0 +1,56 @@
+[
+  {
+    "source": "E:\\SyncForder\\CodeRepos\\lux-engine-ec2\\modules\\resource\\asset\\include\\lux\\engine\\resource\\asset\\storage\\AssetProvider.hpp",
+    "destination": "E:\\SyncForder\\CodeRepos\\install\\Debug\\include\\lux\\engine\\resource\\asset\\storage\\AssetProvider.hpp",
+    "before": "170a51f9089c7e773c4629c285be030e60c5a4f2ab0b42a7414df9fdd8a50a96",
+    "sha256": "7d192f1e6775ab01b6cf9d0dbcca940fcda5a79ed5372ebf2467ceb5e82b8b10"
+  },
+  {
+    "source": "E:\\SyncForder\\CodeRepos\\lux-engine-ec2\\modules\\resource\\asset\\include\\lux\\engine\\resource\\asset\\storage\\AssetProvider.hpp",
+    "destination": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\resource\\asset\\storage\\AssetProvider.hpp",
+    "before": "4095ce1aeaf9e1cce0c987a9ef05df12b049b23c8adfcc843eb965db65f0009c",
+    "sha256": "7d192f1e6775ab01b6cf9d0dbcca940fcda5a79ed5372ebf2467ceb5e82b8b10"
+  },
+  {
+    "source": "E:\\SyncForder\\CodeRepos\\lux-engine-ec2\\modules\\resource\\asset\\include\\lux\\engine\\resource\\asset\\storage\\AssetProvider.hpp",
+    "destination": "E:\\SyncForder\\CodeRepos\\install\\Android\\lux-engine\\include\\lux\\engine\\resource\\asset\\storage\\AssetProvider.hpp",
+    "before": "170a51f9089c7e773c4629c285be030e60c5a4f2ab0b42a7414df9fdd8a50a96",
+    "sha256": "7d192f1e6775ab01b6cf9d0dbcca940fcda5a79ed5372ebf2467ceb5e82b8b10"
+  },
+  {
+    "source": "E:\\SyncForder\\CodeRepos\\lux-engine-ec2\\modules\\resource\\asset\\include\\lux\\engine\\resource\\asset\\storage\\AssetVfs.hpp",
+    "destination": "E:\\SyncForder\\CodeRepos\\install\\Debug\\include\\lux\\engine\\resource\\asset\\storage\\AssetVfs.hpp",
+    "before": "e1198acffcefc6e877aadda7fdfce98d2eb6fef5996062dabdec741f64366bf7",
+    "sha256": "fe631954cbfc71191484d5191804540e34452f777129cc8b9ccdc0dfbf270ec5"
+  },
+  {
+    "source": "E:\\SyncForder\\CodeRepos\\lux-engine-ec2\\modules\\resource\\asset\\include\\lux\\engine\\resource\\asset\\storage\\AssetVfs.hpp",
+    "destination": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\resource\\asset\\storage\\AssetVfs.hpp",
+    "before": "e1198acffcefc6e877aadda7fdfce98d2eb6fef5996062dabdec741f64366bf7",
+    "sha256": "fe631954cbfc71191484d5191804540e34452f777129cc8b9ccdc0dfbf270ec5"
+  },
+  {
+    "source": "E:\\SyncForder\\CodeRepos\\lux-engine-ec2\\modules\\resource\\asset\\include\\lux\\engine\\resource\\asset\\storage\\AssetVfs.hpp",
+    "destination": "E:\\SyncForder\\CodeRepos\\install\\Android\\lux-engine\\include\\lux\\engine\\resource\\asset\\storage\\AssetVfs.hpp",
+    "before": "e1198acffcefc6e877aadda7fdfce98d2eb6fef5996062dabdec741f64366bf7",
+    "sha256": "fe631954cbfc71191484d5191804540e34452f777129cc8b9ccdc0dfbf270ec5"
+  },
+  {
+    "source": "E:\\SyncForder\\CodeRepos\\lux-engine-ec2\\modules\\resource\\asset\\include\\lux\\engine\\resource\\asset\\storage\\pak\\PakAssetProvider.hpp",
+    "destination": "E:\\SyncForder\\CodeRepos\\install\\Debug\\include\\lux\\engine\\resource\\asset\\storage\\pak\\PakAssetProvider.hpp",
+    "before": "2a0b7179ab6545f9319c88abf91351992f2b4d7854ea99e0f094080e655e238b",
+    "sha256": "bf63e9a524ca7b80030c573270389b6802a0412eeacc033103dfb591ce5ed452"
+  },
+  {
+    "source": "E:\\SyncForder\\CodeRepos\\lux-engine-ec2\\modules\\resource\\asset\\include\\lux\\engine\\resource\\asset\\storage\\pak\\PakAssetProvider.hpp",
+    "destination": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\resource\\asset\\storage\\pak\\PakAssetProvider.hpp",
+    "before": "74b04f5ad46f0d001774ef5031964f1fb5f4461e0e65ec3e721db800c32481a8",
+    "sha256": "bf63e9a524ca7b80030c573270389b6802a0412eeacc033103dfb591ce5ed452"
+  },
+  {
+    "source": "E:\\SyncForder\\CodeRepos\\lux-engine-ec2\\modules\\resource\\asset\\include\\lux\\engine\\resource\\asset\\storage\\pak\\PakAssetProvider.hpp",
+    "destination": "E:\\SyncForder\\CodeRepos\\install\\Android\\lux-engine\\include\\lux\\engine\\resource\\asset\\storage\\pak\\PakAssetProvider.hpp",
+    "before": "2a0b7179ab6545f9319c88abf91351992f2b4d7854ea99e0f094080e655e238b",
+    "sha256": "bf63e9a524ca7b80030c573270389b6802a0412eeacc033103dfb591ce5ed452"
+  }
+]

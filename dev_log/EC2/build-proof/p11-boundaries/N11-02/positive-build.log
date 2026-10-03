@@ -1,0 +1,4 @@
+[1/4] Building CXX object editor\activities\sessions\CMakeFiles\session_factories.dir\session_factories.cpp.obj
+[2/4] Building CXX object editor\workbench\desktop\CMakeFiles\view_host.dir\view_host.cpp.obj
+[3/4] Linking CXX static library editor\workbench\desktop\view_host.lib
+[4/4] Linking CXX static library editor\activities\sessions\session_factories.lib

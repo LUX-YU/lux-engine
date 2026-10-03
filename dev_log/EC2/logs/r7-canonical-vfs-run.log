@@ -1,0 +1,19 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dev
+    Start  14: scene.script_asset_scene
+1/2 Test  #14: scene.script_asset_scene .........   Passed    0.61 sec
+    Start 142: editor.script_run
+2/2 Test #142: editor.script_run ................***Timeout  45.04 sec
+
+
+50% tests passed, 1 tests failed out of 2
+
+Label Time Summary:
+EC2       =  45.65 sec*proc (2 tests)
+editor    =  45.04 sec*proc (1 test)
+native    =  45.65 sec*proc (2 tests)
+
+Total Test time (real) =  45.92 sec
+
+The following tests FAILED:
+	142 - editor.script_run (Timeout)                       EC2 editor native
+Errors while running CTest

@@ -1,0 +1,14 @@
+E:\SyncForder\CodeRepos\lux-engine\.internal\editor-redesign\EC2\after\publication-contract.cpp(13,69): error: 'manifest_bytes_' is a private member of 'lux::editor::ProjectPublicationPlan'
+   13 | void modify(PreparedProjectPublication& prepared) { prepared.plan().manifest_bytes_ = {}; }
+      |                                                                     ^
+E:\SyncForder\CodeRepos\install\EC2-development\include\lux/engine/editor/storage/ProjectPublication.hpp(132,28): note: declared private here
+  132 |         cxx::SharedBytes<> manifest_bytes_;
+      |                            ^
+E:\SyncForder\CodeRepos\lux-engine\.internal\editor-redesign\EC2\after\publication-contract.cpp(13,85): error: no viable overloaded '='
+   13 | void modify(PreparedProjectPublication& prepared) { prepared.plan().manifest_bytes_ = {}; }
+      |                                                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ ^ ~~
+E:\SyncForder\CodeRepos\install\EC2-development\include\lux/cxx/memory/SharedBytes.hpp(12,11): note: candidate function (the implicit copy assignment operator) not viable: 'this' argument has type 'const cxx::SharedBytes<>', but method is not marked const
+   12 |     class SharedBytes final
+      |           ^
+E:\SyncForder\CodeRepos\install\EC2-development\include\lux/cxx/memory/SharedBytes.hpp(12,11): note: candidate function (the implicit move assignment operator) not viable: 'this' argument has type 'const cxx::SharedBytes<>', but method is not marked const
+2 errors generated.

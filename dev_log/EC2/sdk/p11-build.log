@@ -1,0 +1,38 @@
+[1/23] Building CXX object CMakeFiles\p11_runtime.dir\Identity.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[2/23] Building CXX object CMakeFiles\p11_extension.dir\Identity.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[3/23] Building CXX object CMakeFiles\p11_reject_6.dir\Identity.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[4/23] Building CXX object CMakeFiles\p11_runtime.dir\Runtime.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[5/23] Building CXX object CMakeFiles\p11_reject_6.dir\Rejected.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[6/23] Building CXX object CMakeFiles\p11_reject_7.dir\Rejected.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[7/23] Linking CXX shared library bin\p11_runtime.dll
+[8/23] Building CXX object CMakeFiles\p11_reject_7.dir\Identity.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[9/23] Building CXX object CMakeFiles\p11_extension.dir\Extension.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[10/23] Linking CXX shared library bin\p11_reject_7.dll
+[11/23] Linking CXX shared library bin\p11_reject_6.dll
+[12/23] Building CXX object CMakeFiles\p11_reject_8.dir\Identity.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[13/23] Building CXX object CMakeFiles\p11_reject_9.dir\Identity.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[14/23] Building CXX object CMakeFiles\p11_reject_8.dir\Rejected.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[15/23] Linking CXX shared library bin\p11_extension.dll
+[16/23] Building CXX object CMakeFiles\p11_reject_10.dir\Identity.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[17/23] Building CXX object CMakeFiles\p11_reject_9.dir\Rejected.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[18/23] Linking CXX shared library bin\p11_reject_8.dll
+[19/23] Building CXX object CMakeFiles\p11_reject_10.dir\Rejected.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[20/23] Linking CXX shared library bin\p11_reject_9.dll
+[21/23] Linking CXX shared library bin\p11_reject_10.dll
+[22/23] Building CXX object CMakeFiles\p11_consumer.dir\main.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[23/23] Linking CXX executable bin\p11_consumer.exe

@@ -1,0 +1,35 @@
+-- Configuring incomplete, errors occurred!
+CMake Error at E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/cmake/EditorArchitectureChecks.cmake:167 (message):
+  Editor migration boundary check failed:
+
+  {"status": "FAIL", "findings": [{"rule": "FOUNDATION_FORBIDDEN_DEPENDENCY",
+  "path": "editor_contracts", "detail": "editor_contracts -> material_ui
+  (LINK_LIBRARIES)"}, {"rule": "FOUNDATION_DIRECT_DEPENDENCY", "path":
+  "editor_contracts", "detail": "editor_contracts -> material_ui
+  (LINK_LIBRARIES)"}, {"rule": "FOUNDATION_FORBIDDEN_DEPENDENCY", "path":
+  "editor_contracts", "detail": "editor_contracts -> material_ui
+  (INTERFACE_LINK_LIBRARIES)"}, {"rule": "FOUNDATION_DIRECT_DEPENDENCY",
+  "path": "editor_contracts", "detail": "editor_contracts -> material_ui
+  (INTERFACE_LINK_LIBRARIES)"}, {"rule": "MATERIAL_MODEL_DIRECT_DEPENDENCY",
+  "path": "material_model", "detail": "material_model -> editor_contracts
+  (LINK_LIBRARIES)"}, {"rule": "MATERIAL_MODEL_DIRECT_DEPENDENCY", "path":
+  "material_model", "detail": "material_model -> editor_contracts
+  (INTERFACE_LINK_LIBRARIES)"}, {"rule":
+  "MATERIAL_MODEL_FORBIDDEN_DEPENDENCY", "path": "material_model", "detail":
+  "material_model -> editor_contracts -> material_ui (LINK_LIBRARIES)"},
+  {"rule": "MATERIAL_MODEL_FORBIDDEN_DEPENDENCY", "path": "material_model",
+  "detail": "material_model -> editor_contracts -> material_ui
+  (INTERFACE_LINK_LIBRARIES)"}, {"rule": "editing_domain_dependency", "path":
+  "editor_contracts", "detail": "editor_contracts -> material_ui
+  (LINK_LIBRARIES)"}, {"rule": "editing_domain_dependency", "path":
+  "editor_contracts", "detail": "editor_contracts -> material_ui
+  (INTERFACE_LINK_LIBRARIES)"}, {"rule": "authoring_outer_dependency",
+  "path": "material_model", "detail": "material_model -> editor_contracts ->
+  material_ui (LINK_LIBRARIES)"}, {"rule": "authoring_outer_dependency",
+  "path": "material_model", "detail": "material_model -> editor_contracts ->
+  material_ui (INTERFACE_LINK_LIBRARIES)"}]}
+
+Call Stack (most recent call first):
+  CMakeLists.txt:13 (lux_editor_check_architecture)
+
+

@@ -1,0 +1,14 @@
+{
+  "source": "User reply in current conversation",
+  "question": "EC2 还剩原生输入验收，需要短暂接管鼠标和键盘，约一分钟。你现在方便留出这段时间吗？我会在开始前提示。",
+  "answer": "稍后再做",
+  "status": "NOT_RUN_USER_DEFERRED",
+  "permanent_waiver": false,
+  "tests": [
+    "editor.desktop_native_input",
+    "installed.desktop.native_input"
+  ],
+  "source_build": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\ec2-dd54847ee281",
+  "sdk_build": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\ec2-final-sdk\\desktop-views",
+  "implementation_sha": "dd54847ee281f5e96adf4ebeba2f6c06bc858515"
+}

@@ -1,0 +1,133 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install",
+			"__install_assets",
+			"lux_engine_install_components"
+		],
+		"files" : 
+		[
+			"engine/toolchain/lua/CMakeLists.txt",
+			"E:/SyncForder/CodeRepos/install/EC2-dd54847ee281/share/lux-cmake-toolset/component/install_components.cmake",
+			"cmake/InstallComponents.cmake"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 23,
+				"parent" : 0
+			},
+			{
+				"command" : 2,
+				"file" : 0,
+				"line" : 28,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 2,
+				"line" : 24,
+				"parent" : 2
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 32,
+				"parent" : 3
+			},
+			{
+				"command" : 0,
+				"file" : 2,
+				"line" : 47,
+				"parent" : 2
+			},
+			{
+				"command" : 0,
+				"file" : 2,
+				"line" : 52,
+				"parent" : 2
+			},
+			{
+				"command" : 0,
+				"file" : 2,
+				"line" : 64,
+				"parent" : 2
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 1,
+			"component" : "Unspecified",
+			"destination" : "share/lux-engine-toolchain/lua_script_packager/cmake_scripts",
+			"paths" : 
+			[
+				"engine/toolchain/lua/package_lua_script.py"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 4,
+			"component" : "lux_engine_toolchain",
+			"destination" : "share/lux-engine-toolchain/lua_script_packager/cmake_scripts",
+			"paths" : 
+			[
+				"engine/toolchain/lua/cmake/lux_package_lua_script.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 5,
+			"component" : "lux_engine_toolchain",
+			"destination" : "share/lux-engine-toolchain/lua_script_packager",
+			"exportName" : "lua_script_packager",
+			"exportTargets" : 
+			[
+				{
+					"id" : "lua_script_packager::@5c60cdf65caae3b925b2",
+					"index" : 0
+				}
+			],
+			"paths" : 
+			[
+				"engine/toolchain/lua/CMakeFiles/Export/a2869d1a244b68dca17898c3b43daaaa/lux-engine-toolchain-lua_script_packager-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 6,
+			"component" : "lux_engine_toolchain",
+			"destination" : "share/lux-engine-toolchain/lua_script_packager",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/toolchain/lua/lux-engine-toolchain-lua_script_packager-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 7,
+			"component" : "lux_engine_toolchain",
+			"destination" : "share/lux-engine-toolchain",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/toolchain/lua/lux-engine-toolchain-config.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/toolchain/lua/lux-engine-toolchain-config-version.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/toolchain/lua/lux-engine-toolchain-available-components.cmake"
+			],
+			"type" : "file"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "engine/toolchain/lua",
+		"source" : "engine/toolchain/lua"
+	}
+}

@@ -1,0 +1,12 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dev
+    Start 114: editor.scene_views_gpu
+1/1 Test #114: editor.scene_views_gpu ...........   Passed    1.77 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Label Time Summary:
+P10       =   1.77 sec*proc (1 test)
+editor    =   1.77 sec*proc (1 test)
+gpu       =   1.77 sec*proc (1 test)
+
+Total Test time (real) =   1.81 sec

@@ -1,0 +1,46 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install"
+		],
+		"files" : 
+		[
+			"engine/domain/simulation/scripting/cpp_static/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 0
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 37,
+				"parent" : 0
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 1,
+			"component" : "Unspecified",
+			"destination" : "share/lux-engine-simulation/simulation_script_cpp_static/cmake_scripts/template",
+			"paths" : 
+			[
+				{
+					"from" : "engine/domain/simulation/scripting/cpp_static/template",
+					"to" : "."
+				}
+			],
+			"type" : "directory"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "engine/domain/simulation/scripting/cpp_static",
+		"source" : "engine/domain/simulation/scripting/cpp_static"
+	}
+}

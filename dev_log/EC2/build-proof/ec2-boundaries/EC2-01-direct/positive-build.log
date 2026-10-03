@@ -1,0 +1,4 @@
+[1/4] Building CXX object editor\activities\project\CMakeFiles\editor_storage.dir\editor_storage.cpp.obj
+[2/4] Building CXX object engine\scene\scripting\assets\CMakeFiles\scene_script_assets.dir\scene_script_assets.cpp.obj
+[3/4] Linking CXX static library editor\activities\project\editor_storage.lib
+[4/4] Linking CXX static library engine\scene\scripting\assets\scene_script_assets.lib

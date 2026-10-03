@@ -1,0 +1,16 @@
+Traceback (most recent call last):
+  File "E:\SyncForder\CodeRepos\lux-engine-ec2-qualified\editor\tests\architecture\validate_ec2_evidence.py", line 86, in <module>
+    print("EC2 archive:", check(args.source, args.archive))
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\SyncForder\CodeRepos\lux-engine-ec2-qualified\editor\tests\architecture\validate_ec2_evidence.py", line 30, in check
+    archived(directory, item["path"], item["sha256"])
+  File "E:\SyncForder\CodeRepos\lux-engine-ec2-qualified\editor\tests\architecture\validate_quality_evidence.py", line 19, in archived
+    data = path.read_bytes()  # Missing evidence is an error, including on another machine.
+           ^^^^^^^^^^^^^^^^^
+  File "C:\Users\ChenHui\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\pathlib.py", line 1019, in read_bytes
+    with self.open(mode='rb') as f:
+         ^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ChenHui\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\Lib\pathlib.py", line 1013, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC2\\归档 可搬迁验证\\missing\\logs\\final-build.log'

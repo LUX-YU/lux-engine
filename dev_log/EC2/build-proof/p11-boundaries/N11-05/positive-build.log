@@ -1,0 +1,4 @@
+[1/4] Building CXX object editor\authoring\material\CMakeFiles\material_model.dir\material_model.cpp.obj
+[2/4] Building CXX object engine\process\execution\CMakeFiles\process_execution.dir\process_execution.cpp.obj
+[3/4] Linking CXX static library editor\authoring\material\material_model.lib
+[4/4] Linking CXX static library engine\process\execution\process_execution.lib

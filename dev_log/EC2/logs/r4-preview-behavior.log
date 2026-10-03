@@ -1,0 +1,46 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dev
+      Start 109: editor.compilation.actual_publish
+ 1/11 Test #109: editor.compilation.actual_publish .......   Passed    0.53 sec
+      Start 110: editor.compilation.ownership_material
+ 2/11 Test #110: editor.compilation.ownership_material ...   Passed    0.69 sec
+      Start 111: editor.compilation.ownership_flow
+ 3/11 Test #111: editor.compilation.ownership_flow .......   Passed    0.14 sec
+      Start 114: editor.scene_views_gpu
+ 4/11 Test #114: editor.scene_views_gpu ..................Exit code 0xc0000409
+***Exception:  34.91 sec
+wait expired at E:\SyncForder\CodeRepos\lux-engine-ec2\editor\tests\integration\scene_views\views.cpp:1177 (class std::shared_ptr<class lux::editor::material::CompiledMaterial const > __cdecl `anonymous-namespace'::materialView(struct `anonymous-namespace'::Fixture &))
+
+      Start 118: editor.draft_source_material-canvas
+ 5/11 Test #118: editor.draft_source_material-canvas .....   Passed    0.37 sec
+      Start 120: editor.draft_source_material-queue
+ 6/11 Test #120: editor.draft_source_material-queue ......   Passed    0.34 sec
+      Start 121: editor.draft_source_material-lifetime
+ 7/11 Test #121: editor.draft_source_material-lifetime ...   Passed    0.36 sec
+      Start 122: editor.draft_source_lifecycle
+ 8/11 Test #122: editor.draft_source_lifecycle ...........   Passed    0.55 sec
+      Start 123: editor.draft_source_positive
+ 9/11 Test #123: editor.draft_source_positive ............   Passed    0.46 sec
+      Start 130: editor.application
+10/11 Test #130: editor.application ......................   Passed    1.46 sec
+      Start 133: editor.artifact_publication
+11/11 Test #133: editor.artifact_publication .............   Passed    0.47 sec
+
+91% tests passed, 1 tests failed out of 11
+
+Label Time Summary:
+EC2          =   0.47 sec*proc (1 test)
+P07          =   1.36 sec*proc (3 tests)
+P10          =  36.99 sec*proc (6 tests)
+P12          =   1.46 sec*proc (1 test)
+R1           =   2.07 sec*proc (5 tests)
+editor       =  40.29 sec*proc (11 tests)
+gpu          =  38.45 sec*proc (7 tests)
+native       =   1.84 sec*proc (4 tests)
+toolchain    =   1.84 sec*proc (4 tests)
+
+Total Test time (real) =  40.73 sec
+
+The following tests FAILED:
+	114 - editor.scene_views_gpu (Exit code 0xc0000409
+)    P10 editor gpu
+Errors while running CTest

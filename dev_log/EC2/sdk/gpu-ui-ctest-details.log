@@ -1,0 +1,19 @@
+Start testing: Oct 03 08:29 GMT 夏令时
+----------------------------------------------------------
+1/1 Testing: installed.ui_feature
+1/1 Test: installed.ui_feature
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-final-sdk/gpu-ui/bin/feature.exe"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-final-sdk/gpu-ui
+"installed.ui_feature" start time: Oct 03 08:29 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS installed RenderFeature: three GPU frames, CPU Context exited before GPU creation, all resources retired; no Editor/Scene includes and no pixel readback claim
+<end of output>
+Test time =   0.34 sec
+----------------------------------------------------------
+Test Passed.
+"installed.ui_feature" end time: Oct 03 08:29 GMT 夏令时
+"installed.ui_feature" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Oct 03 08:29 GMT 夏令时

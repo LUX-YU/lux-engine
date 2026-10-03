@@ -1,0 +1,2020 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install",
+			"__install_export_header_dirs",
+			"lux_engine_install_components",
+			"__install_assets"
+		],
+		"files" : 
+		[
+			"E:/SyncForder/CodeRepos/install/EC2-dd54847ee281/share/lux-cmake-toolset/component/install_components.cmake",
+			"cmake/InstallComponents.cmake",
+			"modules/function/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 95,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 2
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 7
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 3,
+				"file" : 1,
+				"line" : 24,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 32,
+				"parent" : 12
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 14
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 19
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 24
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 29
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 34
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 39
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 44
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 48
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 53
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 58
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 63
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 3,
+				"file" : 1,
+				"line" : 24,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 32,
+				"parent" : 68
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 32,
+				"parent" : 68
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 71
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 76
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 3,
+				"file" : 1,
+				"line" : 24,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 32,
+				"parent" : 81
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 32,
+				"parent" : 81
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 84
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 3,
+				"file" : 1,
+				"line" : 24,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 32,
+				"parent" : 89
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 26,
+				"parent" : 89
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 26,
+				"parent" : 89
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 96
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 101
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 106
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 64,
+				"parent" : 1
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 3,
+			"component" : "lux_engine_function",
+			"destination" : ".",
+			"paths" : 
+			[
+				"modules/function/flowforge/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 4,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/flowforge",
+			"exportName" : "flowforge",
+			"exportTargets" : 
+			[
+				{
+					"id" : "flowforge::@01a5a9daa526672cfac5",
+					"index" : 106
+				}
+			],
+			"paths" : 
+			[
+				"modules/function/CMakeFiles/Export/14c7f1e0dea7d11c2641741b37e3539b/lux-engine-function-flowforge-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 5,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/flowforge",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/function/lux-engine-function-flowforge-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 6,
+			"component" : "lux_engine_function",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/lux_engine_function_flowforge.lib"
+			],
+			"targetId" : "flowforge::@01a5a9daa526672cfac5",
+			"targetIndex" : 106,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 8,
+			"component" : "lux_engine_function",
+			"destination" : ".",
+			"paths" : 
+			[
+				"modules/function/graph/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 9,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/graph",
+			"exportName" : "graph",
+			"exportTargets" : 
+			[
+				{
+					"id" : "graph::@5661790dfa04b0db40a7",
+					"index" : 112
+				}
+			],
+			"paths" : 
+			[
+				"modules/function/CMakeFiles/Export/0c0ae7fd4ec97e649d7e4cdeb3542be0/lux-engine-function-graph-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 10,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/graph",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/function/lux-engine-function-graph-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 11,
+			"component" : "lux_engine_function",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/lux_engine_function_graph.lib"
+			],
+			"targetId" : "graph::@5661790dfa04b0db40a7",
+			"targetIndex" : 112,
+			"targetIsImportLibrary" : true,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 11,
+			"component" : "lux_engine_function",
+			"destination" : "bin",
+			"paths" : 
+			[
+				"bin/lux_engine_function_graph.dll"
+			],
+			"targetId" : "graph::@5661790dfa04b0db40a7",
+			"targetIndex" : 112,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 13,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/render_client/cmake_scripts",
+			"paths" : 
+			[
+				"modules/function/render/client/../cmake/engine_render_codegen.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 15,
+			"component" : "lux_engine_function",
+			"destination" : ".",
+			"paths" : 
+			[
+				"modules/function/render/client/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 16,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/render_client",
+			"exportName" : "render_client",
+			"exportTargets" : 
+			[
+				{
+					"id" : "render_client::@286ca0d662065846abce",
+					"index" : 170
+				}
+			],
+			"paths" : 
+			[
+				"modules/function/CMakeFiles/Export/243846198a780561724a1192f53d202d/lux-engine-function-render_client-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 17,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/render_client",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/function/lux-engine-function-render_client-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 18,
+			"component" : "lux_engine_function",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/render_client.lib"
+			],
+			"targetId" : "render_client::@286ca0d662065846abce",
+			"targetIndex" : 170,
+			"targetIsImportLibrary" : true,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 18,
+			"component" : "lux_engine_function",
+			"destination" : "bin",
+			"paths" : 
+			[
+				"bin/render_client.dll"
+			],
+			"targetId" : "render_client::@286ca0d662065846abce",
+			"targetIndex" : 170,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 20,
+			"component" : "lux_engine_function",
+			"destination" : ".",
+			"paths" : 
+			[
+				"modules/function/render/features/cmake/../include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 21,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/render_feature_client",
+			"exportName" : "render_feature_client",
+			"exportTargets" : 
+			[
+				{
+					"id" : "render_feature_client::@2609240a746559cdd999",
+					"index" : 231
+				}
+			],
+			"paths" : 
+			[
+				"modules/function/CMakeFiles/Export/b27ff367689ac8dd5f81293054ff56f1/lux-engine-function-render_feature_client-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 22,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/render_feature_client",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/function/lux-engine-function-render_feature_client-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 23,
+			"component" : "lux_engine_function",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/render_feature_client.lib"
+			],
+			"targetId" : "render_feature_client::@2609240a746559cdd999",
+			"targetIndex" : 231,
+			"targetIsImportLibrary" : true,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 23,
+			"component" : "lux_engine_function",
+			"destination" : "bin",
+			"paths" : 
+			[
+				"bin/render_feature_client.dll"
+			],
+			"targetId" : "render_feature_client::@2609240a746559cdd999",
+			"targetIndex" : 231,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 25,
+			"component" : "lux_engine_function",
+			"destination" : ".",
+			"paths" : 
+			[
+				"modules/function/render/standard_content/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 26,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/render_standard_content",
+			"exportName" : "render_standard_content",
+			"exportTargets" : 
+			[
+				{
+					"id" : "render_standard_content::@ac4145192c85835ea52a",
+					"index" : 343
+				}
+			],
+			"paths" : 
+			[
+				"modules/function/CMakeFiles/Export/a06333c6aa77e43b0a3a995a4239a66e/lux-engine-function-render_standard_content-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 27,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/render_standard_content",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/function/lux-engine-function-render_standard_content-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 28,
+			"component" : "lux_engine_function",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/lux_engine_function_render_standard_content.lib"
+			],
+			"targetId" : "render_standard_content::@ac4145192c85835ea52a",
+			"targetIndex" : 343,
+			"targetIsImportLibrary" : true,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 28,
+			"component" : "lux_engine_function",
+			"destination" : "bin",
+			"paths" : 
+			[
+				"bin/lux_engine_function_render_standard_content.dll"
+			],
+			"targetId" : "render_standard_content::@ac4145192c85835ea52a",
+			"targetIndex" : 343,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 30,
+			"component" : "lux_engine_function",
+			"destination" : ".",
+			"paths" : 
+			[
+				"modules/function/render/graph/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 31,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/render_graph",
+			"exportName" : "render_graph",
+			"exportTargets" : 
+			[
+				{
+					"id" : "render_graph::@eaf74ab7435caac5137d",
+					"index" : 302
+				}
+			],
+			"paths" : 
+			[
+				"modules/function/CMakeFiles/Export/c2ec55726d1191b5fd792af40b093b6a/lux-engine-function-render_graph-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 32,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/render_graph",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/function/lux-engine-function-render_graph-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 33,
+			"component" : "lux_engine_function",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/render_graph.lib"
+			],
+			"targetId" : "render_graph::@eaf74ab7435caac5137d",
+			"targetIndex" : 302,
+			"targetIsImportLibrary" : true,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 33,
+			"component" : "lux_engine_function",
+			"destination" : "bin",
+			"paths" : 
+			[
+				"bin/render_graph.dll"
+			],
+			"targetId" : "render_graph::@eaf74ab7435caac5137d",
+			"targetIndex" : 302,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 35,
+			"component" : "lux_engine_function",
+			"destination" : ".",
+			"paths" : 
+			[
+				"modules/function/render/vulkan/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 36,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/render_vulkan",
+			"exportName" : "render_vulkan",
+			"exportTargets" : 
+			[
+				{
+					"id" : "render_vulkan::@73825ecc97e9e03738cf",
+					"index" : 347
+				}
+			],
+			"paths" : 
+			[
+				"modules/function/CMakeFiles/Export/5166f7226974366d46e192f8fe20bec3/lux-engine-function-render_vulkan-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 37,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/render_vulkan",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/function/lux-engine-function-render_vulkan-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 38,
+			"component" : "lux_engine_function",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/render_vulkan.lib"
+			],
+			"targetId" : "render_vulkan::@73825ecc97e9e03738cf",
+			"targetIndex" : 347,
+			"targetIsImportLibrary" : true,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 38,
+			"component" : "lux_engine_function",
+			"destination" : "bin",
+			"paths" : 
+			[
+				"bin/render_vulkan.dll"
+			],
+			"targetId" : "render_vulkan::@73825ecc97e9e03738cf",
+			"targetIndex" : 347,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 40,
+			"component" : "lux_engine_function",
+			"destination" : ".",
+			"paths" : 
+			[
+				"modules/function/render/runtime/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 41,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/render_runtime",
+			"exportName" : "render_runtime",
+			"exportTargets" : 
+			[
+				{
+					"id" : "render_runtime::@3ae72fd365b4f844e41a",
+					"index" : 311
+				}
+			],
+			"paths" : 
+			[
+				"modules/function/CMakeFiles/Export/feee3a54eb4de65b3f34c808b500dd4c/lux-engine-function-render_runtime-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 42,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/render_runtime",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/function/lux-engine-function-render_runtime-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 43,
+			"component" : "lux_engine_function",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/render_runtime.lib"
+			],
+			"targetId" : "render_runtime::@3ae72fd365b4f844e41a",
+			"targetIndex" : 311,
+			"targetIsImportLibrary" : true,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 43,
+			"component" : "lux_engine_function",
+			"destination" : "bin",
+			"paths" : 
+			[
+				"bin/render_runtime.dll"
+			],
+			"targetId" : "render_runtime::@3ae72fd365b4f844e41a",
+			"targetIndex" : 311,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 45,
+			"component" : "lux_engine_function",
+			"destination" : ".",
+			"paths" : 
+			[
+				"modules/function/navigation/core/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 46,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/navigation",
+			"exportName" : "navigation",
+			"exportTargets" : 
+			[
+				{
+					"id" : "navigation::@17a575bf2cd86d302aba",
+					"index" : 0
+				}
+			],
+			"paths" : 
+			[
+				"modules/function/CMakeFiles/Export/b93975854056641549cb0a1a2fc2203d/lux-engine-function-navigation-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 47,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/navigation",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/function/lux-engine-function-navigation-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 49,
+			"component" : "lux_engine_function",
+			"destination" : ".",
+			"paths" : 
+			[
+				"modules/function/navigation/detour3d/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 50,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/navigation_detour3d",
+			"exportName" : "navigation_detour3d",
+			"exportTargets" : 
+			[
+				{
+					"id" : "navigation_detour3d::@024be43d0a70efcd69fa",
+					"index" : 137
+				}
+			],
+			"paths" : 
+			[
+				"modules/function/CMakeFiles/Export/edde0e6e49e33271e99362299d96f3bd/lux-engine-function-navigation_detour3d-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 51,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/navigation_detour3d",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/function/lux-engine-function-navigation_detour3d-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 52,
+			"component" : "lux_engine_function",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/lux_engine_function_navigation_detour3d.lib"
+			],
+			"targetId" : "navigation_detour3d::@024be43d0a70efcd69fa",
+			"targetIndex" : 137,
+			"targetIsImportLibrary" : true,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 52,
+			"component" : "lux_engine_function",
+			"destination" : "bin",
+			"paths" : 
+			[
+				"bin/lux_engine_function_navigation_detour3d.dll"
+			],
+			"targetId" : "navigation_detour3d::@024be43d0a70efcd69fa",
+			"targetIndex" : 137,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 54,
+			"component" : "lux_engine_function",
+			"destination" : ".",
+			"paths" : 
+			[
+				"modules/function/input/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 55,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/input",
+			"exportName" : "input",
+			"exportTargets" : 
+			[
+				{
+					"id" : "input::@f391e7d37075f1ab801f",
+					"index" : 116
+				}
+			],
+			"paths" : 
+			[
+				"modules/function/CMakeFiles/Export/71627c1d794aaece6bb0fac770db4b1d/lux-engine-function-input-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 56,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/input",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/function/lux-engine-function-input-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 57,
+			"component" : "lux_engine_function",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/lux_engine_function_input.lib"
+			],
+			"targetId" : "input::@f391e7d37075f1ab801f",
+			"targetIndex" : 116,
+			"targetIsImportLibrary" : true,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 57,
+			"component" : "lux_engine_function",
+			"destination" : "bin",
+			"paths" : 
+			[
+				"bin/lux_engine_function_input.dll"
+			],
+			"targetId" : "input::@f391e7d37075f1ab801f",
+			"targetIndex" : 116,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 59,
+			"component" : "lux_engine_function",
+			"destination" : ".",
+			"paths" : 
+			[
+				"modules/function/animation/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 60,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/animation",
+			"exportName" : "animation",
+			"exportTargets" : 
+			[
+				{
+					"id" : "animation::@9162a36500d2b829d1df",
+					"index" : 4
+				}
+			],
+			"paths" : 
+			[
+				"modules/function/CMakeFiles/Export/d1af8ed80a984e25ba2ea1b07ab908b4/lux-engine-function-animation-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 61,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/animation",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/function/lux-engine-function-animation-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 62,
+			"component" : "lux_engine_function",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/animation.lib"
+			],
+			"targetId" : "animation::@9162a36500d2b829d1df",
+			"targetIndex" : 4,
+			"targetIsImportLibrary" : true,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 62,
+			"component" : "lux_engine_function",
+			"destination" : "bin",
+			"paths" : 
+			[
+				"bin/animation.dll"
+			],
+			"targetId" : "animation::@9162a36500d2b829d1df",
+			"targetIndex" : 4,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 64,
+			"component" : "lux_engine_function",
+			"destination" : ".",
+			"paths" : 
+			[
+				"modules/function/script/artifact/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 65,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/script_artifact",
+			"exportName" : "script_artifact",
+			"exportTargets" : 
+			[
+				{
+					"id" : "script_artifact::@6f6baf858afc44774b73",
+					"index" : 406
+				}
+			],
+			"paths" : 
+			[
+				"modules/function/CMakeFiles/Export/3dc2ff36a78d1788e01c7865debef566/lux-engine-function-script_artifact-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 66,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/script_artifact",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/function/lux-engine-function-script_artifact-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 67,
+			"component" : "lux_engine_function",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/lux_engine_function_script_artifact.lib"
+			],
+			"targetId" : "script_artifact::@6f6baf858afc44774b73",
+			"targetIndex" : 406,
+			"targetIsImportLibrary" : true,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 67,
+			"component" : "lux_engine_function",
+			"destination" : "bin",
+			"paths" : 
+			[
+				"bin/lux_engine_function_script_artifact.dll"
+			],
+			"targetId" : "script_artifact::@6f6baf858afc44774b73",
+			"targetIndex" : 406,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 69,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/script_core/cmake_scripts",
+			"paths" : 
+			[
+				"modules/function/script/core/cmake/engine_script_ability_codegen.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 70,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/script_core/cmake_scripts",
+			"paths" : 
+			[
+				"modules/function/script/core/cmake/engine_script_semantic_schema.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 72,
+			"component" : "lux_engine_function",
+			"destination" : ".",
+			"paths" : 
+			[
+				"modules/function/script/core/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 73,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/script_core",
+			"exportName" : "script_core",
+			"exportTargets" : 
+			[
+				{
+					"id" : "script_core::@023ad226eeb1dfda479d",
+					"index" : 407
+				}
+			],
+			"paths" : 
+			[
+				"modules/function/CMakeFiles/Export/412fbac47e6f542a2eacc6d66a0ea17d/lux-engine-function-script_core-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 74,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/script_core",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/function/lux-engine-function-script_core-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 75,
+			"component" : "lux_engine_function",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/lux_engine_function_script_core.lib"
+			],
+			"targetId" : "script_core::@023ad226eeb1dfda479d",
+			"targetIndex" : 407,
+			"targetIsImportLibrary" : true,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 75,
+			"component" : "lux_engine_function",
+			"destination" : "bin",
+			"paths" : 
+			[
+				"bin/lux_engine_function_script_core.dll"
+			],
+			"targetId" : "script_core::@023ad226eeb1dfda479d",
+			"targetIndex" : 407,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 77,
+			"component" : "lux_engine_function",
+			"destination" : ".",
+			"paths" : 
+			[
+				"modules/function/script/native/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 78,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/script_native",
+			"exportName" : "script_native",
+			"exportTargets" : 
+			[
+				{
+					"id" : "script_native::@cb061a1ab3c7a28c3f64",
+					"index" : 409
+				}
+			],
+			"paths" : 
+			[
+				"modules/function/CMakeFiles/Export/fa04a3b1c33e3014624adc2f4f4113c7/lux-engine-function-script_native-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 79,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/script_native",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/function/lux-engine-function-script_native-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 80,
+			"component" : "lux_engine_function",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/lux_engine_function_script_native.lib"
+			],
+			"targetId" : "script_native::@cb061a1ab3c7a28c3f64",
+			"targetIndex" : 409,
+			"targetIsImportLibrary" : true,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 80,
+			"component" : "lux_engine_function",
+			"destination" : "bin",
+			"paths" : 
+			[
+				"bin/lux_engine_function_script_native.dll"
+			],
+			"targetId" : "script_native::@cb061a1ab3c7a28c3f64",
+			"targetIndex" : 409,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 82,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/script_lua/cmake_scripts",
+			"paths" : 
+			[
+				"modules/function/script/lua/cmake/engine_lua_codegen.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 83,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/script_lua/cmake_scripts",
+			"paths" : 
+			[
+				"modules/function/script/lua/cmake/engine_lua_values.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 85,
+			"component" : "lux_engine_function",
+			"destination" : ".",
+			"paths" : 
+			[
+				"modules/function/script/lua/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 86,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/script_lua",
+			"exportName" : "script_lua",
+			"exportTargets" : 
+			[
+				{
+					"id" : "script_lua::@dd4d93260c8faee007a6",
+					"index" : 408
+				}
+			],
+			"paths" : 
+			[
+				"modules/function/CMakeFiles/Export/eb63a111f7b2c1a5037c224dab4f8ad4/lux-engine-function-script_lua-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 87,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/script_lua",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/function/lux-engine-function-script_lua-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 88,
+			"component" : "lux_engine_function",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/lux_engine_function_script_lua.lib"
+			],
+			"targetId" : "script_lua::@dd4d93260c8faee007a6",
+			"targetIndex" : 408,
+			"targetIsImportLibrary" : true,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 88,
+			"component" : "lux_engine_function",
+			"destination" : "bin",
+			"paths" : 
+			[
+				"bin/lux_engine_function_script_lua.dll"
+			],
+			"targetId" : "script_lua::@dd4d93260c8faee007a6",
+			"targetIndex" : 408,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 90,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/render_features/cmake_scripts",
+			"paths" : 
+			[
+				"modules/function/render/features/cmake/compile_glsl_shaders.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 91,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/render_features/runtime_assets",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/assets/shaders"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 92,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/render_features/runtime_assets",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/assets/textures"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 93,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/render_features",
+			"exportName" : "render_features",
+			"exportTargets" : 
+			[
+				{
+					"id" : "render_features::@a4379987959f75cb1921",
+					"index" : 299
+				}
+			],
+			"paths" : 
+			[
+				"modules/function/CMakeFiles/Export/cf489985eeaefbf98acfa33f86de7de6/lux-engine-function-render_features-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 94,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/render_features",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/function/lux-engine-function-render_features-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 95,
+			"component" : "lux_engine_function",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/render_features.lib"
+			],
+			"targetId" : "render_features::@a4379987959f75cb1921",
+			"targetIndex" : 299,
+			"targetIsImportLibrary" : true,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 95,
+			"component" : "lux_engine_function",
+			"destination" : "bin",
+			"paths" : 
+			[
+				"bin/render_features.dll"
+			],
+			"targetId" : "render_features::@a4379987959f75cb1921",
+			"targetIndex" : 299,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 97,
+			"component" : "lux_engine_function",
+			"destination" : ".",
+			"paths" : 
+			[
+				"modules/function/ui/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 98,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/ui",
+			"exportName" : "ui",
+			"exportTargets" : 
+			[
+				{
+					"id" : "ui::@744f77519ad4bbba6e0c",
+					"index" : 442
+				}
+			],
+			"paths" : 
+			[
+				"modules/function/CMakeFiles/Export/e143fc5117e0e229c1889c74640261ea/lux-engine-function-ui-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 99,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/ui",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/function/lux-engine-function-ui-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 100,
+			"component" : "lux_engine_function",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/ui.lib"
+			],
+			"targetId" : "ui::@744f77519ad4bbba6e0c",
+			"targetIndex" : 442,
+			"targetIsImportLibrary" : true,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 100,
+			"component" : "lux_engine_function",
+			"destination" : "bin",
+			"paths" : 
+			[
+				"bin/ui.dll"
+			],
+			"targetId" : "ui::@744f77519ad4bbba6e0c",
+			"targetIndex" : 442,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 102,
+			"component" : "lux_engine_function",
+			"destination" : ".",
+			"paths" : 
+			[
+				"modules/function/ui/rendering/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 103,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/ui_rendering",
+			"exportName" : "ui_rendering",
+			"exportTargets" : 
+			[
+				{
+					"id" : "ui_rendering::@acd468146784c6e2a607",
+					"index" : 446
+				}
+			],
+			"paths" : 
+			[
+				"modules/function/CMakeFiles/Export/ba9586d6cd7cb00a9abbd41a52d87b6b/lux-engine-function-ui_rendering-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 104,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/ui_rendering",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/function/lux-engine-function-ui_rendering-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 105,
+			"component" : "lux_engine_function",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/ui_rendering.lib"
+			],
+			"targetId" : "ui_rendering::@acd468146784c6e2a607",
+			"targetIndex" : 446,
+			"targetIsImportLibrary" : true,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 105,
+			"component" : "lux_engine_function",
+			"destination" : "bin",
+			"paths" : 
+			[
+				"bin/ui_rendering.dll"
+			],
+			"targetId" : "ui_rendering::@acd468146784c6e2a607",
+			"targetIndex" : 446,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 107,
+			"component" : "lux_engine_function",
+			"destination" : ".",
+			"paths" : 
+			[
+				"modules/function/material/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 108,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/material_graph",
+			"exportName" : "material_graph",
+			"exportTargets" : 
+			[
+				{
+					"id" : "material_graph::@8d185533eb6252911024",
+					"index" : 126
+				}
+			],
+			"paths" : 
+			[
+				"modules/function/CMakeFiles/Export/246e7c95c04c0bdaafafc0dea93ff28b/lux-engine-function-material_graph-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 109,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function/material_graph",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/function/lux-engine-function-material_graph-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 110,
+			"component" : "lux_engine_function",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/lux_engine_function_material_graph.lib"
+			],
+			"targetId" : "material_graph::@8d185533eb6252911024",
+			"targetIndex" : 126,
+			"targetIsImportLibrary" : true,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 110,
+			"component" : "lux_engine_function",
+			"destination" : "bin",
+			"paths" : 
+			[
+				"bin/lux_engine_function_material_graph.dll"
+			],
+			"targetId" : "material_graph::@8d185533eb6252911024",
+			"targetIndex" : 126,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 111,
+			"component" : "lux_engine_function",
+			"destination" : "share/lux-engine-function",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/function/lux-engine-function-config.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/function/lux-engine-function-config-version.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/function/lux-engine-function-available-components.cmake"
+			],
+			"type" : "file"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "modules/function",
+		"source" : "modules/function"
+	}
+}

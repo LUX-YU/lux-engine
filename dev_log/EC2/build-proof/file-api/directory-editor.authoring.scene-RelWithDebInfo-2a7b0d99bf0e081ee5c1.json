@@ -1,0 +1,135 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install",
+			"__install_export_header_dirs",
+			"lux_engine_install_components"
+		],
+		"files" : 
+		[
+			"E:/SyncForder/CodeRepos/install/EC2-dd54847ee281/share/lux-cmake-toolset/component/install_components.cmake",
+			"cmake/InstallComponents.cmake",
+			"editor/authoring/scene/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 18,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 2
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 64,
+				"parent" : 1
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 3,
+			"component" : "lux_engine_editor_scene_model",
+			"destination" : ".",
+			"paths" : 
+			[
+				"editor/authoring/scene/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 4,
+			"component" : "lux_engine_editor_scene_model",
+			"destination" : "share/lux-engine-editor-scene-model/scene_model",
+			"exportName" : "scene_model",
+			"exportTargets" : 
+			[
+				{
+					"id" : "scene_model::@f7d8f94b87546c6dde97",
+					"index" : 366
+				}
+			],
+			"paths" : 
+			[
+				"editor/authoring/scene/CMakeFiles/Export/cd0f01e6129fa762988cae953b60d488/lux-engine-editor-scene-model-scene_model-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 5,
+			"component" : "lux_engine_editor_scene_model",
+			"destination" : "share/lux-engine-editor-scene-model/scene_model",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/editor/authoring/scene/lux-engine-editor-scene-model-scene_model-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 6,
+			"component" : "lux_engine_editor_scene_model",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/scene_model.lib"
+			],
+			"targetId" : "scene_model::@f7d8f94b87546c6dde97",
+			"targetIndex" : 366,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 7,
+			"component" : "lux_engine_editor_scene_model",
+			"destination" : "share/lux-engine-editor-scene-model",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/editor/authoring/scene/lux-engine-editor-scene-model-config.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/editor/authoring/scene/lux-engine-editor-scene-model-config-version.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/editor/authoring/scene/lux-engine-editor-scene-model-available-components.cmake"
+			],
+			"type" : "file"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "editor/authoring/scene",
+		"source" : "editor/authoring/scene"
+	}
+}

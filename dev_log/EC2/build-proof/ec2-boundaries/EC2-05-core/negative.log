@@ -1,0 +1,14 @@
+-- Configuring incomplete, errors occurred!
+CMake Error at E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/cmake/EditorArchitectureChecks.cmake:167 (message):
+  Editor migration boundary check failed:
+
+  {"status": "FAIL", "findings": [{"rule":
+  "generic_script_domain_dependency", "path": "script_core", "detail":
+  "script_core -> toolchain_material_compiler (LINK_LIBRARIES)"}, {"rule":
+  "generic_script_domain_dependency", "path": "script_core", "detail":
+  "script_core -> toolchain_material_compiler (INTERFACE_LINK_LIBRARIES)"}]}
+
+Call Stack (most recent call first):
+  CMakeLists.txt:11 (lux_editor_check_architecture)
+
+

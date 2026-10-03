@@ -1,0 +1,20 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dev
+    Start 14: scene.script_asset_scene
+1/1 Test #14: scene.script_asset_scene .........Exit code 0xc0000409
+***Exception:   3.10 sec
+Pak publication failed: non-canonical vpath 'scripts/assets.lux' (err=3)
+Assertion failed: published, file E:\SyncForder\CodeRepos\lux-engine-ec2\engine\scene\integration\script\test\AssetSceneFixture.hpp, line 151
+
+
+0% tests passed, 1 tests failed out of 1
+
+Label Time Summary:
+EC2       =   3.10 sec*proc (1 test)
+native    =   3.10 sec*proc (1 test)
+
+Total Test time (real) =   3.15 sec
+
+The following tests FAILED:
+	 14 - scene.script_asset_scene (Exit code 0xc0000409
+)  EC2 native
+Errors while running CTest

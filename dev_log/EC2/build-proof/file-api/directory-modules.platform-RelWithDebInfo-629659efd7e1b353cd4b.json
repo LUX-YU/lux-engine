@@ -1,0 +1,480 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install",
+			"__install_export_header_dirs",
+			"lux_engine_install_components"
+		],
+		"files" : 
+		[
+			"E:/SyncForder/CodeRepos/install/EC2-dd54847ee281/share/lux-cmake-toolset/component/install_components.cmake",
+			"cmake/InstallComponents.cmake",
+			"modules/platform/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 31,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 2
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 6
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 11
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 16
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 21
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 64,
+				"parent" : 1
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 3,
+			"component" : "lux_engine_platform",
+			"destination" : ".",
+			"paths" : 
+			[
+				"modules/platform/gapi/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 4,
+			"component" : "lux_engine_platform",
+			"destination" : "share/lux-engine-platform/gapi",
+			"exportName" : "gapi",
+			"exportTargets" : 
+			[
+				{
+					"id" : "gapi::@9fc259cdf14afb3c5b6e",
+					"index" : 0
+				}
+			],
+			"paths" : 
+			[
+				"modules/platform/CMakeFiles/Export/1a81c5edddedf20002a3daf571631e67/lux-engine-platform-gapi-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 5,
+			"component" : "lux_engine_platform",
+			"destination" : "share/lux-engine-platform/gapi",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/platform/lux-engine-platform-gapi-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 7,
+			"component" : "lux_engine_platform",
+			"destination" : ".",
+			"paths" : 
+			[
+				"modules/platform/window/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 8,
+			"component" : "lux_engine_platform",
+			"destination" : "share/lux-engine-platform/window",
+			"exportName" : "window",
+			"exportTargets" : 
+			[
+				{
+					"id" : "window::@bf63d16995680a47d1c7",
+					"index" : 452
+				}
+			],
+			"paths" : 
+			[
+				"modules/platform/CMakeFiles/Export/5664756e328e085454d5f1227fd4dc2d/lux-engine-platform-window-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 9,
+			"component" : "lux_engine_platform",
+			"destination" : "share/lux-engine-platform/window",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/platform/lux-engine-platform-window-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 10,
+			"component" : "lux_engine_platform",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/window.lib"
+			],
+			"targetId" : "window::@bf63d16995680a47d1c7",
+			"targetIndex" : 452,
+			"targetIsImportLibrary" : true,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 10,
+			"component" : "lux_engine_platform",
+			"destination" : "bin",
+			"paths" : 
+			[
+				"bin/window.dll"
+			],
+			"targetId" : "window::@bf63d16995680a47d1c7",
+			"targetIndex" : 452,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 12,
+			"component" : "lux_engine_platform",
+			"destination" : ".",
+			"paths" : 
+			[
+				"modules/platform/dynamic_library/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 13,
+			"component" : "lux_engine_platform",
+			"destination" : "share/lux-engine-platform/dynamic_library",
+			"exportName" : "dynamic_library",
+			"exportTargets" : 
+			[
+				{
+					"id" : "dynamic_library::@17926f360554c679ac00",
+					"index" : 30
+				}
+			],
+			"paths" : 
+			[
+				"modules/platform/CMakeFiles/Export/c3270fd290857d61de3a9be88210f8d3/lux-engine-platform-dynamic_library-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 14,
+			"component" : "lux_engine_platform",
+			"destination" : "share/lux-engine-platform/dynamic_library",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/platform/lux-engine-platform-dynamic_library-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 15,
+			"component" : "lux_engine_platform",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/dynamic_library.lib"
+			],
+			"targetId" : "dynamic_library::@17926f360554c679ac00",
+			"targetIndex" : 30,
+			"targetIsImportLibrary" : true,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 15,
+			"component" : "lux_engine_platform",
+			"destination" : "bin",
+			"paths" : 
+			[
+				"bin/dynamic_library.dll"
+			],
+			"targetId" : "dynamic_library::@17926f360554c679ac00",
+			"targetIndex" : 30,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 17,
+			"component" : "lux_engine_platform",
+			"destination" : ".",
+			"paths" : 
+			[
+				"modules/platform/filewatch/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 18,
+			"component" : "lux_engine_platform",
+			"destination" : "share/lux-engine-platform/filewatch",
+			"exportName" : "filewatch",
+			"exportTargets" : 
+			[
+				{
+					"id" : "filewatch::@9eed308fef90a277ab61",
+					"index" : 104
+				}
+			],
+			"paths" : 
+			[
+				"modules/platform/CMakeFiles/Export/e11b3ce8a62ceab2cc5ba16e9e202833/lux-engine-platform-filewatch-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 19,
+			"component" : "lux_engine_platform",
+			"destination" : "share/lux-engine-platform/filewatch",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/platform/lux-engine-platform-filewatch-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 20,
+			"component" : "lux_engine_platform",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/filewatch.lib"
+			],
+			"targetId" : "filewatch::@9eed308fef90a277ab61",
+			"targetIndex" : 104,
+			"targetIsImportLibrary" : true,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 20,
+			"component" : "lux_engine_platform",
+			"destination" : "bin",
+			"paths" : 
+			[
+				"bin/filewatch.dll"
+			],
+			"targetId" : "filewatch::@9eed308fef90a277ab61",
+			"targetIndex" : 104,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 22,
+			"component" : "lux_engine_platform",
+			"destination" : ".",
+			"paths" : 
+			[
+				"modules/platform/process/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 23,
+			"component" : "lux_engine_platform",
+			"destination" : "share/lux-engine-platform/platform_process",
+			"exportName" : "platform_process",
+			"exportTargets" : 
+			[
+				{
+					"id" : "platform_process::@13b94bfe4e85822688fc",
+					"index" : 158
+				}
+			],
+			"paths" : 
+			[
+				"modules/platform/CMakeFiles/Export/15e32d31de3811fd5a81baeeb653408c/lux-engine-platform-platform_process-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 24,
+			"component" : "lux_engine_platform",
+			"destination" : "share/lux-engine-platform/platform_process",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/platform/lux-engine-platform-platform_process-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 25,
+			"component" : "lux_engine_platform",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/platform_process.lib"
+			],
+			"targetId" : "platform_process::@13b94bfe4e85822688fc",
+			"targetIndex" : 158,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 26,
+			"component" : "lux_engine_platform",
+			"destination" : "share/lux-engine-platform",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/platform/lux-engine-platform-config.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/platform/lux-engine-platform-config-version.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/modules/platform/lux-engine-platform-available-components.cmake"
+			],
+			"type" : "file"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "modules/platform",
+		"source" : "modules/platform"
+	}
+}

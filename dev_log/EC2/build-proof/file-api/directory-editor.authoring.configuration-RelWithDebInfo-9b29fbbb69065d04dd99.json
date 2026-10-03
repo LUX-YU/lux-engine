@@ -1,0 +1,149 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install",
+			"__install_export_header_dirs",
+			"lux_engine_install_components"
+		],
+		"files" : 
+		[
+			"E:/SyncForder/CodeRepos/install/EC2-dd54847ee281/share/lux-cmake-toolset/component/install_components.cmake",
+			"cmake/InstallComponents.cmake",
+			"editor/authoring/configuration/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 15,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 2
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 64,
+				"parent" : 1
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 3,
+			"component" : "lux_engine_editor_configuration",
+			"destination" : ".",
+			"paths" : 
+			[
+				"editor/authoring/configuration/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 4,
+			"component" : "lux_engine_editor_configuration",
+			"destination" : "share/lux-engine-editor-configuration/editor_configuration",
+			"exportName" : "editor_configuration",
+			"exportTargets" : 
+			[
+				{
+					"id" : "editor_configuration::@07e3ba29d5ed9fd6901f",
+					"index" : 46
+				}
+			],
+			"paths" : 
+			[
+				"editor/authoring/configuration/CMakeFiles/Export/e424e4d949d8b68c08f9e538ab4d323d/lux-engine-editor-configuration-editor_configuration-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 5,
+			"component" : "lux_engine_editor_configuration",
+			"destination" : "share/lux-engine-editor-configuration/editor_configuration",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/editor/authoring/configuration/lux-engine-editor-configuration-editor_configuration-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 6,
+			"component" : "lux_engine_editor_configuration",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/editor_configuration.lib"
+			],
+			"targetId" : "editor_configuration::@07e3ba29d5ed9fd6901f",
+			"targetIndex" : 46,
+			"targetIsImportLibrary" : true,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 6,
+			"component" : "lux_engine_editor_configuration",
+			"destination" : "bin",
+			"paths" : 
+			[
+				"bin/editor_configuration.dll"
+			],
+			"targetId" : "editor_configuration::@07e3ba29d5ed9fd6901f",
+			"targetIndex" : 46,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 7,
+			"component" : "lux_engine_editor_configuration",
+			"destination" : "share/lux-engine-editor-configuration",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/editor/authoring/configuration/lux-engine-editor-configuration-config.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/editor/authoring/configuration/lux-engine-editor-configuration-config-version.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/editor/authoring/configuration/lux-engine-editor-configuration-available-components.cmake"
+			],
+			"type" : "file"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "editor/authoring/configuration",
+		"source" : "editor/authoring/configuration"
+	}
+}

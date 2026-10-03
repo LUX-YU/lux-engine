@@ -1,0 +1,47 @@
+final-external-artifact-configure 0 E:\SyncForder\CodeRepos\lux-engine\.internal\editor-redesign\EC2\logs\final-external-artifact-configure.log
+-- The CXX compiler identification is MSVC 19.44.35228.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: D:/Development/Mircosoft/VisualStudio/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+---- Importing lux-cxx-core
+---- Importing lux-cxx-compile_time
+---- Importing lux-cxx-memory
+---- Importing lux-cxx-container
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Failed
+-- Looking for pthread_create in pthreads
+-- Looking for pthread_create in pthreads - not found
+-- Looking for pthread_create in pthread
+-- Looking for pthread_create in pthread - not found
+-- Found Threads: TRUE
+-- Found stdexec: D:/Development/vcpkg/installed/x64-windows/share/stdexec/stdexec-config.cmake (found version "0.10.0")
+---- Importing lux-cxx-binary
+---- Importing lux-cxx-algorithm
+-- Found nlohmann_json: D:/Development/vcpkg/installed/x64-windows/share/nlohmann_json/nlohmann_jsonConfig.cmake (found version "3.12.0")
+---- Importing lux-cxx-reflection_runtime
+---- Importing lux-cxx-concurrent
+-- Configuring done (3.7s)
+-- Generating done (0.1s)
+-- Build files have been written to: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-final-external-artifact
+
+final-external-artifact-build 0 E:\SyncForder\CodeRepos\lux-engine\.internal\editor-redesign\EC2\logs\final-external-artifact-build.log
+[1/4] Building CXX object CMakeFiles\artifact_source.dir\plugin.cpp.obj
+[2/4] Linking CXX shared library artifact_source.dll
+[3/4] Building CXX object CMakeFiles\consumer.dir\main.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[4/4] Linking CXX executable consumer.exe
+
+final-external-artifact-no-work 0 E:\SyncForder\CodeRepos\lux-engine\.internal\editor-redesign\EC2\logs\final-external-artifact-no-work.log
+ninja: no work to do.
+
+final-external-artifact-test 0 E:\SyncForder\CodeRepos\lux-engine\.internal\editor-redesign\EC2\logs\final-external-artifact-test.log
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-final-external-artifact
+    Start 1: installed.ec2.foreign_artifact
+1/1 Test #1: installed.ec2.foreign_artifact ...   Passed    0.31 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) =   0.31 sec
+

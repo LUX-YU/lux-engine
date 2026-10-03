@@ -1,0 +1,13 @@
+-- Configuring incomplete, errors occurred!
+CMake Error at E:/SyncForder/CodeRepos/lux-engine-ec2-qualified/cmake/EditorArchitectureChecks.cmake:167 (message):
+  Editor migration boundary check failed:
+
+  {"status": "FAIL", "findings": [{"rule": "activity_workbench_dependency",
+  "path": "session_factories", "detail":
+  "editor/activities/sessions/session_factories.cpp ->
+  editor/workbench/desktop/include/layering/Foreign.hpp (view_host)"}]}
+
+Call Stack (most recent call first):
+  CMakeLists.txt:11 (lux_editor_check_architecture)
+
+

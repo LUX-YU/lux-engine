@@ -1,0 +1,149 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install",
+			"__install_export_header_dirs",
+			"lux_engine_install_components"
+		],
+		"files" : 
+		[
+			"E:/SyncForder/CodeRepos/install/EC2-dd54847ee281/share/lux-cmake-toolset/component/install_components.cmake",
+			"cmake/InstallComponents.cmake",
+			"engine/scene/integration/world_materialization/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 44,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 2
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 64,
+				"parent" : 1
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 3,
+			"component" : "lux_engine_scene_world_materialization",
+			"destination" : ".",
+			"paths" : 
+			[
+				"engine/scene/integration/world_materialization/include",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/gen/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 4,
+			"component" : "lux_engine_scene_world_materialization",
+			"destination" : "share/lux-engine-scene-world-materialization/scene_world_materialization",
+			"exportName" : "scene_world_materialization",
+			"exportTargets" : 
+			[
+				{
+					"id" : "scene_world_materialization::@899e763dcf783829eb82",
+					"index" : 404
+				}
+			],
+			"paths" : 
+			[
+				"engine/scene/integration/world_materialization/CMakeFiles/Export/9b76a42008be446c20e12b1fe2f65092/lux-engine-scene-world-materialization-scene_world_materialization-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 5,
+			"component" : "lux_engine_scene_world_materialization",
+			"destination" : "share/lux-engine-scene-world-materialization/scene_world_materialization",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/scene/integration/world_materialization/lux-engine-scene-world-materialization-scene_world_materialization-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 6,
+			"component" : "lux_engine_scene_world_materialization",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/lux_engine_scene_world_materialization.lib"
+			],
+			"targetId" : "scene_world_materialization::@899e763dcf783829eb82",
+			"targetIndex" : 404,
+			"targetIsImportLibrary" : true,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 6,
+			"component" : "lux_engine_scene_world_materialization",
+			"destination" : "bin",
+			"paths" : 
+			[
+				"bin/lux_engine_scene_world_materialization.dll"
+			],
+			"targetId" : "scene_world_materialization::@899e763dcf783829eb82",
+			"targetIndex" : 404,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 7,
+			"component" : "lux_engine_scene_world_materialization",
+			"destination" : "share/lux-engine-scene-world-materialization",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/scene/integration/world_materialization/lux-engine-scene-world-materialization-config.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/scene/integration/world_materialization/lux-engine-scene-world-materialization-config-version.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/scene/integration/world_materialization/lux-engine-scene-world-materialization-available-components.cmake"
+			],
+			"type" : "file"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "engine/scene/integration/world_materialization",
+		"source" : "engine/scene/integration/world_materialization"
+	}
+}

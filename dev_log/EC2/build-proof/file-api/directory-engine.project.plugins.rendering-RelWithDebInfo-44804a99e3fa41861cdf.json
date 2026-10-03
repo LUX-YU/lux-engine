@@ -1,0 +1,135 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : 
+		[
+			"install",
+			"__install_export_header_dirs",
+			"lux_engine_install_components"
+		],
+		"files" : 
+		[
+			"E:/SyncForder/CodeRepos/install/EC2-dd54847ee281/share/lux-cmake-toolset/component/install_components.cmake",
+			"cmake/InstallComponents.cmake",
+			"engine/project/plugins/rendering/CMakeLists.txt"
+		],
+		"nodes" : 
+		[
+			{
+				"file" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 2,
+				"line" : 10,
+				"parent" : 0
+			},
+			{
+				"command" : 1,
+				"file" : 1,
+				"line" : 25,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 2
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 47,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 52,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 54,
+				"parent" : 1
+			},
+			{
+				"command" : 0,
+				"file" : 1,
+				"line" : 64,
+				"parent" : 1
+			}
+		]
+	},
+	"installers" : 
+	[
+		{
+			"backtrace" : 3,
+			"component" : "lux_engine_project_plugin_rendering",
+			"destination" : ".",
+			"paths" : 
+			[
+				"engine/project/plugins/rendering/include"
+			],
+			"type" : "directory"
+		},
+		{
+			"backtrace" : 4,
+			"component" : "lux_engine_project_plugin_rendering",
+			"destination" : "share/lux-engine-project-plugin-rendering/project_plugin_rendering",
+			"exportName" : "project_plugin_rendering",
+			"exportTargets" : 
+			[
+				{
+					"id" : "project_plugin_rendering::@5879c3710e3f153a9250",
+					"index" : 166
+				}
+			],
+			"paths" : 
+			[
+				"engine/project/plugins/rendering/CMakeFiles/Export/406548b6faeba5fbf0b2301dd5be1338/lux-engine-project-plugin-rendering-project_plugin_rendering-config-targets.cmake"
+			],
+			"type" : "export"
+		},
+		{
+			"backtrace" : 5,
+			"component" : "lux_engine_project_plugin_rendering",
+			"destination" : "share/lux-engine-project-plugin-rendering/project_plugin_rendering",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/project/plugins/rendering/lux-engine-project-plugin-rendering-project_plugin_rendering-import.cmake"
+			],
+			"type" : "file"
+		},
+		{
+			"backtrace" : 6,
+			"component" : "lux_engine_project_plugin_rendering",
+			"destination" : "lib",
+			"paths" : 
+			[
+				"lib/project_plugin_rendering.lib"
+			],
+			"targetId" : "project_plugin_rendering::@5879c3710e3f153a9250",
+			"targetIndex" : 166,
+			"type" : "target"
+		},
+		{
+			"backtrace" : 7,
+			"component" : "lux_engine_project_plugin_rendering",
+			"destination" : "share/lux-engine-project-plugin-rendering",
+			"paths" : 
+			[
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/project/plugins/rendering/lux-engine-project-plugin-rendering-config.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/project/plugins/rendering/lux-engine-project-plugin-rendering-config-version.cmake",
+				"E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dd54847ee281/engine/project/plugins/rendering/lux-engine-project-plugin-rendering-available-components.cmake"
+			],
+			"type" : "file"
+		}
+	],
+	"paths" : 
+	{
+		"build" : "engine/project/plugins/rendering",
+		"source" : "engine/project/plugins/rendering"
+	}
+}

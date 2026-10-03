@@ -1,0 +1,12 @@
+{
+  "implementation_sha": "dd54847ee281f5e96adf4ebeba2f6c06bc858515",
+  "prefix": "E:\\SyncForder\\CodeRepos\\install\\EC2-dd54847ee281",
+  "retired_residual": [],
+  "old_prefix_references": [],
+  "sdk_identities": [
+    {
+      "path": "share\\lux-engine\\plugins\\LuxPluginSdk.cmake",
+      "sha256": "5aa7f5d035a6bc071e673b175bb48efd30f2847263560e91784b5e811524a971"
+    }
+  ]
+}

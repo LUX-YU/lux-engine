@@ -1,0 +1,4 @@
+[1/4] Building CXX object editor\editing\CMakeFiles\edit_sessions.dir\edit_sessions.cpp.obj
+[2/4] Building CXX object engine\scene\scripting\assets\CMakeFiles\scene_script_assets.dir\scene_script_assets.cpp.obj
+[3/4] Linking CXX static library editor\editing\edit_sessions.lib
+[4/4] Linking CXX static library engine\scene\scripting\assets\scene_script_assets.lib

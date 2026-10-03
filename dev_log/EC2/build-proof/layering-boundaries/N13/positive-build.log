@@ -1,0 +1,5 @@
+[1/5] Building CXX object editor\tools\scene\CMakeFiles\editor_scene_meta.dir\editor_scene_meta.cpp.obj
+[2/5] Generating generated/Generated.hpp
+[3/5] Linking CXX static library editor\tools\scene\editor_scene_meta.lib
+[4/5] Building CXX object editor\workbench\scene\CMakeFiles\scene_ui.dir\scene_ui.cpp.obj
+[5/5] Linking CXX static library editor\workbench\scene\scene_ui.lib

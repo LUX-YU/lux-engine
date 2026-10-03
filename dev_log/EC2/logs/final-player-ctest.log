@@ -1,0 +1,50 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-final-player
+      Start  1: platform.process_arguments
+ 1/19 Test  #1: platform.process_arguments .......   Passed    0.07 sec
+      Start  2: object.tree
+ 2/19 Test  #2: object.tree ......................   Passed    0.03 sec
+      Start  3: object.queue
+ 3/19 Test  #3: object.queue .....................   Passed    0.03 sec
+      Start  4: render.runtime_resources
+ 4/19 Test  #4: render.runtime_resources .........   Passed    0.45 sec
+      Start  5: ui.root
+ 5/19 Test  #5: ui.root ..........................   Passed    0.05 sec
+      Start  6: world.partition_decoder_parity
+ 6/19 Test  #6: world.partition_decoder_parity ...   Passed    0.04 sec
+      Start  7: process.asset_read_overlay
+ 7/19 Test  #7: process.asset_read_overlay .......   Passed    0.03 sec
+      Start  8: process.asset_bounded_read
+ 8/19 Test  #8: process.asset_bounded_read .......   Passed    0.05 sec
+      Start  9: scene.driver
+ 9/19 Test  #9: scene.driver .....................   Passed    0.04 sec
+      Start 10: scene.runtime
+10/19 Test #10: scene.runtime ....................   Passed    0.11 sec
+      Start 11: scene.script_asset_scopes
+11/19 Test #11: scene.script_asset_scopes ........   Passed    0.04 sec
+      Start 12: scene.script_asset_plugin
+12/19 Test #12: scene.script_asset_plugin ........   Passed    0.04 sec
+      Start 13: scene.script_asset_values
+13/19 Test #13: scene.script_asset_values ........   Passed    0.04 sec
+      Start 14: scene.script_asset_lua
+14/19 Test #14: scene.script_asset_lua ...........   Passed    0.04 sec
+      Start 15: scene.script_asset_scene
+15/19 Test #15: scene.script_asset_scene .........   Passed    0.61 sec
+      Start 16: scene.render_resources
+16/19 Test #16: scene.render_resources ...........   Passed    0.51 sec
+      Start 17: scene.world_loading
+17/19 Test #17: scene.world_loading ..............   Passed    0.17 sec
+      Start 18: engine.headless_context
+18/19 Test #18: engine.headless_context ..........   Passed    0.18 sec
+      Start 19: plugin.scene_registrations
+19/19 Test #19: plugin.scene_registrations .......   Passed    0.07 sec
+
+100% tests passed, 0 tests failed out of 19
+
+Label Time Summary:
+EC2                =   0.82 sec*proc (6 tests)
+P10Q               =   0.04 sec*proc (1 test)
+P12                =   0.07 sec*proc (1 test)
+editor_layering    =   0.04 sec*proc (1 test)
+native             =   0.92 sec*proc (8 tests)
+
+Total Test time (real) =   3.12 sec

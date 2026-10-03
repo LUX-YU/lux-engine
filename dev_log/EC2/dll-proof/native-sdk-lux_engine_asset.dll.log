@@ -1,0 +1,31 @@
+
+Dump of file E:\SyncForder\CodeRepos\install\EC2-dd54847ee281\bin\lux_engine_asset.dll
+
+File Type: DLL
+
+  Image has the following dependencies:
+
+    description.dll
+    MSVCP140.dll
+    MSVCP140_ATOMIC_WAIT.dll
+    VCRUNTIME140_1.dll
+    VCRUNTIME140.dll
+    api-ms-win-crt-runtime-l1-1-0.dll
+    api-ms-win-crt-heap-l1-1-0.dll
+    api-ms-win-crt-string-l1-1-0.dll
+    api-ms-win-crt-math-l1-1-0.dll
+    api-ms-win-crt-stdio-l1-1-0.dll
+    api-ms-win-crt-filesystem-l1-1-0.dll
+    api-ms-win-crt-locale-l1-1-0.dll
+    KERNEL32.dll
+
+  Summary
+
+        1000 .00cfg
+        3000 .data
+        4000 .idata
+       10000 .pdata
+       54000 .rdata
+        2000 .reloc
+        1000 .rsrc
+      119000 .text

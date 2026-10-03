@@ -51,6 +51,7 @@ namespace lux::simulation::script::detail
                      capability.schema_version,
                      capability.methods}
                 );
+                capabilities_.back().prepare_instance = capability.prepare_instance;
                 return {};
             };
             for (const auto& capability : capabilities)

@@ -334,6 +334,7 @@ namespace lux::simulation::script::detail
             VScriptInstanceScope scope;
             ScriptBehavior behavior;
             std::vector<PreparedScriptApiCapability> capabilities;
+            std::vector<ScriptApiInstanceBinding> capability_instances;
             std::vector<PreparedScriptEventAdmission> event_sources;
             std::uint64_t event_layout_epoch{};
             ResolvedScriptArtifact artifact;

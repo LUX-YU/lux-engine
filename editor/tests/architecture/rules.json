@@ -15592,6 +15592,24 @@
           "PROCESS"
         ],
         "path": "engine/process/asset_loading"
+      },
+      "scene_script_assets": {
+        "layer": "ENGINE",
+        "role": "PROVIDER",
+        "capabilities": [
+          "CPU",
+          "PROCESS"
+        ],
+        "path": "engine/scene/scripting/assets"
+      },
+      "scene_script_assets_test": {
+        "layer": "TEST",
+        "role": "TEST",
+        "capabilities": [
+          "CPU",
+          "PROCESS"
+        ],
+        "path": "engine/scene/scripting/assets"
       }
     },
     "files": {

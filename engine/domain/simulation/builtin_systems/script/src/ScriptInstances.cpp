@@ -384,6 +384,7 @@ namespace lux::simulation::script::detail
             auto& capabilities = owner_->mounts_[slot_].capabilities;
             capabilities.clear();
             capabilities.reserve(count);
+            owner_->mounts_[slot_].capability_instances.reserve(count);
             return {};
         }
     }
@@ -424,6 +425,28 @@ namespace lux::simulation::script::detail
             return lux::cxx::unexpected(EScriptSystemError::ALLOCATION_FAILURE);
         auto& mount = owner_->mounts_[slot_];
         mount.invocation->instance = {inserted->index + 1U, inserted->gen};
+        Protection protection{*owner_};
+        for (auto& capability : mount.capabilities)
+        {
+            if (!capability.prepare_instance)
+                continue;
+            auto prepared = capability.prepare_instance(capability.context, mount.invocation->instance);
+            if (!prepared)
+            {
+                switch (prepared.error())
+                {
+                case EScriptApiPrepareError::CAPACITY_EXCEEDED:
+                    return lux::cxx::unexpected(EScriptSystemError::CAPACITY_EXCEEDED);
+                case EScriptApiPrepareError::STOPPING:
+                    return lux::cxx::unexpected(EScriptSystemError::SHUT_DOWN);
+                case EScriptApiPrepareError::INVALID_INSTANCE:
+                    return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
+                }
+                return lux::cxx::unexpected(EScriptSystemError::INVALID_INPUT);
+            }
+            capability.context = prepared->context();
+            mount.capability_instances.push_back(std::move(*prepared));
+        }
         for (std::uint32_t local{}; local < mount.event_sources.size(); ++local)
             mount.event_sources[local].admission = ScriptRuntimeAccess::admission(
                 owner_->event_scope_,
@@ -564,6 +587,9 @@ namespace lux::simulation::script::detail
             static_cast<void>(identities_.erase(key(instance)));
             mount.invocation->retiring_instance = instance;
             mount.invocation->instance = {};
+            Protection protection{*this};
+            for (auto& capability : mount.capability_instances)
+                capability.revoke();
         }
         return instance;
     }
@@ -702,6 +728,7 @@ namespace lux::simulation::script::detail
         mount.begin_play_method = kInvalidPreparedMethod;
         mount.end_play_method = kInvalidPreparedMethod;
         mount.capabilities.clear();
+        mount.capability_instances.clear();
         mount.event_sources.clear();
         mount.artifact = {};
         mount.backend = nullptr;
@@ -735,6 +762,7 @@ namespace lux::simulation::script::detail
             backend->destroyInstance(backend->context, instance);
         }
         mount.capabilities.clear();
+        mount.capability_instances.clear();
         mount.event_sources.clear();
         const auto artifact = std::exchange(mount.artifact, {});
         if (artifact.lease != nullptr && artifact.release != nullptr)

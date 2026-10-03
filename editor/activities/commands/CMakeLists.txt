@@ -14,6 +14,7 @@ lux_classify_target(TARGET editor_commands LAYER EDITOR PRODUCT EDITOR ROLE LIBR
 lux_engine_install_components(PROJECT_NAME lux-engine-editor-commands VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS editor_commands)
 if(LUX_EDITOR_BUILD_NATIVE_TESTS)
+    target_compile_definitions(editor_commands PRIVATE LUX_COMMAND_TEST_ACCESS=1)
     add_executable(editor_commands_test test/commands.cpp)
     target_link_libraries(editor_commands_test PRIVATE editor_commands)
     lux_editor_test_options(editor_commands_test)

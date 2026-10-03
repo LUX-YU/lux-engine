@@ -6,18 +6,9 @@
 
 namespace
 {
-    constexpr lux::editor::commands::CommandDescriptor command_lux_editor_initial_scene{
-        lux::editor::commands::CommandIdView{"lux.editor.initial-scene"},
-        "Open Initial Scene",
-        "File"
+    constexpr lux::editor::commands::CommandDescriptor kAbout{
+        lux::editor::commands::CommandIdView{"lux.editor.about"}, "Lux Editor " LUX_EDITOR_VERSION, "Help"
     };
-    constexpr lux::editor::commands::CommandDescriptor command_lux_editor_project_open{
-        lux::editor::commands::CommandIdView{"lux.editor.project.open"},
-        "Open Project in New Editor",
-        "File"
-    };
-
-
 }
 namespace lux::editor::application
 {
@@ -26,44 +17,29 @@ namespace lux::editor::application
         installRecentProjects(draft);
         installSettingsView(draft);
         installProjectCreation(draft);
-        draft.commands.push_back(commands::CommandEntry::bind<command_lux_editor_initial_scene>(
-            contracts::CodeLease::builtin(),
-            [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
-                return commands::CommandState{
-                    phase_ == EApplicationPhase::RUNNING && !project_->manifest().default_scene.empty()
-                };
-            },
-            [this](const commands::CommandInvocation&) -> commands::CommandResult<commands::DispatchReceipt> {
-                const auto& manifest = project_->manifest();
-                const auto found =
-                    std::ranges::find(manifest.assets, manifest.default_scene, &ProjectAssetEntry::source_path);
-                if (found == manifest.assets.end())
-                    return cxx::unexpected(
-                        commands::CommandFailure{commands::ECommandError::INVALID_ARGUMENT, "initial-scene.missing"}
-                    );
-                if (open_intents_.size() == 64)
-                    return cxx::unexpected(
-                        commands::CommandFailure{commands::ECommandError::CAPACITY, "initial-scene.queue"}
-                    );
-                // The command dispatch retains its protection; factory admission belongs to the next owner batch.
-                open_intents_.push_back(project_->catalogModel().reference(found->id));
-                return commands::DispatchReceipt{commands::ImmediateCompletion{}};
+        draft.commands.push_back(project::makeInitialSceneCommand(
+            [phase = &phase_](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
+                return commands::CommandState{*phase == EApplicationPhase::RUNNING};
+            }, *project_, [intents = &open_intents_](AssetReference reference) -> commands::CommandResult<void> {
+                if (intents->size() == 64)
+                    return cxx::unexpected(commands::CommandFailure{commands::ECommandError::CAPACITY, "initial-scene.queue"});
+                intents->push_back(reference);
+                return {};
             }
         ));
 
-        draft.commands.push_back(commands::CommandEntry::bind<command_lux_editor_project_open>(
-            contracts::CodeLease::builtin(),
+        draft.commands.push_back(project::makeOpenProjectCommand(
             [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
                 return commands::CommandState{
                     phase_ == EApplicationPhase::RUNNING && !project_launch_ && !project_open_requested_ &&
                     !project_launch_intent_
                 };
             },
-            [this](const commands::CommandInvocation&) -> commands::CommandResult<commands::DispatchReceipt> {
+            [this]() -> commands::CommandResult<void> {
                 if (project_launch_ || project_open_requested_ || project_launch_intent_)
                     return cxx::unexpected(commands::CommandFailure{commands::ECommandError::BUSY, "project.open"});
                 project_open_requested_ = true;
-                return commands::DispatchReceipt{commands::ImmediateCompletion{}};
+                return {};
             }
         ));
 
@@ -166,13 +142,8 @@ namespace lux::editor::application
                 return commands::CommandState{phase_ == EApplicationPhase::RUNNING};
             }, toolOpening()
         ));
-        draft.commands.push_back(commands::CommandEntry::create(
+        draft.commands.push_back(commands::CommandEntry::bind<kAbout>(
             contracts::CodeLease::builtin(),
-            commands::CommandDescriptor{
-                commands::CommandIdView{"lux.editor.about"},
-                "Lux Editor " LUX_EDITOR_VERSION,
-                "Help"
-            },
             [](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
                 return commands::CommandState{false};
             },

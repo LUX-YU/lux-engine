@@ -9,6 +9,8 @@
 namespace lux::editor
 {
     class RecentProjects;
+    class ProjectStorage;
+    struct AssetReference;
 }
 namespace lux::editor::views { class ViewFactoryEntry; }
 
@@ -36,6 +38,14 @@ namespace lux::editor::project
     );
     [[nodiscard]] std::shared_ptr<commands::CommandEntry> makeRecentProjectsCommand(
         commands::CommandEntry::Query, desktop::ToolOpening
+    );
+
+    [[nodiscard]] std::shared_ptr<commands::CommandEntry> makeOpenProjectCommand(
+        commands::CommandEntry::Query, cxx::move_only_function<commands::CommandResult<void>()>
+    );
+    [[nodiscard]] std::shared_ptr<commands::CommandEntry> makeInitialSceneCommand(
+        commands::CommandEntry::Query, ProjectStorage&,
+        cxx::move_only_function<commands::CommandResult<void>(AssetReference)>
     );
 
 }

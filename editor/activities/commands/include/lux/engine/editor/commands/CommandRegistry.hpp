@@ -8,6 +8,7 @@
 
 namespace lux::editor::commands
 {
+    namespace detail { struct CommandIndexTestAccess; }
     class CommandEntry final
     {
     public:
@@ -76,6 +77,7 @@ namespace lux::editor::commands
         [[nodiscard]] std::span<const std::shared_ptr<CommandEntry>> entries() const noexcept;
 
     private:
+        friend struct detail::CommandIndexTestAccess;
         struct Data;
         [[nodiscard]] std::shared_ptr<CommandEntry> findHash(std::uint64_t) const noexcept;
         std::shared_ptr<const Data> data_;

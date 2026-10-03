@@ -170,4 +170,13 @@ namespace lux::editor
             return openingFailure("open.admission", opened.error());
         return *opened;
     }
+    EditorResult<AssetReference> initialSceneReference(const ProjectStorage& project)
+    {
+        const auto& manifest = project.manifest();
+        const auto found = std::ranges::find(manifest.assets, manifest.default_scene, &ProjectAssetEntry::source_path);
+        if (found == manifest.assets.end())
+            return cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "initial-scene.missing"});
+        return project.catalogModel().reference(found->id);
+    }
+
 }

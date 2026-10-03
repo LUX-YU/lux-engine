@@ -102,4 +102,8 @@ namespace lux::editor::project
         commands::CommandEntry::Query, desktop::ToolOpening
     );
 
+    [[nodiscard]] std::vector<std::shared_ptr<commands::CommandEntry>> makeRecoveryCommands(
+        commands::CommandEntry::Query, WorkspaceView::Request
+    );
+
 }

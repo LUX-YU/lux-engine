@@ -121,8 +121,14 @@ namespace lux::editor::project
 {
     namespace
     {
+        constexpr commands::CommandDescriptor kCaptureRecovery{
+            commands::CommandIdView{"lux.editor.recovery.capture"}, "Record content locations", "Workspace"
+        };
+        constexpr commands::CommandDescriptor kRestoreRecovery{
+            commands::CommandIdView{"lux.editor.recovery.restore"}, "Restore recorded content", "Workspace"
+        };
         constexpr commands::CommandDescriptor kCommand{
-            commands::CommandIdView{"lux.editor.workspace"}, "Workspace", "Window"
+            commands::CommandIdView{"lux.editor.workspace"}, "Layouts and Recovery", "Window"
         };
         constexpr views::ViewFactoryDescriptor kFactoryDescriptor{
             views::ViewTypeIdView{"lux.editor.workspace"}, "Workspace", cxx::typeToken<std::monostate>()
@@ -151,6 +157,28 @@ namespace lux::editor::project
     )
     {
         return workbench::detail::bindToolCommand<kCommand, kFactoryDescriptor>(std::move(query), std::move(open));
+    }
+
+    std::vector<std::shared_ptr<commands::CommandEntry>> makeRecoveryCommands(
+        commands::CommandEntry::Query query, WorkspaceView::Request request
+    )
+    {
+        auto check = std::make_shared<commands::CommandEntry::Query>(std::move(query));
+        auto receiver = std::make_shared<WorkspaceView::Request>(std::move(request));
+        const auto bind = [&]<const commands::CommandDescriptor& Descriptor>(VWorkspaceIntent intent) {
+            return workbench::detail::bindCommand<Descriptor>(
+                [check](const commands::CommandQuery& input) { return (*check)(input); },
+                [receiver, intent = std::move(intent)](const commands::CommandInvocation&)
+                    -> commands::CommandResult<void> {
+                    auto result = (*receiver)(intent);
+                    if (!result)
+                        return workbench::detail::commandFailure(result.error());
+                    return {};
+                }
+            );
+        };
+        return {bind.template operator()<kCaptureRecovery>(CaptureRecovery{}),
+                bind.template operator()<kRestoreRecovery>(RestoreRecovery{})};
     }
 
 }

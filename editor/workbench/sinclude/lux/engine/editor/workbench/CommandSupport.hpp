@@ -6,12 +6,21 @@ namespace lux::editor::workbench::detail
 {
     template <class Error> auto commandFailure(const Error& error)
     {
-        auto detail = viewFailure(error);
-        return cxx::unexpected(commands::CommandFailure{
-            detail.code == views::EViewFactoryError::BUSY ? commands::ECommandError::BUSY
+        if constexpr (requires { error.domain; error.reason; error.message; })
+            return cxx::unexpected(commands::CommandFailure{
+                error.code == decltype(error.code)::BUSY ? commands::ECommandError::BUSY
                                                         : commands::ECommandError::DOMAIN_FAILURE,
-            std::move(detail.domain), detail.domain_code, std::move(detail.detail)
-        });
+                error.domain, error.reason, error.message
+            });
+        else
+        {
+            auto detail = viewFailure(error);
+            return cxx::unexpected(commands::CommandFailure{
+                detail.code == views::EViewFactoryError::BUSY ? commands::ECommandError::BUSY
+                                                            : commands::ECommandError::DOMAIN_FAILURE,
+                std::move(detail.domain), detail.domain_code, std::move(detail.detail)
+            });
+        }
     }
     template <const commands::CommandDescriptor& Descriptor, class Action>
     std::shared_ptr<commands::CommandEntry> bindCommand(commands::CommandEntry::Query query, Action action)

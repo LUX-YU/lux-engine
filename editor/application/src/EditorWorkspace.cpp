@@ -137,31 +137,13 @@ namespace lux::editor::application
 
     void EditorApplication::Impl::installWorkspaceView(extensions::ContributionDraft& draft)
     {
-        // The same recovery operations are available to menus, scripts and installed workbench consumers.
-        // Commands retain the existing workspace owner, admission and publication path.
-        const auto recovery_command = [&](const char* id, const char* label, VWorkspaceIntent intent) {
-            draft.commands.push_back(commands::CommandEntry::create(
-                contracts::CodeLease::builtin(),
-                commands::CommandDescriptor{commands::CommandIdView{id}, label, "Workspace"},
-                [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
-                    return commands::CommandState{phase_ == EApplicationPhase::RUNNING};
-                },
-                [this, intent = std::move(intent)](const commands::CommandInvocation&)
-                    -> commands::CommandResult<commands::DispatchReceipt> {
-                    auto requested = executeWorkspaceIntent(intent);
-                    if (!requested)
-                        return cxx::unexpected(commands::CommandFailure{
-                            commands::ECommandError::DOMAIN_FAILURE,
-                            requested.error().domain,
-                            requested.error().reason,
-                            requested.error().message
-                        });
-                    return commands::DispatchReceipt{commands::ImmediateCompletion{}};
-                }
-            ));
-        };
-        recovery_command("lux.editor.recovery.capture", "Record content locations", CaptureRecovery{});
-        recovery_command("lux.editor.recovery.restore", "Restore recorded content", RestoreRecovery{});
+        auto recovery = project::makeRecoveryCommands(
+            [phase = &phase_](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
+                return commands::CommandState{*phase == EApplicationPhase::RUNNING};
+            }, [this](VWorkspaceIntent intent) { return executeWorkspaceIntent(intent); }
+        );
+        draft.commands.insert(draft.commands.end(),
+            std::make_move_iterator(recovery.begin()), std::make_move_iterator(recovery.end()));
         draft.views.push_back(project::makeWorkspaceViewFactory(
             [this] { return observeWorkspace(); },
             [this](VWorkspaceIntent intent) -> EditorResult<void> {

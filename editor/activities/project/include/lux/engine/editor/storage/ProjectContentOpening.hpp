@@ -17,4 +17,6 @@ namespace lux::editor
         ProjectStorage&, persistence::IArtifactStore&, sessions::SessionOpening&,
         AssetReference, const sessions::SessionFactorySnapshot&
     );
+    [[nodiscard]] EditorResult<AssetReference> initialSceneReference(const ProjectStorage&);
+
 }

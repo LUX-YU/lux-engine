@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/editor/desktop/ViewCommands.hpp>
 #include <lux/engine/editor/scene/SceneConfigurationElement.hpp>
 #include <lux/engine/editor/views/IViewHost.hpp>
 #include <lux/engine/editor/sessions/SessionCommands.hpp>
@@ -40,6 +41,6 @@ namespace lux::editor::scene
         SceneConfigurationInputs, sessions::SessionCreation
     );
     [[nodiscard]] std::shared_ptr<commands::CommandEntry> makeNewSceneCommand(
-        commands::CommandEntry::Query, cxx::move_only_function<commands::CommandResult<void>()> show
+        commands::CommandEntry::Query, desktop::ToolOpening
     );
 }

@@ -355,7 +355,6 @@ namespace lux::editor::application
         [[nodiscard]] EditorResult<void> requestClose(sessions::ContentStamp);
         [[nodiscard]] EditorResult<void> closeView(views::ViewId);
         [[nodiscard]] EditorResult<void> receiveViewClose();
-        [[nodiscard]] EditorResult<views::ViewId> showTool(views::ViewTypeId);
         [[nodiscard]] desktop::ToolOpening toolOpening();
         [[nodiscard]] EditorResult<void> settleOperations();
         void receiveModel(scene::ModelPlacement);

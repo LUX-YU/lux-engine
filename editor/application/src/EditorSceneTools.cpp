@@ -232,14 +232,7 @@ namespace lux::editor::application
             return commands::CommandState{phase_ == EApplicationPhase::RUNNING};
         };
         draft.views.push_back(scene::makeSceneCreationViewFactory(sceneConfigurationInputs(), contentCreation()));
-        draft.commands.push_back(scene::makeNewSceneCommand(
-            available, [this]() -> commands::CommandResult<void> {
-                auto shown = showTool(views::ViewTypeId{"lux.editor.scene.creation"});
-                if (!shown)
-                    return cxx::unexpected(commandFailure(shown.error()));
-                return {};
-            }
-        ));
+        draft.commands.push_back(scene::makeNewSceneCommand(available, toolOpening()));
         draft.commands.push_back(scene::makePlaySceneCommand(
             available, [this](commands::SessionTarget target) -> commands::CommandResult<scene::StartRunId> {
                 auto started = play(target);

@@ -1,3 +1,5 @@
+#include <lux/engine/editor/storage/ProjectContentOpening.hpp>
+#include <lux/engine/editor/storage/ProjectStorage.hpp>
 #include <lux/engine/editor/workbench/CommandSupport.hpp>
 #include <lux/engine/editor/workbench/ViewFactorySupport.hpp>
 #include <lux/engine/editor/project/RecentProjectsView.hpp>
@@ -85,6 +87,12 @@ namespace lux::editor::project
 {
     namespace
     {
+        constexpr commands::CommandDescriptor kOpenProject{
+            commands::CommandIdView{"lux.editor.project.open"}, "Open Project in New Editor", "File"
+        };
+        constexpr commands::CommandDescriptor kInitialScene{
+            commands::CommandIdView{"lux.editor.initial-scene"}, "Open Initial Scene", "File"
+        };
         constexpr commands::CommandDescriptor kCommand{
             commands::CommandIdView{"lux.editor.project.recent"}, "Recent Projects", "File"
         };
@@ -122,6 +130,39 @@ namespace lux::editor::project
     )
     {
         return workbench::detail::bindToolCommand<kCommand, kFactoryDescriptor>(std::move(query), std::move(open));
+    }
+
+    std::shared_ptr<commands::CommandEntry> makeOpenProjectCommand(
+        commands::CommandEntry::Query query, cxx::move_only_function<commands::CommandResult<void>()> request
+    )
+    {
+        return workbench::detail::bindCommand<kOpenProject>(std::move(query),
+            [request = std::move(request)](const commands::CommandInvocation&) mutable { return request(); }
+        );
+    }
+    std::shared_ptr<commands::CommandEntry> makeInitialSceneCommand(
+        commands::CommandEntry::Query query, ProjectStorage& project,
+        cxx::move_only_function<commands::CommandResult<void>(AssetReference)> open
+    )
+    {
+        return workbench::detail::bindCommand<kInitialScene>(
+            [query = std::move(query), &project](const commands::CommandQuery& input) mutable
+                -> commands::CommandResult<commands::CommandState> {
+                auto state = query(input);
+                if (state)
+                    state->enabled = state->enabled && !project.manifest().default_scene.empty();
+                return state;
+            }, [&project, open = std::move(open)](const commands::CommandInvocation&) mutable
+                -> commands::CommandResult<void> {
+                auto reference = initialSceneReference(project);
+                if (!reference)
+                    return cxx::unexpected(commands::CommandFailure{
+                        commands::ECommandError::INVALID_ARGUMENT, reference.error().domain,
+                        reference.error().reason, reference.error().message
+                    });
+                return open(*reference);
+            }
+        );
     }
 
 }

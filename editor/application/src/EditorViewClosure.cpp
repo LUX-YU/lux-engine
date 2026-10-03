@@ -145,13 +145,4 @@ namespace lux::editor::application
             return desktop::showTool(*host, catalog->snapshot().views(), dispatcher, std::move(type));
         };
     }
-    EditorResult<views::ViewId> EditorApplication::Impl::showTool(views::ViewTypeId type)
-    {
-        auto result = desktop::showTool(
-            desktop_->views(), contributions_.snapshot().views(), messages_.dispatcherRef(), std::move(type)
-        );
-        if (!result)
-            return applicationFailure("tool.show", result.error());
-        return *result;
-    }
 }

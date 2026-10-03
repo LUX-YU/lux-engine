@@ -1,4 +1,7 @@
 #include <lux/engine/editor/commands/CommandRegistry.hpp>
+#if defined(LUX_COMMAND_TEST_ACCESS)
+#include <lux/engine/editor/commands/CommandIndexTestAccess.hpp>
+#endif
 #include <lux/engine/editor/commands/CommandIndex.hpp>
 #include <algorithm>
 #include <thread>
@@ -171,6 +174,20 @@ namespace lux::editor::commands
         std::vector<std::shared_ptr<CommandEntry>> entries;
         std::vector<detail::CommandIndex> index;
     };
+#if defined(LUX_COMMAND_TEST_ACCESS)
+    CommandResult<CommandRegistrySnapshot> detail::CommandIndexTestAccess::withSingleHash(
+        const CommandRegistrySnapshot& source, std::uint64_t hash
+    )
+    {
+        if (source.entries().size() != 1)
+            return failure(ECommandError::INVALID_ARGUMENT);
+        CommandRegistrySnapshot result;
+        result.data_ = std::make_shared<CommandRegistrySnapshot::Data>(
+            source.data_->entries, std::vector<detail::CommandIndex>{{hash, 0}}
+        );
+        return result;
+    }
+#endif
     CommandResult<CommandRegistrySnapshot> CommandRegistrySnapshot::create(
         std::vector<std::shared_ptr<CommandEntry>> entries,
         std::size_t capacity

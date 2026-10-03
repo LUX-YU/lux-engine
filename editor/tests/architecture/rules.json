@@ -18508,7 +18508,11 @@
         "view_host",
         "project_ui",
         "project_tools_ui",
-        "tasks_ui"
+        "tasks_ui",
+        "scene_ui"
+      ],
+      "editor/activities/commands/pinclude/lux/engine/editor/commands/CommandIndexTestAccess.hpp": [
+        "editor_commands"
       ]
     },
     "native_libraries": [
@@ -18615,7 +18619,8 @@
           "view_host",
           "project_ui",
           "project_tools_ui",
-          "tasks_ui"
+          "tasks_ui",
+          "scene_ui"
         ]
       }
     },

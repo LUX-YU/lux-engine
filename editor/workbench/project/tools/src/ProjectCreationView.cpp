@@ -1,3 +1,4 @@
+#include <lux/engine/editor/workbench/CommandSupport.hpp>
 #include <lux/engine/editor/workbench/ViewFactorySupport.hpp>
 #include <lux/engine/editor/project/ProjectCreationView.hpp>
 #include <lux/engine/ui/Controls.hpp>
@@ -315,6 +316,9 @@ namespace lux::editor::project
 {
     namespace
     {
+        constexpr commands::CommandDescriptor kCommand{
+            commands::CommandIdView{"lux.editor.project.create"}, "New Project", "File"
+        };
         constexpr views::ViewFactoryDescriptor kFactoryDescriptor{
             views::ViewTypeIdView{"lux.editor.project.creation"}, "New project", cxx::typeToken<std::monostate>()
         };
@@ -334,4 +338,21 @@ namespace lux::editor::project
             }
         );
     }
+    std::shared_ptr<commands::CommandEntry> makeProjectCreationCommand(
+        commands::CommandEntry::Query query, desktop::ToolOpening open,
+        cxx::move_only_function<commands::CommandResult<void>()> start
+    )
+    {
+        return workbench::detail::bindCommand<kCommand>(std::move(query),
+            [open = std::move(open), start = std::move(start)](const commands::CommandInvocation&) mutable
+                -> commands::CommandResult<void> {
+                auto shown = open(views::ViewTypeId{kFactoryDescriptor.type.name()});
+                if (!shown)
+                    return cxx::unexpected(shown.error());
+                // Construction and Host adoption precede work which needs the new view's maintenance.
+                return start();
+            }
+        );
+    }
+
 }

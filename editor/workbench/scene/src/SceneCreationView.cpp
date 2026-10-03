@@ -1,3 +1,4 @@
+#include <lux/engine/editor/workbench/CommandSupport.hpp>
 #include <lux/engine/editor/workbench/ViewFactorySupport.hpp>
 #include <lux/engine/editor/scene/SceneSessionFactory.hpp>
 #include <random>
@@ -195,18 +196,9 @@ namespace lux::editor::scene
         );
     }
     std::shared_ptr<commands::CommandEntry> makeNewSceneCommand(
-        commands::CommandEntry::Query query, cxx::move_only_function<commands::CommandResult<void>()> show
+        commands::CommandEntry::Query query, desktop::ToolOpening open
     )
     {
-        return commands::CommandEntry::bind<kNewCommand>(
-            contracts::CodeLease::builtin(), std::move(query),
-            [show = std::move(show)](const commands::CommandInvocation&) mutable
-                -> commands::CommandResult<commands::DispatchReceipt> {
-                auto result = show();
-                if (!result)
-                    return cxx::unexpected(result.error());
-                return commands::DispatchReceipt{commands::ImmediateCompletion{}};
-            }
-        );
+        return workbench::detail::bindToolCommand<kNewCommand, kCreationDescriptor>(std::move(query), std::move(open));
     }
 }

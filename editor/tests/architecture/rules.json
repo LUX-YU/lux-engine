@@ -6032,6 +6032,7 @@
   },
   "scene_ui": {
     "direct": [
+      "editor_commands",
       "editor_widgets",
       "imgui::core",
       "project_plugins",
@@ -6620,7 +6621,8 @@
       "lux/engine/editor/scene/SceneConfigurationPreparation.hpp",
       "lux/engine/editor/workbench/ViewFactorySupport.hpp",
       "lux/engine/editor/sessions/SessionCommands.hpp",
-      "lux/engine/editor/scene/SceneSessionFactory.hpp"
+      "lux/engine/editor/scene/SceneSessionFactory.hpp",
+      "lux/engine/editor/commands/CommandRegistry.hpp"
     ],
     "prefixes": [],
     "test_headers": {
@@ -6729,7 +6731,8 @@
       "editor/workbench/scene/include/lux/engine/editor/scene/RunInspectorView.hpp",
       "editor/workbench/scene/src/RunInspectorView.cpp",
       "editor/workbench/scene/include/lux/engine/editor/scene/SceneTools.hpp",
-      "editor/workbench/scene/src/SceneTools.cpp"
+      "editor/workbench/scene/src/SceneTools.cpp",
+      "editor/workbench/scene/src/SceneCommands.cpp"
     ],
     "project_include_dirs": [
       "editor/workbench/sinclude"
@@ -18252,6 +18255,9 @@
         "scene_ui"
       ],
       "editor/workbench/scene/src/SceneTools.cpp": [
+        "scene_ui"
+      ],
+      "editor/workbench/scene/src/SceneCommands.cpp": [
         "scene_ui"
       ],
       "editor/authoring/scene/include/lux/engine/editor/scene/AuthoringFacts.hpp": [

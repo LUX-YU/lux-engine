@@ -5,21 +5,6 @@
 #include <lux/engine/editor/scene/SceneConfigurationView.hpp>
 #include <algorithm>
 
-namespace
-{
-    constexpr lux::editor::commands::CommandDescriptor command_lux_editor_new_scene{
-        lux::editor::commands::CommandIdView{"lux.editor.new.scene"},
-        "New Scene",
-        "File"
-    };
-    constexpr lux::editor::commands::CommandDescriptor command_lux_editor_play{
-        lux::editor::commands::CommandIdView{"lux.editor.play"},
-        "Play Frozen Scene",
-        "Scene",
-        "Ctrl+P",
-        lux::editor::commands::ECommandScope::SESSION
-    };
-}
 namespace lux::editor::application
 {
     namespace
@@ -169,12 +154,8 @@ namespace lux::editor::application
         record->views.clear();
         return {};
     }
-    EditorResult<views::ViewId> EditorApplication::Impl::showSceneTool(views::ViewId source, std::string_view role)
+    EditorResult<views::ViewId> EditorApplication::Impl::showSceneTool(views::ViewId source, scene::ESceneTool kind)
     {
-        const auto kind = role == "outliner" ? scene::ESceneTool::OUTLINER
-                        : role == "inspector" ? scene::ESceneTool::INSPECTOR
-                        : role == "resources" ? scene::ESceneTool::RESOURCES
-                        : scene::ESceneTool::CONFIGURATION;
         auto source_group = scene::shareSceneInteraction(desktop_->views(), source);
         if (!source_group)
             return applicationFailure("scene.tool.source", source_group.error());
@@ -182,7 +163,7 @@ namespace lux::editor::application
         const auto snapshot = contributions_.snapshot();
         auto components = scene::sceneInspectorComponents();
         components.insert(components.end(), snapshot.components().begin(), snapshot.components().end());
-        const auto name = std::string(role) + "-" + std::to_string(next_view_++);
+        const auto name = "scene-tool-" + std::to_string(next_view_++);
         auto candidate = scene::makeSceneToolView(
             messages_.dispatcherRef(), lux::ui::PaneId{name}, desktop_->views(), source, kind,
             {sceneServices(), runs_, registrations_.components, std::move(components),
@@ -233,98 +214,68 @@ namespace lux::editor::application
             registrations_.render_bindings
         };
     }
+    EditorResult<void> EditorApplication::Impl::stepRun(scene::RunId run)
+    {
+        auto owner = std::ranges::find(run_presentations_, std::optional{run}, &RunPresentation::run);
+        const bool is_full = owner == run_presentations_.end() || owner->steps.size() >= 64;
+        if (is_full)
+            return cxx::unexpected(EditorFailure{EEditorError::BUSY, "run.steps"});
+        auto step = runs_.step(run);
+        if (!step)
+            return applicationFailure("run.step", step.error());
+        owner->steps.push_back(*step);
+        return {};
+    }
     void EditorApplication::Impl::installSceneCommands(extensions::ContributionDraft& draft)
     {
+        const auto available = [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
+            return commands::CommandState{phase_ == EApplicationPhase::RUNNING};
+        };
         draft.views.push_back(scene::makeSceneCreationViewFactory(sceneConfigurationInputs(), contentCreation()));
-        draft.commands.push_back(commands::CommandEntry::bind<command_lux_editor_new_scene>(
-            contracts::CodeLease::builtin(),
-            [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
-                return commands::CommandState{phase_ == EApplicationPhase::RUNNING};
-            },
-            [this](const commands::CommandInvocation&) -> commands::CommandResult<commands::DispatchReceipt> {
+        draft.commands.push_back(scene::makeNewSceneCommand(
+            available, [this]() -> commands::CommandResult<void> {
                 auto shown = showTool(views::ViewTypeId{"lux.editor.scene.creation"});
                 if (!shown)
                     return cxx::unexpected(commandFailure(shown.error()));
-                return commands::DispatchReceipt{commands::ImmediateCompletion{}};
+                return {};
             }
         ));
-        draft.commands.push_back(commands::CommandEntry::bind<command_lux_editor_play>(
-            contracts::CodeLease::builtin(),
-            [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
-                return commands::CommandState{phase_ == EApplicationPhase::RUNNING};
-            },
-            [this](const commands::CommandInvocation& invocation
-            ) -> commands::CommandResult<commands::DispatchReceipt> {
-                auto started = play(std::get<commands::SessionTarget>(invocation.target()));
+        draft.commands.push_back(scene::makePlaySceneCommand(
+            available, [this](commands::SessionTarget target) -> commands::CommandResult<scene::StartRunId> {
+                auto started = play(target);
                 if (!started)
                     return cxx::unexpected(commandFailure(started.error()));
-                return commands::DispatchReceipt{commands::AcceptedOperation{"run", started->serial}};
+                return *started;
             }
         ));
-        for (const auto role :
-             {"outliner", "inspector", "resources", "configuration", "pause", "resume", "step", "stop"})
-            draft.commands.push_back(commands::CommandEntry::create(
-                contracts::CodeLease::builtin(),
-                commands::CommandDescriptor{
-                    commands::CommandIdView{std::string("lux.editor.scene.") + role},
-                    role,
-                    "Scene",
-                    "",
-                    commands::ECommandScope::VIEW
-                },
-                [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
-                    return commands::CommandState{phase_ == EApplicationPhase::RUNNING};
-                },
-                [this, role = std::string(role)](const commands::CommandInvocation& invocation
-                ) -> commands::CommandResult<commands::DispatchReceipt> {
-                    const auto view = std::get<views::ViewId>(invocation.target());
-                    if (role == "outliner" || role == "inspector" || role == "resources" || role == "configuration")
-                    {
-                        auto shown = showSceneTool(view, role);
-                        if (!shown)
-                            return cxx::unexpected(commandFailure(shown.error()));
-                    }
-                    else
-                    {
-                        auto group = scene::shareSceneInteraction(desktop_->views(), view);
-                        const auto run = group ? (*group)->run() : std::optional<scene::RunId>{};
-                        if (!group)
-                            return cxx::unexpected(commandFailure(applicationFailure("run.view", group.error()).value()));
-                        if (!run)
-                            return cxx::unexpected(
-                                commands::CommandFailure{commands::ECommandError::STALE_TARGET, "run.view"}
-                            );
-                        if (role == "stop")
-                        {
-                            auto result = stopRun(*run);
-                            if (!result)
-                                return cxx::unexpected(commandFailure(result.error()));
-                        }
-                        else if (role == "step")
-                        {
-                            auto owner = std::ranges::find(run_presentations_, run, &RunPresentation::run);
-                            if (owner == run_presentations_.end() || owner->steps.size() >= 64)
-                                return cxx::unexpected(
-                                    commands::CommandFailure{commands::ECommandError::BUSY, "run.steps"}
-                                );
-                            auto step = runs_.step(*run);
-                            if (!step)
-                                return cxx::unexpected(
-                                    commandFailure(applicationFailure("run.step", step.error()).value())
-                                );
-                            owner->steps.push_back(*step);
-                        }
-                        else
-                        {
-                            auto result = role == "pause" ? runs_.pause(*run) : runs_.resume(*run);
-                            if (!result)
-                                return cxx::unexpected(
-                                    commandFailure(applicationFailure("run.control", result.error()).value())
-                                );
-                        }
-                    }
-                    return commands::DispatchReceipt{commands::ImmediateCompletion{}};
+        auto tools = scene::makeSceneToolCommands(
+            available, [this](views::ViewId view, scene::ESceneTool kind) -> commands::CommandResult<void> {
+                auto shown = showSceneTool(view, kind);
+                if (!shown)
+                    return cxx::unexpected(commandFailure(shown.error()));
+                return {};
+            }
+        );
+        auto runs = scene::makeRunViewCommands(
+            available, desktop_->views(), runs_,
+            [this](scene::RunId id) -> commands::CommandResult<void> {
+                auto result = stepRun(id);
+                if (!result)
+                {
+                    if (result.error().code == EEditorError::BUSY)
+                        return cxx::unexpected(commands::CommandFailure{commands::ECommandError::BUSY, "run.steps"});
+                    return cxx::unexpected(commandFailure(result.error()));
                 }
-            ));
+                return {};
+            },
+            [this](scene::RunId id) -> commands::CommandResult<void> {
+                auto result = stopRun(id);
+                if (!result)
+                    return cxx::unexpected(commandFailure(result.error()));
+                return {};
+            }
+        );
+        draft.commands.insert(draft.commands.end(), tools.begin(), tools.end());
+        draft.commands.insert(draft.commands.end(), runs.begin(), runs.end());
     }
 }

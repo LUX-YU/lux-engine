@@ -39,4 +39,7 @@ namespace lux::editor::scene
     [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> makeSceneCreationViewFactory(
         SceneConfigurationInputs, sessions::SessionCreation
     );
+    [[nodiscard]] std::shared_ptr<commands::CommandEntry> makeNewSceneCommand(
+        commands::CommandEntry::Query, cxx::move_only_function<commands::CommandResult<void>()> show
+    );
 }

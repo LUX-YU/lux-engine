@@ -146,6 +146,9 @@ namespace lux::editor::scene
         constexpr views::ViewFactoryDescriptor kCreationDescriptor{
             views::ViewTypeIdView{"lux.editor.scene.creation"}, "New Scene", cxx::typeToken<std::monostate>()
         };
+        constexpr commands::CommandDescriptor kNewCommand{
+            commands::CommandIdView{"lux.editor.new.scene"}, "New Scene", "File"
+        };
     }
     std::shared_ptr<views::ViewFactoryEntry> makeSceneCreationViewFactory(
         scene::SceneConfigurationInputs configuration, sessions::SessionCreation receiver
@@ -188,6 +191,21 @@ namespace lux::editor::scene
                 if (!view)
                     return cxx::unexpected(workbench::detail::viewFailure(view.error()));
                 return std::move(*view);
+            }
+        );
+    }
+    std::shared_ptr<commands::CommandEntry> makeNewSceneCommand(
+        commands::CommandEntry::Query query, cxx::move_only_function<commands::CommandResult<void>()> show
+    )
+    {
+        return commands::CommandEntry::bind<kNewCommand>(
+            contracts::CodeLease::builtin(), std::move(query),
+            [show = std::move(show)](const commands::CommandInvocation&) mutable
+                -> commands::CommandResult<commands::DispatchReceipt> {
+                auto result = show();
+                if (!result)
+                    return cxx::unexpected(result.error());
+                return commands::DispatchReceipt{commands::ImmediateCompletion{}};
             }
         );
     }

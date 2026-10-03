@@ -727,6 +727,66 @@ namespace
         auto* b = static_cast<author::SceneView*>(running.pane());
         const auto aid = take(f.desktop->views().adopt(author_candidate, views::ViewRestoreKey{"author-run-pair"})).id;
         const auto bid = take(f.desktop->views().adopt(running, views::ViewRestoreKey{"running"})).id;
+        auto command_candidate = take(author::makeRunSceneView(
+            f.messages.dispatcherRef(), services, ui::PaneId{"run-commands"}, run, {3}
+        ));
+        const auto command_view = take(
+            f.desktop->views().adopt(command_candidate, views::ViewRestoreKey{"run-commands"})
+        ).id;
+        // The installed tool provider binds real run/view identities without an Application owner.
+        const auto available = [](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
+            return commands::CommandState{true};
+        };
+        std::optional<author::StepTicket> command_step;
+        std::optional<author::StopTicket> command_stop;
+        auto run_commands = author::makeRunViewCommands(
+            available, f.desktop->views(), runs,
+            [&](author::RunId id) -> commands::CommandResult<void> {
+                assert(id == run && !command_step);
+                command_step = take(runs.step(id));
+                return {};
+            },
+            [&](author::RunId id) -> commands::CommandResult<void> {
+                assert(id == run && !command_stop);
+                command_stop = take(runs.stop(id));
+                return {};
+            }
+        );
+        std::optional<author::ESceneTool> requested_tool;
+        auto tool_commands = author::makeSceneToolCommands(
+            available, [&](views::ViewId id, author::ESceneTool tool) -> commands::CommandResult<void> {
+                assert(id == bid);
+                requested_tool = tool;
+                return {};
+            }
+        );
+        auto other_tools = author::makeSceneToolCommands(
+            available, [](views::ViewId, author::ESceneTool) -> commands::CommandResult<void> { return {}; }
+        );
+        for (std::size_t i{}; i < tool_commands.size(); ++i)
+            assert(&tool_commands[i]->descriptor() == &other_tools[i]->descriptor());
+        run_commands.insert(run_commands.end(), tool_commands.begin(), tool_commands.end());
+        commands::CommandRegistry controls;
+        assert(controls.publish(take(commands::CommandRegistrySnapshot::create(std::move(run_commands)))));
+        const auto invoke = [&](const char* name, views::ViewId target) {
+            return controls.execute(
+                take(controls.snapshot().find(commands::CommandIdView{name})), commands::CommandInvocation{target}
+            );
+        };
+        constexpr std::pair<const char*, author::ESceneTool> tool_cases[]{
+            {"lux.editor.scene.outliner", author::ESceneTool::OUTLINER},
+            {"lux.editor.scene.inspector", author::ESceneTool::INSPECTOR},
+            {"lux.editor.scene.resources", author::ESceneTool::RESOURCES},
+            {"lux.editor.scene.configuration", author::ESceneTool::CONFIGURATION}
+        };
+        for (const auto& [name, tool] : tool_cases)
+        {
+            assert(invoke(name, bid));
+            assert(requested_tool == tool);
+        }
+        const auto refused_author = invoke("lux.editor.scene.pause", aid);
+        // This original fixture borrows an external group; tool sharing correctly refuses it.
+        assert(!refused_author && refused_author.error().code == commands::ECommandError::DOMAIN_FAILURE);
         f.wait([&] { return a->image().isValid() && b->image().isValid(); });
         auto outline = take(author::makeOutlinerView(
             f.messages.dispatcherRef(),
@@ -783,7 +843,7 @@ namespace
         });
         assert(a->state().camera.transform.translation == camera && f.session->describe().current == stamp.current);
         assert(!b->beginEdit("must not edit author") && !run_group.overlay());
-        assert(runs.pause(run));
+        assert(invoke("lux.editor.scene.pause", command_view));
         f.wait([&] { return take(runs.info(run)).state == author::ERunState::PAUSED; });
         const auto registry = take(runs.inspect().borrow(run));
         const auto entity = registry.get().view<const simulation::ecs::Transform3D>().front();
@@ -857,12 +917,12 @@ namespace
                 initial + 4.,
                 {true, true, false, false}
             ));
-            assert(runs.resume(run));
+            assert(invoke("lux.editor.scene.resume", command_view));
             assert(!fields.finish() && fields.active());
             assert(fields.cancel());
             f.wait([&] { return fields.refresh().has_value(); });
             assert(!fields.writeRestriction().empty());
-            assert(runs.pause(run));
+            assert(invoke("lux.editor.scene.pause", command_view));
             f.wait([&] { return take(runs.info(run)).state == author::ERunState::PAUSED; });
             assert(fields.refresh());
             assert(take(take(runs.debugHistory(run)).get().view()).snapshot.history != paused.history);
@@ -870,14 +930,23 @@ namespace
         }
         assert(f.desktop->views().close(inspector_id));
         f.wait([&] { return !f.desktop->views().describe(inspector_id); });
+        assert(invoke("lux.editor.scene.step", command_view) && command_step);
+        f.wait([&] {
+            return take(runs.stepStatus(*command_step)).state == lux::scene::ESceneStepState::COMPLETED;
+        });
+        assert(runs.acknowledgeStep(*command_step));
         const auto clock = take(runs.info(run)).progress.time.elapsed;
         for (int i{}; i < 3; ++i)
             f.frame();
         assert(take(runs.info(run)).progress.time.elapsed == clock);
         assert(f.desktop->views().close(bid));
         f.wait([&] { return !f.desktop->views().describe(bid); });
+        assert(!invoke("lux.editor.scene.resume", bid));
         assert(take(runs.info(run)).state == author::ERunState::PAUSED && a->image().isValid());
-        const auto stopped = take(runs.stop(run));
+        assert(invoke("lux.editor.scene.stop", command_view) && command_stop);
+        assert(f.desktop->views().close(command_view));
+        f.wait([&] { return !f.desktop->views().describe(command_view); });
+        const auto stopped = *command_stop;
         f.wait([&] { return stopped.complete(); });
         assert(runs.acknowledgeStop(run));
         assert(f.desktop->views().close(aid));

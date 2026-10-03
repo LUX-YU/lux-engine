@@ -28,6 +28,7 @@
 #include <lux/engine/editor/material/MaterialSessionFactory.hpp>
 #include <lux/engine/editor/flowforge/FlowSessionFactory.hpp>
 #include <lux/engine/editor/scene/SceneView.hpp>
+#include <lux/engine/editor/scene/SceneTools.hpp>
 #include <lux/engine/editor/material/MaterialView.hpp>
 #include <lux/engine/editor/flowforge/FlowView.hpp>
 #include <lux/engine/editor/extensions/EditorExtension.hpp>
@@ -338,7 +339,8 @@ namespace lux::editor::application
         [[nodiscard]] EditorResult<scene::StartRunId> play(commands::SessionTarget);
         [[nodiscard]] EditorResult<void> maintainRuns();
         [[nodiscard]] EditorResult<void> stopRun(scene::RunId);
-        [[nodiscard]] EditorResult<views::ViewId> showSceneTool(views::ViewId, std::string_view);
+        [[nodiscard]] EditorResult<views::ViewId> showSceneTool(views::ViewId, scene::ESceneTool);
+        [[nodiscard]] EditorResult<void> stepRun(scene::RunId);
         [[nodiscard]] EditorResult<views::ViewId> show(sessions::SessionId, bool another_view);
         [[nodiscard]] EditorResult<views::ViewId> makeContentView(
             views::ViewContent,

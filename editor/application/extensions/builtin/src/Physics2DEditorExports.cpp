@@ -142,7 +142,7 @@ namespace
     }
 }
 
-extern "C" LUX_PHYSICS2D_EDITOR_PUBLIC const lux::editor::extensions::EditorExtensionExports* lux_editor_exports_v8(
+extern "C" LUX_PHYSICS2D_EDITOR_PUBLIC const lux::editor::extensions::EditorExtensionExports* lux_editor_exports_v9(
 ) noexcept
 {
     using namespace lux::editor;

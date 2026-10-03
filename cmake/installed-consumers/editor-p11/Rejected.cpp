@@ -16,7 +16,7 @@ namespace
 #if PROBE_REJECT == 6
 extern "C" PROBE_EXPORT const extensions::EditorExtensionExports* lux_editor_exports_v6() noexcept
 #else
-extern "C" PROBE_EXPORT const extensions::EditorExtensionExports* lux_editor_exports_v8() noexcept
+extern "C" PROBE_EXPORT const extensions::EditorExtensionExports* lux_editor_exports_v9() noexcept
 #endif
 {
     static const auto exports = [] {

@@ -14,17 +14,19 @@ find_package(lux-engine-editor-extensions REQUIRED COMPONENTS editor_extensions)
 find_package(lux-engine-editor-storage REQUIRED COMPONENTS editor_storage)
 find_package(lux-engine-editor-persistence REQUIRED COMPONENTS editor_persistence_execution)
 find_package(lux-engine-editor-file-publication REQUIRED COMPONENTS editor_file_publication)
+find_package(lux-engine-editor-workspace-store REQUIRED COMPONENTS workspace_store)
 add_library(skeleton_runtime SHARED Runtime.cpp)
 target_link_libraries(skeleton_runtime PRIVATE lux::engine::editor::editor_extensions)
 add_library(skeleton_extension SHARED Model.cpp Extension.cpp)
 target_link_libraries(skeleton_extension PRIVATE lux::engine::editor::editor_extensions)
 lux_add_plugin_exports(TARGET skeleton_runtime EDITOR_TARGET skeleton_extension DESCRIPTION "${CMAKE_CURRENT_SOURCE_DIR}/plugin.json"
     INPUTS "${CMAKE_CURRENT_SOURCE_DIR}/Runtime.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/Model.cpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/Model.hpp" "${CMAKE_CURRENT_SOURCE_DIR}/Extension.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/Probe.hpp")
+        "${CMAKE_CURRENT_SOURCE_DIR}/Model.hpp" "${CMAKE_CURRENT_SOURCE_DIR}/Extension.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/Probe.hpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Settings.hpp")
 add_executable(skeleton_consumer main.cpp)
 target_link_libraries(skeleton_consumer PRIVATE lux::engine::editor::editor_extensions
     lux::engine::editor::editor_storage lux::engine::editor::editor_persistence_execution
-    lux::engine::editor::editor_file_publication)
+    lux::engine::editor::editor_file_publication lux::engine::editor::workspace_store)
 if(EC1_MODE STREQUAL "APP")
     add_library(witness_runtime SHARED Runtime.cpp)
     target_link_libraries(witness_runtime PRIVATE lux::engine::editor::editor_extensions)

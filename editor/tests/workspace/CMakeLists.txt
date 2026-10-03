@@ -14,3 +14,8 @@ target_link_libraries(editor_layout_effects_test PRIVATE layout_model material_m
 lux_editor_test_options(editor_layout_effects_test)
 add_test(NAME editor.workspace.effects COMMAND editor_layout_effects_test)
 set_tests_properties(editor.workspace.effects PROPERTIES LABELS "editor;native;P09")
+add_executable(editor_settings_test settings.cpp)
+target_link_libraries(editor_settings_test PRIVATE workspace_store editor_file_publication editor_configuration)
+lux_editor_test_options(editor_settings_test)
+add_test(NAME editor.settings.core COMMAND editor_settings_test "${CMAKE_CURRENT_BINARY_DIR}/settings-files")
+set_tests_properties(editor.settings.core PROPERTIES LABELS "editor;native;EC3")

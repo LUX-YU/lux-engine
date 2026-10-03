@@ -1,4 +1,6 @@
 #include "Probe.hpp"
+#include "Settings.hpp"
+#include <lux/engine/editor/workspace/WorkspaceChanges.hpp>
 #include <lux/engine/editor/extensions/EditorExtension.hpp>
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
 #include <lux/engine/editor/storage/FileArtifactStore.hpp>
@@ -171,6 +173,42 @@ int main(int argc, char **argv)
         auto draft = take(extension->contributions());
         const extensions::SessionActivities capabilities{store, saves};
         auto active = take(extension->activate({&capabilities}));
+        commands::CommandRegistry settings_commands;
+        extensions::ContributionRegistry settings_registry{messages.dispatcherRef(), settings_commands};
+        extensions::ContributionDraft settings_draft;
+        settings_draft.reflection = draft.reflection;
+        settings_draft.settings = draft.settings;
+        auto settings_candidate = take(extensions::ContributionSnapshot::prepare(std::move(settings_draft)));
+        take(settings_registry.enqueue(settings_candidate));
+        take(settings_registry.applyPending());
+        auto settings_snapshot = settings_registry.snapshot();
+        const auto* display = settings_snapshot.findSetting(settings::SettingsIdView{"example.skeleton.display"});
+        assert(display && display->create);
+        workspace::WorkspaceStore preferences{root, writes, disk};
+        workspace::WorkspaceChanges preferences_changes{preferences, writes, disk};
+        settings::SettingsDocument user_settings;
+        user_settings.values.push_back({"temporarily.missing.plugin", 19, {std::byte{42}}});
+        auto initial_options = take(settings::resolveSettings(display->entry, {}));
+        auto options = take(settings::makeSettingsDraft(initial_options, user_settings));
+        static_cast<skeleton::DisplayOptions*>(options.desired.data())->show_indices = false;
+        auto candidate_options = take(settings::prepareSettings(options, user_settings, *display->entry));
+        const auto preferences_ticket = take(preferences_changes.saveSettings("user-settings.toml", candidate_options));
+        assert(facts.settings_applied == 0); // Preparing/encoding/admitting a file never activates a feature.
+        for (unsigned i{}; i != 10000 && !preferences_changes.settled(); ++i)
+        {
+            take(execution.submitReady());
+            take(runtime.collectCompletions());
+            take(preferences_changes.update());
+            std::this_thread::sleep_for(std::chrono::milliseconds{1});
+        }
+        assert(preferences_changes.settled());
+        assert(std::holds_alternative<persistence::CommitReceipt>(*preferences_changes.publications()[0].result));
+        take(preferences_changes.acknowledge(preferences_ticket));
+        const auto reopened = take(preferences.readSettings("user-settings.toml", settings::ESettingsScope::USER));
+        assert(reopened.values.front() == user_settings.values.front());
+        auto effective_options = take(settings::resolveSettings(display->entry, std::array{reopened}));
+        take(display->entry->apply(effective_options.desired));
+        assert(facts.settings_applied == 1 && !facts.indices_applied);
         probe.reset(); // Remaining callable addresses are pinned by real extension/factory/role owners.
         auto factories = take(sessions::SessionFactorySnapshot::create(draft.sessions));
         auto provider = take(factories.selectSource("lux.skeleton", 1));
@@ -336,6 +374,7 @@ int main(int argc, char **argv)
             take(host.close(second_id));
             take(host.drain());
             assert(facts.panes_created == facts.panes_destroyed && facts.rows_prepared >= 4);
+            assert(!facts.indices_displayed); // Actual skeleton row rendering consumes the same public setting.
         }
         auto final_stamp = take(store.describe(id)).current;
         take(installed.close(final_stamp));

@@ -19,7 +19,7 @@ namespace
     };
 }
 
-extern "C" SAMPLE_EXTERNAL_EDITOR_EXPORT const lux::editor::extensions::EditorExtensionExports* lux_editor_exports_v8(
+extern "C" SAMPLE_EXTERNAL_EDITOR_EXPORT const lux::editor::extensions::EditorExtensionExports* lux_editor_exports_v9(
 ) noexcept
 {
     using namespace lux::editor;

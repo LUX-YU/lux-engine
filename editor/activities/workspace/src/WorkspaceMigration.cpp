@@ -1,6 +1,8 @@
 #include <lux/engine/editor/workspace/WorkspaceStore.hpp>
 #include <lux/engine/editor/storage/FilePublication.hpp>
 #include <algorithm>
+#include <lux/engine/resource/identity/AssetId.hpp>
+#include <toml++/toml.hpp>
 
 namespace lux::editor::workspace
 {
@@ -11,6 +13,72 @@ namespace lux::editor::workspace
             return cxx::unexpected(WorkspaceFailure{code, std::move(detail)});
         }
     }
+    WorkspaceResult<std::optional<persistence::WriteTicket>> WorkspaceStore::continuePreferencesMigration(
+        const WorkspaceStore& source,
+        const asset::AssetId& project
+    )
+    {
+        if (project.isNull())
+            return failed(EWorkspaceError::INVALID_DATA, "profile migration requires persistent project identity");
+        constexpr std::string_view preferences_path = ".lux/workspace/preferences.toml";
+        constexpr std::string_view marker_path = ".lux/workspace/profile-migration-v1.toml";
+        const auto project_key = uuids::to_string(project.uuid());
+        auto marker = read(marker_path);
+        if (marker)
+        {
+            const std::string_view text{reinterpret_cast<const char*>(marker->bytes.data()), marker->bytes.size()};
+            auto parsed = toml::parse(text);
+            if (!parsed)
+                return failed(EWorkspaceError::INVALID_DATA, "profile migration marker syntax");
+            const bool is_invalid_marker = parsed["schema"].value<std::int64_t>() != 1 ||
+                parsed["project"].value<std::string>() != project_key ||
+                parsed["source"].value_or(std::string{}).empty();
+            if (is_invalid_marker)
+                return failed(EWorkspaceError::CONFLICT, "profile migration marker identity");
+            // Once the marker is confirmed, keep subsequent user edits. Old project files can move
+            // or change without silently restoring them over the personal profile.
+            auto present = readPreferences();
+            if (!present)
+                return cxx::unexpected(present.error());
+            return std::optional<persistence::WriteTicket>{};
+        }
+        if (marker.error().code != EWorkspaceError::NOT_FOUND)
+            return cxx::unexpected(marker.error());
+        auto input = source.read(preferences_path);
+        if (!input)
+        {
+            if (input.error().code == EWorkspaceError::NOT_FOUND)
+                return std::optional<persistence::WriteTicket>{};
+            return cxx::unexpected(input.error());
+        }
+        auto valid = decodePreferences(input->bytes, limits_);
+        if (!valid)
+            return cxx::unexpected(valid.error());
+        auto destination = read(preferences_path);
+        if (!destination)
+        {
+            if (destination.error().code != EWorkspaceError::NOT_FOUND)
+                return cxx::unexpected(destination.error());
+            auto accepted = write(preferences_path, "missing", std::move(input->bytes));
+            if (!accepted)
+                return cxx::unexpected(accepted.error());
+            return std::optional{*accepted};
+        }
+        if (destination->target.key == input->target.key)
+            return failed(EWorkspaceError::CONFLICT, "profile destination aliases the original project file");
+        if (destination->bytes != input->bytes)
+            return failed(EWorkspaceError::CONFLICT, "unmarked profile or changed migration source; explicit choice required");
+        // This second publication can only be admitted after the copied bytes were observed on disk.
+        // Unknown/in-flight responsibility remains in the shared coordinator, never in a new queue.
+        const auto text = "schema = 1\nproject = \"" + project_key + "\"\nsource = \"" +
+            input->target.expected_version + "\"\n";
+        const auto bytes = std::as_bytes(std::span(text));
+        auto accepted = write(marker_path, "missing", {bytes.begin(), bytes.end()});
+        if (!accepted)
+            return cxx::unexpected(accepted.error());
+        return std::optional{*accepted};
+    }
+
     WorkspaceResult<LegacyWorkspaceInput> WorkspaceStore::captureLegacyInput() const
     {
         const auto directory = root_ / ".lux/editor/layouts";

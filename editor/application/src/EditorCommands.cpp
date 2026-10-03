@@ -110,6 +110,7 @@ namespace lux::editor::application
             append(contributed->views, activated->views);
             append(contributed->configurations, activated->configurations);
             append(contributed->components, activated->components);
+            append(contributed->settings, activated->settings);
             auto tools = desktop::makeToolCommands(contributed->views,
                 [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
                     return commands::CommandState{phase_ == EApplicationPhase::RUNNING};
@@ -125,6 +126,7 @@ namespace lux::editor::application
             append(draft.views, contributed->views);
             append(draft.configurations, contributed->configurations);
             append(draft.components, contributed->components);
+            append(draft.settings, contributed->settings);
         }
         // Cold startup only: establish the real reflection owners before freezing Flow metadata.
         // No desktop commands or views are exposed until the complete second publication succeeds.

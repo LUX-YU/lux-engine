@@ -13,6 +13,7 @@ namespace lux::editor::workspace
         persistence::WriteTicket ticket;
         std::optional<persistence::VPublicationOutcome> result;
         std::optional<WorkspaceFailure> catalog_failure;
+        bool refresh_catalog{true};
     };
 
     // Owns accepted workspace writes and their observations. Store/Coordinator remain the sole
@@ -34,6 +35,10 @@ namespace lux::editor::workspace
         // Call only after the Host has committed this layout; failure does not undo that UI fact.
         [[nodiscard]] EditorResult<void> select(const LayoutId&);
         [[nodiscard]] EditorResult<void> recordRecovery(const RecoveryManifest&, std::string version);
+        // Accepted bytes/results outlive a settings page. This owner acknowledges the coordinator;
+        // consumers acknowledge this report only after observing the actual publication outcome.
+        [[nodiscard]] EditorResult<persistence::WriteTicket>
+        saveSettings(std::string_view relative, const settings::SettingsDocument&);
         [[nodiscard]] EditorResult<void> migrate();
         [[nodiscard]] EditorResult<void> reconcile(persistence::WriteTicket);
         [[nodiscard]] EditorResult<void> acknowledge(persistence::WriteTicket);

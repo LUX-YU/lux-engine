@@ -1,6 +1,7 @@
 #include <lux/engine/editor/extensions/Contributions.hpp>
 #include <lux/engine/editor/configuration/EditorReflection.hpp>
 #include <deque>
+#include <algorithm>
 #include <thread>
 
 namespace lux::editor::extensions
@@ -15,6 +16,8 @@ namespace lux::editor::extensions
         views::ViewFactorySnapshot views;
         std::vector<scene::ConfigurationEditor> configurations;
         std::vector<scene::InspectorComponent> components;
+        std::vector<settings::SettingsPage> settings;
+        std::vector<std::pair<std::uint64_t, std::size_t>> setting_index;
     };
     ContributionResult<ContributionSnapshot> ContributionSnapshot::prepare(
         ContributionDraft draft,
@@ -24,6 +27,26 @@ namespace lux::editor::extensions
         if (draft.configurations.size() > capacity || draft.components.size() > capacity ||
             draft.reflection.size() > capacity)
             return cxx::unexpected(ContributionFailure{EContributionError::CAPACITY, "contributions"});
+        std::vector<std::shared_ptr<settings::SettingsEntry>> setting_entries;
+        setting_entries.reserve(draft.settings.size());
+        for (const auto& item : draft.settings)
+            setting_entries.push_back(item.entry);
+        auto valid_settings = settings::validateSettingsEntries(setting_entries, capacity);
+        if (!valid_settings)
+            return cxx::unexpected(ContributionFailure{
+                EContributionError::INVALID_ARGUMENT, "settings",
+                static_cast<std::uint64_t>(valid_settings.error().code), valid_settings.error().detail
+            });
+        std::vector<std::pair<std::uint64_t, std::size_t>> setting_index;
+        setting_index.reserve(draft.settings.size());
+        for (std::size_t i{}; i < draft.settings.size(); ++i)
+        {
+            auto& item = draft.settings[i];
+            const auto code = item.entry->code();
+            item.entry = contracts::pinCodeOwner(code, std::move(item.entry));
+            setting_index.emplace_back(item.entry->descriptor().id.hash(), i);
+        }
+        std::ranges::sort(setting_index);
         auto commands = commands::CommandRegistrySnapshot::create(std::move(draft.commands), capacity);
         if (!commands)
             return cxx::unexpected(ContributionFailure{
@@ -72,7 +95,7 @@ namespace lux::editor::extensions
         for (const auto& entry : draft.reflection)
             if (!entry.code.valid() || !entry.register_types)
                 return cxx::unexpected(ContributionFailure{EContributionError::INVALID_ARGUMENT, "reflection"});
-        auto lifetime = draft.reflection.empty() && draft.configurations.empty() ? std::shared_ptr<const void>{}
+        auto lifetime = draft.reflection.empty() && draft.configurations.empty() && draft.settings.empty() ? std::shared_ptr<const void>{}
                                                                                  : acquireEditorReflection();
         ContributionSnapshot result;
         result.data_ = std::make_shared<Data>(
@@ -83,7 +106,9 @@ namespace lux::editor::extensions
             std::move(*sessions),
             std::move(*views),
             std::move(draft.configurations),
-            std::move(draft.components)
+            std::move(draft.components),
+            std::move(draft.settings),
+            std::move(setting_index)
         );
         return result;
     }
@@ -106,6 +131,22 @@ namespace lux::editor::extensions
     std::span<const scene::InspectorComponent> ContributionSnapshot::components() const noexcept
     {
         return data_->components;
+    }
+    std::span<const settings::SettingsPage> ContributionSnapshot::settings() const noexcept
+    {
+        return data_->settings;
+    }
+    const settings::SettingsPage* ContributionSnapshot::findSetting(settings::SettingsIdView id) const noexcept
+    {
+        if (!data_)
+            return nullptr;
+        auto found = std::ranges::lower_bound(data_->setting_index, id.hash(), {},
+            [](const auto& row) { return row.first; });
+        const bool is_missing = found == data_->setting_index.end() || found->first != id.hash();
+        if (is_missing)
+            return nullptr;
+        const auto& item = data_->settings[found->second];
+        return item.entry->descriptor().id.name() == id.name() ? &item : nullptr;
     }
     bool ContributionSnapshot::valid() const noexcept
     {
@@ -215,6 +256,17 @@ namespace lux::editor::extensions
                             "configuration.reflection",
                             0,
                             entry.value.schema_name
+                        });
+                }
+                for (const auto& item : candidate.data_->settings)
+                {
+                    // Default decode/validation is foreign code too: all participating guards remain
+                    // active until the temporary value and any rejected candidate are destroyed.
+                    auto value = item.entry->validateDefault(*reflection.registry());
+                    if (!value)
+                        return cxx::unexpected(ContributionFailure{
+                            EContributionError::INVALID_ARGUMENT, "settings.default",
+                            static_cast<std::uint64_t>(value.error().code), value.error().detail
                         });
                 }
                 auto committed = reflection.commit();

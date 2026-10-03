@@ -2,7 +2,7 @@
 
 The application combines immutable command, content-factory, view-factory and configuration contributions. It does not own author sources, History, saves, Run sessions or rendering resources. `ContributionRegistry::enqueue()` prepares a bounded candidate; `applyPending()` publishes a fixed batch at the owner safe point. The participating CommandRegistry grants a narrow batch scope before callbacks. Ordinary command publication is BUSY through candidate cleanup, old-value disposal and notification. The prepared scope performs its one-use commit only after reflection validation; the contribution owner never unlocks and re-enters ordinary publication. Notifications follow publication. Requests made by a notification belong to the next batch. Failed candidates leave the visible catalog unchanged.
 
-`lux_editor_exports_v8` is the formal SDK entry. Header size, interface version, fingerprint and advertised counts are checked before invoking the contribution callback. The existing project plugin loader verifies the binary and pins its runtime dependencies. V6 is an explicitly rejected input; the installed product uses only V8.
+`lux_editor_exports_v9` is the formal SDK entry. Header size, interface version, fingerprint and advertised counts are checked before invoking the contribution callback. The existing project plugin loader verifies the binary and pins its runtime dependencies. V6 is an explicitly rejected input; the current product uses V9 (V8 binaries are rejected).
 
 Pure `contribute()` runs without live application services. Optional `activate()` declares separate
 counts and requirements for `SessionActivities`, `ProjectActivities` and `WorkbenchAccess`. Missing
@@ -40,6 +40,16 @@ There is no central built-in factory archive. External extensions use the same i
 and Entry binding API, retaining their original code lease and activation dependencies.
 
 The installed `lux_editor` uses EditorApplication and the same formal providers. Original Context,
-mutable registration aggregates and V6 assembly have been deleted. Standalone V8 view factories take
+mutable registration aggregates and V6 assembly have been deleted. Standalone V9 view factories take
 `std::monostate`; content tools use explicit typed bindings. Product Window commands resolve those
 immutable factory entries and reuse an existing standalone tool of the same ViewTypeId.
+
+## EC3 settings
+
+Settings contributions join the same immutable publication, code normalization and guarded reflection
+batch. A SettingsEntry references one fixed descriptor or freezes dynamic text/configuration in one
+backing. It owns its exact application callback and CodeLease; pages/values retain these owners.
+Default decoding and pure validation run before reflection/catalog commit, under both existing guards.
+A rejected default leaves the previous catalogs intact. Reading a document or preparing a draft never
+applies a value or invents a persistence receipt. SettingsDocument/TOML is provided by layout_model;
+only materializing ConfigurationValue requires editor_configuration and reflection.

@@ -5174,7 +5174,9 @@
       "lux/engine/editor/workspace/LayoutPlan.hpp",
       "lux/engine/editor/workspace/LayoutCatalog.hpp",
       "lux/engine/editor/workspace/RecoveryManifest.hpp",
-      "lux/cxx/compile_time/expected.hpp"
+      "lux/cxx/compile_time/expected.hpp",
+      "unordered_set",
+      "lux/engine/editor/workspace/SettingsDocument.hpp"
     ],
     "prefixes": [],
     "test_headers": {},
@@ -5185,7 +5187,9 @@
       "editor/authoring/layout/include/lux/engine/editor/workspace/WorkspaceValues.hpp",
       "editor/authoring/layout/src/LayoutPlan.cpp",
       "editor/authoring/layout/src/WorkspaceCodec.cpp",
-      "editor/authoring/layout/include/lux/engine/editor/workspace/RecoveryManifest.hpp"
+      "editor/authoring/layout/include/lux/engine/editor/workspace/RecoveryManifest.hpp",
+      "editor/authoring/layout/src/SettingsCodec.cpp",
+      "editor/authoring/layout/include/lux/engine/editor/workspace/SettingsDocument.hpp"
     ]
   },
   "workspace_store": {
@@ -5260,7 +5264,8 @@
       "lux/engine/editor/persistence/WriteCoordinator.hpp",
       "thread",
       "memory",
-      "lux/engine/editor/EditorError.hpp"
+      "lux/engine/editor/EditorError.hpp",
+      "lux/engine/resource/identity/AssetId.hpp"
     ],
     "prefixes": [
       "lux/engine/editor/workspace/"
@@ -16040,6 +16045,14 @@
           "CPU"
         ],
         "path": "modules/function/ui"
+      },
+      "editor_settings_test": {
+        "layer": "TEST",
+        "role": "TEST",
+        "capabilities": [
+          "CPU"
+        ],
+        "path": "editor/tests/workspace"
       }
     },
     "files": {
@@ -18513,6 +18526,18 @@
       ],
       "editor/activities/commands/pinclude/lux/engine/editor/commands/CommandIndexTestAccess.hpp": [
         "editor_commands"
+      ],
+      "editor/authoring/configuration/include/lux/engine/editor/configuration/Settings.hpp": [
+        "editor_configuration"
+      ],
+      "editor/authoring/configuration/src/Settings.cpp": [
+        "editor_configuration"
+      ],
+      "editor/authoring/layout/src/SettingsCodec.cpp": [
+        "layout_model"
+      ],
+      "editor/authoring/layout/include/lux/engine/editor/workspace/SettingsDocument.hpp": [
+        "layout_model"
       ]
     },
     "native_libraries": [

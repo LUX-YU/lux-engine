@@ -1,6 +1,7 @@
 #include <array>
 #include "Model.hpp"
 #include "Probe.hpp"
+#include "Settings.hpp"
 #include <lux/engine/editor/extensions/EditorExtension.hpp>
 #include <lux/engine/ui/Layout.hpp>
 #include <lux/engine/ui/Controls.hpp>
@@ -14,7 +15,7 @@ namespace
         {},
         lux::editor::commands::ECommandScope::SESSION,
         1,
-        cxx::typeToken<Rename>()
+        lux::cxx::typeToken<skeleton::Rename>()
     };
 }
 namespace skeleton
@@ -26,6 +27,55 @@ namespace skeleton
     namespace
     {
         Facts *facts{};
+        DisplayOptions display_options;
+        std::uint64_t display_revision{};
+        void registerSettings(meta::ReflectionRegistry& registry, meta::qual_type_index_fix_list&)
+        {
+            auto type = std::make_unique<meta::RefClass>();
+            type->name = "DisplayOptions";
+            type->full_name = cxx::type_name<DisplayOptions>();
+            type->hash = cxx::type_hash<DisplayOptions>();
+            type->type = meta::ref_type_of_v<DisplayOptions>;
+            type->type.ptr = type.get();
+            type->construct = [](void* storage) { std::construct_at(static_cast<DisplayOptions*>(storage)); };
+            type->destruct = [](void* storage) { std::destroy_at(static_cast<DisplayOptions*>(storage)); };
+            registry.registerClass(std::move(type));
+        }
+        const ConfigurationDescriptor display_configuration{
+            "example.skeleton.display", 1, serialization::makePortableValueCodec<DisplayOptions>(),
+            +[](meta::ReflectionRegistry& registry) noexcept { return registry.findClass(cxx::type_name<DisplayOptions>()); }
+        };
+        constexpr settings::SettingsDescriptor display_descriptor{
+            settings::SettingsIdView{"example.skeleton.display"}, "Skeleton display", &display_configuration,
+            settings::kPersonalScopes, settings::ESettingsApply::SAFE_POINT,
+            +[](const ConfigurationValue&) noexcept -> settings::SettingsResult<void> { return {}; }
+        };
+        class DisplayControl final : public ui::Element
+        {
+        public:
+            DisplayControl(ui::Element& parent, ui::ElementId id, ConfigurationValue& value)
+                : Element(parent, std::move(id)), value_(value),
+                  indices_(*this, ui::ElementId{"indices"}, "Show bone indices",
+                           static_cast<const DisplayOptions*>(value.data())->show_indices)
+            {
+                auto connected = object::LuxObject::connect(&indices_, &ui::CheckBox::edited,
+                    [this](const ui::EditResult& result) noexcept {
+                        if (result.changed)
+                            static_cast<DisplayOptions*>(value_.data())->show_indices = indices_.value();
+                    });
+                if (!connected)
+                    std::terminate();
+                connection_ = std::move(*connected);
+            }
+        private:
+            ui::SizeHint sizeHintContent() noexcept override { return indices_.sizeHint(); }
+            ui::SizeHint measureContent(float width) noexcept override { return indices_.measure(width); }
+            void arrangeContent() noexcept override { indices_.arrange({{}, rect().size}); }
+            void draw() noexcept override { drawChild(indices_); }
+            ConfigurationValue& value_;
+            ui::CheckBox indices_;
+            object::Connection connection_;
+        };
         SessionStore *observed_store{}; // Test-only observation; production closures borrow explicit activation inputs.
         struct Unload final
         {
@@ -127,7 +177,7 @@ namespace skeleton
                     pending_.reset();
                     draft_.reset();
                 }
-                if (draft_)
+                if (draft_ && shown_revision_ == display_revision)
                     return;
                 auto value = owner->get().read();
                 if (!value || value->bones.empty())
@@ -135,11 +185,19 @@ namespace skeleton
                 const auto stamp = owner->get().describe().current;
                 std::string rows;
                 for (std::size_t i{}; i != value->bones.size(); ++i)
-                    rows += std::to_string(i) + ": " + value->bones[i].name + " (parent " +
+                    rows += (display_options.show_indices ? std::to_string(i) + ": " : std::string{}) +
+                            value->bones[i].name + " (parent " +
                             std::to_string(value->bones[i].parent_index) + ")\n";
                 bones_.setText(std::move(rows));
+                shown_revision_ = display_revision;
                 if (facts)
+                {
                     facts->rows_prepared += static_cast<unsigned>(value->bones.size());
+                    facts->indices_displayed = display_options.show_indices;
+                }
+                // A presentation preference refresh must not replace an existing editing draft.
+                if (draft_)
+                    return;
                 draft_ = Draft{stamp, value->bones[0].name, value->global_transform.translation().x()};
                 name_.setValue(draft_->name);
                 translation_.setValue(draft_->x);
@@ -155,10 +213,27 @@ namespace skeleton
             object::Connection apply_connection_, revert_connection_;
             std::optional<Draft> draft_, pending_;
             bool revert_requested_{};
+            std::uint64_t shown_revision_{};
         };
         ContributionResult<void> contribute(ContributionDraft &draft, contracts::CodeLease code)
         {
-            draft.sessions.push_back(factory(std::move(code)));
+            draft.sessions.push_back(factory(code));
+            draft.reflection.push_back({code, &registerSettings});
+            draft.settings.push_back({settings::SettingsEntry::bind<display_descriptor>(code,
+                [](const ConfigurationValue& value) -> settings::SettingsResult<void> {
+                    display_options = *static_cast<const DisplayOptions*>(value.data());
+                    ++display_revision;
+                    if (facts)
+                    {
+                        ++facts->settings_applied;
+                        facts->indices_applied = display_options.show_indices;
+                    }
+                    return {};
+                }),
+                +[](ui::Element& parent, ui::ElementId id, ConfigurationValue& value) noexcept
+                    -> EditorResult<std::unique_ptr<ui::Element>> {
+                    return std::make_unique<DisplayControl>(parent, std::move(id), value);
+                }});
             return {};
         }
         ContributionResult<void> activate(ContributionDraft &draft,
@@ -266,13 +341,13 @@ lux::editor::sessions::SessionResult<void> skeleton_read_guard(lux::editor::sess
     auto invoke = [&] { callback(context); };
     return owner->get().withRead(invoke);
 }
-extern "C" SKELETON_EXPORT const lux::editor::extensions::EditorExtensionExports *lux_editor_exports_v8() noexcept
+extern "C" SKELETON_EXPORT const lux::editor::extensions::EditorExtensionExports *lux_editor_exports_v9() noexcept
 {
     using namespace skeleton;
     static const EditorExtensionExports exports{sizeof(exports),
                                                 kEditorExtensionVersion,
                                                 kEditorExtensionAbi,
-                                                {.sessions = 1},
+                                                {.sessions = 1, .reflection = 1, .settings = 1},
                                                 &contribute,
                                                 {.commands = 1, .views = 1},
                                                 {.sessions = true},

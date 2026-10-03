@@ -9,7 +9,7 @@ namespace lux::editor::extensions
         bool validCounts(ContributionCounts counts) noexcept
         {
             return counts.commands <= 256 && counts.sessions <= 256 && counts.views <= 256 &&
-                counts.reflection <= 256 && counts.configurations <= 256 && counts.components <= 256;
+                counts.reflection <= 256 && counts.configurations <= 256 && counts.components <= 256 && counts.settings <= 256;
         }
         ContributionResult<ContributionDraft> normalizeDraft(
             std::shared_ptr<const void> pinned,
@@ -21,7 +21,7 @@ namespace lux::editor::extensions
             const bool mismatch = counts.commands != draft.commands.size() || counts.sessions != draft.sessions.size() ||
                                   counts.reflection != draft.reflection.size() || counts.views != draft.views.size() ||
                                   counts.configurations != draft.configurations.size() ||
-                                  counts.components != draft.components.size();
+                                  counts.components != draft.components.size() || counts.settings != draft.settings.size();
             if (mismatch)
                 return cxx::unexpected(ContributionFailure{EContributionError::INVALID_ARGUMENT, "extension.counts"});
             const auto lease = contracts::CodeLease::plugin(pinned);
@@ -38,6 +38,9 @@ namespace lux::editor::extensions
             for (const auto& entry : draft.views)
                 if (!entry || !entry->usesCode(lease))
                     return cxx::unexpected(ContributionFailure{EContributionError::INVALID_ARGUMENT, "view.code"});
+            for (const auto& item : draft.settings)
+                if (!item.entry || !item.entry->usesCode(lease))
+                    return cxx::unexpected(ContributionFailure{EContributionError::INVALID_ARGUMENT, "settings.code"});
             for (auto& entry : draft.configurations)
                 entry.code = lease;
             for (auto& entry : draft.components)

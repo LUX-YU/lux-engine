@@ -1,5 +1,5 @@
 add_component(COMPONENT_NAME layout_model NAMESPACE lux::engine::editor STATIC
-    SOURCE_FILES src/LayoutPlan.cpp src/WorkspaceCodec.cpp)
+    SOURCE_FILES src/LayoutPlan.cpp src/WorkspaceCodec.cpp src/SettingsCodec.cpp)
 component_include_directories(layout_model BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include
     INSTALL_TIME include)
 target_link_libraries(layout_model PUBLIC lux::engine::editor::editor_contracts)

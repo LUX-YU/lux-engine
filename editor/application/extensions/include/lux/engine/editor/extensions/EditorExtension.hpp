@@ -7,11 +7,11 @@
 
 namespace lux::editor::extensions
 {
-    inline constexpr std::uint32_t kEditorExtensionVersion = 8;
-    inline constexpr const char* kEditorExtensionSymbol = "lux_editor_exports_v8";
+    inline constexpr std::uint32_t kEditorExtensionVersion = 9;
+    inline constexpr const char* kEditorExtensionSymbol = "lux_editor_exports_v9";
     struct ContributionCounts final
     {
-        std::uint32_t commands{}, sessions{}, views{}, configurations{}, components{}, reflection{};
+        std::uint32_t commands{}, sessions{}, views{}, configurations{}, components{}, reflection{}, settings{};
         friend bool operator==(ContributionCounts, ContributionCounts) = default;
     };
     struct EditorExtensionExports final

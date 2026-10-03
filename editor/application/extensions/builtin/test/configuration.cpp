@@ -1,4 +1,5 @@
 #include <lux/engine/editor/configuration/ConfigurationValue.hpp>
+#include <lux/engine/editor/extensions/Contributions.hpp>
 #include <lux/engine/editor/scene/ConfigurationEditor.hpp>
 #include <lux/engine/editor/scene/SceneConfigurationElement.hpp>
 #include <lux/engine/meta/TypeStaticInfo.hpp>
@@ -88,6 +89,72 @@ private:
     lux::object::Connection connection_;
 };
 
+namespace
+{
+    lux::editor::commands::CommandRegistry* settings_commands{};
+    lux::editor::extensions::ContributionRegistry* settings_registry{};
+    unsigned settings_callbacks{};
+    bool reject_default{};
+    void settingsCases(const lux::editor::ConfigurationDescriptor& configuration)
+    {
+        using namespace lux;
+        using namespace lux::editor;
+        auto messages = object::ObjectMessageQueue::create(32);
+        assert(messages);
+        commands::CommandRegistry commands;
+        extensions::ContributionRegistry registry{messages->dispatcherRef(), commands};
+        settings_commands = &commands;
+        settings_registry = &registry;
+        auto initial = extensions::ContributionSnapshot::prepare({});
+        assert(initial && registry.enqueue(*initial) && registry.applyPending());
+        settings::SettingsDescriptor descriptor{
+            settings::SettingsIdView{"plugin.settings"}, "Plugin settings", &configuration,
+            settings::kPersonalScopes, settings::ESettingsApply::RESTART,
+            +[](const ConfigurationValue& value) noexcept -> settings::SettingsResult<void> {
+                ++settings_callbacks;
+                assert(static_cast<const Configuration*>(value.data())->label.empty());
+                auto publish = settings_commands->publish(settings_commands->snapshot());
+                assert(!publish && publish.error().code == commands::ECommandError::BUSY);
+                auto adopt = settings_registry->applyPending();
+                assert(!adopt && adopt.error().code == extensions::EContributionError::BUSY);
+                if (reject_default)
+                    return cxx::unexpected(settings::SettingsFailure{settings::ESettingsError::INVALID_VALUE, "default"});
+                return {};
+            }
+        };
+        auto entry = settings::SettingsEntry::create(contracts::CodeLease::builtin(), descriptor);
+        for (bool rejected : {true, false})
+        {
+            extensions::ContributionDraft draft;
+            draft.settings.push_back({entry, {}});
+            auto candidate = extensions::ContributionSnapshot::prepare(std::move(draft));
+            assert(candidate);
+            assert(settings_callbacks == unsigned(!rejected)); // Preparation never ran the callback.
+            reject_default = rejected;
+            assert(registry.enqueue(*candidate));
+            auto result = registry.applyPending();
+            if (rejected)
+            {
+                assert(!result && result.error().domain == "settings.default");
+                assert(registry.revision() == 1 && commands.revision() == 1);
+                assert(registry.snapshot().settings().empty());
+            }
+            else
+            {
+                assert(result && registry.revision() == 2 && commands.revision() == 2);
+                auto fixed = registry.snapshot();
+                assert(fixed.settings().size() == 1);
+                auto found = fixed.findSetting(settings::SettingsIdView{"plugin.settings"});
+                assert(found && found->entry->descriptor().configuration->schema_name == "test.configuration");
+                assert(!fixed.findSetting(settings::SettingsIdView{"plugin.missing"}));
+            }
+        }
+        assert(settings_callbacks == 2 && commands.canPublish());
+        settings_commands = nullptr;
+        settings_registry = nullptr;
+    }
+}
+
 int main()
 {
     using namespace lux;
@@ -114,6 +181,7 @@ int main()
                 return std::make_unique<ConfigurationElement>(parent, std::move(id), value);
             }
         };
+        settingsCases(registration.value);
         auto first = editor::ConfigurationValue::create(registration.value, code);
         auto second = editor::ConfigurationValue::create(registration.value, code);
         assert(first && second);

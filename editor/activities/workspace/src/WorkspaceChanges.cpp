@@ -53,15 +53,23 @@ namespace lux::editor::workspace
                 return cxx::unexpected(EditorFailure{EEditorError::CAPACITY, "workspace.results"});
             return {};
         }
-        template<class Write> EditorResult<void> publish(std::string label, Write&& write)
+        template<class Write> EditorResult<persistence::WriteTicket>
+        accept(std::string label, Write&& write, bool refresh_catalog = true)
         {
             if (auto ready = admission(true); !ready)
-                return ready;
+                return cxx::unexpected(ready.error());
             const Dispatch scope{dispatching_};
             auto accepted = write();
             if (!accepted)
                 return failure("workspace.publication", accepted.error());
-            publications_.push_back({std::move(label), *accepted});
+            publications_.push_back({std::move(label), *accepted, {}, {}, refresh_catalog});
+            return *accepted;
+        }
+        template<class Write> EditorResult<void> publish(std::string label, Write&& write)
+        {
+            auto accepted = accept(std::move(label), std::forward<Write>(write));
+            if (!accepted)
+                return cxx::unexpected(accepted.error());
             return {};
         }
         EditorResult<void> refresh()
@@ -186,6 +194,8 @@ namespace lux::editor::workspace
                 if (!acknowledged)
                     return failure("workspace.acknowledge", acknowledged.error());
                 report.result = std::move(status->outcome);
+                if (!report.refresh_catalog)
+                    continue;
                 auto catalog = store_.listLayouts();
                 if (catalog)
                     catalog_ = std::move(*catalog);
@@ -226,6 +236,13 @@ namespace lux::editor::workspace
         });
     }
     EditorResult<void> WorkspaceChanges::migrate() { return impl_->migrate(); }
+    EditorResult<persistence::WriteTicket>
+    WorkspaceChanges::saveSettings(std::string_view relative, const settings::SettingsDocument& value)
+    {
+        return impl_->accept("Save settings: " + std::string(relative), [&] {
+            return impl_->store_.writeSettings(relative, value);
+        }, false);
+    }
     EditorResult<void> WorkspaceChanges::reconcile(persistence::WriteTicket ticket) { return impl_->reconcile(ticket); }
     EditorResult<void> WorkspaceChanges::acknowledge(persistence::WriteTicket ticket)
     {

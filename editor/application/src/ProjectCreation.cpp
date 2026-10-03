@@ -213,6 +213,7 @@ namespace lux::editor::application
                 append(draft.code, supplied->code);
                 append(draft.reflection, supplied->reflection);
                 append(draft.configurations, supplied->configurations);
+                append(draft.settings, supplied->settings);
             }
             auto prepared = extensions::ContributionSnapshot::prepare(std::move(draft));
             if (!prepared)

@@ -4,7 +4,10 @@
 #include <lux/engine/editor/workspace/RecoveryManifest.hpp>
 #include <lux/engine/editor/persistence/WriteCoordinator.hpp>
 #include <lux/engine/editor/workspace/LegacyWorkspaceMigration.hpp>
+#include <lux/engine/editor/workspace/SettingsDocument.hpp>
 #include <filesystem>
+
+namespace lux::asset { class AssetId; }
 
 namespace lux::editor::workspace
 {
@@ -45,6 +48,11 @@ namespace lux::editor::workspace
         [[nodiscard]] WorkspaceResult<StoredLayout> readLayout(const LayoutId&) const;
         [[nodiscard]] WorkspaceResult<StoredPreferences> readPreferences() const;
         [[nodiscard]] WorkspaceResult<StoredRecovery> readRecovery() const;
+        // Relative to this store's explicit physical root (project or user). Missing is distinct from IO.
+        [[nodiscard]] WorkspaceResult<settings::SettingsDocument>
+        readSettings(std::string_view relative, settings::ESettingsScope) const;
+        [[nodiscard]] WorkspaceResult<persistence::WriteTicket>
+        writeSettings(std::string_view relative, const settings::SettingsDocument&);
         [[nodiscard]] WorkspaceResult<LayoutCatalog> listLayouts() const;
         // Defaults are read decisions only; access failures are returned, never persisted as defaults.
         [[nodiscard]] WorkspaceResult<LayoutChoice> chooseLayout(const UserPreferences&) const;
@@ -67,6 +75,11 @@ namespace lux::editor::workspace
         // Empty means all records were verified and the marker is already present. No private queue/pump.
         [[nodiscard]] WorkspaceResult<std::optional<persistence::WriteTicket>>
         continueMigration(const LegacyMigration&);
+        // Copy the old preferences once to this explicit user-project root. Original layouts and
+        // recovery remain in their source store; their stable identities are not interpreted here.
+        // Settle and acknowledge each returned write through the original coordinator before retry.
+        [[nodiscard]] WorkspaceResult<std::optional<persistence::WriteTicket>>
+        continuePreferencesMigration(const WorkspaceStore& source, const asset::AssetId& project);
 
     private:
         [[nodiscard]] WorkspaceResult<LegacyWorkspaceInput> captureLegacyInput() const;

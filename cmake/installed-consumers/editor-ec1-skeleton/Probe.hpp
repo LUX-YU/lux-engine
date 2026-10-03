@@ -22,6 +22,8 @@ namespace skeleton
     {
         std::atomic<unsigned> unloaded{};
         unsigned panes_created{}, panes_destroyed{}, rows_prepared{}, activations{};
+        unsigned settings_applied{};
+        bool indices_applied{true}, indices_displayed{true};
         // Qualification observations only. No production extension looks up capabilities through this record.
         lux::editor::ProjectStorage *project{};
         lux::editor::desktop::ViewHost *host{};

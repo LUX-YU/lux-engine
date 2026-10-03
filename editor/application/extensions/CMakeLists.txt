@@ -1,5 +1,5 @@
 # Editor ABI evolves independently from the engine runtime plugin identity.
-set(_editor_abi "v8;${_lux_plugin_environment}")
+set(_editor_abi "v9;${_lux_plugin_environment}")
 file(GLOB_RECURSE _extension_headers CONFIGURE_DEPENDS
     "${PROJECT_SOURCE_DIR}/editor/editing/*.hpp"
     "${PROJECT_SOURCE_DIR}/editor/authoring/*.hpp"

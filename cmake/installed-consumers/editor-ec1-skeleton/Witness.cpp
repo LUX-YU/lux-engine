@@ -28,7 +28,7 @@ extern "C" SKELETON_EXPORT void ec1_observe(skeleton::Facts *facts) noexcept
 {
     observations = facts;
 }
-extern "C" SKELETON_EXPORT const lux::editor::extensions::EditorExtensionExports *lux_editor_exports_v8() noexcept
+extern "C" SKELETON_EXPORT const lux::editor::extensions::EditorExtensionExports *lux_editor_exports_v9() noexcept
 {
     using namespace lux::editor::extensions;
     static const EditorExtensionExports exports{sizeof(exports),

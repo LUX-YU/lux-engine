@@ -3,6 +3,7 @@
 #include <lux/engine/editor/sessions/SessionFactory.hpp>
 #include <lux/engine/editor/views/ViewFactory.hpp>
 #include <lux/engine/editor/scene/ConfigurationEditor.hpp>
+#include <lux/engine/editor/configuration/Settings.hpp>
 #include <lux/engine/editor/scene/InspectorComponent.hpp>
 #include <lux/cxx/core/function_ref.hpp>
 #include <lux/engine/object/LuxObject.hpp>
@@ -50,6 +51,7 @@ namespace lux::editor::extensions
         std::vector<std::shared_ptr<views::ViewFactoryEntry>> views;
         std::vector<scene::ConfigurationEditor> configurations;
         std::vector<scene::InspectorComponent> components;
+        std::vector<settings::SettingsPage> settings;
     };
     class ContributionSnapshot final
     {
@@ -63,6 +65,9 @@ namespace lux::editor::extensions
         [[nodiscard]] const views::ViewFactorySnapshot& views() const noexcept;
         [[nodiscard]] std::span<const scene::ConfigurationEditor> configurations() const noexcept;
         [[nodiscard]] std::span<const scene::InspectorComponent> components() const noexcept;
+        [[nodiscard]] std::span<const settings::SettingsPage> settings() const noexcept;
+        // Cold external-name boundary. Drafts and pages retain the resulting entry, not its name.
+        [[nodiscard]] const settings::SettingsPage* findSetting(settings::SettingsIdView) const noexcept;
         [[nodiscard]] bool valid() const noexcept;
 
     private:

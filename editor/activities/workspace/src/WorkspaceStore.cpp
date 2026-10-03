@@ -22,6 +22,15 @@ namespace lux::editor::workspace
                 code = EWorkspaceError::CAPACITY;
             return {code, error.detail, error.native_code};
         }
+        WorkspaceFailure translate(const settings::SettingsFailure& error)
+        {
+            using E = settings::ESettingsError;
+            auto code = EWorkspaceError::INVALID_DATA;
+            if (error.code == E::UNSUPPORTED_VERSION) code = EWorkspaceError::UNSUPPORTED_VERSION;
+            if (error.code == E::CAPACITY) code = EWorkspaceError::CAPACITY;
+            if (error.code == E::CONFLICT) code = EWorkspaceError::CONFLICT;
+            return {code, error.detail};
+        }
         std::string layoutPath(const LayoutId& id)
         {
             return ".lux/workspace/layouts/" + id.value + ".layout";
@@ -103,6 +112,38 @@ namespace lux::editor::workspace
         if (!value)
             return lux::cxx::unexpected(value.error());
         return StoredRecovery{std::move(*value), std::move(file->target)};
+    }
+    WorkspaceResult<settings::SettingsDocument> WorkspaceStore::readSettings(
+        std::string_view relative,
+        settings::ESettingsScope scope
+    ) const
+    {
+        if (scope >= settings::ESettingsScope::LAUNCH)
+            return failed(EWorkspaceError::INVALID_DATA, "launch settings are not a stored scope");
+        auto file = read(relative);
+        if (!file)
+            return cxx::unexpected(file.error());
+        auto value = settings::decodeSettings(file->bytes);
+        if (!value)
+            return cxx::unexpected(translate(value.error()));
+        if (value->scope != scope)
+            return failed(EWorkspaceError::CONFLICT, "settings file scope mismatch");
+        value->file_version = std::move(file->target.expected_version);
+        return std::move(*value);
+    }
+    WorkspaceResult<persistence::WriteTicket> WorkspaceStore::writeSettings(
+        std::string_view relative,
+        const settings::SettingsDocument& value
+    )
+    {
+        const bool is_read_only_scope = value.scope == settings::ESettingsScope::INSTALLATION ||
+            value.scope >= settings::ESettingsScope::LAUNCH;
+        if (is_read_only_scope)
+            return failed(EWorkspaceError::INVALID_DATA, "settings scope is not writable");
+        auto encoded = settings::encodeSettings(value);
+        if (!encoded)
+            return cxx::unexpected(translate(encoded.error()));
+        return write(relative, value.file_version, std::move(*encoded));
     }
     WorkspaceResult<LayoutCatalog> WorkspaceStore::listLayouts() const
     {

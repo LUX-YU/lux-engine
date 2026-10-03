@@ -1,6 +1,6 @@
+add_subdirectory(layout)
 add_subdirectory(configuration)
 add_subdirectory(scene)
 add_subdirectory(material)
 add_subdirectory(flow)
 add_subdirectory(project)
-add_subdirectory(layout)

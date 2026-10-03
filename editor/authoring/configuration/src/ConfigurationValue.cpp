@@ -17,12 +17,22 @@ namespace lux::editor
         std::shared_ptr<const void> code
     ) noexcept
     {
+        if (!meta::ReflectionRegistry::initialized())
+            return lux::cxx::unexpected(EConfigurationError::INVALID_DESCRIPTOR);
+        return create(std::move(registration), std::move(code), meta::ReflectionRegistry::instance());
+    }
+
+    cxx::expected<ConfigurationValue, EConfigurationError> ConfigurationValue::create(
+        ConfigurationDescriptor registration,
+        std::shared_ptr<const void> code,
+        meta::ReflectionRegistry& registry
+    ) noexcept
+    {
         const bool invalid = !registration.reflection || !registration.codec.valid() ||
-                             registration.schema_name.empty() || !registration.schema_version ||
-                             !meta::ReflectionRegistry::initialized();
+                             registration.schema_name.empty() || !registration.schema_version;
         if (invalid)
             return lux::cxx::unexpected(EConfigurationError::INVALID_DESCRIPTOR);
-        const auto* reflection = registration.reflection(meta::ReflectionRegistry::instance());
+        const auto* reflection = registration.reflection(registry);
         const bool invalid_type = !reflection || reflection->type.ptr != reflection ||
                                   reflection->type.hash != registration.codec.type.hash() ||
                                   reflection->type.name != registration.codec.type.name();

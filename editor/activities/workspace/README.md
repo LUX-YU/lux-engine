@@ -19,9 +19,13 @@ after the editing page disappears; it alone acknowledges the coordinator. A page
 acknowledges this activity's report. Settings publication does not rebuild the unrelated layout catalog.
 Installation/launch sources are not writable. Missing is distinct from IO, malformed data and conflict.
 
-`continuePreferencesMigration()` copies the existing selected-layout/opaque/provenance values from an
-explicit project store into an explicit user-project store. The caller uses the persistent project ID
-to choose that root, settles each returned ticket, and calls again to publish the success marker. The
-source is read-only. Unmarked different destination bytes conflict; after the marker, personal edits
-remain authoritative. Layout and recovery contents are not interpreted or combined by this operation.
-This API does not select the application's profile root; startup composition supplies it.
+`continueProfileMigration()` preserves every layout, preferences, recovery and conversion-marker byte
+from an explicit project store in its user-project store. Startup supplies the root keyed by the
+persistent project ID. A preparation marker pins the complete source digest before copying; the final
+marker follows confirmed copies. `WorkspaceChanges::migrateProfile()` owns the bounded, one-at-a-time
+publication sequence and consumes its own successful intermediate reports. Failed and Unknown writes
+remain visible through the original coordinator. The source is read-only; incomplete source reads and
+unmarked different destination bytes reject migration. Completed profiles retain later personal edits.
+Older `.lux/editor` conversion reads the explicitly supplied project store and keeps its existing
+selected-snapshot, provenance and idempotence rules. New work is blocked during migration, while
+already accepted completion reception continues.

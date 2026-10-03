@@ -1,6 +1,7 @@
 #include <lux/engine/editor/workspace/WorkspaceChanges.hpp>
 #include <algorithm>
 #include <thread>
+#include <lux/engine/resource/identity/AssetId.hpp>
 
 namespace lux::editor::workspace
 {
@@ -25,13 +26,17 @@ namespace lux::editor::workspace
         bool dispatching_{};
         LayoutCatalog catalog_;
         std::vector<WorkspacePublication> publications_;
-        std::optional<LegacyMigration> migration_;
+        const WorkspaceStore& legacy_source_;
+        struct ProfileSource final { const WorkspaceStore* store; asset::AssetId project; };
+        using VMigration = std::variant<LegacyMigration, ProfileSource>;
+        std::optional<VMigration> migration_;
         std::optional<persistence::WriteTicket> migration_ticket_;
         std::optional<EditorFailure> migration_failure_;
         bool migration_complete_{};
 
-        Impl(WorkspaceStore& store, persistence::WriteCoordinator& writes, persistence::IArtifactStore& files)
-            : store_(store), writes_(writes), files_(files)
+        Impl(WorkspaceStore& store, persistence::WriteCoordinator& writes, persistence::IArtifactStore& files,
+            const WorkspaceStore* legacy_source)
+            : store_(store), writes_(writes), files_(files), legacy_source_(legacy_source ? *legacy_source : store)
         {
             publications_.reserve(capacity);
         }
@@ -49,6 +54,8 @@ namespace lux::editor::workspace
                 return cxx::unexpected(EditorFailure{EEditorError::INVALID_STATE, "workspace.owner-thread"});
             if (dispatching_)
                 return cxx::unexpected(EditorFailure{EEditorError::BUSY, "workspace.dispatch"});
+            if (requires_capacity && migration_ && !migration_complete_)
+                return cxx::unexpected(EditorFailure{EEditorError::BUSY, "workspace.migration"});
             if (requires_capacity && publications_.size() == capacity)
                 return cxx::unexpected(EditorFailure{EEditorError::CAPACITY, "workspace.results"});
             return {};
@@ -77,6 +84,8 @@ namespace lux::editor::workspace
             if (auto ready = admission(); !ready)
                 return ready;
             const Dispatch scope{dispatching_};
+            if (migration_ && !migration_complete_)
+                return cxx::unexpected(EditorFailure{EEditorError::BUSY, "workspace.migration"});
             auto catalog = store_.listLayouts();
             if (!catalog)
                 return failure("workspace.catalog", catalog.error());
@@ -100,14 +109,32 @@ namespace lux::editor::workspace
             publications_.push_back({"Applied layout; persist selection", *accepted});
             return {};
         }
-        EditorResult<void> migrate()
+        EditorResult<void> migrateProfile(const WorkspaceStore& source, const asset::AssetId& project)
         {
-            if (auto ready = admission(true); !ready)
+            if (auto ready = admission(); !ready)
                 return ready;
             const Dispatch scope{dispatching_};
             if (migration_ticket_)
                 return cxx::unexpected(EditorFailure{EEditorError::BUSY, "workspace.migration.pending"});
-            auto input = store_.prepareLegacyMigration();
+            migration_ = ProfileSource{&source, project};
+            migration_failure_.reset();
+            migration_complete_ = false;
+            advanceMigration(true);
+            return migration_failure_ ? cxx::unexpected(*migration_failure_) : EditorResult<void>{};
+        }
+        EditorResult<void> migrate()
+        {
+            if (auto ready = admission(); !ready)
+                return ready;
+            const Dispatch scope{dispatching_};
+            if (migration_ticket_)
+                return cxx::unexpected(EditorFailure{EEditorError::BUSY, "workspace.migration.pending"});
+            if (migration_ && !migration_complete_ && std::holds_alternative<ProfileSource>(*migration_))
+            {
+                migration_failure_.reset();
+                return {}; // Retry the same profile; never replace its provenance with a legacy plan.
+            }
+            auto input = legacy_source_.prepareLegacyMigration();
             if (!input)
                 return failure("workspace.migration.read", input.error());
             migration_ = std::move(*input);
@@ -156,12 +183,19 @@ namespace lux::editor::workspace
                     migration_ticket_.reset();
                     return;
                 }
+                if (std::holds_alternative<ProfileSource>(*migration_))
+                    publications_.erase(found); // Internal profile steps are observed here; keep one bounded receipt.
                 migration_ticket_.reset();
             }
             const bool can_start = allow_new_work && publications_.size() < capacity;
             if (!can_start)
                 return;
-            auto next = store_.continueMigration(*migration_);
+            auto next = std::visit([&](const auto& migration) -> WorkspaceResult<std::optional<persistence::WriteTicket>> {
+                if constexpr (std::same_as<std::decay_t<decltype(migration)>, ProfileSource>)
+                    return store_.continueProfileMigration(*migration.store, migration.project);
+                else
+                    return store_.continueMigration(migration, &legacy_source_);
+            }, *migration_);
             if (!next)
             {
                 if (next.error().code != EWorkspaceError::BUSY)
@@ -169,11 +203,19 @@ namespace lux::editor::workspace
                 return;
             }
             if (!*next)
+            {
                 migration_complete_ = true;
+                auto catalog = store_.listLayouts();
+                if (catalog)
+                    catalog_ = std::move(*catalog);
+                else
+                    migration_failure_ = failure("workspace.migration.catalog", catalog.error()).value();
+            }
             else
             {
                 migration_ticket_ = **next;
-                publications_.push_back({"Migrate one legacy record", **next});
+                publications_.push_back({"Migrate one workspace record", **next, {}, {},
+                    !std::holds_alternative<ProfileSource>(*migration_)});
             }
         }
         EditorResult<void> update(bool allow_new_work)
@@ -207,8 +249,9 @@ namespace lux::editor::workspace
         }
     };
     WorkspaceChanges::WorkspaceChanges(
-        WorkspaceStore& store, persistence::WriteCoordinator& writes, persistence::IArtifactStore& files
-    ) : impl_(std::make_unique<Impl>(store, writes, files))
+        WorkspaceStore& store, persistence::WriteCoordinator& writes, persistence::IArtifactStore& files,
+        const WorkspaceStore* legacy_source
+    ) : impl_(std::make_unique<Impl>(store, writes, files, legacy_source))
     {}
     WorkspaceChanges::~WorkspaceChanges() = default;
     EditorResult<void> WorkspaceChanges::refresh() { return impl_->refresh(); }
@@ -236,6 +279,14 @@ namespace lux::editor::workspace
         });
     }
     EditorResult<void> WorkspaceChanges::migrate() { return impl_->migrate(); }
+    EditorResult<void> WorkspaceChanges::migrateProfile(const WorkspaceStore& source, const asset::AssetId& project)
+    {
+        return impl_->migrateProfile(source, project);
+    }
+    bool WorkspaceChanges::migrationPending() const noexcept
+    {
+        return impl_->migration_.has_value() && !impl_->migration_complete_;
+    }
     EditorResult<persistence::WriteTicket>
     WorkspaceChanges::saveSettings(std::string_view relative, const settings::SettingsDocument& value)
     {
@@ -261,7 +312,7 @@ namespace lux::editor::workspace
     }
     const LegacyMigration* WorkspaceChanges::migration() const noexcept
     {
-        return impl_->migration_ ? &*impl_->migration_ : nullptr;
+        return impl_->migration_ ? std::get_if<LegacyMigration>(&*impl_->migration_) : nullptr;
     }
     const EditorFailure* WorkspaceChanges::migrationFailure() const noexcept
     {

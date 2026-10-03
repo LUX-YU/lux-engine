@@ -96,9 +96,14 @@ namespace lux::editor::application
                 migration->diagnostics().end());
             if (workspace_changes_.migrationComplete())
                 snapshot.diagnostics.emplace_back("Migration verified complete");
-            if (const auto* error = workspace_changes_.migrationFailure())
-                snapshot.diagnostics.push_back(error->domain + ": " + error->message);
         }
+        if (workspace_changes_.migrationPending())
+            snapshot.diagnostics.emplace_back("Personal workspace migration pending; source files are read only.");
+        if (const auto* error = workspace_changes_.migrationFailure())
+            snapshot.diagnostics.push_back(error->domain + ": " + error->message);
+        if (window_settings_)
+            if (const auto* error = window_settings_->failure())
+                snapshot.diagnostics.push_back(error->domain + ": " + error->message);
         for (const auto& item : restoration_->items())
         {
             snapshot.recovery.emplace_back(item.entry.restore_key.name());

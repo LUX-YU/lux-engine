@@ -3,6 +3,8 @@
 #include <lux/engine/editor/extensions/Contributions.hpp>
 #include <lux/engine/editor/storage/FileArtifactStore.hpp>
 #include <lux/engine/ui/Root.hpp>
+#include <lux/engine/window/LuxWindow.hpp>
+#include <lux/engine/window/GlfwRuntime.hpp>
 #include <lux/engine/ui/Pane.hpp>
 #include <lux/engine/ui/Layout.hpp>
 #include <lux/engine/ui/Controls.hpp>
@@ -58,7 +60,7 @@ namespace
 }
 int main(int argc, char** argv)
 {
-    assert(argc == 2);
+    assert(argc == 2 || argc == 3);
     const auto root_path = std::filesystem::path(argv[1]) /
         std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
     const auto user_path = root_path / "user";
@@ -179,4 +181,70 @@ int main(int argc, char** argv)
     assert(scaled_root->scale() == 1.75f && scaled_root->fontAtlas());
     assert(shortcut_applies == 1 && writes.size() == 0);
     std::puts("PASS real settings controls, version/registration conflicts, defaults, UI retirement, file IO and Root restart scale");
+    if (argc == 3)
+    {
+        window::GlfwRuntime platform;
+        assert(platform.valid());
+        window::LuxWindow native{800, 600, "EC3 window settings (no input injection)"};
+        assert(native.isInitialized());
+        window::LuxWindow::pollEvents();
+        project::SettingsContentInput observations;
+        auto window_entry = registry.snapshot().findSetting(settings::SettingsIdView{"lux.desktop.window"})->entry;
+        auto binding = take(project::WindowSettingsBinding::create(native, project, project_changes, window_entry, observations));
+        const auto original_version = take(project.readSettings("settings.toml", settings::ESettingsScope::USER_PROJECT)).file_version;
+        binding->update();
+        assert(!binding->failure());
+        assert(take(project.readSettings("settings.toml", settings::ESettingsScope::USER_PROJECT)).file_version == original_version);
+        auto normal = take(native.state()).placement;
+        normal.normal.width = 760;
+        normal.normal.height = 540;
+        assert(native.applyPlacement(normal));
+        normal.normal.width = 780;
+        assert(native.applyPlacement(normal));
+        window::LuxWindow::pollEvents();
+        binding->update();
+        assert(!binding->failure());
+        auto old_reports = project_changes.publications().size();
+        assert(old_reports == 2); // One earlier page report plus one coalesced native write.
+        settle();
+        binding->update();
+        assert(!binding->failure() && project_changes.publications().size() == 1);
+        auto read_window = [&] {
+            auto document = take(project.readSettings("settings.toml", settings::ESettingsScope::USER_PROJECT));
+            auto effective = take(settings::resolveSettings(window_entry, std::span{&document, 1}));
+            return *static_cast<const project::WindowSettings*>(effective.desired.data());
+        };
+        auto saved_window = read_window();
+        assert(saved_window.restore && saved_window.placement.normal.width == 780);
+        for (auto mode : {window::EWindowMode::MAXIMIZED, window::EWindowMode::FULLSCREEN, window::EWindowMode::ORDINARY})
+        {
+            auto requested = saved_window.placement;
+            requested.mode = mode;
+            assert(native.applyPlacement(requested));
+            window::LuxWindow::pollEvents();
+            binding->update();
+            assert(!binding->failure());
+            settle();
+            binding->update();
+            saved_window = read_window();
+            assert(saved_window.placement.mode == mode && saved_window.placement.normal.width == 780);
+        }
+        // A final admitted native write belongs to Changes after the connection is destroyed.
+        normal.normal.width = 820;
+        assert(native.applyPlacement(normal));
+        window::LuxWindow::pollEvents();
+        binding->update();
+        assert(!binding->failure() && !project_changes.settled());
+        binding.reset();
+        assert(!native.on_placement_changed);
+        settle();
+        saved_window = read_window();
+        assert(saved_window.placement.normal.width == 820);
+        window::LuxWindow reopened_window{saved_window.placement.normal.width,
+            saved_window.placement.normal.height, "EC3 restored window"};
+        assert(reopened_window.applyPlacement(saved_window.placement));
+        assert(take(reopened_window.state()).placement.normal == saved_window.placement.normal);
+        std::puts("PASS actual window events -> coalesced file publication -> modes/normal rectangle -> reopen; no native input injected");
+    }
+
 }

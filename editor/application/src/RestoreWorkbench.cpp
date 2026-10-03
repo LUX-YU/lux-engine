@@ -91,6 +91,8 @@ namespace lux::editor::application
             std::span<const views::ViewInfo> views, const extensions::ContributionSnapshot& catalog
         )
         {
+            if (workspace_changes_.migrationPending())
+                return cxx::unexpected(EditorFailure{EEditorError::BUSY, "workspace.migration"});
             auto previous = workspace_.readRecovery();
             if (!previous && previous.error().code != workspace::EWorkspaceError::NOT_FOUND)
                 return failure("recovery.read", previous.error());
@@ -135,6 +137,8 @@ namespace lux::editor::application
 
         EditorResult<void> startCore()
         {
+            if (workspace_changes_.migrationPending())
+                return cxx::unexpected(EditorFailure{EEditorError::BUSY, "workspace.migration"});
             if (recovery_ &&
                 std::ranges::any_of(recovery_->items, [](const auto& item) { return item.opening.has_value(); }))
                 return cxx::unexpected(EditorFailure{EEditorError::BUSY, "recovery.pending"});

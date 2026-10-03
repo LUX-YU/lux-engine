@@ -264,11 +264,12 @@ namespace lux::editor::application
         commands::CommandDispatcher command_dispatcher_{commands_};
         extensions::ContributionRegistry contributions_;
         workspace::WorkspaceStore workspace_;
-        workspace::WorkspaceStore installation_settings_, user_settings_, profile_settings_;
-        workspace::WorkspaceChanges user_settings_changes_, profile_settings_changes_;
+        workspace::WorkspaceStore project_workspace_, installation_settings_, user_settings_;
+        workspace::WorkspaceChanges user_settings_changes_, project_settings_changes_;
         std::vector<settings::SettingsPage> builtin_settings_;
         std::shared_ptr<project::SettingsContentInput> settings_content_;
         workspace::WorkspaceChanges workspace_changes_;
+        std::unique_ptr<project::WindowSettingsBinding> window_settings_;
         std::unique_ptr<desktop::WorkspaceActions> workspace_actions_;
         std::optional<EditorFailure> workspace_failure_;
         std::optional<project::VWorkspaceIntent> workspace_intent_;

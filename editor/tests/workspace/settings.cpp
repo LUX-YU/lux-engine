@@ -266,44 +266,138 @@ namespace
             assert(std::holds_alternative<persistence::CommitReceipt>(result));
             assert(coordinator.complete(ticket, std::move(result)) && coordinator.acknowledge(ticket));
         };
-        assert(!take(user.continuePreferencesMigration(old, project))); // Real missing; never writes defaults.
+        assert(!take(user.continueProfileMigration(old, project))); // Real missing; never writes defaults.
         workspace::UserPreferences preferences{1, workspace::LayoutId{"0123456789abcdef0123456789abcdef"}};
         preferences.opaque.push_back({"absent.plugin", 9, {std::byte{17}}});
         preferences.legacy_origin = workspace::LegacyOrigin{"original", "preserved"};
         settle(take(old.writePreferences(preferences, "missing")));
         const auto source_file = root / "project/.lux/workspace/preferences.toml";
         const auto original = take(storage::readPublicationFile(source_file, 4096));
-        auto copy = take(user.continuePreferencesMigration(old, project));
+        auto prepared = take(user.continueProfileMigration(old, project));
+        assert(prepared);
+        settle(*prepared);
+        assert(!user.readPreferences()); // Durable preparation is not a copied or completed profile.
+        auto copy = take(user.continueProfileMigration(old, project));
         assert(copy);
         settle(*copy);
         auto copied = take(user.readPreferences());
         assert(copied.value.selected_layout == preferences.selected_layout);
         assert(copied.value.opaque == preferences.opaque && copied.value.legacy_origin == preferences.legacy_origin);
-        assert(!std::filesystem::exists(root / "user/.lux/workspace/profile-migration-v1.toml"));
-        auto mark = take(user.continuePreferencesMigration(old, project));
+        assert(std::filesystem::exists(root / "user/.lux/workspace/profile-migration-v1.toml"));
+        auto mark = take(user.continueProfileMigration(old, project));
         assert(mark);
         settle(*mark);
-        assert(!take(user.continuePreferencesMigration(old, project)));
+        assert(!take(user.continueProfileMigration(old, project)));
         copied.value.selected_layout.reset();
         settle(take(user.writePreferences(copied.value, copied.target.expected_version)));
-        assert(!take(user.continuePreferencesMigration(old, project)));
+        assert(!take(user.continueProfileMigration(old, project)));
         assert(!take(user.readPreferences()).value.selected_layout); // Same-origin personal edit remains.
         assert(take(storage::readPublicationFile(source_file, 4096)) == original);
         const asset::AssetId wrong_project{*uuids::uuid::from_string("591f06e3-8618-4dfe-ae93-4c06b2b0e172")};
-        assert(user.continuePreferencesMigration(old, wrong_project).error().code == workspace::EWorkspaceError::CONFLICT);
+        assert(user.continueProfileMigration(old, wrong_project).error().code == workspace::EWorkspaceError::CONFLICT);
         std::filesystem::create_directories(root / "unmarked");
         workspace::WorkspaceStore unmarked(root / "unmarked", coordinator, backend);
         settle(take(unmarked.writePreferences(copied.value, "missing")));
-        assert(unmarked.continuePreferencesMigration(old, project).error().code == workspace::EWorkspaceError::CONFLICT);
+        assert(unmarked.continueProfileMigration(old, project).error().code == workspace::EWorkspaceError::CONFLICT);
         workspace::WorkspaceStore corrupt(root / "corrupt-profile", coordinator, backend);
         std::filesystem::create_directories(root / "corrupt-profile/.lux/workspace");
         { std::ofstream file(root / "corrupt-profile/.lux/workspace/preferences.toml"); file << "invalid ["; }
         std::filesystem::create_directories(root / "other-user");
         workspace::WorkspaceStore destination(root / "other-user", coordinator, backend);
-        assert(destination.continuePreferencesMigration(corrupt, project).error().code == workspace::EWorkspaceError::INVALID_DATA);
+        assert(destination.continueProfileMigration(corrupt, project).error().code == workspace::EWorkspaceError::INVALID_DATA);
         assert(std::filesystem::is_empty(root / "other-user"));
         std::puts("V29: preferences copy/marker/retry/selected-layout/unknown/origin, personal edits, conflicts and corrupt source");
     }
+    void completeProfile(const std::filesystem::path& base)
+    {
+        const auto root = base / ("complete-profile-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+        std::filesystem::create_directories(root / "project");
+        std::filesystem::create_directories(root / "profile");
+        persistence::WriteCoordinator coordinator;
+        storage::FileArtifactStore backend(root);
+        workspace::WorkspaceStore source(root / "project", coordinator, backend), target(root / "profile", coordinator, backend);
+        const asset::AssetId project{*uuids::uuid::from_string("591f06e3-8618-4dfe-ae93-4c06b2b0e172")};
+        const auto publish = [&](persistence::WriteTicket ticket, bool acknowledge) {
+            auto ready = take(coordinator.takeReady());
+            assert(ready && ready->ticket == ticket);
+            auto outcome = backend.publish(*ready);
+            assert(std::holds_alternative<persistence::CommitReceipt>(outcome));
+            assert(coordinator.complete(ticket, std::move(outcome)));
+            if (acknowledge)
+                assert(coordinator.acknowledge(ticket));
+        };
+        std::vector<std::pair<std::string, std::vector<std::byte>>> originals;
+        for (int i{}; i < 24; ++i)
+        {
+            workspace::DockLayout layout;
+            layout.id.value = "1234567890abcdef1234567890ab" + std::to_string(1000 + i);
+            layout.label = "Layout " + std::to_string(i);
+            layout.slots = {{{1}, views::ViewRestoreKey{"material"}, views::ViewTypeId{"test.material"},
+                true, {91, bytes("unknown view payload")}}};
+            layout.dock.nodes = {{1, workspace::EDockSplit::LEAF, 0, 0, 0.5, {{1}}}};
+            layout.dock.roots = {{1}};
+            publish(take(source.saveLayout(layout, "missing")), true);
+            const auto relative = ".lux/workspace/layouts/" + layout.id.value + ".layout";
+            originals.emplace_back(relative, take(storage::readPublicationFile(root / "project" / relative, 4096)));
+        }
+        workspace::UserPreferences prefs;
+        prefs.selected_layout = workspace::LayoutId{"1234567890abcdef1234567890ab1007"};
+        prefs.opaque.push_back({"unknown", 22, bytes("keep")});
+        publish(take(source.writePreferences(prefs, "missing")), true);
+        workspace::RecoveryManifest recovery;
+        recovery.entries.push_back({views::ViewRestoreKey{"material"}, views::ViewTypeId{"test.material"},
+            {{"asset:591f06e3-8618-4dfe-ae93-4c06b2b0e172", true}}, 0});
+        recovery.opaque = prefs.opaque;
+        publish(take(source.writeRecovery(recovery, "missing")), true);
+        for (const auto file : {"preferences.toml", "recovery.toml"})
+        {
+            const auto relative = std::string{".lux/workspace/"} + file;
+            originals.emplace_back(relative, take(storage::readPublicationFile(root / "project" / relative, 4096)));
+        }
+        workspace::WorkspaceChanges changes(target, coordinator, backend, &source);
+        assert(changes.migrateProfile(source, project));
+        assert(changes.migrationPending() && changes.refresh().error().code == EEditorError::BUSY);
+        auto first = changes.publications().front().ticket;
+        auto ready = take(coordinator.takeReady());
+        assert(ready && ready->ticket == first);
+        auto confirmed = backend.publish(*ready);
+        assert(std::holds_alternative<persistence::CommitReceipt>(confirmed));
+        assert(coordinator.complete(first, persistence::PublicationUnknown{{persistence::EPersistenceError::IO, "lost reply"}}));
+        for (int i{}; i < 4; ++i)
+            assert(changes.update());
+        assert(changes.publications().size() == 1 && !changes.publications().front().result);
+        assert(!take(coordinator.takeReady())); // Unknown keeps the original lane; no repeated copy.
+        assert(changes.reconcile(first));
+        for (int i{}; i < 40 && !changes.migrationComplete(); ++i)
+        {
+            assert(changes.update());
+            assert(!changes.migrationFailure() && changes.publications().size() <= 1);
+            if (changes.migrationPending())
+                publish(changes.publications().front().ticket, false);
+        }
+        assert(changes.migrationComplete() && !changes.migrationPending());
+        assert(changes.catalog().layouts.size() == 24 && changes.settled());
+        assert(take(target.readPreferences()).value.selected_layout == prefs.selected_layout);
+        assert(take(target.readRecovery()).value.entries.front().contents.front().locator ==
+            recovery.entries.front().contents.front().locator);
+        for (const auto& [file, original] : originals)
+        {
+            assert(take(storage::readPublicationFile(root / "project" / file, 4096)) == original);
+            assert(take(storage::readPublicationFile(root / "profile" / file, 4096)) == original);
+        }
+        // A prepared migration cannot combine records from two source revisions.
+        std::filesystem::create_directories(root / "interrupted");
+        workspace::WorkspaceStore interrupted(root / "interrupted", coordinator, backend);
+        publish(*take(interrupted.continueProfileMigration(source, project)), true);
+        auto original_preferences = take(source.readPreferences());
+        original_preferences.value.selected_layout.reset();
+        publish(take(source.writePreferences(original_preferences.value, original_preferences.target.expected_version)), true);
+        assert(interrupted.continueProfileMigration(source, project).error().code == workspace::EWorkspaceError::CONFLICT);
+        assert(!interrupted.readPreferences());
+        assert(!take(target.continueProfileMigration(source, project))); // Completed profile is never overwritten.
+        std::puts("V29: complete 24-layout profile, selected/recovery/raw bytes, bounded receipts, Unknown, source pin and idempotency");
+    }
+
 }
 int main(int argc, char** argv)
 {
@@ -315,4 +409,5 @@ int main(int argc, char** argv)
     codec();
     io(argv[1]);
     profile(argv[1]);
+    completeProfile(argv[1]);
 }

@@ -6,8 +6,12 @@
 #include <lux/engine/meta/TypeStaticInfo.hpp>
 #include <lux/engine/editor/scene/ConfigurationEditor.hpp>
 
+namespace lux::window { class LuxWindow; }
+namespace lux::editor::workspace { class WorkspaceStore; class WorkspaceChanges; }
+
 namespace lux::editor::project
 {
+    struct SettingsContentInput;
     struct AppearanceSettings final
     {
         std::string font;
@@ -36,6 +40,28 @@ namespace lux::editor::project
     [[nodiscard]] std::shared_ptr<settings::SettingsEntry> makeAppearanceSetting();
     [[nodiscard]] std::shared_ptr<settings::SettingsEntry> makeWindowSetting();
     [[nodiscard]] std::shared_ptr<settings::SettingsEntry> makeShortcutSetting(settings::SettingsEntry::Apply);
+
+    // Owns one window observation connection and coalesces its personal persistence intent.
+    // The original Changes/Coordinator retain accepted writes, including Unknown, after this dies.
+    class WindowSettingsBinding final
+    {
+    public:
+        [[nodiscard]] static EditorResult<std::unique_ptr<WindowSettingsBinding>> create(
+            window::LuxWindow&, workspace::WorkspaceStore&, workspace::WorkspaceChanges&,
+            std::shared_ptr<const settings::SettingsEntry>, SettingsContentInput&);
+        ~WindowSettingsBinding();
+        WindowSettingsBinding(const WindowSettingsBinding&) = delete;
+        WindowSettingsBinding& operator=(const WindowSettingsBinding&) = delete;
+        WindowSettingsBinding(WindowSettingsBinding&&) = delete;
+        WindowSettingsBinding& operator=(WindowSettingsBinding&&) = delete;
+        void update(bool allow_new_work = true);
+        void retry() noexcept;
+        [[nodiscard]] const EditorFailure* failure() const noexcept;
+    private:
+        struct Impl;
+        explicit WindowSettingsBinding(std::unique_ptr<Impl>);
+        std::unique_ptr<Impl> impl_;
+    };
 }
 
 namespace lux::meta

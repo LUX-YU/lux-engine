@@ -18574,6 +18574,9 @@
       ],
       "editor/application/src/EditorStartup.cpp": [
         "editor_bootstrap"
+      ],
+      "editor/workbench/project/tools/src/WindowSettingsBinding.cpp": [
+        "project_tools_ui"
       ]
     },
     "native_libraries": [

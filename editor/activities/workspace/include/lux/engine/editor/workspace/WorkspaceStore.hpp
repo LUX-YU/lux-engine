@@ -74,12 +74,12 @@ namespace lux::editor::workspace
         // Returns at most one accepted write. The caller settles/acknowledges it through P05 before retrying.
         // Empty means all records were verified and the marker is already present. No private queue/pump.
         [[nodiscard]] WorkspaceResult<std::optional<persistence::WriteTicket>>
-        continueMigration(const LegacyMigration&);
-        // Copy the old preferences once to this explicit user-project root. Original layouts and
-        // recovery remain in their source store; their stable identities are not interpreted here.
-        // Settle and acknowledge each returned write through the original coordinator before retry.
+        continueMigration(const LegacyMigration&, const WorkspaceStore* source = nullptr);
+        // Bounded, read-only capture of the old project's layouts, preferences and recovery.
+        // First pins source versions in a durable preparation marker; subsequent calls copy exact
+        // bytes and finally confirm completion. Settle each ticket through the shared coordinator.
         [[nodiscard]] WorkspaceResult<std::optional<persistence::WriteTicket>>
-        continuePreferencesMigration(const WorkspaceStore& source, const asset::AssetId& project);
+        continueProfileMigration(const WorkspaceStore& source, const asset::AssetId& project);
 
     private:
         [[nodiscard]] WorkspaceResult<LegacyWorkspaceInput> captureLegacyInput() const;

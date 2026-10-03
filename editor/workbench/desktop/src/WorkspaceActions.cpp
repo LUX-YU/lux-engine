@@ -54,6 +54,8 @@ namespace lux::editor::desktop
         {
             if (owner_ != std::this_thread::get_id())
                 return cxx::unexpected(EditorFailure{EEditorError::INVALID_STATE, "layout.owner-thread"});
+            if (changes_.migrationPending())
+                return cxx::unexpected(EditorFailure{EEditorError::BUSY, "workspace.migration"});
             if (dispatching_)
                 return cxx::unexpected(EditorFailure{EEditorError::BUSY, "layout.dispatch"});
             if (publication && !changes_.hasCapacity())

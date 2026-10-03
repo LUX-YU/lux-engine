@@ -28,13 +28,13 @@ namespace lux::editor::application
           projections_(engine_->sceneRuntime(), engine_->execution()),
           runs_(engine_->sceneRuntime(), engine_->execution()), material_compilation_(engine_->execution()),
           flow_compilation_(engine_->execution()), contributions_(messages_.dispatcherRef(), commands_),
-          workspace_(config_.project_file.parent_path(), writes_, files_),
+          workspace_(std::move(profile), writes_, files_),
+          project_workspace_(config_.project_file.parent_path(), writes_, files_),
           installation_settings_(config_.installation, writes_, files_),
           user_settings_(*config_.user_directory / "lux/editor", writes_, files_),
-          profile_settings_(std::move(profile), writes_, files_),
           user_settings_changes_(user_settings_, writes_, files_),
-          profile_settings_changes_(profile_settings_, writes_, files_),
-          workspace_changes_(workspace_, writes_, files_)
+          project_settings_changes_(project_workspace_, writes_, files_),
+          workspace_changes_(workspace_, writes_, files_, &project_workspace_)
     {
         opens_.reserve(64);
         open_intents_.reserve(64);
@@ -215,6 +215,9 @@ namespace lux::editor::application
                         if (size <= 0 || size > 32 * 1024 * 1024)
                             return cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "editor.font.read"});
                         lux::ui::FontSource result;
+                        // Explicit desktop repertoire; Root validates the ranges and bounded atlas.
+                        result.ranges = {{0x20, 0xFF}, {0x2000, 0x206F}, {0x3000, 0x30FF},
+                            {0x4E00, 0x9FFF}, {0xFF00, 0xFFEF}};
                         result.bytes.resize(static_cast<std::size_t>(size));
                         stream.seekg(0);
                         if (!stream.read(reinterpret_cast<char*>(result.bytes.data()), size))
@@ -261,6 +264,10 @@ namespace lux::editor::application
         restoration_ = std::make_unique<RestoreWorkbench>(
             *project_, files_, sessions_, opening_, workspace_, workspace_changes_, contributions_
         );
+        // Migration owns no worker or publisher: the existing changes/execution pair retains accepted
+        // records. Failure is shown in Workspace; it does not masquerade as an empty personal catalog.
+        if (auto migrated = workspace_changes_.migrateProfile(project_workspace_, project_->manifest().id); !migrated)
+            workspace_failure_ = migrated.error();
         auto contributions = installContributions();
         if (!contributions)
             return contributions;

@@ -59,9 +59,9 @@ namespace lux::editor::application
         };
         settings_content_->locations = std::vector<project::SettingsLocation>{
             {installation_settings_, nullptr, settings::ESettingsScope::INSTALLATION, "share/lux-engine/editor/settings.toml"},
-            {workspace_, &workspace_changes_, settings::ESettingsScope::PROJECT, ".lux/settings.toml"},
+            {project_workspace_, &project_settings_changes_, settings::ESettingsScope::PROJECT, ".lux/settings.toml"},
             {user_settings_, &user_settings_changes_, settings::ESettingsScope::USER, "settings.toml"},
-            {profile_settings_, &profile_settings_changes_, settings::ESettingsScope::USER_PROJECT, "settings.toml"}
+            {workspace_, &workspace_changes_, settings::ESettingsScope::USER_PROJECT, "settings.toml"}
         };
         auto documents = readSettings(settings_content_->locations);
         if (!documents)
@@ -115,6 +115,17 @@ namespace lux::editor::application
             if (!encoded)
                 return applicationFailure("settings.applied.encode", encoded.error());
             settings_content_->applied.push_back({page.entry, std::move(bytes)});
+        }
+        if (window_)
+        {
+            const auto entry = std::ranges::find_if(builtin_settings_, [](const auto& page) {
+                return page.entry->descriptor().configuration->codec.type == cxx::typeToken<project::WindowSettings>();
+            });
+            auto bound = project::WindowSettingsBinding::create(
+                *window_, workspace_, workspace_changes_, entry->entry, *settings_content_);
+            if (!bound)
+                return cxx::unexpected(bound.error());
+            window_settings_ = std::move(*bound);
         }
         return {};
     }

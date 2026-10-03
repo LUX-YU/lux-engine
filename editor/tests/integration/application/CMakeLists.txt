@@ -20,3 +20,8 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     add_test(NAME editor.settings.content COMMAND editor_settings_content_test "${CMAKE_CURRENT_BINARY_DIR}/settings")
     set_tests_properties(editor.settings.content PROPERTIES LABELS "editor;native;EC3" TIMEOUT 60 RUN_SERIAL TRUE)
 endif()
+
+if(LUX_EDITOR_TEST_DESKTOP_GPU AND TARGET editor_settings_content_test)
+    add_test(NAME editor.settings.window COMMAND editor_settings_content_test "${CMAKE_CURRENT_BINARY_DIR}/settings-window" --window)
+    set_tests_properties(editor.settings.window PROPERTIES LABELS "editor;desktop;EC3" TIMEOUT 90 RUN_SERIAL TRUE)
+endif()

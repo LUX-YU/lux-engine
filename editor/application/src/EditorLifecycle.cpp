@@ -288,7 +288,8 @@ namespace lux::editor::application
                     return {};
             }
         if (close_application_)
-            for (const auto& publication : workspace_changes_.publications())
+            for (const auto* changes : {&workspace_changes_, &user_settings_changes_, &project_settings_changes_})
+            for (const auto& publication : changes->publications())
                 if (!publication.result)
                 {
                     auto status = writes_.status(publication.ticket);
@@ -412,7 +413,7 @@ namespace lux::editor::application
         receive(settleWorkspace());
         const bool operations_settled =
             importer_->closeStatus().state == assets::EModelImportCloseState::CLOSED && material_compilation_.empty() &&
-            flow_compilation_.empty() && user_settings_changes_.settled() && profile_settings_changes_.settled() && content_saving_->settled() && opening_.settled() && recent_projects_->settled() && !project_launch_ &&
+            flow_compilation_.empty() && user_settings_changes_.settled() && project_settings_changes_.settled() && content_saving_->settled() && opening_.settled() && recent_projects_->settled() && !project_launch_ &&
             std::ranges::all_of(workspace_changes_.publications(), [](const auto& value) { return value.result.has_value(); }) &&
             std::ranges::all_of(artifacts_, [](const auto& value) { return value.terminal(); }) &&
             std::ranges::none_of(run_presentations_, [](const auto& run) { return bool(run.preparing) || run.run; });
@@ -482,7 +483,9 @@ namespace lux::editor::application
             project_creation_->update();
         receive(maintainProjectSettings());
         receive(user_settings_changes_.update(false));
-        receive(profile_settings_changes_.update(false));
+        receive(project_settings_changes_.update(false));
+        if (window_settings_)
+            window_settings_->update(phase_ == EApplicationPhase::RUNNING);
         saves_.adoptCompletions();
         if (auto submitted = save_execution_.submitReady(); !submitted)
             receive(applicationFailure("save.submit", submitted.error()));

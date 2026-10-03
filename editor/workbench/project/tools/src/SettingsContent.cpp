@@ -216,6 +216,10 @@ namespace lux::editor::project
         }
         void receive()
         {
+            if (editing)
+                for (const auto& fact : input->applied)
+                    if (fact.entry == editing->draft.entry && editing->draft.applied != fact.bytes)
+                        editing->draft.applied = fact.bytes;
             if (!editing || !editing->pending)
                 return;
             auto& pending = *editing->pending;

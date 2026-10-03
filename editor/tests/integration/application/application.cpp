@@ -193,10 +193,21 @@ int main(int argc, char** argv)
     {
         auto direct = EditorApplication::create(config);
         assert(direct);
+        if (const auto* failure = ApplicationTestAccess::implementation(**direct).workspace_changes_.migrationFailure())
+        {
+            std::cerr << "Initial migration: " << failure->domain << '\n';
+            if (const auto* cause = std::any_cast<workspace::WorkspaceFailure>(&failure->cause))
+                std::cerr << cause->detail << ' ' << cause->native_code << '\n';
+        }
         for (const auto command : {"lux.editor.new.material", "lux.editor.new.flow", "lux.editor.settings"})
             assert((*direct)->execute(commands::CommandId{command}));
         for (int frame{}; frame < 8; ++frame)
-            assert((*direct)->update());
+        {
+            auto updated = (*direct)->update();
+            if (!updated)
+                std::cerr << "Initial frame: " << updated.error().domain << ' ' << updated.error().message << '\n';
+            assert(updated);
+        }
         auto& owned = ApplicationTestAccess::implementation(**direct);
         assert(owned.sessions_.size() == 2 && owned.desktop_->views().describeAll()->size() >= 5);
         const auto session_ids = *owned.sessions_.snapshotIds();
@@ -250,9 +261,58 @@ int main(int argc, char** argv)
         const auto about = (*direct)->execute(commands::CommandId{"lux.editor.about"});
         assert(!about && about.error().code == commands::ECommandError::DISABLED);
         std::cout << "P13 command admission: owner recovers; sessions, content and views unchanged\n";
+        // Save restart-only settings through the same real application publication owner.
+        settings::SettingsDocument personal;
+        personal.scope = settings::ESettingsScope::USER;
+        const auto appearance = owned.contributions_.snapshot().findSetting(settings::SettingsIdView{"lux.desktop.appearance"})->entry;
+        const auto shortcuts = owned.contributions_.snapshot().findSetting(settings::SettingsIdView{"lux.desktop.shortcuts"})->entry;
+        lux::editor::project::AppearanceSettings appearance_value{"", 1.5f};
+#if defined(_WIN32)
+        const auto* windows = std::getenv("WINDIR");
+        assert(windows);
+        const auto fixture_font = std::filesystem::path{windows} / "Fonts/segoeui.ttf";
+        assert(std::filesystem::exists(fixture_font));
+        const auto utf8 = fixture_font.generic_u8string();
+        appearance_value.font.assign(utf8.begin(), utf8.end());
+#endif
+        lux::editor::project::ShortcutSettings shortcut_value{{{"lux.editor.new.material", "Ctrl+Alt+M"}}};
+        settings::SettingsValue appearance_bytes{"lux.desktop.appearance", 1}, shortcut_bytes{"lux.desktop.shortcuts", 1};
+        assert(appearance->descriptor().configuration->codec.encode(&appearance_value, appearance_bytes.bytes));
+        assert(shortcuts->descriptor().configuration->codec.encode(&shortcut_value, shortcut_bytes.bytes));
+        personal.values.push_back(std::move(appearance_bytes));
+        personal.values.push_back(std::move(shortcut_bytes));
+        auto accepted_settings = owned.user_settings_changes_.saveSettings("settings.toml", personal);
+        assert(accepted_settings);
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
+        while (!owned.user_settings_changes_.settled())
+        {
+            assert(std::chrono::steady_clock::now() < deadline);
+            assert((*direct)->update());
+            std::this_thread::yield();
+        }
+        const auto& saved = owned.user_settings_changes_.publications().back();
+        assert(saved.ticket == *accepted_settings && saved.result && std::holds_alternative<persistence::CommitReceipt>(*saved.result));
+        assert(owned.desktop_->root().scale() == 1.f); // Persisted is not yet applied.
         // No exec/requestExit: destruction still releases mounted UI and accepted resource work.
     }
     std::cout << "Application direct destruction: formal content, tools and GPU presentation released\n";
+    const auto personal_file = *config.user_directory / "lux/editor/settings.toml";
+    const auto before_override = storage::publicationFileDigest(personal_file);
+    assert(before_override);
+    {
+        auto launch_override = config;
+        launch_override.scale = 2.f;
+        auto overridden = EditorApplication::create(launch_override);
+        if (!overridden)
+        {
+            std::cerr << "Settings restart: " << overridden.error().domain << ": " << overridden.error().message << '\n';
+            if (const auto* cause = std::any_cast<settings::SettingsFailure>(&overridden.error().cause))
+                std::cerr << "settings cause " << static_cast<int>(cause->code) << ": " << cause->detail << '\n';
+        }
+        assert(overridden && ApplicationTestAccess::implementation(**overridden).desktop_->root().scale() == 2.f);
+    }
+    const auto after_override = storage::publicationFileDigest(personal_file);
+    assert(after_override && *after_override == *before_override);
     auto created = EditorApplication::create(config);
     if (!created)
     {
@@ -262,6 +322,22 @@ int main(int argc, char** argv)
     auto app = std::move(*created);
     auto& impl = ApplicationTestAccess::implementation(*app);
     assert(impl.desktop_ && impl.desktop_->commands());
+    assert(impl.desktop_->root().scale() == 1.5f);
+#if defined(_WIN32)
+    assert(impl.font_.bytes.size() > 1000 && impl.config_.font && impl.desktop_->root().fontAtlas());
+#endif
+    bool restored_shortcut{};
+    const auto inspect_menu = [&](auto&& self, std::span<const ui::MenuItem> items) -> void {
+        for (const auto& item : items)
+        {
+            if (item.command == ui::CommandIdView{"lux.editor.new.material"})
+                restored_shortcut = item.shortcut_label == "Ctrl+Alt+M";
+            self(self, item.children);
+        }
+    };
+    inspect_menu(inspect_menu, impl.desktop_->root().menu());
+    assert(restored_shortcut);
+    std::cout << "EC3 persisted font/scale/shortcut applied by actual restarted product; launch override left disk unchanged\n";
     assert(app->execute(commands::CommandId{"lux.editor.project.recent"}));
     const auto recent_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
     while (!impl.recent_projects_->publication())
@@ -363,7 +439,8 @@ int main(int argc, char** argv)
     assert(!impl.desktop_->views().describe(views->front().id)->visible);
     settle_workspace();
     assert(impl.workspace_.readPreferences()->value.selected_layout == stored_id);
-    const auto preferences_file = root / ".lux/workspace/preferences.toml";
+    const auto preferences_file = *config.user_directory / "lux/editor/projects" / uuids::to_string(id.uuid()) /
+        ".lux/workspace/preferences.toml";
     const auto preferences_before = storage::readPublicationFile(preferences_file, 65536);
     assert(preferences_before);
     {

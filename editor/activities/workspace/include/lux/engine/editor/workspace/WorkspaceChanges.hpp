@@ -21,7 +21,8 @@ namespace lux::editor::workspace
     class WorkspaceChanges final
     {
     public:
-        WorkspaceChanges(WorkspaceStore&, persistence::WriteCoordinator&, persistence::IArtifactStore&);
+        WorkspaceChanges(WorkspaceStore&, persistence::WriteCoordinator&, persistence::IArtifactStore&,
+            const WorkspaceStore* legacy_source = nullptr);
         ~WorkspaceChanges();
         WorkspaceChanges(const WorkspaceChanges&) = delete;
         WorkspaceChanges& operator=(const WorkspaceChanges&) = delete;
@@ -40,6 +41,8 @@ namespace lux::editor::workspace
         [[nodiscard]] EditorResult<persistence::WriteTicket>
         saveSettings(std::string_view relative, const settings::SettingsDocument&);
         [[nodiscard]] EditorResult<void> migrate();
+        [[nodiscard]] EditorResult<void> migrateProfile(const WorkspaceStore&, const asset::AssetId&);
+        [[nodiscard]] bool migrationPending() const noexcept;
         [[nodiscard]] EditorResult<void> reconcile(persistence::WriteTicket);
         [[nodiscard]] EditorResult<void> acknowledge(persistence::WriteTicket);
         [[nodiscard]] EditorResult<void> update(bool allow_new_work = true);

@@ -3,6 +3,7 @@
 #include <lux/engine/editor/workspace/LayoutPlan.hpp>
 #include <lux/engine/editor/workspace/RecoveryManifest.hpp>
 #include <lux/engine/editor/persistence/WriteCoordinator.hpp>
+#include <lux/engine/editor/workspace/LegacyWorkspaceMigration.hpp>
 #include <filesystem>
 
 namespace lux::editor::workspace
@@ -22,27 +23,10 @@ namespace lux::editor::workspace
         RecoveryManifest value;
         persistence::WriteTarget target;
     };
-    struct LayoutCommitReceipt final
-    {
-        persistence::WriteStatus publication;
-        WorkspaceResult<LayoutCatalog> catalog;
-    };
-    struct PreferenceWriteResult final
-    {
-        persistence::WriteStatus publication;
-    };
     struct LayoutChoice final
     {
         std::optional<DockLayout> layout;
         std::optional<WorkspaceFailure> fallback_reason;
-    };
-    struct LegacyMigration final
-    {
-        std::vector<DockLayout> layouts;
-        RecoveryManifest recovery;
-        UserPreferences preferences;
-        std::string source_digest;
-        std::vector<std::string> diagnostics;
     };
     class WorkspaceStore final
     {
@@ -78,8 +62,6 @@ namespace lux::editor::workspace
             const RecoveryManifest&,
             std::string expected_version
         );
-        [[nodiscard]] WorkspaceResult<LayoutCommitReceipt> layoutResult(persistence::WriteTicket) const;
-        [[nodiscard]] WorkspaceResult<PreferenceWriteResult> preferenceResult(persistence::WriteTicket) const;
         [[nodiscard]] WorkspaceResult<LegacyMigration> prepareLegacyMigration() const;
         // Returns at most one accepted write. The caller settles/acknowledges it through P05 before retrying.
         // Empty means all records were verified and the marker is already present. No private queue/pump.
@@ -87,6 +69,7 @@ namespace lux::editor::workspace
         continueMigration(const LegacyMigration&);
 
     private:
+        [[nodiscard]] WorkspaceResult<LegacyWorkspaceInput> captureLegacyInput() const;
         struct ReadFile final
         {
             std::vector<std::byte> bytes;

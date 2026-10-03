@@ -202,8 +202,8 @@ namespace lux::editor::application
             snapshot.diagnostics.push_back(workspace_failure_->domain + ": " + workspace_failure_->message);
         if (migration_)
         {
-            snapshot.diagnostics.insert(snapshot.diagnostics.end(), migration_->diagnostics.begin(),
-                migration_->diagnostics.end());
+            snapshot.diagnostics.insert(snapshot.diagnostics.end(), migration_->diagnostics().begin(),
+                migration_->diagnostics().end());
             if (migration_complete_)
                 snapshot.diagnostics.emplace_back("Migration verified complete");
             if (migration_failure_)

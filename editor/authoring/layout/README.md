@@ -17,8 +17,8 @@ accepted WriteTickets. The publication owner takes ready queries, publishes thro
 complete (including Unknown), reconciles and acknowledges using the original P05 contract. Accepted results
 must be delivered independently of new-business admission. A ticket is not a successful disk commit.
 
-`layoutResult` reports the unchanged publication outcome and a separate catalog refresh result.
-`preferenceResult` is independent. No failure of preferences or listing erases an earlier committed fact.
+The coordinator reports publication outcomes; catalog refresh and preference reads remain separate operations.
+No failure of preferences or listing erases an earlier committed fact.
 The store never changes author checkpoints or uses SaveService to pretend layouts are author sources.
 
 ### Persistent format

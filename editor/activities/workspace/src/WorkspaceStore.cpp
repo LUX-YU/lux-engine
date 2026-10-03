@@ -251,18 +251,4 @@ namespace lux::editor::workspace
             return lux::cxx::unexpected(encoded.error());
         return write(recoveryPath, std::move(version), std::move(*encoded));
     }
-    WorkspaceResult<LayoutCommitReceipt> WorkspaceStore::layoutResult(persistence::WriteTicket ticket) const
-    {
-        auto status = coordinator_.status(ticket);
-        if (!status)
-            return lux::cxx::unexpected(translate(status.error()));
-        return LayoutCommitReceipt{std::move(*status), listLayouts()};
-    }
-    WorkspaceResult<PreferenceWriteResult> WorkspaceStore::preferenceResult(persistence::WriteTicket ticket) const
-    {
-        auto status = coordinator_.status(ticket);
-        if (!status)
-            return lux::cxx::unexpected(translate(status.error()));
-        return PreferenceWriteResult{std::move(*status)};
-    }
 }

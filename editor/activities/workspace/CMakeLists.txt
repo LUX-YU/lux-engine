@@ -1,5 +1,5 @@
 add_component(COMPONENT_NAME workspace_store NAMESPACE lux::engine::editor STATIC
-    SOURCE_FILES src/WorkspaceStore.cpp src/LegacyWorkspaceImporter.cpp)
+    SOURCE_FILES src/WorkspaceStore.cpp src/LegacyWorkspaceImporter.cpp src/WorkspaceMigration.cpp)
 component_include_directories(workspace_store BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
 target_link_libraries(workspace_store PUBLIC lux::engine::editor::layout_model lux::engine::editor::editor_persistence
     PRIVATE lux::engine::editor::editor_file_publication)

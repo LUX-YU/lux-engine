@@ -1,4 +1,4 @@
-#include <lux/engine/editor/workspace/WorkspaceStore.hpp>
+#include <lux/engine/editor/workspace/LegacyWorkspaceMigration.hpp>
 #include <lux/engine/editor/storage/FilePublication.hpp>
 #include <toml++/toml.hpp>
 #include <algorithm>
@@ -243,33 +243,53 @@ namespace lux::editor::workspace
             return true;
         }
     }
-    WorkspaceResult<LegacyMigration> WorkspaceStore::prepareLegacyMigration() const
+    std::string LegacyWorkspaceInput::sourceDigest() const
     {
-        const auto directory = root_ / ".lux/editor/layouts";
-        std::error_code error;
-        const bool exists = std::filesystem::exists(directory, error);
-        if (error)
-            return failed(EWorkspaceError::IO, "legacy directory status");
-        std::vector<std::filesystem::path> files;
-        if (exists)
+        std::string manifest;
+        for (const auto& file : layouts)
+            manifest += file.relative_path + "\n" + file.version + "\n";
+        if (settings)
+            manifest += "settings\n" + settings->version;
+        return digest(manifest);
+    }
+    WorkspaceResult<LegacyMigration> prepareLegacyMigration(LegacyWorkspaceInput input, WorkspaceLimits limits)
+    {
+        if (input.layouts.size() > limits.entries)
+            return failed(EWorkspaceError::CAPACITY, "legacy count");
+        std::ranges::sort(input.layouts, {}, &LegacyWorkspaceFile::relative_path);
+        std::string_view previous;
+        std::size_t total{};
+        for (const auto& file : input.layouts)
         {
-            std::filesystem::directory_iterator it(directory, error), end;
-            for (; !error && it != end; it.increment(error))
-            {
-                if (it->path().extension() != ".toml")
-                    continue;
-                if (files.size() >= limits_.entries)
-                    return failed(EWorkspaceError::CAPACITY, "legacy count");
-                files.push_back(it->path().filename());
-            }
-            if (error)
-                return failed(EWorkspaceError::IO, "legacy enumeration incomplete");
+            if (file.bytes.size() > limits.file_bytes - total)
+                return failed(EWorkspaceError::CAPACITY, "legacy input bytes");
+            total += file.bytes.size();
+            const bool is_invalid_path = !file.relative_path.starts_with(".lux/editor/layouts/") ||
+                !file.relative_path.ends_with(".toml") || file.relative_path.size() <= 25;
+            if (is_invalid_path)
+                return failed(EWorkspaceError::INVALID_DATA, "legacy relative path");
+            const auto name = std::string_view(file.relative_path).substr(20);
+            const bool has_nested_path = name.find_first_of("/\\") != name.npos;
+            const bool is_duplicate = file.relative_path == previous;
+            if (has_nested_path || is_duplicate)
+                return failed(EWorkspaceError::INVALID_DATA, "legacy relative path");
+            if (file.version != storage::publicationDigest(file.bytes))
+                return failed(EWorkspaceError::CONFLICT, "legacy input version");
+            previous = file.relative_path;
         }
-        std::ranges::sort(files);
+        if (input.settings)
+        {
+            if (input.settings->relative_path != ".lux/editor/settings.toml")
+                return failed(EWorkspaceError::INVALID_DATA, "legacy settings path");
+            if (input.settings->bytes.size() > limits.file_bytes)
+                return failed(EWorkspaceError::CAPACITY, "legacy settings bytes");
+            if (input.settings->version != storage::publicationDigest(input.settings->bytes))
+                return failed(EWorkspaceError::CONFLICT, "legacy settings version");
+        }
         LegacyMigration migration;
         // Each legacy file is an independent snapshot. Only explicit selection supplies recovery bindings.
         // Read settings first, but keep its contribution last in the original canonical input digest.
-        auto settings = read(".lux/editor/settings.toml");
+        const auto& settings = input.settings;
         std::string selected_file;
         if (settings)
         {
@@ -283,28 +303,23 @@ namespace lux::editor::workspace
             if (!selected->empty())
             {
                 selected_file = *selected + ".toml";
-                migration.preferences.selected_layout = legacyId(selected_file);
+                migration.preferences_.selected_layout = legacyId(selected_file);
             }
             else
-                migration.diagnostics.push_back("Legacy selected is empty; no snapshot supplies recovery.");
-            migration.preferences.opaque.push_back({"lux.workspace.legacy.settings", 1, settings->bytes});
+                migration.diagnostics_.push_back("Legacy selected is empty; no snapshot supplies recovery.");
+            migration.preferences_.opaque.push_back({"lux.workspace.legacy.settings", 1, settings->bytes});
         }
-        else if (settings.error().code != EWorkspaceError::NOT_FOUND)
-            return lux::cxx::unexpected(settings.error());
         else
-            migration.diagnostics.push_back("Legacy settings are absent; no snapshot supplies recovery.");
-        std::string manifest;
+            migration.diagnostics_.push_back("Legacy settings are absent; no snapshot supplies recovery.");
         std::size_t input_bytes{};
         bool selected_found{};
-        for (const auto& file : files)
+        for (const auto& file : input.layouts)
         {
-            const bool is_selected = file.generic_string() == selected_file;
+            const bool is_selected = std::string_view(file.relative_path).substr(20) == selected_file;
             selected_found = selected_found || is_selected;
-            const auto relative = ".lux/editor/layouts/" + file.generic_string();
-            auto input = read(relative);
-            if (!input)
-                return lux::cxx::unexpected(input.error());
-            if (input->bytes.size() > limits_.file_bytes - input_bytes)
+            const auto& relative = file.relative_path;
+            const auto* input = &file;
+            if (input->bytes.size() > limits.file_bytes - input_bytes)
                 return failed(EWorkspaceError::CAPACITY, "migration aggregate input bytes");
             input_bytes += input->bytes.size();
             const std::string text(reinterpret_cast<const char*>(input->bytes.data()), input->bytes.size());
@@ -315,12 +330,12 @@ namespace lux::editor::workspace
             auto dock = parsed["dock"].value<std::string>();
             if (!panes || !dock)
                 return failed(EWorkspaceError::INVALID_DATA, relative);
-            if (panes->size() > limits_.entries)
+            if (panes->size() > limits.entries)
                 return failed(EWorkspaceError::CAPACITY, "legacy panes");
             DockLayout layout;
-            layout.id = legacyId(file.generic_string());
-            layout.label = file.stem().string();
-            layout.legacy_origin = LegacyOrigin{relative, input->target.expected_version};
+            layout.id = legacyId(std::string_view(file.relative_path).substr(20));
+            layout.label = std::string(std::string_view(file.relative_path).substr(20, file.relative_path.size() - 25));
+            layout.legacy_origin = LegacyOrigin{relative, input->version};
             layout.opaque.push_back({"lux.workspace.legacy.toml", 1, input->bytes});
             std::set<std::string> pane_ids;
             for (const auto& item : *panes)
@@ -346,100 +361,36 @@ namespace lux::editor::workspace
                 if (knownTool(*type) && assetLocator(*payload))
                 {
                     if (is_selected)
-                        migration.recovery.entries.push_back(
+                        migration.recovery_.entries.push_back(
                             {slot.restore_key, slot.type, {{"asset:" + payload->substr(3), false}}, 0}
                         );
                     // Every snapshot keeps its original locator in the envelope, never in active view state.
                     slot.state.bytes.clear();
                 }
                 else if (knownTool(*type) && !payload->empty())
-                    migration.diagnostics.push_back("Unrecognized content locator retained: " + *id);
+                    migration.diagnostics_.push_back("Unrecognized content locator retained: " + *id);
                 layout.slots.push_back(std::move(slot));
             }
-            auto geometry_result = geometry(layout, *dock, limits_);
+            auto geometry_result = geometry(layout, *dock, limits);
             if (!geometry_result)
                 return lux::cxx::unexpected(geometry_result.error());
-            auto valid = ValidatedLayout::validate(std::move(layout), limits_);
+            auto valid = ValidatedLayout::validate(std::move(layout), limits);
             if (!valid)
                 return lux::cxx::unexpected(valid.error());
-            migration.layouts.push_back(valid->value());
-            manifest += relative + "\n" + input->target.expected_version + "\n";
+            migration.layouts_.push_back(valid->value());
         }
-        if (settings)
-            manifest += "settings\n" + settings->target.expected_version;
         const bool selected_missing = !selected_file.empty() && !selected_found;
         if (selected_missing)
-            migration.diagnostics.push_back(
+            migration.diagnostics_.push_back(
                 "Legacy selected snapshot is missing; no snapshot supplies recovery: " + selected_file
             );
-        migration.source_digest = digest(manifest);
-        migration.recovery.legacy_origin = LegacyOrigin{"legacy.workspace.v1", migration.source_digest};
-        migration.preferences.legacy_origin = migration.recovery.legacy_origin;
-        auto valid_recovery = validateRecovery(migration.recovery, limits_);
+        migration.source_digest_ = input.sourceDigest();
+        migration.recovery_.legacy_origin = LegacyOrigin{"legacy.workspace.v1", migration.source_digest_};
+        migration.preferences_.legacy_origin = migration.recovery_.legacy_origin;
+        auto valid_recovery = validateRecovery(migration.recovery_, limits);
         if (!valid_recovery)
             return lux::cxx::unexpected(valid_recovery.error());
-        migration.diagnostics.push_back("Legacy locators do not contain unsaved author changes; no content is opened.");
+        migration.diagnostics_.push_back("Legacy locators do not contain unsaved author changes; no content is opened.");
         return migration;
-    }
-    WorkspaceResult<std::optional<persistence::WriteTicket>> WorkspaceStore::continueMigration(
-        const LegacyMigration& migration
-    )
-    {
-        // Every retry consults the real disk, never a private in-memory 'done' bit.
-        // Compare against freshly read legacy input so callers cannot forge provenance or accidentally mix projects.
-        auto current = prepareLegacyMigration();
-        if (!current)
-            return lux::cxx::unexpected(current.error());
-        if (current->source_digest != migration.source_digest)
-            return failed(EWorkspaceError::CONFLICT, "legacy input changed");
-        const auto marker_path = ".lux/workspace/migration-v1.toml";
-        const auto marker_text = "schema = 1\nsource = \"" + current->source_digest + "\"\n";
-        const auto marker_bytes = std::as_bytes(std::span(marker_text));
-        auto marker = read(marker_path);
-        if (marker)
-        {
-            if (!std::ranges::equal(marker->bytes, marker_bytes))
-                return failed(EWorkspaceError::CONFLICT, "migration marker");
-            return std::optional<persistence::WriteTicket>{};
-        }
-        if (marker.error().code != EWorkspaceError::NOT_FOUND)
-            return lux::cxx::unexpected(marker.error());
-        auto accepted = [](WorkspaceResult<persistence::WriteTicket> value
-                        ) -> WorkspaceResult<std::optional<persistence::WriteTicket>> {
-            if (!value)
-                return lux::cxx::unexpected(value.error());
-            return std::optional{*value};
-        };
-        for (const auto& layout : current->layouts)
-        {
-            auto existing = readLayout(layout.id);
-            if (!existing)
-            {
-                if (existing.error().code != EWorkspaceError::NOT_FOUND)
-                    return lux::cxx::unexpected(existing.error());
-                return accepted(saveLayout(layout, "missing"));
-            }
-            if (existing->value.legacy_origin != layout.legacy_origin)
-                return failed(EWorkspaceError::CONFLICT, "migration layout collision");
-        }
-        auto recovery = readRecovery();
-        if (!recovery)
-        {
-            if (recovery.error().code != EWorkspaceError::NOT_FOUND)
-                return lux::cxx::unexpected(recovery.error());
-            return accepted(writeRecovery(current->recovery, "missing"));
-        }
-        if (recovery->value.legacy_origin != current->recovery.legacy_origin)
-            return failed(EWorkspaceError::CONFLICT, "migration recovery collision");
-        auto preferences = readPreferences();
-        if (!preferences)
-        {
-            if (preferences.error().code != EWorkspaceError::NOT_FOUND)
-                return lux::cxx::unexpected(preferences.error());
-            return accepted(writePreferences(current->preferences, "missing"));
-        }
-        if (preferences->value.legacy_origin != current->preferences.legacy_origin)
-            return failed(EWorkspaceError::CONFLICT, "migration preferences collision");
-        return accepted(write(marker_path, "missing", {marker_bytes.begin(), marker_bytes.end()}));
     }
 }

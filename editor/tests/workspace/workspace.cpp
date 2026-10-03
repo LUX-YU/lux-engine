@@ -221,11 +221,11 @@ namespace
         assert(failure.native_code == 5); // ERROR_ACCESS_DENIED, not an injected publication result.
         fs::permissions(prefs_path, fs::perms::owner_all, fs::perm_options::replace);
 #endif
-        auto preference_result = take(f.store.preferenceResult(preferences));
-        assert(std::holds_alternative<p::NotPublished>(*preference_result.publication.outcome));
+        auto preference_result = take(f.coordinator.status(preferences));
+        assert(std::holds_alternative<p::NotPublished>(*preference_result.outcome));
         assert(f.coordinator.acknowledge(preferences));
-        auto receipt = take(f.store.layoutResult(ticket));
-        assert(receipt.catalog && receipt.catalog->complete());
+        auto catalog = take(f.store.listLayouts());
+        assert(catalog.complete());
         auto after = take(f.store.readLayout(value.id));
         assert(before.target.key == after.target.key && after.value.label == "Renamed 中文");
         assert(take(f.store.chooseLayout({1, value.id})).layout->id == value.id);
@@ -379,9 +379,10 @@ namespace
         // Published fact survives a later catalog error.
         fs::rename(f.root / ".lux/workspace/layouts", f.root / ".lux/workspace/hidden");
         writeRaw(f.root / ".lux/workspace/layouts", "not a directory");
-        auto receipt = take(f.store.layoutResult(rename));
-        assert(std::holds_alternative<p::CommitReceipt>(*receipt.publication.outcome));
-        assert(!receipt.catalog && receipt.catalog.error().code == w::EWorkspaceError::IO);
+        auto receipt = take(f.coordinator.status(rename));
+        auto catalog = f.store.listLayouts();
+        assert(std::holds_alternative<p::CommitReceipt>(*receipt.outcome));
+        assert(!catalog && catalog.error().code == w::EWorkspaceError::IO);
         assert(f.coordinator.acknowledge(rename));
         std::puts(
             "individual corruption vs failed enumeration distinguished; committed layout survives failed refresh PASS"
@@ -418,15 +419,15 @@ visible = false
         writeRaw(old, text);
         writeRaw(f.root / ".lux/editor/settings.toml", "version=1\nselected='Beginner'\n");
         auto plan = take(f.store.prepareLegacyMigration());
-        assert(plan.layouts.size() == 1 && plan.recovery.entries.size() == 1);
-        assert(plan.layouts[0].slots[0].state.bytes.empty());
-        assert(plan.layouts[0].slots[1].state.bytes == bytes("raw unknown"));
-        assert(plan.layouts[0].opaque[0].bytes == bytes(text));
-        assert(plan.layouts[0].dock.nodes[0].ratio == 2.0 / 3.0);
-        const auto id = plan.layouts[0].id;
+        assert(plan.layouts().size() == 1 && plan.recovery().entries.size() == 1);
+        assert(plan.layouts()[0].slots[0].state.bytes.empty());
+        assert(plan.layouts()[0].slots[1].state.bytes == bytes("raw unknown"));
+        assert(plan.layouts()[0].opaque[0].bytes == bytes(text));
+        assert(plan.layouts()[0].dock.nodes[0].ratio == 2.0 / 3.0);
+        const auto id = plan.layouts()[0].id;
         if (collision)
         {
-            auto impostor = plan.layouts[0];
+            auto impostor = plan.layouts()[0];
             impostor.legacy_origin.reset();
             f.seed(impostor);
             assert(f.store.continueMigration(plan).error().code == w::EWorkspaceError::CONFLICT);
@@ -440,7 +441,7 @@ visible = false
         f.success(take(f.store.renameLayout(id, "user edit after interruption")));
         w::WorkspaceStore restarted(f.root, f.coordinator, f.backend);
         auto retry = take(restarted.prepareLegacyMigration());
-        assert(retry.layouts[0].id == id);
+        assert(retry.layouts()[0].id == id);
         unsigned writes{};
         while (auto ticket = take(restarted.continueMigration(retry)))
         {
@@ -464,6 +465,54 @@ visible = false
         return "version=1\nfuture='keep original'\ndock='''[Window][Material###" + std::string(pane) +
                "]\nPos=0,0\nSize=800,600\n'''\n[[panes]]\nid='" + std::string(pane) +
                "'\ntype='lux.editor.material.v1'\nvisible=true\npayload='v1:" + std::string(asset) + "'\n";
+    }
+    void conversion(Fixture& fixture)
+    {
+        auto capture = [](std::string path, std::string text) {
+            auto value = bytes(text);
+            auto version = file::publicationDigest(value);
+            return w::LegacyWorkspaceFile{std::move(path), std::move(value), std::move(version)};
+        };
+        w::LegacyWorkspaceInput input;
+        input.layouts.push_back(capture(".lux/editor/layouts/Beta.toml", legacyMaterial("material-1", assetB)));
+        input.layouts.push_back(capture(".lux/editor/layouts/Alpha.toml", legacyMaterial("material-1", assetA)));
+        input.settings = capture(".lux/editor/settings.toml", "version=1\nselected='Beta'\n");
+        const auto converted = take(w::prepareLegacyMigration(input));
+        assert(converted.layouts().size() == 2 && converted.recovery().entries.size() == 1);
+        assert(converted.recovery().entries[0].contents[0].locator == "asset:" + std::string(assetB));
+        assert(!fs::exists(fixture.root / ".lux"));
+        for (const auto& source : input.layouts)
+            writeRaw(
+                fixture.root / source.relative_path,
+                {reinterpret_cast<const char*>(source.bytes.data()), source.bytes.size()}
+            );
+        writeRaw(fixture.root / input.settings->relative_path, "version=1\nselected='Beta'\n");
+        const auto from_files = take(fixture.store.prepareLegacyMigration());
+        assert(converted.sourceDigest() == from_files.sourceDigest());
+        assert(take(w::encodeRecovery(converted.recovery())) == take(w::encodeRecovery(from_files.recovery())));
+        for (std::size_t i{}; i < converted.layouts().size(); ++i)
+        {
+            assert(take(w::encodeLayout(converted.layouts()[i])) == take(w::encodeLayout(from_files.layouts()[i])));
+            assert(converted.layouts()[i].opaque[0].bytes == input.layouts[1 - i].bytes);
+        }
+        auto changed = input;
+        changed.layouts[0].bytes.push_back(std::byte{});
+        assert(w::prepareLegacyMigration(changed).error().code == w::EWorkspaceError::CONFLICT);
+        changed = input;
+        changed.layouts[0].relative_path = ".lux/editor/layouts/../Beta.toml";
+        assert(w::prepareLegacyMigration(changed).error().code == w::EWorkspaceError::INVALID_DATA);
+        changed = input;
+        changed.layouts.push_back(changed.layouts[0]);
+        assert(w::prepareLegacyMigration(changed).error().code == w::EWorkspaceError::INVALID_DATA);
+        w::WorkspaceLimits limits;
+        limits.file_bytes = std::max(input.layouts[0].bytes.size(), input.layouts[1].bytes.size());
+        assert(w::prepareLegacyMigration(input, limits).error().code == w::EWorkspaceError::CAPACITY);
+        input.settings.reset();
+        const auto unselected = take(w::prepareLegacyMigration(input));
+        assert(unselected.layouts().size() == 2 && unselected.recovery().entries.empty());
+        assert(!unselected.diagnostics().empty());
+        assert(fixture.coordinator.size() == 0);
+        std::puts("owned legacy bytes: pure conversion equals IO capture, selected provenance and rejection PASS");
     }
     void legacyPair(
         Fixture& f,
@@ -502,9 +551,9 @@ visible = false
             writeRaw(single.root / ".lux/editor/layouts" / filename, raw(directory / filename));
             writeRaw(single.root / ".lux/editor/settings.toml", "version=1\nselected='" + std::string(name) + "'\n");
             const auto plan = take(single.store.prepareLegacyMigration());
-            assert(plan.layouts.size() == 1 && plan.recovery.entries.size() == 1);
+            assert(plan.layouts().size() == 1 && plan.recovery().entries.size() == 1);
             assert(single.coordinator.size() == 0 && !fs::exists(single.root / ".lux/workspace"));
-            std::printf("individual %s accepted=1 id=%s\n", name, plan.layouts[0].id.value.c_str());
+            std::printf("individual %s accepted=1 id=%s\n", name, plan.layouts()[0].id.value.c_str());
         }
     }
     bool scopedRecovery(
@@ -526,9 +575,9 @@ visible = false
             return false;
         }
         const auto& plan = *result;
-        assert(plan.layouts.size() == 2 && plan.layouts[0].id != plan.layouts[1].id);
+        assert(plan.layouts().size() == 2 && plan.layouts()[0].id != plan.layouts()[1].id);
         std::string manifest;
-        for (const auto& layout : plan.layouts)
+        for (const auto& layout : plan.layouts())
         {
             const auto relative = ".lux/editor/layouts/" + layout.label + ".toml";
             const auto text = raw(f.root / relative);
@@ -538,33 +587,33 @@ visible = false
             const auto single = f.root / "individual" / layout.label;
             lux::editor::storage::FileArtifactStore backend(single);
             w::WorkspaceStore store(single, f.coordinator, backend);
-            assert(take(store.prepareLegacyMigration()).layouts[0].id == layout.id);
+            assert(take(store.prepareLegacyMigration()).layouts()[0].id == layout.id);
             if (layout.label == selected)
-                assert(plan.preferences.selected_layout == layout.id);
+                assert(plan.preferences().selected_layout == layout.id);
             manifest += relative + "\n" + layout.legacy_origin->digest + "\n";
         }
         const auto settings = f.root / ".lux/editor/settings.toml";
         if (fs::exists(settings))
             manifest += "settings\n" + file::publicationDigest(bytes(raw(settings)));
-        assert(plan.source_digest == file::publicationDigest(bytes(manifest))); // Original canonical input digest.
-        assert(plan.recovery.legacy_origin == (w::LegacyOrigin{"legacy.workspace.v1", plan.source_digest}));
-        assert(plan.preferences.legacy_origin == plan.recovery.legacy_origin);
+        assert(plan.sourceDigest() == file::publicationDigest(bytes(manifest))); // Original canonical input digest.
+        assert(plan.recovery().legacy_origin == (w::LegacyOrigin{"legacy.workspace.v1", plan.sourceDigest()}));
+        assert(plan.preferences().legacy_origin == plan.recovery().legacy_origin);
         const bool expects_empty = expected_asset.empty();
-        const bool is_expected_count = plan.recovery.entries.size() == (expects_empty ? 0u : 1u);
+        const bool is_expected_count = plan.recovery().entries.size() == (expects_empty ? 0u : 1u);
         const bool is_scoped =
             is_expected_count &&
-            (expects_empty || (plan.recovery.entries[0].contents[0].locator == "asset:" + std::string(expected_asset) &&
-                               plan.recovery.entries[0].restore_key.name() == expected_key &&
-                               plan.recovery.entries[0].type == v::ViewTypeId{"lux.editor.material.v1"}));
+            (expects_empty || (plan.recovery().entries[0].contents[0].locator == "asset:" + std::string(expected_asset) &&
+                               plan.recovery().entries[0].restore_key.name() == expected_key &&
+                               plan.recovery().entries[0].type == v::ViewTypeId{"lux.editor.material.v1"}));
         std::printf(
             "multi-layout accepted=1 layouts=%zu recovery_entries=%zu selected_scope=%d selected=%.*s\n",
-            plan.layouts.size(),
-            plan.recovery.entries.size(),
+            plan.layouts().size(),
+            plan.recovery().entries.size(),
             is_scoped,
             int(selected.size()),
             selected.data()
         );
-        for (const auto& entry : plan.recovery.entries)
+        for (const auto& entry : plan.recovery().entries)
             std::printf(
                 "recovery key=%s locator=%s\n",
                 std::string(entry.restore_key.name()).c_str(),
@@ -589,7 +638,7 @@ visible = false
         if (!scoped)
             return false;
         if (same_key)
-            assert(result->layouts[0].slots[0].restore_key == result->layouts[1].slots[0].restore_key);
+            assert(result->layouts()[0].slots[0].restore_key == result->layouts()[1].slots[0].restore_key);
         unsigned writes{};
         while (auto ticket = take(f.store.continueMigration(*result)))
         {
@@ -599,10 +648,10 @@ visible = false
         assert(writes == 5);
         w::WorkspaceStore restarted(f.root, f.coordinator, f.backend);
         const auto saved = take(restarted.readRecovery());
-        assert(take(w::encodeRecovery(saved.value)) == take(w::encodeRecovery(result->recovery)));
+        assert(take(w::encodeRecovery(saved.value)) == take(w::encodeRecovery(result->recovery())));
         assert(take(restarted.listLayouts()).layouts.size() == 2);
-        assert(take(restarted.readPreferences()).value.selected_layout == result->preferences.selected_layout);
-        for (const auto& layout : result->layouts)
+        assert(take(restarted.readPreferences()).value.selected_layout == result->preferences().selected_layout);
+        for (const auto& layout : result->layouts())
             assert(take(w::encodeLayout(take(restarted.readLayout(layout.id)).value)) == take(w::encodeLayout(layout)));
         assert(!take(restarted.continueMigration(*result)));
         assert(raw(f.root / ".lux/editor/layouts/Alpha.toml") == alpha);
@@ -624,11 +673,11 @@ visible = false
             auto result = test.store.prepareLegacyMigration();
             if (!scopedRecovery(test, result, selection.value_or(""), "", ""))
                 return false;
-            const bool has_selection_diagnostic = std::ranges::any_of(result->diagnostics, [](const auto& text) {
+            const bool has_selection_diagnostic = std::ranges::any_of(result->diagnostics(), [](const auto& text) {
                 return text.find("selected") != text.npos || text.find("settings") != text.npos;
             });
             assert(has_selection_diagnostic);
-            assert(bool(result->preferences.selected_layout) == (std::string_view(name) == "missing"));
+            assert(bool(result->preferences().selected_layout) == (std::string_view(name) == "missing"));
             unsigned writes{};
             while (auto ticket = take(test.store.continueMigration(*result)))
             {
@@ -708,11 +757,11 @@ visible = false
             return false;
         f.success(*take(store->continueMigration(*plan)));
         store.reset(); // First record published, no marker. Destroy the actual migration reader.
-        const auto first_id = plan->layouts[0].id;
+        const auto first_id = plan->layouts()[0].id;
         f.success(take(f.store.renameLayout(first_id, "user edit after interruption")));
         store = std::make_unique<w::WorkspaceStore>(f.root, f.coordinator, f.backend);
         auto retry = take(store->prepareLegacyMigration());
-        assert(retry.source_digest == plan->source_digest);
+        assert(retry.sourceDigest() == plan->sourceDigest());
         unsigned writes{};
         while (auto ticket = take(store->continueMigration(retry)))
         {
@@ -729,12 +778,12 @@ visible = false
         recovery.value.entries.clear();
         f.success(take(store->writeRecovery(recovery.value, recovery.target.expected_version)));
         assert(!take(store->continueMigration(retry)) && take(store->readRecovery()).value.entries.empty());
-        for (const auto& layout : retry.layouts)
+        for (const auto& layout : retry.layouts())
             assert(bytes(raw(f.root / layout.legacy_origin->key)) == layout.opaque[0].bytes);
         Fixture collision(f.root / "collision");
         legacyPair(collision, true, false, "Beta");
         auto input = take(collision.store.prepareLegacyMigration());
-        auto impostor = input.layouts[0];
+        auto impostor = input.layouts()[0];
         impostor.legacy_origin.reset();
         collision.seed(impostor);
         assert(collision.store.continueMigration(input).error().code == w::EWorkspaceError::CONFLICT);
@@ -813,6 +862,8 @@ int main(int argc, char** argv)
         legacy(f, true);
     else if (scenario == "budgets")
         budgets();
+    else if (scenario == "conversion")
+        conversion(f);
     else
         std::abort();
 }

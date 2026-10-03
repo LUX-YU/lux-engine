@@ -5225,7 +5225,9 @@
     "files": [
       "editor/activities/workspace/include/lux/engine/editor/workspace/WorkspaceStore.hpp",
       "editor/activities/workspace/src/LegacyWorkspaceImporter.cpp",
-      "editor/activities/workspace/src/WorkspaceStore.cpp"
+      "editor/activities/workspace/src/WorkspaceStore.cpp",
+      "editor/activities/workspace/src/WorkspaceMigration.cpp",
+      "editor/activities/workspace/include/lux/engine/editor/workspace/LegacyWorkspaceMigration.hpp"
     ],
     "native_libraries": [
       "ole32",
@@ -17947,6 +17949,12 @@
       ],
       "editor/activities/material/pinclude/lux/engine/editor/material/MaterialPreviewRecipe.hpp": [
         "material_preview"
+      ],
+      "editor/activities/workspace/src/WorkspaceMigration.cpp": [
+        "workspace_store"
+      ],
+      "editor/activities/workspace/include/lux/engine/editor/workspace/LegacyWorkspaceMigration.hpp": [
+        "workspace_store"
       ]
     },
     "native_libraries": [

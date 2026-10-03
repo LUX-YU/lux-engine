@@ -39,9 +39,9 @@ int main()
     commands::CommandRegistry commands;
     extensions::ContributionRegistry contributions{messages.dispatcherRef(), commands};
     extensions::ContributionDraft draft;
-    draft.views.push_back(std::make_shared<views::ViewFactoryEntry>(
+    draft.views.push_back(views::ViewFactoryEntry::create(
         contracts::CodeLease::builtin(),
-        views::ViewFactoryDescriptor{views::ViewTypeId{"ec1.free"}, "Free pane", cxx::typeToken<std::monostate>()},
+        views::ViewFactoryDescriptor{views::ViewTypeIdView{"ec1.free"}, "Free pane", cxx::typeToken<std::monostate>()},
         [](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
             return views::DetachedView{contracts::CodeLease::builtin(), std::make_unique<FreePane>(input)};
         }

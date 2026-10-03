@@ -12,10 +12,10 @@ namespace lux::editor::application
 {
     void EditorApplication::Impl::installSettingsView(extensions::ContributionDraft& draft)
     {
-        draft.views.push_back(std::make_shared<views::ViewFactoryEntry>(
+        draft.views.push_back(views::ViewFactoryEntry::create(
             contracts::CodeLease::builtin(),
             views::ViewFactoryDescriptor{
-                views::ViewTypeId{"lux.editor.settings"},
+                views::ViewTypeIdView{"lux.editor.settings"},
                 "Settings",
                 cxx::typeToken<std::monostate>()
             },

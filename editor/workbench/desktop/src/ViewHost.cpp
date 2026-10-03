@@ -375,7 +375,7 @@ namespace lux::editor::desktop
                     live.push_back(info(slot));
             std::vector<workspace::ViewProviderInfo> providers;
             for (const auto& entry : factories.entries())
-                providers.push_back({entry->descriptor().type, 1, UINT32_MAX});
+                providers.push_back({views::ViewTypeId{entry->descriptor().type.name()}, 1, UINT32_MAX});
             auto plan = workspace::LayoutPlanner::resolve(*validated, live, providers);
             if (!plan)
                 return failure("layout", static_cast<std::uint64_t>(plan.error().code), plan.error().detail);

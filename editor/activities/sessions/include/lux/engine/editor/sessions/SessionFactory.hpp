@@ -4,12 +4,8 @@
 #include <lux/engine/resource/asset/AssetTypeId.hpp>
 #include <lux/cxx/core/move_only_function.hpp>
 #include <stop_token>
-#include <lux/cxx/core/StableNameId.hpp>
 namespace lux::editor::sessions
 {
-    struct SessionKindIdTag;
-    using SessionKindIdView = cxx::StableNameIdView<SessionKindIdTag>;
-
     // Exact source-format relationship and save naming policy. A file suffix is only a discovery hint.
     struct SourceAuthoring final
     {

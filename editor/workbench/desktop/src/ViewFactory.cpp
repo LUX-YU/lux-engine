@@ -1,4 +1,5 @@
 #include <lux/engine/editor/views/ViewFactory.hpp>
+#include <algorithm>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -58,18 +59,77 @@ namespace lux::editor::views
         return data_ && data_->code.valid() && data_->pane.isValid() && data_->type.isValid() && data_->binding &&
                data_->version;
     }
-    ViewFactoryEntry::ViewFactoryEntry(contracts::CodeLease code, ViewFactoryDescriptor descriptor, Create create)
-        : code_(std::move(code)), descriptor_(std::move(descriptor)), create_(std::move(create))
+    struct ViewFactoryEntry::DescriptorStorage final
+    {
+        std::string text;
+        std::vector<sessions::SessionKindIdView> content_kinds;
+        ViewFactoryDescriptor descriptor;
+        explicit DescriptorStorage(const ViewFactoryDescriptor& input)
+        {
+            auto size = input.type.name().size() + input.label.size() + input.binding_type.name().size();
+            for (const auto kind : input.content_kinds)
+                size += kind.name().size();
+            text.reserve(size);
+            text.append(input.type.name()).append(input.label).append(input.binding_type.name());
+            for (const auto kind : input.content_kinds)
+                text.append(kind.name());
+            // All growth precedes views. This allocation and its arrays never move after publication.
+            const std::string_view bytes{text};
+            std::size_t offset{};
+            const auto take = [&](std::size_t count) {
+                const auto value = bytes.substr(offset, count);
+                offset += count;
+                return value;
+            };
+            descriptor.type = ViewTypeIdView{take(input.type.name().size())};
+            descriptor.label = take(input.label.size());
+            descriptor.binding_type = {input.binding_type.hash(), take(input.binding_type.name().size())};
+            descriptor.input_version = input.input_version;
+            descriptor.default_content_view = input.default_content_view;
+            content_kinds.reserve(input.content_kinds.size());
+            for (const auto kind : input.content_kinds)
+                content_kinds.emplace_back(take(kind.name().size()));
+            descriptor.content_kinds = content_kinds;
+        }
+    };
+    ViewFactoryEntry::ViewFactoryEntry(contracts::CodeLease code, const ViewFactoryDescriptor& descriptor, Create create)
+        : code_(std::move(code)), descriptor_(&descriptor), create_(std::move(create))
     {}
+    std::shared_ptr<ViewFactoryEntry> ViewFactoryEntry::create(
+        contracts::CodeLease code, const ViewFactoryDescriptor& descriptor, Create create
+    )
+    {
+        auto storage = std::make_unique<const DescriptorStorage>(descriptor);
+        auto entry = std::shared_ptr<ViewFactoryEntry>(
+            new ViewFactoryEntry(std::move(code), storage->descriptor, std::move(create))
+        );
+        entry->storage_ = std::move(storage);
+        return entry;
+    }
     ViewFactoryEntry::~ViewFactoryEntry() = default;
     const ViewFactoryDescriptor& ViewFactoryEntry::descriptor() const noexcept
     {
-        return descriptor_;
+        return *descriptor_;
     }
     struct ViewFactorySnapshot::Data final
     {
+        struct Identity final
+        {
+            std::uint64_t hash;
+            std::size_t entry;
+        };
         std::vector<std::shared_ptr<ViewFactoryEntry>> entries;
+        std::vector<Identity> index;
         std::unordered_map<std::string, std::vector<std::size_t>> content;
+        [[nodiscard]] const std::shared_ptr<ViewFactoryEntry>* find(ViewTypeIdView type) const noexcept
+        {
+            const auto found = std::ranges::lower_bound(index, type.hash(), {}, &Identity::hash);
+            if (found == index.end() || found->hash != type.hash())
+                return nullptr;
+            const auto& value = entries[found->entry];
+            // Public text/type resolution is cold; a colliding external name cannot select a factory.
+            return value->descriptor().type.name() == type.name() ? &value : nullptr;
+        }
     };
     ViewFactoryResult<ViewFactorySnapshot> ViewFactorySnapshot::create(
         std::vector<std::shared_ptr<ViewFactoryEntry>> entries,
@@ -90,28 +150,48 @@ namespace lux::editor::views
             const auto& entry = entries[i];
             if (!entry)
                 return cxx::unexpected(ViewFactoryFailure{EViewFactoryError::INVALID_ARGUMENT, "view.entry"});
-            const bool invalid = !entry->code_.valid() || !entry->create_ || !entry->descriptor_.type.isValid() ||
-                                 entry->descriptor_.label.empty() || !entry->descriptor_.binding_type.isValid() ||
-                                 !entry->descriptor_.input_version;
-            if (invalid)
+            const auto& descriptor = entry->descriptor();
+            const bool is_invalid_type = !descriptor.type.isValid() ||
+                descriptor.type.hash() != cxx::Fnv1a64::hash(descriptor.type.name());
+            const bool is_invalid_binding = !entry->code_.valid() || !entry->create_;
+            const bool is_invalid_description = descriptor.label.empty() || !descriptor.binding_type.isValid() ||
+                !descriptor.input_version;
+            const bool is_invalid = is_invalid_type || is_invalid_binding || is_invalid_description;
+            if (is_invalid)
                 return cxx::unexpected(ViewFactoryFailure{EViewFactoryError::INVALID_ARGUMENT, "view.descriptor"});
             std::unordered_set<std::string_view> kinds;
-            for (const auto& kind : entry->descriptor_.content_kinds)
+            for (const auto& kind : entry->descriptor_->content_kinds)
             {
-                if (kind.name.empty() || !kinds.insert(kind.name).second)
+                const bool is_invalid_kind = !kind.isValid() ||
+                    kind.hash() != cxx::Fnv1a64::hash(kind.name()) || !kinds.insert(kind.name()).second;
+                if (is_invalid_kind)
                 {
                     return cxx::unexpected(ViewFactoryFailure{
                         EViewFactoryError::INVALID_ARGUMENT, "view.content.kind"
                     });
                 }
-                content[kind.name].push_back(i);
+                content[std::string{kind.name()}].push_back(i);
             }
-            for (std::size_t j{}; j < i; ++j)
-                if (entries[j]->descriptor_.type == entry->descriptor_.type)
-                    return cxx::unexpected(ViewFactoryFailure{EViewFactoryError::INVALID_ARGUMENT, "view.duplicate"});
+
+        }
+        std::vector<Data::Identity> index;
+        index.reserve(entries.size());
+        for (std::size_t i{}; i < entries.size(); ++i)
+            index.push_back({entries[i]->descriptor().type.hash(), i});
+        std::ranges::sort(index, {}, &Data::Identity::hash);
+        for (std::size_t i = 1; i < index.size(); ++i)
+        {
+            if (index[i - 1].hash != index[i].hash)
+                continue;
+            const bool is_duplicate = entries[index[i - 1].entry]->descriptor().type.name() ==
+                                      entries[index[i].entry]->descriptor().type.name();
+            return cxx::unexpected(ViewFactoryFailure{
+                is_duplicate ? EViewFactoryError::INVALID_ARGUMENT : EViewFactoryError::HASH_COLLISION,
+                is_duplicate ? "view.duplicate" : "view.identity.collision"
+            });
         }
         ViewFactorySnapshot result;
-        result.data_ = std::make_shared<Data>(std::move(entries), std::move(content));
+        result.data_ = std::make_shared<Data>(std::move(entries), std::move(index), std::move(content));
         return result;
     }
     ViewFactoryResult<DetachedView> ViewFactorySnapshot::prepare(ViewTypeId type, const ViewFactoryInput& input) const
@@ -120,10 +200,9 @@ namespace lux::editor::views
         const auto pinned = data_;
         if (!pinned || !input.valid())
             return cxx::unexpected(ViewFactoryFailure{EViewFactoryError::INVALID_ARGUMENT, "view.input"});
-        for (const auto& entry : pinned->entries)
+        if (const auto* found = pinned->find(type.view()))
         {
-            if (entry->descriptor().type != type)
-                continue;
+            const auto& entry = *found;
             const bool mismatch = input.bindingType() != entry->descriptor().binding_type ||
                                   input.version() != entry->descriptor().input_version;
             if (mismatch)
@@ -180,15 +259,15 @@ namespace lux::editor::views
         std::string candidates;
         for (const auto index : found->second)
         {
-            const auto& descriptor = pinned->entries[index]->descriptor_;
-            if (preferred && descriptor.type == *preferred)
+            const auto& descriptor = pinned->entries[index]->descriptor();
+            if (preferred && descriptor.type == preferred->view())
             {
-                return descriptor.type;
+                return ViewTypeId{descriptor.type.name()};
             }
             if (descriptor.default_content_view)
             {
                 ++defaults;
-                selected = descriptor.type;
+                selected.emplace(descriptor.type.name());
             }
             if (!candidates.empty())
             {
@@ -206,7 +285,7 @@ namespace lux::editor::views
         }
         if (found->second.size() == 1)
         {
-            return pinned->entries[found->second.front()]->descriptor_.type;
+            return ViewTypeId{pinned->entries[found->second.front()]->descriptor().type.name()};
         }
         return cxx::unexpected(ViewFactoryFailure{
             EViewFactoryError::AMBIGUOUS, "view.content", 0, std::move(candidates)

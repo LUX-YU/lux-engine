@@ -12,10 +12,10 @@ namespace lux::editor::application
 {
     void EditorApplication::Impl::installProjectCreation(extensions::ContributionDraft& draft)
     {
-        draft.views.push_back(std::make_shared<views::ViewFactoryEntry>(
+        draft.views.push_back(views::ViewFactoryEntry::create(
             contracts::CodeLease::builtin(),
             views::ViewFactoryDescriptor{
-                views::ViewTypeId{"lux.editor.project.creation"},
+                views::ViewTypeIdView{"lux.editor.project.creation"},
                 "New project",
                 cxx::typeToken<std::monostate>()
             },

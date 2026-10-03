@@ -311,10 +311,10 @@ namespace lux::editor::application
     {
         // An application composition view, not another operation owner. It records button intents only;
         // service calls and structural changes run after Root returns from draw/update.
-        draft.views.push_back(std::make_shared<views::ViewFactoryEntry>(
+        draft.views.push_back(views::ViewFactoryEntry::create(
             contracts::CodeLease::builtin(),
             views::ViewFactoryDescriptor{
-                views::ViewTypeId{"lux.editor.content.results"},
+                views::ViewTypeIdView{"lux.editor.content.results"},
                 "Content and Operations",
                 cxx::typeToken<std::monostate>()
             },

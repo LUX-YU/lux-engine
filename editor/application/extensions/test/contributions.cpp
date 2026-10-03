@@ -59,9 +59,9 @@ int originalCases()
     auto pending = empty;
     ContributionDraft draft;
     bool replace{};
-    draft.views.push_back(std::make_shared<views::ViewFactoryEntry>(
+    draft.views.push_back(views::ViewFactoryEntry::create(
         code,
-        views::ViewFactoryDescriptor{views::ViewTypeId{"extension.window"}, "Window", cxx::typeToken<Binding>()},
+        views::ViewFactoryDescriptor{views::ViewTypeIdView{"extension.window"}, "Window", cxx::typeToken<Binding>()},
         [&, code](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
             ++facts.old_calls;
             if (!replace)
@@ -206,9 +206,9 @@ namespace
         first.commands.push_back(command("A"));
         if (mode == "factory")
         {
-            first.views.push_back(std::make_shared<views::ViewFactoryEntry>(
+            first.views.push_back(views::ViewFactoryEntry::create(
                 contracts::CodeLease::builtin(),
-                views::ViewFactoryDescriptor{views::ViewTypeId{"test.batch"}, "Batch", cxx::typeToken<Binding>()},
+                views::ViewFactoryDescriptor{views::ViewTypeIdView{"test.batch"}, "Batch", cxx::typeToken<Binding>()},
                 [&](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
                     auto pinned_command = take(commands.snapshot().find(CommandIdView{"A"}));
                     attempt.run();

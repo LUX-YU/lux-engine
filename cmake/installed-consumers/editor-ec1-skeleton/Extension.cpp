@@ -1,3 +1,4 @@
+#include <array>
 #include "Model.hpp"
 #include "Probe.hpp"
 #include <lux/engine/editor/extensions/EditorExtension.hpp>
@@ -199,13 +200,13 @@ namespace skeleton
                                                                         static_cast<std::uint64_t>(changed.error())});
                     return commands::DispatchReceipt{commands::ImmediateCompletion{}};
                 }));
-            draft.views.push_back(std::make_shared<views::ViewFactoryEntry>(
+            draft.views.push_back(views::ViewFactoryEntry::create(
                 code,
-                views::ViewFactoryDescriptor{views::ViewTypeId{"example.skeleton.view"},
+                views::ViewFactoryDescriptor{views::ViewTypeIdView{"example.skeleton.view"},
                                              "Skeleton",
                                              cxx::typeToken<views::ContentViewInput>(),
                                              1,
-                                             {kind}},
+                                             std::array{sessions::SessionKindIdView{kind.name}}},
                 [code, access](const views::ViewFactoryInput &input) -> views::ViewFactoryResult<views::DetachedView>
                 {
                     const auto &binding = *static_cast<const views::ContentViewInput *>(input.binding());

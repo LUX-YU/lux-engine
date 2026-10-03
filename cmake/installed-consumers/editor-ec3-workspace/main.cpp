@@ -45,9 +45,9 @@ int main(int argc, char** argv)
     desktop::ViewHost host{*root};
     desktop::WorkspaceActions actions{host, store, changes, messages.dispatcherRef()};
     unsigned constructions{};
-    auto factory = std::make_shared<views::ViewFactoryEntry>(
+    auto factory = views::ViewFactoryEntry::create(
         contracts::CodeLease::builtin(),
-        views::ViewFactoryDescriptor{views::ViewTypeId{"test.workspace"}, "Test", cxx::typeToken<std::monostate>()},
+        views::ViewFactoryDescriptor{views::ViewTypeIdView{"test.workspace"}, "Test", cxx::typeToken<std::monostate>()},
         [&](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
             const auto nested = actions.save("reentrant");
             assert(!nested && nested.error().code == EEditorError::BUSY);

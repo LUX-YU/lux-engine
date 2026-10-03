@@ -471,9 +471,9 @@ namespace
         layout.dock.roots.push_back({1, 0, 0, 1000, 700, false});
         bool reject_second = true;
         unsigned inputs{}, creations{};
-        auto entry = std::make_shared<views::ViewFactoryEntry>(
+        auto entry = views::ViewFactoryEntry::create(
             contracts::CodeLease::builtin(),
-            views::ViewFactoryDescriptor{views::ViewTypeId{"layout.test"}, "Layout test", cxx::typeToken<int>()},
+            views::ViewFactoryDescriptor{views::ViewTypeIdView{"layout.test"}, "Layout test", cxx::typeToken<int>()},
             [&](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
                 ++creations;
                 assert(*static_cast<const int*>(input.binding()) == 0); // Unbound, not a recovered asset locator.
@@ -591,11 +591,11 @@ int main()
 {
     {
         const auto entry = [](std::string name, bool is_default) {
-            return std::make_shared<views::ViewFactoryEntry>(
+            return views::ViewFactoryEntry::create(
                 contracts::CodeLease::builtin(),
                 views::ViewFactoryDescriptor{
-                    views::ViewTypeId{name}, name, cxx::typeToken<std::monostate>(), 1,
-                    {{"test.author"}}, is_default
+                    views::ViewTypeIdView{name}, name, cxx::typeToken<std::monostate>(), 1,
+                    std::array{sessions::SessionKindIdView{"test.author"}}, is_default
                 },
                 [](const views::ViewFactoryInput&) -> views::ViewFactoryResult<views::DetachedView> {
                     std::abort(); // Metadata lookup cannot construct a window.

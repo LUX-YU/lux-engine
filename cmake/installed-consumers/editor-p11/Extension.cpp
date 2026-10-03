@@ -104,10 +104,10 @@ namespace
                 return DispatchReceipt{ImmediateCompletion{}};
             }
         ));
-        draft.views.push_back(std::make_shared<views::ViewFactoryEntry>(
+        draft.views.push_back(views::ViewFactoryEntry::create(
             code,
             views::ViewFactoryDescriptor{
-                views::ViewTypeId{"qualification.window"},
+                views::ViewTypeIdView{"qualification.window"},
                 "Extension",
                 cxx::typeToken<probe::Binding>()
             },
@@ -148,10 +148,10 @@ namespace
                 return commands::DispatchReceipt{commands::ImmediateCompletion{}};
             }
         ));
-        draft.views.push_back(std::make_shared<views::ViewFactoryEntry>(
+        draft.views.push_back(views::ViewFactoryEntry::create(
             code,
             views::ViewFactoryDescriptor{
-                views::ViewTypeId{"qualification.free"}, "Free window", cxx::typeToken<std::monostate>()
+                views::ViewTypeIdView{"qualification.free"}, "Free window", cxx::typeToken<std::monostate>()
             },
             [state, code](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
                 return views::DetachedView{

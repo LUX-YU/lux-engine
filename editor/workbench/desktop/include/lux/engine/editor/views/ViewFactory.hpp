@@ -16,7 +16,8 @@ namespace lux::editor::views
         CONSTRUCT,
         CALLBACK,
         AMBIGUOUS,
-        BUSY
+        BUSY,
+        HASH_COLLISION
     };
     struct ViewFactoryFailure final
     {
@@ -35,11 +36,11 @@ namespace lux::editor::views
     // The application can expose these in its Window menu without knowing plugin-specific services.
     struct ViewFactoryDescriptor final
     {
-        ViewTypeId type;
-        std::string label;
+        ViewTypeIdView type;
+        std::string_view label;
         cxx::TypeToken binding_type;
         std::uint32_t input_version{1};
-        std::vector<sessions::SessionKindId> content_kinds;
+        std::span<const sessions::SessionKindIdView> content_kinds;
         bool default_content_view{true};
     };
     // Immutable typed binding. The external code pin survives payload destruction and replacement.
@@ -74,7 +75,19 @@ namespace lux::editor::views
     {
     public:
         using Create = cxx::move_only_function<ViewFactoryResult<DetachedView>(const ViewFactoryInput&)>;
-        ViewFactoryEntry(contracts::CodeLease, ViewFactoryDescriptor, Create);
+        template <const ViewFactoryDescriptor& Descriptor>
+        [[nodiscard]] static std::shared_ptr<ViewFactoryEntry> bind(contracts::CodeLease code, Create create)
+        {
+            static_assert(Descriptor.type.isValid() && !Descriptor.label.empty() &&
+                          Descriptor.binding_type.isValid() && Descriptor.input_version != 0,
+                          "Fixed view metadata must be a valid constant declaration.");
+            return std::shared_ptr<ViewFactoryEntry>(
+                new ViewFactoryEntry(std::move(code), Descriptor, std::move(create))
+            );
+        }
+        // Freeze dynamic strings/arrays before publishing any borrowed descriptor.
+        [[nodiscard]] static std::shared_ptr<ViewFactoryEntry>
+        create(contracts::CodeLease, const ViewFactoryDescriptor&, Create);
         ~ViewFactoryEntry();
         ViewFactoryEntry(const ViewFactoryEntry&) = delete;
         ViewFactoryEntry& operator=(const ViewFactoryEntry&) = delete;
@@ -88,8 +101,11 @@ namespace lux::editor::views
 
     private:
         friend class ViewFactorySnapshot;
+        struct DescriptorStorage;
+        ViewFactoryEntry(contracts::CodeLease, const ViewFactoryDescriptor&, Create);
         contracts::CodeLease code_;
-        ViewFactoryDescriptor descriptor_;
+        std::unique_ptr<const DescriptorStorage> storage_;
+        const ViewFactoryDescriptor* descriptor_;
         Create create_;
     };
     class ViewFactorySnapshot final

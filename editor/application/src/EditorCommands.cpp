@@ -93,10 +93,10 @@ namespace lux::editor::application
         installResultView(draft);
         installWorkspaceView(draft);
         installProjectTools(draft);
-        draft.views.push_back(std::make_shared<views::ViewFactoryEntry>(
+        draft.views.push_back(views::ViewFactoryEntry::create(
             contracts::CodeLease::builtin(),
             views::ViewFactoryDescriptor{
-                views::ViewTypeId{"lux.editor.project"},
+                views::ViewTypeIdView{"lux.editor.project"},
                 "Assets",
                 cxx::typeToken<std::monostate>()
             },
@@ -104,10 +104,10 @@ namespace lux::editor::application
                 return makeProjectView(input.paneId());
             }
         ));
-        draft.views.push_back(std::make_shared<views::ViewFactoryEntry>(
+        draft.views.push_back(views::ViewFactoryEntry::create(
             contracts::CodeLease::builtin(),
             views::ViewFactoryDescriptor{
-                views::ViewTypeId{"lux.editor.tasks"},
+                views::ViewTypeIdView{"lux.editor.tasks"},
                 "Tasks",
                 cxx::typeToken<std::monostate>()
             },
@@ -148,7 +148,7 @@ namespace lux::editor::application
                     [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {
                         return commands::CommandState{phase_ == EApplicationPhase::RUNNING};
                     },
-                    [this, type = descriptor.type](const commands::CommandInvocation&)
+                    [this, type = views::ViewTypeId{descriptor.type.name()}](const commands::CommandInvocation&)
                         -> commands::CommandResult<commands::DispatchReceipt> {
                         auto shown = showTool(type);
                         if (!shown)

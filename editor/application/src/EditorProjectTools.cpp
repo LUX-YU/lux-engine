@@ -75,10 +75,10 @@ namespace lux::editor::application
             }
         ));
 
-        draft.views.push_back(std::make_shared<views::ViewFactoryEntry>(
+        draft.views.push_back(views::ViewFactoryEntry::create(
             contracts::CodeLease::builtin(),
             views::ViewFactoryDescriptor{
-                views::ViewTypeId{"lux.editor.import"},
+                views::ViewTypeIdView{"lux.editor.import"},
                 "Import Assets",
                 cxx::typeToken<std::monostate>()
             },
@@ -200,10 +200,10 @@ namespace lux::editor::application
 {
     void EditorApplication::Impl::installRecentProjects(extensions::ContributionDraft& draft)
     {
-        draft.views.push_back(std::make_shared<views::ViewFactoryEntry>(
+        draft.views.push_back(views::ViewFactoryEntry::create(
             contracts::CodeLease::builtin(),
             views::ViewFactoryDescriptor{
-                views::ViewTypeId{"lux.editor.recent-projects"},
+                views::ViewTypeIdView{"lux.editor.recent-projects"},
                 "Recent Projects",
                 cxx::typeToken<std::monostate>()
             },

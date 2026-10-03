@@ -27,10 +27,10 @@ extern "C" SAMPLE_EXTERNAL_EDITOR_EXPORT const lux::editor::extensions::EditorEx
         .counts = {.views = 1},
         .contribute = +[](extensions::ContributionDraft& draft,
                           contracts::CodeLease code) -> extensions::ContributionResult<void> {
-            draft.views.push_back(std::make_shared<views::ViewFactoryEntry>(
+            draft.views.push_back(views::ViewFactoryEntry::create(
                 code,
                 views::ViewFactoryDescriptor{
-                    views::ViewTypeId{"sample.editor"},
+                    views::ViewTypeIdView{"sample.editor"},
                     "External editor",
                     lux::cxx::typeToken<std::monostate>()
                 },

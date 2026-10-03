@@ -92,16 +92,16 @@ namespace registered_views
             lux::cxx::typeToken<Value>(),
             std::make_shared<const Value>(std::move(value))
         };
-        return snapshot->prepare(entry->descriptor().type, input);
+        return snapshot->prepare(views::ViewTypeId{entry->descriptor().type.name()}, input);
     }
     // These fixtures deliberately borrow an explicit interaction to inspect its gesture lifetime.
     // Production content factories instead construct the complete owner from ContentViewInput.
     template <class Create>
     auto fixtureFactory(views::ViewTypeId type, Create create)
     {
-        return std::make_shared<views::ViewFactoryEntry>(
+        return views::ViewFactoryEntry::create(
             contracts::CodeLease::builtin(),
-            views::ViewFactoryDescriptor{std::move(type), "Borrowed fixture", lux::cxx::typeToken<std::monostate>()},
+            views::ViewFactoryDescriptor{type.view(), "Borrowed fixture", lux::cxx::typeToken<std::monostate>()},
             [create = std::move(create)](const views::ViewFactoryInput& input) mutable
                 -> views::ViewFactoryResult<views::DetachedView> {
                 auto view = create(input);

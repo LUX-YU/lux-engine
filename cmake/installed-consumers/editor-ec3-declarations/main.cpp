@@ -1,5 +1,6 @@
 #include <lux/engine/editor/commands/CommandRegistry.hpp>
 #include <lux/engine/editor/sessions/SessionFactory.hpp>
+#include <lux/engine/editor/views/ViewFactory.hpp>
 #include <cassert>
 #include <array>
 #include <cstdio>
@@ -7,6 +8,7 @@
 using namespace lux::editor::commands;
 using lux::editor::contracts::CodeLease;
 namespace sessions = lux::editor::sessions;
+namespace views = lux::editor::views;
 namespace
 {
     constexpr CommandDescriptor declaration{CommandIdView{"ec3.command"}, "Command", "Tests", "Ctrl+T"};
@@ -15,6 +17,14 @@ namespace
         sessions::SessionKindIdView{"ec3.source"}, "Source", discovery,
         sessions::SourceAuthoring{"ec3.source.format", 1, ".ec3"}
     };
+    constexpr sessions::SessionKindIdView view_kinds[]{sessions::SessionKindIdView{"ec3.source"}};
+    constexpr views::ViewFactoryDescriptor view_declaration{
+        views::ViewTypeIdView{"ec3.view"}, "View", lux::cxx::typeToken<std::monostate>(), 1, view_kinds
+    };
+    auto createView(const views::ViewFactoryInput&) -> views::ViewFactoryResult<views::DetachedView>
+    {
+        std::abort(); // Selection does not construct or register a Root node.
+    }
     auto decode(const sessions::SessionLoadInput&, std::span<const std::byte>, std::stop_token)
         -> sessions::SessionFactoryResult<sessions::SessionPreparation>
     {
@@ -100,6 +110,31 @@ int main()
     assert(sources && sources->find({"ec3.source"}) && sources->find({"ec3.dynamic.source"}));
     assert(sources->selectSource("ec3.dynamic.format", 2) && !sources->selectSource("ec3.dynamic.format", 1));
     assert(!sessions::SessionFactorySnapshot::create({source, source}));
+    auto view = views::ViewFactoryEntry::bind<view_declaration>(CodeLease::builtin(), createView);
+    assert(&view->descriptor() == &view_declaration);
+    assert(view->descriptor().content_kinds.data() == view_kinds);
+    std::shared_ptr<views::ViewFactoryEntry> dynamic_view;
+    {
+        std::string type{"ec3.dynamic.view"}, label{"Dynamic view"}, kind{"ec3.dynamic.source"}, binding{"Binding"};
+        const std::array kinds{sessions::SessionKindIdView{kind}};
+        dynamic_view = views::ViewFactoryEntry::create(
+            CodeLease::builtin(), {views::ViewTypeIdView{type}, label, {42, binding}, 2, kinds}, createView
+        );
+        type.assign(4096, 'x');
+        label.clear(); kind.clear(); binding.clear();
+    }
+    const auto& view_info = dynamic_view->descriptor();
+    assert(view_info.type.name() == "ec3.dynamic.view" && view_info.label == "Dynamic view");
+    assert(view_info.binding_type.name() == "Binding" && view_info.input_version == 2);
+    assert(view_info.content_kinds.size() == 1 && view_info.content_kinds[0].name() == "ec3.dynamic.source");
+    auto views_snapshot = views::ViewFactorySnapshot::create({view, dynamic_view});
+    assert(views_snapshot && views_snapshot->selectContent({"ec3.source"}));
+    assert(*views_snapshot->selectContent({"ec3.dynamic.source"}) == views::ViewTypeId{"ec3.dynamic.view"});
+    assert(!views_snapshot->selectContent({"absent"}));
+    assert(!views::ViewFactorySnapshot::create({view, view}));
+    // Dynamic arrays and TypeToken names are both part of the one frozen descriptor owner.
+    dynamic_view.reset();
+    assert(views_snapshot->entries()[1]->descriptor().content_kinds[0].name() == "ec3.dynamic.source");
     std::printf("PASS installed descriptor lifetime: Descriptor=%zu Entry=%zu Handle=%zu\n",
                 sizeof(CommandDescriptor), sizeof(CommandEntry), sizeof(CommandHandle));
 #endif

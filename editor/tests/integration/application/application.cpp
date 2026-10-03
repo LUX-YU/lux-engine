@@ -1,3 +1,4 @@
+#include <array>
 #include <lux/engine/material/graph/Nodes.hpp>
 #include <lux/engine/editor/application/EditorApplicationImpl.hpp>
 #include <lux/engine/editor/desktop/DesktopTestAccess.hpp>
@@ -732,11 +733,12 @@ int main(int argc, char** argv)
         copy(draft.components, previous_catalog.components());
         copy(draft.configurations, previous_catalog.configurations());
         bool refuse_view{};
-        draft.views.push_back(std::make_shared<views::ViewFactoryEntry>(
+        draft.views.push_back(views::ViewFactoryEntry::create(
             contracts::CodeLease::builtin(),
             views::ViewFactoryDescriptor{
-                views::ViewTypeId{"test.comparison"}, "Comparison", cxx::typeToken<views::ContentViewInput>(), 1,
-                {{"lux.editor.material"}, {"lux.editor.flowforge"}}, false
+                views::ViewTypeIdView{"test.comparison"}, "Comparison", cxx::typeToken<views::ContentViewInput>(), 1,
+                std::array{sessions::SessionKindIdView{"lux.editor.material"},
+                           sessions::SessionKindIdView{"lux.editor.flowforge"}}, false
             },
             [&](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView> {
                 const auto& binding = *static_cast<const views::ContentViewInput*>(input.binding());
@@ -1293,10 +1295,10 @@ int main(int argc, char** argv)
     failing_draft.sessions.assign(factories.begin(), factories.end());
     for (const auto& entry : original_factories.views().entries())
     {
-        if (entry->descriptor().type != views::ViewTypeId{"lux.editor.material"})
+        if (entry->descriptor().type != views::ViewTypeIdView{"lux.editor.material"})
             failing_draft.views.push_back(entry);
         else
-            failing_draft.views.push_back(std::make_shared<views::ViewFactoryEntry>(
+            failing_draft.views.push_back(views::ViewFactoryEntry::create(
                 contracts::CodeLease::builtin(),
                 entry->descriptor(),
                 [](const views::ViewFactoryInput&) -> views::ViewFactoryResult<views::DetachedView> {

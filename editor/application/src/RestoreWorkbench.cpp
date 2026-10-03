@@ -102,7 +102,7 @@ namespace lux::editor::application
                 if (view.content.sessions.empty())
                     continue;
                 const auto factory = std::ranges::find_if(catalog.views().entries(), [&](const auto& entry) {
-                    return entry->descriptor().type == view.type &&
+                    return entry->descriptor().type == view.type.view() &&
                            entry->descriptor().binding_type == cxx::typeToken<views::ContentViewInput>();
                 });
                 if (factory == catalog.views().entries().end())

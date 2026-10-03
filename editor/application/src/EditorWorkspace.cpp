@@ -170,10 +170,10 @@ namespace lux::editor::application
         };
         recovery_command("lux.editor.recovery.capture", "Record content locations", CaptureRecovery{});
         recovery_command("lux.editor.recovery.restore", "Restore recorded content", RestoreRecovery{});
-        draft.views.push_back(std::make_shared<views::ViewFactoryEntry>(
+        draft.views.push_back(views::ViewFactoryEntry::create(
             contracts::CodeLease::builtin(),
             views::ViewFactoryDescriptor{
-                views::ViewTypeId{"lux.editor.workspace"},
+                views::ViewTypeIdView{"lux.editor.workspace"},
                 "Workspace",
                 cxx::typeToken<std::monostate>()
             },

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/cxx/compile_time/expected.hpp>
+#include <lux/cxx/core/StableNameId.hpp>
 #include <cstdint>
 #include <limits>
 #include <string>
@@ -37,6 +38,8 @@ namespace lux::editor::sessions
         }
         friend bool operator==(SessionId, SessionId) noexcept = default;
     };
+    struct SessionKindIdTag;
+    using SessionKindIdView = cxx::StableNameIdView<SessionKindIdTag>;
     struct SessionKindId final
     {
         std::string name;

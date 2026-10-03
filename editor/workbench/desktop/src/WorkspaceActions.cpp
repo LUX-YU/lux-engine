@@ -79,7 +79,7 @@ namespace lux::editor::desktop
                 -> views::ViewFactoryResult<views::ViewFactoryInput> {
                 const auto entries = catalog.entries();
                 const auto factory = std::ranges::find_if(entries, [&](const auto& entry) {
-                    return entry->descriptor().type == type;
+                    return entry->descriptor().type == type.view();
                 });
                 if (factory == entries.end())
                     return cxx::unexpected(views::ViewFactoryFailure{

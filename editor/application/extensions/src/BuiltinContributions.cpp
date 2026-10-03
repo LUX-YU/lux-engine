@@ -1,3 +1,4 @@
+#include <array>
 #include <lux/engine/editor/extensions/BuiltinContributions.hpp>
 #include <lux/engine/editor/scene/SceneView.hpp>
 #include <lux/engine/editor/scene/SceneSessionFactory.hpp>
@@ -104,10 +105,11 @@ namespace lux::editor::extensions
             Create create
         )
         {
-            return std::make_shared<views::ViewFactoryEntry>(
+            return views::ViewFactoryEntry::create(
                 contracts::CodeLease::builtin(),
                 views::ViewFactoryDescriptor{
-                    std::move(type), std::move(label), cxx::typeToken<Input>(), 1, {std::move(kind)}
+                    type.view(), label, cxx::typeToken<Input>(), 1,
+                    std::array{sessions::SessionKindIdView{kind.name}}
                 },
                 [create = std::move(create)](const views::ViewFactoryInput& input
                 ) mutable -> views::ViewFactoryResult<views::DetachedView> {
@@ -152,10 +154,10 @@ namespace lux::editor::extensions
     )
     {
         auto create = std::make_shared<ContentCreation>(std::move(receiver));
-        return std::make_shared<views::ViewFactoryEntry>(
+        return views::ViewFactoryEntry::create(
             contracts::CodeLease::builtin(),
             views::ViewFactoryDescriptor{
-                views::ViewTypeId{"lux.editor.scene.creation"}, "New Scene", cxx::typeToken<std::monostate>()
+                views::ViewTypeIdView{"lux.editor.scene.creation"}, "New Scene", cxx::typeToken<std::monostate>()
             },
             [configuration = std::move(configuration), create](const views::ViewFactoryInput& input)
                 -> views::ViewFactoryResult<views::DetachedView> {

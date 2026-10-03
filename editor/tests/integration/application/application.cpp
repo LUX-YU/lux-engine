@@ -1140,7 +1140,7 @@ int main(int argc, char** argv)
     settle_creation(*impl.project_creation_);
     assert(impl.project_creation_->progress().committed && !impl.project_creation_->progress().failure);
     assert(std::filesystem::exists(minimal / "Project.luxproject") && !std::filesystem::exists(minimal / "Content"));
-    assert(readProjectOpenData(minimal / "Project.luxproject"));
+    assert(prepareProjectOpen(minimal / "Project.luxproject"));
     for (const auto preset :
          {editor::scene::ESceneContentPreset::TWO_DIMENSIONAL, editor::scene::ESceneContentPreset::THREE_DIMENSIONAL})
     {
@@ -1181,7 +1181,7 @@ int main(int argc, char** argv)
         if (creation.progress().failure)
             std::cerr << creation.progress().failure->domain << '\n';
         assert(creation.progress().committed && !creation.progress().failure);
-        assert(readProjectOpenData(destination / "Project.luxproject"));
+        assert(prepareProjectOpen(destination / "Project.luxproject"));
         assert(std::filesystem::exists(destination / "Content/Beginner/Main.scene"));
     }
     // Failed creation of an existing directory never overwrites its manifest or adopts a false commit.
@@ -1189,11 +1189,11 @@ int main(int argc, char** argv)
     auto rejected_requests = rejected_creation.requests();
     assert(rejected_requests.select({}));
     settle_creation(rejected_creation);
-    const auto original_manifest = readProjectOpenData(minimal / "Project.luxproject");
+    const auto original_manifest = prepareProjectOpen(minimal / "Project.luxproject");
     assert(rejected_requests.create({std::filesystem::absolute(minimal), "Overwrite", "", {}}));
     settle_creation(rejected_creation);
     assert(rejected_creation.progress().failure && !rejected_creation.progress().committed);
-    assert(readProjectOpenData(minimal / "Project.luxproject")->manifest.name == original_manifest->manifest.name);
+    assert(prepareProjectOpen(minimal / "Project.luxproject")->manifest().name == original_manifest->manifest().name);
     std::cout
         << "Formal project creation: selected V7 plugins, minimal/2D/3D real files, closed view, conflict retained\n";
 
@@ -1267,8 +1267,8 @@ int main(int argc, char** argv)
     std::cout << "Application: formal service assembly, frames, and asynchronous exit drain complete\n";
     // Reopen the actual Builder-created project rather than inventing a catalog entry.
     const auto default_path = root / "Initial3D/Project.luxproject";
-    const auto default_project = readProjectOpenData(default_path);
-    assert(default_project && !default_project->manifest.default_scene.empty());
+    const auto default_project = prepareProjectOpen(default_path);
+    assert(default_project && !default_project->manifest().default_scene.empty());
     // Earlier local activity fixtures still borrow this application execution owner until scope exit.
     config.project_file = default_path;
     auto initial = EditorApplication::create(config);

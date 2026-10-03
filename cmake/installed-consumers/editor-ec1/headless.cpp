@@ -48,7 +48,7 @@ int main(int argc, char** argv)
     process::TaskScope tasks{runtime};
     auto messages = take(object::ObjectMessageQueue::create(32));
     asset::AssetVfs vfs;
-    auto data = take(readProjectOpenData(root / "Project.luxproject"));
+    auto data = take(prepareProjectOpen(root / "Project.luxproject"));
     auto project = take(ProjectStorage::open(data, vfs, take(runtime.blocking()), tasks, messages.dispatcherRef()));
     const auto catalog = take(project->catalogModel().snapshot());
     const auto* entry = catalog.find(id);

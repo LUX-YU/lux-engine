@@ -287,30 +287,22 @@ namespace lux::editor::application
                     }
                     else
                     {
-                        auto encoded = encodeProjectManifest(candidate->manifest);
-                        if (!encoded)
-                            report.failure = applicationFailure("catalog.encode", encoded.error()).value();
+                        auto target = files_.resolve(candidate->plan().manifestPath());
+                        if (!target)
+                            report.failure = applicationFailure("catalog.target", target.error()).value();
                         else
                         {
-                            auto target = files_.resolve(candidate->manifest_path);
-                            if (!target)
-                                report.failure = applicationFailure("catalog.target", target.error()).value();
+                            target->expected_version = candidate->plan().beforeManifestDigest();
+                            auto ticket = persistence::publishEncodedArtifact(
+                                writes_, std::move(*target),
+                                persistence::EncodedArtifact{candidate->plan().manifestBytes()}
+                            );
+                            if (!ticket)
+                                report.failure = applicationFailure("catalog.publish", ticket.error()).value();
                             else
                             {
-                                target->expected_version = candidate->before_manifest_digest;
-                                const auto bytes = std::as_bytes(std::span{encoded->data(), encoded->size()});
-                                auto ticket = persistence::publishEncodedArtifact(
-                                    writes_,
-                                    std::move(*target),
-                                    persistence::EncodedArtifact{std::vector<std::byte>{bytes.begin(), bytes.end()}}
-                                );
-                                if (!ticket)
-                                    report.failure = applicationFailure("catalog.publish", ticket.error()).value();
-                                else
-                                {
-                                    report.catalog = std::move(*candidate);
-                                    report.catalog_ticket = *ticket;
-                                }
+                                report.catalog = std::move(*candidate);
+                                report.catalog_ticket = *ticket;
                             }
                         }
                     }
@@ -329,12 +321,13 @@ namespace lux::editor::application
                     if (auto* receipt = std::get_if<persistence::CommitReceipt>(&*written->outcome))
                     {
                         ProjectPublicationReceipt adopted{
-                            report.catalog->manifest,
+                            report.catalog->plan().manifest(),
                             receipt->version,
                             1,
                             {},
                             {{report.asset.source_path, published->version}},
-                            {}
+                            {},
+                            report.catalog->sharePlan()
                         };
                         auto result = project_->adoptPublication(*report.catalog, adopted);
                         if (!result)

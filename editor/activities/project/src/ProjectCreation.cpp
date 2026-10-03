@@ -4,7 +4,7 @@
 
 namespace lux::editor::detail
 {
-    EditorResult<ProjectPublication> prepareProjectCreation(
+    ProjectPublicationPlan::PrepareResult prepareProjectCreation(
         std::filesystem::path directory,
         ProjectBuildConfig config,
         std::stop_token stop
@@ -21,11 +21,8 @@ namespace lux::editor::detail
             return lux::cxx::unexpected(
                 EditorFailure{EEditorError::INVALID_ARGUMENT, "project.build", 0, {}, built.error()}
             );
-        ProjectPublication result;
-        result.root = std::move(directory);
-        result.manifest_path = "Project.luxproject";
-        result.before_manifest_digest = "missing";
-        result.manifest = {built->project_id, std::move(built->name), {}, {}, std::move(built->plugins)};
+        ProjectManifest manifest{built->project_id, std::move(built->name), {}, {}, std::move(built->plugins)};
+        std::vector<ProjectFileChange> files;
         if (built->initial_scene)
         {
             const auto& initial = *built->initial_scene;
@@ -45,33 +42,28 @@ namespace lux::editor::detail
                 {},
                 initial.mount_path
             };
-            result.manifest.default_scene = entry.source_path;
-            result.files.push_back({entry.source_path, "missing", bytes});
-            result.manifest.assets.push_back(std::move(entry));
+            manifest.default_scene = entry.source_path;
+            files.push_back({entry.source_path, "missing", bytes});
+            manifest.assets.push_back(std::move(entry));
         }
-        auto manifest = encodeProjectManifest(result.manifest);
-        if (!manifest)
-            return lux::cxx::unexpected(
-                EditorFailure{EEditorError::SOURCE_FAILURE, "project.manifest", 0, {}, manifest.error()}
-            );
-        auto owner = std::make_shared<const std::string>(std::move(*manifest));
-        result.manifest_bytes = lux::cxx::SharedBytes<>::fromOwner(owner, std::as_bytes(std::span(*owner)));
-        return result;
+        return ProjectPublicationPlan::prepare(
+            std::move(directory), "Project.luxproject", "missing", std::move(manifest), std::move(files)
+        );
     }
 
     EditorResult<ProjectCreationResult> publishNewProject(
-        ProjectPublication& publication,
+        std::shared_ptr<const ProjectPublicationPlan> plan,
         std::stop_token stop
     ) noexcept
     {
+        if (!plan)
+            return cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "project.create.plan"});
         if (stop.stop_requested())
             return lux::cxx::unexpected(EditorFailure{EEditorError::CANCELLED, "project.create"});
         std::error_code error;
-        publication.root = std::filesystem::absolute(publication.root, error).lexically_normal();
-        if (error || publication.root.filename().empty())
-            return lux::cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "project.create.directory"});
+        const auto& publication = *plan;
         // This operation claims exactly one new directory. Existing empty directories are conflicts too.
-        const bool claimed = std::filesystem::create_directory(publication.root, error);
+        const bool claimed = std::filesystem::create_directory(publication.root(), error);
         if (!claimed)
             return lux::cxx::unexpected(EditorFailure{
                 EEditorError::SOURCE_FAILURE,
@@ -79,22 +71,22 @@ namespace lux::editor::detail
                 static_cast<std::uint64_t>(error.value()),
                 "The destination must be a new directory"
             });
-        auto lease = ProjectWriteLease::acquire(publication.root);
+        auto lease = ProjectWriteLease::acquire(publication.root());
         if (!lease)
             return lux::cxx::unexpected(std::move(lease.error()));
         if (!lease->writable())
             return lux::cxx::unexpected(EditorFailure{EEditorError::BUSY, "project.create.writer"});
         ProjectCreationResult result{
-            publication.root / publication.manifest_path,
-            publication.manifest.id,
-            ProjectPublicationFailure{EProjectPublicationError::JOURNAL, publication.root}
+            publication.root() / publication.manifestPath(),
+            publication.manifest().id,
+            ProjectPublicationFailure{EProjectPublicationError::JOURNAL, publication.root()}
         };
-        auto published = publishProjectFiles(publication, stop);
+        auto published = publishProjectFiles(plan, stop);
         if (!published)
         {
             // Recovery checks the exact files and digests owned by our journal. Never recursively
             // remove the directory: another application may already have written unrelated files.
-            auto recovered = recoverProjectFiles(publication.root);
+            auto recovered = recoverProjectFiles(publication.root());
             if (!recovered)
                 return lux::cxx::unexpected(std::move(recovered.error()));
             return lux::cxx::unexpected(std::move(published.error()));

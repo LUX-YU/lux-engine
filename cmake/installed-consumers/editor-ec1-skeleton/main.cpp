@@ -155,7 +155,7 @@ int main(int argc, char **argv)
                                                                .blocking = process::BlockingSchedulerConfig{1, 32}}));
         process::TaskScope tasks{runtime};
         asset::AssetVfs vfs;
-        auto project_data = take(readProjectOpenData(root / "Project.luxproject"));
+        auto project_data = take(prepareProjectOpen(root / "Project.luxproject"));
         auto project =
             take(ProjectStorage::open(project_data, vfs, take(runtime.blocking()), tasks, messages.dispatcherRef()));
         auto catalog = take(project->catalogModel().snapshot());
@@ -494,23 +494,24 @@ int main(int argc, char **argv)
         until([&] { return app->phase() == EApplicationPhase::RELEASED; });
         app.reset();
         // Removing the provider selection leaves both authored files and catalog entries intact.
-        auto reopened = take(readProjectOpenData(root / "Project.luxproject"));
-        std::erase_if(reopened.manifest.plugins, [](const auto &plugin) { return plugin.id == "example.skeleton"; });
+        auto reopened = take(prepareProjectOpen(root / "Project.luxproject"));
+        auto next_manifest = reopened.manifest();
+        std::erase_if(next_manifest.plugins, [](const auto &plugin) { return plugin.id == "example.skeleton"; });
         const auto material_id = asset::AssetId{*uuids::uuid::from_string("691f06e3-8618-4dfe-ae93-4c06b2b0e172")};
         const std::string material_path = "Content/Characters/other.material";
         const auto material_bytes = take(lux::material::encodeMaterialSource({material_id, "Other asset", {}}));
         write(root / material_path, std::as_bytes(std::span{material_bytes}));
-        reopened.manifest.assets.push_back(
+        next_manifest.assets.push_back(
             {material_id, "lux.material.source", material_path, {}, {}, {}, material_path});
-        writeManifest(root, reopened.manifest);
+        writeManifest(root, next_manifest);
         std::filesystem::create_directories(root / "missing-user");
         auto missing = take(EditorApplication::create({.project_file = root / "Project.luxproject",
                                                        .installation = sdk,
                                                        .offscreen = true,
                                                        .user_directory = root / "missing-user"}));
         // Querying through an independent immutable catalog does not need any provider to decode its bytes.
-        const auto catalog_only = take(readProjectOpenData(root / "Project.luxproject"));
-        assert(catalog_only.manifest.assets.size() == 3);
+        const auto catalog_only = take(prepareProjectOpen(root / "Project.luxproject"));
+        assert(catalog_only.manifest().assets.size() == 3);
         verifyFile(root / "Content/Characters/copied.luxskeleton", rebound_id, "hip", 4);
         const auto absent = missing->open(facts.project->reference(rebound_id));
         assert(!absent && absent.error().domain == "asset.authoring");

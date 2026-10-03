@@ -8,7 +8,12 @@ Author state remains in authoring; workbench and application are consumers, neve
 
 ProjectStorage 是已打开项目的清单、源/产物目录、写锁与发布状态 owner。
 它借用 EngineContext 的 AssetVfs，拥有自己的挂载登记；不拥有 Renderer、线程或 Pane。
-后台 readProjectOpenData 产生 ProjectOpenData，在 Main 安全点安装到 ProjectStorage。
+后台 prepareProjectOpen 产生 PreparedProjectOpen，在 Main 安全点安装到 ProjectStorage。
+
+准备成功的 ProjectPublicationPlan 私有保存 manifest 与其一次编码字节，向 worker 提供共享只读值。
+PreparedProjectPublication 独占原 ProjectStorage 的发布占用，移动只转移一次，旧载荷清理完成后才释放占用。
+收据必须对应原计划身份和版本前提；Unknown、已写入但未采用等事实继续由原 Operation 持有。
+PreparedProjectOpen 是一次消费的打开结果，包含写锁与准备挂载；它不是可修改的项目描述。
 
 createProject 接收 ProjectBuildConfig 和原生目标路径，复用 Process CPU/Blocking/Main：
 编码与摘要 → 原子取得新目录创建权 → journal 发布源文件 → 最后提交根清单 → Main 采用结果。

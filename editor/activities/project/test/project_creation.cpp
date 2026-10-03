@@ -1,5 +1,5 @@
 #include <lux/engine/editor/storage/ProjectCreation.hpp>
-#include <lux/engine/editor/storage/ProjectOpenData.hpp>
+#include <lux/engine/editor/storage/PreparedProjectOpen.hpp>
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
 #include <lux/engine/object/ObjectDispatcher.hpp>
 #include <lux/engine/editor/project/ProjectBuilder.hpp>
@@ -41,8 +41,8 @@ namespace
                 output << old_bytes;
                 assert(output);
             }
-            auto opened = readProjectOpenData(file);
-            assert(opened && opened->manifest == *old);
+            auto opened = prepareProjectOpen(file);
+            assert(opened && opened->manifest() == *old);
             std::ifstream input(file, std::ios::binary);
             assert(std::string(std::istreambuf_iterator<char>(input), {}) == old_bytes);
             const auto migrated = encodeProjectManifest(*old);
@@ -123,8 +123,8 @@ int main(int argc, char** argv)
     assert(std::filesystem::exists(project_file));
     assert(!std::filesystem::exists(project_file.parent_path() / "Content"));
     {
-        auto source = readProjectOpenData(project_file);
-        assert(source && source->manifest.assets.empty() && source->manifest.name == "Empty");
+        auto source = prepareProjectOpen(project_file);
+        assert(source && source->manifest().assets.empty() && source->manifest().name == "Empty");
     }
     // An existing directory, including an empty one, never transfers ownership to this operation.
     std::filesystem::create_directory(root / "existing");
@@ -188,11 +188,11 @@ int main(int argc, char** argv)
     await([&] { return created.has_value(); });
     assert(*created);
     {
-        auto opened = readProjectOpenData((*created)->project_file);
-        assert(opened && opened->manifest.assets.size() == 1);
-        assert(opened->manifest.default_scene == "Content/我的包/Main.luxscene");
-        assert(opened->manifest.assets.front().mount_path == "我的包/Main");
-        const auto path = opened->file.parent_path() / std::filesystem::u8path(opened->manifest.default_scene);
+        auto opened = prepareProjectOpen((*created)->project_file);
+        assert(opened && opened->manifest().assets.size() == 1);
+        assert(opened->manifest().default_scene == "Content/我的包/Main.luxscene");
+        assert(opened->manifest().assets.front().mount_path == "我的包/Main");
+        const auto path = opened->file().parent_path() / std::filesystem::u8path(opened->manifest().default_scene);
         std::ifstream input(path, std::ios::binary | std::ios::ate);
         assert(input);
         auto bytes = std::make_shared<std::vector<std::byte>>(std::size_t(input.tellg()));

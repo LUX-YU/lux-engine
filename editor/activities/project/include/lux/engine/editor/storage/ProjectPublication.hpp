@@ -102,26 +102,55 @@ namespace lux::editor
         std::optional<std::string> default_scene;
     };
 
-    struct LUX_EDITOR_STORAGE_PUBLIC ProjectPublication final
+    // Validated, encoded once, and shared read-only. It carries no live Project authority.
+    class LUX_EDITOR_STORAGE_PUBLIC ProjectPublicationPlan final
     {
-        ProjectPublication() = default;
-        ~ProjectPublication();
-        ProjectPublication(ProjectPublication&&) noexcept;
-        ProjectPublication& operator=(ProjectPublication&&) noexcept;
-        ProjectPublication(const ProjectPublication&) = delete;
-        ProjectPublication& operator=(const ProjectPublication&) = delete;
+    public:
+        using PrepareResult = EditorResult<std::shared_ptr<const ProjectPublicationPlan>>;
+        [[nodiscard]] static PrepareResult prepare(
+            std::filesystem::path root,
+            std::string manifest_path,
+            std::string before_manifest_digest,
+            ProjectManifest manifest,
+            std::vector<ProjectFileChange> files,
+            std::vector<std::string> package_paths = {}
+        );
+        [[nodiscard]] const std::filesystem::path& root() const noexcept { return root_; }
+        [[nodiscard]] const std::string& manifestPath() const noexcept { return manifest_path_; }
+        [[nodiscard]] const std::string& beforeManifestDigest() const noexcept { return before_manifest_digest_; }
+        [[nodiscard]] const ProjectManifest& manifest() const noexcept { return manifest_; }
+        [[nodiscard]] const cxx::SharedBytes<>& manifestBytes() const noexcept { return manifest_bytes_; }
+        [[nodiscard]] std::span<const ProjectFileChange> files() const noexcept { return files_; }
+        [[nodiscard]] std::span<const std::string> packagePaths() const noexcept { return package_paths_; }
 
-        std::filesystem::path root;
-        std::string manifest_path;
-        std::string before_manifest_digest;
-        ProjectManifest manifest;
-        lux::cxx::SharedBytes<> manifest_bytes; // Optional CPU-encoded bytes of this immutable publication.
-        std::vector<ProjectFileChange> files;
-        std::vector<std::string> package_paths;
+    private:
+        ProjectPublicationPlan() = default;
+        std::filesystem::path root_;
+        std::string manifest_path_;
+        std::string before_manifest_digest_;
+        ProjectManifest manifest_;
+        cxx::SharedBytes<> manifest_bytes_;
+        std::vector<ProjectFileChange> files_;
+        std::vector<std::string> package_paths_;
+    };
+
+    // The reservation stays on the Project owner lane. Workers may own only sharePlan().
+    class LUX_EDITOR_STORAGE_PUBLIC PreparedProjectPublication final
+    {
+    public:
+        PreparedProjectPublication() noexcept = default;
+        ~PreparedProjectPublication();
+        PreparedProjectPublication(PreparedProjectPublication&&) noexcept;
+        PreparedProjectPublication& operator=(PreparedProjectPublication&&) noexcept;
+        PreparedProjectPublication(const PreparedProjectPublication&) = delete;
+        PreparedProjectPublication& operator=(const PreparedProjectPublication&) = delete;
+        [[nodiscard]] const ProjectPublicationPlan& plan() const noexcept { return *plan_; }
+        [[nodiscard]] std::shared_ptr<const ProjectPublicationPlan> sharePlan() const noexcept { return plan_; }
 
     private:
         friend class ProjectStorage;
-        ProjectStorage* owner_{}; // The reservation lives on the Project owner lane; workers only borrow its data.
+        std::shared_ptr<const ProjectPublicationPlan> plan_;
+        ProjectStorage* owner_{};
     };
 
     struct ProjectPublicationReceipt final
@@ -132,13 +161,14 @@ namespace lux::editor
         EditorResult<void> cleanup;
         std::vector<std::pair<std::string, std::string>> file_digests;
         std::vector<ProjectPackage> packages;
+        std::shared_ptr<const ProjectPublicationPlan> plan;
     };
 
     // All three functions run on Blocking. Publication never adopts live Project state.
     [[nodiscard]] LUX_EDITOR_STORAGE_PUBLIC std::string projectContentDigest(std::span<const std::byte>);
     [[nodiscard]] LUX_EDITOR_STORAGE_PUBLIC EditorResult<std::string> projectFileDigest(const std::filesystem::path&);
     [[nodiscard]] LUX_EDITOR_STORAGE_PUBLIC EditorResult<ProjectPublicationReceipt> publishProjectFiles(
-        const ProjectPublication&,
+        std::shared_ptr<const ProjectPublicationPlan>,
         std::stop_token = {}
     );
     [[nodiscard]] LUX_EDITOR_STORAGE_PUBLIC EditorResult<void> recoverProjectFiles(const std::filesystem::path& root);

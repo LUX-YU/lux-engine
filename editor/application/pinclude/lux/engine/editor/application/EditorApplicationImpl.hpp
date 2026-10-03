@@ -94,7 +94,7 @@ namespace lux::editor::application
             std::optional<persistence::PersistenceResult<CompiledPackage>> encoded;
             std::optional<persistence::VPublicationOutcome> result;
             std::optional<EditorResult<ProjectPackage>> package;
-            std::optional<ProjectPublication> catalog;
+            std::optional<PreparedProjectPublication> catalog;
             std::optional<persistence::WriteTicket> catalog_ticket;
             std::optional<EditorFailure> failure;
             bool encoding{}, reading{}, settled{};
@@ -104,7 +104,7 @@ namespace lux::editor::application
             persistence::SaveId id;
             ProjectAssetEntry asset;
             std::optional<persistence::SaveOutcome> result;
-            std::optional<ProjectPublication> catalog;
+            std::optional<PreparedProjectPublication> catalog;
             std::optional<persistence::WriteTicket> catalog_ticket;
             std::optional<EditorFailure> failure;
         };
@@ -453,7 +453,7 @@ namespace lux::editor::application
         ~Impl();
         [[nodiscard]] EditorResult<void> admission() const noexcept;
         [[nodiscard]] EditorResult<void> applyLayout(workspace::DockLayout);
-        [[nodiscard]] EditorResult<void> assemble(ProjectOpenData&);
+        [[nodiscard]] EditorResult<void> assemble(PreparedProjectOpen&);
         [[nodiscard]] EditorResult<void> installContributions();
         [[nodiscard]] views::ViewFactoryResult<views::DetachedView> makeProjectView(lux::ui::PaneId);
         [[nodiscard]] commands::CommandResult<commands::CommandInvocation>

@@ -63,11 +63,11 @@ namespace lux::editor::application
         if (!user_key)
             return applicationFailure("preferences.path", user_key.error());
         config.user_directory = std::filesystem::u8path(*user_key).parent_path().parent_path().parent_path();
-        auto source = readProjectOpenData(config.project_file);
+        auto source = prepareProjectOpen(config.project_file);
         if (!source)
             return cxx::unexpected(source.error());
-        config.project_file = source->file;
-        auto plugins = loadProjectPlugins(source->file.parent_path(), source->manifest.plugins, config.installation);
+        config.project_file = source->file();
+        auto plugins = loadProjectPlugins(source->file().parent_path(), source->manifest().plugins, config.installation);
         if (!plugins)
             return applicationFailure("project.plugins", plugins.error());
         auto registrations = lux::project::readSceneRegistrations({}, plugins->libraries());
@@ -112,7 +112,7 @@ namespace lux::editor::application
             return cxx::unexpected(assembled.error());
         return std::unique_ptr<EditorApplication>(new EditorApplication(std::move(impl)));
     }
-    EditorResult<void> EditorApplication::Impl::assemble(ProjectOpenData& source)
+    EditorResult<void> EditorApplication::Impl::assemble(PreparedProjectOpen& source)
     {
         auto project = ProjectStorage::open(
             source,

@@ -1,11 +1,11 @@
-#include <lux/engine/editor/storage/ProjectOpenData.hpp>
+#include <lux/engine/editor/storage/PreparedProjectOpen.hpp>
 #include <lux/engine/editor/storage/ProjectPublication.hpp>
 #include <lux/engine/editor/PublicationProbe.hpp>
 #include <fstream>
 #include <unordered_set>
 namespace lux::editor
 {
-    EditorResult<ProjectOpenData> readProjectOpenData(const std::filesystem::path& file)
+    EditorResult<PreparedProjectOpen> prepareProjectOpen(const std::filesystem::path& file)
     {
         std::error_code error;
         const auto absolute = std::filesystem::absolute(file, error);
@@ -86,18 +86,20 @@ namespace lux::editor
             });
         }
 
-        ProjectOpenData result{std::move(*decoded), absolute, {}};
-        result.write_lease = std::move(*lease);
-        result.manifest_digest = projectContentDigest(std::as_bytes(std::span(bytes)));
+        PreparedProjectOpen result;
+        result.manifest_ = std::move(*decoded);
+        result.file_ = absolute;
+        result.write_lease_ = std::move(*lease);
+        result.manifest_digest_ = projectContentDigest(std::as_bytes(std::span(bytes)));
         std::unordered_set<std::string> loaded;
-        for (const auto& item : result.manifest.assets)
+        for (const auto& item : result.manifest_.assets)
         {
             auto source_digest = projectFileDigest(absolute.parent_path() / std::filesystem::u8path(item.source_path));
             if (!source_digest)
             {
                 return lux::cxx::unexpected(source_digest.error());
             }
-            result.source_digests.emplace_back(item.source_path, std::move(*source_digest));
+            result.source_digests_.emplace_back(item.source_path, std::move(*source_digest));
             if (item.cooked_path.empty() || !loaded.insert(item.cooked_path).second)
             {
                 continue;
@@ -114,9 +116,9 @@ namespace lux::editor
                 {
                     return lux::cxx::unexpected(digest.error());
                 }
-                result.source_digests.emplace_back(item.cooked_path, std::move(*digest));
+                result.source_digests_.emplace_back(item.cooked_path, std::move(*digest));
             }
-            result.mounts.push_back(std::move(*package));
+            result.mounts_.push_back(std::move(*package));
         }
         return result;
     }

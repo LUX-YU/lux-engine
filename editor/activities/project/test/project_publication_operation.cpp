@@ -8,6 +8,16 @@
 #include <fstream>
 #include <iostream>
 #include <thread>
+#include <type_traits>
+
+static_assert(!std::is_copy_constructible_v<lux::editor::PreparedProjectPublication>);
+static_assert(!std::is_copy_assignable_v<lux::editor::PreparedProjectPublication>);
+static_assert(std::is_nothrow_move_constructible_v<lux::editor::PreparedProjectPublication>);
+static_assert(std::is_nothrow_move_assignable_v<lux::editor::PreparedProjectPublication>);
+static_assert(!std::is_copy_constructible_v<lux::editor::PreparedProjectOpen>);
+static_assert(std::is_const_v<std::remove_reference_t<decltype(
+    std::declval<lux::editor::PreparedProjectPublication>().plan().manifest()
+)>>);
 
 namespace p = lux::editor::persistence;
 namespace
@@ -63,16 +73,96 @@ int main(int argc, char** argv)
     auto messages = object::ObjectMessageQueue::create(32);
     assert(messages);
     process::TaskScope tasks{*runtime};
-    auto source = readProjectOpenData(path);
+    auto source = prepareProjectOpen(path);
     assert(source);
     asset::AssetVfs assets;
     auto opened = ProjectStorage::open(*source, assets, *runtime->blocking(), tasks, messages->dispatcherRef());
     assert(opened);
     auto project = std::move(*opened);
+    assert(source->file().empty());
+    auto reopened = ProjectStorage::open(*source, assets, *runtime->blocking(), tasks, messages->dispatcherRef());
+    assert(!reopened && reopened.error().domain == "project.open.consumed");
     LostReceipt files{root};
     p::WriteCoordinator writes;
     p::SaveService saves{writes};
     p::SaveExecution execution{*runtime, saves, writes, files};
+    {
+        const auto original_manifest = project->manifest();
+        const auto revision = project->catalogRevision();
+        ProjectUpdate invalid;
+        invalid.files.push_back({"../outside", "missing", bytes("bad")});
+        assert(!project->preparePublication(invalid));
+        ProjectUpdate update;
+        auto prepared = project->preparePublication(update);
+        assert(prepared);
+        auto fixed = prepared->sharePlan();
+        const auto original_bytes = projectContentDigest(fixed->manifestBytes().view());
+        PreparedProjectPublication moved{std::move(*prepared)};
+        assert(!prepared->sharePlan() && moved.sharePlan() == fixed);
+        moved = std::move(moved); // Declared self-move is a no-op.
+        ProjectUpdate competitor;
+        const auto busy = project->preparePublication(competitor);
+        assert(!busy && busy.error().code == EEditorError::BUSY);
+        ProjectPublicationReceipt wrong;
+        wrong.manifest = fixed->manifest();
+        wrong.manifest_digest = original_bytes;
+        auto rejected = project->adoptPublication(moved, wrong); // Same values are not the same prepared plan.
+        assert(!rejected && rejected.error().domain == "project.publication.receipt");
+        wrong.plan = fixed;
+        wrong.manifest_digest = "not the planned bytes";
+        rejected = project->adoptPublication(moved, wrong);
+        assert(!rejected && project->manifest() == original_manifest && project->catalogRevision() == revision);
+        PreparedProjectPublication assigned;
+        assigned = std::move(moved);
+        assert(!moved.sharePlan() && assigned.sharePlan() == fixed);
+        assigned = {};
+        assert(project->preparePublication(competitor)); // A worker's fixed plan has no reservation authority.
+        assert(projectContentDigest(fixed->manifestBytes().view()) == original_bytes);
+    }
+    {
+        // Payload destructors run before the reservation is released, including move replacement.
+        bool cleaned{}, blocked{};
+        auto payload = std::shared_ptr<const std::string>(new std::string("payload"), [&](const std::string* text) {
+            ProjectUpdate reentrant;
+            const auto result = project->preparePublication(reentrant);
+            blocked = !result && result.error().code == EEditorError::BUSY;
+            cleaned = true;
+            delete text;
+        });
+        ProjectUpdate update;
+        update.files.push_back({
+            "Content/Cleanup.bin", "missing",
+            cxx::SharedBytes<>::fromOwner(payload, std::as_bytes(std::span(*payload)))
+        });
+        payload.reset();
+        auto prepared = project->preparePublication(update);
+        assert(prepared && !cleaned);
+        *prepared = {};
+        assert(cleaned && blocked);
+        ProjectUpdate available;
+        assert(project->preparePublication(available));
+    }
+    {
+        const auto second_root = root / "other";
+        std::filesystem::create_directory(second_root);
+        const auto second_path = second_root / "Project.luxproject";
+        { std::ofstream file(second_path); file << *encodeProjectManifest({id, "Other", {}, {}}); }
+        auto other_source = prepareProjectOpen(second_path);
+        assert(other_source);
+        auto other = ProjectStorage::open(*other_source, assets, *runtime->blocking(), tasks, messages->dispatcherRef());
+        assert(other);
+        ProjectUpdate first_update, second_update;
+        auto first = project->preparePublication(first_update);
+        auto second = (*other)->preparePublication(second_update);
+        assert(first && second);
+        *first = std::move(*second);
+        assert(project->preparePublication(first_update));
+        assert(!(*other)->preparePublication(second_update));
+        first = cxx::unexpected(EditorFailure{EEditorError::CANCELLED});
+        assert((*other)->preparePublication(second_update));
+        (*other)->requestClose();
+        assert((*other)->advanceClose().value());
+    }
     const auto advance = [&](ProjectPublicationOperation& operation, auto done) {
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
         while (!done())

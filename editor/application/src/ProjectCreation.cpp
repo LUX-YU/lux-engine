@@ -290,7 +290,7 @@ namespace lux::editor::application
                     auto prepared = stdexec::then(
                         stdexec::schedule(cpu),
                         [draft = std::move(draft), environment, reporter](
-                        ) mutable -> EditorResult<ProjectPublication> {
+                        ) mutable -> ProjectPublicationPlan::PrepareResult {
                             reporter.setPhase("Prepare project");
                             auto directory = draft.directory;
                             auto config = buildProject(std::move(draft));

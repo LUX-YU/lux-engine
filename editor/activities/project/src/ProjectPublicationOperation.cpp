@@ -24,14 +24,13 @@ namespace lux::editor
         };
         struct Prepared final
         {
-            cxx::SharedBytes<> manifest;
             std::vector<ProjectPackage> packages;
         };
         ProjectStorage& project_;
         WriteCoordinator& writes_;
         IArtifactStore& files_;
         SaveExecution& execution_;
-        ProjectPublication publication_;
+        PreparedProjectPublication publication_;
         ProjectPublicationReceipt receipt_;
         VPublicationStatus status_;
         EStage stage_{EStage::FILES};
@@ -47,12 +46,18 @@ namespace lux::editor
             WriteCoordinator& writes,
             IArtifactStore& files,
             SaveExecution& execution,
-            ProjectPublication publication
+            PreparedProjectPublication publication
         )
             : project_(project), writes_(writes), files_(files), execution_(execution),
               publication_(std::move(publication)), tasks_(runtime)
         {
-            receipt_.manifest = publication_.manifest;
+            if (!publication_.sharePlan())
+            {
+                status_ = EditorFailure{EEditorError::INVALID_ARGUMENT, "project.publication.plan"};
+                return;
+            }
+            receipt_.manifest = publication_.plan().manifest();
+            receipt_.plan = publication_.sharePlan();
             // A failed manifest must leave the old project's visible sources intact.
             // Mutable author saves use SaveService, not this immutable package transaction.
             if (auto valid = validateInput(); !valid)
@@ -60,17 +65,15 @@ namespace lux::editor
         }
         EditorResult<void> validateInput() const
         {
-            if (publication_.files.size() >= 4096)
-                return cxx::unexpected(EditorFailure{EEditorError::CAPACITY, "project.publication.files"});
-            for (const auto& file : publication_.files)
+            if (!publication_.sharePlan())
+                return cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "project.publication.plan"});
+            for (const auto& file : publication_.plan().files())
             {
                 if (file.before_digest != "missing")
                     return cxx::unexpected(publicationFailure(
                         "project.publication.mutable-input",
                         PersistenceFailure{EPersistenceError::INVALID_ARGUMENT, file.path}
                     ));
-                if (file.bytes.size() > 512ull * 1024 * 1024)
-                    return cxx::unexpected(EditorFailure{EEditorError::CAPACITY, "project.publication.bytes"});
             }
             return {};
         }
@@ -147,7 +150,7 @@ namespace lux::editor
                     }
                     else
                     {
-                        receipt_.file_digests.emplace_back(publication_.files[next_file_].path, published->version);
+                        receipt_.file_digests.emplace_back(publication_.plan().files()[next_file_].path, published->version);
                         ++next_file_;
                     }
                 }
@@ -176,9 +179,9 @@ namespace lux::editor
                 return;
             if (stage_ == EStage::FILES)
             {
-                if (next_file_ < publication_.files.size())
+                if (next_file_ < publication_.plan().files().size())
                 {
-                    const auto& file = publication_.files[next_file_];
+                    const auto& file = publication_.plan().files()[next_file_];
                     auto target = files_.resolve(file.path);
                     if (!target)
                     {
@@ -219,29 +222,19 @@ namespace lux::editor
                     auto accepted = tasks_.submit(
                         {"Prepare project catalog", "Storage"},
                         [scheduler = *blocking,
-                         root = publication_.root,
-                         paths = publication_.package_paths,
-                         manifest = publication_.manifest](process::TaskReporter) mutable noexcept {
+                         plan = publication_.sharePlan()](process::TaskReporter) mutable noexcept {
                             return stdexec::then(
                                 stdexec::schedule(scheduler),
-                                [root = std::move(root), paths = std::move(paths), manifest = std::move(manifest)](
+                                [plan = std::move(plan)](
                                 ) -> EditorResult<Prepared> {
                                     Prepared result;
-                                    for (const auto& path : paths)
+                                    for (const auto& path : plan->packagePaths())
                                     {
-                                        auto package = readProjectPackage(root, path);
+                                        auto package = readProjectPackage(plan->root(), path);
                                         if (!package)
                                             return cxx::unexpected(package.error());
                                         result.packages.push_back(std::move(*package));
                                     }
-                                    auto encoded = encodeProjectManifest(manifest);
-                                    if (!encoded)
-                                        return cxx::unexpected(
-                                            publicationFailure("project.manifest.encode", encoded.error())
-                                        );
-                                    auto bytes = std::make_shared<const std::string>(std::move(*encoded));
-                                    result.manifest =
-                                        cxx::SharedBytes<>::fromOwner(bytes, std::as_bytes(std::span(*bytes)));
                                     return result;
                                 }
                             );
@@ -271,18 +264,17 @@ namespace lux::editor
                     return;
                 }
                 receipt_.packages = std::move((**prepared_).packages);
-                publication_.manifest_bytes = std::move((**prepared_).manifest);
                 stage_ = EStage::MANIFEST;
             }
-            auto target = files_.resolve(publication_.manifest_path);
+            auto target = files_.resolve(publication_.plan().manifestPath());
             if (!target)
             {
                 status_ = publicationFailure("project.manifest.target", target.error());
                 return;
             }
-            target->expected_version = publication_.before_manifest_digest;
+            target->expected_version = publication_.plan().beforeManifestDigest();
             auto written =
-                publishEncodedArtifact(writes_, std::move(*target), EncodedArtifact{publication_.manifest_bytes});
+                publishEncodedArtifact(writes_, std::move(*target), EncodedArtifact{publication_.plan().manifestBytes()});
             if (!written)
                 status_ = publicationFailure("project.manifest.admission", written.error());
             else
@@ -370,7 +362,7 @@ namespace lux::editor
         WriteCoordinator& writes,
         IArtifactStore& files,
         SaveExecution& execution,
-        ProjectPublication publication
+        PreparedProjectPublication publication
     )
         : impl_(std::make_unique<Impl>(project, runtime, writes, files, execution, std::move(publication)))
     {}

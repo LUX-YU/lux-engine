@@ -26,7 +26,7 @@ namespace lux::editor
             persistence::WriteCoordinator&,
             persistence::IArtifactStore&,
             persistence::SaveExecution&,
-            ProjectPublication
+            PreparedProjectPublication
         );
         ~ProjectPublicationOperation();
         ProjectPublicationOperation(const ProjectPublicationOperation&) = delete;

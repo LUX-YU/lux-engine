@@ -9762,7 +9762,8 @@
     "P11",
     "P12",
     "P13",
-    "EC1"
+    "EC1",
+    "EC2"
   ],
   "relocated_pure_definitions": [
     {
@@ -15653,7 +15654,7 @@
       "editor/activities/project/include/lux/engine/editor/storage/ProjectCreation.hpp": [
         "editor_storage"
       ],
-      "editor/activities/project/include/lux/engine/editor/storage/ProjectOpenData.hpp": [
+      "editor/activities/project/include/lux/engine/editor/storage/PreparedProjectOpen.hpp": [
         "editor_storage"
       ],
       "editor/activities/project/include/lux/engine/editor/storage/ProjectPublication.hpp": [
@@ -15674,7 +15675,7 @@
       "editor/activities/project/src/ProjectCreation.cpp": [
         "editor_storage"
       ],
-      "editor/activities/project/src/ProjectOpenData.cpp": [
+      "editor/activities/project/src/PreparedProjectOpen.cpp": [
         "editor_storage"
       ],
       "editor/activities/project/src/ProjectPublication.cpp": [

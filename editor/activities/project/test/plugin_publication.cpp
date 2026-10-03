@@ -51,7 +51,7 @@ int main(int argc, char** argv)
     auto messages = object::ObjectMessageQueue::create(32);
     assert(messages);
     process::TaskScope tasks{*execution};
-    auto source = readProjectOpenData(file);
+    auto source = prepareProjectOpen(file);
     assert(source);
     lux::asset::AssetVfs assets;
     auto project = ProjectStorage::open(*source, assets, *execution->blocking(), tasks, messages->dispatcherRef());

@@ -242,15 +242,15 @@ namespace lux::editor::application
                     }
                     else
                     {
-                        auto encoded = encodeProjectManifest(candidate->manifest);
-                        auto target = files_.resolve(candidate->manifest_path);
+                        auto encoded = encodeProjectManifest(candidate->plan().manifest());
+                        auto target = files_.resolve(candidate->plan().manifestPath());
                         if (!encoded)
                             entry.failure = applicationFailure("artifact.catalog.encode", encoded.error()).value();
                         else if (!target)
                             entry.failure = applicationFailure("artifact.catalog.target", target.error()).value();
                         else
                         {
-                            target->expected_version = candidate->before_manifest_digest;
+                            target->expected_version = candidate->plan().beforeManifestDigest();
                             const auto bytes = std::as_bytes(std::span(*encoded));
                             auto ticket = publishEncodedArtifact(
                                 writes_,
@@ -281,12 +281,13 @@ namespace lux::editor::application
                     if (const auto* receipt = std::get_if<CommitReceipt>(&*written->outcome))
                     {
                         ProjectPublicationReceipt adoption{
-                            entry.catalog->manifest,
+                            entry.catalog->plan().manifest(),
                             receipt->version,
                             1,
                             {},
                             {{entry.asset.cooked_path, published->version}},
-                            {**entry.package}
+                            {**entry.package},
+                            entry.catalog->sharePlan()
                         };
                         auto adopted = project_->adoptPublication(*entry.catalog, adoption);
                         if (!adopted)

@@ -6,7 +6,7 @@
 #include <lux/engine/editor/EditorError.hpp>
 #include <lux/engine/editor/project/ProjectCatalogModel.hpp>
 #include <lux/engine/editor/project/ProjectManifest.hpp>
-#include <lux/engine/editor/storage/ProjectOpenData.hpp>
+#include <lux/engine/editor/storage/PreparedProjectOpen.hpp>
 #include <lux/engine/object/LuxObject.hpp>
 #include <lux/engine/process/asset_loading/VfsAssetReadEndpoint.hpp>
 #include <lux/engine/process/CompletionWork.hpp>
@@ -22,7 +22,7 @@ namespace lux::editor
         void whenPublicationAvailable(process::CompletionWork::Request);
         void dispatchEvents() noexcept;
         [[nodiscard]] static EditorResult<std::unique_ptr<ProjectStorage>> open(
-            ProjectOpenData&,
+            PreparedProjectOpen&,
             asset::AssetVfs&,
             process::BlockingScheduler,
             process::TaskScope&,
@@ -32,12 +32,12 @@ namespace lux::editor
 
         [[nodiscard]] const ProjectManifest& manifest() const noexcept
         {
-            return source_.manifest;
+            return source_.manifest_;
         }
 
         [[nodiscard]] const std::filesystem::path& projectFile() const noexcept
         {
-            return source_.file;
+            return source_.file_;
         }
 
         [[nodiscard]] const std::filesystem::path& root() const noexcept
@@ -86,16 +86,16 @@ namespace lux::editor
         [[nodiscard]] EditorResult<asset::AssetId> resolveReference(AssetReference, std::uint32_t required_magic) const;
         [[nodiscard]] bool writable() const noexcept
         {
-            return source_.write_lease.writable();
+            return source_.write_lease_.writable();
         }
         [[nodiscard]] std::string_view sourceDigest(std::string_view path) const noexcept;
-        [[nodiscard]] EditorResult<ProjectPublication> preparePublication(ProjectUpdate&);
-        [[nodiscard]] EditorResult<void> adoptPublication(ProjectPublication&, ProjectPublicationReceipt&);
+        [[nodiscard]] EditorResult<PreparedProjectPublication> preparePublication(ProjectUpdate&);
+        [[nodiscard]] EditorResult<void> adoptPublication(PreparedProjectPublication&, ProjectPublicationReceipt&);
         void requestClose() noexcept;
         [[nodiscard]] EditorResult<bool> advanceClose();
 
     private:
-        friend struct ProjectPublication;
+        friend class PreparedProjectPublication;
         ProjectStorage(
             object::ObjectDispatcherRef,
             asset::AssetVfs&,
@@ -107,7 +107,7 @@ namespace lux::editor
         process::TaskScope& tasks_;
         process::BlockingScheduler blocking_;
         std::vector<std::weak_ptr<process::asset_loading::VfsAssetReadEndpoint>> read_snapshots_;
-        ProjectOpenData source_;
+        PreparedProjectOpen source_;
         std::filesystem::path root_;
         asset::AssetVfs& vfs_;
         struct MountedPackage final

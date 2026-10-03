@@ -15,13 +15,13 @@ namespace lux::editor
 
     namespace detail
     {
-        [[nodiscard]] LUX_EDITOR_STORAGE_PUBLIC EditorResult<ProjectPublication> prepareProjectCreation(
+        [[nodiscard]] LUX_EDITOR_STORAGE_PUBLIC ProjectPublicationPlan::PrepareResult prepareProjectCreation(
             std::filesystem::path,
             ProjectBuildConfig,
             std::stop_token
         ) noexcept;
         [[nodiscard]] LUX_EDITOR_STORAGE_PUBLIC EditorResult<ProjectCreationResult> publishNewProject(
-            ProjectPublication&,
+            std::shared_ptr<const ProjectPublicationPlan>,
             std::stop_token
         ) noexcept;
     }
@@ -37,10 +37,10 @@ namespace lux::editor
         {
             return stdexec::then(
                 stdexec::continues_on(std::move(prepared), blocking),
-                [stop](EditorResult<ProjectPublication> input) noexcept -> EditorResult<ProjectCreationResult> {
+                [stop](ProjectPublicationPlan::PrepareResult input) noexcept -> EditorResult<ProjectCreationResult> {
                     if (!input)
                         return lux::cxx::unexpected(std::move(input.error()));
-                    return publishNewProject(*input, stop);
+                    return publishNewProject(std::move(*input), stop);
                 }
             );
         }

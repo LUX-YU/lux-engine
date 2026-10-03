@@ -1,4 +1,5 @@
 #include <lux/engine/editor/storage/ProjectContentSaving.hpp>
+#include <lux/engine/editor/storage/ProjectContentOpening.hpp>
 #include <lux/engine/editor/storage/ProjectPluginSelection.hpp>
 #include <lux/engine/editor/storage/RecentProjects.hpp>
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
@@ -35,6 +36,9 @@ namespace
         {
             if constexpr (requires { result.error().domain; })
                 std::cerr << result.error().domain << '\n';
+            if constexpr (std::is_same_v<typename T::error_type, EditorFailure>)
+                if (const auto* cause = std::any_cast<s::SessionFactoryFailure>(&result.error().cause))
+                    std::cerr << cause->domain << " code=" << static_cast<unsigned>(cause->code) << '\n';
             std::abort();
         }
         return std::move(*result);
@@ -244,6 +248,23 @@ int main(int argc, char** argv)
     for (const auto session : sessions)
         assert(opening.find(session)->close(take(store.describe(session)).current));
     assert(opening.update());
+    // Both ordinary opens and restoration use this public project-source admission.
+    // Reopen all three persisted domains without creating Application, Root or a view.
+    for (const auto path : {"Content/source-0", "Content/recovered", "Content/source-2"})
+    {
+        const auto& assets = project->manifest().assets;
+        const auto entry = std::ranges::find(assets, path, &ProjectAssetEntry::source_path);
+        assert(entry != assets.end());
+        const auto source_id = entry->id;
+        const auto request = take(openProjectContent(*project, files, opening, project->reference(source_id), factories));
+        until([&] { return take(opening.status(request)).stage == s::EOpenAssetStage::PUBLISHED; });
+        const auto reopened = take(opening.status(request)).session;
+        const auto state = take(store.describe(reopened));
+        assert(state.binding && state.binding->asset == source_id && !state.dirty);
+        assert(opening.acknowledge(request));
+        assert(opening.find(reopened)->close(state.current));
+        assert(opening.update());
+    }
     opening.requestStop();
     assert(opening.settled() && writes.size() == 0);
     {

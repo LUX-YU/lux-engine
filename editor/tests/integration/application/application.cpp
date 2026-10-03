@@ -513,20 +513,20 @@ int main(int argc, char** argv)
     assert(impl.executeWorkspaceIntent(lux::editor::project::RestoreRecovery{}));
     auto while_catalog_busy = [&](const extensions::ContributionSnapshot&) -> extensions::ContributionResult<void> {
         assert(impl.settleRecovery());
-        assert(!impl.recovery_->items.front().opening && !impl.recovery_->items.front().result);
+        assert(!impl.restoration_->items().front().opening && !impl.restoration_->items().front().result);
         return {};
     };
     assert(impl.contributions_.withSnapshot(while_catalog_busy));
     const auto recovery_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
-    while (std::ranges::any_of(impl.recovery_->items, [](const auto& entry) { return !entry.result; })
+    while (std::ranges::any_of(impl.restoration_->items(), [](const auto& entry) { return !entry.result; })
     )
     {
         assert(std::chrono::steady_clock::now() < recovery_deadline);
         assert(app->update());
     }
-    assert(impl.recovery_->items[0].result->has_value() && **impl.recovery_->items[0].result == material_view);
-    assert(impl.recovery_->items[1].result->has_value() && **impl.recovery_->items[1].result == recovered_view);
-    assert(impl.recovery_->items[2].result && !*impl.recovery_->items[2].result);
+    assert(impl.restoration_->items()[0].result->has_value() && **impl.restoration_->items()[0].result == material_view);
+    assert(impl.restoration_->items()[1].result->has_value() && **impl.restoration_->items()[1].result == recovered_view);
+    assert(impl.restoration_->items()[2].result && !*impl.restoration_->items()[2].result);
     assert(impl.sessions_.size() == 2 && impl.sessions_.describe(material_id)->current == saved_material->current);
     assert(impl.desktop_->views().describeAll()->size() == recovery_windows->size());
     auto check_recovery = [&](ui::Pane& pane) {
@@ -783,14 +783,14 @@ int main(int argc, char** argv)
         const auto recover = [&] {
             assert(impl.restoreRecovery());
             const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
-            while (!impl.recovery_->items.front().result)
+            while (!impl.restoration_->items().front().result)
             {
                 assert(std::chrono::steady_clock::now() < deadline);
                 assert(app->update());
             }
         };
         recover();
-        const auto& first_result = impl.recovery_->items.front();
+        const auto& first_result = impl.restoration_->items().front();
         assert(first_result.sources.size() == 2 && *first_result.result);
         const auto comparison = **first_result.result;
         const auto restored_flow = first_result.sources[1].session;
@@ -812,7 +812,7 @@ int main(int argc, char** argv)
         publish();
         refuse_view = true;
         recover();
-        const auto& rejected = impl.recovery_->items.front();
+        const auto& rejected = impl.restoration_->items().front();
         assert(rejected.sources.size() == 2 && rejected.result && !*rejected.result);
         for (const auto& source : rejected.sources)
             assert(source.stage == sessions::EOpenAssetStage::PUBLISHED && impl.sessions_.describe(source.session));

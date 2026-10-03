@@ -1,4 +1,5 @@
 #pragma once
+#include <lux/engine/editor/application/RestoreWorkbench.hpp>
 #include <lux/engine/editor/workspace/WorkspaceChanges.hpp>
 #include <lux/engine/editor/desktop/WorkspaceActions.hpp>
 #include <lux/engine/editor/project/ResultsView.hpp>
@@ -77,7 +78,6 @@ namespace lux::editor::application
             std::optional<views::ViewId> view;
             std::optional<EditorFailure> failure;
             bool cancelled{};
-            bool present{true};
         };
         struct ModelPresentation final
         {
@@ -140,18 +140,6 @@ namespace lux::editor::application
             views::ViewId view;
             sessions::ContentStamp content;
             views::ViewId question;
-        };
-        struct RecoveryItem final
-        {
-            workspace::RecoveryEntry entry;
-            std::optional<sessions::OpenAssetId> opening;
-            std::vector<sessions::OpenAssetStatus> sources;
-            std::optional<EditorResult<views::ViewId>> result;
-        };
-        struct RecoveryPresentation final
-        {
-            extensions::ContributionSnapshot catalog;
-            std::vector<RecoveryItem> items;
         };
         struct Dispatch final
         {
@@ -257,7 +245,7 @@ namespace lux::editor::application
         std::unique_ptr<desktop::WorkspaceActions> workspace_actions_;
         std::optional<EditorFailure> workspace_failure_;
         std::optional<project::VWorkspaceIntent> workspace_intent_;
-        std::optional<RecoveryPresentation> recovery_;
+        std::unique_ptr<RestoreWorkbench> restoration_;
         std::vector<RunPresentation> run_presentations_;
         std::vector<OpenPresentation> opens_;
         std::vector<AssetReference> open_intents_;

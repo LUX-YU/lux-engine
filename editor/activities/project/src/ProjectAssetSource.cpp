@@ -1,4 +1,6 @@
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
+#include <lux/engine/editor/storage/ProjectContentOpening.hpp>
+#include <lux/engine/editor/persistence/ArtifactStore.hpp>
 #include <lux/engine/platform/FilePath.hpp>
 
 #include <algorithm>
@@ -100,5 +102,72 @@ namespace lux::editor
         if (mount == asset::kInvalidMountId)
             return lux::cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "source.mount"});
         return sources.view().capture();
+    }
+}
+
+namespace lux::editor
+{
+    namespace
+    {
+        template <class Error> auto openingFailure(std::string domain, const Error& cause)
+        {
+            auto code = EEditorError::SOURCE_FAILURE;
+            if constexpr (requires { cause.code == decltype(cause.code)::BUSY; })
+            {
+                if (cause.code == decltype(cause.code)::BUSY)
+                    code = EEditorError::BUSY;
+            }
+            else if constexpr (requires { cause == Error::BUSY; })
+            {
+                if (cause == Error::BUSY)
+                    code = EEditorError::BUSY;
+            }
+            if constexpr (requires { cause.session == sessions::ESessionError::BUSY; })
+            {
+                if (cause.session == sessions::ESessionError::BUSY)
+                    code = EEditorError::BUSY;
+            }
+            if constexpr (requires { cause.retryable; })
+                if (cause.retryable)
+                    code = EEditorError::BUSY;
+            return cxx::unexpected(EditorFailure{code, std::move(domain), 0, {}, cause});
+        }
+    }
+    EditorResult<sessions::OpenAssetId> openProjectContent(
+        ProjectStorage& project, persistence::IArtifactStore& files, sessions::SessionOpening& opening,
+        AssetReference reference, const sessions::SessionFactorySnapshot& snapshot
+    )
+    {
+        auto resolved = project.resolveReference(reference, 0);
+        if (!resolved)
+            return cxx::unexpected(resolved.error());
+        const auto* asset = project.asset(*resolved);
+        if (!asset)
+            return cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "project.source"});
+        const auto entry = *asset;
+        auto factory = snapshot.selectSource(entry.source_type, entry.source_version);
+        if (!factory)
+        {
+            return openingFailure("asset.authoring", factory.error());
+        }
+        auto target = files.resolve(entry.source_path);
+        if (!target)
+            return openingFailure("source.target", target.error());
+        // Resolving an external backend can invoke code. Revalidate the original catalog reference
+        // before capturing source bytes, rather than retaining a catalog pointer across that call.
+        if (auto current = project.resolveReference(reference, 0); !current)
+            return cxx::unexpected(current.error());
+        auto source = project.captureSource(entry.id, 64 * 1024 * 1024, target->expected_version);
+        if (!source)
+            return cxx::unexpected(source.error());
+        sessions::OpenAssetRequest request{
+            reference.project_instance,
+            (*factory)->descriptor().kind,
+            {std::move(*source), entry.id, sessions::BoundSource{entry.id, target->key.value}, *target}
+        };
+        auto opened = opening.open(std::move(request), snapshot);
+        if (!opened)
+            return openingFailure("open.admission", opened.error());
+        return *opened;
     }
 }

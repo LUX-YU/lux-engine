@@ -185,6 +185,10 @@ namespace lux::editor::sessions
         work->factories = factories;
         for (const auto& role : impl_->roles)
         {
+            // InstalledSession::close consumes its role bundle. The completed close has no
+            // Store identity left to query, including before the next maintenance pass.
+            if (!role.session.id().valid())
+                continue;
             const bool same_domain = role.key.project == key.project && role.key.copy == key.copy;
             if (!same_domain)
                 continue;
@@ -289,6 +293,11 @@ namespace lux::editor::sessions
         Impl::Dispatch dispatch{impl_->dispatching};
         for (auto it = impl_->roles.begin(); it != impl_->roles.end();)
         {
+            if (!it->session.id().valid())
+            {
+                it = impl_->roles.erase(it);
+                continue;
+            }
             const auto current = impl_->store.describe(it->session.id());
             if (!current && current.error() == ESessionError::STALE_SESSION)
                 it = impl_->roles.erase(it);

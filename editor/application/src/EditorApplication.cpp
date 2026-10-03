@@ -211,6 +211,9 @@ namespace lux::editor::application
         workspace_actions_ = std::make_unique<desktop::WorkspaceActions>(
             desktop_->views(), workspace_, workspace_changes_, messages_.dispatcherRef()
         );
+        restoration_ = std::make_unique<RestoreWorkbench>(
+            *project_, files_, sessions_, opening_, workspace_, workspace_changes_, contributions_
+        );
         auto contributions = installContributions();
         if (!contributions)
             return contributions;

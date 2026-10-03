@@ -107,26 +107,25 @@ namespace lux::editor::application
             if (const auto* error = workspace_changes_.migrationFailure())
                 snapshot.diagnostics.push_back(error->domain + ": " + error->message);
         }
-        if (recovery_)
-            for (const auto& item : recovery_->items)
+        for (const auto& item : restoration_->items())
+        {
+            snapshot.recovery.emplace_back(item.entry.restore_key.name());
+            for (const auto& content : item.entry.contents)
             {
-                snapshot.recovery.emplace_back(item.entry.restore_key.name());
-                for (const auto& content : item.entry.contents)
-                {
-                    snapshot.recovery.push_back(content.locator);
-                    if (content.unpersisted_changes)
-                        snapshot.recovery.emplace_back("Only saved content can be restored; unsaved edits are not in this manifest.");
-                }
-                if (!item.result)
-                    snapshot.recovery.emplace_back("Recovery pending");
-                else if (!*item.result)
-                    snapshot.recovery.push_back(item.result->error().domain + ": " + item.result->error().message);
-                else
-                    snapshot.recovery.emplace_back("Content presented");
-                for (const auto& source : item.sources)
-                    if (source.failure)
-                        snapshot.recovery.push_back(source.failure->domain + ": " + source.failure->detail);
+                snapshot.recovery.push_back(content.locator);
+                if (content.unpersisted_changes)
+                    snapshot.recovery.emplace_back("Only saved content can be restored; unsaved edits are not in this manifest.");
             }
+            if (!item.result)
+                snapshot.recovery.emplace_back("Recovery pending");
+            else if (!*item.result)
+                snapshot.recovery.push_back(item.result->error().domain + ": " + item.result->error().message);
+            else
+                snapshot.recovery.emplace_back("Content presented");
+            for (const auto& source : item.sources)
+                if (source.failure)
+                    snapshot.recovery.push_back(source.failure->domain + ": " + source.failure->detail);
+        }
         for (const auto& report : workspace_changes_.publications())
         {
             project::WorkspacePublicationInfo row{report.label, report.ticket, report.result};

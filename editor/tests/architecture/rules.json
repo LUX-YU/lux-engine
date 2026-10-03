@@ -18311,6 +18311,15 @@
       ],
       "editor/workbench/desktop/src/WorkspaceActions.cpp": [
         "desktop_shell"
+      ],
+      "editor/activities/project/include/lux/engine/editor/storage/ProjectContentOpening.hpp": [
+        "editor_storage"
+      ],
+      "editor/application/pinclude/lux/engine/editor/application/RestoreWorkbench.hpp": [
+        "editor_bootstrap"
+      ],
+      "editor/application/src/RestoreWorkbench.cpp": [
+        "editor_bootstrap"
       ]
     },
     "native_libraries": [

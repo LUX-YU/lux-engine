@@ -1,5 +1,6 @@
 #include <lux/engine/editor/application/EditorApplicationImpl.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
+#include <lux/engine/editor/storage/ProjectContentOpening.hpp>
 #include <algorithm>
 
 namespace lux::editor::application
@@ -45,31 +46,9 @@ namespace lux::editor::application
             return cxx::unexpected(EditorFailure{EEditorError::CLOSING, "application.open"});
         if (opens_.size() == 64)
             return cxx::unexpected(EditorFailure{EEditorError::CAPACITY, "application.open"});
-        auto resolved = project_->resolveReference(reference, 0);
-        if (!resolved)
-            return cxx::unexpected(resolved.error());
-        const auto* asset = project_->asset(*resolved);
-        if (!asset)
-            return cxx::unexpected(EditorFailure{EEditorError::SOURCE_FAILURE, "project.source"});
-        auto factory = snapshot.sessions().selectSource(asset->source_type, asset->source_version);
-        if (!factory)
-        {
-            return applicationFailure("asset.authoring", factory.error());
-        }
-        auto target = files_.resolve(asset->source_path);
-        if (!target)
-            return applicationFailure("source.target", target.error());
-        auto source = project_->captureSource(asset->id, 64 * 1024 * 1024, target->expected_version);
-        if (!source)
-            return cxx::unexpected(source.error());
-        sessions::OpenAssetRequest request{
-            reference.project_instance,
-            (*factory)->descriptor().kind,
-            {std::move(*source), asset->id, sessions::BoundSource{asset->id, target->key.value}, *target}
-        };
-        auto opened = opening_.open(std::move(request), snapshot.sessions());
+        auto opened = openProjectContent(*project_, files_, opening_, reference, snapshot.sessions());
         if (!opened)
-            return applicationFailure("open.admission", opened.error());
+            return cxx::unexpected(opened.error());
         opens_.push_back({*opened});
         return *opened;
     }
@@ -116,7 +95,7 @@ namespace lux::editor::application
             return applicationFailure("open.receive", received.error());
         for (auto& entry : opens_)
         {
-            if (!entry.present || entry.view || entry.failure || entry.cancelled)
+            if (entry.view || entry.failure || entry.cancelled)
                 continue;
             const auto status = opening_.status(entry.operation);
             if (!status)

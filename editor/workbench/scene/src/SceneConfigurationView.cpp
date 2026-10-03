@@ -95,7 +95,7 @@ namespace lux::editor::scene
                 candidate->setVisible(false);
                 if (!result)
                     return {};
-                result = candidate->load(source.configuration());
+                result = candidate->load(source.configuration(), {}, stamp);
                 if (!result)
                     return {};
                 form_ = std::move(candidate);
@@ -176,6 +176,9 @@ namespace lux::editor::scene
                 return rejected(committed.error());
             base_ = committed->content;
             pending_.reset();
+            // Adopt our own committed configuration as the next draft origin under the read gate.
+            // If admission is temporarily busy, the current form stays alive until that succeeds.
+            revert_requested_ = true;
             return {};
         }
         void update()
@@ -186,7 +189,7 @@ namespace lux::editor::scene
                 if (status_ || !busy(status_.error()))
                     revert_requested_ = false;
             }
-            if (apply_requested_)
+            if (apply_requested_ && !revert_requested_)
             {
                 status_ = apply();
                 if (status_ || !busy(status_.error()))

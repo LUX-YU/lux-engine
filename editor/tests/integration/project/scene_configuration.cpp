@@ -126,6 +126,27 @@ int main(int argc, char** argv)
         if (!applied)
             std::fprintf(stderr, "%s: %s\n", applied.error().domain.c_str(), applied.error().message.c_str());
         assert(applied);
+        auto captured_draft = element.capture();
+        assert(captured_draft);
+        const editor::scene::SceneConfigurationRegistrations inputs{
+            registrations->components, *registrations->simulation_systems,
+            registrations->scene_systems, registrations->features, providers, registrations->render_bindings
+        };
+        auto pure_draft = editor::scene::makeSceneConfigurationPreset(preset, "lux.spatial.builtin.single", 1, inputs);
+        assert(pure_draft && captured_draft->schemas == pure_draft->schemas);
+        for (auto* draft : {&*captured_draft, &*pure_draft})
+            for (auto& row : draft->systems)
+                std::ranges::sort(row.providers, {}, &editor::scene::SceneProviderBinding::requirement);
+        for (std::size_t index{}; index < captured_draft->systems.size(); ++index)
+        {
+            const auto& shown = captured_draft->systems[index];
+            const auto& prepared = pure_draft->systems[index];
+            if (shown != prepared)
+                std::fprintf(stderr, "configuration row %zu %s: name=%d bytes=%d providers=%d\n", index,
+                    shown.type.name.c_str(), shown.name == prepared.name,
+                    shown.configuration == prepared.configuration, shown.providers == prepared.providers);
+        }
+        assert(captured_draft->systems == pure_draft->systems);
         auto* field = coordinateField(element);
         assert(field);
         field->setValue(256.0);

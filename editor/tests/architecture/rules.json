@@ -1493,7 +1493,9 @@
       "lux/engine/editor/scene/ScenePersistenceAccess.hpp",
       "lux/engine/editor/scene/PreparedSceneReload.hpp",
       "lux/engine/editor/scene/AuthoringFacts.hpp",
-      "chrono"
+      "chrono",
+      "lux/engine/editor/scene/SceneConfigurationDraft.hpp",
+      "lux/engine/simulation/SimulationExecutionSpec.hpp"
     ],
     "prefixes": [
       "lux/engine/editor/sessions/",
@@ -1538,7 +1540,9 @@
       "editor/authoring/scene/test/plugin_snapshot.cpp",
       "editor/authoring/scene/test/scene_session.cpp",
       "editor/authoring/scene/include/lux/engine/editor/scene/PreparedSceneReload.hpp",
-      "editor/authoring/scene/src/PreparedSceneReload.cpp"
+      "editor/authoring/scene/src/PreparedSceneReload.cpp",
+      "editor/authoring/scene/include/lux/engine/editor/scene/SceneConfigurationDraft.hpp",
+      "editor/authoring/scene/src/SceneConfigurationDraft.cpp"
     ]
   },
   "material_model": {
@@ -2723,7 +2727,8 @@
       "process_world_loading",
       "scene_execution_api",
       "scene_render",
-      "scene_world_loading"
+      "scene_world_loading",
+      "scene_transform"
     ],
     "closure": {
       "Eigen3::Eigen": {
@@ -3061,6 +3066,12 @@
       },
       "object": {
         "path": "modules/core/object"
+      },
+      "scene_transform": {
+        "path": "engine/scene/builtin_systems/transform"
+      },
+      "scene_transform_configuration_codegen_generate": {
+        "path": "engine/scene/builtin_systems/transform"
       }
     },
     "native_libraries": [
@@ -3103,7 +3114,10 @@
       "vector",
       "lux/engine/object/ObjectDispatcher.hpp",
       "lux/engine/editor/scene/ModelPlacement.hpp",
-      "lux/engine/editor/project/AssetCatalog.hpp"
+      "lux/engine/editor/project/AssetCatalog.hpp",
+      "cmath",
+      "variant",
+      "lux/engine/serialization/PortableValueCodec.hpp"
     ],
     "prefixes": [
       "lux/cxx/",
@@ -3126,8 +3140,17 @@
       "editor/activities/scene/test/runs.cpp",
       "editor/activities/scene/include/lux/engine/editor/scene/ModelCreationOperation.hpp",
       "editor/activities/scene/src/ModelCreationOperation.cpp",
-      "editor/activities/scene/include/lux/engine/editor/scene/ModelPlacement.hpp"
-    ]
+      "editor/activities/scene/include/lux/engine/editor/scene/ModelPlacement.hpp",
+      "editor/activities/scene/include/lux/engine/editor/scene/SceneConfigurationPreparation.hpp",
+      "editor/activities/scene/src/SceneConfigurationPreparation.cpp"
+    ],
+    "test_headers": {
+      "editor/activities/scene/test/configuration.cpp": [
+        "lux/engine/project/PluginManager.hpp",
+        "lux/engine/project/PluginRendering.hpp",
+        "iostream"
+      ]
+    }
   },
   "scene_projection": {
     "direct": [
@@ -6495,7 +6518,8 @@
       "lux/engine/editor/views/ViewFactory.hpp",
       "lux/engine/editor/scene/SceneTools.hpp",
       "lux/engine/editor/scene/AuthoringFacts.hpp",
-      "lux/engine/scene/RenderFeatureSceneBinding.hpp"
+      "lux/engine/scene/RenderFeatureSceneBinding.hpp",
+      "lux/engine/editor/scene/SceneConfigurationPreparation.hpp"
     ],
     "prefixes": [],
     "test_headers": {
@@ -15515,6 +15539,14 @@
           "GPU"
         ],
         "path": "editor/application/extensions"
+      },
+      "editor_scene_configuration_native": {
+        "layer": "TEST",
+        "role": "TEST",
+        "capabilities": [
+          "CPU"
+        ],
+        "path": "editor/tests/integration/project"
       }
     },
     "files": {
@@ -17846,6 +17878,21 @@
       ],
       "editor/authoring/scene/src/AuthoringFacts.cpp": [
         "scene_model"
+      ],
+      "editor/authoring/scene/include/lux/engine/editor/scene/SceneConfigurationDraft.hpp": [
+        "scene_model"
+      ],
+      "editor/authoring/scene/src/SceneConfigurationDraft.cpp": [
+        "scene_model"
+      ],
+      "editor/activities/scene/include/lux/engine/editor/scene/SceneConfigurationPreparation.hpp": [
+        "scene_execution"
+      ],
+      "editor/activities/scene/src/SceneConfigurationPreparation.cpp": [
+        "scene_execution"
+      ],
+      "editor/activities/scene/test/configuration.cpp": [
+        "editor_scene_configuration_native"
       ]
     },
     "native_libraries": [

@@ -62,7 +62,9 @@ lux_classify_target(TARGET scene_execution_api LAYER EDITOR PRODUCT EDITOR ROLE 
 
 
 
-add_component(COMPONENT_NAME scene_execution NAMESPACE lux::engine::editor STATIC SOURCE_FILES src/RunStore.cpp src/ModelCreationOperation.cpp)
+add_component(COMPONENT_NAME scene_execution NAMESPACE lux::engine::editor STATIC SOURCE_FILES src/SceneConfigurationPreparation.cpp src/RunStore.cpp src/ModelCreationOperation.cpp)
+target_link_libraries(scene_execution PRIVATE lux::engine::scene::scene_transform)
+component_add_transitive_commands(scene_execution "find_package(lux-engine-scene-transform REQUIRED COMPONENTS scene_transform)")
 component_include_directories(scene_execution
     BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
 target_link_libraries(scene_execution PUBLIC lux::engine::editor::scene_execution_api
@@ -115,6 +117,7 @@ install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/editing/scene/SceneEditing.hpp
     DESTINATION include/lux/engine/editor/editing/scene COMPONENT lux_engine_editor_editing_scene)
 install(FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/scene/SceneConfigurationPreparation.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/scene/ModelCreationOperation.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/scene/ModelPlacement.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/scene/RunController.hpp

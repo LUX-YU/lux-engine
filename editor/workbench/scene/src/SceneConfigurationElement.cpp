@@ -27,6 +27,18 @@ namespace lux::editor::scene
                 finishControls(*child);
         }
         using Inputs = SceneConfigurationInputs;
+        SceneConfigurationFailure presentationFailure(ScenePreparationFailure failure)
+        {
+            const auto code = failure.code == EScenePreparationError::MISSING_PROVIDER
+                ? ESceneConfigurationError::MISSING_PROVIDER : ESceneConfigurationError::INVALID_ARGUMENT;
+            return {code, failure.domain, failure.reason, failure.message, std::move(failure)};
+        }
+        template<class T> SceneConfigurationResult<T> presentationResult(ScenePreparationResult<T> result)
+        {
+            if (!result)
+                return cxx::unexpected(presentationFailure(std::move(result.error())));
+            return std::move(*result);
+        }
         object::Connection takeConnection(
             object::LuxObject::ConnectResult connected,
             SceneConfigurationResult<void>& status
@@ -275,53 +287,6 @@ namespace lux::editor::scene
                     lux::scene::RenderSystemConfiguration value;
                     value.features = unknown_features_;
                     value.coordinate_page_size = std::get<double>(numbers_[0]->edit.value());
-                    const bool is_nonfinite_page_size = !std::isfinite(value.coordinate_page_size);
-                    const bool is_nonpositive_page_size = value.coordinate_page_size <= 0;
-                    const bool is_invalid_page_size = is_nonfinite_page_size || is_nonpositive_page_size;
-                    if (is_invalid_page_size)
-                        return lux::cxx::unexpected(SceneConfigurationFailure{
-                            ESceneConfigurationError::INVALID_ARGUMENT,
-                            "scene.new.coordinate_page_size"
-                        });
-                    // Resolve UI choices against the fixed registrations before publishing a file.
-                    // Installation still validates the real device's accepted feature catalog.
-                    for (const auto& feature : features_)
-                    {
-                        if (!feature->enabled.value())
-                            continue;
-                        const auto& descriptor = feature->registration.factory.descriptor;
-                        for (const auto& dependency : descriptor.dependencies)
-                        {
-                            const auto provider = std::ranges::find_if(features_, [&](const auto& candidate) {
-                                return candidate->enabled.value() &&
-                                       candidate->registration.factory.descriptor.type == dependency.type;
-                            });
-                            const bool missing = provider == features_.end();
-                            const bool wrong_version =
-                                !missing &&
-                                (*provider)->registration.factory.descriptor.abi_version != dependency.abi_version;
-                            const bool is_missing_required_dependency = missing && !dependency.optional;
-                            const bool is_invalid_dependency = is_missing_required_dependency || wrong_version;
-                            if (is_invalid_dependency)
-                                return lux::cxx::unexpected(SceneConfigurationFailure{
-                                    ESceneConfigurationError::INVALID_ARGUMENT,
-                                    "scene.new.feature.dependency",
-                                    dependency.type,
-                                    std::string(descriptor.canonical_name)
-                                });
-                        }
-                        for (const auto conflict : descriptor.conflicts)
-                            if (std::ranges::any_of(features_, [&](const auto& candidate) {
-                                    return candidate->enabled.value() &&
-                                           candidate->registration.factory.descriptor.type == conflict;
-                                }))
-                                return lux::cxx::unexpected(SceneConfigurationFailure{
-                                    ESceneConfigurationError::INVALID_ARGUMENT,
-                                    "scene.new.feature.conflict",
-                                    conflict,
-                                    std::string(descriptor.canonical_name)
-                                });
-                    }
                     for (const auto& feature : features_)
                     {
                         if (!feature->enabled.value())
@@ -344,6 +309,12 @@ namespace lux::editor::scene
                              selected.configuration.schema_version}
                         );
                     }
+                    // Loading a form must not reorder the source's feature payloads. New selections
+                    // follow the existing rows; absent plugin controls keep their original position.
+                    const auto rank = [&](const auto& feature) {
+                        return std::ranges::find(feature_order_, feature.type) - feature_order_.begin();
+                    };
+                    std::ranges::stable_sort(value.features, {}, rank);
                     encoded = codec.encode(&value, bytes);
                 }
                 else
@@ -358,49 +329,42 @@ namespace lux::editor::scene
                     });
                 return bytes;
             }
-            SceneConfigurationResult<void> bind(lux::scene::SceneDescriptionBuilder& builder) const
+            SceneConfigurationResult<SceneSystemConfigurationDraft> capture() const
             {
+                auto encoded = encode();
+                if (!encoded)
+                    return cxx::unexpected(std::move(encoded.error()));
+                const auto& type = description();
+                SceneSystemConfigurationDraft result{
+                    simulation ? EConfigurationSystemDomain::SIMULATION : EConfigurationSystemDomain::SCENE,
+                    id, name(), simulation ? simulation->type : scene->type, type.version,
+                    std::string(type.configuration_schema_name), type.configuration_schema_version,
+                    std::move(*encoded), {}
+                };
                 for (const auto& field : providers_)
                 {
-                    const auto index = static_cast<std::size_t>(field->choice.value());
-                    if (index == 0)
-                    {
-                        if (field->required)
-                            return lux::cxx::unexpected(SceneConfigurationFailure{
-                                ESceneConfigurationError::MISSING_PROVIDER,
-                                "scene.new.provider",
-                                0,
-                                "Select a provider for " + field->requirement
-                            });
-                        continue;
-                    }
-                    const auto bound = builder.bindRequirement(id, field->requirement, field->names[index]);
-                    if (!bound)
-                        return lux::cxx::unexpected(SceneConfigurationFailure{
-                            ESceneConfigurationError::INVALID_ARGUMENT,
-                            "scene.new.provider",
-                            0,
-                            {},
-                            bound.error()
-                        });
+                    const auto index = field->choice.value();
+                    const bool is_selected = index > 0 && static_cast<std::size_t>(index) < field->names.size();
+                    if (is_selected)
+                        result.providers.push_back({field->requirement, field->names[index]});
                 }
-                return {};
+                return result;
             }
-            template <class System> SceneConfigurationResult<void> load(const System& source, const Inputs& inputs)
+            SceneConfigurationResult<void> load(const SceneSystemConfigurationDraft& source, const Inputs& inputs)
             {
                 const auto& expected = description();
-                const bool is_version_mismatch = source.version() != expected.version;
+                const bool is_version_mismatch = source.version != expected.version;
                 const bool is_schema_mismatch =
-                    source.configurationSchemaName() != expected.configuration_schema_name ||
-                    source.configurationSchemaVersion() != expected.configuration_schema_version;
+                    source.configuration_schema != expected.configuration_schema_name ||
+                    source.configuration_version != expected.configuration_schema_version;
                 if (is_version_mismatch || is_schema_mismatch)
                     return cxx::unexpected(SceneConfigurationFailure{
                         ESceneConfigurationError::INVALID_ARGUMENT,
                         "scene.configuration.version"
                     });
-                name_.setValue(std::string(source.instanceName()));
+                name_.setValue(std::string(source.name));
                 const auto& codec = simulation ? simulation->configuration : scene->configuration;
-                const auto payload = source.configurationPayload();
+                const std::span<const std::byte> payload = source.configuration;
                 serialization::SerializationResult decoded;
                 if (codec.type == cxx::typeToken<lux::scene::TransformSystemConfiguration>())
                 {
@@ -439,6 +403,7 @@ namespace lux::editor::scene
                         numbers_[0]->edit.setValue(value.coordinate_page_size);
                         for (const auto& feature : value.features)
                         {
+                            feature_order_.push_back(feature.type);
                             auto found = std::ranges::find_if(features_, [&](const auto& item) {
                                 return item->registration.factory.descriptor.type == feature.type;
                             });
@@ -452,10 +417,11 @@ namespace lux::editor::scene
                                 feature.configuration_schema != row.registration.configuration.schema ||
                                 feature.configuration_version != row.registration.configuration.schema_version;
                             if (is_feature_schema_mismatch)
-                                return cxx::unexpected(SceneConfigurationFailure{
-                                    ESceneConfigurationError::INVALID_ARGUMENT,
-                                    "scene.configuration.feature.version"
-                                });
+                            {
+                                row.enabled.setEnabled(false);
+                                unknown_features_.push_back(feature);
+                                continue;
+                            }
                             row.enabled.setValue(true);
                             row.configuration.control = {};
                             auto loaded = row.configuration.create(
@@ -476,8 +442,8 @@ namespace lux::editor::scene
                     configuration_.control = {};
                     auto loaded = configuration_.create(
                         layout_,
-                        source.configurationSchemaName(),
-                        source.configurationSchemaVersion(),
+                        source.configuration_schema,
+                        source.configuration_version,
                         codec,
                         inputs,
                         payload
@@ -493,27 +459,30 @@ namespace lux::editor::scene
                         {},
                         decoded.error()
                     });
-                if constexpr (requires { source.requirementBindingCount(); })
-                    for (std::size_t i{}; i < source.requirementBindingCount(); ++i)
-                    {
-                        const auto binding = source.requirementBindingAt(i);
-                        auto field = std::ranges::find_if(providers_, [&](const auto& item) {
-                            return item->requirement == binding.requirement();
+                for (const auto& binding : source.providers)
+                {
+                    auto field = std::ranges::find_if(providers_, [&](const auto& item) {
+                        return item->requirement == binding.requirement;
+                    });
+                    if (field == providers_.end())
+                        return cxx::unexpected(SceneConfigurationFailure{
+                            ESceneConfigurationError::MISSING_PROVIDER, "scene.configuration.requirement"
                         });
-                        if (field == providers_.end())
-                            return cxx::unexpected(SceneConfigurationFailure{
-                                ESceneConfigurationError::MISSING_PROVIDER,
-                                "scene.configuration.requirement"
-                            });
-                        auto& names = (*field)->names;
-                        auto provider = std::ranges::find(names, binding.provider());
-                        if (provider == names.end())
-                            return cxx::unexpected(SceneConfigurationFailure{
-                                ESceneConfigurationError::MISSING_PROVIDER,
-                                "scene.configuration.provider"
-                            });
-                        (*field)->choice.setValue(provider - names.begin());
+                    auto& names = (*field)->names;
+                    auto provider = std::ranges::find(names, binding.provider);
+                    if (provider == names.end())
+                    {
+                        // Retain unavailable providers visibly rather than rebinding to a current first match.
+                        names.push_back(binding.provider);
+                        std::vector<controls::ChoiceOption> options;
+                        for (std::size_t index{}; index < names.size(); ++index)
+                            options.push_back({static_cast<std::int64_t>(index), names[index]});
+                        (*field)->choice.setOptions(std::move(options));
+                        (*field)->choice.setValue(names.size() - 1);
                     }
+                    else
+                        (*field)->choice.setValue(provider - names.begin());
+                }
                 return {};
             }
             void setStage(ESceneConfigurationStage stage) noexcept
@@ -533,12 +502,6 @@ namespace lux::editor::scene
                     all || (simulation && stage == ESceneConfigurationStage::SIMULATION) ||
                     (scene && stage == ESceneConfigurationStage::SCENE) || (features && !features_.empty())
                 );
-            }
-            void presetBindings() noexcept
-            {
-                for (auto& provider : providers_)
-                    if (provider->names.size() == 2)
-                        provider->choice.setValue(1);
             }
             SceneConfigurationResult<void> checkFeatures(
                 const AuthoringFacts& facts, lux::scene::RenderFeatureSceneBindings bindings
@@ -563,56 +526,6 @@ namespace lux::editor::scene
                         });
                 }
                 return result;
-            }
-            SceneConfigurationResult<void> presetFeatures(const Inputs& inputs, ESceneContentPreset preset)
-            {
-                if (features_.empty())
-                    return {};
-                std::vector<std::string> wanted{"lux.render.view_camera.v1", "lux.render.material.v1"};
-                if (preset == ESceneContentPreset::TWO_DIMENSIONAL)
-                    wanted.emplace_back("lux.render.canvas2d.v2");
-                else
-                    for (auto name :
-                         {"lux.render.mesh_stack.v1",
-                          "lux.render.light.v1",
-                          "lux.render.forward_mesh.v1",
-                          "lux.render.shadow_map.v1"})
-                        wanted.emplace_back(name);
-                for (std::size_t i{}; i < wanted.size(); ++i)
-                {
-                    for (const auto& plugin : inputs.catalog.plugins())
-                    {
-                        for (const auto& feature : plugin.render_features)
-                        {
-                            if (feature.identity.id != wanted[i])
-                                continue;
-                            for (const auto& dependency : feature.dependencies)
-                            {
-                                const bool is_required_dependency = !dependency.optional;
-                                const bool is_missing_dependency =
-                                    is_required_dependency &&
-                                    std::ranges::find(wanted, dependency.feature.id) == wanted.end();
-                                if (is_missing_dependency)
-                                    wanted.push_back(dependency.feature.id);
-                            }
-                        }
-                    }
-                }
-                for (const auto& name : wanted)
-                {
-                    const auto found = std::ranges::find_if(features_, [&](const auto& feature) {
-                        return feature->registration.factory.descriptor.canonical_name == name;
-                    });
-                    if (found == features_.end())
-                        return lux::cxx::unexpected(SceneConfigurationFailure{
-                            ESceneConfigurationError::MISSING_PROVIDER,
-                            "scene.preset.feature",
-                            0,
-                            name
-                        });
-                    (*found)->enabled.setValue(true);
-                }
-                return {};
             }
             SystemId id;
             const lux::simulation::SimulationSystemRegistration* simulation;
@@ -647,6 +560,7 @@ namespace lux::editor::scene
             std::unique_ptr<controls::CheckBox> bootstrap_;
             ConfigurationField configuration_;
             std::vector<lux::scene::RenderFeatureInstanceDescription> unknown_features_;
+            std::vector<render::FeatureTypeId> feature_order_;
             object::Connection removed_;
         };
 
@@ -715,16 +629,16 @@ namespace lux::editor::scene
                 status
             );
         }
-        static std::vector<controls::ChoiceOption> systemOptions(const Inputs& inputs, ESceneConfigurationStage stage)
+        static std::vector<controls::ChoiceOption> systemOptions(const Inputs& inputs, ESceneConfigurationStage stage, std::string_view partition)
         {
             std::vector<controls::ChoiceOption> result;
             const auto simulation_types = inputs.catalog.systemsForWorld(
                 lux::project::EMetadataSystemDomain::SIMULATION,
-                "lux.spatial.builtin.single"
+                partition
             );
             const auto scene_types = inputs.catalog.systemsForWorld(
                 lux::project::EMetadataSystemDomain::SCENE,
-                "lux.spatial.builtin.single"
+                partition
             );
             const auto contains = [](auto types, std::string_view name) {
                 return std::ranges::any_of(types, [name](const auto* type) { return type->identity.id == name; });
@@ -751,10 +665,10 @@ namespace lux::editor::scene
         static std::unique_ptr<controls::Choice> makeSystemChoice(
             controls::Element& parent,
             const Inputs& inputs,
-            ESceneConfigurationStage stage
+            ESceneConfigurationStage stage, std::string_view partition = "lux.spatial.builtin.single"
         )
         {
-            auto options = systemOptions(inputs, stage);
+            auto options = systemOptions(inputs, stage, partition);
             const auto selected = options.empty() ? -1 : options.front().value;
             return std::make_unique<controls::Choice>(
                 parent,
@@ -763,21 +677,10 @@ namespace lux::editor::scene
                 selected
             );
         }
-        template <class Failure>
-        SceneConfigurationResult<SceneCreationConfiguration> rejected(std::string operation, Failure error)
-        {
-            return lux::cxx::unexpected(SceneConfigurationFailure{
-                ESceneConfigurationError::INVALID_ARGUMENT,
-                std::move(operation),
-                0,
-                {},
-                error
-            });
-        }
         AuthoringFacts facts()
         {
-            if (base_)
-                return authoringFacts(base_->world->data(), inputs_.components);
+            if (origin_.base)
+                return authoringFacts(origin_.base->world->data(), inputs_.components, origin_.based_on);
             std::size_t position{};
             bool changed{};
             for (const auto& [id, field] : schema_fields_)
@@ -794,203 +697,110 @@ namespace lux::editor::scene
                     if (field->value())
                         selected_schemas_.push_back(id);
             }
-            return {{}, selected_schemas_, inputs_.components, "lux.spatial.builtin.single", 1};
+            return {origin_.based_on, selected_schemas_, inputs_.components, origin_.partition, origin_.partition_version};
+        }
+        SceneConfigurationResult<SceneConfigurationDraft> capture()
+        {
+            finishControls(owner_);
+            auto draft = origin_;
+            draft.name = name_.value();
+            if (!draft.base)
+            {
+                draft.schemas.clear();
+                for (const auto& [id, field] : schema_fields_)
+                    if (field->value())
+                        draft.schemas.push_back(id);
+            }
+            draft.systems = opaque_systems_;
+            for (const auto& row : rows_)
+            {
+                auto value = row->capture();
+                if (!value)
+                    return cxx::unexpected(std::move(value.error()));
+                draft.systems.push_back(std::move(*value));
+            }
+            draft.construction = construction_;
+            draft.scene_dependencies = scene_dependencies_;
+            draft.execution = execution_;
+            draft.producers = producers_;
+            draft.viewport = viewport_;
+            return draft;
         }
         SceneConfigurationResult<SceneCreationConfiguration> build()
         {
-            finishControls(owner_);
-            std::vector<lux::world::WorldDataSchemaId> schemas;
-            for (const auto& [id, field] : schema_fields_)
-                if (field->value())
-                    schemas.push_back(id);
-            lux::simulation::SimulationDescriptionBuilder simulation;
-            lux::scene::SceneDescriptionBuilder scene;
-            if (base_)
+            auto draft = capture();
+            if (!draft)
+                return cxx::unexpected(std::move(draft.error()));
+            return presentationResult(prepareSceneConfiguration(*draft, inputs_.registrations()));
+        }
+        SceneConfigurationResult<void> loadDraft(SceneConfigurationDraft draft)
+        {
+            origin_ = std::move(draft);
+            for (auto& [id, field] : schema_fields_)
+                field->setValue(std::ranges::find(origin_.schemas, id) != origin_.schemas.end());
+            name_.setValue(origin_.name);
+            rows_.clear();
+            opaque_systems_.clear();
+            construction_ = origin_.construction;
+            scene_dependencies_ = origin_.scene_dependencies;
+            execution_ = origin_.execution;
+            producers_ = origin_.producers;
+            viewport_ = origin_.viewport;
+            next_system_ = 1;
+            SceneConfigurationResult<void> status;
+            for (const auto& source : origin_.systems)
             {
-                scene.setWorld(base_->world->id());
-                scene.setSimulation(base_->simulation->id());
-                const auto& source = base_->simulation->data();
-                for (std::size_t i{}; i < source.dataCount(); ++i)
-                {
-                    const auto data = source.dataAt(i);
-                    auto added = simulation.addData(data.schema(), data.version(), data.payload());
-                    if (!added)
-                        return rejected("scene.configuration.data", added.error());
-                }
-            }
-            const auto context = facts();
-            for (const auto& row : rows_)
-            {
-                auto supported = row->checkFeatures(context, inputs_.feature_bindings);
-                if (!supported)
-                    return cxx::unexpected(supported.error());
-                auto encoded = row->encode();
-                if (!encoded)
-                    return lux::cxx::unexpected(encoded.error());
-                if (row->simulation)
-                {
-                    auto added = simulation.addSystem(row->id, row->name(), *row->simulation->description, *encoded);
-                    if (!added)
-                        return rejected("scene.new.simulation", added.error());
-                }
+                if (source.id.value == UINT64_MAX)
+                    return cxx::unexpected(SceneConfigurationFailure{
+                        ESceneConfigurationError::INVALID_ARGUMENT, "scene.configuration.identity.exhausted"
+                    });
+                next_system_ = std::max(next_system_, source.id.value + 1);
+                const simulation::SimulationSystemRegistration* sim{};
+                const lux::scene::SceneSystemRegistration* scene{};
+                if (source.domain == EConfigurationSystemDomain::SIMULATION)
+                    sim = inputs_.simulation_systems.find(source.type);
                 else
                 {
-                    const auto& type = row->description();
-                    auto added = scene.addSystem(
-                        row->id,
-                        row->name(),
-                        row->scene->type,
-                        type.version,
-                        type.configuration_schema_name,
-                        type.configuration_schema_version,
-                        *encoded
-                    );
-                    if (!added)
-                        return rejected("scene.new.system", added.error());
-                    auto bound = row->bind(scene);
-                    if (!bound)
-                        return lux::cxx::unexpected(bound.error());
+                    const auto found = std::ranges::find(inputs_.scene_systems, source.type,
+                        &lux::scene::SceneSystemRegistration::type);
+                    if (found != inputs_.scene_systems.end())
+                        scene = &*found;
                 }
-            }
-            for (const auto& [before, after] : construction_)
-            {
-                auto added = simulation.addConstructionDependency(before, after);
-                if (!added)
-                    return rejected("scene.new.construction", added.error());
-            }
-            for (const auto& [before, after] : scene_dependencies_)
-            {
-                auto added = scene.addDependency(before, after);
-                if (!added)
-                    return rejected("scene.new.scene-dependency", added.error());
-            }
-            for (const auto& edge : execution_)
-            {
-                auto added = simulation.addExecutionDependency(edge.before, edge.after);
-                if (!added)
-                    return rejected("scene.new.execution", added.error());
-            }
-            for (const auto& producer : producers_)
-            {
-                auto added = simulation.addChannelProducer(producer);
-                if (!added)
-                    return rejected("scene.new.channel", added.error());
-            }
-            auto sim = std::move(simulation).build();
-            if (!sim)
-                return rejected("scene.new.simulation", sim.error());
-            auto desc = std::move(scene).buildResolved();
-            if (!desc)
-                return rejected("scene.new.scene", desc.error());
-            return SceneCreationConfiguration{
-                name_.value(),
-                std::move(schemas),
-                std::make_shared<const lux::simulation::SimulationDescription>(std::move(*sim)),
-                std::move(*desc),
-                viewport_
-            };
-        }
-        SceneConfigurationResult<void> load(const SceneConfiguration& value, SystemId viewport)
-        {
-            // This is an off-tree candidate. Unknown payloads are preserved, unsupported schema changes refused.
-            if (!value.scene || !value.world || !value.simulation)
-                return cxx::unexpected(
-                    SceneConfigurationFailure{ESceneConfigurationError::INVALID_ARGUMENT, "scene.configuration.input"}
-                );
-            base_ = value;
-            for (auto& [id, field] : schema_fields_)
-                field->setValue(
-                    std::ranges::find(value.world->data().schemas(), id) != value.world->data().schemas().end()
-                );
-            const auto& name = value.scene->info().display_name;
-            name_.setValue(std::string(name.begin(), std::ranges::find(name, '\0')));
-            rows_.clear();
-            construction_.clear();
-            scene_dependencies_.clear();
-            execution_.clear();
-            producers_.clear();
-            const auto& simulation = value.simulation->data();
-            const auto& scene = value.scene->data();
-            SceneConfigurationResult<void> status;
-            next_system_ = 1;
-            const auto add = [&](auto source, auto* simulation_registration, auto* scene_registration
-                             ) -> SceneConfigurationResult<void> {
-                auto row = std::make_unique<SystemElement>(
-                    systems_,
-                    source.instanceId(),
-                    inputs_,
-                    simulation_registration,
-                    scene_registration,
-                    status
-                );
+                const auto* type = sim ? &sim->description->type : scene ? scene->description : nullptr;
+                const bool is_known = type && source.version == type->version &&
+                    source.configuration_schema == type->configuration_schema_name &&
+                    source.configuration_version == type->configuration_schema_version;
+                if (!is_known)
+                {
+                    opaque_systems_.push_back(source);
+                    continue;
+                }
+                auto row = std::make_unique<SystemElement>(systems_, source.id, inputs_, sim, scene, status);
                 if (!status)
                     return status;
                 auto loaded = row->load(source, inputs_);
                 if (!loaded)
                     return loaded;
-                if (source.instanceId().value == UINT64_MAX)
-                    return cxx::unexpected(SceneConfigurationFailure{
-                        ESceneConfigurationError::INVALID_ARGUMENT,
-                        "scene.configuration.identity.exhausted"
-                    });
-                next_system_ = std::max(next_system_, source.instanceId().value + 1);
                 rows_.push_back(std::move(row));
-                return {};
-            };
-            for (std::size_t i{}; i < simulation.systemCount(); ++i)
-            {
-                const auto source = simulation.systemAt(i);
-                const auto found = std::ranges::find(
-                    inputs_.simulation_systems.all(),
-                    source.type(),
-                    &lux::simulation::SimulationSystemRegistration::type
-                );
-                if (found == inputs_.simulation_systems.all().end())
-                    return cxx::unexpected(SceneConfigurationFailure{
-                        ESceneConfigurationError::MISSING_PROVIDER,
-                        "scene.configuration.simulation",
-                        0,
-                        source.type().name
-                    });
-                status = add(source, &*found, static_cast<const lux::scene::SceneSystemRegistration*>(nullptr));
-                if (!status)
-                    return status;
             }
-            for (std::size_t i{}; i < scene.systemCount(); ++i)
-            {
-                const auto source = scene.systemAt(i);
-                const auto found =
-                    std::ranges::find(inputs_.scene_systems, source.type(), &lux::scene::SceneSystemRegistration::type);
-                if (found == inputs_.scene_systems.end())
-                    return cxx::unexpected(SceneConfigurationFailure{
-                        ESceneConfigurationError::MISSING_PROVIDER,
-                        "scene.configuration.system",
-                        0,
-                        source.type().name
-                    });
-                status =
-                    add(source, static_cast<const lux::simulation::SimulationSystemRegistration*>(nullptr), &*found);
-                if (!status)
-                    return status;
-            }
-            for (std::size_t i{}; i < simulation.constructionDependencyCount(); ++i)
-            {
-                const auto edge = simulation.constructionDependencyAt(i);
-                construction_.emplace_back(edge.before().instanceId(), edge.after().instanceId());
-            }
-            for (std::size_t i{}; i < scene.dependencyCount(); ++i)
-            {
-                const auto edge = scene.dependencyAt(i);
-                scene_dependencies_.emplace_back(edge.before(), edge.after());
-            }
-            execution_.assign(simulation.executionDependencies().begin(), simulation.executionDependencies().end());
-            producers_.assign(simulation.channelProducers().begin(), simulation.channelProducers().end());
-            viewport_ = viewport;
-            // Partition/schema edits require the model's separate structural operations.
-            schemas_.setEnabled(false);
-            name_.setEnabled(false);
+            schemas_.setEnabled(!origin_.base);
+            name_.setEnabled(!origin_.base);
+            note_.setText(origin_.partition + (opaque_systems_.empty() ? "" :
+                " — unavailable system configurations are retained without changes"));
             rebuildEndpoints();
+            setStage(stage_);
             return {};
+        }
+        SceneConfigurationResult<void> load(
+            const SceneConfiguration& value, SystemId viewport, sessions::ContentStamp based_on
+        )
+        {
+            auto draft = captureSceneConfiguration(value, based_on, viewport);
+            if (!draft)
+                return cxx::unexpected(SceneConfigurationFailure{
+                    ESceneConfigurationError::INVALID_ARGUMENT, "scene.configuration.input", 0, {}, draft.error()
+                });
+            return loadDraft(std::move(*draft));
         }
         void update() noexcept
         {
@@ -1168,7 +978,7 @@ namespace lux::editor::scene
             if (needs_system_choice)
             {
                 system_type_.reset();
-                system_type_ = makeSystemChoice(add_row_, inputs_, stage);
+                system_type_ = makeSystemChoice(add_row_, inputs_, stage, origin_.partition);
             }
             stage_ = stage;
             add_.setEnabled(system_type_->value() >= 0);
@@ -1185,66 +995,13 @@ namespace lux::editor::scene
         SceneConfigurationResult<void> applyPreset(ESceneContentPreset preset)
         {
             finishControls(owner_);
-            base_.reset();
-            rows_.clear();
-            construction_.clear();
-            scene_dependencies_.clear();
-            execution_.clear();
-            producers_.clear();
-            viewport_ = {};
-            next_system_ = 1;
-            for (auto& [id, field] : schema_fields_)
-                field->setValue(
-                    preset != ESceneContentPreset::EMPTY &&
-                    (id.name == "lux.ecs.Parent" || id.name == "lux.scene.Camera" ||
-                     (preset == ESceneContentPreset::TWO_DIMENSIONAL
-                          ? id.name == "lux.ecs.Transform2D"
-                          : (id.name == "lux.ecs.Transform3D" || id.name == "lux.ecs.Mesh3D" ||
-                             id.name == "lux.ecs.Light3D")))
-                );
-            if (preset == ESceneContentPreset::EMPTY)
-            {
-                rebuildEndpoints();
-                return {};
-            }
-            SceneConfigurationResult<void> status;
-            for (const auto name : {"lux.scene.transform", "lux.scene.world_loading", "lux.builtin.system.render"})
-            {
-                const auto found = std::ranges::find(inputs_.scene_systems, std::string{name}, [](const auto& value) {
-                    return value.type.name;
-                });
-                if (found == inputs_.scene_systems.end())
-                    return lux::cxx::unexpected(SceneConfigurationFailure{
-                        ESceneConfigurationError::MISSING_PROVIDER,
-                        "scene.preset.system",
-                        0,
-                        name
-                    });
-                auto row = std::make_unique<SystemElement>(
-                    systems_,
-                    SystemId{next_system_++},
-                    inputs_,
-                    nullptr,
-                    &*found,
-                    status
-                );
-                if (!status)
-                    return status;
-                row->presetBindings();
-                if (found->cpp_type == lux::cxx::typeToken<lux::scene::RenderSystem>())
-                {
-                    status = row->presetFeatures(inputs_, preset);
-                    if (!status)
-                        return status;
-                    viewport_ = row->id;
-                }
-                rows_.push_back(std::move(row));
-            }
-            rebuildEndpoints();
-            setStage(stage_);
-            return {};
+            auto draft = makeSceneConfigurationPreset(preset, "lux.spatial.builtin.single", 1, inputs_.registrations());
+            if (!draft)
+                return cxx::unexpected(presentationFailure(std::move(draft.error())));
+            return loadDraft(std::move(*draft));
         }
-        std::optional<SceneConfiguration> base_;
+        SceneConfigurationDraft origin_{{}, {}, "Untitled scene", "lux.spatial.builtin.single", 1};
+        std::vector<SceneSystemConfigurationDraft> opaque_systems_;
         SceneConfigurationElement& owner_;
         Inputs inputs_;
         controls::Layout layout_;
@@ -1283,6 +1040,10 @@ namespace lux::editor::scene
         setStretch({1, 1});
     }
     SceneConfigurationElement::~SceneConfigurationElement() noexcept = default;
+    SceneConfigurationResult<SceneConfigurationDraft> SceneConfigurationElement::capture()
+    {
+        return impl_->capture();
+    }
     SceneConfigurationResult<SceneCreationConfiguration> SceneConfigurationElement::build()
     {
         return impl_->build();
@@ -1291,49 +1052,27 @@ namespace lux::editor::scene
     {
         return impl_->applyPreset(preset);
     }
-    SceneConfigurationResult<void> SceneConfigurationElement::load(const SceneConfiguration& value, SystemId viewport)
+    SceneConfigurationResult<void> SceneConfigurationElement::load(
+        const SceneConfiguration& value, SystemId viewport, sessions::ContentStamp based_on
+    )
     {
-        return impl_->load(value, viewport);
+        return impl_->load(value, viewport, based_on);
     }
     SceneConfigurationResult<SceneSetConfiguration> SceneConfigurationElement::buildEdit(const SceneConfiguration& base)
     {
-        if (!base.scene || !base.world || !base.simulation)
-            return cxx::unexpected(
-                SceneConfigurationFailure{ESceneConfigurationError::INVALID_ARGUMENT, "scene.configuration.input"}
-            );
-        auto built = impl_->build();
-        if (!built)
-            return cxx::unexpected(built.error());
-        const auto copied = [](auto values) {
-            return std::vector<asset::AssetAuxiliaryPayload>(values.begin(), values.end());
-        };
-        auto simulation = simulation::SimulationAsset::create(
-            base.simulation->info(),
-            std::move(built->simulation),
-            copied(base.simulation->auxiliaryPayloads())
-        );
-        if (!simulation)
+        auto draft = impl_->capture();
+        if (!draft)
+            return cxx::unexpected(std::move(draft.error()));
+        const bool is_same_base = draft->base && draft->base->scene == base.scene &&
+            draft->base->world == base.world && draft->base->simulation == base.simulation;
+        if (!is_same_base)
             return cxx::unexpected(SceneConfigurationFailure{
-                ESceneConfigurationError::INVALID_ARGUMENT,
-                "scene.configuration.simulation.asset",
-                0,
-                {},
-                simulation.error()
+                ESceneConfigurationError::INVALID_ARGUMENT, "scene.configuration.source"
             });
-        auto scene = lux::scene::SceneAsset::create(
-            base.scene->info(),
-            std::make_shared<const lux::scene::SceneDescription>(std::move(built->scene)),
-            copied(base.scene->auxiliaryPayloads())
-        );
-        if (!scene)
-            return cxx::unexpected(SceneConfigurationFailure{
-                ESceneConfigurationError::INVALID_ARGUMENT,
-                "scene.configuration.scene.asset",
-                0,
-                {},
-                scene.error()
-            });
-        return SceneSetConfiguration{{std::move(*scene), base.world, std::move(*simulation)}};
+        auto prepared = prepareSceneConfigurationEdit(*draft, impl_->inputs_.registrations());
+        if (!prepared)
+            return cxx::unexpected(presentationFailure(std::move(prepared.error())));
+        return SceneSetConfiguration{std::move(*prepared)};
     }
     void SceneConfigurationElement::setStage(ESceneConfigurationStage stage) noexcept
     {

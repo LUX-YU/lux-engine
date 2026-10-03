@@ -2,7 +2,7 @@
 
 #include <lux/engine/project/PluginCatalog.hpp>
 #include <lux/engine/editor/scene/ConfigurationEditor.hpp>
-#include <lux/engine/scene/SceneDescriptionBuilder.hpp>
+#include <lux/engine/editor/scene/SceneConfigurationPreparation.hpp>
 #include <lux/engine/scene/SceneSystemRegistration.hpp>
 #include <lux/engine/function/render/client/core/RenderFeatureRegistration.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
@@ -36,7 +36,8 @@ namespace lux::editor::scene
             object::EConnectError,
             asset::AssetDecodeFailure,
             SceneEditError,
-            std::any
+            std::any,
+            ScenePreparationFailure
         >;
         ESceneConfigurationError code{};
         std::string domain;
@@ -46,18 +47,6 @@ namespace lux::editor::scene
     };
     template <class T> using SceneConfigurationResult = cxx::expected<T, SceneConfigurationFailure>;
 
-    struct SceneProviderOption final
-    {
-        std::string_view capability, name;
-    };
-    struct SceneCreationConfiguration final
-    {
-        std::string name;
-        std::vector<world::WorldDataSchemaId> schemas;
-        std::shared_ptr<const simulation::SimulationDescription> simulation;
-        lux::scene::SceneDescription scene;
-        system::SystemInstanceId viewport;
-    };
     enum class ESceneConfigurationStage : std::uint8_t
     {
         ALL,
@@ -67,13 +56,6 @@ namespace lux::editor::scene
         FEATURES,
         RELATIONSHIPS
     };
-    enum class ESceneContentPreset : std::uint8_t
-    {
-        EMPTY,
-        TWO_DIMENSIONAL,
-        THREE_DIMENSIONAL
-    };
-
     // Owns only the configuration form's draft value and its code, never author/session state.
     // Assignment first destroys the old control, then its draft/code. No last-lease destructor race.
     class ConfigurationControl final
@@ -150,6 +132,10 @@ namespace lux::editor::scene
         // An empty control uses the registered codec's default. Factories return complete owning controls.
         CreateControl configuration;
         std::span<const lux::scene::RenderFeatureSceneBinding> feature_bindings{};
+        [[nodiscard]] SceneConfigurationRegistrations registrations() const noexcept
+        {
+            return {components, simulation_systems, scene_systems, features, providers, feature_bindings};
+        }
     };
     class SceneConfigurationElement final : public lux::ui::Element
     {
@@ -165,12 +151,14 @@ namespace lux::editor::scene
         SceneConfigurationElement& operator=(const SceneConfigurationElement&) = delete;
         SceneConfigurationElement(SceneConfigurationElement&&) = delete;
         SceneConfigurationElement& operator=(SceneConfigurationElement&&) = delete;
+        [[nodiscard]] SceneConfigurationResult<SceneConfigurationDraft> capture();
         [[nodiscard]] SceneConfigurationResult<SceneCreationConfiguration> build();
         [[nodiscard]] SceneConfigurationResult<void> applyPreset(ESceneContentPreset);
         // Load only into a candidate form; failed loads do not alter any Session or the mounted form.
         [[nodiscard]] SceneConfigurationResult<void> load(
             const SceneConfiguration&,
-            system::SystemInstanceId viewport = {}
+            system::SystemInstanceId viewport = {},
+            sessions::ContentStamp based_on = {}
         );
         [[nodiscard]] SceneConfigurationResult<SceneSetConfiguration> buildEdit(const SceneConfiguration&);
         void setStage(ESceneConfigurationStage) noexcept;

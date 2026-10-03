@@ -16,6 +16,10 @@ int main(int argc, char** argv)
     lux::cxx::Parser parser("lux_editor");
     parser.add<std::string>("project", "p").desc("Open an existing .luxproject");
     parser.add<std::string>("font").desc("Explicit cold UI font file");
+    parser.add<int>("width").desc("Explicit window content width (requires height)");
+    parser.add<int>("height").desc("Explicit window content height (requires width)");
+    parser.add<float>("scale").desc("UI scale for this launch only, 0.5..4");
+    parser.add<std::string>("window-mode").desc("ordinary, maximized or fullscreen for this launch only");
     auto parsed = parser.parse(static_cast<int>(arguments.size()), arguments.data());
     if (!parsed)
     {
@@ -38,6 +42,27 @@ int main(int argc, char** argv)
     config.project_file = std::filesystem::u8path(*parsed->get("project").as<std::string>());
     if (parsed->contains("font"))
         config.font = std::filesystem::u8path(*parsed->get("font").as<std::string>());
+    if (parsed->contains("width"))
+        config.width = *parsed->get("width").as<int>();
+    if (parsed->contains("height"))
+        config.height = *parsed->get("height").as<int>();
+    if (parsed->contains("scale"))
+        config.scale = *parsed->get("scale").as<float>();
+    if (parsed->contains("window-mode"))
+    {
+        const auto mode = *parsed->get("window-mode").as<std::string>();
+        if (mode == "ordinary")
+            config.window_mode = lux::window::EWindowMode::ORDINARY;
+        else if (mode == "maximized")
+            config.window_mode = lux::window::EWindowMode::MAXIMIZED;
+        else if (mode == "fullscreen")
+            config.window_mode = lux::window::EWindowMode::FULLSCREEN;
+        else
+        {
+            std::fprintf(stderr, "Invalid --window-mode\n");
+            return 2;
+        }
+    }
     auto application = lux::editor::application::EditorApplication::create(std::move(config));
     if (!application)
     {

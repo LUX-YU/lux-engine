@@ -1,5 +1,7 @@
 #pragma once
 #include <lux/engine/editor/desktop/ViewCommands.hpp>
+#include <lux/engine/editor/project/DesktopSettings.hpp>
+#include <lux/engine/editor/project/SettingsContent.hpp>
 #include <lux/engine/editor/application/RestoreWorkbench.hpp>
 #include <lux/engine/editor/workspace/WorkspaceChanges.hpp>
 #include <lux/engine/editor/desktop/WorkspaceActions.hpp>
@@ -172,16 +174,16 @@ namespace lux::editor::application
         lux::project::SceneRegistrations registrations_;
         std::vector<extensions::EditorExtension> extensions_;
         std::unique_ptr<ProjectStorage> project_;
-        // One scheduler/coordinator publishes project files and the exact user-preference file.
-        // The user root never becomes an unrestricted fallback for project paths.
+        // One coordinator publishes project and personal files through explicit physical roots.
+        // Installation data is read only; no root is an unrestricted fallback for another.
         class ApplicationFiles final : public persistence::IArtifactStore
         {
         public:
-            ApplicationFiles(std::filesystem::path project, const std::filesystem::path& user_directory)
-                : project_(std::move(project)), recent_(user_directory), recent_key_([&] {
-                      const auto bytes = (user_directory / "lux/editor/recent-projects.toml").generic_u8string();
-                      return std::string{bytes.begin(), bytes.end()};
-                  }())
+            ApplicationFiles(std::filesystem::path project, const std::filesystem::path& user_directory,
+                const std::filesystem::path& installation)
+                : project_(project), user_(user_directory / "lux/editor"), installation_(installation),
+                  project_prefix_(prefix(project)), user_prefix_(prefix(user_directory / "lux/editor")),
+                  installation_prefix_(prefix(installation))
             {}
             persistence::PersistenceResult<persistence::WriteTarget> resolve(std::string_view address) override
             {
@@ -190,20 +192,37 @@ namespace lux::editor::application
             persistence::VPublicationOutcome publish(const persistence::PublicationQuery& query, std::stop_token stop)
                 override
             {
-                return select(query.target.key.value).publish(query, stop);
+                auto& target = select(query.target.key.value);
+                if (&target == &installation_)
+                    return persistence::NotPublished{{persistence::EPersistenceError::UNSUPPORTED_TARGET,
+                        "Installation settings are read only"}};
+                return target.publish(query, stop);
             }
             persistence::Reconciliation reconcile(const persistence::PublicationQuery& query) override
             {
-                return select(query.target.key.value).reconcile(query);
+                auto& target = select(query.target.key.value);
+                if (&target == &installation_)
+                    return {true, persistence::NotPublished{{persistence::EPersistenceError::UNSUPPORTED_TARGET,
+                        "Installation settings are read only"}}};
+                return target.reconcile(query);
             }
 
         private:
             storage::FileArtifactStore& select(std::string_view key)
             {
-                return key == recent_key_ ? recent_ : project_;
+                if (key.starts_with(user_prefix_))
+                    return user_;
+                if (!key.starts_with(project_prefix_) && key.starts_with(installation_prefix_))
+                    return installation_;
+                return project_;
             }
-            storage::FileArtifactStore project_, recent_;
-            std::string recent_key_;
+            static std::string prefix(const std::filesystem::path& root)
+            {
+                const auto bytes = (root / "").generic_u8string();
+                return {bytes.begin(), bytes.end()};
+            }
+            storage::FileArtifactStore project_, user_, installation_;
+            std::string project_prefix_, user_prefix_, installation_prefix_;
         } files_;
         persistence::WriteCoordinator writes_;
         persistence::SaveService saves_{writes_};
@@ -245,6 +264,10 @@ namespace lux::editor::application
         commands::CommandDispatcher command_dispatcher_{commands_};
         extensions::ContributionRegistry contributions_;
         workspace::WorkspaceStore workspace_;
+        workspace::WorkspaceStore installation_settings_, user_settings_, profile_settings_;
+        workspace::WorkspaceChanges user_settings_changes_, profile_settings_changes_;
+        std::vector<settings::SettingsPage> builtin_settings_;
+        std::shared_ptr<project::SettingsContentInput> settings_content_;
         workspace::WorkspaceChanges workspace_changes_;
         std::unique_ptr<desktop::WorkspaceActions> workspace_actions_;
         std::optional<EditorFailure> workspace_failure_;
@@ -288,12 +311,14 @@ namespace lux::editor::application
             std::unique_ptr<engine::EngineContext>,
             object::ObjectMessageQueue,
             lux::project::PluginManager,
-            lux::project::SceneRegistrations
+            lux::project::SceneRegistrations, std::filesystem::path profile
         );
         ~Impl();
         [[nodiscard]] EditorResult<void> admission() const noexcept;
         [[nodiscard]] EditorResult<void> applyLayout(workspace::DockLayout);
         [[nodiscard]] EditorResult<void> assemble(PreparedProjectOpen&);
+        [[nodiscard]] EditorResult<project::DesktopSettingsValues> prepareDesktopSettings();
+        [[nodiscard]] EditorResult<void> activateSettings();
         [[nodiscard]] EditorResult<void> installContributions();
         [[nodiscard]] commands::CommandResult<commands::CommandInvocation>
         captureCommand(const commands::CommandDescriptor&, const lux::ui::Pane*, const lux::ui::Element*);

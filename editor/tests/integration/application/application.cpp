@@ -168,6 +168,14 @@ int main(int argc, char** argv)
     std::filesystem::create_directories(*config.user_directory);
     config.font = root / "missing-font.ttf";
     auto missing_font = EditorApplication::create(config);
+    if (!missing_font)
+    {
+        std::cerr << "Missing-font construction: " << missing_font.error().domain << '\n';
+        if (const auto* detail = std::any_cast<workspace::WorkspaceFailure>(&missing_font.error().cause))
+            std::cerr << "workspace: " << int(detail->code) << ' ' << detail->detail << '\n';
+        if (const auto* detail = std::any_cast<settings::SettingsFailure>(&missing_font.error().cause))
+            std::cerr << "settings: " << int(detail->code) << ' ' << detail->detail << '\n';
+    }
     assert(!missing_font && missing_font.error().domain == "editor.font.read");
     config.font.reset();
     desktop::testing::rejectNextMenuConnection();
@@ -263,7 +271,8 @@ int main(int argc, char** argv)
         std::this_thread::yield();
     }
     assert(std::holds_alternative<persistence::CommitReceipt>(*impl.recent_projects_->publication()));
-    assert(impl.recent_projects_->entries().size() == 1 && impl.recent_projects_->entries().front() == config.project_file);
+    assert(impl.recent_projects_->entries().size() == 1 &&
+        std::filesystem::equivalent(impl.recent_projects_->entries().front(), config.project_file));
     const auto recent_file = *config.user_directory / "lux/editor/recent-projects.toml";
     const auto recent_before = storage::readPublicationFile(recent_file, 64 * 1024);
     assert(recent_before && !recent_before->empty());

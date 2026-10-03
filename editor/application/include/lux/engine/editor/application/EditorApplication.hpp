@@ -4,6 +4,7 @@
 #include <lux/engine/editor/sessions/SessionOpening.hpp>
 #include <lux/engine/editor/views/ViewInfo.hpp>
 #include <filesystem>
+#include <lux/engine/window/WindowPlacement.hpp>
 #include <lux/engine/editor/commands/Command.hpp>
 
 namespace lux::editor::workspace
@@ -18,12 +19,14 @@ namespace lux::editor::application
         std::filesystem::path project_file;
         std::filesystem::path installation;
         std::string title{"Lux Editor"};
-        int width{1440}, height{900};
+        std::optional<int> width, height;
         // Uses the same desktop and renderer with an offscreen output, without a native window.
         bool offscreen{};
         std::optional<std::filesystem::path> font;
         // Host override for isolated profiles; defaults to the platform user config directory.
         std::optional<std::filesystem::path> user_directory;
+        std::optional<window::EWindowMode> window_mode;
+        std::optional<float> scale;
     };
     enum class EApplicationPhase : std::uint8_t
     {

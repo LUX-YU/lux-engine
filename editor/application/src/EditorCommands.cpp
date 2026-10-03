@@ -61,6 +61,8 @@ namespace lux::editor::application
     EditorResult<void> EditorApplication::Impl::installContributions()
     {
         extensions::ContributionDraft draft;
+        draft.reflection.push_back({contracts::CodeLease::builtin(), project::registerDesktopSettings});
+        draft.settings = builtin_settings_;
         draft.commands =
             sessions::makeHistoryCommands(sessions_, [this](auto id) { return opening_.find(id); });
 

@@ -25,7 +25,7 @@ namespace lux::editor::application
             [this]() noexcept {
                 if (!plugin_action_)
                     plugin_action_ = EPluginAction::ACKNOWLEDGE;
-            }
+            }, settings_content_
         ));
         draft.commands.push_back(project::makeSettingsCommand(
             [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState> {

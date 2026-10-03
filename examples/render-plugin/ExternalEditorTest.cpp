@@ -30,6 +30,8 @@ int main(int argc, char** argv)
     application::EditorApplicationConfig config;
     config.project_file = root / "Project.luxproject";
     config.installation = installation;
+    config.width = 1100;
+    config.height = 820;
     config.offscreen = true;
     config.user_directory = root;
     auto editor = application::EditorApplication::create(std::move(config));

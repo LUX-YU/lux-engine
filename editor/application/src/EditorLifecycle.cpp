@@ -412,7 +412,7 @@ namespace lux::editor::application
         receive(settleWorkspace());
         const bool operations_settled =
             importer_->closeStatus().state == assets::EModelImportCloseState::CLOSED && material_compilation_.empty() &&
-            flow_compilation_.empty() && content_saving_->settled() && opening_.settled() && recent_projects_->settled() && !project_launch_ &&
+            flow_compilation_.empty() && user_settings_changes_.settled() && profile_settings_changes_.settled() && content_saving_->settled() && opening_.settled() && recent_projects_->settled() && !project_launch_ &&
             std::ranges::all_of(workspace_changes_.publications(), [](const auto& value) { return value.result.has_value(); }) &&
             std::ranges::all_of(artifacts_, [](const auto& value) { return value.terminal(); }) &&
             std::ranges::none_of(run_presentations_, [](const auto& run) { return bool(run.preparing) || run.run; });
@@ -481,6 +481,8 @@ namespace lux::editor::application
         if (project_creation_)
             project_creation_->update();
         receive(maintainProjectSettings());
+        receive(user_settings_changes_.update(false));
+        receive(profile_settings_changes_.update(false));
         saves_.adoptCompletions();
         if (auto submitted = save_execution_.submitReady(); !submitted)
             receive(applicationFailure("save.submit", submitted.error()));
@@ -500,7 +502,7 @@ namespace lux::editor::application
         {
             auto frame = config_.offscreen
                              ? std::optional{lux::ui::FrameInfo{
-                                   {static_cast<float>(config_.width), static_cast<float>(config_.height)},
+                                   {static_cast<float>(*config_.width), static_cast<float>(*config_.height)},
                                    1.F / 60.F
                                }}
                              : std::nullopt;

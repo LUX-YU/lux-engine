@@ -1,6 +1,7 @@
 #include <lux/engine/editor/project/DesktopSettings.hpp>
 #include <lux/engine/editor/desktop/CommandMenu.hpp>
 #include <cmath>
+#include <algorithm>
 
 namespace lux::editor::project
 {
@@ -73,6 +74,38 @@ namespace lux::editor::project
                 return {};
             }
         };
+    }
+
+    settings::SettingsResult<DesktopSettingsValues> resolveDesktopSettings(
+        std::span<const settings::SettingsPage> pages, std::span<const settings::SettingsDocument> documents)
+    {
+        const auto resolve = [&]<class Value>(const settings::SettingsDescriptor& descriptor)
+            -> settings::SettingsResult<Value> {
+            const auto found = std::ranges::find_if(pages, [&](const auto& page) {
+                return page.entry && page.entry->descriptor().id.name() == descriptor.id.name();
+            });
+            if (found == pages.end())
+                return cxx::unexpected(settings::SettingsFailure{settings::ESettingsError::UNAVAILABLE,
+                    std::string{descriptor.id.name()}});
+            const auto* configuration = found->entry->descriptor().configuration;
+            if (!configuration || configuration->codec.type != cxx::typeToken<Value>())
+                return cxx::unexpected(settings::SettingsFailure{settings::ESettingsError::INVALID_DESCRIPTOR,
+                    std::string{descriptor.id.name()}});
+            auto resolved = settings::resolveSettings(found->entry, documents);
+            if (!resolved)
+                return cxx::unexpected(resolved.error());
+            return *static_cast<const Value*>(resolved->desired.data());
+        };
+        auto display = resolve.template operator()<AppearanceSettings>(appearance);
+        if (!display)
+            return cxx::unexpected(display.error());
+        auto placement = resolve.template operator()<WindowSettings>(window_descriptor);
+        if (!placement)
+            return cxx::unexpected(placement.error());
+        auto bindings = resolve.template operator()<ShortcutSettings>(shortcuts);
+        if (!bindings)
+            return cxx::unexpected(bindings.error());
+        return DesktopSettingsValues{std::move(*display), std::move(*placement), std::move(*bindings)};
     }
 
     void registerDesktopSettings(meta::ReflectionRegistry& registry, meta::qual_type_index_fix_list&)

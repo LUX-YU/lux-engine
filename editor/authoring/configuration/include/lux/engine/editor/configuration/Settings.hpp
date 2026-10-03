@@ -54,6 +54,7 @@ namespace lux::editor::settings
         [[nodiscard]] SettingsResult<void> validate(const ConfigurationValue&) const noexcept;
         // Called by the exact owner at its documented safe point/startup, never implicitly by parsing.
         [[nodiscard]] SettingsResult<void> apply(const ConfigurationValue&);
+        [[nodiscard]] bool hasApply() const noexcept { return bool(apply_); }
 
     private:
         SettingsEntry(contracts::CodeLease, const SettingsDescriptor&, Apply);

@@ -18571,6 +18571,9 @@
       ],
       "editor/workbench/project/tools/src/DesktopSettingsControls.cpp": [
         "project_tools_ui"
+      ],
+      "editor/application/src/EditorStartup.cpp": [
+        "editor_bootstrap"
       ]
     },
     "native_libraries": [

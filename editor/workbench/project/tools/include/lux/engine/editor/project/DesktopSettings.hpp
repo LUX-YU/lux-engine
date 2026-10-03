@@ -22,6 +22,14 @@ namespace lux::editor::project
     {
         std::vector<commands::ShortcutOverride> overrides;
     };
+    struct DesktopSettingsValues final
+    {
+        AppearanceSettings appearance;
+        WindowSettings window;
+        ShortcutSettings shortcuts;
+    };
+    [[nodiscard]] settings::SettingsResult<DesktopSettingsValues>
+    resolveDesktopSettings(std::span<const settings::SettingsPage>, std::span<const settings::SettingsDocument>);
     [[nodiscard]] std::vector<settings::SettingsPage> makeDesktopSettingsPages(settings::SettingsEntry::Apply);
     // Bootstrap and contributions call the same fixed reflection contribution.
     void registerDesktopSettings(meta::ReflectionRegistry&, meta::qual_type_index_fix_list&);

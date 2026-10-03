@@ -17,18 +17,23 @@ namespace lux::editor::application
         std::unique_ptr<engine::EngineContext> engine,
         object::ObjectMessageQueue messages,
         lux::project::PluginManager plugins,
-        lux::project::SceneRegistrations registrations
+        lux::project::SceneRegistrations registrations, std::filesystem::path profile
     )
         : config_(std::move(config)), platform_(std::move(platform)), window_(std::move(window)),
           engine_(std::move(engine)), messages_(std::move(messages)), project_tasks_(engine_->execution()),
           task_monitor_(messages_.dispatcherRef(), engine_->execution()), plugins_(std::move(plugins)),
-          registrations_(std::move(registrations)), files_(config_.project_file.parent_path(), *config_.user_directory),
+          registrations_(std::move(registrations)), files_(config_.project_file.parent_path(), *config_.user_directory, config_.installation),
           save_execution_(engine_->execution(), saves_, writes_, files_),
           opening_(engine_->execution(), sessions_, saves_),
           projections_(engine_->sceneRuntime(), engine_->execution()),
           runs_(engine_->sceneRuntime(), engine_->execution()), material_compilation_(engine_->execution()),
           flow_compilation_(engine_->execution()), contributions_(messages_.dispatcherRef(), commands_),
           workspace_(config_.project_file.parent_path(), writes_, files_),
+          installation_settings_(config_.installation, writes_, files_),
+          user_settings_(*config_.user_directory / "lux/editor", writes_, files_),
+          profile_settings_(std::move(profile), writes_, files_),
+          user_settings_changes_(user_settings_, writes_, files_),
+          profile_settings_changes_(profile_settings_, writes_, files_),
           workspace_changes_(workspace_, writes_, files_)
     {
         opens_.reserve(64);
@@ -47,7 +52,13 @@ namespace lux::editor::application
     EditorApplication::~EditorApplication() = default;
     EditorResult<std::unique_ptr<EditorApplication>> EditorApplication::create(EditorApplicationConfig config)
     {
-        if (config.project_file.empty() || config.width <= 0 || config.height <= 0)
+        const bool partial_extent = config.width.has_value() != config.height.has_value();
+        const bool invalid_extent = config.width && config.height && (*config.width <= 0 || *config.width > 32768 ||
+            *config.height <= 0 || *config.height > 32768);
+        const bool missing_offscreen_extent = config.offscreen && !config.width;
+        const bool invalid_config = config.project_file.empty() || partial_extent || invalid_extent ||
+            missing_offscreen_extent;
+        if (invalid_config)
             return cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "application.config"});
         if (!config.user_directory)
         {
@@ -63,10 +74,18 @@ namespace lux::editor::application
         if (!user_key)
             return applicationFailure("preferences.path", user_key.error());
         config.user_directory = std::filesystem::u8path(*user_key).parent_path().parent_path().parent_path();
+        auto installation_key = storage::publicationTargetKey(config.installation, "share/lux-engine/editor/settings.toml");
+        if (!installation_key)
+            return applicationFailure("installation.path", installation_key.error());
+        config.installation = std::filesystem::u8path(*installation_key)
+            .parent_path().parent_path().parent_path().parent_path();
         auto source = prepareProjectOpen(config.project_file);
         if (!source)
             return cxx::unexpected(source.error());
-        config.project_file = source->file();
+        auto project_key = storage::publicationTargetKey(source->file().parent_path(), source->file());
+        if (!project_key)
+            return applicationFailure("project.path", project_key.error());
+        config.project_file = std::filesystem::u8path(*project_key);
         auto plugins = loadProjectPlugins(source->file().parent_path(), source->manifest().plugins, config.installation);
         if (!plugins)
             return applicationFailure("project.plugins", plugins.error());
@@ -76,36 +95,26 @@ namespace lux::editor::application
         auto platform = config.offscreen ? nullptr : std::make_unique<window::GlfwRuntime>();
         if (platform && !platform->valid())
             return cxx::unexpected(EditorFailure{EEditorError::FRONTEND_FAILURE, "window.platform"});
-        auto window =
-            config.offscreen ? nullptr : std::make_unique<window::LuxWindow>(config.width, config.height, config.title);
-        if (window && !window->isInitialized())
-            return applicationFailure("window.create", window->initError());
         auto engine =
             engine::EngineContext::create({2, 512, 512, {256}, process::BlockingSchedulerConfig{2, 128}}, {0, 2048});
         if (!engine)
             return applicationFailure("engine.create", engine.error());
-        const auto initialized = engine::initializeRendering(
-            **engine,
-            window ? window::LuxWindow::requiredVulkanInstanceExtensions() : std::span<const char* const>{}
-        );
-        if (!initialized)
-            return applicationFailure("engine.rendering", initialized.error());
-        auto features = registrations->features;
-        features.push_back(render::kUiRenderRenderFeatureRegistration);
-        auto registered = (*engine)->renderContext()->registerFeatures(std::move(features));
-        if (!registered)
-            return applicationFailure("render.features", registered.error());
         auto messages = object::ObjectMessageQueue::create(1024);
         if (!messages)
             return applicationFailure("object.queue", messages.error());
+        const auto profile = *config.user_directory / "lux/editor/projects" / uuids::to_string(source->manifest().id.uuid());
+        std::error_code directory_error;
+        std::filesystem::create_directories(profile, directory_error);
+        if (directory_error)
+            return applicationFailure("settings.profile-directory", directory_error);
         auto impl = std::make_unique<Impl>(
             std::move(config),
             std::move(platform),
-            std::move(window),
+            nullptr,
             std::move(*engine),
             std::move(*messages),
             std::move(*plugins),
-            std::move(*registrations)
+            std::move(*registrations), profile
         );
         auto assembled = impl->assemble(*source);
         if (!assembled)
@@ -114,6 +123,43 @@ namespace lux::editor::application
     }
     EditorResult<void> EditorApplication::Impl::assemble(PreparedProjectOpen& source)
     {
+        auto bootstrap = prepareDesktopSettings();
+        if (!bootstrap)
+            return cxx::unexpected(bootstrap.error());
+        if (!config_.offscreen)
+        {
+            window::WindowPlacementRequest request;
+            if (bootstrap->window.restore)
+                request.saved = bootstrap->window.placement;
+            if (config_.width)
+                request.size = window::WindowSize{*config_.width, *config_.height};
+            request.mode = config_.window_mode;
+            auto displays = window::LuxWindow::displays();
+            if (!displays)
+                return applicationFailure("window.displays", displays.error());
+            auto resolved = window::resolveWindowPlacement(request, *displays);
+            if (!resolved)
+                return applicationFailure("window.placement", resolved.error());
+            const auto size = resolved->placement.normal;
+            window_ = std::make_unique<window::LuxWindow>(size.width, size.height, config_.title);
+            if (!window_->isInitialized())
+                return applicationFailure("window.create", window_->initError());
+            auto applied = window_->applyPlacement(resolved->placement);
+            if (!applied)
+                return applicationFailure("window.apply-placement", applied.error());
+        }
+        if (!config_.font && !bootstrap->appearance.font.empty())
+            config_.font = std::filesystem::u8path(bootstrap->appearance.font);
+        const auto scale = config_.scale.value_or(bootstrap->appearance.scale);
+        const auto initialized = engine::initializeRendering(*engine_,
+            window_ ? window::LuxWindow::requiredVulkanInstanceExtensions() : std::span<const char* const>{});
+        if (!initialized)
+            return applicationFailure("engine.rendering", initialized.error());
+        auto features = registrations_.features;
+        features.push_back(render::kUiRenderRenderFeatureRegistration);
+        auto registered = engine_->renderContext()->registerFeatures(std::move(features));
+        if (!registered)
+            return applicationFailure("render.features", registered.error());
         auto project = ProjectStorage::open(
             source,
             engine_->assets(),
@@ -196,6 +242,7 @@ namespace lux::editor::application
         }
         lux::ui::RootConfig ui_config;
         ui_config.font = config_.font ? &font_ : nullptr;
+        ui_config.scale = scale;
         auto desktop = desktop::DesktopShell::create(
             messages_.dispatcherRef(),
             engine_->execution(),
@@ -226,6 +273,9 @@ namespace lux::editor::application
         );
         if (!menu)
             return applicationFailure(menu.error().domain, menu.error());
+        auto activated_settings = activateSettings();
+        if (!activated_settings)
+            return activated_settings;
         const auto factories = contributions_.snapshot().views();
         for (const auto& [type, key] : std::array{
                  std::pair{"lux.editor.project", "project"}, std::pair{"lux.editor.tasks", "tasks"}

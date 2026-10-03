@@ -28,8 +28,15 @@ namespace lux::editor::application
         window::GlfwRuntime platform;
         if (!platform.valid())
             return 3;
-        window::LuxWindow window(1100, 820, "Lux Launcher");
-        if (!window.isInitialized())
+        auto displays = window::LuxWindow::displays();
+        if (!displays)
+            return 3;
+        auto placement = window::resolveWindowPlacement({}, *displays);
+        if (!placement)
+            return 3;
+        const auto normal = placement->placement.normal;
+        window::LuxWindow window(normal.width, normal.height, "Lux Launcher");
+        if (!window.isInitialized() || !window.applyPlacement(placement->placement))
             return 3;
         auto engine =
             engine::EngineContext::create({2, 128, 128, {128}, process::BlockingSchedulerConfig{2, 64}}, {0, 1024});

@@ -1,4 +1,6 @@
-# Formal Editor contributions (P11)
+# Shared workbench module declarations
+
+`editor_extensions` is the common workbench module provider, physically adjacent to EditorContext and UiRegistry. Its target, logical includes and installed package retain one definition. The declaration generator belongs to this same provider; Scene-specific exports live in `workbench/scene/contributions`.
 
 The composition boundary combines immutable service, UI, command, content-factory and settings declarations. The current product still consumes the previous view-factory entries until the EC4 M6 migration; new UI factories use UiRegistry. It does not own author sources, History, saves, Run sessions or rendering resources. `ContributionRegistry::enqueue()` prepares a bounded candidate; `applyPending()` publishes a fixed batch at the owner safe point. The participating CommandRegistry grants a narrow batch scope before callbacks. Ordinary command publication is BUSY through candidate cleanup, old-value disposal and notification. The prepared scope performs its one-use commit only after reflection validation; the contribution owner never unlocks and re-enters ordinary publication. Notifications follow publication. Requests made by a notification belong to the next batch. Failed candidates leave the visible catalog unchanged.
 
@@ -24,7 +26,7 @@ This is lifetime-aware dependency injection, not a security sandbox or an arbitr
 
 `editor_extensions` has no concrete tool UI, renderer implementation or LLVM dependency.
 Each Scene, Material and Flow provider declares and binds its own factories and commands.
-Application composes these exact providers. Control factory descriptions live in `scene_control_api`; using them does not import a concrete Inspector or viewport.
+The product selects providers; domain implementations do not depend on the application to declare their modules. Control factory descriptions live in `scene_control_api`; using them does not import a concrete Inspector or viewport.
 LuxWindow's Vulkan surface type declarations remain a header-only platform dependency.
 
 The runtime fingerprint covers modules/engine public contracts; the Editor fingerprint additionally covers the formal five-layer public contracts and toolchain. They are independent compatibility checks, not a guarantee of cross-compiler C++ ABI compatibility. External extensions use the same configured compiler, CRT and SDK.

@@ -486,7 +486,7 @@
       "id": "OLDDEF_EditorContext",
       "deadline": "P12",
       "pattern": "\\b(?:class|struct|enum\\s+class)\\s+(?:[A-Z][A-Z0-9_]*\\s+)?EditorContext\\b|\\busing\\s+EditorContext\\s*=",
-      "description": "旧公开 owner/协议或别名 EditorContext",
+      "description": "\u65e7\u516c\u5f00 owner/\u534f\u8bae\u6216\u522b\u540d EditorContext",
       "replacement": {
         "from_stage": "EC4",
         "namespace": "lux::editor::desktop",
@@ -501,91 +501,91 @@
       "id": "OLDDEF_PaneManager",
       "deadline": "P12",
       "pattern": "\\b(?:class|struct|enum\\s+class)\\s+(?:[A-Z][A-Z0-9_]*\\s+)?PaneManager\\b|\\busing\\s+PaneManager\\s*=",
-      "description": "旧公开 owner/协议或别名 PaneManager"
+      "description": "\u65e7\u516c\u5f00 owner/\u534f\u8bae\u6216\u522b\u540d PaneManager"
     },
     {
       "id": "OLDDEF_SceneEditor",
       "deadline": "P12",
       "pattern": "\\b(?:class|struct|enum\\s+class)\\s+(?:[A-Z][A-Z0-9_]*\\s+)?SceneEditor\\b|\\busing\\s+SceneEditor\\s*=",
-      "description": "旧公开 owner/协议或别名 SceneEditor"
+      "description": "\u65e7\u516c\u5f00 owner/\u534f\u8bae\u6216\u522b\u540d SceneEditor"
     },
     {
       "id": "OLDDEF_MaterialEditor",
       "deadline": "P12",
       "pattern": "\\b(?:class|struct|enum\\s+class)\\s+(?:[A-Z][A-Z0-9_]*\\s+)?MaterialEditor\\b|\\busing\\s+MaterialEditor\\s*=",
-      "description": "旧公开 owner/协议或别名 MaterialEditor"
+      "description": "\u65e7\u516c\u5f00 owner/\u534f\u8bae\u6216\u522b\u540d MaterialEditor"
     },
     {
       "id": "OLDDEF_FlowForgeEditor",
       "deadline": "P12",
       "pattern": "\\b(?:class|struct|enum\\s+class)\\s+(?:[A-Z][A-Z0-9_]*\\s+)?FlowForgeEditor\\b|\\busing\\s+FlowForgeEditor\\s*=",
-      "description": "旧公开 owner/协议或别名 FlowForgeEditor"
+      "description": "\u65e7\u516c\u5f00 owner/\u534f\u8bae\u6216\u522b\u540d FlowForgeEditor"
     },
     {
       "id": "OLDDEF_WorkspaceRequest",
       "deadline": "P12",
       "pattern": "\\b(?:class|struct|enum\\s+class)\\s+(?:[A-Z][A-Z0-9_]*\\s+)?WorkspaceRequest\\b|\\busing\\s+WorkspaceRequest\\s*=",
-      "description": "旧公开 owner/协议或别名 WorkspaceRequest"
+      "description": "\u65e7\u516c\u5f00 owner/\u534f\u8bae\u6216\u522b\u540d WorkspaceRequest"
     },
     {
       "id": "OLDDEF_EWorkspaceAction",
       "deadline": "P12",
       "pattern": "\\b(?:class|struct|enum\\s+class)\\s+(?:[A-Z][A-Z0-9_]*\\s+)?EWorkspaceAction\\b|\\busing\\s+EWorkspaceAction\\s*=",
-      "description": "旧公开 owner/协议或别名 EWorkspaceAction"
+      "description": "\u65e7\u516c\u5f00 owner/\u534f\u8bae\u6216\u522b\u540d EWorkspaceAction"
     },
     {
       "id": "OLDDEF_PaneRegistration",
       "deadline": "P12",
       "pattern": "\\b(?:class|struct|enum\\s+class)\\s+(?:[A-Z][A-Z0-9_]*\\s+)?PaneRegistration\\b|\\busing\\s+PaneRegistration\\s*=",
-      "description": "旧公开 owner/协议或别名 PaneRegistration"
+      "description": "\u65e7\u516c\u5f00 owner/\u534f\u8bae\u6216\u522b\u540d PaneRegistration"
     },
     {
       "id": "OLDDEF_CommandRegistration",
       "deadline": "P12",
       "pattern": "\\b(?:class|struct|enum\\s+class)\\s+(?:[A-Z][A-Z0-9_]*\\s+)?CommandRegistration\\b|\\busing\\s+CommandRegistration\\s*=",
-      "description": "旧公开 owner/协议或别名 CommandRegistration"
+      "description": "\u65e7\u516c\u5f00 owner/\u534f\u8bae\u6216\u522b\u540d CommandRegistration"
     },
     {
       "id": "OLDDEF_CloseRequest",
       "deadline": "P12",
       "pattern": "\\b(?:class|struct|enum\\s+class)\\s+(?:[A-Z][A-Z0-9_]*\\s+)?CloseRequest\\b|\\busing\\s+CloseRequest\\s*=",
-      "description": "旧公开 owner/协议或别名 CloseRequest"
+      "description": "\u65e7\u516c\u5f00 owner/\u534f\u8bae\u6216\u522b\u540d CloseRequest"
     },
     {
       "id": "OLDDEF_AssetEditStatus",
       "deadline": "P12",
       "pattern": "\\b(?:class|struct|enum\\s+class)\\s+(?:[A-Z][A-Z0-9_]*\\s+)?AssetEditStatus\\b|\\busing\\s+AssetEditStatus\\s*=",
-      "description": "旧公开 owner/协议或别名 AssetEditStatus"
+      "description": "\u65e7\u516c\u5f00 owner/\u534f\u8bae\u6216\u522b\u540d AssetEditStatus"
     },
     {
       "id": "OLDDEF_LegacyPersistenceState",
       "deadline": "P12",
       "pattern": "\\b(?:class|struct|enum\\s+class)\\s+(?:[A-Z][A-Z0-9_]*\\s+)?LegacyPersistenceState\\b|\\busing\\s+LegacyPersistenceState\\s*=",
-      "description": "旧公开 owner/协议或别名 LegacyPersistenceState"
+      "description": "\u65e7\u516c\u5f00 owner/\u534f\u8bae\u6216\u522b\u540d LegacyPersistenceState"
     },
     {
       "id": "OLDDEF_LegacySaveTicket",
       "deadline": "P12",
       "pattern": "\\b(?:class|struct|enum\\s+class)\\s+(?:[A-Z][A-Z0-9_]*\\s+)?LegacySaveTicket\\b|\\busing\\s+LegacySaveTicket\\s*=",
-      "description": "旧公开 owner/协议或别名 LegacySaveTicket"
+      "description": "\u65e7\u516c\u5f00 owner/\u534f\u8bae\u6216\u522b\u540d LegacySaveTicket"
     },
     {
       "id": "OLDDEF_LegacyPersistenceOutcome",
       "deadline": "P12",
       "pattern": "\\b(?:class|struct|enum\\s+class)\\s+(?:[A-Z][A-Z0-9_]*\\s+)?LegacyPersistenceOutcome\\b|\\busing\\s+LegacyPersistenceOutcome\\s*=",
-      "description": "旧公开 owner/协议或别名 LegacyPersistenceOutcome"
+      "description": "\u65e7\u516c\u5f00 owner/\u534f\u8bae\u6216\u522b\u540d LegacyPersistenceOutcome"
     },
     {
       "id": "HISTORY_SAVE_API",
       "deadline": "P01",
       "pattern": "\\bEditHistory::(?:beginSave|finishSave)\\s*\\(",
-      "description": "已删除的历史保存 API 定义"
+      "description": "\u5df2\u5220\u9664\u7684\u5386\u53f2\u4fdd\u5b58 API \u5b9a\u4e49"
     },
     {
       "id": "OLD_RUNTIME_API",
       "deadline": "P06",
       "pattern": "\\bSceneRuntime::(?:valid|invalid|tick|getSceneRegistry|getClock|destroy)\\s*\\(",
-      "description": "旧 runtime 公开定义"
+      "description": "\u65e7 runtime \u516c\u5f00\u5b9a\u4e49"
     },
     {
       "id": "P01_BRIDGE_OUTCOME",
@@ -661,14 +661,14 @@
     "editor/application/"
   ],
   "transition_allowlist": [],
-  "note": "文本检查，不扫描注释语义、不等同 AST；实际P00账本需扩充。新scope默认不含编辑器旧tools/src；旧协议字符串数据不禁止。",
+  "note": "\u6587\u672c\u68c0\u67e5\uff0c\u4e0d\u626b\u63cf\u6ce8\u91ca\u8bed\u4e49\u3001\u4e0d\u7b49\u540c AST\uff1b\u5b9e\u9645P00\u8d26\u672c\u9700\u6269\u5145\u3002\u65b0scope\u9ed8\u8ba4\u4e0d\u542b\u7f16\u8f91\u5668\u65e7tools/src\uff1b\u65e7\u534f\u8bae\u5b57\u7b26\u4e32\u6570\u636e\u4e0d\u7981\u6b62\u3002",
   "targets": [
     {
       "name": "editor_contracts",
       "path": "editor/editing",
       "first_phase": "P01",
       "dependencies": [],
-      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
       "actual_cmake_target": null
     },
     {
@@ -678,7 +678,7 @@
       "dependencies": [
         "editor_contracts"
       ],
-      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
       "actual_cmake_target": null
     },
     {
@@ -689,7 +689,7 @@
         "editor_contracts",
         "edit_history"
       ],
-      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
       "actual_cmake_target": null
     },
     {
@@ -700,7 +700,7 @@
         "edit_sessions",
         "edit_history"
       ],
-      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
       "actual_cmake_target": null
     },
     {
@@ -711,7 +711,7 @@
         "edit_sessions",
         "edit_history"
       ],
-      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
       "actual_cmake_target": "material_model"
     },
     {
@@ -722,7 +722,7 @@
         "edit_sessions",
         "edit_history"
       ],
-      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
       "actual_cmake_target": "flowforge_model"
     },
     {
@@ -733,7 +733,7 @@
         "editor_contracts",
         "edit_sessions"
       ],
-      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
       "actual_cmake_target": "editor_persistence"
     },
     {
@@ -743,7 +743,7 @@
       "dependencies": [
         "editor_persistence"
       ],
-      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
       "actual_cmake_target": "editor_persistence_execution"
     },
     {
@@ -754,7 +754,7 @@
         "scene_model",
         "editor_persistence"
       ],
-      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
       "actual_cmake_target": "scene_persistence"
     },
     {
@@ -765,7 +765,7 @@
         "material_model",
         "editor_persistence"
       ],
-      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
       "actual_cmake_target": "material_persistence"
     },
     {
@@ -776,7 +776,7 @@
         "flowforge_model",
         "editor_persistence"
       ],
-      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
       "actual_cmake_target": "flowforge_persistence"
     },
     {
@@ -786,7 +786,7 @@
       "dependencies": [
         "scene_model"
       ],
-      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
       "actual_cmake_target": "scene_execution_api"
     },
     {
@@ -796,7 +796,7 @@
       "dependencies": [
         "scene_execution_api"
       ],
-      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
       "actual_cmake_target": "scene_execution"
     },
     {
@@ -806,7 +806,7 @@
       "dependencies": [
         "scene_model"
       ],
-      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
       "actual_cmake_target": "scene_projection"
     },
     {
@@ -818,7 +818,7 @@
         "material_model",
         "scene_projection"
       ],
-      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
       "actual_cmake_target": "material_preview"
     },
     {
@@ -829,7 +829,7 @@
         "editor_persistence",
         "flowforge_model"
       ],
-      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
       "actual_cmake_target": "flowforge_compilation"
     },
     {
@@ -840,7 +840,7 @@
         "scene_model",
         "scene_execution_api"
       ],
-      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
       "actual_cmake_target": "scene_interaction"
     },
     {
@@ -850,7 +850,7 @@
       "dependencies": [
         "material_model"
       ],
-      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
       "actual_cmake_target": "material_interaction"
     },
     {
@@ -860,7 +860,7 @@
       "dependencies": [
         "flowforge_model"
       ],
-      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
       "actual_cmake_target": "flowforge_interaction"
     },
     {
@@ -870,7 +870,7 @@
       "dependencies": [
         "editor_contracts"
       ],
-      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
       "actual_cmake_target": "view_api"
     },
     {
@@ -880,7 +880,7 @@
       "dependencies": [
         "view_api"
       ],
-      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
       "actual_cmake_target": "editor_widgets"
     },
     {
@@ -890,7 +890,7 @@
       "dependencies": [
         "editor_contracts"
       ],
-      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
       "actual_cmake_target": "layout_model"
     },
     {
@@ -901,7 +901,7 @@
         "layout_model",
         "editor_persistence"
       ],
-      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
       "actual_cmake_target": "workspace_store"
     },
     {
@@ -912,7 +912,7 @@
         "view_api",
         "layout_model"
       ],
-      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
       "actual_cmake_target": "desktop_shell"
     },
     {
@@ -927,7 +927,7 @@
         "scene_projection",
         "scene_execution_api"
       ],
-      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
       "actual_cmake_target": "scene_ui"
     },
     {
@@ -941,7 +941,7 @@
         "material_interaction",
         "material_preview"
       ],
-      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
       "actual_cmake_target": "material_ui"
     },
     {
@@ -952,7 +952,7 @@
         "view_api",
         "editor_widgets"
       ],
-      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
       "actual_cmake_target": "tasks_ui"
     },
     {
@@ -964,7 +964,7 @@
         "editor_widgets",
         "editor_persistence_execution"
       ],
-      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
       "actual_cmake_target": "project_ui"
     },
     {
@@ -976,7 +976,7 @@
         "edit_sessions",
         "view_api"
       ],
-      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
       "actual_cmake_target": null
     },
     {
@@ -989,7 +989,7 @@
         "view_api",
         "editor_commands"
       ],
-      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
       "actual_cmake_target": null
     },
     {
@@ -999,7 +999,7 @@
       "dependencies": [
         "extension_api"
       ],
-      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
       "actual_cmake_target": null
     },
     {
@@ -1015,7 +1015,7 @@
         "editor_commands",
         "extension_api"
       ],
-      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
       "actual_cmake_target": null
     },
     {
@@ -1032,7 +1032,7 @@
         "editor_workflows",
         "extension_api"
       ],
-      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
       "actual_cmake_target": null
     },
     {
@@ -1048,7 +1048,7 @@
         "editor_workflows",
         "extension_api"
       ],
-      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
       "actual_cmake_target": null
     },
     {
@@ -1064,7 +1064,7 @@
         "editor_workflows",
         "extension_api"
       ],
-      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
       "actual_cmake_target": null
     },
     {
@@ -1082,7 +1082,7 @@
         "tasks_ui",
         "project_ui"
       ],
-      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
       "actual_cmake_target": null
     },
     {
@@ -1092,7 +1092,7 @@
       "dependencies": [
         "editor_bootstrap"
       ],
-      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
+      "external_dependency_rule": "\u5916\u90e8 engine/modules/lux-cxx \u7cbe\u786e\u4f9d\u8d56\u5728 P00 \u548c\u5b9e\u9645 CMake \u4e2d\u8bb0\u5f55\uff1b\u4e0d\u5f97\u56e0\u7528 PRIVATE \u5c31\u5ffd\u7565\u9759\u6001\u94fe\u63a5\u95ed\u5305\u3002",
       "actual_cmake_target": "lux_editor"
     },
     {
@@ -9455,7 +9455,7 @@
         "path": "editor/authoring/configuration"
       },
       "editor_extensions": {
-        "path": "editor/application/extensions"
+        "path": "editor/workbench/desktop/modules"
       },
       "flowforge_persistence": {
         "path": "editor/activities/flow"
@@ -13078,7 +13078,7 @@
         "capabilities": [
           "CPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "plugin_library_test": {
         "layer": "TEST",
@@ -13086,10 +13086,10 @@
         "capabilities": [
           "CPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "scene_render_meta": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13097,10 +13097,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "scene_runtime_render_configuration_meta": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13108,10 +13108,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "scene_runtime_render_configuration_meta_generate": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13119,10 +13119,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_meta": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13130,10 +13130,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_grid3_d_operation_meta": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13141,10 +13141,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_grid2_d_operation_meta": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13152,10 +13152,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_line_list_operation_meta": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13163,10 +13163,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_tri_overlay_operation_meta": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13174,10 +13174,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_trajectory_operation_meta": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13185,10 +13185,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_skybox_operation_meta": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13196,10 +13196,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_skinning_operation_meta": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13207,10 +13207,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_point_cloud_operation_meta": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13218,10 +13218,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_tonemap_operation_meta": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13229,10 +13229,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_shadow_map_operation_meta": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13240,10 +13240,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_view_camera_operation_meta": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13251,10 +13251,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_light_operation_meta": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13262,10 +13262,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_mesh_stack_operation_meta": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13273,10 +13273,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_material_operation_meta": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13284,10 +13284,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_deferred_g_buffer_operation_meta": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13295,10 +13295,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_deferred_lighting_operation_meta": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13306,10 +13306,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_depth_prepass_operation_meta": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13317,10 +13317,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_forward_mesh_operation_meta": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13328,10 +13328,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_highlight_operation_meta": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13339,10 +13339,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_streaming_feedback_operation_meta": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13350,10 +13350,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_hzb_operation_meta": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13361,10 +13361,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_linear_depth_operation_meta": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13372,10 +13372,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_ssao_operation_meta": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13383,10 +13383,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_fog_operation_meta": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13394,10 +13394,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_canvas2_d_operation_meta": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13405,10 +13405,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_mesh_shadow_operation_meta": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13416,10 +13416,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_spatial_cull_operation_meta": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13427,10 +13427,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_render_cluster_operation_meta": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13438,10 +13438,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_terrain_operation_meta": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13449,10 +13449,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_water_operation_meta": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13460,10 +13460,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_tonemap_params_meta": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13471,10 +13471,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_spatial_cull_params_meta": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13482,10 +13482,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_shadow_quality_params_meta": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13493,10 +13493,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_grid3_d_operation_meta_generate": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13504,10 +13504,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_grid2_d_operation_meta_generate": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13515,10 +13515,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_line_list_operation_meta_generate": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13526,10 +13526,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_tri_overlay_operation_meta_generate": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13537,10 +13537,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_trajectory_operation_meta_generate": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13548,10 +13548,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_skybox_operation_meta_generate": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13559,10 +13559,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_skinning_operation_meta_generate": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13570,10 +13570,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_point_cloud_operation_meta_generate": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13581,10 +13581,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_tonemap_operation_meta_generate": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13592,10 +13592,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_shadow_map_operation_meta_generate": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13603,10 +13603,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_view_camera_operation_meta_generate": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13614,10 +13614,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_light_operation_meta_generate": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13625,10 +13625,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_mesh_stack_operation_meta_generate": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13636,10 +13636,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_material_operation_meta_generate": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13647,10 +13647,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_deferred_g_buffer_operation_meta_generate": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13658,10 +13658,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_deferred_lighting_operation_meta_generate": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13669,10 +13669,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_depth_prepass_operation_meta_generate": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13680,10 +13680,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_forward_mesh_operation_meta_generate": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13691,10 +13691,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_highlight_operation_meta_generate": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13702,10 +13702,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_streaming_feedback_operation_meta_generate": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13713,10 +13713,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_hzb_operation_meta_generate": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13724,10 +13724,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_linear_depth_operation_meta_generate": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13735,10 +13735,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_ssao_operation_meta_generate": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13746,10 +13746,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_fog_operation_meta_generate": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13757,10 +13757,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_canvas2_d_operation_meta_generate": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13768,10 +13768,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_mesh_shadow_operation_meta_generate": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13779,10 +13779,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_spatial_cull_operation_meta_generate": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13790,10 +13790,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_render_cluster_operation_meta_generate": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13801,10 +13801,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_terrain_operation_meta_generate": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13812,10 +13812,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_water_operation_meta_generate": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13823,10 +13823,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_tonemap_params_meta_generate": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13834,10 +13834,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_spatial_cull_params_meta_generate": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13845,10 +13845,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "render_feature_client_shadow_quality_params_meta_generate": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13856,10 +13856,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "physics2d_editor": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13867,10 +13867,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "physics2d_editor_configuration": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13878,10 +13878,10 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "physics2d_editor_configuration_generate": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "PROVIDER",
         "capabilities": [
           "CPU",
@@ -13889,7 +13889,7 @@
           "TOOLCHAIN",
           "GPU"
         ],
-        "path": "editor/application/extensions/builtin"
+        "path": "editor/workbench/scene/contributions"
       },
       "editor_context": {
         "layer": "RETAINED",
@@ -15922,13 +15922,13 @@
         "path": "editor/authoring/configuration"
       },
       "editor_extensions": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "COMPOSITION",
         "capabilities": [
           "CPU",
           "GUI"
         ],
-        "path": "editor/application/extensions"
+        "path": "editor/workbench/desktop/modules"
       },
       "editor_contributions_test": {
         "layer": "TEST",
@@ -16386,13 +16386,13 @@
         "path": "editor/workbench/desktop"
       },
       "lux_editor_module_generator": {
-        "layer": "E4",
+        "layer": "E3",
         "role": "GENERATOR",
         "capabilities": [
           "CPU",
           "TOOLCHAIN"
         ],
-        "path": "editor/application/extensions"
+        "path": "editor/workbench/desktop/modules"
       },
       "editor_module_static": {
         "layer": "TEST",
@@ -16401,7 +16401,7 @@
           "CPU",
           "PROCESS"
         ],
-        "path": "editor/application/extensions"
+        "path": "editor/workbench/desktop/modules"
       },
       "editor_module_dynamic": {
         "layer": "TEST",
@@ -16410,7 +16410,7 @@
           "CPU",
           "PROCESS"
         ],
-        "path": "editor/application/extensions"
+        "path": "editor/workbench/desktop/modules"
       },
       "editor_modules_test": {
         "layer": "TEST",
@@ -16419,7 +16419,7 @@
           "CPU",
           "PROCESS"
         ],
-        "path": "editor/application/extensions"
+        "path": "editor/workbench/desktop/modules"
       },
       "editor_modules_test_selectedModules_editor_module_static": {
         "layer": "TEST",
@@ -16428,7 +16428,7 @@
           "CPU",
           "TOOLCHAIN"
         ],
-        "path": "editor/application/extensions"
+        "path": "editor/workbench/desktop/modules"
       },
       "editor_modules_test_selectedModules_editor_module_static_generate": {
         "layer": "TEST",
@@ -16437,7 +16437,7 @@
           "CPU",
           "TOOLCHAIN"
         ],
-        "path": "editor/application/extensions"
+        "path": "editor/workbench/desktop/modules"
       }
     },
     "files": {
@@ -18503,19 +18503,19 @@
       "editor/workbench/scene/src/ConfigurationEditor.cpp": [
         "scene_ui"
       ],
-      "editor/application/extensions/src/Contributions.cpp": [
+      "editor/workbench/desktop/modules/src/Contributions.cpp": [
         "editor_extensions"
       ],
-      "editor/application/extensions/src/EditorExtension.cpp": [
+      "editor/workbench/desktop/modules/src/EditorExtension.cpp": [
         "editor_extensions"
       ],
-      "editor/application/extensions/include/lux/engine/editor/extensions/Contributions.hpp": [
+      "editor/workbench/desktop/modules/include/lux/engine/editor/extensions/Contributions.hpp": [
         "editor_extensions"
       ],
-      "editor/application/extensions/include/lux/engine/editor/extensions/EditorExtension.hpp": [
+      "editor/workbench/desktop/modules/include/lux/engine/editor/extensions/EditorExtension.hpp": [
         "editor_extensions"
       ],
-      "editor/application/extensions/test/contributions.cpp": [
+      "editor/workbench/desktop/modules/test/contributions.cpp": [
         "editor_contributions_test"
       ],
       "editor/authoring/scene/include/lux/engine/editor/scene/PreparedSceneReload.hpp": [
@@ -18617,19 +18617,19 @@
       "editor/application/src/EditorSceneTools.cpp": [
         "editor_bootstrap"
       ],
-      "editor/application/extensions/builtin/src/Physics2DEditorExports.cpp": [
+      "editor/workbench/scene/contributions/src/Physics2DEditorExports.cpp": [
         "physics2d_editor"
       ],
-      "editor/application/extensions/builtin/src/RenderFeatureEditorExports.cpp": [
+      "editor/workbench/scene/contributions/src/RenderFeatureEditorExports.cpp": [
         "render_feature_meta"
       ],
-      "editor/application/extensions/builtin/src/RenderSystemEditorExports.cpp": [
+      "editor/workbench/scene/contributions/src/RenderSystemEditorExports.cpp": [
         "scene_render_meta"
       ],
-      "editor/application/extensions/builtin/test/configuration.cpp": [
+      "editor/workbench/scene/contributions/test/configuration.cpp": [
         "plugin_configuration_test"
       ],
-      "editor/application/extensions/builtin/test/plugin.cpp": [
+      "editor/workbench/scene/contributions/test/plugin.cpp": [
         "plugin_library_test"
       ],
       "editor/application/src/EditorSaving.cpp": [
@@ -18743,7 +18743,7 @@
       "editor/workbench/scene/api/include/lux/engine/editor/scene/InspectorComponent.hpp": [
         "scene_control_api"
       ],
-      "editor/application/extensions/include/lux/engine/editor/extensions/ExtensionCapabilities.hpp": [
+      "editor/workbench/desktop/modules/include/lux/engine/editor/extensions/ExtensionCapabilities.hpp": [
         "editor_extensions"
       ],
       "editor/workbench/scene/api/CMakeLists.txt": [
@@ -18987,22 +18987,22 @@
       "editor/workbench/desktop/include/lux/engine/editor/settings/SettingsPage.hpp": [
         "editor_composition"
       ],
-      "editor/application/extensions/codegen/ModuleGenerator.cpp": [
+      "editor/workbench/desktop/modules/codegen/ModuleGenerator.cpp": [
         "lux_editor_module_generator"
       ],
-      "editor/application/extensions/test/ModuleFixture.cpp": [
+      "editor/workbench/desktop/modules/test/ModuleFixture.cpp": [
         "editor_module_static",
         "editor_module_dynamic"
       ],
-      "editor/application/extensions/test/ModuleFixture.hpp": [
+      "editor/workbench/desktop/modules/test/ModuleFixture.hpp": [
         "editor_module_static",
         "editor_module_dynamic",
         "editor_modules_test"
       ],
-      "editor/application/extensions/test/ModuleExports.cpp": [
+      "editor/workbench/desktop/modules/test/ModuleExports.cpp": [
         "editor_module_dynamic"
       ],
-      "editor/application/extensions/test/modules.cpp": [
+      "editor/workbench/desktop/modules/test/modules.cpp": [
         "editor_modules_test"
       ],
       "editor/workbench/scene/api/include/lux/engine/editor/scene/SceneEditorCatalog.hpp": [
@@ -19210,7 +19210,7 @@
         "public": true
       },
       {
-        "segment": "/editor/application/extensions/module_gen/selectedModules/",
+        "segment": "/editor/workbench/desktop/modules/module_gen/selectedModules/",
         "owner": "editor_modules_test",
         "public": false,
         "suffix": ""

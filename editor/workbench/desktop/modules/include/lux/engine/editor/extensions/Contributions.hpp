@@ -83,7 +83,7 @@ namespace lux::editor::extensions
         struct Data;
         std::shared_ptr<const Data> data_;
     };
-    // Application composition only. Queue updates during callbacks; publish one complete candidate at
+    // Shared composition boundary. Queue updates during callbacks; publish one complete candidate at
     // the outer safe point. No producer is informed until every catalog has switched and old owners retire.
     class ContributionRegistry final : public object::LuxObject
     {

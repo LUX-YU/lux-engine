@@ -20,7 +20,7 @@ set(LUX_GENERATE_HEADER_DIR "${CMAKE_BINARY_DIR}/generated")
 # Test sources are copied; all production headers, libraries and generation tools come from SDK_PREFIX.
 get_filename_component(engine_source "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
 foreach(file ModuleFixture.hpp ModuleFixture.cpp ModuleExports.cpp modules.cpp)
-    configure_file("${engine_source}/editor/application/extensions/test/${file}" "${CMAKE_BINARY_DIR}/${file}" COPYONLY)
+    configure_file("${engine_source}/editor/workbench/desktop/modules/test/${file}" "${CMAKE_BINARY_DIR}/${file}" COPYONLY)
 endforeach()
 foreach(file CompositionProbe.hpp composition_plugin.cpp)
     configure_file("${engine_source}/editor/workbench/desktop/test/${file}" "${CMAKE_BINARY_DIR}/${file}" COPYONLY)

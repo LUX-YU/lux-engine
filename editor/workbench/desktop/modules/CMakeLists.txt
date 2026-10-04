@@ -107,4 +107,3 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     set_tests_properties(editor.module_codegen PROPERTIES LABELS "editor;native;EC4")
 endif()
 
-add_subdirectory(builtin)

@@ -17,7 +17,7 @@ SessionStore 唯一拥有三类作者会话及其 History；具体视图只借�
 窗口隐藏不会停止已接纳的导入或发布工作。
 
 `engine/project/plugins` 是运行期插件装载与元信息能力，供游戏和编辑器共享；
-本目录是编辑器项目描述。Editor 专用配置和组件 UI 插件位于 `editor/application/extensions`，不会进入游戏链接依赖。
+本目录是编辑器项目描述。Editor 专用配置和组件 UI 插件位于 `editor/workbench/desktop/modules`，不会进入游戏链接依赖。
 
 保留的快速测试验证保存目标冲突与发布行为。资产切换、首次保存、另存为、
 未知数据保留和关闭流程由编辑器工作流用例覆盖。

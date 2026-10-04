@@ -1,5 +1,4 @@
 add_subdirectory(launch)
-add_subdirectory(extensions)
 
 add_component(COMPONENT_NAME editor_bootstrap NAMESPACE lux::engine::editor STATIC
     SOURCE_FILES src/EditorStartup.cpp src/EditorApplication.cpp src/EditorViews.cpp src/EditorCommands.cpp src/EditorLifecycle.cpp src/EditorWorkspace.cpp src/EditorContent.cpp src/EditorViewClosure.cpp src/EditorSceneTools.cpp src/EditorSaving.cpp src/EditorReload.cpp src/EditorResults.cpp src/EditorModels.cpp src/EditorArtifacts.cpp src/EditorRecovery.cpp src/RestoreWorkbench.cpp src/EditorProjectTools.cpp src/EditorSettings.cpp src/ProjectCreation.cpp src/EditorProjectCreation.cpp src/Launcher.cpp)

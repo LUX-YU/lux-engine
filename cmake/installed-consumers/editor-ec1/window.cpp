@@ -36,8 +36,9 @@ int main()
     auto messages = take(object::ObjectMessageQueue::create(32));
     auto root = take(ui::Root::create(messages.dispatcherRef()));
     desktop::ViewHost host{*root};
-    commands::CommandRegistry commands;
-    extensions::ContributionRegistry contributions{messages.dispatcherRef(), commands};
+    lux::editor::desktop::EditorContext editor_context{messages.dispatcherRef()};
+    auto& commands = editor_context.commands();
+    extensions::ContributionRegistry contributions{messages.dispatcherRef(), editor_context};
     extensions::ContributionDraft draft;
     draft.views.push_back(views::ViewFactoryEntry::create(
         lux::object::CodeLease::builtin(),

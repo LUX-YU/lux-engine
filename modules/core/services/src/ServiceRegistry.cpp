@@ -242,6 +242,7 @@ namespace lux::services
         std::vector<std::shared_ptr<const detail::ServiceDefinition>> definitions;
         std::vector<std::shared_ptr<detail::ServiceScopeState>> scopes;
         std::vector<std::unique_ptr<Instance>> instances;
+        bool catalog_reading{};
 
         [[nodiscard]] ServiceResult<void> admission() const noexcept
         {
@@ -297,7 +298,7 @@ namespace lux::services
     ServiceRegistry::~ServiceRegistry()
     {
         // Borrowed infrastructure and the code provider must outlive every accepted allocation.
-        const bool is_invalid_destruction = !impl_->admission() || !drained();
+        const bool is_invalid_destruction = !impl_->admission() || impl_->catalog_reading || !drained();
         if (is_invalid_destruction)
         {
             std::terminate();
@@ -321,6 +322,35 @@ namespace lux::services
             impl_->instances,
             [](const auto& value) { return value->lifetime->reclaimed.load(std::memory_order_acquire); }
         );
+    }
+    ServiceRegistry::ReadScope::ReadScope(ServiceRegistry& owner) noexcept : owner_(&owner)
+    {
+        owner_->impl_->catalog_reading = true;
+    }
+    ServiceRegistry::ReadScope::ReadScope(ReadScope&& other) noexcept : owner_(std::exchange(other.owner_, nullptr)) {}
+    ServiceRegistry::ReadScope::~ReadScope()
+    {
+        if (!owner_)
+        {
+            return;
+        }
+        if (owner_->impl_->callbacks->owner != std::this_thread::get_id())
+        {
+            std::terminate();
+        }
+        owner_->impl_->catalog_reading = false;
+    }
+    ServiceResult<ServiceRegistry::ReadScope> ServiceRegistry::readScope() noexcept
+    {
+        if (auto admitted = impl_->admission(); !admitted)
+        {
+            return cxx::unexpected(std::move(admitted.error()));
+        }
+        if (impl_->catalog_reading)
+        {
+            return reject(EServiceError::BUSY);
+        }
+        return ReadScope{*this};
     }
     struct ServiceRegistry::Publication::State final
     {
@@ -382,18 +412,12 @@ namespace lux::services
         publication->commit();
         return {};
     }
-    ServiceResult<ServiceRegistry::Publication> ServiceRegistry::preparePublication(
-        std::vector<std::shared_ptr<const ServiceEntry>> input
+    ServiceResult<void> validateServiceEntries(
+        std::span<const std::shared_ptr<const ServiceEntry>> entries,
+        std::size_t capacity
     ) noexcept
     {
-        auto admitted = impl_->admission();
-        if (!admitted)
-        {
-            return cxx::unexpected(std::move(admitted.error()));
-        }
-        CallbackScope callback{*impl_->callbacks};
-        auto entries = std::move(input); // Rejected descriptor/code cleanup is still protected.
-        if (entries.size() > impl_->limits.definitions)
+        if (entries.size() > capacity)
         {
             return reject(EServiceError::CAPACITY);
         }
@@ -500,6 +524,27 @@ namespace lux::services
                     return reject(EServiceError::HASH_COLLISION);
                 }
             }
+        }
+        return {};
+    }
+    ServiceResult<ServiceRegistry::Publication> ServiceRegistry::preparePublication(
+        std::vector<std::shared_ptr<const ServiceEntry>> input
+    ) noexcept
+    {
+        auto admitted = impl_->admission();
+        if (!admitted)
+        {
+            return cxx::unexpected(std::move(admitted.error()));
+        }
+        CallbackScope callback{*impl_->callbacks};
+        auto entries = std::move(input); // Rejected descriptor/code cleanup is still protected.
+        if (impl_->catalog_reading)
+        {
+            return reject(EServiceError::BUSY);
+        }
+        if (auto valid = validateServiceEntries(entries, impl_->limits.definitions); !valid)
+        {
+            return cxx::unexpected(std::move(valid.error()));
         }
         std::vector<std::shared_ptr<const detail::ServiceDefinition>> candidate;
         candidate.reserve(entries.size());

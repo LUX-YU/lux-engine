@@ -1,9 +1,10 @@
-#include <lux/engine/editor/extensions/Contributions.hpp>
-#include <lux/engine/editor/configuration/EditorReflection.hpp>
-#include <lux/engine/ui/Root.hpp>
-#include <lux/engine/ui/Element.hpp>
+#include <array>
 #include <cassert>
 #include <iostream>
+#include <lux/engine/editor/configuration/EditorReflection.hpp>
+#include <lux/engine/editor/extensions/Contributions.hpp>
+#include <lux/engine/ui/Element.hpp>
+#include <lux/engine/ui/Root.hpp>
 
 using namespace lux;
 using namespace lux::editor;
@@ -44,8 +45,9 @@ namespace
 int originalCases()
 {
     auto messages = take(object::ObjectMessageQueue::create(32));
-    commands::CommandRegistry commands;
-    ContributionRegistry registry{messages.dispatcherRef(), commands, 2};
+    lux::editor::desktop::EditorContext editor_context{messages.dispatcherRef()};
+    auto& commands = editor_context.commands();
+    ContributionRegistry registry{messages.dispatcherRef(), editor_context, 2};
     Facts facts;
     auto library = std::shared_ptr<const void>(
         new int{1},
@@ -181,11 +183,20 @@ namespace
         CommandRegistry& commands;
         CommandRegistrySnapshot candidate;
         unsigned calls{}, blocked{};
+        desktop::EditorContext* context{};
         void run()
         {
             ++calls;
             auto result = commands.publish(candidate);
             blocked += !result && result.error().code == ECommandError::BUSY;
+            if (context)
+            {
+                auto services = context->services().publish({});
+                assert(!services && services.error().code == services::EServiceError::BUSY);
+                auto empty = take(desktop::UiCatalog::prepare({}));
+                auto ui = context->ui().publish(std::move(empty));
+                assert(!ui && ui.error().code == desktop::EUiError::BUSY);
+            }
         }
     };
     PublicationAttempt* reflection_attempt{};
@@ -206,9 +217,11 @@ namespace
     void r11Batch(std::string_view mode)
     {
         auto messages = take(object::ObjectMessageQueue::create(32));
-        CommandRegistry commands;
-        ContributionRegistry registry{messages.dispatcherRef(), commands, 4};
+        desktop::EditorContext editor_context{messages.dispatcherRef()};
+        auto& commands = editor_context.commands();
+        ContributionRegistry registry{messages.dispatcherRef(), editor_context, 4};
         PublicationAttempt attempt{commands, take(CommandRegistrySnapshot::create({command("C")}))};
+        attempt.context = &editor_context;
         ContributionDraft first;
         first.commands.push_back(command("A"));
         if (mode == "factory")
@@ -294,7 +307,7 @@ namespace
                     +[](meta::ReflectionRegistry&) noexcept -> const meta::RefClass* { return nullptr; }
                 },
                 +[](ui::Element&, ui::ElementId, ConfigurationValue&) noexcept
-                -> lux::editor::scene::ConfigurationEditor::CreateResult { return std::unique_ptr<ui::Element>{}; }
+                    -> lux::editor::scene::ConfigurationEditor::CreateResult { return std::unique_ptr<ui::Element>{}; }
             });
             auto candidate = take(ContributionSnapshot::prepare(std::move(rejected)));
             const auto reflection_count = meta::ReflectionRegistry::instance().classes().size();
@@ -349,6 +362,86 @@ namespace
         assert(commands.snapshot().find(CommandIdView{"C"}));
     }
 } // namespace
+namespace
+{
+    constexpr std::array binding_contracts{
+        services::ServiceContract::forType<Binding, Binding>(services::ServiceNameView{"contribution.binding"})
+    };
+    constexpr auto binding_factory = [](services::ServiceResolver&, const services::ServiceConfiguration&) noexcept
+        -> services::ServiceResult<std::unique_ptr<Binding>> { return std::make_unique<Binding>(9); };
+    constexpr auto binding_service = services::ServiceDescriptor::forType<Binding, binding_factory>(
+        services::ServiceNameView{"contribution.binding.default"},
+        binding_contracts
+    );
+    constexpr std::array binding_dependencies{
+        services::ServiceDependency{services::ServiceNameView{"contribution.binding"}, 1, cxx::typeToken<Binding>()},
+        services::ServiceDependency{
+            services::ServiceNameView{"contribution.facts"},
+            1,
+            cxx::typeToken<Facts>(),
+            services::EDependencyKind::BORROWED
+        }
+    };
+    constexpr desktop::UiDescriptor binding_ui{
+        views::ViewTypeIdView{"extension.window"},
+        "Window",
+        binding_dependencies,
+        1,
+        nullptr,
+        [](services::ServiceResolver& resolver,
+           const desktop::UiCreateInfo& input) -> desktop::UiResult<std::unique_ptr<ui::Pane>>
+        {
+            auto binding = resolver.get<Binding>(0);
+            auto facts = resolver.require<Facts>(1);
+            assert(binding && (*binding)->value == 9 && facts);
+            ++facts->get().old_calls;
+            return std::make_unique<Window>(input.dispatcher, input.instance, facts->get());
+        }
+    };
+    void neutralCatalog()
+    {
+        auto messages = take(object::ObjectMessageQueue::create(32));
+        desktop::EditorContext context{messages.dispatcherRef()};
+        ContributionRegistry registry{messages.dispatcherRef(), context};
+        auto scope = take(context.services().createScope());
+        Facts facts;
+        assert(scope.provide(services::ServiceNameView{"contribution.facts"}, facts));
+        ContributionDraft draft;
+        draft.services.push_back(services::ServiceEntry::bind<binding_service>(object::CodeLease::builtin()));
+        draft.ui.push_back(desktop::UiEntry::bind<binding_ui>(object::CodeLease::builtin()));
+        draft.commands.push_back(command("binding.command"));
+        auto candidate = take(ContributionSnapshot::prepare(std::move(draft)));
+        assert(registry.enqueue(candidate) && registry.applyPending());
+        assert(facts.old_calls == 0);
+        auto use = [&](const ContributionSnapshot& current) -> ContributionResult<void>
+        {
+            assert(current.ui().entries()[0] == context.ui().snapshot().entries()[0]);
+            auto handle = take(current.ui().at(0));
+            for (auto name : {"left", "right"})
+            {
+                auto pane = context.ui().create(handle, scope, {messages.dispatcherRef(), ui::PaneId{name}, {}, {}});
+                assert(pane && !(*pane)->attachedRoot());
+            }
+            auto services = context.services().publish({});
+            assert(!services && services.error().code == services::EServiceError::BUSY);
+            auto ui = context.ui().publish(take(desktop::UiCatalog::prepare({})));
+            assert(!ui && ui.error().code == desktop::EUiError::BUSY);
+            return {};
+        };
+        assert(registry.withSnapshot(use));
+        assert(facts.old_calls == 2 && facts.destroyed == 2);
+        ContributionDraft invalid;
+        auto invalid_service = binding_service;
+        invalid_service.destroy = nullptr;
+        invalid.services.push_back(services::ServiceEntry::create(object::CodeLease::builtin(), invalid_service));
+        auto rejected = ContributionSnapshot::prepare(std::move(invalid));
+        assert(!rejected && rejected.error().domain == "services");
+        assert(registry.revision() == 1 && context.ui().revision() == 1 && context.commands().revision() == 1);
+        assert(scope.release() && scope.drained());
+        std::cout << "Actual contribution owner atomically publishes service/UI/command catalogs; "
+                     "fixed read scope permits lazy factories and rejects directory changes PASS\n";
+    }
+} // namespace
 int main(int argc, char** argv)
 {
     if (argc == 2)
@@ -356,5 +449,6 @@ int main(int argc, char** argv)
         r11Batch(argv[1]);
         return 0;
     }
+    neutralCatalog();
     return originalCases();
 }

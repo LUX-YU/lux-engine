@@ -12,6 +12,7 @@ namespace lux::editor::extensions
     struct ContributionCounts final
     {
         std::uint32_t commands{}, sessions{}, views{}, configurations{}, components{}, reflection{}, settings{};
+        std::uint32_t services{}, ui{};
         friend bool operator==(ContributionCounts, ContributionCounts) = default;
     };
     struct EditorExtensionExports final

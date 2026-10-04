@@ -106,8 +106,9 @@ namespace
         using namespace lux::editor;
         auto messages = object::ObjectMessageQueue::create(32);
         assert(messages);
-        commands::CommandRegistry commands;
-        extensions::ContributionRegistry registry{messages->dispatcherRef(), commands};
+        lux::editor::desktop::EditorContext editor_context{messages->dispatcherRef()};
+        auto& commands = editor_context.commands();
+        extensions::ContributionRegistry registry{messages->dispatcherRef(), editor_context};
         settings_commands = &commands;
         settings_registry = &registry;
         auto initial = extensions::ContributionSnapshot::prepare({});

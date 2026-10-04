@@ -129,8 +129,9 @@ int main(int argc, char** argv)
          .blocking = process::BlockingSchedulerConfig{1, 8}}
     ));
     process::TaskScope tasks{execution};
-    commands::CommandRegistry commands;
-    extensions::ContributionRegistry catalog{messages.dispatcherRef(), commands};
+    lux::editor::desktop::EditorContext editor_context{messages.dispatcherRef()};
+    auto& commands = editor_context.commands();
+    extensions::ContributionRegistry catalog{messages.dispatcherRef(), editor_context};
     std::optional<sessions::InstalledSession> installed;
     views::ViewId view_id;
     persistence::SaveId save_id;

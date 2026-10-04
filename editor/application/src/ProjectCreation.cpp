@@ -27,10 +27,10 @@ namespace lux::editor::application
         struct CreationEnvironment final
         {
             LoadedPlugins plugins;
-            commands::CommandRegistry commands;
+            desktop::EditorContext context;
             extensions::ContributionRegistry contributions;
             CreationEnvironment(object::ObjectDispatcherRef dispatcher, LoadedPlugins value)
-                : plugins(std::move(value)), contributions(dispatcher, commands)
+                : plugins(std::move(value)), context(dispatcher), contributions(dispatcher, context)
             {
             }
         };
@@ -222,6 +222,8 @@ namespace lux::editor::application
                 };
                 append(draft.code, supplied->code);
                 append(draft.reflection, supplied->reflection);
+                append(draft.services, supplied->services);
+                append(draft.ui, supplied->ui);
                 append(draft.configurations, supplied->configurations);
                 append(draft.settings, supplied->settings);
             }

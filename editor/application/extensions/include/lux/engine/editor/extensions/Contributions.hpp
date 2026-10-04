@@ -1,11 +1,13 @@
 #pragma once
+#include <lux/cxx/core/function_ref.hpp>
 #include <lux/engine/editor/commands/CommandRegistry.hpp>
+#include <lux/engine/editor/configuration/Settings.hpp>
+#include <lux/engine/editor/desktop/EditorContext.hpp>
+#include <lux/engine/editor/desktop/UiRegistry.hpp>
+#include <lux/engine/editor/scene/ConfigurationEditor.hpp>
+#include <lux/engine/editor/scene/InspectorComponent.hpp>
 #include <lux/engine/editor/sessions/SessionFactory.hpp>
 #include <lux/engine/editor/views/ViewFactory.hpp>
-#include <lux/engine/editor/scene/ConfigurationEditor.hpp>
-#include <lux/engine/editor/configuration/Settings.hpp>
-#include <lux/engine/editor/scene/InspectorComponent.hpp>
-#include <lux/cxx/core/function_ref.hpp>
 #include <lux/engine/object/LuxObject.hpp>
 
 namespace lux::editor::extensions
@@ -46,6 +48,8 @@ namespace lux::editor::extensions
         // External draft-level pin also covers rejected entries before catalog normalization.
         std::vector<lux::object::CodeLease> code;
         std::vector<ReflectionContribution> reflection;
+        std::vector<std::shared_ptr<const services::ServiceEntry>> services;
+        std::vector<std::shared_ptr<const desktop::UiEntry>> ui;
         std::vector<std::shared_ptr<commands::CommandEntry>> commands;
         std::vector<std::shared_ptr<sessions::SessionFactoryEntry>> sessions;
         std::vector<std::shared_ptr<views::ViewFactoryEntry>> views;
@@ -61,6 +65,8 @@ namespace lux::editor::extensions
             std::size_t capacity = 256
         );
         [[nodiscard]] const commands::CommandRegistrySnapshot& commands() const noexcept;
+        [[nodiscard]] std::span<const std::shared_ptr<const services::ServiceEntry>> services() const noexcept;
+        [[nodiscard]] const desktop::UiCatalog& ui() const noexcept;
         [[nodiscard]] const sessions::SessionFactorySnapshot& sessions() const noexcept;
         [[nodiscard]] const views::ViewFactorySnapshot& views() const noexcept;
         [[nodiscard]] std::span<const scene::ConfigurationEditor> configurations() const noexcept;
@@ -81,7 +87,7 @@ namespace lux::editor::extensions
     {
     public:
         object::TSignal<std::uint64_t> changed{*this};
-        ContributionRegistry(object::ObjectDispatcherRef, commands::CommandRegistry&, std::size_t pending_capacity = 8);
+        ContributionRegistry(object::ObjectDispatcherRef, desktop::EditorContext&, std::size_t pending_capacity = 8);
         ~ContributionRegistry() override;
         ContributionRegistry(const ContributionRegistry&) = delete;
         ContributionRegistry& operator=(const ContributionRegistry&) = delete;

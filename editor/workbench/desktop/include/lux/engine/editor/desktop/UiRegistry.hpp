@@ -116,6 +116,21 @@ namespace lux::editor::desktop
     class UiRegistry final
     {
     public:
+        class ReadScope final
+        {
+        public:
+            ~ReadScope();
+            ReadScope(ReadScope&&) noexcept;
+            ReadScope(const ReadScope&) = delete;
+            ReadScope& operator=(const ReadScope&) = delete;
+            ReadScope& operator=(ReadScope&&) = delete;
+
+        private:
+            friend class UiRegistry;
+            explicit ReadScope(UiRegistry&) noexcept;
+            UiRegistry* owner_;
+        };
+        [[nodiscard]] UiResult<ReadScope> readScope() noexcept;
         class Publication final
         {
         public:

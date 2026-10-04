@@ -22,9 +22,11 @@ add_component(COMPONENT_NAME editor_extensions NAMESPACE lux::engine::editor STA
 component_include_directories(editor_extensions BUILD_TIME_EXPORT
     ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR} INSTALL_TIME include)
 target_link_libraries(editor_extensions PUBLIC lux::engine::editor::editor_commands
+    lux::engine::editor::editor_composition
     lux::engine::editor::session_factories lux::engine::editor::view_host
     lux::engine::editor::scene_control_api lux::engine::project::project_plugins)
 component_add_transitive_commands(editor_extensions
+    "find_package(lux-engine-editor-composition REQUIRED COMPONENTS editor_composition)"
     "find_package(lux-engine-editor-commands REQUIRED COMPONENTS editor_commands)"
     "find_package(lux-engine-editor-session-factories REQUIRED COMPONENTS session_factories)"
     "find_package(lux-engine-editor-desktop REQUIRED COMPONENTS view_host)"

@@ -269,7 +269,8 @@ namespace lux::editor::application
         flowforge::FlowCompilationService flow_compilation_;
         scene::ProjectionEnvironment environment_;
         lux::flowforge::FlowSourceEnvironment flow_environment_;
-        commands::CommandRegistry commands_;
+        desktop::EditorContext editor_context_{messages_.dispatcherRef()};
+        commands::CommandRegistry& commands_{editor_context_.commands()};
         commands::CommandDispatcher command_dispatcher_{commands_};
         extensions::ContributionRegistry contributions_;
         workspace::WorkspaceStore workspace_;

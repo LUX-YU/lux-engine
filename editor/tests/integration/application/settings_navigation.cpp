@@ -47,8 +47,9 @@ int main(int argc, char** argv)
     workspace::WorkspaceStore project{root_path / "project", writes, files};
     workspace::WorkspaceChanges changes{user, writes, files};
     auto messages = take(object::ObjectMessageQueue::create(128));
-    commands::CommandRegistry commands;
-    extensions::ContributionRegistry registry{messages.dispatcherRef(), commands};
+    lux::editor::desktop::EditorContext editor_context{messages.dispatcherRef()};
+    auto& commands = editor_context.commands();
+    extensions::ContributionRegistry registry{messages.dispatcherRef(), editor_context};
     extensions::ContributionDraft contributions;
     contributions.reflection.push_back({lux::object::CodeLease::builtin(), project::registerDesktopSettings});
     auto builtin = project::makeDesktopSettingsPages({});

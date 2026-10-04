@@ -8,6 +8,12 @@
 
 namespace lux::services
 {
+    // Pure declaration validation, shared by immutable module assembly and actual publication.
+    // No factory, configuration callback, or instance construction occurs here.
+    [[nodiscard]] LUX_SERVICES_PUBLIC ServiceResult<void> validateServiceEntries(
+        std::span<const std::shared_ptr<const ServiceEntry>>,
+        std::size_t capacity
+    ) noexcept;
     namespace detail
     {
         struct ServiceDefinition;
@@ -127,6 +133,23 @@ namespace lux::services
         ServiceRegistry& operator=(const ServiceRegistry&) = delete;
         ServiceRegistry(ServiceRegistry&&) = delete;
         ServiceRegistry& operator=(ServiceRegistry&&) = delete;
+        // A short multi-catalog read scope. Lazy instances remain available, but the definition
+        // set cannot change until all fixed-snapshot factory calls and their cleanup have returned.
+        class LUX_SERVICES_PUBLIC ReadScope final
+        {
+        public:
+            ~ReadScope();
+            ReadScope(ReadScope&&) noexcept;
+            ReadScope(const ReadScope&) = delete;
+            ReadScope& operator=(const ReadScope&) = delete;
+            ReadScope& operator=(ReadScope&&) = delete;
+
+        private:
+            friend class ServiceRegistry;
+            explicit ReadScope(ServiceRegistry&) noexcept;
+            ServiceRegistry* owner_;
+        };
+        [[nodiscard]] ServiceResult<ReadScope> readScope() noexcept;
         // A short owner-thread publication scope. It spans validation, all participating swaps,
         // retired-descriptor cleanup and notifications; never keep it across an asynchronous operation.
         class LUX_SERVICES_PUBLIC Publication final

@@ -84,8 +84,9 @@ int main(int argc, char** argv)
     workspace::WorkspaceStore user{user_path, writes, files}, project{project_path, writes, files};
     workspace::WorkspaceChanges user_changes{user, writes, files}, project_changes{project, writes, files};
     auto messages = take(object::ObjectMessageQueue::create(128));
-    commands::CommandRegistry commands;
-    extensions::ContributionRegistry registry{messages.dispatcherRef(), commands};
+    lux::editor::desktop::EditorContext editor_context{messages.dispatcherRef()};
+    auto& commands = editor_context.commands();
+    extensions::ContributionRegistry registry{messages.dispatcherRef(), editor_context};
     unsigned shortcut_applies{};
     bool block_apply{true};
     Page* active_page{};

@@ -195,6 +195,7 @@ namespace lux::editor::desktop
         UiCatalog current;
         std::uint64_t revision{};
         bool active{};
+        bool catalog_reading{};
         UiResult<void> admission() const noexcept
         {
             if (!dispatcher.isCurrent())
@@ -230,6 +231,35 @@ namespace lux::editor::desktop
             Guard& operator=(const Guard&) = delete;
         };
     };
+    UiRegistry::ReadScope::ReadScope(UiRegistry& owner) noexcept : owner_(&owner)
+    {
+        owner_->impl_->catalog_reading = true;
+    }
+    UiRegistry::ReadScope::ReadScope(ReadScope&& other) noexcept : owner_(std::exchange(other.owner_, nullptr)) {}
+    UiRegistry::ReadScope::~ReadScope()
+    {
+        if (!owner_)
+        {
+            return;
+        }
+        if (!owner_->impl_->dispatcher.isCurrent())
+        {
+            std::terminate();
+        }
+        owner_->impl_->catalog_reading = false;
+    }
+    UiResult<UiRegistry::ReadScope> UiRegistry::readScope() noexcept
+    {
+        if (auto admitted = impl_->admission(); !admitted)
+        {
+            return cxx::unexpected(std::move(admitted.error()));
+        }
+        if (impl_->catalog_reading)
+        {
+            return reject(EUiError::BUSY);
+        }
+        return ReadScope{*this};
+    }
     struct UiRegistry::Publication::State final
     {
         Impl& owner;
@@ -287,7 +317,7 @@ namespace lux::editor::desktop
     }
     UiRegistry::~UiRegistry()
     {
-        if (!impl_->admission())
+        if (!impl_->admission() || impl_->catalog_reading)
         {
             std::terminate();
         }
@@ -302,6 +332,10 @@ namespace lux::editor::desktop
         }
         Impl::Guard guard{impl_->active};
         auto candidate = std::move(input);
+        if (impl_->catalog_reading)
+        {
+            return reject(EUiError::BUSY);
+        }
         if (!candidate.data_)
         {
             return reject(EUiError::INVALID_DESCRIPTOR);

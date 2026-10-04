@@ -43,8 +43,9 @@ int main(int argc, char** argv)
     std::vector<editor::extensions::EditorExtension> extensions;
     auto queue = object::ObjectMessageQueue::create(64);
     assert(queue);
-    editor::commands::CommandRegistry commands;
-    editor::extensions::ContributionRegistry contributions(queue->dispatcherRef(), commands);
+    lux::editor::desktop::EditorContext editor_context{queue->dispatcherRef()};
+    auto& commands = editor_context.commands();
+    editor::extensions::ContributionRegistry contributions(queue->dispatcherRef(), editor_context);
     for (const auto& library : manager->libraries())
     {
         auto extension = editor::extensions::EditorExtension::load(

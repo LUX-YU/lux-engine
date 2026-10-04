@@ -104,6 +104,8 @@ namespace lux::editor::application
                 return applicationFailure("extension.activate", activated.error());
             append(contributed->code, activated->code);
             append(contributed->reflection, activated->reflection);
+            append(contributed->services, activated->services);
+            append(contributed->ui, activated->ui);
             append(contributed->commands, activated->commands);
             append(contributed->sessions, activated->sessions);
             append(contributed->views, activated->views);
@@ -121,6 +123,8 @@ namespace lux::editor::application
             append(draft.commands, *tools);
             append(draft.code, contributed->code);
             append(draft.reflection, contributed->reflection);
+            append(draft.services, contributed->services);
+            append(draft.ui, contributed->ui);
             append(draft.commands, contributed->commands);
             append(draft.sessions, contributed->sessions);
             append(draft.views, contributed->views);

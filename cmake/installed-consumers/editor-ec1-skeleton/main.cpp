@@ -190,8 +190,9 @@ int main(int argc, char** argv)
         auto draft = take(extension->contributions());
         const extensions::SessionActivities capabilities{store, saves};
         auto active = take(extension->activate({&capabilities}));
-        commands::CommandRegistry settings_commands;
-        extensions::ContributionRegistry settings_registry{messages.dispatcherRef(), settings_commands};
+        lux::editor::desktop::EditorContext editor_context{messages.dispatcherRef()};
+        auto& settings_commands = editor_context.commands();
+        extensions::ContributionRegistry settings_registry{messages.dispatcherRef(), editor_context};
         extensions::ContributionDraft settings_draft;
         settings_draft.reflection = draft.reflection;
         settings_draft.settings = draft.settings;

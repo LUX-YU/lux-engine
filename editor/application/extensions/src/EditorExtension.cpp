@@ -10,7 +10,7 @@ namespace lux::editor::extensions
         {
             return counts.commands <= 256 && counts.sessions <= 256 && counts.views <= 256 &&
                    counts.reflection <= 256 && counts.configurations <= 256 && counts.components <= 256 &&
-                   counts.settings <= 256;
+                   counts.settings <= 256 && counts.services <= 256 && counts.ui <= 256;
         }
         ContributionResult<ContributionDraft> normalizeDraft(
             std::shared_ptr<const void> pinned,
@@ -23,11 +23,18 @@ namespace lux::editor::extensions
                 counts.commands != draft.commands.size() || counts.sessions != draft.sessions.size() ||
                 counts.reflection != draft.reflection.size() || counts.views != draft.views.size() ||
                 counts.configurations != draft.configurations.size() || counts.components != draft.components.size() ||
-                counts.settings != draft.settings.size();
+                counts.settings != draft.settings.size() || counts.services != draft.services.size() ||
+                counts.ui != draft.ui.size();
             if (mismatch)
                 return cxx::unexpected(ContributionFailure{EContributionError::INVALID_ARGUMENT, "extension.counts"});
             const auto lease = lux::object::CodeLease::plugin(pinned);
             draft.code.push_back(lease);
+            for (const auto& entry : draft.services)
+                if (!entry || !entry->code().sameOwner(lease))
+                    return cxx::unexpected(ContributionFailure{EContributionError::INVALID_ARGUMENT, "service.code"});
+            for (const auto& entry : draft.ui)
+                if (!entry || !entry->code().sameOwner(lease))
+                    return cxx::unexpected(ContributionFailure{EContributionError::INVALID_ARGUMENT, "ui.code"});
             for (const auto& entry : draft.reflection)
                 if (!entry.code.sameOwner(lease))
                     return cxx::unexpected(ContributionFailure{EContributionError::INVALID_ARGUMENT, "reflection.code"}

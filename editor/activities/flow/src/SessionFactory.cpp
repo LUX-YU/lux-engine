@@ -301,8 +301,8 @@ namespace lux::editor::flowforge
             .create = bindNewCommand
         };
     }
-    std::shared_ptr<commands::CommandEntry> makeNewFlowCommand()
+    std::shared_ptr<commands::CommandEntry> makeNewFlowCommand(object::CodeLease code)
     {
-        return commands::CommandEntry::bind<kNewCommand>(object::CodeLease::builtin());
+        return commands::CommandEntry::bind<kNewCommand>(std::move(code));
     }
 } // namespace lux::editor::flowforge

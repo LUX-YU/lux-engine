@@ -58,7 +58,10 @@ namespace lux::editor::application
     }
     EditorApplication::EditorApplication(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}
     EditorApplication::~EditorApplication() = default;
-    EditorResult<std::unique_ptr<EditorApplication>> EditorApplication::create(EditorApplicationConfig config)
+    EditorResult<std::unique_ptr<EditorApplication>> EditorApplication::create(
+        EditorApplicationConfig config,
+        std::span<extensions::GetEditorModule* const> modules
+    )
     {
         const bool partial_extent = config.width.has_value() != config.height.has_value();
         const bool invalid_extent =
@@ -129,6 +132,12 @@ namespace lux::editor::application
             std::move(*registrations),
             profile
         );
+        auto selected = extensions::loadStaticEditorModules(modules);
+        if (!selected)
+        {
+            return applicationFailure("editor.modules", selected.error());
+        }
+        impl->extensions_ = std::move(*selected);
         auto assembled = impl->assemble(*source);
         if (!assembled)
             return cxx::unexpected(assembled.error());

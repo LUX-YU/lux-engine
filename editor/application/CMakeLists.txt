@@ -4,7 +4,7 @@ add_component(COMPONENT_NAME editor_bootstrap NAMESPACE lux::engine::editor STAT
     SOURCE_FILES src/EditorStartup.cpp src/EditorApplication.cpp src/EditorViews.cpp src/EditorCommands.cpp src/EditorLifecycle.cpp src/EditorWorkspace.cpp src/EditorContent.cpp src/EditorViewClosure.cpp src/EditorSceneTools.cpp src/EditorSaving.cpp src/EditorReload.cpp src/EditorResults.cpp src/EditorModels.cpp src/EditorArtifacts.cpp src/EditorRecovery.cpp src/RestoreWorkbench.cpp src/EditorProjectTools.cpp src/EditorSettings.cpp src/ProjectCreation.cpp src/EditorProjectCreation.cpp src/Launcher.cpp)
 component_include_directories(editor_bootstrap BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude ${CMAKE_CURRENT_SOURCE_DIR}/sinclude INSTALL_TIME include)
-target_link_libraries(editor_bootstrap PUBLIC lux::engine::platform::window lux::engine::editor::session_execution lux::engine::editor::editor_project lux::engine::editor::editor_commands
+target_link_libraries(editor_bootstrap PUBLIC lux::engine::platform::window lux::engine::editor::session_execution lux::engine::editor::editor_project lux::engine::editor::editor_commands lux::engine::editor::editor_extensions
     PRIVATE lux::engine::platform::platform_process lux::engine::editor::editor_launch lux::engine::engine_context_render lux::engine::project::project_plugin_rendering
     lux::engine::editor::editor_extensions lux::engine::editor::scene_ui lux::engine::editor::material_ui lux::engine::editor::flow_ui lux::engine::editor::scene_persistence lux::engine::editor::material_persistence lux::engine::editor::flowforge_persistence lux::engine::editor::desktop_shell
     lux::engine::editor::editor_assets lux::engine::editor::editor_storage
@@ -52,3 +52,8 @@ foreach(product lux_editor lux_launcher)
         install(FILES $<TARGET_RUNTIME_DLLS:${product}> DESTINATION bin)
     endif()
 endforeach()
+
+# The executable selects domain declarations; the reusable host has no built-in module fallback.
+set(LUX_EDITOR_PRODUCT_MODULES "flow_module" CACHE STRING "Selected Editor module providers")
+engine_target_add_editor_modules(TARGET lux_editor NAME productModules NAMESPACE lux::editor::product
+    MODULES ${LUX_EDITOR_PRODUCT_MODULES})

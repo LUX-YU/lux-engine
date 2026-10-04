@@ -8529,7 +8529,9 @@
       "material_persistence",
       "editor_persistence_execution",
       "editor_file_publication",
-      "flowforge_persistence"
+      "flowforge_persistence",
+      "editor_extensions",
+      "flow_module"
     ],
     "closure": {
       "Eigen3::Eigen": {
@@ -9560,6 +9562,12 @@
       },
       "editor_composition": {
         "path": "editor/workbench/desktop"
+      },
+      "flow_module": {
+        "path": "editor/workbench/flow/module"
+      },
+      "lux_editor_productModules_flow_module_generate": {
+        "path": "editor/application"
       }
     },
     "native_libraries": [
@@ -9586,7 +9594,9 @@
       "lux/engine/editor/workbench/CommandSupport.hpp",
       "lux/engine/object/CodeLease.hpp",
       "lux/engine/editor/flowforge/FlowSessionFactory.hpp",
-      "lux/engine/editor/desktop/UiRegistry.hpp"
+      "lux/engine/editor/desktop/UiRegistry.hpp",
+      "lux/engine/editor/extensions/EditorExtension.hpp",
+      "lux/engine/editor/flowforge/FlowModule.hpp"
     ],
     "prefixes": [],
     "test_headers": {
@@ -16505,6 +16515,33 @@
           "TOOLCHAIN"
         ],
         "path": "editor/workbench/desktop/modules"
+      },
+      "flow_module": {
+        "layer": "E3",
+        "role": "COMPOSITION",
+        "capabilities": [
+          "CPU",
+          "GUI",
+          "TOOLCHAIN",
+          "PROCESS"
+        ],
+        "path": "editor/workbench/flow/module"
+      },
+      "lux_editor_productModules_flow_module": {
+        "layer": "TOOLCHAIN",
+        "role": "GENERATOR",
+        "capabilities": [
+          "CPU",
+          "TOOLCHAIN"
+        ]
+      },
+      "lux_editor_productModules_flow_module_generate": {
+        "layer": "TOOLCHAIN",
+        "role": "GENERATOR",
+        "capabilities": [
+          "CPU",
+          "TOOLCHAIN"
+        ]
       }
     },
     "files": {
@@ -19083,6 +19120,15 @@
       ],
       "editor/authoring/flow/src/FlowEnvironment.cpp": [
         "flowforge_model"
+      ],
+      "editor/workbench/desktop/modules/include/lux/engine/editor/extensions/EditorModule.hpp": [
+        "editor_extensions"
+      ],
+      "editor/workbench/flow/module/include/lux/engine/editor/flowforge/FlowModule.hpp": [
+        "flow_module"
+      ],
+      "editor/workbench/flow/module/src/FlowModule.cpp": [
+        "flow_module"
       ]
     },
     "native_libraries": [
@@ -19285,6 +19331,12 @@
       {
         "segment": "/editor/workbench/desktop/modules/module_gen/selectedModules/",
         "owner": "editor_modules_test",
+        "public": false,
+        "suffix": ""
+      },
+      {
+        "segment": "/editor/application/module_gen/productModules/",
+        "owner": "lux_editor",
         "public": false,
         "suffix": ""
       }
@@ -19603,6 +19655,9 @@
       ],
       "engine/scene/scripting/skeleton/": [
         "scene_script_skeleton"
+      ],
+      "editor/workbench/flow/module/": [
+        "flow_module"
       ]
     },
     "script_boundaries": {

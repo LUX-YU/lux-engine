@@ -1,9 +1,10 @@
+#include "productModules.modules.hpp"
+#include <algorithm>
+#include <cstdio>
+#include <lux/cxx/arguments/Arguments.hpp>
 #include <lux/engine/editor/application/EditorApplication.hpp>
 #include <lux/engine/editor/application/Launcher.hpp>
 #include <lux/engine/platform/Process.hpp>
-#include <lux/cxx/arguments/Arguments.hpp>
-#include <algorithm>
-#include <cstdio>
 
 int main(int argc, char** argv)
 {
@@ -63,7 +64,8 @@ int main(int argc, char** argv)
             return 2;
         }
     }
-    auto application = lux::editor::application::EditorApplication::create(std::move(config));
+    auto application =
+        lux::editor::application::EditorApplication::create(std::move(config), lux::editor::product::productModules());
     if (!application)
     {
         std::fprintf(stderr, "%s: %s\n", application.error().domain.c_str(), application.error().message.c_str());

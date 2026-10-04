@@ -252,6 +252,16 @@ namespace lux::editor::sessions
         if (entries.size() > capacity)
             return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::CAPACITY, "factory"});
         std::unordered_map<asset::AssetTypeId, std::vector<std::size_t>> sources;
+        std::unordered_map<std::uint64_t, std::string_view> dependency_names;
+        const auto check_name = [&](services::ServiceNameView value)
+        {
+            if (!value.isValid())
+            {
+                return true;
+            }
+            const auto [found, inserted] = dependency_names.emplace(value.hash(), value.name());
+            return inserted || found->second == value.name();
+        };
         for (std::size_t i{}; i < entries.size(); ++i)
         {
             if (!entries[i])
@@ -268,6 +278,26 @@ namespace lux::editor::sessions
             const bool is_invalid = is_invalid_identity || is_invalid_binding || is_invalid_description;
             if (is_invalid)
                 return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::INVALID_ARGUMENT, "factory"});
+            for (const auto& dependency : descriptor.dependencies)
+            {
+                const bool is_invalid_dependency = !dependency.contract.isValid() || !dependency.version ||
+                                                   !dependency.type.isValid() ||
+                                                   dependency.kind > services::EDependencyKind::BORROWED ||
+                                                   dependency.scope > services::EDependencyScope::ROOT;
+                if (is_invalid_dependency)
+                {
+                    return cxx::unexpected(
+                        SessionFactoryFailure{ESessionFactoryError::INVALID_ARGUMENT, "factory.dependency"}
+                    );
+                }
+                const bool has_collision = !check_name(dependency.contract) || !check_name(dependency.implementation);
+                if (has_collision)
+                {
+                    return cxx::unexpected(
+                        SessionFactoryFailure{ESessionFactoryError::HASH_COLLISION, "factory.dependency"}
+                    );
+                }
+            }
             if (const auto& source = entry.descriptor_->source)
             {
                 const auto& name = source->canonical_name;

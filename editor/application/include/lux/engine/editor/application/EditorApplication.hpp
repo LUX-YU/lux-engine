@@ -1,11 +1,13 @@
 #pragma once
+#include <filesystem>
 #include <lux/engine/editor/EditorError.hpp>
+#include <lux/engine/editor/commands/Command.hpp>
+#include <lux/engine/editor/extensions/EditorModule.hpp>
 #include <lux/engine/editor/project/AssetCatalog.hpp>
 #include <lux/engine/editor/sessions/SessionOpening.hpp>
 #include <lux/engine/editor/views/ViewInfo.hpp>
-#include <filesystem>
 #include <lux/engine/window/WindowPlacement.hpp>
-#include <lux/engine/editor/commands/Command.hpp>
+#include <span>
 
 namespace lux::editor::workspace
 {
@@ -45,7 +47,10 @@ namespace lux::editor::application
     class EditorApplication final
     {
     public:
-        [[nodiscard]] static EditorResult<std::unique_ptr<EditorApplication>> create(EditorApplicationConfig);
+        [[nodiscard]] static EditorResult<std::unique_ptr<EditorApplication>> create(
+            EditorApplicationConfig,
+            std::span<extensions::GetEditorModule* const> modules = {}
+        );
         ~EditorApplication();
         EditorApplication(const EditorApplication&) = delete;
         EditorApplication& operator=(const EditorApplication&) = delete;

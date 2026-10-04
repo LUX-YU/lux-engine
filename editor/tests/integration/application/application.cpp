@@ -1,27 +1,28 @@
-#include <lux/engine/editor/scene/SceneEditorCatalog.hpp>
+#include <algorithm>
 #include <array>
-#include <lux/engine/material/graph/Nodes.hpp>
-#include <lux/engine/editor/application/EditorApplicationImpl.hpp>
-#include <lux/engine/editor/desktop/DesktopTestAccess.hpp>
-#include <lux/engine/editor/scene/OutlinerView.hpp>
-#include <lux/engine/editor/scene/SceneTools.hpp>
-#include <lux/engine/editor/project/ImportView.hpp>
-#include <lux/engine/editor/project/SettingsView.hpp>
-#include <lux/engine/editor/scene/InspectorView.hpp>
-#include <lux/engine/editor/storage/FilePublication.hpp>
-#include <lux/engine/editor/scene/ResourceView.hpp>
-#include <lux/engine/scene/SceneSystemInstaller.hpp>
-#include <lux/engine/resource/asset/model/ModelAsset.hpp>
-#include <lux/engine/resource/asset/mesh/MeshAsset.hpp>
-#include <lux/engine/material/Cooker.hpp>
-#include <lux/engine/resource/asset/AssetSerDeser.hpp>
-#include <lux/engine/resource/asset/storage/pak/PakArchive.hpp>
-#include <lux/engine/ui/Layout.hpp>
 #include <cassert>
 #include <fstream>
 #include <iostream>
+#include <lux/engine/editor/application/EditorApplicationImpl.hpp>
+#include <lux/engine/editor/desktop/DesktopTestAccess.hpp>
+#include <lux/engine/editor/flowforge/FlowModule.hpp>
+#include <lux/engine/editor/project/ImportView.hpp>
+#include <lux/engine/editor/project/SettingsView.hpp>
+#include <lux/engine/editor/scene/InspectorView.hpp>
+#include <lux/engine/editor/scene/OutlinerView.hpp>
+#include <lux/engine/editor/scene/ResourceView.hpp>
+#include <lux/engine/editor/scene/SceneEditorCatalog.hpp>
+#include <lux/engine/editor/scene/SceneTools.hpp>
+#include <lux/engine/editor/storage/FilePublication.hpp>
+#include <lux/engine/material/Cooker.hpp>
+#include <lux/engine/material/graph/Nodes.hpp>
+#include <lux/engine/resource/asset/AssetSerDeser.hpp>
+#include <lux/engine/resource/asset/mesh/MeshAsset.hpp>
+#include <lux/engine/resource/asset/model/ModelAsset.hpp>
+#include <lux/engine/resource/asset/storage/pak/PakArchive.hpp>
+#include <lux/engine/scene/SceneSystemInstaller.hpp>
+#include <lux/engine/ui/Layout.hpp>
 #include <thread>
-#include <algorithm>
 
 namespace lux::editor::application
 {
@@ -182,7 +183,7 @@ int main(int argc, char** argv)
     config.user_directory = root.parent_path() / (root.filename().string() + "-user");
     std::filesystem::create_directories(*config.user_directory);
     config.font = root / "missing-font.ttf";
-    auto missing_font = EditorApplication::create(config);
+    auto missing_font = EditorApplication::create(config, std::array{&lux::editor::flowforge::flowModule});
     if (!missing_font)
     {
         std::cerr << "Missing-font construction: " << missing_font.error().domain << '\n';
@@ -194,7 +195,7 @@ int main(int argc, char** argv)
     assert(!missing_font && missing_font.error().domain == "editor.font.read");
     config.font.reset();
     desktop::testing::rejectNextMenuConnection();
-    auto rejected = EditorApplication::create(config);
+    auto rejected = EditorApplication::create(config, std::array{&lux::editor::flowforge::flowModule});
     if (!rejected)
         std::cerr << "Application construction: " << rejected.error().domain << ": " << rejected.error().message
                   << '\n';
@@ -206,7 +207,7 @@ int main(int argc, char** argv)
     );
     std::cout << "C04: actual EditorApplication::create rejects required menu connection failure\n";
     {
-        auto direct = EditorApplication::create(config);
+        auto direct = EditorApplication::create(config, std::array{&lux::editor::flowforge::flowModule});
         assert(direct);
         if (const auto* failure = ApplicationTestAccess::implementation(**direct).workspace_changes_.migrationFailure())
         {
@@ -327,7 +328,7 @@ int main(int argc, char** argv)
     {
         auto launch_override = config;
         launch_override.scale = 2.f;
-        auto overridden = EditorApplication::create(launch_override);
+        auto overridden = EditorApplication::create(launch_override, std::array{&lux::editor::flowforge::flowModule});
         if (!overridden)
         {
             std::cerr << "Settings restart: " << overridden.error().domain << ": " << overridden.error().message
@@ -339,7 +340,7 @@ int main(int argc, char** argv)
     }
     const auto after_override = storage::publicationFileDigest(personal_file);
     assert(after_override && *after_override == *before_override);
-    auto created = EditorApplication::create(config);
+    auto created = EditorApplication::create(config, std::array{&lux::editor::flowforge::flowModule});
     if (!created)
     {
         std::cerr << created.error().domain << '\n';
@@ -1463,7 +1464,7 @@ int main(int argc, char** argv)
     assert(default_project && !default_project->manifest().default_scene.empty());
     // Earlier local activity fixtures still borrow this application execution owner until scope exit.
     config.project_file = default_path;
-    auto initial = EditorApplication::create(config);
+    auto initial = EditorApplication::create(config, std::array{&lux::editor::flowforge::flowModule});
     assert(initial);
     auto& initial_owner = ApplicationTestAccess::implementation(**initial);
     const auto initial_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);

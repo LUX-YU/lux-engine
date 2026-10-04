@@ -12,6 +12,7 @@ find_package(lux-engine-editor-extensions REQUIRED COMPONENTS editor_extensions)
 find_package(lux-engine-editor-scene-ui REQUIRED COMPONENTS scene_ui)
 find_package(lux-engine-editor-material-ui REQUIRED COMPONENTS material_ui)
 find_package(lux-engine-editor-flow-ui REQUIRED COMPONENTS flow_ui)
+find_package(lux-engine-editor-flow-module REQUIRED COMPONENTS flow_module)
 find_package(lux-engine-editor-scene-persistence REQUIRED COMPONENTS scene_persistence)
 find_package(lux-engine-editor-material-persistence REQUIRED COMPONENTS material_persistence)
 find_package(lux-engine-editor-flowforge-persistence REQUIRED COMPONENTS flowforge_persistence)
@@ -64,7 +65,7 @@ configure_file("${engine_source}/editor/workbench/desktop/test/host.cpp" "${CMAK
 add_executable(desktop_views "${CMAKE_CURRENT_BINARY_DIR}/views.cpp")
 target_link_libraries(desktop_views PRIVATE lux::engine::editor::scene_ui lux::engine::editor::desktop_shell
     lux::engine::editor::material_ui lux::engine::editor::flow_ui lux::engine::editor::scene_execution
-    lux::engine::editor::flowforge_persistence
+    lux::engine::editor::flowforge_persistence lux::engine::editor::flow_module lux::engine::editor::editor_extensions
     lux::engine::editor::tasks_ui lux::engine::editor::editor_persistence_execution lux::engine::editor::editor_file_publication lux::engine::editor::material_persistence
     lux::engine::scene::scene_transform lux::engine::function::render_features
     lux::engine::function::ui_rendering imgui::core)

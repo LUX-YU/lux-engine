@@ -1,36 +1,38 @@
-#include "ObjectQueue.hpp"
-#include <lux/engine/editor/editing/EditExecutor.hpp>
-#include <lux/engine/editor/views/ViewFactory.hpp>
-#include <lux/engine/object/ObjectEvent.hpp>
-#include <lux/engine/editor/storage/FileArtifactStore.hpp>
-#include <lux/engine/editor/persistence/SaveExecution.hpp>
-#include <lux/engine/editor/material/MaterialSaveSource.hpp>
-#include <lux/engine/editor/material/MaterialCodec.hpp>
-#include <lux/engine/editor/material/PublishCompiledMaterial.hpp>
-#include <lux/engine/editor/flowforge/PublishFlowArtifact.hpp>
-#include <lux/engine/editor/tasks/TaskView.hpp>
-#include <lux/engine/editor/project/ProjectView.hpp>
-#include <lux/engine/editor/project/AssetPickerElement.hpp>
-#include <fstream>
-#include <source_location>
-#include <lux/engine/editor/desktop/DesktopShell.hpp>
-#include <lux/engine/editor/scene/SceneView.hpp>
-#include <lux/engine/editor/scene/SceneTools.hpp>
-#include <lux/engine/editor/scene/RunController.hpp>
-#include <lux/engine/editor/scene/ResourceView.hpp>
-#include <lux/engine/editor/scene/OutlinerView.hpp>
-#include <lux/engine/editor/scene/InspectorView.hpp>
-#include <lux/engine/editor/scene/RunInspectorView.hpp>
-#include <lux/engine/editor/scene/SceneCreationView.hpp>
-#include <lux/engine/editor/scene/SceneConfigurationView.hpp>
 #include "../../../../../cmake/installed-consumers/common/ControlsTestAccess.hpp"
-#include <lux/engine/editor/flowforge/FlowView.hpp>
-#include <lux/engine/editor/flowforge/FlowSessionFactory.hpp>
-#include <lux/engine/editor/desktop/UiRegistry.hpp>
-#include <lux/engine/editor/widgets/GraphCanvas.hpp>
-#include <lux/engine/editor/views/ViewportElement.hpp>
-#include <lux/engine/flowforge/graph/ArithmeticNode.hpp>
+#include "ObjectQueue.hpp"
+#include <fstream>
 #include <imgui_internal.h>
+#include <lux/engine/editor/desktop/DesktopShell.hpp>
+#include <lux/engine/editor/desktop/UiRegistry.hpp>
+#include <lux/engine/editor/editing/EditExecutor.hpp>
+#include <lux/engine/editor/extensions/EditorExtension.hpp>
+#include <lux/engine/editor/flowforge/FlowModule.hpp>
+#include <lux/engine/editor/flowforge/FlowSessionFactory.hpp>
+#include <lux/engine/editor/flowforge/FlowView.hpp>
+#include <lux/engine/editor/flowforge/PublishFlowArtifact.hpp>
+#include <lux/engine/editor/material/MaterialCodec.hpp>
+#include <lux/engine/editor/material/MaterialSaveSource.hpp>
+#include <lux/engine/editor/material/PublishCompiledMaterial.hpp>
+#include <lux/engine/editor/persistence/SaveExecution.hpp>
+#include <lux/engine/editor/project/AssetPickerElement.hpp>
+#include <lux/engine/editor/project/ProjectView.hpp>
+#include <lux/engine/editor/scene/InspectorView.hpp>
+#include <lux/engine/editor/scene/OutlinerView.hpp>
+#include <lux/engine/editor/scene/ResourceView.hpp>
+#include <lux/engine/editor/scene/RunController.hpp>
+#include <lux/engine/editor/scene/RunInspectorView.hpp>
+#include <lux/engine/editor/scene/SceneConfigurationView.hpp>
+#include <lux/engine/editor/scene/SceneCreationView.hpp>
+#include <lux/engine/editor/scene/SceneTools.hpp>
+#include <lux/engine/editor/scene/SceneView.hpp>
+#include <lux/engine/editor/storage/FileArtifactStore.hpp>
+#include <lux/engine/editor/tasks/TaskView.hpp>
+#include <lux/engine/editor/views/ViewFactory.hpp>
+#include <lux/engine/editor/views/ViewportElement.hpp>
+#include <lux/engine/editor/widgets/GraphCanvas.hpp>
+#include <lux/engine/flowforge/graph/ArithmeticNode.hpp>
+#include <lux/engine/object/ObjectEvent.hpp>
+#include <source_location>
 #ifdef LUX_P10_R1_NATIVE
 #include "../../../authoring/flow/src/FlowSessionData.hpp"
 #include <lux/engine/editor/flowforge/PreparedFlowReload.hpp>
@@ -1033,16 +1035,17 @@ namespace
         std::weak_ptr<ef::FlowSession> weak_model = take(f.store.access<ef::FlowSession>().share(key));
 
         ServiceRegistry services(f.messages.dispatcherRef());
-        assert(services.publish(
-            {ServiceEntry::bind<ef::kFlowCompilationService>(object::CodeLease::builtin()),
-             ServiceEntry::bind<ef::kFlowEnvironmentService>(object::CodeLease::builtin())}
-        ));
+        auto module = take(extensions::EditorExtension::fromStatic(ef::flowModule()));
+        auto declarations = take(module.contributions());
+        assert(declarations.services.size() == 2 && declarations.ui.size() == 1);
+        assert(declarations.sessions.size() == 1 && declarations.commands.size() == 1);
+        assert(declarations.views.empty()); // No legacy factory or activation is hidden in the module.
+        assert(services.publish(declarations.services));
         auto scope = take(services.createScope());
         assert(scope.provide(ServiceNameView{"lux.process.execution"}, f.execution));
         assert(scope.provide(ServiceNameView{"lux.editor.sessions"}, f.store));
         desktop::UiRegistry ui(f.messages.dispatcherRef(), services);
-        auto catalog =
-            take(desktop::UiCatalog::prepare({desktop::UiEntry::bind<ef::kFlowView>(object::CodeLease::builtin())}));
+        auto catalog = take(desktop::UiCatalog::prepare(std::move(declarations.ui)));
         assert(ui.publish(catalog) && services.drained());
         const auto factory = take(catalog.selectContent({"lux.editor.flowforge"}));
         desktop::UiCreateInfo

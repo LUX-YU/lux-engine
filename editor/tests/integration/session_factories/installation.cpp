@@ -679,6 +679,42 @@ namespace
         std::cout << "PASS EC4 lazy New Flow command; exact borrowed admission; two real sessions and closed scope\n";
     }
 
+    void factoryDependencies()
+    {
+        const auto fixed = ef::makeFlowSessionFactory();
+        const auto original = fixed->descriptor().dependencies.front();
+        for (unsigned failure{}; failure < 5; ++failure)
+        {
+            auto dependency = original;
+            switch (failure)
+            {
+            case 0:
+                dependency.contract = {};
+                break;
+            case 1:
+                dependency.version = 0;
+                break;
+            case 2:
+                dependency.type = {};
+                break;
+            case 3:
+                dependency.kind = static_cast<services::EDependencyKind>(255);
+                break;
+            case 4:
+                dependency.scope = static_cast<services::EDependencyScope>(255);
+                break;
+            }
+            auto descriptor = fixed->descriptor();
+            descriptor.dependencies = std::span{&dependency, 1};
+            auto invalid =
+                SessionFactorySnapshot::create({SessionFactoryEntry::create(object::CodeLease::builtin(), descriptor)});
+            assert(!invalid && invalid.error().code == ESessionFactoryError::INVALID_ARGUMENT);
+            assert(invalid.error().domain == "factory.dependency");
+        }
+        assert(SessionFactorySnapshot::create({fixed}));
+        std::cout << "PASS source factories validate declared dependency shapes before publication\n";
+    }
+
     void lazyFlowDecoder(process::ExecutionRuntime& runtime, asset::AssetVfs& vfs)
     {
         lux::test::ObjectQueue messages;
@@ -1069,6 +1105,7 @@ int main(int argc, char** argv)
     menuDescriptorLifetime();
     shortcutOverrides();
     lazyFlowCreation();
+    factoryDependencies();
     const auto root =
         std::filesystem::path(argv[1]) / std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
     std::filesystem::create_directories(root);

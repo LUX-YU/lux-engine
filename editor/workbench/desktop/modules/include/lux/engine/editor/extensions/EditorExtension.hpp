@@ -1,6 +1,7 @@
 #pragma once
 #include <lux/engine/editor/extensions/Contributions.hpp>
 #include <lux/engine/editor/extensions/EditorExtensionAbi.hpp>
+#include <lux/engine/editor/extensions/EditorModule.hpp>
 #include <lux/engine/editor/extensions/ExtensionCapabilities.hpp>
 #include <lux/engine/project/PluginLibrary.hpp>
 #include <thread>
@@ -32,16 +33,6 @@ namespace lux::editor::extensions
         ContributionResult<void> (*activate)(ContributionDraft&, lux::object::CodeLease, const ExtensionCapabilities&){
         };
     };
-    using GetEditorExtension = const EditorExtensionExports*() noexcept;
-    // Product-generated strong references and DLL exports use the same validated table.
-    // Descriptors are module constants; this view never owns mutable registration state.
-    struct EditorModuleDescriptor final
-    {
-        std::string_view name;
-        std::uint32_t version{1};
-        GetEditorExtension* exports{};
-    };
-    using GetEditorModule = const EditorModuleDescriptor&() noexcept;
     class EditorExtension final
     {
     public:

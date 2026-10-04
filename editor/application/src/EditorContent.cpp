@@ -60,7 +60,6 @@ namespace lux::editor::application
             [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
         { return commands::CommandState{phase_ == EApplicationPhase::RUNNING && opens_.size() < 64}; };
         draft.commands.push_back(material::makeNewMaterialCommand(creation_available, contentCreation()));
-        draft.commands.push_back(flowforge::makeNewFlowCommand());
     }
     sessions::SessionCreation EditorApplication::Impl::contentCreation()
     {

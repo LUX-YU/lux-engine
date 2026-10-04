@@ -66,9 +66,7 @@ namespace lux::editor::application
             return applicationFailure("content.creation-availability", availability.error());
         }
         extensions::ContributionDraft draft;
-        draft.services.push_back(
-            services::ServiceEntry::bind<flowforge::kFlowEnvironmentService>(object::CodeLease::builtin())
-        );
+
         draft.reflection.push_back({lux::object::CodeLease::builtin(), project::registerDesktopSettings});
         draft.settings = builtin_settings_;
         draft.commands = sessions::makeHistoryCommands(sessions_, [this](auto id) { return opening_.find(id); });
@@ -182,7 +180,6 @@ namespace lux::editor::application
         installSceneCommands(draft);
         draft.sessions.push_back(scene::makeSceneSessionFactory(registrations_.components));
         draft.sessions.push_back(material::makeMaterialSessionFactory());
-        draft.sessions.push_back(flowforge::makeFlowSessionFactory());
         auto prepared = extensions::ContributionSnapshot::prepare(std::move(draft));
         if (!prepared)
             return applicationFailure("contributions.prepare", prepared.error());

@@ -17,3 +17,5 @@ lux_engine_install_components(PROJECT_NAME lux-engine-editor-flow-ui VERSION ${P
     NAMESPACE lux::engine::editor COMPONENTS flow_ui)
 
 target_include_directories(flow_ui PRIVATE ${PROJECT_SOURCE_DIR}/editor/workbench/sinclude)
+
+add_subdirectory(module)

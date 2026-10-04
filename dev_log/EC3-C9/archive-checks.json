@@ -1,0 +1,26 @@
+[
+  {
+    "case": "relocated",
+    "exit_code": 0,
+    "stdout": "Verified EC3 C9 PARTIAL continuation; remaining SDK qualification is still blocked.\n",
+    "stderr": ""
+  },
+  {
+    "case": "missing-evidence",
+    "exit_code": 1,
+    "stdout": "",
+    "stderr": "Traceback (most recent call last):\n  File \"E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\续验核查 空格\\verify.py\", line 17, in <module>\n    assert file.is_relative_to(root) and file.is_file(), f'missing evidence: {name}'\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: missing evidence: logs/resumed-ctest.log\n"
+  },
+  {
+    "case": "changed-evidence",
+    "exit_code": 1,
+    "stdout": "",
+    "stderr": "Traceback (most recent call last):\n  File \"E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\续验核查 空格\\verify.py\", line 18, in <module>\n    assert hashlib.sha256(file.read_bytes()).hexdigest() == expected, f'changed evidence: {name}'\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: changed evidence: logs/resumed-ctest.log\n"
+  },
+  {
+    "case": "restored-evidence",
+    "exit_code": 0,
+    "stdout": "Verified EC3 C9 PARTIAL continuation; remaining SDK qualification is still blocked.\n",
+    "stderr": ""
+  }
+]

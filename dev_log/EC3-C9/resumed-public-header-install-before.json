@@ -1,0 +1,9 @@
+{
+  "implementation_sha": "17ea8c4079188fa54bb8e459496053454277c9d1",
+  "production_header_count": 56,
+  "missing_public_headers": [
+    "editor/activities/project/include/lux/engine/editor/storage/ProjectCommands.hpp"
+  ],
+  "excluded_test_input_count": 4,
+  "status": "FAIL"
+}

@@ -1,0 +1,53 @@
+-- The CXX compiler identification is MSVC 19.44.35228.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: D:/Development/Mircosoft/VisualStudio/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64/cl.exe - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+---- Importing lux-cxx-compile_time
+---- Importing lux-cxx-core
+---- Importing lux-cxx-memory
+---- Importing lux-cxx-algorithm
+---- Importing lux-cxx-binary
+---- Importing lux-cxx-container
+---- Importing lux-cxx-concurrent
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Failed
+-- Looking for pthread_create in pthreads
+-- Looking for pthread_create in pthreads - not found
+-- Looking for pthread_create in pthread
+-- Looking for pthread_create in pthread - not found
+-- Found Threads: TRUE
+-- Found stdexec: D:/Development/vcpkg/installed/x64-windows/share/stdexec/stdexec-config.cmake (found version "0.10.0")
+CMake Error at E:/SyncForder/CodeRepos/install/EC3-17ea8c407918/share/lux-engine-scene/scene_composition/lux-engine-scene-scene_composition-config-targets.cmake:84 (message):
+  The imported target "lux::engine::scene::scene_composition" references the
+  file
+
+     "E:/SyncForder/CodeRepos/install/EC3-17ea8c407918/bin/lux_engine_scene_composition.dll"
+
+  but this file does not exist.  Possible reasons include:
+
+  * The file was deleted, renamed, or moved to another location.
+
+  * An install or uninstall procedure did not complete successfully.
+
+  * The installation package was faulty and contained
+
+     "E:/SyncForder/CodeRepos/install/EC3-17ea8c407918/share/lux-engine-scene/scene_composition/lux-engine-scene-scene_composition-config-targets.cmake"
+
+  but not all the files it references.
+
+Call Stack (most recent call first):
+  E:/SyncForder/CodeRepos/install/EC3-17ea8c407918/share/lux-engine-scene/scene_composition/lux-engine-scene-scene_composition-import.cmake:14 (include)
+  E:/SyncForder/CodeRepos/install/EC3-17ea8c407918/share/lux-engine-scene/lux-engine-scene-config.cmake:34 (include)
+  D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake:908 (_find_package)
+  E:/SyncForder/CodeRepos/install/EC3-17ea8c407918/share/lux-engine-scene-render/scene_render/lux-engine-scene-render-scene_render-import.cmake:7 (find_package)
+  E:/SyncForder/CodeRepos/install/EC3-17ea8c407918/share/lux-engine-scene-render/lux-engine-scene-render-config.cmake:34 (include)
+  D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake:908 (_find_package)
+  E:/SyncForder/CodeRepos/install/EC3-17ea8c407918/share/lux-engine-editor-desktop/desktop_shell/lux-engine-editor-desktop-desktop_shell-import.cmake:6 (find_package)
+  E:/SyncForder/CodeRepos/install/EC3-17ea8c407918/share/lux-engine-editor-desktop/lux-engine-editor-desktop-config.cmake:34 (include)
+  D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake:908 (_find_package)
+  CMakeLists.txt:21 (find_package)
+
+
+-- Configuring incomplete, errors occurred!

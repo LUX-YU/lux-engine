@@ -1,0 +1,10 @@
+{
+  "implementation_sha": "17ea8c4079188fa54bb8e459496053454277c9d1",
+  "manifest_items": 10309,
+  "missing": [
+    "E:\\SyncForder\\CodeRepos\\install\\EC3-17ea8c407918/bin/lux_engine_scene_composition.dll"
+  ],
+  "install_command_exit_code": 0,
+  "runtime_qualification": "BLOCKED_QUARANTINED_DEPENDENCY",
+  "build_copy_still_present": true
+}

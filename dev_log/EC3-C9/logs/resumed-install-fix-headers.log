@@ -1,0 +1,21 @@
+-- Install configuration: "RelWithDebInfo"
+-- Up-to-date: E:\SyncForder\CodeRepos\install\EC3-17ea8c407918/share/lux-engine-editor-storage/editor_storage/lux-engine-editor-storage-editor_storage-config-targets.cmake
+-- Up-to-date: E:\SyncForder\CodeRepos\install\EC3-17ea8c407918/share/lux-engine-editor-storage/editor_storage/lux-engine-editor-storage-editor_storage-config-targets-relwithdebinfo.cmake
+-- Up-to-date: E:\SyncForder\CodeRepos\install\EC3-17ea8c407918/share/lux-engine-editor-storage/editor_storage/lux-engine-editor-storage-editor_storage-import.cmake
+-- Up-to-date: E:\SyncForder\CodeRepos\install\EC3-17ea8c407918/lib/editor_storage.lib
+-- Up-to-date: E:\SyncForder\CodeRepos\install\EC3-17ea8c407918/share/lux-engine-editor-storage/lux-engine-editor-storage-config.cmake
+-- Up-to-date: E:\SyncForder\CodeRepos\install\EC3-17ea8c407918/share/lux-engine-editor-storage/lux-engine-editor-storage-config-version.cmake
+-- Installing: E:\SyncForder\CodeRepos\install\EC3-17ea8c407918/share/lux-engine-editor-storage/lux-engine-editor-storage-available-components.cmake
+-- Up-to-date: E:\SyncForder\CodeRepos\install\EC3-17ea8c407918/include/lux/engine/editor/storage/ArtifactPublicationOperation.hpp
+-- Installing: E:\SyncForder\CodeRepos\install\EC3-17ea8c407918/include/lux/engine/editor/storage/ProjectCommands.hpp
+-- Up-to-date: E:\SyncForder\CodeRepos\install\EC3-17ea8c407918/include/lux/engine/editor/storage/ProjectContentOpening.hpp
+-- Up-to-date: E:\SyncForder\CodeRepos\install\EC3-17ea8c407918/include/lux/engine/editor/storage/ProjectContentSaving.hpp
+-- Up-to-date: E:\SyncForder\CodeRepos\install\EC3-17ea8c407918/include/lux/engine/editor/storage/RecentProjects.hpp
+-- Up-to-date: E:\SyncForder\CodeRepos\install\EC3-17ea8c407918/include/lux/engine/editor/storage/ProjectPluginSelection.hpp
+-- Up-to-date: E:\SyncForder\CodeRepos\install\EC3-17ea8c407918/include/lux/engine/editor/storage/ProjectCreation.hpp
+-- Up-to-date: E:\SyncForder\CodeRepos\install\EC3-17ea8c407918/include/lux/engine/editor/storage/ProjectPlugins.hpp
+-- Up-to-date: E:\SyncForder\CodeRepos\install\EC3-17ea8c407918/include/lux/engine/editor/storage/PreparedProjectOpen.hpp
+-- Up-to-date: E:\SyncForder\CodeRepos\install\EC3-17ea8c407918/include/lux/engine/editor/storage/ProjectPublication.hpp
+-- Up-to-date: E:\SyncForder\CodeRepos\install\EC3-17ea8c407918/include/lux/engine/editor/storage/ProjectPublicationOperation.hpp
+-- Up-to-date: E:\SyncForder\CodeRepos\install\EC3-17ea8c407918/include/lux/engine/editor/storage/ProjectStorage.hpp
+-- Up-to-date: E:\SyncForder\CodeRepos\install\EC3-17ea8c407918/include/lux/engine/editor/storage/visibility.h

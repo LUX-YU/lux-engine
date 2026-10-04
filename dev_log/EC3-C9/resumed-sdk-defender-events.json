@@ -1,0 +1,12 @@
+[
+  {
+    "TimeCreated": "2026-10-04T02:27:18.3229201+01:00",
+    "Id": 1117,
+    "Message": "府唱靠Microsoft Defender 防病毒 has detected malware or potentially unwanted software using Defender security intelligence and applied the remediation action defined in the security settings.\r\n For more information please see the following:\r\nhttps://go.microsoft.com/fwlink/?linkid=37020&name=Trojan:Win32/Bearfoos.A!ml&threatid=2147731250&enterprise=0\r\n \tName: Trojan:Win32/Bearfoos.A!ml\r\n \tID: 2147731250\r\n \tSeverity: 严重\r\n \tCategory: 特洛伊木马\r\n \tPath: file:_E:\\SyncForder\\CodeRepos\\install\\EC3-17ea8c407918\\bin\\lux_engine_scene_composition.dll\r\n \tDetection Origin: 本地计算机\r\n \tDetection Type: 快速路径\r\n \tDetection Source: 实时保护\r\n \tUser: NT AUTHORITY\\SYSTEM\r\n \tProcess Name: D:\\Development\\CMake\\bin\\cmake.exe\r\n \tAction: 隔离\r\n \tAction Status:  No additional actions required\r\n \tError Code: 0x00000000\r\n \tError description: 操作成功完成。 \r\n \tSecurity intelligence Version: AV: 1.459.537.0, AS: 1.459.537.0, NIS: 1.459.537.0\r\n \tEngine Version: AM: 1.1.26080.3, NIS: 1.1.26080.3"
+  },
+  {
+    "TimeCreated": "2026-10-04T02:26:59.6862716+01:00",
+    "Id": 1116,
+    "Message": "Microsoft Defender 防病毒 检测到恶意软件或其他可能不需要的软件。\r\n 有关详细信息，请参阅以下内容:\r\nhttps://go.microsoft.com/fwlink/?linkid=37020&name=Trojan:Win32/Bearfoos.A!ml&threatid=2147731250&enterprise=0\r\n \t名称: Trojan:Win32/Bearfoos.A!ml\r\n \tID: 2147731250\r\n \t严重性: 严重\r\n \t类别: 特洛伊木马\r\n \t路径: file:_E:\\SyncForder\\CodeRepos\\install\\EC3-17ea8c407918\\bin\\lux_engine_scene_composition.dll\r\n \t检测起源: 本地计算机\r\n \t检测类型: 快速路径\r\n \t检测源: 实时保护\r\n \t用户: LUXDESKTOP\\ChenHui\r\n \t进程名称: D:\\Development\\CMake\\bin\\cmake.exe\r\n \t安全智能版本: AV: 1.459.537.0, AS: 1.459.537.0, NIS: 1.459.537.0\r\n \t引擎版本: AM: 1.1.26080.3, NIS: 1.1.26080.3"
+  }
+]

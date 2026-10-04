@@ -1,0 +1,9 @@
+{
+  "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+  "dependency_sha": "f5447a763fd042f4f08819c8c88f1676f9a2a3cb",
+  "source": "E:\\SyncForder\\CodeRepos\\lux-engine-ec3-qualified",
+  "review_source": "E:\\SyncForder\\CodeRepos\\lux-engine-ec2",
+  "build": "E:\\SyncForder\\CodeRepos\\build\\RelWithDebInfo\\ec3-17ea8c407918",
+  "prefix": "E:\\SyncForder\\CodeRepos\\install\\EC3-17ea8c407918",
+  "previous_implementation_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+}

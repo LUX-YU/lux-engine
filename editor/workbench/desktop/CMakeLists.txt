@@ -38,9 +38,10 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     set_tests_properties(editor.composition.dll PROPERTIES LABELS "editor;native;EC4" TIMEOUT 60 RUN_SERIAL TRUE)
 endif()
 
-add_interface_component(COMPONENT_NAME view_api NAMESPACE lux::engine::editor)
-component_include_directories(view_api BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
-target_link_libraries(view_api INTERFACE lux::engine::function::ui lux::engine::editor::editor_contracts lux::engine::editor::layout_model)
+add_component(COMPONENT_NAME view_api NAMESPACE lux::engine::editor STATIC SOURCE_FILES src/ViewFactory.cpp)
+component_include_directories(view_api BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/sinclude INSTALL_TIME include)
+target_link_libraries(view_api PUBLIC lux::engine::function::ui lux::engine::editor::editor_contracts lux::engine::editor::layout_model)
 component_add_transitive_commands(view_api
     "find_package(lux-engine-function REQUIRED COMPONENTS ui)"
     "find_package(lux-engine-editor-contracts REQUIRED COMPONENTS editor_contracts)"
@@ -57,7 +58,7 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     set_tests_properties(editor.detached_views PROPERTIES LABELS "editor;native;P08" TIMEOUT 60 RUN_SERIAL TRUE)
 endif()
 
-add_component(COMPONENT_NAME view_host NAMESPACE lux::engine::editor STATIC SOURCE_FILES src/ViewCommands.cpp src/ViewHost.cpp src/ViewFactory.cpp src/ReviewView.cpp)
+add_component(COMPONENT_NAME view_host NAMESPACE lux::engine::editor STATIC SOURCE_FILES src/ViewCommands.cpp src/ViewHost.cpp src/ReviewView.cpp)
 component_include_directories(view_host BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/sinclude INSTALL_TIME include)
 target_include_directories(view_host PRIVATE ${PROJECT_SOURCE_DIR}/editor/workbench/sinclude)
@@ -111,7 +112,7 @@ install(FILES
     DESTINATION include/lux/engine/editor/views COMPONENT lux_engine_editor_view_api)
 
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/views/ViewFactory.hpp
-    DESTINATION include/lux/engine/editor/views COMPONENT lux_engine_editor_desktop)
+    DESTINATION include/lux/engine/editor/views COMPONENT lux_engine_editor_view_api)
 
 if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     target_compile_definitions(desktop_shell PRIVATE LUX_DESKTOP_TEST_ACCESS=1)

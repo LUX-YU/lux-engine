@@ -98,6 +98,8 @@ def main():
             ("EC4-services-ui", "services", "ui", "framework_business_dependency", "link"),
             ("EC4-services-process", "services", "process_execution", "framework_business_dependency", "include"),
             ("EC4-services-editor", "services", "editor_contracts", "product_reverse_dependency", "include"),
+            ("EC4-module-host", "editor_extensions", "view_host", "module_host_dependency", "link"),
+            ("EC4-module-host-transitive", "editor_extensions", "view_host", "module_host_dependency", "transitive"),
         ]
     folder_name = "ec4-boundaries" if args.ec4 else ("ec3-boundaries" if args.ec3 else ("ec2-boundaries" if args.ec2 else (
         "p12-boundaries" if args.p12 else ("p11-boundaries" if args.p11 else "layering-boundaries")))

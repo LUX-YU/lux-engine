@@ -5254,7 +5254,14 @@
       "lux/engine/editor/views/ViewError.hpp",
       "lux/cxx/core/move_only_function.hpp",
       "lux/engine/editor/workspace/WorkspaceValues.hpp",
-      "lux/engine/object/CodeLease.hpp"
+      "lux/engine/object/CodeLease.hpp",
+      "algorithm",
+      "unordered_map",
+      "unordered_set",
+      "span",
+      "variant",
+      "lux/engine/editor/sessions/SessionId.hpp",
+      "lux/engine/editor/desktop/ContentRouting.hpp"
     ],
     "prefixes": [
       "lux/cxx/",
@@ -5269,7 +5276,9 @@
     "files": [
       "editor/workbench/desktop/include/lux/engine/editor/views/IViewHost.hpp",
       "editor/workbench/desktop/test/lifecycle.cpp",
-      "editor/workbench/desktop/include/lux/engine/editor/views/ViewError.hpp"
+      "editor/workbench/desktop/include/lux/engine/editor/views/ViewError.hpp",
+      "editor/workbench/desktop/include/lux/engine/editor/views/ViewFactory.hpp",
+      "editor/workbench/desktop/src/ViewFactory.cpp"
     ]
   },
   "layout_model": {
@@ -18523,10 +18532,10 @@
         "editor_configuration"
       ],
       "editor/workbench/desktop/include/lux/engine/editor/views/ViewFactory.hpp": [
-        "view_host"
+        "view_api"
       ],
       "editor/workbench/desktop/src/ViewFactory.cpp": [
-        "view_host"
+        "view_api"
       ],
       "editor/workbench/scene/include/lux/engine/editor/scene/ConfigurationForm.hpp": [
         "scene_ui"
@@ -19155,7 +19164,7 @@
         "layer": "E3",
         "consumers": [
           "editor_composition",
-          "view_host"
+          "view_api"
         ]
       }
     },

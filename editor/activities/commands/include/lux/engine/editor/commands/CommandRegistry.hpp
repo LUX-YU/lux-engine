@@ -143,7 +143,10 @@ namespace lux::editor::commands
             Batch(CommandRegistry&, std::optional<CommandRegistrySnapshot>) noexcept;
             CommandRegistry* owner_;
             std::optional<CommandRegistrySnapshot> candidate_;
+            bool publication_;
         };
+        // Read scopes may nest inside an executing command. They hold publication, not command execution
+        // permission; releasing an inner scope never releases another reader or the active call/dispatch.
         [[nodiscard]] CommandResult<Batch> readBatch() noexcept;
         [[nodiscard]] CommandResult<Batch> preparePublication(CommandRegistrySnapshot) noexcept;
         CommandRegistry();

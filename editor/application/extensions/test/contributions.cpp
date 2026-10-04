@@ -398,6 +398,58 @@ namespace
             return std::make_unique<Window>(input.dispatcher, input.instance, facts->get());
         }
     };
+    void commandReadsCatalog()
+    {
+        auto messages = take(object::ObjectMessageQueue::create(32));
+        desktop::EditorContext context{messages.dispatcherRef()};
+        auto& commands = context.commands();
+        ContributionRegistry registry{messages.dispatcherRef(), context};
+        commands::CommandDispatcher dispatcher{commands};
+        unsigned invoked{};
+        ContributionDraft draft;
+        draft.commands.push_back(commands::CommandEntry::create(
+            object::CodeLease::builtin(),
+            {commands::CommandIdView{"test.read.catalog"}, "Read catalog"},
+            [](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
+            { return commands::CommandState{true}; },
+            [&](const commands::CommandInvocation& input) -> commands::CommandResult<commands::DispatchReceipt>
+            {
+                auto use = [&](const ContributionSnapshot& snapshot) -> ContributionResult<void>
+                {
+                    auto pinned = take(snapshot.commands().at(0));
+                    assert(!commands.publish({}));
+                    assert(!registry.applyPending());
+                    auto recursive = commands.execute(pinned, input);
+                    assert(!recursive && recursive.error().code == commands::ECommandError::BUSY);
+                    auto nested_read = commands.readBatch();
+                    assert(nested_read && !commands.publish({}));
+                    ++invoked;
+                    return {};
+                };
+                auto result = registry.withSnapshot(use);
+                if (!result)
+                {
+                    std::cerr << "command catalog rejected domain=" << result.error().domain
+                              << " code=" << static_cast<unsigned>(result.error().code) << std::endl;
+                }
+                assert(result);
+                // A read's return cannot release the enclosing command/dispatcher protection.
+                assert(!commands.publish({}) && !dispatcher.drain());
+                return commands::DispatchReceipt{commands::ImmediateCompletion{}};
+            }
+        ));
+        auto catalog = take(ContributionSnapshot::prepare(std::move(draft)));
+        assert(registry.enqueue(catalog) && registry.applyPending());
+        commands::CommandInvocation input;
+        auto handle = take(commands.snapshot().at(0));
+        assert(commands.execute(handle, input));
+        assert(dispatcher.enqueue(handle, input));
+        auto completed = dispatcher.drain();
+        assert(completed && completed->size() == 1 && completed->front().result && invoked == 2);
+        assert(commands.canPublish());
+        std::cout << "Command and queued dispatch may read the fixed catalog; nested execution/publication remain BUSY "
+                     "PASS\n";
+    }
     void neutralCatalog()
     {
         auto messages = take(object::ObjectMessageQueue::create(32));
@@ -457,5 +509,6 @@ int main(int argc, char** argv)
         return 0;
     }
     neutralCatalog();
+    commandReadsCatalog();
     return originalCases();
 }

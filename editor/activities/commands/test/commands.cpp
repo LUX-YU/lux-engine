@@ -1,6 +1,6 @@
-#include <lux/engine/editor/commands/CommandRegistry.hpp>
 #include <cassert>
 #include <cstdio>
+#include <lux/engine/editor/commands/CommandRegistry.hpp>
 #include <thread>
 
 namespace cxx = lux::cxx;
@@ -100,7 +100,11 @@ namespace
             auto acquired = registry.readBatch();
             assert(acquired);
             auto scope = std::move(*acquired);
-            assert(!registry.readBatch() && !registry.preparePublication({}) && !registry.publish({}));
+            {
+                auto nested = registry.readBatch();
+                assert(nested && !registry.preparePublication({}) && !registry.publish({}));
+            }
+            assert(!registry.preparePublication({}) && !registry.publish({}));
             assert(registry.query(*handle, input.query()) && registry.execute(*handle, input));
             assert(dispatcher.enqueue(*handle, input));
             const auto blocked = dispatcher.drain();
@@ -134,8 +138,18 @@ namespace
         {
             auto batch = registry.preparePublication({});
             assert(batch);
+            assert(!registry.readBatch());
             auto old = batch->commit();
             assert(registry.revision() == 2 && old.entries().size() == 1 && !registry.publish({}));
+        }
+        assert(registry.canPublish());
+        {
+            std::optional<CommandRegistry::Batch> outer;
+            outer.emplace(std::move(*registry.readBatch()));
+            auto inner = registry.readBatch();
+            assert(inner);
+            outer.reset();
+            assert(!registry.publish({}));
         }
         assert(registry.canPublish());
         std::thread foreign(
@@ -299,7 +313,9 @@ namespace
             [&](const CommandQuery&) -> CommandResult<CommandState>
             {
                 if (busy)
+                {
                     return cxx::unexpected(CommandFailure{ECommandError::BUSY, "real.domain", 29, "reading"});
+                }
                 return CommandState{true};
             },
             [&](const CommandInvocation&) -> CommandResult<DispatchReceipt>

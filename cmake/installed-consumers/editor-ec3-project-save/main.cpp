@@ -1,3 +1,4 @@
+#include <lux/engine/editor/storage/ProjectCommands.hpp>
 #include <lux/engine/editor/storage/ProjectContentSaving.hpp>
 #include <lux/engine/editor/storage/ProjectContentOpening.hpp>
 #include <lux/engine/editor/storage/ProjectPluginSelection.hpp>
@@ -23,6 +24,10 @@
 
 using namespace lux;
 using namespace lux::editor;
+static_assert(kSaveAsCommand.id.name() == "lux.editor.save-as");
+static_assert(kExportCopyCommand.id.name() == "lux.editor.export-copy");
+static_assert(kReloadCommand.scope == commands::ECommandScope::SESSION);
+static_assert(kSaveAllCommand.id.name() == "lux.editor.save-all");
 namespace p = lux::editor::persistence;
 namespace s = lux::editor::sessions;
 namespace em = lux::editor::material;

@@ -112,6 +112,7 @@ install(FILES
     DESTINATION include/lux/engine/editor/assets COMPONENT lux_engine_editor_assets)
 install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/storage/ArtifactPublicationOperation.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/storage/ProjectCommands.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/storage/ProjectContentOpening.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/storage/ProjectContentSaving.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/storage/RecentProjects.hpp

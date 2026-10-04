@@ -1,9 +1,51 @@
-#include <lux/engine/editor/flowforge/FlowCompilationService.hpp>
 #include <algorithm>
 #include <atomic>
+#include <lux/engine/editor/flowforge/FlowCompilationService.hpp>
+#include <lux/engine/services/ServiceRegistry.hpp>
 #include <thread>
 namespace lux::editor::flowforge
 {
+    namespace
+    {
+        constexpr services::ServiceContract compilation_contracts[]{
+            services::ServiceContract::forType<FlowCompilationService, FlowCompilationService>(
+                services::ServiceNameView{"lux.editor.flow.compilation"}
+            )
+        };
+        constexpr services::ServiceDependency compilation_dependencies[]{
+            {
+                services::ServiceNameView{"lux.process.execution"},
+                1,
+                cxx::typeToken<process::ExecutionRuntime>(),
+                services::EDependencyKind::BORROWED,
+                services::EDependencyScope::ROOT
+            }
+        };
+
+        services::ServiceResult<std::unique_ptr<FlowCompilationService>>
+        createCompilation(services::ServiceResolver& resolver, const services::ServiceConfiguration&) noexcept
+        {
+            auto execution = resolver.require<process::ExecutionRuntime>(0);
+            if (!execution)
+            {
+                return cxx::unexpected(std::move(execution.error()));
+            }
+            return std::make_unique<FlowCompilationService>(execution->get());
+        }
+    } // namespace
+
+    constinit const services::ServiceDescriptor kFlowCompilationService = []
+    {
+        auto descriptor = services::ServiceDescriptor::forType<FlowCompilationService, createCompilation>(
+            services::ServiceNameView{"lux.editor.flow.compilation"},
+            compilation_contracts,
+            compilation_dependencies
+        );
+        descriptor.retention = services::EServiceRetention::SCOPED;
+        descriptor.affinity = services::EServiceAffinity::OWNER;
+        return descriptor;
+    }();
+
     struct FlowCompileEnvironment::Data final
     {
         std::shared_ptr<const void> code;
@@ -459,4 +501,4 @@ namespace lux::editor::flowforge
         return impl_->operations.empty();
     }
 
-}
+} // namespace lux::editor::flowforge

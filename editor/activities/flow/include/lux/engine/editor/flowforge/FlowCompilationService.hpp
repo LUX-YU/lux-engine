@@ -2,8 +2,16 @@
 #include <lux/engine/editor/flowforge/FlowSnapshot.hpp>
 #include <lux/engine/flowforge/Compiler.hpp>
 #include <lux/engine/process/ExecutionRuntime.hpp>
+namespace lux::services
+{
+    struct ServiceDescriptor;
+}
 namespace lux::editor::flowforge
 {
+    // Registration is cold. The factory borrows lux.process.execution from the root scope;
+    // the requesting scope retains one actual compiler/result owner until that scope is closed.
+    extern const services::ServiceDescriptor kFlowCompilationService;
+
     enum class EFlowCompilationError : std::uint8_t
     {
         BUSY,

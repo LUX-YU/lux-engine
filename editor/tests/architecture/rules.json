@@ -4158,7 +4158,8 @@
       "editor_persistence",
       "flowforge_model",
       "flowforge_compiler",
-      "process_execution"
+      "process_execution",
+      "services"
     ],
     "closure": {
       "Eigen3::Eigen": {
@@ -4637,6 +4638,9 @@
       },
       "object": {
         "path": "modules/core/object"
+      },
+      "services": {
+        "path": "modules/core/services"
       }
     },
     "native_libraries": [
@@ -4680,7 +4684,8 @@
       "any",
       "lux/engine/editor/persistence/DerivedArtifact.hpp",
       "lux/engine/flowforge/graph/FlowSource.hpp",
-      "lux/engine/object/CodeLease.hpp"
+      "lux/engine/object/CodeLease.hpp",
+      "lux/engine/services/ServiceRegistry.hpp"
     ],
     "prefixes": [
       "lux/cxx/",

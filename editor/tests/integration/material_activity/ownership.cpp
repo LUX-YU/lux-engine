@@ -5,6 +5,7 @@
 #include <lux/engine/editor/flowforge/FlowCompilationService.hpp>
 #include <lux/engine/editor/flowforge/FlowSession.hpp>
 #include <lux/engine/editor/sessions/SessionStore.hpp>
+#include <lux/engine/services/ServiceRegistry.hpp>
 #include <lux/engine/material/graph/Nodes.hpp>
 #include <lux/engine/flowforge/graph/ControlNode.hpp>
 #include <algorithm>
@@ -265,7 +266,86 @@ namespace
             << "Flow: const borrowing, BUSY/capacity before dispatch, exactly-once completion, independent records, "
                "fixed-object retry, capacity recovery, owning result after acknowledge; author unchanged.\n";
     }
-}
+    void checkScopedFlow(process::ExecutionRuntime& execution, const char* linker)
+    {
+        lux::test::ObjectQueue messages;
+        sessions::SessionStore authors{messages.dispatcherRef(), 1};
+        auto slot = take(authors.reserve<ef::FlowSession>({"lux.editor.flowforge"}, object::CodeLease::builtin()));
+        ef::FlowAuthoringSource source{identity(), "Scoped Flow", {}};
+        const auto index = source.graph.addNodes(std::make_unique<lux::flowforge::OnEventNode>("tick"));
+        assert(source.graph.addExport(
+            {lux::flowforge::FlowForgeExportNodeId{1}, source.graph.getNode(index).node->id(), 1234}
+        ));
+        auto model = take(ef::FlowSession::create(slot.id(), {}, std::move(source)));
+        auto* author = model.get();
+        assert(authors.prepare(slot, model) && authors.publish(slot));
+        const auto before = author->describe();
+        const auto bytes = take(take(author->read()).encode());
+
+        services::ServiceRegistry registry(messages.dispatcherRef());
+        assert(registry.publish({services::ServiceEntry::bind<ef::kFlowCompilationService>(object::CodeLease::builtin())
+        }));
+        auto scope = take(registry.createScope());
+        // Merely registering metadata does not require or construct Process/Flow services.
+        assert(registry.drained());
+        auto missing = registry.get<ef::FlowCompilationService>(scope);
+        assert(!missing && missing.error().code == services::EServiceError::NOT_FOUND && registry.drained());
+        assert(scope.provide(services::ServiceNameView{"lux.process.execution"}, execution));
+        auto first = take(registry.get<ef::FlowCompilationService>(scope));
+        auto second = take(registry.get<ef::FlowCompilationService>(scope));
+        assert(first == second && !first.owner_before(second) && !second.owner_before(first));
+        auto* allocation = first.get();
+        const auto id =
+            take(first->start(take(author->capture()), ef::FlowCompileEnvironment{}, {}, {"missing-EC4-linker.exe"}));
+        workerFinished(execution, take(first->operation(id)).get().task());
+        assert(!take(first->operation(id)).get().ready());
+        std::weak_ptr<ef::FlowCompilationService> weak = first;
+        first.reset();
+        second.reset();
+        assert(!weak.expired()); // No UI or caller is required to receive this already accepted result.
+        std::size_t delivered{};
+        until(
+            [&]
+            {
+                delivered += dispatch(execution);
+                auto retained = weak.lock();
+                assert(retained);
+                return take(retained->operation(id)).get().ready();
+            }
+        );
+        assert(delivered == 1 && dispatch(execution) == 0);
+
+        auto reopened = take(registry.get<ef::FlowCompilationService>(scope));
+        assert(reopened.get() == allocation && take(reopened->snapshotIds()) == std::vector{id});
+        const auto& operation = take(reopened->operation(id)).get();
+        assert(!operation.result() && operation.retryable());
+        const auto object = operation.object();
+        const auto key = operation.key();
+        assert(object && reopened->retryLink(id, {linker, 2}));
+        reopened.reset();
+        until(
+            [&]
+            {
+                dispatch(execution);
+                return operation.ready(); // Same scope-owned record; no public operation was copied.
+            }
+        );
+        reopened = take(registry.get<ef::FlowCompilationService>(scope));
+        assert(operation.key() == key && operation.object() == object && operation.attempts().size() == 2);
+        auto result = take(operation.result());
+        assert(result->source()->name == "Scoped Flow" && !result->bytes().empty());
+        assert(reopened->acknowledge(id) && reopened->empty());
+        assert(author->describe().current == before.current && author->describe().dirty == before.dirty);
+        assert(author->describe().observed == before.observed && take(take(author->read()).encode()) == bytes);
+        reopened.reset();
+        assert(scope.release() && weak.expired());
+        // The last shared allocation retires on the existing Object owner safe point.
+        (void)messages.collect();
+        assert(scope.drained() && registry.drained() && !result->bytes().empty());
+        std::cout << "Scoped Flow: lazy actual service, shared allocation, no-view completion, fixed-object retry, "
+                     "acknowledgement and owner-safe retirement; author unchanged.\n";
+    }
+} // namespace
 int main(int argc, char** argv)
 {
     assert(argc == 3);
@@ -276,10 +356,13 @@ int main(int argc, char** argv)
          .blocking = process::BlockingSchedulerConfig{1, 16}}
     ));
     if (std::string_view(argv[1]) == "material")
+    {
         checkMaterial(execution);
+    }
     else
     {
         assert(std::string_view(argv[1]) == "flow");
         checkFlow(execution, argv[2]);
+        checkScopedFlow(execution, argv[2]);
     }
 }

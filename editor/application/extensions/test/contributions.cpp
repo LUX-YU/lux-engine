@@ -422,6 +422,13 @@ namespace
                 auto pane = context.ui().create(handle, scope, {messages.dispatcherRef(), ui::PaneId{name}, {}, {}});
                 assert(pane && !(*pane)->attachedRoot());
             }
+            auto root = take(ui::Root::create(messages.dispatcherRef()));
+            std::vector<desktop::UiMountRequest> requests{
+                {handle, {messages.dispatcherRef(), ui::PaneId{"mounted-left"}, {}, {}}, true},
+                {handle, {messages.dispatcherRef(), ui::PaneId{"mounted-right"}, {}, {}}, true}
+            };
+            auto mounted = context.ui().mount(*root, scope, std::move(requests));
+            assert(mounted && root->panes().size() == 2);
             auto services = context.services().publish({});
             assert(!services && services.error().code == services::EServiceError::BUSY);
             auto ui = context.ui().publish(take(desktop::UiCatalog::prepare({})));
@@ -429,7 +436,7 @@ namespace
             return {};
         };
         assert(registry.withSnapshot(use));
-        assert(facts.old_calls == 2 && facts.destroyed == 2);
+        assert(facts.old_calls == 4 && facts.destroyed == 4);
         ContributionDraft invalid;
         auto invalid_service = binding_service;
         invalid_service.destroy = nullptr;

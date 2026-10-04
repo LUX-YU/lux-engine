@@ -162,6 +162,16 @@ namespace
         auto& registry = context.ui();
         assert(services.publish({ServiceEntry::bind<model_descriptor>(object::CodeLease::builtin())}));
         assert(registry.publish(catalog()));
+        // Catalog protection belongs to every live scope, even when callers release them out of order.
+        auto outer_read = services.readScope();
+        auto inner_read = services.readScope();
+        assert(outer_read && inner_read);
+        std::optional<ServiceRegistry::ReadScope> outer{std::move(*outer_read)};
+        std::optional<ServiceRegistry::ReadScope> inner{std::move(*inner_read)};
+        outer.reset();
+        auto protected_publication = services.publish({});
+        assert(!protected_publication && protected_publication.error().code == EServiceError::BUSY);
+        inner.reset();
         auto scope = services.createScope();
         assert(scope && scope->provide(ServiceNameView{"ec4.counts"}, counts));
         auto root = ui::Root::create(messages.dispatcherRef());

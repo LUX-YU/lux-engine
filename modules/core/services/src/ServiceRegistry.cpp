@@ -242,7 +242,7 @@ namespace lux::services
         std::vector<std::shared_ptr<const detail::ServiceDefinition>> definitions;
         std::vector<std::shared_ptr<detail::ServiceScopeState>> scopes;
         std::vector<std::unique_ptr<Instance>> instances;
-        bool catalog_reading{};
+        std::size_t catalog_readers{};
 
         [[nodiscard]] ServiceResult<void> admission() const noexcept
         {
@@ -298,7 +298,7 @@ namespace lux::services
     ServiceRegistry::~ServiceRegistry()
     {
         // Borrowed infrastructure and the code provider must outlive every accepted allocation.
-        const bool is_invalid_destruction = !impl_->admission() || impl_->catalog_reading || !drained();
+        const bool is_invalid_destruction = !impl_->admission() || impl_->catalog_readers || !drained();
         if (is_invalid_destruction)
         {
             std::terminate();
@@ -325,7 +325,7 @@ namespace lux::services
     }
     ServiceRegistry::ReadScope::ReadScope(ServiceRegistry& owner) noexcept : owner_(&owner)
     {
-        owner_->impl_->catalog_reading = true;
+        ++owner_->impl_->catalog_readers;
     }
     ServiceRegistry::ReadScope::ReadScope(ReadScope&& other) noexcept : owner_(std::exchange(other.owner_, nullptr)) {}
     ServiceRegistry::ReadScope::~ReadScope()
@@ -338,7 +338,11 @@ namespace lux::services
         {
             std::terminate();
         }
-        owner_->impl_->catalog_reading = false;
+        if (owner_->impl_->catalog_readers == 0)
+        {
+            std::terminate();
+        }
+        --owner_->impl_->catalog_readers;
     }
     ServiceResult<ServiceRegistry::ReadScope> ServiceRegistry::readScope() noexcept
     {
@@ -346,9 +350,9 @@ namespace lux::services
         {
             return cxx::unexpected(std::move(admitted.error()));
         }
-        if (impl_->catalog_reading)
+        if (impl_->catalog_readers == (std::numeric_limits<std::size_t>::max)())
         {
-            return reject(EServiceError::BUSY);
+            return reject(EServiceError::CAPACITY);
         }
         return ReadScope{*this};
     }
@@ -538,7 +542,7 @@ namespace lux::services
         }
         CallbackScope callback{*impl_->callbacks};
         auto entries = std::move(input); // Rejected descriptor/code cleanup is still protected.
-        if (impl_->catalog_reading)
+        if (impl_->catalog_readers)
         {
             return reject(EServiceError::BUSY);
         }

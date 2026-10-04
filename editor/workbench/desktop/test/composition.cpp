@@ -2,6 +2,7 @@
 #include <cassert>
 #include <functional>
 #include <iostream>
+#include <lux/engine/editor/desktop/EditorContext.hpp>
 #include <lux/engine/editor/desktop/UiRegistry.hpp>
 #include <lux/engine/ui/Root.hpp>
 #include <optional>
@@ -123,11 +124,12 @@ namespace
     void sharing(object::ObjectMessageQueue& messages)
     {
         Counts counts;
-        ServiceRegistry services{messages.dispatcherRef()};
+        EditorContext context{messages.dispatcherRef()};
+        auto& services = context.services();
         assert(services.publish({ServiceEntry::bind<model_descriptor>(object::CodeLease::builtin())}));
         auto scope = services.createScope();
         assert(scope && scope->provide(ServiceNameView{"ec4.counts"}, counts));
-        UiRegistry registry{messages.dispatcherRef(), services};
+        auto& registry = context.ui();
         auto metadata = catalog();
         assert(registry.publish(metadata));
         auto handle = metadata.find(descriptor.type);

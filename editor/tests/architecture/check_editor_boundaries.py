@@ -193,6 +193,15 @@ def inspect(repo, records, rules, stage, compile_db=None, layering_mode=None, co
         if phase(stage) >= phase(rule["deadline"]):
             for path, source in sources.items():
                 if re.search(rule["pattern"], source):
+                    replacement = rule.get("replacement")
+                    if replacement and phase(stage) >= phase(replacement["from_stage"]):
+                        exact_file = path in replacement["files"]
+                        providers = rules["editor_layering"]["files"].get(path, [])
+                        exact_owner = providers == [replacement["provider"]]
+                        exact_namespace = re.search(
+                            r"\bnamespace\s+" + re.escape(replacement["namespace"]) + r"\s*\{", source)
+                        if exact_file and exact_owner and exact_namespace:
+                            continue
                     report(rule["id"], path, rule["description"])
 
     if phase(stage) >= phase("P01"):

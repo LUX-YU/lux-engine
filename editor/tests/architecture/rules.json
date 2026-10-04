@@ -486,7 +486,16 @@
       "id": "OLDDEF_EditorContext",
       "deadline": "P12",
       "pattern": "\\b(?:class|struct|enum\\s+class)\\s+(?:[A-Z][A-Z0-9_]*\\s+)?EditorContext\\b|\\busing\\s+EditorContext\\s*=",
-      "description": "旧公开 owner/协议或别名 EditorContext"
+      "description": "旧公开 owner/协议或别名 EditorContext",
+      "replacement": {
+        "from_stage": "EC4",
+        "namespace": "lux::editor::desktop",
+        "provider": "editor_composition",
+        "files": [
+          "editor/workbench/desktop/include/lux/engine/editor/desktop/EditorContext.hpp",
+          "editor/workbench/desktop/src/EditorContext.cpp"
+        ]
+      }
     },
     {
       "id": "OLDDEF_PaneManager",
@@ -16349,6 +16358,24 @@
           "CPU"
         ],
         "path": "editor/workbench/desktop"
+      },
+      "editor_composition_plugin": {
+        "layer": "TEST",
+        "role": "TEST",
+        "capabilities": [
+          "CPU",
+          "PROCESS"
+        ],
+        "path": "editor/workbench/desktop"
+      },
+      "editor_composition_dll_test": {
+        "layer": "TEST",
+        "role": "TEST",
+        "capabilities": [
+          "CPU",
+          "PROCESS"
+        ],
+        "path": "editor/workbench/desktop"
       }
     },
     "files": {
@@ -18873,6 +18900,22 @@
       ],
       "editor/workbench/desktop/test/composition.cpp": [
         "editor_composition_test"
+      ],
+      "editor/workbench/desktop/include/lux/engine/editor/desktop/EditorContext.hpp": [
+        "editor_composition"
+      ],
+      "editor/workbench/desktop/src/EditorContext.cpp": [
+        "editor_composition"
+      ],
+      "editor/workbench/desktop/test/CompositionProbe.hpp": [
+        "editor_composition_plugin",
+        "editor_composition_dll_test"
+      ],
+      "editor/workbench/desktop/test/composition_plugin.cpp": [
+        "editor_composition_plugin"
+      ],
+      "editor/workbench/desktop/test/composition_dll.cpp": [
+        "editor_composition_dll_test"
       ]
     },
     "native_libraries": [

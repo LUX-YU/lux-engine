@@ -217,6 +217,32 @@ def main():
             assert not inspect(root, [], rules, "P12")
         print("PASS N12-07: all nine expired source roots rejected, including excluded bodies; repaired")
 
+        # EC4 authorizes one neutral provider, not revival of the old Context or a name-wide exception.
+        approved = "editor/workbench/desktop/include/lux/engine/editor/desktop/EditorContext.hpp"
+        for stage, path, namespace, rejected in [
+            ("EC4", approved, "lux::editor::desktop", False),
+            ("EC3", approved, "lux::editor::desktop", True),
+            ("EC4", approved, "lux::editor", True),
+            ("EC4", "editor/activities/probe/EditorContext.hpp", "lux::editor::desktop", True),
+            ("EC4", "editor/workbench/desktop/include/lux/engine/editor/desktop/Other.hpp", "lux::editor::desktop", True),
+        ]:
+            probe = root / path
+            probe.parent.mkdir(parents=True, exist_ok=True)
+            probe.write_text(f"namespace {namespace} {{ class EditorContext final {{}}; }}\n", encoding="utf8")
+            findings = inspect(root, [], rules, stage)
+            assert any(x["rule"] == "OLDDEF_EditorContext" for x in findings) == rejected, findings
+            probe.unlink()
+            assert not any(x["rule"] == "OLDDEF_EditorContext" for x in inspect(root, [], rules, stage))
+        probe = root / approved
+        probe.write_text("namespace lux::editor::desktop { class EditorContext final {}; }\n", encoding="utf8")
+        original_provider = rules["editor_layering"]["files"][approved]
+        rules["editor_layering"]["files"][approved] = ["editor_bootstrap"]
+        assert any(x["rule"] == "OLDDEF_EditorContext" for x in inspect(root, [], rules, "EC4"))
+        rules["editor_layering"]["files"][approved] = original_provider
+        assert not any(x["rule"] == "OLDDEF_EditorContext" for x in inspect(root, [], rules, "EC4"))
+        probe.unlink()
+        print("PASS EC4 Context: exact phase/path/namespace/provider; old and misplaced definitions rejected; repaired")
+
         # Test options must be subordinate to BUILD_TESTING and default to native-only.
         (root / "CMakeLists.txt").write_text(
             'cmake_minimum_required(VERSION 3.22)\nproject(options LANGUAGES NONE)\n'

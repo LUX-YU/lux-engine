@@ -1,7 +1,6 @@
 #include <algorithm>
 #include <limits>
 #include <lux/engine/editor/desktop/UiRegistry.hpp>
-#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -95,6 +94,16 @@ namespace lux::editor::desktop
         auto data = std::make_shared<Data>();
         data->entries = std::move(input);
         data->index.reserve(data->entries.size());
+        std::unordered_map<std::uint64_t, std::string_view> dependency_names;
+        const auto check_name = [&](services::ServiceNameView value)
+        {
+            if (!value.isValid())
+            {
+                return true;
+            }
+            const auto [found, inserted] = dependency_names.emplace(value.hash(), value.name());
+            return inserted || found->second == value.name();
+        };
         for (std::size_t i{}; i < data->entries.size(); ++i)
         {
             const auto& entry = data->entries[i];
@@ -119,6 +128,11 @@ namespace lux::editor::desktop
                 if (invalid_dependency)
                 {
                     return reject(EUiError::INVALID_DESCRIPTOR, "Invalid declared UI dependency");
+                }
+                const bool has_collision = !check_name(dependency.contract) || !check_name(dependency.implementation);
+                if (has_collision)
+                {
+                    return reject(EUiError::HASH_COLLISION, "Conflicting declared UI dependency names");
                 }
             }
             data->index.push_back({descriptor.type.hash(), i});

@@ -1,0 +1,60 @@
+--- views.cpp@0a521da070c1f4addb511ea038f8040f265702f6
++++ SDK-generated-control-evidence/views.cpp
+@@ -915,6 +915,57 @@
+         auto* run_fields_view = static_cast<author::RunInspectorView*>(run_inspector.pane());
+         const auto inspector_id = take(f.desktop->views().adopt(run_inspector, views::ViewRestoreKey{"run-fields"})).id;
+         assert(run_fields_view->target() == target);
++        {
++            f.frame(false);
++            const auto find_numeric = [&](auto&& self, object::LuxObject& owner) -> ui::NumericEdit*
++            {
++                if (auto* control = dynamic_cast<ui::NumericEdit*>(&owner))
++                    return control;
++                for (auto* child = owner.firstChild(); child; child = child->nextSibling())
++                    if (auto* control = self(self, *child))
++                        return control;
++                return nullptr;
++            };
++            auto* control = find_numeric(find_numeric, *run_fields_view);
++            assert(control);
++            const auto value = [&]
++            {
++                return take(runs.inspect().borrow(run)).get().get<simulation::ecs::Transform3D>(entity).translation.x();
++            };
++            const auto original = value();
++            const auto paused = take(take(runs.debugHistory(run)).get().view()).snapshot;
++            const auto author_before = f.session->describe();
++            const auto author_history = take(f.session->historyView()).snapshot;
++            const auto author_bytes = take(take(f.session->read()).encode());
++            assert(std::get<double>(control->value()) == original);
++            control->setValue(original + 7.);
++            static_cast<void>(ui::ControlsTestAccess::edited(*control, {true, true, false, false}));
++            f.frame(false);
++            assert(value() == original);
++            assert(take(take(runs.debugHistory(run)).get().view()).snapshot.current == paused.current);
++            assert(run_fields_view->finishEditing());
++            assert(value() == original + 7.);
++            assert(editing::EditExecutor{}.undo(take(runs.debugHistory(run)).get()));
++            assert(value() == original);
++            assert(editing::EditExecutor{}.redo(take(runs.debugHistory(run)).get()));
++            assert(value() == original + 7.);
++            assert(editing::EditExecutor{}.undo(take(runs.debugHistory(run)).get()));
++            f.frame(false);
++            assert(std::get<double>(control->value()) == original);
++            control->setValue(original + 9.);
++            static_cast<void>(ui::ControlsTestAccess::edited(*control, {true, true, false, false}));
++            f.frame(false);
++            assert(run_fields_view->cancelEditing());
++            f.frame(false);
++            assert(value() == original);
++            assert(take(take(runs.debugHistory(run)).get().view()).snapshot.current == paused.current);
++            const auto author_after = f.session->describe();
++            assert(author_after.current == author_before.current && author_after.dirty == author_before.dirty);
++            assert(author_after.binding == author_before.binding && author_after.observed == author_before.observed);
++            assert(take(f.session->historyView()).snapshot.revision == author_history.revision);
++            assert(take(take(f.session->read()).encode()) == author_bytes);
++            std::puts("EC3 SDK actual generated Run control: preview/commit/cancel/Undo/Redo; author source/history/binding/dirty unchanged");
++        }
+         {
+             const auto components = author::runInspectorComponents();
+             const auto type = cxx::typeToken<simulation::ecs::Transform3D>();

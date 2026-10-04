@@ -1,0 +1,17 @@
+---- Importing lux-cxx-compile_time
+---- Importing lux-cxx-core
+---- Importing lux-cxx-memory
+---- Importing lux-cxx-algorithm
+---- Importing lux-cxx-binary
+---- Importing lux-cxx-container
+---- Importing lux-cxx-concurrent
+-- Configuring done (0.1s)
+-- Generating done (0.0s)
+CMake Warning:
+  Manually-specified variables were not used by the project:
+
+    LuxLua55_DIR
+    Python3_EXECUTABLE
+
+
+-- Build files have been written to: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-sdk-0a521da070c1/declaration-negative-8

@@ -1,0 +1,43 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-sdk-0a521da070c1/workspace
+      Start  1: installed.workspace.validation
+ 1/19 Test  #1: installed.workspace.validation .....   Passed    0.01 sec
+      Start  2: installed.workspace.opaque
+ 2/19 Test  #2: installed.workspace.opaque .........   Passed    0.01 sec
+      Start  3: installed.workspace.rename
+ 3/19 Test  #3: installed.workspace.rename .........   Passed    0.04 sec
+      Start  4: installed.workspace.remove
+ 4/19 Test  #4: installed.workspace.remove .........   Passed    0.03 sec
+      Start  5: installed.workspace.ordering
+ 5/19 Test  #5: installed.workspace.ordering .......   Passed    0.03 sec
+      Start  6: installed.workspace.unknown
+ 6/19 Test  #6: installed.workspace.unknown ........   Passed    0.03 sec
+      Start  7: installed.workspace.aliases
+ 7/19 Test  #7: installed.workspace.aliases ........   Passed    0.02 sec
+      Start  8: installed.workspace.reads
+ 8/19 Test  #8: installed.workspace.reads ..........   Passed    0.02 sec
+      Start  9: installed.workspace.catalog
+ 9/19 Test  #9: installed.workspace.catalog ........   Passed    0.03 sec
+      Start 10: installed.workspace.migration
+10/19 Test #10: installed.workspace.migration ......   Passed    0.06 sec
+      Start 11: installed.workspace.collision
+11/19 Test #11: installed.workspace.collision ......   Passed    0.02 sec
+      Start 12: installed.workspace.budgets
+12/19 Test #12: installed.workspace.budgets ........   Passed    0.01 sec
+      Start 13: installed.workspace.r1-alpha
+13/19 Test #13: installed.workspace.r1-alpha .......   Passed    0.08 sec
+      Start 14: installed.workspace.r1-beta
+14/19 Test #14: installed.workspace.r1-beta ........   Passed    0.16 sec
+      Start 15: installed.workspace.r1-extras
+15/19 Test #15: installed.workspace.r1-extras ......   Passed    0.08 sec
+      Start 16: installed.workspace.r1-selection
+16/19 Test #16: installed.workspace.r1-selection ...   Passed    0.24 sec
+      Start 17: installed.workspace.r1-resume
+17/19 Test #17: installed.workspace.r1-resume ......   Passed    0.11 sec
+      Start 18: installed.workspace.r1-control
+18/19 Test #18: installed.workspace.r1-control .....   Passed    0.08 sec
+      Start 19: installed.workspace.effects
+19/19 Test #19: installed.workspace.effects ........   Passed    0.02 sec
+
+100% tests passed, 0 tests failed out of 19
+
+Total Test time (real) =   1.08 sec

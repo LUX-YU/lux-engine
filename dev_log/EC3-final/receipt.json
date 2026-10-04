@@ -1,0 +1,722 @@
+{
+  "stage": "EC3",
+  "status": "EC3_WINDOWS_SCOPE_COMPLETE_AWAITING_REVIEW",
+  "architecture_mode": "STRICT",
+  "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+  "previous_implementation_sha": "17ea8c4079188fa54bb8e459496053454277c9d1",
+  "dependency_sha": "f5447a763fd042f4f08819c8c88f1676f9a2a3cb",
+  "prior_archive_trees": {
+    "EC3": {
+      "commit": "7c2c1c8157a4f1496677939dc877d3b5c60fec34",
+      "tree": "86437d595239b9a85379e8491f95799a7d4600bd"
+    },
+    "EC3-C9": {
+      "commit": "7c2c1c8157a4f1496677939dc877d3b5c60fec34",
+      "tree": "d0365e8af5acdbe1b1718633305192a0908e568a"
+    }
+  },
+  "created_utc": "2026-10-04T02:04:08.727686+00:00",
+  "command_count": 66,
+  "sdk_results": [
+    {
+      "group": "p11",
+      "passed": [
+        "installed.p11.extension.with-configuration",
+        "installed.p11.extension.without-configuration"
+      ],
+      "count": 2,
+      "log": "sdk/p11-ctest.log"
+    },
+    {
+      "group": "p11-runtime",
+      "passed": [
+        "installed.p11.runtime",
+        "installed.p12.builtin_plugin_closure"
+      ],
+      "count": 2,
+      "log": "sdk/p11-runtime-ctest.log"
+    },
+    {
+      "group": "p11-models",
+      "passed": [
+        "installed.p11.models",
+        "installed.p12.content_operations",
+        "installed.p11.contributions",
+        "installed.p11.commands",
+        "installed.p11.contributions.factory",
+        "installed.p11.contributions.reflection",
+        "installed.p11.contributions.cleanup",
+        "installed.p11.contributions.notify"
+      ],
+      "count": 8,
+      "log": "sdk/p11-models-ctest.log"
+    },
+    {
+      "group": "quality",
+      "passed": [
+        "installed.quality.catalog",
+        "installed.quality.monitor",
+        "installed.quality.canvas",
+        "installed.quality.containers"
+      ],
+      "count": 4,
+      "log": "sdk/quality-ctest.log"
+    },
+    {
+      "group": "sessions",
+      "passed": [
+        "installed.editor_sessions"
+      ],
+      "count": 1,
+      "log": "sdk/sessions-ctest.log"
+    },
+    {
+      "group": "editor-d2",
+      "passed": [
+        "editor.d2.installed_component"
+      ],
+      "count": 1,
+      "log": "sdk/editor-d2-ctest.log"
+    },
+    {
+      "group": "external-feature",
+      "passed": [
+        "plugin.external_editor",
+        "plugin.external_gpu"
+      ],
+      "count": 2,
+      "log": "sdk/external-feature-ctest.log"
+    },
+    {
+      "group": "scene-ui",
+      "passed": [
+        "installed.cpu_context"
+      ],
+      "count": 1,
+      "log": "sdk/scene-ui-ctest.log"
+    },
+    {
+      "group": "scene-model",
+      "passed": [
+        "installed.scene_model"
+      ],
+      "count": 1,
+      "log": "sdk/scene-model-ctest.log"
+    },
+    {
+      "group": "material-model",
+      "passed": [
+        "material_model_consumer"
+      ],
+      "count": 1,
+      "log": "sdk/material-model-ctest.log"
+    },
+    {
+      "group": "flowforge-model",
+      "passed": [
+        "flowforge_model_consumer"
+      ],
+      "count": 1,
+      "log": "sdk/flowforge-model-ctest.log"
+    },
+    {
+      "group": "persistence",
+      "passed": [
+        "persistence_consumer.r2-accept-success",
+        "persistence_consumer.r2-accept-error",
+        "persistence_consumer.r2-accept-cancel",
+        "persistence_consumer.r2-accept-drain",
+        "persistence_consumer.r2-admission",
+        "persistence_consumer.models",
+        "persistence_consumer.save-as",
+        "persistence_consumer.unknown",
+        "persistence_consumer.order",
+        "persistence_consumer.close",
+        "persistence_consumer.close-key",
+        "persistence_consumer.capacity",
+        "persistence_consumer.execution",
+        "persistence_consumer.decoded",
+        "persistence_consumer.receipts",
+        "persistence_consumer.identities",
+        "persistence_consumer.conflict",
+        "persistence_consumer.r1-revoke",
+        "persistence_consumer.r1-recursive",
+        "persistence_consumer.r1-chain",
+        "persistence_consumer.r1-chain-control",
+        "persistence_consumer.r1-callbacks",
+        "persistence_consumer.r1-reading",
+        "persistence_consumer.r1-conflicts",
+        "persistence_consumer.r11-input-duplicate",
+        "persistence_consumer.r11-input-invalid",
+        "persistence_consumer.r11-input-busy",
+        "persistence_consumer.r11-input-success",
+        "persistence_consumer.r11-input-completion"
+      ],
+      "count": 29,
+      "log": "sdk/persistence-ctest.log"
+    },
+    {
+      "group": "scene-execution",
+      "passed": [
+        "installed.scene_execution.isolation",
+        "installed.scene_execution.controls",
+        "installed.scene_execution.failure",
+        "installed.scene_execution.completion",
+        "installed.scene_execution.r1-queued",
+        "installed.scene_execution.r1-mixed",
+        "installed.scene_execution.r1-failed",
+        "installed.scene_execution.r1-callback",
+        "installed.scene_execution.r1-capacity"
+      ],
+      "count": 9,
+      "log": "sdk/scene-execution-ctest.log"
+    },
+    {
+      "group": "projection-compilation",
+      "passed": [
+        "installed.projection.reset_capacity",
+        "installed.compilation.actual_publish",
+        "installed.compilation.ownership_material",
+        "installed.compilation.reject_material_copy_construct",
+        "installed.compilation.reject_material_copy_assign",
+        "installed.compilation.reject_material_move_construct",
+        "installed.compilation.reject_material_move_assign",
+        "installed.compilation.ownership_flow",
+        "installed.compilation.reject_flow_copy_construct",
+        "installed.compilation.reject_flow_copy_assign",
+        "installed.compilation.reject_flow_move_construct",
+        "installed.compilation.reject_flow_move_assign"
+      ],
+      "count": 12,
+      "log": "sdk/projection-compilation-ctest.log"
+    },
+    {
+      "group": "interaction-views",
+      "passed": [
+        "installed.interactions",
+        "installed.detached_views",
+        "installed.interaction_reclaim.scene.sync",
+        "installed.interaction_reclaim.scene.cancel",
+        "installed.interaction_reclaim.scene.selection",
+        "installed.interaction_reclaim.scene.stale",
+        "installed.interaction_reclaim.scene.gate",
+        "installed.interaction_reclaim.scene.thread",
+        "installed.interaction_reclaim.material.sync",
+        "installed.interaction_reclaim.material.cancel",
+        "installed.interaction_reclaim.material.selection",
+        "installed.interaction_reclaim.material.stale",
+        "installed.interaction_reclaim.material.gate",
+        "installed.interaction_reclaim.material.thread",
+        "installed.interaction_reclaim.flow.sync",
+        "installed.interaction_reclaim.flow.cancel",
+        "installed.interaction_reclaim.flow.selection",
+        "installed.interaction_reclaim.flow.stale",
+        "installed.interaction_reclaim.flow.gate",
+        "installed.interaction_reclaim.flow.thread"
+      ],
+      "count": 20,
+      "log": "sdk/interaction-views-ctest.log"
+    },
+    {
+      "group": "workspace",
+      "passed": [
+        "installed.workspace.validation",
+        "installed.workspace.opaque",
+        "installed.workspace.rename",
+        "installed.workspace.remove",
+        "installed.workspace.ordering",
+        "installed.workspace.unknown",
+        "installed.workspace.aliases",
+        "installed.workspace.reads",
+        "installed.workspace.catalog",
+        "installed.workspace.migration",
+        "installed.workspace.collision",
+        "installed.workspace.budgets",
+        "installed.workspace.r1-alpha",
+        "installed.workspace.r1-beta",
+        "installed.workspace.r1-extras",
+        "installed.workspace.r1-selection",
+        "installed.workspace.r1-resume",
+        "installed.workspace.r1-control",
+        "installed.workspace.effects"
+      ],
+      "count": 19,
+      "log": "sdk/workspace-ctest.log"
+    },
+    {
+      "group": "desktop-views",
+      "passed": [
+        "installed.desktop.host",
+        "installed.desktop.inspector_codegen",
+        "installed.desktop.real_views",
+        "installed.desktop.draft_source_literal",
+        "installed.desktop.draft_source_signature",
+        "installed.desktop.draft_source_flow-canvas",
+        "installed.desktop.draft_source_material-canvas",
+        "installed.desktop.draft_source_flow-queue",
+        "installed.desktop.draft_source_material-queue",
+        "installed.desktop.draft_source_material-lifetime",
+        "installed.desktop.draft_source_lifecycle",
+        "installed.desktop.draft_source_positive"
+      ],
+      "count": 12,
+      "log": "sdk/desktop-views-ctest.log"
+    },
+    {
+      "group": "layering-tasks",
+      "passed": [
+        "installed.layering.TASKS"
+      ],
+      "count": 1,
+      "log": "sdk/layering-tasks-ctest.log"
+    },
+    {
+      "group": "layering-save_core",
+      "passed": [
+        "installed.layering.SAVE_CORE"
+      ],
+      "count": 1,
+      "log": "sdk/layering-save_core-ctest.log"
+    },
+    {
+      "group": "layering-project",
+      "passed": [
+        "installed.layering.PROJECT"
+      ],
+      "count": 1,
+      "log": "sdk/layering-project-ctest.log"
+    },
+    {
+      "group": "layering-layout",
+      "passed": [
+        "installed.layering.LAYOUT"
+      ],
+      "count": 1,
+      "log": "sdk/layering-layout-ctest.log"
+    },
+    {
+      "group": "gpu-ui",
+      "passed": [
+        "installed.ui_feature"
+      ],
+      "count": 1,
+      "log": "sdk/gpu-ui-ctest.log"
+    },
+    {
+      "group": "editor-scene-pane",
+      "passed": [
+        "installed.scene_panes"
+      ],
+      "count": 1,
+      "log": "sdk/editor-scene-pane-ctest.log"
+    }
+  ],
+  "extra_results": [
+    {
+      "command": "final-sdk-project-save-tests",
+      "passed": [
+        "installed.ec3.project_save"
+      ],
+      "count": 1,
+      "log": "logs/final-sdk-project-save-tests.log"
+    },
+    {
+      "command": "final-sdk-skeleton-tests",
+      "passed": [
+        "installed.ec1.skeleton.HEADLESS"
+      ],
+      "count": 1,
+      "log": "logs/final-sdk-skeleton-tests.log"
+    },
+    {
+      "command": "final-sdk-ec1-headless-tests",
+      "passed": [
+        "installed.ec1.HEADLESS"
+      ],
+      "count": 1,
+      "log": "logs/final-sdk-ec1-headless-tests.log"
+    },
+    {
+      "command": "final-sdk-ec1-window-tests",
+      "passed": [
+        "installed.ec1.WINDOW"
+      ],
+      "count": 1,
+      "log": "logs/final-sdk-ec1-window-tests.log"
+    },
+    {
+      "command": "final-sdk-application-tests",
+      "passed": [
+        "installed.application.command_thread"
+      ],
+      "count": 1,
+      "log": "logs/final-sdk-application-tests.log"
+    },
+    {
+      "command": "final-sdk-ec2-native-tests",
+      "passed": [
+        "installed.ec2.native",
+        "installed.ec2.reject_NONTRIVIAL",
+        "installed.ec2.reject_LOCAL_AUTHORITY"
+      ],
+      "count": 3,
+      "log": "logs/final-sdk-ec2-native-tests.log"
+    },
+    {
+      "command": "final-sdk-ec2-lua-tests",
+      "passed": [
+        "installed.ec2.lua",
+        "installed.ec2.reject_NONTRIVIAL",
+        "installed.ec2.reject_LOCAL_AUTHORITY"
+      ],
+      "count": 3,
+      "log": "logs/final-sdk-ec2-lua-tests.log"
+    },
+    {
+      "command": "final-sdk-ec2-scene-tests",
+      "passed": [
+        "installed.ec2.scene",
+        "installed.ec2.reject_NONTRIVIAL",
+        "installed.ec2.reject_LOCAL_AUTHORITY"
+      ],
+      "count": 3,
+      "log": "logs/final-sdk-ec2-scene-tests.log"
+    },
+    {
+      "command": "final-sdk-run-controls-v2-test",
+      "passed": [
+        "installed.desktop.real_views"
+      ],
+      "count": 1,
+      "log": "logs/final-sdk-run-controls-v2-test.log"
+    }
+  ],
+  "declaration_compile_rejections": 9,
+  "operation_compile_rejections": 8,
+  "inherited_results": {
+    "resumed-ctest": {
+      "implementation_sha": "17ea8c4079188fa54bb8e459496053454277c9d1",
+      "passed": [
+        "platform.process_arguments",
+        "window.placement",
+        "object.tree",
+        "object.queue",
+        "render.runtime_resources",
+        "ui.root",
+        "world.partition_decoder_parity",
+        "process.asset_read_overlay",
+        "process.asset_bounded_read",
+        "scene.driver",
+        "scene.runtime",
+        "scene.script_asset_scopes",
+        "scene.script_asset_plugin",
+        "scene.script_asset_values",
+        "scene.script_asset_lua",
+        "scene.script_asset_scene",
+        "scene.render_resources",
+        "scene.world_loading",
+        "engine.headless_context",
+        "plugin.scene_registrations",
+        "editor.sessions",
+        "editor.sessions_close_throw",
+        "editor.sessions_close_contract",
+        "editor.sessions_scope_compile",
+        "editor.scene_model.snapshot-cost",
+        "editor.scene_model.applicability",
+        "editor.scene_model.content",
+        "editor.scene_model.atomic",
+        "editor.scene_model.identity",
+        "editor.scene_model.changes",
+        "editor.scene_model.plugin",
+        "editor.scene_model.mixed-1",
+        "editor.scene_model.mixed-2",
+        "editor.scene_model.mixed-3",
+        "editor.scene_model.mixed-4",
+        "editor.scene_model.read-5",
+        "editor.scene_model.read-6",
+        "editor.scene_model.read-7",
+        "editor.scene_model.read-8",
+        "editor.scene_model.hierarchy_chain",
+        "editor.scene_model.hierarchy_wide",
+        "editor.scene_model.hierarchy_roots",
+        "editor.scene_model.hierarchy_cycle",
+        "editor.material_model.content",
+        "editor.material_model.failure",
+        "editor.material_model.layout",
+        "editor.material_model.lifetime",
+        "editor.material_model.mixed-replace",
+        "editor.material_model.mixed-recreate",
+        "editor.material_model.reading",
+        "editor.material_model.reload-unbound",
+        "editor.material_model.reload-unbound-lease",
+        "editor.material_model.reload-closing-lease",
+        "editor.material_model.reload-reading-lease",
+        "editor.material_model.reload-outcomes",
+        "editor.flowforge_model.content",
+        "editor.flowforge_model.failure",
+        "editor.flowforge_model.mixed-signature",
+        "editor.flowforge_model.mixed-recreate",
+        "editor.flowforge_model.lifetime",
+        "editor.flowforge_model.reading",
+        "editor.flowforge_model.reload-unbound",
+        "editor.flowforge_model.reload-unbound-external",
+        "editor.flowforge_model.reload-reading",
+        "editor.flowforge_model.reload-closing",
+        "editor.flowforge_model.reload-identity",
+        "editor.flowforge_model.reload-success",
+        "editor.flowforge_model.input-stale",
+        "editor.flowforge_model.input-reading",
+        "editor.flowforge_model.input-closing",
+        "editor.flowforge_model.budgets",
+        "editor.flowforge_model.ids-undo-branch",
+        "editor.flowforge_model.ids-candidate-seed",
+        "editor.flowforge_model.ids-signature",
+        "editor.flowforge_model.ids-restore",
+        "editor.flowforge_model.ids-failure",
+        "editor.flowforge_model.ids-exhaustion",
+        "editor.persistence.write_coordinator",
+        "editor.persistence.real_files",
+        "editor.commands",
+        "editor.command_index",
+        "editor.scene.editing",
+        "editor.scene_execution.isolation",
+        "editor.scene_execution.controls",
+        "editor.scene_execution.failure",
+        "editor.scene_execution.completion",
+        "editor.scene_execution.r1-queued",
+        "editor.scene_execution.r1-mixed",
+        "editor.scene_execution.r1-failed",
+        "editor.scene_execution.r1-callback",
+        "editor.scene_execution.r1-capacity",
+        "editor.scene_execution.model-insertion",
+        "editor.project_publication_operation",
+        "editor.project_creation",
+        "editor.plugin_publication",
+        "editor.tasks.monitor_cpu",
+        "editor.detached_views",
+        "editor.view_host",
+        "editor.projection.highlight_backend",
+        "editor.canvas.churn",
+        "editor.scene_interaction",
+        "editor.interaction_run_identity",
+        "editor.material_interaction",
+        "editor.flowforge_interaction",
+        "editor.project_views",
+        "editor.inspector_codegen",
+        "editor.contributions",
+        "editor.contributions.r11-factory",
+        "editor.contributions.r11-reflection",
+        "editor.contributions.r11-cleanup",
+        "editor.contributions.r11-notify",
+        "plugin.configuration",
+        "plugin.physics2d",
+        "editor.projection.cost",
+        "editor.projection.reset_capacity",
+        "render.features.view_binding",
+        "editor.compilation.actual_publish",
+        "editor.compilation.ownership_material",
+        "editor.compilation.ownership_flow",
+        "editor.tasks.monitor",
+        "editor.scene_source_preservation",
+        "editor.scene_views_gpu",
+        "editor.draft_source_literal",
+        "editor.draft_source_signature",
+        "editor.draft_source_flow-canvas",
+        "editor.draft_source_material-canvas",
+        "editor.draft_source_flow-queue",
+        "editor.draft_source_material-queue",
+        "editor.draft_source_material-lifetime",
+        "editor.draft_source_lifecycle",
+        "editor.draft_source_positive",
+        "editor.draft_source_history",
+        "editor.presentation_backpressure",
+        "editor.presentation_scene-panes",
+        "editor.sessions.installation",
+        "editor.sessions.content_operations",
+        "editor.application",
+        "editor.settings.content",
+        "editor.settings.window",
+        "editor.model_recipe",
+        "editor.scene_configuration",
+        "editor.project_panels",
+        "editor.artifact_publication",
+        "editor.scene_configuration_native",
+        "editor.component_elements",
+        "editor.script_run",
+        "editor.scene_model_boundaries",
+        "editor.architecture_negative",
+        "editor.architecture_current",
+        "editor.flow_source_native",
+        "editor.material_model_boundaries",
+        "editor.flowforge_model_boundaries",
+        "editor.three_actual_sessions",
+        "editor.persistence_boundaries",
+        "editor.scene_execution_boundaries",
+        "editor.projection_compilation_boundaries",
+        "editor.interaction_view_boundaries",
+        "editor.workspace_boundaries",
+        "editor.desktop_view_boundaries",
+        "editor.quality.containers",
+        "editor.quality.boundaries",
+        "editor.quality.evidence",
+        "editor.layering.delivery_constraints",
+        "editor.layering.boundaries",
+        "editor.layering.compiler_providers",
+        "editor.extensions.boundaries",
+        "editor.product.boundaries",
+        "editor.ec2.boundaries",
+        "editor.ec3.boundaries",
+        "editor.persistence.models",
+        "editor.persistence.save-as",
+        "editor.persistence.unknown",
+        "editor.persistence.order",
+        "editor.persistence.close",
+        "editor.persistence.close-key",
+        "editor.persistence.capacity",
+        "editor.persistence.execution",
+        "editor.persistence.decoded",
+        "editor.persistence.receipts",
+        "editor.persistence.identities",
+        "editor.persistence.conflict",
+        "editor.persistence.measure",
+        "editor.persistence.r2-accept-success",
+        "editor.persistence.r2-accept-error",
+        "editor.persistence.r2-accept-cancel",
+        "editor.persistence.r2-accept-drain",
+        "editor.persistence.r2-admission",
+        "editor.persistence.r1-revoke",
+        "editor.persistence.r1-recursive",
+        "editor.persistence.r1-chain",
+        "editor.persistence.r1-chain-control",
+        "editor.persistence.r1-callbacks",
+        "editor.persistence.r1-reading",
+        "editor.persistence.r1-conflicts",
+        "editor.interaction_reclaim.scene.sync",
+        "editor.interaction_reclaim.scene.cancel",
+        "editor.interaction_reclaim.scene.selection",
+        "editor.interaction_reclaim.scene.stale",
+        "editor.interaction_reclaim.scene.gate",
+        "editor.interaction_reclaim.scene.thread",
+        "editor.interaction_reclaim.scene.reload",
+        "editor.interaction_reclaim.material.sync",
+        "editor.interaction_reclaim.material.cancel",
+        "editor.interaction_reclaim.material.selection",
+        "editor.interaction_reclaim.material.stale",
+        "editor.interaction_reclaim.material.gate",
+        "editor.interaction_reclaim.material.thread",
+        "editor.interaction_reclaim.material.reload",
+        "editor.interaction_reclaim.flow.sync",
+        "editor.interaction_reclaim.flow.cancel",
+        "editor.interaction_reclaim.flow.selection",
+        "editor.interaction_reclaim.flow.stale",
+        "editor.interaction_reclaim.flow.gate",
+        "editor.interaction_reclaim.flow.thread",
+        "editor.interaction_reclaim.flow.reload",
+        "editor.persistence.r11-input-duplicate",
+        "editor.persistence.r11-input-invalid",
+        "editor.persistence.r11-input-busy",
+        "editor.persistence.r11-input-success",
+        "editor.persistence.r11-input-completion",
+        "editor.workspace.validation",
+        "editor.workspace.opaque",
+        "editor.workspace.rename",
+        "editor.workspace.remove",
+        "editor.workspace.ordering",
+        "editor.workspace.unknown",
+        "editor.workspace.aliases",
+        "editor.workspace.reads",
+        "editor.workspace.catalog",
+        "editor.workspace.migration",
+        "editor.workspace.collision",
+        "editor.workspace.budgets",
+        "editor.workspace.conversion",
+        "editor.workspace.r1-alpha",
+        "editor.workspace.r1-beta",
+        "editor.workspace.r1-extras",
+        "editor.workspace.r1-selection",
+        "editor.workspace.r1-resume",
+        "editor.workspace.r1-control",
+        "editor.workspace.effects",
+        "editor.settings.core"
+      ],
+      "count": 241,
+      "log": "logs/resumed-ctest.log"
+    },
+    "final-player-tests": {
+      "implementation_sha": "17ea8c4079188fa54bb8e459496053454277c9d1",
+      "passed": [
+        "platform.process_arguments",
+        "window.placement",
+        "object.tree",
+        "object.queue",
+        "render.runtime_resources",
+        "ui.root",
+        "world.partition_decoder_parity",
+        "process.asset_read_overlay",
+        "process.asset_bounded_read",
+        "scene.driver",
+        "scene.runtime",
+        "scene.script_asset_scopes",
+        "scene.script_asset_plugin",
+        "scene.script_asset_values",
+        "scene.script_asset_lua",
+        "scene.script_asset_scene",
+        "scene.render_resources",
+        "scene.world_loading",
+        "engine.headless_context",
+        "plugin.scene_registrations"
+      ],
+      "count": 20,
+      "log": "logs/final-player-tests.log"
+    },
+    "resumed-install-fix-regression": {
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "passed": [
+        "editor.project_creation",
+        "editor.scene_views_gpu",
+        "editor.application",
+        "editor.ec3.boundaries",
+        "editor.settings.core"
+      ],
+      "count": 5,
+      "log": "logs/resumed-install-fix-regression.log"
+    },
+    "resumed-project-consumer-tests": {
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "passed": [
+        "installed.ec3.project_save"
+      ],
+      "count": 1,
+      "log": "logs/resumed-project-consumer-tests.log"
+    }
+  },
+  "inherited_public_headers": {
+    "count": 56,
+    "compiler": "clang-cl",
+    "mode": "C++20 standalone parse",
+    "status": "PASS"
+  },
+  "inherited_scope": {
+    "EC2": "PARTIAL; EC2 R1 scoped review accepted; F-EC2-01 closed",
+    "EC2_native_input": "NOT_RUN_USER_DEFERRED",
+    "P12": "PARTIAL_USER_WAIVER",
+    "Linux": "NOT_RUN",
+    "system_IME": "NOT_RUN",
+    "sanitizer": "NOT_RUN",
+    "old_performance": "PARTIAL_NO_MORE_SAMPLES"
+  },
+  "source_inheritance": "241 source and 20 PLAYER tests ran at 17ea8c40. New commit changes only one install-list line and five installed-consumer lines. Five affected tests, all/no-work, 56 headers and installed project IO ran at 0a521da0. No new cold-build claim.",
+  "workspace_empty_ctest_not_counted": true,
+  "fixture_compile_failure": "final-sdk-run-controls-build",
+  "fixture_correction": "SceneReadView has no encode(). The prepared Run fixture failed to compile; corrected to capture/buildSceneSnapshotPackage/encodeScenePackage. First attempt retained; production unchanged.",
+  "agent_security_changes": false,
+  "false_positive_confirmed": false,
+  "worktree": "E:\\SyncForder\\CodeRepos\\lux-engine-ec2",
+  "qualification_worktree": "E:\\SyncForder\\CodeRepos\\lux-engine-ec3-qualified",
+  "sdk_prefix": "E:\\SyncForder\\CodeRepos\\install\\EC3-17ea8c407918",
+  "user_patch_applied": false,
+  "user_patch_sha256": "ccac49618140d014236c9f23b55fc15d31c96e94b44395dee39fd67d35ab1f5c",
+  "user_patch_new_path": "editor/authoring/project/src/ProjectBuilder.cpp",
+  "main_modified": false,
+  "stop_after": "EC3 review; no merge, branch deletion or release"
+}

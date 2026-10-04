@@ -1,0 +1,29 @@
+{
+  "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+  "manifest_entries": 10309,
+  "missing": [],
+  "scene_composition": {
+    "bytes": 445440,
+    "sha256": "dca011d3378ca10549c9511a3690878e0611211368b2072ab29e6a872de37d48"
+  },
+  "public_project_commands_sha256": "8ace66829d3fb2e541cbe853012ff1c15a50e22075b499dfc8627fbbe983a5ec",
+  "old_emitter_install_hits": [],
+  "removed_production_paths": [
+    "editor/workbench/scene/codegen/inspector_codegen.py",
+    "editor/application/extensions/src/BuiltinContributions.cpp"
+  ],
+  "independent_compile_groups": [
+    "ec3-application",
+    "ec3-declarations",
+    "ec3-declarations-plain",
+    "ec3-ec1-headless",
+    "ec3-ec1-window",
+    "ec3-ec2-lua",
+    "ec3-ec2-native",
+    "ec3-ec2-scene",
+    "ec3-project-save",
+    "ec3-skeleton",
+    "ec3-workspace"
+  ],
+  "note": "Dependency toolchain includes are allowed; no source-private headers or earlier engine SDK prefix."
+}

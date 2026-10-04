@@ -1,0 +1,1964 @@
+[
+  {
+    "id": "V01",
+    "title": "输入与遗留范围",
+    "batch": "C0",
+    "setup": "固定实际 HEAD、工作区、用户补丁及 EC2/P12 状态",
+    "expected": "原记录不改写；不会把 PARTIAL/延期记成 PASS",
+    "evidence": "baseline、receipt、原始 patch 哈希",
+    "earlier_execution": {
+      "status": "BASELINE_PRESERVED",
+      "evidence_path": "baseline.json",
+      "command_name": null,
+      "command_exit_code": null,
+      "command_source_head": null,
+      "source_diff_sha256": null,
+      "final_tests": [],
+      "scope": "Protected workspace hash and inherited scope; no history rewritten.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "protection.json",
+        "receipt.json"
+      ],
+      "scope": "Original workspace and main checked; patch not applied. Stop at EC3 review.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V02",
+    "title": "依赖与声明完整性",
+    "batch": "C0",
+    "setup": "核对实际 lux-cxx 头/工具 ABI，并展开 50 项和动态 family",
+    "expected": "版本一致；每项有 owner/consumer，不宣称旧清单为全仓",
+    "evidence": "安装头哈希、声明映射、target 图",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "target-providers.json",
+      "command_name": null,
+      "command_exit_code": null,
+      "command_source_head": null,
+      "source_diff_sha256": null,
+      "final_tests": [],
+      "scope": "Actual provider graph and per-declaration source blobs; final SDK ABI closure pending.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "target-providers.json",
+        "removed-symbols.json",
+        "final-sdk-audit.json",
+        "sdk/commands.json"
+      ],
+      "scope": "Actual providers and installed closure; prior source boundary negatives inherited by fixed SHA.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V03",
+    "title": "编译期固定身份",
+    "batch": "C1",
+    "setup": "真实 SDK 编译模块 constexpr descriptor",
+    "expected": "使用既有 hash/type token；不构造拥有型 ID/字符串镜像",
+    "evidence": "编译命令、符号/布局记录",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c1-sdk-run.log",
+      "command_name": "c1-sdk-run",
+      "command_exit_code": 0,
+      "command_source_head": "126f1b4df14316df30957208787ded9be9f9f461",
+      "source_diff_sha256": "e527f663050c297abb5a7f52ce41ac1ee5c65d387a0b6dc7ec9a9d27fc8270b5",
+      "final_tests": [
+        {
+          "name": "editor.commands",
+          "result": "PASS"
+        }
+      ],
+      "scope": "Final installed declaration consumer pending.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "logs/final-sdk-editor_ec3_declarations.log"
+      ],
+      "scope": "Actual installed public declarations and owning dynamic backing.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V04",
+    "title": "重复与碰撞",
+    "batch": "C1",
+    "setup": "同名重复、异名同 hash、伪造 hash、错误 domain",
+    "expected": "不同错误可定位；候选整体不发布；旧目录不变",
+    "evidence": "使用同一校验算法的可控 hash 或真实碰撞夹具",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c3-provider-final-regression.log",
+      "command_name": "c3-provider-final-regression",
+      "command_exit_code": 0,
+      "command_source_head": "67c3b9fa6e9118d749de64942760f90cc448a533",
+      "source_diff_sha256": "85b412163ea66e07614b379ee738f8ea227690f7c4f2864758aa096b8dc6f85a",
+      "final_tests": [
+        {
+          "name": "editor.command_index",
+          "result": "PASS"
+        }
+      ],
+      "scope": "Controlled same-algorithm collision, forged identity and domain cases.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "prior:EC3-C9/resumed-ctest/editor.command_index"
+      ],
+      "scope": "Controlled same production collision algorithm, domain rejection and CURRENT/PINNED replacement.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V05",
+    "title": "跨版本身份",
+    "batch": "C1",
+    "setup": "旧 A handle 在新目录移除 A、加入同 hash B 后 CURRENT/PINNED 执行",
+    "expected": "PINNED 按原定义；CURRENT 不得执行 B；冷重解析明确",
+    "evidence": "旧/新 entry、revision、实际 callback 计数",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c3-provider-final-regression.log",
+      "command_name": "c3-provider-final-regression",
+      "command_exit_code": 0,
+      "command_source_head": "67c3b9fa6e9118d749de64942760f90cc448a533",
+      "source_diff_sha256": "85b412163ea66e07614b379ee738f8ea227690f7c4f2864758aa096b8dc6f85a",
+      "final_tests": [
+        {
+          "name": "editor.command_index",
+          "result": "PASS"
+        }
+      ],
+      "scope": "Changed-entry CURRENT/PINNED identity and callback counts.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "prior:EC3-C9/resumed-ctest/editor.command_index"
+      ],
+      "scope": "Controlled same production collision algorithm, domain rejection and CURRENT/PINNED replacement.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V06",
+    "title": "数值查询与失效",
+    "batch": "C1",
+    "setup": "真实目录多规模命中/缺失/更换；持句柄热执行",
+    "expected": "热路由无业务名扫描/重算；旧指针不复用",
+    "evidence": "计数段、lookup 路径、M1",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c8-measure-sdk-runtime.log",
+      "command_name": "c8-measure-sdk-runtime",
+      "command_exit_code": 0,
+      "command_source_head": "a59cfc88dc14251bd640a30c15152ef309b59e62",
+      "source_diff_sha256": "2319b52ebdac2005dcd52551c458a20bfa0e00315059f5c10bc781e8f8c07383",
+      "final_tests": [
+        {
+          "name": "editor.command_index",
+          "result": "PASS"
+        }
+      ],
+      "scope": "Count scope excludes caller-owned token construction and DLL allocations.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "logs/final-sdk-editor_ec3_measure.log"
+      ],
+      "scope": "35/256/1024 entries. Counts exclude caller ID construction and DLL allocators; dispatch is not allocation-free.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V07",
+    "title": "快照与批次保护",
+    "batch": "C1 C3",
+    "setup": "固定读取、贡献失败、旧值清理和通知内重入发布",
+    "expected": "保持 P11 R1 原子性；嵌套普通发布被拒绝",
+    "evidence": "原真实 SDK 回归",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c4-settings-guard-regression.log",
+      "command_name": "c4-settings-guard-regression",
+      "command_exit_code": 0,
+      "command_source_head": "9ac9329deeab1e63d16fbfb01a4c2ffa7fcf0da4",
+      "source_diff_sha256": "b8a5fa0e18349a8663bf2146793c0d7e837d72c6907cadba2b9a0cdfddd212af",
+      "final_tests": [
+        {
+          "name": "editor.contributions.r11-reflection",
+          "result": "PASS"
+        },
+        {
+          "name": "editor.contributions.r11-cleanup",
+          "result": "PASS"
+        },
+        {
+          "name": "editor.contributions.r11-notify",
+          "result": "PASS"
+        }
+      ],
+      "scope": "Original participating-owner guards retained; final external SDK repetition pending.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "sdk/p11-models-ctest-details.log"
+      ],
+      "scope": "Actual SDK contribution batch cleanup, reflection and notification protection.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V08",
+    "title": "外部名称解析",
+    "batch": "C1",
+    "setup": "文件/CLI/插件动态名首次解析及错误拼写",
+    "expected": "解析得到固定正确 handle；未注册同 hash 名不能命中",
+    "evidence": "规范名/hash/错误与调用记录",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c1-sdk-run.log",
+      "command_name": "c1-sdk-run",
+      "command_exit_code": 0,
+      "command_source_head": "126f1b4df14316df30957208787ded9be9f9f461",
+      "source_diff_sha256": "e527f663050c297abb5a7f52ce41ac1ee5c65d387a0b6dc7ec9a9d27fc8270b5",
+      "final_tests": [
+        {
+          "name": "editor.commands",
+          "result": "PASS"
+        },
+        {
+          "name": "editor.command_index",
+          "result": "PASS"
+        }
+      ],
+      "scope": "External text remains a cold validation boundary.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "logs/final-sdk-editor_ec3_declarations.log"
+      ],
+      "scope": "Actual installed public declarations and owning dynamic backing.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V09",
+    "title": "固定描述复用",
+    "batch": "C1",
+    "setup": "多个同模块消费者注册固定声明",
+    "expected": "descriptor 指向原声明；metadata 文字不复制；实际 owner 开销公开",
+    "evidence": "地址与分配/字节计数，M2",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c8-measure-sdk-runtime.log",
+      "command_name": "c8-measure-sdk-runtime",
+      "command_exit_code": 0,
+      "command_source_head": "a59cfc88dc14251bd640a30c15152ef309b59e62",
+      "source_diff_sha256": "2319b52ebdac2005dcd52551c458a20bfa0e00315059f5c10bc781e8f8c07383",
+      "final_tests": [
+        {
+          "name": "editor.commands",
+          "result": "PASS"
+        }
+      ],
+      "scope": "Static text zero-copy is not an allocation-free owner claim.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "logs/final-sdk-editor_ec3_measure.log"
+      ],
+      "scope": "35/256/1024 entries. Counts exclude caller ID construction and DLL allocators; dispatch is not allocation-free.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V10",
+    "title": "动态描述寿命",
+    "batch": "C1",
+    "setup": "构造后销毁临时 string、移动/增长输入缓冲再调用",
+    "expected": "统一冻结 backing，所有字段正确且无悬空",
+    "evidence": "真实 SDK 运行与释放计数",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c1-sdk-run.log",
+      "command_name": "c1-sdk-run",
+      "command_exit_code": 0,
+      "command_source_head": "126f1b4df14316df30957208787ded9be9f9f461",
+      "source_diff_sha256": "e527f663050c297abb5a7f52ce41ac1ee5c65d387a0b6dc7ec9a9d27fc8270b5",
+      "final_tests": [
+        {
+          "name": "editor.commands",
+          "result": "PASS"
+        }
+      ],
+      "scope": "Dynamic backing and original code ownership; final SDK repetition pending.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "logs/final-sdk-editor_ec3_declarations.log"
+      ],
+      "scope": "Actual installed public declarations and owning dynamic backing.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V11",
+    "title": "插件卸载与弱句柄",
+    "batch": "C1 C4",
+    "setup": "旧快照/命令/动态描述/弱控制块存活时替换插件",
+    "expected": "文字/callback/deleter/control block 清理早于代码最终卸载",
+    "evidence": "真实 DLL，不用隔离 shim",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c4-sdk-skeleton-headless.log",
+      "command_name": "c4-sdk-skeleton-headless",
+      "command_exit_code": 0,
+      "command_source_head": "9ac9329deeab1e63d16fbfb01a4c2ffa7fcf0da4",
+      "source_diff_sha256": "bf71be784cfe3e2916bcd37cd05943f7248d1a3ea7d15c71e5ce49a2a61c8d55",
+      "final_tests": [
+        {
+          "name": "editor.contributions",
+          "result": "PASS"
+        }
+      ],
+      "scope": "Real external DLL result belongs to its recorded earlier implementation; final SDK pending.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "logs/final-sdk-skeleton-tests.log",
+        "logs/final-sdk-skeleton-window.log"
+      ],
+      "scope": "Actual external V9 DLL, settings and view factories, original pins and control-block lifetime.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V12",
+    "title": "元数据共享到菜单",
+    "batch": "C3",
+    "setup": "多菜单观察、目录替换、设置覆盖和旧输入存活",
+    "expected": "无第二业务目录；描述仍有效；显示覆盖不改 ID",
+    "evidence": "实际 Root/CommandMenu 与存储计数",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c3-menu-lifetime-regression.log",
+      "command_name": "c3-menu-lifetime-regression",
+      "command_exit_code": 0,
+      "command_source_head": "bd994ee76668c1609362854a3ce23db0fe8764b2",
+      "source_diff_sha256": "679ca08052c84312398141e2ca2da284a0402402422575c6baf54a67a33eee11",
+      "final_tests": [
+        {
+          "name": "ui.root",
+          "result": "PASS"
+        }
+      ],
+      "scope": "Real CommandMenu and immutable entry lifetime.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "prior:EC3-C9/resumed-ctest/ui.root",
+        "logs/final-sdk-editor_ec3_measure.log"
+      ],
+      "scope": "Real Root menu and shortcut parser; stable menu counters retain immutable metadata.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V13",
+    "title": "静态与动态构造负例",
+    "batch": "C1",
+    "setup": "临时 descriptor 或短寿命借用、非法字段、缺 owner",
+    "expected": "编译/准入准确拒绝；不把动态值伪装成静态",
+    "evidence": "真实接口正负编译/运行",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c3-extracted-sdk-complete-negative-9-build.log",
+      "command_name": "c3-extracted-sdk-complete-negative-9-build",
+      "command_exit_code": 1,
+      "command_source_head": "d202fcec49908f840f6bec95458d263ea30100d0",
+      "source_diff_sha256": "84429d4f582f91141b158be5fe66e233251435321c958bc2c888f020e05f0673",
+      "final_tests": [],
+      "scope": "Earlier nine declaration negatives retained; final prefix negative matrix pending.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "logs/final-sdk-declaration-negative-1-build.log",
+        "logs/final-sdk-declaration-negative-2-build.log",
+        "logs/final-sdk-declaration-negative-3-build.log",
+        "logs/final-sdk-declaration-negative-4-build.log",
+        "logs/final-sdk-declaration-negative-5-build.log",
+        "logs/final-sdk-declaration-negative-6-build.log",
+        "logs/final-sdk-declaration-negative-7-build.log",
+        "logs/final-sdk-declaration-negative-8-build.log",
+        "logs/final-sdk-declaration-negative-9-build.log"
+      ],
+      "scope": "Nine public-header compile rejections with positive consumer; not missing-header/link failures.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V14",
+    "title": "全部声明迁移",
+    "batch": "C3",
+    "setup": "35 个 ID/12 个 view/3 个 source，基础与项目 Save",
+    "expected": "各自模块声明；产品不先删后装 Save；后缀行为保留",
+    "evidence": "逐项清单和真实安装目录",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c3-provider-final-regression.log",
+      "command_name": "c3-provider-final-regression",
+      "command_exit_code": 0,
+      "command_source_head": "67c3b9fa6e9118d749de64942760f90cc448a533",
+      "source_diff_sha256": "85b412163ea66e07614b379ee738f8ea227690f7c4f2864758aa096b8dc6f85a",
+      "final_tests": [
+        {
+          "name": "editor.commands",
+          "result": "PASS"
+        }
+      ],
+      "scope": "Original 50-declaration scope plus dynamic families in sole ledger; final installed catalog pending.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "target-providers.json",
+        "removed-symbols.json",
+        "final-sdk-audit.json",
+        "sdk/commands.json"
+      ],
+      "scope": "Actual providers and installed closure; prior source boundary negatives inherited by fixed SHA.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V15",
+    "title": "Scene 工具与运行命令",
+    "batch": "C3",
+    "setup": "四工具、pause/resume/step/stop、未知选择",
+    "expected": "真实动作正确；无 role string 二次解释及默认配置回退",
+    "evidence": "实际业务结果，不只检索字符串",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c3-scene-commands-owner-regression.log",
+      "command_name": "c3-scene-commands-owner-regression",
+      "command_exit_code": 0,
+      "command_source_head": "e1a2d1389c9b73663da69315908c01ccd19179f5",
+      "source_diff_sha256": "1887a1ecbcf51ae2a79b3936ce21ac7c00fde54eaaf8bff5dfb45ec0c3a299ce",
+      "final_tests": [
+        {
+          "name": "editor.scene_execution.controls",
+          "result": "PASS"
+        }
+      ],
+      "scope": "Real actions retain original Runtime/RunStore; final application repetition pending.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "sdk/desktop-views-ctest-details.log",
+        "sdk/scene-execution-ctest-details.log"
+      ],
+      "scope": "Real scene tool and Runtime/RunStore operations.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V16",
+    "title": "直接/菜单/程序化一致性",
+    "batch": "C2 C3",
+    "setup": "同一保存/恢复用例分别经三入口调用",
+    "expected": "活动只接纳一次；责任不依赖 takeCompletions",
+    "evidence": "调用次数、结果 owner 与真实文件",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c2-sdk-consumed-role.log",
+      "command_name": "c2-sdk-consumed-role",
+      "command_exit_code": 0,
+      "command_source_head": "7684348b15ec0ea9c807836cdda76d98b9be6c4e",
+      "source_diff_sha256": "b9bcb61b9ae071e076e0a90f679095cd4ad8075260fbf3cd2745cecc083536a5",
+      "final_tests": [],
+      "scope": "Independent IO and direct/menu wiring recorded; final complete three-entry application qualification pending.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "prior:EC3-C9/resumed-ctest/editor.application",
+        "logs/final-sdk-application-tests.log",
+        "logs/final-sdk-project-save-tests.log"
+      ],
+      "scope": "Installed command-thread and independent project IO; unchanged Application assertions inherited at 17ea8c40.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V17",
+    "title": "快捷键/分组解析",
+    "batch": "C3 C5",
+    "setup": "默认键、用户覆盖、非法语法、冲突、菜单多级组",
+    "expected": "唯一 parser；稳定事件不解析文字；冲突确定",
+    "evidence": "解析正负例和 Root 路径",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c5-shortcut-focused-root-regression.log",
+      "command_name": "c5-shortcut-focused-root-regression",
+      "command_exit_code": 0,
+      "command_source_head": "9249e3f872a7b3814a276d39601d3780725d5733",
+      "source_diff_sha256": "dd2e64f684ad0d0bdb90746f62d71154e89a6ba608c4ea44e2ea297b664be7b6",
+      "final_tests": [
+        {
+          "name": "ui.root",
+          "result": "PASS"
+        },
+        {
+          "name": "editor.commands",
+          "result": "PASS"
+        }
+      ],
+      "scope": "Single parser and stable numeric menu route.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "prior:EC3-C9/resumed-ctest/ui.root",
+        "logs/final-sdk-editor_ec3_measure.log"
+      ],
+      "scope": "Real Root menu and shortcut parser; stable menu counters retain immutable metadata.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V18",
+    "title": "动态插件窗口命令",
+    "batch": "C3",
+    "setup": "加载/卸载独立 ViewFactory，生成 tool/<type>",
+    "expected": "只在注册边界形成；动态寿命正确；不用中央枚举",
+    "evidence": "实际扩展、旧队列与窗口",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c4-sdk-skeleton-window.log",
+      "command_name": "c4-sdk-skeleton-window",
+      "command_exit_code": 0,
+      "command_source_head": "9ac9329deeab1e63d16fbfb01a4c2ffa7fcf0da4",
+      "source_diff_sha256": "bf71be784cfe3e2916bcd37cd05943f7248d1a3ea7d15c71e5ce49a2a61c8d55",
+      "final_tests": [],
+      "scope": "Actual external factory WINDOW run recorded before final implementation; final SDK pending.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "logs/final-sdk-skeleton-tests.log",
+        "logs/final-sdk-skeleton-window.log"
+      ],
+      "scope": "Actual external V9 DLL, settings and view factories, original pins and control-block lifetime.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V19",
+    "title": "无 App 项目保存",
+    "batch": "C2",
+    "setup": "只用正式活动打开真实作者 Session，保存并登记",
+    "expected": "无 Root/Application 依赖；source/checkpoint/manifest 正确",
+    "evidence": "实际 IO、独立 SDK/依赖负例",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c2-sdk-project-saving.log",
+      "command_name": "c2-sdk-project-saving",
+      "command_exit_code": 0,
+      "command_source_head": "255a16c5ccfddc41b1cae683ea20b007c4037b93",
+      "source_diff_sha256": "e276d9422ff25d50c0136202a18b6ac27635dc53981d783d850399988b12a4c6",
+      "final_tests": [],
+      "scope": "Real no-Application SDK source saving; final SDK pending.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "logs/final-sdk-project-save-tests.log",
+        "final-sdk-project-save-details.log"
+      ],
+      "scope": "Real no-Application source saving and manifest partial/Unknown facts.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V20",
+    "title": "项目保存部分完成",
+    "batch": "C2",
+    "setup": "源成功目录失败/Unknown/被新记录更改/重试",
+    "expected": "保留真实源文件；不清空来源；不覆盖新 compiled",
+    "evidence": "故障注入/磁盘读回/固定版本",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c2-sdk-project-saving.log",
+      "command_name": "c2-sdk-project-saving",
+      "command_exit_code": 0,
+      "command_source_head": "255a16c5ccfddc41b1cae683ea20b007c4037b93",
+      "source_diff_sha256": "e276d9422ff25d50c0136202a18b6ac27635dc53981d783d850399988b12a4c6",
+      "final_tests": [],
+      "scope": "Source/manifest Unknown and partial completion remain separate; final SDK pending.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "logs/final-sdk-project-save-tests.log",
+        "final-sdk-project-save-details.log"
+      ],
+      "scope": "Real no-Application source saving and manifest partial/Unknown facts.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V21",
+    "title": "SaveAll 与关闭",
+    "batch": "C2",
+    "setup": "多视图同 Session、无视图内容、A保存 B取消",
+    "expected": "按 Session 去重；不提前删除；单一确认 owner",
+    "evidence": "真实 SaveService/Store 活动",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c8-drop-output-readiness.log",
+      "command_name": "c8-drop-output-readiness",
+      "command_exit_code": 0,
+      "command_source_head": "a59cfc88dc14251bd640a30c15152ef309b59e62",
+      "source_diff_sha256": "d0b18c67d22c7fe9b144058c00cb2d929910a2e64f2326d5339b5af45d748f49",
+      "final_tests": [],
+      "scope": "Application session-deduplicated save/close regression; final run blocked.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "prior:EC3-C9/resumed-ctest/editor.application",
+        "logs/final-sdk-application-tests.log",
+        "logs/final-sdk-project-save-tests.log"
+      ],
+      "scope": "Installed command-thread and independent project IO; unchanged Application assertions inherited at 17ea8c40.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V22",
+    "title": "工作区政策",
+    "batch": "C2",
+    "setup": "保存/应用/删除所选布局/回退，preferences 失败",
+    "expected": "Host 事实与文件事实分开；坏布局无副作用",
+    "evidence": "实际 Host/文件，C01 回归",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c2-sdk-workspace-busy.log",
+      "command_name": "c2-sdk-workspace-busy",
+      "command_exit_code": 0,
+      "command_source_head": "40c194e1a99d109c047a271a037373c7d4d04c6a",
+      "source_diff_sha256": "90cf2322a8e0365fe265f98fd6805d9755ed483027ddc8f5450b2a5ffdc43d8f",
+      "final_tests": [],
+      "scope": "Actual file/Host workspace decisions, including BUSY preservation; final SDK pending.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "logs/final-sdk-workspace-executable.log",
+        "sdk/workspace-ctest-details.log"
+      ],
+      "scope": "Executable directly ran real Host/files/Unknown/BUSY checks. Empty CTest call is excluded.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V23",
+    "title": "独立 Recovery",
+    "batch": "C2",
+    "setup": "只选恢复清单、缺插件、部分内容显示失败",
+    "expected": "不扫描任意 layout opaque；部分结果精确保留",
+    "evidence": "真实打开/重绑定与源/图像状态",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c2-sdk-consumed-role.log",
+      "command_name": "c2-sdk-consumed-role",
+      "command_exit_code": 0,
+      "command_source_head": "7684348b15ec0ea9c807836cdda76d98b9be6c4e",
+      "source_diff_sha256": "b9bcb61b9ae071e076e0a90f679095cd4ad8075260fbf3cd2745cecc083536a5",
+      "final_tests": [],
+      "scope": "Independent recovery and consumed source role; final SDK pending.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "prior:EC3-C9/resumed-ctest/editor.application",
+        "logs/final-sdk-application-tests.log",
+        "logs/final-sdk-project-save-tests.log"
+      ],
+      "scope": "Installed command-thread and independent project IO; unchanged Application assertions inherited at 17ea8c40.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V24",
+    "title": "最近项目与插件选择",
+    "batch": "C2 C4",
+    "setup": "用户文档上限/去重、项目插件保存重开",
+    "expected": "manifest 唯一；旧活动不在 App 私有路径",
+    "evidence": "文件读回、实际模块 API",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c2-sdk-recent-activity.log",
+      "command_name": "c2-sdk-recent-activity",
+      "command_exit_code": 0,
+      "command_source_head": "255a16c5ccfddc41b1cae683ea20b007c4037b93",
+      "source_diff_sha256": "bd2e3d0409f59dd7e98df2af562ce114bc4698583ec26b3562934ccd53a295cb",
+      "final_tests": [
+        {
+          "name": "editor.plugin_publication",
+          "result": "PASS"
+        }
+      ],
+      "scope": "Recent user file and project manifest remain distinct owners.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "prior:EC3-C9/resumed-ctest/editor.application",
+        "prior:EC3-C9/resumed-ctest/editor.plugin_publication"
+      ],
+      "scope": "Existing final-source application and plugin publication tests, unchanged by install-list-only fix.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V25",
+    "title": "生命周期与原准入",
+    "batch": "C2 C3",
+    "setup": "启动连接失败、错误线程、重入、关闭有待完成工作",
+    "expected": "C04/WRONG_THREAD/BUSY 保留；已接受结果可靠结清",
+    "evidence": "Application/SDK 定向回归",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c8-drop-output-readiness.log",
+      "command_name": "c8-drop-output-readiness",
+      "command_exit_code": 0,
+      "command_source_head": "a59cfc88dc14251bd640a30c15152ef309b59e62",
+      "source_diff_sha256": "d0b18c67d22c7fe9b144058c00cb2d929910a2e64f2326d5339b5af45d748f49",
+      "final_tests": [
+        {
+          "name": "editor.commands",
+          "result": "PASS"
+        }
+      ],
+      "scope": "Application regression plus original dispatch admission; final application blocked.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "prior:EC3-C9/resumed-ctest/editor.application",
+        "logs/final-sdk-application-tests.log",
+        "logs/final-sdk-project-save-tests.log"
+      ],
+      "scope": "Installed command-thread and independent project IO; unchanged Application assertions inherited at 17ea8c40.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V26",
+    "title": "设置作用域",
+    "batch": "C4",
+    "setup": "安装/项目/用户/用户项目/CLI 多来源组合",
+    "expected": "按 descriptor 允许范围；非法 scope 拒绝",
+    "evidence": "纯解析测试与来源追踪",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c4-settings-value-regression.log",
+      "command_name": "c4-settings-value-regression",
+      "command_exit_code": 0,
+      "command_source_head": "9ac9329deeab1e63d16fbfb01a4c2ffa7fcf0da4",
+      "source_diff_sha256": "60e0d79ffbc29233f299117b301f0670f1b7a79a5be0aef2f6b14749f8b5f824",
+      "final_tests": [],
+      "scope": "Five scopes with per-entry allowed scope; final settings test not reached.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "prior:EC3-C9/resumed-ctest/editor.settings.core",
+        "sdk/workspace-ctest-details.log"
+      ],
+      "scope": "Actual settings values/IO, conflicts, Unknown and original preference migration at recorded SHA.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V27",
+    "title": "设置缺省与引导",
+    "batch": "C4 C5",
+    "setup": "无文件启动、缺插件、插件提供额外 schema",
+    "expected": "不用插件 UI 才能决定加载插件；有效默认明确",
+    "evidence": "启动日志/状态，不仅 schema",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c5-font-restart-regression.log",
+      "command_name": "c5-font-restart-regression",
+      "command_exit_code": 0,
+      "command_source_head": "079b59a9f67e997eb26da199948e5bfab416e046",
+      "source_diff_sha256": "004747ef98bd8aadc664180dee34618a1cc4f4c4ee03da5ccac96e77552086ee",
+      "final_tests": [],
+      "scope": "Actual startup reads before window/plugin page creation; final startup blocked.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "prior:EC3-C9/resumed-ctest/editor.settings.core",
+        "sdk/workspace-ctest-details.log"
+      ],
+      "scope": "Actual settings values/IO, conflicts, Unknown and original preference migration at recorded SHA.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V28",
+    "title": "配置未知段与损坏文件",
+    "batch": "C4",
+    "setup": "未知插件段、未来 schema、权限和格式错误",
+    "expected": "未知值保留；错误不覆盖为默认；保证范围真实",
+    "evidence": "原/新文件与诊断",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c5-settings-content-regression.log",
+      "command_name": "c5-settings-content-regression",
+      "command_exit_code": 0,
+      "command_source_head": "db1af9865d9b12105fd107af4d6ad8f5e293e868",
+      "source_diff_sha256": "2c9bc9b0025710a98a5269da7286a6ba94b3c13dc854e7f77e04bf285b92a720",
+      "final_tests": [],
+      "scope": "Unknown values retained and corrupt/permission errors visible; final settings pending.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "prior:EC3-C9/resumed-ctest/editor.settings.core",
+        "sdk/workspace-ctest-details.log"
+      ],
+      "scope": "Actual settings values/IO, conflicts, Unknown and original preference migration at recorded SHA.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V29",
+    "title": "旧偏好迁移",
+    "batch": "C4",
+    "setup": "现有 selected_layout/opaque，失败和重复执行",
+    "expected": "读旧保留、迁移幂等、Recovery 不合并错来源",
+    "evidence": "磁盘版本与重复运行",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c5-font-restart-regression.log",
+      "command_name": "c5-font-restart-regression",
+      "command_exit_code": 0,
+      "command_source_head": "079b59a9f67e997eb26da199948e5bfab416e046",
+      "source_diff_sha256": "004747ef98bd8aadc664180dee34618a1cc4f4c4ee03da5ccac96e77552086ee",
+      "final_tests": [],
+      "scope": "Read-only legacy profile migration preserves opaque/recovery/marker, final repetition pending.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "prior:EC3-C9/resumed-ctest/editor.settings.core",
+        "sdk/workspace-ctest-details.log"
+      ],
+      "scope": "Actual settings values/IO, conflicts, Unknown and original preference migration at recorded SHA.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V30",
+    "title": "草稿冲突与 Revert",
+    "batch": "C4 C5",
+    "setup": "草稿编辑后外部文件/descriptor 改变",
+    "expected": "来源冲突准确；失败保留草稿；Revert 不删未知段",
+    "evidence": "真实 values/version",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c5-settings-busy-regression.log",
+      "command_name": "c5-settings-busy-regression",
+      "command_exit_code": 0,
+      "command_source_head": "db1af9865d9b12105fd107af4d6ad8f5e293e868",
+      "source_diff_sha256": "c61a9998e3d1260c9646ae3dd2d9b986138c1106686c7e278805e61cb06df2b2",
+      "final_tests": [],
+      "scope": "Draft origin conflicts and Revert; final settings pending.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "prior:EC3-C9/resumed-ctest/editor.settings.core",
+        "sdk/workspace-ctest-details.log"
+      ],
+      "scope": "Actual settings values/IO, conflicts, Unknown and original preference migration at recorded SHA.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V31",
+    "title": "设置文件发布",
+    "batch": "C4",
+    "setup": "冲突、Unknown、对账、取消、退出",
+    "expected": "同一 WriteCoordinator；已接受完成仍可观察",
+    "evidence": "实际文件与原发布回归",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c5-profile-completions-regression.log",
+      "command_name": "c5-profile-completions-regression",
+      "command_exit_code": 8,
+      "command_source_head": "079b59a9f67e997eb26da199948e5bfab416e046",
+      "source_diff_sha256": "061338fb3ba88e46f295e6b2e996ed929f9fb78479c144325d26ff3b24202fdc",
+      "final_tests": [],
+      "scope": "This command contains an earlier failure, not PASS; later c5-font-restart-regression is the corrected path. Final IO pending.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "prior:EC3-C9/resumed-ctest/editor.settings.core",
+        "sdk/workspace-ctest-details.log"
+      ],
+      "scope": "Actual settings values/IO, conflicts, Unknown and original preference migration at recorded SHA.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V32",
+    "title": "动态设置插件",
+    "batch": "C4 C5",
+    "setup": "真实外部 DLL 注册设置、页面、codec、应用",
+    "expected": "无宿主类型分支；缺失后保留；卸载不悬空",
+    "evidence": "实际 V9 SDK 插件",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c4-sdk-skeleton-window.log",
+      "command_name": "c4-sdk-skeleton-window",
+      "command_exit_code": 0,
+      "command_source_head": "9ac9329deeab1e63d16fbfb01a4c2ffa7fcf0da4",
+      "source_diff_sha256": "bf71be784cfe3e2916bcd37cd05943f7248d1a3ea7d15c71e5ce49a2a61c8d55",
+      "final_tests": [],
+      "scope": "Real V9 dynamic settings DLL/page; final SDK pending.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "logs/final-sdk-skeleton-tests.log",
+        "logs/final-sdk-skeleton-window.log"
+      ],
+      "scope": "Actual external V9 DLL, settings and view factories, original pins and control-block lifetime.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V33",
+    "title": "保存与应用分离",
+    "batch": "C5",
+    "setup": "生效成功保存失败；保存成功待重启；准备失败",
+    "expected": "UI 三项事实准确，不全局回滚或伪报成功",
+    "evidence": "功能 owner 实际值、文件与状态",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c5-settings-report-regression.log",
+      "command_name": "c5-settings-report-regression",
+      "command_exit_code": 0,
+      "command_source_head": "db1af9865d9b12105fd107af4d6ad8f5e293e868",
+      "source_diff_sha256": "c61a9998e3d1260c9646ae3dd2d9b986138c1106686c7e278805e61cb06df2b2",
+      "final_tests": [],
+      "scope": "Applied/persisted/restart facts are tested independently; final UI pending.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "prior:EC3-C9/resumed-ctest/editor.settings.content",
+        "prior:EC3-C9/resumed-ctest/editor.application"
+      ],
+      "scope": "Actual selected font/scale and restart policy; distinct applied/persisted states. Not manual all-font/IME qualification.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V34",
+    "title": "字体/scale 与资源",
+    "batch": "C5",
+    "setup": "改变字体/scale，live 或声明的重启路径",
+    "expected": "按策略真实生效；旧 GPU/atlas 引用不早释放",
+    "evidence": "重开/真实 UI 观察；不得共享字体文件作为交付",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c5-font-restart-regression.log",
+      "command_name": "c5-font-restart-regression",
+      "command_exit_code": 0,
+      "command_source_head": "079b59a9f67e997eb26da199948e5bfab416e046",
+      "source_diff_sha256": "004747ef98bd8aadc664180dee34618a1cc4f4c4ee03da5ccac96e77552086ee",
+      "final_tests": [],
+      "scope": "Declared restart policy, actual selected font and scale; not a manual all-font/DPI qualification.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "prior:EC3-C9/resumed-ctest/editor.settings.content",
+        "prior:EC3-C9/resumed-ctest/editor.application"
+      ],
+      "scope": "Actual selected font/scale and restart policy; distinct applied/persisted states. Not manual all-font/IME qualification.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V35",
+    "title": "快捷键覆盖与插件恢复",
+    "batch": "C5",
+    "setup": "override、冲突、插件缺失再加载、CLI覆盖",
+    "expected": "稳定 ID；覆盖存活；只在变更时解析",
+    "evidence": "真实命令动作/持久文件",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c5-shortcut-focused-root-regression.log",
+      "command_name": "c5-shortcut-focused-root-regression",
+      "command_exit_code": 0,
+      "command_source_head": "9249e3f872a7b3814a276d39601d3780725d5733",
+      "source_diff_sha256": "dd2e64f684ad0d0bdb90746f62d71154e89a6ba608c4ea44e2ea297b664be7b6",
+      "final_tests": [
+        {
+          "name": "ui.root",
+          "result": "PASS"
+        }
+      ],
+      "scope": "Overrides applied via original parser at change boundary; final persistent/SDK run pending.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "prior:EC3-C9/resumed-ctest/editor.settings.content",
+        "prior:EC3-C9/resumed-ctest/editor.application"
+      ],
+      "scope": "Actual selected font/scale and restart policy; distinct applied/persisted states. Not manual all-font/IME qualification.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V36",
+    "title": "首次窗口策略",
+    "batch": "C5",
+    "setup": "工作区/scale 模型与一次实际 Windows 创建",
+    "expected": "使用已解析 placement，非各调用点数字",
+    "evidence": "纯策略夹具与真实窗口事实分开",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c5-window-insets-desktop.log",
+      "command_name": "c5-window-insets-desktop",
+      "command_exit_code": 0,
+      "command_source_head": "66157582fcbd7b3071ad9c39dcda9a8441d52e69",
+      "source_diff_sha256": "faa6d50845191f80e0f335366b9e5ec065b357324ad7a58568cd76166f2a735b",
+      "final_tests": [
+        {
+          "name": "window.placement",
+          "result": "PASS"
+        }
+      ],
+      "scope": "Synthetic placement and actual Windows creation are distinct evidence.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "prior:EC3-C9/resumed-ctest/editor.settings.window",
+        "prior:EC3-C9/resumed-ctest/window.placement",
+        "sdk/desktop-views-ctest-details.log"
+      ],
+      "scope": "Real Windows backend and GPU extents; negative-monitor/disconnect cases are synthetic, not multi-monitor hardware claims.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V37",
+    "title": "保存矩形与 monitor 变化",
+    "batch": "C5",
+    "setup": "多屏负坐标、断开原屏、极小工作区",
+    "expected": "回退确定、交互可达、无越界/溢出",
+    "evidence": "合成显示环境；有硬件再记实际",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c5-window-pure-regression.log",
+      "command_name": "c5-window-pure-regression",
+      "command_exit_code": 0,
+      "command_source_head": "66157582fcbd7b3071ad9c39dcda9a8441d52e69",
+      "source_diff_sha256": "3bbf6fbfb0d0aec8202256a2d7e25c512e46893846b028cb8cf8cf9d456190a2",
+      "final_tests": [
+        {
+          "name": "window.placement",
+          "result": "PASS"
+        }
+      ],
+      "scope": "Negative monitor coordinates/disconnect/small work area are controlled model tests, not multi-monitor hardware claims.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "prior:EC3-C9/resumed-ctest/editor.settings.window",
+        "prior:EC3-C9/resumed-ctest/window.placement",
+        "sdk/desktop-views-ctest-details.log"
+      ],
+      "scope": "Real Windows backend and GPU extents; negative-monitor/disconnect cases are synthetic, not multi-monitor hardware claims.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V38",
+    "title": "窗口/Framebuffer/DPI",
+    "batch": "C5",
+    "setup": "不同 scale、窗口调整、输出 resize",
+    "expected": "单位明确、不双重缩放、GPU extent 正确",
+    "evidence": "平台读回与 viewport 结果",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c5-window-insets-desktop.log",
+      "command_name": "c5-window-insets-desktop",
+      "command_exit_code": 0,
+      "command_source_head": "66157582fcbd7b3071ad9c39dcda9a8441d52e69",
+      "source_diff_sha256": "faa6d50845191f80e0f335366b9e5ec065b357324ad7a58568cd76166f2a735b",
+      "final_tests": [
+        {
+          "name": "window.placement",
+          "result": "PASS"
+        },
+        {
+          "name": "editor.scene_views_gpu",
+          "result": "PASS"
+        }
+      ],
+      "scope": "Logical units versus framebuffer and sampled viewport extent; final window tests pending.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "prior:EC3-C9/resumed-ctest/editor.settings.window",
+        "prior:EC3-C9/resumed-ctest/window.placement",
+        "sdk/desktop-views-ctest-details.log"
+      ],
+      "scope": "Real Windows backend and GPU extents; negative-monitor/disconnect cases are synthetic, not multi-monitor hardware claims.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V39",
+    "title": "最大化/全屏/恢复",
+    "batch": "C5",
+    "setup": "模式切换/重启/失去目标屏",
+    "expected": "保留普通矩形；unsupported 不报已生效",
+    "evidence": "实际可用后端及模型负例",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c5-window-desktop-regression.log",
+      "command_name": "c5-window-desktop-regression",
+      "command_exit_code": 0,
+      "command_source_head": "66157582fcbd7b3071ad9c39dcda9a8441d52e69",
+      "source_diff_sha256": "3bbf6fbfb0d0aec8202256a2d7e25c512e46893846b028cb8cf8cf9d456190a2",
+      "final_tests": [
+        {
+          "name": "window.placement",
+          "result": "PASS"
+        }
+      ],
+      "scope": "Actual backend modes and normal-rectangle retention; final window tests pending.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "prior:EC3-C9/resumed-ctest/editor.settings.window",
+        "prior:EC3-C9/resumed-ctest/window.placement",
+        "sdk/desktop-views-ctest-details.log"
+      ],
+      "scope": "Real Windows backend and GPU extents; negative-monitor/disconnect cases are synthetic, not multi-monitor hardware claims.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V40",
+    "title": "offscreen/CLI",
+    "batch": "C5",
+    "setup": "无 monitor 的确定尺寸、显式 font/size override",
+    "expected": "不查物理环境；不自动写回用户文档",
+    "evidence": "无窗口消费者与文件不变",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c5-font-restart-regression.log",
+      "command_name": "c5-font-restart-regression",
+      "command_exit_code": 0,
+      "command_source_head": "079b59a9f67e997eb26da199948e5bfab416e046",
+      "source_diff_sha256": "004747ef98bd8aadc664180dee34618a1cc4f4c4ee03da5ccac96e77552086ee",
+      "final_tests": [],
+      "scope": "Explicit launch/offscreen overrides do not auto-persist; final repetition pending.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "prior:EC3-C9/resumed-ctest/editor.settings.content",
+        "prior:EC3-C9/resumed-ctest/editor.application"
+      ],
+      "scope": "Actual selected font/scale and restart policy; distinct applied/persisted states. Not manual all-font/IME qualification.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V41",
+    "title": "原 ECS 相机链",
+    "batch": "C6",
+    "setup": "从 UI 导航到 patch 到原 CameraExtraction",
+    "expected": "无第二 Camera 组件/直接 Editor→Renderer 私有路",
+    "evidence": "源码链+实际组件/渲染结果",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c8-camera-patch-gpu.log",
+      "command_name": "c8-camera-patch-gpu",
+      "command_exit_code": 0,
+      "command_source_head": "a59cfc88dc14251bd640a30c15152ef309b59e62",
+      "source_diff_sha256": "3552d185aa73a44ae9fbb9dd644b088cd3596123766935ab7f99bd8e0c172cf9",
+      "final_tests": [
+        {
+          "name": "editor.scene_views_gpu",
+          "result": "PASS"
+        }
+      ],
+      "scope": "Original ECS patch/extraction/output chain, no Editor-to-private-backend shortcut.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "sdk/desktop-views-ctest-details.log",
+        "sdk/gpu-ui-ctest-details.log",
+        "sdk/editor-scene-pane-ctest-details.log",
+        "final-sdk-run-controls-details.log"
+      ],
+      "scope": "Original ECS/output/retirement, actual dual viewport and delayed camera input; 1000 no-op patches recorded.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V42",
+    "title": "双视口与作者隔离",
+    "batch": "C6",
+    "setup": "同源双 View 独立相机/尺寸，关一窗",
+    "expected": "作者 current/history/dirty 不变；另一视图可用",
+    "evidence": "实际 GPU 和身份状态",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c8-camera-patch-gpu.log",
+      "command_name": "c8-camera-patch-gpu",
+      "command_exit_code": 0,
+      "command_source_head": "a59cfc88dc14251bd640a30c15152ef309b59e62",
+      "source_diff_sha256": "3552d185aa73a44ae9fbb9dd644b088cd3596123766935ab7f99bd8e0c172cf9",
+      "final_tests": [
+        {
+          "name": "editor.scene_views_gpu",
+          "result": "PASS"
+        }
+      ],
+      "scope": "Actual final dual viewport GPU passed before quarantine; broader final SDK GPU matrix pending.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "sdk/desktop-views-ctest-details.log",
+        "sdk/gpu-ui-ctest-details.log",
+        "sdk/editor-scene-pane-ctest-details.log",
+        "final-sdk-run-controls-details.log"
+      ],
+      "scope": "Original ECS/output/retirement, actual dual viewport and delayed camera input; 1000 no-op patches recorded.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V43",
+    "title": "借用相机与单写入者",
+    "batch": "C6",
+    "setup": "原内容相机外部 patch、free camera 导航",
+    "expected": "borrow 不被工具误写/删除；自由相机独立",
+    "evidence": "真实 Registry/Runtime",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c6-camera-gpu-after.log",
+      "command_name": "c6-camera-gpu-after",
+      "command_exit_code": 0,
+      "command_source_head": "81a5d51bc7c32f5ba3f95edae1cb37eb25a8987e",
+      "source_diff_sha256": "ecb0a9da20f9e6a87c3e9f21291fcc984ebc100e1179bc41151cc03581a965a9",
+      "final_tests": [],
+      "scope": "Borrowed camera regression is earlier evidence; final two explicit presentation modes blocked.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "sdk/desktop-views-ctest-details.log",
+        "sdk/gpu-ui-ctest-details.log",
+        "sdk/editor-scene-pane-ctest-details.log",
+        "final-sdk-run-controls-details.log"
+      ],
+      "scope": "Original ECS/output/retirement, actual dual viewport and delayed camera input; 1000 no-op patches recorded.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V44",
+    "title": "显示相机与拾取",
+    "batch": "C6",
+    "setup": "相机更新后延迟输出、old view/input 到达",
+    "expected": "按明确输出/相机关系取 ray 或 defer，不误投新实例",
+    "evidence": "受控延迟+实际输出/输入状态",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c6-camera-gpu-after.log",
+      "command_name": "c6-camera-gpu-after",
+      "command_exit_code": 0,
+      "command_source_head": "81a5d51bc7c32f5ba3f95edae1cb37eb25a8987e",
+      "source_diff_sha256": "ecb0a9da20f9e6a87c3e9f21291fcc984ebc100e1179bc41151cc03581a965a9",
+      "final_tests": [],
+      "scope": "Before-output failure retained; corrected delayed-output ray/adoption test awaits final presentation mode.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "sdk/desktop-views-ctest-details.log",
+        "sdk/gpu-ui-ctest-details.log",
+        "sdk/editor-scene-pane-ctest-details.log",
+        "final-sdk-run-controls-details.log"
+      ],
+      "scope": "Original ECS/output/retirement, actual dual viewport and delayed camera input; 1000 no-op patches recorded.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V45",
+    "title": "观察者存量与销毁",
+    "batch": "C6",
+    "setup": "先建 Camera 再连系统、patch/erase/destroy",
+    "expected": "初次完整同步；不在回调修改同池；后批正确",
+    "evidence": "真实 ECS 事件顺序",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c6-camera-gpu-after.log",
+      "command_name": "c6-camera-gpu-after",
+      "command_exit_code": 0,
+      "command_source_head": "81a5d51bc7c32f5ba3f95edae1cb37eb25a8987e",
+      "source_diff_sha256": "ecb0a9da20f9e6a87c3e9f21291fcc984ebc100e1179bc41151cc03581a965a9",
+      "final_tests": [
+        {
+          "name": "scene.render_resources",
+          "result": "PASS"
+        }
+      ],
+      "scope": "Original observers and initial folding retained; final presentation matrix incomplete.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "sdk/desktop-views-ctest-details.log",
+        "sdk/gpu-ui-ctest-details.log",
+        "sdk/editor-scene-pane-ctest-details.log",
+        "final-sdk-run-controls-details.log"
+      ],
+      "scope": "Original ECS/output/retirement, actual dual viewport and delayed camera input; 1000 no-op patches recorded.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V46",
+    "title": "失败与退休",
+    "batch": "C6",
+    "setup": "坏相机、资源未就绪、窗口重绑/关闭",
+    "expected": "保持最后合法状态；无重复释放；旧代次拒绝",
+    "evidence": "原 GPU/Runtime 回归",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c8-camera-patch-gpu.log",
+      "command_name": "c8-camera-patch-gpu",
+      "command_exit_code": 0,
+      "command_source_head": "a59cfc88dc14251bd640a30c15152ef309b59e62",
+      "source_diff_sha256": "3552d185aa73a44ae9fbb9dd644b088cd3596123766935ab7f99bd8e0c172cf9",
+      "final_tests": [
+        {
+          "name": "scene.runtime",
+          "result": "PASS"
+        },
+        {
+          "name": "editor.scene_views_gpu",
+          "result": "PASS"
+        }
+      ],
+      "scope": "Original invalid generation and retirement checks; final presentation SDK pending.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "sdk/desktop-views-ctest-details.log",
+        "sdk/gpu-ui-ctest-details.log",
+        "sdk/editor-scene-pane-ctest-details.log",
+        "final-sdk-run-controls-details.log"
+      ],
+      "scope": "Original ECS/output/retirement, actual dual viewport and delayed camera input; 1000 no-op patches recorded.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V47",
+    "title": "相机封装审计",
+    "batch": "C6",
+    "setup": "逐函数 owner/频次/依赖/副作用与重复算例",
+    "expected": "只合并无职责边界；稳定无变化不多 patch",
+    "evidence": "调用清单与 M4，不按层数打分",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c8-camera-patch-gpu.log",
+      "command_name": "c8-camera-patch-gpu",
+      "command_exit_code": 0,
+      "command_source_head": "a59cfc88dc14251bd640a30c15152ef309b59e62",
+      "source_diff_sha256": "3552d185aa73a44ae9fbb9dd644b088cd3596123766935ab7f99bd8e0c172cf9",
+      "final_tests": [],
+      "scope": "Per-function audit plus 1000 no-op ECS counter test; final presentation modes blocked.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "sdk/desktop-views-ctest-details.log",
+        "sdk/gpu-ui-ctest-details.log",
+        "sdk/editor-scene-pane-ctest-details.log",
+        "final-sdk-run-controls-details.log"
+      ],
+      "scope": "Original ECS/output/retirement, actual dual viewport and delayed camera input; 1000 no-op patches recorded.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V48",
+    "title": "Inspector 语义正例",
+    "batch": "C7",
+    "setup": "标量/枚举/容器/嵌套/optional/variant/Eigen/custom",
+    "expected": "新 inja 输出真实编译和正确编辑",
+    "evidence": "安装生成器+实际字段结果",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c7-array-and-fields.log",
+      "command_name": "c7-array-and-fields",
+      "command_exit_code": 0,
+      "command_source_head": "7927f6249f234dfb5c45d66e1bff08d6f334b467",
+      "source_diff_sha256": "945974c180bfdc37cbc8daf2d80204f4d15bf17be370af359d7081f52b9b7684",
+      "final_tests": [
+        {
+          "name": "editor.inspector_codegen",
+          "result": "PASS"
+        }
+      ],
+      "scope": "Actual generated field consumer was run earlier; final installed field consumer pending.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "Final SDK 中文 空格/events.json",
+        "logs/final-sdk-codegen.log",
+        "final-sdk-audit.json",
+        "prior:EC3-C9/resumed-ctest/editor.inspector_codegen"
+      ],
+      "scope": "Installed MetaUnit/inja generation, real field consumer, incrementality and controlled publication failures; old production emitter absent.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V49",
+    "title": "Inspector 非法输入",
+    "batch": "C7",
+    "setup": "未知类型/注解、数值边界、循环/缺 IR",
+    "expected": "精准拒绝，无静默降级/部分成功 stamp",
+    "evidence": "生成错误和输出目录状态",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c7-annotation-regression.log",
+      "command_name": "c7-annotation-regression",
+      "command_exit_code": 0,
+      "command_source_head": "7927f6249f234dfb5c45d66e1bff08d6f334b467",
+      "source_diff_sha256": "ae692436ae815304530e74135bb7e02d0efbc97a33773988c46eca2491c8cd56",
+      "final_tests": [
+        {
+          "name": "editor.inspector_codegen",
+          "result": "PASS"
+        }
+      ],
+      "scope": "Actual host validation, exact integer bounds and invalid annotations.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "Final SDK 中文 空格/events.json",
+        "logs/final-sdk-codegen.log",
+        "final-sdk-audit.json",
+        "prior:EC3-C9/resumed-ctest/editor.inspector_codegen"
+      ],
+      "scope": "Installed MetaUnit/inja generation, real field consumer, incrementality and controlled publication failures; old production emitter absent.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V50",
+    "title": "作者与 Run 分离",
+    "batch": "C7",
+    "setup": "生成同组件两种绑定实际 preview/commit/Undo",
+    "expected": "两条原字段能力正确，Run 不改作者 checkpoint",
+    "evidence": "实际 Session 与暂停 Run",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c7-real-fields.log",
+      "command_name": "c7-real-fields",
+      "command_exit_code": 0,
+      "command_source_head": "7927f6249f234dfb5c45d66e1bff08d6f334b467",
+      "source_diff_sha256": "c2ea506294bb6ed5ae911e339aa265c8c449db71062ca667232b42d819c04725",
+      "final_tests": [
+        {
+          "name": "editor.scene.editing",
+          "result": "PASS"
+        }
+      ],
+      "scope": "Generated author consumer executed earlier. Generated Run control gesture extension prepared but NOT_RUN; no claim based only on manual field calls.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "final-sdk-run-controls-details.log",
+        "run-controls.patch",
+        "run-controls-source.json",
+        "Final SDK 中文 空格/events.json"
+      ],
+      "scope": "Actual generated author and paused Run controls. Full author bytes/history/current/dirty/observed/binding unchanged by Run edits.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V51",
+    "title": "生成增量",
+    "batch": "C7",
+    "setup": "无变化/改字段/template/support/flags/无关头",
+    "expected": "需要时重建，不需要时无工作，depfile真实",
+    "evidence": "两轮日志与产物哈希/mtime",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c8-sdk-publication-qualified.log",
+      "command_name": "c8-sdk-publication-qualified",
+      "command_exit_code": 0,
+      "command_source_head": "a59cfc88dc14251bd640a30c15152ef309b59e62",
+      "source_diff_sha256": "2319b52ebdac2005dcd52551c458a20bfa0e00315059f5c10bc781e8f8c07383",
+      "final_tests": [],
+      "scope": "Actual earlier installed incremental events retained; final prefix run pending.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "Final SDK 中文 空格/events.json",
+        "logs/final-sdk-codegen.log",
+        "final-sdk-audit.json",
+        "prior:EC3-C9/resumed-ctest/editor.inspector_codegen"
+      ],
+      "scope": "Installed MetaUnit/inja generation, real field consumer, incrementality and controlled publication failures; old production emitter absent.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V52",
+    "title": "缺失输出与失败发布",
+    "batch": "C7",
+    "setup": "删 sidecar/cpp、渲染/格式化/文件更新失败",
+    "expected": "缺项能恢复；失败不将混合产物当成功",
+    "evidence": "真实构建输入/输出测试",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c8-sdk-publication-qualified.log",
+      "command_name": "c8-sdk-publication-qualified",
+      "command_exit_code": 0,
+      "command_source_head": "a59cfc88dc14251bd640a30c15152ef309b59e62",
+      "source_diff_sha256": "2319b52ebdac2005dcd52551c458a20bfa0e00315059f5c10bc781e8f8c07383",
+      "final_tests": [],
+      "scope": "Actual staging/formatter/output failure tests; old failed fixture records retained.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "Final SDK 中文 空格/events.json",
+        "logs/final-sdk-codegen.log",
+        "final-sdk-audit.json",
+        "prior:EC3-C9/resumed-ctest/editor.inspector_codegen"
+      ],
+      "scope": "Installed MetaUnit/inja generation, real field consumer, incrementality and controlled publication failures; old production emitter absent.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V53",
+    "title": "SDK 与 host 工具",
+    "batch": "C7",
+    "setup": "独立前缀，无源码相对路径，多 stem/空格中文",
+    "expected": "公开工具模板完整；不运行错误架构工具",
+    "evidence": "安装 consumer/编译数据库",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c8-sdk-publication-qualified.log",
+      "command_name": "c8-sdk-publication-qualified",
+      "command_exit_code": 0,
+      "command_source_head": "a59cfc88dc14251bd640a30c15152ef309b59e62",
+      "source_diff_sha256": "2319b52ebdac2005dcd52551c458a20bfa0e00315059f5c10bc781e8f8c07383",
+      "final_tests": [],
+      "scope": "Earlier installed same-stem/Chinese-space generation; final SDK blocked.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "Final SDK 中文 空格/events.json",
+        "logs/final-sdk-codegen.log",
+        "final-sdk-audit.json",
+        "prior:EC3-C9/resumed-ctest/editor.inspector_codegen"
+      ],
+      "scope": "Installed MetaUnit/inja generation, real field consumer, incrementality and controlled publication failures; old production emitter absent.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V54",
+    "title": "Render/Script 回归",
+    "batch": "C7",
+    "setup": "公共生成设施改动时跑原相关 projection",
+    "expected": "保持原语义/ABI，没有反向 UI 依赖",
+    "evidence": "原真实消费者，未改注明继承",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c7-array-and-fields.log",
+      "command_name": "c7-array-and-fields",
+      "command_exit_code": 0,
+      "command_source_head": "7927f6249f234dfb5c45d66e1bff08d6f334b467",
+      "source_diff_sha256": "945974c180bfdc37cbc8daf2d80204f4d15bf17be370af359d7081f52b9b7684",
+      "final_tests": [
+        {
+          "name": "scene.script_asset_plugin",
+          "result": "PASS"
+        },
+        {
+          "name": "scene.script_asset_lua",
+          "result": "PASS"
+        }
+      ],
+      "scope": "Original Script/Render projections built in final all; final external consumers pending.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "logs/final-sdk-ec2-scene-tests.log",
+        "logs/final-sdk-ec2-lua-tests.log",
+        "sdk/external-feature-ctest-details.log"
+      ],
+      "scope": "Real installed Script and Render consumers with public generated bindings.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V55",
+    "title": "当前生产 emitter 唯一",
+    "batch": "C7 C8",
+    "setup": "删除 Python 生产脚本/旧 CMake/安装入口后从独立 SDK 生成",
+    "expected": "只用新 inja 链；旧测试/历史资料保留；无 old/new 开关",
+    "evidence": "源码/target/install 清单与实际重建",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "removed-symbols.json",
+      "command_name": null,
+      "command_exit_code": null,
+      "command_source_head": null,
+      "source_diff_sha256": null,
+      "final_tests": [
+        {
+          "name": "editor.inspector_codegen",
+          "result": "PASS"
+        }
+      ],
+      "scope": "Production Python emitter and old owner deleted; test driver remains. Final installed deletion scan pending.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "Final SDK 中文 空格/events.json",
+        "logs/final-sdk-codegen.log",
+        "final-sdk-audit.json",
+        "prior:EC3-C9/resumed-ctest/editor.inspector_codegen"
+      ],
+      "scope": "Installed MetaUnit/inja generation, real field consumer, incrementality and controlled publication failures; old production emitter absent.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V56",
+    "title": "内存与名称计数",
+    "batch": "C8",
+    "setup": "M1/M2/M3 三种存储/热冷边界",
+    "expected": "实际计数支持目标，不把文本零复制说成零分配",
+    "evidence": "raw samples/计数范围/类型尺寸",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/c8-measure-sdk-runtime.log",
+      "command_name": "c8-measure-sdk-runtime",
+      "command_exit_code": 0,
+      "command_source_head": "a59cfc88dc14251bd640a30c15152ef309b59e62",
+      "source_diff_sha256": "2319b52ebdac2005dcd52551c458a20bfa0e00315059f5c10bc781e8f8c07383",
+      "final_tests": [],
+      "scope": "Raw M1-M3 counters retained; Descriptor 104/Entry 136/Handle 16, dispatch is not zero-allocation. Final SDK timing repetition pending.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "logs/final-sdk-editor_ec3_measure.log"
+      ],
+      "scope": "35/256/1024 entries. Counts exclude caller ID construction and DLL allocators; dispatch is not allocation-free.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V57",
+    "title": "过度检查与可读性",
+    "batch": "C8",
+    "setup": "改到的重复 lookup/expected/if/回调类型",
+    "expected": "证明有效期；遵守 AGENTS；不删除失效边界",
+    "evidence": "函数/检查映射与对应负例",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "c8-format-token-check.json",
+      "command_name": null,
+      "command_exit_code": null,
+      "command_source_head": null,
+      "source_diff_sha256": null,
+      "final_tests": [
+        {
+          "name": "editor.command_index",
+          "result": "PASS"
+        }
+      ],
+      "scope": "Token-preserving formatting and per-check lifetime map; semantic checks are separate.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "prior:EC3/c8-format-token-check.json",
+        "prior:EC3/ledger-snapshot.json",
+        "prior:EC3-C9/resumed-ctest/editor.command_index"
+      ],
+      "scope": "Recorded per-function validity/owner audit; formatting token equivalence does not replace semantic qualification.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V58",
+    "title": "实际依赖与删除",
+    "batch": "C8",
+    "setup": "App私有、UI到活动、工具到运行、旧 emitter/alias",
+    "expected": "非法边真实失败，修正后通过；实际安装无残留",
+    "evidence": "正负配对/target/sources/install",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "removed-symbols.json",
+      "command_name": null,
+      "command_exit_code": null,
+      "command_source_head": null,
+      "source_diff_sha256": null,
+      "final_tests": [],
+      "scope": "Actual provider graph/removal scans; final-independent-boundaries in progress; final install scan pending.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "target-providers.json",
+        "removed-symbols.json",
+        "final-sdk-audit.json",
+        "sdk/commands.json"
+      ],
+      "scope": "Actual providers and installed closure; prior source boundary negatives inherited by fixed SHA.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V59",
+    "title": "最终构建与支持范围",
+    "batch": "C9",
+    "setup": "clean tracked all/二轮/PLAYER/SDK/公共头/新用例",
+    "expected": "结果绑定准确 SHA；旧免验延期不扩大",
+    "evidence": "命令、退出码、环境、源绑定",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "logs/final-build.log",
+      "command_name": "final-build",
+      "command_exit_code": 0,
+      "command_source_head": "17ea8c4079188fa54bb8e459496053454277c9d1",
+      "source_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "final_tests": [],
+      "scope": "Clean tracked EC3+STRICT all and no-work passed; complete CTest interrupted by Defender quarantine. PLAYER/SDK/installed headers NOT_RUN.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "prior:EC3-C9/receipt.json",
+        "sdk/commands.json",
+        "commands.json",
+        "final-sdk-audit.json"
+      ],
+      "scope": "Clean tracked cold build/source241/PLAYER20 at 17ea; 0a install-only change all/no-work/affected5/56 headers and new SDK. No second cold-build claim.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  },
+  {
+    "id": "V60",
+    "title": "最终文档和交接",
+    "batch": "C9",
+    "setup": "复核 issue/声明/文件处置、V9文档与工作区",
+    "expected": "无空 N/A；用户补丁/主分支状态明确；停在 EC3",
+    "evidence": "冻结收据/唯一账本/manifest",
+    "earlier_execution": {
+      "status": "QUALIFICATION_INCOMPLETE",
+      "evidence_path": "baseline.json",
+      "command_name": null,
+      "command_exit_code": null,
+      "command_source_head": null,
+      "source_diff_sha256": null,
+      "final_tests": [],
+      "scope": "User patch untouched/unapplied, final issue mapping and frozen acceptance not yet completed.",
+      "final_evidence_scope": "final-partial-results.json; final prefix SDK and complete product matrix still incomplete"
+    },
+    "execution": {
+      "status": "PASS_IN_RECORDED_WINDOWS_SCOPE",
+      "evidence": [
+        "protection.json",
+        "receipt.json"
+      ],
+      "scope": "Original workspace and main checked; patch not applied. Stop at EC3 review.",
+      "implementation_sha": "0a521da070c1f4addb511ea038f8040f265702f6",
+      "source_regression_sha": "17ea8c4079188fa54bb8e459496053454277c9d1"
+    }
+  }
+]

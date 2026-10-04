@@ -1,0 +1,20 @@
+[0/2] Re-checking globbed directories...
+[1/11] [lux_target_add_codegen] consumer_ir: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[2/11] [lux_target_add_codegen] consumer_schema: parse once, render 5 projection(s)
+[Info] Parsed 1 target file(s) for 5 projection(s).
+[3/11] Building CXX object CMakeFiles\consumer_domain.dir\Domain.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[4/11] Linking CXX shared library bin\consumer_domain.dll
+[5/11] Generate Inspector MetaUnit/inja author and Run projections: consumer
+Editor Inspector: 1 component(s), validated MetaUnit and explicit author/Run inja projections
+[6/11] Building CXX object CMakeFiles\consumer_gui.dir\Gui.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[7/11] Building CXX object CMakeFiles\consumer_protocol.dir\main.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[8/11] Building CXX object CMakeFiles\consumer_gui.dir\GuiGesture.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[9/11] Building CXX object CMakeFiles\consumer_gui.dir\inspector_gen\consumer\consumer__Component_2abfe8b5.inspector.generated.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[10/11] Linking CXX shared library bin\consumer_gui.dll
+[11/11] Linking CXX executable bin\consumer_protocol.exe

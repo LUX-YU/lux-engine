@@ -1,0 +1,35 @@
+Start testing: Oct 04 02:50 GMT 夏令时
+----------------------------------------------------------
+1/2 Testing: installed.p11.extension.with-configuration
+1/2 Test: installed.p11.extension.with-configuration
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-sdk-0a521da070c1/p11/bin/p11_consumer.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-sdk-0a521da070c1/p11/bin/p11_runtime.dll" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-sdk-0a521da070c1/p11/bin/p11_extension.dll" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-sdk-0a521da070c1/p11/bin/p11_reject_6.dll" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-sdk-0a521da070c1/p11/bin/p11_reject_7.dll" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-sdk-0a521da070c1/p11/bin/p11_reject_8.dll" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-sdk-0a521da070c1/p11/bin/p11_reject_9.dll" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-sdk-0a521da070c1/p11/bin/p11_reject_10.dll" "with-configuration"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-sdk-0a521da070c1/p11
+"installed.p11.extension.with-configuration" start time: Oct 04 02:50 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS actual installed runtime/editor DLLs, ABI rejection, factory, commands, view, late IO and unload
+<end of output>
+Test time =   0.06 sec
+----------------------------------------------------------
+Test Passed.
+"installed.p11.extension.with-configuration" end time: Oct 04 02:50 GMT 夏令时
+"installed.p11.extension.with-configuration" time elapsed: 00:00:00
+----------------------------------------------------------
+
+2/2 Testing: installed.p11.extension.without-configuration
+2/2 Test: installed.p11.extension.without-configuration
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-sdk-0a521da070c1/p11/bin/p11_consumer.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-sdk-0a521da070c1/p11/bin/p11_runtime.dll" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-sdk-0a521da070c1/p11/bin/p11_extension.dll" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-sdk-0a521da070c1/p11/bin/p11_reject_6.dll" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-sdk-0a521da070c1/p11/bin/p11_reject_7.dll" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-sdk-0a521da070c1/p11/bin/p11_reject_8.dll" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-sdk-0a521da070c1/p11/bin/p11_reject_9.dll" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-sdk-0a521da070c1/p11/bin/p11_reject_10.dll" "without-configuration"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-sdk-0a521da070c1/p11
+"installed.p11.extension.without-configuration" start time: Oct 04 02:50 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS actual installed runtime/editor DLLs, ABI rejection, factory, commands, view, late IO and unload
+<end of output>
+Test time =   0.06 sec
+----------------------------------------------------------
+Test Passed.
+"installed.p11.extension.without-configuration" end time: Oct 04 02:50 GMT 夏令时
+"installed.p11.extension.without-configuration" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Oct 04 02:50 GMT 夏令时

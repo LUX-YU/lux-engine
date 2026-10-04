@@ -1,0 +1,10 @@
+[1/2] Building CXX object CMakeFiles\editor_ec3_declarations.dir\main.cpp.obj
+FAILED: CMakeFiles/editor_ec3_declarations.dir/main.cpp.obj 
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\bin\Hostx64\x64\cl.exe  /nologo /TP -DEC3_INVALID_DECLARATION=5 -external:IE:\SyncForder\CodeRepos\install\EC3-17ea8c407918\include -external:ID:\Development\vcpkg\installed\x64-windows\include -external:ID:\Development\vcpkg\installed\x64-windows\include\stduuid -external:ID:\Development\vcpkg\installed\x64-windows\include\eigen3 -external:W0 /DWIN32 /D_WINDOWS /EHsc /Zi /O2 /Ob1 /DNDEBUG -std:c++20 -MD /UNDEBUG /permissive- /utf-8 /showIncludes /FoCMakeFiles\editor_ec3_declarations.dir\main.cpp.obj /FdCMakeFiles\editor_ec3_declarations.dir\ /FS -c E:\SyncForder\CodeRepos\lux-engine-ec3-qualified\cmake\installed-consumers\editor-ec3-declarations\main.cpp
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+E:\SyncForder\CodeRepos\install\EC3-17ea8c407918\include\lux/engine/editor/sessions/SessionFactory.hpp(88): error C2131: expression did not evaluate to a constant
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\__msvc_string_view.hpp(1463): note: failure was caused by non-constant arguments or reference to a non-constant symbol
+D:\Development\Mircosoft\VisualStudio\VC\Tools\MSVC\14.44.35207\include\__msvc_string_view.hpp(1463): note: see usage of '`anonymous-namespace'::mutable_source'
+E:\SyncForder\CodeRepos\install\EC3-17ea8c407918\include\lux/engine/editor/sessions/SessionFactory.hpp(88): note: the template instantiation context (the oldest one first) is
+E:\SyncForder\CodeRepos\lux-engine-ec3-qualified\cmake\installed-consumers\editor-ec3-declarations\main.cpp(64): note: see reference to function template instantiation 'std::shared_ptr<lux::editor::sessions::SessionFactoryEntry> lux::editor::sessions::SessionFactoryEntry::bind<`anonymous-namespace'::mutable_source>(lux::editor::contracts::CodeLease,lux::editor::sessions::SessionFactoryEntry::Decode)' being compiled
+ninja: build stopped: cannot make progress due to previous errors.

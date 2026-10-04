@@ -1,0 +1,13 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-sdk-0a521da070c1/quality
+    Start 1: installed.quality.catalog
+1/4 Test #1: installed.quality.catalog ........   Passed    0.01 sec
+    Start 2: installed.quality.monitor
+2/4 Test #2: installed.quality.monitor ........   Passed    0.05 sec
+    Start 3: installed.quality.canvas
+3/4 Test #3: installed.quality.canvas .........   Passed   24.09 sec
+    Start 4: installed.quality.containers
+4/4 Test #4: installed.quality.containers .....   Passed    0.01 sec
+
+100% tests passed, 0 tests failed out of 4
+
+Total Test time (real) =  24.17 sec

@@ -1,0 +1,18 @@
+Start testing: Oct 04 02:54 GMT 夏令时
+----------------------------------------------------------
+1/1 Testing: installed.layering.LAYOUT
+1/1 Test: installed.layering.LAYOUT
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-sdk-0a521da070c1/layering-layout/layering_consumer.exe"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-sdk-0a521da070c1/layering-layout
+"installed.layering.LAYOUT" start time: Oct 04 02:54 GMT 夏令时
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"installed.layering.LAYOUT" end time: Oct 04 02:54 GMT 夏令时
+"installed.layering.LAYOUT" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Oct 04 02:54 GMT 夏令时

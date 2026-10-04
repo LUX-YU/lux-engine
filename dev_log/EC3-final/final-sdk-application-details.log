@@ -1,0 +1,29 @@
+Start testing: Oct 04 02:55 GMT 夏令时
+----------------------------------------------------------
+1/1 Testing: installed.application.command_thread
+1/1 Test: installed.application.command_thread
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-sdk-0a521da070c1/ec3-application/application_consumer.exe" "E:/SyncForder/CodeRepos/install/EC3-17ea8c407918" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-sdk-0a521da070c1/ec3-application/project"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-sdk-0a521da070c1/ec3-application
+"installed.application.command_thread" start time: Oct 04 02:55 GMT 夏令时
+Output:
+----------------------------------------------------------
+lux.editor.new.material code=1 domain=application.thread
+lux.editor.exit code=1 domain=application.thread
+test.missing code=1 domain=application.thread
+owner calls recover; phase remains RUNNING; wrong-thread classification=1
+<end of output>
+Test time =   0.30 sec
+----------------------------------------------------------
+Test Passed.
+"installed.application.command_thread" end time: Oct 04 02:55 GMT 夏令时
+"installed.application.command_thread" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Oct 04 02:55 GMT 夏令时
+
+P13 =   0.30 sec*proc
+
+gpu =   0.30 sec*proc
+
+installed =   0.30 sec*proc
+

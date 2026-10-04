@@ -1,0 +1,6 @@
+[1/4] Building CXX object CMakeFiles\layout_effects_consumer.dir\effects.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[2/4] Building CXX object CMakeFiles\workspace_consumer.dir\workspace.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[3/4] Linking CXX executable layout_effects_consumer.exe
+[4/4] Linking CXX executable workspace_consumer.exe

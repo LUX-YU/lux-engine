@@ -1,0 +1,100 @@
+[
+  {
+    "case": "prior-EC3",
+    "argv": [
+      "C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-ec2\\dev_log\\EC3\\verify.py",
+      "--repo",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-ec2",
+      "--archive",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-ec2\\dev_log\\EC3"
+    ],
+    "exit_code": 0,
+    "at_utc": "2026-10-04T02:08:32.026327+00:00",
+    "output": "Verified authentic EC3 PARTIAL checkpoint; full behavior/SDK qualification is NOT complete: 17ea8c4079188fa54bb8e459496053454277c9d1\r\n"
+  },
+  {
+    "case": "prior-EC3-C9",
+    "argv": [
+      "C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-ec2\\dev_log\\EC3-C9\\verify.py",
+      "--repo",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-ec2",
+      "--archive",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-ec2\\dev_log\\EC3-C9"
+    ],
+    "exit_code": 0,
+    "at_utc": "2026-10-04T02:08:32.207009+00:00",
+    "output": "Verified EC3 C9 PARTIAL continuation; remaining SDK qualification is still blocked.\r\n"
+  },
+  {
+    "case": "original",
+    "argv": [
+      "C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-ec2\\dev_log\\EC3-final\\verify.py",
+      "--repo",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-ec2",
+      "--archive",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-ec2\\dev_log\\EC3-final"
+    ],
+    "exit_code": 0,
+    "at_utc": "2026-10-04T02:08:32.745676+00:00",
+    "output": "Verified EC3 Windows-scoped continuation, genuine compile negatives and retained historical/deferred scope.\r\n"
+  },
+  {
+    "case": "relocated-chinese-space",
+    "argv": [
+      "C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\最终归档核查 空格\\verify.py",
+      "--repo",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-ec2",
+      "--archive",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\最终归档核查 空格"
+    ],
+    "exit_code": 0,
+    "at_utc": "2026-10-04T02:08:33.214958+00:00",
+    "output": "Verified EC3 Windows-scoped continuation, genuine compile negatives and retained historical/deferred scope.\r\n"
+  },
+  {
+    "case": "missing-real-log",
+    "argv": [
+      "C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\最终归档核查 空格\\verify.py",
+      "--repo",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-ec2",
+      "--archive",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\最终归档核查 空格"
+    ],
+    "exit_code": 1,
+    "at_utc": "2026-10-04T02:08:33.285040+00:00",
+    "output": "Traceback (most recent call last):\r\n  File \"E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\最终归档核查 空格\\verify.py\", line 19, in <module>\r\n    assert path.is_relative_to(root) and path.is_file(), 'missing evidence: ' + name\r\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\r\nAssertionError: missing evidence: logs/final-sdk-workspace-executable.log\r\n"
+  },
+  {
+    "case": "changed-real-log",
+    "argv": [
+      "C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\最终归档核查 空格\\verify.py",
+      "--repo",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-ec2",
+      "--archive",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\最终归档核查 空格"
+    ],
+    "exit_code": 1,
+    "at_utc": "2026-10-04T02:08:33.419603+00:00",
+    "output": "Traceback (most recent call last):\r\n  File \"E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\最终归档核查 空格\\verify.py\", line 20, in <module>\r\n    assert digest(path) == expected, 'changed evidence: ' + name\r\n           ^^^^^^^^^^^^^^^^^^^^^^^^\r\nAssertionError: changed evidence: logs/final-sdk-workspace-executable.log\r\n"
+  },
+  {
+    "case": "restored",
+    "argv": [
+      "C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\最终归档核查 空格\\verify.py",
+      "--repo",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-ec2",
+      "--archive",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\最终归档核查 空格"
+    ],
+    "exit_code": 0,
+    "at_utc": "2026-10-04T02:08:33.886687+00:00",
+    "output": "Verified EC3 Windows-scoped continuation, genuine compile negatives and retained historical/deferred scope.\r\n"
+  }
+]

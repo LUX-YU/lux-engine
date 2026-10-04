@@ -1,0 +1,21 @@
+[1/19] Building CXX object CMakeFiles\ec2_package_semantics_writer.dir\ec2_package_semantics.schema.cpp.obj
+[2/19] Linking CXX executable bin\ec2_package_semantics_writer.exe
+[3/19] Generating ec2_package.semantic.json
+[4/19] Building CXX object CMakeFiles\ec2_constraints.dir\constraints.cpp.obj
+[5/19] [lux_target_add_codegen] ec2_schemas_script_abilities: parse once, render 5 projection(s)
+[Info] Parsed 3 target file(s) for 5 projection(s).
+[6/19] Building CXX object CMakeFiles\ec2_schemas.dir\schemas.cpp.obj
+[7/19] Linking CXX static library ec2_schemas.lib
+[8/19] Building CXX object CMakeFiles\ec2_schemas_script_ability_schema_2.dir\generated\ec2_schemas\script_abilities\schema_writer\DelayAbility.ability.schema.cpp.obj
+[9/19] Building CXX object CMakeFiles\ec2_schemas_script_ability_schema_1.dir\generated\ec2_schemas\script_abilities\schema_writer\SkeletonAbility.ability.schema.cpp.obj
+[10/19] Building CXX object CMakeFiles\ec2_schemas_script_ability_schema_0.dir\generated\ec2_schemas\script_abilities\schema_writer\AssetAbility.ability.schema.cpp.obj
+[11/19] Linking CXX executable bin\ec2_schemas_script_ability_schema_2.exe
+[12/19] Linking CXX executable bin\ec2_schemas_script_ability_schema_1.exe
+[13/19] Linking CXX executable bin\ec2_schemas_script_ability_schema_0.exe
+[14/19] Generating generated/ec2_schemas/script_abilities/schema/AssetAbility.ability.schema.json
+[15/19] Generating generated/ec2_schemas/script_abilities/schema/DelayAbility.ability.schema.json
+[16/19] Generating generated/ec2_schemas/script_abilities/schema/SkeletonAbility.ability.schema.json
+[17/19] Generating assets.lux, assets.lux.bindings.json
+[18/19] Building CXX object CMakeFiles\ec2_consumer.dir\asset_scene.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[19/19] Linking CXX executable bin\ec2_consumer.exe

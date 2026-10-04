@@ -1,0 +1,10 @@
+---- Importing lux-cxx-compile_time
+---- Importing lux-cxx-core
+---- Importing lux-cxx-memory
+---- Importing lux-cxx-algorithm
+---- Importing lux-cxx-binary
+---- Importing lux-cxx-container
+---- Importing lux-cxx-reflection_runtime
+-- Configuring done (0.3s)
+-- Generating done (0.0s)
+-- Build files have been written to: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-sdk-0a521da070c1/ec3-project-save

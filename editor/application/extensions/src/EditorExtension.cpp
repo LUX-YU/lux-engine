@@ -9,7 +9,7 @@ namespace lux::editor::extensions
         bool validCounts(ContributionCounts counts) noexcept
         {
             return counts.commands <= 256 && counts.sessions <= 256 && counts.views <= 256 &&
-                   counts.reflection <= 256 && counts.configurations <= 256 && counts.components <= 256 &&
+                   counts.reflection <= 256 &&
                    counts.settings <= 256 && counts.services <= 256 && counts.ui <= 256;
         }
         lux::project::PluginResult<void> validateTable(
@@ -52,7 +52,6 @@ namespace lux::editor::extensions
             const bool mismatch =
                 counts.commands != draft.commands.size() || counts.sessions != draft.sessions.size() ||
                 counts.reflection != draft.reflection.size() || counts.views != draft.views.size() ||
-                counts.configurations != draft.configurations.size() || counts.components != draft.components.size() ||
                 counts.settings != draft.settings.size() || counts.services != draft.services.size() ||
                 counts.ui != draft.ui.size();
             if (mismatch)
@@ -109,14 +108,6 @@ namespace lux::editor::extensions
                 {
                     return cxx::unexpected(ContributionFailure{EContributionError::INVALID_ARGUMENT, "settings.code"});
                 }
-            }
-            for (auto& entry : draft.configurations)
-            {
-                entry.code = lease;
-            }
-            for (auto& entry : draft.components)
-            {
-                entry.code = lux::object::pinCodeOwner(lease, std::move(entry.code));
             }
             return draft;
         }

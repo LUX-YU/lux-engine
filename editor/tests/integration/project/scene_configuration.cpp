@@ -1,3 +1,4 @@
+#include <lux/engine/editor/scene/SceneEditorCatalog.hpp>
 #include <lux/engine/editor/scene/SceneConfigurationElement.hpp>
 #include "../../../../cmake/installed-consumers/common/UiTestContent.hpp"
 #include <lux/engine/editor/scene/ConfigurationEditor.hpp>
@@ -69,7 +70,7 @@ int main(int argc, char** argv)
             };
             append(draft.code, supplied->code);
             append(draft.reflection, supplied->reflection);
-            append(draft.configurations, supplied->configurations);
+            append(draft.services, supplied->services);
         }
         auto prepared = editor::extensions::ContributionSnapshot::prepare(std::move(draft));
         assert(prepared);
@@ -112,7 +113,10 @@ int main(int argc, char** argv)
              const serialization::PortableValueCodec&,
              std::optional<std::span<const std::byte>> initial
          ) -> editor::scene::SceneConfigurationResult<editor::scene::ConfigurationControl> {
-             for (const auto& descriptor : snapshot.configurations())
+             auto definitions = editor::scene::sceneEditorDefinitions(snapshot.services());
+             assert(definitions);
+             for (const auto& definition : *definitions)
+             for (const auto& descriptor : definition->configurations)
                  if (descriptor.value.schema_name == name && descriptor.value.schema_version == version)
                      return editor::scene::makeConfigurationControl(descriptor, parent, ui::ElementId{name}, initial);
              return editor::scene::ConfigurationControl{};

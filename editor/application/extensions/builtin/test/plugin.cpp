@@ -1,3 +1,4 @@
+#include <lux/engine/editor/scene/SceneEditorCatalog.hpp>
 #include <lux/engine/project/PluginCatalog.hpp>
 #include <lux/engine/project/PluginLibrary.hpp>
 #include <lux/engine/editor/configuration/ConfigurationValue.hpp>
@@ -197,12 +198,14 @@ int main(int argc, char** argv)
         assert(!absent_dependency && absent_dependency.error().code == lux::project::EPluginError::MISSING_DEPENDENCY);
         assert(!editor_dependencies.empty());
         auto empty = editor_dependencies.front().contributions();
-        assert(empty && empty->reflection.empty() && empty->configurations.empty());
+        assert(empty && empty->reflection.empty() && empty->services.empty());
         auto library = editor::extensions::EditorExtension::load(*description, **runtime, editor_dependencies);
         assert(library);
         auto contributions = library->contributions();
-        assert(contributions && contributions->configurations.size() == 1 && contributions->reflection.size() == 1);
-        const auto& configuration = contributions->configurations[0].value;
+        assert(contributions && contributions->services.size() == 1 && contributions->reflection.size() == 1);
+        auto definitions = editor::scene::sceneEditorDefinitions(contributions->services);
+        assert(definitions && definitions->size() == 1 && (*definitions)[0]->configurations.size() == 1);
+        const auto& configuration = (*definitions)[0]->configurations[0].value;
         const auto register_types = contributions->reflection[0].register_types;
         assert(!configuration.reflection(meta::ReflectionRegistry::instance()));
         {
@@ -237,6 +240,7 @@ int main(int argc, char** argv)
             assert(!editor_code.expired());
         }
         assert(!editor_code.expired());
+        definitions->clear();
         meta::ReflectionRegistry::destroyRegistry();
         assert(editor_code.expired());
     }

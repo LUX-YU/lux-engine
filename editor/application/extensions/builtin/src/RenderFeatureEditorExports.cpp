@@ -1,3 +1,4 @@
+#include <lux/engine/editor/scene/SceneEditorCatalog.hpp>
 #include <lux/engine/editor/extensions/EditorExtension.hpp>
 #include <lux/engine/function/render/features/meta_visibility.h>
 #include "render_feature_client_meta_registration.hpp"
@@ -107,20 +108,21 @@ extern "C" LUX_RENDER_FEATURE_META_PUBLIC const lux::editor::extensions::EditorE
     };
     using namespace lux::editor;
     static const extensions::EditorExtensionExports exports{
-        .counts = {.configurations = static_cast<std::uint32_t>(std::size(configurations)), .reflection = 1},
+        .counts = {.reflection = 1, .services = 1},
         .contribute =
             +[](extensions::ContributionDraft& draft, lux::object::CodeLease code) -> extensions::ContributionResult<void>
         {
             draft.reflection.push_back(
                 {code,
                  +[](lux::meta::ReflectionRegistry& registry, lux::meta::qual_type_index_fix_list&)
-                 { LuxRegisterRender_feature_clientMetas_META(registry); }}
+                 { LuxRegisterRender_feature_clientMetas_META(registry); },
+                 &scene::validateSceneEditors}
             );
-            for (auto configuration : configurations)
-            {
-                configuration.code = code;
-                draft.configurations.push_back(std::move(configuration));
-            }
+            scene::SceneEditorCatalog::Definition definition;
+            definition.configurations.assign(std::begin(configurations), std::end(configurations));
+            draft.services.push_back(scene::declareSceneEditors(
+                code, lux::services::ServiceNameView{"lux.editor.render.configuration"}, std::move(definition)
+            ));
             return {};
         }
     };

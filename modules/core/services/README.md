@@ -6,6 +6,13 @@
 Registration does not construct instances. The provider is shared because real DLL consumers must
 use one registry identity source and host-resident allocation/deletion bridges.
 
+A dynamic entry can also own immutable declaration input: declare `definition_type`, then pass a
+`shared_ptr<const T>` to `ServiceEntry::create`. Its factory obtains that same backing through
+`resolver.definition<T>()`. Missing or mismatched input is rejected before publication. It is not
+serialized configuration, another service, or permission to inspect undeclared dependencies.
+Cold metadata consumers can retain `entry.definition<T>()`; the original host code-pin bridge keeps
+the defining module alive through input destruction even after the entry or catalog is replaced.
+
 Factories receive only a `ServiceResolver`. Its indexed `get<T>` and `require<T>` access the declared
 shared and borrowed dependencies, respectively. Shared dependencies may use the same scope, its
 parent or its root; a long-lived scope cannot resolve a descendant through this API. The dispatcher

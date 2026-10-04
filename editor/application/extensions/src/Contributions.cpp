@@ -16,8 +16,6 @@ namespace lux::editor::extensions
         commands::CommandRegistrySnapshot commands;
         sessions::SessionFactorySnapshot sessions;
         views::ViewFactorySnapshot views;
-        std::vector<scene::ConfigurationEditor> configurations;
-        std::vector<scene::InspectorComponent> components;
         std::vector<settings::SettingsPage> settings;
         std::vector<std::pair<std::uint64_t, std::size_t>> setting_index;
     };
@@ -26,8 +24,8 @@ namespace lux::editor::extensions
         std::size_t capacity
     )
     {
-        if (draft.configurations.size() > capacity || draft.components.size() > capacity ||
-            draft.reflection.size() > capacity || draft.services.size() > capacity)
+        const bool is_over_capacity = draft.reflection.size() > capacity || draft.services.size() > capacity;
+        if (is_over_capacity)
         {
             return cxx::unexpected(ContributionFailure{EContributionError::CAPACITY, "contributions"});
         }
@@ -106,49 +104,16 @@ namespace lux::editor::extensions
                 views.error().detail
             });
         }
-        for (std::size_t i{}; i < draft.configurations.size(); ++i)
-        {
-            const auto& item = draft.configurations[i];
-            const bool invalid = !item.code.valid() || !item.create || item.value.schema_name.empty() ||
-                                 !item.value.schema_version || !item.value.codec.valid() || !item.value.reflection;
-            if (invalid)
-            {
-                return cxx::unexpected(ContributionFailure{EContributionError::INVALID_ARGUMENT, "configuration"});
-            }
-            for (std::size_t j{}; j < i; ++j)
-            {
-                if (draft.configurations[j].value.schema_name == item.value.schema_name &&
-                    draft.configurations[j].value.schema_version == item.value.schema_version)
-                {
-                    return cxx::unexpected(ContributionFailure{EContributionError::DUPLICATE, "configuration"});
-                }
-            }
-        }
-        for (std::size_t i{}; i < draft.components.size(); ++i)
-        {
-            const auto& item = draft.components[i];
-            if (!item.type.isValid() || !item.create || item.label.empty())
-            {
-                return cxx::unexpected(ContributionFailure{EContributionError::INVALID_ARGUMENT, "component"});
-            }
-            for (std::size_t j{}; j < i; ++j)
-            {
-                if (draft.components[j].type == item.type)
-                {
-                    return cxx::unexpected(ContributionFailure{EContributionError::DUPLICATE, "component"});
-                }
-            }
-        }
         for (const auto& entry : draft.reflection)
         {
-            if (!entry.code.valid() || !entry.register_types)
+            const bool is_invalid_entry = !entry.code.valid() || (!entry.register_types && !entry.validate);
+            if (is_invalid_entry)
             {
                 return cxx::unexpected(ContributionFailure{EContributionError::INVALID_ARGUMENT, "reflection"});
             }
         }
-        auto lifetime = draft.reflection.empty() && draft.configurations.empty() && draft.settings.empty()
-                            ? std::shared_ptr<const void>{}
-                            : acquireEditorReflection();
+        const bool needs_reflection = !draft.reflection.empty() || !draft.settings.empty();
+        auto lifetime = needs_reflection ? acquireEditorReflection() : std::shared_ptr<const void>{};
         ContributionSnapshot result;
         result.data_ = std::make_shared<Data>(
             std::move(draft.code),
@@ -159,8 +124,6 @@ namespace lux::editor::extensions
             std::move(*commands),
             std::move(*sessions),
             std::move(*views),
-            std::move(draft.configurations),
-            std::move(draft.components),
             std::move(draft.settings),
             std::move(setting_index)
         );
@@ -185,14 +148,6 @@ namespace lux::editor::extensions
     const views::ViewFactorySnapshot& ContributionSnapshot::views() const noexcept
     {
         return data_->views;
-    }
-    std::span<const scene::ConfigurationEditor> ContributionSnapshot::configurations() const noexcept
-    {
-        return data_->configurations;
-    }
-    std::span<const scene::InspectorComponent> ContributionSnapshot::components() const noexcept
-    {
-        return data_->components;
     }
     std::span<const settings::SettingsPage> ContributionSnapshot::settings() const noexcept
     {
@@ -360,6 +315,10 @@ namespace lux::editor::extensions
                 auto reflection = meta::ReflectionRegistry::beginDraft();
                 for (const auto& entry : candidate.data_->reflection)
                 {
+                    if (!entry.register_types)
+                    {
+                        continue;
+                    }
                     auto appended = reflection.appendOnce(
                         entry.register_types,
                         std::make_shared<lux::object::CodeLease>(entry.code)
@@ -373,19 +332,20 @@ namespace lux::editor::extensions
                         });
                     }
                 }
-                for (const auto& entry : candidate.data_->configurations)
+                for (const auto& entry : candidate.data_->reflection)
                 {
-                    const auto* type = entry.value.reflection(*reflection.registry());
-                    const bool mismatch = !type || type->type.ptr != type ||
-                                          type->type.hash != entry.value.codec.type.hash() ||
-                                          type->type.name != entry.value.codec.type.name();
-                    if (mismatch)
+                    if (!entry.validate)
+                    {
+                        continue;
+                    }
+                    auto valid = entry.validate(*reflection.registry(), candidate.services());
+                    if (!valid)
                     {
                         return cxx::unexpected(ContributionFailure{
                             EContributionError::INVALID_ARGUMENT,
-                            "configuration.reflection",
-                            0,
-                            entry.value.schema_name
+                            std::move(valid.error().domain),
+                            static_cast<std::uint64_t>(valid.error().code),
+                            std::move(valid.error().detail)
                         });
                     }
                 }

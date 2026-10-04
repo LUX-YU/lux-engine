@@ -6693,6 +6693,9 @@
       },
       "ui_input": {
         "path": "modules/function/ui"
+      },
+      "services": {
+        "path": "modules/core/services"
       }
     },
     "native_libraries": [
@@ -9489,6 +9492,9 @@
       },
       "ui_input": {
         "path": "modules/function/ui"
+      },
+      "services": {
+        "path": "modules/core/services"
       }
     },
     "native_libraries": [
@@ -18998,6 +19004,12 @@
       ],
       "editor/application/extensions/test/modules.cpp": [
         "editor_modules_test"
+      ],
+      "editor/workbench/scene/api/include/lux/engine/editor/scene/SceneEditorCatalog.hpp": [
+        "scene_control_api"
+      ],
+      "editor/workbench/scene/api/src/SceneEditorCatalog.cpp": [
+        "scene_control_api"
       ]
     },
     "native_libraries": [

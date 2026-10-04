@@ -49,7 +49,7 @@ if(TARGET physics2d_simulation)
     component_include_directories(physics2d_editor BUILD_TIME_EXPORT ${LUX_GENERATE_HEADER_DIR} INSTALL_TIME include)
     lux_classify_target(TARGET physics2d_editor LAYER EDITOR PRODUCT EDITOR ROLE PLUGIN)
     target_compile_definitions(physics2d_editor PRIVATE LUX_PHYSICS2D_EDITOR_LIBRARY)
-    target_link_libraries(physics2d_editor PRIVATE physics2d_simulation editor_extensions lux::engine::function::ui)
+    target_link_libraries(physics2d_editor PRIVATE physics2d_simulation editor_extensions scene_control_api lux::engine::function::ui)
     engine_add_type_runtime_info(NAME physics2d_editor_configuration EXPLICIT_REGISTRATION
         TARGET_FILES ${PROJECT_SOURCE_DIR}/engine/domain/simulation/builtin_systems/physics2d/include/lux/engine/physics2d/Physics2DSystem.hpp
         REGISTER_FUNC_NAME lux_physics2d_configuration)
@@ -77,7 +77,7 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
 
     if(TARGET physics2d_simulation)
     add_executable(plugin_library_test test/plugin.cpp)
-    target_link_libraries(plugin_library_test PRIVATE editor_extensions lux::engine::simulation::simulation_composition)
+    target_link_libraries(plugin_library_test PRIVATE editor_extensions scene_control_api lux::engine::simulation::simulation_composition)
 
     if(MSVC)
         target_compile_options(plugin_library_test PRIVATE /UNDEBUG /utf-8)

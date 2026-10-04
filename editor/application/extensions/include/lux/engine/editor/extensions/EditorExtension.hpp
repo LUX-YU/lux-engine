@@ -11,7 +11,7 @@ namespace lux::editor::extensions
     inline constexpr const char* kEditorExtensionSymbol = "lux_editor_exports_v10";
     struct ContributionCounts final
     {
-        std::uint32_t commands{}, sessions{}, views{}, configurations{}, components{}, reflection{}, settings{};
+        std::uint32_t commands{}, sessions{}, views{}, reflection{}, settings{};
         std::uint32_t services{}, ui{};
         friend bool operator==(ContributionCounts, ContributionCounts) = default;
     };

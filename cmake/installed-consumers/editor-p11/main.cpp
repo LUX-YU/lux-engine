@@ -1,3 +1,4 @@
+#include <lux/engine/editor/scene/SceneEditorCatalog.hpp>
 #include "ObjectQueue.hpp"
 #include "Probe.hpp"
 #include <cassert>
@@ -162,8 +163,12 @@ int main(int argc, char** argv)
         assert(set_probe);
         set_probe(&facts);
         auto bad_draft = take(extension.contributions());
-        bad_draft.configurations[0].value.reflection = [](meta::ReflectionRegistry&) noexcept -> const meta::RefClass*
+        auto bad_definition = *take(lux::editor::scene::sceneEditorDefinitions(bad_draft.services))[0];
+        bad_definition.configurations[0].value.reflection = [](meta::ReflectionRegistry&) noexcept -> const meta::RefClass*
         { return nullptr; };
+        bad_draft.services[0] = lux::editor::scene::declareSceneEditors(
+            bad_draft.services[0]->code(), services::ServiceNameView{"qualification.configuration"}, std::move(bad_definition)
+        );
         auto bad = take(extensions::ContributionSnapshot::prepare(std::move(bad_draft)));
         assert(catalog.enqueue(bad));
         const auto rejected = catalog.applyPending();
@@ -200,7 +205,7 @@ int main(int argc, char** argv)
         }
         if (!with_configuration)
         {
-            draft.configurations.clear();
+            draft.services.clear();
             draft.reflection.clear();
         }
         auto snapshot = take(extensions::ContributionSnapshot::prepare(std::move(draft)));
@@ -208,15 +213,23 @@ int main(int argc, char** argv)
         assert(catalog.applyPending());
         const auto current = catalog.snapshot();
         retired_entry = current.commands().entries().front();
-        assert(current.configurations().size() == (with_configuration ? 1 : 0));
+        auto definitions = take(lux::editor::scene::sceneEditorDefinitions(current.services()));
+        assert(definitions.size() == (with_configuration ? 1 : 0));
+        if (with_configuration)
+            assert(definitions[0]->configurations.size() == 1);
         if (with_configuration)
         {
+            auto scope = take(editor_context.services().createScope());
+            auto domain = take(editor_context.services().get<lux::editor::scene::SceneEditorCatalog>(scope));
+            auto shared = take(editor_context.services().get<lux::editor::scene::SceneEditorCatalog>(scope));
+            assert(domain == shared && &domain->definition() == definitions[0].get());
             configuration.emplace(take(lux::editor::scene::makeConfigurationControl(
-                current.configurations()[0],
+                definitions[0]->configurations[0],
                 configuration_layout,
                 ui::ElementId{"fields"},
                 {}
             )));
+            assert(scope.release());
         }
         lux::material::MaterialSource material{assetId(), "external", {}};
         assert(material.graph.addNode(std::make_unique<lux::material::ConstantNode>()).valid());

@@ -1,3 +1,4 @@
+#include <lux/engine/editor/scene/SceneEditorCatalog.hpp>
 #include <array>
 #include <lux/engine/material/graph/Nodes.hpp>
 #include <lux/engine/editor/application/EditorApplicationImpl.hpp>
@@ -879,8 +880,8 @@ int main(int argc, char** argv)
         copy(draft.commands, previous_catalog.commands().entries());
         copy(draft.sessions, previous_catalog.sessions().entries());
         copy(draft.views, previous_catalog.views().entries());
-        copy(draft.components, previous_catalog.components());
-        copy(draft.configurations, previous_catalog.configurations());
+        copy(draft.services, previous_catalog.services());
+        draft.reflection.push_back({object::CodeLease::builtin(), {}, &lux::editor::scene::validateSceneEditors});
         bool refuse_view{};
         draft.views.push_back(views::ViewFactoryEntry::create(
             lux::object::CodeLease::builtin(),

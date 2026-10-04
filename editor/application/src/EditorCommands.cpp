@@ -109,8 +109,6 @@ namespace lux::editor::application
             append(contributed->commands, activated->commands);
             append(contributed->sessions, activated->sessions);
             append(contributed->views, activated->views);
-            append(contributed->configurations, activated->configurations);
-            append(contributed->components, activated->components);
             append(contributed->settings, activated->settings);
             auto tools = desktop::makeToolCommands(
                 contributed->views,
@@ -128,8 +126,6 @@ namespace lux::editor::application
             append(draft.commands, contributed->commands);
             append(draft.sessions, contributed->sessions);
             append(draft.views, contributed->views);
-            append(draft.configurations, contributed->configurations);
-            append(draft.components, contributed->components);
             append(draft.settings, contributed->settings);
         }
         // Cold startup only: establish the real reflection owners before freezing Flow metadata.
@@ -137,7 +133,7 @@ namespace lux::editor::application
         extensions::ContributionDraft reflection;
         reflection.code = draft.code;
         reflection.reflection = draft.reflection;
-        reflection.configurations = draft.configurations;
+        reflection.services = draft.services;
         auto reflected = extensions::ContributionSnapshot::prepare(std::move(reflection));
         if (!reflected)
             return applicationFailure("reflection.prepare", reflected.error());

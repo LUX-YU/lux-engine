@@ -1,6 +1,6 @@
 # Formal Editor contributions (P11)
 
-The application combines immutable command, content-factory, view-factory and configuration contributions. It does not own author sources, History, saves, Run sessions or rendering resources. `ContributionRegistry::enqueue()` prepares a bounded candidate; `applyPending()` publishes a fixed batch at the owner safe point. The participating CommandRegistry grants a narrow batch scope before callbacks. Ordinary command publication is BUSY through candidate cleanup, old-value disposal and notification. The prepared scope performs its one-use commit only after reflection validation; the contribution owner never unlocks and re-enters ordinary publication. Notifications follow publication. Requests made by a notification belong to the next batch. Failed candidates leave the visible catalog unchanged.
+The composition boundary combines immutable service, UI, command, content-factory and settings declarations. The current product still consumes the previous view-factory entries until the EC4 M6 migration; new UI factories use UiRegistry. It does not own author sources, History, saves, Run sessions or rendering resources. `ContributionRegistry::enqueue()` prepares a bounded candidate; `applyPending()` publishes a fixed batch at the owner safe point. The participating CommandRegistry grants a narrow batch scope before callbacks. Ordinary command publication is BUSY through candidate cleanup, old-value disposal and notification. The prepared scope performs its one-use commit only after reflection validation; the contribution owner never unlocks and re-enters ordinary publication. Notifications follow publication. Requests made by a notification belong to the next batch. Failed candidates leave the visible catalog unchanged.
 
 `lux_editor_exports_v10` is the formal SDK entry. Header size, interface version, fingerprint and advertised counts are checked before invoking the contribution callback. The existing project plugin loader verifies the binary and pins its runtime dependencies. Old V6/V8/V9 exports are rejected; the independent game plugin protocol is unchanged.
 
@@ -39,7 +39,16 @@ When a later snapshot shares an unchanged entry, normalization unwraps its prior
 
 The SaveService registration directory contains weak records. Its existing state allocator is therefore selected by the module that constructs the service. A plugin calling the statically linked SDK cannot place a weak control block with a plugin-local deleter in the host's directory. Installation handles also hold a local code pin while releasing their shared data. No DLL is kept alive merely to retain already-expired weak records.
 
-Configuration values retain the shared reflection environment independently of their code lease. The value is destroyed before reflection and plugin code. Reflection candidates use the existing registry draft/commit mechanism; configuration validation runs against the prepared environment.
+Configuration values retain the shared reflection environment independently of their code lease. The value is destroyed before reflection and plugin code. Reflection candidates use the existing registry draft/commit mechanism.
+
+Scene configuration editors and Inspector components are declared by the Scene domain through
+`SceneEditorCatalog` service entries. ContributionDraft/Snapshot no longer contain these fields or
+interpret their payloads. The domain validator runs against the complete staged reflection registry
+under the original command/service/UI publication guards. Duplicate or colliding component identities,
+invalid configuration schemas and mismatched reflection reject the whole candidate. The domain's
+immutable backing is shared by metadata readers and its lazy service, with no copied mutable catalog.
+The generic extension library no longer links scene_control_api; actual domain producers and consumers
+link it explicitly.
 
 ## Actual consumers
 

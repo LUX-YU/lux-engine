@@ -1,9 +1,11 @@
+#include <lux/engine/editor/scene/SceneEditorCatalog.hpp>
 #include <array>
 #include <cassert>
 #include <iostream>
 #include <lux/engine/editor/configuration/EditorReflection.hpp>
 #include <lux/engine/editor/extensions/Contributions.hpp>
 #include <lux/engine/ui/Element.hpp>
+#include <lux/engine/ui/Controls.hpp>
 #include <lux/engine/ui/Root.hpp>
 
 using namespace lux;
@@ -297,8 +299,9 @@ namespace
             auto environment = acquireEditorReflection();
             ContributionDraft rejected;
             rejected.commands.push_back(command("B"));
-            rejected.reflection.push_back({lux::object::CodeLease::builtin(), registerAttempt});
-            rejected.configurations.push_back(lux::editor::scene::ConfigurationEditor{
+            rejected.reflection.push_back({lux::object::CodeLease::builtin(), registerAttempt, &lux::editor::scene::validateSceneEditors});
+            lux::editor::scene::SceneEditorCatalog::Definition definition;
+            definition.configurations.push_back(lux::editor::scene::ConfigurationEditor{
                 lux::object::CodeLease::builtin(),
                 ConfigurationDescriptor{
                     "r11.invalid",
@@ -309,6 +312,9 @@ namespace
                 +[](ui::Element&, ui::ElementId, ConfigurationValue&) noexcept
                     -> lux::editor::scene::ConfigurationEditor::CreateResult { return std::unique_ptr<ui::Element>{}; }
             });
+            rejected.services.push_back(lux::editor::scene::declareSceneEditors(
+                lux::object::CodeLease::builtin(), services::ServiceNameView{"test.r11.editors"}, std::move(definition)
+            ));
             auto candidate = take(ContributionSnapshot::prepare(std::move(rejected)));
             const auto reflection_count = meta::ReflectionRegistry::instance().classes().size();
             reflection_attempt = &attempt;
@@ -501,6 +507,61 @@ namespace
                      "fixed read scope permits lazy factories and rejects directory changes PASS\n";
     }
 } // namespace
+void domainCatalog()
+{
+    auto messages = take(object::ObjectMessageQueue::create(16));
+    desktop::EditorContext context{messages.dispatcherRef()};
+    ContributionRegistry contributions{messages.dispatcherRef(), context};
+    auto scope = take(context.services().createScope());
+    scene::SceneEditorCatalog::Definition definition;
+    definition.components.push_back({
+        cxx::typeToken<Binding>(), "Binding",
+        +[](ui::Element& parent, ui::ElementId id, scene::InspectorFields&) -> scene::InspectorComponent::CreateResult {
+            return std::make_unique<ui::Label>(parent, std::move(id), "Binding");
+        }
+    });
+    auto first = scene::declareSceneEditors(
+        object::CodeLease::builtin(), services::ServiceNameView{"test.scene.editor.first"}, definition
+    );
+    auto backing = take(first->definition<scene::SceneEditorCatalog::Definition>());
+    ContributionDraft draft;
+    draft.services.push_back(first);
+    draft.reflection.push_back({object::CodeLease::builtin(), {}, &scene::validateSceneEditors});
+    auto candidate = take(ContributionSnapshot::prepare(std::move(draft)));
+    assert(contributions.enqueue(candidate) && contributions.applyPending());
+    auto catalog = take(context.services().get<scene::SceneEditorCatalog>(scope));
+    auto again = take(context.services().get<scene::SceneEditorCatalog>(scope));
+    assert(catalog == again && &catalog->definition() == backing.get());
+    assert(catalog->definition().components[0].type == cxx::typeToken<Binding>());
+    for (bool collision : {false, true})
+    {
+        auto conflicting = definition;
+        if (collision)
+            conflicting.components[0].type = {cxx::typeToken<Binding>().hash(), "DifferentBinding"};
+        ContributionDraft duplicate;
+        duplicate.services.push_back(first);
+        duplicate.services.push_back(scene::declareSceneEditors(
+            object::CodeLease::builtin(), services::ServiceNameView{"test.scene.editor.second"}, std::move(conflicting)
+        ));
+        duplicate.reflection.push_back({object::CodeLease::builtin(), {}, &scene::validateSceneEditors});
+        auto rejected = take(ContributionSnapshot::prepare(std::move(duplicate)));
+        assert(contributions.enqueue(rejected));
+        auto applied = contributions.applyPending();
+        assert(!applied && applied.error().domain == "component");
+        const auto expected = collision ? services::EServiceError::HASH_COLLISION : services::EServiceError::DUPLICATE;
+        assert(applied.error().domain_code == static_cast<std::uint64_t>(expected));
+        assert(contributions.revision() == 1 && context.commands().revision() == 1 && context.ui().revision() == 1);
+        assert(take(context.services().get<scene::SceneEditorCatalog>(scope)) == catalog);
+        assert(contributions.snapshot().services().size() == 1);
+    }
+    auto empty = take(ContributionSnapshot::prepare({}));
+    assert(contributions.enqueue(empty) && contributions.applyPending());
+    assert(!context.services().resolve<scene::SceneEditorCatalog>());
+    assert(catalog->definition().components[0].label == "Binding");
+    catalog.reset();
+    again.reset();
+    assert(scope.release() && scope.drained());
+}
 int main(int argc, char** argv)
 {
     if (argc == 2)
@@ -510,5 +571,6 @@ int main(int argc, char** argv)
     }
     neutralCatalog();
     commandReadsCatalog();
+    domainCatalog();
     return originalCases();
 }

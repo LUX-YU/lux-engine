@@ -1,3 +1,4 @@
+#include <lux/engine/editor/scene/SceneEditorCatalog.hpp>
 #include <lux/engine/editor/application/EditorApplicationImpl.hpp>
 #include <lux/engine/editor/scene/SceneTools.hpp>
 #include <lux/engine/log/Log.hpp>
@@ -165,7 +166,11 @@ namespace lux::editor::application
         const auto run = (*source_group)->run();
         const auto snapshot = contributions_.snapshot();
         auto components = scene::sceneInspectorComponents();
-        components.insert(components.end(), snapshot.components().begin(), snapshot.components().end());
+        auto definitions = scene::sceneEditorDefinitions(snapshot.services());
+        if (!definitions)
+            return applicationFailure("scene.tool.catalog", definitions.error());
+        for (const auto& definition : *definitions)
+            components.insert(components.end(), definition->components.begin(), definition->components.end());
         const auto name = "scene-tool-" + std::to_string(next_view_++);
         auto candidate = scene::makeSceneToolView(
             messages_.dispatcherRef(),
@@ -218,7 +223,13 @@ namespace lux::editor::application
                 std::optional<std::span<const std::byte>> initial
             ) -> scene::SceneConfigurationResult<scene::ConfigurationControl>
             {
-                for (const auto& editor : snapshot.configurations())
+                auto definitions = scene::sceneEditorDefinitions(snapshot.services());
+                if (!definitions)
+                    return cxx::unexpected(scene::SceneConfigurationFailure{
+                        scene::ESceneConfigurationError::CONTROL_FAILURE, "configuration.catalog"
+                    });
+                for (const auto& definition : *definitions)
+                for (const auto& editor : definition->configurations)
                     if (editor.value.schema_name == name && editor.value.schema_version == version)
                         return scene::makeConfigurationControl(editor, parent, lux::ui::ElementId{name}, initial);
                 return scene::ConfigurationControl{};

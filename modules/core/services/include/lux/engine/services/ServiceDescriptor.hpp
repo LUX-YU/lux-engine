@@ -134,6 +134,9 @@ namespace lux::services
         void (*destroy)(void*) noexcept {};
         // Required for LuxObject allocations so the existing callback/retirement protection applies.
         object::LuxObject* (*object)(void*) noexcept {};
+        // Immutable declaration input, distinct from per-instance serialized configuration. The entry
+        // owns its backing and code; the factory may retain it without retaining the resolver.
+        cxx::TypeToken definition_type;
 
         // Declaration-time adaptation only. The runtime invokes one erased boundary with a matching
         // destruction function; modules construct with their actual unique owner and error type.
@@ -171,6 +174,12 @@ namespace lux::services
             return result;
         }
     };
+    class ServiceEntry;
+    // Pure declaration validation. No factory, configuration callback or instance is created here.
+    [[nodiscard]] LUX_SERVICES_PUBLIC ServiceResult<void> validateServiceEntries(
+        std::span<const std::shared_ptr<const ServiceEntry>>,
+        std::size_t capacity
+    ) noexcept;
     class LUX_SERVICES_PUBLIC ServiceEntry final
     {
     public:
@@ -183,6 +192,26 @@ namespace lux::services
             return object::pinCodeOwner(std::move(code), std::move(entry));
         }
         [[nodiscard]] static std::shared_ptr<const ServiceEntry> create(object::CodeLease, const ServiceDescriptor&);
+        template <class T>
+        [[nodiscard]] static std::shared_ptr<const ServiceEntry> create(
+            object::CodeLease code,
+            const ServiceDescriptor& descriptor,
+            std::shared_ptr<const T> definition
+        )
+        {
+            auto pinned = object::pinCodeOwner(code, std::move(definition));
+            return create(std::move(code), descriptor, cxx::typeToken<T>(), std::move(pinned));
+        }
+        template <class T>
+        [[nodiscard]] ServiceResult<std::shared_ptr<const T>> definition() const noexcept
+        {
+            auto value = definition(cxx::typeToken<T>());
+            if (!value)
+            {
+                return cxx::unexpected(std::move(value.error()));
+            }
+            return std::static_pointer_cast<const T>(std::move(*value));
+        }
         ~ServiceEntry();
         ServiceEntry(const ServiceEntry&) = delete;
         ServiceEntry& operator=(const ServiceEntry&) = delete;
@@ -198,9 +227,24 @@ namespace lux::services
         }
 
     private:
+        friend class ServiceRegistry;
+        friend class ServiceResolver;
+        friend LUX_SERVICES_PUBLIC ServiceResult<void> validateServiceEntries(
+            std::span<const std::shared_ptr<const ServiceEntry>>,
+            std::size_t
+        ) noexcept;
+        [[nodiscard]] static std::shared_ptr<const ServiceEntry> create(
+            object::CodeLease,
+            const ServiceDescriptor&,
+            cxx::TypeToken,
+            std::shared_ptr<const void>
+        );
+        [[nodiscard]] ServiceResult<std::shared_ptr<const void>> definition(cxx::TypeToken) const noexcept;
         ServiceEntry(object::CodeLease, const ServiceDescriptor&);
         struct Storage;
         object::CodeLease code_;
+        std::shared_ptr<const void> definition_;
+        cxx::TypeToken definition_type_;
         std::unique_ptr<const Storage> storage_;
         const ServiceDescriptor* descriptor_;
     };

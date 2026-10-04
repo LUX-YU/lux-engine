@@ -1,3 +1,4 @@
+#include <lux/engine/editor/scene/SceneEditorCatalog.hpp>
 #include "Probe.hpp"
 #include <lux/engine/editor/extensions/EditorExtension.hpp>
 #include <lux/engine/editor/material/MaterialSessionFactory.hpp>
@@ -84,10 +85,14 @@ namespace
     extensions::ContributionResult<void> contribute(extensions::ContributionDraft& draft, lux::object::CodeLease code)
     {
         using namespace commands;
-        draft.reflection.push_back({code, &registerConfiguration});
+        draft.reflection.push_back({code, &registerConfiguration, &lux::editor::scene::validateSceneEditors});
         auto configuration = lux::editor::detail::configurationEditor<Configuration>("qualification.configuration");
         configuration.code = code;
-        draft.configurations.push_back(std::move(configuration));
+        lux::editor::scene::SceneEditorCatalog::Definition definition;
+        definition.configurations.push_back(std::move(configuration));
+        draft.services.push_back(lux::editor::scene::declareSceneEditors(
+            code, services::ServiceNameView{"qualification.configuration"}, std::move(definition)
+        ));
         draft.sessions.push_back(lux::editor::material::makeMaterialSessionFactory(code));
         draft.commands.push_back(CommandEntry::bind<command_qualification_inspect>(
             code,
@@ -190,7 +195,7 @@ extern "C" PROBE_EXPORT const extensions::EditorExtensionExports* lux_editor_exp
         sizeof(exports),
         extensions::kEditorExtensionVersion,
         extensions::kEditorExtensionAbi,
-        {1, 1, 1, 1, 0, 1},
+        {.commands = 1, .sessions = 1, .views = 1, .reflection = 1, .services = 1},
         &contribute,
         {.commands = 1, .views = 1},
         {.sessions = true, .workbench = true},

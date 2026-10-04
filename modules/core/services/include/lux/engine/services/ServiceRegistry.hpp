@@ -8,12 +8,6 @@
 
 namespace lux::services
 {
-    // Pure declaration validation, shared by immutable module assembly and actual publication.
-    // No factory, configuration callback, or instance construction occurs here.
-    [[nodiscard]] LUX_SERVICES_PUBLIC ServiceResult<void> validateServiceEntries(
-        std::span<const std::shared_ptr<const ServiceEntry>>,
-        std::size_t capacity
-    ) noexcept;
     namespace detail
     {
         struct ServiceDefinition;
@@ -106,16 +100,31 @@ namespace lux::services
         }
         [[nodiscard]] const object::ObjectDispatcherRef& dispatcher() const noexcept;
         [[nodiscard]] bool isOpen() const noexcept;
+        template <class T>
+        [[nodiscard]] ServiceResult<std::shared_ptr<const T>> definition() const noexcept
+        {
+            if (!entry_)
+            {
+                return cxx::unexpected(ServiceFailure{EServiceError::UNDECLARED_DEPENDENCY});
+            }
+            return entry_->definition<T>();
+        }
 
     private:
         friend class ServiceRegistry;
-        ServiceResolver(ServiceRegistry&, std::span<const ServiceDependency>, std::shared_ptr<detail::ServiceScopeState>) noexcept;
+        ServiceResolver(
+            ServiceRegistry&,
+            std::span<const ServiceDependency>,
+            std::shared_ptr<detail::ServiceScopeState>,
+            const ServiceEntry* = nullptr
+        ) noexcept;
         [[nodiscard]] ServiceResult<std::shared_ptr<void>>
         get(std::size_t, cxx::TypeToken, const ServiceConfiguration&) noexcept;
         [[nodiscard]] ServiceResult<void*> require(std::size_t, cxx::TypeToken) noexcept;
         ServiceRegistry& registry_;
         std::span<const ServiceDependency> dependencies_;
         std::shared_ptr<detail::ServiceScopeState> scope_;
+        const ServiceEntry* entry_;
     };
     struct ServiceLimits final
     {

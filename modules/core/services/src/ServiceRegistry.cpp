@@ -141,7 +141,7 @@ namespace lux::services
 
         explicit Storage(const ServiceDescriptor& input) : descriptor(input)
         {
-            names.reserve(4 + input.contracts.size() * 2 + input.dependencies.size() * 4);
+            names.reserve(5 + input.contracts.size() * 2 + input.dependencies.size() * 4);
             auto name = [&](std::string_view value) -> std::string_view
             {
                 names.emplace_back(value);
@@ -153,6 +153,7 @@ namespace lux::services
                                               : ServiceNameView{};
             descriptor.allocation_type = {input.allocation_type.hash(), name(input.allocation_type.name())};
             descriptor.configuration.type = {input.configuration.type.hash(), name(input.configuration.type.name())};
+            descriptor.definition_type = {input.definition_type.hash(), name(input.definition_type.name())};
             for (auto value : input.contracts)
             {
                 value.id = ServiceNameView{name(value.id.name())};
@@ -183,10 +184,34 @@ namespace lux::services
         const ServiceDescriptor& descriptor
     )
     {
+        return create(std::move(code), descriptor, {}, {});
+    }
+    std::shared_ptr<const ServiceEntry> ServiceEntry::create(
+        object::CodeLease code,
+        const ServiceDescriptor& descriptor,
+        cxx::TypeToken definition_type,
+        std::shared_ptr<const void> definition
+    )
+    {
         auto entry = std::shared_ptr<ServiceEntry>(new ServiceEntry(std::move(code), descriptor));
         entry->storage_ = std::make_unique<Storage>(descriptor);
         entry->descriptor_ = &entry->storage_->descriptor;
+        entry->definition_type_ = definition_type;
+        entry->definition_ = std::move(definition);
         return entry;
+    }
+    ServiceResult<std::shared_ptr<const void>> ServiceEntry::definition(cxx::TypeToken type) const noexcept
+    {
+        const bool is_type_mismatch = type.hash() != definition_type_.hash() || type.name() != definition_type_.name();
+        if (is_type_mismatch)
+        {
+            return reject(EServiceError::TYPE_MISMATCH);
+        }
+        if (!definition_)
+        {
+            return reject(EServiceError::INVALID_DESCRIPTOR);
+        }
+        return definition_;
     }
     const ServiceDescriptor& ServiceHandle::descriptor() const noexcept
     {
@@ -443,6 +468,16 @@ namespace lux::services
                 return reject(EServiceError::INVALID_DESCRIPTOR);
             }
             const auto& descriptor = entries[i]->descriptor();
+            const auto& entry = *entries[i];
+            const bool has_definition = bool(entry.definition_);
+            const bool has_definition_type = descriptor.definition_type.isValid();
+            const bool is_definition_mismatch = has_definition != has_definition_type ||
+                descriptor.definition_type.hash() != entry.definition_type_.hash() ||
+                descriptor.definition_type.name() != entry.definition_type_.name();
+            if (is_definition_mismatch)
+            {
+                return reject(EServiceError::INVALID_DESCRIPTOR, "Declaration input does not match its descriptor");
+            }
             const bool invalid_identity = !descriptor.implementation.isValid() || descriptor.version == 0 ||
                                           !descriptor.allocation_type.isValid();
             const bool invalid_factory = !descriptor.create || !descriptor.destroy || descriptor.contracts.empty();
@@ -789,7 +824,7 @@ namespace lux::services
         {
             return reject(EServiceError::CLOSED);
         }
-        ServiceResolver resolver{*this, descriptor.dependencies, scope};
+        ServiceResolver resolver{*this, descriptor.dependencies, scope, handle.definition_->entry.get()};
         auto created = descriptor.create(resolver, active->configuration);
         if (!created)
         {
@@ -998,9 +1033,10 @@ namespace lux::services
     ServiceResolver::ServiceResolver(
         ServiceRegistry& registry,
         std::span<const ServiceDependency> dependencies,
-        std::shared_ptr<detail::ServiceScopeState> scope
+        std::shared_ptr<detail::ServiceScopeState> scope,
+        const ServiceEntry* entry
     ) noexcept
-        : registry_(registry), dependencies_(dependencies), scope_(std::move(scope))
+        : registry_(registry), dependencies_(dependencies), scope_(std::move(scope)), entry_(entry)
     {
     }
     bool ServiceResolver::isOpen() const noexcept

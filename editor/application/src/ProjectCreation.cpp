@@ -1,3 +1,4 @@
+#include <lux/engine/editor/scene/SceneEditorCatalog.hpp>
 #include <lux/engine/editor/application/ProjectCreation.hpp>
 #include <lux/engine/editor/extensions/EditorExtension.hpp>
 #include <lux/engine/editor/storage/ProjectPlugins.hpp>
@@ -224,7 +225,6 @@ namespace lux::editor::application
                 append(draft.reflection, supplied->reflection);
                 append(draft.services, supplied->services);
                 append(draft.ui, supplied->ui);
-                append(draft.configurations, supplied->configurations);
                 append(draft.settings, supplied->settings);
             }
             auto prepared = extensions::ContributionSnapshot::prepare(std::move(draft));
@@ -270,7 +270,13 @@ namespace lux::editor::application
                         std::optional<std::span<const std::byte>> initial
                     ) -> scene::SceneConfigurationResult<scene::ConfigurationControl>
                     {
-                        for (const auto& editor : environment->contributions.snapshot().configurations())
+                        auto definitions = scene::sceneEditorDefinitions(environment->contributions.snapshot().services());
+                        if (!definitions)
+                            return cxx::unexpected(scene::SceneConfigurationFailure{
+                                scene::ESceneConfigurationError::CONTROL_FAILURE, "configuration.catalog"
+                            });
+                        for (const auto& definition : *definitions)
+                        for (const auto& editor : definition->configurations)
                             if (editor.value.schema_name == name && editor.value.schema_version == version)
                                 return scene::makeConfigurationControl(
                                     editor,

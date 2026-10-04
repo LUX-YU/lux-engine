@@ -1,3 +1,4 @@
+#include <lux/engine/editor/scene/SceneEditorCatalog.hpp>
 #include <lux/engine/editor/extensions/EditorExtension.hpp>
 #include <lux/engine/physics2d/Physics2DSystem.hpp>
 #include <lux/engine/editor/extensions/builtin/physics2d_visibility.h>
@@ -148,13 +149,14 @@ extern "C" LUX_PHYSICS2D_EDITOR_PUBLIC const lux::editor::extensions::EditorExte
 {
     using namespace lux::editor;
     static const extensions::EditorExtensionExports exports{
-        .counts = {.configurations = 1, .reflection = 1},
+        .counts = {.reflection = 1, .services = 1},
         .contribute =
             +[](extensions::ContributionDraft& draft, lux::object::CodeLease code) -> extensions::ContributionResult<void>
         {
-            draft.reflection.push_back({code, &lux_physics2d_configuration_meta});
+            draft.reflection.push_back({code, &lux_physics2d_configuration_meta, &scene::validateSceneEditors});
             const auto& system = lux::physics2d::physics2DSystemRegistrations().front();
-            draft.configurations.push_back(
+            scene::SceneEditorCatalog::Definition definition;
+            definition.configurations.push_back(
                 {code,
                  {"lux.physics2d.Configuration",
                   1,
@@ -166,6 +168,9 @@ extern "C" LUX_PHYSICS2D_EDITOR_PUBLIC const lux::editor::extensions::EditorExte
                   }},
                  &createConfiguration}
             );
+            draft.services.push_back(scene::declareSceneEditors(
+                code, lux::services::ServiceNameView{"lux.editor.physics2d.configuration"}, std::move(definition)
+            ));
             return {};
         }
     };

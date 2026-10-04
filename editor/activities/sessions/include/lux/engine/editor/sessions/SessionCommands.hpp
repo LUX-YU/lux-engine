@@ -29,6 +29,9 @@ namespace lux::editor::sessions
     class SessionPreparation;
     using SessionCreation =
         cxx::move_only_function<commands::CommandResult<commands::DispatchReceipt>(SessionPreparation)>;
+    // Narrow borrowed creation endpoints. Factories retain these exact endpoints, never an Application.
+    inline constexpr services::ServiceNameView kSessionCreation{"lux.editor.content.create"};
+    inline constexpr services::ServiceNameView kSessionCreationAvailability{"lux.editor.content.can-create"};
     using HistoryActionLookup = cxx::move_only_function<InstalledSession*(SessionId)>;
 
     // Product composition selects a source-save or project-save receiver for kSaveCommand, never both.

@@ -54,6 +54,17 @@ namespace lux::editor::application
     }
     EditorResult<void> EditorApplication::Impl::installContributions()
     {
+        auto& scope = editor_context_.scope();
+        auto creation = scope.provide(sessions::kSessionCreation, content_creation_);
+        if (!creation)
+        {
+            return applicationFailure("content.creation", creation.error());
+        }
+        auto availability = scope.provide(sessions::kSessionCreationAvailability, content_creation_available_);
+        if (!availability)
+        {
+            return applicationFailure("content.creation-availability", availability.error());
+        }
         extensions::ContributionDraft draft;
         draft.services.push_back(
             services::ServiceEntry::bind<flowforge::kFlowEnvironmentService>(object::CodeLease::builtin())

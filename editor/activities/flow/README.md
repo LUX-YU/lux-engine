@@ -36,6 +36,11 @@ The decoder acquires that dependency at owner-thread load preparation, then capt
 environment view for the worker. Source lookup, file IO, codec, reload admission and Store installation
 remain the original shared content path; neither the worker nor the catalog retains a service resolver.
 
+The New Flow command uses the same declared environment and the two existing typed content creation
+endpoints. It resolves them once at first command use, checks the current creation admission on every
+dispatch, and produces the original `SessionPreparation`. Command registration and catalog lookup do
+not construct a compiler, model or environment. No Application pointer is captured by the Flow module.
+
 publishFlowArtifact shares the existing WriteCoordinator and SaveExecution. It publishes fixed bytes
 against an explicit expected target version and never marks author source clean. Legacy UI conversion bridges
 are private, consumer-limited, and expire at P12.

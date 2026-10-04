@@ -260,6 +260,11 @@ namespace lux::editor::application
         std::optional<EPluginAction> plugin_action_;
         std::unique_ptr<ProjectPluginSelection> plugin_saving_;
         std::optional<EditorFailure> plugin_failure_;
+        sessions::SessionCreation content_creation_{contentCreation()};
+        commands::CommandEntry::Query content_creation_available_{
+            [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
+            { return commands::CommandState{phase_ == EApplicationPhase::RUNNING && opens_.size() < 64}; }
+        };
         desktop::EditorContext editor_context_{messages_.dispatcherRef()};
         sessions::SessionOpening opening_;
         std::unique_ptr<ProjectContentSaving> content_saving_;

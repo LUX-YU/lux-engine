@@ -26,9 +26,5 @@ namespace lux::editor::flowforge
     [[nodiscard]] std::shared_ptr<sessions::SessionFactoryEntry> makeFlowSessionFactory(
         lux::object::CodeLease code = lux::object::CodeLease::builtin()
     );
-    [[nodiscard]] std::shared_ptr<commands::CommandEntry> makeNewFlowCommand(
-        commands::CommandEntry::Query,
-        sessions::SessionCreation,
-        lux::flowforge::FlowSourceEnvironment
-    );
+    [[nodiscard]] std::shared_ptr<commands::CommandEntry> makeNewFlowCommand();
 } // namespace lux::editor::flowforge

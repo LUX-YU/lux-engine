@@ -616,6 +616,69 @@ namespace
         return std::move(*result);
     }
 
+    void lazyFlowCreation()
+    {
+        lux::test::ObjectQueue messages;
+        services::ServiceRegistry dependencies{messages.dispatcherRef()};
+        auto root = take(dependencies.createScope());
+        auto scope = take(dependencies.createScope(&root));
+        commands::CommandRegistry commands{dependencies, scope};
+        SessionStore store{messages.dispatcherRef(), 4};
+        WriteCoordinator writes;
+        SaveService saves{writes};
+        std::vector<InstalledSession> installed;
+        auto available = true;
+        unsigned submitted{};
+        commands::CommandEntry::Query query =
+            [&](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
+        { return commands::CommandState{available}; };
+        SessionCreation create = [&](SessionPreparation input) -> commands::CommandResult<commands::DispatchReceipt>
+        {
+            auto prepared = take(std::move(input).prepare(store, saves));
+            installed.push_back(take(prepared.publish()));
+            ++submitted;
+            return commands::DispatchReceipt{commands::ImmediateCompletion{}};
+        };
+        assert(dependencies.publish(
+            {services::ServiceEntry::bind<ef::kFlowEnvironmentService>(object::CodeLease::builtin())}
+        ));
+        auto catalog = take(commands::CommandRegistrySnapshot::create({ef::makeNewFlowCommand()}));
+        assert(commands.publish(catalog));
+        const auto handle = take(catalog.find(commands::CommandIdView{"lux.editor.new.flow"}));
+        assert(dependencies.drained() && store.size() == 0);
+        auto missing = commands.execute(handle, commands::CommandInvocation{});
+        assert(!missing && missing.error().code == commands::ECommandError::DOMAIN_FAILURE);
+        assert(submitted == 0 && dependencies.drained());
+        assert(root.provide(kSessionCreation, create));
+        assert(root.provide(kSessionCreationAvailability, query));
+        assert(commands.execute(handle, commands::CommandInvocation{}));
+        available = false;
+        auto refused = commands.execute(handle, commands::CommandInvocation{});
+        assert(!refused && refused.error().code == commands::ECommandError::DISABLED && submitted == 1);
+        available = true;
+        assert(commands.execute(handle, commands::CommandInvocation{}) && submitted == 2);
+        for (auto& entry : installed)
+        {
+            const auto key = take(store.key<ef::FlowSession>(entry.id()));
+            auto& model = take(store.access<ef::FlowSession>().edit(key)).get();
+            const auto initial = model.describe();
+            assert(!initial.binding && initial.dirty && !take(model.historyView()).can_undo);
+            const auto bytes = take(take(model.read()).encode());
+            ef::FlowEditBatch edit{initial.current, "edit new Flow", {}};
+            edit.edits.emplace_back(ef::FlowRename{"created through declared dependencies"});
+            assert(model.apply(std::move(edit)) && model.undo());
+            assert(take(take(model.read()).encode()) == bytes);
+            assert(entry.close(model.describe().current));
+        }
+        assert(scope.beginClose());
+        auto closed = commands.execute(handle, commands::CommandInvocation{});
+        assert(!closed && closed.error().code == commands::ECommandError::CLOSED && submitted == 2);
+        assert(scope.release() && root.release());
+        (void)messages.collect();
+        assert(dependencies.drained());
+        std::cout << "PASS EC4 lazy New Flow command; exact borrowed admission; two real sessions and closed scope\n";
+    }
+
     void lazyFlowDecoder(process::ExecutionRuntime& runtime, asset::AssetVfs& vfs)
     {
         lux::test::ObjectQueue messages;
@@ -1005,6 +1068,7 @@ int main(int argc, char** argv)
     assert(argc == 2 || argc == 3);
     menuDescriptorLifetime();
     shortcutOverrides();
+    lazyFlowCreation();
     const auto root =
         std::filesystem::path(argv[1]) / std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
     std::filesystem::create_directories(root);

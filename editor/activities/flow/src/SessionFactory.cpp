@@ -222,31 +222,87 @@ namespace lux::editor::flowforge
 {
     namespace
     {
+        constexpr services::ServiceDependency new_dependencies[]{
+            {sessions::kSessionCreationAvailability,
+             1,
+             cxx::typeToken<commands::CommandEntry::Query>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT},
+            {sessions::kSessionCreation,
+             1,
+             cxx::typeToken<sessions::SessionCreation>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT},
+            {services::ServiceNameView{"lux.editor.flow.environment"}, 1, cxx::typeToken<FlowEnvironment>()}
+        };
+        commands::CommandResult<std::unique_ptr<commands::CommandBinding>> bindNewCommand(
+            services::ServiceResolver& resolver
+        ) noexcept
+        {
+            const auto failure = [](services::ServiceFailure error)
+            {
+                auto value = sessions::factoryFailure(std::move(error));
+                auto code = commands::ECommandError::DOMAIN_FAILURE;
+                switch (value.code)
+                {
+                case sessions::ESessionFactoryError::BUSY:
+                    code = commands::ECommandError::BUSY;
+                    break;
+                case sessions::ESessionFactoryError::CLOSED:
+                    code = commands::ECommandError::CLOSED;
+                    break;
+                default:
+                    break;
+                }
+                return cxx::unexpected(
+                    commands::CommandFailure{code, std::move(value.domain), value.domain_code, std::move(value.detail)}
+                );
+            };
+            auto available = resolver.require<commands::CommandEntry::Query>(0);
+            if (!available)
+            {
+                return failure(std::move(available.error()));
+            }
+            auto create = resolver.require<sessions::SessionCreation>(1);
+            if (!create)
+            {
+                return failure(std::move(create.error()));
+            }
+            const bool has_missing_endpoint = !available->get() || !create->get();
+            if (has_missing_endpoint)
+            {
+                return cxx::unexpected(commands::CommandFailure{
+                    commands::ECommandError::INVALID_ARGUMENT, "content.creation-endpoint"
+                });
+            }
+            auto environment = resolver.get<FlowEnvironment>(2);
+            if (!environment)
+            {
+                return failure(std::move(environment.error()));
+            }
+            return std::make_unique<commands::CommandBinding>(
+                [query = *available](const commands::CommandQuery& input) { return query.get()(input); },
+                [receiver = *create, environment = (*environment)->view()](const commands::CommandInvocation&)
+                {
+                    std::mt19937 random{std::random_device{}()};
+                    const asset::AssetId id{uuids::uuid_random_generator{random}()};
+                    lux::flowforge::FlowSource source;
+                    source.id = id;
+                    source.name = "Untitled Flow";
+                    return receiver.get()(prepareFlowSession({std::move(source)}, {}, {}, environment));
+                }
+            );
+        }
         constexpr commands::CommandDescriptor kNewCommand{
-            commands::CommandIdView{"lux.editor.new.flow"},
-            "New Flow",
-            "File"
+            .id = commands::CommandIdView{"lux.editor.new.flow"},
+            .label = "New Flow",
+            .group = "File",
+            .dependencies = new_dependencies,
+            .create = bindNewCommand
         };
     }
-    std::shared_ptr<commands::CommandEntry> makeNewFlowCommand(
-        commands::CommandEntry::Query query,
-        sessions::SessionCreation receiver,
-        lux::flowforge::FlowSourceEnvironment environment
-    )
+    std::shared_ptr<commands::CommandEntry> makeNewFlowCommand()
     {
-        return commands::CommandEntry::bind<kNewCommand>(
-            lux::object::CodeLease::builtin(),
-            std::move(query),
-            [create = std::move(receiver),
-             environment = std::move(environment)](const commands::CommandInvocation&) mutable
-            {
-                std::mt19937 random{std::random_device{}()};
-                const asset::AssetId id{uuids::uuid_random_generator{random}()};
-                lux::flowforge::FlowSource source;
-                source.id = id;
-                source.name = "Untitled Flow";
-                return create(prepareFlowSession({std::move(source)}, {}, {}, environment));
-            }
-        );
+        return commands::CommandEntry::bind<kNewCommand>(object::CodeLease::builtin());
     }
 } // namespace lux::editor::flowforge

@@ -154,6 +154,126 @@ namespace
         std::cout << "Two complete detached factories share one real lazy allocation; Root adopts both PASS\n";
     }
 
+    void configuredMount(object::ObjectMessageQueue& messages)
+    {
+        Counts counts;
+        EditorContext context{messages.dispatcherRef()};
+        auto& services = context.services();
+        auto& registry = context.ui();
+        assert(services.publish({ServiceEntry::bind<model_descriptor>(object::CodeLease::builtin())}));
+        assert(registry.publish(catalog()));
+        auto scope = services.createScope();
+        assert(scope && scope->provide(ServiceNameView{"ec4.counts"}, counts));
+        auto root = ui::Root::create(messages.dispatcherRef());
+        assert(root);
+        ui::Pane existing{messages.dispatcherRef(), ui::PaneId{"existing"}, ui::PaneTypeId{"plain"}, "Existing"};
+        assert((*root)->addSubPane(existing));
+        auto factory = registry.snapshot().find(descriptor.type);
+        assert(factory);
+        const auto requests = [&]
+        {
+            return std::vector<UiMountRequest>{
+                {*factory, {messages.dispatcherRef(), ui::PaneId{"left"}, {}, {}}, true},
+                {*factory, {messages.dispatcherRef(), ui::PaneId{"right"}, {}, {}}, false}
+            };
+        };
+        ui::DockTree docking;
+        docking.nodes.push_back({ui::EDockSplit::LEAF, UINT32_MAX, UINT32_MAX, .5f, {"existing", "left", "right"}});
+        docking.surfaces.push_back({0, {{0, 0}, {800, 600}}, false});
+        const auto revision = (*root)->windowRevision();
+        const auto original_docking = (*root)->captureDockTree();
+        const auto unchanged_docking = [&]
+        {
+            const auto current = (*root)->captureDockTree();
+            assert(current.nodes.size() == original_docking.nodes.size());
+            assert(current.surfaces.size() == original_docking.surfaces.size());
+            for (std::size_t i{}; i < current.nodes.size(); ++i)
+            {
+                const auto& a = current.nodes[i];
+                const auto& b = original_docking.nodes[i];
+                assert(a.split == b.split && a.first == b.first && a.second == b.second);
+                assert(a.ratio == b.ratio && a.windows == b.windows);
+            }
+            for (std::size_t i{}; i < current.surfaces.size(); ++i)
+            {
+                const auto& a = current.surfaces[i];
+                const auto& b = original_docking.surfaces[i];
+                assert(a.node == b.node && a.floating == b.floating);
+                assert(a.bounds.position.x == b.bounds.position.x && a.bounds.position.y == b.bounds.position.y);
+                assert(a.bounds.size.width == b.bounds.size.width && a.bounds.size.height == b.bounds.size.height);
+            }
+        };
+        auto invalid = requests();
+        invalid[1].input.configuration.bytes.push_back(std::byte{23});
+        unsigned guarded_cleanup{};
+        counts.destroying = [&]
+        {
+            auto service_publication = services.publish({});
+            auto ui_publication = registry.publish(catalog());
+            assert(!service_publication && service_publication.error().code == EServiceError::BUSY);
+            assert(!ui_publication && ui_publication.error().code == EUiError::BUSY);
+            ++guarded_cleanup;
+        };
+        auto refused = registry.mount(**root, *scope, invalid, docking);
+        assert(!refused && refused.error().code == EUiError::INVALID_CONFIGURATION);
+        assert(refused.error().domain_code == 42 && guarded_cleanup == 1);
+        assert(counts.windows == 1 && counts.windows_destroyed == 1);
+        assert((*root)->panes().size() == 1 && (*root)->windowRevision() == revision);
+        unchanged_docking();
+        assert(invalid[1].input.configuration.bytes == std::vector{std::byte{23}});
+        counts.destroying = {};
+        auto duplicate = requests();
+        duplicate[1].input.instance = duplicate[0].input.instance;
+        auto repeated = registry.mount(**root, *scope, std::move(duplicate));
+        assert(!repeated && repeated.error().code == EUiError::DUPLICATE && counts.windows == 1);
+
+        // A callback's independent window change cannot be overwritten by a previously captured layout.
+        counts.creating = [&] { existing.setVisible(false); };
+        auto changed = registry.mount(**root, *scope, requests(), docking);
+        assert(!changed && changed.error().code == EUiError::STALE_ROOT);
+        assert(!existing.visible() && (*root)->panes().size() == 1);
+        unchanged_docking();
+        counts.creating = {};
+
+        auto original = requests();
+        unsigned notifications{};
+        auto connection = object::LuxObject::connect(
+            root->get(),
+            &ui::Root::attachmentChanged,
+            [&](const ui::AttachmentChanged& change) noexcept
+            {
+                assert(change.mounted && (*root)->panes().size() == 3);
+                assert((*root)->findPane(ui::PaneIdView{"left"})->visible());
+                assert(!(*root)->findPane(ui::PaneIdView{"right"})->visible());
+                assert((*root)->captureDockTree().nodes[0].windows == docking.nodes[0].windows);
+                auto recursive = registry.mount(**root, *scope, {});
+                assert(!recursive && recursive.error().code == EUiError::BUSY);
+                ++notifications;
+            }
+        );
+        assert(connection);
+        counts.creating = [&]
+        {
+            // Mutating the caller's next request cannot change the already captured batch input.
+            original[1].input.configuration.bytes.push_back(std::byte{9});
+            auto publication = services.publish({});
+            assert(!publication && publication.error().code == EServiceError::BUSY);
+        };
+        auto mounted = registry.mount(**root, *scope, original, docking);
+        assert(mounted && notifications == 2 && !original[1].input.configuration.bytes.empty());
+        auto* left = static_cast<Window*>((*root)->findPane(ui::PaneIdView{"left"}));
+        auto* right = static_cast<Window*>((*root)->findPane(ui::PaneIdView{"right"}));
+        assert(left && right && left->model() == right->model());
+        counts.creating = {};
+        connection->disconnect();
+        root->reset();
+        assert(!existing.parent() && counts.windows == counts.windows_destroyed);
+        assert(counts.models == counts.models_destroyed);
+        assert(scope->release() && scope->drained() && services.drained());
+        std::cout
+            << "Captured configuration batch: Nth failure, guards, source, Root version and atomic docking PASS\n";
+    }
+
     void publication(object::ObjectMessageQueue& messages)
     {
         ServiceRegistry services{messages.dispatcherRef()};
@@ -367,6 +487,7 @@ int main()
     assert(created);
     auto messages = std::move(*created);
     sharing(messages);
+    configuredMount(messages);
     publication(messages);
     rejection(messages);
     dynamicBacking();

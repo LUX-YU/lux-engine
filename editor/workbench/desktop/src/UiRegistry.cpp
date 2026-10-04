@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <limits>
 #include <lux/engine/editor/desktop/UiRegistry.hpp>
+#include <lux/engine/ui/Root.hpp>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -378,6 +379,14 @@ namespace lux::editor::desktop
             return cxx::unexpected(std::move(admission.error()));
         }
         Impl::Guard guard{impl_->active};
+        return createImpl(handle, scope, input);
+    }
+    UiResult<std::unique_ptr<lux::ui::Pane, object::ObjectDeleter>> UiRegistry::createImpl(
+        const UiHandle& handle,
+        services::ServiceScope& scope,
+        const UiCreateInfo& input
+    ) noexcept
+    {
         const auto entry = handle.entry_;
         const bool missing = !entry || !impl_->current.data_ || !impl_->current.data_->handles.contains(entry.get());
         if (missing)
@@ -466,5 +475,84 @@ namespace lux::editor::desktop
             return cxx::unexpected(serviceFailure(std::move(resolved.error())));
         }
         return result;
+    }
+    UiResult<lux::ui::AttachmentCommit> UiRegistry::mount(
+        lux::ui::Root& root,
+        services::ServiceScope& scope,
+        std::vector<UiMountRequest> input,
+        std::optional<lux::ui::DockTree> docking
+    ) noexcept
+    {
+        if (auto admission = impl_->admission(); !admission)
+        {
+            return cxx::unexpected(std::move(admission.error()));
+        }
+        Impl::Guard guard{impl_->active};
+        auto services = impl_->services.readScope();
+        if (!services)
+        {
+            return cxx::unexpected(serviceFailure(std::move(services.error())));
+        }
+        // All foreign input/candidate cleanup precedes both guards. Never borrow a mutable
+        // caller vector or fill a new source stamp after a callback.
+        auto requests = std::move(input);
+        if (root.dispatcherRef() != impl_->dispatcher)
+        {
+            return reject(EUiError::WRONG_THREAD);
+        }
+        const auto revision = root.windowRevision();
+        std::unordered_set<std::string_view> names;
+        names.reserve(requests.size());
+        for (const auto& request : requests)
+        {
+            const bool duplicate =
+                !names.insert(request.input.instance.name()).second || root.findPane(request.input.instance.view());
+            if (duplicate)
+            {
+                return reject(EUiError::DUPLICATE, std::string{request.input.instance.name()});
+            }
+        }
+        std::optional<lux::ui::PreparedDockTree> prepared_docking;
+        if (docking)
+        {
+            auto prepared = root.prepareDockTree(std::move(*docking));
+            if (!prepared)
+            {
+                return cxx::unexpected(UiFailure{
+                    EUiError::INVALID_CONFIGURATION,
+                    "ui.docking",
+                    static_cast<std::uint64_t>(prepared.error()),
+                    {}
+                });
+            }
+            prepared_docking.emplace(std::move(*prepared));
+        }
+        std::vector<std::unique_ptr<lux::ui::Pane, object::ObjectDeleter>> owners;
+        std::vector<lux::ui::WindowVisibility> visibility;
+        owners.reserve(requests.size());
+        visibility.reserve(requests.size());
+        for (const auto& request : requests)
+        {
+            auto created = createImpl(request.factory, scope, request.input);
+            if (!created)
+            {
+                return cxx::unexpected(std::move(created.error()));
+            }
+            visibility.push_back({created->get(), request.visible});
+            owners.push_back(std::move(*created));
+        }
+        if (root.windowRevision() != revision)
+        {
+            // Preserve any legitimate callback change; never replace its state with an older layout.
+            return reject(EUiError::STALE_ROOT);
+        }
+        auto committed = root.addSubPanes(owners, visibility, prepared_docking ? &*prepared_docking : nullptr);
+        if (!committed)
+        {
+            return cxx::unexpected(
+                UiFailure{EUiError::ATTACHMENT, "ui.attachment", static_cast<std::uint64_t>(committed.error()), {}}
+            );
+        }
+        return std::move(*committed);
     }
 } // namespace lux::editor::desktop

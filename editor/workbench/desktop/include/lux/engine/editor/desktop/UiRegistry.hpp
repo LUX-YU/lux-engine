@@ -3,7 +3,9 @@
 #include <lux/engine/editor/views/ViewInfo.hpp>
 #include <lux/engine/editor/workspace/WorkspaceValues.hpp>
 #include <lux/engine/services/ServiceRegistry.hpp>
+#include <lux/engine/ui/Docking.hpp>
 #include <lux/engine/ui/Pane.hpp>
+#include <optional>
 
 namespace lux::editor::desktop
 {
@@ -17,6 +19,8 @@ namespace lux::editor::desktop
         HASH_COLLISION,
         NOT_FOUND,
         STALE_REGISTRATION,
+        STALE_ROOT,
+        ATTACHMENT,
         WRONG_THREAD,
         BUSY,
         CLOSED,
@@ -111,6 +115,14 @@ namespace lux::editor::desktop
         struct Data;
         std::shared_ptr<const Data> data_;
     };
+    // A resolved factory and an owned capture of its original configuration/content association.
+    // The source workspace/recovery document is not consumed or rewritten by a failed mount.
+    struct UiMountRequest final
+    {
+        UiHandle factory;
+        UiCreateInfo input;
+        bool visible{true};
+    };
     // Owns immutable factory metadata only. A successful creation is a standard unique owner;
     // Root's Object ownership relation takes over when the caller mounts the complete candidate.
     class UiRegistry final
@@ -162,8 +174,18 @@ namespace lux::editor::desktop
         [[nodiscard]] std::uint64_t revision() const noexcept;
         [[nodiscard]] UiResult<std::unique_ptr<lux::ui::Pane, object::ObjectDeleter>>
         create(const UiHandle&, services::ServiceScope&, const UiCreateInfo&) noexcept;
+        // One synchronous construction/commit boundary shared by configuration, menu and recovery.
+        // No retained window table: successful owners transfer directly to Root's Object relation.
+        [[nodiscard]] UiResult<lux::ui::AttachmentCommit> mount(
+            lux::ui::Root&,
+            services::ServiceScope&,
+            std::vector<UiMountRequest>,
+            std::optional<lux::ui::DockTree> = {}
+        ) noexcept;
 
     private:
+        [[nodiscard]] UiResult<std::unique_ptr<lux::ui::Pane, object::ObjectDeleter>>
+        createImpl(const UiHandle&, services::ServiceScope&, const UiCreateInfo&) noexcept;
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };

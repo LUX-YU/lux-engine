@@ -125,6 +125,9 @@ namespace lux::editor::desktop
             Publication& operator=(const Publication&) = delete;
             Publication& operator=(Publication&&) = delete;
             void commit() noexcept;
+            // Clean abandoned/retired code before any participant releases its publication guard.
+            // An uncommitted permission is consumed; protection continues until destruction.
+            void clearRetained() noexcept;
 
         private:
             friend class UiRegistry;

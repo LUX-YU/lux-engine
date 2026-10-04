@@ -1,8 +1,8 @@
 #pragma once
 
+#include <lux/cxx/core/move_only_function.hpp>
 #include <lux/engine/editor/commands/Command.hpp>
 #include <lux/engine/ui/Shortcut.hpp>
-#include <lux/cxx/core/move_only_function.hpp>
 #include <span>
 #include <vector>
 
@@ -19,7 +19,11 @@ namespace lux::editor::commands
         using Execute = cxx::move_only_function<CommandResult<DispatchReceipt>(const CommandInvocation&)>;
         // Fixed declarations have static storage, including plugin literals retained by code.
         template <const CommandDescriptor& Descriptor>
-        [[nodiscard]] static std::shared_ptr<CommandEntry> bind(lux::object::CodeLease code, Query query, Execute execute)
+        [[nodiscard]] static std::shared_ptr<CommandEntry> bind(
+            lux::object::CodeLease code,
+            Query query,
+            Execute execute
+        )
         {
             static_assert(
                 Descriptor.id.isValid() && !Descriptor.label.empty() && Descriptor.input_version != 0,
@@ -130,6 +134,9 @@ namespace lux::editor::commands
             // Prepared non-allocating swap, with no callbacks. Returns old owners for guarded cleanup.
             // Requires the original owner thread and an unconsumed publication permission.
             [[nodiscard]] CommandRegistrySnapshot commit() noexcept;
+            // Discard an uncommitted candidate inside all participating publication guards.
+            // The batch continues to reject ordinary publication until destruction.
+            void clearRetained() noexcept;
 
         private:
             friend class CommandRegistry;

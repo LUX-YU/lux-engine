@@ -249,6 +249,19 @@ namespace lux::editor::desktop
     UiRegistry::Publication::Publication(std::unique_ptr<State> state) noexcept : state_(std::move(state)) {}
     UiRegistry::Publication::~Publication() = default;
     UiRegistry::Publication::Publication(Publication&&) noexcept = default;
+    void UiRegistry::Publication::clearRetained() noexcept
+    {
+        if (!state_)
+        {
+            return;
+        }
+        if (!state_->owner.dispatcher.isCurrent())
+        {
+            std::terminate();
+        }
+        state_->committed = true;
+        state_->candidate = {};
+    }
     void UiRegistry::Publication::commit() noexcept
     {
         const bool invalid = !state_ || state_->committed;

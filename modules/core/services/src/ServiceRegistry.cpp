@@ -345,6 +345,19 @@ namespace lux::services
     ServiceRegistry::Publication::Publication(std::unique_ptr<State> state) noexcept : state_(std::move(state)) {}
     ServiceRegistry::Publication::~Publication() = default;
     ServiceRegistry::Publication::Publication(Publication&&) noexcept = default;
+    void ServiceRegistry::Publication::clearRetained() noexcept
+    {
+        if (!state_)
+        {
+            return;
+        }
+        if (state_->owner.impl_->callbacks->owner != std::this_thread::get_id())
+        {
+            std::terminate();
+        }
+        state_->committed = true;
+        state_->candidate.clear();
+    }
     void ServiceRegistry::Publication::commit() noexcept
     {
         const bool invalid = !state_ || state_->committed;

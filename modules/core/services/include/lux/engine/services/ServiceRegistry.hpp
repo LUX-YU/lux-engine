@@ -139,6 +139,9 @@ namespace lux::services
             Publication& operator=(const Publication&) = delete;
             // One prepared swap, without allocation or callbacks. Old code remains protected until destruction.
             void commit() noexcept;
+            // Release the abandoned candidate or retired definitions while every participant is
+            // still guarded. This consumes an uncommitted permission; the guard remains until return.
+            void clearRetained() noexcept;
 
         private:
             friend class ServiceRegistry;

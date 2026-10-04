@@ -2,6 +2,7 @@
 #include <cassert>
 #include <functional>
 #include <iostream>
+#include <lux/engine/editor/commands/CommandRegistry.hpp>
 #include <lux/engine/editor/desktop/EditorContext.hpp>
 #include <lux/engine/editor/desktop/UiRegistry.hpp>
 #include <lux/engine/ui/Root.hpp>
@@ -260,6 +261,104 @@ namespace
         assert(!capacity && capacity.error().code == EUiError::CAPACITY);
         std::cout << "Dynamic declarations freeze one backing and reject duplicate/capacity PASS\n";
     }
+
+    void compoundCleanup(object::ObjectMessageQueue& messages, bool commit)
+    {
+        EditorContext context{messages.dispatcherRef()};
+        constexpr commands::CommandDescriptor command_descriptor{commands::CommandIdView{"ec4.compound"}, "Compound"};
+        unsigned cleaned{};
+        const auto check_guards = [&]
+        {
+            auto services = context.services().publish({});
+            assert(!services && services.error().code == EServiceError::BUSY);
+            auto ui = context.ui().publish(catalog());
+            assert(!ui && ui.error().code == EUiError::BUSY);
+            auto commands = context.commands().publish({});
+            assert(!commands && commands.error().code == commands::ECommandError::BUSY);
+        };
+        struct Code final
+        {
+            std::function<void()> cleanup;
+            ~Code()
+            {
+                cleanup();
+            }
+        };
+        const auto pin = [&]
+        {
+            return object::CodeLease::plugin(std::make_shared<Code>(
+                [&]
+                {
+                    check_guards();
+                    ++cleaned;
+                }
+            ));
+        };
+        const auto command_catalog = [&](object::CodeLease code)
+        {
+            auto entry = commands::CommandEntry::create(
+                std::move(code),
+                command_descriptor,
+                [](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
+                { return commands::CommandState{}; },
+                [](const commands::CommandInvocation&) -> commands::CommandResult<commands::DispatchReceipt>
+                { return commands::DispatchReceipt{}; }
+            );
+            auto result = commands::CommandRegistrySnapshot::create({std::move(entry)});
+            assert(result);
+            return std::move(*result);
+        };
+        if (commit)
+        {
+            assert(context.services().publish({ServiceEntry::bind<model_descriptor>(pin())}));
+            auto ui = UiCatalog::prepare({UiEntry::bind<descriptor>(pin())});
+            assert(ui && context.ui().publish(std::move(*ui)));
+            assert(context.commands().publish(command_catalog(pin())));
+        }
+        const auto code = [&] { return commit ? object::CodeLease::builtin() : pin(); };
+        const auto ui_revision = context.ui().revision();
+        const auto command_revision = context.commands().revision();
+        {
+            auto services = context.services().preparePublication({ServiceEntry::bind<model_descriptor>(code())});
+            auto ui_catalog = UiCatalog::prepare({UiEntry::bind<descriptor>(code())});
+            assert(services && ui_catalog);
+            auto ui = context.ui().preparePublication(std::move(*ui_catalog));
+            auto commands = context.commands().preparePublication(command_catalog(code()));
+            assert(ui && commands);
+            commands::CommandRegistrySnapshot old_commands;
+            // Concrete multi-owner scope: every foreign cleanup finishes before any guard leaves.
+            struct Cleanup final
+            {
+                ServiceRegistry::Publication& services;
+                UiRegistry::Publication& ui;
+                commands::CommandRegistry::Batch& commands;
+                commands::CommandRegistrySnapshot& old_commands;
+                ~Cleanup()
+                {
+                    old_commands = {};
+                    commands.clearRetained();
+                    ui.clearRetained();
+                    services.clearRetained();
+                }
+            } cleanup{*services, *ui, *commands, old_commands};
+            if (commit)
+            {
+                services->commit();
+                ui->commit();
+                old_commands = commands->commit();
+            }
+            check_guards();
+            assert(cleaned == 0);
+        }
+        assert(cleaned == 3);
+        assert(context.ui().revision() == ui_revision + unsigned(commit));
+        assert(context.commands().revision() == command_revision + unsigned(commit));
+        assert(context.services().publish({}));
+        assert(context.ui().publish(catalog()));
+        assert(context.commands().publish({}));
+        std::cout << "Three participant guards cover " << (commit ? "retired" : "abandoned")
+                  << " owners and callback publication PASS\n";
+    }
 } // namespace
 
 int main()
@@ -271,4 +370,6 @@ int main()
     publication(messages);
     rejection(messages);
     dynamicBacking();
+    compoundCleanup(messages, false);
+    compoundCleanup(messages, true);
 }

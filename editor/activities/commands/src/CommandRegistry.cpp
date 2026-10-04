@@ -36,17 +36,23 @@ namespace lux::editor::commands
             const bool is_scope_mismatch = static_cast<std::size_t>(entry.scope) != query.target.index();
             const bool is_argument_mismatch = entry.argument_type != query.arguments.type() || !query.arguments.valid();
             if (is_scope_mismatch || is_argument_mismatch)
+            {
                 return failure(ECommandError::INVALID_ARGUMENT);
+            }
             if (const auto* target = std::get_if<SessionTarget>(&query.target))
             {
                 const bool is_invalid_id = !target->id.valid();
                 const bool is_invalid_stamp =
                     target->based_on && (target->based_on->session != target->id || !target->based_on->state.valid());
                 if (is_invalid_id || is_invalid_stamp)
+                {
                     return failure(ECommandError::INVALID_ARGUMENT);
+                }
             }
             if (const auto* target = std::get_if<views::ViewId>(&query.target); target && !target->valid())
+            {
                 return failure(ECommandError::INVALID_ARGUMENT);
+            }
             return {};
         }
         struct CallScope final
@@ -237,17 +243,23 @@ namespace lux::editor::commands
     )
     {
         for (auto& entry : entries)
+        {
             if (entry)
             {
                 auto code = entry->code_;
                 entry = lux::object::pinCodeOwner(std::move(code), std::move(entry));
             }
+        }
         if (entries.size() > capacity)
+        {
             return failure(ECommandError::CAPACITY);
+        }
         for (std::size_t i{}; i < entries.size(); ++i)
         {
             if (!entries[i])
+            {
                 return failure(ECommandError::INVALID_ARGUMENT);
+            }
             const auto& entry = *entries[i];
             const auto& descriptor = entry.descriptor();
             count(0);
@@ -259,7 +271,9 @@ namespace lux::editor::commands
             const bool is_invalid_binding = !entry.code_.valid() || !entry.query_ || !entry.execute_;
             const bool is_invalid = is_invalid_identity || is_invalid_description || is_invalid_binding;
             if (is_invalid)
+            {
                 return failure(ECommandError::INVALID_ARGUMENT);
+            }
         }
         auto index = detail::commandIndex(entries, [](CommandIdView id) { return id.hash(); });
         if (!index)
@@ -392,18 +406,26 @@ namespace lux::editor::commands
         CommandResult<void> canBeginBatch() const noexcept
         {
             if (owner != std::this_thread::get_id())
+            {
                 return failure(ECommandError::WRONG_THREAD);
+            }
             const bool is_active = calling || dispatching || batch_active;
             if (is_active)
+            {
                 return failure(ECommandError::BUSY);
+            }
             return {};
         }
         CommandResult<void> canCall() const noexcept
         {
             if (owner != std::this_thread::get_id())
+            {
                 return failure(ECommandError::WRONG_THREAD);
+            }
             if (calling)
+            {
                 return failure(ECommandError::BUSY);
+            }
             return {};
         }
     };
@@ -412,9 +434,13 @@ namespace lux::editor::commands
     CommandResult<void> CommandRegistry::canPublish() const noexcept
     {
         if (const auto ready = impl_->canBeginBatch(); !ready)
+        {
             return cxx::unexpected(ready.error());
+        }
         if (impl_->revision == UINT64_MAX)
+        {
             return failure(ECommandError::CAPACITY);
+        }
         return {};
     }
     CommandRegistry::Batch::Batch(CommandRegistry& owner, std::optional<CommandRegistrySnapshot> candidate) noexcept
@@ -431,37 +457,57 @@ namespace lux::editor::commands
         // Abandoned candidate destructors run while the participating owner still rejects publication.
         candidate_.reset();
         if (owner_)
+        {
             owner_->impl_->batch_active = false;
+        }
     }
     CommandRegistrySnapshot CommandRegistry::Batch::commit() noexcept
     {
         const bool is_invalid = !owner_ || !candidate_;
         if (is_invalid)
+        {
             std::terminate();
+        }
         if (owner_->impl_->owner != std::this_thread::get_id())
+        {
             std::terminate();
+        }
         auto previous = std::exchange(owner_->impl_->current, std::move(*candidate_));
         candidate_.reset();
         ++owner_->impl_->revision;
         return previous;
     }
+    void CommandRegistry::Batch::clearRetained() noexcept
+    {
+        if (owner_ && owner_->impl_->owner != std::this_thread::get_id())
+        {
+            std::terminate();
+        }
+        candidate_.reset();
+    }
     CommandResult<CommandRegistry::Batch> CommandRegistry::readBatch() noexcept
     {
         if (const auto ready = impl_->canBeginBatch(); !ready)
+        {
             return cxx::unexpected(ready.error());
+        }
         return Batch{*this, std::nullopt};
     }
     CommandResult<CommandRegistry::Batch> CommandRegistry::preparePublication(CommandRegistrySnapshot candidate
     ) noexcept
     {
         if (const auto ready = canPublish(); !ready)
+        {
             return cxx::unexpected(ready.error());
+        }
         return Batch{*this, std::move(candidate)};
     }
     CommandResult<CommandRegistrySnapshot> CommandRegistry::publish(CommandRegistrySnapshot candidate) noexcept
     {
         if (const auto ready = canPublish(); !ready)
+        {
             return cxx::unexpected(ready.error());
+        }
         auto previous = std::exchange(impl_->current, std::move(candidate));
         ++impl_->revision;
         return previous;
@@ -474,10 +520,14 @@ namespace lux::editor::commands
     {
         const auto ready = impl_->canCall();
         if (!ready)
+        {
             return ready;
+        }
         const bool is_active = impl_->dispatching || impl_->batch_active;
         if (is_active)
+        {
             return failure(ECommandError::BUSY);
+        }
         impl_->dispatching = true;
         return {};
     }
@@ -492,15 +542,23 @@ namespace lux::editor::commands
     CommandResult<CommandState> CommandRegistry::query(CommandHandle handle, const CommandQuery& input)
     {
         if (const auto ready = impl_->canCall(); !ready)
+        {
             return cxx::unexpected(ready.error());
+        }
         CallScope scope{impl_->calling};
         auto pinned = std::move(handle);
         if (!pinned.valid())
+        {
             return failure(ECommandError::INVALID_ARGUMENT);
+        }
         if (const auto checked = validate(pinned.descriptor(), input); !checked)
+        {
             return cxx::unexpected(checked.error());
+        }
         if (pinned.entry_->code_.sameOwner(lux::object::CodeLease::builtin()))
+        {
             return pinned.entry_->query_(input);
+        }
         // Foreign callable boundary only; built-in dispatch does not pay for exception containment.
         try
         {
@@ -518,24 +576,36 @@ namespace lux::editor::commands
     CommandResult<DispatchReceipt> CommandRegistry::execute(CommandHandle handle, const CommandInvocation& input)
     {
         if (const auto ready = impl_->canCall(); !ready)
+        {
             return cxx::unexpected(ready.error());
+        }
         CallScope scope{impl_->calling};
         auto pinned = std::move(handle);
         if (!pinned.valid())
+        {
             return failure(ECommandError::INVALID_ARGUMENT);
+        }
         if (const auto checked = validate(pinned.descriptor(), input.query()); !checked)
+        {
             return cxx::unexpected(checked.error());
+        }
         auto invoke = [&]() -> CommandResult<DispatchReceipt>
         {
             const auto state = pinned.entry_->query_(input.query());
             if (!state)
+            {
                 return cxx::unexpected(state.error());
+            }
             if (!state->enabled)
+            {
                 return cxx::unexpected(CommandFailure{ECommandError::DISABLED, "command", 0, state->reason});
+            }
             return pinned.entry_->execute_(input);
         };
         if (pinned.entry_->code_.sameOwner(lux::object::CodeLease::builtin()))
+        {
             return invoke();
+        }
         try
         {
             return invoke();

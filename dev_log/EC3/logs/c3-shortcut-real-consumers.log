@@ -1,0 +1,21 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dev
+    Start  79: editor.commands
+1/4 Test  #79: editor.commands ..................   Passed    0.04 sec
+    Start 121: editor.scene_views_gpu
+2/4 Test #121: editor.scene_views_gpu ...........   Passed    2.83 sec
+    Start 135: editor.sessions.installation
+3/4 Test #135: editor.sessions.installation .....   Passed    0.43 sec
+    Start 137: editor.application
+4/4 Test #137: editor.application ...............   Passed    1.73 sec
+
+100% tests passed, 0 tests failed out of 4
+
+Label Time Summary:
+P10       =   2.83 sec*proc (1 test)
+P11       =   0.47 sec*proc (2 tests)
+P12       =   1.73 sec*proc (1 test)
+editor    =   5.02 sec*proc (4 tests)
+gpu       =   4.55 sec*proc (2 tests)
+native    =   0.47 sec*proc (2 tests)
+
+Total Test time (real) =   5.14 sec

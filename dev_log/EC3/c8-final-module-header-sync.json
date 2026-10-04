@@ -1,0 +1,122 @@
+[
+  {
+    "source": "modules/function/ui/include/lux/engine/ui/FontSource.hpp",
+    "target": "E:\\SyncForder\\CodeRepos\\install\\Debug\\include\\lux\\engine\\ui\\FontSource.hpp",
+    "sha256": "b7504286dcb35c97fac2cab0f9e32f2d4837a75906778cf5db6c15fcf538c2ca"
+  },
+  {
+    "source": "modules/function/ui/include/lux/engine/ui/FontSource.hpp",
+    "target": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\ui\\FontSource.hpp",
+    "sha256": "b7504286dcb35c97fac2cab0f9e32f2d4837a75906778cf5db6c15fcf538c2ca"
+  },
+  {
+    "source": "modules/function/ui/include/lux/engine/ui/FontSource.hpp",
+    "target": "E:\\SyncForder\\CodeRepos\\install\\Android\\lux-engine\\include\\lux\\engine\\ui\\FontSource.hpp",
+    "sha256": "b7504286dcb35c97fac2cab0f9e32f2d4837a75906778cf5db6c15fcf538c2ca"
+  },
+  {
+    "source": "modules/function/ui/include/lux/engine/ui/Menu.hpp",
+    "target": "E:\\SyncForder\\CodeRepos\\install\\Debug\\include\\lux\\engine\\ui\\Menu.hpp",
+    "sha256": "73b8a8728414660a151855951996b7313fd4ddbc2d95fe9bec2206c36e19cd45"
+  },
+  {
+    "source": "modules/function/ui/include/lux/engine/ui/Menu.hpp",
+    "target": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\ui\\Menu.hpp",
+    "sha256": "73b8a8728414660a151855951996b7313fd4ddbc2d95fe9bec2206c36e19cd45"
+  },
+  {
+    "source": "modules/function/ui/include/lux/engine/ui/Menu.hpp",
+    "target": "E:\\SyncForder\\CodeRepos\\install\\Android\\lux-engine\\include\\lux\\engine\\ui\\Menu.hpp",
+    "sha256": "73b8a8728414660a151855951996b7313fd4ddbc2d95fe9bec2206c36e19cd45"
+  },
+  {
+    "source": "modules/function/ui/include/lux/engine/ui/Root.hpp",
+    "target": "E:\\SyncForder\\CodeRepos\\install\\Debug\\include\\lux\\engine\\ui\\Root.hpp",
+    "sha256": "4e2b653cd53fc173f30ff84ccbef12f6be8027f03eec734b0b73cb7465377d9e"
+  },
+  {
+    "source": "modules/function/ui/include/lux/engine/ui/Root.hpp",
+    "target": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\ui\\Root.hpp",
+    "sha256": "4e2b653cd53fc173f30ff84ccbef12f6be8027f03eec734b0b73cb7465377d9e"
+  },
+  {
+    "source": "modules/function/ui/include/lux/engine/ui/Root.hpp",
+    "target": "E:\\SyncForder\\CodeRepos\\install\\Android\\lux-engine\\include\\lux\\engine\\ui\\Root.hpp",
+    "sha256": "4e2b653cd53fc173f30ff84ccbef12f6be8027f03eec734b0b73cb7465377d9e"
+  },
+  {
+    "source": "modules/function/ui/include/lux/engine/ui/Shortcut.hpp",
+    "target": "E:\\SyncForder\\CodeRepos\\install\\Debug\\include\\lux\\engine\\ui\\Shortcut.hpp",
+    "sha256": "35f4d9b21e44c3d68c906e2d4141625652dfd514b5b77b2814ae2fd3264c8082"
+  },
+  {
+    "source": "modules/function/ui/include/lux/engine/ui/Shortcut.hpp",
+    "target": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\ui\\Shortcut.hpp",
+    "sha256": "35f4d9b21e44c3d68c906e2d4141625652dfd514b5b77b2814ae2fd3264c8082"
+  },
+  {
+    "source": "modules/function/ui/include/lux/engine/ui/Shortcut.hpp",
+    "target": "E:\\SyncForder\\CodeRepos\\install\\Android\\lux-engine\\include\\lux\\engine\\ui\\Shortcut.hpp",
+    "sha256": "35f4d9b21e44c3d68c906e2d4141625652dfd514b5b77b2814ae2fd3264c8082"
+  },
+  {
+    "source": "modules/platform/window/include/lux/engine/window/GlfwRuntime.hpp",
+    "target": "E:\\SyncForder\\CodeRepos\\install\\Debug\\include\\lux\\engine\\window\\GlfwRuntime.hpp",
+    "sha256": "a6a8e965bb42eb16cc1dd833e4f09714f6d30033380abd77626fa820c88ac692"
+  },
+  {
+    "source": "modules/platform/window/include/lux/engine/window/GlfwRuntime.hpp",
+    "target": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\window\\GlfwRuntime.hpp",
+    "sha256": "a6a8e965bb42eb16cc1dd833e4f09714f6d30033380abd77626fa820c88ac692"
+  },
+  {
+    "source": "modules/platform/window/include/lux/engine/window/GlfwRuntime.hpp",
+    "target": "E:\\SyncForder\\CodeRepos\\install\\Android\\lux-engine\\include\\lux\\engine\\window\\GlfwRuntime.hpp",
+    "sha256": "a6a8e965bb42eb16cc1dd833e4f09714f6d30033380abd77626fa820c88ac692"
+  },
+  {
+    "source": "modules/platform/window/include/lux/engine/window/LuxWindow.hpp",
+    "target": "E:\\SyncForder\\CodeRepos\\install\\Debug\\include\\lux\\engine\\window\\LuxWindow.hpp",
+    "sha256": "22c29bb4a17c9332d2cf1640b08c5239ac29783c9efa7facf4eb2dc37de21580"
+  },
+  {
+    "source": "modules/platform/window/include/lux/engine/window/LuxWindow.hpp",
+    "target": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\window\\LuxWindow.hpp",
+    "sha256": "22c29bb4a17c9332d2cf1640b08c5239ac29783c9efa7facf4eb2dc37de21580"
+  },
+  {
+    "source": "modules/platform/window/include/lux/engine/window/LuxWindow.hpp",
+    "target": "E:\\SyncForder\\CodeRepos\\install\\Android\\lux-engine\\include\\lux\\engine\\window\\LuxWindow.hpp",
+    "sha256": "22c29bb4a17c9332d2cf1640b08c5239ac29783c9efa7facf4eb2dc37de21580"
+  },
+  {
+    "source": "modules/platform/window/include/lux/engine/window/WindowEvents.hpp",
+    "target": "E:\\SyncForder\\CodeRepos\\install\\Debug\\include\\lux\\engine\\window\\WindowEvents.hpp",
+    "sha256": "00ec877f1c701aef83dc2b92b9d63dfcff311b7f3f7a0328ec40e1f0f6e868e2"
+  },
+  {
+    "source": "modules/platform/window/include/lux/engine/window/WindowEvents.hpp",
+    "target": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\window\\WindowEvents.hpp",
+    "sha256": "00ec877f1c701aef83dc2b92b9d63dfcff311b7f3f7a0328ec40e1f0f6e868e2"
+  },
+  {
+    "source": "modules/platform/window/include/lux/engine/window/WindowEvents.hpp",
+    "target": "E:\\SyncForder\\CodeRepos\\install\\Android\\lux-engine\\include\\lux\\engine\\window\\WindowEvents.hpp",
+    "sha256": "00ec877f1c701aef83dc2b92b9d63dfcff311b7f3f7a0328ec40e1f0f6e868e2"
+  },
+  {
+    "source": "modules/platform/window/include/lux/engine/window/WindowPlacement.hpp",
+    "target": "E:\\SyncForder\\CodeRepos\\install\\Debug\\include\\lux\\engine\\window\\WindowPlacement.hpp",
+    "sha256": "57df407f83f6d3e991c0839bbd2300c5306203f2e1ffff82a4e55232b44764c3"
+  },
+  {
+    "source": "modules/platform/window/include/lux/engine/window/WindowPlacement.hpp",
+    "target": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\window\\WindowPlacement.hpp",
+    "sha256": "57df407f83f6d3e991c0839bbd2300c5306203f2e1ffff82a4e55232b44764c3"
+  },
+  {
+    "source": "modules/platform/window/include/lux/engine/window/WindowPlacement.hpp",
+    "target": "E:\\SyncForder\\CodeRepos\\install\\Android\\lux-engine\\include\\lux\\engine\\window\\WindowPlacement.hpp",
+    "sha256": "57df407f83f6d3e991c0839bbd2300c5306203f2e1ffff82a4e55232b44764c3"
+  }
+]

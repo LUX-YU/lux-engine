@@ -1,0 +1,42 @@
+[0/2] Re-checking globbed directories...
+[1/37] Building CXX object editor\activities\commands\CMakeFiles\editor_commands.dir\src\CommandDispatcher.cpp.obj
+[2/37] Building CXX object editor\activities\commands\CMakeFiles\editor_commands.dir\src\CommandRegistry.cpp.obj
+[3/37] Building CXX object editor\workbench\desktop\CMakeFiles\desktop_shell.dir\src\CommandMenu.cpp.obj
+[4/37] Linking CXX static library lib\editor_commands.lib
+[5/37] Building CXX object editor\activities\commands\CMakeFiles\editor_commands_test.dir\test\commands.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[6/37] Linking CXX static library lib\desktop_shell.lib
+[7/37] Linking CXX executable bin\editor_commands_test.exe
+[8/37] Linking CXX executable bin\editor_project_views_test.exe
+[9/37] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorContent.cpp.obj
+[10/37] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorWorkspace.cpp.obj
+[11/37] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorCommands.cpp.obj
+[12/37] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorSceneTools.cpp.obj
+[13/37] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorSaving.cpp.obj
+[14/37] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorResults.cpp.obj
+[15/37] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorSettings.cpp.obj
+[16/37] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorProjectTools.cpp.obj
+[17/37] Building CXX object editor\application\extensions\CMakeFiles\editor_contributions_test.dir\test\contributions.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[18/37] Linking CXX executable bin\editor_contributions_test.exe
+[19/37] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\Launcher.cpp.obj
+[20/37] Linking CXX shared library bin\lux_engine_scene_render_meta.dll
+[21/37] Linking CXX shared library bin\lux_engine_function_render_feature_meta.dll
+[22/37] Building CXX object editor\application\CMakeFiles\editor_bootstrap.dir\src\EditorProjectCreation.cpp.obj
+[23/37] Linking CXX shared library bin\physics2d_editor.dll
+[24/37] Linking CXX executable bin\plugin_configuration_test.exe
+[25/37] Building CXX object editor\application\extensions\CMakeFiles\editor_builtin_contributions.dir\src\BuiltinContributions.cpp.obj
+[26/37] Linking CXX static library lib\editor_builtin_contributions.lib
+[27/37] Linking CXX static library lib\editor_bootstrap.lib
+[28/37] Linking CXX executable bin\plugin_library_test.exe
+[29/37] Linking CXX executable bin\editor_ui_presentation.exe
+[30/37] Linking CXX executable bin\lux_launcher.exe
+[31/37] Linking CXX executable bin\lux_editor.exe
+[32/37] Linking CXX executable bin\editor_scene_configuration.exe
+[33/37] Linking CXX executable bin\editor_application_test.exe
+[34/37] Building CXX object editor\tests\integration\session_factories\CMakeFiles\editor_session_installation_test.dir\installation.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[35/37] Linking CXX executable bin\editor_session_installation_test.exe
+[36/37] Building CXX object editor\tests\integration\scene_views\CMakeFiles\editor_scene_views_test.dir\views.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[37/37] Linking CXX executable bin\editor_scene_views_test.exe

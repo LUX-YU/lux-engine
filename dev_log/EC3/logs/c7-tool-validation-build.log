@@ -1,0 +1,14 @@
+[0/2] Re-checking globbed directories...
+[1/30] Building CXX object editor\workbench\scene\CMakeFiles\lux_inspector_generator.dir\codegen\InspectorGenerator.cpp.obj
+[2/30] Building CXX object editor\workbench\scene\CMakeFiles\lux_inspector_generator.dir\codegen\InspectorModel.cpp.obj
+[3/30] Linking CXX executable bin\lux_inspector_generator.exe
+[4/30] Generate Inspector MetaUnit/inja author and Run projections: scene_fields_hierarchy
+Editor Inspector: 1 component(s), validated MetaUnit and explicit author/Run inja projections
+[5/29] Generate Inspector MetaUnit/inja author and Run projections: scene_fields_camera
+Editor Inspector: 1 component(s), validated MetaUnit and explicit author/Run inja projections
+[6/28] Generate Inspector MetaUnit/inja author and Run projections: scene_fields_visual
+Editor Inspector: 2 component(s), validated MetaUnit and explicit author/Run inja projections
+[7/26] Generate Inspector MetaUnit/inja author and Run projections: scene_fields_transform
+Editor Inspector: 2 component(s), validated MetaUnit and explicit author/Run inja projections
+[8/12] Generate Inspector MetaUnit/inja author and Run projections: consumer
+Editor Inspector: 1 component(s), validated MetaUnit and explicit author/Run inja projections

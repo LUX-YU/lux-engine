@@ -1,0 +1,10 @@
+[0/2] Re-checking globbed directories...
+[1/6] Generate Inspector MetaUnit/inja author and Run projections: a_fields
+Editor Inspector: 1 component(s), validated MetaUnit and explicit author/Run inja projections
+[2/6] Generate Inspector MetaUnit/inja author and Run projections: b_fields
+Editor Inspector: 1 component(s), validated MetaUnit and explicit author/Run inja projections
+[3/5] Building CXX object CMakeFiles\generation_consumer.dir\inspector_gen\b_fields\b__Component_8814d7b7.inspector.generated.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[4/5] Building CXX object CMakeFiles\generation_consumer.dir\inspector_gen\a_fields\a__Component_4e294f2e.inspector.generated.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[5/5] Linking CXX executable bin\generation_consumer.exe

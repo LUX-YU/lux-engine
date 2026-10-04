@@ -1,0 +1,211 @@
+[1/199] Building CXX object compile_time\CMakeFiles\compile_time_new_header_self_containment.dir\header_self_containment\lux_cxx_compile_time_TypeToken_hpp.cpp.obj
+[2/199] Building CXX object compile_time\test\CMakeFiles\type_token_test.dir\type_token_test.cpp.obj
+[3/199] Building CXX object compile_time\CMakeFiles\compile_time_new_header_self_containment.dir\header_self_containment\lux_cxx_compile_time_expected_hpp.cpp.obj
+[4/199] Building CXX object compile_time\test\CMakeFiles\type_info_test.dir\type_info_test.cpp.obj
+[5/199] Building CXX object compile_time\test\CMakeFiles\function_traits_test.dir\function_traits_test.cpp.obj
+[6/199] Building CXX object compile_time\test\CMakeFiles\computer_pipeline_test.dir\computer_pipeline_test.cpp.obj
+[7/199] Linking CXX executable compile_time\test\type_token_test.exe
+[8/199] Linking CXX executable compile_time\test\type_info_test.exe
+[9/199] Building CXX object compile_time\test\CMakeFiles\sequence_sort_test.dir\sequence_sort_test.cpp.obj
+[10/199] Linking CXX executable compile_time\test\function_traits_test.exe
+[11/199] Building CXX object compile_time\test\CMakeFiles\compile_time_string_test.dir\compile_time_string_test.cpp.obj
+[12/199] Linking CXX executable compile_time\test\computer_pipeline_test.exe
+[13/199] Building CXX object compile_time\test\CMakeFiles\fixed_string_test.dir\fixed_string_test.cpp.obj
+[14/199] Linking CXX executable compile_time\test\sequence_sort_test.exe
+[15/199] Building CXX object compile_time\test\CMakeFiles\type_map_test.dir\type_map_test.cpp.obj
+[16/199] Linking CXX executable compile_time\test\compile_time_string_test.exe
+[17/199] Building CXX object core\CMakeFiles\core_header_self_containment.dir\header_self_containment\lux_cxx_core_CheckedArithmetic_hpp.cpp.obj
+[18/199] Building CXX object core\CMakeFiles\core_header_self_containment.dir\header_self_containment\lux_cxx_core_Core_hpp.cpp.obj
+[19/199] Building CXX object core\CMakeFiles\core_header_self_containment.dir\header_self_containment\lux_cxx_core_Delegate_hpp.cpp.obj
+[20/199] Building CXX object core\CMakeFiles\core_header_self_containment.dir\header_self_containment\lux_cxx_core_EnumFlags_hpp.cpp.obj
+[21/199] Linking CXX executable compile_time\test\fixed_string_test.exe
+[22/199] Building CXX object core\CMakeFiles\core_header_self_containment.dir\header_self_containment\lux_cxx_core_FixedText_hpp.cpp.obj
+[23/199] Building CXX object core\CMakeFiles\core_header_self_containment.dir\header_self_containment\lux_cxx_core_function_ref_hpp.cpp.obj
+[24/199] Linking CXX executable compile_time\test\type_map_test.exe
+[25/199] Building CXX object core\CMakeFiles\core_header_self_containment.dir\header_self_containment\lux_cxx_core_scope_exit_hpp.cpp.obj
+[26/199] Building CXX object core\CMakeFiles\core_header_self_containment.dir\header_self_containment\lux_cxx_core_move_only_function_hpp.cpp.obj
+[27/199] Building CXX object core\CMakeFiles\core_header_self_containment.dir\header_self_containment\lux_cxx_core_Format_hpp.cpp.obj
+[28/199] Building CXX object core\CMakeFiles\core_header_self_containment.dir\header_self_containment\lux_cxx_core_Schema_hpp.cpp.obj
+[29/199] Building CXX object core\CMakeFiles\core_header_self_containment.dir\header_self_containment\lux_cxx_core_StrongId_hpp.cpp.obj
+[30/199] Building CXX object core\CMakeFiles\core_header_self_containment.dir\header_self_containment\lux_cxx_core_StableNameId_hpp.cpp.obj
+[31/199] Building CXX object container\CMakeFiles\container_changed_header_self_containment.dir\header_self_containment\lux_cxx_container_ScopeId_hpp.cpp.obj
+[32/199] Building CXX object core\test\CMakeFiles\core_test.dir\core_test.cpp.obj
+[33/199] Building CXX object container\CMakeFiles\container_changed_header_self_containment.dir\header_self_containment\lux_cxx_container_SlotMap_hpp.cpp.obj
+[34/199] Building CXX object container\CMakeFiles\container_changed_header_self_containment.dir\header_self_containment\lux_cxx_container_SmallVector_hpp.cpp.obj
+[35/199] Building CXX object container\CMakeFiles\container_changed_header_self_containment.dir\header_self_containment\lux_cxx_container_StableSlotMap_hpp.cpp.obj
+[36/199] Building CXX object core\test\CMakeFiles\format_test.dir\format_test.cpp.obj
+[37/199] Building CXX object container\test\CMakeFiles\tree_test.dir\tree_test.cpp.obj
+[38/199] Linking CXX executable core\test\core_test.exe
+[39/199] Linking CXX executable core\test\format_test.exe
+[40/199] Building CXX object container\test\CMakeFiles\sparse_set_test.dir\sparse_set_test.cpp.obj
+[41/199] Linking CXX executable container\test\tree_test.exe
+[42/199] Building CXX object container\test\CMakeFiles\slot_map_test.dir\slot_map_test.cpp.obj
+[43/199] Building CXX object container\test\CMakeFiles\scope_id_test.dir\scope_id_test.cpp.obj
+[44/199] Building CXX object container\test\CMakeFiles\orth_tree_test.dir\orth_tree_test.cpp.obj
+[45/199] Linking CXX executable container\test\sparse_set_test.exe
+[46/199] Linking CXX executable container\test\slot_map_test.exe
+[47/199] Linking CXX executable container\test\scope_id_test.exe
+[48/199] Building CXX object container\test\CMakeFiles\basic_sparse_set_test.dir\basic_sparse_set_test.cpp.obj
+[49/199] Linking CXX executable container\test\orth_tree_test.exe
+[50/199] Building CXX object container\test\CMakeFiles\small_vector_test.dir\small_vector_test.cpp.obj
+[51/199] Building CXX object container\test\CMakeFiles\small_vector_allocator_test.dir\small_vector_allocator_test.cpp.obj
+[52/199] Building CXX object container\test\CMakeFiles\stable_slot_map_test.dir\stable_slot_map_test.cpp.obj
+[53/199] Linking CXX executable container\test\basic_sparse_set_test.exe
+[54/199] Linking CXX executable container\test\small_vector_test.exe
+[55/199] Linking CXX executable container\test\small_vector_allocator_test.exe
+[56/199] Building CXX object memory\CMakeFiles\memory_new_header_self_containment.dir\header_self_containment\lux_cxx_memory_PmrResources_hpp.cpp.obj
+[57/199] Building CXX object memory\CMakeFiles\memory_new_header_self_containment.dir\header_self_containment\lux_cxx_memory_SharedBytes_hpp.cpp.obj
+[58/199] Linking CXX executable container\test\stable_slot_map_test.exe
+[59/199] Building CXX object memory\test\CMakeFiles\intrusive_ptr_test.dir\intrusive_ptr_test.cpp.obj
+[60/199] Building CXX object memory\test\CMakeFiles\memory_primitives_test.dir\memory_primitives_test.cpp.obj
+[61/199] Building CXX object concurrent\CMakeFiles\concurrent_changed_header_self_containment.dir\header_self_containment\lux_cxx_concurrent_LatestSpscExchange_hpp.cpp.obj
+[62/199] Building CXX object memory\test\CMakeFiles\object_pool_test.dir\object_pool_test.cpp.obj
+[63/199] Building CXX object concurrent\CMakeFiles\concurrent_changed_header_self_containment.dir\header_self_containment\lux_cxx_concurrent_BoundedSpscFrameRing_hpp.cpp.obj
+[64/199] Building CXX object concurrent\CMakeFiles\concurrent_changed_header_self_containment.dir\header_self_containment\lux_cxx_concurrent_AdmissionGate_hpp.cpp.obj
+[65/199] Linking CXX executable memory\test\intrusive_ptr_test.exe
+[66/199] Linking CXX executable memory\test\memory_primitives_test.exe
+[67/199] Linking CXX executable memory\test\object_pool_test.exe
+[68/199] Building CXX object concurrent\CMakeFiles\concurrent_changed_header_self_containment.dir\header_self_containment\lux_cxx_concurrent_BudgetGate_hpp.cpp.obj
+[69/199] Building CXX object concurrent\CMakeFiles\concurrent_changed_header_self_containment.dir\header_self_containment\lux_cxx_concurrent_LockFreeQueue_hpp.cpp.obj
+[70/199] Building CXX object concurrent\CMakeFiles\concurrent_changed_header_self_containment.dir\header_self_containment\lux_cxx_concurrent_QueueStatus_hpp.cpp.obj
+[71/199] Building CXX object concurrent\CMakeFiles\concurrent_changed_header_self_containment.dir\header_self_containment\lux_cxx_concurrent_AtomicWait_hpp.cpp.obj
+[72/199] Building CXX object concurrent\test\CMakeFiles\scene_exchange_test.dir\scene_exchange_test.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[73/199] Building CXX object concurrent\CMakeFiles\concurrent_changed_header_self_containment.dir\header_self_containment\lux_cxx_concurrent_BlockingQueue_hpp.cpp.obj
+[74/199] Building CXX object concurrent\CMakeFiles\concurrent_changed_header_self_containment.dir\header_self_containment\lux_cxx_concurrent_ThreadPool_hpp.cpp.obj
+[75/199] Linking CXX executable concurrent\test\scene_exchange_test.exe
+[76/199] Building CXX object concurrent\test\CMakeFiles\timer_test.dir\timer_test.cpp.obj
+[77/199] Building CXX object concurrent\test\CMakeFiles\thread_pool_test.dir\thread_pool_test.cpp.obj
+[78/199] Building CXX object concurrent\test\CMakeFiles\spsc_lckfree_ring_queue_test.dir\spsc_lckfree_ring_queue_test.cpp.obj
+[79/199] Building CXX object concurrent\test\CMakeFiles\blocking_queue_test.dir\blocking_queue_test.cpp.obj
+[80/199] Linking CXX executable concurrent\test\timer_test.exe
+[81/199] Linking CXX executable concurrent\test\spsc_lckfree_ring_queue_test.exe
+[82/199] Linking CXX executable concurrent\test\thread_pool_test.exe
+[83/199] Linking CXX executable concurrent\test\blocking_queue_test.exe
+[84/199] Building CXX object concurrent\test\CMakeFiles\concurrent_gate_test.dir\concurrent_gate_test.cpp.obj
+[85/199] Building CXX object concurrent\test\CMakeFiles\atomic_wait_test.dir\atomic_wait_test.cpp.obj
+[86/199] Building CXX object concurrent\test\CMakeFiles\parallel_pipeline_test.dir\parallel_pipeline_test.cpp.obj
+[87/199] Building CXX object arguments\test\CMakeFiles\arguments_test.dir\arguments_test.cpp.obj
+[88/199] Linking CXX executable concurrent\test\concurrent_gate_test.exe
+[89/199] Linking CXX executable concurrent\test\atomic_wait_test.exe
+[90/199] Linking CXX executable concurrent\test\parallel_pipeline_test.exe
+[91/199] Linking CXX executable arguments\test\arguments_test.exe
+[92/199] Building CXX object algorithm\CMakeFiles\algorithm_new_header_self_containment.dir\header_self_containment\lux_cxx_algorithm_ContentId_hpp.cpp.obj
+[93/199] Building CXX object algorithm\CMakeFiles\algorithm_new_header_self_containment.dir\header_self_containment\lux_cxx_algorithm_sha256_hpp.cpp.obj
+[94/199] Building CXX object binary\CMakeFiles\binary_header_self_containment.dir\header_self_containment\lux_cxx_binary_BinaryError_hpp.cpp.obj
+[95/199] Building CXX object binary\CMakeFiles\binary_header_self_containment.dir\header_self_containment\lux_cxx_binary_Binary_hpp.cpp.obj
+[96/199] Building CXX object algorithm\test\CMakeFiles\sha256_parse_fuzz_test.dir\sha256_parse_fuzz_test.cpp.obj
+[97/199] Building CXX object binary\CMakeFiles\binary_header_self_containment.dir\header_self_containment\lux_cxx_binary_BinaryReader_hpp.cpp.obj
+[98/199] Building CXX object binary\CMakeFiles\binary_header_self_containment.dir\header_self_containment\lux_cxx_binary_ScalarSchema_hpp.cpp.obj
+[99/199] Building CXX object binary\CMakeFiles\binary_header_self_containment.dir\header_self_containment\lux_cxx_binary_BinaryWriter_hpp.cpp.obj
+[100/199] Building CXX object binary\test\CMakeFiles\binary_fuzz_test.dir\binary_fuzz_test.cpp.obj
+[101/199] Building CXX object algorithm\test\CMakeFiles\sha256_test.dir\sha256_test.cpp.obj
+[102/199] Building CXX object binary\test\CMakeFiles\binary_test.dir\binary_test.cpp.obj
+[103/199] Linking CXX executable algorithm\test\sha256_parse_fuzz_test.exe
+[104/199] Linking CXX executable binary\test\binary_fuzz_test.exe
+[105/199] Linking CXX executable algorithm\test\sha256_test.exe
+[106/199] Linking CXX executable binary\test\binary_test.exe
+[107/199] Building CXX object time\CMakeFiles\time_header_self_containment.dir\header_self_containment\lux_cxx_time_ClockMapping_hpp.cpp.obj
+[108/199] Building CXX object units\CMakeFiles\units_header_self_containment.dir\header_self_containment\lux_cxx_units_Quantity_hpp.cpp.obj
+[109/199] Building CXX object time\CMakeFiles\time_header_self_containment.dir\header_self_containment\lux_cxx_time_ManualClock_hpp.cpp.obj
+[110/199] Building CXX object time\CMakeFiles\time_header_self_containment.dir\header_self_containment\lux_cxx_time_Timestamp_hpp.cpp.obj
+[111/199] Building CXX object time\test\CMakeFiles\time_test.dir\time_test.cpp.obj
+[112/199] Building CXX object units\CMakeFiles\units_header_self_containment.dir\header_self_containment\lux_cxx_units_Units_hpp.cpp.obj
+[113/199] Building CXX object units\test\CMakeFiles\units_test.dir\units_test.cpp.obj
+[114/199] Building CXX object diagnostic\CMakeFiles\diagnostic_header_self_containment.dir\header_self_containment\lux_cxx_diagnostic_Diagnostic_hpp.cpp.obj
+[115/199] Linking CXX executable time\test\time_test.exe
+[116/199] Linking CXX executable units\test\units_test.exe
+[117/199] Building CXX object diagnostic\CMakeFiles\diagnostic_header_self_containment.dir\header_self_containment\lux_cxx_diagnostic_DiagnosticRecord_hpp.cpp.obj
+[118/199] Building CXX object abi\CMakeFiles\abi_header_self_containment.dir\header_self_containment\lux_cxx_abi_Abi_hpp.cpp.obj
+[119/199] Building CXX object abi\CMakeFiles\abi_header_self_containment.dir\header_self_containment\lux_cxx_abi_BuildInfo_hpp.cpp.obj
+[120/199] Building CXX object abi\test\CMakeFiles\abi_test.dir\abi_test.cpp.obj
+[121/199] Building CXX object diagnostic\test\CMakeFiles\diagnostic_test.dir\diagnostic_test.cpp.obj
+[122/199] Linking CXX executable abi\test\abi_test.exe
+[123/199] Building CXX object archtype\test\CMakeFiles\ecs_fixes_test.dir\ecs_fixes_test.cpp.obj
+[124/199] Linking CXX executable diagnostic\test\diagnostic_test.exe
+[125/199] Building CXX object archtype\test\CMakeFiles\archtype_test.dir\archtype_test.cpp.obj
+[126/199] Building CXX object reflection\CMakeFiles\reflection_runtime.dir\src\runtime\MetaUnit.cpp.obj
+[127/199] Building CXX object event\test\CMakeFiles\signal_test.dir\signal_test.cpp.obj
+[128/199] Linking CXX executable archtype\test\ecs_fixes_test.exe
+[129/199] Linking CXX executable archtype\test\archtype_test.exe
+[130/199] Linking CXX executable event\test\signal_test.exe
+[131/199] Building CXX object reflection\CMakeFiles\reflection_ir_header_self_containment.dir\header_self_containment\lux_cxx_reflection_runtime_MetaIr_hpp.cpp.obj
+[132/199] Building CXX object reflection\CMakeFiles\reflection_ir_header_self_containment.dir\header_self_containment\lux_cxx_reflection_runtime_MetaIrBinary_hpp.cpp.obj
+[133/199] Building CXX object reflection\CMakeFiles\reflection_ir_header_self_containment.dir\header_self_containment\lux_cxx_reflection_runtime_MetaIrJson_hpp.cpp.obj
+[134/199] Building CXX object reflection\CMakeFiles\reflection_parser.dir\src\parser\CxxParser.cpp.obj
+[135/199] Building CXX object reflection\CMakeFiles\reflection_runtime.dir\src\runtime\MetaIrJson.cpp.obj
+[136/199] Building CXX object reflection\CMakeFiles\reflection_parser.dir\src\parser\CxxParserImpl.cpp.obj
+[137/199] Building CXX object reflection\CMakeFiles\reflection_parser.dir\src\parser\parse_class_declaration.cpp.obj
+[138/199] Building CXX object reflection\CMakeFiles\reflection_parser.dir\src\parser\parse_enumeration_declaration.cpp.obj
+[139/199] Building CXX object reflection\CMakeFiles\reflection_runtime.dir\src\runtime\MetaUnitSerializer.cpp.obj
+[140/199] Linking CXX shared library reflection\reflection_runtime.dll
+[141/199] Building CXX object reflection\test\CMakeFiles\compile_environment_test.dir\compile_environment_test.cpp.obj
+[142/199] Building CXX object reflection\CMakeFiles\reflection_generator.dir\src\generator\GeneratorHelper.cpp.obj
+[143/199] Linking CXX shared library reflection\reflection_parser.dll
+[144/199] Linking CXX shared library reflection\reflection_generator.dll
+[145/199] Building CXX object reflection\test\CMakeFiles\meta_parse_test.dir\meta_parse_test.cpp.obj
+[146/199] Building CXX object reflection\test\CMakeFiles\external_reflect_test.dir\external_reflect_test.cpp.obj
+[147/199] Linking CXX executable reflection\test\compile_environment_test.exe
+[148/199] Linking CXX executable reflection\test\meta_parse_test.exe
+[149/199] Linking CXX executable reflection\test\external_reflect_test.exe
+[150/199] Building CXX object reflection\test\CMakeFiles\meta_deserializer_test.dir\meta_deserializer_test.cpp.obj
+[151/199] Building CXX object reflection\test\CMakeFiles\meta_roundtrip_test.dir\meta_roundtrip_test.cpp.obj
+[152/199] Linking CXX executable reflection\test\meta_deserializer_test.exe
+[153/199] Building CXX object reflection\test\CMakeFiles\extended_coverage_test.dir\extended_coverage_test.cpp.obj
+[154/199] Building CXX object reflection\CMakeFiles\lux_meta_generator.dir\src\generator\MetaGenerator.cpp.obj
+[155/199] Linking CXX executable reflection\test\meta_roundtrip_test.exe
+[156/199] Building CXX object reflection\test\CMakeFiles\meta_ir_test.dir\meta_ir_test.cpp.obj
+[157/199] Linking CXX executable reflection\test\extended_coverage_test.exe
+[158/199] Building CXX object reflection\test\CMakeFiles\meta_ir_fuzz_test.dir\meta_ir_fuzz_test.cpp.obj
+[159/199] Linking CXX executable reflection\test\meta_ir_test.exe
+[160/199] Linking CXX executable reflection\lux_meta_generator.exe
+[161/199] [lux_target_add_codegen] test_meta_job: parse once, render 2 projection(s)
+[Info] Parsed 1 target file(s) for 2 projection(s).
+[162/199] [lux_target_add_codegen] test_annotation_job: parse once, render 2 projection(s)
+[Info] Parsed 1 target file(s) for 2 projection(s).
+[163/199] Building CXX object reflection\test\CMakeFiles\array_type_test.dir\array_type_test.cpp.obj
+[164/199] [lux_target_add_codegen] test_lineage_job: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[165/199] Linking CXX executable reflection\test\meta_ir_fuzz_test.exe
+[166/199] Building CXX object reflection\test\CMakeFiles\generator_test.dir\generator_test.cpp.obj
+[167/199] Linking CXX executable reflection\test\array_type_test.exe
+[168/199] Building CXX object serialization\CMakeFiles\serialization_xml.dir\src\xml.cpp.obj
+[169/199] Building CXX object serialization\CMakeFiles\serialization_xml.dir\__\third_party\tinyxml2\src\tinyxml2.cpp.obj
+[170/199] Linking CXX static library serialization\serialization_xml.lib
+[171/199] Linking CXX executable reflection\test\generator_test.exe
+[172/199] Building CXX object serialization\CMakeFiles\serialization_json.dir\src\json.cpp.obj
+[173/199] Linking CXX static library serialization\serialization_json.lib
+[174/199] [lux_target_add_codegen] serialization_test_serialization: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[175/199] [lux_target_add_codegen] json_test_serialization: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[176/199] [lux_target_add_codegen] xml_test_serialization: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[177/199] Building CXX object serialization\test\CMakeFiles\serialization_test.dir\serialization_test.cpp.obj
+[178/199] Building CXX object serialization\test\CMakeFiles\xml_test.dir\xml_test.cpp.obj
+[179/199] Building CXX object serialization\CMakeFiles\serialization_yaml.dir\src\yaml.cpp.obj
+[180/199] Building CXX object serialization\test\CMakeFiles\json_test.dir\json_test.cpp.obj
+[181/199] Linking CXX static library serialization\serialization_yaml.lib
+[182/199] Linking CXX executable serialization\test\serialization_test.exe
+[183/199] [lux_target_add_codegen] yaml_test_serialization: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[184/199] [lux_target_add_codegen] external_json_test_serialization: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[185/199] Linking CXX executable serialization\test\xml_test.exe
+[186/199] Linking CXX executable serialization\test\json_test.exe
+[187/199] [lux_target_add_codegen] external_xml_test_serialization: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[188/199] [lux_target_add_codegen] external_yaml_test_serialization: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[189/199] Building CXX object serialization\test\CMakeFiles\external_json_test.dir\external_json_test.cpp.obj
+[190/199] Building CXX object serialization\test\CMakeFiles\external_xml_test.dir\external_xml_test.cpp.obj
+[191/199] Building CXX object serialization\test\CMakeFiles\external_yaml_test.dir\external_yaml_test.cpp.obj
+[192/199] Building CXX object serialization\test\CMakeFiles\yaml_test.dir\yaml_test.cpp.obj
+[193/199] Linking CXX executable serialization\test\external_json_test.exe
+[194/199] [lux_target_add_codegen] serialization_arguments_test_serialization: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[195/199] Linking CXX executable serialization\test\external_xml_test.exe
+[196/199] Linking CXX executable serialization\test\external_yaml_test.exe
+[197/199] Linking CXX executable serialization\test\yaml_test.exe
+[198/199] Building CXX object serialization\test\CMakeFiles\serialization_arguments_test.dir\arguments_test.cpp.obj
+[199/199] Linking CXX executable serialization\test\serialization_arguments_test.exe

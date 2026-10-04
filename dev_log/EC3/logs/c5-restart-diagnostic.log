@@ -1,0 +1,32 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dev
+    Start 138: editor.application
+1/1 Test #138: editor.application ...............Exit code 0xc0000409
+***Exception:   4.28 sec
+Missing-font construction: editor.font.read
+Application construction: object.connect: 
+C04: actual EditorApplication::create rejects required menu connection failure
+P13 foreign command lux.editor.new.material code=1 domain=application.thread
+P13 foreign command lux.editor.exit code=1 domain=application.thread
+P13 foreign command test.missing code=1 domain=application.thread
+P13 foreign command lux.editor.new.material code=1 domain=application.thread
+P13 foreign command lux.editor.exit code=1 domain=application.thread
+P13 foreign command test.missing code=1 domain=application.thread
+P13 command admission: owner recovers; sessions, content and views unchanged
+Application direct destruction: formal content, tools and GPU presentation released
+Settings restart: desktop.root: 
+Assertion failed: overridden && ApplicationTestAccess::implementation(**overridden).desktop_->root().scale() == 2.f, file E:\SyncForder\CodeRepos\lux-engine-ec2\editor\tests\integration\application\application.cpp, line 312
+
+
+0% tests passed, 1 tests failed out of 1
+
+Label Time Summary:
+P12       =   4.28 sec*proc (1 test)
+editor    =   4.28 sec*proc (1 test)
+gpu       =   4.28 sec*proc (1 test)
+
+Total Test time (real) =   4.32 sec
+
+The following tests FAILED:
+	138 - editor.application (Exit code 0xc0000409
+)        P12 editor gpu
+Errors while running CTest

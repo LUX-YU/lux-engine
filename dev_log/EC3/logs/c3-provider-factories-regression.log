@@ -1,0 +1,59 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dev
+      Start  79: editor.commands
+ 1/22 Test  #79: editor.commands .........................   Passed    0.05 sec
+      Start  95: editor.detached_views
+ 2/22 Test  #95: editor.detached_views ...................   Passed    0.03 sec
+      Start  96: editor.view_host
+ 3/22 Test  #96: editor.view_host ........................   Passed    0.03 sec
+      Start 105: editor.contributions
+ 4/22 Test #105: editor.contributions ....................   Passed    0.04 sec
+      Start 106: editor.contributions.r11-factory
+ 5/22 Test #106: editor.contributions.r11-factory ........   Passed    0.02 sec
+      Start 107: editor.contributions.r11-reflection
+ 6/22 Test #107: editor.contributions.r11-reflection .....   Passed    0.02 sec
+      Start 108: editor.contributions.r11-cleanup
+ 7/22 Test #108: editor.contributions.r11-cleanup ........   Passed    0.02 sec
+      Start 109: editor.contributions.r11-notify
+ 8/22 Test #109: editor.contributions.r11-notify .........   Passed    0.02 sec
+      Start 120: editor.scene_views_gpu
+ 9/22 Test #120: editor.scene_views_gpu ..................   Passed    2.41 sec
+      Start 121: editor.draft_source_literal
+10/22 Test #121: editor.draft_source_literal .............   Passed    0.60 sec
+      Start 122: editor.draft_source_signature
+11/22 Test #122: editor.draft_source_signature ...........   Passed    0.60 sec
+      Start 123: editor.draft_source_flow-canvas
+12/22 Test #123: editor.draft_source_flow-canvas .........   Passed    0.37 sec
+      Start 124: editor.draft_source_material-canvas
+13/22 Test #124: editor.draft_source_material-canvas .....   Passed    0.35 sec
+      Start 125: editor.draft_source_flow-queue
+14/22 Test #125: editor.draft_source_flow-queue ..........   Passed    0.37 sec
+      Start 126: editor.draft_source_material-queue
+15/22 Test #126: editor.draft_source_material-queue ......   Passed    0.31 sec
+      Start 127: editor.draft_source_material-lifetime
+16/22 Test #127: editor.draft_source_material-lifetime ...   Passed    0.35 sec
+      Start 128: editor.draft_source_lifecycle
+17/22 Test #128: editor.draft_source_lifecycle ...........   Passed    0.57 sec
+      Start 129: editor.draft_source_positive
+18/22 Test #129: editor.draft_source_positive ............   Passed    0.45 sec
+      Start 130: editor.draft_source_history
+19/22 Test #130: editor.draft_source_history .............   Passed    0.60 sec
+      Start 134: editor.sessions.installation
+20/22 Test #134: editor.sessions.installation ............   Passed    0.44 sec
+      Start 135: editor.sessions.content_operations
+21/22 Test #135: editor.sessions.content_operations ......   Passed    1.33 sec
+      Start 136: editor.application
+22/22 Test #136: editor.application ......................   Passed    1.42 sec
+
+100% tests passed, 0 tests failed out of 22
+
+Label Time Summary:
+P08       =   0.03 sec*proc (1 test)
+P10       =   7.00 sec*proc (12 tests)
+P11       =   0.52 sec*proc (3 tests)
+P12       =   2.75 sec*proc (2 tests)
+R1        =   4.57 sec*proc (10 tests)
+editor    =  10.31 sec*proc (18 tests)
+gpu       =   8.40 sec*proc (12 tests)
+native    =   1.91 sec*proc (6 tests)
+
+Total Test time (real) =  10.45 sec

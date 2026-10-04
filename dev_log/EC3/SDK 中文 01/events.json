@@ -1,0 +1,52 @@
+[
+  {
+    "label": "configure",
+    "argv": [
+      "cmake",
+      "-S",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 01\\\u6e90\u7801 \u7a7a\u683c",
+      "-B",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 01\\build",
+      "-G",
+      "Ninja",
+      "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+      "-DCMAKE_PREFIX_PATH=E:\\SyncForder\\CodeRepos\\install\\EC3-C7",
+      "-DINSPECTOR_CMAKE_MODULE=E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 01\\installed-tools\\share\\lux-engine-editor-scene-ui\\scene_ui\\cmake_scripts\\engine_editor_imgui_inspector_codegen.cmake",
+      "-DLUX_INSPECTOR_GENERATOR_EXECUTABLE=E:\\SyncForder\\CodeRepos\\install\\EC3-C7\\bin\\lux_inspector_generator.exe",
+      "-Dlux-cxx_DIR=E:/SyncForder/CodeRepos/install/EC3-cxx/share/lux-cxx",
+      "-Dlux-cmake-toolset_DIR=E:/SyncForder/CodeRepos/install/EC2-R1-ead7e59514a5/share/lux-cmake-toolset",
+      "-Dimgui_DIR=E:/SyncForder/CodeRepos/install/EC2-R1-ead7e59514a5/share/imgui",
+      "-Dnode_editor_DIR=E:/SyncForder/CodeRepos/install/EC2-R1-ead7e59514a5/share/node_editor",
+      "-DLuxLua55_DIR=E:/SyncForder/CodeRepos/install/o/v4/lua55/lib/cmake/LuxLua55",
+      "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+      "-DCMAKE_PROGRAM_PATH=E:/SyncForder/CodeRepos/install/EC3-cxx/bin",
+      "-DLUX_META_GENERATOR=E:/SyncForder/CodeRepos/install/EC3-cxx/bin/lux_meta_generator.exe",
+      "-DEC3_GENERATION_FLAG=1"
+    ],
+    "exit_code": 0,
+    "seconds": 7.059743999969214,
+    "log_sha256": "0a738fbb4064155018d51a9e0f37c62f740626111957b0be2b290432a45ffac5",
+    "parse_jobs": 0,
+    "inspector_jobs": 0
+  },
+  {
+    "label": "cold",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 01\\build",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "exit_code": 1,
+    "seconds": 0.1906013999832794,
+    "log_sha256": "7a3baea066061ac8e3d63255bec03fb82b68de06a93039a0f020f531ebefe0a1",
+    "parse_jobs": 4,
+    "inspector_jobs": 0
+  }
+]

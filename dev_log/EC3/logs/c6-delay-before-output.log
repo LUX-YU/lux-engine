@@ -1,0 +1,24 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dev
+    Start 122: editor.scene_views_gpu
+1/1 Test #122: editor.scene_views_gpu ...........Exit code 0xc0000409
+***Exception:   6.60 sec
+EC1 complete Scene tools: owner lifetime, no-target association, BUSY retry and release
+PASS P12 real Inspector abandonable close preparation and guarded content retirement handoff
+EC2-R1 XEC2-12 public sphere/quad recipe GPU readbacks differ; same-input adoption, late completion, failed bytes, last-success pixels and retry PASS
+EC3 delayed camera output: retained image=1 premature pick accepted=1
+Assertion failed: !premature_pick && left.selection().objects.empty(), file E:\SyncForder\CodeRepos\lux-engine-ec2\editor\tests\integration\scene_views\views.cpp, line 1677
+
+
+0% tests passed, 1 tests failed out of 1
+
+Label Time Summary:
+P10       =   6.60 sec*proc (1 test)
+editor    =   6.60 sec*proc (1 test)
+gpu       =   6.60 sec*proc (1 test)
+
+Total Test time (real) =   6.66 sec
+
+The following tests FAILED:
+	122 - editor.scene_views_gpu (Exit code 0xc0000409
+)    P10 editor gpu
+Errors while running CTest

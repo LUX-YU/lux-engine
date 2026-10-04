@@ -1,0 +1,65 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918
+      Start 148: editor.scene_model_boundaries
+ 1/20 Test #148: editor.scene_model_boundaries ..............   Passed   17.47 sec
+      Start 149: editor.architecture_negative
+ 2/20 Test #149: editor.architecture_negative ...............   Passed   27.45 sec
+      Start 150: editor.architecture_current
+ 3/20 Test #150: editor.architecture_current ................   Passed   39.08 sec
+      Start 152: editor.material_model_boundaries
+ 4/20 Test #152: editor.material_model_boundaries ...........   Passed   26.20 sec
+      Start 153: editor.flowforge_model_boundaries
+ 5/20 Test #153: editor.flowforge_model_boundaries ..........   Passed   29.17 sec
+      Start 155: editor.persistence_boundaries
+ 6/20 Test #155: editor.persistence_boundaries ..............   Passed   37.73 sec
+      Start 156: editor.scene_execution_boundaries
+ 7/20 Test #156: editor.scene_execution_boundaries ..........   Passed   28.01 sec
+      Start 157: editor.projection_compilation_boundaries
+ 8/20 Test #157: editor.projection_compilation_boundaries ...   Passed   35.93 sec
+      Start 158: editor.interaction_view_boundaries
+ 9/20 Test #158: editor.interaction_view_boundaries .........   Passed   43.66 sec
+      Start 159: editor.workspace_boundaries
+10/20 Test #159: editor.workspace_boundaries ................   Passed   38.81 sec
+      Start 160: editor.desktop_view_boundaries
+11/20 Test #160: editor.desktop_view_boundaries .............   Passed   53.53 sec
+      Start 162: editor.quality.boundaries
+12/20 Test #162: editor.quality.boundaries ..................   Passed   69.78 sec
+      Start 163: editor.quality.evidence
+13/20 Test #163: editor.quality.evidence ....................   Passed    0.08 sec
+      Start 164: editor.layering.delivery_constraints
+14/20 Test #164: editor.layering.delivery_constraints .......   Passed    2.13 sec
+      Start 165: editor.layering.boundaries
+15/20 Test #165: editor.layering.boundaries .................   Passed   45.33 sec
+      Start 166: editor.layering.compiler_providers
+16/20 Test #166: editor.layering.compiler_providers .........   Passed   88.02 sec
+      Start 167: editor.extensions.boundaries
+17/20 Test #167: editor.extensions.boundaries ...............   Passed   25.86 sec
+      Start 168: editor.product.boundaries
+18/20 Test #168: editor.product.boundaries ..................   Passed   19.45 sec
+      Start 169: editor.ec2.boundaries
+19/20 Test #169: editor.ec2.boundaries ......................   Passed   39.25 sec
+      Start 170: editor.ec3.boundaries
+20/20 Test #170: editor.ec3.boundaries ......................   Passed   12.41 sec
+
+100% tests passed, 0 tests failed out of 20
+
+Label Time Summary:
+EC2                =  39.25 sec*proc (1 test)
+EC3                =  12.41 sec*proc (1 test)
+P02                =  17.47 sec*proc (1 test)
+P03                =  26.20 sec*proc (1 test)
+P04                =  29.17 sec*proc (1 test)
+P05                =  37.73 sec*proc (1 test)
+P06                =  28.01 sec*proc (1 test)
+P07                =  35.93 sec*proc (1 test)
+P08                =  43.66 sec*proc (1 test)
+P09                =  38.81 sec*proc (1 test)
+P10                =  53.53 sec*proc (1 test)
+P10Q               =  69.86 sec*proc (2 tests)
+P11                =  25.86 sec*proc (1 test)
+P12                =  19.45 sec*proc (1 test)
+architecture       =  66.53 sec*proc (2 tests)
+editor             = 679.32 sec*proc (20 tests)
+editor_layering    = 135.47 sec*proc (3 tests)
+native             = 679.32 sec*proc (20 tests)
+
+Total Test time (real) = 680.12 sec

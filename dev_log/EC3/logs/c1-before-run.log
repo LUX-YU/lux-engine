@@ -1,0 +1,4 @@
+sizeof Descriptor=168 Entry=272 Handle=16
+N=35 create_us=13.200 resolve_10000_us=1158.300 source=installed_EC2_R1
+N=256 create_us=38.700 resolve_10000_us=3912.200 source=installed_EC2_R1
+N=1024 create_us=296.600 resolve_10000_us=7639.300 source=installed_EC2_R1

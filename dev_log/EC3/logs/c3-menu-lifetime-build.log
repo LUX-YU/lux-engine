@@ -1,0 +1,9 @@
+[0/2] Re-checking globbed directories...
+[1/32] Building CXX object editor\activities\commands\CMakeFiles\editor_commands_test.dir\test\commands.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[2/32] Linking CXX executable bin\editor_commands_test.exe
+[3/32] Building CXX object modules\function\ui\CMakeFiles\ui_imgui_backend.dir\src\Root.cpp.obj
+[4/32] Linking CXX shared library bin\ui.dll
+[5/6] Building CXX object editor\tests\integration\session_factories\CMakeFiles\editor_session_installation_test.dir\installation.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[6/6] Linking CXX executable bin\editor_session_installation_test.exe

@@ -1,0 +1,12 @@
+[0/2] Re-checking globbed directories...
+[1/6] [lux_target_add_codegen] a_schema: parse once, render 5 projection(s)
+[Info] Parsed 1 target file(s) for 5 projection(s).
+[2/6] [lux_target_add_codegen] a_fields_ir: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[3/6] Generate Inspector MetaUnit/inja author and Run projections: a_fields
+Editor Inspector: 1 component(s), validated MetaUnit and explicit author/Run inja projections
+[4/6] Building CXX object CMakeFiles\generation_consumer.dir\main.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[5/6] Building CXX object CMakeFiles\generation_consumer.dir\inspector_gen\a_fields\a__Component_4e294f2e.inspector.generated.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[6/6] Linking CXX executable bin\generation_consumer.exe

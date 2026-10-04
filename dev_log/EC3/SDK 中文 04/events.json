@@ -1,0 +1,513 @@
+[
+  {
+    "label": "configure",
+    "argv": [
+      "cmake",
+      "-S",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\\u6e90\u7801 \u7a7a\u683c",
+      "-B",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\build",
+      "-G",
+      "Ninja",
+      "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+      "-DCMAKE_PREFIX_PATH=E:\\SyncForder\\CodeRepos\\install\\EC3-C8",
+      "-DINSPECTOR_CMAKE_MODULE=E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\installed-tools\\share\\lux-engine-editor-scene-ui\\scene_ui\\cmake_scripts\\engine_editor_imgui_inspector_codegen.cmake",
+      "-DLUX_INSPECTOR_GENERATOR_EXECUTABLE=E:\\SyncForder\\CodeRepos\\install\\EC3-C8\\bin\\lux_inspector_generator.exe",
+      "-Dlux-cxx_DIR=E:/SyncForder/CodeRepos/install/EC3-cxx/share/lux-cxx",
+      "-Dlux-cmake-toolset_DIR=E:/SyncForder/CodeRepos/install/EC2-R1-ead7e59514a5/share/lux-cmake-toolset",
+      "-Dimgui_DIR=E:/SyncForder/CodeRepos/install/EC2-R1-ead7e59514a5/share/imgui",
+      "-Dnode_editor_DIR=E:/SyncForder/CodeRepos/install/EC2-R1-ead7e59514a5/share/node_editor",
+      "-DLuxLua55_DIR=E:/SyncForder/CodeRepos/install/o/v4/lua55/lib/cmake/LuxLua55",
+      "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+      "-DCMAKE_PROGRAM_PATH=E:/SyncForder/CodeRepos/install/EC3-cxx/bin",
+      "-DLUX_META_GENERATOR=E:/SyncForder/CodeRepos/install/EC3-cxx/bin/lux_meta_generator.exe",
+      "-DEC3_GENERATION_FLAG=1"
+    ],
+    "exit_code": 0,
+    "seconds": 6.156016899971291,
+    "log_sha256": "b7c7405e140a738449a06fd66ba2643ca7658de77baeebe4027faffd7d557681",
+    "parse_jobs": 0,
+    "inspector_jobs": 0
+  },
+  {
+    "label": "cold",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\build",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "exit_code": 0,
+    "seconds": 10.07769039995037,
+    "log_sha256": "6d89c039eea6ca8a9f1221b1b3f7adf8d4bc7b66663c3ce5a0bc7dadefd34ef1",
+    "parse_jobs": 4,
+    "inspector_jobs": 2
+  },
+  {
+    "label": "consumer",
+    "argv": [
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\build\\bin\\generation_consumer.exe"
+    ],
+    "exit_code": 0,
+    "seconds": 0.0662522999336943,
+    "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "parse_jobs": 0,
+    "inspector_jobs": 0
+  },
+  {
+    "label": "no-change",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\build",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "exit_code": 0,
+    "seconds": 0.10124550003092736,
+    "log_sha256": "7716162f3cd3b99cf3b8a8dd6decf324e08c7e941aae7e730baba5e4fc8c075b",
+    "parse_jobs": 0,
+    "inspector_jobs": 0
+  },
+  {
+    "label": "field",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\build",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "exit_code": 0,
+    "seconds": 8.28249449993018,
+    "log_sha256": "49829f6cf922268da7dd666798e77cc64bfcf8582de0b837bdefbb227746fd26",
+    "parse_jobs": 2,
+    "inspector_jobs": 1
+  },
+  {
+    "label": "after-field",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\build",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "exit_code": 0,
+    "seconds": 0.09139180008787662,
+    "log_sha256": "7716162f3cd3b99cf3b8a8dd6decf324e08c7e941aae7e730baba5e4fc8c075b",
+    "parse_jobs": 0,
+    "inspector_jobs": 0
+  },
+  {
+    "label": "transitive-header",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\build",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "exit_code": 0,
+    "seconds": 8.651842199964449,
+    "log_sha256": "bf235a3d4ba9b85b7fa24ae813b3bc0659d3455a2417a533d460245ba20fbdde",
+    "parse_jobs": 4,
+    "inspector_jobs": 2
+  },
+  {
+    "label": "template",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\build",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "exit_code": 0,
+    "seconds": 8.439288900000975,
+    "log_sha256": "37b7af86561b5df1ef5b5c8e107d1038eb2aeee77d53375b9966ed9b25954626",
+    "parse_jobs": 0,
+    "inspector_jobs": 2
+  },
+  {
+    "label": "support",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\build",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "exit_code": 0,
+    "seconds": 8.470381100079976,
+    "log_sha256": "01caa2112319c322536b744f88553475b9599a6cb39c880281bb8a25f33d5c9f",
+    "parse_jobs": 0,
+    "inspector_jobs": 2
+  },
+  {
+    "label": "flags-configure",
+    "argv": [
+      "cmake",
+      "-S",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\\u6e90\u7801 \u7a7a\u683c",
+      "-B",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\build",
+      "-G",
+      "Ninja",
+      "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+      "-DCMAKE_PREFIX_PATH=E:\\SyncForder\\CodeRepos\\install\\EC3-C8",
+      "-DINSPECTOR_CMAKE_MODULE=E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\installed-tools\\share\\lux-engine-editor-scene-ui\\scene_ui\\cmake_scripts\\engine_editor_imgui_inspector_codegen.cmake",
+      "-DLUX_INSPECTOR_GENERATOR_EXECUTABLE=E:\\SyncForder\\CodeRepos\\install\\EC3-C8\\bin\\lux_inspector_generator.exe",
+      "-Dlux-cxx_DIR=E:/SyncForder/CodeRepos/install/EC3-cxx/share/lux-cxx",
+      "-Dlux-cmake-toolset_DIR=E:/SyncForder/CodeRepos/install/EC2-R1-ead7e59514a5/share/lux-cmake-toolset",
+      "-Dimgui_DIR=E:/SyncForder/CodeRepos/install/EC2-R1-ead7e59514a5/share/imgui",
+      "-Dnode_editor_DIR=E:/SyncForder/CodeRepos/install/EC2-R1-ead7e59514a5/share/node_editor",
+      "-DLuxLua55_DIR=E:/SyncForder/CodeRepos/install/o/v4/lua55/lib/cmake/LuxLua55",
+      "-DCMAKE_TOOLCHAIN_FILE=D:/Development/vcpkg/scripts/buildsystems/vcpkg.cmake",
+      "-DCMAKE_PROGRAM_PATH=E:/SyncForder/CodeRepos/install/EC3-cxx/bin",
+      "-DLUX_META_GENERATOR=E:/SyncForder/CodeRepos/install/EC3-cxx/bin/lux_meta_generator.exe",
+      "-DEC3_GENERATION_FLAG=2"
+    ],
+    "exit_code": 0,
+    "seconds": 0.6631926000118256,
+    "log_sha256": "8dd51dd8a386c513b5bf1c3e0740ef7e64c6351b4fb854394b96ed5814f9ac8b",
+    "parse_jobs": 0,
+    "inspector_jobs": 0
+  },
+  {
+    "label": "flags",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\build",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "exit_code": 0,
+    "seconds": 8.748173500061966,
+    "log_sha256": "22384eb90a3c04f1ed6aee713c3580b7f01038862340fb011a0c09d9ba356a2c",
+    "parse_jobs": 4,
+    "inspector_jobs": 2
+  },
+  {
+    "label": "after-flags",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\build",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "exit_code": 0,
+    "seconds": 0.0947068000677973,
+    "log_sha256": "7716162f3cd3b99cf3b8a8dd6decf324e08c7e941aae7e730baba5e4fc8c075b",
+    "parse_jobs": 0,
+    "inspector_jobs": 0
+  },
+  {
+    "label": "unrelated-header",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\build",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "exit_code": 0,
+    "seconds": 0.0894990999950096,
+    "log_sha256": "7716162f3cd3b99cf3b8a8dd6decf324e08c7e941aae7e730baba5e4fc8c075b",
+    "parse_jobs": 0,
+    "inspector_jobs": 0
+  },
+  {
+    "label": "missing-sidecar",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\build",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "exit_code": 0,
+    "seconds": 0.2737246999749914,
+    "log_sha256": "412f605b4abbaa0f7c5c0a6007c0555292bab6cf32f5735efbf8fc08cb08697c",
+    "parse_jobs": 1,
+    "inspector_jobs": 1
+  },
+  {
+    "label": "missing-cpp",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\build",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "exit_code": 0,
+    "seconds": 8.07509649998974,
+    "log_sha256": "b9bde5b7b0cb7e3e03d79e3d87dd774765bbcc925ff1ffd89cc8d357f8224065",
+    "parse_jobs": 0,
+    "inspector_jobs": 1
+  },
+  {
+    "label": "missing-hpp",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\build",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "exit_code": 0,
+    "seconds": 8.015686300001107,
+    "log_sha256": "b1ffc6472fbcb75c307cccfaba68ab48d6ca62be39aaef02cdbd08036320e927",
+    "parse_jobs": 0,
+    "inspector_jobs": 1
+  },
+  {
+    "label": "template-failure",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\build",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "exit_code": 1,
+    "seconds": 0.1504755999194458,
+    "log_sha256": "7dd9835f584dddcc32995fd4d211c8945af416ae813eb66c3397d2d8544d2695",
+    "parse_jobs": 0,
+    "inspector_jobs": 2
+  },
+  {
+    "label": "template-recovery",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\build",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "exit_code": 0,
+    "seconds": 0.19772249995730817,
+    "log_sha256": "6965a1e6acd74c66d133f914993ea2f692a585261c28ef8d14213d05ae753bcd",
+    "parse_jobs": 0,
+    "inspector_jobs": 2
+  },
+  {
+    "label": "after-template-recovery",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\build",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "exit_code": 0,
+    "seconds": 0.08551899995654821,
+    "log_sha256": "7716162f3cd3b99cf3b8a8dd6decf324e08c7e941aae7e730baba5e4fc8c075b",
+    "parse_jobs": 0,
+    "inspector_jobs": 0
+  },
+  {
+    "label": "formatter-failure",
+    "argv": [
+      "cmake",
+      "-DGENERATOR=E:\\SyncForder\\CodeRepos\\install\\EC3-C8\\bin\\lux_inspector_generator.exe",
+      "-DCONFIG=E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\build\\lux_codegen\\a_fields.inspector.json",
+      "-DIR=E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\build\\inspector_ir\\a_fields\\a\\Component.editor-ir.json",
+      "-DTEMPLATES=E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\installed-tools\\share\\lux-engine-editor-scene-ui\\scene_ui\\cmake_scripts\\codegen\\templates",
+      "-DOUTPUT_ROOT=E:/SyncForder/CodeRepos/lux-engine/.internal/editor-redesign/EC3/SDK \u4e2d\u6587 04/build/inspector_gen/a_fields",
+      "-DFORMATTER=E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\missing-formatter",
+      "-DSTYLE=E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\installed-tools\\share\\lux-engine-editor-scene-ui\\scene_ui\\cmake_scripts\\codegen\\.clang-format",
+      "-P",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\installed-tools\\share\\lux-engine-editor-scene-ui\\scene_ui\\cmake_scripts\\codegen\\GenerateInspector.cmake"
+    ],
+    "exit_code": 1,
+    "seconds": 0.12991369992960244,
+    "log_sha256": "d39043e5863e08c56ed2e59c6b353229eaee817273308d4bc3c3cb705b1f3b11",
+    "parse_jobs": 0,
+    "inspector_jobs": 0
+  },
+  {
+    "label": "formatter-recovery",
+    "argv": [
+      "cmake",
+      "-DGENERATOR=E:\\SyncForder\\CodeRepos\\install\\EC3-C8\\bin\\lux_inspector_generator.exe",
+      "-DCONFIG=E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\build\\lux_codegen\\a_fields.inspector.json",
+      "-DIR=E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\build\\inspector_ir\\a_fields\\a\\Component.editor-ir.json",
+      "-DTEMPLATES=E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\installed-tools\\share\\lux-engine-editor-scene-ui\\scene_ui\\cmake_scripts\\codegen\\templates",
+      "-DOUTPUT_ROOT=E:/SyncForder/CodeRepos/lux-engine/.internal/editor-redesign/EC3/SDK \u4e2d\u6587 04/build/inspector_gen/a_fields",
+      "-DFORMATTER=D:/Development/vcpkg/installed/x64-windows/tools/llvm/clang-format.exe",
+      "-DSTYLE=E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\installed-tools\\share\\lux-engine-editor-scene-ui\\scene_ui\\cmake_scripts\\codegen\\.clang-format",
+      "-P",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\installed-tools\\share\\lux-engine-editor-scene-ui\\scene_ui\\cmake_scripts\\codegen\\GenerateInspector.cmake"
+    ],
+    "exit_code": 0,
+    "seconds": 0.09028790006414056,
+    "log_sha256": "088c110d98ed6f638b504ebe3117aff14958cddef180767bde0242d9e5940a2c",
+    "parse_jobs": 0,
+    "inspector_jobs": 0
+  },
+  {
+    "label": "publication-failure",
+    "argv": [
+      "cmake",
+      "-DGENERATOR=E:\\SyncForder\\CodeRepos\\install\\EC3-C8\\bin\\lux_inspector_generator.exe",
+      "-DCONFIG=E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\build\\lux_codegen\\a_fields.inspector.json",
+      "-DIR=E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\build\\inspector_ir\\a_fields\\a\\Component.editor-ir.json",
+      "-DTEMPLATES=E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\installed-tools\\share\\lux-engine-editor-scene-ui\\scene_ui\\cmake_scripts\\codegen\\templates",
+      "-DOUTPUT_ROOT=E:/SyncForder/CodeRepos/lux-engine/.internal/editor-redesign/EC3/SDK \u4e2d\u6587 04/build/inspector_gen/a_fields",
+      "-DFORMATTER=D:/Development/vcpkg/installed/x64-windows/tools/llvm/clang-format.exe",
+      "-DSTYLE=E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\installed-tools\\share\\lux-engine-editor-scene-ui\\scene_ui\\cmake_scripts\\codegen\\.clang-format",
+      "-P",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\installed-tools\\share\\lux-engine-editor-scene-ui\\scene_ui\\cmake_scripts\\codegen\\GenerateInspector.cmake"
+    ],
+    "exit_code": 1,
+    "seconds": 0.09660779999103397,
+    "log_sha256": "94fbe08eda1425de7d1109d9e1439241b67ce46ebb98537a499c161f40ef0fb2",
+    "parse_jobs": 0,
+    "inspector_jobs": 0
+  },
+  {
+    "label": "publication-recovery",
+    "argv": [
+      "cmake",
+      "-DGENERATOR=E:\\SyncForder\\CodeRepos\\install\\EC3-C8\\bin\\lux_inspector_generator.exe",
+      "-DCONFIG=E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\build\\lux_codegen\\a_fields.inspector.json",
+      "-DIR=E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\build\\inspector_ir\\a_fields\\a\\Component.editor-ir.json",
+      "-DTEMPLATES=E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\installed-tools\\share\\lux-engine-editor-scene-ui\\scene_ui\\cmake_scripts\\codegen\\templates",
+      "-DOUTPUT_ROOT=E:/SyncForder/CodeRepos/lux-engine/.internal/editor-redesign/EC3/SDK \u4e2d\u6587 04/build/inspector_gen/a_fields",
+      "-DFORMATTER=D:/Development/vcpkg/installed/x64-windows/tools/llvm/clang-format.exe",
+      "-DSTYLE=E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\installed-tools\\share\\lux-engine-editor-scene-ui\\scene_ui\\cmake_scripts\\codegen\\.clang-format",
+      "-P",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\installed-tools\\share\\lux-engine-editor-scene-ui\\scene_ui\\cmake_scripts\\codegen\\GenerateInspector.cmake"
+    ],
+    "exit_code": 0,
+    "seconds": 0.15639509994070977,
+    "log_sha256": "088c110d98ed6f638b504ebe3117aff14958cddef180767bde0242d9e5940a2c",
+    "parse_jobs": 0,
+    "inspector_jobs": 0
+  },
+  {
+    "label": "after-publication-recovery",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\build",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "exit_code": 0,
+    "seconds": 7.9625124000012875,
+    "log_sha256": "08c25b38ab595f325d0e22f19b54ec49692ae53dc89002eb7eb29d223d92c727",
+    "parse_jobs": 0,
+    "inspector_jobs": 0
+  },
+  {
+    "label": "final-no-change",
+    "argv": [
+      "cmake",
+      "--build",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\SDK \u4e2d\u6587 04\\build",
+      "--target",
+      "all",
+      "-j",
+      "4",
+      "--",
+      "-k",
+      "0"
+    ],
+    "exit_code": 0,
+    "seconds": 0.0921297000022605,
+    "log_sha256": "7716162f3cd3b99cf3b8a8dd6decf324e08c7e941aae7e730baba5e4fc8c075b",
+    "parse_jobs": 0,
+    "inspector_jobs": 0
+  }
+]

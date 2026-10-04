@@ -1,0 +1,601 @@
+Start testing: Oct 04 01:07 GMT 夏令时
+----------------------------------------------------------
+148/242 Testing: editor.scene_model_boundaries
+148/242 Test: editor.scene_model_boundaries
+Command: "C:/Users/ChenHui/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe" "E:/SyncForder/CodeRepos/lux-engine-ec3-qualified/editor/tests/architecture/test_scene_model_boundaries.py" "--source" "E:/SyncForder/CodeRepos/lux-engine-ec3-qualified" "--cmake" "D:/Development/CMake/bin/cmake.exe"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/architecture
+"editor.scene_model_boundaries" start time: Oct 04 01:07 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS direct-runtime: 1 -> 0
+PASS intermediate-ui: 1 -> 0
+PASS intermediate-context: 1 -> 0
+PASS imported-ui: 1 -> 0
+PASS old-editor-header: 1 -> 0
+PASS old-context-header: 1 -> 0
+PASS old-bridge-header: 1 -> 0
+PASS runtime-header: 1 -> 0
+PASS unknown-library: 1 -> 0
+PASS legal-cpu: 0 -> 0
+<end of output>
+Test time =  17.47 sec
+----------------------------------------------------------
+Test Passed.
+"editor.scene_model_boundaries" end time: Oct 04 01:08 GMT 夏令时
+"editor.scene_model_boundaries" time elapsed: 00:00:17
+----------------------------------------------------------
+
+149/242 Testing: editor.architecture_negative
+149/242 Test: editor.architecture_negative
+Command: "C:/Users/ChenHui/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe" "E:/SyncForder/CodeRepos/lux-engine-ec3-qualified/editor/tests/architecture/test_editor_boundaries.py" "--source" "E:/SyncForder/CodeRepos/lux-engine-ec3-qualified" "--cmake" "D:/Development/CMake/bin/cmake.exe"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/architecture
+"editor.architecture_negative" start time: Oct 04 01:08 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS ENGINE_DEPENDS_ON_EDITOR: forbidden edge rejected; same environment repaired
+PASS WORKFLOWS_DEPEND_ON_BOOTSTRAP: forbidden edge rejected; same environment repaired
+PASS MODEL_DEPENDS_ON_UI: forbidden edge rejected; same environment repaired
+PASS expiry and private header checks
+PASS P01 retired history API, saved state and new-to-transition checks
+PASS S01 old directories rejected; narrow history/session scopes preserved
+PASS N12-07: all nine expired source roots rejected, including excluded bodies; repaired
+PASS native-only option defaults
+PASS X01-R2-01: configure=1 expected=FOUNDATION_DIRECT_DEPENDENCY repaired=0
+PASS X01-R2-02: configure=1 expected=FOUNDATION_FORBIDDEN_DEPENDENCY repaired=0
+PASS X01-R2-03: configure=1 expected=FOUNDATION_FORBIDDEN_DEPENDENCY repaired=0
+PASS X01-R2-04: configure=1 expected=FOUNDATION_FORBIDDEN_DEPENDENCY repaired=0
+PASS X01-R2-05: configure=1 expected=FOUNDATION_FORBIDDEN_INCLUDE repaired=0
+PASS EC1-history-private: configure=1 expected=FOUNDATION_FORBIDDEN_INCLUDE repaired=0
+PASS EC1-history-owner: configure=0 expected=None repaired=0
+PASS legal: configure=0 expected=None repaired=0
+PASS legal-external: configure=0 expected=None repaired=0
+PASS imported-hop: configure=1 expected=FOUNDATION_FORBIDDEN_DEPENDENCY repaired=0
+PASS conditional: configure=1 expected=FOUNDATION_FORBIDDEN_DEPENDENCY repaired=0
+PASS contracts-ui: configure=1 expected=FOUNDATION_FORBIDDEN_DEPENDENCY repaired=0
+PASS history-ui: configure=1 expected=FOUNDATION_FORBIDDEN_DEPENDENCY repaired=0
+PASS context: configure=1 expected=NEW_DEPENDS_ON_OLD_TARGET repaired=0
+PASS unknown: configure=1 expected=FOUNDATION_UNRESOLVED_DEPENDENCY repaired=0
+<end of output>
+Test time =  27.45 sec
+----------------------------------------------------------
+Test Passed.
+"editor.architecture_negative" end time: Oct 04 01:08 GMT 夏令时
+"editor.architecture_negative" time elapsed: 00:00:27
+----------------------------------------------------------
+
+150/242 Testing: editor.architecture_current
+150/242 Test: editor.architecture_current
+Command: "C:/Users/ChenHui/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe" "E:/SyncForder/CodeRepos/lux-engine-ec3-qualified/editor/tests/architecture/check_editor_boundaries.py" "--repo" "E:/SyncForder/CodeRepos/lux-engine-ec3-qualified" "--graph" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor-architecture/targets.json" "--compile-db" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/compile_commands.json" "--stage" "EC3" "--layering-mode" "STRICT"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/architecture
+"editor.architecture_current" start time: Oct 04 01:08 GMT 夏令时
+Output:
+----------------------------------------------------------
+{"status": "PASS", "findings": []}
+<end of output>
+Test time =  39.08 sec
+----------------------------------------------------------
+Test Passed.
+"editor.architecture_current" end time: Oct 04 01:09 GMT 夏令时
+"editor.architecture_current" time elapsed: 00:00:39
+----------------------------------------------------------
+
+152/242 Testing: editor.material_model_boundaries
+152/242 Test: editor.material_model_boundaries
+Command: "C:/Users/ChenHui/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe" "E:/SyncForder/CodeRepos/lux-engine-ec3-qualified/editor/tests/architecture/test_scene_model_boundaries.py" "--source" "E:/SyncForder/CodeRepos/lux-engine-ec3-qualified" "--cmake" "D:/Development/CMake/bin/cmake.exe" "--model" "material"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/architecture
+"editor.material_model_boundaries" start time: Oct 04 01:09 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS direct-runtime: 1 -> 0
+PASS intermediate-ui: 1 -> 0
+PASS intermediate-context: 1 -> 0
+PASS imported-ui: 1 -> 0
+PASS old-editor-header: 1 -> 0
+PASS old-context-header: 1 -> 0
+PASS old-bridge-header: 1 -> 0
+PASS runtime-header: 1 -> 0
+PASS unknown-library: 1 -> 0
+PASS legal-cpu: 0 -> 0
+PASS compiler: 1 -> 0
+PASS storage: 1 -> 0
+PASS old-material-header: 1 -> 0
+PASS preview-header: 1 -> 0
+PASS static-private-runtime: 1 -> 0
+PASS static-private-imported: 1 -> 0
+<end of output>
+Test time =  26.20 sec
+----------------------------------------------------------
+Test Passed.
+"editor.material_model_boundaries" end time: Oct 04 01:09 GMT 夏令时
+"editor.material_model_boundaries" time elapsed: 00:00:26
+----------------------------------------------------------
+
+153/242 Testing: editor.flowforge_model_boundaries
+153/242 Test: editor.flowforge_model_boundaries
+Command: "C:/Users/ChenHui/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe" "E:/SyncForder/CodeRepos/lux-engine-ec3-qualified/editor/tests/architecture/test_scene_model_boundaries.py" "--source" "E:/SyncForder/CodeRepos/lux-engine-ec3-qualified" "--cmake" "D:/Development/CMake/bin/cmake.exe" "--model" "flowforge"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/architecture
+"editor.flowforge_model_boundaries" start time: Oct 04 01:09 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS direct-runtime: 1 -> 0
+PASS intermediate-ui: 1 -> 0
+PASS intermediate-context: 1 -> 0
+PASS imported-ui: 1 -> 0
+PASS old-editor-header: 1 -> 0
+PASS old-context-header: 1 -> 0
+PASS old-bridge-header: 1 -> 0
+PASS runtime-header: 1 -> 0
+PASS unknown-library: 1 -> 0
+PASS legal-cpu: 0 -> 0
+PASS direct-compiler: 1 -> 0
+PASS compiler: 1 -> 0
+PASS script-execution: 1 -> 0
+PASS storage: 1 -> 0
+PASS old-flow-header: 1 -> 0
+PASS compiler-header: 1 -> 0
+PASS static-private-runtime: 1 -> 0
+PASS static-private-imported: 1 -> 0
+<end of output>
+Test time =  29.17 sec
+----------------------------------------------------------
+Test Passed.
+"editor.flowforge_model_boundaries" end time: Oct 04 01:10 GMT 夏令时
+"editor.flowforge_model_boundaries" time elapsed: 00:00:29
+----------------------------------------------------------
+
+155/242 Testing: editor.persistence_boundaries
+155/242 Test: editor.persistence_boundaries
+Command: "C:/Users/ChenHui/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe" "E:/SyncForder/CodeRepos/lux-engine-ec3-qualified/editor/tests/architecture/test_persistence_boundaries.py" "--source" "E:/SyncForder/CodeRepos/lux-engine-ec3-qualified" "--cmake" "D:/Development/CMake/bin/cmake.exe" "--evidence" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/architecture/persistence-boundaries.json"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/architecture
+"editor.persistence_boundaries" start time: Oct 04 01:10 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS core-model
+PASS core-transitive-ui
+PASS core-context-header
+PASS io-transitive-context
+PASS io-old-storage
+PASS scene-reverse
+PASS scene-adapter-ui
+PASS scene-adapter-bridge
+PASS scene-legal
+PASS material-reverse
+PASS material-adapter-ui
+PASS material-adapter-bridge
+PASS material-legal
+PASS flowforge-reverse
+PASS flowforge-adapter-ui
+PASS flowforge-adapter-bridge
+PASS flowforge-legal
+<end of output>
+Test time =  37.73 sec
+----------------------------------------------------------
+Test Passed.
+"editor.persistence_boundaries" end time: Oct 04 01:10 GMT 夏令时
+"editor.persistence_boundaries" time elapsed: 00:00:37
+----------------------------------------------------------
+
+156/242 Testing: editor.scene_execution_boundaries
+156/242 Test: editor.scene_execution_boundaries
+Command: "C:/Users/ChenHui/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe" "E:/SyncForder/CodeRepos/lux-engine-ec3-qualified/editor/tests/architecture/test_scene_execution_boundaries.py" "--source" "E:/SyncForder/CodeRepos/lux-engine-ec3-qualified" "--cmake" "D:/Development/CMake/bin/cmake.exe" "--evidence" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/architecture/scene-execution-boundaries.json"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/architecture
+"editor.scene_execution_boundaries" start time: Oct 04 01:10 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS runtime-editor
+PASS runtime-transitive-editor
+PASS run-ui
+PASS run-transitive-context
+PASS run-old-editor
+PASS run-private-bridge
+PASS api-ui
+PASS api-render-runtime
+PASS api-client-transitive-runtime
+PASS api-client-legal
+PASS author-runtime
+PASS author-run
+PASS run-legal
+<end of output>
+Test time =  28.01 sec
+----------------------------------------------------------
+Test Passed.
+"editor.scene_execution_boundaries" end time: Oct 04 01:11 GMT 夏令时
+"editor.scene_execution_boundaries" time elapsed: 00:00:28
+----------------------------------------------------------
+
+157/242 Testing: editor.projection_compilation_boundaries
+157/242 Test: editor.projection_compilation_boundaries
+Command: "C:/Users/ChenHui/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe" "E:/SyncForder/CodeRepos/lux-engine-ec3-qualified/editor/tests/architecture/test_projection_compilation_boundaries.py" "--source" "E:/SyncForder/CodeRepos/lux-engine-ec3-qualified" "--cmake" "D:/Development/CMake/bin/cmake.exe" "--evidence" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/architecture/projection-compilation-boundaries.json"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/architecture
+"editor.projection_compilation_boundaries" start time: Oct 04 01:11 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS author-projection
+PASS author-material-preview
+PASS author-flow-compilation
+PASS material-direct-storage
+PASS flow-direct-storage
+PASS projection-ui
+PASS projection-transitive-context
+PASS projection-bridge
+PASS material-context
+PASS material-transitive-ui
+PASS material-bridge
+PASS flow-ui
+PASS flow-transitive-context
+PASS flow-bridge
+PASS projection-legal
+PASS material-legal
+PASS flow-legal
+<end of output>
+Test time =  35.93 sec
+----------------------------------------------------------
+Test Passed.
+"editor.projection_compilation_boundaries" end time: Oct 04 01:11 GMT 夏令时
+"editor.projection_compilation_boundaries" time elapsed: 00:00:35
+----------------------------------------------------------
+
+158/242 Testing: editor.interaction_view_boundaries
+158/242 Test: editor.interaction_view_boundaries
+Command: "C:/Users/ChenHui/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe" "E:/SyncForder/CodeRepos/lux-engine-ec3-qualified/editor/tests/architecture/test_interaction_view_boundaries.py" "--source" "E:/SyncForder/CodeRepos/lux-engine-ec3-qualified" "--cmake" "D:/Development/CMake/bin/cmake.exe" "--evidence" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/architecture/interaction-view-boundaries.json"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/architecture
+"editor.interaction_view_boundaries" start time: Oct 04 01:11 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS scene-author-interaction
+PASS material-author-interaction
+PASS flow-author-interaction
+PASS scene-context
+PASS material-transitive-context
+PASS flow-transitive-ui
+PASS scene-ui
+PASS scene-run-transitive-render-runtime
+PASS view-scene
+PASS view-storage
+PASS view-render
+PASS view-transitive-model
+PASS engine-ui-editor
+PASS scene-old-bridge
+PASS view-model-include
+PASS view-rooted-factory
+PASS scene-legal
+PASS material-legal
+PASS flow-legal
+PASS view-legal
+<end of output>
+Test time =  43.66 sec
+----------------------------------------------------------
+Test Passed.
+"editor.interaction_view_boundaries" end time: Oct 04 01:12 GMT 夏令时
+"editor.interaction_view_boundaries" time elapsed: 00:00:43
+----------------------------------------------------------
+
+159/242 Testing: editor.workspace_boundaries
+159/242 Test: editor.workspace_boundaries
+Command: "C:/Users/ChenHui/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe" "E:/SyncForder/CodeRepos/lux-engine-ec3-qualified/editor/tests/architecture/test_workspace_boundaries.py" "--source" "E:/SyncForder/CodeRepos/lux-engine-ec3-qualified" "--cmake" "D:/Development/CMake/bin/cmake.exe" "--evidence" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/architecture/workspace-boundaries.json"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/architecture
+"editor.workspace_boundaries" start time: Oct 04 01:12 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS layout-scene
+PASS layout-material-transitive
+PASS layout-runtime
+PASS layout-ui
+PASS layout-io
+PASS recovery-flow
+PASS recovery-transitive-context
+PASS store-context
+PASS store-transitive-context
+PASS engine-editor
+PASS layout-root
+PASS layout-pane
+PASS layout-store-header
+PASS layout-storage-header
+PASS store-old-workspace
+PASS layout-legal
+PASS recovery-legal
+PASS store-legal
+<end of output>
+Test time =  38.81 sec
+----------------------------------------------------------
+Test Passed.
+"editor.workspace_boundaries" end time: Oct 04 01:13 GMT 夏令时
+"editor.workspace_boundaries" time elapsed: 00:00:38
+----------------------------------------------------------
+
+160/242 Testing: editor.desktop_view_boundaries
+160/242 Test: editor.desktop_view_boundaries
+Command: "C:/Users/ChenHui/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe" "E:/SyncForder/CodeRepos/lux-engine-ec3-qualified/editor/tests/architecture/test_interaction_view_boundaries.py" "--stage" "P10" "--source" "E:/SyncForder/CodeRepos/lux-engine-ec3-qualified" "--cmake" "D:/Development/CMake/bin/cmake.exe" "--evidence" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/architecture/desktop-view-boundaries.json"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/architecture
+"editor.desktop_view_boundaries" start time: Oct 04 01:13 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS host-scene-owner
+PASS host-run-owner
+PASS host-old-editor
+PASS widgets-runtime
+PASS widgets-model
+PASS scene-old-ui
+PASS material-transitive-old
+PASS flow-old-editor
+PASS harness-transitive-old
+PASS harness-imported-old
+PASS engine-ui-new-editor
+PASS model-new-ui
+PASS view-api-desktop
+PASS project-storage
+PASS host-model-header
+PASS scene-old-header
+PASS widgets-private-header
+PASS scene-rooted-factory
+PASS host-legal
+PASS desktop-legal
+PASS widgets-legal
+PASS scene-legal
+PASS material-legal
+PASS flow-legal
+PASS harness-legal
+<end of output>
+Test time =  53.53 sec
+----------------------------------------------------------
+Test Passed.
+"editor.desktop_view_boundaries" end time: Oct 04 01:14 GMT 夏令时
+"editor.desktop_view_boundaries" time elapsed: 00:00:53
+----------------------------------------------------------
+
+162/242 Testing: editor.quality.boundaries
+162/242 Test: editor.quality.boundaries
+Command: "C:/Users/ChenHui/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe" "E:/SyncForder/CodeRepos/lux-engine-ec3-qualified/editor/tests/architecture/test_interaction_view_boundaries.py" "--stage" "P10Q" "--source" "E:/SyncForder/CodeRepos/lux-engine-ec3-qualified" "--cmake" "D:/Development/CMake/bin/cmake.exe" "--evidence" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/architecture/quality-boundaries.json"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/architecture
+"editor.quality.boundaries" start time: Oct 04 01:14 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS host-scene-owner
+PASS host-run-owner
+PASS host-old-editor
+PASS widgets-runtime
+PASS widgets-model
+PASS scene-old-ui
+PASS material-transitive-old
+PASS flow-old-editor
+PASS harness-transitive-old
+PASS harness-imported-old
+PASS engine-ui-new-editor
+PASS model-new-ui
+PASS view-api-desktop
+PASS project-storage
+PASS host-model-header
+PASS scene-old-header
+PASS widgets-private-header
+PASS scene-rooted-factory
+PASS host-legal
+PASS desktop-legal
+PASS widgets-legal
+PASS scene-legal
+PASS material-legal
+PASS flow-legal
+PASS harness-legal
+PASS viewport-model
+PASS viewport-inspector
+PASS viewport-context
+PASS material-scene-ui
+PASS material-old-editing-header
+PASS tasks-desktop-production-header
+PASS viewport-legal
+<end of output>
+Test time =  69.78 sec
+----------------------------------------------------------
+Test Passed.
+"editor.quality.boundaries" end time: Oct 04 01:15 GMT 夏令时
+"editor.quality.boundaries" time elapsed: 00:01:09
+----------------------------------------------------------
+
+163/242 Testing: editor.quality.evidence
+163/242 Test: editor.quality.evidence
+Command: "C:/Users/ChenHui/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe" "E:/SyncForder/CodeRepos/lux-engine-ec3-qualified/editor/tests/architecture/test_quality_evidence.py"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/architecture
+"editor.quality.evidence" start time: Oct 04 01:15 GMT 夏令时
+Output:
+----------------------------------------------------------
+P10Q archive path/hash/missing negative cases PASS
+<end of output>
+Test time =   0.08 sec
+----------------------------------------------------------
+Test Passed.
+"editor.quality.evidence" end time: Oct 04 01:15 GMT 夏令时
+"editor.quality.evidence" time elapsed: 00:00:00
+----------------------------------------------------------
+
+164/242 Testing: editor.layering.delivery_constraints
+164/242 Test: editor.layering.delivery_constraints
+Command: "C:/Users/ChenHui/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe" "E:/SyncForder/CodeRepos/lux-engine-ec3-qualified/editor/tests/architecture/test_delivery_constraints.py" "--build" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/architecture
+"editor.layering.delivery_constraints" start time: Oct 04 01:15 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS positive 0
+PASS bool_return 2
+PASS different_error 2
+PASS rvalue_only 2
+PASS nonvoid_result 2
+<end of output>
+Test time =   2.13 sec
+----------------------------------------------------------
+Test Passed.
+"editor.layering.delivery_constraints" end time: Oct 04 01:15 GMT 夏令时
+"editor.layering.delivery_constraints" time elapsed: 00:00:02
+----------------------------------------------------------
+
+165/242 Testing: editor.layering.boundaries
+165/242 Test: editor.layering.boundaries
+Command: "C:/Users/ChenHui/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe" "E:/SyncForder/CodeRepos/lux-engine-ec3-qualified/editor/tests/architecture/test_layering_boundaries.py" "--source" "E:/SyncForder/CodeRepos/lux-engine-ec3-qualified" "--build" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918" "--cmake" "D:/Development/CMake/bin/cmake.exe"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/architecture
+"editor.layering.boundaries" start time: Oct 04 01:15 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS N01
+PASS N02
+PASS N03
+PASS N04
+PASS N05
+PASS N06
+PASS N07
+PASS N08
+PASS N09
+PASS N10
+PASS N11
+PASS N12
+PASS N13
+PASS N14
+<end of output>
+Test time =  45.33 sec
+----------------------------------------------------------
+Test Passed.
+"editor.layering.boundaries" end time: Oct 04 01:16 GMT 夏令时
+"editor.layering.boundaries" time elapsed: 00:00:45
+----------------------------------------------------------
+
+166/242 Testing: editor.layering.compiler_providers
+166/242 Test: editor.layering.compiler_providers
+Command: "C:/Users/ChenHui/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe" "E:/SyncForder/CodeRepos/lux-engine-ec3-qualified/editor/tests/architecture/test_layering_compiler.py" "--source" "E:/SyncForder/CodeRepos/lux-engine-ec3-qualified" "--build" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/architecture
+"editor.layering.compiler_providers" start time: Oct 04 01:16 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS compiler providers: 795 TUs; actual template positive/rejection/repair
+<end of output>
+Test time =  88.02 sec
+----------------------------------------------------------
+Test Passed.
+"editor.layering.compiler_providers" end time: Oct 04 01:17 GMT 夏令时
+"editor.layering.compiler_providers" time elapsed: 00:01:28
+----------------------------------------------------------
+
+167/242 Testing: editor.extensions.boundaries
+167/242 Test: editor.extensions.boundaries
+Command: "C:/Users/ChenHui/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe" "E:/SyncForder/CodeRepos/lux-engine-ec3-qualified/editor/tests/architecture/test_layering_boundaries.py" "--source" "E:/SyncForder/CodeRepos/lux-engine-ec3-qualified" "--build" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918" "--cmake" "D:/Development/CMake/bin/cmake.exe" "--p11"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/architecture
+"editor.extensions.boundaries" start time: Oct 04 01:17 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS N11-01-context
+PASS N11-01-ui
+PASS N11-02
+PASS N11-03
+PASS N11-04
+PASS N11-05
+PASS EC1-extension-gpu
+PASS EC1-extension-toolchain
+<end of output>
+Test time =  25.86 sec
+----------------------------------------------------------
+Test Passed.
+"editor.extensions.boundaries" end time: Oct 04 01:17 GMT 夏令时
+"editor.extensions.boundaries" time elapsed: 00:00:25
+----------------------------------------------------------
+
+168/242 Testing: editor.product.boundaries
+168/242 Test: editor.product.boundaries
+Command: "C:/Users/ChenHui/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe" "E:/SyncForder/CodeRepos/lux-engine-ec3-qualified/editor/tests/architecture/test_layering_boundaries.py" "--source" "E:/SyncForder/CodeRepos/lux-engine-ec3-qualified" "--build" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918" "--cmake" "D:/Development/CMake/bin/cmake.exe" "--p12"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/architecture
+"editor.product.boundaries" start time: Oct 04 01:17 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS N12-01-context
+PASS N12-01-ui
+PASS N12-02
+PASS N12-03
+PASS N12-04
+PASS N12-05
+<end of output>
+Test time =  19.45 sec
+----------------------------------------------------------
+Test Passed.
+"editor.product.boundaries" end time: Oct 04 01:18 GMT 夏令时
+"editor.product.boundaries" time elapsed: 00:00:19
+----------------------------------------------------------
+
+169/242 Testing: editor.ec2.boundaries
+169/242 Test: editor.ec2.boundaries
+Command: "C:/Users/ChenHui/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe" "E:/SyncForder/CodeRepos/lux-engine-ec3-qualified/editor/tests/architecture/test_layering_boundaries.py" "--source" "E:/SyncForder/CodeRepos/lux-engine-ec3-qualified" "--build" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918" "--cmake" "D:/Development/CMake/bin/cmake.exe" "--ec2"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/architecture
+"editor.ec2.boundaries" start time: Oct 04 01:18 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS EC2-01-direct
+PASS EC2-01-indirect
+PASS EC2-02
+PASS EC2-03
+PASS EC2-04
+PASS EC2-04-lua
+PASS EC2-05
+PASS EC2-05-core
+PASS EC2-06
+PASS EC2-07
+PASS EC2-08
+PASS EC2-09
+<end of output>
+Test time =  39.25 sec
+----------------------------------------------------------
+Test Passed.
+"editor.ec2.boundaries" end time: Oct 04 01:18 GMT 夏令时
+"editor.ec2.boundaries" time elapsed: 00:00:39
+----------------------------------------------------------
+
+170/242 Testing: editor.ec3.boundaries
+170/242 Test: editor.ec3.boundaries
+Command: "C:/Users/ChenHui/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe" "E:/SyncForder/CodeRepos/lux-engine-ec3-qualified/editor/tests/architecture/test_layering_boundaries.py" "--source" "E:/SyncForder/CodeRepos/lux-engine-ec3-qualified" "--build" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918" "--cmake" "D:/Development/CMake/bin/cmake.exe" "--ec3"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/architecture
+"editor.ec3.boundaries" start time: Oct 04 01:18 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS EC3-save-policy
+PASS EC3-workspace
+PASS EC3-settings-data
+PASS EC3-viewport
+<end of output>
+Test time =  12.41 sec
+----------------------------------------------------------
+Test Passed.
+"editor.ec3.boundaries" end time: Oct 04 01:19 GMT 夏令时
+"editor.ec3.boundaries" time elapsed: 00:00:12
+----------------------------------------------------------
+
+End testing: Oct 04 01:19 GMT 夏令时
+
+EC2 =  39.25 sec*proc
+
+EC3 =  12.41 sec*proc
+
+P02 =  17.47 sec*proc
+
+P03 =  26.20 sec*proc
+
+P04 =  29.17 sec*proc
+
+P05 =  37.73 sec*proc
+
+P06 =  28.01 sec*proc
+
+P07 =  35.93 sec*proc
+
+P08 =  43.66 sec*proc
+
+P09 =  38.81 sec*proc
+
+P10 =  53.53 sec*proc
+
+P10Q =  69.86 sec*proc
+
+P11 =  25.86 sec*proc
+
+P12 =  19.45 sec*proc
+
+architecture =  66.53 sec*proc
+
+editor = 679.32 sec*proc
+
+editor_layering = 135.47 sec*proc
+
+native = 679.32 sec*proc
+

@@ -1,0 +1,26 @@
+[
+  {
+    "destination": "E:\\SyncForder\\CodeRepos\\install\\Debug\\include\\lux\\engine\\ui\\Root.hpp",
+    "sha256": "0da9bc667ff35f378242f637d22156cef5c471e6d0e1ce7dae8e66421a9f4a45"
+  },
+  {
+    "destination": "E:\\SyncForder\\CodeRepos\\install\\Debug\\include\\lux\\engine\\ui\\Menu.hpp",
+    "sha256": "255f55c6c435c500bfd9fb1a0551f57b6bd2ed1627f0f7cf2ffb669e0ee02fc4"
+  },
+  {
+    "destination": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\ui\\Root.hpp",
+    "sha256": "0da9bc667ff35f378242f637d22156cef5c471e6d0e1ce7dae8e66421a9f4a45"
+  },
+  {
+    "destination": "E:\\SyncForder\\CodeRepos\\install\\RelWithDebInfo\\include\\lux\\engine\\ui\\Menu.hpp",
+    "sha256": "255f55c6c435c500bfd9fb1a0551f57b6bd2ed1627f0f7cf2ffb669e0ee02fc4"
+  },
+  {
+    "destination": "E:\\SyncForder\\CodeRepos\\install\\Android\\lux-engine\\include\\lux\\engine\\ui\\Root.hpp",
+    "sha256": "0da9bc667ff35f378242f637d22156cef5c471e6d0e1ce7dae8e66421a9f4a45"
+  },
+  {
+    "destination": "E:\\SyncForder\\CodeRepos\\install\\Android\\lux-engine\\include\\lux\\engine\\ui\\Menu.hpp",
+    "sha256": "255f55c6c435c500bfd9fb1a0551f57b6bd2ed1627f0f7cf2ffb669e0ee02fc4"
+  }
+]

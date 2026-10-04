@@ -1,0 +1,28 @@
+[0/2] Re-checking globbed directories...
+[1/26] Building CXX object editor\activities\material\CMakeFiles\material_persistence.dir\src\SessionFactory.cpp.obj
+[2/26] Linking CXX static library lib\material_persistence.lib
+[3/26] Building CXX object editor\activities\flow\CMakeFiles\flowforge_persistence.dir\src\SessionFactory.cpp.obj
+[4/26] Linking CXX static library lib\flowforge_persistence.lib
+[5/26] Building CXX object editor\workbench\scene\CMakeFiles\scene_ui.dir\src\SceneCreationView.cpp.obj
+[6/26] Building CXX object editor\workbench\flow\CMakeFiles\flow_ui.dir\src\FlowView.cpp.obj
+[7/26] Linking CXX static library lib\flow_ui.lib
+[8/26] Linking CXX executable bin\editor_artifact_publication.exe
+[9/26] Linking CXX executable bin\editor_persistence_models_test.exe
+[10/26] Building CXX object editor\workbench\scene\CMakeFiles\scene_ui.dir\src\SceneView.cpp.obj
+[11/26] Linking CXX static library lib\scene_ui.lib
+[12/26] Building CXX object editor\tests\integration\session_factories\CMakeFiles\editor_session_installation_test.dir\installation.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[13/26] Building CXX object editor\workbench\material\CMakeFiles\material_ui.dir\src\MaterialView.cpp.obj
+[14/26] Linking CXX static library lib\material_ui.lib
+[15/26] Linking CXX executable bin\plugin_configuration_test.exe
+[16/26] Linking CXX shared library bin\lux_engine_function_render_feature_meta.dll
+[17/26] Linking CXX static library lib\editor_bootstrap.lib
+[18/26] Linking CXX executable bin\editor_scene_configuration.exe
+[19/26] Linking CXX executable bin\editor_session_installation_test.exe
+[20/26] Linking CXX executable bin\editor_scene_views_test.exe
+[21/26] Linking CXX executable bin\editor_project_panels.exe
+[22/26] Linking CXX executable bin\lux_launcher.exe
+[23/26] Linking CXX executable bin\lux_editor.exe
+[24/26] Linking CXX executable bin\editor_application_test.exe
+[25/26] Linking CXX shared library bin\consumer_gui.dll
+[26/26] Linking CXX executable bin\consumer_protocol.exe

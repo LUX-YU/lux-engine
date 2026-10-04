@@ -1,0 +1,38 @@
+-- [third_party] nlohmann_json: system package 3.12.0
+-- Found LibClang:
+--   Version: 0.64
+--   Include directory: D:/Development/vcpkg/installed/x64-windows/include
+--   Library: D:/Development/vcpkg/installed/x64-windows/lib/libclang.lib
+-- [reflection] inja: found system package
+-- REFLECTION_BINARY_DIR: E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-cxx-ec3/reflection
+-- [serialization] from_json parser backend: nlohmann
+-- Found LibClang:
+--   Version: 0.64
+--   Include directory: D:/Development/vcpkg/installed/x64-windows/include
+--   Library: D:/Development/vcpkg/installed/x64-windows/lib/libclang.lib
+-- Configuring done (4.7s)
+-- Generating done (1.1s)
+-- Build files have been written to: E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-cxx-ec3
+[0/1] Re-running CMake...
+[1/29] [lux_target_add_codegen] test_lineage_job: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[2/29] [lux_target_add_codegen] test_annotation_job: parse once, render 2 projection(s)
+[Info] Parsed 1 target file(s) for 2 projection(s).
+[3/29] [lux_target_add_codegen] serialization_test_serialization: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[4/27] [lux_target_add_codegen] test_meta_job: parse once, render 2 projection(s)
+[Info] Parsed 1 target file(s) for 2 projection(s).
+[5/25] [lux_target_add_codegen] json_test_serialization: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[6/23] [lux_target_add_codegen] xml_test_serialization: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[7/21] [lux_target_add_codegen] external_json_test_serialization: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[8/19] [lux_target_add_codegen] external_xml_test_serialization: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[9/17] [lux_target_add_codegen] external_yaml_test_serialization: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[10/15] [lux_target_add_codegen] yaml_test_serialization: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).
+[11/13] [lux_target_add_codegen] serialization_arguments_test_serialization: parse once, render 1 projection(s)
+[Info] Parsed 1 target file(s) for 1 projection(s).

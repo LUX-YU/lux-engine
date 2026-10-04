@@ -1,0 +1,33 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dev
+      Start  79: editor.commands
+ 1/10 Test  #79: editor.commands .......................   Passed    0.01 sec
+      Start  80: editor.command_index
+ 2/10 Test  #80: editor.command_index ..................   Passed    0.07 sec
+      Start 106: editor.contributions
+ 3/10 Test #106: editor.contributions ..................   Passed    0.02 sec
+      Start 107: editor.contributions.r11-factory
+ 4/10 Test #107: editor.contributions.r11-factory ......   Passed    0.02 sec
+      Start 108: editor.contributions.r11-reflection
+ 5/10 Test #108: editor.contributions.r11-reflection ...   Passed    0.02 sec
+      Start 109: editor.contributions.r11-cleanup
+ 6/10 Test #109: editor.contributions.r11-cleanup ......   Passed    0.02 sec
+      Start 110: editor.contributions.r11-notify
+ 7/10 Test #110: editor.contributions.r11-notify .......   Passed    0.02 sec
+      Start 121: editor.scene_views_gpu
+ 8/10 Test #121: editor.scene_views_gpu ................   Passed    2.35 sec
+      Start 137: editor.application
+ 9/10 Test #137: editor.application ....................   Passed    1.55 sec
+      Start 139: editor.scene_configuration
+10/10 Test #139: editor.scene_configuration ............   Passed    0.05 sec
+
+100% tests passed, 0 tests failed out of 10
+
+Label Time Summary:
+P10       =   2.35 sec*proc (1 test)
+P11       =   0.03 sec*proc (2 tests)
+P12       =   1.55 sec*proc (1 test)
+editor    =   3.98 sec*proc (5 tests)
+gpu       =   3.90 sec*proc (2 tests)
+native    =   0.08 sec*proc (3 tests)
+
+Total Test time (real) =   4.16 sec

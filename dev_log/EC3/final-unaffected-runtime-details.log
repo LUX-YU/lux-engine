@@ -1,0 +1,1502 @@
+Start testing: Oct 04 01:19 GMT 夏令时
+----------------------------------------------------------
+136/242 Testing: editor.sessions.installation
+136/242 Test: editor.sessions.installation
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_session_installation_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/integration/session_factories/sources"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/integration/session_factories
+"editor.sessions.installation" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS EC3 two menus share original text; source/index rejection and queued code lifetime
+PASS EC3 effective shortcuts: original identity, real Root input, BUSY, conflict and reload
+PASS eight real decode/installation/role/publication boundaries and closed notification
+PASS real model strict source conflict and owned original selection
+PASS P12 fixed three-session set, cancel, stale discard and group close preparation
+PASS P12 bounded target observation survives publication acknowledgement
+PASS real three-model worker read/decode, owner installation, hidden rollback, undo/redo, IO and close
+<end of output>
+Test time =   0.45 sec
+----------------------------------------------------------
+Test Passed.
+"editor.sessions.installation" end time: Oct 04 01:19 GMT 夏令时
+"editor.sessions.installation" time elapsed: 00:00:00
+----------------------------------------------------------
+
+137/242 Testing: editor.sessions.content_operations
+137/242 Test: editor.sessions.content_operations
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_session_installation_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/integration/session_factories/sources" "p12"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/integration/session_factories
+"editor.sessions.content_operations" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS EC3 two menus share original text; source/index rejection and queued code lifetime
+PASS EC3 effective shortcuts: original identity, real Root input, BUSY, conflict and reload
+PASS eight real decode/installation/role/publication boundaries and closed notification
+PASS P12 real content open dedup/cancel/reuse/copy, reload/gate/write-race, SaveAll and atomic close
+<end of output>
+Test time =   1.33 sec
+----------------------------------------------------------
+Test Passed.
+"editor.sessions.content_operations" end time: Oct 04 01:19 GMT 夏令时
+"editor.sessions.content_operations" time elapsed: 00:00:01
+----------------------------------------------------------
+
+139/242 Testing: editor.settings.content
+139/242 Test: editor.settings.content
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_settings_content_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/integration/application/settings"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/integration/application
+"editor.settings.content" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+M3 settings: 1000 stable owner updates; catalog queries=0; no user action/read path entered
+PASS real settings controls, version/registration conflicts, defaults, UI retirement, file IO and Root restart scale
+<end of output>
+Test time =   0.11 sec
+----------------------------------------------------------
+Test Passed.
+"editor.settings.content" end time: Oct 04 01:19 GMT 夏令时
+"editor.settings.content" time elapsed: 00:00:00
+----------------------------------------------------------
+
+140/242 Testing: editor.settings.window
+140/242 Test: editor.settings.window
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_settings_content_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/integration/application/settings-window" "--window"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/integration/application
+"editor.settings.window" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+M3 settings: 1000 stable owner updates; catalog queries=0; no user action/read path entered
+PASS real settings controls, version/registration conflicts, defaults, UI retirement, file IO and Root restart scale
+PASS actual window events -> coalesced file publication -> modes/normal rectangle -> reopen; no native input injected
+<end of output>
+Test time =   0.31 sec
+----------------------------------------------------------
+Test Passed.
+"editor.settings.window" end time: Oct 04 01:19 GMT 夏令时
+"editor.settings.window" time elapsed: 00:00:00
+----------------------------------------------------------
+
+141/242 Testing: editor.model_recipe
+141/242 Test: editor.model_recipe
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_model_recipe.exe"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/integration/project
+"editor.model_recipe" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"editor.model_recipe" end time: Oct 04 01:19 GMT 夏令时
+"editor.model_recipe" time elapsed: 00:00:00
+----------------------------------------------------------
+
+142/242 Testing: editor.scene_configuration
+142/242 Test: editor.scene_configuration
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_scene_configuration.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/integration/project
+"editor.scene_configuration" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+Assertion failed: manager, file E:\SyncForder\CodeRepos\lux-engine-ec3-qualified\editor\tests\integration\project\scene_configuration.cpp, line 42
+<end of output>
+Test time =   3.00 sec
+----------------------------------------------------------
+Test Failed.
+"editor.scene_configuration" end time: Oct 04 01:19 GMT 夏令时
+"editor.scene_configuration" time elapsed: 00:00:03
+----------------------------------------------------------
+
+143/242 Testing: editor.project_panels
+143/242 Test: editor.project_panels
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_project_panels.exe"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/integration/project
+"editor.project_panels" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+EC2 independent panels: owning display, BUSY/IO retention, full typed targets, bounded receiver
+<end of output>
+Test time =   0.05 sec
+----------------------------------------------------------
+Test Passed.
+"editor.project_panels" end time: Oct 04 01:19 GMT 夏令时
+"editor.project_panels" time elapsed: 00:00:00
+----------------------------------------------------------
+
+144/242 Testing: editor.artifact_publication
+144/242 Test: editor.artifact_publication
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_artifact_publication.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/integration/project/artifacts"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/integration/project
+"editor.artifact_publication" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+EC2 artifact: real compile, source save, Unknown, manifest failure, fixed retry, closed author
+<end of output>
+Test time =   0.45 sec
+----------------------------------------------------------
+Test Passed.
+"editor.artifact_publication" end time: Oct 04 01:19 GMT 夏令时
+"editor.artifact_publication" time elapsed: 00:00:00
+----------------------------------------------------------
+
+151/242 Testing: editor.flow_source_native
+151/242 Test: editor.flow_source_native
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_flow_source_native.exe"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/architecture
+"editor.flow_source_native" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+PASS native Flow graph/export/source roundtrip and duplicate identity rejection; no linker or UI
+<end of output>
+Test time =   0.05 sec
+----------------------------------------------------------
+Test Passed.
+"editor.flow_source_native" end time: Oct 04 01:19 GMT 夏令时
+"editor.flow_source_native" time elapsed: 00:00:00
+----------------------------------------------------------
+
+154/242 Testing: editor.three_actual_sessions
+154/242 Test: editor.three_actual_sessions
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_three_sessions_test.exe"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/architecture
+"editor.three_actual_sessions" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+X04-04: three actual sessions, one Store, typed keys, independent history and close, owning captures PASS
+<end of output>
+Test time =   0.05 sec
+----------------------------------------------------------
+Test Passed.
+"editor.three_actual_sessions" end time: Oct 04 01:19 GMT 夏令时
+"editor.three_actual_sessions" time elapsed: 00:00:00
+----------------------------------------------------------
+
+161/242 Testing: editor.quality.containers
+161/242 Test: editor.quality.containers
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_quality_test.exe"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/architecture
+"editor.quality.containers" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+XQ19-21 installed lux-cxx: growth address, failed construction, generation exhaustion, callback visibility, move-only/SBO allocator cleanup
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"editor.quality.containers" end time: Oct 04 01:19 GMT 夏令时
+"editor.quality.containers" time elapsed: 00:00:00
+----------------------------------------------------------
+
+171/242 Testing: editor.persistence.models
+171/242 Test: editor.persistence.models
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_persistence_models_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence/files"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.persistence.models" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+X05-04 actual three sessions: captured baseline, continued edits, exact Undo clean; real codec bytes PASS
+three author sessions share one Store, SaveService and WriteCoordinator: PASS
+<end of output>
+Test time =   0.08 sec
+----------------------------------------------------------
+Test Passed.
+"editor.persistence.models" end time: Oct 04 01:19 GMT 夏令时
+"editor.persistence.models" time elapsed: 00:00:00
+----------------------------------------------------------
+
+172/242 Testing: editor.persistence.save-as
+172/242 Test: editor.persistence.save-as
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_persistence_models_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence/files" "save-as"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.persistence.save-as" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+X05-05/Q15/Q16 three Save As: real failure retains full state; success keeps history/author IDs; subsequent save PASS
+X05-05 three Export Copy: binding, current, observed, dirty unchanged PASS
+<end of output>
+Test time =   0.08 sec
+----------------------------------------------------------
+Test Passed.
+"editor.persistence.save-as" end time: Oct 04 01:19 GMT 夏令时
+"editor.persistence.save-as" time elapsed: 00:00:00
+----------------------------------------------------------
+
+173/242 Testing: editor.persistence.unknown
+173/242 Test: editor.persistence.unknown
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_persistence_models_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence/files" "unknown"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.persistence.unknown" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+X05-03/X05-05 three unknown Save As: real late files, permit release, no stale rebind PASS
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"editor.persistence.unknown" end time: Oct 04 01:19 GMT 夏令时
+"editor.persistence.unknown" time elapsed: 00:00:00
+----------------------------------------------------------
+
+174/242 Testing: editor.persistence.order
+174/242 Test: editor.persistence.order
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_persistence_models_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence/files" "order"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.persistence.order" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+X05-01/Q11/Q12 three models reversed encoding, FIFO actual files, Undo new intent PASS
+<end of output>
+Test time =   0.07 sec
+----------------------------------------------------------
+Test Passed.
+"editor.persistence.order" end time: Oct 04 01:19 GMT 夏令时
+"editor.persistence.order" time elapsed: 00:00:00
+----------------------------------------------------------
+
+175/242 Testing: editor.persistence.close
+175/242 Test: editor.persistence.close
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_persistence_models_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence/files" "close"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.persistence.close" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+X05-07/Q17 three actual sessions removed before encode; slots reused; disk retained, adoption CLOSED PASS
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"editor.persistence.close" end time: Oct 04 01:19 GMT 夏令时
+"editor.persistence.close" time elapsed: 00:00:00
+----------------------------------------------------------
+
+176/242 Testing: editor.persistence.close-key
+176/242 Test: editor.persistence.close-key
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_persistence_models_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence/files" "close-key"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.persistence.close-key" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+X05-07/Q17 three actual sessions removed before encode; slots reused; disk retained, adoption CLOSED PASS
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"editor.persistence.close-key" end time: Oct 04 01:19 GMT 夏令时
+"editor.persistence.close-key" time elapsed: 00:00:00
+----------------------------------------------------------
+
+177/242 Testing: editor.persistence.capacity
+177/242 Test: editor.persistence.capacity
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_persistence_models_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence/files" "capacity"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.persistence.capacity" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+X05-09/Q18/Q50 actual material active/snapshot/terminal bounds, cancel+ack reuse PASS
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"editor.persistence.capacity" end time: Oct 04 01:19 GMT 夏令时
+"editor.persistence.capacity" time elapsed: 00:00:00
+----------------------------------------------------------
+
+178/242 Testing: editor.persistence.execution
+178/242 Test: editor.persistence.execution
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_persistence_models_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence/files" "execution"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.persistence.execution" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+Actual ExecutionRuntime CPU sender -> Blocking sender -> owner collection -> adoption, all three PASS
+<end of output>
+Test time =   0.12 sec
+----------------------------------------------------------
+Test Passed.
+"editor.persistence.execution" end time: Oct 04 01:19 GMT 夏令时
+"editor.persistence.execution" time elapsed: 00:00:00
+----------------------------------------------------------
+
+179/242 Testing: editor.persistence.decoded
+179/242 Test: editor.persistence.decoded
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_persistence_models_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence/files" "decoded"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.persistence.decoded" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+Three concrete decode -> owning PreparedData -> owner SessionStore construction PASS
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"editor.persistence.decoded" end time: Oct 04 01:19 GMT 夏令时
+"editor.persistence.decoded" time elapsed: 00:00:00
+----------------------------------------------------------
+
+180/242 Testing: editor.persistence.receipts
+180/242 Test: editor.persistence.receipts
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_persistence_models_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence/files" "receipts"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.persistence.receipts" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+X05-04/Q13/Q14 three models reverse receipts, stale history/binding; reading delays adoption PASS
+<end of output>
+Test time =   0.06 sec
+----------------------------------------------------------
+Test Passed.
+"editor.persistence.receipts" end time: Oct 04 01:19 GMT 夏令时
+"editor.persistence.receipts" time elapsed: 00:00:00
+----------------------------------------------------------
+
+181/242 Testing: editor.persistence.identities
+181/242 Test: editor.persistence.identities
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_persistence_models_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence/files" "identities"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.persistence.identities" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+X05-05 Flow Save As retains nodes/all pins/variables and History; Undo/Redo then fresh mixed insert keeps high water PASS
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"editor.persistence.identities" end time: Oct 04 01:19 GMT 夏令时
+"editor.persistence.identities" time elapsed: 00:00:00
+----------------------------------------------------------
+
+182/242 Testing: editor.persistence.conflict
+182/242 Test: editor.persistence.conflict
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_persistence_models_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence/files" "conflict"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.persistence.conflict" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+X05-06 two actual working copies, canonical aliases, real file conflict without adopting foreign version PASS
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"editor.persistence.conflict" end time: Oct 04 01:19 GMT 夏令时
+"editor.persistence.conflict" time elapsed: 00:00:00
+----------------------------------------------------------
+
+183/242 Testing: editor.persistence.measure
+183/242 Test: editor.persistence.measure
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_persistence_models_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence/files" "measure"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.persistence.measure" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+Q50 persistence measurement: saves=72 us=331688 executable_plain_allocations=26850 encoded_owned_bytes=327414 peak_process_working_set=11542528 peak_retained_tickets=3 tickets_after_ack=0
+Capture performed once per save; worker owns same snapshot, no live-session clone; no speedup claim PASS
+<end of output>
+Test time =   0.36 sec
+----------------------------------------------------------
+Test Passed.
+"editor.persistence.measure" end time: Oct 04 01:19 GMT 夏令时
+"editor.persistence.measure" time elapsed: 00:00:00
+----------------------------------------------------------
+
+184/242 Testing: editor.persistence.r2-accept-success
+184/242 Test: editor.persistence.r2-accept-success
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_persistence_models_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence/files" "r2-accept-success"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.persistence.r2-accept-success" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+R2 real runtime collected=1 encoding_calls=1 stuck_encoding=0
+R05-R2-01/02/04 real Material/SaveExecution first collect in accept success: exact bytes, baseline, FIFO follower, guarded acknowledgement, once-only cleanup PASS
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"editor.persistence.r2-accept-success" end time: Oct 04 01:19 GMT 夏令时
+"editor.persistence.r2-accept-success" time elapsed: 00:00:00
+----------------------------------------------------------
+
+185/242 Testing: editor.persistence.r2-accept-error
+185/242 Test: editor.persistence.r2-accept-error
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_persistence_models_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence/files" "r2-accept-error"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.persistence.r2-accept-error" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+R2 real runtime collected=1 encoding_calls=1 stuck_encoding=0
+R05-R2-01/02/04 real Material/SaveExecution first collect in accept error: exact bytes, baseline, FIFO follower, guarded acknowledgement, once-only cleanup PASS
+<end of output>
+Test time =   0.05 sec
+----------------------------------------------------------
+Test Passed.
+"editor.persistence.r2-accept-error" end time: Oct 04 01:19 GMT 夏令时
+"editor.persistence.r2-accept-error" time elapsed: 00:00:00
+----------------------------------------------------------
+
+186/242 Testing: editor.persistence.r2-accept-cancel
+186/242 Test: editor.persistence.r2-accept-cancel
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_persistence_models_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence/files" "r2-accept-cancel"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.persistence.r2-accept-cancel" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+R2 real runtime collected=1 encoding_calls=1 stuck_encoding=0
+R05-R2-01/02/04 real Material/SaveExecution first collect in accept cancel: exact bytes, baseline, FIFO follower, guarded acknowledgement, once-only cleanup PASS
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"editor.persistence.r2-accept-cancel" end time: Oct 04 01:19 GMT 夏令时
+"editor.persistence.r2-accept-cancel" time elapsed: 00:00:00
+----------------------------------------------------------
+
+187/242 Testing: editor.persistence.r2-accept-drain
+187/242 Test: editor.persistence.r2-accept-drain
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_persistence_models_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence/files" "r2-accept-drain"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.persistence.r2-accept-drain" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+R2 real runtime collected=1 encoding_calls=1 stuck_encoding=0
+R05-R2-01/02/04 real Material/SaveExecution first collect in accept drain: exact bytes, baseline, FIFO follower, guarded acknowledgement, once-only cleanup PASS
+<end of output>
+Test time =   0.05 sec
+----------------------------------------------------------
+Test Passed.
+"editor.persistence.r2-accept-drain" end time: Oct 04 01:19 GMT 夏令时
+"editor.persistence.r2-accept-drain" time elapsed: 00:00:00
+----------------------------------------------------------
+
+188/242 Testing: editor.persistence.r2-admission
+188/242 Test: editor.persistence.r2-admission
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_persistence_models_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence/files" "r2-admission"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.persistence.r2-admission" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+R05-R2-03/05 describe success 12 bounded cycles: completed input, capture rollback, exact capacity, jobs retired PASS
+R05-R2-03/05 describe throw 12 bounded cycles: completed input, capture rollback, exact capacity, jobs retired PASS
+R05-R2-03/05 describe revoke 12 bounded cycles: completed input, capture rollback, exact capacity, jobs retired PASS
+R05-R2-03/05 capture success 12 bounded cycles: completed input, capture rollback, exact capacity, jobs retired PASS
+R05-R2-03/05 capture throw 12 bounded cycles: completed input, capture rollback, exact capacity, jobs retired PASS
+R05-R2-03/05 capture revoke 12 bounded cycles: completed input, capture rollback, exact capacity, jobs retired PASS
+R05-R2-02/05 actual Runtime task-capacity rejection settles EXECUTION without encoder retry PASS
+<end of output>
+Test time =   1.42 sec
+----------------------------------------------------------
+Test Passed.
+"editor.persistence.r2-admission" end time: Oct 04 01:19 GMT 夏令时
+"editor.persistence.r2-admission" time elapsed: 00:00:01
+----------------------------------------------------------
+
+189/242 Testing: editor.persistence.r1-revoke
+189/242 Test: editor.persistence.r1-revoke
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_persistence_models_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence/files" "r1-revoke"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.persistence.r1-revoke" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+R05-01 describe revoked; real source/model still alive
+R05-01 real Material revoked describe, unchanged model and restored admission PASS
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"editor.persistence.r1-revoke" end time: Oct 04 01:19 GMT 夏令时
+"editor.persistence.r1-revoke" time elapsed: 00:00:00
+----------------------------------------------------------
+
+190/242 Testing: editor.persistence.r1-recursive
+190/242 Test: editor.persistence.r1-recursive
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_persistence_models_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence/files" "r1-recursive"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.persistence.r1-recursive" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+R05-02 accepts=1 nested_ack=0 record_alive=1
+R05-02 real accept executes once, deferred recursion, execution pin and later ack PASS
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"editor.persistence.r1-recursive" end time: Oct 04 01:19 GMT 夏令时
+"editor.persistence.r1-recursive" time elapsed: 00:00:00
+----------------------------------------------------------
+
+191/242 Testing: editor.persistence.r1-chain
+191/242 Test: editor.persistence.r1-chain
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_persistence_models_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence/files" "r1-chain"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.persistence.r1-chain" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+R05-04 model=0 ack_w1=1 w4_published=1
+R05-04 model=1 ack_w1=1 w4_published=1
+R05-04 model=2 ack_w1=1 w4_published=1
+R05-04 material_file=material4 scene_objects=4 flow_file=flow4
+R05-04 all three actual models W1 ack, delayed W2/W3 adoption, real W4 publication PASS
+<end of output>
+Test time =   0.08 sec
+----------------------------------------------------------
+Test Passed.
+"editor.persistence.r1-chain" end time: Oct 04 01:19 GMT 夏令时
+"editor.persistence.r1-chain" time elapsed: 00:00:00
+----------------------------------------------------------
+
+192/242 Testing: editor.persistence.r1-chain-control
+192/242 Test: editor.persistence.r1-chain-control
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_persistence_models_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence/files" "r1-chain-control"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.persistence.r1-chain-control" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+R05-04 model=0 ack_w1=0 w4_published=1
+R05-04 model=1 ack_w1=0 w4_published=1
+R05-04 model=2 ack_w1=0 w4_published=1
+R05-04 material_file=material4 scene_objects=4 flow_file=flow4
+R05-04 all three actual models W1 ack, delayed W2/W3 adoption, real W4 publication PASS
+<end of output>
+Test time =   0.08 sec
+----------------------------------------------------------
+Test Passed.
+"editor.persistence.r1-chain-control" end time: Oct 04 01:19 GMT 夏令时
+"editor.persistence.r1-chain-control" time elapsed: 00:00:00
+----------------------------------------------------------
+
+193/242 Testing: editor.persistence.r1-callbacks
+193/242 Test: editor.persistence.r1-callbacks
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_persistence_models_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence/files" "r1-callbacks"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.persistence.r1-callbacks" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+R05-03 real role revoke/replace, foreign exceptions, nested admission bounds, rebind+cleanup guards PASS
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"editor.persistence.r1-callbacks" end time: Oct 04 01:19 GMT 夏令时
+"editor.persistence.r1-callbacks" time elapsed: 00:00:00
+----------------------------------------------------------
+
+194/242 Testing: editor.persistence.r1-reading
+194/242 Test: editor.persistence.r1-reading
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_persistence_models_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence/files" "r1-reading"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.persistence.r1-reading" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+R05-06 withRead BUSY, early ack, later save and reversed adoption preserve latest baseline PASS
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"editor.persistence.r1-reading" end time: Oct 04 01:19 GMT 夏令时
+"editor.persistence.r1-reading" time elapsed: 00:00:00
+----------------------------------------------------------
+
+195/242 Testing: editor.persistence.r1-conflicts
+195/242 Test: editor.persistence.r1-conflicts
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_persistence_models_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence/files" "r1-conflicts"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.persistence.r1-conflicts" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+R05-07 real FileArtifactStore alias/binding/anonymous/external/chain-break conflicts PASS
+<end of output>
+Test time =   0.05 sec
+----------------------------------------------------------
+Test Passed.
+"editor.persistence.r1-conflicts" end time: Oct 04 01:19 GMT 夏令时
+"editor.persistence.r1-conflicts" time elapsed: 00:00:00
+----------------------------------------------------------
+
+196/242 Testing: editor.interaction_reclaim.scene.sync
+196/242 Test: editor.interaction_reclaim.scene.sync
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_interaction_reclaim_test.exe" "scene" "sync"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.interaction_reclaim.scene.sync" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+Scene operation=sync callback=1 store_busy=1 live=1 result_ok=0 reported_busy=1 overlay=1 selection=1 stamp_payload_retained=1 released=0 author=unchanged
+Scene retry=sync PASS original-history/checkpoint preserved, real domain follow-up verified
+<end of output>
+Test time =   0.06 sec
+----------------------------------------------------------
+Test Passed.
+"editor.interaction_reclaim.scene.sync" end time: Oct 04 01:19 GMT 夏令时
+"editor.interaction_reclaim.scene.sync" time elapsed: 00:00:00
+----------------------------------------------------------
+
+197/242 Testing: editor.interaction_reclaim.scene.cancel
+197/242 Test: editor.interaction_reclaim.scene.cancel
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_interaction_reclaim_test.exe" "scene" "cancel"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.interaction_reclaim.scene.cancel" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+Scene operation=cancel callback=1 store_busy=1 live=1 result_ok=0 reported_busy=1 overlay=1 selection=1 stamp_payload_retained=1 released=0 author=unchanged
+Scene retry=cancel PASS original-history/checkpoint preserved, real domain follow-up verified
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"editor.interaction_reclaim.scene.cancel" end time: Oct 04 01:19 GMT 夏令时
+"editor.interaction_reclaim.scene.cancel" time elapsed: 00:00:00
+----------------------------------------------------------
+
+198/242 Testing: editor.interaction_reclaim.scene.selection
+198/242 Test: editor.interaction_reclaim.scene.selection
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_interaction_reclaim_test.exe" "scene" "selection"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.interaction_reclaim.scene.selection" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+Scene operation=selection callback=1 store_busy=1 live=1 result_ok=0 reported_busy=1 overlay=0 selection=1 stamp_payload_retained=1 released=0 author=unchanged
+Scene retry=selection PASS original-history/checkpoint preserved, real domain follow-up verified
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"editor.interaction_reclaim.scene.selection" end time: Oct 04 01:19 GMT 夏令时
+"editor.interaction_reclaim.scene.selection" time elapsed: 00:00:00
+----------------------------------------------------------
+
+199/242 Testing: editor.interaction_reclaim.scene.stale
+199/242 Test: editor.interaction_reclaim.scene.stale
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_interaction_reclaim_test.exe" "scene" "stale"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.interaction_reclaim.scene.stale" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+Scene stale slot-reuse cleanup=1 payload=1 new-author=unchanged
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"editor.interaction_reclaim.scene.stale" end time: Oct 04 01:19 GMT 夏令时
+"editor.interaction_reclaim.scene.stale" time elapsed: 00:00:00
+----------------------------------------------------------
+
+200/242 Testing: editor.interaction_reclaim.scene.gate
+200/242 Test: editor.interaction_reclaim.scene.gate
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_interaction_reclaim_test.exe" "scene" "gate"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.interaction_reclaim.scene.gate" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+Scene gate cancel/synchronize=BUSY preserved=1 cleanup=1 gate_held=1 inactive=1 author=unchanged
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"editor.interaction_reclaim.scene.gate" end time: Oct 04 01:19 GMT 夏令时
+"editor.interaction_reclaim.scene.gate" time elapsed: 00:00:00
+----------------------------------------------------------
+
+201/242 Testing: editor.interaction_reclaim.scene.thread
+201/242 Test: editor.interaction_reclaim.scene.thread
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_interaction_reclaim_test.exe" "scene" "thread"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.interaction_reclaim.scene.thread" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+Scene cancel/synchronize=WRONG_THREAD retained=1 author=unchanged
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"editor.interaction_reclaim.scene.thread" end time: Oct 04 01:19 GMT 夏令时
+"editor.interaction_reclaim.scene.thread" time elapsed: 00:00:00
+----------------------------------------------------------
+
+202/242 Testing: editor.interaction_reclaim.scene.reload
+202/242 Test: editor.interaction_reclaim.scene.reload
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_interaction_reclaim_test.exe" "scene" "reload"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.interaction_reclaim.scene.reload" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+Scene reload new-history=1 old-gesture/selection=cleared same-object-valid=1
+<end of output>
+Test time =   0.10 sec
+----------------------------------------------------------
+Test Passed.
+"editor.interaction_reclaim.scene.reload" end time: Oct 04 01:19 GMT 夏令时
+"editor.interaction_reclaim.scene.reload" time elapsed: 00:00:00
+----------------------------------------------------------
+
+203/242 Testing: editor.interaction_reclaim.material.sync
+203/242 Test: editor.interaction_reclaim.material.sync
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_interaction_reclaim_test.exe" "material" "sync"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.interaction_reclaim.material.sync" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+Material operation=sync callback=1 store_busy=1 live=1 result_ok=0 reported_busy=1 overlay=1 selection=1 stamp_payload_retained=1 released=0 author=unchanged
+Material retry=sync PASS original-history/checkpoint preserved, real domain follow-up verified
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"editor.interaction_reclaim.material.sync" end time: Oct 04 01:19 GMT 夏令时
+"editor.interaction_reclaim.material.sync" time elapsed: 00:00:00
+----------------------------------------------------------
+
+204/242 Testing: editor.interaction_reclaim.material.cancel
+204/242 Test: editor.interaction_reclaim.material.cancel
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_interaction_reclaim_test.exe" "material" "cancel"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.interaction_reclaim.material.cancel" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+Material operation=cancel callback=1 store_busy=1 live=1 result_ok=0 reported_busy=1 overlay=1 selection=1 stamp_payload_retained=1 released=0 author=unchanged
+Material retry=cancel PASS original-history/checkpoint preserved, real domain follow-up verified
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"editor.interaction_reclaim.material.cancel" end time: Oct 04 01:19 GMT 夏令时
+"editor.interaction_reclaim.material.cancel" time elapsed: 00:00:00
+----------------------------------------------------------
+
+205/242 Testing: editor.interaction_reclaim.material.selection
+205/242 Test: editor.interaction_reclaim.material.selection
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_interaction_reclaim_test.exe" "material" "selection"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.interaction_reclaim.material.selection" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+Material operation=selection callback=1 store_busy=1 live=1 result_ok=0 reported_busy=1 overlay=0 selection=1 stamp_payload_retained=1 released=0 author=unchanged
+Material retry=selection PASS original-history/checkpoint preserved, real domain follow-up verified
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"editor.interaction_reclaim.material.selection" end time: Oct 04 01:19 GMT 夏令时
+"editor.interaction_reclaim.material.selection" time elapsed: 00:00:00
+----------------------------------------------------------
+
+206/242 Testing: editor.interaction_reclaim.material.stale
+206/242 Test: editor.interaction_reclaim.material.stale
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_interaction_reclaim_test.exe" "material" "stale"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.interaction_reclaim.material.stale" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+Material stale slot-reuse cleanup=1 payload=1 new-author=unchanged
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"editor.interaction_reclaim.material.stale" end time: Oct 04 01:19 GMT 夏令时
+"editor.interaction_reclaim.material.stale" time elapsed: 00:00:00
+----------------------------------------------------------
+
+207/242 Testing: editor.interaction_reclaim.material.gate
+207/242 Test: editor.interaction_reclaim.material.gate
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_interaction_reclaim_test.exe" "material" "gate"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.interaction_reclaim.material.gate" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+Material gate cancel/synchronize=BUSY preserved=1 cleanup=1 gate_held=1 inactive=1 author=unchanged
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"editor.interaction_reclaim.material.gate" end time: Oct 04 01:19 GMT 夏令时
+"editor.interaction_reclaim.material.gate" time elapsed: 00:00:00
+----------------------------------------------------------
+
+208/242 Testing: editor.interaction_reclaim.material.thread
+208/242 Test: editor.interaction_reclaim.material.thread
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_interaction_reclaim_test.exe" "material" "thread"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.interaction_reclaim.material.thread" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+Material cancel/synchronize=WRONG_THREAD retained=1 author=unchanged
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"editor.interaction_reclaim.material.thread" end time: Oct 04 01:19 GMT 夏令时
+"editor.interaction_reclaim.material.thread" time elapsed: 00:00:00
+----------------------------------------------------------
+
+209/242 Testing: editor.interaction_reclaim.material.reload
+209/242 Test: editor.interaction_reclaim.material.reload
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_interaction_reclaim_test.exe" "material" "reload"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.interaction_reclaim.material.reload" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+Material reload new-history=1 old-gesture/selection=cleared same-object-valid=1
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"editor.interaction_reclaim.material.reload" end time: Oct 04 01:19 GMT 夏令时
+"editor.interaction_reclaim.material.reload" time elapsed: 00:00:00
+----------------------------------------------------------
+
+210/242 Testing: editor.interaction_reclaim.flow.sync
+210/242 Test: editor.interaction_reclaim.flow.sync
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_interaction_reclaim_test.exe" "flow" "sync"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.interaction_reclaim.flow.sync" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+Flow operation=sync callback=1 store_busy=1 live=1 result_ok=0 reported_busy=1 overlay=1 selection=1 stamp_payload_retained=1 released=0 author=unchanged
+Flow retry=sync PASS original-history/checkpoint preserved, real domain follow-up verified
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"editor.interaction_reclaim.flow.sync" end time: Oct 04 01:19 GMT 夏令时
+"editor.interaction_reclaim.flow.sync" time elapsed: 00:00:00
+----------------------------------------------------------
+
+211/242 Testing: editor.interaction_reclaim.flow.cancel
+211/242 Test: editor.interaction_reclaim.flow.cancel
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_interaction_reclaim_test.exe" "flow" "cancel"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.interaction_reclaim.flow.cancel" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+Flow operation=cancel callback=1 store_busy=1 live=1 result_ok=0 reported_busy=1 overlay=1 selection=1 stamp_payload_retained=1 released=0 author=unchanged
+Flow retry=cancel PASS original-history/checkpoint preserved, real domain follow-up verified
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"editor.interaction_reclaim.flow.cancel" end time: Oct 04 01:19 GMT 夏令时
+"editor.interaction_reclaim.flow.cancel" time elapsed: 00:00:00
+----------------------------------------------------------
+
+212/242 Testing: editor.interaction_reclaim.flow.selection
+212/242 Test: editor.interaction_reclaim.flow.selection
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_interaction_reclaim_test.exe" "flow" "selection"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.interaction_reclaim.flow.selection" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+Flow operation=selection callback=1 store_busy=1 live=1 result_ok=0 reported_busy=1 overlay=0 selection=1 stamp_payload_retained=1 released=0 author=unchanged
+Flow retry=selection PASS original-history/checkpoint preserved, real domain follow-up verified
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"editor.interaction_reclaim.flow.selection" end time: Oct 04 01:19 GMT 夏令时
+"editor.interaction_reclaim.flow.selection" time elapsed: 00:00:00
+----------------------------------------------------------
+
+213/242 Testing: editor.interaction_reclaim.flow.stale
+213/242 Test: editor.interaction_reclaim.flow.stale
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_interaction_reclaim_test.exe" "flow" "stale"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.interaction_reclaim.flow.stale" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+Flow stale slot-reuse cleanup=1 payload=1 new-author=unchanged
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"editor.interaction_reclaim.flow.stale" end time: Oct 04 01:19 GMT 夏令时
+"editor.interaction_reclaim.flow.stale" time elapsed: 00:00:00
+----------------------------------------------------------
+
+214/242 Testing: editor.interaction_reclaim.flow.gate
+214/242 Test: editor.interaction_reclaim.flow.gate
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_interaction_reclaim_test.exe" "flow" "gate"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.interaction_reclaim.flow.gate" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+Flow gate cancel/synchronize=BUSY preserved=1 cleanup=1 gate_held=1 inactive=1 author=unchanged
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"editor.interaction_reclaim.flow.gate" end time: Oct 04 01:19 GMT 夏令时
+"editor.interaction_reclaim.flow.gate" time elapsed: 00:00:00
+----------------------------------------------------------
+
+215/242 Testing: editor.interaction_reclaim.flow.thread
+215/242 Test: editor.interaction_reclaim.flow.thread
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_interaction_reclaim_test.exe" "flow" "thread"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.interaction_reclaim.flow.thread" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+Flow cancel/synchronize=WRONG_THREAD retained=1 author=unchanged
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"editor.interaction_reclaim.flow.thread" end time: Oct 04 01:19 GMT 夏令时
+"editor.interaction_reclaim.flow.thread" time elapsed: 00:00:00
+----------------------------------------------------------
+
+216/242 Testing: editor.interaction_reclaim.flow.reload
+216/242 Test: editor.interaction_reclaim.flow.reload
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_interaction_reclaim_test.exe" "flow" "reload"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.interaction_reclaim.flow.reload" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+Flow reload new-history=1 old-gesture/selection=cleared same-object-valid=1
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"editor.interaction_reclaim.flow.reload" end time: Oct 04 01:19 GMT 夏令时
+"editor.interaction_reclaim.flow.reload" time elapsed: 00:00:00
+----------------------------------------------------------
+
+217/242 Testing: editor.persistence.r11-input-duplicate
+217/242 Test: editor.persistence.r11-input-duplicate
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_persistence_models_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence/files" "r11-input-duplicate"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.persistence.r11-input-duplicate" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+R11 input duplicate destroyed=1 code_released=1 prepare_BUSY=1 request_BUSY=1 full_author_history_binding_unchanged=1 completion_received=1 outer_preserved=0
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"editor.persistence.r11-input-duplicate" end time: Oct 04 01:19 GMT 夏令时
+"editor.persistence.r11-input-duplicate" time elapsed: 00:00:00
+----------------------------------------------------------
+
+218/242 Testing: editor.persistence.r11-input-invalid
+218/242 Test: editor.persistence.r11-input-invalid
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_persistence_models_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence/files" "r11-input-invalid"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.persistence.r11-input-invalid" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+R11 input invalid destroyed=1 code_released=1 prepare_BUSY=1 request_BUSY=1 full_author_history_binding_unchanged=1 completion_received=1 outer_preserved=0
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"editor.persistence.r11-input-invalid" end time: Oct 04 01:19 GMT 夏令时
+"editor.persistence.r11-input-invalid" time elapsed: 00:00:00
+----------------------------------------------------------
+
+219/242 Testing: editor.persistence.r11-input-busy
+219/242 Test: editor.persistence.r11-input-busy
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_persistence_models_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence/files" "r11-input-busy"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.persistence.r11-input-busy" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+R11 input busy destroyed=1 code_released=1 prepare_BUSY=1 request_BUSY=1 full_author_history_binding_unchanged=1 completion_received=1 outer_preserved=1
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"editor.persistence.r11-input-busy" end time: Oct 04 01:19 GMT 夏令时
+"editor.persistence.r11-input-busy" time elapsed: 00:00:00
+----------------------------------------------------------
+
+220/242 Testing: editor.persistence.r11-input-success
+220/242 Test: editor.persistence.r11-input-success
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_persistence_models_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence/files" "r11-input-success"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.persistence.r11-input-success" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+R11-02 success transfers the last code/source unit, destructor precedes code release PASS
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"editor.persistence.r11-input-success" end time: Oct 04 01:19 GMT 夏令时
+"editor.persistence.r11-input-success" time elapsed: 00:00:00
+----------------------------------------------------------
+
+221/242 Testing: editor.persistence.r11-input-completion
+221/242 Test: editor.persistence.r11-input-completion
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_persistence_models_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence/files" "r11-input-completion"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/persistence
+"editor.persistence.r11-input-completion" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+R11 input completion destroyed=1 code_released=1 prepare_BUSY=1 request_BUSY=1 full_author_history_binding_unchanged=1 completion_received=1 outer_preserved=0
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"editor.persistence.r11-input-completion" end time: Oct 04 01:19 GMT 夏令时
+"editor.persistence.r11-input-completion" time elapsed: 00:00:00
+----------------------------------------------------------
+
+222/242 Testing: editor.workspace.validation
+222/242 Test: editor.workspace.validation
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_workspace_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace/files" "validation"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace
+"editor.workspace.validation" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+isolated workspace fixture: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace/files/validation-3167491483727412429
+X09-01 complete invalid-tree validation: duplicate/cyclic/shared/missing/ratio/geometry/schema rejected
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"editor.workspace.validation" end time: Oct 04 01:19 GMT 夏令时
+"editor.workspace.validation" time elapsed: 00:00:00
+----------------------------------------------------------
+
+223/242 Testing: editor.workspace.opaque
+223/242 Test: editor.workspace.opaque
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_workspace_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace/files" "opaque"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace
+"editor.workspace.opaque" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+isolated workspace fixture: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace/files/opaque-7929802336180468402
+X09-04 exact unknown bytes/schema/fields roundtrip; budget errors preserve input, no truncation
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"editor.workspace.opaque" end time: Oct 04 01:19 GMT 夏令时
+"editor.workspace.opaque" time elapsed: 00:00:00
+----------------------------------------------------------
+
+224/242 Testing: editor.workspace.rename
+224/242 Test: editor.workspace.rename
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_workspace_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace/files" "rename"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace
+"editor.workspace.rename" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+isolated workspace fixture: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace/files/rename-11495986211907485153
+preferences REAL rejection native_code=5
+X09-02 REAL preference publication rejected; label published, same filename/ID remains selectable
+<end of output>
+Test time =   0.05 sec
+----------------------------------------------------------
+Test Passed.
+"editor.workspace.rename" end time: Oct 04 01:19 GMT 夏令时
+"editor.workspace.rename" time elapsed: 00:00:00
+----------------------------------------------------------
+
+225/242 Testing: editor.workspace.remove
+225/242 Test: editor.workspace.remove
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_workspace_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace/files" "remove"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace
+"editor.workspace.remove" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+isolated workspace fixture: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace/files/remove-10587944093188983431
+X09-03 physical delete with stale preference; restarted reader diagnoses fallback without rewriting preference
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"editor.workspace.remove" end time: Oct 04 01:19 GMT 夏令时
+"editor.workspace.remove" time elapsed: 00:00:00
+----------------------------------------------------------
+
+226/242 Testing: editor.workspace.ordering
+226/242 Test: editor.workspace.ordering
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_workspace_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace/files" "ordering"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace
+"editor.workspace.ordering" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+isolated workspace fixture: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace/files/ordering-7014787196064487582
+same coordinator pending write/remove FIFO, verified version edge, Unknown retirement, external conflict PASS
+<end of output>
+Test time =   0.11 sec
+----------------------------------------------------------
+Test Passed.
+"editor.workspace.ordering" end time: Oct 04 01:19 GMT 夏令时
+"editor.workspace.ordering" time elapsed: 00:00:00
+----------------------------------------------------------
+
+227/242 Testing: editor.workspace.unknown
+227/242 Test: editor.workspace.unknown
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_workspace_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace/files" "unknown"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace
+"editor.workspace.unknown" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+isolated workspace fixture: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace/files/unknown-7661875491491508294
+same coordinator pending write/remove FIFO, verified version edge, Unknown retirement, external conflict PASS
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"editor.workspace.unknown" end time: Oct 04 01:19 GMT 夏令时
+"editor.workspace.unknown" time elapsed: 00:00:00
+----------------------------------------------------------
+
+228/242 Testing: editor.workspace.aliases
+228/242 Test: editor.workspace.aliases
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_workspace_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace/files" "aliases"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace
+"editor.workspace.aliases" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+isolated workspace fixture: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace/files/aliases-11954491918245045994
+physical alias namespaces share the original lane; no root escape PASS
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"editor.workspace.aliases" end time: Oct 04 01:19 GMT 夏令时
+"editor.workspace.aliases" time elapsed: 00:00:00
+----------------------------------------------------------
+
+229/242 Testing: editor.workspace.reads
+229/242 Test: editor.workspace.reads
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_workspace_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace/files" "reads"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace
+"editor.workspace.reads" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+isolated workspace fixture: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace/files/reads-7612553808846861841
+BUSY/read errors retained; no default publication and incomplete catalog explicitly diagnosed PASS
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"editor.workspace.reads" end time: Oct 04 01:19 GMT 夏令时
+"editor.workspace.reads" time elapsed: 00:00:00
+----------------------------------------------------------
+
+230/242 Testing: editor.workspace.catalog
+230/242 Test: editor.workspace.catalog
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_workspace_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace/files" "catalog"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace
+"editor.workspace.catalog" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+isolated workspace fixture: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace/files/catalog-11279945256288462626
+individual corruption vs failed enumeration distinguished; committed layout survives failed refresh PASS
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"editor.workspace.catalog" end time: Oct 04 01:19 GMT 夏令时
+"editor.workspace.catalog" time elapsed: 00:00:00
+----------------------------------------------------------
+
+231/242 Testing: editor.workspace.migration
+231/242 Test: editor.workspace.migration
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_workspace_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace/files" "migration"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace
+"editor.workspace.migration" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+isolated workspace fixture: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace/files/migration-10773756481648871256
+X09-05 REAL files: new record before marker, recreated Store, stable mapping, user edit retained, old bytes unchanged
+<end of output>
+Test time =   0.09 sec
+----------------------------------------------------------
+Test Passed.
+"editor.workspace.migration" end time: Oct 04 01:19 GMT 夏令时
+"editor.workspace.migration" time elapsed: 00:00:00
+----------------------------------------------------------
+
+232/242 Testing: editor.workspace.collision
+232/242 Test: editor.workspace.collision
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_workspace_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace/files" "collision"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace
+"editor.workspace.collision" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+isolated workspace fixture: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace/files/collision-3868012773183294299
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"editor.workspace.collision" end time: Oct 04 01:19 GMT 夏令时
+"editor.workspace.collision" time elapsed: 00:00:00
+----------------------------------------------------------
+
+233/242 Testing: editor.workspace.budgets
+233/242 Test: editor.workspace.budgets
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_workspace_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace/files" "budgets"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace
+"editor.workspace.budgets" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+isolated workspace fixture: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace/files/budgets-3741371502481833061
+count/depth/file/schema budgets fail closed PASS
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"editor.workspace.budgets" end time: Oct 04 01:19 GMT 夏令时
+"editor.workspace.budgets" time elapsed: 00:00:00
+----------------------------------------------------------
+
+234/242 Testing: editor.workspace.conversion
+234/242 Test: editor.workspace.conversion
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_workspace_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace/files" "conversion"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace
+"editor.workspace.conversion" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+isolated workspace fixture: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace/files/conversion-1356326541963015678
+owned legacy bytes: pure conversion equals IO capture, selected provenance and rejection PASS
+<end of output>
+Test time =   0.03 sec
+----------------------------------------------------------
+Test Passed.
+"editor.workspace.conversion" end time: Oct 04 01:19 GMT 夏令时
+"editor.workspace.conversion" time elapsed: 00:00:00
+----------------------------------------------------------
+
+235/242 Testing: editor.workspace.r1-alpha
+235/242 Test: editor.workspace.r1-alpha
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_workspace_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace/files" "r1-alpha"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace
+"editor.workspace.r1-alpha" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+isolated workspace fixture: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace/files/r1-alpha-15210786571452677682
+input Alpha.toml sha256=9de47bc8acd0ce14e80168e045ab670f814df18ecb228e26760a671b4124a07c
+input Beta.toml sha256=a58cb0a5e4e70aa2a53a66d8da10a845e2b2c9056a3bb14336a5a56a6e4b5fc6
+input settings.toml sha256=ede9e9595f99e2fc616a018cd20a3112274fe2038b194c08eaf635e78825c8f9
+individual Alpha accepted=1 id=7d1fa268702a2ae1c11b7ebd77f92c6f
+individual Beta accepted=1 id=b960792148fe37faa25f2587a1c0c283
+multi-layout accepted=1 layouts=2 recovery_entries=1 selected_scope=1 selected=Alpha
+recovery key=legacy:material-1 locator=asset:12345678-1234-1234-1234-123456789abc
+REAL files: both layouts preserved, only selected recovery published, original bytes unchanged PASS
+<end of output>
+Test time =   0.10 sec
+----------------------------------------------------------
+Test Passed.
+"editor.workspace.r1-alpha" end time: Oct 04 01:19 GMT 夏令时
+"editor.workspace.r1-alpha" time elapsed: 00:00:00
+----------------------------------------------------------
+
+236/242 Testing: editor.workspace.r1-beta
+236/242 Test: editor.workspace.r1-beta
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_workspace_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace/files" "r1-beta"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace
+"editor.workspace.r1-beta" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+isolated workspace fixture: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace/files/r1-beta-5673353161316439201
+input Alpha.toml sha256=9de47bc8acd0ce14e80168e045ab670f814df18ecb228e26760a671b4124a07c
+input Beta.toml sha256=a58cb0a5e4e70aa2a53a66d8da10a845e2b2c9056a3bb14336a5a56a6e4b5fc6
+input settings.toml sha256=6ac116242f3344af831f6d8b94f21a2cd093e6394c989ae6d833fc791fdca5fe
+individual Alpha accepted=1 id=7d1fa268702a2ae1c11b7ebd77f92c6f
+individual Beta accepted=1 id=b960792148fe37faa25f2587a1c0c283
+multi-layout accepted=1 layouts=2 recovery_entries=1 selected_scope=1 selected=Beta
+recovery key=legacy:material-1 locator=asset:12345678-1234-1234-1234-123456789abd
+REAL files: both layouts preserved, only selected recovery published, original bytes unchanged PASS
+input Alpha.toml sha256=9de47bc8acd0ce14e80168e045ab670f814df18ecb228e26760a671b4124a07c
+input Beta.toml sha256=a58cb0a5e4e70aa2a53a66d8da10a845e2b2c9056a3bb14336a5a56a6e4b5fc6
+input settings.toml sha256=6ac116242f3344af831f6d8b94f21a2cd093e6394c989ae6d833fc791fdca5fe
+individual Alpha accepted=1 id=7d1fa268702a2ae1c11b7ebd77f92c6f
+individual Beta accepted=1 id=b960792148fe37faa25f2587a1c0c283
+multi-layout accepted=1 layouts=2 recovery_entries=1 selected_scope=1 selected=Beta
+recovery key=legacy:material-1 locator=asset:12345678-1234-1234-1234-123456789abd
+REAL files: both layouts preserved, only selected recovery published, original bytes unchanged PASS
+<end of output>
+Test time =   0.18 sec
+----------------------------------------------------------
+Test Passed.
+"editor.workspace.r1-beta" end time: Oct 04 01:19 GMT 夏令时
+"editor.workspace.r1-beta" time elapsed: 00:00:00
+----------------------------------------------------------
+
+237/242 Testing: editor.workspace.r1-extras
+237/242 Test: editor.workspace.r1-extras
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_workspace_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace/files" "r1-extras"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace
+"editor.workspace.r1-extras" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+isolated workspace fixture: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace/files/r1-extras-16308054830788653919
+input Alpha.toml sha256=9de47bc8acd0ce14e80168e045ab670f814df18ecb228e26760a671b4124a07c
+input Beta.toml sha256=c00de77a43857d39db7163bddc1f967728e1a11dab36f91abdf25c48bd0fe824
+input settings.toml sha256=ede9e9595f99e2fc616a018cd20a3112274fe2038b194c08eaf635e78825c8f9
+individual Alpha accepted=1 id=7d1fa268702a2ae1c11b7ebd77f92c6f
+individual Beta accepted=1 id=b960792148fe37faa25f2587a1c0c283
+multi-layout accepted=1 layouts=2 recovery_entries=1 selected_scope=1 selected=Alpha
+recovery key=legacy:material-1 locator=asset:12345678-1234-1234-1234-123456789abc
+REAL files: both layouts preserved, only selected recovery published, original bytes unchanged PASS
+<end of output>
+Test time =   0.10 sec
+----------------------------------------------------------
+Test Passed.
+"editor.workspace.r1-extras" end time: Oct 04 01:19 GMT 夏令时
+"editor.workspace.r1-extras" time elapsed: 00:00:00
+----------------------------------------------------------
+
+238/242 Testing: editor.workspace.r1-selection
+238/242 Test: editor.workspace.r1-selection
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_workspace_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace/files" "r1-selection"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace
+"editor.workspace.r1-selection" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+isolated workspace fixture: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace/files/r1-selection-7674146903633621964
+input Alpha.toml sha256=9de47bc8acd0ce14e80168e045ab670f814df18ecb228e26760a671b4124a07c
+input Beta.toml sha256=a58cb0a5e4e70aa2a53a66d8da10a845e2b2c9056a3bb14336a5a56a6e4b5fc6
+input settings.toml sha256=e53169258ead6eee7ac4677c81aa57d942379b75f46f15f4a8d3c93215b9e5a2
+individual Alpha accepted=1 id=7d1fa268702a2ae1c11b7ebd77f92c6f
+individual Beta accepted=1 id=b960792148fe37faa25f2587a1c0c283
+multi-layout accepted=1 layouts=2 recovery_entries=0 selected_scope=1 selected=
+input Alpha.toml sha256=9de47bc8acd0ce14e80168e045ab670f814df18ecb228e26760a671b4124a07c
+input Beta.toml sha256=a58cb0a5e4e70aa2a53a66d8da10a845e2b2c9056a3bb14336a5a56a6e4b5fc6
+individual Alpha accepted=1 id=7d1fa268702a2ae1c11b7ebd77f92c6f
+individual Beta accepted=1 id=b960792148fe37faa25f2587a1c0c283
+multi-layout accepted=1 layouts=2 recovery_entries=0 selected_scope=1 selected=
+input Alpha.toml sha256=9de47bc8acd0ce14e80168e045ab670f814df18ecb228e26760a671b4124a07c
+input Beta.toml sha256=a58cb0a5e4e70aa2a53a66d8da10a845e2b2c9056a3bb14336a5a56a6e4b5fc6
+input settings.toml sha256=c1162ad5bdc3cfbff6dd238b46a56b1046d4586031462acd00380ee555780fdf
+individual Alpha accepted=1 id=7d1fa268702a2ae1c11b7ebd77f92c6f
+individual Beta accepted=1 id=b960792148fe37faa25f2587a1c0c283
+multi-layout accepted=1 layouts=2 recovery_entries=0 selected_scope=1 selected=Gone
+input Alpha.toml sha256=9de47bc8acd0ce14e80168e045ab670f814df18ecb228e26760a671b4124a07c
+input Beta.toml sha256=a58cb0a5e4e70aa2a53a66d8da10a845e2b2c9056a3bb14336a5a56a6e4b5fc6
+input settings.toml sha256=ede9e9595f99e2fc616a018cd20a3112274fe2038b194c08eaf635e78825c8f9
+individual Alpha accepted=1 id=7d1fa268702a2ae1c11b7ebd77f92c6f
+individual Beta accepted=1 id=b960792148fe37faa25f2587a1c0c283
+empty/absent/missing selection diagnosed; BUSY/IO/conflict, bad schema/identity/dock rejected PASS
+<end of output>
+Test time =   0.30 sec
+----------------------------------------------------------
+Test Passed.
+"editor.workspace.r1-selection" end time: Oct 04 01:19 GMT 夏令时
+"editor.workspace.r1-selection" time elapsed: 00:00:00
+----------------------------------------------------------
+
+239/242 Testing: editor.workspace.r1-resume
+239/242 Test: editor.workspace.r1-resume
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_workspace_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace/files" "r1-resume"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace
+"editor.workspace.r1-resume" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+isolated workspace fixture: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace/files/r1-resume-11404706841331793307
+input Alpha.toml sha256=9de47bc8acd0ce14e80168e045ab670f814df18ecb228e26760a671b4124a07c
+input Beta.toml sha256=a58cb0a5e4e70aa2a53a66d8da10a845e2b2c9056a3bb14336a5a56a6e4b5fc6
+input settings.toml sha256=6ac116242f3344af831f6d8b94f21a2cd093e6394c989ae6d833fc791fdca5fe
+individual Alpha accepted=1 id=7d1fa268702a2ae1c11b7ebd77f92c6f
+individual Beta accepted=1 id=b960792148fe37faa25f2587a1c0c283
+multi-layout accepted=1 layouts=2 recovery_entries=1 selected_scope=1 selected=Beta
+recovery key=legacy:material-1 locator=asset:12345678-1234-1234-1234-123456789abd
+input Alpha.toml sha256=9de47bc8acd0ce14e80168e045ab670f814df18ecb228e26760a671b4124a07c
+input Beta.toml sha256=a58cb0a5e4e70aa2a53a66d8da10a845e2b2c9056a3bb14336a5a56a6e4b5fc6
+input settings.toml sha256=6ac116242f3344af831f6d8b94f21a2cd093e6394c989ae6d833fc791fdca5fe
+individual Alpha accepted=1 id=7d1fa268702a2ae1c11b7ebd77f92c6f
+individual Beta accepted=1 id=b960792148fe37faa25f2587a1c0c283
+two-layout restart: IDs/digest/user edits preserved, selected recovery, marker idempotent, collision rejected PASS
+<end of output>
+Test time =   0.12 sec
+----------------------------------------------------------
+Test Passed.
+"editor.workspace.r1-resume" end time: Oct 04 01:19 GMT 夏令时
+"editor.workspace.r1-resume" time elapsed: 00:00:00
+----------------------------------------------------------
+
+240/242 Testing: editor.workspace.r1-control
+240/242 Test: editor.workspace.r1-control
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_workspace_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace/files" "r1-control"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace
+"editor.workspace.r1-control" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+isolated workspace fixture: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace/files/r1-control-16211503270375289914
+input Alpha.toml sha256=9de47bc8acd0ce14e80168e045ab670f814df18ecb228e26760a671b4124a07c
+input Beta.toml sha256=9de47bc8acd0ce14e80168e045ab670f814df18ecb228e26760a671b4124a07c
+input settings.toml sha256=ede9e9595f99e2fc616a018cd20a3112274fe2038b194c08eaf635e78825c8f9
+individual Alpha accepted=1 id=7d1fa268702a2ae1c11b7ebd77f92c6f
+individual Beta accepted=1 id=b960792148fe37faa25f2587a1c0c283
+multi-layout accepted=1 layouts=2 recovery_entries=1 selected_scope=1 selected=Alpha
+recovery key=legacy:material-1 locator=asset:12345678-1234-1234-1234-123456789abc
+REAL files: both layouts preserved, only selected recovery published, original bytes unchanged PASS
+<end of output>
+Test time =   0.10 sec
+----------------------------------------------------------
+Test Passed.
+"editor.workspace.r1-control" end time: Oct 04 01:19 GMT 夏令时
+"editor.workspace.r1-control" time elapsed: 00:00:00
+----------------------------------------------------------
+
+241/242 Testing: editor.workspace.effects
+241/242 Test: editor.workspace.effects
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_layout_effects_test.exe"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace
+"editor.workspace.effects" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+X09-01/X09-06 REAL Root + dirty MaterialSession unchanged; exact key/type, extras retained, zero open/rebind
+<end of output>
+Test time =   0.04 sec
+----------------------------------------------------------
+Test Passed.
+"editor.workspace.effects" end time: Oct 04 01:19 GMT 夏令时
+"editor.workspace.effects" time elapsed: 00:00:00
+----------------------------------------------------------
+
+242/242 Testing: editor.settings.core
+242/242 Test: editor.settings.core
+Command: "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/bin/editor_settings_test.exe" "E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace/settings-files"
+Directory: E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918/editor/tests/workspace
+"editor.settings.core" start time: Oct 04 01:19 GMT 夏令时
+Output:
+----------------------------------------------------------
+V26/V30: real ConfigurationValue, ordered scopes, validation, file/descriptor conflict, independent facts
+V28: unknown rows/fields value-preserved; future/syntax/size/depth reject; no format/comment guarantee
+V31: real file read/write/conflict and Unknown original lane; corrupt file untouched
+V29: preferences copy/marker/retry/selected-layout/unknown/origin, personal edits, conflicts and corrupt source
+V29: complete 24-layout profile, selected/recovery/raw bytes, bounded receipts, Unknown, source pin and idempotency
+<end of output>
+Test time =   2.23 sec
+----------------------------------------------------------
+Test Passed.
+"editor.settings.core" end time: Oct 04 01:19 GMT 夏令时
+"editor.settings.core" time elapsed: 00:00:02
+----------------------------------------------------------
+
+End testing: Oct 04 01:19 GMT 夏令时
+
+EC2 =   0.53 sec*proc
+
+EC3 =   2.65 sec*proc
+
+P04 =   0.05 sec*proc
+
+P05 =   2.96 sec*proc
+
+P05-R1 =   0.35 sec*proc
+
+P05-R2 =   1.59 sec*proc
+
+P08 =   0.56 sec*proc
+
+P09 =   1.49 sec*proc
+
+P09-R1 =   0.91 sec*proc
+
+P10Q =   0.04 sec*proc
+
+P11 =   0.45 sec*proc
+
+P12 =   1.33 sec*proc
+
+R1 =   0.56 sec*proc
+
+desktop =   0.31 sec*proc
+
+editor =  13.12 sec*proc
+
+native =  12.81 sec*proc
+
+toolchain =   0.45 sec*proc
+

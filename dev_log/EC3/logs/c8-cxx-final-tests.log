@@ -1,0 +1,113 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/lux-cxx-ec3
+      Start  1: type_token_test
+ 1/54 Test  #1: type_token_test ..................   Passed    0.01 sec
+      Start  2: core_test
+ 2/54 Test  #2: core_test ........................   Passed    0.01 sec
+      Start  3: format_test
+ 3/54 Test  #3: format_test ......................   Passed    0.01 sec
+      Start  4: tree_test
+ 4/54 Test  #4: tree_test ........................   Passed    0.01 sec
+      Start  5: sparse_set_test
+ 5/54 Test  #5: sparse_set_test ..................   Passed    3.24 sec
+      Start  6: orth_tree_test
+ 6/54 Test  #6: orth_tree_test ...................   Passed    0.34 sec
+      Start  7: slot_map_test
+ 7/54 Test  #7: slot_map_test ....................   Passed    0.02 sec
+      Start  8: scope_id_test
+ 8/54 Test  #8: scope_id_test ....................   Passed    0.02 sec
+      Start  9: basic_sparse_set_test
+ 9/54 Test  #9: basic_sparse_set_test ............   Passed    0.02 sec
+      Start 10: small_vector_test
+10/54 Test #10: small_vector_test ................   Passed    0.02 sec
+      Start 11: small_vector_allocator_test
+11/54 Test #11: small_vector_allocator_test ......   Passed    0.02 sec
+      Start 12: stable_slot_map_test
+12/54 Test #12: stable_slot_map_test .............   Passed    0.02 sec
+      Start 13: intrusive_ptr_test
+13/54 Test #13: intrusive_ptr_test ...............   Passed    0.02 sec
+      Start 14: object_pool_test
+14/54 Test #14: object_pool_test .................   Passed    0.04 sec
+      Start 15: memory_primitives_test
+15/54 Test #15: memory_primitives_test ...........   Passed    0.01 sec
+      Start 16: scene_exchange_test
+16/54 Test #16: scene_exchange_test ..............   Passed    0.02 sec
+      Start 17: timer_test
+17/54 Test #17: timer_test .......................   Passed    3.04 sec
+      Start 18: thread_pool_test
+18/54 Test #18: thread_pool_test .................   Passed    1.79 sec
+      Start 19: blocking_queue_test
+19/54 Test #19: blocking_queue_test ..............   Passed    0.13 sec
+      Start 20: spsc_lckfree_ring_queue_test
+20/54 Test #20: spsc_lckfree_ring_queue_test .....   Passed    0.02 sec
+      Start 21: parallel_pipeline_test
+21/54 Test #21: parallel_pipeline_test ...........   Passed    0.02 sec
+      Start 22: concurrent_gate_test
+22/54 Test #22: concurrent_gate_test .............   Passed    0.03 sec
+      Start 23: atomic_wait_test
+23/54 Test #23: atomic_wait_test .................   Passed    0.14 sec
+      Start 24: arguments_test
+24/54 Test #24: arguments_test ...................   Passed    0.01 sec
+      Start 25: sha256_test
+25/54 Test #25: sha256_test ......................   Passed    0.02 sec
+      Start 26: sha256_parse_fuzz_test
+26/54 Test #26: sha256_parse_fuzz_test ...........   Passed    0.02 sec
+      Start 27: binary_test
+27/54 Test #27: binary_test ......................   Passed    0.02 sec
+      Start 28: binary_fuzz_test
+28/54 Test #28: binary_fuzz_test .................   Passed    0.01 sec
+      Start 29: time_test
+29/54 Test #29: time_test ........................   Passed    0.01 sec
+      Start 30: units_test
+30/54 Test #30: units_test .......................   Passed    0.01 sec
+      Start 31: diagnostic_test
+31/54 Test #31: diagnostic_test ..................   Passed    0.02 sec
+      Start 32: abi_test
+32/54 Test #32: abi_test .........................   Passed    0.01 sec
+      Start 33: archtype_test
+33/54 Test #33: archtype_test ....................   Passed    0.02 sec
+      Start 34: ecs_fixes_test
+34/54 Test #34: ecs_fixes_test ...................   Passed    0.02 sec
+      Start 35: signal_test
+35/54 Test #35: signal_test ......................   Passed    0.02 sec
+      Start 36: compile_environment_test
+36/54 Test #36: compile_environment_test .........   Passed    0.06 sec
+      Start 37: meta_parse_test
+37/54 Test #37: meta_parse_test ..................   Passed    0.55 sec
+      Start 38: external_reflect_test
+38/54 Test #38: external_reflect_test ............   Passed    0.04 sec
+      Start 39: meta_deserializer_test
+39/54 Test #39: meta_deserializer_test ...........   Passed    0.01 sec
+      Start 40: extended_coverage_test
+40/54 Test #40: extended_coverage_test ...........   Passed    0.41 sec
+      Start 41: meta_roundtrip_test
+41/54 Test #41: meta_roundtrip_test ..............   Passed    0.91 sec
+      Start 42: meta_ir_test
+42/54 Test #42: meta_ir_test .....................   Passed    0.01 sec
+      Start 43: meta_ir_fuzz_test
+43/54 Test #43: meta_ir_fuzz_test ................   Passed    0.02 sec
+      Start 44: generator_test
+44/54 Test #44: generator_test ...................   Passed    0.02 sec
+      Start 45: generator_validation_failure
+45/54 Test #45: generator_validation_failure .....   Passed    0.08 sec
+      Start 46: array_type_test
+46/54 Test #46: array_type_test ..................   Passed    0.03 sec
+      Start 47: serialization_test
+47/54 Test #47: serialization_test ...............   Passed    0.02 sec
+      Start 48: json_test
+48/54 Test #48: json_test ........................   Passed    0.02 sec
+      Start 49: xml_test
+49/54 Test #49: xml_test .........................   Passed    0.02 sec
+      Start 50: yaml_test
+50/54 Test #50: yaml_test ........................   Passed    0.02 sec
+      Start 51: external_json_test
+51/54 Test #51: external_json_test ...............   Passed    0.02 sec
+      Start 52: external_xml_test
+52/54 Test #52: external_xml_test ................   Passed    0.10 sec
+      Start 53: external_yaml_test
+53/54 Test #53: external_yaml_test ...............   Passed    0.02 sec
+      Start 54: serialization_arguments_test
+54/54 Test #54: serialization_arguments_test .....   Passed    0.02 sec
+
+100% tests passed, 0 tests failed out of 54
+
+Total Test time (real) =  13.06 sec

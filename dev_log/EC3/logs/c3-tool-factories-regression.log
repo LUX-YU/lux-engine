@@ -1,0 +1,45 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dev
+      Start  97: editor.view_host
+ 1/11 Test  #97: editor.view_host ......................   Passed    0.03 sec
+      Start 104: editor.project_views
+ 2/11 Test #104: editor.project_views ..................Exit code 0xc0000409
+***Exception:   2.87 sec
+Assertion failed: root->panes().empty(), file E:\SyncForder\CodeRepos\lux-engine-ec2\editor\workbench\project\test\catalog.cpp, line 171
+
+      Start 106: editor.contributions
+ 3/11 Test #106: editor.contributions ..................   Passed    0.05 sec
+      Start 107: editor.contributions.r11-factory
+ 4/11 Test #107: editor.contributions.r11-factory ......   Passed    0.03 sec
+      Start 108: editor.contributions.r11-reflection
+ 5/11 Test #108: editor.contributions.r11-reflection ...   Passed    0.02 sec
+      Start 109: editor.contributions.r11-cleanup
+ 6/11 Test #109: editor.contributions.r11-cleanup ......   Passed    0.02 sec
+      Start 110: editor.contributions.r11-notify
+ 7/11 Test #110: editor.contributions.r11-notify .......   Passed    0.02 sec
+      Start 119: editor.tasks.monitor
+ 8/11 Test #119: editor.tasks.monitor ..................   Passed    0.09 sec
+      Start 137: editor.application
+ 9/11 Test #137: editor.application ....................   Passed    1.43 sec
+      Start 139: editor.scene_configuration
+10/11 Test #139: editor.scene_configuration ............   Passed    0.07 sec
+      Start 140: editor.project_panels
+11/11 Test #140: editor.project_panels .................   Passed    0.04 sec
+
+91% tests passed, 1 tests failed out of 11
+
+Label Time Summary:
+EC2       =   0.04 sec*proc (1 test)
+P10       =   0.03 sec*proc (1 test)
+P10Q      =   0.09 sec*proc (1 test)
+P11       =   0.05 sec*proc (1 test)
+P12       =   1.43 sec*proc (1 test)
+editor    =   1.71 sec*proc (6 tests)
+gpu       =   1.43 sec*proc (1 test)
+native    =   0.28 sec*proc (5 tests)
+
+Total Test time (real) =   4.98 sec
+
+The following tests FAILED:
+	104 - editor.project_views (Exit code 0xc0000409
+)
+Errors while running CTest

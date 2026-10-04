@@ -1,0 +1,3341 @@
+[
+  {
+    "target": "_flowforge_dialect",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/_flowforge_dialect.lib",
+    "exists": true,
+    "size": 8350656
+  },
+  {
+    "target": "animation",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/animation.dll",
+    "exists": true,
+    "size": 185344
+  },
+  {
+    "target": "animation",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/animation.lib",
+    "exists": true,
+    "size": 4356
+  },
+  {
+    "target": "animation",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/animation.pdb",
+    "exists": true,
+    "size": 9498624
+  },
+  {
+    "target": "asset",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_asset.dll",
+    "exists": true,
+    "size": 1587200
+  },
+  {
+    "target": "asset",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_asset.lib",
+    "exists": true,
+    "size": 178364
+  },
+  {
+    "target": "asset",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_asset.pdb",
+    "exists": true,
+    "size": 19279872
+  },
+  {
+    "target": "asset_bounded_read_test",
+    "type": "EXECUTABLE",
+    "path": "bin/asset_bounded_read_test.exe",
+    "exists": true,
+    "size": 203264
+  },
+  {
+    "target": "asset_bounded_read_test",
+    "type": "EXECUTABLE",
+    "path": "bin/asset_bounded_read_test.pdb",
+    "exists": true,
+    "size": 3919872
+  },
+  {
+    "target": "asset_read_overlay_test",
+    "type": "EXECUTABLE",
+    "path": "bin/asset_read_overlay_test.exe",
+    "exists": true,
+    "size": 284672
+  },
+  {
+    "target": "asset_read_overlay_test",
+    "type": "EXECUTABLE",
+    "path": "bin/asset_read_overlay_test.pdb",
+    "exists": true,
+    "size": 7254016
+  },
+  {
+    "target": "builtin_runtime_description",
+    "type": "EXECUTABLE",
+    "path": "bin/builtin_runtime_description.exe",
+    "exists": true,
+    "size": 305664
+  },
+  {
+    "target": "builtin_runtime_description",
+    "type": "EXECUTABLE",
+    "path": "bin/builtin_runtime_description.pdb",
+    "exists": true,
+    "size": 11202560
+  },
+  {
+    "target": "builtin_runtime_exports",
+    "type": "OBJECT_LIBRARY",
+    "path": "engine/scene/plugins/CMakeFiles/builtin_runtime_exports.dir/./BuiltinRuntimeExports.cpp.obj",
+    "exists": true,
+    "size": 993431
+  },
+  {
+    "target": "builtin_runtime_plugin",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/builtin_runtime_plugin.dll",
+    "exists": true,
+    "size": 79360
+  },
+  {
+    "target": "builtin_runtime_plugin",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/builtin_runtime_plugin.lib",
+    "exists": true,
+    "size": 2540
+  },
+  {
+    "target": "builtin_runtime_plugin",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/builtin_runtime_plugin.pdb",
+    "exists": true,
+    "size": 6107136
+  },
+  {
+    "target": "builtin_scene_render_description",
+    "type": "EXECUTABLE",
+    "path": "bin/builtin_scene_render_description.exe",
+    "exists": true,
+    "size": 503808
+  },
+  {
+    "target": "builtin_scene_render_description",
+    "type": "EXECUTABLE",
+    "path": "bin/builtin_scene_render_description.pdb",
+    "exists": true,
+    "size": 11071488
+  },
+  {
+    "target": "builtin_scene_render_exports",
+    "type": "OBJECT_LIBRARY",
+    "path": "engine/scene/plugins/CMakeFiles/builtin_scene_render_exports.dir/./BuiltinSceneRenderExports.cpp.obj",
+    "exists": true,
+    "size": 467179
+  },
+  {
+    "target": "builtin_scene_render_plugin",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/builtin_scene_render_plugin.dll",
+    "exists": true,
+    "size": 54272
+  },
+  {
+    "target": "builtin_scene_render_plugin",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/builtin_scene_render_plugin.lib",
+    "exists": true,
+    "size": 2896
+  },
+  {
+    "target": "builtin_scene_render_plugin",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/builtin_scene_render_plugin.pdb",
+    "exists": true,
+    "size": 3887104
+  },
+  {
+    "target": "consumer_domain",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/consumer_domain.dll",
+    "exists": true,
+    "size": 566272
+  },
+  {
+    "target": "consumer_domain",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/consumer_domain.lib",
+    "exists": true,
+    "size": 2556
+  },
+  {
+    "target": "consumer_domain",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/consumer_domain.pdb",
+    "exists": true,
+    "size": 9736192
+  },
+  {
+    "target": "consumer_gui",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/consumer_gui.dll",
+    "exists": true,
+    "size": 5836800
+  },
+  {
+    "target": "consumer_gui",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/consumer_gui.lib",
+    "exists": true,
+    "size": 3298
+  },
+  {
+    "target": "consumer_gui",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/consumer_gui.pdb",
+    "exists": true,
+    "size": 121712640
+  },
+  {
+    "target": "consumer_protocol",
+    "type": "EXECUTABLE",
+    "path": "bin/consumer_protocol.exe",
+    "exists": true,
+    "size": 735744
+  },
+  {
+    "target": "consumer_protocol",
+    "type": "EXECUTABLE",
+    "path": "bin/consumer_protocol.pdb",
+    "exists": true,
+    "size": 20033536
+  },
+  {
+    "target": "core",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_simulation_ecs_core.dll",
+    "exists": true,
+    "size": 112640
+  },
+  {
+    "target": "core",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_simulation_ecs_core.lib",
+    "exists": true,
+    "size": 28606
+  },
+  {
+    "target": "core",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_simulation_ecs_core.pdb",
+    "exists": true,
+    "size": 1961984
+  },
+  {
+    "target": "description",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/description.dll",
+    "exists": true,
+    "size": 138240
+  },
+  {
+    "target": "description",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/description.lib",
+    "exists": true,
+    "size": 15402
+  },
+  {
+    "target": "description",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/description.pdb",
+    "exists": true,
+    "size": 2027520
+  },
+  {
+    "target": "desktop_shell",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/desktop_shell.lib",
+    "exists": true,
+    "size": 12539842
+  },
+  {
+    "target": "domain_system_description",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_domain_system_description.dll",
+    "exists": true,
+    "size": 59392
+  },
+  {
+    "target": "domain_system_description",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_domain_system_description.lib",
+    "exists": true,
+    "size": 3488
+  },
+  {
+    "target": "domain_system_description",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_domain_system_description.pdb",
+    "exists": true,
+    "size": 995328
+  },
+  {
+    "target": "domain_system_identity",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_domain_system_identity.dll",
+    "exists": true,
+    "size": 44032
+  },
+  {
+    "target": "domain_system_identity",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_domain_system_identity.lib",
+    "exists": true,
+    "size": 2566
+  },
+  {
+    "target": "domain_system_identity",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_domain_system_identity.pdb",
+    "exists": true,
+    "size": 897024
+  },
+  {
+    "target": "dynamic_library",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/dynamic_library.dll",
+    "exists": true,
+    "size": 332288
+  },
+  {
+    "target": "dynamic_library",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/dynamic_library.lib",
+    "exists": true,
+    "size": 9130
+  },
+  {
+    "target": "dynamic_library",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/dynamic_library.pdb",
+    "exists": true,
+    "size": 3911680
+  },
+  {
+    "target": "ec2_script_asset_package_semantics_writer",
+    "type": "EXECUTABLE",
+    "path": "bin/ec2_script_asset_package_semantics_writer.exe",
+    "exists": true,
+    "size": 310272
+  },
+  {
+    "target": "ec2_script_asset_package_semantics_writer",
+    "type": "EXECUTABLE",
+    "path": "bin/ec2_script_asset_package_semantics_writer.pdb",
+    "exists": true,
+    "size": 3706880
+  },
+  {
+    "target": "edit_history",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_edit_history.dll",
+    "exists": true,
+    "size": 296448
+  },
+  {
+    "target": "edit_history",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_edit_history.lib",
+    "exists": true,
+    "size": 17728
+  },
+  {
+    "target": "edit_history",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_edit_history.pdb",
+    "exists": true,
+    "size": 3248128
+  },
+  {
+    "target": "edit_sessions",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_edit_sessions.dll",
+    "exists": true,
+    "size": 121856
+  },
+  {
+    "target": "edit_sessions",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_edit_sessions.lib",
+    "exists": true,
+    "size": 41936
+  },
+  {
+    "target": "edit_sessions",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_edit_sessions.pdb",
+    "exists": true,
+    "size": 2600960
+  },
+  {
+    "target": "editor_application_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_application_test.exe",
+    "exists": true,
+    "size": 16096256
+  },
+  {
+    "target": "editor_application_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_application_test.pdb",
+    "exists": true,
+    "size": 256126976
+  },
+  {
+    "target": "editor_artifact_publication",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_artifact_publication.exe",
+    "exists": true,
+    "size": 2342400
+  },
+  {
+    "target": "editor_artifact_publication",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_artifact_publication.pdb",
+    "exists": true,
+    "size": 31936512
+  },
+  {
+    "target": "editor_assets",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/editor_assets.lib",
+    "exists": true,
+    "size": 14770512
+  },
+  {
+    "target": "editor_bootstrap",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/editor_bootstrap.lib",
+    "exists": true,
+    "size": 85936604
+  },
+  {
+    "target": "editor_canvas_churn_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_canvas_churn_test.exe",
+    "exists": true,
+    "size": 1085952
+  },
+  {
+    "target": "editor_canvas_churn_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_canvas_churn_test.pdb",
+    "exists": true,
+    "size": 10604544
+  },
+  {
+    "target": "editor_command_index_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_command_index_test.exe",
+    "exists": true,
+    "size": 418304
+  },
+  {
+    "target": "editor_command_index_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_command_index_test.pdb",
+    "exists": true,
+    "size": 5001216
+  },
+  {
+    "target": "editor_commands",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/editor_commands.lib",
+    "exists": true,
+    "size": 2737338
+  },
+  {
+    "target": "editor_commands_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_commands_test.exe",
+    "exists": true,
+    "size": 476672
+  },
+  {
+    "target": "editor_commands_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_commands_test.pdb",
+    "exists": true,
+    "size": 5509120
+  },
+  {
+    "target": "editor_compilation_ownership_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_compilation_ownership_test.exe",
+    "exists": true,
+    "size": 2559488
+  },
+  {
+    "target": "editor_compilation_ownership_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_compilation_ownership_test.pdb",
+    "exists": true,
+    "size": 35885056
+  },
+  {
+    "target": "editor_compilation_p07_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_compilation_p07_test.exe",
+    "exists": true,
+    "size": 3471872
+  },
+  {
+    "target": "editor_compilation_p07_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_compilation_p07_test.pdb",
+    "exists": true,
+    "size": 55660544
+  },
+  {
+    "target": "editor_configuration",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/editor_configuration.dll",
+    "exists": true,
+    "size": 162304
+  },
+  {
+    "target": "editor_configuration",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/editor_configuration.lib",
+    "exists": true,
+    "size": 24870
+  },
+  {
+    "target": "editor_configuration",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/editor_configuration.pdb",
+    "exists": true,
+    "size": 2699264
+  },
+  {
+    "target": "editor_contributions_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_contributions_test.exe",
+    "exists": true,
+    "size": 1108480
+  },
+  {
+    "target": "editor_contributions_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_contributions_test.pdb",
+    "exists": true,
+    "size": 15945728
+  },
+  {
+    "target": "editor_detached_views_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_detached_views_test.exe",
+    "exists": true,
+    "size": 147456
+  },
+  {
+    "target": "editor_detached_views_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_detached_views_test.pdb",
+    "exists": true,
+    "size": 2551808
+  },
+  {
+    "target": "editor_editing_scene",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/editor_editing_scene.lib",
+    "exists": true,
+    "size": 3687992
+  },
+  {
+    "target": "editor_extensions",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/editor_extensions.lib",
+    "exists": true,
+    "size": 3431774
+  },
+  {
+    "target": "editor_file_publication",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/editor_file_publication.lib",
+    "exists": true,
+    "size": 2881462
+  },
+  {
+    "target": "editor_flow_source_native",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_flow_source_native.exe",
+    "exists": true,
+    "size": 1392128
+  },
+  {
+    "target": "editor_flow_source_native",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_flow_source_native.pdb",
+    "exists": true,
+    "size": 14241792
+  },
+  {
+    "target": "editor_flowforge_interaction_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_flowforge_interaction_test.exe",
+    "exists": true,
+    "size": 1795584
+  },
+  {
+    "target": "editor_flowforge_interaction_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_flowforge_interaction_test.pdb",
+    "exists": true,
+    "size": 19566592
+  },
+  {
+    "target": "editor_flowforge_model_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_flowforge_model_test.exe",
+    "exists": true,
+    "size": 1925120
+  },
+  {
+    "target": "editor_flowforge_model_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_flowforge_model_test.pdb",
+    "exists": true,
+    "size": 20402176
+  },
+  {
+    "target": "editor_hierarchy_benchmark",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_hierarchy_benchmark.exe",
+    "exists": true,
+    "size": 522752
+  },
+  {
+    "target": "editor_hierarchy_benchmark",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_hierarchy_benchmark.pdb",
+    "exists": true,
+    "size": 9932800
+  },
+  {
+    "target": "editor_highlight_p07_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_highlight_p07_test.exe",
+    "exists": true,
+    "size": 86016
+  },
+  {
+    "target": "editor_highlight_p07_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_highlight_p07_test.pdb",
+    "exists": true,
+    "size": 6205440
+  },
+  {
+    "target": "editor_interaction_reclaim_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_interaction_reclaim_test.exe",
+    "exists": true,
+    "size": 3039744
+  },
+  {
+    "target": "editor_interaction_reclaim_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_interaction_reclaim_test.pdb",
+    "exists": true,
+    "size": 41201664
+  },
+  {
+    "target": "editor_launch",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/editor_launch.lib",
+    "exists": true,
+    "size": 703254
+  },
+  {
+    "target": "editor_layout_effects_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_layout_effects_test.exe",
+    "exists": true,
+    "size": 768000
+  },
+  {
+    "target": "editor_layout_effects_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_layout_effects_test.pdb",
+    "exists": true,
+    "size": 12267520
+  },
+  {
+    "target": "editor_material_interaction_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_material_interaction_test.exe",
+    "exists": true,
+    "size": 631808
+  },
+  {
+    "target": "editor_material_interaction_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_material_interaction_test.pdb",
+    "exists": true,
+    "size": 9752576
+  },
+  {
+    "target": "editor_material_model_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_material_model_test.exe",
+    "exists": true,
+    "size": 739328
+  },
+  {
+    "target": "editor_material_model_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_material_model_test.pdb",
+    "exists": true,
+    "size": 10579968
+  },
+  {
+    "target": "editor_model_recipe",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_model_recipe.exe",
+    "exists": true,
+    "size": 906752
+  },
+  {
+    "target": "editor_model_recipe",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_model_recipe.pdb",
+    "exists": true,
+    "size": 12193792
+  },
+  {
+    "target": "editor_persistence",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/editor_persistence.lib",
+    "exists": true,
+    "size": 5178784
+  },
+  {
+    "target": "editor_persistence_execution",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/editor_persistence_execution.lib",
+    "exists": true,
+    "size": 2811610
+  },
+  {
+    "target": "editor_persistence_models_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_persistence_models_test.exe",
+    "exists": true,
+    "size": 3585024
+  },
+  {
+    "target": "editor_persistence_models_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_persistence_models_test.pdb",
+    "exists": true,
+    "size": 46575616
+  },
+  {
+    "target": "editor_plugin_publication_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_plugin_publication_test.exe",
+    "exists": true,
+    "size": 2523648
+  },
+  {
+    "target": "editor_plugin_publication_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_plugin_publication_test.pdb",
+    "exists": true,
+    "size": 32231424
+  },
+  {
+    "target": "editor_project",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/lux_engine_editor_project.lib",
+    "exists": true,
+    "size": 6329540
+  },
+  {
+    "target": "editor_project_creation_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_project_creation_test.exe",
+    "exists": true,
+    "size": 2128384
+  },
+  {
+    "target": "editor_project_creation_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_project_creation_test.pdb",
+    "exists": true,
+    "size": 27029504
+  },
+  {
+    "target": "editor_project_panels",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_project_panels.exe",
+    "exists": true,
+    "size": 705024
+  },
+  {
+    "target": "editor_project_panels",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_project_panels.pdb",
+    "exists": true,
+    "size": 14217216
+  },
+  {
+    "target": "editor_project_publication_operation_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_project_publication_operation_test.exe",
+    "exists": true,
+    "size": 3237376
+  },
+  {
+    "target": "editor_project_publication_operation_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_project_publication_operation_test.pdb",
+    "exists": true,
+    "size": 44896256
+  },
+  {
+    "target": "editor_project_views_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_project_views_test.exe",
+    "exists": true,
+    "size": 1042432
+  },
+  {
+    "target": "editor_project_views_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_project_views_test.pdb",
+    "exists": true,
+    "size": 15478784
+  },
+  {
+    "target": "editor_projection_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_projection_test.exe",
+    "exists": true,
+    "size": 1306112
+  },
+  {
+    "target": "editor_projection_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_projection_test.pdb",
+    "exists": true,
+    "size": 22851584
+  },
+  {
+    "target": "editor_publication_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_publication_test.exe",
+    "exists": true,
+    "size": 292352
+  },
+  {
+    "target": "editor_publication_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_publication_test.pdb",
+    "exists": true,
+    "size": 3969024
+  },
+  {
+    "target": "editor_quality_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_quality_test.exe",
+    "exists": true,
+    "size": 217088
+  },
+  {
+    "target": "editor_quality_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_quality_test.pdb",
+    "exists": true,
+    "size": 3813376
+  },
+  {
+    "target": "editor_run_selection_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_run_selection_test.exe",
+    "exists": true,
+    "size": 1453056
+  },
+  {
+    "target": "editor_run_selection_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_run_selection_test.pdb",
+    "exists": true,
+    "size": 32935936
+  },
+  {
+    "target": "editor_scene_configuration",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_scene_configuration.exe",
+    "exists": true,
+    "size": 2575872
+  },
+  {
+    "target": "editor_scene_configuration",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_scene_configuration.pdb",
+    "exists": true,
+    "size": 40366080
+  },
+  {
+    "target": "editor_scene_configuration_native",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_scene_configuration_native.exe",
+    "exists": true,
+    "size": 1518592
+  },
+  {
+    "target": "editor_scene_configuration_native",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_scene_configuration_native.pdb",
+    "exists": true,
+    "size": 23269376
+  },
+  {
+    "target": "editor_scene_editing_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_scene_editing_test.exe",
+    "exists": true,
+    "size": 455168
+  },
+  {
+    "target": "editor_scene_editing_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_scene_editing_test.pdb",
+    "exists": true,
+    "size": 16248832
+  },
+  {
+    "target": "editor_scene_execution_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_scene_execution_test.exe",
+    "exists": true,
+    "size": 2187776
+  },
+  {
+    "target": "editor_scene_execution_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_scene_execution_test.pdb",
+    "exists": true,
+    "size": 45568000
+  },
+  {
+    "target": "editor_scene_fixture",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_scene_fixture.exe",
+    "exists": true,
+    "size": 2767872
+  },
+  {
+    "target": "editor_scene_fixture",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_scene_fixture.pdb",
+    "exists": true,
+    "size": 62631936
+  },
+  {
+    "target": "editor_scene_interaction_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_scene_interaction_test.exe",
+    "exists": true,
+    "size": 1268736
+  },
+  {
+    "target": "editor_scene_interaction_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_scene_interaction_test.pdb",
+    "exists": true,
+    "size": 24489984
+  },
+  {
+    "target": "editor_scene_model_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_scene_model_test.exe",
+    "exists": true,
+    "size": 1748480
+  },
+  {
+    "target": "editor_scene_model_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_scene_model_test.pdb",
+    "exists": true,
+    "size": 32051200
+  },
+  {
+    "target": "editor_scene_views_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_scene_views_test.exe",
+    "exists": true,
+    "size": 11028992
+  },
+  {
+    "target": "editor_scene_views_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_scene_views_test.pdb",
+    "exists": true,
+    "size": 181415936
+  },
+  {
+    "target": "editor_script_run_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_script_run_test.exe",
+    "exists": true,
+    "size": 1885696
+  },
+  {
+    "target": "editor_script_run_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_script_run_test.pdb",
+    "exists": true,
+    "size": 39424000
+  },
+  {
+    "target": "editor_session_installation_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_session_installation_test.exe",
+    "exists": true,
+    "size": 4696064
+  },
+  {
+    "target": "editor_session_installation_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_session_installation_test.pdb",
+    "exists": true,
+    "size": 64507904
+  },
+  {
+    "target": "editor_sessions_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_sessions_test.exe",
+    "exists": true,
+    "size": 183296
+  },
+  {
+    "target": "editor_sessions_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_sessions_test.pdb",
+    "exists": true,
+    "size": 3092480
+  },
+  {
+    "target": "editor_settings_content_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_settings_content_test.exe",
+    "exists": true,
+    "size": 3032064
+  },
+  {
+    "target": "editor_settings_content_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_settings_content_test.pdb",
+    "exists": true,
+    "size": 36229120
+  },
+  {
+    "target": "editor_settings_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_settings_test.exe",
+    "exists": true,
+    "size": 1840128
+  },
+  {
+    "target": "editor_settings_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_settings_test.pdb",
+    "exists": true,
+    "size": 19091456
+  },
+  {
+    "target": "editor_storage",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/editor_storage.lib",
+    "exists": true,
+    "size": 35549446
+  },
+  {
+    "target": "editor_task_monitor_cpu_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_task_monitor_cpu_test.exe",
+    "exists": true,
+    "size": 140288
+  },
+  {
+    "target": "editor_task_monitor_cpu_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_task_monitor_cpu_test.pdb",
+    "exists": true,
+    "size": 4378624
+  },
+  {
+    "target": "editor_task_monitor_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_task_monitor_test.exe",
+    "exists": true,
+    "size": 998400
+  },
+  {
+    "target": "editor_task_monitor_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_task_monitor_test.pdb",
+    "exists": true,
+    "size": 16093184
+  },
+  {
+    "target": "editor_tasks",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/editor_tasks.lib",
+    "exists": true,
+    "size": 392812
+  },
+  {
+    "target": "editor_three_sessions_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_three_sessions_test.exe",
+    "exists": true,
+    "size": 2581504
+  },
+  {
+    "target": "editor_three_sessions_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_three_sessions_test.pdb",
+    "exists": true,
+    "size": 33296384
+  },
+  {
+    "target": "editor_ui_presentation",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_ui_presentation.exe",
+    "exists": true,
+    "size": 749568
+  },
+  {
+    "target": "editor_ui_presentation",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_ui_presentation.pdb",
+    "exists": true,
+    "size": 23236608
+  },
+  {
+    "target": "editor_view_host_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_view_host_test.exe",
+    "exists": true,
+    "size": 1165312
+  },
+  {
+    "target": "editor_view_host_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_view_host_test.pdb",
+    "exists": true,
+    "size": 15101952
+  },
+  {
+    "target": "editor_viewport",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/editor_viewport.lib",
+    "exists": true,
+    "size": 11694844
+  },
+  {
+    "target": "editor_widgets",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/editor_widgets.lib",
+    "exists": true,
+    "size": 7945220
+  },
+  {
+    "target": "editor_workspace_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_workspace_test.exe",
+    "exists": true,
+    "size": 1804800
+  },
+  {
+    "target": "editor_workspace_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_workspace_test.pdb",
+    "exists": true,
+    "size": 17666048
+  },
+  {
+    "target": "editor_write_coordinator_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_write_coordinator_test.exe",
+    "exists": true,
+    "size": 281088
+  },
+  {
+    "target": "editor_write_coordinator_test",
+    "type": "EXECUTABLE",
+    "path": "bin/editor_write_coordinator_test.pdb",
+    "exists": true,
+    "size": 4231168
+  },
+  {
+    "target": "engine_context",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/engine_context.lib",
+    "exists": true,
+    "size": 1448762
+  },
+  {
+    "target": "engine_context_render",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/engine_context_render.lib",
+    "exists": true,
+    "size": 1912238
+  },
+  {
+    "target": "engine_headless_test",
+    "type": "EXECUTABLE",
+    "path": "bin/engine_headless_test.exe",
+    "exists": true,
+    "size": 1428992
+  },
+  {
+    "target": "engine_headless_test",
+    "type": "EXECUTABLE",
+    "path": "bin/engine_headless_test.pdb",
+    "exists": true,
+    "size": 23965696
+  },
+  {
+    "target": "events",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_core_events.dll",
+    "exists": true,
+    "size": 64512
+  },
+  {
+    "target": "events",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_core_events.lib",
+    "exists": true,
+    "size": 4608
+  },
+  {
+    "target": "events",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_core_events.pdb",
+    "exists": true,
+    "size": 1454080
+  },
+  {
+    "target": "filewatch",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/filewatch.dll",
+    "exists": true,
+    "size": 125952
+  },
+  {
+    "target": "filewatch",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/filewatch.lib",
+    "exists": true,
+    "size": 3752
+  },
+  {
+    "target": "filewatch",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/filewatch.pdb",
+    "exists": true,
+    "size": 2281472
+  },
+  {
+    "target": "flow_ui",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/flow_ui.lib",
+    "exists": true,
+    "size": 13796182
+  },
+  {
+    "target": "flowforge",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/lux_engine_function_flowforge.lib",
+    "exists": true,
+    "size": 20737262
+  },
+  {
+    "target": "flowforge_compilation",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/flowforge_compilation.lib",
+    "exists": true,
+    "size": 11797296
+  },
+  {
+    "target": "flowforge_compiler",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_flowforge_compiler.dll",
+    "exists": true,
+    "size": 69755904
+  },
+  {
+    "target": "flowforge_compiler",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_flowforge_compiler.lib",
+    "exists": true,
+    "size": 6006
+  },
+  {
+    "target": "flowforge_compiler",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_flowforge_compiler.pdb",
+    "exists": true,
+    "size": 971100160
+  },
+  {
+    "target": "flowforge_interaction",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/flowforge_interaction.lib",
+    "exists": true,
+    "size": 1716272
+  },
+  {
+    "target": "flowforge_model",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/flowforge_model.lib",
+    "exists": true,
+    "size": 9086208
+  },
+  {
+    "target": "flowforge_persistence",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/flowforge_persistence.lib",
+    "exists": true,
+    "size": 6192938
+  },
+  {
+    "target": "graph",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_function_graph.dll",
+    "exists": true,
+    "size": 161280
+  },
+  {
+    "target": "graph",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_function_graph.lib",
+    "exists": true,
+    "size": 26318
+  },
+  {
+    "target": "graph",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_function_graph.pdb",
+    "exists": true,
+    "size": 2174976
+  },
+  {
+    "target": "hierarchy",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_simulation_ecs_hierarchy.dll",
+    "exists": true,
+    "size": 283136
+  },
+  {
+    "target": "hierarchy",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_simulation_ecs_hierarchy.lib",
+    "exists": true,
+    "size": 37366
+  },
+  {
+    "target": "hierarchy",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_simulation_ecs_hierarchy.pdb",
+    "exists": true,
+    "size": 5623808
+  },
+  {
+    "target": "input",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_function_input.dll",
+    "exists": true,
+    "size": 235520
+  },
+  {
+    "target": "input",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_function_input.lib",
+    "exists": true,
+    "size": 18354
+  },
+  {
+    "target": "input",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_function_input.pdb",
+    "exists": true,
+    "size": 4059136
+  },
+  {
+    "target": "layout_model",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/layout_model.lib",
+    "exists": true,
+    "size": 12737122
+  },
+  {
+    "target": "log",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_core_log.dll",
+    "exists": true,
+    "size": 556032
+  },
+  {
+    "target": "log",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_core_log.lib",
+    "exists": true,
+    "size": 5496
+  },
+  {
+    "target": "log",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_core_log.pdb",
+    "exists": true,
+    "size": 4214784
+  },
+  {
+    "target": "lux_asset_packer",
+    "type": "EXECUTABLE",
+    "path": "bin/lux_asset_packer.exe",
+    "exists": true,
+    "size": 2507264
+  },
+  {
+    "target": "lux_asset_packer",
+    "type": "EXECUTABLE",
+    "path": "bin/lux_asset_packer.pdb",
+    "exists": true,
+    "size": 34639872
+  },
+  {
+    "target": "lux_editor",
+    "type": "EXECUTABLE",
+    "path": "bin/lux_editor.exe",
+    "exists": true,
+    "size": 15906816
+  },
+  {
+    "target": "lux_editor",
+    "type": "EXECUTABLE",
+    "path": "bin/lux_editor.pdb",
+    "exists": true,
+    "size": 255365120
+  },
+  {
+    "target": "lux_inspector_generator",
+    "type": "EXECUTABLE",
+    "path": "bin/lux_inspector_generator.exe",
+    "exists": true,
+    "size": 1450496
+  },
+  {
+    "target": "lux_inspector_generator",
+    "type": "EXECUTABLE",
+    "path": "bin/lux_inspector_generator.pdb",
+    "exists": true,
+    "size": 19279872
+  },
+  {
+    "target": "lux_launcher",
+    "type": "EXECUTABLE",
+    "path": "bin/lux_launcher.exe",
+    "exists": true,
+    "size": 4533248
+  },
+  {
+    "target": "lux_launcher",
+    "type": "EXECUTABLE",
+    "path": "bin/lux_launcher.pdb",
+    "exists": true,
+    "size": 70881280
+  },
+  {
+    "target": "lux_scene_seed",
+    "type": "EXECUTABLE",
+    "path": "bin/lux_scene_seed.exe",
+    "exists": true,
+    "size": 236032
+  },
+  {
+    "target": "lux_scene_seed",
+    "type": "EXECUTABLE",
+    "path": "bin/lux_scene_seed.pdb",
+    "exists": true,
+    "size": 8876032
+  },
+  {
+    "target": "lux_shader_emitter",
+    "type": "EXECUTABLE",
+    "path": "bin/lux_shader_emitter.exe",
+    "exists": true,
+    "size": 636416
+  },
+  {
+    "target": "lux_shader_emitter",
+    "type": "EXECUTABLE",
+    "path": "bin/lux_shader_emitter.pdb",
+    "exists": true,
+    "size": 4755456
+  },
+  {
+    "target": "material_graph",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_function_material_graph.dll",
+    "exists": true,
+    "size": 953344
+  },
+  {
+    "target": "material_graph",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_function_material_graph.lib",
+    "exists": true,
+    "size": 66448
+  },
+  {
+    "target": "material_graph",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_function_material_graph.pdb",
+    "exists": true,
+    "size": 8990720
+  },
+  {
+    "target": "material_interaction",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/material_interaction.lib",
+    "exists": true,
+    "size": 1203672
+  },
+  {
+    "target": "material_model",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/material_model.lib",
+    "exists": true,
+    "size": 8537068
+  },
+  {
+    "target": "material_persistence",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/material_persistence.lib",
+    "exists": true,
+    "size": 3917554
+  },
+  {
+    "target": "material_preview",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/material_preview.lib",
+    "exists": true,
+    "size": 16794968
+  },
+  {
+    "target": "material_ui",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/material_ui.lib",
+    "exists": true,
+    "size": 18085484
+  },
+  {
+    "target": "meta",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_core_meta.dll",
+    "exists": true,
+    "size": 444928
+  },
+  {
+    "target": "meta",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_core_meta.lib",
+    "exists": true,
+    "size": 30824
+  },
+  {
+    "target": "meta",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_core_meta.pdb",
+    "exists": true,
+    "size": 5148672
+  },
+  {
+    "target": "navigation_detour3d",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_function_navigation_detour3d.dll",
+    "exists": true,
+    "size": 473600
+  },
+  {
+    "target": "navigation_detour3d",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_function_navigation_detour3d.lib",
+    "exists": true,
+    "size": 34334
+  },
+  {
+    "target": "navigation_detour3d",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_function_navigation_detour3d.pdb",
+    "exists": true,
+    "size": 5836800
+  },
+  {
+    "target": "object",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_core_object.dll",
+    "exists": true,
+    "size": 105984
+  },
+  {
+    "target": "object",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_core_object.lib",
+    "exists": true,
+    "size": 34994
+  },
+  {
+    "target": "object",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_core_object.pdb",
+    "exists": true,
+    "size": 1855488
+  },
+  {
+    "target": "object_queue_test",
+    "type": "EXECUTABLE",
+    "path": "bin/object_queue_test.exe",
+    "exists": true,
+    "size": 116736
+  },
+  {
+    "target": "object_queue_test",
+    "type": "EXECUTABLE",
+    "path": "bin/object_queue_test.pdb",
+    "exists": true,
+    "size": 1904640
+  },
+  {
+    "target": "object_tree_test",
+    "type": "EXECUTABLE",
+    "path": "bin/object_tree_test.exe",
+    "exists": true,
+    "size": 60416
+  },
+  {
+    "target": "object_tree_test",
+    "type": "EXECUTABLE",
+    "path": "bin/object_tree_test.pdb",
+    "exists": true,
+    "size": 1126400
+  },
+  {
+    "target": "physics2d_description",
+    "type": "EXECUTABLE",
+    "path": "bin/physics2d_description.exe",
+    "exists": true,
+    "size": 629248
+  },
+  {
+    "target": "physics2d_description",
+    "type": "EXECUTABLE",
+    "path": "bin/physics2d_description.pdb",
+    "exists": true,
+    "size": 12521472
+  },
+  {
+    "target": "physics2d_editor",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/physics2d_editor.dll",
+    "exists": true,
+    "size": 155648
+  },
+  {
+    "target": "physics2d_editor",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/physics2d_editor.lib",
+    "exists": true,
+    "size": 2202
+  },
+  {
+    "target": "physics2d_editor",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/physics2d_editor.pdb",
+    "exists": true,
+    "size": 5664768
+  },
+  {
+    "target": "physics2d_simulation",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_physics2d_simulation.dll",
+    "exists": true,
+    "size": 447488
+  },
+  {
+    "target": "physics2d_simulation",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_physics2d_simulation.lib",
+    "exists": true,
+    "size": 11050
+  },
+  {
+    "target": "physics2d_simulation",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_physics2d_simulation.pdb",
+    "exists": true,
+    "size": 13250560
+  },
+  {
+    "target": "physics2d_simulation_script_ability_schema_0",
+    "type": "EXECUTABLE",
+    "path": "bin/physics2d_simulation_script_ability_schema_0.exe",
+    "exists": true,
+    "size": 84992
+  },
+  {
+    "target": "physics2d_simulation_script_ability_schema_0",
+    "type": "EXECUTABLE",
+    "path": "bin/physics2d_simulation_script_ability_schema_0.pdb",
+    "exists": true,
+    "size": 1454080
+  },
+  {
+    "target": "platform_process",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/platform_process.lib",
+    "exists": true,
+    "size": 706556
+  },
+  {
+    "target": "platform_process_arguments",
+    "type": "EXECUTABLE",
+    "path": "bin/platform_process_arguments.exe",
+    "exists": true,
+    "size": 402944
+  },
+  {
+    "target": "platform_process_arguments",
+    "type": "EXECUTABLE",
+    "path": "bin/platform_process_arguments.pdb",
+    "exists": true,
+    "size": 4870144
+  },
+  {
+    "target": "plugin_configuration_test",
+    "type": "EXECUTABLE",
+    "path": "bin/plugin_configuration_test.exe",
+    "exists": true,
+    "size": 1074688
+  },
+  {
+    "target": "plugin_configuration_test",
+    "type": "EXECUTABLE",
+    "path": "bin/plugin_configuration_test.pdb",
+    "exists": true,
+    "size": 17264640
+  },
+  {
+    "target": "plugin_library_test",
+    "type": "EXECUTABLE",
+    "path": "bin/plugin_library_test.exe",
+    "exists": true,
+    "size": 1372160
+  },
+  {
+    "target": "plugin_library_test",
+    "type": "EXECUTABLE",
+    "path": "bin/plugin_library_test.pdb",
+    "exists": true,
+    "size": 19787776
+  },
+  {
+    "target": "plugin_scene_registrations_test",
+    "type": "EXECUTABLE",
+    "path": "bin/plugin_scene_registrations_test.exe",
+    "exists": true,
+    "size": 1238016
+  },
+  {
+    "target": "plugin_scene_registrations_test",
+    "type": "EXECUTABLE",
+    "path": "bin/plugin_scene_registrations_test.pdb",
+    "exists": true,
+    "size": 17723392
+  },
+  {
+    "target": "process_asset_loading",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_process_asset_loading.dll",
+    "exists": true,
+    "size": 144896
+  },
+  {
+    "target": "process_asset_loading",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_process_asset_loading.lib",
+    "exists": true,
+    "size": 19282
+  },
+  {
+    "target": "process_asset_loading",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_process_asset_loading.pdb",
+    "exists": true,
+    "size": 3870720
+  },
+  {
+    "target": "process_execution",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_process_execution.dll",
+    "exists": true,
+    "size": 241664
+  },
+  {
+    "target": "process_execution",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_process_execution.lib",
+    "exists": true,
+    "size": 42494
+  },
+  {
+    "target": "process_execution",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_process_execution.pdb",
+    "exists": true,
+    "size": 4599808
+  },
+  {
+    "target": "process_world_loading",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_process_world_loading.dll",
+    "exists": true,
+    "size": 90112
+  },
+  {
+    "target": "process_world_loading",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_process_world_loading.lib",
+    "exists": true,
+    "size": 13318
+  },
+  {
+    "target": "process_world_loading",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_process_world_loading.pdb",
+    "exists": true,
+    "size": 2977792
+  },
+  {
+    "target": "project_plugin_rendering",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/project_plugin_rendering.lib",
+    "exists": true,
+    "size": 1954460
+  },
+  {
+    "target": "project_plugins",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/project_plugins.lib",
+    "exists": true,
+    "size": 18774784
+  },
+  {
+    "target": "project_tools_ui",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/project_tools_ui.lib",
+    "exists": true,
+    "size": 31907684
+  },
+  {
+    "target": "project_ui",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/project_ui.lib",
+    "exists": true,
+    "size": 2691898
+  },
+  {
+    "target": "render_client",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/render_client.dll",
+    "exists": true,
+    "size": 1632768
+  },
+  {
+    "target": "render_client",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/render_client.lib",
+    "exists": true,
+    "size": 120566
+  },
+  {
+    "target": "render_client",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/render_client.pdb",
+    "exists": true,
+    "size": 15233024
+  },
+  {
+    "target": "render_feature_client",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/render_feature_client.dll",
+    "exists": true,
+    "size": 1032704
+  },
+  {
+    "target": "render_feature_client",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/render_feature_client.lib",
+    "exists": true,
+    "size": 383506
+  },
+  {
+    "target": "render_feature_client",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/render_feature_client.pdb",
+    "exists": true,
+    "size": 15560704
+  },
+  {
+    "target": "render_feature_meta",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_function_render_feature_meta.dll",
+    "exists": true,
+    "size": 1184256
+  },
+  {
+    "target": "render_feature_meta",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_function_render_feature_meta.lib",
+    "exists": true,
+    "size": 15378
+  },
+  {
+    "target": "render_feature_meta",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_function_render_feature_meta.pdb",
+    "exists": true,
+    "size": 17510400
+  },
+  {
+    "target": "render_features",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/render_features.dll",
+    "exists": true,
+    "size": 5575680
+  },
+  {
+    "target": "render_features",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/render_features.lib",
+    "exists": true,
+    "size": 696236
+  },
+  {
+    "target": "render_features",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/render_features.pdb",
+    "exists": true,
+    "size": 63074304
+  },
+  {
+    "target": "render_graph",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/render_graph.dll",
+    "exists": true,
+    "size": 342528
+  },
+  {
+    "target": "render_graph",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/render_graph.lib",
+    "exists": true,
+    "size": 3080
+  },
+  {
+    "target": "render_graph",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/render_graph.pdb",
+    "exists": true,
+    "size": 4108288
+  },
+  {
+    "target": "render_runtime",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/render_runtime.dll",
+    "exists": true,
+    "size": 476672
+  },
+  {
+    "target": "render_runtime",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/render_runtime.lib",
+    "exists": true,
+    "size": 16582
+  },
+  {
+    "target": "render_runtime",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/render_runtime.pdb",
+    "exists": true,
+    "size": 8146944
+  },
+  {
+    "target": "render_runtime_resource_test",
+    "type": "EXECUTABLE",
+    "path": "bin/render_runtime_resource_test.exe",
+    "exists": true,
+    "size": 85504
+  },
+  {
+    "target": "render_runtime_resource_test",
+    "type": "EXECUTABLE",
+    "path": "bin/render_runtime_resource_test.pdb",
+    "exists": true,
+    "size": 2977792
+  },
+  {
+    "target": "render_standard_content",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_function_render_standard_content.dll",
+    "exists": true,
+    "size": 88064
+  },
+  {
+    "target": "render_standard_content",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_function_render_standard_content.lib",
+    "exists": true,
+    "size": 5704
+  },
+  {
+    "target": "render_standard_content",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_function_render_standard_content.pdb",
+    "exists": true,
+    "size": 2150400
+  },
+  {
+    "target": "render_view_binding_p07_test",
+    "type": "EXECUTABLE",
+    "path": "bin/render_view_binding_p07_test.exe",
+    "exists": true,
+    "size": 60416
+  },
+  {
+    "target": "render_view_binding_p07_test",
+    "type": "EXECUTABLE",
+    "path": "bin/render_view_binding_p07_test.pdb",
+    "exists": true,
+    "size": 4771840
+  },
+  {
+    "target": "render_vulkan",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/render_vulkan.dll",
+    "exists": true,
+    "size": 4864000
+  },
+  {
+    "target": "render_vulkan",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/render_vulkan.lib",
+    "exists": true,
+    "size": 958088
+  },
+  {
+    "target": "render_vulkan",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/render_vulkan.pdb",
+    "exists": true,
+    "size": 57249792
+  },
+  {
+    "target": "scene_asset",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_scene_asset.dll",
+    "exists": true,
+    "size": 566784
+  },
+  {
+    "target": "scene_asset",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_scene_asset.lib",
+    "exists": true,
+    "size": 20500
+  },
+  {
+    "target": "scene_asset",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_scene_asset.pdb",
+    "exists": true,
+    "size": 8032256
+  },
+  {
+    "target": "scene_camera",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/lux_engine_scene_camera.lib",
+    "exists": true,
+    "size": 6463880
+  },
+  {
+    "target": "scene_composition",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_scene_composition.dll",
+    "exists": false,
+    "size": null
+  },
+  {
+    "target": "scene_composition",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_scene_composition.lib",
+    "exists": true,
+    "size": 51636
+  },
+  {
+    "target": "scene_composition",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_scene_composition.pdb",
+    "exists": true,
+    "size": 9285632
+  },
+  {
+    "target": "scene_description",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_scene_description.dll",
+    "exists": true,
+    "size": 194560
+  },
+  {
+    "target": "scene_description",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_scene_description.lib",
+    "exists": true,
+    "size": 36560
+  },
+  {
+    "target": "scene_description",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_scene_description.pdb",
+    "exists": true,
+    "size": 3280896
+  },
+  {
+    "target": "scene_driver_test",
+    "type": "EXECUTABLE",
+    "path": "bin/scene_driver_test.exe",
+    "exists": true,
+    "size": 508928
+  },
+  {
+    "target": "scene_driver_test",
+    "type": "EXECUTABLE",
+    "path": "bin/scene_driver_test.pdb",
+    "exists": true,
+    "size": 11726848
+  },
+  {
+    "target": "scene_execution",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/scene_execution.lib",
+    "exists": true,
+    "size": 18849864
+  },
+  {
+    "target": "scene_interaction",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/scene_interaction.lib",
+    "exists": true,
+    "size": 1938636
+  },
+  {
+    "target": "scene_mesh_query",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_scene_mesh_query.dll",
+    "exists": true,
+    "size": 622080
+  },
+  {
+    "target": "scene_mesh_query",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_scene_mesh_query.lib",
+    "exists": true,
+    "size": 13294
+  },
+  {
+    "target": "scene_mesh_query",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_scene_mesh_query.pdb",
+    "exists": true,
+    "size": 24702976
+  },
+  {
+    "target": "scene_model",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/scene_model.lib",
+    "exists": true,
+    "size": 28282026
+  },
+  {
+    "target": "scene_persistence",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/scene_persistence.lib",
+    "exists": true,
+    "size": 4881654
+  },
+  {
+    "target": "scene_projection",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/scene_projection.lib",
+    "exists": true,
+    "size": 5713778
+  },
+  {
+    "target": "scene_render",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_scene_render.dll",
+    "exists": true,
+    "size": 1638912
+  },
+  {
+    "target": "scene_render",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_scene_render.lib",
+    "exists": true,
+    "size": 63582
+  },
+  {
+    "target": "scene_render",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_scene_render.pdb",
+    "exists": true,
+    "size": 36941824
+  },
+  {
+    "target": "scene_render_meta",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_scene_render_meta.dll",
+    "exists": true,
+    "size": 113664
+  },
+  {
+    "target": "scene_render_meta",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_scene_render_meta.lib",
+    "exists": true,
+    "size": 2712
+  },
+  {
+    "target": "scene_render_meta",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_scene_render_meta.pdb",
+    "exists": true,
+    "size": 4116480
+  },
+  {
+    "target": "scene_render_resources_test",
+    "type": "EXECUTABLE",
+    "path": "bin/scene_render_resources_test.exe",
+    "exists": true,
+    "size": 588800
+  },
+  {
+    "target": "scene_render_resources_test",
+    "type": "EXECUTABLE",
+    "path": "bin/scene_render_resources_test.pdb",
+    "exists": true,
+    "size": 15093760
+  },
+  {
+    "target": "scene_runtime_test",
+    "type": "EXECUTABLE",
+    "path": "bin/scene_runtime_test.exe",
+    "exists": true,
+    "size": 414720
+  },
+  {
+    "target": "scene_runtime_test",
+    "type": "EXECUTABLE",
+    "path": "bin/scene_runtime_test.pdb",
+    "exists": true,
+    "size": 9244672
+  },
+  {
+    "target": "scene_script_asset_plugin",
+    "type": "MODULE_LIBRARY",
+    "path": "bin/scene_script_asset_plugin.dll",
+    "exists": true,
+    "size": 164352
+  },
+  {
+    "target": "scene_script_asset_plugin",
+    "type": "MODULE_LIBRARY",
+    "path": "bin/scene_script_asset_plugin.pdb",
+    "exists": true,
+    "size": 4804608
+  },
+  {
+    "target": "scene_script_asset_plugin_test",
+    "type": "EXECUTABLE",
+    "path": "bin/scene_script_asset_plugin_test.exe",
+    "exists": true,
+    "size": 256512
+  },
+  {
+    "target": "scene_script_asset_plugin_test",
+    "type": "EXECUTABLE",
+    "path": "bin/scene_script_asset_plugin_test.pdb",
+    "exists": true,
+    "size": 6320128
+  },
+  {
+    "target": "scene_script_asset_runtime_test",
+    "type": "EXECUTABLE",
+    "path": "bin/scene_script_asset_runtime_test.exe",
+    "exists": true,
+    "size": 702976
+  },
+  {
+    "target": "scene_script_asset_runtime_test",
+    "type": "EXECUTABLE",
+    "path": "bin/scene_script_asset_runtime_test.pdb",
+    "exists": true,
+    "size": 13086720
+  },
+  {
+    "target": "scene_script_asset_scene_test",
+    "type": "EXECUTABLE",
+    "path": "bin/scene_script_asset_scene_test.exe",
+    "exists": true,
+    "size": 818176
+  },
+  {
+    "target": "scene_script_asset_scene_test",
+    "type": "EXECUTABLE",
+    "path": "bin/scene_script_asset_scene_test.pdb",
+    "exists": true,
+    "size": 16502784
+  },
+  {
+    "target": "scene_script_asset_values_test",
+    "type": "EXECUTABLE",
+    "path": "bin/scene_script_asset_values_test.exe",
+    "exists": true,
+    "size": 236032
+  },
+  {
+    "target": "scene_script_asset_values_test",
+    "type": "EXECUTABLE",
+    "path": "bin/scene_script_asset_values_test.pdb",
+    "exists": true,
+    "size": 4288512
+  },
+  {
+    "target": "scene_script_assets",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_scene_script_assets.dll",
+    "exists": true,
+    "size": 283648
+  },
+  {
+    "target": "scene_script_assets",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_scene_script_assets.lib",
+    "exists": true,
+    "size": 23346
+  },
+  {
+    "target": "scene_script_assets",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_scene_script_assets.pdb",
+    "exists": true,
+    "size": 6320128
+  },
+  {
+    "target": "scene_script_assets_lua",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/lux_engine_scene_script_assets_lua.lib",
+    "exists": true,
+    "size": 3715390
+  },
+  {
+    "target": "scene_script_assets_script_ability_schema_0",
+    "type": "EXECUTABLE",
+    "path": "bin/scene_script_assets_script_ability_schema_0.exe",
+    "exists": true,
+    "size": 90624
+  },
+  {
+    "target": "scene_script_assets_script_ability_schema_0",
+    "type": "EXECUTABLE",
+    "path": "bin/scene_script_assets_script_ability_schema_0.pdb",
+    "exists": true,
+    "size": 1822720
+  },
+  {
+    "target": "scene_script_assets_test",
+    "type": "EXECUTABLE",
+    "path": "bin/scene_script_assets_test.exe",
+    "exists": true,
+    "size": 531456
+  },
+  {
+    "target": "scene_script_assets_test",
+    "type": "EXECUTABLE",
+    "path": "bin/scene_script_assets_test.pdb",
+    "exists": true,
+    "size": 14077952
+  },
+  {
+    "target": "scene_script_description",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_scene_script_description.dll",
+    "exists": true,
+    "size": 189952
+  },
+  {
+    "target": "scene_script_description",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_scene_script_description.lib",
+    "exists": true,
+    "size": 18660
+  },
+  {
+    "target": "scene_script_description",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_scene_script_description.pdb",
+    "exists": true,
+    "size": 4534272
+  },
+  {
+    "target": "scene_script_runtime",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_scene_script_runtime.dll",
+    "exists": true,
+    "size": 268800
+  },
+  {
+    "target": "scene_script_runtime",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_scene_script_runtime.lib",
+    "exists": true,
+    "size": 20660
+  },
+  {
+    "target": "scene_script_runtime",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_scene_script_runtime.pdb",
+    "exists": true,
+    "size": 6959104
+  },
+  {
+    "target": "scene_script_skeleton",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/lux_engine_scene_script_skeleton.lib",
+    "exists": true,
+    "size": 3494136
+  },
+  {
+    "target": "scene_script_skeleton_script_ability_schema_0",
+    "type": "EXECUTABLE",
+    "path": "bin/scene_script_skeleton_script_ability_schema_0.exe",
+    "exists": true,
+    "size": 86528
+  },
+  {
+    "target": "scene_script_skeleton_script_ability_schema_0",
+    "type": "EXECUTABLE",
+    "path": "bin/scene_script_skeleton_script_ability_schema_0.pdb",
+    "exists": true,
+    "size": 1814528
+  },
+  {
+    "target": "scene_transform",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_scene_transform.dll",
+    "exists": true,
+    "size": 445440
+  },
+  {
+    "target": "scene_transform",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_scene_transform.lib",
+    "exists": true,
+    "size": 7744
+  },
+  {
+    "target": "scene_transform",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_scene_transform.pdb",
+    "exists": true,
+    "size": 13570048
+  },
+  {
+    "target": "scene_ui",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/scene_ui.lib",
+    "exists": true,
+    "size": 131612692
+  },
+  {
+    "target": "scene_world_loading",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_scene_world_loading.dll",
+    "exists": true,
+    "size": 795136
+  },
+  {
+    "target": "scene_world_loading",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_scene_world_loading.lib",
+    "exists": true,
+    "size": 27792
+  },
+  {
+    "target": "scene_world_loading",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_scene_world_loading.pdb",
+    "exists": true,
+    "size": 13643776
+  },
+  {
+    "target": "scene_world_loading_test",
+    "type": "EXECUTABLE",
+    "path": "bin/scene_world_loading_test.exe",
+    "exists": true,
+    "size": 666624
+  },
+  {
+    "target": "scene_world_loading_test",
+    "type": "EXECUTABLE",
+    "path": "bin/scene_world_loading_test.pdb",
+    "exists": true,
+    "size": 12726272
+  },
+  {
+    "target": "scene_world_materialization",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_scene_world_materialization.dll",
+    "exists": true,
+    "size": 175616
+  },
+  {
+    "target": "scene_world_materialization",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_scene_world_materialization.lib",
+    "exists": true,
+    "size": 20652
+  },
+  {
+    "target": "scene_world_materialization",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_scene_world_materialization.pdb",
+    "exists": true,
+    "size": 3772416
+  },
+  {
+    "target": "schema",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_simulation_ecs_schema.dll",
+    "exists": true,
+    "size": 105472
+  },
+  {
+    "target": "schema",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_simulation_ecs_schema.lib",
+    "exists": true,
+    "size": 17534
+  },
+  {
+    "target": "schema",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_simulation_ecs_schema.pdb",
+    "exists": true,
+    "size": 2306048
+  },
+  {
+    "target": "script_artifact",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_function_script_artifact.dll",
+    "exists": true,
+    "size": 232960
+  },
+  {
+    "target": "script_artifact",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_function_script_artifact.lib",
+    "exists": true,
+    "size": 18358
+  },
+  {
+    "target": "script_artifact",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_function_script_artifact.pdb",
+    "exists": true,
+    "size": 3633152
+  },
+  {
+    "target": "script_core",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_function_script_core.dll",
+    "exists": true,
+    "size": 34304
+  },
+  {
+    "target": "script_core",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_function_script_core.lib",
+    "exists": true,
+    "size": 2276
+  },
+  {
+    "target": "script_core",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_function_script_core.pdb",
+    "exists": true,
+    "size": 569344
+  },
+  {
+    "target": "script_lua",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_function_script_lua.dll",
+    "exists": true,
+    "size": 52736
+  },
+  {
+    "target": "script_lua",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_function_script_lua.lib",
+    "exists": true,
+    "size": 31842
+  },
+  {
+    "target": "script_lua",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_function_script_lua.pdb",
+    "exists": true,
+    "size": 962560
+  },
+  {
+    "target": "script_native",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_function_script_native.dll",
+    "exists": true,
+    "size": 143360
+  },
+  {
+    "target": "script_native",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_function_script_native.lib",
+    "exists": true,
+    "size": 14268
+  },
+  {
+    "target": "script_native",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_function_script_native.pdb",
+    "exists": true,
+    "size": 2813952
+  },
+  {
+    "target": "serialization",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_core_serialization.dll",
+    "exists": true,
+    "size": 34304
+  },
+  {
+    "target": "serialization",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_core_serialization.lib",
+    "exists": true,
+    "size": 2320
+  },
+  {
+    "target": "serialization",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_core_serialization.pdb",
+    "exists": true,
+    "size": 798720
+  },
+  {
+    "target": "session_execution",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/session_execution.lib",
+    "exists": true,
+    "size": 5238596
+  },
+  {
+    "target": "session_factories",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/session_factories.lib",
+    "exists": true,
+    "size": 6561656
+  },
+  {
+    "target": "simulation_asset",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_simulation_asset.dll",
+    "exists": true,
+    "size": 256512
+  },
+  {
+    "target": "simulation_asset",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_simulation_asset.lib",
+    "exists": true,
+    "size": 13510
+  },
+  {
+    "target": "simulation_asset",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_simulation_asset.pdb",
+    "exists": true,
+    "size": 3993600
+  },
+  {
+    "target": "simulation_composition",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_simulation_composition.dll",
+    "exists": true,
+    "size": 531968
+  },
+  {
+    "target": "simulation_composition",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_simulation_composition.lib",
+    "exists": true,
+    "size": 33564
+  },
+  {
+    "target": "simulation_composition",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_simulation_composition.pdb",
+    "exists": true,
+    "size": 7950336
+  },
+  {
+    "target": "simulation_description",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_simulation_description.dll",
+    "exists": true,
+    "size": 402432
+  },
+  {
+    "target": "simulation_description",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_simulation_description.lib",
+    "exists": true,
+    "size": 70626
+  },
+  {
+    "target": "simulation_description",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_simulation_description.pdb",
+    "exists": true,
+    "size": 4894720
+  },
+  {
+    "target": "simulation_script",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_simulation_script.dll",
+    "exists": true,
+    "size": 998912
+  },
+  {
+    "target": "simulation_script",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_simulation_script.lib",
+    "exists": true,
+    "size": 32414
+  },
+  {
+    "target": "simulation_script",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_simulation_script.pdb",
+    "exists": true,
+    "size": 14675968
+  },
+  {
+    "target": "simulation_script_cpp_static",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_simulation_script_cpp_static.dll",
+    "exists": true,
+    "size": 507904
+  },
+  {
+    "target": "simulation_script_cpp_static",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_simulation_script_cpp_static.lib",
+    "exists": true,
+    "size": 25312
+  },
+  {
+    "target": "simulation_script_cpp_static",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_simulation_script_cpp_static.pdb",
+    "exists": true,
+    "size": 7131136
+  },
+  {
+    "target": "simulation_script_lua",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_simulation_script_lua.dll",
+    "exists": true,
+    "size": 399872
+  },
+  {
+    "target": "simulation_script_lua",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_simulation_script_lua.lib",
+    "exists": true,
+    "size": 21674
+  },
+  {
+    "target": "simulation_script_lua",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_simulation_script_lua.pdb",
+    "exists": true,
+    "size": 6213632
+  },
+  {
+    "target": "simulation_script_native",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_simulation_script_native.dll",
+    "exists": true,
+    "size": 225792
+  },
+  {
+    "target": "simulation_script_native",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_simulation_script_native.lib",
+    "exists": true,
+    "size": 8114
+  },
+  {
+    "target": "simulation_script_native",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_simulation_script_native.pdb",
+    "exists": true,
+    "size": 4485120
+  },
+  {
+    "target": "simulation_script_native_lua_tasks",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_simulation_script_native_lua_tasks.dll",
+    "exists": true,
+    "size": 163328
+  },
+  {
+    "target": "simulation_script_native_lua_tasks",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_simulation_script_native_lua_tasks.lib",
+    "exists": true,
+    "size": 6998
+  },
+  {
+    "target": "simulation_script_native_lua_tasks",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_simulation_script_native_lua_tasks.pdb",
+    "exists": true,
+    "size": 3936256
+  },
+  {
+    "target": "simulation_script_script_ability_schema_0",
+    "type": "EXECUTABLE",
+    "path": "bin/simulation_script_script_ability_schema_0.exe",
+    "exists": true,
+    "size": 84992
+  },
+  {
+    "target": "simulation_script_script_ability_schema_0",
+    "type": "EXECUTABLE",
+    "path": "bin/simulation_script_script_ability_schema_0.pdb",
+    "exists": true,
+    "size": 1454080
+  },
+  {
+    "target": "snapshot",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_simulation_ecs_snapshot.dll",
+    "exists": true,
+    "size": 172032
+  },
+  {
+    "target": "snapshot",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_simulation_ecs_snapshot.lib",
+    "exists": true,
+    "size": 15766
+  },
+  {
+    "target": "snapshot",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_simulation_ecs_snapshot.pdb",
+    "exists": true,
+    "size": 3575808
+  },
+  {
+    "target": "spatial2d_index",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_spatial2d_index.dll",
+    "exists": true,
+    "size": 74240
+  },
+  {
+    "target": "spatial2d_index",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_spatial2d_index.lib",
+    "exists": true,
+    "size": 12116
+  },
+  {
+    "target": "spatial2d_index",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_spatial2d_index.pdb",
+    "exists": true,
+    "size": 1150976
+  },
+  {
+    "target": "spatial3d_index",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_spatial3d_index.dll",
+    "exists": true,
+    "size": 72704
+  },
+  {
+    "target": "spatial3d_index",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_spatial3d_index.lib",
+    "exists": true,
+    "size": 12116
+  },
+  {
+    "target": "spatial3d_index",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_spatial3d_index.pdb",
+    "exists": true,
+    "size": 1159168
+  },
+  {
+    "target": "system",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_simulation_system.dll",
+    "exists": true,
+    "size": 88576
+  },
+  {
+    "target": "system",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_simulation_system.lib",
+    "exists": true,
+    "size": 7552
+  },
+  {
+    "target": "system",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_simulation_system.pdb",
+    "exists": true,
+    "size": 1716224
+  },
+  {
+    "target": "task",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_core_task.dll",
+    "exists": true,
+    "size": 144384
+  },
+  {
+    "target": "task",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_core_task.lib",
+    "exists": true,
+    "size": 19728
+  },
+  {
+    "target": "task",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_core_task.pdb",
+    "exists": true,
+    "size": 2289664
+  },
+  {
+    "target": "tasks_ui",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/tasks_ui.lib",
+    "exists": true,
+    "size": 1394108
+  },
+  {
+    "target": "toolchain_material_compiler",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_toolchain_material_compiler.dll",
+    "exists": true,
+    "size": 9236992
+  },
+  {
+    "target": "toolchain_material_compiler",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_toolchain_material_compiler.lib",
+    "exists": true,
+    "size": 2848
+  },
+  {
+    "target": "toolchain_material_compiler",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_toolchain_material_compiler.pdb",
+    "exists": true,
+    "size": 22294528
+  },
+  {
+    "target": "toolchain_material_cooker",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/lux_engine_toolchain_material_cooker.lib",
+    "exists": true,
+    "size": 2213422
+  },
+  {
+    "target": "toolchain_model_cooker",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/lux_engine_toolchain_model_cooker.lib",
+    "exists": true,
+    "size": 12057322
+  },
+  {
+    "target": "toolchain_shader_asset_cooker",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/lux_engine_toolchain_shader_asset_cooker.lib",
+    "exists": true,
+    "size": 2601394
+  },
+  {
+    "target": "toolchain_shader_emitter",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/lux_engine_toolchain_shader_emitter.lib",
+    "exists": true,
+    "size": 2299192
+  },
+  {
+    "target": "toolchain_shader_reflection",
+    "type": "OBJECT_LIBRARY",
+    "path": "engine/toolchain/shader/CMakeFiles/toolchain_shader_reflection.dir/./src/SpirvReflection.cpp.obj",
+    "exists": true,
+    "size": 1744343
+  },
+  {
+    "target": "toolchain_texture_cooker",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/lux_engine_toolchain_texture_cooker.lib",
+    "exists": true,
+    "size": 2053592
+  },
+  {
+    "target": "transform",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_simulation_ecs_transform.dll",
+    "exists": true,
+    "size": 517632
+  },
+  {
+    "target": "transform",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_simulation_ecs_transform.lib",
+    "exists": true,
+    "size": 7592
+  },
+  {
+    "target": "transform",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_simulation_ecs_transform.pdb",
+    "exists": true,
+    "size": 17420288
+  },
+  {
+    "target": "ui",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/ui.dll",
+    "exists": true,
+    "size": 673280
+  },
+  {
+    "target": "ui",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/ui.lib",
+    "exists": true,
+    "size": 116142
+  },
+  {
+    "target": "ui",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/ui.pdb",
+    "exists": true,
+    "size": 8138752
+  },
+  {
+    "target": "ui_imgui_backend",
+    "type": "OBJECT_LIBRARY",
+    "path": "modules/function/ui/CMakeFiles/ui_imgui_backend.dir/./src/DragDrop.cpp.obj",
+    "exists": true,
+    "size": 183283
+  },
+  {
+    "target": "ui_imgui_backend",
+    "type": "OBJECT_LIBRARY",
+    "path": "modules/function/ui/CMakeFiles/ui_imgui_backend.dir/./src/DrawData.cpp.obj",
+    "exists": true,
+    "size": 419779
+  },
+  {
+    "target": "ui_imgui_backend",
+    "type": "OBJECT_LIBRARY",
+    "path": "modules/function/ui/CMakeFiles/ui_imgui_backend.dir/./src/Table.cpp.obj",
+    "exists": true,
+    "size": 149479
+  },
+  {
+    "target": "ui_imgui_backend",
+    "type": "OBJECT_LIBRARY",
+    "path": "modules/function/ui/CMakeFiles/ui_imgui_backend.dir/./src/Root.cpp.obj",
+    "exists": true,
+    "size": 3408058
+  },
+  {
+    "target": "ui_imgui_backend",
+    "type": "OBJECT_LIBRARY",
+    "path": "modules/function/ui/CMakeFiles/ui_imgui_backend.dir/./src/Layout.cpp.obj",
+    "exists": true,
+    "size": 437490
+  },
+  {
+    "target": "ui_imgui_backend",
+    "type": "OBJECT_LIBRARY",
+    "path": "modules/function/ui/CMakeFiles/ui_imgui_backend.dir/./src/Controls.cpp.obj",
+    "exists": true,
+    "size": 736495
+  },
+  {
+    "target": "ui_imgui_backend",
+    "type": "OBJECT_LIBRARY",
+    "path": "modules/function/ui/CMakeFiles/ui_imgui_backend.dir/./src/ImageElement.cpp.obj",
+    "exists": true,
+    "size": 153250
+  },
+  {
+    "target": "ui_rendering",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/ui_rendering.dll",
+    "exists": true,
+    "size": 277504
+  },
+  {
+    "target": "ui_rendering",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/ui_rendering.lib",
+    "exists": true,
+    "size": 17580
+  },
+  {
+    "target": "ui_rendering",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/ui_rendering.pdb",
+    "exists": true,
+    "size": 9441280
+  },
+  {
+    "target": "ui_root_test",
+    "type": "EXECUTABLE",
+    "path": "bin/ui_root_test.exe",
+    "exists": true,
+    "size": 221696
+  },
+  {
+    "target": "ui_root_test",
+    "type": "EXECUTABLE",
+    "path": "bin/ui_root_test.pdb",
+    "exists": true,
+    "size": 3198976
+  },
+  {
+    "target": "view_host",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/view_host.lib",
+    "exists": true,
+    "size": 10538998
+  },
+  {
+    "target": "visual",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_simulation_ecs_visual.dll",
+    "exists": true,
+    "size": 321536
+  },
+  {
+    "target": "visual",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_simulation_ecs_visual.lib",
+    "exists": true,
+    "size": 3246
+  },
+  {
+    "target": "visual",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_simulation_ecs_visual.pdb",
+    "exists": true,
+    "size": 6303744
+  },
+  {
+    "target": "window",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/window.dll",
+    "exists": true,
+    "size": 224768
+  },
+  {
+    "target": "window",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/window.lib",
+    "exists": true,
+    "size": 31404
+  },
+  {
+    "target": "window",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/window.pdb",
+    "exists": true,
+    "size": 4132864
+  },
+  {
+    "target": "window_placement_test",
+    "type": "EXECUTABLE",
+    "path": "bin/window_placement_test.exe",
+    "exists": true,
+    "size": 91648
+  },
+  {
+    "target": "window_placement_test",
+    "type": "EXECUTABLE",
+    "path": "bin/window_placement_test.pdb",
+    "exists": true,
+    "size": 2199552
+  },
+  {
+    "target": "workspace_store",
+    "type": "STATIC_LIBRARY",
+    "path": "lib/workspace_store.lib",
+    "exists": true,
+    "size": 15439004
+  },
+  {
+    "target": "world_asset",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_world_asset.dll",
+    "exists": true,
+    "size": 124416
+  },
+  {
+    "target": "world_asset",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_world_asset.lib",
+    "exists": true,
+    "size": 12346
+  },
+  {
+    "target": "world_asset",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_world_asset.pdb",
+    "exists": true,
+    "size": 2510848
+  },
+  {
+    "target": "world_description",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_world_description.dll",
+    "exists": true,
+    "size": 333312
+  },
+  {
+    "target": "world_description",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_world_description.lib",
+    "exists": true,
+    "size": 18986
+  },
+  {
+    "target": "world_description",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_world_description.pdb",
+    "exists": true,
+    "size": 3977216
+  },
+  {
+    "target": "world_partition",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_world_partition.dll",
+    "exists": true,
+    "size": 179712
+  },
+  {
+    "target": "world_partition",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_world_partition.lib",
+    "exists": true,
+    "size": 24088
+  },
+  {
+    "target": "world_partition",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_world_partition.pdb",
+    "exists": true,
+    "size": 3002368
+  },
+  {
+    "target": "world_partition_decoder_test",
+    "type": "EXECUTABLE",
+    "path": "bin/world_partition_decoder_test.exe",
+    "exists": true,
+    "size": 128512
+  },
+  {
+    "target": "world_partition_decoder_test",
+    "type": "EXECUTABLE",
+    "path": "bin/world_partition_decoder_test.pdb",
+    "exists": true,
+    "size": 3461120
+  },
+  {
+    "target": "world_storage",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_world_storage.dll",
+    "exists": true,
+    "size": 185344
+  },
+  {
+    "target": "world_storage",
+    "type": "SHARED_LIBRARY",
+    "path": "lib/lux_engine_world_storage.lib",
+    "exists": true,
+    "size": 37312
+  },
+  {
+    "target": "world_storage",
+    "type": "SHARED_LIBRARY",
+    "path": "bin/lux_engine_world_storage.pdb",
+    "exists": true,
+    "size": 3321856
+  }
+]

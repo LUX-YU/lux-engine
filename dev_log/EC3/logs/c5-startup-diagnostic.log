@@ -1,0 +1,22 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dev
+    Start 138: editor.application
+1/1 Test #138: editor.application ...............Exit code 0xc0000409
+***Exception:   3.26 sec
+Missing-font construction: settings.read
+workspace: 4 e:/syncforder/coderepos/build/relwithdebinfo/ec2-dev/share/lux-engine/editor/settings.toml
+Assertion failed: !missing_font && missing_font.error().domain == "editor.font.read", file E:\SyncForder\CodeRepos\lux-engine-ec2\editor\tests\integration\application\application.cpp, line 179
+
+
+0% tests passed, 1 tests failed out of 1
+
+Label Time Summary:
+P12       =   3.26 sec*proc (1 test)
+editor    =   3.26 sec*proc (1 test)
+gpu       =   3.26 sec*proc (1 test)
+
+Total Test time (real) =   3.30 sec
+
+The following tests FAILED:
+	138 - editor.application (Exit code 0xc0000409
+)        P12 editor gpu
+Errors while running CTest

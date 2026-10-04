@@ -1,0 +1,69 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dev
+      Start 106: editor.contributions
+ 1/28 Test #106: editor.contributions ..................   Passed    0.05 sec
+      Start 107: editor.contributions.r11-factory
+ 2/28 Test #107: editor.contributions.r11-factory ......   Passed    0.08 sec
+      Start 108: editor.contributions.r11-reflection
+ 3/28 Test #108: editor.contributions.r11-reflection ...   Passed    0.02 sec
+      Start 109: editor.contributions.r11-cleanup
+ 4/28 Test #109: editor.contributions.r11-cleanup ......   Passed    0.02 sec
+      Start 110: editor.contributions.r11-notify
+ 5/28 Test #110: editor.contributions.r11-notify .......   Passed    0.02 sec
+      Start 111: plugin.configuration
+ 6/28 Test #111: plugin.configuration ..................   Passed    0.04 sec
+      Start 156: editor.workspace_boundaries
+ 7/28 Test #156: editor.workspace_boundaries ...........   Passed   38.50 sec
+      Start 218: editor.workspace.validation
+ 8/28 Test #218: editor.workspace.validation ...........   Passed    0.12 sec
+      Start 219: editor.workspace.opaque
+ 9/28 Test #219: editor.workspace.opaque ...............   Passed    0.02 sec
+      Start 220: editor.workspace.rename
+10/28 Test #220: editor.workspace.rename ...............   Passed    0.05 sec
+      Start 221: editor.workspace.remove
+11/28 Test #221: editor.workspace.remove ...............   Passed    0.03 sec
+      Start 222: editor.workspace.ordering
+12/28 Test #222: editor.workspace.ordering .............   Passed    0.03 sec
+      Start 223: editor.workspace.unknown
+13/28 Test #223: editor.workspace.unknown ..............   Passed    0.03 sec
+      Start 224: editor.workspace.aliases
+14/28 Test #224: editor.workspace.aliases ..............   Passed    0.11 sec
+      Start 225: editor.workspace.reads
+15/28 Test #225: editor.workspace.reads ................   Passed    0.03 sec
+      Start 226: editor.workspace.catalog
+16/28 Test #226: editor.workspace.catalog ..............   Passed    0.03 sec
+      Start 227: editor.workspace.migration
+17/28 Test #227: editor.workspace.migration ............   Passed    0.07 sec
+      Start 228: editor.workspace.collision
+18/28 Test #228: editor.workspace.collision ............   Passed    0.03 sec
+      Start 229: editor.workspace.budgets
+19/28 Test #229: editor.workspace.budgets ..............   Passed    0.02 sec
+      Start 230: editor.workspace.conversion
+20/28 Test #230: editor.workspace.conversion ...........   Passed    0.10 sec
+      Start 231: editor.workspace.r1-alpha
+21/28 Test #231: editor.workspace.r1-alpha .............   Passed    0.10 sec
+      Start 232: editor.workspace.r1-beta
+22/28 Test #232: editor.workspace.r1-beta ..............   Passed    0.18 sec
+      Start 233: editor.workspace.r1-extras
+23/28 Test #233: editor.workspace.r1-extras ............   Passed    0.10 sec
+      Start 234: editor.workspace.r1-selection
+24/28 Test #234: editor.workspace.r1-selection .........   Passed    0.28 sec
+      Start 235: editor.workspace.r1-resume
+25/28 Test #235: editor.workspace.r1-resume ............   Passed    0.21 sec
+      Start 236: editor.workspace.r1-control
+26/28 Test #236: editor.workspace.r1-control ...........   Passed    0.10 sec
+      Start 237: editor.workspace.effects
+27/28 Test #237: editor.workspace.effects ..............   Passed    0.05 sec
+      Start 238: editor.settings.core
+28/28 Test #238: editor.settings.core ..................   Passed    0.07 sec
+
+100% tests passed, 0 tests failed out of 28
+
+Label Time Summary:
+EC3       =   0.07 sec*proc (1 test)
+P09       =  40.19 sec*proc (21 tests)
+P09-R1    =   0.96 sec*proc (6 tests)
+P11       =   0.05 sec*proc (1 test)
+editor    =  40.35 sec*proc (24 tests)
+native    =  40.35 sec*proc (24 tests)
+
+Total Test time (real) =  40.56 sec

@@ -1,0 +1,80 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dev
+      Start 138: editor.application
+ 1/24 Test #138: editor.application ...............Exit code 0xc0000409
+***Exception:   4.26 sec
+Missing-font construction: editor.font.read
+Application construction: object.connect: 
+C04: actual EditorApplication::create rejects required menu connection failure
+P13 foreign command lux.editor.new.material code=1 domain=application.thread
+P13 foreign command lux.editor.exit code=1 domain=application.thread
+P13 foreign command test.missing code=1 domain=application.thread
+P13 foreign command lux.editor.new.material code=1 domain=application.thread
+P13 foreign command lux.editor.exit code=1 domain=application.thread
+P13 foreign command test.missing code=1 domain=application.thread
+Assertion failed: overridden && ApplicationTestAccess::implementation(**overridden).desktop_->root().scale() == 2.f, file E:\SyncForder\CodeRepos\lux-engine-ec2\editor\tests\integration\application\application.cpp, line 306
+
+      Start 139: editor.settings.content
+ 2/24 Test #139: editor.settings.content ..........   Passed    0.18 sec
+      Start 140: editor.settings.window
+ 3/24 Test #140: editor.settings.window ...........   Passed    0.34 sec
+      Start 221: editor.workspace.validation
+ 4/24 Test #221: editor.workspace.validation ......   Passed    0.02 sec
+      Start 222: editor.workspace.opaque
+ 5/24 Test #222: editor.workspace.opaque ..........   Passed    0.02 sec
+      Start 223: editor.workspace.rename
+ 6/24 Test #223: editor.workspace.rename ..........   Passed    0.05 sec
+      Start 224: editor.workspace.remove
+ 7/24 Test #224: editor.workspace.remove ..........   Passed    0.03 sec
+      Start 225: editor.workspace.ordering
+ 8/24 Test #225: editor.workspace.ordering ........   Passed    0.04 sec
+      Start 226: editor.workspace.unknown
+ 9/24 Test #226: editor.workspace.unknown .........   Passed    0.03 sec
+      Start 227: editor.workspace.aliases
+10/24 Test #227: editor.workspace.aliases .........   Passed    0.03 sec
+      Start 228: editor.workspace.reads
+11/24 Test #228: editor.workspace.reads ...........   Passed    0.02 sec
+      Start 229: editor.workspace.catalog
+12/24 Test #229: editor.workspace.catalog .........   Passed    0.04 sec
+      Start 230: editor.workspace.migration
+13/24 Test #230: editor.workspace.migration .......   Passed    0.08 sec
+      Start 231: editor.workspace.collision
+14/24 Test #231: editor.workspace.collision .......   Passed    0.03 sec
+      Start 232: editor.workspace.budgets
+15/24 Test #232: editor.workspace.budgets .........   Passed    0.02 sec
+      Start 233: editor.workspace.conversion
+16/24 Test #233: editor.workspace.conversion ......   Passed    0.02 sec
+      Start 234: editor.workspace.r1-alpha
+17/24 Test #234: editor.workspace.r1-alpha ........   Passed    0.09 sec
+      Start 235: editor.workspace.r1-beta
+18/24 Test #235: editor.workspace.r1-beta .........   Passed    0.18 sec
+      Start 236: editor.workspace.r1-extras
+19/24 Test #236: editor.workspace.r1-extras .......   Passed    0.10 sec
+      Start 237: editor.workspace.r1-selection
+20/24 Test #237: editor.workspace.r1-selection ....   Passed    0.28 sec
+      Start 238: editor.workspace.r1-resume
+21/24 Test #238: editor.workspace.r1-resume .......   Passed    0.12 sec
+      Start 239: editor.workspace.r1-control
+22/24 Test #239: editor.workspace.r1-control ......   Passed    0.10 sec
+      Start 240: editor.workspace.effects
+23/24 Test #240: editor.workspace.effects .........   Passed    0.03 sec
+      Start 241: editor.settings.core
+24/24 Test #241: editor.settings.core .............   Passed    2.11 sec
+
+96% tests passed, 1 tests failed out of 24
+
+Label Time Summary:
+EC3        =   2.63 sec*proc (3 tests)
+P09        =   1.33 sec*proc (20 tests)
+P09-R1     =   0.87 sec*proc (6 tests)
+P12        =   4.26 sec*proc (1 test)
+desktop    =   0.34 sec*proc (1 test)
+editor     =   8.21 sec*proc (24 tests)
+gpu        =   4.26 sec*proc (1 test)
+native     =   3.61 sec*proc (22 tests)
+
+Total Test time (real) =   8.80 sec
+
+The following tests FAILED:
+	138 - editor.application (Exit code 0xc0000409
+)        P12 editor gpu
+Errors while running CTest

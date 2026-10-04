@@ -1,0 +1,26 @@
+---- Importing lux-cxx-core
+---- Importing lux-cxx-compile_time
+---- Importing lux-cxx-memory
+---- Importing lux-cxx-algorithm
+---- Importing lux-cxx-binary
+---- Importing lux-cxx-container
+---- Importing lux-cxx-concurrent
+---- Importing lux-cxx-reflection_runtime
+---- Importing imgui-core
+---- Importing node_editor-node_editor
+-- Found Vulkan: D:/Development/VulkanSDK/1.4.304.0/Lib/vulkan-1.lib (found version "1.4.304") found components: glslc glslangValidator
+---- Importing lux-cxx-reflection_generator
+-- Found LibClang: D:/Development/vcpkg/installed/x64-windows/lib/libclang.lib (found version "0.64")
+-- Found LibClang:
+--   Version: 0.64
+--   Include directory: D:/Development/vcpkg/installed/x64-windows/include
+--   Library: D:/Development/vcpkg/installed/x64-windows/lib/libclang.lib
+CMake Error at E:/SyncForder/CodeRepos/install/EC3-C3/share/lux-engine-core/meta/cmake_scripts/engine_type_runtime_info.cmake:78 (message):
+  [lux-meta] 找不到 lux_meta_generator。它由 lux-cxx 的
+  reflection_generator 组件提供 —— 先构建并安装 lux-cxx。
+Call Stack (most recent call first):
+  E:/SyncForder/CodeRepos/install/EC2-R1-ead7e59514a5/share/lux-cmake-toolset/component/include_component_cmake_scripts.cmake:13 (include)
+  CMakeLists.txt:33 (include_component_cmake_scripts)
+
+
+-- Configuring incomplete, errors occurred!

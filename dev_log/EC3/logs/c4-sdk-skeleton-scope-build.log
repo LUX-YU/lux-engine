@@ -1,0 +1,9 @@
+[1/6] Generating plugin/skeleton_runtime/identity.cpp, share/lux-engine/plugins/example.skeleton.json
+[2/6] Building CXX object CMakeFiles\skeleton_runtime.dir\plugin\skeleton_runtime\identity.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[3/6] Building CXX object CMakeFiles\skeleton_extension.dir\plugin\skeleton_runtime\identity.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[4/6] Linking CXX shared library bin\skeleton_runtime.dll
+[5/6] Building CXX object CMakeFiles\skeleton_extension.dir\Extension.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[6/6] Linking CXX shared library bin\skeleton_extension.dll

@@ -1,0 +1,5 @@
+[0/2] Re-checking globbed directories...
+[1/31] Linking CXX shared library bin\lux_engine_scene_transform.dll
+[2/3] Building CXX object editor\tests\integration\application\CMakeFiles\editor_application_test.dir\application.cpp.obj
+cl : Command line warning D9025 : overriding '/DNDEBUG' with '/UNDEBUG'
+[3/3] Linking CXX executable bin\editor_application_test.exe

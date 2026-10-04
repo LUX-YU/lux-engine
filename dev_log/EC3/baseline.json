@@ -1,0 +1,13 @@
+{
+  "source": "E:\\SyncForder\\CodeRepos\\lux-engine-ec2",
+  "head": "126f1b4df14316df30957208787ded9be9f9f461",
+  "branch": "codex/editor-redesign-v4",
+  "remote": "126f1b4df14316df30957208787ded9be9f9f461\trefs/heads/codex/editor-redesign-v4",
+  "original_head": "f7c27f9375cbf8dd8af37b30a6027a460de26213",
+  "main": "2bb33ff1a1f11025cf404e074c0e9b259239d8a4",
+  "original_status": "M editor/project/src/ProjectBuilder.cpp",
+  "patch_sha256": "ccac49618140d014236c9f23b55fc15d31c96e94b44395dee39fd67d35ab1f5c",
+  "user_patch_applied": false,
+  "lux_cxx": "aae62e2fc17ef78ae7be2559a6d58fa0f8297b05",
+  "input_verified_files": 37
+}

@@ -1,0 +1,17 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-sdk-project-save
+    Start 1: installed.ec3.project_save
+1/1 Test #1: installed.ec3.project_save .......Exit code 0xc0000409
+***Exception:   3.25 sec
+publication uncertainty at manifest
+publication uncertainty at source
+Assertion failed: saving.saveAllEntries().size() == 3 && !model.describe().dirty, file E:\SyncForder\CodeRepos\lux-engine-ec2\cmake\installed-consumers\editor-ec3-project-save\main.cpp, line 227
+
+
+0% tests passed, 1 tests failed out of 1
+
+Total Test time (real) =   3.26 sec
+
+The following tests FAILED:
+	  1 - installed.ec3.project_save (Exit code 0xc0000409
+)
+Errors while running CTest

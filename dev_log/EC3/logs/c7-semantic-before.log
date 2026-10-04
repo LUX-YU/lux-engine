@@ -1,0 +1,104 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dev
+    Start 106: editor.inspector_codegen
+1/1 Test #106: editor.inspector_codegen .........***Failed    0.46 sec
+FFF.FFFF
+======================================================================
+FAIL: test_custom_element_is_a_persistent_control (__main__.GeneratorTests.test_custom_element_is_a_persistent_control)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "E:\SyncForder\CodeRepos\lux-engine-ec2\editor\workbench\scene\test\inspector_codegen.py", line 72, in test_custom_element_is_a_persistent_control
+    code, _ = self.generate("MyValue",config={"custom_elements":["MyValue=MyControl"]},
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\SyncForder\CodeRepos\lux-engine-ec2\editor\workbench\scene\test\inspector_codegen.py", line 46, in generate
+    self.assertEqual(result.returncode, 0, result.stderr)
+AssertionError: 5 != 0 : EDITOR_INSPECTOR_CODEGEN: [inja.exception.parser_error] (at 43:65) unexpected '}'
+
+
+======================================================================
+FAIL: test_generated_factory_terminates_on_allocation_failure (__main__.GeneratorTests.test_generated_factory_terminates_on_allocation_failure)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "E:\SyncForder\CodeRepos\lux-engine-ec2\editor\workbench\scene\test\inspector_codegen.py", line 80, in test_generated_factory_terminates_on_allocation_failure
+    code, _ = self.generate()
+              ^^^^^^^^^^^^^^^
+  File "E:\SyncForder\CodeRepos\lux-engine-ec2\editor\workbench\scene\test\inspector_codegen.py", line 46, in generate
+    self.assertEqual(result.returncode, 0, result.stderr)
+AssertionError: 5 != 0 : EDITOR_INSPECTOR_CODEGEN: [inja.exception.parser_error] (at 43:65) unexpected '}'
+
+
+======================================================================
+FAIL: test_integer_edges_are_exact (__main__.GeneratorTests.test_integer_edges_are_exact)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "E:\SyncForder\CodeRepos\lux-engine-ec2\editor\workbench\scene\test\inspector_codegen.py", line 89, in test_integer_edges_are_exact
+    code, _ = self.generate(unsigned["id"],{"min":"18446744073709551614","max":"18446744073709551615"},types=[unsigned])
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\SyncForder\CodeRepos\lux-engine-ec2\editor\workbench\scene\test\inspector_codegen.py", line 46, in generate
+    self.assertEqual(result.returncode, 0, result.stderr)
+AssertionError: 5 != 0 : EDITOR_INSPECTOR_CODEGEN: [inja.exception.parser_error] (at 43:65) unexpected '}'
+
+
+======================================================================
+FAIL: test_literal_escaping_and_immutable_source (__main__.GeneratorTests.test_literal_escaping_and_immutable_source)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "E:\SyncForder\CodeRepos\lux-engine-ec2\editor\workbench\scene\test\inspector_codegen.py", line 113, in test_literal_escaping_and_immutable_source
+    code, model = self.generate(properties={"display_name":json.dumps(label,ensure_ascii=False)})
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\SyncForder\CodeRepos\lux-engine-ec2\editor\workbench\scene\test\inspector_codegen.py", line 46, in generate
+    self.assertEqual(result.returncode, 0, result.stderr)
+AssertionError: 5 != 0 : EDITOR_INSPECTOR_CODEGEN: [inja.exception.parser_error] (at 43:65) unexpected '}'
+
+
+======================================================================
+FAIL: test_missing_array_metadata_is_rejected (__main__.GeneratorTests.test_missing_array_metadata_is_rejected)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "E:\SyncForder\CodeRepos\lux-engine-ec2\editor\workbench\scene\test\inspector_codegen.py", line 102, in test_missing_array_metadata_is_rejected
+    self.generate("int[2]",types=[self.integer,{"id":"int[2]","__kind":"ArrayType","array_size":2,"element_type_id":"int"}])
+  File "E:\SyncForder\CodeRepos\lux-engine-ec2\editor\workbench\scene\test\inspector_codegen.py", line 46, in generate
+    self.assertEqual(result.returncode, 0, result.stderr)
+AssertionError: 5 != 0 : EDITOR_INSPECTOR_CODEGEN: [inja.exception.parser_error] (at 43:65) unexpected '}'
+
+
+======================================================================
+FAIL: test_nested_fixed_children_use_persistent_factories (__main__.GeneratorTests.test_nested_fixed_children_use_persistent_factories)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "E:\SyncForder\CodeRepos\lux-engine-ec2\editor\workbench\scene\test\inspector_codegen.py", line 61, in test_nested_fixed_children_use_persistent_factories
+    code, _ = self.generate(self.tuple["id"])
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\SyncForder\CodeRepos\lux-engine-ec2\editor\workbench\scene\test\inspector_codegen.py", line 46, in generate
+    self.assertEqual(result.returncode, 0, result.stderr)
+AssertionError: 5 != 0 : EDITOR_INSPECTOR_CODEGEN: [inja.exception.parser_error] (at 43:65) unexpected '}'
+
+
+======================================================================
+FAIL: test_validation_does_not_generate_or_mutate (__main__.GeneratorTests.test_validation_does_not_generate_or_mutate)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "E:\SyncForder\CodeRepos\lux-engine-ec2\editor\workbench\scene\test\inspector_codegen.py", line 56, in test_validation_does_not_generate_or_mutate
+    _, model = self.generate(properties=original)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\SyncForder\CodeRepos\lux-engine-ec2\editor\workbench\scene\test\inspector_codegen.py", line 46, in generate
+    self.assertEqual(result.returncode, 0, result.stderr)
+AssertionError: 5 != 0 : EDITOR_INSPECTOR_CODEGEN: [inja.exception.parser_error] (at 43:65) unexpected '}'
+
+
+----------------------------------------------------------------------
+Ran 8 tests in 0.319s
+
+FAILED (failures=7)
+
+
+0% tests passed, 1 tests failed out of 1
+
+Label Time Summary:
+editor    =   0.46 sec*proc (1 test)
+native    =   0.46 sec*proc (1 test)
+
+Total Test time (real) =   1.00 sec
+
+The following tests FAILED:
+	106 - editor.inspector_codegen (Failed)                 editor native
+Errors while running CTest

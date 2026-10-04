@@ -1,0 +1,91 @@
+SIZES descriptor=104 entry=136 handle=16; count scope=real static command library; caller ID constructors and DLL allocators excluded; timing counters disabled
+COUNT static n=1 allocations=2 requested_bytes=160 counts=0,0,0,0,0,0,0,1,1,
+COUNT static-code-lease n=1 allocations=2 requested_bytes=160 counts=0,0,0,0,0,0,0,1,1,
+LEASE original owner released after last entry/snapshot; actual DLL unload covered by extension consumer
+COUNT dynamic-freeze n=35 allocations=175 requested_bytes=14280 counts=35,0,0,0,0,2570,35,35,35,
+COUNT register n=35 allocations=38 requested_bytes=3424 counts=35,0,0,0,560,0,0,0,0,
+COUNT cold-find n=35 allocations=0 requested_bytes=0 counts=0,35,35,183,0,0,0,0,0,
+COUNT menu-stable-1000 n=35 allocations=0 requested_bytes=0 counts=0,0,0,0,0,0,0,0,0,
+COUNT PINNED n=35 allocations=1002 requested_bytes=104192 counts=0,0,0,0,0,0,0,0,0,
+COUNT CURRENT n=35 allocations=1002 requested_bytes=104192 counts=0,0,1000,5228,0,0,0,0,0,
+TIME register n=35 sample=0 ns=2700
+TIME register n=35 sample=1 ns=2200
+TIME register n=35 sample=2 ns=1900
+TIME register n=35 sample=3 ns=1800
+TIME register n=35 sample=4 ns=1800
+TIME register n=35 sample=5 ns=1700
+TIME register n=35 sample=6 ns=1700
+TIME register n=35 sample=7 ns=1800
+TIME register n=35 sample=8 ns=1700
+TIME register n=35 sample=9 ns=1700
+TIME register n=35 sample=10 ns=1700
+TIME register n=35 sample=11 ns=1700
+TIME register n=35 sample=12 ns=1700
+TIME register n=35 sample=13 ns=1700
+TIME register n=35 sample=14 ns=1800
+TIME register n=35 sample=15 ns=1700
+TIME register n=35 sample=16 ns=1700
+TIME register n=35 sample=17 ns=1700
+TIME register n=35 sample=18 ns=1700
+TIME register n=35 sample=19 ns=1700
+COUNT replacement n=35 allocations=38 requested_bytes=3424 counts=35,0,0,0,560,0,0,0,0,
+COUNT CURRENT-same-entries-new-snapshot n=35 allocations=0 requested_bytes=0 counts=0,0,35,183,0,0,0,0,0,
+COUNT CURRENT-replaced-entries n=35 allocations=0 requested_bytes=0 counts=0,35,35,183,0,0,0,0,0,
+COUNT dynamic-freeze n=256 allocations=1280 requested_bytes=106944 counts=256,0,0,0,0,19236,256,256,256,
+COUNT register n=256 allocations=259 requested_bytes=24718 counts=256,0,0,0,4096,0,0,0,0,
+COUNT cold-find n=256 allocations=0 requested_bytes=0 counts=0,256,256,2050,0,0,0,0,0,
+COUNT menu-stable-1000 n=256 allocations=0 requested_bytes=0 counts=0,0,0,0,0,0,0,0,0,
+COUNT PINNED n=256 allocations=1002 requested_bytes=104192 counts=0,0,0,0,0,0,0,0,0,
+COUNT CURRENT n=256 allocations=1002 requested_bytes=104192 counts=0,0,1000,8008,0,0,0,0,0,
+TIME register n=256 sample=0 ns=20800
+TIME register n=256 sample=1 ns=16000
+TIME register n=256 sample=2 ns=14400
+TIME register n=256 sample=3 ns=14000
+TIME register n=256 sample=4 ns=17900
+TIME register n=256 sample=5 ns=13900
+TIME register n=256 sample=6 ns=13800
+TIME register n=256 sample=7 ns=13700
+TIME register n=256 sample=8 ns=13700
+TIME register n=256 sample=9 ns=13800
+TIME register n=256 sample=10 ns=13800
+TIME register n=256 sample=11 ns=13600
+TIME register n=256 sample=12 ns=13700
+TIME register n=256 sample=13 ns=13800
+TIME register n=256 sample=14 ns=14100
+TIME register n=256 sample=15 ns=13600
+TIME register n=256 sample=16 ns=13600
+TIME register n=256 sample=17 ns=13700
+TIME register n=256 sample=18 ns=13600
+TIME register n=256 sample=19 ns=15000
+COUNT replacement n=256 allocations=259 requested_bytes=24718 counts=256,0,0,0,4096,0,0,0,0,
+COUNT CURRENT-same-entries-new-snapshot n=256 allocations=0 requested_bytes=0 counts=0,0,256,2050,0,0,0,0,0,
+COUNT CURRENT-replaced-entries n=256 allocations=0 requested_bytes=0 counts=0,256,256,2050,0,0,0,0,0,
+COUNT dynamic-freeze n=1024 allocations=5120 requested_bytes=432576 counts=1024,0,0,0,0,77652,1024,1024,1024,
+COUNT register n=1024 allocations=1027 requested_bytes=98446 counts=1024,0,0,0,16384,0,0,0,0,
+COUNT cold-find n=1024 allocations=0 requested_bytes=0 counts=0,1024,1024,10242,0,0,0,0,0,
+COUNT menu-stable-1000 n=1024 allocations=0 requested_bytes=0 counts=0,0,0,0,0,0,0,0,0,
+COUNT PINNED n=1024 allocations=1002 requested_bytes=104192 counts=0,0,0,0,0,0,0,0,0,
+COUNT CURRENT n=1024 allocations=1002 requested_bytes=104192 counts=0,0,1000,10002,0,0,0,0,0,
+TIME register n=1024 sample=0 ns=102900
+TIME register n=1024 sample=1 ns=85800
+TIME register n=1024 sample=2 ns=78400
+TIME register n=1024 sample=3 ns=76000
+TIME register n=1024 sample=4 ns=75200
+TIME register n=1024 sample=5 ns=74800
+TIME register n=1024 sample=6 ns=77200
+TIME register n=1024 sample=7 ns=75700
+TIME register n=1024 sample=8 ns=73100
+TIME register n=1024 sample=9 ns=76200
+TIME register n=1024 sample=10 ns=73000
+TIME register n=1024 sample=11 ns=77400
+TIME register n=1024 sample=12 ns=73100
+TIME register n=1024 sample=13 ns=73600
+TIME register n=1024 sample=14 ns=75100
+TIME register n=1024 sample=15 ns=75400
+TIME register n=1024 sample=16 ns=73000
+TIME register n=1024 sample=17 ns=77800
+TIME register n=1024 sample=18 ns=75900
+TIME register n=1024 sample=19 ns=74400
+COUNT replacement n=1024 allocations=1027 requested_bytes=98446 counts=1024,0,0,0,16384,0,0,0,0,
+COUNT CURRENT-same-entries-new-snapshot n=1024 allocations=0 requested_bytes=0 counts=0,0,1024,10242,0,0,0,0,0,
+COUNT CURRENT-replaced-entries n=1024 allocations=0 requested_bytes=0 counts=0,1024,1024,10242,0,0,0,0,0,

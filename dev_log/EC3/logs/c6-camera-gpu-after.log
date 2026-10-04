@@ -1,0 +1,17 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dev
+    Start 122: editor.scene_views_gpu
+1/3 Test #122: editor.scene_views_gpu .............   Passed    2.56 sec
+    Start 134: editor.presentation_backpressure
+2/3 Test #134: editor.presentation_backpressure ...   Passed    0.55 sec
+    Start 135: editor.presentation_scene-panes
+3/3 Test #135: editor.presentation_scene-panes ....   Passed    0.73 sec
+
+100% tests passed, 0 tests failed out of 3
+
+Label Time Summary:
+P10        =   2.56 sec*proc (1 test)
+desktop    =   1.28 sec*proc (2 tests)
+editor     =   3.83 sec*proc (3 tests)
+gpu        =   3.83 sec*proc (3 tests)
+
+Total Test time (real) =   4.22 sec

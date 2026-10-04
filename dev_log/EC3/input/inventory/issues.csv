@@ -1,0 +1,150 @@
+﻿issue_id,group,issue,required_action,detail_document,batch,validation,basis,status
+BAS-01,基线与已完成范围,在线源码与实际工作区可能不同,固定源码/依赖/工作区；新后继先核对，不 reset,00_MASTER.md,C0,V01 V02,S01 S02,OPEN_INPUT
+BAS-02,基线与已完成范围,历史通过、PARTIAL、免验、延期不能混写,分别继承 EC1/EC2、P12 与原性能状态,00_MASTER.md,C0,V01 V02,S01 S02,OPEN_INPUT
+BAS-03,基线与已完成范围,用户 ProjectBuilder 补丁未必在新工作区,保存原字节，报告是否应用，不自动纳入,00_MASTER.md,C0,V01 V02,S01 S02,OPEN_INPUT
+BAS-04,基线与已完成范围,五层已完成不等于所有职责都正确,保留目录，按实际算法和状态裁定,00_MASTER.md,C0,V01 V02,S01 S02,OPEN_INPUT
+BAS-05,基线与已完成范围,旧文档的期限/类型不能变当前要求,reference 冻结，本文裁定优先，不重做旧阶段,00_MASTER.md,C0,V01 V02,S01 S02,OPEN_INPUT
+BAS-06,基线与已完成范围,现有 50 项只是人工声明范围,保留统计口径，C0 扩展生产消费者，不宣称全仓穷尽,00_MASTER.md,C0,V01 V02,S01 S02,OPEN_INPUT
+BAS-07,基线与已完成范围,多个模型/脚本/预览已有单一 owner,继承已验收协议，不重复建设或顺手删除,00_MASTER.md,C0,V01 V02,S01 S02,OPEN_INPUT
+BAS-08,基线与已完成范围,唯一施工账本已有位置,只更新 .internal/editor-redesign，dev_log 另作冻结快照,00_MASTER.md,C0,V01 V02,S01 S02,OPEN_INPUT
+BAS-09,基线与已完成范围,分支并非必须永久保留,本阶段不自动合并/删除，后续明确授权即可处理,00_MASTER.md,C0,V01 V02,S01 S02,OPEN_INPUT
+ID-01,哈希、名字与运行身份,固定名称运行期重复构造/哈希,使用 lux-cxx constexpr 预哈希声明,02_IDENTITIES_AND_DECLARATIONS.md,C1,V03 V04 V05 V06 V07 V08,S03 S05,OPEN_INPUT
+ID-02,哈希、名字与运行身份,动态插件名称不是编译期值,在注册/外部文本解析边界计算一次,02_IDENTITIES_AND_DECLARATIONS.md,C1,V03 V04 V05 V06 V07 V08,S03 S05,OPEN_INPUT
+ID-03,哈希、名字与运行身份,当前 find 仍逐条比较 name,改原 Snapshot 内数值索引与已解析 handle,02_IDENTITIES_AND_DECLARATIONS.md,C1,V03 V04 V05 V06 V07 V08,S03 S05,OPEN_INPUT
+ID-04,哈希、名字与运行身份,拥有型 ID 的 view 可能重算 hash,核对实际库，热路径复用已形成 token,02_IDENTITIES_AND_DECLARATIONS.md,C1,V03 V04 V05 V06 V07 V08,S03 S05,OPEN_INPUT
+ID-05,哈希、名字与运行身份,哈希不保证任意名字无碰撞,冷路径比较规范名并拒绝不同名同 hash,02_IDENTITIES_AND_DECLARATIONS.md,C1,V03 V04 V05 V06 V07 V08,S03 S05,OPEN_INPUT
+ID-06,哈希、名字与运行身份,相同名字重复与哈希冲突不同,分别诊断，不吞掉重复贡献或自动覆盖,02_IDENTITIES_AND_DECLARATIONS.md,C1,V03 V04 V05 V06 V07 V08,S03 S05,OPEN_INPUT
+ID-07,哈希、名字与运行身份,跨目录版本的同哈希异名可能误绑,CURRENT 重解析核对原规范身份，不将 A 请求发给 B,02_IDENTITIES_AND_DECLARATIONS.md,C1,V03 V04 V05 V06 V07 V08,S03 S05,OPEN_INPUT
+ID-08,哈希、名字与运行身份,不同语义域可能同数值,复用 tag/StrongId，命令/视图/设置不能互换,02_IDENTITIES_AND_DECLARATIONS.md,C1,V03 V04 V05 V06 V07 V08,S03 S05,OPEN_INPUT
+ID-09,哈希、名字与运行身份,外部伪造 hash 或空名,从规范名验证，不能信任插件数值,02_IDENTITIES_AND_DECLARATIONS.md,C1,V03 V04 V05 V06 V07 V08,S03 S05,OPEN_INPUT
+ID-10,哈希、名字与运行身份,static 组唯一性不覆盖插件组合,编译期组内检查加运行期整批验证,02_IDENTITIES_AND_DECLARATIONS.md,C1,V03 V04 V05 V06 V07 V08,S03 S05,OPEN_INPUT
+ID-11,哈希、名字与运行身份,原 StableNameId 精确相等被全局改写的风险,禁止全局改成 hash-only，仅优化验证后的索引,02_IDENTITIES_AND_DECLARATIONS.md,C1,V03 V04 V05 V06 V07 V08,S03 S05,OPEN_INPUT
+ID-12,哈希、名字与运行身份,发布后再查旧 vector 地址会失效,保持原 handle/owner，或准确域代次，不缓存裸地址,02_IDENTITIES_AND_DECLARATIONS.md,C1,V03 V04 V05 V06 V07 V08,S03 S05,OPEN_INPUT
+ID-13,哈希、名字与运行身份,热路径与文本边界混合导致虚报零比较,计数 cold resolution 与 steady dispatch 两类,02_IDENTITIES_AND_DECLARATIONS.md,C1,V03 V04 V05 V06 V07 V08,S03 S05,OPEN_INPUT
+ID-14,哈希、名字与运行身份,持久身份不能使用地址或 std::hash,保留 canonical 名与版本，反序列化重新解析,02_IDENTITIES_AND_DECLARATIONS.md,C1,V03 V04 V05 V06 V07 V08,S03 S05,OPEN_INPUT
+MEM-01,单份描述与存储寿命,Spec 物化拥有型 Descriptor 会复制文字,撤销双份路线，原 CommandDescriptor 改轻量描述视图,02_IDENTITIES_AND_DECLARATIONS.md,C1,V09 V10 V11 V12 V13,S04 S06,OPEN_INPUT
+MEM-02,单份描述与存储寿命,固定 Entry 按值长期复制描述,引用原模块 constexpr 描述，不复制 metadata 文本,02_IDENTITIES_AND_DECLARATIONS.md,C1,V09 V10 V11 V12 V13,S04 S06,OPEN_INPUT
+MEM-03,单份描述与存储寿命,动态数据不能只改 string_view,一份最终冻结 backing 保活同型 descriptor,02_IDENTITIES_AND_DECLARATIONS.md,C1,V09 V10 V11 V12 V13,S04 S06,OPEN_INPUT
+MEM-04,单份描述与存储寿命,静态插件文字也会随 DLL 卸载,Entry/handle 持 CodeLease 到最后析构/控制块释放,02_IDENTITIES_AND_DECLARATIONS.md,C1,V09 V10 V11 V12 V13,S04 S06,OPEN_INPUT
+MEM-05,单份描述与存储寿命,临时/可移动字符串导致悬空,固定声明绑定与动态工厂分开准入，禁止临时借用,02_IDENTITIES_AND_DECLARATIONS.md,C1,V09 V10 V11 V12 V13,S04 S06,OPEN_INPUT
+MEM-06,单份描述与存储寿命,dynamic SSO/vector 增长后视图失效,先完成存储再建立 view，冻结后不移动字符,02_IDENTITIES_AND_DECLARATIONS.md,C1,V09 V10 V11 V12 V13,S04 S06,OPEN_INPUT
+MEM-07,单份描述与存储寿命,每个字段一个 shared_ptr 开销过大,一个 entry/backing 统一保活，不按 string_view 分配 owner,02_IDENTITIES_AND_DECLARATIONS.md,C1,V09 V10 V11 V12 V13,S04 S06,OPEN_INPUT
+MEM-08,单份描述与存储寿命,菜单复制完整业务描述,复用 handle/immutable source；仅保留真正呈现状态,02_IDENTITIES_AND_DECLARATIONS.md,C1,V09 V10 V11 V12 V13,S04 S06,OPEN_INPUT
+MEM-09,单份描述与存储寿命,返回 descriptor 借用被跨期保存,文档/接口绑定 handle 寿命，不把裸 view 当 owning,02_IDENTITIES_AND_DECLARATIONS.md,C1,V09 V10 V11 V12 V13,S04 S06,OPEN_INPUT
+MEM-10,单份描述与存储寿命,静态元数据不等于全局自注册,显式加载安装，禁止 static initializer 副作用,02_IDENTITIES_AND_DECLARATIONS.md,C1,V09 V10 V11 V12 V13,S04 S06,OPEN_INPUT
+MEM-11,单份描述与存储寿命,同类 View/Session 描述重复规格,复用原 descriptor 与已有类型常量，不造 Spec 家族,02_IDENTITIES_AND_DECLARATIONS.md,C1,V09 V10 V11 V12 V13,S04 S06,OPEN_INPUT
+MEM-12,单份描述与存储寿命,无关临时日志都抽常量反而分散,只集中语义元数据，正常显示格式化保留,02_IDENTITIES_AND_DECLARATIONS.md,C1,V09 V10 V11 V12 V13,S04 S06,OPEN_INPUT
+MEM-13,单份描述与存储寿命,零文本复制不等于零内存开销,计量 Entry/callable/index/backing/rodata，不预设节省字节,02_IDENTITIES_AND_DECLARATIONS.md,C1,V09 V10 V11 V12 V13,S04 S06,OPEN_INPUT
+CMD-01,声明归属与命令路径,35 个固定 ID 的声明散在业务函数,逐项迁到准确模块集中声明,03_APPLICATION_AND_COMMANDS.md,C3,V14 V15 V16 V17 V18,S07 S08 S09 S11 S12 S18,OPEN_INPUT
+CMD-02,声明归属与命令路径,12 个 view 描述重复 Pane/菜单名字,同一稳定 view 声明被相关消费者复用,03_APPLICATION_AND_COMMANDS.md,C3,V14 V15 V16 V17 V18,S07 S08 S09 S11 S12 S18,OPEN_INPUT
+CMD-03,声明归属与命令路径,3 个作者种类/源格式关系散列,归对应 provider，保留 discovery/save 后缀原差异,03_APPLICATION_AND_COMMANDS.md,C3,V14 V15 V16 V17 V18,S07 S08 S09 S11 S12 S18,OPEN_INPUT
+CMD-04,声明归属与命令路径,一个大 AllCommands 头会反向耦合,模块独立声明，装配汇总，不中央枚举,03_APPLICATION_AND_COMMANDS.md,C3,V14 V15 V16 V17 V18,S07 S08 S09 S11 S12 S18,OPEN_INPUT
+CMD-05,声明归属与命令路径,动态 tool/<ViewType> 被误当固定项,在加载时生成一次并保活，插件不改宿主,03_APPLICATION_AND_COMMANDS.md,C3,V14 V15 V16 V17 V18,S07 S08 S09 S11 S12 S18,OPEN_INPUT
+CMD-06,声明归属与命令路径,固定 ID/label/默认 shortcut 并非错误,保留缺省，仅分离 metadata 与 receiver,03_APPLICATION_AND_COMMANDS.md,C3,V14 V15 V16 V17 V18,S07 S08 S09 S11 S12 S18,OPEN_INPUT
+CMD-07,声明归属与命令路径,八个 Scene role 再解释字符串,拆工具/运行两组，直接 ESceneTool 或具名 handler,03_APPLICATION_AND_COMMANDS.md,C3,V14 V15 V16 V17 V18,S07 S08 S09 S11 S12 S18,OPEN_INPUT
+CMD-08,声明归属与命令路径,未知 tool role 默认变 configuration,删除隐式回退，入口改准确类型,03_APPLICATION_AND_COMMANDS.md,C3,V14 V15 V16 V17 V18,S07 S08 S09 S11 S12 S18,OPEN_INPUT
+CMD-09,声明归属与命令路径,Undo/Redo 与 SaveMode 有限分支,可以保留，不为开闭原则增加插件接口,03_APPLICATION_AND_COMMANDS.md,C3,V14 V15 V16 V17 V18,S07 S08 S09 S11 S12 S18,OPEN_INPUT
+CMD-10,声明归属与命令路径,scope/input_version/argument_type 容易被抽漏,与描述一起声明并验证,03_APPLICATION_AND_COMMANDS.md,C3,V14 V15 V16 V17 V18,S07 S08 S09 S11 S12 S18,OPEN_INPUT
+CMD-11,声明归属与命令路径,Application execute 特判 save,迁到业务 owner 准入，通用命令不解释结果类型,03_APPLICATION_AND_COMMANDS.md,C3,V14 V15 V16 V17 V18,S07 S08 S09 S11 S12 S18,OPEN_INPUT
+CMD-12,声明归属与命令路径,菜单 completion 再特判 save,删除重复登记，入口共享同一业务能力,03_APPLICATION_AND_COMMANDS.md,C3,V14 V15 V16 V17 V18,S07 S08 S09 S11 S12 S18,OPEN_INPUT
+CMD-13,声明归属与命令路径,基础 Save 先注册再 erase/replace,装配一次选择正确 receiver，共用声明,03_APPLICATION_AND_COMMANDS.md,C3,V14 V15 V16 V17 V18,S07 S08 S09 S11 S12 S18,OPEN_INPUT
+CMD-14,声明归属与命令路径,query/execute 捕获整个 Impl,绑定所需 provider，Application 只安装贡献,03_APPLICATION_AND_COMMANDS.md,C3,V14 V15 V16 V17 V18,S07 S08 S09 S11 S12 S18,OPEN_INPUT
+CMD-15,声明归属与命令路径,短字符串快捷键有两套 parser,合并唯一语法，加载/设置提交时解析，事件只比键值,03_APPLICATION_AND_COMMANDS.md,C3,V14 V15 V16 V17 V18,S07 S08 S09 S11 S12 S18,OPEN_INPUT
+CMD-16,声明归属与命令路径,scope APPLICATION 被误当接收者类型,它只描述目标范围，不要求调用 Application 业务方法,03_APPLICATION_AND_COMMANDS.md,C3,V14 V15 V16 V17 V18,S07 S08 S09 S11 S12 S18,OPEN_INPUT
+CMD-17,声明归属与命令路径,About 是禁用信息项而非坏命令,保留原行为，测试不错误要求 execute 成功,03_APPLICATION_AND_COMMANDS.md,C3,V14 V15 V16 V17 V18,S07 S08 S09 S11 S12 S18,OPEN_INPUT
+APP-01,Application 的实际职责,生命周期类拥有并实现太多业务政策,按算法/状态迁出，不把 Impl 搬到 Context2,03_APPLICATION_AND_COMMANDS.md,C2 C3,V19 V20 V21 V22 V23 V24 V25,S08 S09 S10 S13 S14 S15 S17,OPEN_INPUT
+APP-02,Application 的实际职责,保存物理目标与资产身份验证在 App,归 ProjectContentSaving，复用原文件/保存 provider,03_APPLICATION_AND_COMMANDS.md,C2 C3,V19 V20 V21 V22 V23 V24 V25,S08 S09 S10 S13 S14 S15 S17,OPEN_INPUT
+APP-03,Application 的实际职责,源已保存目录未登记的部分完成,明确保留，失败不伪装为没有副作用,03_APPLICATION_AND_COMMANDS.md,C2 C3,V19 V20 V21 V22 V23 V24 V25,S08 S09 S10 S13 S14 S15 S17,OPEN_INPUT
+APP-04,Application 的实际职责,旧编译/保存完成覆盖较新目录,合并时读取当前记录，保留源/compiled 的独立版本,03_APPLICATION_AND_COMMANDS.md,C2 C3,V19 V20 V21 V22 V23 V24 V25,S08 S09 S10 S13 S14 S15 S17,OPEN_INPUT
+APP-05,Application 的实际职责,SaveAll/Close/Exit 对结果重复确认,只由准确业务 owner 消费，借阅者走原协议,03_APPLICATION_AND_COMMANDS.md,C2 C3,V19 V20 V21 V22 V23 V24 V25,S08 S09 S10 S13 S14 S15 S17,OPEN_INPUT
+APP-06,Application 的实际职责,命名对话框与无 UI 保存混合,对话框留工作台；活动不依赖 ReviewView,03_APPLICATION_AND_COMMANDS.md,C2 C3,V19 V20 V21 V22 V23 V24 V25,S08 S09 S10 S13 S14 S15 S17,OPEN_INPUT
+APP-07,Application 的实际职责,工作区文件政策和 Host 组合混合,IO/迁移归 activities，Host 操作归 workbench,03_APPLICATION_AND_COMMANDS.md,C2 C3,V19 V20 V21 V22 V23 V24 V25,S08 S09 S10 S13 S14 S15 S17,OPEN_INPUT
+APP-08,Application 的实际职责,布局已应用与 preferences 发布不同,分别报告，不为后者失败抹掉前者事实,03_APPLICATION_AND_COMMANDS.md,C2 C3,V19 V20 V21 V22 V23 V24 V25,S08 S09 S10 S13 S14 S15 S17,OPEN_INPUT
+APP-09,Application 的实际职责,恢复偷偷解析任意 layout opaque,继续只读独立 RecoveryManifest,03_APPLICATION_AND_COMMANDS.md,C2 C3,V19 V20 V21 V22 V23 V24 V25,S08 S09 S10 S13 S14 S15 S17,OPEN_INPUT
+APP-10,Application 的实际职责,最近项目的文件/上限/去重在 App,归实际项目浏览活动，Pane 不持 Impl,03_APPLICATION_AND_COMMANDS.md,C2 C3,V19 V20 V21 V22 V23 V24 V25,S08 S09 S10 S13 S14 S15 S17,OPEN_INPUT
+APP-11,Application 的实际职责,插件选择同时变成通用设置副本,manifest plugins 唯一，settings 仅提供编辑入口,03_APPLICATION_AND_COMMANDS.md,C2 C3,V19 V20 V21 V22 V23 V24 V25,S08 S09 S10 S13 S14 S15 S17,OPEN_INPUT
+APP-12,Application 的实际职责,结果面板可能被造为第二任务管理器,只观察原活动结果，不复制取消/完成权威,03_APPLICATION_AND_COMMANDS.md,C2 C3,V19 V20 V21 V22 V23 V24 V25,S08 S09 S10 S13 S14 S15 S17,OPEN_INPUT
+APP-13,Application 的实际职责,公开 facade 仍可能全知,迁移消费者或保留严格中性转调，不留业务分支,03_APPLICATION_AND_COMMANDS.md,C2 C3,V19 V20 V21 V22 V23 V24 V25,S08 S09 S10 S13 S14 S15 S17,OPEN_INPUT
+APP-14,Application 的实际职责,关闭时停止 pump 丢弃已接受完成,保持原 Process/Run/GPU 收集与退休直到结清,03_APPLICATION_AND_COMMANDS.md,C2 C3,V19 V20 V21 V22 V23 V24 V25,S08 S09 S10 S13 S14 S15 S17,OPEN_INPUT
+SET-01,设置的数据、作用域与扩展,启动配置/偏好/作者配置混名,明确作用域，Scene 配置仍属于作者 Session,04_SETTINGS_AND_STARTUP.md,C4 C5,V26 V27 V28 V29 V30 V31 V32 V33 V34 V35,S21 S24 S25 S35,OPEN_INPUT
+SET-02,设置的数据、作用域与扩展,现有 UserPreferences 主要 selected_layout,保留/迁移原含义，不宣称原有完整设置系统,04_SETTINGS_AND_STARTUP.md,C4 C5,V26 V27 V28 V29 V30 V31 V32 V33 V34 V35,S21 S24 S25 S35,OPEN_INPUT
+SET-03,设置的数据、作用域与扩展,SettingsView 目前只是插件选择,扩展页面 registry 和实际读取应用，不只改标题,04_SETTINGS_AND_STARTUP.md,C4 C5,V26 V27 V28 V29 V30 V31 V32 V33 V34 V35,S21 S24 S25 S35,OPEN_INPUT
+SET-04,设置的数据、作用域与扩展,窗口/字体直接由参数默认值创建,建立文件+启动覆盖+环境到有效配置链,04_SETTINGS_AND_STARTUP.md,C4 C5,V26 V27 V28 V29 V30 V31 V32 V33 V34 V35,S21 S24 S25 S35,OPEN_INPUT
+SET-05,设置的数据、作用域与扩展,设置字段无限追加 AppConfig,复用 ConfigurationValue/descriptor，按功能声明,04_SETTINGS_AND_STARTUP.md,C4 C5,V26 V27 V28 V29 V30 V31 V32 V33 V34 V35,S21 S24 S25 S35,OPEN_INPUT
+SET-06,设置的数据、作用域与扩展,插件需动态注册设置,在原贡献批次增加设置描述与 CodeLease,04_SETTINGS_AND_STARTUP.md,C4 C5,V26 V27 V28 V29 V30 V31 V32 V33 V34 V35,S21 S24 S25 S35,OPEN_INPUT
+SET-07,设置的数据、作用域与扩展,插件缺失/新版本配置,保留未知段，严格 schema 迁移，不覆盖成默认,04_SETTINGS_AND_STARTUP.md,C4 C5,V26 V27 V28 V29 V30 V31 V32 V33 V34 V35,S21 S24 S25 S35,OPEN_INPUT
+SET-08,设置的数据、作用域与扩展,缺文件/权限/格式混淆,只缺文件允许 defaults，其他错误明确显示,04_SETTINGS_AND_STARTUP.md,C4 C5,V26 V27 V28 V29 V30 V31 V32 V33 V34 V35,S21 S24 S25 S35,OPEN_INPUT
+SET-09,设置的数据、作用域与扩展,多 scope 覆盖顺序含糊,逐项声明允许作用域与 merge policy,04_SETTINGS_AND_STARTUP.md,C4 C5,V26 V27 V28 V29 V30 V31 V32 V33 V34 V35,S21 S24 S25 S35,OPEN_INPUT
+SET-10,设置的数据、作用域与扩展,用户 project_instance 不是持久项目键,使用持久身份或明确路径派生迁移规则,04_SETTINGS_AND_STARTUP.md,C4 C5,V26 V27 V28 V29 V30 V31 V32 V33 V34 V35,S21 S24 S25 S35,OPEN_INPUT
+SET-11,设置的数据、作用域与扩展,settings 与 manifest 插件启用两份权威,不新增 enabled 镜像，显示当前激活和下次选择,04_SETTINGS_AND_STARTUP.md,C4 C5,V26 V27 V28 V29 V30 V31 V32 V33 V34 V35,S21 S24 S25 S35,OPEN_INPUT
+SET-12,设置的数据、作用域与扩展,desired/applied/persisted 混在 dirty,准确显示三种事实及需重启状态,04_SETTINGS_AND_STARTUP.md,C4 C5,V26 V27 V28 V29 V30 V31 V32 V33 V34 V35,S21 S24 S25 S35,OPEN_INPUT
+SET-13,设置的数据、作用域与扩展,Apply 失败丢草稿,保留 based_on/诊断，允许明确修正/重试,04_SETTINGS_AND_STARTUP.md,C4 C5,V26 V27 V28 V29 V30 V31 V32 V33 V34 V35,S21 S24 S25 S35,OPEN_INPUT
+SET-14,设置的数据、作用域与扩展,发布版本变化/Unknown,沿原 WriteCoordinator 校验与对账,04_SETTINGS_AND_STARTUP.md,C4 C5,V26 V27 V28 V29 V30 V31 V32 V33 V34 V35,S21 S24 S25 S35,OPEN_INPUT
+SET-15,设置的数据、作用域与扩展,字体/scale 动态更换可能早释放,原 owner safe point 或明确 restart-required，资源仍保活,04_SETTINGS_AND_STARTUP.md,C4 C5,V26 V27 V28 V29 V30 V31 V32 V33 V34 V35,S21 S24 S25 S35,OPEN_INPUT
+SET-16,设置的数据、作用域与扩展,快捷键覆盖修改 canonical identity,只覆盖有效输入绑定，不改命令身份/版本,04_SETTINGS_AND_STARTUP.md,C4 C5,V26 V27 V28 V29 V30 V31 V32 V33 V34 V35,S21 S24 S25 S35,OPEN_INPUT
+SET-17,设置的数据、作用域与扩展,插件命令缺失后用户覆盖丢失,保留未激活 override，恢复时按兼容版本解释,04_SETTINGS_AND_STARTUP.md,C4 C5,V26 V27 V28 V29 V30 V31 V32 V33 V34 V35,S21 S24 S25 S35,OPEN_INPUT
+SET-18,设置的数据、作用域与扩展,bootstrap 配置依赖插件 UI 形成环,先稳定引导值，再贡献 schema，再功能激活,04_SETTINGS_AND_STARTUP.md,C4 C5,V26 V27 V28 V29 V30 V31 V32 V33 V34 V35,S21 S24 S25 S35,OPEN_INPUT
+SET-19,设置的数据、作用域与扩展,codec 是否保留注释/原字节被夸大,明确值等价还是字节保证，不虚报,04_SETTINGS_AND_STARTUP.md,C4 C5,V26 V27 V28 V29 V30 V31 V32 V33 V34 V35,S21 S24 S25 S35,OPEN_INPUT
+SET-20,设置的数据、作用域与扩展,所有设置都热生效的错误目标,每项声明策略，不新增任意插件热卸载需求,04_SETTINGS_AND_STARTUP.md,C4 C5,V26 V27 V28 V29 V30 V31 V32 V33 V34 V35,S21 S24 S25 S35,OPEN_INPUT
+WIN-01,窗口策略与显示环境,尺寸不是当前自动计算,记录现状，实施显式/保存/环境/缺省优先级,04_SETTINGS_AND_STARTUP.md,C5,V36 V37 V38 V39 V40,S21 S22 S23 E01 E02,OPEN_INPUT
+WIN-02,窗口策略与显示环境,显示分辨率乘比例过于粗糙,使用工作区和明确坐标单位，集中默认政策,04_SETTINGS_AND_STARTUP.md,C5,V36 V37 V38 V39 V40,S21 S22 S23 E01 E02,OPEN_INPUT
+WIN-03,窗口策略与显示环境,窗口坐标与 framebuffer 混用,分别保留，GPU extent 不直接当 UI 尺寸,04_SETTINGS_AND_STARTUP.md,C5,V36 V37 V38 V39 V40,S21 S22 S23 E01 E02,OPEN_INPUT
+WIN-04,窗口策略与显示环境,DPI/scale 双重乘法,单处坐标换算与字体策略,04_SETTINGS_AND_STARTUP.md,C5,V36 V37 V38 V39 V40,S21 S22 S23 E01 E02,OPEN_INPUT
+WIN-05,窗口策略与显示环境,monitor pointer/name/index 持久化不可靠,保存可解释提示，断开后重新匹配/回退,04_SETTINGS_AND_STARTUP.md,C5,V36 V37 V38 V39 V40,S21 S22 S23 E01 E02,OPEN_INPUT
+WIN-06,窗口策略与显示环境,多屏负坐标被当非法,使用有符号坐标，检查范围/溢出,04_SETTINGS_AND_STARTUP.md,C5,V36 V37 V38 V39 V40,S21 S22 S23 E01 E02,OPEN_INPUT
+WIN-07,窗口策略与显示环境,任务栏和边框导致窗口不可达,保证合理可见区域，处理实际装饰信息,04_SETTINGS_AND_STARTUP.md,C5,V36 V37 V38 V39 V40,S21 S22 S23 E01 E02,OPEN_INPUT
+WIN-08,窗口策略与显示环境,极小工作区/零信息,明确退化值或错误，不无符号下溢,04_SETTINGS_AND_STARTUP.md,C5,V36 V37 V38 V39 V40,S21 S22 S23 E01 E02,OPEN_INPUT
+WIN-09,窗口策略与显示环境,最大化覆盖 ordinary rect,分开持久化模式与恢复矩形,04_SETTINGS_AND_STARTUP.md,C5,V36 V37 V38 V39 V40,S21 S22 S23 E01 E02,OPEN_INPUT
+WIN-10,窗口策略与显示环境,全屏与最大化混为一谈,至少一种明确支持的全屏模式及恢复，不假装全部后端支持,04_SETTINGS_AND_STARTUP.md,C5,V36 V37 V38 V39 V40,S21 S22 S23 E01 E02,OPEN_INPUT
+WIN-11,窗口策略与显示环境,窗口构造暗读文件或探测环境,解析在构造前完成，构造只消费有效参数,04_SETTINGS_AND_STARTUP.md,C5,V36 V37 V38 V39 V40,S21 S22 S23 E01 E02,OPEN_INPUT
+WIN-12,窗口策略与显示环境,offscreen 意外查询 monitor,保持明确确定尺寸，无物理显示依赖,04_SETTINGS_AND_STARTUP.md,C5,V36 V37 V38 V39 V40,S21 S22 S23 E01 E02,OPEN_INPUT
+WIN-13,窗口策略与显示环境,每帧按 monitor 重算默认值,只在启动/实际环境或用户事件发生时更新,04_SETTINGS_AND_STARTUP.md,C5,V36 V37 V38 V39 V40,S21 S22 S23 E01 E02,OPEN_INPUT
+WIN-14,窗口策略与显示环境,显式 CLI 覆盖无意写回文件,本次覆盖单独一层，保存必须明确,04_SETTINGS_AND_STARTUP.md,C5,V36 V37 V38 V39 V40,S21 S22 S23 E01 E02,OPEN_INPUT
+CAM-01,相机与封装,CameraPose 不只是 pose,正名 ViewportCameraState，复用 Camera/Transform，不复制数据,05_CAMERA_AND_ABSTRACTION.md,C6,V41 V42 V43 V44 V45 V46 V47,S26 S27 S28 S29 S02,OPEN_INPUT
+CAM-02,相机与封装,CameraMotion 被误当第二组件,保持输入增量角色，不新增 CameraManager,05_CAMERA_AND_ABSTRACTION.md,C6,V41 V42 V43 V44 V45 V46 V47,S26 S27 S28 S29 S02,OPEN_INPUT
+CAM-03,相机与封装,ECS 链成立不证明无冗余,逐边记录责任/状态/频次/回调后裁定,05_CAMERA_AND_ABSTRACTION.md,C6,V41 V42 V43 V44 V45 V46 V47,S26 S27 S28 S29 S02,OPEN_INPUT
+CAM-04,相机与封装,层数多不等于过度封装,保留 UI/请求/资源/抽取各真实边界,05_CAMERA_AND_ABSTRACTION.md,C6,V41 V42 V43 V44 V45 V46 V47,S26 S27 S28 S29 S02,OPEN_INPUT
+CAM-05,相机与封装,编辑器自由相机污染作者,只写自己创建的辅助 entity，不进作者 History,05_CAMERA_AND_ABSTRACTION.md,C6,V41 V42 V43 V44 V45 V46 V47,S26 S27 S28 S29 S02,OPEN_INPUT
+CAM-06,相机与封装,借用游戏相机被同时导航/脚本写,明确单写者/模式，低层不隐式扩权,05_CAMERA_AND_ABSTRACTION.md,C6,V41 V42 V43 V44 V45 V46 V47,S26 S27 S28 S29 S02,OPEN_INPUT
+CAM-07,相机与封装,Run 自由观察被宣称游戏相机,明确不同模式，不默认支持未实施跟随 UI,05_CAMERA_AND_ABSTRACTION.md,C6,V41 V42 V43 V44 V45 V46 V47,S26 S27 S28 S29 S02,OPEN_INPUT
+CAM-08,相机与封装,期望/ECS/显示帧相机可能不同,测试版本对应，复用原输出观察或明确 defer,05_CAMERA_AND_ABSTRACTION.md,C6,V41 V42 V43 V44 V45 V46 V47,S26 S27 S28 S29 S02,OPEN_INPUT
+CAM-09,相机与封装,拾取/模型放置用不一致 extent/DPI,统一相机/范围选择，不二次缩放,05_CAMERA_AND_ABSTRACTION.md,C6,V41 V42 V43 V44 V45 V46 V47,S26 S27 S28 S29 S02,OPEN_INPUT
+CAM-10,相机与封装,延迟输出/旧实例输入重定向,固定原目标与代次，失败不解释成新窗口点击,05_CAMERA_AND_ABSTRACTION.md,C6,V41 V42 V43 V44 V45 V46 V47,S26 S27 S28 S29 S02,OPEN_INPUT
+CAM-11,相机与封装,相机未变仍重复 patch/projection,删除可证明同有效期重复工作,05_CAMERA_AND_ABSTRACTION.md,C6,V41 V42 V43 V44 V45 V46 V47,S26 S27 S28 S29 S02,OPEN_INPUT
+CAM-12,相机与封装,公共准入与后续 render 校验看似重复,保留不同有效期，禁止永久验证 token,05_CAMERA_AND_ABSTRACTION.md,C6,V41 V42 V43 V44 V45 V46 V47,S26 S27 S28 S29 S02,OPEN_INPUT
+CAM-13,相机与封装,信号安装后漏存量 Camera,首次完整折入，验证不同构造顺序,05_CAMERA_AND_ABSTRACTION.md,C6,V41 V42 V43 V44 V45 V46 V47,S26 S27 S28 S29 S02,OPEN_INPUT
+CAM-14,相机与封装,直接 get 写不发 on_update,全部可观察修改保留 patch/replace,05_CAMERA_AND_ABSTRACTION.md,C6,V41 V42 V43 V44 V45 V46 V47,S26 S27 S28 S29 S02,OPEN_INPUT
+CAM-15,相机与封装,on_destroy 中立即改世界,读句柄入原延迟命令，后批安全应用,05_CAMERA_AND_ABSTRACTION.md,C6,V41 V42 V43 V44 V45 V46 V47,S26 S27 S28 S29 S02,OPEN_INPUT
+CAM-16,相机与封装,异步资源被改成仅 on_construct,保留完成轮询/安装/退休，不能丢晚到结果,05_CAMERA_AND_ABSTRACTION.md,C6,V41 V42 V43 V44 V45 V46 V47,S26 S27 S28 S29 S02,OPEN_INPUT
+GEN-01,生产代码生成统一,Inspector 是 Python 生产 emitter,迁至原 MetaUnit/语义/inja 链，不否认其现有作用,06_CODEGEN_UNIFICATION.md,C7,V48 V49 V50 V51 V52 V53 V54 V55,S31 S32 S33 S34 E03,OPEN_INPUT
+GEN-02,生产代码生成统一,Render/Script 已用模板不能重写,保持原 projection 与基础，改公共工具时相应回归,06_CODEGEN_UNIFICATION.md,C7,V48 V49 V50 V51 V52 V53 V54 V55,S31 S32 S33 S34 E03,OPEN_INPUT
+GEN-03,生产代码生成统一,全部 .py 不等于生产生成器,C0 分类 producer，测试/归档/编排可留,06_CODEGEN_UNIFICATION.md,C7,V48 V49 V50 V51 V52 V53 V54 V55,S31 S32 S33 S34 E03,OPEN_INPUT
+GEN-04,生产代码生成统一,不能再写 C++ parser,复用 MetaUnit，缺 IR 修真实输入，不正则猜语义,06_CODEGEN_UNIFICATION.md,C7,V48 V49 V50 V51 V52 V53 V54 V55,S31 S32 S33 S34 E03,OPEN_INPUT
+GEN-05,生产代码生成统一,函数体通过 f-string/列表拼接,结构由 inja 表达，helper 不先拼完整 body,06_CODEGEN_UNIFICATION.md,C7,V48 V49 V50 V51 V52 V53 V54 V55,S31 S32 S33 S34 E03,OPEN_INPUT
+GEN-06,生产代码生成统一,作者/Run 生成后全文 replace,显式 binding mode/namespace/fields 投影,06_CODEGEN_UNIFICATION.md,C7,V48 V49 V50 V51 V52 V53 V54 V55,S31 S32 S33 S34 E03,OPEN_INPUT
+GEN-07,生产代码生成统一,现有字段语义不能丢,逐项迁移标量/容器/嵌套/optional/variant/Eigen/custom,06_CODEGEN_UNIFICATION.md,C7,V48 V49 V50 V51 V52 V53 V54 V55,S31 S32 S33 S34 E03,OPEN_INPUT
+GEN-08,生产代码生成统一,readonly 仅禁表层按钮,覆盖结构修改与嵌套自定义控件,06_CODEGEN_UNIFICATION.md,C7,V48 V49 V50 V51 V52 V53 V54 V55,S31 S32 S33 S34 E03,OPEN_INPUT
+GEN-09,生产代码生成统一,64 位数值规则用 double 降精度,精确解析/溢出与 finite 验证,06_CODEGEN_UNIFICATION.md,C7,V48 V49 V50 V51 V52 V53 V54 V55,S31 S32 S33 S34 E03,OPEN_INPUT
+GEN-10,生产代码生成统一,多处格式规则容易漂移,统一一份 formatter 配置,06_CODEGEN_UNIFICATION.md,C7,V48 V49 V50 V51 V52 V53 V54 V55,S31 S32 S33 S34 E03,OPEN_INPUT
+GEN-11,生产代码生成统一,sidecar 不在真实输出清单,声明 OUTPUT/BYPRODUCT，缺失可重建,06_CODEGEN_UNIFICATION.md,C7,V48 V49 V50 V51 V52 V53 V54 V55,S31 S32 S33 S34 E03,OPEN_INPUT
+GEN-12,生产代码生成统一,广泛递归头依赖造成过度重建,有真实 depfile 后再收窄，不能偷删依赖,06_CODEGEN_UNIFICATION.md,C7,V48 V49 V50 V51 V52 V53 V54 V55,S31 S32 S33 S34 E03,OPEN_INPUT
+GEN-13,生产代码生成统一,模板/support/flags 变化未失效,依赖包含所有真实输入与工具版本,06_CODEGEN_UNIFICATION.md,C7,V48 V49 V50 V51 V52 V53 V54 V55,S31 S32 S33 S34 E03,OPEN_INPUT
+GEN-14,生产代码生成统一,部分输出写入失败被当成功,先语义/渲染/staging，失败不发布成功 stamp,06_CODEGEN_UNIFICATION.md,C7,V48 V49 V50 V51 V52 V53 V54 V55,S31 S32 S33 S34 E03,OPEN_INPUT
+GEN-15,生产代码生成统一,内容未变也重写时间戳,比较内容，仅必要写入，验证二次无工作,06_CODEGEN_UNIFICATION.md,C7,V48 V49 V50 V51 V52 V53 V54 V55,S31 S32 S33 S34 E03,OPEN_INPUT
+GEN-16,生产代码生成统一,重复 stem 与跨机路径差异,logical path 唯一、确定排序、路径不泄漏,06_CODEGEN_UNIFICATION.md,C7,V48 V49 V50 V51 V52 V53 V54 V55,S31 S32 S33 S34 E03,OPEN_INPUT
+GEN-17,生产代码生成统一,SDK 偷读源码/private/旧 Python,安装 generator/templates/support，独立消费者,06_CODEGEN_UNIFICATION.md,C7,V48 V49 V50 V51 V52 V53 V54 V55,S31 S32 S33 S34 E03,OPEN_INPUT
+GEN-18,生产代码生成统一,host 工具误用 target executable,明确 host 工具来源与架构，构建图准确,06_CODEGEN_UNIFICATION.md,C7,V48 V49 V50 V51 V52 V53 V54 V55,S31 S32 S33 S34 E03,OPEN_INPUT
+GEN-19,生产代码生成统一,组件/底层反向依赖 UI 生成器,行为看数据，工具与运行 target 隔离,06_CODEGEN_UNIFICATION.md,C7,V48 V49 V50 V51 V52 V53 V54 V55,S31 S32 S33 S34 E03,OPEN_INPUT
+GEN-20,生产代码生成统一,保留旧 emitter 开关造成两套实现,最终只留一个生产路径，历史快照不删,06_CODEGEN_UNIFICATION.md,C7,V48 V49 V50 V51 V52 V53 V54 V55,S31 S32 S33 S34 E03,OPEN_INPUT
+QUAL-01,质量、性能与交付,静态存储少不等于整体零分配,M1/M2 记录真实 ABI/owner/index/rodata,07_QUALITY_AND_MEASUREMENT.md,C8 C9,V56 V57 V58 V59 V60,S02 H01,OPEN_INPUT
+QUAL-02,质量、性能与交付,名字不比较但包装反复查表,记录实际调用栈/lookup 次数，不用行数证明性能,07_QUALITY_AND_MEASUREMENT.md,C8 C9,V56 V57 V58 V59 V60,S02 H01,OPEN_INPUT
+QUAL-03,质量、性能与交付,旧微基准被当当前产品性能,保留原 SHA/环境，EC3 新成绩单独记录,07_QUALITY_AND_MEASUREMENT.md,C8 C9,V56 V57 V58 V59 V60,S02 H01,OPEN_INPUT
+QUAL-04,质量、性能与交付,复杂判断未遵守具名语义分组,按 AGENTS，前置有效性不能外提破坏,07_QUALITY_AND_MEASUREMENT.md,C8 C9,V56 V57 V58 V59 V60,S02 H01,OPEN_INPUT
+QUAL-05,质量、性能与交付,多层 Result/异常捕获重复,保留准确边界，内置热路径不堆 try/catch,07_QUALITY_AND_MEASUREMENT.md,C8 C9,V56 V57 V58 V59 V60,S02 H01,OPEN_INPUT
+QUAL-06,质量、性能与交付,数据头重依赖/别名 shim,精确 include/provider，一次迁完旧入口,07_QUALITY_AND_MEASUREMENT.md,C8 C9,V56 V57 V58 V59 V60,S02 H01,OPEN_INPUT
+QUAL-07,质量、性能与交付,全部模块一个 giant library,目录不是库，保留 CPU/工具链/GPU/SDK 真实闭包,07_QUALITY_AND_MEASUREMENT.md,C8 C9,V56 V57 V58 V59 V60,S02 H01,OPEN_INPUT
+QUAL-08,质量、性能与交付,modules 公共头旧安装被 parser 读取,三个 include 前缀同步，不冒称 Android 构建,07_QUALITY_AND_MEASUREMENT.md,C8 C9,V56 V57 V58 V59 V60,S02 H01,OPEN_INPUT
+QUAL-09,质量、性能与交付,构建与真实 DLL/GPU 并行,严格顺序，all -j4 -k0，二次无工作,07_QUALITY_AND_MEASUREMENT.md,C8 C9,V56 V57 V58 V59 V60,S02 H01,OPEN_INPUT
+QUAL-10,质量、性能与交付,测试数量替代语义/性能百分比,按 V 主题与实际计量，不设不必要样本配额,07_QUALITY_AND_MEASUREMENT.md,C8 C9,V56 V57 V58 V59 V60,S02 H01,OPEN_INPUT
+QUAL-11,质量、性能与交付,文档仍混写 V7/V8 与当前 V9,更新当前文档/SDK，历史版本原样保留,07_QUALITY_AND_MEASUREMENT.md,C8 C9,V56 V57 V58 V59 V60,S02 H01,OPEN_INPUT
+QUAL-12,质量、性能与交付,有限完成被当无缺陷或全平台资格,分开已运行/继承/免验/延期/未测并固定 SHA,07_QUALITY_AND_MEASUREMENT.md,C8 C9,V56 V57 V58 V59 V60,S02 H01,OPEN_INPUT

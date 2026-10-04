@@ -1,0 +1,207 @@
+[
+  {
+    "id": "S01",
+    "description": "附带声明式调查，13个文件人工清单",
+    "url_or_relative_path": "reference/declarative/REPORT.md"
+  },
+  {
+    "id": "S02",
+    "description": "用户 AGENTS 原始字节",
+    "url_or_relative_path": "reference/AGENTS.original.md"
+  },
+  {
+    "id": "S03",
+    "description": "实际 find、重复检查、shortcut 校验、调用与 Batch",
+    "url_or_relative_path": "https://github.com/LUX-YU/lux-engine/blob/126f1b4df14316df30957208787ded9be9f9f461/editor/activities/commands/src/CommandRegistry.cpp"
+  },
+  {
+    "id": "S04",
+    "description": "Entry、Snapshot、Handle、Batch、Dispatcher 公共契约",
+    "url_or_relative_path": "https://github.com/LUX-YU/lux-engine/blob/126f1b4df14316df30957208787ded9be9f9f461/editor/activities/commands/include/lux/engine/editor/commands/CommandRegistry.hpp"
+  },
+  {
+    "id": "S05",
+    "description": "lux-cxx 参考类型；不代表用户机器安装版本",
+    "url_or_relative_path": "https://github.com/LUX-YU/lux-cxx/blob/bc1eab34b83b5cf8821d6319e5b2a02574dc91fd/core/include/lux/cxx/core/StableNameId.hpp"
+  },
+  {
+    "id": "S06",
+    "description": "当前拥有型描述、目标与回执",
+    "url_or_relative_path": "https://github.com/LUX-YU/lux-engine/blob/126f1b4df14316df30957208787ded9be9f9f461/editor/activities/commands/include/lux/engine/editor/commands/Command.hpp"
+  },
+  {
+    "id": "S07",
+    "description": "当前菜单构建、快捷键解析、固定输入与派发",
+    "url_or_relative_path": "https://github.com/LUX-YU/lux-engine/blob/126f1b4df14316df30957208787ded9be9f9f461/editor/workbench/desktop/src/CommandMenu.cpp"
+  },
+  {
+    "id": "S08",
+    "description": "当前产品贡献装配和 execute facade",
+    "url_or_relative_path": "https://github.com/LUX-YU/lux-engine/blob/126f1b4df14316df30957208787ded9be9f9f461/editor/application/src/EditorCommands.cpp"
+  },
+  {
+    "id": "S09",
+    "description": "当前主循环、完成与退出；已核查相关区段",
+    "url_or_relative_path": "https://github.com/LUX-YU/lux-engine/blob/126f1b4df14316df30957208787ded9be9f9f461/editor/application/src/EditorLifecycle.cpp"
+  },
+  {
+    "id": "S10",
+    "description": "项目保存与命令实际政策",
+    "url_or_relative_path": "https://github.com/LUX-YU/lux-engine/blob/126f1b4df14316df30957208787ded9be9f9f461/editor/application/src/EditorSaving.cpp"
+  },
+  {
+    "id": "S11",
+    "description": "八 role 字符串解释和 provider 常量",
+    "url_or_relative_path": "https://github.com/LUX-YU/lux-engine/blob/126f1b4df14316df30957208787ded9be9f9f461/editor/application/src/EditorSceneTools.cpp"
+  },
+  {
+    "id": "S12",
+    "description": "内容窗口、任务与资产工具命令",
+    "url_or_relative_path": "https://github.com/LUX-YU/lux-engine/blob/126f1b4df14316df30957208787ded9be9f9f461/editor/application/src/EditorContent.cpp"
+  },
+  {
+    "id": "S13",
+    "description": "项目打开/导入/最近项目和 About",
+    "url_or_relative_path": "https://github.com/LUX-YU/lux-engine/blob/126f1b4df14316df30957208787ded9be9f9f461/editor/application/src/EditorProjectTools.cpp"
+  },
+  {
+    "id": "S14",
+    "description": "工作区政策与恢复命令",
+    "url_or_relative_path": "https://github.com/LUX-YU/lux-engine/blob/126f1b4df14316df30957208787ded9be9f9f461/editor/application/src/EditorWorkspace.cpp"
+  },
+  {
+    "id": "S15",
+    "description": "项目插件选择 UI 接线和发布",
+    "url_or_relative_path": "https://github.com/LUX-YU/lux-engine/blob/126f1b4df14316df30957208787ded9be9f9f461/editor/application/src/EditorSettings.cpp"
+  },
+  {
+    "id": "S16",
+    "description": "项目创建命令与视图工厂",
+    "url_or_relative_path": "https://github.com/LUX-YU/lux-engine/blob/126f1b4df14316df30957208787ded9be9f9f461/editor/application/src/EditorProjectCreation.cpp"
+  },
+  {
+    "id": "S17",
+    "description": "业务结果观察与视图贡献",
+    "url_or_relative_path": "https://github.com/LUX-YU/lux-engine/blob/126f1b4df14316df30957208787ded9be9f9f461/editor/application/src/EditorResults.cpp"
+  },
+  {
+    "id": "S18",
+    "description": "内置源保存/History/内容/视图贡献",
+    "url_or_relative_path": "https://github.com/LUX-YU/lux-engine/blob/126f1b4df14316df30957208787ded9be9f9f461/editor/application/extensions/src/BuiltinContributions.cpp"
+  },
+  {
+    "id": "S19",
+    "description": "三作者类型与源格式；完整路径见原 source CSV",
+    "url_or_relative_path": "https://github.com/LUX-YU/lux-engine/blob/126f1b4df14316df30957208787ded9be9f9f461/editor/activities/scene/src/SessionFactory.cpp"
+  },
+  {
+    "id": "S20",
+    "description": "视图描述/输入/创建的当前寿命",
+    "url_or_relative_path": "https://github.com/LUX-YU/lux-engine/blob/126f1b4df14316df30957208787ded9be9f9f461/editor/workbench/desktop/include/lux/engine/editor/views/ViewFactory.hpp"
+  },
+  {
+    "id": "S21",
+    "description": "当前启动参数和 Application 入口",
+    "url_or_relative_path": "https://github.com/LUX-YU/lux-engine/blob/126f1b4df14316df30957208787ded9be9f9f461/editor/application/include/lux/engine/editor/application/EditorApplication.hpp"
+  },
+  {
+    "id": "S22",
+    "description": "实际窗口与字体创建链",
+    "url_or_relative_path": "https://github.com/LUX-YU/lux-engine/blob/126f1b4df14316df30957208787ded9be9f9f461/editor/application/src/EditorApplication.cpp"
+  },
+  {
+    "id": "S23",
+    "description": "实际 GLFW 窗口创建；本次讨论已读相关段",
+    "url_or_relative_path": "https://github.com/LUX-YU/lux-engine/blob/126f1b4df14316df30957208787ded9be9f9f461/modules/platform/window/src/LuxWindow.glfw.cpp"
+  },
+  {
+    "id": "S24",
+    "description": "当前偏好、布局、恢复数据声明",
+    "url_or_relative_path": "https://github.com/LUX-YU/lux-engine/blob/126f1b4df14316df30957208787ded9be9f9f461/editor/authoring/layout/include/lux/engine/editor/workspace/WorkspaceValues.hpp"
+  },
+  {
+    "id": "S25",
+    "description": "当前设置 UI 主要是项目插件选择",
+    "url_or_relative_path": "https://github.com/LUX-YU/lux-engine/blob/126f1b4df14316df30957208787ded9be9f9f461/editor/workbench/project/tools/src/SettingsView.cpp"
+  },
+  {
+    "id": "S26",
+    "description": "原 CameraPose、CameraMotion 与纯导航 API",
+    "url_or_relative_path": "https://github.com/LUX-YU/lux-engine/blob/126f1b4df14316df30957208787ded9be9f9f461/editor/workbench/viewport/include/lux/engine/editor/views/CameraNavigation.hpp"
+  },
+  {
+    "id": "S27",
+    "description": "两个 create 入口、patch、输出/退休",
+    "url_or_relative_path": "https://github.com/LUX-YU/lux-engine/blob/126f1b4df14316df30957208787ded9be9f9f461/editor/workbench/viewport/src/ViewportPresentation.cpp"
+  },
+  {
+    "id": "S28",
+    "description": "ECS Camera + WorldTransform 抽取",
+    "url_or_relative_path": "https://github.com/LUX-YU/lux-engine/blob/126f1b4df14316df30957208787ded9be9f9f461/engine/scene/builtin_systems/render/src/CameraExtraction.cpp"
+  },
+  {
+    "id": "S29",
+    "description": "本地相机、拾取、放置、更新关系",
+    "url_or_relative_path": "https://github.com/LUX-YU/lux-engine/blob/126f1b4df14316df30957208787ded9be9f9f461/editor/workbench/scene/src/SceneView.cpp"
+  },
+  {
+    "id": "S30",
+    "description": "通用作者/运行配置控件契约",
+    "url_or_relative_path": "https://github.com/LUX-YU/lux-engine/blob/126f1b4df14316df30957208787ded9be9f9f461/editor/workbench/scene/api/include/lux/engine/editor/scene/ConfigurationEditor.hpp"
+  },
+  {
+    "id": "S31",
+    "description": "Inspector 当前自定义生成步骤",
+    "url_or_relative_path": "https://github.com/LUX-YU/lux-engine/blob/126f1b4df14316df30957208787ded9be9f9f461/editor/workbench/scene/cmake/engine_editor_imgui_inspector_codegen.cmake"
+  },
+  {
+    "id": "S32",
+    "description": "Python Inspector 语义与生产字符串 emitter",
+    "url_or_relative_path": "https://github.com/LUX-YU/lux-engine/blob/126f1b4df14316df30957208787ded9be9f9f461/editor/workbench/scene/codegen/inspector_codegen.py"
+  },
+  {
+    "id": "S33",
+    "description": "Render 原模板 projection",
+    "url_or_relative_path": "https://github.com/LUX-YU/lux-engine/blob/126f1b4df14316df30957208787ded9be9f9f461/modules/function/render/cmake/engine_render_codegen.cmake"
+  },
+  {
+    "id": "S34",
+    "description": "ScriptAbility 原 C++/Lua/native/schema/validation projection",
+    "url_or_relative_path": "https://github.com/LUX-YU/lux-engine/blob/126f1b4df14316df30957208787ded9be9f9f461/modules/function/script/core/cmake/engine_script_ability_codegen.cmake"
+  },
+  {
+    "id": "S35",
+    "description": "V8 扩展贡献与实际激活契约",
+    "url_or_relative_path": "https://github.com/LUX-YU/lux-engine/blob/126f1b4df14316df30957208787ded9be9f9f461/editor/application/extensions/include/lux/engine/editor/extensions/EditorExtension.hpp"
+  },
+  {
+    "id": "S36",
+    "description": "上一轮 App/设置/命令调查原字节",
+    "url_or_relative_path": "reference/APPLICATION_AUDIT.original.md"
+  },
+  {
+    "id": "H01",
+    "description": "P10Q 历史性能；不是当前 EC3 数据",
+    "url_or_relative_path": "reference/P10Q_PERFORMANCE.original.md"
+  },
+  {
+    "id": "E01",
+    "description": "外部一手：GLFW monitor/workarea/名称寿命",
+    "url_or_relative_path": "https://www.glfw.org/docs/latest/monitor_guide.html"
+  },
+  {
+    "id": "E02",
+    "description": "外部一手：GLFW window/Framebuffer/scale",
+    "url_or_relative_path": "https://www.glfw.org/docs/latest/window_guide.html"
+  },
+  {
+    "id": "E03",
+    "description": "外部一手：inja 项目，模板与 callback",
+    "url_or_relative_path": "https://github.com/pantor/inja"
+  },
+  {
+    "id": "E04",
+    "description": "外部一手：C++ 草案 constant-expression；不是用户 SDK 编译资格",
+    "url_or_relative_path": "https://eel.is/c++draft/expr.const"
+  }
+]

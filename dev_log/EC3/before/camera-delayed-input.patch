@@ -1,0 +1,24 @@
+diff --git a/editor/tests/integration/scene_views/views.cpp b/editor/tests/integration/scene_views/views.cpp
+index 41797e77b..19216d28a 100644
+--- a/editor/tests/integration/scene_views/views.cpp
++++ b/editor/tests/integration/scene_views/views.cpp
+@@ -1664,6 +1664,19 @@ namespace
+         assert(b->pick({160, 120}, {320, 240}));
+         const auto left_cleared = pixels(*a), right_selected = pixels(*b);
+         assert(left_cleared == left_plain && right_selected != right_plain);
++        // Deliberately do not drive the runtime/render thread between navigation and input.
++        // The retained image still describes the earlier camera, not the newly patched ECS pose.
++        const auto displayed = a->image();
++        lux::editor::views::CameraMotion delayed_motion;
++        delayed_motion.local_translation.x() = 1;
++        assert(a->navigate(delayed_motion));
++        assert(a->image() == displayed);
++        auto premature_pick = a->pick({160, 120}, {320, 240});
++        std::fprintf(stderr, "EC3 delayed camera output: retained image=%d premature pick accepted=%d\n",
++            a->image() == displayed, bool(premature_pick));
++        assert(!premature_pick && left.selection().objects.empty());
++        delayed_motion.local_translation.x() = -1;
++        assert(a->navigate(delayed_motion));
+         assert(session->describe().current == before.current);
+         const auto command_results = f.desktop->commands()->takeCompletions();
+         assert(command_results.size() == 1 && command_results.front().result);

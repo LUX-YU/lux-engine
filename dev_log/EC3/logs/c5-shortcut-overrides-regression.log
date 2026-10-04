@@ -1,0 +1,16 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec2-dev
+    Start  6: ui.root
+1/3 Test  #6: ui.root ..........................   Passed    0.02 sec
+    Start 80: editor.commands
+2/3 Test #80: editor.commands ..................   Passed    0.01 sec
+    Start 81: editor.command_index
+3/3 Test #81: editor.command_index .............   Passed    0.01 sec
+
+100% tests passed, 0 tests failed out of 3
+
+Label Time Summary:
+P11       =   0.01 sec*proc (1 test)
+editor    =   0.01 sec*proc (1 test)
+native    =   0.01 sec*proc (1 test)
+
+Total Test time (real) =   0.35 sec

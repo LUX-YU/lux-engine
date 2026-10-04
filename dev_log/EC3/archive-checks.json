@@ -1,0 +1,54 @@
+[
+  {
+    "case": "relocated-positive",
+    "argv": [
+      "C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-ec2\\dev_log\\EC3\\verify.py",
+      "--repo",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-ec2",
+      "--archive",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\归档核查 空格"
+    ],
+    "exit_code": 0,
+    "output": "Verified authentic EC3 PARTIAL checkpoint; full behavior/SDK qualification is NOT complete: 17ea8c4079188fa54bb8e459496053454277c9d1\n"
+  },
+  {
+    "case": "missing",
+    "argv": [
+      "C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-ec2\\dev_log\\EC3\\verify.py",
+      "--repo",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-ec2",
+      "--archive",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\归档核查 空格"
+    ],
+    "exit_code": 1,
+    "output": "Traceback (most recent call last):\n  File \"E:\\SyncForder\\CodeRepos\\lux-engine-ec2\\dev_log\\EC3\\verify.py\", line 13, in <module>\n    assert path.is_relative_to(a) and path.is_file(), f'missing evidence: {name}'\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: missing evidence: logs/final-build.log\n"
+  },
+  {
+    "case": "tampered",
+    "argv": [
+      "C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-ec2\\dev_log\\EC3\\verify.py",
+      "--repo",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-ec2",
+      "--archive",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\归档核查 空格"
+    ],
+    "exit_code": 1,
+    "output": "Traceback (most recent call last):\n  File \"E:\\SyncForder\\CodeRepos\\lux-engine-ec2\\dev_log\\EC3\\verify.py\", line 14, in <module>\n    assert hashlib.sha256(path.read_bytes()).hexdigest() == digest, f'changed evidence: {name}'\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nAssertionError: changed evidence: logs/final-build.log\n"
+  },
+  {
+    "case": "restored-positive",
+    "argv": [
+      "C:\\Users\\ChenHui\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-ec2\\dev_log\\EC3\\verify.py",
+      "--repo",
+      "E:\\SyncForder\\CodeRepos\\lux-engine-ec2",
+      "--archive",
+      "E:\\SyncForder\\CodeRepos\\lux-engine\\.internal\\editor-redesign\\EC3\\归档核查 空格"
+    ],
+    "exit_code": 0,
+    "output": "Verified authentic EC3 PARTIAL checkpoint; full behavior/SDK qualification is NOT complete: 17ea8c4079188fa54bb8e459496053454277c9d1\n"
+  }
+]

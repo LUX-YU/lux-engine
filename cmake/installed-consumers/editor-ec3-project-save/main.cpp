@@ -132,7 +132,7 @@ int main(int argc, char** argv)
     auto scope = take(dependencies.createScope());
     s::SessionOpening opening{runtime, store, saves, dependencies, scope};
     p::SaveExecution execution{runtime, saves, writes, files};
-    ProjectContentSaving saving{store, opening, saves, *project, writes, files};
+    ProjectContentSaving saving{store, opening, saves, *project, writes, files, runtime, execution};
     auto schemas = take(simulation::ecs::ComponentSchemaSet::build({}));
     auto factories = take(s::SessionFactorySnapshot::create(
         {es::makeSceneSessionFactory(schemas), em::makeMaterialSessionFactory(), ef::makeFlowSessionFactory()}

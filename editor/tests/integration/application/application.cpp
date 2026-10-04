@@ -712,22 +712,34 @@ int main(int argc, char** argv)
     material_action([&](lux::editor::material::MaterialView& view) { assert(view.requestPublication()); });
     rename_material();
     assert(app->update());
-    assert(impl.artifacts_.back().terminal() && impl.artifacts_.back().failure && !impl.artifacts_.back().operation);
+    const auto publicationReports = [&]
+    {
+        auto reports = impl.content_saving_->artifactReports();
+        assert(reports && !reports->empty());
+        return std::move(*reports);
+    };
+    auto rejected_artifact = publicationReports().back();
+    assert(
+        rejected_artifact.terminal && std::holds_alternative<EditorFailure>(rejected_artifact.status) &&
+        !rejected_artifact.admitted
+    );
     material_action([&](lux::editor::material::MaterialView& view) { assert(view.undo() && view.requestPublication()); }
     );
-    assert(app->update() && impl.artifacts_.back().operation && !impl.artifacts_.back().pending);
+    assert(app->update() && publicationReports().back().admitted);
     rename_material(); // Already admitted work owns the older capture, not this live source.
     const auto newer_material = impl.sessions_.describe(material_id);
-    while (!impl.artifacts_.back().terminal())
+    while (!publicationReports().back().terminal)
     {
         assert(std::chrono::steady_clock::now() < compile_deadline);
         assert(app->update());
     }
-    const auto& published_material = impl.artifacts_.back();
-    if (published_material.failure)
-        std::cerr << published_material.failure->domain << ": " << published_material.failure->message << '\n';
-    assert(!published_material.failure && published_material.operation);
-    assert(std::holds_alternative<PublicationSucceeded>(published_material.operation->status()));
+    const auto published_material = publicationReports().back();
+    if (const auto* failure = std::get_if<EditorFailure>(&published_material.status))
+    {
+        std::cerr << failure->domain << ": " << failure->message << '\n';
+    }
+    assert(published_material.admitted && published_material.terminal);
+    assert(std::holds_alternative<PublicationSucceeded>(published_material.status));
     auto* compiled_entry = impl.project_->asset(saved_material->binding->asset);
     assert(compiled_entry && !compiled_entry->cooked_path.empty());
     assert(compiled_entry->compiled_source_digest == compiled_entry->source_digest);

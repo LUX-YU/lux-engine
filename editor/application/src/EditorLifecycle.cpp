@@ -262,11 +262,18 @@ namespace lux::editor::application
             return status->stage == persistence::ESaveStage::TERMINAL &&
                    (report == content_saving_->reports().end() || report->result.has_value());
         };
-        for (const auto& artifact : artifacts_)
+        auto artifacts = content_saving_->artifactReports();
+        if (!artifacts)
         {
-            if (artifact.terminal())
+            return cxx::unexpected(std::move(artifacts.error()));
+        }
+        for (const auto& artifact : *artifacts)
+        {
+            if (artifact.terminal)
+            {
                 continue;
-            auto ticket = artifact.operation ? artifact.operation->ticket() : std::nullopt;
+            }
+            auto ticket = artifact.ticket;
             if (ticket)
             {
                 auto status = writes_.status(*ticket);
@@ -421,7 +428,6 @@ namespace lux::editor::application
         if (auto received = material_compilation_.collectReleased(); !received)
             receive(applicationFailure("material.release", received.error()));
         receive(content_saving_->update(closing_ ? closing_->saves() : std::span<const sessions::SaveAllEntry>{}));
-        receive(settleArtifacts());
         receive(settleWorkspace());
         const bool operations_settled =
             importer_->closeStatus().state == assets::EModelImportCloseState::CLOSED && material_compilation_.empty() &&
@@ -431,7 +437,6 @@ namespace lux::editor::application
                 workspace_changes_.publications(),
                 [](const auto& value) { return value.result.has_value(); }
             ) &&
-            std::ranges::all_of(artifacts_, [](const auto& value) { return value.terminal(); }) &&
             std::ranges::none_of(run_presentations_, [](const auto& run) { return bool(run.preparing) || run.run; });
         if (phase_ == EApplicationPhase::DRAINING && operations_settled &&
             std::ranges::none_of(reloads_, [](const auto& reload) { return bool(reload.operation); }) &&

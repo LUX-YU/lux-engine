@@ -1,10 +1,11 @@
-#include <lux/engine/editor/storage/ProjectContentSaving.hpp>
-#include <lux/engine/editor/storage/ProjectStorage.hpp>
-#include <lux/engine/editor/sessions/SessionOpening.hpp>
-#include <lux/engine/editor/sessions/SessionOperations.hpp>
+#include <algorithm>
 #include <lux/engine/editor/persistence/DerivedArtifact.hpp>
 #include <lux/engine/editor/persistence/SaveService.hpp>
-#include <algorithm>
+#include <lux/engine/editor/sessions/SessionOpening.hpp>
+#include <lux/engine/editor/sessions/SessionOperations.hpp>
+#include <lux/engine/editor/storage/ArtifactPublicationOperation.hpp>
+#include <lux/engine/editor/storage/ProjectContentSaving.hpp>
+#include <lux/engine/editor/storage/ProjectStorage.hpp>
 #include <random>
 #include <thread>
 
@@ -44,11 +45,26 @@ namespace lux::editor
         ProjectStorage& project_;
         persistence::WriteCoordinator& writes_;
         persistence::IArtifactStore& files_;
+        process::ExecutionRuntime& runtime_;
+        persistence::SaveExecution& execution_;
+        const std::thread::id owner_{std::this_thread::get_id()};
+        bool dispatching_{};
+        struct Artifact final
+        {
+            std::uint64_t id;
+            std::optional<persistence::DerivedArtifact> pending;
+            std::unique_ptr<ArtifactPublicationOperation> operation;
+            std::optional<EditorFailure> failure;
+            [[nodiscard]] bool terminal() const noexcept
+            {
+                return failure.has_value() || (operation && operation->terminal());
+            }
+        };
+        std::vector<Artifact> artifacts_;
+        std::uint64_t next_artifact_{1};
         std::vector<ProjectSaveReport> save_reports_;
         std::vector<persistence::SaveId> pending_saves_;
         std::optional<sessions::SaveAllOperation> save_all_;
-        const std::thread::id owner_{std::this_thread::get_id()};
-        bool dispatching_{};
         struct Dispatch final
         {
             bool& active;
@@ -69,12 +85,21 @@ namespace lux::editor
             persistence::SaveService& saves,
             ProjectStorage& project,
             persistence::WriteCoordinator& writes,
-            persistence::IArtifactStore& files
+            persistence::IArtifactStore& files,
+            process::ExecutionRuntime& runtime,
+            persistence::SaveExecution& execution
         )
-            : sessions_(sessions), opening_(opening), saves_(saves), project_(project), writes_(writes), files_(files)
+            : sessions_(sessions), opening_(opening), saves_(saves), project_(project), writes_(writes), files_(files),
+              runtime_(runtime), execution_(execution)
         {
             save_reports_.reserve(capacity_);
             pending_saves_.reserve(capacity_);
+            artifacts_.reserve(64);
+        }
+        ~Impl()
+        {
+            // Keep admission closed during automatic destruction, including foreign source cleanup.
+            dispatching_ = true;
         }
         EditorResult<void> admission() const
         {
@@ -406,6 +431,41 @@ namespace lux::editor
             }
             return {};
         }
+        void updateArtifacts()
+        {
+            // This fixed accepted set owns its inputs. No UI state or later current stamp is sampled.
+            // One rejected source never prevents another accepted publication from making progress.
+            for (auto& entry : artifacts_)
+            {
+                if (entry.terminal())
+                {
+                    continue;
+                }
+                if (entry.pending)
+                {
+                    auto accepted = ArtifactPublicationOperation::create(
+                        *entry.pending,
+                        sessions_,
+                        project_,
+                        runtime_,
+                        writes_,
+                        files_,
+                        execution_
+                    );
+                    if (!accepted)
+                    {
+                        if (accepted.error().code != EEditorError::BUSY)
+                        {
+                            entry.failure = std::move(accepted.error());
+                        }
+                        continue;
+                    }
+                    entry.operation = std::move(*accepted);
+                    entry.pending.reset();
+                }
+                entry.operation->update();
+            }
+        }
     };
     ProjectContentSaving::ProjectContentSaving(
         sessions::SessionStore& sessions,
@@ -413,9 +473,11 @@ namespace lux::editor
         persistence::SaveService& saves,
         ProjectStorage& project,
         persistence::WriteCoordinator& writes,
-        persistence::IArtifactStore& files
+        persistence::IArtifactStore& files,
+        process::ExecutionRuntime& runtime,
+        persistence::SaveExecution& execution
     )
-        : impl_(std::make_unique<Impl>(sessions, opening, saves, project, writes, files))
+        : impl_(std::make_unique<Impl>(sessions, opening, saves, project, writes, files, runtime, execution))
     {
     }
     ProjectContentSaving::~ProjectContentSaving() = default;
@@ -456,7 +518,9 @@ namespace lux::editor
         if (auto admitted = impl_->admission(); !admitted)
             return cxx::unexpected(admitted.error());
         Impl::Dispatch scope{impl_->dispatching_};
-        return impl_->update(borrowed);
+        auto saved = impl_->update(borrowed);
+        impl_->updateArtifacts();
+        return saved;
     }
     EditorResult<void> ProjectContentSaving::saveAll()
     {
@@ -487,6 +551,107 @@ namespace lux::editor
         impl_->save_all_.reset();
         return {};
     }
+    EditorResult<std::uint64_t> ProjectContentSaving::requestArtifact(persistence::DerivedArtifact input)
+    {
+        if (auto admitted = impl_->admission(); !admitted)
+        {
+            return cxx::unexpected(admitted.error());
+        }
+        Impl::Dispatch scope{impl_->dispatching_};
+        // Rejected extension input is destroyed before this dispatch guard is released.
+        auto source = std::move(input);
+        if (!source.valid())
+        {
+            return cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "artifact.input"});
+        }
+        const bool is_full = impl_->artifacts_.size() == 64;
+        const bool is_exhausted = impl_->next_artifact_ == UINT64_MAX;
+        if (is_full || is_exhausted)
+        {
+            return cxx::unexpected(EditorFailure{EEditorError::CAPACITY, "artifact.results"});
+        }
+        const auto id = impl_->next_artifact_++;
+        impl_->artifacts_.push_back({id, std::move(source)});
+        return id;
+    }
+    EditorResult<std::vector<ArtifactPublicationReport>> ProjectContentSaving::artifactReports() const
+    {
+        if (auto admitted = impl_->admission(); !admitted)
+        {
+            return cxx::unexpected(admitted.error());
+        }
+        Impl::Dispatch scope{impl_->dispatching_};
+        std::vector<ArtifactPublicationReport> result;
+        result.reserve(impl_->artifacts_.size());
+        for (const auto& entry : impl_->artifacts_)
+        {
+            ArtifactPublicationReport report{entry.id};
+            report.admitted = bool(entry.operation);
+            report.terminal = entry.terminal();
+            if (entry.operation)
+            {
+                report.status = entry.operation->status();
+                report.path = entry.operation->path();
+                report.ticket = entry.operation->ticket();
+            }
+            if (entry.failure)
+            {
+                report.status = *entry.failure;
+            }
+            result.push_back(std::move(report));
+        }
+        return result;
+    }
+    EditorResult<void> ProjectContentSaving::retryArtifact(std::uint64_t id)
+    {
+        if (auto admitted = impl_->admission(); !admitted)
+        {
+            return admitted;
+        }
+        Impl::Dispatch scope{impl_->dispatching_};
+        auto found = std::ranges::find(impl_->artifacts_, id, &Impl::Artifact::id);
+        const bool is_missing = found == impl_->artifacts_.end() || !found->operation;
+        if (is_missing)
+        {
+            return cxx::unexpected(EditorFailure{EEditorError::STALE_REQUEST, "artifact.retry"});
+        }
+        return found->operation->retry();
+    }
+    EditorResult<void> ProjectContentSaving::abandonArtifact(std::uint64_t id)
+    {
+        if (auto admitted = impl_->admission(); !admitted)
+        {
+            return admitted;
+        }
+        Impl::Dispatch scope{impl_->dispatching_};
+        auto found = std::ranges::find(impl_->artifacts_, id, &Impl::Artifact::id);
+        const bool is_missing = found == impl_->artifacts_.end() || !found->operation;
+        if (is_missing)
+        {
+            return cxx::unexpected(EditorFailure{EEditorError::STALE_REQUEST, "artifact.abandon"});
+        }
+        found->operation->abandon();
+        return {};
+    }
+    EditorResult<void> ProjectContentSaving::acknowledgeArtifact(std::uint64_t id)
+    {
+        if (auto admitted = impl_->admission(); !admitted)
+        {
+            return admitted;
+        }
+        Impl::Dispatch scope{impl_->dispatching_};
+        auto found = std::ranges::find(impl_->artifacts_, id, &Impl::Artifact::id);
+        if (found == impl_->artifacts_.end())
+        {
+            return cxx::unexpected(EditorFailure{EEditorError::STALE_REQUEST, "artifact.result"});
+        }
+        if (!found->terminal())
+        {
+            return cxx::unexpected(EditorFailure{EEditorError::BUSY, "artifact.result"});
+        }
+        impl_->artifacts_.erase(found);
+        return {};
+    }
     std::span<const ProjectSaveReport> ProjectContentSaving::reports() const noexcept
     {
         return impl_->save_reports_;
@@ -509,6 +674,7 @@ namespace lux::editor
     }
     bool ProjectContentSaving::settled() const noexcept
     {
-        return impl_->pending_saves_.empty();
+        return impl_->pending_saves_.empty() &&
+               std::ranges::all_of(impl_->artifacts_, [](const auto& entry) { return entry.terminal(); });
     }
 } // namespace lux::editor

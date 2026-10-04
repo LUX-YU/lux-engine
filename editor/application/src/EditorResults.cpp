@@ -19,20 +19,15 @@ namespace lux::editor::application
                 }
                 else if constexpr (std::same_as<Action, AcknowledgeArtifact>)
                 {
-                    std::erase_if(
-                        artifacts_,
-                        [&](const auto& entry) { return entry.id == action.target && entry.terminal(); }
-                    );
+                    return content_saving_->acknowledgeArtifact(action.target);
                 }
-                else if constexpr (std::same_as<Action, RetryArtifact> || std::same_as<Action, AbandonArtifact>)
+                else if constexpr (std::same_as<Action, RetryArtifact>)
                 {
-                    const auto found = std::ranges::find(artifacts_, action.target, &ArtifactPresentation::id);
-                    if (found == artifacts_.end() || !found->operation)
-                        return cxx::unexpected(EditorFailure{EEditorError::STALE_REQUEST, "artifact.result"});
-                    if constexpr (std::same_as<Action, RetryArtifact>)
-                        return found->operation->retry();
-                    else
-                        found->operation->abandon();
+                    return content_saving_->retryArtifact(action.target);
+                }
+                else if constexpr (std::same_as<Action, AbandonArtifact>)
+                {
+                    return content_saving_->abandonArtifact(action.target);
                 }
                 else if constexpr (std::same_as<Action, AcknowledgeSave>)
                 {
@@ -198,31 +193,42 @@ namespace lux::editor::application
             }
         }
         snapshot.sections.push_back({"Compiled publications"});
-        for (const auto& report : artifacts_)
+        auto artifacts = content_saving_->artifactReports();
+        if (!artifacts)
+        {
+            return cxx::unexpected(std::move(artifacts.error()));
+        }
+        for (const auto& report : *artifacts)
         {
             auto& to = row(std::to_string(report.id));
-            if (report.failure)
-                diagnostic(to, *report.failure);
-            if (report.operation)
+            if (report.admitted)
             {
-                to.messages.emplace_back(report.operation->path());
-                const auto& status = report.operation->status();
-                if (const auto* failed = std::get_if<EditorFailure>(&status))
+                to.messages.push_back(report.path);
+            }
+            if (const auto* failed = std::get_if<EditorFailure>(&report.status))
+            {
+                diagnostic(to, *failed);
+                if (report.admitted)
                 {
-                    diagnostic(to, *failed);
                     to.actions.push_back({"Retry retained publication", RetryArtifact{report.id}});
                     to.actions.push_back({"Abandon remaining publication", AbandonArtifact{report.id}});
                 }
-                else if (std::holds_alternative<PublicationSucceeded>(status))
-                    to.messages.emplace_back("Package and catalog published. Author save baseline is unchanged.");
-                else if (const auto* abandoned = std::get_if<PublicationAbandoned>(&status))
-                    to.messages.push_back(
-                        "Publication stopped; " + std::to_string(abandoned->published_files) +
-                        " files already published remain on disk."
-                    );
             }
-            if (report.terminal())
+            else if (std::holds_alternative<PublicationSucceeded>(report.status))
+            {
+                to.messages.emplace_back("Package and catalog published. Author save baseline is unchanged.");
+            }
+            else if (const auto* abandoned = std::get_if<PublicationAbandoned>(&report.status))
+            {
+                to.messages.push_back(
+                    "Publication stopped; " + std::to_string(abandoned->published_files) +
+                    " files already published remain on disk."
+                );
+            }
+            if (report.terminal)
+            {
                 to.actions.push_back({"Acknowledge publication", AcknowledgeArtifact{report.id}});
+            }
         }
         snapshot.sections.push_back({"Save results"});
         for (const auto& report : content_saving_->reports())

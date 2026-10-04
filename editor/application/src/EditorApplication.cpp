@@ -41,7 +41,6 @@ namespace lux::editor::application
         opens_.reserve(64);
         open_intents_.reserve(64);
         model_placements_.reserve(32);
-        artifacts_.reserve(64);
     }
     EditorApplication::Impl::~Impl()
     {
@@ -194,8 +193,16 @@ namespace lux::editor::application
         if (!project)
             return cxx::unexpected(project.error());
         project_ = std::move(*project);
-        content_saving_ =
-            std::make_unique<ProjectContentSaving>(sessions_, opening_, saves_, *project_, writes_, files_);
+        content_saving_ = std::make_unique<ProjectContentSaving>(
+            sessions_,
+            opening_,
+            saves_,
+            *project_,
+            writes_,
+            files_,
+            engine_->execution(),
+            save_execution_
+        );
         plugin_saving_ =
             std::make_unique<ProjectPluginSelection>(*project_, engine_->execution(), writes_, files_, save_execution_);
         recent_projects_ = std::make_unique<RecentProjects>(

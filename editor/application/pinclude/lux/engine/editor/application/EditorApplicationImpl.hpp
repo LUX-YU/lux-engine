@@ -7,7 +7,6 @@
 #include <lux/engine/editor/desktop/WorkspaceActions.hpp>
 #include <lux/engine/editor/project/ResultsView.hpp>
 #include <lux/engine/editor/project/WorkspaceView.hpp>
-#include <lux/engine/editor/storage/ArtifactPublicationOperation.hpp>
 #include <lux/engine/editor/storage/ProjectContentSaving.hpp>
 #include <lux/engine/editor/storage/ProjectPluginSelection.hpp>
 #include <lux/engine/editor/storage/RecentProjects.hpp>
@@ -94,18 +93,6 @@ namespace lux::editor::application
             std::optional<EditorFailure> failure;
             bool cancel_requested{};
         };
-        struct ArtifactPresentation final
-        {
-            std::uint64_t id;
-            std::optional<persistence::DerivedArtifact> pending;
-            std::unique_ptr<ArtifactPublicationOperation> operation;
-            std::optional<EditorFailure> failure;
-            [[nodiscard]] bool terminal() const noexcept
-            {
-                return failure.has_value() || (operation && operation->terminal());
-            }
-        };
-
         struct SaveQuestion final
         {
             commands::SessionTarget target;
@@ -294,8 +281,6 @@ namespace lux::editor::application
         std::vector<AssetReference> open_intents_;
         std::vector<ModelPresentation> model_placements_;
         std::uint64_t next_model_{1};
-        std::vector<ArtifactPresentation> artifacts_;
-        std::uint64_t next_artifact_{1};
         std::optional<SaveQuestion> save_question_;
         std::vector<ReloadPresentation> reloads_;
         std::optional<ReloadQuestion> reload_question_;
@@ -372,7 +357,6 @@ namespace lux::editor::application
         [[nodiscard]] EditorResult<void> askSave(commands::SessionTarget, persistence::ESaveMode);
         [[nodiscard]] EditorResult<void> receiveSaveAnswer();
         void receiveArtifact(persistence::DerivedArtifact);
-        [[nodiscard]] EditorResult<void> settleArtifacts();
         [[nodiscard]] EditorResult<void> cancelContentPreview(sessions::SessionId);
         [[nodiscard]] EditorResult<void> reload(commands::SessionTarget);
         [[nodiscard]] EditorResult<void> askReload(commands::SessionTarget);

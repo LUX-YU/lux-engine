@@ -9,7 +9,13 @@ namespace lux::editor::persistence
     class SaveService;
     class WriteCoordinator;
     class IArtifactStore;
+    class SaveExecution;
+    class DerivedArtifact;
 } // namespace lux::editor::persistence
+namespace lux::process
+{
+    class ExecutionRuntime;
+}
 namespace lux::editor::sessions
 {
     class SessionStore;
@@ -18,6 +24,15 @@ namespace lux::editor::sessions
 } // namespace lux::editor::sessions
 namespace lux::editor
 {
+    // Immutable observation of the existing publication owner, never another disk/result authority.
+    struct ArtifactPublicationReport final
+    {
+        std::uint64_t id{};
+        VPublicationStatus status;
+        std::string path;
+        std::optional<persistence::WriteTicket> ticket;
+        bool admitted{}, terminal{};
+    };
     struct PreparedProjectSave final
     {
         persistence::SaveRequest request;
@@ -42,13 +57,22 @@ namespace lux::editor
         friend class ProjectContentSaving;
         std::optional<PreparedProjectPublication> catalog_;
     };
-    // Owns source-save/catalog association and final acknowledgement. Encoding, disk publication and
-    // checkpoint adoption remain in SaveService / WriteCoordinator. All calls use the constructing thread.
+    // Owns source-save/catalog association and compiled publication requests/results. Encoding, disk
+    // publication and checkpoint adoption remain in the existing operations and WriteCoordinator.
     // Drive accepted work to settled() before destruction, while those borrowed owners are still alive.
     class ProjectContentSaving final
     {
     public:
-        ProjectContentSaving(sessions::SessionStore&, sessions::SessionOpening&, persistence::SaveService&, ProjectStorage&, persistence::WriteCoordinator&, persistence::IArtifactStore&);
+        ProjectContentSaving(
+            sessions::SessionStore&,
+            sessions::SessionOpening&,
+            persistence::SaveService&,
+            ProjectStorage&,
+            persistence::WriteCoordinator&,
+            persistence::IArtifactStore&,
+            process::ExecutionRuntime&,
+            persistence::SaveExecution&
+        );
         ~ProjectContentSaving();
         ProjectContentSaving(const ProjectContentSaving&) = delete;
         ProjectContentSaving& operator=(const ProjectContentSaving&) = delete;
@@ -77,6 +101,14 @@ namespace lux::editor
         [[nodiscard]] EditorResult<void> update(std::span<const sessions::SaveAllEntry> borrowed = {});
         [[nodiscard]] EditorResult<void> acknowledge(persistence::SaveId);
         [[nodiscard]] EditorResult<void> acknowledgeSaveAll();
+
+        // Accept a fixed input for owner-stage admission. BUSY retains it; later source changes are
+        // rejected, never silently recaptured. Accepted work survives all observing windows.
+        [[nodiscard]] EditorResult<std::uint64_t> requestArtifact(persistence::DerivedArtifact);
+        [[nodiscard]] EditorResult<std::vector<ArtifactPublicationReport>> artifactReports() const;
+        [[nodiscard]] EditorResult<void> retryArtifact(std::uint64_t);
+        [[nodiscard]] EditorResult<void> abandonArtifact(std::uint64_t);
+        [[nodiscard]] EditorResult<void> acknowledgeArtifact(std::uint64_t);
 
         // Borrowed observations are valid until the next mutating call. They never expose catalog permits.
         [[nodiscard]] std::span<const ProjectSaveReport> reports() const noexcept;

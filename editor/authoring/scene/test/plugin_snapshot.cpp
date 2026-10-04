@@ -198,7 +198,7 @@ void codecReadRegression(int scenario)
         description
     ));
     sessions::SessionStore store{2};
-    auto reservation = take(store.reserve<SceneSession>({"lux.editor.scene"}, contracts::CodeLease::builtin()));
+    auto reservation = take(store.reserve<SceneSession>({"lux.editor.scene"}, lux::object::CodeLease::builtin()));
     auto candidate = take(SceneSession::create(
         reservation.id(),
         sessions::BoundSource{root, "codec.scene"},

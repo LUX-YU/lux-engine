@@ -80,7 +80,7 @@ namespace lux::editor::application
         );
         if (!question)
             return applicationFailure("reload.question.create", question.error());
-        views::DetachedView candidate{contracts::CodeLease::builtin(), std::move(*question)};
+        views::DetachedView candidate{lux::object::CodeLease::builtin(), std::move(*question)};
         auto shown = adopt(candidate, "reload-review");
         if (!shown)
             return cxx::unexpected(shown.error());

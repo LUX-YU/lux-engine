@@ -46,7 +46,7 @@ int main(int argc, char** argv)
     desktop::WorkspaceActions actions{host, store, changes, messages.dispatcherRef()};
     unsigned constructions{};
     auto factory = views::ViewFactoryEntry::create(
-        contracts::CodeLease::builtin(),
+        lux::object::CodeLease::builtin(),
         views::ViewFactoryDescriptor{views::ViewTypeIdView{"test.workspace"}, "Test", cxx::typeToken<std::monostate>()},
         [&](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView>
         {
@@ -54,7 +54,7 @@ int main(int argc, char** argv)
             assert(!nested && nested.error().code == EEditorError::BUSY);
             ++constructions;
             return views::DetachedView{
-                contracts::CodeLease::builtin(),
+                lux::object::CodeLease::builtin(),
                 std::make_unique<ui::Pane>(
                     input.dispatcher(),
                     input.paneId(),

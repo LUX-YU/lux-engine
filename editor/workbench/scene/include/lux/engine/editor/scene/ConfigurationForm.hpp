@@ -241,7 +241,7 @@ namespace lux::editor::detail
     template <class Configuration> scene::ConfigurationEditor configurationEditor(const char* schema)
     {
         return {
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             {schema,
              1,
              serialization::makePortableValueCodec<Configuration>(),

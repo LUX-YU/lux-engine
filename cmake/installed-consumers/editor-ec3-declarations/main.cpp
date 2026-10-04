@@ -6,7 +6,7 @@
 #include <cstdio>
 
 using namespace lux::editor::commands;
-using lux::editor::contracts::CodeLease;
+using lux::object::CodeLease;
 namespace sessions = lux::editor::sessions;
 namespace views = lux::editor::views;
 namespace

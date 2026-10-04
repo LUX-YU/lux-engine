@@ -8,7 +8,7 @@
 using namespace lux::editor;
 namespace
 {
-    extensions::ContributionResult<void> mustNotCall(extensions::ContributionDraft&, contracts::CodeLease)
+    extensions::ContributionResult<void> mustNotCall(extensions::ContributionDraft&, lux::object::CodeLease)
     {
         std::abort();
     }

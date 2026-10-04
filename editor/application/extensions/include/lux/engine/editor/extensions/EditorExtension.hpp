@@ -22,13 +22,13 @@ namespace lux::editor::extensions
         ContributionCounts counts;
         // Caller owns the draft; no catalog is modified by this entry. The supplied lease must wrap
         // every dynamic entry/payload/destructor, including later worker and owner-stage preparations.
-        ContributionResult<void> (*contribute)(ContributionDraft&, contracts::CodeLease){};
+        ContributionResult<void> (*contribute)(ContributionDraft&, lux::object::CodeLease){};
         // Optional application activation, separate from cold metadata registration. No live Pane or
         // asynchronous work is published here. Captured activation state belongs to the returned
         // contribution closures and is destroyed before their external code lease.
         ContributionCounts activation_counts;
         ExtensionRequirements requires_capabilities;
-        ContributionResult<void> (*activate)(ContributionDraft&, contracts::CodeLease, const ExtensionCapabilities&){};
+        ContributionResult<void> (*activate)(ContributionDraft&, lux::object::CodeLease, const ExtensionCapabilities&){};
     };
     using GetEditorExtension = const EditorExtensionExports*() noexcept;
     class EditorExtension final

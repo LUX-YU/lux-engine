@@ -6,16 +6,16 @@ namespace lux::editor::sessions
 {
     struct SessionPreparation::Data final
     {
-        contracts::CodeLease code;
+        lux::object::CodeLease code;
         using VPreparation = std::variant<Prepare, Reload>;
         VPreparation preparation;
         std::optional<ContentStamp> reload;
     };
-    SessionPreparation::SessionPreparation(contracts::CodeLease code, Prepare prepare)
+    SessionPreparation::SessionPreparation(lux::object::CodeLease code, Prepare prepare)
         : data_(std::make_unique<Data>(std::move(code), std::move(prepare)))
     {
     }
-    SessionPreparation::SessionPreparation(contracts::CodeLease code, ContentStamp expected, Reload reload)
+    SessionPreparation::SessionPreparation(lux::object::CodeLease code, ContentStamp expected, Reload reload)
         : data_(std::make_unique<Data>(std::move(code), std::move(reload), expected))
     {
     }
@@ -50,7 +50,7 @@ namespace lux::editor::sessions
             return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::INVALID_ARGUMENT, "prepared.data"});
         auto invoke = [&]() -> SessionFactoryResult<PreparedSessionInstallation>
         {
-            if (owned->code.sameOwner(contracts::CodeLease::builtin()))
+            if (owned->code.sameOwner(lux::object::CodeLease::builtin()))
                 return (*prepare)(store, saves);
             try
             {
@@ -91,7 +91,7 @@ namespace lux::editor::sessions
         // On BUSY it leaves its input intact, so no encoder/decoder is rerun on retry.
         auto invoke = [&]() -> SessionFactoryResult<PreparedSessionReload>
         {
-            if (data_->code.sameOwner(contracts::CodeLease::builtin()))
+            if (data_->code.sameOwner(lux::object::CodeLease::builtin()))
                 return (*reload)(store);
             try
             {
@@ -112,7 +112,7 @@ namespace lux::editor::sessions
         return result;
     }
     PreparedSessionReload::PreparedSessionReload(
-        contracts::CodeLease code,
+        lux::object::CodeLease code,
         SessionId session,
         Adopt adopt,
         std::unique_ptr<persistence::ISaveSource> source
@@ -134,7 +134,7 @@ namespace lux::editor::sessions
         }
         return *this;
     }
-    bool SessionPreparation::usesCode(const contracts::CodeLease& code) const noexcept
+    bool SessionPreparation::usesCode(const lux::object::CodeLease& code) const noexcept
     {
         return data_ && data_->code.sameOwner(code);
     }
@@ -180,7 +180,7 @@ namespace lux::editor::sessions
         }
     };
     std::shared_ptr<SessionFactoryEntry> SessionFactoryEntry::create(
-        contracts::CodeLease code,
+        lux::object::CodeLease code,
         const SessionKindDescriptor& descriptor,
         Decode decode
     )
@@ -193,7 +193,7 @@ namespace lux::editor::sessions
         return entry;
     }
     SessionFactoryEntry::SessionFactoryEntry(
-        contracts::CodeLease code,
+        lux::object::CodeLease code,
         const SessionKindDescriptor& descriptor,
         Decode decode
     )
@@ -225,7 +225,7 @@ namespace lux::editor::sessions
             if (entry)
             {
                 auto code = entry->code_;
-                entry = contracts::pinCodeOwner(std::move(code), std::move(entry));
+                entry = lux::object::pinCodeOwner(std::move(code), std::move(entry));
             }
         if (entries.size() > capacity)
             return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::CAPACITY, "factory"});
@@ -414,7 +414,7 @@ namespace lux::editor::sessions
             return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::CANCELLED, "load"});
         auto invoke = [&]() -> SessionFactoryResult<SessionPreparation>
         {
-            if (owned.entry_->code_.sameOwner(contracts::CodeLease::builtin()))
+            if (owned.entry_->code_.sameOwner(lux::object::CodeLease::builtin()))
                 return owned.entry_->decode_(owned.input_, blob->bytes.view(), stop);
             try
             {

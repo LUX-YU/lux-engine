@@ -587,7 +587,7 @@ namespace lux::editor::scene
         if (!view->status())
             return cxx::unexpected(view->status().error());
         return views::DetachedView{
-            contracts::CodeLease::builtin(), std::move(view), nullptr, nullptr, nullptr, nullptr,
+            lux::object::CodeLease::builtin(), std::move(view), nullptr, nullptr, nullptr, nullptr,
             +[](const lux::ui::Pane& pane) noexcept { return static_cast<const OutlinerView&>(pane).content(); }
         };
     }

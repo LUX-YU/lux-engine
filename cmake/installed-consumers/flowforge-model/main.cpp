@@ -8,7 +8,7 @@ int main()
     namespace model = lux::editor::flowforge;
     namespace flow = lux::flowforge;
     namespace sessions = lux::editor::sessions;
-    using lux::editor::contracts::CodeLease;
+    using lux::object::CodeLease;
     sessions::SessionStore store{1};
     auto reservation = store.reserve<model::FlowSession>({"lux.editor.flowforge"}, CodeLease::builtin());
     assert(reservation);

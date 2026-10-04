@@ -11,7 +11,7 @@ namespace lux::editor::material
         const std::thread::id owner{std::this_thread::get_id()};
         MaterialSessionLimits limits;
         sessions::SessionState state;
-        std::vector<contracts::CodeLease> code;
+        std::vector<lux::object::CodeLease> code;
         lux::material::MaterialSource source;
         std::unique_ptr<editing::EditHistory> history;
         Impl(sessions::SessionId id, sessions::SourceBinding binding, MaterialSessionLimits policy)

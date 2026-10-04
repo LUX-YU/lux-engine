@@ -67,7 +67,7 @@ namespace
         )
         {
             auto reservation =
-                take(store.reserve<FlowSession>({"lux.editor.flowforge"}, contracts::CodeLease::builtin()));
+                take(store.reserve<FlowSession>({"lux.editor.flowforge"}, lux::object::CodeLease::builtin()));
             id = reservation.id();
             auto candidate = take(FlowSession::create(
                 id,

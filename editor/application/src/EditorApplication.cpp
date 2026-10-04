@@ -310,7 +310,7 @@ namespace lux::editor::application
                 views::ViewTypeId{type},
                 {messages_.dispatcherRef(),
                  lux::ui::PaneId{key},
-                 contracts::CodeLease::builtin(),
+                 lux::object::CodeLease::builtin(),
                  cxx::typeToken<std::monostate>(),
                  std::make_shared<const std::monostate>()}
             );

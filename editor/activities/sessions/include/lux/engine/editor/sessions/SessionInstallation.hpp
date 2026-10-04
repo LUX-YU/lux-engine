@@ -37,7 +37,7 @@ namespace lux::editor::sessions
     public:
         // Called after Store.prepare; its moved reservation owns hidden-slot rollback.
         [[nodiscard]] static SessionFactoryResult<PreparedSessionInstallation>
-        prepare(SessionStore&, persistence::SaveService&, SessionReservation, contracts::CodeLease, std::unique_ptr<HistoryActions>, std::unique_ptr<persistence::ISaveSource>);
+        prepare(SessionStore&, persistence::SaveService&, SessionReservation, lux::object::CodeLease, std::unique_ptr<HistoryActions>, std::unique_ptr<persistence::ISaveSource>);
         ~PreparedSessionInstallation();
         PreparedSessionInstallation(PreparedSessionInstallation&&) noexcept;
         PreparedSessionInstallation& operator=(PreparedSessionInstallation&&) noexcept;
@@ -46,7 +46,7 @@ namespace lux::editor::sessions
         [[nodiscard]] SessionId id() const noexcept;
         // No notifications here. The caller reports installation before attempting its fact notification.
         [[nodiscard]] SessionFactoryResult<InstalledSession> publish();
-        [[nodiscard]] bool usesCode(const contracts::CodeLease&) const noexcept;
+        [[nodiscard]] bool usesCode(const lux::object::CodeLease&) const noexcept;
 
     private:
         explicit PreparedSessionInstallation(std::shared_ptr<detail::SessionInstallationData>) noexcept;

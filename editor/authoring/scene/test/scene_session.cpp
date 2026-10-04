@@ -79,7 +79,7 @@ namespace
         explicit Fixture(SceneSessionLimits limits = {}, std::string_view root = "root")
             : input(package(metadata, root))
         {
-            auto reservation = take(store.reserve<SceneSession>({"lux.editor.scene"}, contracts::CodeLease::builtin()));
+            auto reservation = take(store.reserve<SceneSession>({"lux.editor.scene"}, lux::object::CodeLease::builtin()));
             id = reservation.id();
             auto source = take(SceneSource::create(input, metadata));
             auto candidate = take(SceneSession::create(
@@ -191,7 +191,7 @@ namespace
             auto input = take(lux::scene::createScenePackage(asset::AssetId{uuid("applicability")}, "facts", ids,
                 std::make_shared<const simulation::SimulationDescription>(std::move(simulation)), description));
             sessions::SessionStore store{8};
-            auto reservation = take(store.reserve<SceneSession>({"lux.editor.scene"}, contracts::CodeLease::builtin()));
+            auto reservation = take(store.reserve<SceneSession>({"lux.editor.scene"}, lux::object::CodeLease::builtin()));
             auto candidate = take(SceneSession::create(reservation.id(), {}, take(SceneSource::create(input, metadata))));
             auto* session = candidate.get();
             assert(store.prepare(reservation, candidate) && store.publish(reservation));

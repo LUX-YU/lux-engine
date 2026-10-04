@@ -19,7 +19,7 @@ namespace lux::editor::material
         PreparedMaterialData data,
         sessions::SourceBinding binding,
         std::optional<persistence::WriteTarget> target,
-        contracts::CodeLease code
+        lux::object::CodeLease code
     )
     {
         using namespace sessions;
@@ -42,7 +42,7 @@ namespace lux::editor::material
             }
         };
     }
-    std::shared_ptr<sessions::SessionFactoryEntry> makeMaterialSessionFactory(contracts::CodeLease code)
+    std::shared_ptr<sessions::SessionFactoryEntry> makeMaterialSessionFactory(lux::object::CodeLease code)
     {
         using namespace sessions;
         return SessionFactoryEntry::bind<descriptor>(
@@ -114,7 +114,7 @@ namespace lux::editor::material
     )
     {
         return commands::CommandEntry::bind<kNewCommand>(
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             std::move(query),
             [create = std::move(receiver)](const commands::CommandInvocation&) mutable
             {

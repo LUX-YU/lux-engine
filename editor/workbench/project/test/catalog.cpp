@@ -177,7 +177,7 @@ int main()
             views::ViewTypeId{"lux.editor.project"},
             {messages.dispatcherRef(),
              ui::PaneId{name},
-             contracts::CodeLease::builtin(),
+             lux::object::CodeLease::builtin(),
              cxx::typeToken<std::monostate>(),
              std::make_shared<const std::monostate>()}
         ));

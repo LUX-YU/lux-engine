@@ -35,7 +35,7 @@ namespace lux::editor::flowforge
         auto impl = std::make_unique<Impl>(id, std::move(binding), limits);
         impl->environment = input.environment;
         if (input.environment.code_lifetime)
-            impl->code.push_back(contracts::CodeLease::plugin(input.environment.code_lifetime));
+            impl->code.push_back(lux::object::CodeLease::plugin(input.environment.code_lifetime));
         impl->source = {captured->id, captured->name, std::move(*graph)};
         auto history = editing::EditHistory::create({limits.history, {}});
         if (!history)
@@ -92,14 +92,14 @@ namespace lux::editor::flowforge
                     if (std::ranges::none_of(code, [&](const auto& present) { return present.sameOwner(node->code); }))
                         code.push_back(node->code);
                 }
-            auto leases = std::make_shared<const std::vector<contracts::CodeLease>>(code);
+            auto leases = std::make_shared<const std::vector<lux::object::CodeLease>>(code);
             auto prepared = prepareFlowEdit(
                 impl_->source,
                 impl_->environment,
                 currentContent().state,
                 std::move(edits),
                 std::move(batch.label),
-                contracts::CodeLease::plugin(leases),
+                lux::object::CodeLease::plugin(leases),
                 {impl_.get(),
                  [](void* raw, const editing::CommitInfo&, bool) noexcept {
                      static_cast<Impl*>(raw)->state.contentChanged();

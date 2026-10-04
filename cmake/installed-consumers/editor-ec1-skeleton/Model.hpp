@@ -50,5 +50,5 @@ namespace skeleton
         rdesc::Skeleton source_;
         std::unique_ptr<editing::EditHistory> history_;
     };
-    std::shared_ptr<sessions::SessionFactoryEntry> factory(contracts::CodeLease);
+    std::shared_ptr<sessions::SessionFactoryEntry> factory(lux::object::CodeLease);
 } // namespace skeleton

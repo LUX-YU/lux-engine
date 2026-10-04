@@ -67,7 +67,7 @@ namespace
     {
         sessions::SessionStore authors{1};
         auto slot =
-            take(authors.reserve<em::MaterialSession>({"lux.editor.material"}, contracts::CodeLease::builtin()));
+            take(authors.reserve<em::MaterialSession>({"lux.editor.material"}, lux::object::CodeLease::builtin()));
         lux::material::MaterialSource source{identity(), "Ownership", {}};
         auto constant = std::make_unique<lux::material::ConstantNode>();
         constant->setType(lux::material::EValueType::VEC3);
@@ -170,7 +170,7 @@ namespace
     void checkFlow(process::ExecutionRuntime& execution, const char* linker)
     {
         sessions::SessionStore authors{1};
-        auto slot = take(authors.reserve<ef::FlowSession>({"lux.editor.flowforge"}, contracts::CodeLease::builtin()));
+        auto slot = take(authors.reserve<ef::FlowSession>({"lux.editor.flowforge"}, lux::object::CodeLease::builtin()));
         ef::FlowAuthoringSource source{identity(), "Ownership", {}};
         const auto index = source.graph.addNodes(std::make_unique<lux::flowforge::OnEventNode>("tick"));
         assert(source.graph.addExport(

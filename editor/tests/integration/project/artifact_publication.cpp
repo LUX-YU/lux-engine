@@ -82,7 +82,7 @@ int main(int argc, char** argv)
     p::SaveService saves{writes};
     p::SaveExecution execution{runtime, saves, writes, files};
     sessions::SessionStore authors{2};
-    auto reserved = take(authors.reserve<em::MaterialSession>({"lux.editor.material"}, contracts::CodeLease::builtin()));
+    auto reserved = take(authors.reserve<em::MaterialSession>({"lux.editor.material"}, lux::object::CodeLease::builtin()));
     auto candidate = take(em::MaterialSession::create(reserved.id(), sessions::BoundSource{id, "author.material"},
         std::move(source)));
     auto* model = candidate.get();

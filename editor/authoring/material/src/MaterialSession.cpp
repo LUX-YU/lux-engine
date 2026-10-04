@@ -10,7 +10,7 @@ namespace lux::editor::material
         sessions::SessionId id,
         sessions::SourceBinding binding,
         lux::material::MaterialSource source,
-        contracts::CodeLease code,
+        lux::object::CodeLease code,
         MaterialSessionLimits limits
     )
     try
@@ -98,7 +98,7 @@ namespace lux::editor::material
             if (batch.expected != currentContent())
                 return detail::rejected(EMaterialEditError::STALE_CONTENT);
             auto code = impl_->code;
-            const auto retain = [&](const contracts::CodeLease& lease) {
+            const auto retain = [&](const lux::object::CodeLease& lease) {
                 if (std::ranges::none_of(code, [&](const auto& present) { return present.sameOwner(lease); }))
                     code.push_back(lease);
             };
@@ -110,13 +110,13 @@ namespace lux::editor::material
                     retain(node->code);
             }
             // One immutable lease bundle pins every existing node implementation during replay.
-            auto owner = std::make_shared<const std::vector<contracts::CodeLease>>(code);
+            auto owner = std::make_shared<const std::vector<lux::object::CodeLease>>(code);
             auto prepared = prepareMaterialEdit(
                 impl_->source,
                 currentContent().state,
                 std::move(edits),
                 std::move(batch.label),
-                contracts::CodeLease::plugin(owner),
+                lux::object::CodeLease::plugin(owner),
                 {impl_.get(),
                  [](void* raw, const editing::CommitInfo&) noexcept { static_cast<Impl*>(raw)->state.contentChanged(); }
                 },
@@ -170,7 +170,7 @@ namespace lux::editor::material
         return gate_.withRead([&]() -> MaterialEditResult<MaterialSnapshot> {
             try
             {
-                const auto lease_bytes = code_.size() * sizeof(contracts::CodeLease);
+                const auto lease_bytes = code_.size() * sizeof(lux::object::CodeLease);
                 if (lease_bytes > budget.max_bytes || detail::sourceBytes(source_) > budget.max_bytes - lease_bytes)
                     return detail::rejected(EMaterialEditError::BUDGET);
                 MaterialSnapshot result;
@@ -202,7 +202,7 @@ namespace lux::editor::material
             const auto* node = source_.graph.node(id);
             if (!node)
                 return detail::rejected(EMaterialEditError::INVALID_NODE);
-            auto code = contracts::CodeLease::plugin(std::make_shared<const std::vector<contracts::CodeLease>>(code_));
+            auto code = lux::object::CodeLease::plugin(std::make_shared<const std::vector<lux::object::CodeLease>>(code_));
             try
             {
                 auto candidate = node->clone();

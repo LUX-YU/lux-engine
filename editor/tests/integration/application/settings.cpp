@@ -92,7 +92,7 @@ int main(int argc, char** argv)
     const auto publish = [&]
     {
         extensions::ContributionDraft draft;
-        draft.reflection.push_back({contracts::CodeLease::builtin(), project::registerDesktopSettings});
+        draft.reflection.push_back({lux::object::CodeLease::builtin(), project::registerDesktopSettings});
         draft.settings = project::makeDesktopSettingsPages(
             [&](const ConfigurationValue&) -> settings::SettingsResult<void>
             {

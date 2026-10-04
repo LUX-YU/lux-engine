@@ -106,7 +106,7 @@ namespace
     {
         return commands::CommandInvocation{
             commands::SessionTarget{info.id, info.current},
-            {contracts::CodeLease::builtin(),
+            {lux::object::CodeLease::builtin(),
              cxx::typeToken<skeleton::Rename>(),
              std::make_shared<const skeleton::Rename>(0, std::move(value), x)}
         };
@@ -271,7 +271,7 @@ int main(int argc, char** argv)
         auto missing_view = take(views::ViewFactorySnapshot::create({})).selectContent(before.kind);
         assert(!missing_view && store.size() == 1 && take(store.describe(id)).current == before.current);
         auto other = sessions::SessionFactoryEntry::create(
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             sessions::SessionKindDescriptor{
                 sessions::SessionKindIdView{"example.other"},
                 "Other",
@@ -382,7 +382,7 @@ int main(int argc, char** argv)
                     type,
                     {messages.dispatcherRef(),
                      ui::PaneId{name},
-                     contracts::CodeLease::builtin(),
+                     lux::object::CodeLease::builtin(),
                      cxx::typeToken<views::ContentViewInput>(),
                      std::make_shared<const views::ContentViewInput>(content, "Skeleton")}
                 ));

@@ -109,7 +109,7 @@ extern "C" LUX_RENDER_FEATURE_META_PUBLIC const lux::editor::extensions::EditorE
     static const extensions::EditorExtensionExports exports{
         .counts = {.configurations = static_cast<std::uint32_t>(std::size(configurations)), .reflection = 1},
         .contribute =
-            +[](extensions::ContributionDraft& draft, contracts::CodeLease code) -> extensions::ContributionResult<void>
+            +[](extensions::ContributionDraft& draft, lux::object::CodeLease code) -> extensions::ContributionResult<void>
         {
             draft.reflection.push_back(
                 {code,

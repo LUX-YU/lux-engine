@@ -48,7 +48,7 @@ namespace lux::editor::application
             }
         );
         extensions::ContributionDraft bootstrap;
-        bootstrap.reflection.push_back({contracts::CodeLease::builtin(), project::registerDesktopSettings});
+        bootstrap.reflection.push_back({lux::object::CodeLease::builtin(), project::registerDesktopSettings});
         bootstrap.settings = builtin_settings_;
         auto prepared = extensions::ContributionSnapshot::prepare(std::move(bootstrap));
         if (!prepared)

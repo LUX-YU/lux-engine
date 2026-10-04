@@ -47,7 +47,7 @@ namespace lux::editor::sessions
         using namespace commands;
         auto roles = std::make_shared<HistoryActionLookup>(std::move(lookup));
         return CommandEntry::bind<kSaveCommand>(
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             [&store, roles](const CommandQuery& input) -> CommandResult<CommandState>
             {
                 auto info = targetInfo(store, input.target);
@@ -85,7 +85,7 @@ namespace lux::editor::sessions
             const auto bind = [&]<const CommandDescriptor & Descriptor>()
             {
                 return CommandEntry::bind<Descriptor>(
-                    contracts::CodeLease::builtin(),
+                    lux::object::CodeLease::builtin(),
                     [&store, roles, forward](const CommandQuery& input) -> CommandResult<CommandState>
                     {
                         auto info = targetInfo(store, input.target);

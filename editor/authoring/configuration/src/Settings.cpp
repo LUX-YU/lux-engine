@@ -34,13 +34,13 @@ namespace lux::editor::settings
             descriptor.configuration = &configuration;
         }
     };
-    SettingsEntry::SettingsEntry(contracts::CodeLease code, const SettingsDescriptor& descriptor, Apply apply)
+    SettingsEntry::SettingsEntry(lux::object::CodeLease code, const SettingsDescriptor& descriptor, Apply apply)
         : code_(std::move(code)), descriptor_(&descriptor), apply_(std::move(apply))
     {
     }
     SettingsEntry::~SettingsEntry() = default;
     std::shared_ptr<SettingsEntry> SettingsEntry::create(
-        contracts::CodeLease code,
+        lux::object::CodeLease code,
         const SettingsDescriptor& descriptor,
         Apply apply
     )
@@ -54,7 +54,7 @@ namespace lux::editor::settings
     {
         return *descriptor_;
     }
-    bool SettingsEntry::usesCode(const contracts::CodeLease& code) const noexcept
+    bool SettingsEntry::usesCode(const lux::object::CodeLease& code) const noexcept
     {
         return code_.sameOwner(code);
     }
@@ -121,7 +121,7 @@ namespace lux::editor::settings
             return cxx::unexpected(valid.error());
         auto value = ConfigurationValue::create(
             *descriptor_->configuration,
-            std::make_shared<contracts::CodeLease>(code_),
+            std::make_shared<lux::object::CodeLease>(code_),
             registry
         );
         if (!value)

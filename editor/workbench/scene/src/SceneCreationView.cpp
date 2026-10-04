@@ -150,7 +150,7 @@ namespace lux::editor::scene
         auto view = std::make_unique<SceneCreationView>(dispatcher, id, std::move(inputs), std::move(requests), status);
         if (!status)
             return cxx::unexpected(status.error());
-        return views::DetachedView{contracts::CodeLease::builtin(), std::move(view)};
+        return views::DetachedView{lux::object::CodeLease::builtin(), std::move(view)};
     }
 } // namespace lux::editor::scene
 
@@ -163,7 +163,7 @@ namespace lux::editor::scene
     {
         auto create = std::make_shared<sessions::SessionCreation>(std::move(receiver));
         return views::ViewFactoryEntry::bind<kCreationDescriptor>(
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             [configuration = std::move(configuration),
              create](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView>
             {

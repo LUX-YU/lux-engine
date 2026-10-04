@@ -15,7 +15,7 @@ namespace lux::editor::scene
             return cxx::unexpected(
                 SceneConfigurationFailure{ESceneConfigurationError::MISSING_PROVIDER, "configuration"}
             );
-        auto created = ConfigurationValue::create(pinned.value, std::make_shared<contracts::CodeLease>(pinned.code));
+        auto created = ConfigurationValue::create(pinned.value, std::make_shared<lux::object::CodeLease>(pinned.code));
         if (!created)
             return cxx::unexpected(SceneConfigurationFailure{
                 ESceneConfigurationError::CONTROL_FAILURE,

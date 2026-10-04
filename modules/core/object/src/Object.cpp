@@ -108,6 +108,29 @@ namespace lux::object::detail
         }
     }
 
+    bool ObjectState::reclaimOwner(Reclamation& node) noexcept
+    {
+        auto& state = static_cast<ObjectState&>(node);
+        auto* value = state.object.load(std::memory_order_acquire);
+        if (value)
+        {
+            auto* parent = value->parent_;
+            const bool is_busy = value->hasActiveTree() || (parent && !parent->acceptsCallbacks());
+            if (is_busy)
+                return false;
+            if (parent && value->owned_edge_)
+            {
+                parent->changing_children_ = true;
+                parent->destroyOwnedChild(*value);
+                parent->changing_children_ = false;
+            }
+        }
+        state.destruction_requested = false;
+        releaseReclamation(state.dispatcher);
+        intrusive_ptr_release(&state);
+        return true;
+    }
+
     void SignalStorage::cancel(ConnectionControl& control) noexcept
     {
         if (!control.connected.exchange(false, std::memory_order_acq_rel))
@@ -194,6 +217,8 @@ namespace lux::object::detail
                 return;
             if (!receiver->isOnAffinityThread())
                 failObjectContract();
+            if (!receiver->acceptsCallbacks())
+                return;
         }
         if (receiver)
             ++receiver->active_events_;
@@ -255,6 +280,8 @@ namespace lux::object::detail
     bool sendEventErased(LuxObject& target, EventView& event) noexcept
     {
         target.assertAffinity();
+        if (!target.acceptsCallbacks())
+            return false;
         const DispatchScope dispatch;
         ++target.active_events_;
         if (!event.accepted())
@@ -267,6 +294,8 @@ namespace lux::object::detail
     {
         target.assertAffinity();
         boundary.assertAffinity();
+        if (!target.acceptsCallbacks())
+            return false;
         const DispatchScope dispatch;
         auto* ancestor = &target;
         while (ancestor && ancestor != &boundary)
@@ -301,6 +330,198 @@ namespace lux::object::detail
 
 namespace lux::object
 {
+    struct LuxObject::OwnedEdge final
+    {
+        ObjectDeleter destroy;
+    };
+
+    EObjectOwnership LuxObject::ownership() const noexcept
+    {
+        // A reserved edge is not ownership until the relation is committed.
+        return owned_edge_ && parent_ ? EObjectOwnership::PARENT_OWNED : EObjectOwnership::EXTERNAL;
+    }
+
+    ObjectResult<void> LuxObject::requestDestruction() noexcept
+    {
+        if (!isOnAffinityThread())
+            return lux::cxx::unexpected(EObjectTreeError::WRONG_THREAD);
+        if (closing_)
+            return lux::cxx::unexpected(EObjectTreeError::CLOSED);
+        const bool has_parent_owner = owned_edge_ && parent_;
+        if (!has_parent_owner)
+            return lux::cxx::unexpected(EObjectTreeError::NOT_OWNED);
+        if (!acceptsCallbacks())
+            return lux::cxx::unexpected(EObjectTreeError::BUSY);
+        const bool has_live_dispatcher = dispatcher_ && dispatcher_.isCurrent();
+        if (!has_live_dispatcher)
+            return lux::cxx::unexpected(EObjectTreeError::WRONG_DISPATCHER);
+        auto state = ensureState();
+        if (!state->destruction_requested)
+        {
+            state->destruction_requested = true;
+            state->reclaim = &detail::ObjectState::reclaimOwner;
+            detail::intrusive_ptr_add_ref(state.get());
+            detail::retainReclamation(dispatcher_);
+            detail::scheduleReclamation(dispatcher_, *state);
+        }
+        return {};
+    }
+
+    bool LuxObject::hasActiveTree() const noexcept
+    {
+        auto* node = this;
+        for (;;)
+        {
+            const bool is_active = node->active_events_ || node->changing_children_;
+            if (is_active)
+                return true;
+            if (node->first_child_)
+                node = node->first_child_;
+            else
+            {
+                while (node != this && !node->next_sibling_)
+                    node = node->parent_;
+                if (node == this)
+                    return false;
+                node = node->next_sibling_;
+            }
+        }
+    }
+
+    bool LuxObject::acceptsCallbacks() const noexcept
+    {
+        for (auto* object = this; object; object = object->parent_)
+        {
+            const bool is_unavailable = object->closing_ || object->changing_children_;
+            if (is_unavailable)
+                return false;
+        }
+        return true;
+    }
+
+    ObjectResult<void> LuxObject::validateChild(const LuxObject& child) const noexcept
+    {
+        const bool is_wrong_thread = !isOnAffinityThread() || !child.isOnAffinityThread();
+        if (is_wrong_thread)
+            return lux::cxx::unexpected(EObjectTreeError::WRONG_THREAD);
+        if (dispatcher_ != child.dispatcher_)
+            return lux::cxx::unexpected(EObjectTreeError::WRONG_DISPATCHER);
+        const bool is_closed = closing_ || child.closing_;
+        if (is_closed)
+            return lux::cxx::unexpected(EObjectTreeError::CLOSED);
+        const bool is_busy = isDispatching() || !acceptsCallbacks() || child.hasActiveTree();
+        if (is_busy)
+            return lux::cxx::unexpected(EObjectTreeError::BUSY);
+        if (child.parent_)
+            return lux::cxx::unexpected(EObjectTreeError::ALREADY_ATTACHED);
+        for (auto* ancestor = this; ancestor; ancestor = ancestor->parent_)
+        {
+            if (ancestor->active_events_)
+                return lux::cxx::unexpected(EObjectTreeError::BUSY);
+            if (ancestor == &child)
+                return lux::cxx::unexpected(EObjectTreeError::INVALID_TREE);
+        }
+        return {};
+    }
+
+    void LuxObject::linkChild(LuxObject& child) noexcept
+    {
+        child.parent_ = this;
+        child.previous_sibling_ = last_child_;
+        if (last_child_)
+            last_child_->next_sibling_ = &child;
+        else
+            first_child_ = &child;
+        last_child_ = &child;
+    }
+
+    ObjectResult<void> LuxObject::attachChild(LuxObject& child) noexcept
+    {
+        auto valid = validateChild(child);
+        if (!valid)
+            return valid;
+        linkChild(child);
+        return {};
+    }
+
+    ObjectResult<void> LuxObject::beginAdoption(LuxObject& child) noexcept
+    {
+        auto valid = validateChild(child);
+        if (!valid)
+            return valid;
+        changing_children_ = child.changing_children_ = true;
+        child.owned_edge_ = std::make_unique<OwnedEdge>();
+        return {};
+    }
+
+    void LuxObject::finishAdoption(LuxObject& child, ObjectDeleter deleter) noexcept
+    {
+        child.owned_edge_->destroy = std::move(deleter);
+        linkChild(child);
+        changing_children_ = child.changing_children_ = false;
+    }
+
+    ObjectResult<void> LuxObject::detachChild(LuxObject& child) noexcept
+    {
+        const bool is_wrong_thread = !isOnAffinityThread() || !child.isOnAffinityThread();
+        if (is_wrong_thread)
+            return lux::cxx::unexpected(EObjectTreeError::WRONG_THREAD);
+        if (child.parent_ != this)
+            return lux::cxx::unexpected(EObjectTreeError::INVALID_TREE);
+        if (child.owned_edge_)
+            return lux::cxx::unexpected(EObjectTreeError::OWNED_CHILD);
+        const bool is_busy = isDispatching() || !acceptsCallbacks() || child.hasActiveTree();
+        if (is_busy)
+            return lux::cxx::unexpected(EObjectTreeError::BUSY);
+        child.unlinkParent();
+        return {};
+    }
+
+    void LuxObject::destroyOwnedChild(LuxObject& child) noexcept
+    {
+        child.closing_ = true;
+        if (auto* state = child.state_.load(std::memory_order_acquire))
+            state->closeOwner();
+        child.unlinkParent();
+        auto edge = std::move(child.owned_edge_);
+        edge->destroy(&child);
+    }
+
+    void LuxObject::clearChildren() noexcept
+    {
+        assertAffinity();
+        if (hasActiveTree())
+            detail::failObjectContract();
+        changing_children_ = true;
+        auto* owner = this;
+        for (;;)
+        {
+            if (auto* child = owner->last_child_)
+            {
+                if (child->owned_edge_)
+                {
+                    // Postorder mechanical cleanup: no recursive subtree scans or destructor stack.
+                    child->closing_ = child->changing_children_ = true;
+                    if (auto* state = child->state_.load(std::memory_order_acquire))
+                        state->closeOwner();
+                    owner = child;
+                }
+                else
+                    child->unlinkParent();
+            }
+            else
+            {
+                if (owner == this)
+                    break;
+                auto* parent = owner->parent_;
+                owner->changing_children_ = false;
+                parent->destroyOwnedChild(*owner);
+                owner = parent;
+            }
+        }
+        changing_children_ = false;
+    }
+
     LuxObject::LuxObject(ObjectDispatcherRef dispatcher) noexcept
         : affinity_(std::this_thread::get_id()), dispatcher_(std::move(dispatcher))
     {
@@ -318,24 +539,15 @@ namespace lux::object
 
     void LuxObject::attachTo(LuxObject& parent) noexcept
     {
-        assertAffinity();
-        parent.assertAffinity();
-        if (parent_ || parent.active_events_ != 0 || dispatcher_ != parent.dispatcher_)
+        if (!parent.attachChild(*this))
             detail::failObjectContract();
-        parent_ = &parent;
-        previous_sibling_ = parent.last_child_;
-        if (previous_sibling_)
-            previous_sibling_->next_sibling_ = this;
-        else
-            parent.first_child_ = this;
-        parent.last_child_ = this;
     }
 
     void LuxObject::detachFromParent() noexcept
     {
         assertAffinity();
         const bool is_active = active_events_ != 0 || (parent_ && parent_->active_events_ != 0);
-        if (is_active)
+        if (is_active || owned_edge_)
             detail::failObjectContract();
         unlinkParent();
     }
@@ -359,8 +571,11 @@ namespace lux::object
     LuxObject::~LuxObject()
     {
         assertAffinity();
-        if (first_child_ || active_events_ != 0)
+        const bool is_illegal_destruction = owned_edge_ || active_events_ != 0;
+        if (is_illegal_destruction)
             detail::failObjectContract();
+        closing_ = true;
+        clearChildren();
         unlinkParent();
         auto* state = state_.exchange(nullptr, std::memory_order_acq_rel);
         if (!state)
@@ -436,6 +651,10 @@ namespace lux::object
     {
         if (!isOnAffinityThread())
             return lux::cxx::unexpected(EConnectError::WRONG_THREAD);
+        const bool is_closed = !acceptsCallbacks() ||
+            (receiver && receiver->isOnAffinityThread() && !receiver->acceptsCallbacks());
+        if (is_closed)
+            return lux::cxx::unexpected(EConnectError::OBJECT_CLOSED);
         if (delivery == EDelivery::AUTO)
             delivery = !receiver || receiver->affinity_ == affinity_ ? EDelivery::DIRECT : EDelivery::QUEUED;
         if (delivery == EDelivery::DIRECT && receiver && receiver->affinity_ != affinity_)
@@ -479,6 +698,8 @@ namespace lux::object
         assertAffinity();
         if (owner != this)
             detail::failObjectContract();
+        if (!acceptsCallbacks())
+            return {};
         const DispatchScope dispatch;
         ++active_events_;
         const auto result = storage ? storage->emit(payload) : SignalDelivery{};

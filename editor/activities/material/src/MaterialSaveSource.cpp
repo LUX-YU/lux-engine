@@ -126,7 +126,7 @@ namespace lux::editor::material
         }
         const auto retained = snapshot->retainedBytes();
         auto job = std::make_unique<MaterialEncodeJob>(std::move(*snapshot), id);
-        return FrozenSave{expected, retained, {contracts::CodeLease::builtin(), std::move(job)}, std::move(rebind)};
+        return FrozenSave{expected, retained, {lux::object::CodeLease::builtin(), std::move(job)}, std::move(rebind)};
     }
     EAdoption MaterialSaveSource::accept(SaveReceipt&& receipt) noexcept
     {

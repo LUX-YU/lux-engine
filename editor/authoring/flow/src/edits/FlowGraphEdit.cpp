@@ -171,7 +171,7 @@ namespace lux::editor::flowforge::detail
     {
         FlowAuthoringSource& source_;
         lux::flowforge::FlowSourceEnvironment environment_;
-        contracts::CodeLease code_;
+        lux::object::CodeLease code_;
         editing::StateId base_;
         FlowEditObserver observer_;
         void publish(const editing::CommitInfo& info, bool structural = false) const noexcept
@@ -1666,7 +1666,7 @@ namespace lux::editor::flowforge
         editing::StateId base,
         std::vector<VFlowEdit> edits,
         std::string label,
-        contracts::CodeLease code,
+        lux::object::CodeLease code,
         FlowEditObserver observer
     )
     {
@@ -1674,7 +1674,7 @@ namespace lux::editor::flowforge
         struct Input
         {
             lux::flowforge::FlowSourceEnvironment environment;
-            contracts::CodeLease code;
+            lux::object::CodeLease code;
             std::vector<VFlowEdit> edits;
         } input{std::move(environment), std::move(code), std::move(edits)};
         detail::FlowEditContext context{source, input.environment, input.code, base, observer};
@@ -1693,8 +1693,8 @@ namespace lux::editor::flowforge
         FlowEditObserver observer
     )
     {
-        auto code = environment.code_lifetime ? contracts::CodeLease::plugin(environment.code_lifetime)
-                                              : contracts::CodeLease::builtin();
+        auto code = environment.code_lifetime ? lux::object::CodeLease::plugin(environment.code_lifetime)
+                                              : lux::object::CodeLease::builtin();
         return detail::FlowEditFactory{{source, std::move(environment), std::move(code), base, observer}
         }.insertNode(input, placement, false, false);
     }

@@ -57,12 +57,12 @@ namespace lux::editor::application
     EditorResult<void> EditorApplication::Impl::installContributions()
     {
         extensions::ContributionDraft draft;
-        draft.reflection.push_back({contracts::CodeLease::builtin(), project::registerDesktopSettings});
+        draft.reflection.push_back({lux::object::CodeLease::builtin(), project::registerDesktopSettings});
         draft.settings = builtin_settings_;
         draft.commands = sessions::makeHistoryCommands(sessions_, [this](auto id) { return opening_.find(id); });
 
         auto exit = commands::CommandEntry::bind<command_lux_editor_exit>(
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
             { return commands::CommandState{phase_ == EApplicationPhase::RUNNING}; },
             [this](const commands::CommandInvocation&) -> commands::CommandResult<commands::DispatchReceipt>

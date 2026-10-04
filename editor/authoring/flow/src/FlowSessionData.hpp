@@ -12,7 +12,7 @@ namespace lux::editor::flowforge
         FlowSessionLimits limits;
         sessions::SessionState state;
         lux::flowforge::FlowSourceEnvironment environment;
-        std::vector<contracts::CodeLease> code;
+        std::vector<lux::object::CodeLease> code;
         FlowAuthoringSource source;
         std::unique_ptr<editing::EditHistory> history;
         Impl(sessions::SessionId id, sessions::SourceBinding binding, FlowSessionLimits policy)

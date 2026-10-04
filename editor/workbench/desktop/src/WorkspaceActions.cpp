@@ -104,7 +104,7 @@ namespace lux::editor::desktop
                     return views::ViewFactoryInput{
                         dispatcher_,
                         id,
-                        contracts::CodeLease::builtin(),
+                        lux::object::CodeLease::builtin(),
                         cxx::typeToken<Value>(),
                         std::make_shared<const Value>(std::move(value))
                     };

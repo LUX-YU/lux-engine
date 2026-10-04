@@ -301,7 +301,7 @@ namespace lux::editor::material
                             state_.status_ = state_.enqueue(
                                 state_.display_.content,
                                 [&]
-                                { return MaterialInsertNode{contracts::CodeLease::builtin(), makeMaterialNode(type)}; }
+                                { return MaterialInsertNode{lux::object::CodeLease::builtin(), makeMaterialNode(type)}; }
                             );
                     }
                     ImGui::EndCombo();
@@ -1131,7 +1131,7 @@ namespace lux::editor::material
             return {};
         };
         return views::DetachedView{
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             std::move(*created),
             cancel,
             cancel,

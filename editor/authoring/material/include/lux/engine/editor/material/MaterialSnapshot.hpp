@@ -51,7 +51,7 @@ namespace lux::editor::material
         friend class MaterialReadView;
         friend class MaterialPersistenceAccess;
         // Kept outside the graph, so the last node destructor returns before code is released.
-        std::vector<contracts::CodeLease> code_;
+        std::vector<lux::object::CodeLease> code_;
         lux::material::MaterialSource source_;
         sessions::ContentStamp content_;
         sessions::ObservationVersion observed_;
@@ -78,7 +78,7 @@ namespace lux::editor::material
         friend class MaterialSession;
         MaterialReadView(
             const lux::material::MaterialSource& source,
-            const std::vector<contracts::CodeLease>& code,
+            const std::vector<lux::object::CodeLease>& code,
             sessions::ContentStamp content,
             sessions::ObservationVersion observed,
             sessions::EditGate& gate
@@ -86,7 +86,7 @@ namespace lux::editor::material
             : source_(source), code_(code), content_(content), observed_(observed), gate_(gate)
         {}
         const lux::material::MaterialSource& source_;
-        const std::vector<contracts::CodeLease>& code_;
+        const std::vector<lux::object::CodeLease>& code_;
         sessions::ContentStamp content_;
         sessions::ObservationVersion observed_;
         sessions::EditGate& gate_;

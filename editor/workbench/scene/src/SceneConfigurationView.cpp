@@ -282,7 +282,7 @@ namespace lux::editor::scene
         if (!bound)
             return cxx::unexpected(bound.error());
         return views::DetachedView{
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             std::move(view),
             [](lux::ui::Pane& pane) -> views::ViewCloseResult {
                 auto closed = static_cast<SceneConfigurationView&>(pane).prepareClose();

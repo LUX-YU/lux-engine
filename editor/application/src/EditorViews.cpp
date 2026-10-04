@@ -197,7 +197,7 @@ namespace lux::editor::application
         const views::ViewFactoryInput input{
             messages_.dispatcherRef(),
             lux::ui::PaneId{name},
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             cxx::typeToken<views::ContentViewInput>(),
             std::make_shared<const views::ContentViewInput>(std::move(value))
         };

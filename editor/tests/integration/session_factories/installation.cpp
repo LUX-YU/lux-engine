@@ -99,7 +99,7 @@ namespace
         {
             // Slice has no terminator at its own end; the dynamic Entry performs the sole text freeze.
             std::string dynamic_label{"Dynamic label unused suffix"};
-            auto code = contracts::CodeLease::plugin(std::shared_ptr<const void>(
+            auto code = lux::object::CodeLease::plugin(std::shared_ptr<const void>(
                 new int{1},
                 [&](const void* p)
                 {
@@ -184,7 +184,7 @@ namespace
         auto make = [&](CommandIdView id, std::string_view shortcut, std::uint32_t version = 1)
         {
             return CommandEntry::create(
-                contracts::CodeLease::builtin(),
+                lux::object::CodeLease::builtin(),
                 {id, "Test command", "Tools", shortcut, ECommandScope::APPLICATION, version},
                 [](const CommandQuery&) -> CommandResult<CommandState> { return CommandState{true}; },
                 [&](const CommandInvocation&) -> CommandResult<DispatchReceipt>
@@ -394,7 +394,7 @@ namespace
         CommandRegistry registry;
         CommandDispatcher dispatcher{registry};
         auto action = CommandEntry::create(
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             CommandDescriptor{
                 CommandIdView{"test.delete"},
                 "Delete",
@@ -438,7 +438,7 @@ namespace
         std::vector<lux::material::NodeId> selection{node};
         const auto original = model.describe().current;
         auto owned = std::make_shared<const Selection>(Selection{selection});
-        CommandArguments args{contracts::CodeLease::builtin(), cxx::typeToken<Selection>(), owned};
+        CommandArguments args{lux::object::CodeLease::builtin(), cxx::typeToken<Selection>(), owned};
         CommandInvocation strict{SessionTarget{model.describe().id, original}, args};
         assert(dispatcher.enqueue(handle, strict));
         owned.reset();
@@ -462,7 +462,7 @@ namespace
         owned = std::make_shared<const Selection>(Selection{{node}});
         CommandInvocation erase{
             SessionTarget{model.describe().id},
-            CommandArguments{contracts::CodeLease::builtin(), cxx::typeToken<Selection>(), owned}
+            CommandArguments{lux::object::CodeLease::builtin(), cxx::typeToken<Selection>(), owned}
         };
         assert(dispatcher.enqueue(handle, erase));
         owned.reset();
@@ -493,7 +493,7 @@ namespace
                         delete static_cast<const int*>(p);
                     }
                 );
-                auto code = contracts::CodeLease::plugin(owner);
+                auto code = lux::object::CodeLease::plugin(owner);
                 auto decoded = take(em::MaterialCodec::decode(bytes));
                 if (boundary == 0)
                     return;
@@ -879,7 +879,7 @@ int main(int argc, char** argv)
         assert(!factories.selectSource("lux.material.source", 2));
         assert(!factories.selectSource("org.vendor.missing", 1));
         auto alternate = SessionFactoryEntry::create(
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             SessionKindDescriptor{
                 SessionKindIdView{"test.material.alternative"},
                 "Alternative material",
@@ -1056,7 +1056,7 @@ int main(int argc, char** argv)
         root.menu = &menu;
         desktop::ViewHost host{root};
         views::DetachedView window{
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             std::make_unique<ui::Pane>(
                 messages.dispatcherRef(),
                 ui::PaneId{"commands"},

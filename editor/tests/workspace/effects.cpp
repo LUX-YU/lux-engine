@@ -26,7 +26,7 @@ int main()
     const auto revision = root->windowRevision();
     e::sessions::SessionStore store{4};
     auto reserved =
-        take(store.reserve<e::material::MaterialSession>({"lux.editor.material"}, e::contracts::CodeLease::builtin()));
+        take(store.reserve<e::material::MaterialSession>({"lux.editor.material"}, lux::object::CodeLease::builtin()));
     const auto session_id = reserved.id();
     auto asset = lux::asset::AssetId{*uuids::uuid::from_string("12345678-1234-1234-1234-123456789abc")};
     lux::material::MaterialSource source{asset, "original", {}};

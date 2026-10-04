@@ -334,7 +334,7 @@ namespace lux::editor::project
     )
     {
         return views::ViewFactoryEntry::bind<kFactoryDescriptor>(
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             [requests = std::move(requests)](const views::ViewFactoryInput& input
             ) mutable -> views::ViewFactoryResult<views::DetachedView>
             {
@@ -343,7 +343,7 @@ namespace lux::editor::project
                     std::make_unique<ProjectCreationView>(input.dispatcher(), input.paneId(), requests(), ready);
                 if (!ready)
                     return cxx::unexpected(workbench::detail::viewFailure(ready.error()));
-                return views::DetachedView{contracts::CodeLease::builtin(), std::move(pane)};
+                return views::DetachedView{lux::object::CodeLease::builtin(), std::move(pane)};
             }
         );
     }

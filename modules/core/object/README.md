@@ -1,6 +1,26 @@
 # LuxObject、信号与事件
 
-`object` 是不依赖 UI、Scene 或 meta 的基础库。普通业务对象继承 `LuxObject`；它提供线程归属、非拥有父子链、同步事件及模板信号。父对象不删除子对象，固定成员或 `unique_ptr` 负责 RAII。
+`object` 是不依赖 UI、Scene 或 meta 的基础库。需要身份、线程归属或通知的业务对象继承
+`LuxObject`；普通数据不要求继承。它提供两态父子链、同步事件及模板信号。
+
+成员、栈对象和外部智能指针保持 `EXTERNAL`。派生组合类型通过 protected `attachChild()`
+建立非拥有关系，或通过 `adoptChild(unique_ptr<T,D>&&)` 转交真实删除责任，成为 `PARENT_OWNED`。
+接管失败不移动候选和 deleter；支持普通 `T*` 指针及可无失败移动的 deleter。UI 使用自己的结构入口。
+父对象销毁时，托管孩子按逆接管顺序回收，外部孩子只解绑。固定成员无需额外 heap owner。
+孩子若借用派生成员，派生析构体必须先 `clearChildren()`；基类析构不执行保存等业务。
+机械回收使用兄弟链的迭代后序遍历，不逐层重新扫描整棵子树，也不随树深度增加析构调用栈。
+接管时仍检查祖先以拒绝成环；这次局部准入检查不需要为每个对象维护第二份层级索引。
+
+`requestDestruction()` 只记录托管对象的销毁意图。原 ObjectState 标识合并同一对象的请求，
+不会因地址复用而销毁新对象。宿主在业务派发和 UI 遍历外调用 `ObjectMessageQueue::collectRetired()`；
+它处理固定批次，期间新请求留到下一批。外部成员不能独立请求删除，消息队列 FULL 不丢失回收责任。
+
+`shareOnDispatcher()` 转移真实唯一 allocation 到共享控制块。最后引用可在 worker 释放，但回收节点
+在创建时就已准备，实际析构回到 dispatcher 的 owner 安全点。消息关闭后仍可收取退休责任；
+queue provider 必须活到所有已接纳 owner 退休，析构不会隐式泵业务消息。
+移动状态型 deleter 时仍处于对象的原结构保护内；拒绝准入不消耗调用方的候选或最后代码 pin。
+`CodeLease` 和 `pinCodeOwner()` 位于本模块；共享控制块及释放桥由本库编译，代码保活覆盖对象、
+deleter 清理及返回，过期 weak 引用不必继续保活插件。
 
 ```cpp
 class Counter final : public lux::object::LuxObject
@@ -40,4 +60,6 @@ connect/emit 在发送方线程执行。DIRECT 要求显式接收方同线程；
 
 同步 `EventView` 支持过滤和父链传播，与信号广播分开。当前对象及祖先不能在回调栈中析构；对象在自己的线程销毁，析构不泵消息。关闭业务和结束编辑须先于对象析构。没有公开 `ObjectWeakRef`，UI 的焦点和维护借用由 UI 自身的析构注销协议处理。
 
-测试 `object.tree`、`object.queue` 覆盖父链、路由、RAII、重入增删、端点先销毁、异线程断连、槽复用、FULL/CLOSED 和载荷准备失败。`ui.cost` 单独测量实际对象实现的分配和热路径成本。
+测试 `object.tree`、`object.queue` 保留原父链、路由和信号行为；`object.ownership` 验证混合树、
+拒绝不消费、清理期重入、安全点和真实 DLL 析构尾部。独立 object-ownership SDK 消费者使用安装的
+公共头和库重跑这些行为。测试入口的存在不代表已执行，实际结果以阶段验收记录为准。

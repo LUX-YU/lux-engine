@@ -12,7 +12,7 @@ int main()
     auto entry = [](std::string_view name)
     {
         return CommandEntry::create(
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             {CommandIdView{name}, name},
             [](const CommandQuery&) -> CommandResult<CommandState> { return CommandState{true}; },
             [](const CommandInvocation&) -> CommandResult<DispatchReceipt>
@@ -32,7 +32,7 @@ int main()
     auto counted = [](std::string_view name, unsigned& calls)
     {
         return CommandEntry::create(
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             {CommandIdView{name}, name},
             [](const CommandQuery&) -> CommandResult<CommandState> { return CommandState{true}; },
             [&calls](const CommandInvocation&) -> CommandResult<DispatchReceipt>

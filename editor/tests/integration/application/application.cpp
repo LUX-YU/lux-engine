@@ -542,7 +542,7 @@ int main(int argc, char** argv)
             assert(view.beginEdit("Create output"));
             std::vector<lux::editor::material::VMaterialEdit> edits;
             edits.emplace_back(lux::editor::material::MaterialInsertNode{
-                contracts::CodeLease::builtin(),
+                lux::object::CodeLease::builtin(),
                 std::make_unique<lux::material::OutputSurfaceNode>()
             });
             assert(view.previewEdit(edits) && view.commitEdit());
@@ -883,7 +883,7 @@ int main(int argc, char** argv)
         copy(draft.configurations, previous_catalog.configurations());
         bool refuse_view{};
         draft.views.push_back(views::ViewFactoryEntry::create(
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             views::ViewFactoryDescriptor{
                 views::ViewTypeIdView{"test.comparison"},
                 "Comparison",
@@ -906,7 +906,7 @@ int main(int argc, char** argv)
                         views::ViewFactoryFailure{views::EViewFactoryError::CONSTRUCT, "comparison.deliberate"}
                     );
                 return views::DetachedView{
-                    contracts::CodeLease::builtin(),
+                    lux::object::CodeLease::builtin(),
                     std::make_unique<ComparisonPane>(input.dispatcher(), input.paneId(), binding.content),
                     nullptr,
                     nullptr,
@@ -1493,7 +1493,7 @@ int main(int argc, char** argv)
             failing_draft.views.push_back(entry);
         else
             failing_draft.views.push_back(views::ViewFactoryEntry::create(
-                contracts::CodeLease::builtin(),
+                lux::object::CodeLease::builtin(),
                 entry->descriptor(),
                 [](const views::ViewFactoryInput&) -> views::ViewFactoryResult<views::DetachedView>
                 {

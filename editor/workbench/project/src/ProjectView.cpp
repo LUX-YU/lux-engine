@@ -158,7 +158,7 @@ namespace lux::editor::project
         ProjectCatalogModel& query
     )
     {
-        return {contracts::CodeLease::builtin(), std::make_unique<ProjectView>(dispatcher, std::move(id), query)};
+        return {lux::object::CodeLease::builtin(), std::make_unique<ProjectView>(dispatcher, std::move(id), query)};
     }
 } // namespace lux::editor::project
 
@@ -171,7 +171,7 @@ namespace lux::editor::project
     {
         auto receiver = std::make_shared<cxx::move_only_function<void(const AssetReference&)>>(std::move(open));
         return views::ViewFactoryEntry::bind<kFactoryDescriptor>(
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             [&catalog, receiver](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView>
             {
                 auto view = makeProjectView(input.dispatcher(), input.paneId(), catalog);

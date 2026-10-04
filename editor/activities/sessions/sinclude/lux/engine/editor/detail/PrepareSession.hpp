@@ -90,7 +90,7 @@ namespace lux::editor::sessions::detail
         ContentStamp expected,
         const SourceBinding& binding,
         std::optional<persistence::WriteTarget> target,
-        contracts::CodeLease code,
+        lux::object::CodeLease code,
         Construct& construct
     )
     {
@@ -137,7 +137,7 @@ namespace lux::editor::sessions::detail
         SessionStore& store,
         persistence::SaveService& saves,
         SessionKindId kind,
-        contracts::CodeLease code,
+        lux::object::CodeLease code,
         std::optional<persistence::WriteTarget> target,
         Construct& construct
     )

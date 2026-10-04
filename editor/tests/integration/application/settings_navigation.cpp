@@ -50,14 +50,14 @@ int main(int argc, char** argv)
     commands::CommandRegistry commands;
     extensions::ContributionRegistry registry{messages.dispatcherRef(), commands};
     extensions::ContributionDraft contributions;
-    contributions.reflection.push_back({contracts::CodeLease::builtin(), project::registerDesktopSettings});
+    contributions.reflection.push_back({lux::object::CodeLease::builtin(), project::registerDesktopSettings});
     auto builtin = project::makeDesktopSettingsPages({});
     unsigned applies{};
     auto descriptor = builtin.front().entry->descriptor();
     descriptor.scopes = settings::scopeBit(settings::ESettingsScope::USER);
     descriptor.apply = settings::ESettingsApply::SAFE_POINT;
     auto entry = settings::SettingsEntry::create(
-        contracts::CodeLease::builtin(),
+        lux::object::CodeLease::builtin(),
         descriptor,
         [&](const ConfigurationValue&) -> settings::SettingsResult<void>
         {
@@ -135,7 +135,7 @@ int main(int argc, char** argv)
         assert(original->desired.encode(desired));
         descriptor.id = settings::SettingsIdView{"test.settings.replacement"};
         auto replacement = settings::SettingsEntry::create(
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             descriptor,
             [&](const ConfigurationValue&) -> settings::SettingsResult<void>
             {

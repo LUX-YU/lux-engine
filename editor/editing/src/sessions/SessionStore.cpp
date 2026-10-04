@@ -16,12 +16,12 @@ namespace lux::editor::sessions
         };
         struct Slot final
         {
-            contracts::CodeLease code;
+            lux::object::CodeLease code;
             SessionKindId kind;
             lux::cxx::TypeToken type;
             ESlotStage stage{ESlotStage::RESERVED};
             std::unique_ptr<IEditSession> session;
-            Slot(contracts::CodeLease lease, SessionKindId identity, lux::cxx::TypeToken token) noexcept
+            Slot(lux::object::CodeLease lease, SessionKindId identity, lux::cxx::TypeToken token) noexcept
                 : code(std::move(lease)), kind(std::move(identity)), type(token)
             {}
         };
@@ -108,7 +108,7 @@ namespace lux::editor::sessions
     SessionResult<SessionReservation> SessionStore::reserve(
         SessionKindId kind,
         lux::cxx::TypeToken type,
-        contracts::CodeLease code
+        lux::object::CodeLease code
     )
     {
         if (auto admitted = impl_->canMutate(); !admitted)

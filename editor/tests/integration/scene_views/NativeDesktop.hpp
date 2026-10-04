@@ -232,7 +232,7 @@ void nativeDesktop(Fixture& f, window::LuxWindow& window)
     };
     auto text_owner = std::make_unique<TextWindow>(f.messages.dispatcherRef());
     auto* text = text_owner.get();
-    views::DetachedView text_view(contracts::CodeLease::builtin(), std::move(text_owner));
+    views::DetachedView text_view(lux::object::CodeLease::builtin(), std::move(text_owner));
     const auto text_id = take(f.desktop->views().adopt(text_view, views::ViewRestoreKey{"native-text"})).id;
     assert(f.desktop->views().focus(text_id));
     frames();

@@ -199,7 +199,7 @@ namespace
                 description
             ));
             auto reservation =
-                take(authors.reserve<SceneSession>({"lux.editor.scene"}, contracts::CodeLease::builtin()));
+                take(authors.reserve<SceneSession>({"lux.editor.scene"}, lux::object::CodeLease::builtin()));
             author_id = reservation.id();
             auto source = take(SceneSource::create(package, schemas));
             auto session = take(SceneSession::create(

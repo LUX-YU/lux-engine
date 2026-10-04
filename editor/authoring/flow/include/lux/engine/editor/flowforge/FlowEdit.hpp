@@ -1,6 +1,6 @@
 #pragma once
 #include <lux/engine/editor/flowforge/FlowAuthoringSource.hpp>
-#include <lux/engine/editor/contracts/CodeLease.hpp>
+#include <lux/engine/object/CodeLease.hpp>
 #include <lux/engine/editor/editing/EditOperation.hpp>
 #include <lux/engine/editor/sessions/ContentStamp.hpp>
 #include <variant>
@@ -39,7 +39,7 @@ namespace lux::editor::flowforge
     struct FlowInsertNode final
     {
         FlowInsertNode(
-            contracts::CodeLease owner,
+            lux::object::CodeLease owner,
             std::unique_ptr<lux::flowforge::Node> node,
             lux::graph::GraphNodeLayout layout = {},
             bool preserve = false
@@ -56,7 +56,7 @@ namespace lux::editor::flowforge
             swap(preserve_ids, other.preserve_ids);
             return *this;
         }
-        contracts::CodeLease code;
+        lux::object::CodeLease code;
         std::unique_ptr<lux::flowforge::Node> value;
         lux::graph::GraphNodeLayout placement;
         bool preserve_ids{}; // Explicit source restoration; collision checks remain in FlowGraphEdit.
@@ -158,7 +158,7 @@ namespace lux::editor::flowforge
         editing::StateId base,
         std::vector<VFlowEdit> edits,
         std::string label,
-        contracts::CodeLease code,
+        lux::object::CodeLease code,
         FlowEditObserver observer
     );
 

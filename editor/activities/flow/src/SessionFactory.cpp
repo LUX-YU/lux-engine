@@ -20,7 +20,7 @@ namespace lux::editor::flowforge
         sessions::SourceBinding binding,
         std::optional<persistence::WriteTarget> target,
         lux::flowforge::FlowSourceEnvironment environment,
-        contracts::CodeLease code
+        lux::object::CodeLease code
     )
     {
         using namespace sessions;
@@ -45,7 +45,7 @@ namespace lux::editor::flowforge
     }
     std::shared_ptr<sessions::SessionFactoryEntry> makeFlowSessionFactory(
         lux::flowforge::FlowSourceEnvironment environment,
-        contracts::CodeLease code
+        lux::object::CodeLease code
     )
     {
         using namespace sessions;
@@ -137,7 +137,7 @@ namespace lux::editor::flowforge
     )
     {
         return commands::CommandEntry::bind<kNewCommand>(
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             std::move(query),
             [create = std::move(receiver),
              environment = std::move(environment)](const commands::CommandInvocation&) mutable

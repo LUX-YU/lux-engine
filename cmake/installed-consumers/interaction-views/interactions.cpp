@@ -17,7 +17,7 @@ int main()
 {
     using namespace lux;
     using namespace lux::editor;
-    using contracts::CodeLease;
+    using lux::object::CodeLease;
     sessions::SessionStore store{3};
     const asset::AssetId root{*uuids::uuid::from_string("12345678-1234-1234-1234-123456789abc")};
     auto scene_reservation =

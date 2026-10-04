@@ -174,11 +174,11 @@ namespace lux::editor::project
         };
         auto receivers = std::make_shared<Receivers>(std::move(observe), std::move(request));
         return views::ViewFactoryEntry::bind<kFactoryDescriptor>(
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             [receivers](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView>
             {
                 return views::DetachedView{
-                    contracts::CodeLease::builtin(),
+                    lux::object::CodeLease::builtin(),
                     std::make_unique<WorkspaceView>(
                         input.dispatcher(),
                         input.paneId(),

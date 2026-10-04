@@ -432,7 +432,7 @@ int main(int argc, char** argv)
         auto catalog = take(simulation::ecs::ComponentSchemaSet::build(std::move(known)));
         editor::sessions::SessionStore store{1};
         auto slot =
-            take(store.reserve<author::SceneSession>({"lux.editor.scene"}, editor::contracts::CodeLease::builtin()));
+            take(store.reserve<author::SceneSession>({"lux.editor.scene"}, lux::object::CodeLease::builtin()));
         auto model =
             take(author::SceneSession::create(slot.id(), {}, take(author::SceneSource::create(package, catalog))));
         auto* session = model.get();

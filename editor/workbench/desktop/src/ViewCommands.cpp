@@ -45,7 +45,7 @@ namespace lux::editor::desktop
         views::ViewFactoryInput input{
             dispatcher,
             lux::ui::PaneId{type.name()},
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             cxx::typeToken<std::monostate>(),
             std::make_shared<const std::monostate>()
         };
@@ -80,7 +80,7 @@ namespace lux::editor::desktop
             if (descriptor.binding_type != cxx::typeToken<std::monostate>())
                 continue;
             result.push_back(commands::CommandEntry::create(
-                contracts::CodeLease::builtin(),
+                lux::object::CodeLease::builtin(),
                 {commands::CommandIdView{std::string("lux.editor.tool/") + std::string(descriptor.type.name())},
                  descriptor.label,
                  "Window"},

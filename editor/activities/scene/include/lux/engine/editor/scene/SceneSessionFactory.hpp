@@ -9,10 +9,10 @@ namespace lux::editor::scene
         [[nodiscard]] sessions::SourceBinding binding,
         std::optional<persistence::WriteTarget> target,
         simulation::ecs::ComponentSchemaSet schemas,
-        contracts::CodeLease code = contracts::CodeLease::builtin()
+        lux::object::CodeLease code = lux::object::CodeLease::builtin()
     );
     [[nodiscard]] std::shared_ptr<sessions::SessionFactoryEntry> makeSceneSessionFactory(
         simulation::ecs::ComponentSchemaSet schemas,
-        contracts::CodeLease code = contracts::CodeLease::builtin()
+        lux::object::CodeLease code = lux::object::CodeLease::builtin()
     );
 }

@@ -7,7 +7,7 @@ namespace lux::editor::views
 {
     struct ViewFactoryInput::Data final
     {
-        contracts::CodeLease code;
+        lux::object::CodeLease code;
         object::ObjectDispatcherRef dispatcher;
         lux::ui::PaneId pane;
         cxx::TypeToken type;
@@ -17,7 +17,7 @@ namespace lux::editor::views
     ViewFactoryInput::ViewFactoryInput(
         object::ObjectDispatcherRef dispatcher,
         lux::ui::PaneId pane,
-        contracts::CodeLease code,
+        lux::object::CodeLease code,
         cxx::TypeToken type,
         std::shared_ptr<const void> binding,
         std::uint32_t version
@@ -27,7 +27,7 @@ namespace lux::editor::views
     }
     ViewFactoryInput::~ViewFactoryInput()
     {
-        const auto code = data_ ? data_->code : contracts::CodeLease::builtin();
+        const auto code = data_ ? data_->code : lux::object::CodeLease::builtin();
         data_.reset();
     }
     ViewFactoryInput& ViewFactoryInput::operator=(ViewFactoryInput other) noexcept
@@ -95,7 +95,7 @@ namespace lux::editor::views
         }
     };
     ViewFactoryEntry::ViewFactoryEntry(
-        contracts::CodeLease code,
+        lux::object::CodeLease code,
         const ViewFactoryDescriptor& descriptor,
         Create create
     )
@@ -103,7 +103,7 @@ namespace lux::editor::views
     {
     }
     std::shared_ptr<ViewFactoryEntry> ViewFactoryEntry::create(
-        contracts::CodeLease code,
+        lux::object::CodeLease code,
         const ViewFactoryDescriptor& descriptor,
         Create create
     )
@@ -149,7 +149,7 @@ namespace lux::editor::views
             if (entry)
             {
                 auto code = entry->code_;
-                entry = contracts::pinCodeOwner(std::move(code), std::move(entry));
+                entry = lux::object::pinCodeOwner(std::move(code), std::move(entry));
             }
         if (entries.size() > capacity)
             return cxx::unexpected(ViewFactoryFailure{EViewFactoryError::CAPACITY, "views"});
@@ -216,7 +216,7 @@ namespace lux::editor::views
                 return cxx::unexpected(ViewFactoryFailure{EViewFactoryError::INVALID_ARGUMENT, "view.binding"});
             auto invoke = [&]() -> ViewFactoryResult<DetachedView>
             {
-                if (entry->code_.sameOwner(contracts::CodeLease::builtin()))
+                if (entry->code_.sameOwner(lux::object::CodeLease::builtin()))
                     return entry->create_(input);
                 try
                 {

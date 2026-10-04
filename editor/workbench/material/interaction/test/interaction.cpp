@@ -45,13 +45,13 @@ namespace
         sessions::SessionId id;
         Fixture(
             mat::MaterialSource input = source(),
-            contracts::CodeLease code = contracts::CodeLease::builtin(),
+            lux::object::CodeLease code = lux::object::CodeLease::builtin(),
             MaterialSessionLimits limits = {},
             bool bound = true
         )
         {
             auto reservation =
-                take(store.reserve<MaterialSession>({"lux.editor.material"}, contracts::CodeLease::builtin()));
+                take(store.reserve<MaterialSession>({"lux.editor.material"}, lux::object::CodeLease::builtin()));
             id = reservation.id();
             auto candidate = take(MaterialSession::create(
                 id,

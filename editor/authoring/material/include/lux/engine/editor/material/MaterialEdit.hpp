@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/editor/contracts/CodeLease.hpp>
+#include <lux/engine/object/CodeLease.hpp>
 #include <lux/engine/editor/editing/EditOperation.hpp>
 #include <lux/engine/editor/sessions/ContentStamp.hpp>
 #include <lux/engine/material/graph/MaterialSource.hpp>
@@ -65,7 +65,7 @@ namespace lux::editor::material
     struct MaterialInsertNode final
     {
         MaterialInsertNode(
-            contracts::CodeLease owner,
+            lux::object::CodeLease owner,
             std::unique_ptr<lux::material::Node> node,
             lux::graph::GraphNodeLayout layout = {}
         )
@@ -80,13 +80,13 @@ namespace lux::editor::material
             swap(placement, other.placement);
             return *this;
         }
-        contracts::CodeLease code{contracts::CodeLease::builtin()};
+        lux::object::CodeLease code{lux::object::CodeLease::builtin()};
         std::unique_ptr<lux::material::Node> value;
         lux::graph::GraphNodeLayout placement;
     };
     struct MaterialReplaceNode final
     {
-        MaterialReplaceNode(contracts::CodeLease owner, std::unique_ptr<lux::material::Node> node)
+        MaterialReplaceNode(lux::object::CodeLease owner, std::unique_ptr<lux::material::Node> node)
             : code(std::move(owner)), value(std::move(node))
         {}
         MaterialReplaceNode(MaterialReplaceNode&&) noexcept = default;
@@ -97,7 +97,7 @@ namespace lux::editor::material
             swap(value, other.value);
             return *this;
         }
-        contracts::CodeLease code{contracts::CodeLease::builtin()};
+        lux::object::CodeLease code{lux::object::CodeLease::builtin()};
         std::unique_ptr<lux::material::Node> value;
     };
     struct MaterialEraseNode final
@@ -161,7 +161,7 @@ namespace lux::editor::material
         editing::StateId base,
         std::vector<VMaterialEdit> edits,
         std::string label,
-        contracts::CodeLease code,
+        lux::object::CodeLease code,
         MaterialEditObserver observer,
         std::size_t staging_limit
     );

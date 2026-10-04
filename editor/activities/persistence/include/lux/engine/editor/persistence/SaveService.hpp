@@ -19,7 +19,7 @@ namespace lux::editor::persistence
         SaveService& operator=(const SaveService&) = delete;
         [[nodiscard]] PersistenceResult<SaveSourceRegistration> registerSource(
             ISaveSource& source,
-            contracts::CodeLease code = contracts::CodeLease::builtin()
+            lux::object::CodeLease code = lux::object::CodeLease::builtin()
         );
         // Preflight before consuming a completed load. Does not reserve or invoke a source.
         [[nodiscard]] PersistenceResult<void> canPrepareSource() const noexcept;
@@ -29,7 +29,7 @@ namespace lux::editor::persistence
         [[nodiscard]] PersistenceResult<PreparedSaveSourceRegistration> prepareSource(
             sessions::SessionId,
             std::unique_ptr<ISaveSource>,
-            contracts::CodeLease = contracts::CodeLease::builtin()
+            lux::object::CodeLease = lux::object::CodeLease::builtin()
         );
         [[nodiscard]] PersistenceResult<void> canPublish(const PreparedSaveSourceRegistration&) const noexcept;
         // Requires a successful canPublish with no intervening callback/mutation, on the same owner.
@@ -41,7 +41,7 @@ namespace lux::editor::persistence
         [[nodiscard]] PersistenceResult<void> replaceSource(
             SaveSourceRegistration&,
             std::unique_ptr<ISaveSource>&,
-            contracts::CodeLease,
+            lux::object::CodeLease,
             cxx::function_ref<PersistenceResult<void>()> commit
         );
         [[nodiscard]] PersistenceResult<SaveId> requestSave(SaveRequest request);

@@ -333,7 +333,7 @@ namespace draft_test
         const auto handle = source.graph.addNodes(std::move(node));
         const auto id = source.graph.getNode(handle).node->id();
         auto reservation =
-            take(f.store.reserve<ef::FlowSession>({"lux.editor.flowforge"}, contracts::CodeLease::builtin()));
+            take(f.store.reserve<ef::FlowSession>({"lux.editor.flowforge"}, lux::object::CodeLease::builtin()));
         auto model =
             take(ef::FlowSession::create(reservation.id(), sessions::BoundSource{asset, "r1.flow"}, std::move(source)));
         auto* session = model.get();
@@ -407,7 +407,7 @@ namespace draft_test
             assert(unchanged(s0, session->describe()) && bytes(*session) == s0_bytes);
             closeSession(f, *session);
             auto next_reservation =
-                take(f.store.reserve<ef::FlowSession>({"lux.editor.flowforge"}, contracts::CodeLease::builtin()));
+                take(f.store.reserve<ef::FlowSession>({"lux.editor.flowforge"}, lux::object::CodeLease::builtin()));
             ef::FlowAuthoringSource next_source{asset, "new generation", {}};
             auto next_handle = next_source.graph.addNodes(std::make_unique<lux::flowforge::BinaryOpNode>(
                 0,
@@ -593,12 +593,12 @@ namespace draft_test
                      : std::make_unique<lux::material::ConstantNode>();
         const auto id = source.graph.addNode(std::move(node));
         auto reservation =
-            take(f.store.reserve<em::MaterialSession>({"lux.editor.material"}, contracts::CodeLease::builtin()));
+            take(f.store.reserve<em::MaterialSession>({"lux.editor.material"}, lux::object::CodeLease::builtin()));
         auto model = take(em::MaterialSession::create(
             reservation.id(),
             sessions::BoundSource{asset, "r1.material"},
             std::move(source),
-            contracts::CodeLease::plugin(code)
+            lux::object::CodeLease::plugin(code)
         ));
         auto* session = model.get();
         probe.session = session;

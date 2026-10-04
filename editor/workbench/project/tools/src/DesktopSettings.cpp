@@ -160,14 +160,14 @@ namespace lux::editor::project
 
     std::shared_ptr<settings::SettingsEntry> makeAppearanceSetting()
     {
-        return settings::SettingsEntry::bind<appearance>(contracts::CodeLease::builtin());
+        return settings::SettingsEntry::bind<appearance>(lux::object::CodeLease::builtin());
     }
     std::shared_ptr<settings::SettingsEntry> makeWindowSetting()
     {
-        return settings::SettingsEntry::bind<window_descriptor>(contracts::CodeLease::builtin());
+        return settings::SettingsEntry::bind<window_descriptor>(lux::object::CodeLease::builtin());
     }
     std::shared_ptr<settings::SettingsEntry> makeShortcutSetting(settings::SettingsEntry::Apply apply)
     {
-        return settings::SettingsEntry::bind<shortcuts>(contracts::CodeLease::builtin(), std::move(apply));
+        return settings::SettingsEntry::bind<shortcuts>(lux::object::CodeLease::builtin(), std::move(apply));
     }
 } // namespace lux::editor::project

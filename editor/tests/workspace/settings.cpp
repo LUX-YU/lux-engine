@@ -97,7 +97,7 @@ namespace
     }
     void values()
     {
-        auto entry = SettingsEntry::bind<descriptor>(contracts::CodeLease::builtin());
+        auto entry = SettingsEntry::bind<descriptor>(lux::object::CodeLease::builtin());
         assert(&entry->descriptor() == &descriptor);
         assert(validateSettingsEntries(std::array{entry}));
         assert(validateSettingsEntries(std::array{entry, entry}).error().code == ESettingsError::DUPLICATE);
@@ -126,7 +126,7 @@ namespace
         auto changed = user;
         changed.file_version = "S1";
         assert(prepareSettings(draft, changed, *entry).error().code == ESettingsError::CONFLICT);
-        auto replacement = SettingsEntry::bind<descriptor>(contracts::CodeLease::builtin());
+        auto replacement = SettingsEntry::bind<descriptor>(lux::object::CodeLease::builtin());
         assert(prepareSettings(draft, user, *replacement).error().code == ESettingsError::CONFLICT);
         user.values.push_back({"missing.plugin", 97, {std::byte{13}, std::byte{255}}});
         auto prepared = take(prepareSettings(draft, user, *entry));
@@ -137,7 +137,7 @@ namespace
         auto dynamic_descriptor = descriptor;
         dynamic_descriptor.id = SettingsIdView{name};
         dynamic_descriptor.label = label;
-        auto dynamic = SettingsEntry::create(contracts::CodeLease::builtin(), dynamic_descriptor);
+        auto dynamic = SettingsEntry::create(lux::object::CodeLease::builtin(), dynamic_descriptor);
         name.assign(4096, 'x');
         label.clear();
         assert(
@@ -147,9 +147,9 @@ namespace
         auto applied_scale = 1.0F;
         auto immediate = descriptor;
         immediate.apply = ESettingsApply::IMMEDIATE;
-        assert(!SettingsEntry::create(contracts::CodeLease::builtin(), immediate)->validateDescriptor());
+        assert(!SettingsEntry::create(lux::object::CodeLease::builtin(), immediate)->validateDescriptor());
         auto active = SettingsEntry::create(
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             immediate,
             [&](const ConfigurationValue& value) -> SettingsResult<void>
             {

@@ -32,7 +32,7 @@ namespace lux::editor::extensions
     template <class T> using ContributionResult = cxx::expected<T, ContributionFailure>;
     struct ReflectionContribution final
     {
-        contracts::CodeLease code;
+        lux::object::CodeLease code;
         meta::ReflectionRegistrationDraft::RegisterFn register_types{};
     };
     // Mutable preparation only. Providers write their own lower-layer entries, never borrow old Context.
@@ -44,7 +44,7 @@ namespace lux::editor::extensions
         ContributionDraft(const ContributionDraft&) = delete;
         ContributionDraft& operator=(const ContributionDraft&) = delete;
         // External draft-level pin also covers rejected entries before catalog normalization.
-        std::vector<contracts::CodeLease> code;
+        std::vector<lux::object::CodeLease> code;
         std::vector<ReflectionContribution> reflection;
         std::vector<std::shared_ptr<commands::CommandEntry>> commands;
         std::vector<std::shared_ptr<sessions::SessionFactoryEntry>> sessions;

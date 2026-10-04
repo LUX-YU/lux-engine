@@ -88,7 +88,7 @@ namespace
     DetachedView candidate(object::ObjectDispatcherRef dispatcher, Facts& facts, const char* name)
     {
         auto code = std::make_shared<Code>(facts);
-        return {editor::contracts::CodeLease::plugin(code), std::make_unique<Window>(dispatcher, facts, name)};
+        return {lux::object::CodeLease::plugin(code), std::make_unique<Window>(dispatcher, facts, name)};
     }
     // Protocol fixture only: bounded identities and real Root transactions, not a desktop product host.
     class FakeHost final : public IViewHost

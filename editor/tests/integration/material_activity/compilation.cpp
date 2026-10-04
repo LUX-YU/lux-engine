@@ -81,7 +81,7 @@ int main(int argc, char** argv)
         take(process::ExecutionRuntime::create({.cpu_concurrency = 1, .cpu_queue_capacity = 32, .timer = {16}}));
     auto runtime = take(lux::scene::SceneRuntime::create(execution, {0, 1024}));
     sessions::SessionStore authors{4};
-    auto mr = take(authors.reserve<em::MaterialSession>({"lux.editor.material"}, contracts::CodeLease::builtin()));
+    auto mr = take(authors.reserve<em::MaterialSession>({"lux.editor.material"}, lux::object::CodeLease::builtin()));
     auto material = take(
         em::MaterialSession::create(mr.id(), sessions::BoundSource{identity(), "author.material"}, materialSource())
     );
@@ -198,7 +198,7 @@ int main(int argc, char** argv)
     assert(preview.status().compilation_failure);
     assert(preview.receive(s10_adoption, s10->result(), {}));
     assert(!preview.status().diagnostic.empty());
-    auto fr = take(authors.reserve<ef::FlowSession>({"lux.editor.flowforge"}, contracts::CodeLease::builtin()));
+    auto fr = take(authors.reserve<ef::FlowSession>({"lux.editor.flowforge"}, lux::object::CodeLease::builtin()));
     ef::FlowAuthoringSource flow_source{identity(), "Flow S10", {}};
     const auto index = flow_source.graph.addNodes(std::make_unique<lux::flowforge::OnEventNode>("tick"));
     assert(flow_source.graph.addExport(

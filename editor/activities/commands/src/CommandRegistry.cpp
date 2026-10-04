@@ -72,12 +72,12 @@ namespace lux::editor::commands
 #endif
     struct CommandArguments::Data final
     {
-        contracts::CodeLease code;
+        lux::object::CodeLease code;
         cxx::TypeToken type;
         std::shared_ptr<const void> value;
     };
     CommandArguments::CommandArguments(
-        contracts::CodeLease code,
+        lux::object::CodeLease code,
         cxx::TypeToken type,
         std::shared_ptr<const void> value
     )
@@ -86,7 +86,7 @@ namespace lux::editor::commands
     }
     CommandArguments::~CommandArguments()
     {
-        const auto code = data_ ? data_->code : contracts::CodeLease::builtin();
+        const auto code = data_ ? data_->code : lux::object::CodeLease::builtin();
         data_.reset();
     }
     CommandArguments& CommandArguments::operator=(CommandArguments other) noexcept
@@ -170,7 +170,7 @@ namespace lux::editor::commands
         }
     };
     CommandEntry::CommandEntry(
-        contracts::CodeLease code,
+        lux::object::CodeLease code,
         const CommandDescriptor& descriptor,
         Query query,
         Execute execute
@@ -182,7 +182,7 @@ namespace lux::editor::commands
         count(8);
     }
     std::shared_ptr<CommandEntry> CommandEntry::create(
-        contracts::CodeLease code,
+        lux::object::CodeLease code,
         const CommandDescriptor& descriptor,
         Query query,
         Execute execute
@@ -240,7 +240,7 @@ namespace lux::editor::commands
             if (entry)
             {
                 auto code = entry->code_;
-                entry = contracts::pinCodeOwner(std::move(code), std::move(entry));
+                entry = lux::object::pinCodeOwner(std::move(code), std::move(entry));
             }
         if (entries.size() > capacity)
             return failure(ECommandError::CAPACITY);
@@ -499,7 +499,7 @@ namespace lux::editor::commands
             return failure(ECommandError::INVALID_ARGUMENT);
         if (const auto checked = validate(pinned.descriptor(), input); !checked)
             return cxx::unexpected(checked.error());
-        if (pinned.entry_->code_.sameOwner(contracts::CodeLease::builtin()))
+        if (pinned.entry_->code_.sameOwner(lux::object::CodeLease::builtin()))
             return pinned.entry_->query_(input);
         // Foreign callable boundary only; built-in dispatch does not pay for exception containment.
         try
@@ -534,7 +534,7 @@ namespace lux::editor::commands
                 return cxx::unexpected(CommandFailure{ECommandError::DISABLED, "command", 0, state->reason});
             return pinned.entry_->execute_(input);
         };
-        if (pinned.entry_->code_.sameOwner(contracts::CodeLease::builtin()))
+        if (pinned.entry_->code_.sameOwner(lux::object::CodeLease::builtin()))
             return invoke();
         try
         {

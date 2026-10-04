@@ -23,6 +23,10 @@ namespace lux::object
         class MessageEnvelope;
         struct ObjectMessageQueueState;
         struct SignalStorage;
+        struct Reclamation;
+        void scheduleReclamation(const ObjectDispatcherRef&, Reclamation&) noexcept;
+        void retainReclamation(const ObjectDispatcherRef&) noexcept;
+        void releaseReclamation(const ObjectDispatcherRef&) noexcept;
         void scheduleSignalMaintenance(const ObjectDispatcherRef&, SignalStorage&) noexcept;
 
         [[nodiscard]] LUX_CORE_PUBLIC EPostStatus
@@ -45,6 +49,9 @@ namespace lux::object
     private:
         friend class ObjectMessageQueue;
         friend void detail::scheduleSignalMaintenance(const ObjectDispatcherRef&, detail::SignalStorage&) noexcept;
+        friend void detail::scheduleReclamation(const ObjectDispatcherRef&, detail::Reclamation&) noexcept;
+        friend void detail::retainReclamation(const ObjectDispatcherRef&) noexcept;
+        friend void detail::releaseReclamation(const ObjectDispatcherRef&) noexcept;
         friend detail::EPostStatus detail::post(const ObjectDispatcherRef&, detail::MessageEnvelope&&) noexcept;
         explicit ObjectDispatcherRef(std::shared_ptr<detail::ObjectMessageQueueState> state) noexcept
             : state_(std::move(state))
@@ -81,6 +88,10 @@ namespace lux::object
         [[nodiscard]] std::size_t dispatchPending();
         // Consumes at most this many queued envelopes. Reentrant posts stay in the queue.
         [[nodiscard]] std::size_t dispatchPending(std::size_t max_messages);
+        // Owner calls outside business dispatch/UI traversal, including after message close.
+        // A fixed batch is collected; new requests remain for the next safe point.
+        [[nodiscard]] std::size_t collectRetired() noexcept;
+        [[nodiscard]] std::size_t pendingRetirements() const noexcept;
         void close() noexcept;
         // Cold host binding; wakes the native event loop after a queued message or deferred disconnect.
         void setWake(void (*)() noexcept) noexcept;

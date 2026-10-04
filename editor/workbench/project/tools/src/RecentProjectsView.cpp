@@ -134,7 +134,7 @@ namespace lux::editor::project
             std::make_shared<cxx::move_only_function<EditorResult<void>(const std::filesystem::path&)>>(std::move(open)
             );
         return views::ViewFactoryEntry::bind<kFactoryDescriptor>(
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             [&recent, receiver](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView>
             {
                 auto pane = std::make_unique<RecentProjectsView>(input.dispatcher(), input.paneId(), recent);
@@ -150,7 +150,7 @@ namespace lux::editor::project
                 );
                 if (!connection)
                     return cxx::unexpected(workbench::detail::viewFailure(connection.error()));
-                views::DetachedView view{contracts::CodeLease::builtin(), std::move(pane)};
+                views::DetachedView view{lux::object::CodeLease::builtin(), std::move(pane)};
                 view.addConnection(std::move(*connection));
                 return view;
             }

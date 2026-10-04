@@ -32,7 +32,7 @@ namespace lux::editor::sessions
     {
         struct SessionInstallationData final
         {
-            contracts::CodeLease code;
+            lux::object::CodeLease code;
             SessionStore& store;
             persistence::SaveService& saves;
             SessionId id;
@@ -48,7 +48,7 @@ namespace lux::editor::sessions
         template <class Invoke>
         auto callHistory(const detail::SessionInstallationData& data, Invoke invoke) -> decltype(invoke(*data.history))
         {
-            if (data.code.sameOwner(contracts::CodeLease::builtin()))
+            if (data.code.sameOwner(lux::object::CodeLease::builtin()))
                 return invoke(*data.history);
             try
             {
@@ -69,7 +69,7 @@ namespace lux::editor::sessions
     {}
     InstalledSession::~InstalledSession()
     {
-        const auto code = data_ ? data_->code : contracts::CodeLease::builtin();
+        const auto code = data_ ? data_->code : lux::object::CodeLease::builtin();
         data_.reset();
     }
     InstalledSession::InstalledSession(InstalledSession&&) noexcept = default;
@@ -88,7 +88,7 @@ namespace lux::editor::sessions
     }
     SessionFactoryResult<HistoryActionsInfo> InstalledSession::queryHistory() const
     {
-        const auto code = data_ ? data_->code : contracts::CodeLease::builtin();
+        const auto code = data_ ? data_->code : lux::object::CodeLease::builtin();
         const auto pinned = data_;
         if (!pinned)
             return cxx::unexpected(factoryFailure(ESessionError::STALE_SESSION));
@@ -96,7 +96,7 @@ namespace lux::editor::sessions
     }
     SessionFactoryResult<ContentStamp> InstalledSession::undo()
     {
-        const auto code = data_ ? data_->code : contracts::CodeLease::builtin();
+        const auto code = data_ ? data_->code : lux::object::CodeLease::builtin();
         const auto pinned = data_;
         if (!pinned)
             return cxx::unexpected(factoryFailure(ESessionError::STALE_SESSION));
@@ -104,7 +104,7 @@ namespace lux::editor::sessions
     }
     SessionFactoryResult<ContentStamp> InstalledSession::redo()
     {
-        const auto code = data_ ? data_->code : contracts::CodeLease::builtin();
+        const auto code = data_ ? data_->code : lux::object::CodeLease::builtin();
         const auto pinned = data_;
         if (!pinned)
             return cxx::unexpected(factoryFailure(ESessionError::STALE_SESSION));
@@ -114,7 +114,7 @@ namespace lux::editor::sessions
     {
         if (!data_ || expected.session != data_->id)
             return cxx::unexpected(ESessionError::STALE_SESSION);
-        const auto code = data_ ? data_->code : contracts::CodeLease::builtin();
+        const auto code = data_ ? data_->code : lux::object::CodeLease::builtin();
         const auto pinned = data_;
         auto permit = pinned->store.prepareClose(expected);
         if (!permit)
@@ -129,7 +129,7 @@ namespace lux::editor::sessions
         const persistence::WriteObservation& observation
     )
     {
-        const auto code = data_ ? data_->code : contracts::CodeLease::builtin();
+        const auto code = data_ ? data_->code : lux::object::CodeLease::builtin();
         const auto pinned = data_;
         const bool invalid = !pinned || pinned->id != candidate.session_ || !pinned->registration || !candidate.adopt_;
         if (invalid)
@@ -157,7 +157,7 @@ namespace lux::editor::sessions
     {}
     PreparedSessionInstallation::~PreparedSessionInstallation()
     {
-        const auto code = data_ ? data_->code : contracts::CodeLease::builtin();
+        const auto code = data_ ? data_->code : lux::object::CodeLease::builtin();
         data_.reset();
     }
     PreparedSessionInstallation::PreparedSessionInstallation(PreparedSessionInstallation&&) noexcept = default;
@@ -174,7 +174,7 @@ namespace lux::editor::sessions
     {
         return data_ ? data_->id : SessionId{};
     }
-    bool PreparedSessionInstallation::usesCode(const contracts::CodeLease& code) const noexcept
+    bool PreparedSessionInstallation::usesCode(const lux::object::CodeLease& code) const noexcept
     {
         return data_ && data_->code.sameOwner(code);
     }
@@ -182,7 +182,7 @@ namespace lux::editor::sessions
         SessionStore& store,
         persistence::SaveService& saves,
         SessionReservation reservation,
-        contracts::CodeLease code,
+        lux::object::CodeLease code,
         std::unique_ptr<HistoryActions> history,
         std::unique_ptr<persistence::ISaveSource> source
     )

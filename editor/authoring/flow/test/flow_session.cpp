@@ -66,7 +66,7 @@ namespace
         )
         {
             auto reservation =
-                take(store.reserve<FlowSession>({"lux.editor.flowforge"}, contracts::CodeLease::builtin()));
+                take(store.reserve<FlowSession>({"lux.editor.flowforge"}, lux::object::CodeLease::builtin()));
             id = reservation.id();
             auto candidate = take(FlowSession::create(
                 id,
@@ -201,7 +201,7 @@ namespace
         const Saved before(f);
         auto batch = f.batch();
         batch.edits.push_back(FlowRename{"first mixed transaction"});
-        batch.edits.push_back(FlowInsertNode{contracts::CodeLease::builtin(), std::make_unique<flow::BranchNode>()});
+        batch.edits.push_back(FlowInsertNode{lux::object::CodeLease::builtin(), std::make_unique<flow::BranchNode>()});
         const auto applied = take(f.session->apply(std::move(batch)));
         assert(applied.inserted.nodes.size() == 1);
         const auto old = capturedNode(f, applied.inserted.nodes.front());
@@ -211,7 +211,7 @@ namespace
         assert(f.encoded() == before.bytes);
 
         const auto inserted =
-            f.apply(FlowInsertNode{contracts::CodeLease::builtin(), std::make_unique<flow::BranchNode>()});
+            f.apply(FlowInsertNode{lux::object::CodeLease::builtin(), std::make_unique<flow::BranchNode>()});
         assert(inserted.inserted.nodes.size() == 1);
         const auto now = capturedNode(f, inserted.inserted.nodes.front());
         printPins("issued", old);
@@ -248,7 +248,7 @@ namespace
     {
         Fixture f;
         const auto issued =
-            f.apply(FlowInsertNode{contracts::CodeLease::builtin(), std::make_unique<flow::BranchNode>()});
+            f.apply(FlowInsertNode{lux::object::CodeLease::builtin(), std::make_unique<flow::BranchNode>()});
         const auto old = capturedNode(f, issued.inserted.nodes.front());
         f.apply(FlowRemoveNodes{{old.id}, {}});
         const auto history_id = f.session->describe().current.state.history;
@@ -256,7 +256,7 @@ namespace
 
         auto batch = f.batch();
         batch.edits.push_back(FlowRename{"candidate must inherit issued IDs"});
-        batch.edits.push_back(FlowInsertNode{contracts::CodeLease::builtin(), std::make_unique<flow::BranchNode>()});
+        batch.edits.push_back(FlowInsertNode{lux::object::CodeLease::builtin(), std::make_unique<flow::BranchNode>()});
         const auto inserted = take(f.session->apply(std::move(batch)));
         assert(inserted.inserted.nodes.size() == 1);
         const auto now = capturedNode(f, inserted.inserted.nodes.front());
@@ -365,7 +365,7 @@ namespace
         Fixture f;
         auto batch = f.batch();
         batch.edits.push_back(FlowRename{"restore"});
-        batch.edits.push_back(FlowInsertNode{contracts::CodeLease::builtin(), std::make_unique<flow::BranchNode>()});
+        batch.edits.push_back(FlowInsertNode{lux::object::CodeLease::builtin(), std::make_unique<flow::BranchNode>()});
         const auto receipt = take(f.session->apply(std::move(batch)));
         const auto old = capturedNode(f, receipt.inserted.nodes.front());
         const auto after = f.encoded();
@@ -379,13 +379,13 @@ namespace
         for (std::size_t i = 0; i < restored->outPins().size(); ++i)
             assert(flow::FlowGraph::assignDetachedPinId(*restored->outPins()[i], old.outputs[i].id));
         const auto restored_id =
-            f.apply(FlowInsertNode{contracts::CodeLease::builtin(), std::move(restored), old.layout, true});
+            f.apply(FlowInsertNode{lux::object::CodeLease::builtin(), std::move(restored), old.layout, true});
         assert(restored_id.inserted.nodes.front() == old.id && f.encoded() == after);
         assert(f.session->undo());
         assert(f.session->redo() && f.encoded() == after);
         f.apply(FlowRemoveNodes{{old.id}, {}});
         const auto fresh =
-            f.apply(FlowInsertNode{contracts::CodeLease::builtin(), std::make_unique<flow::BranchNode>()});
+            f.apply(FlowInsertNode{lux::object::CodeLease::builtin(), std::make_unique<flow::BranchNode>()});
         const auto now = capturedNode(f, fresh.inserted.nodes.front());
         assert(now.id.value > old.id.value && !intersectsPins(old, now));
         // The create copy boundary also keeps issued IDs absent from the input's live records.
@@ -397,7 +397,7 @@ namespace
         assert(input.graph.removeNode(index));
         Fixture copied(std::move(input));
         const auto next =
-            copied.apply(FlowInsertNode{contracts::CodeLease::builtin(), std::make_unique<flow::BranchNode>()});
+            copied.apply(FlowInsertNode{lux::object::CodeLease::builtin(), std::make_unique<flow::BranchNode>()});
         const auto new_node = capturedNode(copied, next.inserted.nodes.front());
         assert(new_node.id.value > erased.id.value && !intersectsPins(erased, new_node));
         std::puts("R04-04 PASS: Redo/preserve_ids restore exact bytes and identities; future allocation and create "
@@ -410,7 +410,7 @@ namespace
         for (const bool invalid_variable : {true, false})
         {
             auto batch = f.batch();
-            batch.edits.push_back(FlowInsertNode{contracts::CodeLease::builtin(), std::make_unique<flow::BranchNode>()}
+            batch.edits.push_back(FlowInsertNode{lux::object::CodeLease::builtin(), std::make_unique<flow::BranchNode>()}
             );
             if (invalid_variable)
                 batch.edits.push_back(FlowRemoveVariable{UINT64_MAX - 1});
@@ -422,7 +422,7 @@ namespace
         auto batch = f.batch();
         const flow::NodeId unpublished{UINT64_MAX / 2};
         batch.edits.push_back(FlowInsertNode{
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             std::make_unique<flow::BranchNode>(unpublished.value),
             {},
             true
@@ -431,7 +431,7 @@ namespace
         assert(take(f.session->apply(std::move(batch))).effect == editing::EEditEffect::NO_CHANGE);
         initial.unchanged(f);
         const auto next =
-            f.apply(FlowInsertNode{contracts::CodeLease::builtin(), std::make_unique<flow::BranchNode>()});
+            f.apply(FlowInsertNode{lux::object::CodeLease::builtin(), std::make_unique<flow::BranchNode>()});
         assert(next.inserted.nodes.front().value < unpublished.value);
         assert(f.session->undo() && f.encoded() == initial.bytes);
         assert(f.session->redo());
@@ -440,7 +440,7 @@ namespace
         Fixture tiny(source(), {}, true, limits);
         const Saved unchanged(tiny);
         batch = tiny.batch();
-        batch.edits.push_back(FlowInsertNode{contracts::CodeLease::builtin(), std::make_unique<flow::BranchNode>()});
+        batch.edits.push_back(FlowInsertNode{lux::object::CodeLease::builtin(), std::make_unique<flow::BranchNode>()});
         batch.edits.push_back(FlowRename{"too large"});
         assert(!tiny.session->apply(std::move(batch)));
         unchanged.unchanged(tiny);
@@ -601,7 +601,7 @@ namespace
         Fixture f;
         const auto variable = f.apply(FlowAddVariable{"condition", "bool", boolean(true)}).inserted.variables.front();
         f.apply(FlowInsertNode{
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             std::make_unique<flow::GetVariableNode>(
                 variable,
                 flow::DataPinInfo{"condition", &meta::ref_type_of_v<bool>}
@@ -685,7 +685,7 @@ namespace
         auto batch = f.batch();
         batch.edits.push_back(FlowSetLiteral{pin, boolean(true)});
         batch.edits.push_back(FlowRemoveNodes{{branch.id}, {}});
-        batch.edits.push_back(FlowInsertNode{contracts::CodeLease::builtin(), std::move(replacement), {9, 10}, true});
+        batch.edits.push_back(FlowInsertNode{lux::object::CodeLease::builtin(), std::move(replacement), {9, 10}, true});
         assert(f.session->apply(std::move(batch)));
         const auto node = f.node(flow::ENodeOperation::BRANCH);
         for (const auto& value : node.inputs)
@@ -785,7 +785,7 @@ namespace
             ).inserted.variables.front();
         fixture->apply(FlowSetVariable{{variable, "renamed native", "NativeRecord", {flow::EFlowLiteralKind::ZERO, {}}}}
         );
-        fixture->apply(FlowInsertNode{contracts::CodeLease::plugin(owner), std::make_unique<ProbeNode>(stats, owner)});
+        fixture->apply(FlowInsertNode{lux::object::CodeLease::plugin(owner), std::make_unique<ProbeNode>(stats, owner)});
         auto frozen = take(fixture->session->capture());
         owner.reset();
         assert(!weak.expired());
@@ -925,7 +925,7 @@ namespace
             blocked = !result && result.error().session == sessions::ESessionError::BUSY;
         });
         auto batch = f.batch();
-        batch.edits.push_back(FlowInsertNode{contracts::CodeLease::plugin(owner), std::move(input)});
+        batch.edits.push_back(FlowInsertNode{lux::object::CodeLease::plugin(owner), std::move(input)});
         owner.reset();
         const auto reject = [&]() -> FlowEditResult<void> {
             const auto result = f.session->apply(std::move(batch));

@@ -34,7 +34,7 @@ namespace lux::editor::workbench::detail
     std::shared_ptr<commands::CommandEntry> bindCommand(commands::CommandEntry::Query query, Action action)
     {
         return commands::CommandEntry::bind<Descriptor>(
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             std::move(query),
             [action = std::move(action)](const commands::CommandInvocation& input
             ) mutable -> commands::CommandResult<commands::DispatchReceipt>

@@ -26,7 +26,7 @@ extern "C" SAMPLE_EXTERNAL_EDITOR_EXPORT const lux::editor::extensions::EditorEx
     static const extensions::EditorExtensionExports exports{
         .counts = {.views = 1},
         .contribute =
-            +[](extensions::ContributionDraft& draft, contracts::CodeLease code) -> extensions::ContributionResult<void>
+            +[](extensions::ContributionDraft& draft, lux::object::CodeLease code) -> extensions::ContributionResult<void>
         {
             draft.views.push_back(views::ViewFactoryEntry::create(
                 code,

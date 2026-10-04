@@ -10,11 +10,11 @@ namespace lux::editor::flowforge
         [[nodiscard]] sessions::SourceBinding binding,
         std::optional<persistence::WriteTarget> target,
         lux::flowforge::FlowSourceEnvironment environment,
-        contracts::CodeLease code = contracts::CodeLease::builtin()
+        lux::object::CodeLease code = lux::object::CodeLease::builtin()
     );
     [[nodiscard]] std::shared_ptr<sessions::SessionFactoryEntry> makeFlowSessionFactory(
         lux::flowforge::FlowSourceEnvironment environment,
-        contracts::CodeLease code = contracts::CodeLease::builtin()
+        lux::object::CodeLease code = lux::object::CodeLease::builtin()
     );
     [[nodiscard]] std::shared_ptr<commands::CommandEntry> makeNewFlowCommand(
         commands::CommandEntry::Query,

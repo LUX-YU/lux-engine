@@ -18,7 +18,8 @@ def check(repo, records, sources, rules, mode, report, compiler_dependencies=Non
     native = set(policy["native_libraries"])
     formal = {name for name, value in declared.items() if value["layer"] in ("E0", "E1", "E2", "E3", "E4")}
     script = policy["script_boundaries"]
-    inspected = formal | set(script["header_owners"])
+    framework = policy.get("framework_dependencies", {})
+    inspected = formal | set(script["header_owners"]) | set(framework)
     exceptions = policy["construction_exceptions"] if mode == "CONSTRUCTION" else []
 
     def issue(rule, owner, detail):
@@ -63,6 +64,8 @@ def check(repo, records, sources, rules, mode, report, compiler_dependencies=Non
             return "generated_provider_mismatch" if generated else "new_legacy_dependency"
         if generated:
             return None  # Build tools are not runtime capabilities; their identity still matters.
+        if owner in framework and dependency != owner and dependency not in framework[owner]:
+            return "framework_business_dependency"
         if owner in script["native_owners"] and dependency in script["language_providers"]:
             return "native_script_language_dependency"
         if owner in script["generic_owners"] and dependency in script["concrete_providers"]:

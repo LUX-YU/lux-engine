@@ -19,7 +19,7 @@ namespace lux::editor::scene
         sessions::SourceBinding binding,
         std::optional<persistence::WriteTarget> target,
         simulation::ecs::ComponentSchemaSet schemas,
-        contracts::CodeLease code
+        lux::object::CodeLease code
     )
     {
         using namespace sessions;
@@ -44,7 +44,7 @@ namespace lux::editor::scene
     }
     std::shared_ptr<sessions::SessionFactoryEntry> makeSceneSessionFactory(
         simulation::ecs::ComponentSchemaSet schemas,
-        contracts::CodeLease code
+        lux::object::CodeLease code
     )
     {
         using namespace sessions;

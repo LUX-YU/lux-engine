@@ -122,7 +122,7 @@ namespace lux::editor::flowforge
         }
         const auto retained = snapshot->retainedBytes();
         auto job = std::make_unique<FlowEncodeJob>(std::move(*snapshot), id);
-        return FrozenSave{expected, retained, {contracts::CodeLease::builtin(), std::move(job)}, std::move(rebind)};
+        return FrozenSave{expected, retained, {lux::object::CodeLease::builtin(), std::move(job)}, std::move(rebind)};
     }
     EAdoption FlowSaveSource::accept(SaveReceipt&& receipt) noexcept
     {

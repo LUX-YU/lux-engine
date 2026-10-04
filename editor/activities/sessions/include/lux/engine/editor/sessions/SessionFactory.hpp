@@ -39,7 +39,7 @@ namespace lux::editor::sessions
     public:
         // Only the already prepared, checked domain swap; no extension/user callbacks in this function.
         using Adopt = cxx::move_only_function<SessionFactoryResult<ContentStamp>(SessionStore&)>;
-        PreparedSessionReload(contracts::CodeLease, SessionId, Adopt, std::unique_ptr<persistence::ISaveSource>);
+        PreparedSessionReload(lux::object::CodeLease, SessionId, Adopt, std::unique_ptr<persistence::ISaveSource>);
         ~PreparedSessionReload();
         PreparedSessionReload(PreparedSessionReload&&) noexcept;
         PreparedSessionReload& operator=(PreparedSessionReload&&) noexcept;
@@ -48,7 +48,7 @@ namespace lux::editor::sessions
 
     private:
         friend class InstalledSession;
-        contracts::CodeLease code_;
+        lux::object::CodeLease code_;
         SessionId session_;
         Adopt adopt_;
         std::unique_ptr<persistence::ISaveSource> source_;
@@ -59,8 +59,8 @@ namespace lux::editor::sessions
         using Prepare = cxx::move_only_function<
             SessionFactoryResult<PreparedSessionInstallation>(SessionStore&, persistence::SaveService&)>;
         using Reload = cxx::move_only_function<SessionFactoryResult<PreparedSessionReload>(SessionStore&)>;
-        SessionPreparation(contracts::CodeLease, Prepare);
-        SessionPreparation(contracts::CodeLease, ContentStamp, Reload);
+        SessionPreparation(lux::object::CodeLease, Prepare);
+        SessionPreparation(lux::object::CodeLease, ContentStamp, Reload);
         ~SessionPreparation();
         SessionPreparation(SessionPreparation&&) noexcept;
         SessionPreparation& operator=(SessionPreparation&&) noexcept;
@@ -70,7 +70,7 @@ namespace lux::editor::sessions
         [[nodiscard]] SessionFactoryResult<PreparedSessionInstallation>
         prepare(SessionStore&, persistence::SaveService&) &&;
         [[nodiscard]] SessionFactoryResult<PreparedSessionReload> prepareReload(SessionStore&) &&;
-        [[nodiscard]] bool usesCode(const contracts::CodeLease&) const noexcept;
+        [[nodiscard]] bool usesCode(const lux::object::CodeLease&) const noexcept;
 
     private:
         struct Data;
@@ -82,7 +82,7 @@ namespace lux::editor::sessions
         using Decode = cxx::move_only_function<SessionFactoryResult<
             SessionPreparation>(const SessionLoadInput&, std::span<const std::byte>, std::stop_token)>;
         template <const SessionKindDescriptor& Descriptor>
-        [[nodiscard]] static std::shared_ptr<SessionFactoryEntry> bind(contracts::CodeLease code, Decode decode)
+        [[nodiscard]] static std::shared_ptr<SessionFactoryEntry> bind(lux::object::CodeLease code, Decode decode)
         {
             static_assert(
                 Descriptor.kind.isValid() && !Descriptor.label.empty(),
@@ -94,7 +94,7 @@ namespace lux::editor::sessions
         }
         // Freezes dynamic text and extension spans once; the input is borrowed only during this call.
         [[nodiscard]] static std::shared_ptr<SessionFactoryEntry> create(
-            contracts::CodeLease,
+            lux::object::CodeLease,
             const SessionKindDescriptor&,
             Decode
         );
@@ -104,7 +104,7 @@ namespace lux::editor::sessions
         SessionFactoryEntry(SessionFactoryEntry&&) = delete;
         SessionFactoryEntry& operator=(SessionFactoryEntry&&) = delete;
         [[nodiscard]] const SessionKindDescriptor& descriptor() const noexcept;
-        [[nodiscard]] bool usesCode(const contracts::CodeLease& code) const noexcept
+        [[nodiscard]] bool usesCode(const lux::object::CodeLease& code) const noexcept
         {
             return code_.sameOwner(code);
         }
@@ -112,8 +112,8 @@ namespace lux::editor::sessions
     private:
         friend class SessionFactorySnapshot;
         friend class SessionLoadJob;
-        SessionFactoryEntry(contracts::CodeLease, const SessionKindDescriptor&, Decode);
-        contracts::CodeLease code_;
+        SessionFactoryEntry(lux::object::CodeLease, const SessionKindDescriptor&, Decode);
+        lux::object::CodeLease code_;
         struct DescriptorStorage;
         std::unique_ptr<const DescriptorStorage> storage_;
         const SessionKindDescriptor* descriptor_;

@@ -58,7 +58,7 @@ namespace lux::editor::tasks
     }
     views::DetachedView makeTaskView(object::ObjectDispatcherRef dispatcher, lux::ui::PaneId id, TaskMonitor& query)
     {
-        return {contracts::CodeLease::builtin(), std::make_unique<TaskView>(dispatcher, std::move(id), query)};
+        return {lux::object::CodeLease::builtin(), std::make_unique<TaskView>(dispatcher, std::move(id), query)};
     }
     void TaskListElement::draw() noexcept
     {
@@ -113,7 +113,7 @@ namespace lux::editor::tasks
     std::shared_ptr<views::ViewFactoryEntry> makeTaskViewFactory(TaskMonitor& monitor)
     {
         return views::ViewFactoryEntry::bind<kFactoryDescriptor>(
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             [&monitor](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView>
             { return makeTaskView(input.dispatcher(), input.paneId(), monitor); }
         );

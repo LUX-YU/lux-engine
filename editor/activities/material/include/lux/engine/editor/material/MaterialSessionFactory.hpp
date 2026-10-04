@@ -9,10 +9,10 @@ namespace lux::editor::material
         PreparedMaterialData data,
         sessions::SourceBinding binding,
         std::optional<persistence::WriteTarget> target,
-        contracts::CodeLease code = contracts::CodeLease::builtin()
+        lux::object::CodeLease code = lux::object::CodeLease::builtin()
     );
     [[nodiscard]] std::shared_ptr<sessions::SessionFactoryEntry> makeMaterialSessionFactory(
-        contracts::CodeLease code = contracts::CodeLease::builtin()
+        lux::object::CodeLease code = lux::object::CodeLease::builtin()
     );
     [[nodiscard]] std::shared_ptr<commands::CommandEntry> makeNewMaterialCommand(
         commands::CommandEntry::Query,

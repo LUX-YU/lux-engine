@@ -19,7 +19,7 @@ namespace lux::editor::commands
         using Execute = cxx::move_only_function<CommandResult<DispatchReceipt>(const CommandInvocation&)>;
         // Fixed declarations have static storage, including plugin literals retained by code.
         template <const CommandDescriptor& Descriptor>
-        [[nodiscard]] static std::shared_ptr<CommandEntry> bind(contracts::CodeLease code, Query query, Execute execute)
+        [[nodiscard]] static std::shared_ptr<CommandEntry> bind(lux::object::CodeLease code, Query query, Execute execute)
         {
             static_assert(
                 Descriptor.id.isValid() && !Descriptor.label.empty() && Descriptor.input_version != 0,
@@ -42,7 +42,7 @@ namespace lux::editor::commands
         // Copies dynamic text once into immutable entry-owned storage before returning.
         // Every view in the input must be valid for this call; no input view escapes.
         [[nodiscard]] static std::shared_ptr<CommandEntry> create(
-            contracts::CodeLease,
+            lux::object::CodeLease,
             const CommandDescriptor&,
             Query,
             Execute
@@ -55,7 +55,7 @@ namespace lux::editor::commands
         [[nodiscard]] const CommandDescriptor& descriptor() const noexcept;
         [[nodiscard]] const lux::ui::ShortcutResult& shortcut() const noexcept;
 
-        [[nodiscard]] bool usesCode(const contracts::CodeLease& code) const noexcept
+        [[nodiscard]] bool usesCode(const lux::object::CodeLease& code) const noexcept
         {
             return code_.sameOwner(code);
         }
@@ -63,9 +63,9 @@ namespace lux::editor::commands
     private:
         friend class CommandRegistry;
         friend class CommandRegistrySnapshot;
-        CommandEntry(contracts::CodeLease, const CommandDescriptor&, Query, Execute);
+        CommandEntry(lux::object::CodeLease, const CommandDescriptor&, Query, Execute);
         struct DescriptorStorage;
-        contracts::CodeLease code_;
+        lux::object::CodeLease code_;
         std::unique_ptr<const DescriptorStorage> storage_;
         const CommandDescriptor* descriptor_;
         lux::ui::ShortcutResult shortcut_;

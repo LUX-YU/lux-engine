@@ -7,7 +7,7 @@ int main()
 {
     namespace model = lux::editor::material;
     namespace sessions = lux::editor::sessions;
-    using lux::editor::contracts::CodeLease;
+    using lux::object::CodeLease;
     sessions::SessionStore store{2};
     auto reservation = store.reserve<model::MaterialSession>({"lux.editor.material"}, CodeLease::builtin());
     assert(reservation);

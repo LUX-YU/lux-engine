@@ -88,7 +88,7 @@ namespace registered_views
         const views::ViewFactoryInput input{
             dispatcher,
             std::move(id),
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             lux::cxx::typeToken<Value>(),
             std::make_shared<const Value>(std::move(value))
         };
@@ -99,7 +99,7 @@ namespace registered_views
     template <class Create> auto fixtureFactory(views::ViewTypeId type, Create create)
     {
         return views::ViewFactoryEntry::create(
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             views::ViewFactoryDescriptor{type.view(), "Borrowed fixture", lux::cxx::typeToken<std::monostate>()},
             [create = std::move(create)](const views::ViewFactoryInput& input
             ) mutable -> views::ViewFactoryResult<views::DetachedView>
@@ -369,7 +369,7 @@ namespace
                 take(std::move(builder).buildResolved())
             ));
             auto reservation =
-                take(store.reserve<author::SceneSession>({"lux.editor.scene"}, contracts::CodeLease::builtin()));
+                take(store.reserve<author::SceneSession>({"lux.editor.scene"}, lux::object::CodeLease::builtin()));
             auto model = take(author::SceneSession::create(
                 reservation.id(),
                 sessions::BoundSource{package.scene->id(), "scene.lux"},
@@ -657,7 +657,7 @@ namespace
         auto snapshot = take(f.session->capture());
         auto package = take(author::buildSceneSnapshotPackage(snapshot));
         auto reservation =
-            take(f.store.reserve<author::SceneSession>({"lux.editor.scene"}, contracts::CodeLease::builtin()));
+            take(f.store.reserve<author::SceneSession>({"lux.editor.scene"}, lux::object::CodeLease::builtin()));
         auto model = take(author::SceneSession::create(
             reservation.id(),
             {},
@@ -695,7 +695,7 @@ namespace
         );
         auto* blocking = blocker.get();
         views::DetachedView other{
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             std::move(blocker),
             +[](ui::Pane& pane) -> views::ViewCloseResult
             {
@@ -1021,7 +1021,7 @@ namespace
             {lux::flowforge::FlowForgeExportNodeId{1}, source.graph.getNode(event).node->id(), 1234}
         ));
         auto reserved =
-            take(f.store.reserve<ef::FlowSession>({"lux.editor.flowforge"}, contracts::CodeLease::builtin()));
+            take(f.store.reserve<ef::FlowSession>({"lux.editor.flowforge"}, lux::object::CodeLease::builtin()));
         auto model =
             take(ef::FlowSession::create(reserved.id(), sessions::BoundSource{asset, "flow.lux"}, std::move(source)));
         auto* author = model.get();
@@ -1087,7 +1087,7 @@ namespace
         };
         std::vector<ef::VFlowEdit> properties;
         properties.emplace_back(ef::FlowInsertNode{
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             std::make_unique<lux::flowforge::FuncDefNode>(
                 "function",
                 std::vector<lux::flowforge::FuncArgInfo>{{&meta::ref_type_of_v<bool>, "condition"}},
@@ -1215,7 +1215,7 @@ namespace
         const auto output = source.graph.addNode(std::make_unique<lux::material::OutputSurfaceNode>());
         assert(source.graph.connect(constant_id, 0, output, 0));
         auto reserved =
-            take(f.store.reserve<em::MaterialSession>({"lux.editor.material"}, contracts::CodeLease::builtin()));
+            take(f.store.reserve<em::MaterialSession>({"lux.editor.material"}, lux::object::CodeLease::builtin()));
         auto model = take(
             em::MaterialSession::create(reserved.id(), sessions::BoundSource{asset, "material.lux"}, std::move(source))
         );
@@ -1644,7 +1644,7 @@ namespace
             take(std::move(builder).buildResolved())
         ));
         auto reservation =
-            take(f.store.reserve<author::SceneSession>({"lux.editor.scene"}, contracts::CodeLease::builtin()));
+            take(f.store.reserve<author::SceneSession>({"lux.editor.scene"}, lux::object::CodeLease::builtin()));
         auto model = take(author::SceneSession::create(
             reservation.id(),
             {},
@@ -1914,7 +1914,7 @@ namespace
                     config.scene
                 ));
                 auto reservation =
-                    take(f.store.reserve<author::SceneSession>({"lux.editor.scene"}, contracts::CodeLease::builtin()));
+                    take(f.store.reserve<author::SceneSession>({"lux.editor.scene"}, lux::object::CodeLease::builtin()));
                 auto model = take(author::SceneSession::create(
                     reservation.id(),
                     {},
@@ -2031,7 +2031,7 @@ int main(int argc, char** argv)
     // same SceneView/domain undo path that this dual-viewport regression has always observed.
     using namespace editor::commands;
     auto undo = CommandEntry::create(
-        contracts::CodeLease::builtin(),
+        lux::object::CodeLease::builtin(),
         CommandDescriptor{CommandIdView{"p11.undo"}, "Undo", "Edit", "Ctrl+Z", ECommandScope::VIEW},
         [&](const CommandQuery& input) -> CommandResult<CommandState>
         {

@@ -36,7 +36,7 @@ int main()
     auto source = SceneSource::create(*package, *schemas);
     assert(source);
     sessions::SessionStore store{1};
-    auto reserved = store.reserve<SceneSession>({"lux.editor.scene"}, contracts::CodeLease::builtin());
+    auto reserved = store.reserve<SceneSession>({"lux.editor.scene"}, lux::object::CodeLease::builtin());
     assert(reserved);
     auto session = SceneSession::create(reserved->id(), {}, std::move(*source));
     assert(session);

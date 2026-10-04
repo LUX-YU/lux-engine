@@ -68,7 +68,7 @@ namespace lux::editor::application
                 );
                 if (!prompt)
                     return applicationFailure("close.view.question", prompt.error());
-                views::DetachedView candidate{contracts::CodeLease::builtin(), std::move(*prompt)};
+                views::DetachedView candidate{lux::object::CodeLease::builtin(), std::move(*prompt)};
                 auto shown = adopt(candidate, "last-view");
                 if (!shown)
                     return cxx::unexpected(shown.error());

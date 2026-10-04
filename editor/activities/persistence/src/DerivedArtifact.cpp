@@ -5,13 +5,13 @@ namespace lux::editor::persistence
 {
     namespace
     {
-        cxx::SharedBytes<> pinBytes(const contracts::CodeLease& code, cxx::SharedBytes<> bytes)
+        cxx::SharedBytes<> pinBytes(const lux::object::CodeLease& code, cxx::SharedBytes<> bytes)
         {
-            if (code.sameOwner(contracts::CodeLease::builtin()) || bytes.empty())
+            if (code.sameOwner(lux::object::CodeLease::builtin()) || bytes.empty())
                 return bytes;
             struct Owner final
             {
-                contracts::CodeLease code;
+                lux::object::CodeLease code;
                 cxx::SharedBytes<> bytes;
             };
             auto owner = std::make_shared<const Owner>(code, std::move(bytes));
@@ -19,17 +19,17 @@ namespace lux::editor::persistence
         }
     }
     DerivedArtifact::DerivedArtifact(
-        contracts::CodeLease code,
+        lux::object::CodeLease code,
         DerivedArtifactInfo info,
         cxx::SharedBytes<> bytes,
         std::shared_ptr<const IArtifactSource> source
     )
         : code_(std::move(code)), info_(std::move(info)), bytes_(pinBytes(code_, std::move(bytes))),
-          source_(contracts::pinCodeOwner(code_, std::move(source)))
+          source_(lux::object::pinCodeOwner(code_, std::move(source)))
     {}
     DerivedArtifact::DerivedArtifact(const DerivedArtifact& other)
         : code_(other.code_), info_(other.info_), bytes_(other.bytes_),
-          source_(contracts::pinCodeOwner(code_, other.source_))
+          source_(lux::object::pinCodeOwner(code_, other.source_))
     {}
     DerivedArtifact& DerivedArtifact::operator=(DerivedArtifact other) noexcept
     {
@@ -53,7 +53,7 @@ namespace lux::editor::persistence
             return cxx::unexpected(PersistenceFailure{EPersistenceError::INVALID_ARGUMENT});
         if (stop.stop_requested())
             return cxx::unexpected(PersistenceFailure{EPersistenceError::CANCELLED});
-        if (code_.sameOwner(contracts::CodeLease::builtin()))
+        if (code_.sameOwner(lux::object::CodeLease::builtin()))
             return source_->encode(stop);
         try // Only the foreign encoder boundary contains exceptions.
         {

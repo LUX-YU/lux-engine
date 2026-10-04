@@ -117,7 +117,7 @@ namespace
             "test.artifact", 1, 7
         };
         std::optional<DerivedArtifact> value(
-            std::in_place, contracts::CodeLease::plugin(code), info, input.bytes, source
+            std::in_place, lux::object::CodeLease::plugin(code), info, input.bytes, source
         );
         auto copied = *value;
         assert(copied.valid() && copied.bytes().data() == original);
@@ -135,7 +135,7 @@ namespace
         code.reset();
         input = {};
         value.reset();
-        auto replacement = DerivedArtifact{contracts::CodeLease::builtin(), {}, {}, {}};
+        auto replacement = DerivedArtifact{lux::object::CodeLease::builtin(), {}, {}, {}};
         copied = std::move(replacement);
         assert(destroyed && !code_lifetime.expired()); // The exported bytes still own their defining code.
         encoded = EncodedArtifact{};

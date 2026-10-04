@@ -34,7 +34,7 @@ namespace lux::editor::material
     MaterialEditResult<std::unique_ptr<MaterialSession>> PreparedMaterialData::createSession(
         sessions::SessionId id,
         sessions::SourceBinding binding,
-        contracts::CodeLease code
+        lux::object::CodeLease code
     ) &&
     {
         return MaterialSession::create(id, std::move(binding), std::move(source), std::move(code));

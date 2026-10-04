@@ -225,7 +225,7 @@ namespace lux::editor::flowforge
                     [&]
                     {
                         return FlowInsertNode{
-                            owner ? contracts::CodeLease::plugin(owner) : contracts::CodeLease::builtin(),
+                            owner ? lux::object::CodeLease::plugin(owner) : lux::object::CodeLease::builtin(),
                             std::move(node)
                         };
                     }
@@ -1000,7 +1000,7 @@ namespace lux::editor::flowforge
             return {};
         };
         return views::DetachedView{
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             std::move(*created),
             cancel,
             cancel,

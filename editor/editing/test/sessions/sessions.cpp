@@ -215,7 +215,7 @@ namespace
     void descriptionExceptionRecovery()
     {
         SessionStore store{2};
-        auto reserved = store.reserve<FakeSession>({"test.fake"}, contracts::CodeLease::builtin());
+        auto reserved = store.reserve<FakeSession>({"test.fake"}, lux::object::CodeLease::builtin());
         auto candidate = std::make_unique<FakeSession>(reserved->id());
         auto* session = candidate.get();
         assert(store.prepare(*reserved, candidate) && store.publish(*reserved));
@@ -232,7 +232,7 @@ namespace
         assert(caught);
         session->rejectDescribe(false);
         assert(store.describe(reserved->id()));
-        auto other = store.reserve<FakeSession>({"test.fake"}, contracts::CodeLease::builtin());
+        auto other = store.reserve<FakeSession>({"test.fake"}, lux::object::CodeLease::builtin());
         assert(other); // Unwinding the public query must release CallbackScope.
         auto permit = store.prepareClose(session->stamp());
         assert(permit && store.close(*permit));
@@ -241,7 +241,7 @@ namespace
     bool closeContent(bool throws)
     {
         SessionStore store{1};
-        auto reserved = store.reserve<FakeSession>({"test.fake"}, contracts::CodeLease::builtin());
+        auto reserved = store.reserve<FakeSession>({"test.fake"}, lux::object::CodeLease::builtin());
         BoundSource binding;
         binding.location.assign(32768, 'x');
         auto candidate = std::make_unique<FakeSession>(reserved->id(), nullptr, std::move(binding));
@@ -286,7 +286,7 @@ namespace
             order.push_back(3);
             delete static_cast<const int*>(p);
         });
-        auto reserved = store.reserve<FakeSession>({"test.fake"}, contracts::CodeLease::plugin(code));
+        auto reserved = store.reserve<FakeSession>({"test.fake"}, lux::object::CodeLease::plugin(code));
         code.reset();
         auto session = std::make_unique<FakeSession>(reserved->id(), &order);
         assert(store.prepare(*reserved, session) && store.publish(*reserved));
@@ -343,7 +343,7 @@ namespace
     void slotsAndPermits()
     {
         SessionStore store{1};
-        auto reservation = store.reserve<FakeSession>({"test.fake"}, contracts::CodeLease::builtin());
+        auto reservation = store.reserve<FakeSession>({"test.fake"}, lux::object::CodeLease::builtin());
         assert(reservation && store.size() == 0);
         const auto first = reservation->id();
         assert(!store.describe(first));
@@ -399,7 +399,7 @@ namespace
         }
         auto close = store.prepareClose(stamp);
         assert(close && store.close(*close) && !access.read(*key));
-        auto second = store.reserve<FakeSession>({"test.fake"}, contracts::CodeLease::builtin());
+        auto second = store.reserve<FakeSession>({"test.fake"}, lux::object::CodeLease::builtin());
         assert(second && second->id().slot == first.slot && second->id().generation != first.generation);
         session = std::make_unique<FakeSession>(second->id());
         assert(store.prepare(*second, session) && store.publish(*second));
@@ -410,17 +410,17 @@ namespace
     void candidatesAndCode()
     {
         SessionStore store{1};
-        assert(!store.reserve<FakeSession>({"test.fake"}, contracts::CodeLease::plugin({})));
+        assert(!store.reserve<FakeSession>({"test.fake"}, lux::object::CodeLease::plugin({})));
         std::vector<int> order;
         {
             auto code = std::shared_ptr<const void>(new int{}, [&order](const void* p) {
                 order.push_back(3);
                 delete static_cast<const int*>(p);
             });
-            auto reservation = store.reserve<FakeSession>({"test.fake"}, contracts::CodeLease::plugin(code));
+            auto reservation = store.reserve<FakeSession>({"test.fake"}, lux::object::CodeLease::plugin(code));
             code.reset();
             assert(reservation && !store.publish(*reservation));
-            assert(!store.reserve<FakeSession>({"test.fake"}, contracts::CodeLease::builtin()));
+            assert(!store.reserve<FakeSession>({"test.fake"}, lux::object::CodeLease::builtin()));
             auto invalid = std::make_unique<FakeSession>(SessionId{999, 0, 1});
             assert(!store.prepare(*reservation, invalid) && invalid && store.size() == 0);
             auto candidate = std::make_unique<FakeSession>(reservation->id(), &order);
@@ -436,7 +436,7 @@ namespace
         std::vector<SessionId> ids;
         for (int i{}; i < 2; ++i)
         {
-            auto reserved = store.reserve<FakeSession>({"test.fake"}, contracts::CodeLease::builtin());
+            auto reserved = store.reserve<FakeSession>({"test.fake"}, lux::object::CodeLease::builtin());
             auto model = std::make_unique<FakeSession>(reserved->id());
             models.push_back(model.get());
             ids.push_back(reserved->id());
@@ -444,7 +444,7 @@ namespace
         }
         const auto frozen_ids = store.snapshotIds();
         assert(frozen_ids && *frozen_ids == ids);
-        auto hidden = store.reserve<FakeSession>({"test.fake"}, contracts::CodeLease::builtin());
+        auto hidden = store.reserve<FakeSession>({"test.fake"}, lux::object::CodeLease::builtin());
         assert(hidden && store.snapshotIds() == frozen_ids);
         std::vector<ClosePermit> permits;
         for (const auto* model : models)
@@ -464,7 +464,7 @@ namespace
         assert(store.close(permits) && store.size() == 0 && store.snapshotIds()->empty());
         assert(!store.close(permits));
         assert(*frozen_ids == ids); // The owned observation survives reclamation.
-        auto next = store.reserve<FakeSession>({"test.fake"}, contracts::CodeLease::builtin());
+        auto next = store.reserve<FakeSession>({"test.fake"}, lux::object::CodeLease::builtin());
         assert(next && next->id() != ids.front() && next->id() != ids.back());
         bool wrong_thread{};
         std::thread thread([&] { wrong_thread = store.snapshotIds().error() == ESessionError::WRONG_THREAD; });

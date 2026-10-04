@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/editor/contracts/CodeLease.hpp>
+#include <lux/engine/object/CodeLease.hpp>
 #include <lux/engine/editor/persistence/SaveTypes.hpp>
 
 namespace lux::editor::persistence
@@ -14,10 +14,10 @@ namespace lux::editor::persistence
     // The outer owner remains alive until the plugin job's virtual destructor has returned.
     struct OwnedEncodeJob final
     {
-        contracts::CodeLease code{contracts::CodeLease::builtin()};
+        lux::object::CodeLease code{lux::object::CodeLease::builtin()};
         std::unique_ptr<IEncodeJob> job;
         OwnedEncodeJob() = default;
-        OwnedEncodeJob(contracts::CodeLease lease, std::unique_ptr<IEncodeJob> value) noexcept
+        OwnedEncodeJob(lux::object::CodeLease lease, std::unique_ptr<IEncodeJob> value) noexcept
             : code(std::move(lease)), job(std::move(value))
         {}
         OwnedEncodeJob(OwnedEncodeJob&&) noexcept = default;

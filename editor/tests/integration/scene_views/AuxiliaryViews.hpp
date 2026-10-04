@@ -99,7 +99,7 @@ void auxiliaryViews(Fixture& f)
     };
     auto picker = std::make_unique<Picker>(f.messages.dispatcherRef(), &catalog);
     auto* control = &picker->asset;
-    views::DetachedView picker_view{contracts::CodeLease::builtin(), std::move(picker)};
+    views::DetachedView picker_view{lux::object::CodeLease::builtin(), std::move(picker)};
     const auto picker_id = take(f.desktop->views().adopt(picker_view, views::ViewRestoreKey{"picker"})).id;
     assert(control->select(reference) && control->value() == reference.asset);
     auto invalid = reference;

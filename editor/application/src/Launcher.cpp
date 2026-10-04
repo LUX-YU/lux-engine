@@ -78,13 +78,13 @@ namespace lux::editor::application
         if (!constructed)
             return 3;
         view->setModal(false);
-        views::DetachedView candidate{contracts::CodeLease::builtin(), std::move(view)};
+        views::DetachedView candidate{lux::object::CodeLease::builtin(), std::move(view)};
         auto adopted = (*desktop)->views().adopt(candidate, views::ViewRestoreKey{"project-creation"});
         if (!adopted)
             return 3;
         std::vector<std::shared_ptr<commands::CommandEntry>> entries;
         entries.push_back(commands::CommandEntry::bind<command_lux_project_open>(
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             [&](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
             { return commands::CommandState{!closing && !launching}; },
             [&](const commands::CommandInvocation&) -> commands::CommandResult<commands::DispatchReceipt>

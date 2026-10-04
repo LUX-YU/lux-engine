@@ -51,8 +51,9 @@ component_include_directories(edit_sessions
     BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR} INSTALL_TIME include)
 target_compile_definitions(edit_sessions PRIVATE LUX_EDIT_SESSIONS_LIBRARY)
 target_link_libraries(edit_sessions PUBLIC lux::engine::editor::edit_history lux::engine::editor::editor_contracts
-    lux::engine::resource::identity PRIVATE lux::cxx::container)
+    lux::engine::resource::identity lux::engine::core::object PRIVATE lux::cxx::container)
 component_add_transitive_commands(edit_sessions
+    "find_package(lux-engine-core REQUIRED COMPONENTS object)"
     "find_package(lux-engine-edit-history REQUIRED COMPONENTS edit_history)"
     "find_package(lux-engine-editor-contracts REQUIRED COMPONENTS editor_contracts)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS identity)")
@@ -95,9 +96,6 @@ install(FILES
 install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/EditorError.hpp
     DESTINATION include/lux/engine/editor COMPONENT lux_engine_editor_contracts)
-install(FILES
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/contracts/CodeLease.hpp
-    DESTINATION include/lux/engine/editor/contracts COMPONENT lux_engine_editor_contracts)
 install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/views/ViewInfo.hpp
     DESTINATION include/lux/engine/editor/views COMPONENT lux_engine_editor_contracts)

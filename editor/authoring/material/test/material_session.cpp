@@ -44,13 +44,13 @@ namespace
         sessions::SessionId id;
         Fixture(
             mat::MaterialSource input = source(),
-            contracts::CodeLease code = contracts::CodeLease::builtin(),
+            lux::object::CodeLease code = lux::object::CodeLease::builtin(),
             MaterialSessionLimits limits = {},
             bool bound = true
         )
         {
             auto reservation =
-                take(store.reserve<MaterialSession>({"lux.editor.material"}, contracts::CodeLease::builtin()));
+                take(store.reserve<MaterialSession>({"lux.editor.material"}, lux::object::CodeLease::builtin()));
             id = reservation.id();
             auto candidate = take(MaterialSession::create(
                 id,
@@ -145,7 +145,7 @@ namespace
         batch.edits.push_back(MaterialSetShading{rdesc::ELightingTechnique::GRAPH});
         batch.edits.push_back(MaterialSetRenderState{{rdesc::EAlphaMode::BLEND, .7f, true}});
         batch.edits.push_back(
-            MaterialInsertNode{{contracts::CodeLease::builtin()}, std::make_unique<mat::MathNode>(), {5, 6}}
+            MaterialInsertNode{{lux::object::CodeLease::builtin()}, std::make_unique<mat::MathNode>(), {5, 6}}
         );
         const auto added = take(f.session->apply(std::move(batch))).inserted.front();
         assert(f.history().entry_count == 1 && f.session->describe().dirty);
@@ -179,7 +179,7 @@ namespace
         auto slot_edit = slots.batch();
         slot_edit.edits.push_back(MaterialSetParameterSlots{{{"parameter", mat::EValueType::FLOAT, {}}}});
         slot_edit.edits.push_back(MaterialInsertNode{
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             std::make_unique<mat::ParamNode>(mat::EValueType::FLOAT),
             {}
         });
@@ -189,7 +189,7 @@ namespace
         parameter->as<mat::ParamNode>()->setType(mat::EValueType::VEC4);
         slot_edit = slots.batch();
         slot_edit.edits.push_back(MaterialSetParameterSlots{{{"parameter", mat::EValueType::VEC4, {}}}});
-        slot_edit.edits.push_back(MaterialReplaceNode{contracts::CodeLease::builtin(), std::move(parameter)});
+        slot_edit.edits.push_back(MaterialReplaceNode{lux::object::CodeLease::builtin(), std::move(parameter)});
         assert(slots.session->apply(std::move(slot_edit)));
         const auto slot_after = slots.encoded();
         assert(slots.session->undo() && slots.encoded() == slot_before);
@@ -249,7 +249,7 @@ namespace
         Fixture f;
         auto batch = f.batch();
         batch.edits.push_back(
-            MaterialInsertNode{contracts::CodeLease::plugin(code), std::make_unique<PluginConstant>(code), {}}
+            MaterialInsertNode{lux::object::CodeLease::plugin(code), std::make_unique<PluginConstant>(code), {}}
         );
         batch.edits.push_back(MaterialDisconnect{{999}, {998}});
         const Saved saved(f);
@@ -259,13 +259,13 @@ namespace
         auto replacement = std::make_unique<PluginConstant>(code);
         replacement->setId(f.first()); // Pins intentionally do not preserve the existing identity.
         batch = f.batch();
-        batch.edits.push_back(MaterialReplaceNode{contracts::CodeLease::plugin(code), std::move(replacement)});
+        batch.edits.push_back(MaterialReplaceNode{lux::object::CodeLease::plugin(code), std::move(replacement)});
         assert(!f.session->apply(std::move(batch)));
         saved.unchanged(f);
         assert(alive == 0 && !released_early);
         MaterialSessionLimits limits;
         limits.history.max_staging_bytes = 1;
-        Fixture tiny(source(), contracts::CodeLease::builtin(), limits);
+        Fixture tiny(source(), lux::object::CodeLease::builtin(), limits);
         Saved small(tiny);
         batch = tiny.batch();
         batch.edits.push_back(MaterialRename{"other"});
@@ -273,7 +273,7 @@ namespace
         small.unchanged(tiny);
         limits.history.max_staging_bytes = 1024 * 1024;
         limits.history.max_retained_bytes = 1;
-        Fixture retained(source(), contracts::CodeLease::builtin(), limits);
+        Fixture retained(source(), lux::object::CodeLease::builtin(), limits);
         Saved unchanged(retained);
         batch = retained.batch();
         batch.edits.push_back(MaterialRename{"other"});
@@ -321,7 +321,7 @@ namespace
         {
             auto input = source();
             const auto id = input.graph.addNode(std::make_unique<PluginConstant>(code));
-            Fixture f(std::move(input), contracts::CodeLease::plugin(code));
+            Fixture f(std::move(input), lux::object::CodeLease::plugin(code));
             code.reset();
             snapshot = take(f.session->capture());
             const auto count = clones;
@@ -332,7 +332,7 @@ namespace
             auto replacement = snapshot.source().graph.node(id)->clone();
             replacement->as<mat::ConstantNode>()->value[0] = 99;
             batch = f.batch();
-            batch.edits.push_back(MaterialReplaceNode{contracts::CodeLease::builtin(), std::move(replacement)});
+            batch.edits.push_back(MaterialReplaceNode{lux::object::CodeLease::builtin(), std::move(replacement)});
             assert(f.session->apply(std::move(batch)));
             assert(snapshot.source().graph.node(id)->as<mat::ConstantNode>()->value[0] == 0);
             auto permit = take(f.store.prepareClose(f.session->describe().current));
@@ -360,10 +360,10 @@ namespace
         if (recreate)
         {
             batch.edits.push_back(MaterialEraseNode{id});
-            batch.edits.push_back(MaterialInsertNode{contracts::CodeLease::builtin(), std::move(replacement), {8, 9}});
+            batch.edits.push_back(MaterialInsertNode{lux::object::CodeLease::builtin(), std::move(replacement), {8, 9}});
         }
         else
-            batch.edits.push_back(MaterialReplaceNode{contracts::CodeLease::builtin(), std::move(replacement)});
+            batch.edits.push_back(MaterialReplaceNode{lux::object::CodeLease::builtin(), std::move(replacement)});
         batch.edits.push_back(MaterialSetConstant{id, {7, 8, 9, 10}});
         assert(f.session->apply(std::move(batch)));
         auto frozen = take(f.session->capture());
@@ -396,7 +396,7 @@ namespace
         auto code = std::make_shared<int>(1);
         auto input = source();
         input.graph.addNode(std::make_unique<PluginConstant>(code));
-        Fixture f(std::move(input), contracts::CodeLease::plugin(code));
+        Fixture f(std::move(input), lux::object::CodeLease::plugin(code));
         const Saved saved(f);
         auto candidate = take(lux::editor::material::PreparedMaterialReload::prepare(*f.session, source()));
         const auto check = [&] {
@@ -469,7 +469,7 @@ namespace
     }
     void reloadUnbound(bool last_lease)
     {
-        Fixture f(source(), contracts::CodeLease::builtin(), {}, false);
+        Fixture f(source(), lux::object::CodeLease::builtin(), {}, false);
         const Saved saved(f);
         bool released{}, released_with_nodes{}, nested_edit{}, callback_ran{};
         sessions::EEditAdmission callback_admission{};
@@ -481,7 +481,7 @@ namespace
         auto input = source();
         input.graph.addNode(std::make_unique<PluginConstant>(code));
         input.graph.addNode(std::make_unique<PluginConstant>(code));
-        auto lease = contracts::CodeLease::plugin(code);
+        auto lease = lux::object::CodeLease::plugin(code);
         if (last_lease)
             code.reset();
         destroy_hook = [&] {
@@ -534,7 +534,7 @@ namespace
             auto input = source();
             input.graph.addNode(std::make_unique<PluginConstant>(code));
             input.graph.addNode(std::make_unique<PluginConstant>(code));
-            auto lease = contracts::CodeLease::plugin(code);
+            auto lease = lux::object::CodeLease::plugin(code);
             code.reset();
             destroy_hook = [&] {
                 callback_ran = true;
@@ -600,7 +600,7 @@ namespace
             input.graph.addNode(std::make_unique<PluginConstant>(code));
             if (!throws)
                 input.id = asset::AssetId{*uuids::uuid::from_string("87654321-1234-1234-1234-123456789abc")};
-            auto lease = contracts::CodeLease::plugin(code);
+            auto lease = lux::object::CodeLease::plugin(code);
             code.reset();
             const auto check = [&] {
                 callback_ran = true;
@@ -645,7 +645,7 @@ namespace
         input.name = "reloaded material";
         input.graph.addNode(std::make_unique<PluginConstant>(code));
         const auto expected = take(mat::encodeMaterialSource(input));
-        auto lease = contracts::CodeLease::plugin(code);
+        auto lease = lux::object::CodeLease::plugin(code);
         code.reset();
         const auto check = [&] {
             assert(f.session->describe().admission == sessions::EEditAdmission::READING);

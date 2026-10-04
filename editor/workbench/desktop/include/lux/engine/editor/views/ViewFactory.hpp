@@ -51,7 +51,7 @@ namespace lux::editor::views
         ViewFactoryInput(
             object::ObjectDispatcherRef,
             lux::ui::PaneId,
-            contracts::CodeLease,
+            lux::object::CodeLease,
             cxx::TypeToken,
             std::shared_ptr<const void> binding,
             std::uint32_t version = 1
@@ -76,7 +76,7 @@ namespace lux::editor::views
     public:
         using Create = cxx::move_only_function<ViewFactoryResult<DetachedView>(const ViewFactoryInput&)>;
         template <const ViewFactoryDescriptor& Descriptor>
-        [[nodiscard]] static std::shared_ptr<ViewFactoryEntry> bind(contracts::CodeLease code, Create create)
+        [[nodiscard]] static std::shared_ptr<ViewFactoryEntry> bind(lux::object::CodeLease code, Create create)
         {
             static_assert(
                 Descriptor.type.isValid() && !Descriptor.label.empty() && Descriptor.binding_type.isValid() &&
@@ -89,7 +89,7 @@ namespace lux::editor::views
         }
         // Freeze dynamic strings/arrays before publishing any borrowed descriptor.
         [[nodiscard]] static std::shared_ptr<ViewFactoryEntry> create(
-            contracts::CodeLease,
+            lux::object::CodeLease,
             const ViewFactoryDescriptor&,
             Create
         );
@@ -99,7 +99,7 @@ namespace lux::editor::views
         ViewFactoryEntry(ViewFactoryEntry&&) = delete;
         ViewFactoryEntry& operator=(ViewFactoryEntry&&) = delete;
         [[nodiscard]] const ViewFactoryDescriptor& descriptor() const noexcept;
-        [[nodiscard]] bool usesCode(const contracts::CodeLease& code) const noexcept
+        [[nodiscard]] bool usesCode(const lux::object::CodeLease& code) const noexcept
         {
             return code_.sameOwner(code);
         }
@@ -107,8 +107,8 @@ namespace lux::editor::views
     private:
         friend class ViewFactorySnapshot;
         struct DescriptorStorage;
-        ViewFactoryEntry(contracts::CodeLease, const ViewFactoryDescriptor&, Create);
-        contracts::CodeLease code_;
+        ViewFactoryEntry(lux::object::CodeLease, const ViewFactoryDescriptor&, Create);
+        lux::object::CodeLease code_;
         std::unique_ptr<const DescriptorStorage> storage_;
         const ViewFactoryDescriptor* descriptor_;
         Create create_;

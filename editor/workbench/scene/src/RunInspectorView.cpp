@@ -340,7 +340,7 @@ namespace lux::editor::scene
             return cxx::unexpected(preparationFailure(result.error()));
         };
         return views::DetachedView{
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             std::move(view),
             close,
             +[](lux::ui::Pane& pane) -> views::ViewCloseResult {

@@ -356,7 +356,7 @@ namespace skeleton
             TSessionKey<Session> key,
             std::optional<WriteTarget> target,
             BindingRevision revision,
-            contracts::CodeLease code
+            lux::object::CodeLease code
         )
             : code_(std::move(code)), access_(access), key_(key), target_(std::move(target)), revision_(revision)
         {
@@ -456,13 +456,13 @@ namespace skeleton
         }
 
     private:
-        contracts::CodeLease code_;
+        lux::object::CodeLease code_;
         TSessionAccess<Session> access_;
         TSessionKey<Session> key_;
         std::optional<WriteTarget> target_;
         BindingRevision revision_;
     };
-    std::shared_ptr<SessionFactoryEntry> factory(contracts::CodeLease code)
+    std::shared_ptr<SessionFactoryEntry> factory(lux::object::CodeLease code)
     {
         return SessionFactoryEntry::create(
             code,

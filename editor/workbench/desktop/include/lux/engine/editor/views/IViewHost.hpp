@@ -1,6 +1,6 @@
 #pragma once
 #include <lux/engine/editor/views/ViewError.hpp>
-#include <lux/engine/editor/contracts/CodeLease.hpp>
+#include <lux/engine/object/CodeLease.hpp>
 #include <lux/engine/ui/Pane.hpp>
 #include <utility>
 #include <lux/cxx/core/move_only_function.hpp>
@@ -34,10 +34,10 @@ namespace lux::editor::views
 
     private:
         friend class DetachedView;
-        PreparedViewState(contracts::CodeLease code, cxx::move_only_function<void()> apply)
+        PreparedViewState(lux::object::CodeLease code, cxx::move_only_function<void()> apply)
             : code_(std::move(code)), apply_(std::move(apply))
         {}
-        contracts::CodeLease code_;
+        lux::object::CodeLease code_;
         cxx::move_only_function<void()> apply_;
     };
     // Owner order is intentional, including move assignment. The host completes detach and transfers
@@ -51,7 +51,7 @@ namespace lux::editor::views
         using CaptureContent = ViewContent (*)(const lux::ui::Pane&) noexcept;
         using RebindContent = ViewCloseResult (*)(lux::ui::Pane&, const ViewContent&);
         DetachedView(
-            contracts::CodeLease code,
+            lux::object::CodeLease code,
             std::unique_ptr<lux::ui::Pane> pane,
             PrepareClose prepare_close = nullptr,
             PrepareClose cancel_preview = nullptr,
@@ -102,7 +102,7 @@ namespace lux::editor::views
         {
             return pane_.get();
         }
-        [[nodiscard]] bool usesCode(const contracts::CodeLease& code) const noexcept
+        [[nodiscard]] bool usesCode(const lux::object::CodeLease& code) const noexcept
         {
             return code_.sameOwner(code);
         }
@@ -155,7 +155,7 @@ namespace lux::editor::views
         }
 
     private:
-        contracts::CodeLease code_;
+        lux::object::CodeLease code_;
         std::unique_ptr<lux::ui::Pane> pane_;
         PrepareClose prepare_close_{};
         PrepareClose cancel_preview_{};

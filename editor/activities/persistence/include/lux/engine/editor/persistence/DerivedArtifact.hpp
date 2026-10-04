@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/editor/contracts/CodeLease.hpp>
+#include <lux/engine/object/CodeLease.hpp>
 #include <lux/engine/editor/persistence/WriteLane.hpp>
 #include <lux/engine/resource/identity/AssetId.hpp>
 #include <lux/engine/resource/asset/AssetTypeId.hpp>
@@ -32,7 +32,7 @@ namespace lux::editor::persistence
     {
     public:
         DerivedArtifact(
-            contracts::CodeLease, DerivedArtifactInfo, cxx::SharedBytes<>, std::shared_ptr<const IArtifactSource>
+            lux::object::CodeLease, DerivedArtifactInfo, cxx::SharedBytes<>, std::shared_ptr<const IArtifactSource>
         );
         DerivedArtifact(const DerivedArtifact&);
         DerivedArtifact(DerivedArtifact&&) noexcept = default;
@@ -44,7 +44,7 @@ namespace lux::editor::persistence
         [[nodiscard]] PersistenceResult<EncodedArtifact> encodeSource(std::stop_token) const noexcept;
 
     private:
-        contracts::CodeLease code_;
+        lux::object::CodeLease code_;
         DerivedArtifactInfo info_;
         cxx::SharedBytes<> bytes_;
         std::shared_ptr<const IArtifactSource> source_;

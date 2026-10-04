@@ -78,7 +78,7 @@ namespace lux::editor::scene
         )
         {
             return commands::CommandEntry::bind<Descriptor>(
-                contracts::CodeLease::builtin(),
+                lux::object::CodeLease::builtin(),
                 [query](const commands::CommandQuery& input) { return (*query)(input); },
                 [action = std::move(action)](const commands::CommandInvocation& input
                 ) mutable -> commands::CommandResult<commands::DispatchReceipt>
@@ -167,7 +167,7 @@ namespace lux::editor::scene
     )
     {
         return commands::CommandEntry::bind<kPlay>(
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             std::move(query),
             [start = std::move(start)](const commands::CommandInvocation& input
             ) mutable -> commands::CommandResult<commands::DispatchReceipt>

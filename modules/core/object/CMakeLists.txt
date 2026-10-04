@@ -8,6 +8,8 @@ add_component(
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Connection.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/Object.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ObjectDispatcher.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/CodeLease.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/ObjectOwnership.cpp
 )
 
 component_include_directories(
@@ -36,6 +38,16 @@ component_add_transitive_commands(
 )
 
 if(BUILD_TESTING)
+    add_library(object_ownership_plugin MODULE test/ownership_plugin.cpp)
+    target_link_libraries(object_ownership_plugin PRIVATE object)
+    add_executable(object_ownership_test test/ownership.cpp)
+    target_link_libraries(object_ownership_test PRIVATE object lux::engine::platform::dynamic_library)
+    if(MSVC)
+        target_compile_options(object_ownership_test PRIVATE /UNDEBUG)
+    else()
+        target_compile_options(object_ownership_test PRIVATE -UNDEBUG)
+    endif()
+    add_test(NAME object.ownership COMMAND object_ownership_test $<TARGET_FILE:object_ownership_plugin>)
     add_executable(object_tree_test test/tree.cpp)
     target_link_libraries(object_tree_test PRIVATE object)
     if(MSVC)

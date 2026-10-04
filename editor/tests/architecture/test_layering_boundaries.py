@@ -21,6 +21,7 @@ def main():
     parser.add_argument("--p12", action="store_true")
     parser.add_argument("--ec2", action="store_true")
     parser.add_argument("--ec3", action="store_true")
+    parser.add_argument("--ec4", action="store_true")
     args = parser.parse_args()
     repo = args.source.resolve()
     base_rules = json.loads((repo / "editor/tests/architecture/rules.json").read_text())
@@ -89,8 +90,15 @@ def main():
             ("EC3-settings-data", "layout_model", "project_tools_ui", "authoring_outer_dependency", "link"),
             ("EC3-viewport", "editor_viewport", "editor_bootstrap", "workbench_application_dependency", "include"),
         ]
-    folder_name = "ec3-boundaries" if args.ec3 else ("ec2-boundaries" if args.ec2 else (
+    if args.ec4:
+        cases = [
+            ("EC4-object-editor", "object", "editor_contracts", "product_reverse_dependency", "include"),
+            ("EC4-object-ui", "object", "ui", "framework_business_dependency", "link"),
+            ("EC4-object-process", "object", "process_execution", "framework_business_dependency", "include"),
+        ]
+    folder_name = "ec4-boundaries" if args.ec4 else ("ec3-boundaries" if args.ec3 else ("ec2-boundaries" if args.ec2 else (
         "p12-boundaries" if args.p12 else ("p11-boundaries" if args.p11 else "layering-boundaries")))
+    )
     folder = args.build / folder_name
     suffix = 1
     while folder.exists():
@@ -161,6 +169,8 @@ def main():
             top = top.replace("STAGE P10Q", "STAGE EC2")
         elif args.ec3:
             top = top.replace("STAGE P10Q", "STAGE EC3")
+        elif args.ec4:
+            top = top.replace("STAGE P10Q", "STAGE EC4")
         top += "".join(f"add_subdirectory({p})\n" for p in declarations)
         legal_edges = f"target_link_libraries({owner} PRIVATE {dependency})\n" if kind == "unknown" else ""
         if kind == "generated":

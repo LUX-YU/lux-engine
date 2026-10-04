@@ -40,17 +40,17 @@ int main()
     extensions::ContributionRegistry contributions{messages.dispatcherRef(), commands};
     extensions::ContributionDraft draft;
     draft.views.push_back(views::ViewFactoryEntry::create(
-        contracts::CodeLease::builtin(),
+        lux::object::CodeLease::builtin(),
         views::ViewFactoryDescriptor{views::ViewTypeIdView{"ec1.free"}, "Free pane", cxx::typeToken<std::monostate>()},
         [](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView>
-        { return views::DetachedView{contracts::CodeLease::builtin(), std::make_unique<FreePane>(input)}; }
+        { return views::DetachedView{lux::object::CodeLease::builtin(), std::make_unique<FreePane>(input)}; }
     ));
     auto candidate = take(extensions::ContributionSnapshot::prepare(std::move(draft)));
     assert(contributions.enqueue(candidate) && contributions.applyPending());
     views::ViewFactoryInput input{
         messages.dispatcherRef(),
         ui::PaneId{"free"},
-        contracts::CodeLease::builtin(),
+        lux::object::CodeLease::builtin(),
         cxx::typeToken<std::monostate>(),
         std::make_shared<const std::monostate>()
     };

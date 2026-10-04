@@ -8,14 +8,14 @@ namespace
     skeleton::Facts* observations{};
     lux::editor::extensions::ContributionResult<void> contribute(
         lux::editor::extensions::ContributionDraft&,
-        lux::editor::contracts::CodeLease
+        lux::object::CodeLease
     )
     {
         return {};
     }
     lux::editor::extensions::ContributionResult<void> observe(
         lux::editor::extensions::ContributionDraft&,
-        lux::editor::contracts::CodeLease,
+        lux::object::CodeLease,
         const lux::editor::extensions::ExtensionCapabilities& capabilities
     )
     {

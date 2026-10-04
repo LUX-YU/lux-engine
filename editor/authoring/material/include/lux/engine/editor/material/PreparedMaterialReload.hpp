@@ -14,7 +14,7 @@ namespace lux::editor::material
         [[nodiscard]] static MaterialEditResult<PreparedMaterialReload> prepare(
             MaterialSession& session,
             lux::material::MaterialSource source,
-            contracts::CodeLease code = contracts::CodeLease::builtin(),
+            lux::object::CodeLease code = lux::object::CodeLease::builtin(),
             std::optional<sessions::ContentStamp> expected = {},
             sessions::SourceBinding binding = {}
         );

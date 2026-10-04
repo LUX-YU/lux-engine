@@ -150,7 +150,7 @@ extern "C" LUX_PHYSICS2D_EDITOR_PUBLIC const lux::editor::extensions::EditorExte
     static const extensions::EditorExtensionExports exports{
         .counts = {.configurations = 1, .reflection = 1},
         .contribute =
-            +[](extensions::ContributionDraft& draft, contracts::CodeLease code) -> extensions::ContributionResult<void>
+            +[](extensions::ContributionDraft& draft, lux::object::CodeLease code) -> extensions::ContributionResult<void>
         {
             draft.reflection.push_back({code, &lux_physics2d_configuration_meta});
             const auto& system = lux::physics2d::physics2DSystemRegistrations().front();

@@ -55,7 +55,7 @@ void operator delete[](void* pointer, std::size_t) noexcept
 }
 
 using namespace lux::editor::commands;
-using lux::editor::contracts::CodeLease;
+using lux::object::CodeLease;
 namespace
 {
     constexpr CommandDescriptor fixed{CommandIdView{"measure.fixed"}, "Static command", "Measure"};

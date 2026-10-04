@@ -21,7 +21,7 @@ namespace lux::editor::material
             sessions::SessionId id,
             sessions::SourceBinding binding,
             lux::material::MaterialSource source,
-            contracts::CodeLease code = contracts::CodeLease::builtin(),
+            lux::object::CodeLease code = lux::object::CodeLease::builtin(),
             MaterialSessionLimits limits = {}
         );
         ~MaterialSession() noexcept override;

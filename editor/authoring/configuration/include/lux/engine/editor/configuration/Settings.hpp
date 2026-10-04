@@ -1,6 +1,6 @@
 #pragma once
 #include <lux/engine/editor/configuration/ConfigurationValue.hpp>
-#include <lux/engine/editor/contracts/CodeLease.hpp>
+#include <lux/engine/object/CodeLease.hpp>
 #include <lux/cxx/core/StableNameId.hpp>
 #include <lux/cxx/core/move_only_function.hpp>
 #include <lux/engine/editor/workspace/SettingsDocument.hpp>
@@ -37,14 +37,14 @@ namespace lux::editor::settings
     public:
         using Apply = cxx::move_only_function<SettingsResult<void>(const ConfigurationValue&)>;
         template <const SettingsDescriptor& Descriptor>
-        [[nodiscard]] static std::shared_ptr<SettingsEntry> bind(contracts::CodeLease code, Apply apply = {})
+        [[nodiscard]] static std::shared_ptr<SettingsEntry> bind(lux::object::CodeLease code, Apply apply = {})
         {
             static_assert(Descriptor.id.isValid() && !Descriptor.label.empty() && Descriptor.configuration);
             return std::shared_ptr<SettingsEntry>(new SettingsEntry(std::move(code), Descriptor, std::move(apply)));
         }
         // One immutable backing owns all dynamic names and the original configuration descriptor.
         [[nodiscard]] static std::shared_ptr<SettingsEntry> create(
-            contracts::CodeLease,
+            lux::object::CodeLease,
             const SettingsDescriptor&,
             Apply = {}
         );
@@ -54,11 +54,11 @@ namespace lux::editor::settings
         SettingsEntry(SettingsEntry&&) = delete;
         SettingsEntry& operator=(SettingsEntry&&) = delete;
         [[nodiscard]] const SettingsDescriptor& descriptor() const noexcept;
-        [[nodiscard]] const contracts::CodeLease& code() const noexcept
+        [[nodiscard]] const lux::object::CodeLease& code() const noexcept
         {
             return code_;
         }
-        [[nodiscard]] bool usesCode(const contracts::CodeLease&) const noexcept;
+        [[nodiscard]] bool usesCode(const lux::object::CodeLease&) const noexcept;
         [[nodiscard]] SettingsResult<void> validateDescriptor() const noexcept;
         [[nodiscard]] SettingsResult<ConfigurationValue> defaults() const noexcept;
         [[nodiscard]] SettingsResult<void> validateDefault(meta::ReflectionRegistry&) const noexcept;
@@ -73,10 +73,10 @@ namespace lux::editor::settings
         }
 
     private:
-        SettingsEntry(contracts::CodeLease, const SettingsDescriptor&, Apply);
+        SettingsEntry(lux::object::CodeLease, const SettingsDescriptor&, Apply);
         [[nodiscard]] SettingsResult<ConfigurationValue> defaults(meta::ReflectionRegistry&) const noexcept;
         struct Storage;
-        contracts::CodeLease code_;
+        lux::object::CodeLease code_;
         std::unique_ptr<const Storage> storage_;
         const SettingsDescriptor* descriptor_;
         Apply apply_;

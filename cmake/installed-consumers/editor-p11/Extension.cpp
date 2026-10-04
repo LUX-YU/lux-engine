@@ -81,7 +81,7 @@ namespace
             ++facts->panes_destroyed;
         }
     };
-    extensions::ContributionResult<void> contribute(extensions::ContributionDraft& draft, contracts::CodeLease code)
+    extensions::ContributionResult<void> contribute(extensions::ContributionDraft& draft, lux::object::CodeLease code)
     {
         using namespace commands;
         draft.reflection.push_back({code, &registerConfiguration});
@@ -131,7 +131,7 @@ namespace
     };
     extensions::ContributionResult<void> activate(
         extensions::ContributionDraft& draft,
-        contracts::CodeLease code,
+        lux::object::CodeLease code,
         const extensions::ExtensionCapabilities& capabilities
     )
     {

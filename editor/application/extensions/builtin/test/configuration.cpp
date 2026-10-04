@@ -132,7 +132,7 @@ namespace
                 return {};
             }
         };
-        auto entry = settings::SettingsEntry::create(contracts::CodeLease::builtin(), descriptor);
+        auto entry = settings::SettingsEntry::create(lux::object::CodeLease::builtin(), descriptor);
         for (bool rejected : {true, false})
         {
             extensions::ContributionDraft draft;
@@ -179,7 +179,7 @@ int main()
         assert(draft.prepareCommit());
         assert(draft.commit());
         const editor::scene::ConfigurationEditor registration{
-            editor::contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             {"test.configuration",
              1,
              serialization::makePortableValueCodec<Configuration>(),

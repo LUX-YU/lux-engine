@@ -36,7 +36,7 @@ namespace lux::editor::material
         if (!compiled)
             return cxx::unexpected(persistence::PersistenceFailure{persistence::EPersistenceError::INVALID_ARGUMENT});
         return persistence::DerivedArtifact{
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             {compiled->key().content, compiled->source()->id, std::string(lux::asset::MaterialAsset::canonical_name), 1,
              lux::asset::MaterialAsset::primary_magic},
             compiled->bytes(), std::make_shared<const MaterialArtifactSource>(compiled)

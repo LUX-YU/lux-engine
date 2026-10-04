@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/editor/contracts/CodeLease.hpp>
+#include <lux/engine/object/CodeLease.hpp>
 #include <lux/engine/editor/sessions/IEditSession.hpp>
 #include <lux/cxx/compile_time/TypeToken.hpp>
 #include <concepts>
@@ -41,7 +41,7 @@ namespace lux::editor::sessions
         SessionStore& operator=(const SessionStore&) = delete;
         template <class T>
             requires std::derived_from<T, IEditSession>
-        [[nodiscard]] SessionResult<SessionReservation> reserve(SessionKindId kind, contracts::CodeLease code)
+        [[nodiscard]] SessionResult<SessionReservation> reserve(SessionKindId kind, lux::object::CodeLease code)
         {
             return reserve(std::move(kind), lux::cxx::typeToken<T>(), std::move(code));
         }
@@ -95,7 +95,7 @@ namespace lux::editor::sessions
         [[nodiscard]] SessionResult<SessionReservation> reserve(
             SessionKindId kind,
             lux::cxx::TypeToken type,
-            contracts::CodeLease code
+            lux::object::CodeLease code
         );
         [[nodiscard]] SessionResult<void> prepare(const SessionReservation&, lux::cxx::TypeToken, const IEditSession&);
         void install(SessionId id, std::unique_ptr<IEditSession> candidate) noexcept;

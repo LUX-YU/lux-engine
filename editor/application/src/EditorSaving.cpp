@@ -67,7 +67,7 @@ namespace lux::editor::application
         );
         if (!question)
             return applicationFailure("save.question.create", question.error());
-        views::DetachedView candidate{contracts::CodeLease::builtin(), std::move(*question)};
+        views::DetachedView candidate{lux::object::CodeLease::builtin(), std::move(*question)};
         auto shown = adopt(candidate, "save-destination");
         if (!shown)
             return cxx::unexpected(shown.error());
@@ -125,7 +125,7 @@ namespace lux::editor::application
     void EditorApplication::Impl::installSaveCommands(extensions::ContributionDraft& draft)
     {
         draft.commands.push_back(commands::CommandEntry::bind<kReloadCommand>(
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
             { return commands::CommandState{phase_ == EApplicationPhase::RUNNING && !reload_question_}; },
             [this](const commands::CommandInvocation& invocation) -> commands::CommandResult<commands::DispatchReceipt>
@@ -139,7 +139,7 @@ namespace lux::editor::application
         const auto bindSave = [&]<const commands::CommandDescriptor & Descriptor>(persistence::ESaveMode mode)
         {
             return commands::CommandEntry::bind<Descriptor>(
-                contracts::CodeLease::builtin(),
+                lux::object::CodeLease::builtin(),
                 [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
                 { return commands::CommandState{phase_ == EApplicationPhase::RUNNING && !save_question_}; },
                 [this, mode](const commands::CommandInvocation& invocation
@@ -170,7 +170,7 @@ namespace lux::editor::application
         draft.commands.push_back(bindSave.template operator()<kSaveAsCommand>(persistence::ESaveMode::SAVE_AS));
         draft.commands.push_back(bindSave.template operator()<kExportCopyCommand>(persistence::ESaveMode::EXPORT_COPY));
         draft.commands.push_back(commands::CommandEntry::bind<kSaveAllCommand>(
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
             { return commands::CommandState{phase_ == EApplicationPhase::RUNNING}; },
             [this](const commands::CommandInvocation&) -> commands::CommandResult<commands::DispatchReceipt>

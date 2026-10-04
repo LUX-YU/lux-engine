@@ -26,7 +26,7 @@ namespace lux::editor::extensions
                 counts.settings != draft.settings.size();
             if (mismatch)
                 return cxx::unexpected(ContributionFailure{EContributionError::INVALID_ARGUMENT, "extension.counts"});
-            const auto lease = contracts::CodeLease::plugin(pinned);
+            const auto lease = lux::object::CodeLease::plugin(pinned);
             draft.code.push_back(lease);
             for (const auto& entry : draft.reflection)
                 if (!entry.code.sameOwner(lease))
@@ -124,7 +124,7 @@ namespace lux::editor::extensions
             return draft;
         try
         {
-            auto result = table->contribute(draft, contracts::CodeLease::plugin(pinned));
+            auto result = table->contribute(draft, lux::object::CodeLease::plugin(pinned));
             if (!result)
                 return cxx::unexpected(result.error());
         }
@@ -169,7 +169,7 @@ namespace lux::editor::extensions
         ContributionDraft draft;
         try
         {
-            auto result = table->activate(draft, contracts::CodeLease::plugin(pinned), selected);
+            auto result = table->activate(draft, lux::object::CodeLease::plugin(pinned), selected);
             if (!result)
                 return cxx::unexpected(result.error());
         }

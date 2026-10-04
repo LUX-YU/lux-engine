@@ -80,7 +80,7 @@ namespace lux::editor::workbench::detail
     {
         static_assert(Descriptor.binding_type == cxx::typeToken<Input>());
         return views::ViewFactoryEntry::bind<Descriptor>(
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             [create = std::move(create)](const views::ViewFactoryInput& input
             ) mutable -> views::ViewFactoryResult<views::DetachedView>
             {

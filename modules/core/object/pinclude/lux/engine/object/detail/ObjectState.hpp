@@ -2,10 +2,12 @@
 
 #include <lux/cxx/container/StableSlotMap.hpp>
 #include <lux/engine/object/LuxObject.hpp>
+#include <lux/engine/object/detail/Reclamation.hpp>
 #include <mutex>
 
 namespace lux::object::detail
 {
+    [[noreturn]] void failObjectContract() noexcept;
     struct ConnectionControl final
     {
         std::atomic_size_t refs{};
@@ -21,7 +23,7 @@ namespace lux::object::detail
         bool incoming_linked{}; // Receiver mutex only.
     };
 
-    struct ObjectState final
+    struct ObjectState final : Reclamation
     {
         ObjectState(LuxObject* value, ObjectDispatcherRef queue) noexcept : object(value), dispatcher(std::move(queue))
         {}
@@ -30,10 +32,12 @@ namespace lux::object::detail
         ObjectDispatcherRef dispatcher;
         std::mutex mutex;
         ConnectionControl* incoming{};
+        bool destruction_requested{}; // Affinity thread; one queued reference per identity.
 
         [[nodiscard]] bool addIncoming(ConnectionControl&) noexcept;
         void removeIncoming(ConnectionControl&) noexcept;
         void closeOwner() noexcept;
+        static bool reclaimOwner(Reclamation&) noexcept;
     };
 
     struct SignalStorage final

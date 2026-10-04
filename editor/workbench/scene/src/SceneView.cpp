@@ -797,7 +797,7 @@ namespace lux::editor::scene
             return {};
         };
         return views::DetachedView{
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             std::move(*view),
             cancel,
             cancel,

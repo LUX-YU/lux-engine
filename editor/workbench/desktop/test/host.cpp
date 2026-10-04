@@ -91,7 +91,7 @@ namespace
     views::DetachedView candidate(object::ObjectDispatcherRef dispatcher, const char* id, Facts& facts)
     {
         auto code = std::make_shared<Code>(facts);
-        return {contracts::CodeLease::plugin(code), std::make_unique<Window>(dispatcher, id, facts)};
+        return {lux::object::CodeLease::plugin(code), std::make_unique<Window>(dispatcher, id, facts)};
     }
     void completeViewConnections(object::ObjectDispatcherRef dispatcher)
     {
@@ -144,7 +144,7 @@ namespace
         auto pane = std::make_unique<Comparison>(dispatcher, host);
         auto* comparison = pane.get();
         views::DetachedView view{
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             std::move(pane),
             nullptr,
             nullptr,
@@ -304,7 +304,7 @@ namespace
         auto code = std::make_shared<Code>(facts);
         auto pane = std::make_unique<Window>(dispatcher, "close-errors", facts);
         auto& window = *pane;
-        views::DetachedView view{contracts::CodeLease::plugin(code), std::move(pane), +[](ui::Pane& target) {
+        views::DetachedView view{lux::object::CodeLease::plugin(code), std::move(pane), +[](ui::Pane& target) {
                                      return static_cast<Window&>(target).prepareClose();
                                  }};
         code.reset();
@@ -413,7 +413,7 @@ namespace
         {
             auto code = std::make_shared<Code>(facts);
             return views::DetachedView{
-                contracts::CodeLease::plugin(code),
+                lux::object::CodeLease::plugin(code),
                 std::make_unique<Window>(dispatcher, name, facts),
                 +[](ui::Pane& pane) { return static_cast<Window&>(pane).prepareClose(); }
             };
@@ -465,7 +465,7 @@ namespace
         auto make = [&](std::string name)
         {
             return views::DetachedView{
-                contracts::CodeLease::builtin(),
+                lux::object::CodeLease::builtin(),
                 std::make_unique<ui::Pane>(dispatcher, ui::PaneId{name}, ui::PaneTypeId{"layout.test"}, name)
             };
         };
@@ -500,7 +500,7 @@ namespace
         bool reject_second = true;
         unsigned inputs{}, creations{};
         auto entry = views::ViewFactoryEntry::create(
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             views::ViewFactoryDescriptor{views::ViewTypeIdView{"layout.test"}, "Layout test", cxx::typeToken<int>()},
             [&](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView>
             {
@@ -523,7 +523,7 @@ namespace
             return views::ViewFactoryInput{
                 dispatcher,
                 std::move(id),
-                contracts::CodeLease::builtin(),
+                lux::object::CodeLease::builtin(),
                 cxx::typeToken<int>(),
                 std::make_shared<const int>(0)
             };
@@ -590,7 +590,7 @@ namespace
             desktop::ReviewQuestion{91, "Unsaved scene", "Save this captured scene?", {SAVE, DISCARD, CANCEL}};
         auto view = take(desktop::ReviewView::create(dispatcher, ui::PaneId{"review"}, question));
         assert(view->modal() && !view->attachedRoot() && !view->response());
-        views::DetachedView candidate{contracts::CodeLease::builtin(), std::move(view)};
+        views::DetachedView candidate{lux::object::CodeLease::builtin(), std::move(view)};
         auto id = take(host.adopt(candidate, views::ViewRestoreKey{"review"})).id;
         bool visited{};
         const auto borrow = [&](ui::Pane& pane)
@@ -625,13 +625,13 @@ void toolCommandFactory(object::ObjectDispatcherRef dispatcher)
     unsigned constructions{};
     std::string type{"p10.test"}, label{"External tool"};
     auto factory = views::ViewFactoryEntry::create(
-        contracts::CodeLease::builtin(),
+        lux::object::CodeLease::builtin(),
         {views::ViewTypeIdView{type}, label, cxx::typeToken<std::monostate>()},
         [&constructions](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView>
         {
             ++constructions;
             return views::DetachedView{
-                contracts::CodeLease::builtin(),
+                lux::object::CodeLease::builtin(),
                 std::make_unique<ui::Pane>(input.dispatcher(), input.paneId(), ui::PaneTypeId{"p10.test"}, "Tool")
             };
         }
@@ -682,7 +682,7 @@ int main()
         const auto entry = [](std::string name, bool is_default)
         {
             return views::ViewFactoryEntry::create(
-                contracts::CodeLease::builtin(),
+                lux::object::CodeLease::builtin(),
                 views::ViewFactoryDescriptor{
                     views::ViewTypeIdView{name},
                     name,

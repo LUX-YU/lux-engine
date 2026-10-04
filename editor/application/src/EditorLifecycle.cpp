@@ -49,7 +49,7 @@ namespace lux::editor::application
             );
             if (!question)
                 return applicationFailure("exit.error", question.error());
-            views::DetachedView candidate{contracts::CodeLease::builtin(), std::move(*question)};
+            views::DetachedView candidate{lux::object::CodeLease::builtin(), std::move(*question)};
             auto shown = adopt(candidate, "exit-review");
             if (!shown)
                 return cxx::unexpected(shown.error());
@@ -169,7 +169,7 @@ namespace lux::editor::application
                 );
                 if (!question)
                     return applicationFailure("exit.question", question.error());
-                views::DetachedView candidate{contracts::CodeLease::builtin(), std::move(*question)};
+                views::DetachedView candidate{lux::object::CodeLease::builtin(), std::move(*question)};
                 auto adopted = adopt(candidate, "exit-review");
                 if (!adopted)
                     return cxx::unexpected(adopted.error());
@@ -191,7 +191,7 @@ namespace lux::editor::application
                 );
                 if (!question)
                     return applicationFailure("close.run.question", question.error());
-                views::DetachedView candidate{contracts::CodeLease::builtin(), std::move(*question)};
+                views::DetachedView candidate{lux::object::CodeLease::builtin(), std::move(*question)};
                 auto shown = adopt(candidate, "exit-review");
                 if (!shown)
                     return cxx::unexpected(shown.error());

@@ -15,7 +15,7 @@ namespace
     auto entry(int& calls)
     {
         return CommandEntry::create(
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             descriptor(),
             [](const CommandQuery&) -> CommandResult<CommandState> { return CommandState{true}; },
             [&calls](const CommandInvocation&) -> CommandResult<DispatchReceipt>
@@ -29,7 +29,7 @@ namespace
     static_assert(literal.id.hash() == cxx::Fnv1a64::hash("test.literal"));
     static_assert(!std::is_constructible_v<
                   CommandEntry,
-                  contracts::CodeLease,
+                  lux::object::CodeLease,
                   CommandDescriptor,
                   CommandEntry::Query,
                   CommandEntry::Execute>);
@@ -38,13 +38,13 @@ namespace
         auto query = [](const CommandQuery&) -> CommandResult<CommandState> { return CommandState{true}; };
         auto execute = [](const CommandInvocation&) -> CommandResult<DispatchReceipt>
         { return DispatchReceipt{ImmediateCompletion{}}; };
-        auto fixed = CommandEntry::bind<literal>(contracts::CodeLease::builtin(), query, execute);
+        auto fixed = CommandEntry::bind<literal>(lux::object::CodeLease::builtin(), query, execute);
         assert(&fixed->descriptor() == &literal && fixed->descriptor().label.data() == literal.label.data());
         std::shared_ptr<CommandEntry> dynamic;
         {
             std::string name{"test.dynamic"}, label{"Label"}, group{"A/B"}, key{"Alt+M"}, argument{"payload"};
             dynamic = CommandEntry::create(
-                contracts::CodeLease::builtin(),
+                lux::object::CodeLease::builtin(),
                 {CommandIdView{name}, label, group, key, ECommandScope::APPLICATION, 3, {91, argument}},
                 query,
                 execute
@@ -109,7 +109,7 @@ namespace
         assert(registry.canPublish() && dispatcher.drain() && calls == 2);
         unsigned cleaned{};
         {
-            auto code = contracts::CodeLease::plugin(std::shared_ptr<const void>(
+            auto code = lux::object::CodeLease::plugin(std::shared_ptr<const void>(
                 new int{1},
                 [&](const void* p)
                 {
@@ -163,7 +163,7 @@ namespace
         auto make = [](std::string_view id, std::string_view shortcut)
         {
             return CommandEntry::create(
-                contracts::CodeLease::builtin(),
+                lux::object::CodeLease::builtin(),
                 {CommandIdView{id}, "Shortcut", "Edit", shortcut},
                 [](const CommandQuery&) -> CommandResult<CommandState> { return CommandState{true}; },
                 [](const CommandInvocation&) -> CommandResult<DispatchReceipt>
@@ -210,7 +210,7 @@ namespace
         auto incompatible = descriptor();
         incompatible.input_version = 2;
         auto changed = CommandEntry::create(
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             incompatible,
             [](const CommandQuery&) -> CommandResult<CommandState> { return CommandState{true}; },
             [](const CommandInvocation&) -> CommandResult<DispatchReceipt>
@@ -242,7 +242,7 @@ namespace
         };
         auto code = std::make_shared<Witness>(released, active, early);
         auto record = CommandEntry::create(
-            contracts::CodeLease::plugin(code),
+            lux::object::CodeLease::plugin(code),
             descriptor(),
             [&](const CommandQuery& query) -> CommandResult<CommandState>
             {
@@ -294,7 +294,7 @@ namespace
         bool busy{true};
         int calls{};
         auto record = CommandEntry::create(
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             descriptor(),
             [&](const CommandQuery&) -> CommandResult<CommandState>
             {

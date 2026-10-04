@@ -248,7 +248,7 @@ namespace skeleton
             bool revert_requested_{};
             std::uint64_t shown_revision_{};
         };
-        ContributionResult<void> contribute(ContributionDraft& draft, contracts::CodeLease code)
+        ContributionResult<void> contribute(ContributionDraft& draft, lux::object::CodeLease code)
         {
             draft.sessions.push_back(factory(code));
             draft.reflection.push_back({code, &registerSettings});
@@ -275,7 +275,7 @@ namespace skeleton
         }
         ContributionResult<void> activate(
             ContributionDraft& draft,
-            contracts::CodeLease code,
+            lux::object::CodeLease code,
             const ExtensionCapabilities& capabilities
         )
         {

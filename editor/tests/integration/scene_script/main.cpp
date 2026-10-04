@@ -8,7 +8,7 @@ int main(int argc, char** argv)
     using namespace lux::editor;
     namespace editing_scene = lux::editor::scene;
     sessions::SessionStore authors{2};
-    auto reservation = take(authors.reserve<editing_scene::SceneSession>({"lux.editor.scene"}, contracts::CodeLease::builtin()));
+    auto reservation = take(authors.reserve<editing_scene::SceneSession>({"lux.editor.scene"}, lux::object::CodeLease::builtin()));
     auto author = take(editing_scene::SceneSession::create(reservation.id(),
         sessions::BoundSource{SceneId, "scene.lux"}, take(editing_scene::SceneSource::create(fixture.package, fixture.schemas))));
     auto* model = author.get();

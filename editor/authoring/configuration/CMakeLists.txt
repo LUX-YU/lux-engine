@@ -9,9 +9,9 @@ component_include_directories(editor_configuration BUILD_TIME_EXPORT
     ${CMAKE_CURRENT_SOURCE_DIR}/include ${LUX_GENERATE_HEADER_DIR} INSTALL_TIME include)
 target_compile_definitions(editor_configuration PRIVATE LUX_EDITOR_CONFIGURATION_LIBRARY)
 target_link_libraries(editor_configuration PUBLIC lux::engine::core::meta lux::engine::core::serialization
-    lux::engine::editor::editor_contracts lux::engine::editor::layout_model)
+    lux::engine::core::object lux::engine::editor::editor_contracts lux::engine::editor::layout_model)
 component_add_transitive_commands(editor_configuration
-    "find_package(lux-engine-core REQUIRED COMPONENTS meta serialization)"
+    "find_package(lux-engine-core REQUIRED COMPONENTS meta serialization object)"
     "find_package(lux-engine-editor-contracts REQUIRED COMPONENTS editor_contracts)"
     "find_package(lux-engine-editor-layout REQUIRED COMPONENTS layout_model)")
 lux_classify_target(TARGET editor_configuration LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)

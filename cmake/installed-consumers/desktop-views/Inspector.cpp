@@ -44,7 +44,7 @@ int main()
         ),
         take(std::move(lux::scene::SceneDescriptionBuilder{}).buildResolved())
     ));
-    auto reservation = take(store.reserve<author::SceneSession>({"lux.editor.scene"}, contracts::CodeLease::builtin()));
+    auto reservation = take(store.reserve<author::SceneSession>({"lux.editor.scene"}, lux::object::CodeLease::builtin()));
     auto model = take(author::SceneSession::create(
         reservation.id(),
         std::nullopt,

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <lux/engine/editor/contracts/CodeLease.hpp>
+#include <lux/engine/object/CodeLease.hpp>
 #include <lux/engine/editor/sessions/ContentStamp.hpp>
 #include <lux/engine/editor/views/ViewInfo.hpp>
 #include <lux/cxx/compile_time/TypeToken.hpp>
@@ -88,7 +88,7 @@ namespace lux::editor::commands
     {
     public:
         CommandArguments() noexcept = default;
-        CommandArguments(contracts::CodeLease, cxx::TypeToken, std::shared_ptr<const void>);
+        CommandArguments(lux::object::CodeLease, cxx::TypeToken, std::shared_ptr<const void>);
         ~CommandArguments();
         CommandArguments(const CommandArguments&) noexcept = default;
         CommandArguments(CommandArguments&&) noexcept = default;

@@ -250,7 +250,7 @@ namespace lux::editor::material::detail
             lux::material::MaterialSource& source,
             editing::StateId base,
             std::string label,
-            std::vector<contracts::CodeLease> code,
+            std::vector<lux::object::CodeLease> code,
             MaterialGraphDelta before,
             MaterialGraphDelta after,
             MaterialValueEdit values,
@@ -274,7 +274,7 @@ namespace lux::editor::material::detail
         std::size_t retainedBytesUpperBound() const noexcept override
         {
             return sizeof(*this) + label_.capacity() + 1 + before_.bytes() + after_.bytes() + values_.bytes() +
-                   code_.capacity() * sizeof(contracts::CodeLease);
+                   code_.capacity() * sizeof(lux::object::CodeLease);
         }
         editing::EditResult<editing::PreparedEditPtr> prepare(
             const editing::ApplyContext& context,
@@ -336,7 +336,7 @@ namespace lux::editor::material::detail
         lux::material::MaterialSource& source_;
         editing::StateId base_;
         std::string label_;
-        std::vector<contracts::CodeLease> code_;
+        std::vector<lux::object::CodeLease> code_;
         MaterialGraphDelta before_, after_;
         MaterialValueEdit values_;
         MaterialEditObserver observer_;
@@ -350,7 +350,7 @@ namespace lux::editor::material
         editing::StateId base,
         std::vector<VMaterialEdit> edits,
         std::string label,
-        contracts::CodeLease code,
+        lux::object::CodeLease code,
         MaterialEditObserver observer,
         std::size_t staging_limit
     )
@@ -359,7 +359,7 @@ namespace lux::editor::material
         using namespace detail;
         if (!base.valid() || !code.valid())
             return rejected(EMaterialEditError::INVALID_SOURCE);
-        std::vector<contracts::CodeLease> leases{std::move(code)};
+        std::vector<lux::object::CodeLease> leases{std::move(code)};
         bool structural{};
         for (const auto& edit : edits)
         {

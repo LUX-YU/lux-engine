@@ -46,7 +46,7 @@ namespace lux::editor::persistence
     } // namespace
     struct SaveSourceRegistration::State final
     {
-        contracts::CodeLease code;
+        lux::object::CodeLease code;
         std::unique_ptr<ISaveSource> owned_source;
         ISaveSource* source;
         sessions::SessionId session;
@@ -132,10 +132,10 @@ namespace lux::editor::persistence
         // directory. A plugin may call prepareSource through its static SDK copy, then unload while
         // expired weak records remain; their control block must not have a plugin-local vtable.
         using AllocateSource = std::shared_ptr<
-            SaveSourceRegistration::State> (*)(contracts::CodeLease, ISaveSource*, sessions::SessionId, const void*);
+            SaveSourceRegistration::State> (*)(lux::object::CodeLease, ISaveSource*, sessions::SessionId, const void*);
         AllocateSource allocate_source;
         Impl(WriteCoordinator& value, SaveLimits policy)
-            : coordinator(value), limits(policy), allocate_source(+[](contracts::CodeLease code,
+            : coordinator(value), limits(policy), allocate_source(+[](lux::object::CodeLease code,
                                                                       ISaveSource* source,
                                                                       sessions::SessionId id,
                                                                       const void* service) {
@@ -162,7 +162,7 @@ namespace lux::editor::persistence
         PersistenceResult<PreparedSaveSourceRegistration> prepare(
             sessions::SessionId id,
             ISaveSource& source_value,
-            contracts::CodeLease code
+            lux::object::CodeLease code
         )
         {
             if (!id.valid() || !code.valid())
@@ -206,7 +206,7 @@ namespace lux::editor::persistence
     }
     PersistenceResult<SaveSourceRegistration> SaveService::registerSource(
         ISaveSource& source,
-        contracts::CodeLease code
+        lux::object::CodeLease code
     )
     {
         if (!impl_->onOwner())
@@ -240,13 +240,13 @@ namespace lux::editor::persistence
     PersistenceResult<PreparedSaveSourceRegistration> SaveService::prepareSource(
         sessions::SessionId id,
         std::unique_ptr<ISaveSource> source,
-        contracts::CodeLease code
+        lux::object::CodeLease code
     )
     {
         // External code pin encloses rejection cleanup as well as the entire source destructor.
         struct Input final
         {
-            contracts::CodeLease code;
+            lux::object::CodeLease code;
             std::unique_ptr<ISaveSource> source;
         };
         Input incoming{std::move(code), std::move(source)};
@@ -286,7 +286,7 @@ namespace lux::editor::persistence
     PersistenceResult<void> SaveService::replaceSource(
         SaveSourceRegistration& registration,
         std::unique_ptr<ISaveSource>& source,
-        contracts::CodeLease code,
+        lux::object::CodeLease code,
         cxx::function_ref<PersistenceResult<void>()> commit
     )
     {

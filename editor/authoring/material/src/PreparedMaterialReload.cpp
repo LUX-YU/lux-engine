@@ -6,14 +6,14 @@ namespace lux::editor::material
     MaterialEditResult<PreparedMaterialReload> PreparedMaterialReload::prepare(
         MaterialSession& session,
         lux::material::MaterialSource source,
-        contracts::CodeLease code,
+        lux::object::CodeLease code,
         std::optional<sessions::ContentStamp> expected,
         sessions::SourceBinding binding
     )
     {
         struct ReloadInput final
         {
-            contracts::CodeLease code; // Outlive every input node, including failed admission.
+            lux::object::CodeLease code; // Outlive every input node, including failed admission.
             lux::material::MaterialSource source;
         } input{std::move(code), std::move(source)};
         auto& owner = MaterialSessionAccess::data(session);

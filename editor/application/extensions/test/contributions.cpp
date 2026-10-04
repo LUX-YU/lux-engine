@@ -58,7 +58,7 @@ int originalCases()
             assert(!recursive && recursive.error().code == EContributionError::BUSY);
         }
     );
-    auto code = contracts::CodeLease::plugin(library);
+    auto code = lux::object::CodeLease::plugin(library);
     auto empty = take(ContributionSnapshot::prepare({}));
     auto later = empty;
     auto pending = empty;
@@ -93,7 +93,7 @@ int originalCases()
             views::ViewFactoryInput input{
                 messages.dispatcherRef(),
                 ui::PaneId{id},
-                contracts::CodeLease::builtin(),
+                lux::object::CodeLease::builtin(),
                 cxx::typeToken<Binding>(),
                 std::make_shared<const Binding>(Binding{9})
             };
@@ -109,7 +109,7 @@ int originalCases()
     auto refused = registry.enqueue(full);
     assert(!refused && full.valid());
     library.reset();
-    code = contracts::CodeLease::builtin();
+    code = lux::object::CodeLease::builtin();
     views.clear();
     assert(facts.destroyed == 2 && facts.code_alive);
     // The external pin retires under the publication guard, after all catalogs have changed.
@@ -163,7 +163,7 @@ namespace
     std::shared_ptr<CommandEntry> command(std::string_view id)
     {
         return CommandEntry::create(
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             CommandDescriptor{CommandIdView{id}, std::string{id}},
             [](const CommandQuery&) -> CommandResult<CommandState> { return CommandState{true}; },
             [](const CommandInvocation&) -> CommandResult<DispatchReceipt>
@@ -214,7 +214,7 @@ namespace
         if (mode == "factory")
         {
             first.views.push_back(views::ViewFactoryEntry::create(
-                contracts::CodeLease::builtin(),
+                lux::object::CodeLease::builtin(),
                 views::ViewFactoryDescriptor{views::ViewTypeIdView{"test.batch"}, "Batch", cxx::typeToken<Binding>()},
                 [&](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView>
                 {
@@ -228,7 +228,7 @@ namespace
                     CommandInvocation invocation;
                     assert(commands.query(pinned_command, invocation.query()));
                     return views::DetachedView{
-                        contracts::CodeLease::builtin(),
+                        lux::object::CodeLease::builtin(),
                         std::make_unique<ui::Pane>(
                             input.dispatcher(),
                             input.paneId(),
@@ -241,7 +241,7 @@ namespace
         }
         if (mode == "cleanup")
         {
-            first.code.push_back(contracts::CodeLease::plugin(std::shared_ptr<const void>(
+            first.code.push_back(lux::object::CodeLease::plugin(std::shared_ptr<const void>(
                 new int{1},
                 [&](const void* p)
                 {
@@ -266,7 +266,7 @@ namespace
                 views::ViewFactoryInput input{
                     messages.dispatcherRef(),
                     ui::PaneId{"one"},
-                    contracts::CodeLease::builtin(),
+                    lux::object::CodeLease::builtin(),
                     cxx::typeToken<Binding>(),
                     std::make_shared<const Binding>(Binding{9})
                 };
@@ -284,9 +284,9 @@ namespace
             auto environment = acquireEditorReflection();
             ContributionDraft rejected;
             rejected.commands.push_back(command("B"));
-            rejected.reflection.push_back({contracts::CodeLease::builtin(), registerAttempt});
+            rejected.reflection.push_back({lux::object::CodeLease::builtin(), registerAttempt});
             rejected.configurations.push_back(lux::editor::scene::ConfigurationEditor{
-                contracts::CodeLease::builtin(),
+                lux::object::CodeLease::builtin(),
                 ConfigurationDescriptor{
                     "r11.invalid",
                     1,

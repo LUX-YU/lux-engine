@@ -54,8 +54,51 @@ namespace lux::object::detail
         std::size_t batch_bank{1}, batch_count{}, batch_position{};
         std::size_t high_water{}, posted{}, inline_posted{}, full{};
         bool draining{};
+        bool reclaiming{};
+        std::size_t retirement_owners{};
+        Reclamation* retirement_head{};
+        Reclamation* retirement_tail{};
         SignalStorage* signal_maintenance{};
     };
+
+    void retainReclamation(const ObjectDispatcherRef& dispatcher) noexcept
+    {
+        const auto state = dispatcher.state_;
+        if (!state)
+            failObjectContract();
+        std::scoped_lock lock{state->mutex};
+        ++state->retirement_owners;
+    }
+
+    void releaseReclamation(const ObjectDispatcherRef& dispatcher) noexcept
+    {
+        const auto state = dispatcher.state_;
+        std::scoped_lock lock{state->mutex};
+        if (!state->retirement_owners)
+            failObjectContract();
+        --state->retirement_owners;
+    }
+
+    void scheduleReclamation(const ObjectDispatcherRef& dispatcher, Reclamation& node) noexcept
+    {
+        const auto state = dispatcher.state_;
+        if (!state)
+            failObjectContract();
+        {
+            std::scoped_lock lock{state->mutex};
+            if (node.queued)
+                return;
+            node.queued = true;
+            node.next = nullptr;
+            if (state->retirement_tail)
+                state->retirement_tail->next = &node;
+            else
+                state->retirement_head = &node;
+            state->retirement_tail = &node;
+        }
+        if (const auto wake = state->wake.load(std::memory_order_acquire))
+            wake();
+    }
 
     void scheduleSignalMaintenance(const ObjectDispatcherRef& dispatcher, SignalStorage& storage) noexcept
     {
@@ -211,6 +254,8 @@ namespace lux::object
         if (this != &other)
         {
             close();
+            if (pendingRetirements())
+                detail::failObjectContract();
             state_ = std::move(other.state_);
         }
         return *this;
@@ -218,10 +263,57 @@ namespace lux::object
     ObjectMessageQueue::~ObjectMessageQueue()
     {
         close();
+        if (pendingRetirements())
+            detail::failObjectContract(); // The affinity provider must outlive its accepted owners.
     }
     ObjectDispatcherRef ObjectMessageQueue::dispatcherRef() const noexcept
     {
         return ObjectDispatcherRef{state_};
+    }
+    std::size_t ObjectMessageQueue::pendingRetirements() const noexcept
+    {
+        if (!state_)
+            return 0;
+        std::scoped_lock lock{state_->mutex};
+        return state_->retirement_owners;
+    }
+
+    std::size_t ObjectMessageQueue::collectRetired() noexcept
+    {
+        const auto state = state_;
+        if (!state || state->owner != std::this_thread::get_id())
+            detail::failObjectContract();
+        if (LuxObject::isDispatching())
+            return 0;
+        detail::Reclamation* batch{};
+        {
+            std::scoped_lock lock{state->mutex};
+            if (state->draining || state->reclaiming)
+                return 0;
+            state->reclaiming = true;
+            batch = std::exchange(state->retirement_head, nullptr);
+            state->retirement_tail = nullptr;
+        }
+        std::size_t reclaimed{};
+        while (batch)
+        {
+            auto* node = batch;
+            {
+                std::scoped_lock lock{state->mutex};
+                batch = node->next;
+                node->next = nullptr;
+                node->queued = false;
+            }
+            if (node->reclaim(*node))
+                ++reclaimed;
+            else
+                detail::scheduleReclamation(dispatcherRef(), *node);
+        }
+        {
+            std::scoped_lock lock{state->mutex};
+            state->reclaiming = false;
+        }
+        return reclaimed;
     }
     std::size_t ObjectMessageQueue::dispatchPending()
     {

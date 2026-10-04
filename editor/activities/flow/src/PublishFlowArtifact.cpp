@@ -36,7 +36,7 @@ namespace lux::editor::flowforge
         if (!compiled)
             return cxx::unexpected(persistence::PersistenceFailure{persistence::EPersistenceError::INVALID_ARGUMENT});
         return persistence::DerivedArtifact{
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             {compiled->key().content, compiled->source()->id,
              std::string(lux::script::ScriptArtifactAsset::canonical_name), 1,
              lux::script::ScriptArtifactAsset::primary_magic},

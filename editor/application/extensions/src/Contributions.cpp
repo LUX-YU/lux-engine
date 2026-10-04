@@ -8,7 +8,7 @@ namespace lux::editor::extensions
 {
     struct ContributionSnapshot::Data final
     {
-        std::vector<contracts::CodeLease> code;
+        std::vector<lux::object::CodeLease> code;
         std::shared_ptr<const void> reflection_lifetime;
         std::vector<ReflectionContribution> reflection;
         commands::CommandRegistrySnapshot commands;
@@ -45,7 +45,7 @@ namespace lux::editor::extensions
         {
             auto& item = draft.settings[i];
             const auto code = item.entry->code();
-            item.entry = contracts::pinCodeOwner(code, std::move(item.entry));
+            item.entry = lux::object::pinCodeOwner(code, std::move(item.entry));
             setting_index.emplace_back(item.entry->descriptor().id.hash(), i);
         }
         std::ranges::sort(setting_index);
@@ -240,7 +240,7 @@ namespace lux::editor::extensions
                 for (const auto& entry : candidate.data_->reflection)
                 {
                     auto appended =
-                        reflection.appendOnce(entry.register_types, std::make_shared<contracts::CodeLease>(entry.code));
+                        reflection.appendOnce(entry.register_types, std::make_shared<lux::object::CodeLease>(entry.code));
                     if (!appended)
                         return cxx::unexpected(ContributionFailure{
                             EContributionError::CALLBACK,

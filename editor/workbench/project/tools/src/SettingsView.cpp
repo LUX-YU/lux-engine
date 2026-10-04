@@ -233,7 +233,7 @@ namespace lux::editor::project
         auto receivers =
             std::make_shared<Receivers>(std::move(save), std::move(retry), std::move(abandon), std::move(acknowledge));
         return views::ViewFactoryEntry::bind<kFactoryDescriptor>(
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             [&project, &plugins, receivers, settings](const views::ViewFactoryInput& input
             ) -> views::ViewFactoryResult<views::DetachedView>
             {
@@ -264,7 +264,7 @@ namespace lux::editor::project
                 for (const auto& binding : bindings)
                     if (!binding)
                         return cxx::unexpected(workbench::detail::viewFailure(binding.error()));
-                views::DetachedView result{contracts::CodeLease::builtin(), std::move(pane)};
+                views::DetachedView result{lux::object::CodeLease::builtin(), std::move(pane)};
                 for (auto& binding : bindings)
                     result.addConnection(std::move(*binding));
                 return result;

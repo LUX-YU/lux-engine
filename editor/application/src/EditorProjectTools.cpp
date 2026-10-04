@@ -160,7 +160,7 @@ namespace lux::editor::application
             toolOpening()
         ));
         draft.commands.push_back(commands::CommandEntry::bind<kAbout>(
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             [](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
             { return commands::CommandState{false}; },
             [](const commands::CommandInvocation&) -> commands::CommandResult<commands::DispatchReceipt>

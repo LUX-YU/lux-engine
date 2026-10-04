@@ -33,7 +33,7 @@ namespace
     namespace es = lux::editor::scene;
     namespace em = lux::editor::material;
     namespace ef = lux::editor::flowforge;
-    using contracts::CodeLease;
+    using lux::object::CodeLease;
     using sessions::ESessionError;
 
     template <class R> auto take(R result)

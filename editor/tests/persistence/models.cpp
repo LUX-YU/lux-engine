@@ -118,7 +118,7 @@ namespace
                 description
             ));
             auto reservation =
-                take(store.reserve<es::SceneSession>({"lux.editor.scene"}, contracts::CodeLease::builtin()));
+                take(store.reserve<es::SceneSession>({"lux.editor.scene"}, lux::object::CodeLease::builtin()));
             scene_id = reservation.id();
             auto author = take(es::SceneSource::create(package, take(simulation::ecs::ComponentSchemaSet::build({}))));
             auto candidate = take(es::SceneSession::create(
@@ -137,7 +137,7 @@ namespace
             );
             registrations.push_back(take(saves.registerSource(*scene_source)));
             auto mr =
-                take(store.reserve<em::MaterialSession>({"lux.editor.material"}, contracts::CodeLease::builtin()));
+                take(store.reserve<em::MaterialSession>({"lux.editor.material"}, lux::object::CodeLease::builtin()));
             material_id = mr.id();
             lux::material::MaterialSource input{identity("material"), "material", {}};
             assert(input.graph.addNode(std::make_unique<lux::material::ConstantNode>()).valid());
@@ -156,7 +156,7 @@ namespace
                 sessions::BindingRevision{1}
             );
             registrations.push_back(take(saves.registerSource(*material_source)));
-            auto fr = take(store.reserve<ef::FlowSession>({"lux.editor.flowforge"}, contracts::CodeLease::builtin()));
+            auto fr = take(store.reserve<ef::FlowSession>({"lux.editor.flowforge"}, lux::object::CodeLease::builtin()));
             flow_id = fr.id();
             ef::FlowAuthoringSource flow_input{identity("flow"), "flow", {}};
             (void)flow_input.graph.addNodes(std::make_unique<lux::flowforge::BranchNode>());
@@ -413,7 +413,7 @@ namespace
         {
             registered.frozen_hook = [&](FrozenSave& frozen) {
                 frozen.encoding = {
-                    contracts::CodeLease::builtin(),
+                    lux::object::CodeLease::builtin(),
                     std::make_unique<ProbedEncoding>(std::move(frozen.encoding), probe)
                 };
             };
@@ -425,7 +425,7 @@ namespace
         unsigned destroyed{}, released{}, collected{};
         bool prepare_busy{}, request_busy{}, outer_preserved{};
         std::optional<SaveId> incorrectly_admitted;
-        auto code = contracts::CodeLease::plugin(std::shared_ptr<const void>(new int{1}, [&](const void* p) {
+        auto code = lux::object::CodeLease::plugin(std::shared_ptr<const void>(new int{1}, [&](const void* p) {
             assert(destroyed == 1);
             ++released;
             delete static_cast<const int*>(p);
@@ -557,7 +557,7 @@ namespace
         probe.wait_for_stop = mode == "cancel" || mode == "drain";
         source.frozen_hook = [&](FrozenSave& frozen) {
             frozen.encoding = {
-                contracts::CodeLease::builtin(),
+                lux::object::CodeLease::builtin(),
                 std::make_unique<ProbedEncoding>(std::move(frozen.encoding), probe)
             };
         };
@@ -677,7 +677,7 @@ namespace
             };
             source.frozen_hook = [&](FrozenSave& frozen) {
                 frozen.encoding = {
-                    contracts::CodeLease::builtin(),
+                    lux::object::CodeLease::builtin(),
                     std::make_unique<ProbedEncoding>(std::move(frozen.encoding), probe)
                 };
             };
@@ -1146,7 +1146,7 @@ namespace
         for (int i{}; i < 3; ++i)
         {
             auto reservation =
-                take(f.store.reserve<em::MaterialSession>({"lux.editor.material"}, contracts::CodeLease::builtin()));
+                take(f.store.reserve<em::MaterialSession>({"lux.editor.material"}, lux::object::CodeLease::builtin()));
             replacements.push_back(reservation.id());
             assert(std::ranges::any_of(ids, [&](auto old) {
                 return old.slot == reservation.id().slot && old.generation != reservation.id().generation;
@@ -1306,7 +1306,7 @@ namespace
             ef::FlowEditBatch batch{f.flow_session->describe().current, "mixed identity", {}};
             batch.edits.emplace_back(ef::FlowRename{"issued"});
             batch.edits.emplace_back(
-                ef::FlowInsertNode{contracts::CodeLease::builtin(), std::make_unique<lux::flowforge::BranchNode>()}
+                ef::FlowInsertNode{lux::object::CodeLease::builtin(), std::make_unique<lux::flowforge::BranchNode>()}
             );
             batch.edits.emplace_back(
                 ef::FlowAddVariable{"variable", "bool", {lux::flowforge::EFlowLiteralKind::BOOLEAN, "true"}}
@@ -1349,7 +1349,7 @@ namespace
     void conflictCases(Fixture& f)
     {
         auto reservation =
-            take(f.store.reserve<em::MaterialSession>({"lux.editor.material"}, contracts::CodeLease::builtin()));
+            take(f.store.reserve<em::MaterialSession>({"lux.editor.material"}, lux::object::CodeLease::builtin()));
         const auto id = reservation.id();
         auto session = take(em::MaterialSession::create(
             id,
@@ -1431,9 +1431,9 @@ namespace
         auto s = take(es::SceneCodec::decode(read(f.root / "scene.pak")));
         auto m = take(em::MaterialCodec::decode(read(f.root / "material.luxmaterial")));
         auto g = take(ef::FlowCodec::decode(read(f.root / "flow.luxflow")));
-        auto sr = take(f.store.reserve<es::SceneSession>({"lux.editor.scene"}, contracts::CodeLease::builtin()));
-        auto mr = take(f.store.reserve<em::MaterialSession>({"lux.editor.material"}, contracts::CodeLease::builtin()));
-        auto gr = take(f.store.reserve<ef::FlowSession>({"lux.editor.flowforge"}, contracts::CodeLease::builtin()));
+        auto sr = take(f.store.reserve<es::SceneSession>({"lux.editor.scene"}, lux::object::CodeLease::builtin()));
+        auto mr = take(f.store.reserve<em::MaterialSession>({"lux.editor.material"}, lux::object::CodeLease::builtin()));
+        auto gr = take(f.store.reserve<ef::FlowSession>({"lux.editor.flowforge"}, lux::object::CodeLease::builtin()));
         auto scene =
             take(std::move(s).createSession(sr.id(), {}, take(simulation::ecs::ComponentSchemaSet::build({}))));
         auto material = take(std::move(m).createSession(mr.id(), {}));

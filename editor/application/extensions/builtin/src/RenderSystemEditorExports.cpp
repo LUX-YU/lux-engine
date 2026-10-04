@@ -10,7 +10,7 @@ extern "C" LUX_RENDER_EDITOR_PUBLIC const lux::editor::extensions::EditorExtensi
     static const extensions::EditorExtensionExports exports{
         .counts = {.reflection = 1},
         .contribute =
-            +[](extensions::ContributionDraft& draft, contracts::CodeLease code) -> extensions::ContributionResult<void>
+            +[](extensions::ContributionDraft& draft, lux::object::CodeLease code) -> extensions::ContributionResult<void>
         {
             draft.reflection.push_back({std::move(code), &scene_runtime_render_configuration_meta});
             return {};

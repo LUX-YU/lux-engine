@@ -250,7 +250,7 @@ int main(int argc, char** argv)
         views::ViewFactoryInput free_input{
             messages.dispatcherRef(),
             ui::PaneId{"free"},
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             cxx::typeToken<std::monostate>(),
             std::make_shared<const std::monostate>()
         };
@@ -268,7 +268,7 @@ int main(int argc, char** argv)
         views::ViewFactoryInput view_input{
             messages.dispatcherRef(),
             ui::PaneId{"external"},
-            contracts::CodeLease::builtin(),
+            lux::object::CodeLease::builtin(),
             cxx::typeToken<probe::Binding>(),
             std::make_shared<const probe::Binding>(probe::Binding{&facts})
         };

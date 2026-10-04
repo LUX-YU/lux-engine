@@ -260,7 +260,12 @@ int main(int argc, char** argv)
         assert(tasks.submit(
             {.name = "External decode"},
             [scheduler = take(execution.blocking()),
-             job = sessions::SessionLoadJob{factory, std::move(input)}](process::TaskReporter reporter) mutable noexcept
+             job = take(sessions::SessionLoadJob::prepare(
+                 factory,
+                 std::move(input),
+                 editor_context.services(),
+                 editor_context.scope()
+             ))](process::TaskReporter reporter) mutable noexcept
             {
                 return stdexec::then(
                     stdexec::schedule(scheduler),

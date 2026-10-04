@@ -53,6 +53,8 @@ namespace lux::editor::sessions
         const std::thread::id owner{std::this_thread::get_id()};
         SessionStore& store;
         persistence::SaveService& saves;
+        services::ServiceRegistry& services;
+        services::ServiceScope& scope;
         std::size_t capacity;
         std::uint64_t next{1};
         bool dispatching{};
@@ -65,9 +67,11 @@ namespace lux::editor::sessions
             process::ExecutionRuntime& runtime,
             SessionStore& content,
             persistence::SaveService& saving,
+            services::ServiceRegistry& dependencies,
+            services::ServiceScope& lifetime,
             std::size_t limit
         )
-            : store(content), saves(saving), capacity(limit), tasks(runtime)
+            : store(content), saves(saving), services(dependencies), scope(lifetime), capacity(limit), tasks(runtime)
         {
             waiters.reserve(limit);
             works.reserve(limit);
@@ -110,9 +114,11 @@ namespace lux::editor::sessions
         process::ExecutionRuntime& runtime,
         SessionStore& store,
         persistence::SaveService& saves,
+        services::ServiceRegistry& services,
+        services::ServiceScope& scope,
         std::size_t capacity
     )
-        : impl_(std::make_unique<Impl>(runtime, store, saves, capacity))
+        : impl_(std::make_unique<Impl>(runtime, store, saves, services, scope, capacity))
     {
     }
     SessionOpening::~SessionOpening() = default;
@@ -217,12 +223,20 @@ namespace lux::editor::sessions
         auto scheduler = impl_->tasks.execution().blocking();
         if (!scheduler)
             return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::IO, "execution.blocking"});
+        auto job = SessionLoadJob::prepare(*factory, std::move(request.input), impl_->services, impl_->scope);
+        if (!job)
+        {
+            return cxx::unexpected(std::move(job.error()));
+        }
+        if (impl_->stopping)
+        {
+            return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::CLOSED, "open.prepare"});
+        }
         impl_->works.push_back(work);
         impl_->waiters.push_back({id, work});
         auto submitted = impl_->tasks.submit(
             {.name = "Open asset source"},
-            [scheduler = *scheduler,
-             job = SessionLoadJob{*factory, std::move(request.input)}](process::TaskReporter reporter) mutable noexcept
+            [scheduler = *scheduler, job = std::move(*job)](process::TaskReporter reporter) mutable noexcept
             {
                 return stdexec::then(
                     stdexec::schedule(scheduler),

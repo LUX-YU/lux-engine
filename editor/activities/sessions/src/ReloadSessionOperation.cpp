@@ -36,6 +36,8 @@ namespace lux::editor::sessions
         process::ExecutionRuntime& runtime,
         SessionStore& store,
         persistence::WriteCoordinator& writes,
+        services::ServiceRegistry& services,
+        services::ServiceScope& scope,
         std::shared_ptr<SessionFactoryEntry> factory,
         SessionLoadInput input
     )
@@ -58,12 +60,15 @@ namespace lux::editor::sessions
         if (!observed)
             return cxx::unexpected(factoryFailure(observed.error()));
         auto impl = std::make_unique<Impl>(runtime, store, *input.reload, std::move(*observed));
+        auto job = SessionLoadJob::prepare(std::move(factory), std::move(input), services, scope);
+        if (!job)
+        {
+            return cxx::unexpected(std::move(job.error()));
+        }
         auto* receiving = impl.get();
         auto submitted = impl->tasks.submit(
             {.name = "Reload asset source"},
-            [scheduler = *scheduler,
-             job =
-                 SessionLoadJob{std::move(factory), std::move(input)}](process::TaskReporter reporter) mutable noexcept
+            [scheduler = *scheduler, job = std::move(*job)](process::TaskReporter reporter) mutable noexcept
             {
                 return stdexec::then(
                     stdexec::schedule(scheduler),

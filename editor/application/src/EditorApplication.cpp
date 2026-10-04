@@ -26,11 +26,11 @@ namespace lux::editor::application
           registrations_(std::move(registrations)),
           files_(config_.project_file.parent_path(), *config_.user_directory, config_.installation),
           save_execution_(engine_->execution(), saves_, writes_, files_),
-          opening_(engine_->execution(), sessions_, saves_),
+          opening_(engine_->execution(), sessions_, saves_, editor_context_.services(), editor_context_.scope()),
           projections_(engine_->sceneRuntime(), engine_->execution()),
           runs_(engine_->sceneRuntime(), engine_->execution()), material_compilation_(engine_->execution()),
-          flow_compilation_(std::make_shared<flowforge::FlowCompilationService>(engine_->execution())), contributions_(messages_.dispatcherRef(), editor_context_),
-          workspace_(std::move(profile), writes_, files_),
+          flow_compilation_(std::make_shared<flowforge::FlowCompilationService>(engine_->execution())),
+          contributions_(messages_.dispatcherRef(), editor_context_), workspace_(std::move(profile), writes_, files_),
           project_workspace_(config_.project_file.parent_path(), writes_, files_),
           installation_settings_(config_.installation, writes_, files_),
           user_settings_(*config_.user_directory / "lux/editor", writes_, files_),
@@ -49,6 +49,12 @@ namespace lux::editor::application
         // release the accepted task handles before member destruction begins.
         if (!project_tasks_.join())
             std::terminate();
+        // Only physical service retirement remains here; accepted business work is settled by exec.
+        if (!editor_context_.scope().release())
+        {
+            std::terminate();
+        }
+        (void)messages_.collectRetired();
     }
     EditorApplication::EditorApplication(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}
     EditorApplication::~EditorApplication() = default;

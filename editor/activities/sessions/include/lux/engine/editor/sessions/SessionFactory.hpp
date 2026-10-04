@@ -1,9 +1,16 @@
 #pragma once
-#include <lux/engine/editor/sessions/SessionInstallation.hpp>
-#include <lux/engine/resource/asset/storage/AssetVfs.hpp>
-#include <lux/engine/resource/asset/AssetTypeId.hpp>
 #include <lux/cxx/core/move_only_function.hpp>
+#include <lux/engine/editor/sessions/SessionInstallation.hpp>
+#include <lux/engine/resource/asset/AssetTypeId.hpp>
+#include <lux/engine/resource/asset/storage/AssetVfs.hpp>
+#include <lux/engine/services/ServiceDescriptor.hpp>
 #include <stop_token>
+
+namespace lux::services
+{
+    class ServiceScope;
+    class ServiceRegistry;
+} // namespace lux::services
 namespace lux::editor::sessions
 {
     // Exact source-format relationship and save naming policy. A file suffix is only a discovery hint.
@@ -17,13 +24,6 @@ namespace lux::editor::sessions
         {
             return asset::AssetTypeId::fromName(canonical_name);
         }
-    };
-    struct SessionKindDescriptor final
-    {
-        SessionKindIdView kind;
-        std::string_view label;
-        std::span<const std::string_view> extensions;
-        std::optional<SourceAuthoring> source;
     };
     struct SessionLoadInput final
     {
@@ -76,13 +76,29 @@ namespace lux::editor::sessions
         struct Data;
         std::unique_ptr<Data> data_;
     };
+    using SessionDecode = cxx::move_only_function<
+        SessionFactoryResult<SessionPreparation>(const SessionLoadInput&, std::span<const std::byte>, std::stop_token)>;
+    struct SessionKindDescriptor final
+    {
+        SessionKindIdView kind;
+        std::string_view label;
+        std::span<const std::string_view> extensions;
+        std::optional<SourceAuthoring> source;
+        std::span<const services::ServiceDependency> dependencies;
+        // Runs once at load admission on the owner. The returned decoder owns its immutable inputs;
+        // neither the resolver nor a live model may be retained by the worker.
+        SessionFactoryResult<SessionDecode> (*prepare)(services::ServiceResolver&, const object::CodeLease&) noexcept {
+        };
+    };
+    [[nodiscard]] SessionFactoryFailure factoryFailure(services::ServiceFailure);
     class SessionFactoryEntry final
     {
     public:
-        using Decode = cxx::move_only_function<SessionFactoryResult<
-            SessionPreparation>(const SessionLoadInput&, std::span<const std::byte>, std::stop_token)>;
         template <const SessionKindDescriptor& Descriptor>
-        [[nodiscard]] static std::shared_ptr<SessionFactoryEntry> bind(lux::object::CodeLease code, Decode decode)
+        [[nodiscard]] static std::shared_ptr<SessionFactoryEntry> bind(
+            lux::object::CodeLease code,
+            SessionDecode decode = {}
+        )
         {
             static_assert(
                 Descriptor.kind.isValid() && !Descriptor.label.empty(),
@@ -96,7 +112,7 @@ namespace lux::editor::sessions
         [[nodiscard]] static std::shared_ptr<SessionFactoryEntry> create(
             lux::object::CodeLease,
             const SessionKindDescriptor&,
-            Decode
+            SessionDecode = {}
         );
         ~SessionFactoryEntry();
         SessionFactoryEntry(const SessionFactoryEntry&) = delete;
@@ -112,12 +128,12 @@ namespace lux::editor::sessions
     private:
         friend class SessionFactorySnapshot;
         friend class SessionLoadJob;
-        SessionFactoryEntry(lux::object::CodeLease, const SessionKindDescriptor&, Decode);
+        SessionFactoryEntry(lux::object::CodeLease, const SessionKindDescriptor&, SessionDecode);
         lux::object::CodeLease code_;
         struct DescriptorStorage;
         std::unique_ptr<const DescriptorStorage> storage_;
         const SessionKindDescriptor* descriptor_;
-        Decode decode_;
+        SessionDecode decode_;
     };
     class SessionFactorySnapshot final
     {
@@ -145,7 +161,8 @@ namespace lux::editor::sessions
     class SessionLoadJob final
     {
     public:
-        SessionLoadJob(std::shared_ptr<SessionFactoryEntry>, SessionLoadInput);
+        [[nodiscard]] static SessionFactoryResult<SessionLoadJob>
+        prepare(std::shared_ptr<SessionFactoryEntry>, SessionLoadInput, services::ServiceRegistry&, services::ServiceScope&);
         SessionLoadJob(const SessionLoadJob&) = delete;
         SessionLoadJob& operator=(const SessionLoadJob&) = delete;
         SessionLoadJob(SessionLoadJob&&) noexcept = default;
@@ -153,7 +170,9 @@ namespace lux::editor::sessions
         [[nodiscard]] SessionFactoryResult<SessionPreparation> run(std::stop_token = {}) &&;
 
     private:
+        SessionLoadJob(std::shared_ptr<SessionFactoryEntry>, SessionLoadInput);
         std::shared_ptr<SessionFactoryEntry> entry_;
         SessionLoadInput input_;
+        SessionDecode decode_;
     };
 } // namespace lux::editor::sessions

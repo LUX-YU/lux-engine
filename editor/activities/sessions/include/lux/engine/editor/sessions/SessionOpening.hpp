@@ -41,7 +41,14 @@ namespace lux::editor::sessions
     class SessionOpening final
     {
     public:
-        SessionOpening(process::ExecutionRuntime&, SessionStore&, persistence::SaveService&, std::size_t capacity = 64);
+        SessionOpening(
+            process::ExecutionRuntime&,
+            SessionStore&,
+            persistence::SaveService&,
+            services::ServiceRegistry&,
+            services::ServiceScope&,
+            std::size_t capacity = 64
+        );
         ~SessionOpening();
         SessionOpening(const SessionOpening&) = delete;
         SessionOpening& operator=(const SessionOpening&) = delete;

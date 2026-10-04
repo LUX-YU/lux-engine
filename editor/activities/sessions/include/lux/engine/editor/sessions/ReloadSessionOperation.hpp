@@ -15,6 +15,8 @@ namespace lux::editor::sessions
             process::ExecutionRuntime&,
             SessionStore&,
             persistence::WriteCoordinator&,
+            services::ServiceRegistry&,
+            services::ServiceScope&,
             std::shared_ptr<SessionFactoryEntry>,
             SessionLoadInput
         );

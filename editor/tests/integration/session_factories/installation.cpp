@@ -573,13 +573,25 @@ namespace
     )
     {
         const auto owner = std::this_thread::get_id();
+        lux::test::ObjectQueue messages;
+        services::ServiceRegistry dependencies{messages.dispatcherRef()};
+        assert(dependencies.publish({services::ServiceEntry::bind<lux::editor::flowforge::kFlowEnvironmentService>(
+            object::CodeLease::builtin()
+        )}));
+        auto scope = take(dependencies.createScope());
+        auto prepared = SessionLoadJob::prepare(std::move(factory), std::move(input), dependencies, scope);
+        if (!prepared)
+        {
+            assert(scope.release());
+            (void)messages.collect();
+            return cxx::unexpected(std::move(prepared.error()));
+        }
         std::optional<SessionFactoryResult<SessionPreparation>> result;
         process::TaskScope tasks{runtime};
         auto admitted = tasks.submit(
             {.name = "Read/decode session source"},
             [scheduler = take(runtime.blocking()),
-             job =
-                 SessionLoadJob{std::move(factory), std::move(input)}](process::TaskReporter reporter) mutable noexcept
+             job = std::move(*prepared)](process::TaskReporter reporter) mutable noexcept
             {
                 return stdexec::then(
                     stdexec::schedule(scheduler),
@@ -598,7 +610,106 @@ namespace
             }
         );
         assert(admitted && tasks.join() && result);
+        assert(scope.release());
+        (void)messages.collect();
+        assert(dependencies.drained());
         return std::move(*result);
+    }
+
+    void lazyFlowDecoder(process::ExecutionRuntime& runtime, asset::AssetVfs& vfs)
+    {
+        lux::test::ObjectQueue messages;
+        services::ServiceRegistry dependencies{messages.dispatcherRef()};
+        auto scope = take(dependencies.createScope());
+        auto fixed = ef::makeFlowSessionFactory();
+        // Freeze a real dynamic declaration, including its dependency strings. No service exists yet.
+        std::shared_ptr<SessionFactoryEntry> factory;
+        {
+            auto descriptor = fixed->descriptor();
+            auto dependency = descriptor.dependencies.front();
+            std::string contract{dependency.contract.name()};
+            std::string type{dependency.type.name()};
+            dependency.contract = services::ServiceNameView{contract};
+            dependency.type = {dependency.type.hash(), type};
+            descriptor.dependencies = std::span{&dependency, 1};
+            factory = SessionFactoryEntry::create(object::CodeLease::builtin(), descriptor);
+        }
+        auto catalog = take(SessionFactorySnapshot::create({factory}));
+        SessionLoadInput input{vfs.view().capture(), identity(SourceFiles::names[2])};
+        auto missing = SessionLoadJob::prepare(factory, input, dependencies, scope);
+        assert(!missing && missing.error().code == ESessionFactoryError::NOT_FOUND);
+        assert(dependencies.drained()); // Registration/selection did not instantiate a service.
+        auto environment_entry =
+            services::ServiceEntry::bind<ef::kFlowEnvironmentService>(object::CodeLease::builtin());
+        assert(dependencies.publish({environment_entry}));
+        assert(dependencies.drained());
+        {
+            auto publication = take(dependencies.preparePublication({environment_entry}));
+            auto refused = SessionLoadJob::prepare(factory, input, dependencies, scope);
+            assert(!refused && refused.error().code == ESessionFactoryError::BUSY);
+        }
+        std::thread wrong_thread(
+            [&]
+            {
+                auto refused = SessionLoadJob::prepare(factory, input, dependencies, scope);
+                assert(!refused && refused.error().code == ESessionFactoryError::WRONG_THREAD);
+            }
+        );
+        wrong_thread.join();
+        auto job = take(SessionLoadJob::prepare(factory, input, dependencies, scope));
+        auto second = take(SessionLoadJob::prepare(factory, input, dependencies, scope));
+        auto environment = take(dependencies.get<ef::FlowEnvironment>(scope));
+        auto same = take(dependencies.get<ef::FlowEnvironment>(scope));
+        assert(environment == same && !environment.owner_before(same) && !same.owner_before(environment));
+        std::weak_ptr<ef::FlowEnvironment> weak = environment;
+        environment.reset();
+        same.reset();
+        assert(scope.release());
+        (void)messages.collect();
+        assert(weak.expired() && scope.drained() && dependencies.drained());
+        auto closed = SessionLoadJob::prepare(factory, input, dependencies, scope);
+        assert(!closed && closed.error().code == ESessionFactoryError::CLOSED);
+        // Both prepared jobs remain usable after the service allocation is physically gone.
+        std::stop_source cancelled;
+        cancelled.request_stop();
+        auto stopped = std::move(second).run(cancelled.get_token());
+        assert(!stopped && stopped.error().code == ESessionFactoryError::CANCELLED);
+        std::optional<SessionFactoryResult<SessionPreparation>> result;
+        const auto owner = std::this_thread::get_id();
+        process::TaskScope tasks{runtime};
+        auto submitted = tasks.submit(
+            {.name = "Read Flow after metadata service retirement"},
+            [scheduler = take(runtime.blocking()), job = std::move(job)](process::TaskReporter) mutable noexcept
+            {
+                return stdexec::then(
+                    stdexec::schedule(scheduler),
+                    [job = std::move(job)]() mutable { return std::move(job).run(); }
+                );
+            },
+            [&](process::TTaskResult<SessionPreparation, SessionFactoryFailure>&& completion) noexcept
+            {
+                assert(std::this_thread::get_id() == owner && completion);
+                result.emplace(std::move(*completion));
+            }
+        );
+        assert(submitted && tasks.join() && result && *result);
+        SessionStore store{messages.dispatcherRef(), 2};
+        WriteCoordinator writes;
+        SaveService saves{writes};
+        auto installation = take(std::move(**result).prepare(store, saves));
+        auto installed = take(installation.publish());
+        auto key = take(store.key<ef::FlowSession>(installed.id()));
+        auto& model = take(store.access<ef::FlowSession>().edit(key)).get();
+        const auto before = model.describe();
+        const auto bytes = take(take(model.read()).encode());
+        assert(!bytes.empty() && !take(model.historyView()).can_undo);
+        ef::FlowEditBatch edit{before.current, "edit loaded Flow", {}};
+        edit.edits.emplace_back(ef::FlowRename{"after service retirement"});
+        assert(model.apply(std::move(edit)) && model.undo());
+        assert(take(take(model.read()).encode()) == bytes);
+        assert(installed.close(model.describe().current));
+        (void)messages.collect();
+        std::cout << "PASS EC4 cold Flow factory; owner dependency admission; frozen worker after service retirement\n";
     }
 
     void contentOperations(
@@ -613,7 +724,12 @@ namespace
         SessionStore store{store_messages.dispatcherRef(), 8};
         WriteCoordinator writes;
         SaveService saves{writes};
-        SessionOpening opening{runtime, store, saves, 8};
+        services::ServiceRegistry dependencies{store_messages.dispatcherRef()};
+        assert(dependencies.publish({services::ServiceEntry::bind<lux::editor::flowforge::kFlowEnvironmentService>(
+            object::CodeLease::builtin()
+        )}));
+        auto scope = take(dependencies.createScope());
+        SessionOpening opening{runtime, store, saves, dependencies, scope, 8};
         SaveExecution execution{runtime, saves, writes, disk};
         const std::array<SessionKindId, 3> kinds{
             {{"lux.editor.scene"}, {"lux.editor.material"}, {"lux.editor.flowforge"}}
@@ -674,8 +790,15 @@ namespace
             const auto before = take(store.describe(ids[i]));
             auto request = input(i);
             request.reload = before.current;
-            auto reload =
-                take(ReloadSessionOperation::start(runtime, store, writes, take(factories.find(kinds[i])), request));
+            auto reload = take(ReloadSessionOperation::start(
+                runtime,
+                store,
+                writes,
+                dependencies,
+                scope,
+                take(factories.find(kinds[i])),
+                request
+            ));
             // Completion while CLOSING is transient, not a failed/consumed reload candidate.
             {
                 auto closing = take(store.prepareClose(before.current));
@@ -702,8 +825,15 @@ namespace
             auto request = input(1);
             const auto before = take(store.describe(ids[1]));
             request.reload = before.current;
-            auto reload =
-                take(ReloadSessionOperation::start(runtime, store, writes, take(factories.find(kinds[1])), request));
+            auto reload = take(ReloadSessionOperation::start(
+                runtime,
+                store,
+                writes,
+                dependencies,
+                scope,
+                take(factories.find(kinds[1])),
+                request
+            ));
             auto write = take(writes.reserve(*request.target, {}));
             assert(writes.cancelBeforePublish(write, {EPersistenceError::CANCELLED}));
             assert(writes.acknowledge(write));
@@ -726,8 +856,15 @@ namespace
             write(root / SourceFiles::names[1], std::as_bytes(std::span(encoded)));
             auto request = input(1);
             request.reload = take(store.describe(ids[1])).current;
-            auto reload =
-                take(ReloadSessionOperation::start(runtime, store, writes, take(factories.find(kinds[1])), request));
+            auto reload = take(ReloadSessionOperation::start(
+                runtime,
+                store,
+                writes,
+                dependencies,
+                scope,
+                take(factories.find(kinds[1])),
+                request
+            ));
             for (unsigned n{}; n < 10000 && !reload->outcome(); ++n)
             {
                 turn();
@@ -781,8 +918,15 @@ namespace
         assert(permits.size() == 3 && store.size() == 3);
         auto closing_read = input(1);
         closing_read.reload = take(store.describe(ids[1])).current;
-        auto late_reload =
-            take(ReloadSessionOperation::start(runtime, store, writes, take(factories.find(kinds[1])), closing_read));
+        auto late_reload = take(ReloadSessionOperation::start(
+            runtime,
+            store,
+            writes,
+            dependencies,
+            scope,
+            take(factories.find(kinds[1])),
+            closing_read
+        ));
         assert(store.close(permits) && store.size() == 0);
         turn();
         for (auto id : ids)
@@ -831,6 +975,9 @@ namespace
         turn();
         opening.requestStop();
         assert(opening.settled());
+        assert(scope.release());
+        (void)store_messages.collect();
+        assert(dependencies.drained());
         std::cout
             << "PASS P12 real content open dedup/cancel/reuse/copy, reload/gate/write-race, SaveAll and atomic close\n";
     }
@@ -887,7 +1034,7 @@ int main(int argc, char** argv)
     auto factories = take(SessionFactorySnapshot::create(std::vector{
         lux::editor::scene::makeSceneSessionFactory(schemas),
         lux::editor::material::makeMaterialSessionFactory(),
-        lux::editor::flowforge::makeFlowSessionFactory({})
+        lux::editor::flowforge::makeFlowSessionFactory()
     }));
     {
         assert(take(factories.selectSource("lux.scene.package", 1))->descriptor().kind.name() == "lux.editor.scene");
@@ -919,7 +1066,7 @@ int main(int argc, char** argv)
             auto entries = std::vector{
                 lux::editor::scene::makeSceneSessionFactory(schemas),
                 lux::editor::material::makeMaterialSessionFactory(),
-                lux::editor::flowforge::makeFlowSessionFactory({})
+                lux::editor::flowforge::makeFlowSessionFactory()
             };
             entries.push_back(alternate);
             if (reverse)
@@ -951,6 +1098,7 @@ int main(int argc, char** argv)
     ));
     asset::AssetVfs vfs;
     assert(vfs.mount({"/sources", std::make_shared<SourceFiles>(root)}));
+    lazyFlowDecoder(runtime, vfs);
     if (argc == 3)
     {
         contentOperations(runtime, factories, vfs, disk, root);

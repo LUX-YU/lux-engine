@@ -31,6 +31,11 @@ lifetime provider. The enumeration and validation live in `captureFlowEnvironmen
 not rebuild the catalog. This metadata service creates neither a compiler nor a UI. A returned source-environment
 view pins the same immutable backing after the scoped service allocation has retired.
 
+`makeFlowSessionFactory()` registers only the fixed source descriptor and declared metadata dependency.
+The decoder acquires that dependency at owner-thread load preparation, then captures the immutable
+environment view for the worker. Source lookup, file IO, codec, reload admission and Store installation
+remain the original shared content path; neither the worker nor the catalog retains a service resolver.
+
 publishFlowArtifact shares the existing WriteCoordinator and SaveExecution. It publishes fixed bytes
 against an explicit expected target version and never marks author source clean. Legacy UI conversion bridges
 are private, consumer-limited, and expire at P12.

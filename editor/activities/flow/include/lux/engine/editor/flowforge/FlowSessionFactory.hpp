@@ -22,8 +22,8 @@ namespace lux::editor::flowforge
         lux::flowforge::FlowSourceEnvironment environment,
         lux::object::CodeLease code = lux::object::CodeLease::builtin()
     );
+    // Declares its environment dependency without resolving it or constructing a service.
     [[nodiscard]] std::shared_ptr<sessions::SessionFactoryEntry> makeFlowSessionFactory(
-        lux::flowforge::FlowSourceEnvironment environment,
         lux::object::CodeLease code = lux::object::CodeLease::builtin()
     );
     [[nodiscard]] std::shared_ptr<commands::CommandEntry> makeNewFlowCommand(

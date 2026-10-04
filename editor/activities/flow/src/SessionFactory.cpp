@@ -59,12 +59,19 @@ namespace lux::editor::flowforge
             }
             return std::make_unique<FlowEnvironment>(std::move(*environment));
         }
+        constexpr services::ServiceDependency source_dependencies[]{
+            {services::ServiceNameView{"lux.editor.flow.environment"}, 1, cxx::typeToken<FlowEnvironment>()}
+        };
+        sessions::SessionFactoryResult<sessions::SessionDecode>
+        prepareDecoder(services::ServiceResolver&, const object::CodeLease&) noexcept;
         constexpr std::string_view extensions[]{"luxflow"};
         constexpr sessions::SessionKindDescriptor descriptor{
             sessions::SessionKindIdView{"lux.editor.flowforge"},
             "Flow",
             extensions,
-            sessions::SourceAuthoring{"lux.flowforge.source", 1, ".flow"}
+            sessions::SourceAuthoring{"lux.flowforge.source", 1, ".flow"},
+            source_dependencies,
+            prepareDecoder
         };
     } // namespace
     constinit const services::ServiceDescriptor kFlowEnvironmentService = []
@@ -106,81 +113,109 @@ namespace lux::editor::flowforge
             }
         };
     }
-    std::shared_ptr<sessions::SessionFactoryEntry> makeFlowSessionFactory(
-        lux::flowforge::FlowSourceEnvironment environment,
-        lux::object::CodeLease code
-    )
+    std::shared_ptr<sessions::SessionFactoryEntry> makeFlowSessionFactory(object::CodeLease code)
     {
-        using namespace sessions;
-        return SessionFactoryEntry::bind<descriptor>(
-            code,
-            [environment, code](const SessionLoadInput& input, std::span<const std::byte> bytes, std::stop_token stop)
-                -> SessionFactoryResult<SessionPreparation>
-            {
-                auto decoded = FlowCodec::decode(bytes, stop);
-                if (!decoded)
-                    return cxx::unexpected(SessionFactoryFailure{
-                        decoded.error().code == persistence::EPersistenceError::CANCELLED
-                            ? ESessionFactoryError::CANCELLED
-                            : ESessionFactoryError::DECODE,
-                        "persistence",
-                        static_cast<std::uint64_t>(decoded.error().code),
-                        decoded.error().detail
-                    });
-                if (input.reload)
-                    return SessionPreparation{
-                        code,
-                        *input.reload,
-                        [environment,
-                         code,
-                         data = std::move(*decoded),
-                         expected = *input.reload,
-                         binding = input.binding,
-                         target =
-                             input.target](SessionStore& store) mutable -> SessionFactoryResult<PreparedSessionReload>
-                        {
-                            auto construct = [&](FlowSession& session) -> FlowEditResult<PreparedFlowReload>
-                            {
-                                auto view = session.read();
-                                if (!view)
-                                    return cxx::unexpected(view.error());
-                                auto source = view->withRead(
-                                    [&]() -> FlowEditResult<FlowAuthoringSource>
-                                    {
-                                        auto graph = lux::flowforge::materializeFlowSource(data.source, environment);
-                                        if (!graph)
-                                        {
-                                            FlowEditError failure;
-                                            failure.source = std::move(graph.error());
-                                            return cxx::unexpected(std::move(failure));
-                                        }
-                                        return FlowAuthoringSource{data.source.id, data.source.name, std::move(*graph)};
-                                    }
-                                );
-                                if (!source)
-                                    return cxx::unexpected(source.error());
-                                return PreparedFlowReload::prepare(
-                                    session,
-                                    std::move(*source),
-                                    environment,
-                                    expected,
-                                    binding
-                                );
-                            };
-                            return sessions::detail::prepareReload<FlowSession, FlowSaveSource, FlowPersistenceAccess>(
-                                store,
-                                expected,
-                                binding,
-                                target,
-                                code,
-                                construct
-                            );
-                        }
-                    };
-                return prepareFlowSession(std::move(*decoded), input.binding, input.target, environment, code);
-            }
-        );
+        return sessions::SessionFactoryEntry::bind<descriptor>(std::move(code));
     }
+    namespace
+    {
+        sessions::SessionFactoryResult<sessions::SessionDecode> prepareDecoder(
+            services::ServiceResolver& resolver,
+            const object::CodeLease& code
+        ) noexcept
+        {
+            using namespace sessions;
+            auto shared = resolver.get<FlowEnvironment>(0);
+            if (!shared)
+            {
+                return cxx::unexpected(factoryFailure(std::move(shared.error())));
+            }
+            // The view pins the immutable backing, not a resolver, reflection registry or live Session.
+            auto environment = (*shared)->view();
+            return SessionDecode{
+                [environment,
+                 code](const SessionLoadInput& input, std::span<const std::byte> bytes, std::stop_token stop)
+                    -> SessionFactoryResult<SessionPreparation>
+                {
+                    auto decoded = FlowCodec::decode(bytes, stop);
+                    if (!decoded)
+                    {
+                        return cxx::unexpected(SessionFactoryFailure{
+                            decoded.error().code == persistence::EPersistenceError::CANCELLED
+                                ? ESessionFactoryError::CANCELLED
+                                : ESessionFactoryError::DECODE,
+                            "persistence",
+                            static_cast<std::uint64_t>(decoded.error().code),
+                            decoded.error().detail
+                        });
+                    }
+                    if (input.reload)
+                    {
+                        return SessionPreparation{
+                            code,
+                            *input.reload,
+                            [environment,
+                             code,
+                             data = std::move(*decoded),
+                             expected = *input.reload,
+                             binding = input.binding,
+                             target = input.target](SessionStore& store
+                            ) mutable -> SessionFactoryResult<PreparedSessionReload>
+                            {
+                                auto construct = [&](FlowSession& session) -> FlowEditResult<PreparedFlowReload>
+                                {
+                                    auto view = session.read();
+                                    if (!view)
+                                    {
+                                        return cxx::unexpected(view.error());
+                                    }
+                                    auto source = view->withRead(
+                                        [&]() -> FlowEditResult<FlowAuthoringSource>
+                                        {
+                                            auto graph =
+                                                lux::flowforge::materializeFlowSource(data.source, environment);
+                                            if (!graph)
+                                            {
+                                                FlowEditError failure;
+                                                failure.source = std::move(graph.error());
+                                                return cxx::unexpected(std::move(failure));
+                                            }
+                                            return FlowAuthoringSource{
+                                                data.source.id,
+                                                data.source.name,
+                                                std::move(*graph)
+                                            };
+                                        }
+                                    );
+                                    if (!source)
+                                    {
+                                        return cxx::unexpected(source.error());
+                                    }
+                                    return PreparedFlowReload::prepare(
+                                        session,
+                                        std::move(*source),
+                                        environment,
+                                        expected,
+                                        binding
+                                    );
+                                };
+                                return sessions::detail::
+                                    prepareReload<FlowSession, FlowSaveSource, FlowPersistenceAccess>(
+                                        store,
+                                        expected,
+                                        binding,
+                                        target,
+                                        code,
+                                        construct
+                                    );
+                            }
+                        };
+                    }
+                    return prepareFlowSession(std::move(*decoded), input.binding, input.target, environment, code);
+                }
+            };
+        }
+    } // namespace
 } // namespace lux::editor::flowforge
 
 namespace lux::editor::flowforge

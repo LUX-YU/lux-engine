@@ -49,6 +49,8 @@ namespace lux::editor::application
             engine_->execution(),
             sessions_,
             writes_,
+            editor_context_.services(),
+            editor_context_.scope(),
             std::move(*factory),
             std::move(input)
         );

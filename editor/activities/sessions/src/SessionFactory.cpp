@@ -1,7 +1,8 @@
-#include <lux/engine/editor/sessions/SessionFactory.hpp>
-#include <variant>
 #include <algorithm>
+#include <lux/engine/editor/sessions/SessionFactory.hpp>
+#include <lux/engine/services/ServiceRegistry.hpp>
 #include <unordered_map>
+#include <variant>
 namespace lux::editor::sessions
 {
     struct SessionPreparation::Data final
@@ -142,6 +143,8 @@ namespace lux::editor::sessions
     {
         std::string text;
         std::vector<std::string_view> extensions;
+        std::vector<std::string> dependency_names;
+        std::vector<services::ServiceDependency> dependencies;
         SessionKindDescriptor descriptor;
         explicit DescriptorStorage(const SessionKindDescriptor& input)
         {
@@ -177,12 +180,31 @@ namespace lux::editor::sessions
                     take(input.source->save_extension.size()),
                     input.source->is_default
                 };
+            dependency_names.reserve(input.dependencies.size() * 4);
+            const auto name = [&](std::string_view value) -> std::string_view
+            {
+                dependency_names.emplace_back(value);
+                return dependency_names.back();
+            };
+            for (auto value : input.dependencies)
+            {
+                value.contract = services::ServiceNameView{name(value.contract.name())};
+                if (value.implementation.isValid())
+                {
+                    value.implementation = services::ServiceNameView{name(value.implementation.name())};
+                }
+                value.type = {value.type.hash(), name(value.type.name())};
+                value.qualifier = name(value.qualifier);
+                dependencies.push_back(value);
+            }
+            descriptor.dependencies = dependencies;
+            descriptor.prepare = input.prepare;
         }
     };
     std::shared_ptr<SessionFactoryEntry> SessionFactoryEntry::create(
         lux::object::CodeLease code,
         const SessionKindDescriptor& descriptor,
-        Decode decode
+        SessionDecode decode
     )
     {
         auto storage = std::make_unique<const DescriptorStorage>(descriptor);
@@ -195,7 +217,7 @@ namespace lux::editor::sessions
     SessionFactoryEntry::SessionFactoryEntry(
         lux::object::CodeLease code,
         const SessionKindDescriptor& descriptor,
-        Decode decode
+        SessionDecode decode
     )
         : code_(std::move(code)), descriptor_(&descriptor), decode_(std::move(decode))
     {
@@ -238,7 +260,10 @@ namespace lux::editor::sessions
             const auto& descriptor = entry.descriptor();
             const bool is_invalid_identity =
                 !descriptor.kind.isValid() || descriptor.kind.hash() != cxx::Fnv1a64::hash(descriptor.kind.name());
-            const bool is_invalid_binding = !entry.code_.valid() || !entry.decode_;
+            const bool has_decode = bool(entry.decode_);
+            const bool is_invalid_decoder = descriptor.prepare ? has_decode : !has_decode;
+            const bool has_undeclared_factory = !descriptor.prepare && !descriptor.dependencies.empty();
+            const bool is_invalid_binding = !entry.code_.valid() || is_invalid_decoder || has_undeclared_factory;
             const bool is_invalid_description = descriptor.label.empty();
             const bool is_invalid = is_invalid_identity || is_invalid_binding || is_invalid_description;
             if (is_invalid)
@@ -387,6 +412,109 @@ namespace lux::editor::sessions
         return data_ ? std::span<const std::shared_ptr<SessionFactoryEntry>>(data_->entries)
                      : std::span<const std::shared_ptr<SessionFactoryEntry>>{};
     }
+    SessionFactoryFailure factoryFailure(services::ServiceFailure error)
+    {
+        using enum services::EServiceError;
+        auto code = ESessionFactoryError::CONSTRUCT;
+        switch (error.code)
+        {
+        case BUSY:
+        case RETIRING:
+            code = ESessionFactoryError::BUSY;
+            break;
+        case CLOSED:
+            code = ESessionFactoryError::CLOSED;
+            break;
+        case WRONG_THREAD:
+            code = ESessionFactoryError::WRONG_THREAD;
+            break;
+        case NOT_FOUND:
+            code = ESessionFactoryError::NOT_FOUND;
+            break;
+        case CAPACITY:
+            code = ESessionFactoryError::CAPACITY;
+            break;
+        default:
+            break;
+        }
+        const auto domain_code = error.domain.empty() ? static_cast<std::uint64_t>(error.code) : error.domain_code;
+        return {
+            code,
+            error.domain.empty() ? "session.services" : std::move(error.domain),
+            domain_code,
+            std::move(error.detail)
+        };
+    }
+    SessionFactoryResult<SessionLoadJob> SessionLoadJob::prepare(
+        std::shared_ptr<SessionFactoryEntry> entry,
+        SessionLoadInput input,
+        services::ServiceRegistry& services,
+        services::ServiceScope& scope
+    )
+    {
+        auto reading = services.readScope();
+        if (!reading)
+        {
+            return cxx::unexpected(factoryFailure(std::move(reading.error())));
+        }
+        // Every accepted input and prepared decoder is cleaned before this read admission ends.
+        SessionLoadJob owned{std::move(entry), std::move(input)};
+        const bool is_invalid_entry = !owned.entry_ || !owned.entry_->code_.valid();
+        const bool is_invalid_input = !owned.input_.source || owned.input_.asset.isNull() || !owned.input_.max_bytes;
+        if (is_invalid_entry || is_invalid_input)
+        {
+            return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::INVALID_ARGUMENT, "load.prepare"});
+        }
+        if (!scope.isOpen())
+        {
+            return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::CLOSED, "load.scope"});
+        }
+        const auto& descriptor = owned.entry_->descriptor();
+        if (!descriptor.prepare)
+        {
+            if (!owned.entry_->decode_ || !descriptor.dependencies.empty())
+            {
+                return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::INVALID_ARGUMENT, "load.decoder"});
+            }
+            return owned;
+        }
+        if (owned.entry_->decode_)
+        {
+            return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::INVALID_ARGUMENT, "load.decoder"});
+        }
+        SessionFactoryResult<void> outcome;
+        auto create = [&](services::ServiceResolver& resolver) -> services::ServiceResult<void>
+        {
+            auto candidate = descriptor.prepare(resolver, owned.entry_->code_);
+            if (!candidate)
+            {
+                outcome = cxx::unexpected(std::move(candidate.error()));
+            }
+            else if (!resolver.isOpen())
+            {
+                outcome = cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::CLOSED, "load.scope"});
+            }
+            else if (!*candidate)
+            {
+                outcome = cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::CONSTRUCT, "load.decoder"});
+            }
+            else
+            {
+                owned.decode_ = std::move(*candidate);
+            }
+            return {};
+        };
+        auto prepared = services.withDependencies(scope, descriptor.dependencies, create);
+        if (!prepared)
+        {
+            return cxx::unexpected(factoryFailure(std::move(prepared.error())));
+        }
+        if (!outcome)
+        {
+            return cxx::unexpected(std::move(outcome.error()));
+        }
+        return owned;
+    }
     SessionLoadJob::SessionLoadJob(std::shared_ptr<SessionFactoryEntry> entry, SessionLoadInput input)
         : entry_(std::move(entry)), input_(std::move(input))
     {
@@ -412,13 +540,14 @@ namespace lux::editor::sessions
             return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::CAPACITY, "load.bytes"});
         if (stop.stop_requested())
             return cxx::unexpected(SessionFactoryFailure{ESessionFactoryError::CANCELLED, "load"});
+        auto& decode = owned.decode_ ? owned.decode_ : owned.entry_->decode_;
         auto invoke = [&]() -> SessionFactoryResult<SessionPreparation>
         {
             if (owned.entry_->code_.sameOwner(lux::object::CodeLease::builtin()))
-                return owned.entry_->decode_(owned.input_, blob->bytes.view(), stop);
+                return decode(owned.input_, blob->bytes.view(), stop);
             try
             {
-                return owned.entry_->decode_(owned.input_, blob->bytes.view(), stop);
+                return decode(owned.input_, blob->bytes.view(), stop);
             }
             catch (const std::bad_alloc&)
             {

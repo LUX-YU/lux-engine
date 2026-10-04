@@ -1,26 +1,27 @@
 #include "ObjectQueue.hpp"
-#include <lux/engine/editor/storage/ProjectCommands.hpp>
-#include <lux/engine/editor/storage/ProjectContentSaving.hpp>
-#include <lux/engine/editor/storage/ProjectContentOpening.hpp>
-#include <lux/engine/editor/storage/ProjectPluginSelection.hpp>
-#include <lux/engine/editor/storage/RecentProjects.hpp>
-#include <lux/engine/editor/storage/ProjectStorage.hpp>
-#include <lux/engine/editor/storage/FileArtifactStore.hpp>
-#include <lux/engine/editor/sessions/SessionOpening.hpp>
-#include <lux/engine/editor/sessions/SessionOperations.hpp>
-#include <lux/engine/editor/scene/SceneSessionFactory.hpp>
-#include <lux/engine/editor/material/MaterialSessionFactory.hpp>
-#include <lux/engine/editor/flowforge/FlowSessionFactory.hpp>
-#include <lux/engine/editor/persistence/SaveExecution.hpp>
-#include <lux/engine/material/graph/Nodes.hpp>
-#include <lux/engine/flowforge/graph/ControlNode.hpp>
-#include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
-#include <lux/engine/object/ObjectDispatcher.hpp>
 #include <atomic>
 #include <cassert>
 #include <fstream>
 #include <functional>
 #include <iostream>
+#include <lux/engine/editor/flowforge/FlowSessionFactory.hpp>
+#include <lux/engine/editor/material/MaterialSessionFactory.hpp>
+#include <lux/engine/editor/persistence/SaveExecution.hpp>
+#include <lux/engine/editor/scene/SceneSessionFactory.hpp>
+#include <lux/engine/editor/sessions/SessionOpening.hpp>
+#include <lux/engine/editor/sessions/SessionOperations.hpp>
+#include <lux/engine/editor/storage/FileArtifactStore.hpp>
+#include <lux/engine/editor/storage/ProjectCommands.hpp>
+#include <lux/engine/editor/storage/ProjectContentOpening.hpp>
+#include <lux/engine/editor/storage/ProjectContentSaving.hpp>
+#include <lux/engine/editor/storage/ProjectPluginSelection.hpp>
+#include <lux/engine/editor/storage/ProjectStorage.hpp>
+#include <lux/engine/editor/storage/RecentProjects.hpp>
+#include <lux/engine/flowforge/graph/ControlNode.hpp>
+#include <lux/engine/material/graph/Nodes.hpp>
+#include <lux/engine/object/ObjectDispatcher.hpp>
+#include <lux/engine/services/ServiceRegistry.hpp>
+#include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include <thread>
 
 using namespace lux;
@@ -125,12 +126,16 @@ int main(int argc, char** argv)
     p::SaveService saves{writes};
     lux::test::ObjectQueue store_messages;
     s::SessionStore store{store_messages.dispatcherRef(), 8};
-    s::SessionOpening opening{runtime, store, saves};
+    services::ServiceRegistry dependencies{store_messages.dispatcherRef()};
+    assert(dependencies.publish({services::ServiceEntry::bind<ef::kFlowEnvironmentService>(object::CodeLease::builtin())
+    }));
+    auto scope = take(dependencies.createScope());
+    s::SessionOpening opening{runtime, store, saves, dependencies, scope};
     p::SaveExecution execution{runtime, saves, writes, files};
     ProjectContentSaving saving{store, opening, saves, *project, writes, files};
     auto schemas = take(simulation::ecs::ComponentSchemaSet::build({}));
     auto factories = take(s::SessionFactorySnapshot::create(
-        {es::makeSceneSessionFactory(schemas), em::makeMaterialSessionFactory(), ef::makeFlowSessionFactory({})}
+        {es::makeSceneSessionFactory(schemas), em::makeMaterialSessionFactory(), ef::makeFlowSessionFactory()}
     ));
     auto simulation = take(std::move(simulation::SimulationDescriptionBuilder{}).build());
     auto description = take(std::move(lux::scene::SceneDescriptionBuilder{}).buildResolved());
@@ -415,6 +420,9 @@ int main(int argc, char** argv)
         }
         assert(user_writes.size() == 0 && read(path) == saved);
     }
+    assert(scope.release());
+    (void)store_messages.collect();
+    assert(dependencies.drained());
     project->requestClose();
     assert(take(project->advanceClose()));
     std::cout

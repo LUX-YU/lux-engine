@@ -260,6 +260,7 @@ namespace lux::editor::application
         std::optional<EPluginAction> plugin_action_;
         std::unique_ptr<ProjectPluginSelection> plugin_saving_;
         std::optional<EditorFailure> plugin_failure_;
+        desktop::EditorContext editor_context_{messages_.dispatcherRef()};
         sessions::SessionOpening opening_;
         std::unique_ptr<ProjectContentSaving> content_saving_;
         scene::ScenePresentationHub projections_;
@@ -269,7 +270,6 @@ namespace lux::editor::application
         std::shared_ptr<flowforge::FlowCompilationService> flow_compilation_;
         scene::ProjectionEnvironment environment_;
         flowforge::FlowEnvironment flow_environment_;
-        desktop::EditorContext editor_context_{messages_.dispatcherRef()};
         commands::CommandRegistry& commands_{editor_context_.commands()};
         commands::CommandDispatcher command_dispatcher_{commands_};
         extensions::ContributionRegistry contributions_;

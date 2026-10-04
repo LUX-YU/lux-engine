@@ -5629,7 +5629,7 @@
       "ui_rendering",
       "view_host",
       "window",
-      "editor_commands",
+      "editor_composition",
       "workspace_store"
     ],
     "closure": {
@@ -5977,6 +5977,12 @@
       },
       "ui_input": {
         "path": "modules/function/ui"
+      },
+      "editor_composition": {
+        "path": "editor/workbench/desktop"
+      },
+      "services": {
+        "path": "modules/core/services"
       }
     },
     "native_libraries": [
@@ -6075,8 +6081,6 @@
       "editor/workbench/desktop/src/WindowInput.cpp",
       "editor/workbench/desktop/src/WindowOutput.cpp",
       "editor/workbench/desktop/test/host.cpp",
-      "editor/workbench/desktop/src/CommandMenu.cpp",
-      "editor/workbench/desktop/include/lux/engine/editor/desktop/CommandMenu.hpp",
       "editor/workbench/desktop/src/ReviewView.cpp",
       "editor/workbench/desktop/include/lux/engine/editor/desktop/ReviewView.hpp",
       "editor/workbench/desktop/include/lux/engine/editor/desktop/WorkspaceActions.hpp",
@@ -9495,6 +9499,9 @@
       },
       "services": {
         "path": "modules/core/services"
+      },
+      "editor_composition": {
+        "path": "editor/workbench/desktop"
       }
     },
     "native_libraries": [
@@ -18474,10 +18481,10 @@
         "flowforge_persistence"
       ],
       "editor/workbench/desktop/src/CommandMenu.cpp": [
-        "desktop_shell"
+        "editor_composition"
       ],
       "editor/workbench/desktop/include/lux/engine/editor/desktop/CommandMenu.hpp": [
-        "desktop_shell"
+        "editor_composition"
       ],
       "editor/authoring/configuration/src/ConfigurationValue.cpp": [
         "editor_configuration"

@@ -106,4 +106,3 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
         "$<TARGET_FILE:lux_editor_module_generator>" "${CMAKE_CURRENT_SOURCE_DIR}/codegen/templates")
     set_tests_properties(editor.module_codegen PROPERTIES LABELS "editor;native;EC4")
 endif()
-

@@ -1,5 +1,5 @@
 add_component(COMPONENT_NAME editor_composition NAMESPACE lux::engine::editor STATIC
-    SOURCE_FILES src/UiRegistry.cpp src/EditorContext.cpp)
+    SOURCE_FILES src/UiRegistry.cpp src/EditorContext.cpp src/CommandMenu.cpp)
 component_include_directories(editor_composition BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/sinclude INSTALL_TIME include)
 target_link_libraries(editor_composition PUBLIC lux::engine::core::services
@@ -16,6 +16,7 @@ lux_engine_install_components(PROJECT_NAME lux-engine-editor-composition VERSION
     NAMESPACE lux::engine::editor COMPONENTS editor_composition)
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/desktop/UiRegistry.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/desktop/EditorContext.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/desktop/CommandMenu.hpp
     DESTINATION include/lux/engine/editor/desktop COMPONENT lux_engine_editor_composition)
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/settings/SettingsPage.hpp
     DESTINATION include/lux/engine/editor/settings COMPONENT lux_engine_editor_composition)
@@ -67,13 +68,14 @@ component_add_transitive_commands(view_host
     "find_package(lux-engine-editor-layout REQUIRED COMPONENTS layout_model)")
 lux_classify_target(TARGET view_host LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 add_component(COMPONENT_NAME desktop_shell NAMESPACE lux::engine::editor STATIC
-    SOURCE_FILES src/WorkspaceActions.cpp src/CommandMenu.cpp src/DesktopShell.cpp src/WindowInput.cpp src/WindowOutput.cpp src/Presentation.cpp src/UiRenderSyncStage.cpp)
+    SOURCE_FILES src/WorkspaceActions.cpp src/DesktopShell.cpp src/WindowInput.cpp src/WindowOutput.cpp src/Presentation.cpp src/UiRenderSyncStage.cpp)
 component_include_directories(desktop_shell BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude INSTALL_TIME include)
 component_add_internal_dependencies(desktop_shell view_host)
-target_link_libraries(desktop_shell PUBLIC lux::engine::editor::workspace_store lux::engine::editor::editor_commands lux::engine::scene::scene_render
+target_link_libraries(desktop_shell PUBLIC lux::engine::editor::workspace_store lux::engine::editor::editor_composition lux::engine::scene::scene_render
     lux::engine::function::ui_rendering lux::engine::function::input lux::engine::platform::window)
 component_add_transitive_commands(desktop_shell
+    "find_package(lux-engine-editor-composition REQUIRED COMPONENTS editor_composition)"
     "find_package(lux-engine-editor-workspace-store REQUIRED COMPONENTS workspace_store)"
     "find_package(lux-engine-editor-commands REQUIRED COMPONENTS editor_commands)"
     "find_package(lux-engine-scene-render REQUIRED COMPONENTS scene_render)"
@@ -95,7 +97,6 @@ endif()
 install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/desktop/ViewCommands.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/desktop/WorkspaceActions.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/desktop/CommandMenu.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/desktop/DesktopError.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/desktop/DesktopShell.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/desktop/Presentation.hpp

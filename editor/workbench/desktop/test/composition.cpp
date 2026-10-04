@@ -3,6 +3,7 @@
 #include <functional>
 #include <iostream>
 #include <lux/engine/editor/commands/CommandRegistry.hpp>
+#include <lux/engine/editor/desktop/CommandMenu.hpp>
 #include <lux/engine/editor/desktop/EditorContext.hpp>
 #include <lux/engine/editor/desktop/UiRegistry.hpp>
 #include <lux/engine/ui/Root.hpp>
@@ -491,6 +492,118 @@ namespace
                      "PASS\n";
     }
 
+    void menuFactoryBinding(object::ObjectMessageQueue& messages)
+    {
+        Counts counts;
+        EditorContext context{messages.dispatcherRef()};
+        auto& services = context.services();
+        auto& registry = context.ui();
+        assert(services.publish({ServiceEntry::bind<model_descriptor>(object::CodeLease::builtin())}));
+        auto scope = services.createScope();
+        auto root = ui::Root::create(messages.dispatcherRef());
+        assert(scope && root && scope->provide(ServiceNameView{"ec4.counts"}, counts));
+        auto fixed = catalog();
+        assert(registry.publish(fixed));
+        auto factory = fixed.at(0);
+        assert(factory);
+        auto entry = commands::CommandEntry::create(
+            object::CodeLease::builtin(),
+            {commands::CommandIdView{"ec4.window.open"}, "Open EC4 window", "Window"},
+            [](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
+            { return commands::CommandState{true}; },
+            [&, factory = *factory](const commands::CommandInvocation&)
+                -> commands::CommandResult<commands::DispatchReceipt>
+            {
+                // The module's receiver retains the factory selected at registration. No name lookup
+                // or fresh source capture occurs when a queued command is retried.
+                std::vector<UiMountRequest> requests{
+                    {factory,
+                     {messages.dispatcherRef(), ui::PaneId{"command-" + std::to_string(counts.windows)}, {}, {}}}
+                };
+                auto mounted = registry.mount(**root, *scope, std::move(requests));
+                if (!mounted)
+                {
+                    const auto& cause = mounted.error();
+                    const auto code = cause.code == EUiError::BUSY ? commands::ECommandError::BUSY
+                                      : cause.code == EUiError::STALE_REGISTRATION
+                                          ? commands::ECommandError::INCOMPATIBLE_REGISTRATION
+                                          : commands::ECommandError::DOMAIN_FAILURE;
+                    return cxx::unexpected(commands::CommandFailure{
+                        code,
+                        cause.domain,
+                        static_cast<std::uint64_t>(cause.code),
+                        cause.detail
+                    });
+                }
+                return commands::DispatchReceipt{commands::ImmediateCompletion{}};
+            }
+        );
+        auto command_catalog = commands::CommandRegistrySnapshot::create({std::move(entry)});
+        assert(command_catalog && context.commands().publish(*command_catalog));
+        commands::CommandDispatcher dispatch{context.commands()};
+        CommandMenu menu{
+            **root,
+            context.commands(),
+            dispatch,
+            [](const commands::CommandDescriptor&, const ui::Pane*, const ui::Element*)
+                -> commands::CommandResult<commands::CommandInvocation> { return commands::CommandInvocation{}; }
+        };
+        assert(menu.update());
+        const auto enqueue = [&]
+        {
+            ui::MenuRequest request;
+            menu.receive(request);
+            assert(menu.status());
+            request.action = ui::EMenuAction::COMMAND;
+            request.index = 0;
+            request.command.phase = ui::ECommandPhase::EXECUTE;
+            menu.receive(request);
+            assert(request.command.result == ui::ECommandDispatchResult::EXECUTED);
+            assert(dispatch.pending() == 1);
+        };
+        enqueue();
+        assert(counts.models == 0 && counts.windows == 0);
+        {
+            auto held = registry.preparePublication(catalog());
+            assert(held && menu.update());
+            assert(dispatch.pending() == 1 && menu.takeCompletions().empty());
+            assert(counts.models == 0 && (*root)->panes().empty());
+        }
+        assert(menu.update() && dispatch.pending() == 0);
+        auto completed = menu.takeCompletions();
+        assert(completed.size() == 1 && completed[0].result);
+        assert(counts.models == 1 && counts.windows == 1);
+
+        // Programmatic commands and configured batches consume the very same fixed factory.
+        auto command = command_catalog->at(0);
+        assert(command && context.commands().execute(*command, commands::CommandInvocation{}));
+        std::vector<UiMountRequest> configured{{*factory, {messages.dispatcherRef(), ui::PaneId{"configured"}, {}, {}}}
+        };
+        assert(registry.mount(**root, *scope, std::move(configured)));
+        assert(counts.models == 1 && counts.windows == 3);
+        auto* model = static_cast<Window*>((*root)->panes()[0])->model();
+        for (auto* pane : (*root)->panes())
+        {
+            assert(static_cast<Window*>(pane)->model() == model);
+        }
+
+        // Queue the old menu input, then publish a new generation with the identical visible name.
+        // It must fail explicitly, not reopen through a newly resolved factory.
+        enqueue();
+        assert(registry.publish(catalog()) && menu.update());
+        completed = menu.takeCompletions();
+        assert(completed.size() == 1 && !completed[0].result);
+        const auto& failure = completed[0].result.error();
+        assert(failure.code == commands::ECommandError::INCOMPATIBLE_REGISTRATION);
+        assert(failure.domain_code == static_cast<std::uint64_t>(EUiError::STALE_REGISTRATION));
+        assert(dispatch.pending() == 0 && counts.windows == 3 && counts.models == 1);
+        root->reset();
+        assert(counts.windows_destroyed == 3 && counts.models_destroyed == 1);
+        assert(scope->release() && scope->drained() && services.drained());
+        std::cout << "Real menu/dispatcher, programmatic command and configured UI use one fixed factory; "
+                     "BUSY retains queued input and stale generation rejects PASS\n";
+    }
+
     void dynamicBacking()
     {
         std::shared_ptr<const UiEntry> frozen;
@@ -623,6 +736,7 @@ int main()
     rejection(messages);
     rejectedMountCleanup(messages);
     contentRouting(messages);
+    menuFactoryBinding(messages);
     dynamicBacking();
     compoundCleanup(messages, false);
     compoundCleanup(messages, true);

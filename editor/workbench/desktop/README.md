@@ -4,6 +4,10 @@
 
 `editor_composition` provides `EditorContext` and the immutable `UiRegistry` factory catalog. It depends
 on the neutral services, UI and command providers, with no concrete tool or old Host dependency.
+The existing `CommandMenu` belongs to this same provider. Menu requests, programmatic commands and
+configuration batches can consume the same fixed `UiHandle`; BUSY retains queued input and replacing
+the catalog rejects a stale handle instead of silently resolving its name again. The installed
+composition consumer exercises this route without importing desktop_shell or view_host.
 Factories return complete detached unique owners. `Root::addSubPane`/`addSubPanes` register them and can
 transfer ownership into the existing LuxObject parent relation; Root has no second owning window table.
 External members and externally owned children remain external and are unlinked when their parent ends.

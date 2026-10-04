@@ -108,15 +108,15 @@ namespace
         {
             ++declaration->counts.destroyed;
         }
-        static ServiceResult<std::unique_ptr<DeclaredService>> create(
-            ServiceResolver& resolver,
-            const ServiceConfiguration&
-        ) noexcept
+        static ServiceResult<std::unique_ptr<DeclaredService>>
+        create(ServiceResolver& resolver, const ServiceConfiguration&) noexcept
         {
             assert(resolver.definition<int>().error().code == EServiceError::TYPE_MISMATCH);
             auto input = resolver.definition<Declaration>();
             if (!input)
+            {
                 return lux::cxx::unexpected(std::move(input.error()));
+            }
             return std::make_unique<DeclaredService>(std::move(*input));
         }
     };
@@ -665,30 +665,42 @@ namespace
         assert(counts.destroyed == 1 && registry.drained());
     }
 
-    void declarationOwnership(lux::object::ObjectMessageQueue& messages)
+    void declarationOwnership(lux::object::ObjectMessageQueue& messages, bool fixed)
     {
         Counts counts;
         bool code_alive = true;
-        auto code = CodeLease::plugin(std::shared_ptr<const void>(new int{1}, [&](const void* value) {
-            assert(counts.created == counts.destroyed);
-            code_alive = false;
-            delete static_cast<const int*>(value);
-        }));
-        constexpr ServiceContract contracts[]{
+        auto code = CodeLease::plugin(std::shared_ptr<const void>(
+            new int{1},
+            [&](const void* value)
+            {
+                assert(counts.created == counts.destroyed);
+                code_alive = false;
+                delete static_cast<const int*>(value);
+            }
+        ));
+        static constexpr ServiceContract contracts[]{
             ServiceContract::forType<DeclaredService, DeclaredService>(ServiceNameView{"test.declared"})
         };
-        auto descriptor = ServiceDescriptor::forType<DeclaredService, &DeclaredService::create>(
-            ServiceNameView{"test.declared.default"}, contracts
-        );
-        descriptor.definition_type = lux::cxx::typeToken<Declaration>();
+        static constexpr auto descriptor = []
+        {
+            auto value = ServiceDescriptor::forType<DeclaredService, &DeclaredService::create>(
+                ServiceNameView{"test.declared.default"},
+                contracts
+            );
+            value.definition_type = lux::cxx::typeToken<Declaration>();
+            return value;
+        }();
         ServiceRegistry registry{messages.dispatcherRef()};
         auto scope = take(registry.createScope());
-        auto missing = ServiceEntry::create(code, descriptor);
+        auto missing = fixed ? ServiceEntry::bind<descriptor>(code) : ServiceEntry::create(code, descriptor);
         assert(registry.publish({missing}).error().code == EServiceError::INVALID_DESCRIPTOR);
-        auto wrong = ServiceEntry::create(code, descriptor, std::make_shared<const int>(7));
+        auto wrong = fixed ? ServiceEntry::bind<descriptor>(code, std::make_shared<const int>(7))
+                           : ServiceEntry::create(code, descriptor, std::make_shared<const int>(7));
         assert(registry.publish({wrong}).error().code == EServiceError::INVALID_DESCRIPTOR);
         auto definition = std::make_shared<const Declaration>(counts, 17);
-        auto entry = ServiceEntry::create(code, descriptor, definition);
+        auto entry = fixed ? ServiceEntry::bind<descriptor>(code, definition)
+                           : ServiceEntry::create(code, descriptor, definition);
+        assert((&entry->descriptor() == &descriptor) == fixed);
         assert(entry->definition<int>().error().code == EServiceError::TYPE_MISMATCH);
         assert(registry.publish({entry}) && counts.created == 0);
         auto first = take(registry.get<DeclaredService>(scope));
@@ -762,7 +774,8 @@ int main(int argc, char** argv)
     closeDuringCreation(*messages, true);
     compoundPublication(*messages);
     externalFactoryDependencies(*messages);
-    declarationOwnership(*messages);
+    declarationOwnership(*messages, false);
+    declarationOwnership(*messages, true);
     churn(*messages);
     assert(messages->pendingRetirements() == 0);
     std::cout << "PASS lazy factories, one allocation, declared dependencies, scope/qualifier isolation, "

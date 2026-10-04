@@ -1,4 +1,3 @@
-#include <lux/engine/editor/scene/SceneEditorCatalog.hpp>
 #include "ObjectQueue.hpp"
 #include "Probe.hpp"
 #include <cassert>
@@ -10,6 +9,7 @@
 #include <lux/engine/editor/material/MaterialSessionFactory.hpp>
 #include <lux/engine/editor/persistence/SaveExecution.hpp>
 #include <lux/engine/editor/scene/SceneConfigurationElement.hpp>
+#include <lux/engine/editor/scene/SceneEditorCatalog.hpp>
 #include <lux/engine/editor/storage/FileArtifactStore.hpp>
 #include <lux/engine/material/graph/Nodes.hpp>
 #include <lux/engine/simulation/ecs/TransformSchema.hpp>
@@ -164,10 +164,14 @@ int main(int argc, char** argv)
         set_probe(&facts);
         auto bad_draft = take(extension.contributions());
         auto bad_definition = *take(lux::editor::scene::sceneEditorDefinitions(bad_draft.services))[0];
-        bad_definition.configurations[0].value.reflection = [](meta::ReflectionRegistry&) noexcept -> const meta::RefClass*
-        { return nullptr; };
-        bad_draft.services[0] = lux::editor::scene::declareSceneEditors(
-            bad_draft.services[0]->code(), services::ServiceNameView{"qualification.configuration"}, std::move(bad_definition)
+        bad_definition.configurations[0].value.reflection =
+            [](meta::ReflectionRegistry&) noexcept -> const meta::RefClass* { return nullptr; };
+        static constexpr auto catalog_qualification_configuration =
+            lux::editor::scene::SceneEditorCatalog::descriptor(services::ServiceNameView{"qualification.configuration"}
+            );
+        bad_draft.services[0] = lux::services::ServiceEntry::bind<catalog_qualification_configuration>(
+            bad_draft.services[0]->code(),
+            lux::editor::scene::freezeSceneEditors(bad_draft.services[0]->code(), std::move(bad_definition))
         );
         auto bad = take(extensions::ContributionSnapshot::prepare(std::move(bad_draft)));
         assert(catalog.enqueue(bad));
@@ -216,7 +220,9 @@ int main(int argc, char** argv)
         auto definitions = take(lux::editor::scene::sceneEditorDefinitions(current.services()));
         assert(definitions.size() == (with_configuration ? 1 : 0));
         if (with_configuration)
+        {
             assert(definitions[0]->configurations.size() == 1);
+        }
         if (with_configuration)
         {
             auto scope = take(editor_context.services().createScope());

@@ -25,14 +25,26 @@ namespace lux::editor::scene
         [[nodiscard]] const Definition& definition() const noexcept;
         [[nodiscard]] static services::ServiceResult<std::unique_ptr<SceneEditorCatalog>>
         create(services::ServiceResolver&, const services::ServiceConfiguration&) noexcept;
+        [[nodiscard]] static constexpr services::ServiceDescriptor descriptor(services::ServiceNameView implementation)
+        {
+            auto result = services::ServiceDescriptor::forType<SceneEditorCatalog, &SceneEditorCatalog::create>(
+                implementation,
+                std::span{&contract_, 1}
+            );
+            result.definition_type = cxx::typeToken<Definition>();
+            return result;
+        }
 
     private:
+        static constexpr services::ServiceContract contract_ =
+            services::ServiceContract::forType<SceneEditorCatalog, SceneEditorCatalog>(
+                services::ServiceNameView{"lux.editor.scene.editors"}
+            );
         std::shared_ptr<const Definition> definition_;
     };
 
-    [[nodiscard]] std::shared_ptr<const services::ServiceEntry> declareSceneEditors(
+    [[nodiscard]] std::shared_ptr<const SceneEditorCatalog::Definition> freezeSceneEditors(
         object::CodeLease,
-        services::ServiceNameView implementation,
         SceneEditorCatalog::Definition
     );
     // Cold metadata reads only; callers retain the returned immutable backing, not a mutable catalog.

@@ -314,10 +314,11 @@ namespace
                 +[](ui::Element&, ui::ElementId, ConfigurationValue&) noexcept
                     -> lux::editor::scene::ConfigurationEditor::CreateResult { return std::unique_ptr<ui::Element>{}; }
             });
-            rejected.services.push_back(lux::editor::scene::declareSceneEditors(
+            static constexpr auto catalog_test_r11_editors =
+                lux::editor::scene::SceneEditorCatalog::descriptor(services::ServiceNameView{"test.r11.editors"});
+            rejected.services.push_back(lux::services::ServiceEntry::bind<catalog_test_r11_editors>(
                 lux::object::CodeLease::builtin(),
-                services::ServiceNameView{"test.r11.editors"},
-                std::move(definition)
+                lux::editor::scene::freezeSceneEditors(lux::object::CodeLease::builtin(), std::move(definition))
             ));
             auto candidate = take(ContributionSnapshot::prepare(std::move(rejected)));
             const auto reflection_count = meta::ReflectionRegistry::instance().classes().size();
@@ -524,10 +525,11 @@ void domainCatalog()
          +[](ui::Element& parent, ui::ElementId id, scene::InspectorFields&) -> scene::InspectorComponent::CreateResult
          { return std::make_unique<ui::Label>(parent, std::move(id), "Binding"); }}
     );
-    auto first = scene::declareSceneEditors(
+    static constexpr auto catalog_test_scene_editor_first =
+        lux::editor::scene::SceneEditorCatalog::descriptor(services::ServiceNameView{"test.scene.editor.first"});
+    auto first = lux::services::ServiceEntry::bind<catalog_test_scene_editor_first>(
         object::CodeLease::builtin(),
-        services::ServiceNameView{"test.scene.editor.first"},
-        definition
+        lux::editor::scene::freezeSceneEditors(object::CodeLease::builtin(), definition)
     );
     auto backing = take(first->definition<scene::SceneEditorCatalog::Definition>());
     ContributionDraft draft;
@@ -545,10 +547,11 @@ void domainCatalog()
         extra.type = cxx::typeToken<int>();
         oversized.components.push_back(std::move(extra));
         ContributionDraft limited;
-        limited.services.push_back(scene::declareSceneEditors(
+        static constexpr auto catalog_test_scene_editor_limited =
+            lux::editor::scene::SceneEditorCatalog::descriptor(services::ServiceNameView{"test.scene.editor.limited"});
+        limited.services.push_back(lux::services::ServiceEntry::bind<catalog_test_scene_editor_limited>(
             object::CodeLease::builtin(),
-            services::ServiceNameView{"test.scene.editor.limited"},
-            std::move(oversized)
+            lux::editor::scene::freezeSceneEditors(object::CodeLease::builtin(), std::move(oversized))
         ));
         limited.reflection.push_back({object::CodeLease::builtin(), {}, &scene::validateSceneEditors});
         auto rejected = take(ContributionSnapshot::prepare(std::move(limited), 1));
@@ -570,10 +573,11 @@ void domainCatalog()
         }
         ContributionDraft duplicate;
         duplicate.services.push_back(first);
-        duplicate.services.push_back(scene::declareSceneEditors(
+        static constexpr auto catalog_test_scene_editor_second =
+            lux::editor::scene::SceneEditorCatalog::descriptor(services::ServiceNameView{"test.scene.editor.second"});
+        duplicate.services.push_back(lux::services::ServiceEntry::bind<catalog_test_scene_editor_second>(
             object::CodeLease::builtin(),
-            services::ServiceNameView{"test.scene.editor.second"},
-            std::move(conflicting)
+            lux::editor::scene::freezeSceneEditors(object::CodeLease::builtin(), std::move(conflicting))
         ));
         duplicate.reflection.push_back({object::CodeLease::builtin(), {}, &scene::validateSceneEditors});
         auto rejected = take(ContributionSnapshot::prepare(std::move(duplicate)));
@@ -599,10 +603,12 @@ void domainReflectionLifetime()
     assert(!meta::ReflectionRegistry::initialized());
     std::shared_ptr<const scene::SceneEditorCatalog::Definition> retained;
     {
-        auto entry = scene::declareSceneEditors(
+        static constexpr auto catalog_test_scene_editor_environment =
+            lux::editor::scene::SceneEditorCatalog::descriptor(services::ServiceNameView{"test.scene.editor.environment"
+            });
+        auto entry = lux::services::ServiceEntry::bind<catalog_test_scene_editor_environment>(
             object::CodeLease::builtin(),
-            services::ServiceNameView{"test.scene.editor.environment"},
-            {}
+            lux::editor::scene::freezeSceneEditors(object::CodeLease::builtin(), {})
         );
         retained = take(entry->definition<scene::SceneEditorCatalog::Definition>());
         std::cout << "Standalone domain definition retains reflection=" << meta::ReflectionRegistry::initialized()

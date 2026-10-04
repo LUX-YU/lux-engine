@@ -1,8 +1,7 @@
-#include <lux/engine/editor/scene/SceneEditorCatalog.hpp>
-#include <lux/engine/editor/extensions/EditorExtension.hpp>
-#include <lux/engine/function/render/features/meta_visibility.h>
 #include "render_feature_client_meta_registration.hpp"
+#include <lux/engine/editor/extensions/EditorExtension.hpp>
 #include <lux/engine/editor/scene/ConfigurationForm.hpp>
+#include <lux/engine/editor/scene/SceneEditorCatalog.hpp>
 #include <lux/engine/function/render/features/genops/Canvas2DOperation.type_static_info.hpp>
 #include <lux/engine/function/render/features/genops/DeferredGBufferOperation.type_static_info.hpp>
 #include <lux/engine/function/render/features/genops/DeferredLightingOperation.type_static_info.hpp>
@@ -14,8 +13,8 @@
 #include <lux/engine/function/render/features/genops/HighlightOperation.type_static_info.hpp>
 #include <lux/engine/function/render/features/genops/HzbOperation.type_static_info.hpp>
 #include <lux/engine/function/render/features/genops/LightOperation.type_static_info.hpp>
-#include <lux/engine/function/render/features/genops/LinearDepthOperation.type_static_info.hpp>
 #include <lux/engine/function/render/features/genops/LineListOperation.type_static_info.hpp>
+#include <lux/engine/function/render/features/genops/LinearDepthOperation.type_static_info.hpp>
 #include <lux/engine/function/render/features/genops/MaterialOperation.type_static_info.hpp>
 #include <lux/engine/function/render/features/genops/MeshShadowOperation.type_static_info.hpp>
 #include <lux/engine/function/render/features/genops/MeshStackOperation.type_static_info.hpp>
@@ -32,6 +31,7 @@
 #include <lux/engine/function/render/features/genops/TriOverlayOperation.type_static_info.hpp>
 #include <lux/engine/function/render/features/genops/ViewCameraOperation.type_static_info.hpp>
 #include <lux/engine/function/render/features/genops/WaterOperation.type_static_info.hpp>
+#include <lux/engine/function/render/features/meta_visibility.h>
 
 extern "C" LUX_RENDER_FEATURE_META_PUBLIC const lux::editor::extensions::EditorExtensionExports* lux_editor_exports_v10(
 ) noexcept
@@ -109,8 +109,8 @@ extern "C" LUX_RENDER_FEATURE_META_PUBLIC const lux::editor::extensions::EditorE
     using namespace lux::editor;
     static const extensions::EditorExtensionExports exports{
         .counts = {.reflection = 1, .services = 1},
-        .contribute =
-            +[](extensions::ContributionDraft& draft, lux::object::CodeLease code) -> extensions::ContributionResult<void>
+        .contribute = +[](extensions::ContributionDraft& draft,
+                          lux::object::CodeLease code) -> extensions::ContributionResult<void>
         {
             draft.reflection.push_back(
                 {code,
@@ -120,8 +120,13 @@ extern "C" LUX_RENDER_FEATURE_META_PUBLIC const lux::editor::extensions::EditorE
             );
             scene::SceneEditorCatalog::Definition definition;
             definition.configurations.assign(std::begin(configurations), std::end(configurations));
-            draft.services.push_back(scene::declareSceneEditors(
-                code, lux::services::ServiceNameView{"lux.editor.render.configuration"}, std::move(definition)
+            static constexpr auto catalog_lux_editor_render_configuration =
+                lux::editor::scene::SceneEditorCatalog::descriptor(
+                    lux::services::ServiceNameView{"lux.editor.render.configuration"}
+                );
+            draft.services.push_back(lux::services::ServiceEntry::bind<catalog_lux_editor_render_configuration>(
+                code,
+                lux::editor::scene::freezeSceneEditors(code, std::move(definition))
             ));
             return {};
         }

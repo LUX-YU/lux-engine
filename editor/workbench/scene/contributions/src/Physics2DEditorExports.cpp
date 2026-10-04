@@ -1,12 +1,12 @@
-#include <lux/engine/editor/scene/SceneEditorCatalog.hpp>
-#include <lux/engine/editor/extensions/EditorExtension.hpp>
-#include <lux/engine/physics2d/Physics2DSystem.hpp>
-#include <lux/engine/editor/extensions/builtin/physics2d_visibility.h>
-#include <lux/engine/editor/configuration/ConfigurationValue.hpp>
-#include <lux/engine/ui/Controls.hpp>
-#include <lux/engine/ui/Layout.hpp>
 #include <array>
 #include <exception>
+#include <lux/engine/editor/configuration/ConfigurationValue.hpp>
+#include <lux/engine/editor/extensions/EditorExtension.hpp>
+#include <lux/engine/editor/extensions/builtin/physics2d_visibility.h>
+#include <lux/engine/editor/scene/SceneEditorCatalog.hpp>
+#include <lux/engine/physics2d/Physics2DSystem.hpp>
+#include <lux/engine/ui/Controls.hpp>
+#include <lux/engine/ui/Layout.hpp>
 #include <new>
 
 extern "C" void lux_physics2d_configuration_meta(lux::meta::ReflectionRegistry&, lux::meta::qual_type_index_fix_list&);
@@ -44,7 +44,9 @@ namespace
                     [this](lux::ui::EditResult result) noexcept
                     {
                         if (!result.changed && !result.cancelled)
+                        {
                             return;
+                        }
                         auto& value = config();
                         value.gravity_x = std::get<double>(x_.value());
                         value.gravity_y = std::get<double>(y_.value());
@@ -54,11 +56,15 @@ namespace
                     }
                 );
                 if (connection)
+                {
                     connections_[i] = std::move(*connection);
+                }
                 else
                 {
                     if (connection.error() == lux::object::EConnectError::ALLOCATION_FAILURE)
+                    {
                         std::terminate();
+                    }
                     const bool is_capacity_exhausted =
                         connection.error() == lux::object::EConnectError::CAPACITY_EXHAUSTED;
                     status = lux::cxx::unexpected(lux::editor::EditorFailure{
@@ -95,15 +101,25 @@ namespace
         {
             const auto& value = config();
             if (!x_.editing())
+            {
                 x_.setValue(value.gravity_x);
+            }
             if (!y_.editing())
+            {
                 y_.setValue(value.gravity_y);
+            }
             if (!step_.editing())
+            {
                 step_.setValue(value.fixed_step_nanoseconds);
+            }
             if (!substeps_.editing())
+            {
                 substeps_.setValue(value.max_substeps);
+            }
             if (!capacity_.editing())
+            {
                 capacity_.setValue(value.body_capacity);
+            }
         }
         lux::editor::ConfigurationValue& value_;
         lux::ui::Layout layout_;
@@ -129,7 +145,9 @@ namespace
         lux::editor::EditorResult<void> status;
         auto result = std::make_unique<PhysicsConfigurationElement>(parent, std::move(id), value, status);
         if (!status)
+        {
             return lux::cxx::unexpected(status.error());
+        }
         return result;
     }
     catch (const std::bad_alloc&)
@@ -150,8 +168,8 @@ extern "C" LUX_PHYSICS2D_EDITOR_PUBLIC const lux::editor::extensions::EditorExte
     using namespace lux::editor;
     static const extensions::EditorExtensionExports exports{
         .counts = {.reflection = 1, .services = 1},
-        .contribute =
-            +[](extensions::ContributionDraft& draft, lux::object::CodeLease code) -> extensions::ContributionResult<void>
+        .contribute = +[](extensions::ContributionDraft& draft,
+                          lux::object::CodeLease code) -> extensions::ContributionResult<void>
         {
             draft.reflection.push_back({code, &lux_physics2d_configuration_meta, &scene::validateSceneEditors});
             const auto& system = lux::physics2d::physics2DSystemRegistrations().front();
@@ -161,15 +179,21 @@ extern "C" LUX_PHYSICS2D_EDITOR_PUBLIC const lux::editor::extensions::EditorExte
                  {"lux.physics2d.Configuration",
                   1,
                   system.configuration,
-                  +[](lux::meta::ReflectionRegistry& registry) noexcept {
+                  +[](lux::meta::ReflectionRegistry& registry) noexcept
+                  {
                       return registry.findClass(
                           lux::cxx::typeToken<lux::physics2d::Physics2DSystemConfiguration>().name()
                       );
                   }},
                  &createConfiguration}
             );
-            draft.services.push_back(scene::declareSceneEditors(
-                code, lux::services::ServiceNameView{"lux.editor.physics2d.configuration"}, std::move(definition)
+            static constexpr auto catalog_lux_editor_physics2d_configuration =
+                lux::editor::scene::SceneEditorCatalog::descriptor(
+                    lux::services::ServiceNameView{"lux.editor.physics2d.configuration"}
+                );
+            draft.services.push_back(lux::services::ServiceEntry::bind<catalog_lux_editor_physics2d_configuration>(
+                code,
+                lux::editor::scene::freezeSceneEditors(code, std::move(definition))
             ));
             return {};
         }

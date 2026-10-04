@@ -191,6 +191,19 @@ namespace lux::services
             auto entry = std::shared_ptr<const ServiceEntry>(new ServiceEntry(code, Descriptor));
             return object::pinCodeOwner(std::move(code), std::move(entry));
         }
+        template <auto& Descriptor, class T>
+            requires std::same_as<std::remove_cvref_t<decltype(Descriptor)>, ServiceDescriptor> &&
+                     std::is_const_v<std::remove_reference_t<decltype(Descriptor)>>
+        [[nodiscard]] static std::shared_ptr<const ServiceEntry> bind(
+            object::CodeLease code,
+            std::shared_ptr<const T> definition
+        )
+        {
+            auto entry = std::shared_ptr<ServiceEntry>(new ServiceEntry(code, Descriptor));
+            entry->definition_type_ = cxx::typeToken<T>();
+            entry->definition_ = object::pinCodeOwner(code, std::move(definition));
+            return object::pinCodeOwner(std::move(code), std::shared_ptr<const ServiceEntry>(std::move(entry)));
+        }
         [[nodiscard]] static std::shared_ptr<const ServiceEntry> create(object::CodeLease, const ServiceDescriptor&);
         template <class T>
         [[nodiscard]] static std::shared_ptr<const ServiceEntry> create(
@@ -202,8 +215,7 @@ namespace lux::services
             auto pinned = object::pinCodeOwner(code, std::move(definition));
             return create(std::move(code), descriptor, cxx::typeToken<T>(), std::move(pinned));
         }
-        template <class T>
-        [[nodiscard]] ServiceResult<std::shared_ptr<const T>> definition() const noexcept
+        template <class T> [[nodiscard]] ServiceResult<std::shared_ptr<const T>> definition() const noexcept
         {
             auto value = definition(cxx::typeToken<T>());
             if (!value)
@@ -233,12 +245,8 @@ namespace lux::services
             std::span<const std::shared_ptr<const ServiceEntry>>,
             std::size_t
         ) noexcept;
-        [[nodiscard]] static std::shared_ptr<const ServiceEntry> create(
-            object::CodeLease,
-            const ServiceDescriptor&,
-            cxx::TypeToken,
-            std::shared_ptr<const void>
-        );
+        [[nodiscard]] static std::shared_ptr<const ServiceEntry>
+        create(object::CodeLease, const ServiceDescriptor&, cxx::TypeToken, std::shared_ptr<const void>);
         [[nodiscard]] ServiceResult<std::shared_ptr<const void>> definition(cxx::TypeToken) const noexcept;
         ServiceEntry(object::CodeLease, const ServiceDescriptor&);
         struct Storage;

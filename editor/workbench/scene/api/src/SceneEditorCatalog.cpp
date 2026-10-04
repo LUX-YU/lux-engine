@@ -13,11 +13,6 @@ namespace lux::editor::scene
             std::shared_ptr<const void> reflection;
             SceneEditorCatalog::Definition definition;
         };
-        constexpr services::ServiceContract contracts[]{
-            services::ServiceContract::forType<SceneEditorCatalog, SceneEditorCatalog>(
-                services::ServiceNameView{"lux.editor.scene.editors"}
-            )
-        };
         [[nodiscard]] auto reject(services::EServiceError code, std::string domain, std::string detail = {}) noexcept
         {
             return cxx::unexpected(services::ServiceFailure{code, std::move(detail), std::move(domain)});
@@ -41,9 +36,8 @@ namespace lux::editor::scene
         }
         return std::make_unique<SceneEditorCatalog>(std::move(*definition));
     }
-    std::shared_ptr<const services::ServiceEntry> declareSceneEditors(
+    std::shared_ptr<const SceneEditorCatalog::Definition> freezeSceneEditors(
         object::CodeLease code,
-        services::ServiceNameView implementation,
         SceneEditorCatalog::Definition definition
     )
     {
@@ -55,16 +49,10 @@ namespace lux::editor::scene
         {
             item.code = object::pinCodeOwner(code, std::move(item.code));
         }
-        auto descriptor = services::ServiceDescriptor::forType<SceneEditorCatalog, &SceneEditorCatalog::create>(
-            implementation,
-            contracts
-        );
-        descriptor.definition_type = cxx::typeToken<SceneEditorCatalog::Definition>();
         auto storage = std::make_shared<const DefinitionStorage>(acquireEditorReflection(), std::move(definition));
         auto* data = &storage->definition;
-        return services::ServiceEntry::create(
+        return object::pinCodeOwner(
             std::move(code),
-            descriptor,
             std::shared_ptr<const SceneEditorCatalog::Definition>(std::move(storage), data)
         );
     }
@@ -81,7 +69,7 @@ namespace lux::editor::scene
             }
             for (const auto& contract : entry->descriptor().contracts)
             {
-                if (contract.id.name() != contracts[0].id.name())
+                if (contract.id.name() != "lux.editor.scene.editors")
                 {
                     continue;
                 }

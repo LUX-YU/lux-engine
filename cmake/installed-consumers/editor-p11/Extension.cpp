@@ -1,11 +1,11 @@
-#include <lux/engine/editor/scene/SceneEditorCatalog.hpp>
 #include "Probe.hpp"
 #include <lux/engine/editor/extensions/EditorExtension.hpp>
 #include <lux/engine/editor/material/MaterialSessionFactory.hpp>
+#include <lux/engine/editor/scene/ConfigurationForm.hpp>
+#include <lux/engine/editor/scene/SceneEditorCatalog.hpp>
+#include <lux/engine/meta/TypeStaticInfo.hpp>
 #include <lux/engine/ui/Pane.hpp>
 #include <stdexcept>
-#include <lux/engine/editor/scene/ConfigurationForm.hpp>
-#include <lux/engine/meta/TypeStaticInfo.hpp>
 
 #if defined(_WIN32)
 #define PROBE_EXPORT __declspec(dllexport)
@@ -67,7 +67,9 @@ namespace
         ~Unload()
         {
             if (facts)
+            {
                 ++facts->unloaded;
+            }
         }
     } unload;
     class Window final : public ui::Pane
@@ -90,8 +92,12 @@ namespace
         configuration.code = code;
         lux::editor::scene::SceneEditorCatalog::Definition definition;
         definition.configurations.push_back(std::move(configuration));
-        draft.services.push_back(lux::editor::scene::declareSceneEditors(
-            code, services::ServiceNameView{"qualification.configuration"}, std::move(definition)
+        static constexpr auto catalog_qualification_configuration =
+            lux::editor::scene::SceneEditorCatalog::descriptor(services::ServiceNameView{"qualification.configuration"}
+            );
+        draft.services.push_back(lux::services::ServiceEntry::bind<catalog_qualification_configuration>(
+            code,
+            lux::editor::scene::freezeSceneEditors(code, std::move(definition))
         ));
         draft.sessions.push_back(lux::editor::material::makeMaterialSessionFactory(code));
         draft.commands.push_back(CommandEntry::bind<command_qualification_inspect>(
@@ -100,11 +106,15 @@ namespace
             {
                 ++facts->queries;
                 if (facts->fail_query)
+                {
                     throw std::runtime_error("foreign query failure"); // Containment negative, test DLL only.
+                }
                 const auto id = std::get<SessionTarget>(input.target).id;
                 auto info = facts->sessions->describe(id);
                 if (!info)
+                {
                     return cxx::unexpected(CommandFailure{ECommandError::STALE_TARGET, "probe.session"});
+                }
                 return CommandState{true};
             },
             [](const CommandInvocation&) -> CommandResult<DispatchReceipt>
@@ -141,7 +151,9 @@ namespace
     )
     {
         if (!capabilities.sessions || !capabilities.workbench || capabilities.project)
+        {
             std::abort();
+        }
         ++facts->activations;
         auto state = std::make_shared<Activation>(capabilities.sessions->sessions);
         draft.commands.push_back(commands::CommandEntry::bind<command_qualification_activated>(
@@ -151,9 +163,11 @@ namespace
                 ++facts->activation_queries;
                 auto content = state->sessions.describe(std::get<commands::SessionTarget>(input.target).id);
                 if (!content)
+                {
                     return cxx::unexpected(
                         commands::CommandFailure{commands::ECommandError::STALE_TARGET, "activation.session"}
                     );
+                }
                 return commands::CommandState{true};
             },
             [state](const commands::CommandInvocation&) -> commands::CommandResult<commands::DispatchReceipt>

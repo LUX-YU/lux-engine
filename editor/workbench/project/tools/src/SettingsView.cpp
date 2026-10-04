@@ -1,3 +1,4 @@
+#include <exception>
 #include <lux/engine/editor/workbench/CommandSupport.hpp>
 #include <lux/engine/editor/project/SettingsView.hpp>
 #include <lux/engine/editor/project/SettingsContent.hpp>
@@ -142,7 +143,8 @@ namespace lux::editor::project
                 lux::ui::ElementId{"settings-values"},
                 std::move(input)
             );
-        setContent(impl_->content);
+        if (!setContent(impl_->content))
+            std::terminate(); // Fixed content in a detached Pane.
     }
     SettingsView::~SettingsView() noexcept = default;
     EditorResult<void> SettingsView::requestSave(std::vector<ProjectPluginEntry> selected)

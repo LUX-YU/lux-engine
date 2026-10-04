@@ -86,7 +86,7 @@ int main(int argc, char** argv)
     );
     ui_test::mount(**root, pane);
     ui::Layout layout(pane, ui::ElementId{"content"});
-    pane.setContent(layout);
+    assert(pane.setContent(layout));
     constexpr editor::scene::SceneProviderOption providers[]{
         {"lux.render.runtime", "main-window"},
         {"lux.render.scene_bindings", "render-bindings"},

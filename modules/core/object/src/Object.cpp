@@ -372,7 +372,7 @@ namespace lux::object
         auto* node = this;
         for (;;)
         {
-            const bool is_active = node->active_events_ || node->changing_children_;
+            const bool is_active = node->active_events_ || node->callback_borrows_ || node->changing_children_;
             if (is_active)
                 return true;
             if (node->first_child_)
@@ -568,10 +568,21 @@ namespace lux::object
         parent_ = previous_sibling_ = next_sibling_ = nullptr;
     }
 
+    void LuxObject::beginDestruction() noexcept
+    {
+        assertAffinity();
+        const bool is_active = hasActiveTree() || isDispatching();
+        if (is_active)
+            detail::failObjectContract();
+        closing_ = true;
+        // Closing rejects callbacks immediately. Keep the identity pointer until physical destruction:
+        // an already queued reclamation still needs it to release the original owning edge.
+    }
+
     LuxObject::~LuxObject()
     {
         assertAffinity();
-        const bool is_illegal_destruction = owned_edge_ || active_events_ != 0;
+        const bool is_illegal_destruction = owned_edge_ || active_events_ != 0 || callback_borrows_ != 0;
         if (is_illegal_destruction)
             detail::failObjectContract();
         closing_ = true;
@@ -584,22 +595,60 @@ namespace lux::object
         detail::intrusive_ptr_release(state);
     }
 
+    void LuxObject::beginCallbackBorrow(LuxObject& value) noexcept
+    {
+        value.assertAffinity();
+        ++value.callback_borrows_;
+    }
+
+    void LuxObject::endCallbackBorrow(LuxObject& value) noexcept
+    {
+        value.assertAffinity();
+        if (!value.callback_borrows_)
+            detail::failObjectContract();
+        --value.callback_borrows_;
+    }
+
     void LuxObject::beginTreeVisit() noexcept
     {
         assertAffinity();
-        ++active_events_;
-        for (auto* child = first_child_; child; child = child->next_sibling_)
-            child->beginTreeVisit();
+        auto* node = this;
+        for (;;)
+        {
+            ++node->active_events_;
+            if (node->first_child_)
+                node = node->first_child_;
+            else
+            {
+                while (node != this && !node->next_sibling_)
+                    node = node->parent_;
+                if (node == this)
+                    return;
+                node = node->next_sibling_;
+            }
+        }
     }
 
     void LuxObject::endTreeVisit() noexcept
     {
         assertAffinity();
-        if (!active_events_)
-            detail::failObjectContract();
-        for (auto* child = first_child_; child; child = child->next_sibling_)
-            child->endTreeVisit();
-        --active_events_;
+        auto* node = this;
+        for (;;)
+        {
+            if (!node->active_events_)
+                detail::failObjectContract();
+            --node->active_events_;
+            if (node->first_child_)
+                node = node->first_child_;
+            else
+            {
+                while (node != this && !node->next_sibling_)
+                    node = node->parent_;
+                if (node == this)
+                    return;
+                node = node->next_sibling_;
+            }
+        }
     }
 
     void LuxObject::filterAncestors(LuxObject& target, LuxObject& boundary, EventView& event) noexcept

@@ -1,4 +1,5 @@
 #pragma once
+#include <exception>
 #include "../../../../cmake/installed-consumers/common/UiTestContent.hpp"
 #include <lux/engine/ui/Layout.hpp>
 #include <lux/engine/ui/Pane.hpp>
@@ -60,7 +61,7 @@ namespace element_checks
             : ui::Pane(root.dispatcherRef(), ui::PaneId{"owner"}, ui::PaneTypeId{"test.owner"}, "Owner"),
               item(std::make_unique<Item>(*this, "old"))
         {
-            setContent(*item);
+            assert(setContent(*item));
             ui_test::mount(root, *this);
         }
         std::unique_ptr<Item> item;
@@ -72,7 +73,7 @@ namespace element_checks
             if (!std::exchange(replace, false))
                 return;
             item = std::make_unique<Item>(*this, "new");
-            setContent(*item);
+            assert(setContent(*item));
         }
     };
 
@@ -93,7 +94,7 @@ namespace element_checks
             owner.setVisible(false);
             ui::Pane child(owner, ui::PaneId{"independent"}, ui::PaneTypeId{"test"}, "Independent");
             Item content(child, "content");
-            child.setContent(content);
+            assert(child.setContent(content));
             assert(content.displayed() && !owner.item->displayed());
             assert(root.requestFocus(content));
             ui::DrawData draw;
@@ -133,7 +134,7 @@ namespace element_checks
         {
             ui::Layout layout(pane, ui::ElementId{"row"}, ui::ELayoutType::HORIZONTAL);
             layout.setSpacing({0, 0});
-            pane.setContent(layout);
+            assert(pane.setContent(layout));
             Item one(layout, "one"), two(layout, "two");
             one.setMaximumSize({60, 50});
             two.setStretch({3, 1});
@@ -191,7 +192,7 @@ namespace element_checks
             text.wrap = true;
             const auto hint = vertical.measure(60);
             assert(hint.preferred.height == 60);
-            pane.setContent(vertical);
+            assert(pane.setContent(vertical));
             ui::DrawData draw;
             assert(root.update({{640, 480}, 0.016F}, &draw));
             assert(text.draws == 1 && text.updates == 1);
@@ -200,7 +201,7 @@ namespace element_checks
         }
         {
             ui::Layout layout(pane, ui::ElementId{"controls"});
-            pane.setContent(layout);
+            assert(pane.setContent(layout));
             ui::Button button(layout, ui::ElementId{"button"}, "Apply");
             ui::CheckBox check(layout, ui::ElementId{"check"}, "Enabled");
             ui::TextEdit text(layout, ui::ElementId{"text"}, "before");

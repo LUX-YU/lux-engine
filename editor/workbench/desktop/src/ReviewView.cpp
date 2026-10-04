@@ -1,3 +1,4 @@
+#include <exception>
 #include <lux/engine/editor/desktop/ReviewView.hpp>
 #include <lux/engine/ui/Controls.hpp>
 #include <lux/engine/ui/Layout.hpp>
@@ -61,7 +62,8 @@ namespace lux::editor::desktop
               actions_(body_, lux::ui::ElementId{"choices"}, lux::ui::ELayoutType::HORIZONTAL)
         {
             message_.setWrap(true);
-            view.setContent(body_);
+            if (!view.setContent(body_))
+                std::terminate(); // Fixed content in a detached Pane.
             view.setModal(true);
             buttons_.reserve(question_.choices.size());
             connections_.reserve(question_.choices.size() + 1);

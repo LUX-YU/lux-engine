@@ -5,13 +5,13 @@
 namespace lux::editor::project
 {
     AssetPickerElement::AssetPickerElement(
-        lux::ui::Element& parent,
+        object::ObjectDispatcherRef dispatcher,
         lux::ui::ElementId id,
         ProjectCatalogModel* query,
         std::uint32_t magic,
         asset::AssetId value
     )
-        : Element(parent, std::move(id)), query_(query), required_magic_(magic), value_(value)
+        : Element(std::move(dispatcher), std::move(id)), query_(query), required_magic_(magic), value_(value)
     {
         setStretch({1, 0});
         if (query_)

@@ -1,4 +1,5 @@
 #pragma once
+#include <exception>
 #include "../../../../cmake/installed-consumers/common/UiTestContent.hpp"
 #include <lux/engine/ui/Root.hpp>
 #include <lux/engine/ui/Pane.hpp>
@@ -36,7 +37,7 @@ namespace input_checks
         Window(Parent& parent, const char* name)
             : ui::Pane(ui_test::parent(parent), ui::PaneId{name}, ui::PaneTypeId{"test.input"}, name), content(*this)
         {
-            setContent(content);
+            assert(setContent(content));
             ui_test::mount(parent, *this);
         }
         Content content;

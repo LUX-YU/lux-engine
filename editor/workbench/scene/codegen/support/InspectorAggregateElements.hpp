@@ -9,17 +9,25 @@ namespace lux::editor::ui::generated_support
     {
     public:
         FieldGroup(lux::ui::Element& parent, lux::ui::ElementId id)
-            : lux::ui::Element(parent, std::move(id)), layout_(*this, lux::ui::ElementId{"fields"})
+            : lux::ui::Element(parent.dispatcherRef(), std::move(id)),
+              layout_(parent.dispatcherRef(), lux::ui::ElementId{"fields"})
         {
+            if (!addSubElement(layout_))
+                std::terminate(); // Fixed detached member topology.
             setStretch({1, 0});
         }
         lux::ui::Layout& layout() noexcept
         {
             return layout_;
         }
-        void add(std::unique_ptr<lux::ui::Element> field)
+        [[nodiscard]] lux::cxx::expected<void, lux::ui::EAttachmentError>
+        add(std::unique_ptr<lux::ui::Element> field)
         {
+            auto attached = layout_.addSubElement(*field);
+            if (!attached)
+                return attached;
             fields_.push_back(std::move(field));
+            return {};
         }
 
     private:
@@ -77,18 +85,27 @@ namespace lux::editor::ui::generated_support
         public:
             Row(TSequenceFieldElement& owner, std::size_t index, std::size_t count, typename Interaction::Status& status
             )
-                : lux::ui::Element(owner.layout_, lux::ui::ElementId{"row/" + std::to_string(index)}), owner_(owner),
-                  layout_(*this, lux::ui::ElementId{"row"}),
-                  actions_(layout_, lux::ui::ElementId{"actions"}, lux::ui::ELayoutType::HORIZONTAL),
-                  up_(actions_, lux::ui::ElementId{"up"}, "Up"), down_(actions_, lux::ui::ElementId{"down"}, "Down"),
-                  remove_(actions_, lux::ui::ElementId{"remove"}, "Remove")
+                : lux::ui::Element(owner.dispatcherRef(), lux::ui::ElementId{"row/" + std::to_string(index)}), owner_(owner),
+                  layout_(owner.dispatcherRef(), lux::ui::ElementId{"row"}),
+                  actions_(owner.dispatcherRef(), lux::ui::ElementId{"actions"}, lux::ui::ELayoutType::HORIZONTAL),
+                  up_(owner.dispatcherRef(), lux::ui::ElementId{"up"}, "Up"), down_(owner.dispatcherRef(), lux::ui::ElementId{"down"}, "Down"),
+                  remove_(owner.dispatcherRef(), lux::ui::ElementId{"remove"}, "Remove")
             {
+                if (!this->addSubElement(layout_) ||
+                    !layout_.addSubElement(actions_) ||
+                    !actions_.addSubElement(up_) ||
+                    !actions_.addSubElement(down_) ||
+                    !actions_.addSubElement(remove_))
+                {
+                    status = Interaction::constructionFailure();
+                    return;
+                }
                 this->setStretch({1, 0});
                 const auto identity = std::string(owner.id().name()) + "[" + std::to_string(index) + "]";
                 if constexpr (packed_bits)
                 {
                     auto control = std::make_unique<lux::ui::CheckBox>(
-                        layout_,
+                        owner.dispatcherRef(),
                         lux::ui::ElementId{identity},
                         "[" + std::to_string(index) + "]",
                         (*owner.value())[index]
@@ -109,9 +126,12 @@ namespace lux::editor::ui::generated_support
                         ),
                         status
                     );
+                    if (!layout_.addSubElement(*control))
+                        status = Interaction::constructionFailure();
                     field_ = std::move(control);
                 }
                 else
+                {
                     field_ = ItemFactory::create(
                         layout_,
                         lux::ui::ElementId{identity},
@@ -123,6 +143,9 @@ namespace lux::editor::ui::generated_support
                         owner.read_only_,
                         ItemAccess{owner.access_, index, count}
                     );
+                    if (!layout_.addSubElement(*field_))
+                        status = Interaction::constructionFailure();
+                }
                 index_ = index;
                 up_.setEnabled(index != 0);
                 down_.setEnabled(index + 1 < count);
@@ -201,13 +224,23 @@ namespace lux::editor::ui::generated_support
             bool read_only,
             Access access
         )
-            : Base(parent, std::move(id)), editing_(editing), target_(target), interaction_(interaction),
+            : Base(parent.dispatcherRef(), std::move(id)), editing_(editing), target_(target), interaction_(interaction),
               access_(std::move(access)), label_text_(std::move(label)), read_only_(read_only),
-              layout_(*this, lux::ui::ElementId{"sequence"}), title_(layout_, lux::ui::ElementId{"title"}, label_text_),
-              pages_(layout_, lux::ui::ElementId{"pages"}, lux::ui::ELayoutType::HORIZONTAL),
-              previous_(pages_, lux::ui::ElementId{"previous"}, "Previous page"),
-              next_(pages_, lux::ui::ElementId{"next"}, "Next page"), add_(pages_, lux::ui::ElementId{"add"}, "Add")
+              layout_(parent.dispatcherRef(), lux::ui::ElementId{"sequence"}), title_(parent.dispatcherRef(), lux::ui::ElementId{"title"}, label_text_),
+              pages_(parent.dispatcherRef(), lux::ui::ElementId{"pages"}, lux::ui::ELayoutType::HORIZONTAL),
+              previous_(parent.dispatcherRef(), lux::ui::ElementId{"previous"}, "Previous page"),
+              next_(parent.dispatcherRef(), lux::ui::ElementId{"next"}, "Next page"), add_(parent.dispatcherRef(), lux::ui::ElementId{"add"}, "Add")
         {
+            if (!this->addSubElement(layout_) ||
+                !layout_.addSubElement(title_) ||
+                !layout_.addSubElement(pages_) ||
+                !pages_.addSubElement(previous_) ||
+                !pages_.addSubElement(next_) ||
+                !pages_.addSubElement(add_))
+            {
+                status = Interaction::constructionFailure();
+                return;
+            }
             this->setStretch({1, 0});
             connections_[0] = takeConnection<Interaction>(
                 lux::object::LuxObject::connect(
@@ -259,9 +292,23 @@ namespace lux::editor::ui::generated_support
                 const auto count = current ? current->size() : 0;
                 const auto first = std::min(first_, count ? (count - 1) / page_size * page_size : 0);
                 std::vector<std::unique_ptr<Row>> candidate;
+                auto candidate_layout = std::make_unique<lux::ui::Layout>(
+                    this->dispatcherRef(), lux::ui::ElementId{"rows"}
+                );
                 candidate.reserve(std::min(page_size, count - first));
                 for (auto index = first; index < std::min(count, first + page_size); ++index)
+                {
                     candidate.push_back(std::make_unique<Row>(*this, index, count, status));
+                    if (!candidate_layout->addSubElement(*candidate.back()))
+                        status = Interaction::constructionFailure();
+                }
+                if (status)
+                {
+                    auto attached = rows_layout_ ? layout_.replaceSubElement(*rows_layout_, *candidate_layout)
+                                                 : layout_.addSubElement(*candidate_layout);
+                    if (!attached)
+                        status = Interaction::constructionFailure();
+                }
                 if (!status)
                 {
                     if (initial)
@@ -270,6 +317,7 @@ namespace lux::editor::ui::generated_support
                     return false;
                 }
                 rows_ = std::move(candidate);
+                rows_layout_ = std::move(candidate_layout);
                 first_ = first;
                 count_ = count;
                 previous_.setEnabled(first != 0);
@@ -372,6 +420,7 @@ namespace lux::editor::ui::generated_support
         lux::ui::Label title_;
         lux::ui::Layout pages_;
         lux::ui::Button previous_, next_, add_;
+        std::unique_ptr<lux::ui::Layout> rows_layout_;
         std::vector<std::unique_ptr<Row>> rows_;
         std::array<object::Connection, 3> connections_;
         std::size_t first_{}, count_{}, action_index_{};

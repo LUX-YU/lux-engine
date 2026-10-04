@@ -227,7 +227,7 @@ void nativeDesktop(Fixture& f, window::LuxWindow& window)
         explicit TextWindow(object::ObjectDispatcherRef dispatcher)
             : Pane(dispatcher, ui::PaneId{"native-text"}, ui::PaneTypeId{"test.input"}, "Text input")
         {
-            setContent(layout);
+            assert(setContent(layout));
         }
     };
     auto text_owner = std::make_unique<TextWindow>(f.messages.dispatcherRef());

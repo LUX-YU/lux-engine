@@ -201,7 +201,7 @@ int main()
         assert(context);
         ui::Pane pane(messages.dispatcherRef(), ui::PaneId{"configuration"}, ui::PaneTypeId{"test"}, "Configuration");
         ui::Layout layout(pane, ui::ElementId{"content"}, ui::ELayoutType::VERTICAL);
-        pane.setContent(layout);
+        assert(pane.setContent(layout));
         auto created = registration.create(layout, ui::ElementId{"configuration"}, *first);
         assert(created);
         auto& element = static_cast<ConfigurationElement&>(**created);

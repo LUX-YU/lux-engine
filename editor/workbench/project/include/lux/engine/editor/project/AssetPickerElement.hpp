@@ -9,7 +9,7 @@ namespace lux::editor::project
     public:
         object::TSignal<lux::ui::EditResult> edited{*this};
         AssetPickerElement(
-            lux::ui::Element&,
+            object::ObjectDispatcherRef,
             lux::ui::ElementId,
             ProjectCatalogModel*,
             std::uint32_t required_magic,

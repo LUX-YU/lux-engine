@@ -1,4 +1,5 @@
 #pragma once
+#include <exception>
 #include <lux/engine/object/ObjectDispatcher.hpp>
 #include <lux/engine/ui/Pane.hpp>
 #include <lux/engine/ui/Element.hpp>
@@ -14,7 +15,8 @@ public:
         : Pane(root.dispatcherRef(), lux::ui::PaneId{"test.draw"}, lux::ui::PaneTypeId{"test.draw"}, "Draw"),
           content_(*this, std::move(draw))
     {
-        setContent(content_);
+        if (!setContent(content_))
+            std::terminate(); // Fixed content in a detached Pane.
         ui_test::mount(root, *this);
     }
 

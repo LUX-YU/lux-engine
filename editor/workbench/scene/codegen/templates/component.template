@@ -23,15 +23,26 @@ class Element_{{ c.symbol }} final : public lux::ui::Element
 public:
     Element_{{ c.symbol }}(lux::ui::Element& parent, lux::ui::ElementId id, {{ p.fields }}& editing,
         {{ p.target }} target, {{ p.fields }}& interaction, {{ p.result }}& status)
-        : lux::ui::Element(parent, std::move(id)), layout_(*this, lux::ui::ElementId{"fields"})
+        : lux::ui::Element(parent.dispatcherRef(), std::move(id)),
+          layout_(parent.dispatcherRef(), lux::ui::ElementId{"fields"})
 {% for f in c.fields %}
 {% set n = at(c.nodes, f.node) %}
         , field{{ f.index }}_(layout_, lux::ui::ElementId{ {{ literal(f.identity) }} }, editing, target, interaction,
             status, {{ literal(f.label) }}, {{ f.read_only }}, Access{{ f.index }}{}{% include "options.template" %})
 {% endfor %}
     {
+        if (!addSubElement(layout_))
+        {
+            status = {{ p.fields }}::constructionFailure();
+            return;
+        }
         setStretch({1, 0});
 {% for f in c.fields %}
+        if (!layout_.addSubElement(field{{ f.index }}_))
+        {
+            status = {{ p.fields }}::constructionFailure();
+            return;
+        }
 {% set n = at(c.nodes, f.node) %}{% set v = concat("Value", string(f.index)) %}
 {% set control = concat("field", string(f.index), "_.control()") %}
 {% include "numeric.template" %}

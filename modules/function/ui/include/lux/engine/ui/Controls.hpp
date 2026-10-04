@@ -33,6 +33,7 @@ namespace lux::ui
 
     public:
         object::TSignal<> activated{*this};
+        Button(object::ObjectDispatcherRef dispatcher, ElementId id, std::string text);
         Button(Pane& parent, ElementId id, std::string text);
         Button(Element& parent, ElementId id, std::string text);
         void setText(std::string text);
@@ -45,6 +46,7 @@ namespace lux::ui
     class LUX_FUNCTION_PUBLIC Label final : public Element
     {
     public:
+        Label(object::ObjectDispatcherRef dispatcher, ElementId id, std::string text = {});
         Label(Pane& parent, ElementId id, std::string text = {});
         Label(Element& parent, ElementId id, std::string text = {});
         void setText(std::string text);
@@ -63,6 +65,7 @@ namespace lux::ui
 
     public:
         object::TSignal<EditResult> edited{*this};
+        CheckBox(object::ObjectDispatcherRef dispatcher, ElementId id, std::string text, bool value = false);
         CheckBox(Pane& parent, ElementId id, std::string text, bool value = false);
         CheckBox(Element& parent, ElementId id, std::string text, bool value = false);
         void setValue(bool value) noexcept;
@@ -83,6 +86,7 @@ namespace lux::ui
 
     public:
         object::TSignal<EditResult> edited{*this};
+        TextEdit(object::ObjectDispatcherRef dispatcher, ElementId id, std::string value = {});
         TextEdit(Pane& parent, ElementId id, std::string value = {});
         TextEdit(Element& parent, ElementId id, std::string value = {});
         void setValue(std::string value);
@@ -121,6 +125,7 @@ namespace lux::ui
 
     public:
         object::TSignal<EditResult> edited{*this};
+        NumericEdit(object::ObjectDispatcherRef dispatcher, ElementId id, VNumericValue value);
         NumericEdit(Pane& parent, ElementId id, VNumericValue value);
         NumericEdit(Element& parent, ElementId id, VNumericValue value);
         void setValue(VNumericValue value) noexcept;
@@ -158,6 +163,7 @@ namespace lux::ui
 
     public:
         object::TSignal<EditResult> edited{*this};
+        Choice(object::ObjectDispatcherRef dispatcher, ElementId id, std::vector<ChoiceOption> options, std::int64_t value = 0);
         Choice(Pane& parent, ElementId id, std::vector<ChoiceOption> options, std::int64_t value = 0);
         Choice(Element& parent, ElementId id, std::vector<ChoiceOption> options, std::int64_t value = 0);
         // Owner maintenance replaces candidate values; this never emits an editing signal.

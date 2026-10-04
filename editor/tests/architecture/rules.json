@@ -5526,7 +5526,8 @@
       "lux/engine/editor/sessions/SessionId.hpp",
       "lux/engine/editor/desktop/ViewCommands.hpp",
       "lux/engine/editor/workbench/CommandSupport.hpp",
-      "lux/engine/object/CodeLease.hpp"
+      "lux/engine/object/CodeLease.hpp",
+      "exception"
     ],
     "prefixes": [],
     "test_headers": {
@@ -5987,7 +5988,8 @@
       "lux/engine/editor/desktop/ViewCommands.hpp",
       "lux/engine/editor/workbench/CommandSupport.hpp",
       "lux/engine/editor/commands/Command.hpp",
-      "lux/engine/object/CodeLease.hpp"
+      "lux/engine/object/CodeLease.hpp",
+      "exception"
     ],
     "prefixes": [],
     "test_headers": {
@@ -8125,7 +8127,8 @@
       "lux/cxx/core/move_only_function.hpp",
       "lux/engine/editor/desktop/ViewCommands.hpp",
       "lux/engine/editor/workbench/CommandSupport.hpp",
-      "lux/engine/object/CodeLease.hpp"
+      "lux/engine/object/CodeLease.hpp",
+      "exception"
     ],
     "prefixes": [],
     "test_headers": {
@@ -8350,7 +8353,8 @@
       "lux/cxx/core/move_only_function.hpp",
       "lux/engine/editor/desktop/ViewCommands.hpp",
       "lux/engine/editor/workbench/CommandSupport.hpp",
-      "lux/engine/object/CodeLease.hpp"
+      "lux/engine/object/CodeLease.hpp",
+      "exception"
     ],
     "prefixes": [],
     "test_headers": {
@@ -11449,6 +11453,15 @@
       "ui": {
         "layer": "ENGINE",
         "role": "PROVIDER",
+        "capabilities": [
+          "CPU",
+          "GUI"
+        ],
+        "path": "modules/function/ui"
+      },
+      "ui_composition_test": {
+        "layer": "ENGINE",
+        "role": "TEST",
         "capabilities": [
           "CPU",
           "GUI"
@@ -18109,6 +18122,9 @@
       ],
       "modules/function/ui/test/root.cpp": [
         "ui_root_test"
+      ],
+      "modules/function/ui/test/composition.cpp": [
+        "ui_composition_test"
       ],
       "modules/platform/dynamic_library/src/DynamicLibrary.win32.cpp": [
         "dynamic_library"

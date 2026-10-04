@@ -29,26 +29,39 @@ namespace lux::ui
     {
         return pane_ ? pane_->attachedRoot() : nullptr;
     }
-    void Element::attachContent(Pane& pane) noexcept
-    {
-        attachTo(pane);
-        assignPane(&pane);
-    }
     void Element::assignPane(Pane* pane) noexcept
     {
-        pane_ = pane;
-        for (auto* child = firstChild(); child; child = child->nextSibling())
-            static_cast<Element*>(child)->assignPane(pane);
+        auto* node = this;
+        for (;;)
+        {
+            node->pane_ = pane;
+            if (node->firstChild())
+                node = static_cast<Element*>(node->firstChild());
+            else
+            {
+                while (node != this && !node->nextSibling())
+                    node = static_cast<Element*>(node->parent());
+                if (node == this)
+                    return;
+                node = static_cast<Element*>(node->nextSibling());
+            }
+        }
     }
-    void Element::addChild(Element& child) noexcept
+    cxx::expected<void, EAttachmentError> Element::addSubElement(Element& child) noexcept
     {
-        if (attachedRoot() || child.parent() || child.attachedRoot())
-            detail::failContract();
-        if (pane_)
-            pane_->invalidatePreparation();
-        child.attachTo(*this);
-        child.element_parent_ = this;
-        child.assignPane(pane_);
+        auto attach = [&]() noexcept { return attachChild(child); };
+        return addSubElementImpl(child, attach);
+    }
+    cxx::expected<void, EAttachmentError> Element::addSubElementImpl(
+        Element& child, cxx::function_ref<object::ObjectResult<void>()> attach
+    ) noexcept
+    {
+        return Root::compose(*this, child, false, attach);
+    }
+    cxx::expected<void, EAttachmentError> Element::replaceSubElement(Element& previous, Element& child) noexcept
+    {
+        auto attach = [&]() noexcept { return attachChild(child); };
+        return Root::compose(*this, child, true, attach, &previous);
     }
     Element::Element(Pane& parent, ElementId id) : Element(parent, &parent, nullptr, std::move(id)) {}
     Element::Element(Element& parent, ElementId id) : Element(parent, parent.containingPane(), &parent, std::move(id))
@@ -69,12 +82,19 @@ namespace lux::ui
 
     Element::~Element() noexcept
     {
+        beginDestruction();
         if (pane_)
             pane_->invalidatePreparation();
         if (auto* attached = attachedRoot())
-            attached->unregisterElement(*this);
+            attached->releaseSubtree(*this, true);
         if (pane_ && pane_->content_ == this)
             pane_->content_ = nullptr;
+        clearChildren();
+    }
+    void Element::clearChildren() noexcept
+    {
+        Root::prepareChildrenRelease(*this);
+        LuxObject::clearChildren();
     }
     Root& Element::root() const noexcept
     {

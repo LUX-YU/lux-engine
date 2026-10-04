@@ -10,10 +10,6 @@ namespace lux::ui
 {
     namespace
     {
-        Element* elementOf(object::LuxObject* object) noexcept
-        {
-            return static_cast<Element*>(object);
-        }
         float insetExtent(float available, float before, float after) noexcept
         {
             return std::max(0.F, available - before - after);
@@ -28,8 +24,19 @@ namespace lux::ui
         }
     }
 
+    Layout::Layout(object::ObjectDispatcherRef dispatcher, ElementId id, ELayoutType type)
+        : Element(std::move(dispatcher), std::move(id)), type_(type)
+    {}
     Layout::Layout(Pane& parent, ElementId id, ELayoutType type) : Element(parent, std::move(id)), type_(type) {}
     Layout::Layout(Element& parent, ElementId id, ELayoutType type) : Element(parent, std::move(id)), type_(type) {}
+
+    Element* Layout::elementOf(object::LuxObject* object) const noexcept
+    {
+        auto* element = static_cast<Element*>(object);
+        // Replaced owned children remain on Object's ownership chain until its safe point.
+        // They have already left this layout and must not be measured or paired in a form.
+        return element->element_parent_ == this ? element : nullptr;
+    }
 
     void Layout::setType(ELayoutType type) noexcept
     {

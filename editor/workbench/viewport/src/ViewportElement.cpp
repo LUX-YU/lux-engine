@@ -73,6 +73,12 @@ namespace lux::editor::views
         if (moved)
             navigation_delivery_ = emit(cameraMoved, motion);
     }
+    ViewportElement::ViewportElement(object::ObjectDispatcherRef dispatcher, lux::ui::ElementId id)
+        : Element(dispatcher, std::move(id)), image_(dispatcher, lux::ui::ElementId{"viewport-image"})
+    {
+        if (!addSubElement(image_))
+            std::terminate(); // Fixed member topology, same dispatcher and no mounted Root.
+    }
     ViewportElement::ViewportElement(lux::ui::Pane& parent, lux::ui::ElementId id)
         : Element(parent, std::move(id)), image_(*this, lux::ui::ElementId{"viewport-image"})
     {

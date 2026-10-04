@@ -1,3 +1,4 @@
+#include <exception>
 #include <lux/engine/editor/workbench/CommandSupport.hpp>
 #include <lux/engine/editor/workbench/ViewFactorySupport.hpp>
 #include <lux/engine/editor/project/ResultsView.hpp>
@@ -29,7 +30,8 @@ namespace lux::editor::project
             : Element(view, lux::ui::ElementId{"results"}), observe_(std::move(observe)), request_(std::move(request))
         {
             setStretch({1, 1});
-            view.setContent(*this);
+            if (!view.setContent(*this))
+                std::terminate(); // Fixed content in a detached Pane.
         }
         EditorResult<void> request(VResultIntent intent)
         {

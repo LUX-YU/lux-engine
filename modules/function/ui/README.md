@@ -4,15 +4,15 @@
 
 ## 对象与所有权
 
-Root 拥有 ImGui Context、字体、主题、输入、焦点、捕获和公共停靠区。Pane 与 Element 分别使用 LuxObject 的非拥有父链，两者没有继承关系。资源由成员或 unique_ptr 管理，父对象不 delete 子对象。ObjectMessageQueue 由宿主先创建、最后关闭，Root 仅接收 dispatcher。
+Root 拥有 ImGui Context、字体、主题、输入、焦点、捕获和公共停靠区。Pane 与 Element 没有继承关系；二者复用 LuxObject 的 EXTERNAL／PARENT_OWNED 关系。引用入口不接管删除责任；unique_ptr 入口在完整校验后转交真实 owner 和 deleter。ObjectMessageQueue 由宿主先创建、最后关闭，Root 仅接收 dispatcher。
 
-Pane 是独立窗口，Element 是窗口内组件。Root 独立提交所有 Pane，父窗口隐藏不影响独立子窗口；停靠不改变父链。Pane::setContent 借用一个直接子 Element。Layout 通过已有子链排列内容，不增加第二份拥有型 children。Element 不进入停靠登记。
+Pane 是独立窗口，Element 是窗口内组件。Root 独立提交所有 Pane，父窗口隐藏不影响独立子窗口；停靠不改变父链。Pane::setContent 设置唯一内容根，重复设置返回 OCCUPIED；replaceContent 显式替换。Layout 通过已有子链排列内容，不增加第二份拥有型 children。Element 不进入停靠登记。
 
 Layout 支持水平、垂直、固定列数网格与标签/字段配对的表单。隐藏元素不占空间，禁用元素占空间；表单隐藏整对，不重新配对。先分配宽度再测量换行高度；按最小/期望/最大尺寸和伸展权重计算。空间小于最小尺寸时裁剪，或显式开启滚动。DockLayout/DockState 位于 Docking.hpp，保留原有编码。
 
 Button、Label、TextEdit、CheckBox、NumericEdit 和 Choice 是公共 Element。setValue 不发用户编辑信号；交互通过 LuxObject 信号报告 EditResult，控件缓冲不替代业务模型和历史。
 
-原 Context、Frame、CommandRouter 已移除。Root 保留非拥有的窗口索引，每个 Pane 在构造/析构时登记/注销；它不拥有第二棵对象树。UI 复用 LuxObject 信号和栈上 EventView，不提供第二套事件系统。
+原 Context、Frame、CommandRouter 已移除。Root 仅保留非拥有窗口和维护索引，登记发生在完整子树挂载时。UI 复用 LuxObject 信号和栈上 EventView，不提供第二套事件系统或删除队列。
 
 ## 输入和宿主循环
 
@@ -55,7 +55,7 @@ TextEdit/NumericEdit 的 finishEdit 支持无新帧时提交或取消；setValue
 所有 Element 均有 finishEdit 入口，上层不识别具体控件类型。构造参数限定 Root→Pane、Pane→Pane/Element、Element→Element；焦点和捕获采用明确的 Pane/Element 指针，析构同步撤销，不使用 ObjectWeakRef 或 UI generation。
 公开 ValueEdit 绘制 API 已删除，EditResult/EScalarEditMode 位于 Controls.hpp。
 
-历史 CPU 探针、性能数据和 GPU/桌面验证日志已按用户要求清理。后续验收应重新采集当前实现的证据；真实 IME 和 DPI 不能由 CPU 测试代替。
+验收快照按各自 implementation SHA 保留，当前批次只引用适用证据；真实 IME 和 DPI 不能由 CPU 测试代替。
 
 专用组合 Element 若直接使用 ImGui 输出可变长内容，应在自身矩形内建立滚动区域；不能依赖 Pane 的外层滚动把内容移出 Element 的裁剪矩形。Layout 的显式滚动接口已处理这一边界。
 
@@ -70,16 +70,18 @@ Root::setMenu 接收 MenuItem 值树。主菜单占用固定区域，复用 Comm
 DockIdentity 只将保存的窗口身份映射为当前窗口身份，包含内部角色后缀及选中标签；
 DockState 仍使用原 ImGui ini 编码。Root 不认识资产、插件和磁盘设置，布局 I/O 与恢复工厂属于 Editor。
 
-## P08 离树装配
+## 离树装配与两态所有权
 
 `Pane(dispatcher, id, type, title)` 和 `Element(dispatcher, id)` 不注册 Root。
-以父 Pane/Element 构造的固定成员可组成离树子树；独立 Element 可通过 `addChild` / `setContent` 关联。
-关联不接管 C++ 所有权；必须按成员/unique_ptr 的逆序析构子对象。
+新组合通过 `Root::addSubPane`、`Pane::addSubPane`、`Pane::setContent` 和 `Layout::addSubElement` 建立关系。
+引用和 unique_ptr 重载返回 expected；失败保留原候选、deleter 和登记。固定控件优先作为值成员；叶子控件没有公共的子树装配接口。
+
+父对象析构时，托管孩子由 LuxObject 逆接管顺序回收，外部孩子只解绑。派生控件的托管子对象如果借用派生成员，必须在派生析构体或既有关闭阶段调用 clearChildren。Root 在 Impl 仍有效时撤销整棵子树的路由；外部 Pane 可以完整存活并挂到另一个 Root。
 
 `attachedRoot()` 返回空表示未挂载，`containingPane()` 还区分独立 Element。
 离树时可设标题、modal、可见性、尺寸约束和内容；focus/capture 请求返回 false。
 测量、排列、实际绘制和旧 `root()/pane()` 引用入口要求已建立相应关联，不能把离树测量伪称成功。
-新工厂只传 owner dispatcher，不传 Root。rooted 构造和 root() 保留给既有产品到 P12。
+新工厂只传 owner dispatcher，不传 Root。生成的 Inspector 工厂返回未挂载控件；调用方通过 Layout 接入。存量父参数构造仍有业务消费者，EC4 M6 随业务装配迁移；它们不是新接口的实现路径。root() 是已挂载对象的借用访问，不是构造入口。
 
 Root 的 `prepareMount/prepareDetach` 只拥有一次性准备记录，不拥有节点。
 整棵子树的注册容量预留在准备阶段；候选/Root 析构、子树或活动注册变更会使准备失效。
@@ -88,4 +90,4 @@ Root 的 `prepareMount/prepareDetach` 只拥有一次性准备记录，不拥有
 
 卸载撤销输入目标、捕获、菜单目标和延迟修改记录，再撤销注册和父链，最后发出通知。
 Host 在此之前结束业务交互，在此之后按各组件原协议移交 GPU 退休责任并析构节点。
-Root 不执行保存，不等待 GPU，也不接管子对象 delete。已接受的异步工作仍由原 owner 接收完成。
+Root 不执行保存或等待 GPU。已接受的异步工作仍由原 owner 接收完成。托管节点逻辑移除后通过原 ObjectDispatcher 安全回收，退休中的内容不再参与布局；外部节点只撤销关系。

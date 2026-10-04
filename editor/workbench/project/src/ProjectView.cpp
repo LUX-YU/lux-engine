@@ -1,3 +1,4 @@
+#include <exception>
 #include <lux/engine/editor/workbench/CommandSupport.hpp>
 #include <lux/engine/editor/workbench/ViewFactorySupport.hpp>
 #include <lux/engine/editor/project/ProjectView.hpp>
@@ -93,7 +94,8 @@ namespace lux::editor::project
         : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{kFactoryDescriptor.type.name()}, "Project"),
           impl_(std::make_unique<Impl>(*this, query))
     {
-        setContent(impl_->content);
+        if (!setContent(impl_->content))
+            std::terminate(); // Fixed content in a detached Pane.
         static_cast<void>(refresh());
     }
     ProjectView::~ProjectView() noexcept = default;

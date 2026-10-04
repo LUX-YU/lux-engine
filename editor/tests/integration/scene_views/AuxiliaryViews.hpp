@@ -92,9 +92,10 @@ void auxiliaryViews(Fixture& f)
         Picker(object::ObjectDispatcherRef dispatcher, editor::project::ProjectCatalogModel* query)
             : Pane(dispatcher, ui::PaneId{"picker"}, ui::PaneTypeId{"test.picker"}, "Picker"),
               layout(*this, ui::ElementId{"layout"}, ui::ELayoutType::VERTICAL),
-              asset(layout, ui::ElementId{"asset"}, query, 123)
+              asset(dispatcher, ui::ElementId{"asset"}, query, 123)
         {
-            setContent(layout);
+            assert(layout.addSubElement(asset));
+            assert(setContent(layout));
         }
     };
     auto picker = std::make_unique<Picker>(f.messages.dispatcherRef(), &catalog);

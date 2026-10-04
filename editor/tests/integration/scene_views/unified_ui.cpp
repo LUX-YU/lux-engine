@@ -94,7 +94,7 @@ namespace
         explicit ProbePane(lux::ui::Root& root)
             : Pane(root.dispatcherRef(), lux::ui::PaneId("probe"), lux::ui::PaneTypeId("test.probe"), "Probe")
         {
-            setContent(probe_content_);
+            assert(setContent(probe_content_));
             ui_test::mount(root, *this);
         }
 
@@ -463,8 +463,8 @@ int main(int argc, char** argv)
         const auto borrowed_pose = first_pane->presentation().setCameraPose({}, {});
         assert(!borrowed_pose && borrowed_pose.error().code == render::ERendererError::INVALID_ARGUMENT);
         assert(scenes->borrowInstance(content->id())->get().valid(camera));
-        first_window.setContent(*first_pane);
-        second_window.setContent(*second_pane);
+        assert(first_window.setContent(*first_pane));
+        assert(second_window.setContent(*second_pane));
         root->setDockLayout({.left = "scene-one", .center = "scene-two", .left_width = 200.F});
         const auto replacement = scenes->borrowInstance(content->id())->get().create();
         scenes->borrowInstance(content->id())->get().emplace<scene::Camera>(replacement);
@@ -643,7 +643,7 @@ int main(int argc, char** argv)
             {.extent = {64, 48}}
         );
         assert(expired_view);
-        first_window.setContent(**expired_view);
+        assert(first_window.setContent(**expired_view));
         assert(scenes->retireInstance(content->id()));
         content.reset();
         assert(!(*expired_view)->setCamera(last_camera));

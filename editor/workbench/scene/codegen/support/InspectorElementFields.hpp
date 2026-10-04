@@ -46,11 +46,11 @@ namespace lux::editor::ui::generated_support
             Access access,
             Options&&... options
         )
-            : Base(parent, std::move(id)), editing_(editing), target_(target), interaction_(interaction),
+            : Base(parent.dispatcherRef(), std::move(id)), editing_(editing), target_(target), interaction_(interaction),
               access_(std::move(access)), label_text_(std::move(label)), read_only_(read_only),
-              row_(*this, lux::ui::ElementId{"row"}, lux::ui::ELayoutType::FORM),
-              label_(row_, lux::ui::ElementId{"label"}, label_text_), control_(
-                                                                          row_,
+              row_(parent.dispatcherRef(), lux::ui::ElementId{"row"}, lux::ui::ELayoutType::FORM),
+              label_(parent.dispatcherRef(), lux::ui::ElementId{"label"}, label_text_), control_(
+                                                                          parent.dispatcherRef(),
                                                                           lux::ui::ElementId{"value"},
                                                                           std::forward<Options>(options)...,
                                                                           initialControlValue<Value, Control>()
@@ -96,6 +96,11 @@ namespace lux::editor::ui::generated_support
                   status
               ))
         {
+            if (!this->addSubElement(row_) || !row_.addSubElement(label_) || !row_.addSubElement(control_))
+            {
+                status = Interaction::constructionFailure();
+                return;
+            }
             this->setStretch({1, 0});
             sync(true);
         }
@@ -189,7 +194,7 @@ namespace lux::editor::ui::generated_support
             Access access,
             float rows
         )
-            : Base(parent, std::move(id)), editing_(editing), target_(target), interaction_(interaction),
+            : Base(parent.dispatcherRef(), std::move(id)), editing_(editing), target_(target), interaction_(interaction),
               access_(std::move(access)), label_(std::move(label)), read_only_(read_only), rows_(rows)
         {
             this->setStretch({1, 0});

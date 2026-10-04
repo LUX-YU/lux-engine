@@ -37,13 +37,13 @@ namespace lux::editor::ui::generated_support
             Access access,
             std::vector<lux::ui::ChoiceOption> options
         )
-            : Base(parent, std::move(id)), editing_(editing), target_(target), interaction_(interaction),
+            : Base(parent.dispatcherRef(), std::move(id)), editing_(editing), target_(target), interaction_(interaction),
               access_(std::move(access)), label_(std::move(label)), read_only_(read_only),
-              layout_(*this, lux::ui::ElementId{"alternative"}),
-              header_(layout_, lux::ui::ElementId{"header"}, lux::ui::ELayoutType::FORM),
-              title_(header_, lux::ui::ElementId{"label"}, label_),
-              choice_(header_, lux::ui::ElementId{"choice"}, std::move(options)),
-              empty_(layout_, lux::ui::ElementId{"empty"}, "Empty"),
+              layout_(parent.dispatcherRef(), lux::ui::ElementId{"alternative"}),
+              header_(parent.dispatcherRef(), lux::ui::ElementId{"header"}, lux::ui::ELayoutType::FORM),
+              title_(parent.dispatcherRef(), lux::ui::ElementId{"label"}, label_),
+              choice_(parent.dispatcherRef(), lux::ui::ElementId{"choice"}, std::move(options)),
+              empty_(parent.dispatcherRef(), lux::ui::ElementId{"empty"}, "Empty"),
               connection_(takeConnection<Interaction>(
                   lux::object::LuxObject::connect(
                       std::addressof(choice_),
@@ -58,6 +58,15 @@ namespace lux::editor::ui::generated_support
                   status
               ))
         {
+            if (!this->addSubElement(layout_) ||
+                !layout_.addSubElement(header_) ||
+                !header_.addSubElement(title_) ||
+                !header_.addSubElement(choice_) ||
+                !layout_.addSubElement(empty_))
+            {
+                status = Interaction::constructionFailure();
+                return;
+            }
             this->setStretch({1, 0});
             rebuild(index(), &status);
         }
@@ -128,7 +137,19 @@ namespace lux::editor::ui::generated_support
             try
             {
                 typename Interaction::Status status;
+                auto candidate_layout = std::make_unique<lux::ui::Layout>(
+                    this->dispatcherRef(), lux::ui::ElementId{"selected"}
+                );
                 auto candidate = createChild(selected, status);
+                if (candidate && !candidate_layout->addSubElement(*candidate))
+                    status = Interaction::constructionFailure();
+                if (status)
+                {
+                    auto attached = child_layout_ ? layout_.replaceSubElement(*child_layout_, *candidate_layout)
+                                                  : layout_.addSubElement(*candidate_layout);
+                    if (!attached)
+                        status = Interaction::constructionFailure();
+                }
                 if (!status)
                 {
                     if (initial)
@@ -137,6 +158,7 @@ namespace lux::editor::ui::generated_support
                     return;
                 }
                 child_ = std::move(candidate);
+                child_layout_ = std::move(candidate_layout);
                 selected_ = selected;
                 choice_.setValue(static_cast<std::int64_t>(selected));
                 choice_.setEnabled(!read_only_);
@@ -212,6 +234,7 @@ namespace lux::editor::ui::generated_support
         lux::ui::Label title_;
         lux::ui::Choice choice_;
         lux::ui::Label empty_;
+        std::unique_ptr<lux::ui::Layout> child_layout_;
         std::unique_ptr<lux::ui::Element> child_;
         object::Connection connection_;
         std::size_t selected_{std::variant_npos};

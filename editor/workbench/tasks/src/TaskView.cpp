@@ -1,3 +1,4 @@
+#include <exception>
 #include <lux/engine/editor/workbench/CommandSupport.hpp>
 #include <lux/engine/editor/workbench/ViewFactorySupport.hpp>
 #include <lux/engine/editor/tasks/TaskView.hpp>
@@ -54,7 +55,8 @@ namespace lux::editor::tasks
         : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{kFactoryDescriptor.type.name()}, "Background tasks"),
           content_(*this, query)
     {
-        setContent(content_);
+        if (!setContent(content_))
+            std::terminate(); // Fixed content in a detached Pane.
     }
     views::DetachedView makeTaskView(object::ObjectDispatcherRef dispatcher, lux::ui::PaneId id, TaskMonitor& query)
     {

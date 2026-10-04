@@ -15,8 +15,18 @@ namespace consumer
         class MeasuredElement final : public lux::ui::Element
         {
         public:
-            MeasuredElement(lux::ui::Element& parent, lux::ui::ElementId id) : lux::ui::Element(parent, std::move(id))
+            MeasuredElement(lux::ui::Element& parent, lux::ui::ElementId id)
+                : lux::ui::Element(parent.dispatcherRef(), std::move(id))
             {}
+            lux::cxx::expected<void, lux::ui::EAttachmentError>
+            setContent(std::unique_ptr<lux::ui::Element>&& candidate) noexcept
+            {
+                auto attached = addSubElement(*candidate);
+                if (!attached)
+                    return attached;
+                content = std::move(candidate);
+                return {};
+            }
             std::unique_ptr<lux::ui::Element> content;
 
         private:
@@ -62,7 +72,8 @@ namespace consumer
             );
             if (!content)
                 return lux::cxx::unexpected(content.error());
-            result->content = std::move(*content);
+            if (!result->setContent(std::move(*content)))
+                return lux::cxx::unexpected(lux::editor::scene::InspectorFields::constructionFailure().error());
             return std::unique_ptr<lux::ui::Element>(std::move(result));
         }
     } // namespace

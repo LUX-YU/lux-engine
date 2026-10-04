@@ -1,3 +1,4 @@
+#include <exception>
 #include <lux/engine/editor/storage/ProjectContentOpening.hpp>
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
 #include <lux/engine/editor/workbench/CommandSupport.hpp>
@@ -83,7 +84,8 @@ namespace lux::editor::project
         Impl(RecentProjectsView& view, RecentProjects& projects)
             : view_(view), projects_(projects), content_(view, *this)
         {
-            view_.setContent(content_);
+            if (!view_.setContent(content_))
+                std::terminate(); // Fixed content in a detached Pane.
         }
         void update() noexcept
         {

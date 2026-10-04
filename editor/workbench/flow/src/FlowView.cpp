@@ -211,8 +211,8 @@ namespace lux::editor::flowforge
             Impl& state_;
             std::string variable_name_{"value"}, linker_;
             std::size_t variable_type_{};
-            Properties(lux::ui::Element& parent, Impl& state)
-                : Element(parent, lux::ui::ElementId{"properties"}), state_(state),
+            Properties(object::ObjectDispatcherRef dispatcher, Impl& state)
+                : Element(std::move(dispatcher), lux::ui::ElementId{"properties"}), state_(state),
                   linker_(state.state_.linker.executable.string())
             {
                 setStretch({1, 1});
@@ -423,11 +423,21 @@ namespace lux::editor::flowforge
         std::array<object::Connection, 2> connections_;
         Impl(FlowView& view, FlowViewServices services, FlowViewState state)
             : view_(view), services_(services), state_(std::move(state)),
-              layout_(view, lux::ui::ElementId{"content"}, lux::ui::ELayoutType::HORIZONTAL),
-              graph_(layout_, lux::ui::ElementId{"graph"}), properties_ui_(layout_, *this)
+              layout_(view.dispatcherRef(), lux::ui::ElementId{"content"}, lux::ui::ELayoutType::HORIZONTAL),
+              graph_(view.dispatcherRef(), lux::ui::ElementId{"graph"}), properties_ui_(view.dispatcherRef(), *this)
         {
             graph_.setStretch({2, 1});
-            view.setContent(layout_);
+            for (auto* child : std::array<lux::ui::Element*, 2>{&graph_, &properties_ui_})
+                if (auto result = layout_.addSubElement(*child); !result)
+                {
+                    status_ = rejected(result.error());
+                    return;
+                }
+            if (auto result = view.setContent(layout_); !result)
+            {
+                status_ = rejected(result.error());
+                return;
+            }
             auto edit = object::LuxObject::connect(
                 &graph_,
                 &widgets::GraphCanvas::edited,

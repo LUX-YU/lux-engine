@@ -57,6 +57,7 @@ namespace lux::editor::scene
             lux::scene::MeshQueryFailure,
             render::RendererFailure,
             views::EViewError,
+            lux::ui::EAttachmentError,
             std::string_view>;
         VCause cause;
     };

@@ -60,7 +60,7 @@ namespace
             : Pane(dispatcher, ui::PaneId{"churn"}, ui::PaneTypeId{"churn"}, "Graph churn"),
               layout(*this, ui::ElementId{"layout"}), canvas(layout, ui::ElementId{"canvas"})
         {
-            setContent(layout);
+            assert(setContent(layout));
         }
     };
 }

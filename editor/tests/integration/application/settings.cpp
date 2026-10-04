@@ -40,7 +40,7 @@ namespace
               layout(*this, ui::ElementId{"layout"}, ui::ELayoutType::VERTICAL),
               settings(layout, ui::ElementId{"settings"}, std::move(input))
         {
-            setContent(layout);
+            assert(setContent(layout));
         }
     };
     ui::NumericEdit* numeric(object::LuxObject& node, std::string_view id)

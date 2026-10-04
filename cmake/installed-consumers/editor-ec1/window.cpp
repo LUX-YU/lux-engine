@@ -23,7 +23,7 @@ namespace
               layout_(*this, ui::ElementId{"layout"}, ui::ELayoutType::VERTICAL),
               label_(layout_, ui::ElementId{"text"}, "No author content or renderer")
         {
-            setContent(layout_);
+            assert(setContent(layout_));
         }
 
     private:

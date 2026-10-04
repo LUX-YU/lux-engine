@@ -16,36 +16,50 @@ namespace lux::editor::ui
         object::TSignal<lux::ui::EditResult> edited{*this};
         template <class Interaction>
         MeshVisualControl(
-            lux::ui::Element& parent,
+            object::ObjectDispatcherRef dispatcher,
             lux::ui::ElementId id,
             Interaction& interaction,
             typename Interaction::Status& status,
             lux::rdesc::MeshVisualDescription value
         )
-            : Element(parent, std::move(id)), value_(value),
-              layout_(*this, lux::ui::ElementId{"fields"}, lux::ui::ELayoutType::FORM),
-              mesh_label_(layout_, lux::ui::ElementId{"mesh-label"}, "Mesh"), mesh_(
-                                                                                  layout_,
+            : Element(dispatcher, std::move(id)), value_(value),
+              layout_(dispatcher, lux::ui::ElementId{"fields"}, lux::ui::ELayoutType::FORM),
+              mesh_label_(dispatcher, lux::ui::ElementId{"mesh-label"}, "Mesh"), mesh_(
+                                                                                  dispatcher,
                                                                                   lux::ui::ElementId{"mesh"},
                                                                                   interaction.assetCatalog(),
                                                                                   lux::asset::MeshAsset::primary_magic,
                                                                                   value.mesh
                                                                               ),
-              material_label_(layout_, lux::ui::ElementId{"material-label"}, "Material"),
+              material_label_(dispatcher, lux::ui::ElementId{"material-label"}, "Material"),
               material_(
-                  layout_,
+                  dispatcher,
                   lux::ui::ElementId{"material"},
                   interaction.assetCatalog(),
                   lux::asset::MaterialAsset::primary_magic,
                   value.material
               ),
-              visible_label_(layout_, lux::ui::ElementId{"visible-label"}, "Visible"),
-              visible_(layout_, lux::ui::ElementId{"visible"}, "", value.visible),
-              cast_label_(layout_, lux::ui::ElementId{"cast-label"}, "Cast shadow"),
-              cast_(layout_, lux::ui::ElementId{"cast"}, "", value.cast_shadow),
-              receive_label_(layout_, lux::ui::ElementId{"receive-label"}, "Receive shadow"),
-              receive_(layout_, lux::ui::ElementId{"receive"}, "", value.receive_shadow)
+              visible_label_(dispatcher, lux::ui::ElementId{"visible-label"}, "Visible"),
+              visible_(dispatcher, lux::ui::ElementId{"visible"}, "", value.visible),
+              cast_label_(dispatcher, lux::ui::ElementId{"cast-label"}, "Cast shadow"),
+              cast_(dispatcher, lux::ui::ElementId{"cast"}, "", value.cast_shadow),
+              receive_label_(dispatcher, lux::ui::ElementId{"receive-label"}, "Receive shadow"),
+              receive_(dispatcher, lux::ui::ElementId{"receive"}, "", value.receive_shadow)
         {
+            if (!addSubElement(layout_))
+            {
+                status = Interaction::constructionFailure();
+                return;
+            }
+            for (auto* child : std::array<lux::ui::Element*, 10>{
+                &mesh_label_, &mesh_, &material_label_, &material_, &visible_label_, &visible_,
+                &cast_label_, &cast_, &receive_label_, &receive_
+            })
+                if (!layout_.addSubElement(*child))
+                {
+                    status = Interaction::constructionFailure();
+                    return;
+                }
             const auto changed = [this](lux::ui::EditResult change) noexcept {
                 value_ = {mesh_.value(), material_.value(), visible_.value(), cast_.value(), receive_.value()};
                 static_cast<void>(emit(edited, change));

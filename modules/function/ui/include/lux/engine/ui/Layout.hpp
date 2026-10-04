@@ -21,6 +21,9 @@ namespace lux::ui
     class LUX_FUNCTION_PUBLIC Layout final : public Element
     {
     public:
+        Layout(object::ObjectDispatcherRef, ElementId id, ELayoutType type = ELayoutType::VERTICAL);
+        using Element::addSubElement;
+        using Element::replaceSubElement;
         Layout(Pane& parent, ElementId id, ELayoutType type = ELayoutType::VERTICAL);
         Layout(Element& parent, ElementId id, ELayoutType type = ELayoutType::VERTICAL);
         void setType(ELayoutType type) noexcept;
@@ -51,6 +54,7 @@ namespace lux::ui
         void rows() noexcept;
         void fit(std::vector<Track>& tracks, float available, float spacing, float origin) noexcept;
         [[nodiscard]] SizeHint trackHint() const noexcept;
+        [[nodiscard]] Element* elementOf(object::LuxObject*) const noexcept;
         static float extent(const std::vector<Track>& tracks, float Track::*member, float spacing) noexcept;
         void place() noexcept;
 

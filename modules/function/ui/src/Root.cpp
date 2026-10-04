@@ -39,6 +39,25 @@ namespace lux::ui
 
     namespace
     {
+        template<class Visit> void visitSubtree(object::LuxObject& root, Visit&& visit) noexcept
+        {
+            auto* node = &root;
+            for (;;)
+            {
+                visit(*node);
+                if (node->firstChild())
+                    node = node->firstChild();
+                else
+                {
+                    while (node != &root && !node->nextSibling())
+                        node = node->parent();
+                    if (node == &root)
+                        return;
+                    node = node->nextSibling();
+                }
+            }
+        }
+
         [[nodiscard]] int toImGuiButton(EPointerButton button) noexcept
         {
             switch (button)
@@ -288,6 +307,7 @@ namespace lux::ui
         std::size_t layout_depth{};
         std::uint64_t layout_epoch{};
         bool registration_holes{}, window_holes{};
+        bool committing_structure{};
         std::array<bool, 6> modifier_keys{};
         int input_capacity{};
         ImGuiKeyChord routed_modifiers{};
@@ -364,6 +384,10 @@ namespace lux::ui
                 impl_->preparation->root = nullptr;
             checkDestruction(*this);
             checkContentChange();
+            beginDestruction();
+            releaseSubtree(*this, false);
+            prepareChildrenRelease(*this);
+            clearChildren();
         }
     }
 
@@ -855,7 +879,9 @@ namespace lux::ui
             if (!change.target)
                 continue;
             active_change = change.target;
+            Root::beginCallbackBorrow(*change.target);
             change.apply(*change.target);
+            Root::endCallbackBorrow(*change.target);
             active_change = nullptr;
         }
         changes.erase(changes.begin(), changes.begin() + change_batch_size);
@@ -963,7 +989,227 @@ namespace lux::ui
     bool Root::attachmentSafe() const noexcept
     {
         return isOnAffinityThread() && !impl_->drawing && !impl_->updating && !impl_->layout_depth &&
-               !impl_->active_change && !isDispatching();
+               !impl_->active_change && !impl_->committing_structure && !isDispatching();
+    }
+
+    cxx::expected<void, EAttachmentError> Root::addSubPane(Pane& pane) noexcept
+    {
+        auto attach = [&]() noexcept { return attachChild(pane); };
+        return addSubPaneImpl(pane, attach);
+    }
+
+    cxx::expected<void, EAttachmentError> Root::addSubPaneImpl(
+        Pane& pane, cxx::function_ref<object::ObjectResult<void>()> attach
+    ) noexcept
+    {
+        return compose(*this, pane, false, attach);
+    }
+
+    cxx::expected<void, EAttachmentError> Root::removeSubPane(Pane& pane) noexcept
+    {
+        auto prepared = prepareDetach(pane);
+        if (!prepared)
+            return cxx::unexpected(prepared.error());
+        auto removed = commit(*prepared);
+        if (!removed)
+            return cxx::unexpected(removed.error());
+        return {};
+    }
+
+    cxx::expected<void, EAttachmentError> Root::compose(
+        object::LuxObject& parent, object::LuxObject& child, bool replace,
+        cxx::function_ref<object::ObjectResult<void>()> attach, Element* previous
+    ) noexcept
+    {
+        const bool is_wrong_thread = !parent.isOnAffinityThread() || !child.isOnAffinityThread();
+        if (is_wrong_thread)
+            return cxx::unexpected(EAttachmentError::WRONG_THREAD);
+        if (parent.dispatcherRef() != child.dispatcherRef())
+            return cxx::unexpected(EAttachmentError::WRONG_DISPATCHER);
+        if (isDispatching())
+            return cxx::unexpected(EAttachmentError::BUSY);
+        auto* parent_root = dynamic_cast<Root*>(&parent);
+        auto* parent_pane = dynamic_cast<Pane*>(&parent);
+        auto* parent_element = dynamic_cast<Element*>(&parent);
+        auto* child_pane = dynamic_cast<Pane*>(&child);
+        auto* child_element = dynamic_cast<Element*>(&child);
+        const bool is_content = parent_pane && child_element;
+        const bool is_valid_topology = ((parent_root || parent_pane) && child_pane) ||
+            is_content || (parent_element && child_element);
+        if (!is_valid_topology)
+            return cxx::unexpected(EAttachmentError::INVALID_TREE);
+        auto* root = parent_root ? parent_root : parent_pane ? parent_pane->root_ : parent_element->attachedRoot();
+        const bool is_parent_closed = parent_root ? parent_root->isClosing() :
+            parent_pane ? parent_pane->isClosing() : parent_element->isClosing();
+        const bool is_child_closed = child_pane ? child_pane->isClosing() : child_element->isClosing();
+        if (is_parent_closed || is_child_closed)
+            return cxx::unexpected(EAttachmentError::CLOSED);
+        if (root)
+        {
+            const bool is_busy = root->impl_->drawing || root->impl_->layout_depth ||
+                root->impl_->committing_structure || root->impl_->preparation;
+            if (is_busy)
+                return cxx::unexpected(EAttachmentError::BUSY);
+        }
+        if (is_content)
+            previous = parent_pane->content_;
+        const bool is_invalid_previous = previous && previous->parent() != &parent;
+        if (is_invalid_previous)
+            return cxx::unexpected(EAttachmentError::NOT_ATTACHED);
+        if (root && previous)
+            for (auto* callback : {root->impl_->active_update, root->impl_->active_change})
+                for (auto* active = callback; active; active = active->parent())
+                    if (active == previous)
+                        return cxx::unexpected(EAttachmentError::BUSY);
+        if (previous && (!replace || previous == &child))
+            return cxx::unexpected(EAttachmentError::OCCUPIED);
+        const bool is_existing_content_child = is_content && child.parent() == &parent;
+        if (child.parent() && !is_existing_content_child)
+            return cxx::unexpected(EAttachmentError::ALREADY_ATTACHED);
+        for (auto* ancestor = &parent; ancestor; ancestor = ancestor->parent())
+            if (ancestor == &child)
+                return cxx::unexpected(EAttachmentError::INVALID_TREE);
+        if (previous && previous->ownership() == object::EObjectOwnership::PARENT_OWNED &&
+            !previous->dispatcherRef().isCurrent())
+            return cxx::unexpected(EAttachmentError::WRONG_DISPATCHER);
+
+        detail::AttachmentState prepared;
+        bool invalid{};
+        visitSubtree(child, [&](object::LuxObject& node) noexcept {
+            if (auto* pane = dynamic_cast<Pane*>(&node))
+            {
+                invalid |= pane->attachedRoot() != nullptr;
+                prepared.nodes.push_back({pane, nullptr});
+            }
+            else if (auto* element = dynamic_cast<Element*>(&node))
+            {
+                invalid |= element->attachedRoot() && element->attachedRoot() != root;
+                if (element->registration_slot_ == SIZE_MAX)
+                    prepared.nodes.push_back({nullptr, element});
+            }
+            else
+                invalid = true;
+        });
+        if (invalid)
+            return cxx::unexpected(EAttachmentError::INVALID_TREE);
+        if (child_element)
+        {
+            for (auto* sibling = parent.firstChild(); sibling; sibling = sibling->nextSibling())
+            {
+                auto* element = dynamic_cast<Element*>(sibling);
+                const bool is_conflicting_id = element && !element->isClosing() &&
+                    element != &child && element != previous &&
+                    element->id().view() == child_element->id().view();
+                if (is_conflicting_id)
+                    return cxx::unexpected(EAttachmentError::DUPLICATE_ID);
+            }
+        }
+        if (root)
+        {
+            std::size_t removing{};
+            if (previous)
+                visitSubtree(*previous, [&](object::LuxObject&) noexcept { ++removing; });
+            auto reserved = root->prepareRegistration(prepared, removing);
+            if (!reserved)
+                return reserved;
+            // A stateful deleter can run foreign cleanup while it moves. Reentrant UI structure
+            // operations must fail before this still-owned candidate or any registration changes.
+            root->impl_->committing_structure = true;
+        }
+        beginCallbackBorrow(parent);
+        auto adopted = attach();
+        if (root)
+            root->impl_->committing_structure = false;
+        if (!adopted)
+        {
+            endCallbackBorrow(parent);
+            using enum object::EObjectTreeError;
+            switch (adopted.error())
+            {
+            case WRONG_THREAD: return cxx::unexpected(EAttachmentError::WRONG_THREAD);
+            case WRONG_DISPATCHER: return cxx::unexpected(EAttachmentError::WRONG_DISPATCHER);
+            case BUSY: return cxx::unexpected(EAttachmentError::BUSY);
+            case CLOSED: return cxx::unexpected(EAttachmentError::CLOSED);
+            case ALREADY_ATTACHED: return cxx::unexpected(EAttachmentError::ALREADY_ATTACHED);
+            default: return cxx::unexpected(EAttachmentError::INVALID_TREE);
+            }
+        }
+        // From here to notifications, all storage is reserved and no provider is invoked.
+        if (previous)
+        {
+            if (root)
+                root->releaseSubtree(*previous, false);
+            if (previous->ownership() == object::EObjectOwnership::PARENT_OWNED)
+            {
+                if (!previous->requestDestruction())
+                    detail::failContract();
+                previous->beginDestruction();
+            }
+            else
+                previous->detachFromParent();
+            previous->assignPane(nullptr);
+            previous->element_parent_ = nullptr;
+        }
+        if (child_element)
+        {
+            child_element->element_parent_ = parent_element;
+            child_element->assignPane(parent_pane ? parent_pane : parent_element->containingPane());
+            if (is_content)
+                parent_pane->content_ = child_element;
+        }
+        if (parent_pane)
+            parent_pane->invalidatePreparation();
+        else if (parent_element && parent_element->pane_)
+            parent_element->pane_->invalidatePreparation();
+        if (root)
+        {
+            for (const auto node : prepared.nodes)
+            {
+                if (node.pane)
+                {
+                    node.pane->root_ = root;
+                    root->registerPane(*node.pane);
+                }
+                else
+                    root->registerElement(*node.element);
+            }
+            if (previous)
+                root->releaseSubtree(*previous, true);
+            if (child_pane)
+            {
+                child_pane->beginTreeVisit();
+                static_cast<void>(root->emit(root->attachmentChanged, AttachmentChanged{child_pane->id(), true}));
+                child_pane->endTreeVisit();
+            }
+        }
+        endCallbackBorrow(parent);
+        return {};
+    }
+
+    cxx::expected<void, EAttachmentError> Root::prepareRegistration(
+        detail::AttachmentState& prepared, std::size_t removing
+    )
+    {
+        std::set<std::string_view> names;
+        for (const auto node : prepared.nodes)
+            if (node.pane)
+            {
+                const auto name = node.pane->id().name();
+                if (findPane(node.pane->id().view()) || !names.emplace(name).second)
+                    return cxx::unexpected(EAttachmentError::DUPLICATE_ID);
+            }
+        const auto active = static_cast<std::size_t>(
+            std::ranges::count_if(impl_->registrations, [](const auto& entry) { return entry.object; })
+        );
+        const auto remaining = active - std::min(active, removing);
+        const auto available = impl_->attachment_capacity - std::min(remaining, impl_->attachment_capacity);
+        if (prepared.nodes.size() > available)
+            return cxx::unexpected(EAttachmentError::CAPACITY);
+        if (!impl_->updating)
+            impl_->compactRegistrations();
+        impl_->registrations.reserve(impl_->registrations.size() + prepared.nodes.size());
+        impl_->windows.reserve(impl_->windows.size() + names.size());
+        return {};
     }
     Root::AttachmentResult Root::prepareMount(Pane& pane)
     {
@@ -994,6 +1240,8 @@ namespace lux::ui
     {
         if (!isOnAffinityThread())
             return lux::cxx::unexpected(EAttachmentError::WRONG_THREAD);
+        if (isClosing())
+            return lux::cxx::unexpected(EAttachmentError::CLOSED);
         if (!attachmentSafe() || impl_->preparation)
             return lux::cxx::unexpected(EAttachmentError::BUSY);
         auto prepared = std::make_unique<detail::AttachmentState>();
@@ -1004,29 +1252,42 @@ namespace lux::ui
                 return lux::cxx::unexpected(EAttachmentError::INVALID_TREE);
             if (!pane->isOnAffinityThread())
                 return lux::cxx::unexpected(EAttachmentError::WRONG_THREAD);
+            if (pane->isClosing())
+                return lux::cxx::unexpected(EAttachmentError::CLOSED);
             if (pane->preparation_)
                 return lux::cxx::unexpected(EAttachmentError::BUSY);
             if (pane->dispatcherRef() != dispatcherRef())
                 return lux::cxx::unexpected(EAttachmentError::WRONG_DISPATCHER);
             if (mount && (pane->attachedRoot() || pane->parent()))
                 return lux::cxx::unexpected(EAttachmentError::ALREADY_ATTACHED);
-            if (!mount && (pane->attachedRoot() != this || pane->parent() != this))
+            if (!mount && pane->attachedRoot() != this)
                 return lux::cxx::unexpected(EAttachmentError::NOT_ATTACHED);
+            const bool is_unretirable = !mount &&
+                pane->ownership() == object::EObjectOwnership::PARENT_OWNED && !pane->dispatcherRef().isCurrent();
+            if (is_unretirable)
+                return lux::cxx::unexpected(EAttachmentError::WRONG_DISPATCHER);
             prepared->roots.push_back(pane);
         }
-        std::size_t windows{};
+        // A batch cannot include both a subtree and one of its descendants.
+        for (auto* pane : prepared->roots)
+            for (auto* ancestor = pane->parent(); ancestor; ancestor = ancestor->parent())
+                if (std::ranges::find(prepared->roots, ancestor) != prepared->roots.end())
+                    return cxx::unexpected(EAttachmentError::INVALID_TREE);
         bool invalid{};
-        const auto visit = [&](auto&& self, object::LuxObject& node) -> void
+        const auto visit = [&](object::LuxObject& node) noexcept
         {
             if (auto* window = dynamic_cast<Pane*>(&node))
             {
+                if (!mount && window->registration_slot_ == SIZE_MAX)
+                    return; // Already removed; Object still owns its pending mechanical reclamation.
                 const bool wrong_root = mount ? window->attachedRoot() != nullptr : window->attachedRoot() != this;
                 invalid |= wrong_root;
                 prepared->nodes.push_back({window, nullptr});
-                ++windows;
             }
             else if (auto* element = dynamic_cast<Element*>(&node))
             {
+                if (!mount && element->registration_slot_ == SIZE_MAX)
+                    return;
                 invalid |= !element->containingPane();
                 prepared->nodes.push_back({nullptr, element});
             }
@@ -1035,11 +1296,9 @@ namespace lux::ui
                 invalid = true;
                 return;
             }
-            for (auto* child = node.firstChild(); child; child = child->nextSibling())
-                self(self, *child);
         };
         for (auto* pane : panes)
-            visit(visit, *pane);
+            visitSubtree(*pane, visit);
         if (invalid)
             return lux::cxx::unexpected(EAttachmentError::INVALID_TREE);
         prepared->visibility.reserve(visibility.size());
@@ -1059,24 +1318,9 @@ namespace lux::ui
         }
         if (mount)
         {
-            std::vector<PaneIdView> names;
-            names.reserve(windows);
-            for (auto node : prepared->nodes)
-                if (node.pane)
-                {
-                    auto name = node.pane->id().view();
-                    if (findPane(name) || std::ranges::find(names, name) != names.end())
-                        return lux::cxx::unexpected(EAttachmentError::DUPLICATE_ID);
-                    names.push_back(name);
-                }
-            const auto active =
-                std::ranges::count_if(impl_->registrations, [](const auto& entry) { return entry.object; });
-            if (prepared->nodes.size() >
-                impl_->attachment_capacity - std::min<std::size_t>(active, impl_->attachment_capacity))
-                return lux::cxx::unexpected(EAttachmentError::CAPACITY);
-            impl_->compactRegistrations();
-            impl_->registrations.reserve(impl_->registrations.size() + prepared->nodes.size());
-            impl_->windows.reserve(impl_->windows.size() + windows);
+            auto reserved = prepareRegistration(*prepared);
+            if (!reserved)
+                return cxx::unexpected(reserved.error());
         }
         prepared->root = this;
         prepared->revision = impl_->structure_revision;
@@ -1135,7 +1379,16 @@ namespace lux::ui
                 else
                     unregisterElement(*node.element, false);
             for (auto* pane : state->roots)
-                pane->detachFromParent();
+            {
+                if (pane->ownership() == object::EObjectOwnership::PARENT_OWNED)
+                {
+                    if (!pane->requestDestruction())
+                        detail::failContract();
+                    pane->beginDestruction();
+                }
+                else
+                    pane->detachFromParent();
+            }
             for (auto node : state->nodes)
                 if (node.pane)
                     node.pane->root_ = nullptr;
@@ -1169,6 +1422,77 @@ namespace lux::ui
         for (auto* pane : state->roots)
             pane->endTreeVisit();
         return result;
+    }
+
+    void Root::releaseSubtree(object::LuxObject& subtree, bool notify) noexcept
+    {
+        // All routing is revoked before observers see removal. The actual owner remains Object.
+        visitSubtree(subtree, [&](object::LuxObject& node) noexcept {
+            if (auto* pane = dynamic_cast<Pane*>(&node))
+            {
+                if (pane->registration_slot_ != SIZE_MAX)
+                    unregisterPane(*pane, false);
+                pane->root_ = nullptr;
+            }
+            else if (auto* element = dynamic_cast<Element*>(&node))
+            {
+                if (element->registration_slot_ != SIZE_MAX)
+                    unregisterElement(*element, false);
+            }
+        });
+        if (notify)
+        {
+            auto* pane = dynamic_cast<Pane*>(&subtree);
+            auto* element = dynamic_cast<Element*>(&subtree);
+            if (pane)
+                pane->beginTreeVisit();
+            else if (element)
+                element->beginTreeVisit();
+            else
+                beginTreeVisit();
+            visitSubtree(subtree, [&](object::LuxObject& node) noexcept {
+                static_cast<void>(emit(objectRemoved, &node));
+            });
+            if (pane)
+                pane->endTreeVisit();
+            else if (element)
+                element->endTreeVisit();
+            else
+                endTreeVisit();
+        }
+    }
+
+    void Root::prepareChildrenRelease(object::LuxObject& owner) noexcept
+    {
+        for (auto* child = owner.firstChild(); child; child = child->nextSibling())
+        {
+            auto* pane = dynamic_cast<Pane*>(child);
+            auto* element = dynamic_cast<Element*>(child);
+            auto* root = pane ? pane->attachedRoot() : element ? element->attachedRoot() : nullptr;
+            if (root)
+                root->releaseSubtree(*child, true);
+        }
+        // Only derived UI associations are cleared here. Object performs every unlink and deletion.
+        // External Pane subtrees survive intact; elements losing their containing Pane do not.
+        auto* node = owner.firstChild();
+        while (node)
+        {
+            if (auto* element = dynamic_cast<Element*>(node))
+            {
+                if (element->pane_)
+                    element->assignPane(nullptr);
+                element->element_parent_ = nullptr;
+            }
+            const bool descend = node->ownership() == object::EObjectOwnership::PARENT_OWNED && node->firstChild();
+            if (descend)
+                node = node->firstChild();
+            else
+            {
+                while (node->parent() != &owner && !node->nextSibling())
+                    node = node->parent();
+                node = node->nextSibling();
+            }
+        }
     }
 
     void Root::registerPane(Pane& pane)
@@ -1288,7 +1612,8 @@ namespace lux::ui
     void Root::checkContentChange() const noexcept
     {
         requireOwner();
-        const bool is_frozen_visit = impl_->drawing || impl_->layout_depth != 0 || isDispatching();
+        const bool is_frozen_visit = impl_->drawing || impl_->layout_depth != 0 || isDispatching() ||
+            impl_->committing_structure;
         const bool is_frozen_update = impl_->updating && !impl_->active_update;
         if (is_frozen_visit || is_frozen_update)
             detail::failContract();
@@ -1330,7 +1655,9 @@ namespace lux::ui
             if (!entry.object)
                 continue;
             impl_->active_update = entry.object;
+            beginCallbackBorrow(*entry.object);
             entry.update(entry.object);
+            endCallbackBorrow(*entry.object);
             impl_->active_update = nullptr;
         }
         impl_->compactRegistrations();

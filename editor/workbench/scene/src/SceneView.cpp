@@ -57,10 +57,12 @@ namespace lux::editor::scene
         {
             Impl& owner_;
             lux::editor::views::ViewportElement viewport_;
-            Canvas(lux::ui::Element& parent, Impl& owner)
-                : Element(parent, lux::ui::ElementId{"canvas"}), owner_(owner),
-                  viewport_(*this, lux::ui::ElementId{"viewport"})
+            Canvas(object::ObjectDispatcherRef dispatcher, Impl& owner)
+                : Element(dispatcher, lux::ui::ElementId{"canvas"}), owner_(owner),
+                  viewport_(dispatcher, lux::ui::ElementId{"viewport"})
             {
+                if (!addSubElement(viewport_))
+                    std::terminate(); // Complete fixed-member composition before attachment to any Root.
             }
             lux::ui::SizeHint sizeHintContent() noexcept override
             {
@@ -129,15 +131,33 @@ namespace lux::editor::scene
 
         Impl(SceneView& view, SceneViewServices services, SceneViewState state, system::SystemInstanceId system)
             : view_(view), services_(services), state_(std::move(state)), system_(system),
-              layout_(view, lux::ui::ElementId{"content"}),
-              toolbar_(layout_, lux::ui::ElementId{"toolbar"}, lux::ui::ELayoutType::HORIZONTAL),
-              undo_(toolbar_, lux::ui::ElementId{"undo"}, "Undo"), redo_(toolbar_, lux::ui::ElementId{"redo"}, "Redo"),
-              message_(layout_, lux::ui::ElementId{"status"}, "No scene bound"), canvas_(layout_, *this),
+              layout_(view.dispatcherRef(), lux::ui::ElementId{"content"}),
+              toolbar_(view.dispatcherRef(), lux::ui::ElementId{"toolbar"}, lux::ui::ELayoutType::HORIZONTAL),
+              undo_(view.dispatcherRef(), lux::ui::ElementId{"undo"}, "Undo"),
+              redo_(view.dispatcherRef(), lux::ui::ElementId{"redo"}, "Redo"),
+              message_(view.dispatcherRef(), lux::ui::ElementId{"status"}, "No scene bound"),
+              canvas_(view.dispatcherRef(), *this),
               viewport_(canvas_.viewport_)
         {
             toolbar_.setStretch({1, 0});
             message_.setStretch({1, 0});
-            view.setContent(layout_);
+            for (auto* child : std::array<lux::ui::Element*, 2>{&undo_, &redo_})
+                if (auto result = toolbar_.addSubElement(*child); !result)
+                {
+                    status_ = rejected(result.error());
+                    return;
+                }
+            for (auto* child : std::array<lux::ui::Element*, 3>{&toolbar_, &message_, &canvas_})
+                if (auto result = layout_.addSubElement(*child); !result)
+                {
+                    status_ = rejected(result.error());
+                    return;
+                }
+            if (auto result = view.setContent(layout_); !result)
+            {
+                status_ = rejected(result.error());
+                return;
+            }
             auto connect = [&](lux::ui::Button& button, EControl value, std::size_t index)
             {
                 auto result = object::LuxObject::connect(

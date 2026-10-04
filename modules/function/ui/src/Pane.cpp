@@ -37,6 +37,7 @@ namespace lux::ui
 
     Pane::~Pane()
     {
+        beginDestruction();
         invalidatePreparation();
         if (preparation_)
         {
@@ -46,7 +47,14 @@ namespace lux::ui
             preparation_ = nullptr;
         }
         if (root_)
-            root_->unregisterPane(*this);
+            root_->releaseSubtree(*this, true);
+        clearChildren();
+    }
+
+    void Pane::clearChildren() noexcept
+    {
+        Root::prepareChildrenRelease(*this);
+        LuxObject::clearChildren();
     }
 
     Root& Pane::root() const noexcept
@@ -56,18 +64,42 @@ namespace lux::ui
         return *root_;
     }
 
-    void Pane::setContent(Element& element) noexcept
+    cxx::expected<void, EAttachmentError> Pane::addSubPane(Pane& pane) noexcept
     {
-        invalidatePreparation();
-        if (root_)
-            root_->checkContentChange();
-        if (!element.parent() && !root_)
+        auto attach = [&]() noexcept { return attachChild(pane); };
+        return addSubPaneImpl(pane, attach);
+    }
+
+    cxx::expected<void, EAttachmentError> Pane::addSubPaneImpl(
+        Pane& pane, cxx::function_ref<object::ObjectResult<void>()> attach
+    ) noexcept
+    {
+        return Root::compose(*this, pane, false, attach);
+    }
+
+    cxx::expected<void, EAttachmentError> Pane::setContent(Element& element) noexcept
+    {
+        auto attach = [&]() noexcept -> object::ObjectResult<void>
         {
-            element.attachContent(*this);
-        }
-        if (!isOnAffinityThread() || element.parent() != this)
-            detail::failContract();
-        content_ = &element;
+            return element.parent() == this ? object::ObjectResult<void>{} : attachChild(element);
+        };
+        return setContentImpl(element, false, attach);
+    }
+
+    cxx::expected<void, EAttachmentError> Pane::replaceContent(Element& element) noexcept
+    {
+        auto attach = [&]() noexcept -> object::ObjectResult<void>
+        {
+            return element.parent() == this ? object::ObjectResult<void>{} : attachChild(element);
+        };
+        return setContentImpl(element, true, attach);
+    }
+
+    cxx::expected<void, EAttachmentError> Pane::setContentImpl(
+        Element& element, bool replace, cxx::function_ref<object::ObjectResult<void>()> attach
+    ) noexcept
+    {
+        return Root::compose(*this, element, replace, attach);
     }
 
     void Pane::setTitle(std::string title)

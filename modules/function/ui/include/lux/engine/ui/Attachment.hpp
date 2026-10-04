@@ -2,6 +2,7 @@
 #include <lux/engine/function/visibility.h>
 #include <lux/engine/object/LuxObject.hpp>
 #include <memory>
+#include <lux/cxx/core/function_ref.hpp>
 #include <lux/engine/ui/Ids.hpp>
 
 namespace lux::ui
@@ -22,7 +23,9 @@ namespace lux::ui
         WRONG_THREAD,
         WRONG_DISPATCHER,
         BUSY,
+        CLOSED,
         ALREADY_ATTACHED,
+        OCCUPIED,
         NOT_ATTACHED,
         INVALID_TREE,
         DUPLICATE_ID,

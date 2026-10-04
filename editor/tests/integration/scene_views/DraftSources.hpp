@@ -63,7 +63,7 @@ namespace draft_test
               ),
               fixture(f), probe(*this)
         {
-            setContent(probe);
+            assert(setContent(probe));
             auto mounted = f.desktop->root().prepareMount(*this);
             assert(mounted && f.desktop->root().commit(*mounted));
             fixture.wait([&] { return context != nullptr; });

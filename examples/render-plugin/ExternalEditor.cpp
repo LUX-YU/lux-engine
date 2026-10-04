@@ -1,3 +1,4 @@
+#include <exception>
 #include <lux/engine/editor/extensions/EditorExtension.hpp>
 #include <lux/engine/ui/Controls.hpp>
 #include "SampleEditorExport.hpp"
@@ -11,7 +12,8 @@ namespace
             : Pane(input.dispatcher(), input.paneId(), lux::ui::PaneTypeId{"sample.editor"}, "Plugin editor"),
               text_(*this, lux::ui::ElementId{"message"}, "External V8 editor extension")
         {
-            setContent(text_);
+            if (!setContent(text_))
+                std::terminate(); // Fixed content in a detached Pane.
         }
 
     private:

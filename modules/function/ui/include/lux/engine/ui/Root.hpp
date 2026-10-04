@@ -70,6 +70,27 @@ namespace lux::ui
         // A null output maintains owners without generating another frame or replaying input.
         [[nodiscard]] lux::cxx::expected<void, ECaptureError> update(FrameInfo, DrawData* output) noexcept;
 
+        [[nodiscard]] cxx::expected<void, EAttachmentError> addSubPane(Pane&) noexcept;
+        [[nodiscard]] cxx::expected<void, EAttachmentError> removeSubPane(Pane&) noexcept;
+        template <class T, class D>
+            requires std::derived_from<T, Pane> && std::same_as<typename std::unique_ptr<T, D>::pointer, T*> &&
+                     (!std::is_reference_v<D>) && std::is_nothrow_move_constructible_v<D> &&
+                     std::is_nothrow_destructible_v<D>
+        [[nodiscard]] cxx::expected<void, EAttachmentError>
+        addSubPane(std::unique_ptr<T, D>&& candidate) noexcept
+        {
+            if (!candidate)
+                return cxx::unexpected(EAttachmentError::INVALID_TREE);
+            auto attach = [&]() noexcept -> object::ObjectResult<void>
+            {
+                auto adopted = adoptChild(std::move(candidate));
+                if (!adopted)
+                    return cxx::unexpected(adopted.error());
+                return {};
+            };
+            return addSubPaneImpl(*candidate, attach);
+        }
+
         // Cold-path preparation reserves the complete subtree. Commit is owner-thread and outside callbacks.
         using AttachmentResult = lux::cxx::expected<PreparedAttachment, EAttachmentError>;
         [[nodiscard]] AttachmentResult prepareMount(Pane&);
@@ -142,11 +163,22 @@ namespace lux::ui
         friend class PreparedAttachment;
         friend class Pane;
         friend class Element;
+        [[nodiscard]] cxx::expected<void, EAttachmentError> addSubPaneImpl(
+            Pane&, cxx::function_ref<object::ObjectResult<void>()>
+        ) noexcept;
+        [[nodiscard]] static cxx::expected<void, EAttachmentError> compose(
+            object::LuxObject&, object::LuxObject&, bool replace,
+            cxx::function_ref<object::ObjectResult<void>()>, Element* previous = nullptr
+        ) noexcept;
+        [[nodiscard]] cxx::expected<void, EAttachmentError>
+        prepareRegistration(detail::AttachmentState&, std::size_t removing = 0);
         void registerPane(Pane&);
         void registerElement(Element&);
         void unregisterPane(Pane&, bool notify = true) noexcept;
         void paneLabelChanged() noexcept;
         void unregisterElement(Element&, bool notify = true) noexcept;
+        void releaseSubtree(object::LuxObject&, bool notify) noexcept;
+        static void prepareChildrenRelease(object::LuxObject&) noexcept;
         [[nodiscard]] bool attachmentSafe() const noexcept;
         [[nodiscard]] AttachmentResult prepareAttachment(
             std::span<Pane* const>,

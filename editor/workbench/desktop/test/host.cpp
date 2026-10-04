@@ -67,7 +67,7 @@ namespace
         Window(object::ObjectDispatcherRef dispatcher, const char* id, Facts& facts)
             : Pane(dispatcher, ui::PaneId{id}, ui::PaneTypeId{"p10.test"}, id), body(*this, facts), facts_(facts)
         {
-            setContent(body);
+            assert(setContent(body));
         }
         ~Window() override
         {

@@ -455,7 +455,7 @@ void consumer::checkInspector()
         bool& destroyed;
         bool& released;
         Probe(ui::Element& parent, ui::ElementId id, bool& d, bool& r)
-            : Element(parent, std::move(id)), destroyed(d), released(r)
+            : Element(parent.dispatcherRef(), std::move(id)), destroyed(d), released(r)
         {
         }
         ~Probe() noexcept override

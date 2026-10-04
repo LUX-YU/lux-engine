@@ -1,3 +1,4 @@
+#include <exception>
 #include <lux/engine/editor/workbench/CommandSupport.hpp>
 #include <lux/engine/editor/workbench/ViewFactorySupport.hpp>
 #include <lux/engine/editor/project/ProjectCreationView.hpp>
@@ -86,7 +87,8 @@ namespace lux::editor::project
               cancel_(actions_, lux::ui::ElementId{"cancel"}, "Cancel pending task"),
               new_(actions_, lux::ui::ElementId{"new"}, "Create another project")
         {
-            view.setContent(layout_);
+            if (!view.setContent(layout_))
+                std::terminate(); // Fixed content in a detached Pane.
             view.setModal(true);
             fields_.setStretch({1, 1});
             fields_.setScrollable(false, true);

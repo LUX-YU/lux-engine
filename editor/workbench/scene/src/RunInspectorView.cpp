@@ -1,3 +1,4 @@
+#include <exception>
 #include <lux/engine/editor/scene/RunInspectorView.hpp>
 #include <lux/engine/ui/Layout.hpp>
 #include <lux/engine/editor/scene/SceneInteraction.hpp>
@@ -102,7 +103,8 @@ namespace lux::editor::scene
               layout_(pane, lux::ui::ElementId{"run-inspector"}), message_(layout_, lux::ui::ElementId{"status"}, ""),
               cancel_(layout_, lux::ui::ElementId{"cancel"}, "Cancel field draft")
         {
-            pane.setContent(layout_);
+            if (!pane.setContent(layout_))
+                std::terminate(); // Fixed content in a detached Pane.
             auto connection = object::LuxObject::connect(&cancel_, &lux::ui::Button::activated, [this]() noexcept {
                 cancel_requested_ = true;
             });
@@ -166,6 +168,8 @@ namespace lux::editor::scene
                     auto controls = registered->create(*candidate, lux::ui::ElementId{schema->id.name}, *entry->fields);
                     if (!controls)
                         return cxx::unexpected(controls.error());
+                    if (!candidate->addSubElement(**controls))
+                        return RunInspectorFields::constructionFailure();
                     entry->controls = std::move(*controls);
                     return {};
                 };

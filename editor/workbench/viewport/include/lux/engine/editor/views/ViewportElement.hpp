@@ -35,6 +35,7 @@ namespace lux::editor::views
         }
         ViewportElement(lux::ui::Pane&, lux::ui::ElementId);
         ViewportElement(lux::ui::Element&, lux::ui::ElementId);
+        ViewportElement(object::ObjectDispatcherRef, lux::ui::ElementId);
         ViewportElement(const ViewportElement&) = delete;
         ViewportElement& operator=(const ViewportElement&) = delete;
         ViewportElement(ViewportElement&&) = delete;

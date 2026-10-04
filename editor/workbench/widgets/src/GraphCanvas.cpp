@@ -7,6 +7,11 @@
 namespace lux::editor::widgets
 {
     namespace canvas = ax::NodeEditor;
+    GraphCanvas::GraphCanvas(object::ObjectDispatcherRef dispatcher, lux::ui::ElementId id)
+        : Element(std::move(dispatcher), std::move(id)), canvas_(makeCanvas())
+    {
+        setStretch({1, 1});
+    }
     GraphCanvas::GraphCanvas(lux::ui::Element& parent, lux::ui::ElementId id)
         : Element(parent, std::move(id)), canvas_(makeCanvas())
     {

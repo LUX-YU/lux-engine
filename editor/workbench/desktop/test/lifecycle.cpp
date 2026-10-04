@@ -73,7 +73,7 @@ namespace
             : Pane(std::move(dispatcher), ui::PaneId{name}, ui::PaneTypeId{"test.p08"}, name), content(*this, facts),
               facts_(facts)
         {
-            setContent(content);
+            assert(setContent(content));
         }
         ~Window() override
         {
@@ -423,10 +423,10 @@ namespace
         assert(failed.panes == 1 && failed.elements == 1 && failed.code == 1);
         assert(root->panes().empty() && root->windowRevision() == revision);
         ui::Pane standalone(dispatcher, ui::PaneId{"standalone"}, ui::PaneTypeId{"test"}, "standalone");
-        Standalone layout(dispatcher, ui::ElementId{"standalone-element"});
+        ui::Layout layout(dispatcher, ui::ElementId{"standalone-element"});
         Standalone child(dispatcher, ui::ElementId{"standalone-child"});
-        layout.addChild(child);
-        standalone.setContent(layout);
+        assert(layout.addSubElement(child));
+        assert(standalone.setContent(layout));
         assert(layout.containingPane() == &standalone && child.containingPane() == &standalone);
         auto mount = take(root->prepareMount(standalone));
         auto moved = std::move(mount);

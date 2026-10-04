@@ -270,6 +270,9 @@ namespace lux::object
         [[nodiscard]] ObjectResult<void> detachChild(LuxObject&) noexcept;
         // Call from the derived destructor when children borrow derived members.
         void clearChildren() noexcept;
+        // Revoke callbacks before a typed owner tears down its derived routing/resources.
+        void beginDestruction() noexcept;
+        [[nodiscard]] bool isClosing() const noexcept { return closing_; }
         [[nodiscard]] SignalDelivery emit(TSignal<>& signal) noexcept
         {
             return emitSignal(signal.owner_, signal.storage_.get(), nullptr);
@@ -289,6 +292,9 @@ namespace lux::object
         }
         void beginTreeVisit() noexcept;
         void endTreeVisit() noexcept;
+        // Owner callbacks may change finished child subtrees, but cannot reclaim themselves or ancestors.
+        static void beginCallbackBorrow(LuxObject&) noexcept;
+        static void endCallbackBorrow(LuxObject&) noexcept;
         // Thread-local dispatch fact, including direct events and queued/direct signal callbacks.
         // Hosts use this to keep structural adoption outside borrowed callback stacks.
         [[nodiscard]] static bool isDispatching() noexcept;
@@ -335,6 +341,7 @@ namespace lux::object
         LuxObject* previous_sibling_{};
         LuxObject* next_sibling_{};
         std::size_t active_events_{};
+        std::size_t callback_borrows_{};
         std::unique_ptr<OwnedEdge> owned_edge_;
         bool changing_children_{};
         bool closing_{};

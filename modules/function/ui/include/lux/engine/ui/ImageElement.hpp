@@ -24,6 +24,7 @@ namespace lux::ui
     class LUX_FUNCTION_PUBLIC ImageElement : public Element
     {
     public:
+        ImageElement(object::ObjectDispatcherRef dispatcher, ElementId id);
         ImageElement(Pane& parent, ElementId id);
         ImageElement(Element& parent, ElementId id);
 

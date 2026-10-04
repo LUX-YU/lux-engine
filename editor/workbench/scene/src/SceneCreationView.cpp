@@ -1,3 +1,4 @@
+#include <exception>
 #include <lux/engine/editor/workbench/CommandSupport.hpp>
 #include <lux/engine/editor/workbench/ViewFactorySupport.hpp>
 #include <lux/engine/editor/scene/SceneSessionFactory.hpp>
@@ -41,7 +42,8 @@ namespace lux::editor::scene
               create_(actions_, lux::ui::ElementId{"create"}, "Create scene"),
               message_(layout_, lux::ui::ElementId{"status"})
         {
-            view.setContent(layout_);
+            if (!view.setContent(layout_))
+                std::terminate(); // Fixed content in a detached Pane.
             const auto retain = [&](auto result, object::Connection& connection)
             {
                 if (result)

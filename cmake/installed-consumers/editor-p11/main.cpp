@@ -139,7 +139,7 @@ int main(int argc, char** argv)
         "Configuration"
     };
     ui::Layout configuration_layout{configuration_window, ui::ElementId{"content"}, ui::ELayoutType::VERTICAL};
-    configuration_window.setContent(configuration_layout);
+    assert(configuration_window.setContent(configuration_layout));
     std::optional<lux::editor::scene::ConfigurationControl> configuration;
     {
         auto extension = take(extensions::EditorExtension::load(description, *runtime_plugin));

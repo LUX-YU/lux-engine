@@ -53,6 +53,7 @@ namespace lux::editor::widgets
         object::TSignal<CanvasEdit> edited{*this};
         object::TSignal<std::span<const std::uint64_t>> selected{*this};
         GraphCanvas(lux::ui::Element&, lux::ui::ElementId);
+        GraphCanvas(object::ObjectDispatcherRef, lux::ui::ElementId);
         GraphCanvas(const GraphCanvas&) = delete;
         GraphCanvas& operator=(const GraphCanvas&) = delete;
         GraphCanvas(GraphCanvas&&) = delete;

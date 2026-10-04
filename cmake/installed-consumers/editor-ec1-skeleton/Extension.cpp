@@ -1,3 +1,4 @@
+#include <cassert>
 #include <array>
 #include "Model.hpp"
 #include "Probe.hpp"
@@ -127,7 +128,7 @@ namespace skeleton
                   apply_(layout_, ui::ElementId{"apply"}, "Apply root name and global X"),
                   revert_(layout_, ui::ElementId{"revert"}, "Revert"), error_(layout_, ui::ElementId{"error"})
             {
-                setContent(layout_);
+                assert(setContent(layout_));
                 auto apply = object::LuxObject::connect(&apply_, &ui::Button::activated, this, &Window::queueApply);
                 if (!apply)
                     std::terminate();

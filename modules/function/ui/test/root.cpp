@@ -65,7 +65,7 @@ namespace
             : Pane(parent, lux::ui::PaneId{"child"}, lux::ui::PaneTypeId{"test.lifetime"}, "Child"),
               content_(*this, lifetime, "child-content"), lifetime_(lifetime)
         {
-            setContent(content_);
+            assert(setContent(content_));
         }
         ~LifetimePane() override
         {
@@ -85,7 +85,7 @@ namespace
               resource_{lifetime}, content_(*this, lux::ui::ElementId{"layout"}), fixed_(content_, lifetime, "fixed"),
               child_(*this, lifetime)
         {
-            setContent(content_);
+            assert(setContent(content_));
             fields_.push_back(std::make_unique<LifetimeElement>(content_, lifetime, "first"));
             fields_.push_back(std::make_unique<LifetimeElement>(content_, lifetime, "second"));
             ui_test::mount(root, *this);
@@ -162,7 +162,7 @@ namespace
         void replace() noexcept
         {
             content.emplace(*this); // Deliberate address reuse: old intents must not follow the pointer.
-            setContent(*content);
+            assert(setContent(*content));
         }
     };
 
@@ -304,7 +304,7 @@ namespace
         Probe(Parent& parent, const char* id)
             : lux::ui::Pane(ui_test::parent(parent), lux::ui::PaneId{id}, lux::ui::PaneTypeId{"test.probe"}, id)
         {
-            setContent(probe_content_);
+            assert(setContent(probe_content_));
             ui_test::mount(parent, *this);
         }
         unsigned draws{}, updates{}, keys{}, undo{}, redo{}, moves{}, losses{};
@@ -437,7 +437,7 @@ int main(int argc, char** argv)
         parent.nested = true;
         parent.immediate_input = true;
         ui::Layout layout(parent, ui::ElementId{"content"});
-        parent.setContent(layout);
+        assert(parent.replaceContent(layout));
         ui::ImageElement one(layout, ui::ElementId{"one"});
         ui::ImageElement two(layout, ui::ElementId{"two"});
         one.setStretch({0, 0});

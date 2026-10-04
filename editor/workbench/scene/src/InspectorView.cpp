@@ -1,3 +1,4 @@
+#include <exception>
 #include <lux/engine/editor/scene/InspectorView.hpp>
 #include <lux/engine/ui/Layout.hpp>
 #include <lux/engine/simulation/ecs/WorldEntityMap.hpp>
@@ -121,7 +122,8 @@ namespace lux::editor::scene
               cancel_(actions_, lux::ui::ElementId{"cancel"}, "Cancel field draft"),
               message_(layout_, lux::ui::ElementId{"message"}, "")
         {
-            view.setContent(layout_);
+            if (!view.setContent(layout_))
+                std::terminate(); // Fixed content in a detached Pane.
             auto add = object::LuxObject::connect(&add_, &lux::ui::Button::activated, [this]() noexcept {
                 if (!structure_request_)
                     structure_request_ = EComponentAction::ADD;
@@ -313,6 +315,8 @@ namespace lux::editor::scene
                     auto element = found->create(candidate_root->layout(), lux::ui::ElementId{id.name}, *entry->fields);
                     if (!element)
                         return cxx::unexpected(element.error());
+                    if (!candidate_root->layout().addSubElement(**element))
+                        return InspectorFields::constructionFailure();
                     entry->controls = std::move(*element);
                     return {};
                 };

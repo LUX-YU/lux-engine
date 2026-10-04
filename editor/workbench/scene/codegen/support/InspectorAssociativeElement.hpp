@@ -46,16 +46,25 @@ namespace lux::editor::ui::generated_support
         {
         public:
             Row(TAssociativeFieldElement& owner, Key key, std::size_t index, typename Interaction::Status& status)
-                : lux::ui::Element(owner.layout_, lux::ui::ElementId{"row/" + std::to_string(index)}), owner_(owner),
-                  key_(std::move(key)), layout_(*this, lux::ui::ElementId{"row"}),
-                  key_row_(layout_, lux::ui::ElementId{"key-row"}, lux::ui::ELayoutType::HORIZONTAL),
-                  key_control_(key_row_, lux::ui::ElementId{"key"}, keyValue(key_)),
-                  remove_(key_row_, lux::ui::ElementId{"remove"}, "Remove")
+                : lux::ui::Element(owner.dispatcherRef(), lux::ui::ElementId{"row/" + std::to_string(index)}), owner_(owner),
+                  key_(std::move(key)), layout_(owner.dispatcherRef(), lux::ui::ElementId{"row"}),
+                  key_row_(owner.dispatcherRef(), lux::ui::ElementId{"key-row"}, lux::ui::ELayoutType::HORIZONTAL),
+                  key_control_(owner.dispatcherRef(), lux::ui::ElementId{"key"}, keyValue(key_)),
+                  remove_(owner.dispatcherRef(), lux::ui::ElementId{"remove"}, "Remove")
             {
+                if (!this->addSubElement(layout_) ||
+                    !layout_.addSubElement(key_row_) ||
+                    !key_row_.addSubElement(key_control_) ||
+                    !key_row_.addSubElement(remove_))
+                {
+                    status = Interaction::constructionFailure();
+                    return;
+                }
                 this->setStretch({1, 0});
                 key_control_.setEnabled(!owner.read_only_);
                 remove_.setEnabled(!owner.read_only_);
                 if constexpr (mapping)
+                {
                     value_ = ItemFactory::create(
                         layout_,
                         lux::ui::ElementId{std::string(owner.id().name()) + "/value/" + std::to_string(index)},
@@ -67,6 +76,9 @@ namespace lux::editor::ui::generated_support
                         owner.read_only_,
                         MappedAccess{owner.access_, key_}
                     );
+                    if (!layout_.addSubElement(*value_))
+                        status = Interaction::constructionFailure();
+                }
                 connections_[0] = takeConnection<Interaction>(
                     lux::object::LuxObject::connect(
                         std::addressof(key_control_),
@@ -170,15 +182,26 @@ namespace lux::editor::ui::generated_support
             bool read_only,
             Access access
         )
-            : Base(parent, std::move(id)), editing_(editing), target_(target), interaction_(interaction),
+            : Base(parent.dispatcherRef(), std::move(id)), editing_(editing), target_(target), interaction_(interaction),
               access_(std::move(access)), label_(std::move(label)), read_only_(read_only),
-              layout_(*this, lux::ui::ElementId{"associative"}), title_(layout_, lux::ui::ElementId{"title"}, label_),
-              toolbar_(layout_, lux::ui::ElementId{"toolbar"}, lux::ui::ELayoutType::HORIZONTAL),
-              previous_(toolbar_, lux::ui::ElementId{"previous"}, "Previous page"),
-              next_(toolbar_, lux::ui::ElementId{"next"}, "Next page"),
-              insertion_(toolbar_, lux::ui::ElementId{"new-key"}, keyValue(Key{})),
-              add_(toolbar_, lux::ui::ElementId{"add"}, "Add key")
+              layout_(parent.dispatcherRef(), lux::ui::ElementId{"associative"}), title_(parent.dispatcherRef(), lux::ui::ElementId{"title"}, label_),
+              toolbar_(parent.dispatcherRef(), lux::ui::ElementId{"toolbar"}, lux::ui::ELayoutType::HORIZONTAL),
+              previous_(parent.dispatcherRef(), lux::ui::ElementId{"previous"}, "Previous page"),
+              next_(parent.dispatcherRef(), lux::ui::ElementId{"next"}, "Next page"),
+              insertion_(parent.dispatcherRef(), lux::ui::ElementId{"new-key"}, keyValue(Key{})),
+              add_(parent.dispatcherRef(), lux::ui::ElementId{"add"}, "Add key")
         {
+            if (!this->addSubElement(layout_) ||
+                !layout_.addSubElement(title_) ||
+                !layout_.addSubElement(toolbar_) ||
+                !toolbar_.addSubElement(previous_) ||
+                !toolbar_.addSubElement(next_) ||
+                !toolbar_.addSubElement(insertion_) ||
+                !toolbar_.addSubElement(add_))
+            {
+                status = Interaction::constructionFailure();
+                return;
+            }
             this->setStretch({1, 0});
             connections_[0] = takeConnection<Interaction>(
                 lux::object::LuxObject::connect(
@@ -277,9 +300,23 @@ namespace lux::editor::ui::generated_support
                         return;
                     typename Interaction::Status status;
                     std::vector<std::unique_ptr<Row>> candidate;
+                    auto candidate_layout = std::make_unique<lux::ui::Layout>(
+                        this->dispatcherRef(), lux::ui::ElementId{"rows"}
+                    );
                     candidate.reserve(keys.size());
                     for (std::size_t i{}; i < keys.size(); ++i)
+                    {
                         candidate.push_back(std::make_unique<Row>(*this, keys[i], first_ + i, status));
+                        if (!candidate_layout->addSubElement(*candidate.back()))
+                            status = Interaction::constructionFailure();
+                    }
+                    if (status)
+                    {
+                        auto attached = rows_layout_ ? layout_.replaceSubElement(*rows_layout_, *candidate_layout)
+                                                     : layout_.addSubElement(*candidate_layout);
+                        if (!attached)
+                            status = Interaction::constructionFailure();
+                    }
                     if (!status)
                     {
                         if (initial)
@@ -288,6 +325,7 @@ namespace lux::editor::ui::generated_support
                         return;
                     }
                     rows_ = std::move(candidate);
+                    rows_layout_ = std::move(candidate_layout);
                 }
                 observed_version_ = version();
                 synchronized_ = true;
@@ -349,6 +387,7 @@ namespace lux::editor::ui::generated_support
         lux::ui::Button previous_, next_;
         KeyControl insertion_;
         lux::ui::Button add_;
+        std::unique_ptr<lux::ui::Layout> rows_layout_;
         std::vector<std::unique_ptr<Row>> rows_;
         std::vector<Key> page_keys_;
         std::array<object::Connection, 3> connections_;

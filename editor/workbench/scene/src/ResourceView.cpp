@@ -1,3 +1,4 @@
+#include <exception>
 #include <lux/engine/editor/scene/ResourceView.hpp>
 #include <lux/engine/ui/Element.hpp>
 #include <lux/engine/editor/scene/SceneView.hpp>
@@ -143,7 +144,8 @@ namespace lux::editor::scene
         : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{"lux.editor.resources"}, "Resources"),
           impl_(std::make_unique<Impl>(*this, runtime))
     {
-        setContent(impl_->content_);
+        if (!setContent(impl_->content_))
+            std::terminate(); // Fixed content in a detached Pane.
     }
     ResourceView::~ResourceView() noexcept = default;
     render::RenderResult<void> ResourceView::rebind(std::optional<ResourceViewBinding> binding)

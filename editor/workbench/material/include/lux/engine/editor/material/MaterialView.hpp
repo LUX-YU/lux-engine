@@ -54,6 +54,7 @@ namespace lux::editor::material
         scene::ProjectionFailure,
         render::RendererFailure,
         views::EViewError,
+        lux::ui::EAttachmentError,
         std::string_view>;
     template <class T> using MaterialViewResult = cxx::expected<T, VMaterialViewFailure>;
     class MaterialView final : public lux::ui::Pane

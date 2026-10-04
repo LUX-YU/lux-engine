@@ -1,3 +1,4 @@
+#include <exception>
 #include <lux/engine/editor/workbench/CommandSupport.hpp>
 #include <lux/engine/editor/workbench/ViewFactorySupport.hpp>
 #include <lux/engine/editor/project/ImportView.hpp>
@@ -118,7 +119,8 @@ namespace lux::editor::project
         : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{kFactoryDescriptor.type.name()}, "Import Assets"),
           impl_(std::make_unique<Impl>(*this, catalog, importer))
     {
-        setContent(impl_->content);
+        if (!setContent(impl_->content))
+            std::terminate(); // Fixed content in a detached Pane.
     }
     ImportView::~ImportView() noexcept = default;
     void ImportView::setSource(std::filesystem::path file)

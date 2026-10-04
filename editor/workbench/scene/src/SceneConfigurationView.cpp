@@ -1,3 +1,4 @@
+#include <exception>
 #include <lux/engine/editor/scene/SceneConfigurationView.hpp>
 #include <lux/engine/ui/Controls.hpp>
 #include <lux/engine/ui/Layout.hpp>
@@ -48,7 +49,8 @@ namespace lux::editor::scene
               revert_(actions_, lux::ui::ElementId{"revert"}, "Revert draft"),
               message_(layout_, lux::ui::ElementId{"status"})
         {
-            view.setContent(layout_);
+            if (!view.setContent(layout_))
+                std::terminate(); // Fixed content in a detached Pane.
             const auto connect = [&](auto& button, bool& flag, auto& connection) {
                 auto result = object::LuxObject::connect(&button, &lux::ui::Button::activated, [&flag]() noexcept {
                     flag = true;

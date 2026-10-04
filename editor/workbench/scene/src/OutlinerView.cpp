@@ -1,3 +1,4 @@
+#include <exception>
 #include <lux/engine/editor/scene/OutlinerView.hpp>
 #include <lux/engine/editor/widgets/TreeRows.hpp>
 #include <lux/engine/editor/scene/SceneAlgorithms.hpp>
@@ -117,7 +118,8 @@ namespace lux::editor::scene
         )
             : view_(view), sessions_(sessions), schemas_(std::move(schemas)), runs_(runs), content_(view, *this)
         {
-            view.setContent(content_);
+            if (!view.setContent(content_))
+                std::terminate(); // Fixed content in a detached Pane.
         }
         void visibleRows()
         {

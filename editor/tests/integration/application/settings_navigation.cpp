@@ -30,7 +30,7 @@ namespace
               layout(*this, ui::ElementId{"layout"}, ui::ELayoutType::VERTICAL),
               settings(layout, ui::ElementId{"settings"}, std::move(input))
         {
-            setContent(layout);
+            assert(setContent(layout));
         }
     };
 } // namespace

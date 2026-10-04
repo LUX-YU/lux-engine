@@ -34,7 +34,8 @@ namespace lux::editor::flowforge
         LinkSettings linker;
     };
     using VFlowViewFailure =
-        std::variant<FlowEditError, VFlowCompilationFailure, persistence::PersistenceFailure, views::EViewError>;
+        std::variant<FlowEditError, VFlowCompilationFailure, persistence::PersistenceFailure,
+            views::EViewError, lux::ui::EAttachmentError>;
     template <class T> using FlowViewResult = cxx::expected<T, VFlowViewFailure>;
     class FlowView final : public lux::ui::Pane
     {

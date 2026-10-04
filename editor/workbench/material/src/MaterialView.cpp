@@ -227,8 +227,8 @@ namespace lux::editor::material
             };
             std::vector<Picker> pickers_;
             std::string name_;
-            explicit Properties(lux::ui::Element& parent, Impl& state)
-                : Element(parent, lux::ui::ElementId{"properties"}), state_(state)
+            explicit Properties(object::ObjectDispatcherRef dispatcher, Impl& state)
+                : Element(std::move(dispatcher), lux::ui::ElementId{"properties"}), state_(state)
             {
                 setStretch({1, 1});
             }
@@ -239,7 +239,7 @@ namespace lux::editor::material
                 {
                     const auto index = pickers_.size();
                     auto picker = std::make_unique<project::AssetPickerElement>(
-                        *this,
+                        dispatcherRef(),
                         lux::ui::ElementId{"texture-" + std::to_string(index)},
                         state_.services_.assets,
                         asset::TextureAsset::primary_magic,
@@ -258,6 +258,11 @@ namespace lux::editor::material
                     if (!connected)
                     {
                         state_.status_ = rejected(views::EViewError::CAPACITY);
+                        return;
+                    }
+                    if (auto attached = addSubElement(*picker); !attached)
+                    {
+                        state_.status_ = rejected(attached.error());
                         return;
                     }
                     pickers_.push_back({std::move(picker), std::move(*connected)});
@@ -446,13 +451,30 @@ namespace lux::editor::material
         bool motion_pending_{}, camera_pending_{};
         Impl(MaterialView& view, MaterialViewServices services, MaterialViewState state)
             : view_(view), services_(services), state_(state),
-              layout_(view, lux::ui::ElementId{"content"}, lux::ui::ELayoutType::HORIZONTAL),
-              side_(layout_, lux::ui::ElementId{"side"}), graph_(layout_, lux::ui::ElementId{"graph"}),
-              viewport_(side_, lux::ui::ElementId{"preview"}), properties_(side_, *this)
+              layout_(view.dispatcherRef(), lux::ui::ElementId{"content"}, lux::ui::ELayoutType::HORIZONTAL),
+              side_(view.dispatcherRef(), lux::ui::ElementId{"side"}),
+              graph_(view.dispatcherRef(), lux::ui::ElementId{"graph"}),
+              viewport_(view.dispatcherRef(), lux::ui::ElementId{"preview"}), properties_(view.dispatcherRef(), *this)
         {
             side_.setStretch({1, 1});
             graph_.setStretch({2, 1});
-            view.setContent(layout_);
+            for (auto* child : std::array<lux::ui::Element*, 2>{&viewport_, &properties_})
+                if (auto result = side_.addSubElement(*child); !result)
+                {
+                    status_ = rejected(result.error());
+                    return;
+                }
+            for (auto* child : std::array<lux::ui::Element*, 2>{&side_, &graph_})
+                if (auto result = layout_.addSubElement(*child); !result)
+                {
+                    status_ = rejected(result.error());
+                    return;
+                }
+            if (auto result = view.setContent(layout_); !result)
+            {
+                status_ = rejected(result.error());
+                return;
+            }
             auto changed = object::LuxObject::connect(
                 &graph_,
                 &widgets::GraphCanvas::edited,

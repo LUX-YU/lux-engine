@@ -56,7 +56,8 @@ int main()
     assert(!view->requestOpen(ref) && opens == 1);
     ui::Pane pane(messages.dispatcherRef(), ui::PaneId{"picker"}, ui::PaneTypeId{"picker"}, "Picker");
     ui::Layout layout(pane, ui::ElementId{"layout"});
-    project::AssetPickerElement picker(layout, ui::ElementId{"asset"}, &source, 13);
+    project::AssetPickerElement picker(messages.dispatcherRef(), ui::ElementId{"asset"}, &source, 13);
+    assert(layout.addSubElement(picker));
     unsigned edits{};
     auto connection = take(object::LuxObject::connect(
         &picker,

@@ -137,6 +137,11 @@ namespace lux::ui
         [[nodiscard]] cxx::expected<PaneHandle, EAttachmentError> identify(const Pane&) const noexcept;
         // A borrowed pointer valid only until the next callback or structure change.
         [[nodiscard]] cxx::expected<Pane*, EAttachmentError> findPane(const PaneHandle&) const noexcept;
+        // Synchronous owner-stage access. The original Object borrow protects this Root and window
+        // through callbacks/retirement; no pointer escapes and no second window owner is introduced.
+        // The callback may update its content, but removal and nested root maintenance are refused.
+        [[nodiscard]] cxx::expected<void, EAttachmentError>
+        withPane(const PaneHandle&, cxx::function_ref<void(Pane&)>) noexcept;
         void showPanes() noexcept;
         [[nodiscard]] Pane* focusedPane() const noexcept;
         [[nodiscard]] bool requestFocus(Pane&) noexcept;

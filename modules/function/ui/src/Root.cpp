@@ -601,6 +601,29 @@ namespace lux::ui
         return pane;
     }
 
+    cxx::expected<void, EAttachmentError>
+    Root::withPane(const PaneHandle& handle, cxx::function_ref<void(Pane&)> visit) noexcept
+    {
+        auto resolved = findPane(handle);
+        if (!resolved)
+        {
+            return cxx::unexpected(resolved.error());
+        }
+        if (!attachmentSafe())
+        {
+            return cxx::unexpected(EAttachmentError::BUSY);
+        }
+        auto& pane = **resolved;
+        beginCallbackBorrow(*this);
+        beginCallbackBorrow(pane);
+        impl_->active_change = &pane;
+        visit(pane);
+        impl_->active_change = nullptr;
+        endCallbackBorrow(pane);
+        endCallbackBorrow(*this);
+        return {};
+    }
+
     Pane* Root::findPane(PaneIdView id) const noexcept
     {
         requireOwner();
@@ -678,7 +701,7 @@ namespace lux::ui
     {
         requireOwner();
         const bool is_active_visit = impl_->drawing || impl_->updating || impl_->layout_depth != 0;
-        const bool is_active_callback = impl_->change_batch_size != 0 || isDispatching();
+        const bool is_active_callback = impl_->change_batch_size != 0 || impl_->active_change || isDispatching();
         if (is_active_visit || is_active_callback)
             return lux::cxx::unexpected(ECaptureError::FRAME_OPEN);
         lux::cxx::expected<void, ECaptureError> result;
@@ -925,7 +948,7 @@ namespace lux::ui
     void Root::Impl::applyPendingChanges() noexcept
     {
         const bool is_active_visit = drawing || updating || layout_depth != 0;
-        const bool is_active_callback = change_batch_size != 0 || Root::isDispatching();
+        const bool is_active_callback = change_batch_size != 0 || active_change || Root::isDispatching();
         if (is_active_visit || is_active_callback)
             detail::failContract();
         change_batch_size = changes.size();

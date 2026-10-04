@@ -51,6 +51,7 @@ namespace
         void (*on_update)(Window&) noexcept {};
         object::ObjectMessageQueue* messages{};
         void receive(const unsigned&) noexcept { ++counts_.callbacks; }
+        bool dispatching() const noexcept { return isDispatching(); }
     private:
         void update() noexcept override { if (on_update) on_update(*this); }
         Counts& counts_;
@@ -405,6 +406,46 @@ namespace
         assert(counts.destroyed == 32);
         std::cout << "UI same address/PaneId reopens do not inherit queued requests or signal receivers PASS\n";
     }
+
+    void synchronousBorrow(object::ObjectMessageQueue& messages)
+    {
+        Counts counts;
+        auto root = ui::Root::create(messages.dispatcherRef());
+        assert(root);
+        auto owner = std::make_unique<Window>(messages.dispatcherRef(), "borrowed", counts);
+        auto* window = owner.get();
+        assert((*root)->addSubPane(std::move(owner)));
+        const auto handle = *(*root)->identify(*window);
+        bool called{};
+        auto forbidden = [](ui::Pane&) { std::abort(); };
+        std::thread wrong_thread([&]
+        {
+            auto result = (*root)->withPane(handle, forbidden);
+            assert(!result && result.error() == ui::EAttachmentError::WRONG_THREAD);
+        });
+        wrong_thread.join();
+        auto visit = [&](ui::Pane& pane)
+        {
+            called = true;
+            assert(&pane == window && !window->dispatching());
+            auto nested = (*root)->withPane(handle, forbidden);
+            assert(!nested && nested.error() == ui::EAttachmentError::BUSY);
+            auto removed = (*root)->removeSubPane(pane);
+            assert(!removed && removed.error() == ui::EAttachmentError::BUSY);
+            auto maintained = (*root)->update({}, nullptr);
+            assert(!maintained && maintained.error() == ui::ECaptureError::FRAME_OPEN);
+            // Rebinding can replace this owner's content without treating the call as an input signal.
+            auto content = std::make_unique<ui::Layout>(messages.dispatcherRef(), ui::ElementId{"local"});
+            assert(pane.setContent(std::move(content)));
+            assert(pane.requestDestruction());
+            assert(messages.collectRetired() == 0 && counts.destroyed == 0);
+        };
+        assert((*root)->withPane(handle, visit) && called);
+        assert(messages.collectRetired() == 1 && counts.destroyed == 1);
+        auto stale = (*root)->withPane(handle, forbidden);
+        assert(!stale && stale.error() == ui::EAttachmentError::NOT_ATTACHED);
+        std::cout << "UI synchronous borrow protects original owner and rejects nested maintenance/retirement PASS\n";
+    }
 }
 
 int main()
@@ -422,6 +463,7 @@ int main()
     retiredLayout(messages);
     ownedBatch(messages);
     identityReuse(messages);
+    synchronousBorrow(messages);
     static_cast<void>(messages.collectRetired());
     assert(messages.pendingRetirements() == 0);
 }

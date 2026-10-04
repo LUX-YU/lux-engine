@@ -1084,8 +1084,17 @@ namespace
         assert(a->previewEdit(edits) && a->binding()->interaction->overlay());
         assert(!b->binding()->interaction->overlay());
         assert(model->describe().current == initial.current && take(take(model->read()).encode()) == bytes);
-        auto failed_binding = b->rebindContent({{sessions::SessionId{}}, sessions::SessionId{}});
-        assert(!failed_binding && b->binding()->session == key && a->binding()->interaction->overlay());
+        auto rebind = [&](lux::ui::Pane& pane)
+        {
+            auto& target = static_cast<ef::FlowView&>(pane);
+            auto failed_binding = target.rebindContent({{sessions::SessionId{}}, sessions::SessionId{}});
+            assert(!failed_binding && target.binding()->session == key && a->binding()->interaction->overlay());
+            assert(target.rebindContent({}));
+            assert(!target.binding());
+            assert(target.rebindContent({{key.id()}, key.id()}));
+            assert(target.binding()->session == key);
+        };
+        assert(root.withPane(b_handle, rebind));
         assert(a->cancelEdit());
         const auto operation = take(a->compile());
         auto compiler = take(services.get<ef::FlowCompilationService>(scope));

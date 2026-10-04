@@ -1,3 +1,4 @@
+#include "ObjectQueue.hpp"
 #include <lux/engine/editor/editing/EditExecutor.hpp>
 #include <lux/engine/editor/views/ViewFactory.hpp>
 #include <lux/engine/object/ObjectEvent.hpp>
@@ -241,7 +242,8 @@ namespace
         std::unique_ptr<lux::scene::RenderResources> resources;
         std::unique_ptr<lux::scene::SceneRuntime> runtime;
         std::unique_ptr<author::ScenePresentationHub> hub;
-        sessions::SessionStore store{4};
+        lux::test::ObjectQueue store_messages;
+        sessions::SessionStore store{store_messages.dispatcherRef(), 4};
         object::ObjectMessageQueue messages{take(object::ObjectMessageQueue::create(256))};
         editor::commands::CommandRegistry commands;
         editor::commands::CommandDispatcher dispatcher{commands};

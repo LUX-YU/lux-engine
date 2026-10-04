@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/object/CodeLease.hpp>
+#include <lux/engine/object/ObjectDispatcher.hpp>
 #include <lux/engine/editor/sessions/IEditSession.hpp>
 #include <lux/cxx/compile_time/TypeToken.hpp>
 #include <concepts>
@@ -35,7 +36,7 @@ namespace lux::editor::sessions
     class LUX_EDIT_SESSIONS_PUBLIC SessionStore final
     {
     public:
-        explicit SessionStore(std::size_t capacity);
+        explicit SessionStore(object::ObjectDispatcherRef dispatcher, std::size_t capacity);
         ~SessionStore() noexcept;
         SessionStore(const SessionStore&) = delete;
         SessionStore& operator=(const SessionStore&) = delete;
@@ -80,6 +81,15 @@ namespace lux::editor::sessions
         {
             return TSessionAccess<T>{*this};
         }
+        // Shares the actual allocation. Logical close invalidates the key and closes the original
+        // session gate even while this reference remains alive. Final reclamation uses the dispatcher.
+        template <class T> [[nodiscard]] SessionResult<std::shared_ptr<T>> share(TSessionKey<T> key) const noexcept
+        {
+            auto owner = share(key.id(), cxx::typeToken<T>());
+            if (!owner)
+                return cxx::unexpected(owner.error());
+            return std::static_pointer_cast<T>(std::move(*owner));
+        }
         [[nodiscard]] SessionResult<SessionInfo> describe(SessionId id) const;
         // An owning, fixed published set. Hidden preparations are excluded; each later use checks generation.
         [[nodiscard]] SessionResult<std::vector<SessionId>> snapshotIds() const;
@@ -100,6 +110,7 @@ namespace lux::editor::sessions
         [[nodiscard]] SessionResult<void> prepare(const SessionReservation&, lux::cxx::TypeToken, const IEditSession&);
         void install(SessionId id, std::unique_ptr<IEditSession> candidate) noexcept;
         [[nodiscard]] SessionResult<IEditSession*> find(SessionId, lux::cxx::TypeToken = {}) const noexcept;
+        [[nodiscard]] SessionResult<std::shared_ptr<IEditSession>> share(SessionId, cxx::TypeToken) const noexcept;
         [[nodiscard]] SessionResult<SessionId> reservedKey(const SessionReservation&, lux::cxx::TypeToken)
             const noexcept;
         void abandon(SessionId id) noexcept;

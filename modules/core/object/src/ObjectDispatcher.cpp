@@ -253,18 +253,25 @@ namespace lux::object
     {
         if (this != &other)
         {
-            close();
-            if (pendingRetirements())
-                detail::failObjectContract();
+            closeAndReclaim();
             state_ = std::move(other.state_);
         }
         return *this;
     }
     ObjectMessageQueue::~ObjectMessageQueue()
     {
+        closeAndReclaim();
+    }
+    void ObjectMessageQueue::closeAndReclaim() noexcept
+    {
         close();
-        if (pendingRetirements())
-            detail::failObjectContract(); // The affinity provider must outlive its accepted owners.
+        while (pendingRetirements())
+        {
+            // Each fixed batch may surrender dependent owners. No waiting, business dispatch or
+            // forced deletion: a live external owner or active callback must not outlive this provider.
+            if (!collectRetired())
+                detail::failObjectContract();
+        }
     }
     ObjectDispatcherRef ObjectMessageQueue::dispatcherRef() const noexcept
     {

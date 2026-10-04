@@ -1,3 +1,4 @@
+#include "ObjectQueue.hpp"
 #include "AssetSceneFixture.hpp"
 #include <lux/engine/editor/scene/RunController.hpp>
 #include <lux/engine/editor/sessions/SessionStore.hpp>
@@ -7,7 +8,8 @@ int main(int argc, char** argv)
     Fixture fixture{argv[1], argv[2]};
     using namespace lux::editor;
     namespace editing_scene = lux::editor::scene;
-    sessions::SessionStore authors{2};
+    lux::test::ObjectQueue authors_messages;
+    sessions::SessionStore authors{authors_messages.dispatcherRef(), 2};
     auto reservation = take(authors.reserve<editing_scene::SceneSession>({"lux.editor.scene"}, lux::object::CodeLease::builtin()));
     auto author = take(editing_scene::SceneSession::create(reservation.id(),
         sessions::BoundSource{SceneId, "scene.lux"}, take(editing_scene::SceneSource::create(fixture.package, fixture.schemas))));

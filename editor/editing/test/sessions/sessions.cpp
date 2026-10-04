@@ -1,3 +1,4 @@
+#include "ObjectQueue.hpp"
 #include <lux/engine/editor/editing/EditExecutor.hpp>
 #include <lux/engine/editor/sessions/SessionStore.hpp>
 #include <lux/engine/editor/editing/EditHistory.hpp>
@@ -214,7 +215,8 @@ namespace
 
     void descriptionExceptionRecovery()
     {
-        SessionStore store{2};
+        lux::test::ObjectQueue store_messages;
+        SessionStore store{store_messages.dispatcherRef(), 2};
         auto reserved = store.reserve<FakeSession>({"test.fake"}, lux::object::CodeLease::builtin());
         auto candidate = std::make_unique<FakeSession>(reserved->id());
         auto* session = candidate.get();
@@ -240,7 +242,8 @@ namespace
     }
     bool closeContent(bool throws)
     {
-        SessionStore store{1};
+        lux::test::ObjectQueue store_messages;
+        SessionStore store{store_messages.dispatcherRef(), 1};
         auto reserved = store.reserve<FakeSession>({"test.fake"}, lux::object::CodeLease::builtin());
         BoundSource binding;
         binding.location.assign(32768, 'x');
@@ -267,6 +270,7 @@ namespace
         std::size_t final_calls{};
         session->observeDescriptionCount(final_calls);
         assert(store.close(*permit) && store.size() == 0);
+        assert(store_messages.collect() == 1);
         const bool used_description = final_calls != calls;
         std::printf(
             "%s X01-R1-0%d: close describe calls before=%zu after=%zu long_binding=32768\n",
@@ -281,7 +285,8 @@ namespace
     void publishedCodeLifetime()
     {
         std::vector<int> order;
-        SessionStore store{1};
+        lux::test::ObjectQueue store_messages;
+        SessionStore store{store_messages.dispatcherRef(), 1};
         auto code = std::shared_ptr<const void>(new int{}, [&order](const void* p) {
             order.push_back(3);
             delete static_cast<const int*>(p);
@@ -292,6 +297,7 @@ namespace
         assert(store.prepare(*reserved, session) && store.publish(*reserved));
         auto permit = store.prepareClose(store.describe(reserved->id())->current);
         assert(permit && store.close(*permit));
+        assert(store_messages.collect() == 1);
         assert((order == std::vector<int>{1, 2, 3}));
         std::puts("PASS X01-R1-05: published close destroys history, source, then code");
     }
@@ -342,7 +348,8 @@ namespace
     }
     void slotsAndPermits()
     {
-        SessionStore store{1};
+        lux::test::ObjectQueue store_messages;
+        SessionStore store{store_messages.dispatcherRef(), 1};
         auto reservation = store.reserve<FakeSession>({"test.fake"}, lux::object::CodeLease::builtin());
         assert(reservation && store.size() == 0);
         const auto first = reservation->id();
@@ -352,7 +359,8 @@ namespace
         assert(store.publish(*reservation) && store.size() == 1);
         auto key = store.key<FakeSession>(first);
         assert(key && !store.key<OtherSession>(first));
-        SessionStore other{1};
+        lux::test::ObjectQueue other_messages;
+        SessionStore other{other_messages.dispatcherRef(), 1};
         assert(!other.key<FakeSession>(first));
         bool wrong_thread{};
         std::thread thread([&] { wrong_thread = store.describe(first).error() == ESessionError::WRONG_THREAD; });
@@ -409,7 +417,8 @@ namespace
     }
     void candidatesAndCode()
     {
-        SessionStore store{1};
+        lux::test::ObjectQueue store_messages;
+        SessionStore store{store_messages.dispatcherRef(), 1};
         assert(!store.reserve<FakeSession>({"test.fake"}, lux::object::CodeLease::plugin({})));
         std::vector<int> order;
         {
@@ -427,11 +436,13 @@ namespace
             assert(store.prepare(*reservation, candidate));
             assert(order.empty() && store.size() == 0);
         }
+        assert(store_messages.collect() == 1);
         assert((order == std::vector<int>{1, 2, 3}) && store.size() == 0);
     }
     void closeSet()
     {
-        SessionStore store{3};
+        lux::test::ObjectQueue store_messages;
+        SessionStore store{store_messages.dispatcherRef(), 3};
         std::vector<FakeSession*> models;
         std::vector<SessionId> ids;
         for (int i{}; i < 2; ++i)

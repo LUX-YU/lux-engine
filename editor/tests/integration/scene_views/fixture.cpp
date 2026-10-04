@@ -1,3 +1,4 @@
+#include "ObjectQueue.hpp"
 #include "run_system.hpp"
 #include "scene_source_checks.hpp"
 #include <lux/engine/editor/scene/SceneSession.hpp>
@@ -430,7 +431,8 @@ int main(int argc, char** argv)
                 if (schema.snapshot == simulation::ecs::EComponentSnapshotPolicy::COPY)
                     known.push_back(schema);
         auto catalog = take(simulation::ecs::ComponentSchemaSet::build(std::move(known)));
-        editor::sessions::SessionStore store{1};
+        lux::test::ObjectQueue store_messages;
+        editor::sessions::SessionStore store{store_messages.dispatcherRef(), 1};
         auto slot =
             take(store.reserve<author::SceneSession>({"lux.editor.scene"}, lux::object::CodeLease::builtin()));
         auto model =

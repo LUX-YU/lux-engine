@@ -27,6 +27,7 @@ namespace lux::editor::sessions
         friend class SessionStore;
         ClosePermit(EditGate& gate, ContentStamp stamp) noexcept;
         void release() noexcept;
+        void commit() noexcept;
         EditGate* gate_{};
         ContentStamp stamp_;
         const IEditSession* owner_{}; // Set only by the Store that obtained the private close authorization.

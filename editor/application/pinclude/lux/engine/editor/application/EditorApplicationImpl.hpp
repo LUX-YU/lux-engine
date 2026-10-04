@@ -235,7 +235,7 @@ namespace lux::editor::application
         } files_;
         persistence::WriteCoordinator writes_;
         persistence::SaveService saves_{writes_};
-        sessions::SessionStore sessions_{128};
+        sessions::SessionStore sessions_{messages_.dispatcherRef(), 128};
         persistence::SaveExecution save_execution_;
         std::unique_ptr<assets::ModelImporter> importer_;
         std::unique_ptr<ProjectCreation> project_creation_;

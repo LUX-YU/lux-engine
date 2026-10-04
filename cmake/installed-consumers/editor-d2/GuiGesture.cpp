@@ -1,3 +1,4 @@
+#include "../../test-support/ObjectQueue.hpp"
 #include <consumer/Domain.hpp>
 #include <consumer/Gui.hpp>
 #include <lux/engine/editor/scene/SceneAlgorithms.hpp>
@@ -147,7 +148,8 @@ void consumer::checkInspector()
 {
     auto queue = take(object::ObjectMessageQueue::create(128));
     auto root = take(ui::Root::create(queue.dispatcherRef(), {.docking = false}));
-    sessions::SessionStore store{4};
+    lux::test::ObjectQueue store_messages;
+    sessions::SessionStore store{store_messages.dispatcherRef(), 4};
     desktop::ViewHost host(*root);
     const auto generated = consumer::schemas();
     std::vector<simulation::ecs::ComponentSchema> copies;

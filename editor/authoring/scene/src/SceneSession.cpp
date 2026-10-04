@@ -33,10 +33,14 @@ namespace lux::editor::scene
     }
     SceneEditResult<void> SceneSession::Impl::available() const noexcept
     {
-        if (owner != std::this_thread::get_id())
-            return detail::rejected(ESceneEditError::WRONG_THREAD);
-        if (state.admission() != sessions::EEditAdmission::AVAILABLE)
-            return detail::rejected(ESceneEditError::BUSY);
+        if (auto ready = state.gate().canEnter(); !ready)
+        {
+            if (ready.error() == sessions::ESessionError::WRONG_THREAD)
+                return detail::rejected(ESceneEditError::WRONG_THREAD);
+            if (ready.error() == sessions::ESessionError::BUSY)
+                return detail::rejected(ESceneEditError::BUSY);
+            return lux::cxx::unexpected(SceneEditError{ready.error()});
+        }
         return {};
     }
     sessions::ContentStamp SceneSession::Impl::content() const noexcept

@@ -1,21 +1,22 @@
+#include "ObjectQueue.hpp"
 #include <lux/engine/editor/sessions/SessionStore.hpp>
 #include <lux/engine/editor/scene/SceneSession.hpp>
-#include <lux/engine/editor/sessions/SessionStore.hpp>
 #include <lux/engine/editor/material/MaterialSession.hpp>
-#include <lux/engine/editor/sessions/SessionStore.hpp>
 #include <lux/engine/editor/flowforge/FlowSession.hpp>
 #include <lux/engine/material/graph/Nodes.hpp>
 #include <lux/engine/flowforge/graph/ControlNode.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include <cassert>
 #include <cstdio>
+#include <thread>
 
 int main()
 {
     using namespace lux;
     using namespace lux::editor;
     using lux::object::CodeLease;
-    sessions::SessionStore store{3};
+    lux::test::ObjectQueue store_messages;
+    sessions::SessionStore store{store_messages.dispatcherRef(), 3};
     const asset::AssetId root{*uuids::uuid::from_string("12345678-1234-1234-1234-123456789abc")};
     auto scene_reservation =
         store.reserve<lux::editor::scene::SceneSession>({"lux.editor.scene"}, CodeLease::builtin());
@@ -63,6 +64,16 @@ int main()
     auto material_key = store.key<lux::editor::material::MaterialSession>(*material_id);
     auto flow_key = store.key<lux::editor::flowforge::FlowSession>(*flow_id);
     assert(scene_key && material_key && flow_key);
+    auto shared_scene = store.share(*scene_key);
+    auto shared_material = store.share(*material_key);
+    auto shared_flow = store.share(*flow_key);
+    assert(shared_scene && shared_material && shared_flow);
+    assert(shared_scene->get() == scene_owner && shared_material->get() == material_owner);
+    assert(shared_flow->get() == flow_owner);
+    auto same_material = store.share(*material_key);
+    assert(same_material && !same_material->owner_before(*shared_material));
+    assert(!shared_material->owner_before(*same_material));
+    same_material->reset();
     assert(store.access<lux::editor::scene::SceneSession>().read(*scene_key));
     assert(store.access<lux::editor::material::MaterialSession>().edit(*material_key));
     assert(store.access<lux::editor::flowforge::FlowSession>().edit(*flow_key));
@@ -82,11 +93,22 @@ int main()
     auto frozen_material = material_owner->capture();
     auto frozen_scene = scene_owner->capture();
     assert(frozen_flow && frozen_material && frozen_scene);
+    auto old_scene_read = scene_owner->read();
+    auto old_material_read = material_owner->read();
+    auto old_flow_read = flow_owner->read();
+    assert(old_scene_read && old_material_read && old_flow_read);
     const auto flow_before = flow_owner->describe();
     auto material_close = store.prepareClose(material_owner->describe().current);
     assert(material_close);
     assert(store.close(*material_close));
     assert(!store.access<lux::editor::material::MaterialSession>().read(*material_key));
+    assert(store.share(*material_key).error() == sessions::ESessionError::STALE_SESSION);
+    const auto closed_material = (*shared_material)->describe();
+    assert(closed_material.admission == sessions::EEditAdmission::CLOSED);
+    assert((*shared_material)->undo().error().session == sessions::ESessionError::STALE_SESSION);
+    assert((*shared_material)->capture().error().session == sessions::ESessionError::STALE_SESSION);
+    assert((*shared_material)->describe().current == closed_material.current);
+    assert((*shared_material)->describe().observed == closed_material.observed);
     assert(
         scene_owner->describe().current == scene_before.current &&
         scene_owner->describe().observed == scene_before.observed
@@ -100,10 +122,41 @@ int main()
     assert(!store.access<lux::editor::flowforge::FlowSession>().read(*flow_key));
     auto scene_close = store.prepareClose(scene_owner->describe().current);
     assert(scene_close && store.close(*scene_close));
+    assert((*shared_flow)->read().error().session == sessions::ESessionError::STALE_SESSION);
+    assert((*shared_flow)->undo().error().session == sessions::ESessionError::STALE_SESSION);
+    assert((*shared_scene)->read().error().session == sessions::ESessionError::STALE_SESSION);
+    assert((*shared_scene)->undo().error().session == sessions::ESessionError::STALE_SESSION);
+    bool read_called{};
+    const auto stale_scene = old_scene_read->withRead([&](const auto&) -> lux::editor::scene::SceneEditResult<void> {
+        read_called = true;
+        return {};
+    });
+    const auto stale_material = old_material_read->withRead(
+        [&](const lux::material::MaterialSource&) -> lux::editor::material::MaterialEditResult<void> {
+            read_called = true;
+            return {};
+        }
+    );
+    const auto stale_flow = old_flow_read->withRead([&]() -> lux::editor::flowforge::FlowEditResult<void> {
+        read_called = true;
+        return {};
+    });
+    assert(!read_called);
+    assert(!stale_scene && stale_scene.error().session == sessions::ESessionError::STALE_SESSION);
+    assert(!stale_material && stale_material.error().session == sessions::ESessionError::STALE_SESSION);
+    assert(!stale_flow && stale_flow.error().session == sessions::ESessionError::STALE_SESSION);
     assert(store.size() == 0);
     assert(frozen_flow->source().name == "edited flow");
     assert(frozen_material->source().graph.node(constant)->as<lux::material::ConstantNode>()->value[3] == 4);
     assert(frozen_scene->objects().empty());
+    std::weak_ptr<lux::editor::material::MaterialSession> weak_material = *shared_material;
+    std::jthread release([material = std::move(*shared_material)]() mutable { material.reset(); });
+    release.join();
+    assert(weak_material.expired());
+    assert(store_messages.collect() == 1); // The other two closed models still have their real shared owners.
+    shared_scene->reset();
+    shared_flow->reset();
+    assert(store_messages.collect() == 2);
     std::puts(
         "X04-04: three actual sessions, one Store, typed keys, independent history and close, owning captures PASS"
     );

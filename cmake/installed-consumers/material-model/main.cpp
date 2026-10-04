@@ -1,3 +1,4 @@
+#include "../../test-support/ObjectQueue.hpp"
 #include <lux/engine/editor/sessions/SessionStore.hpp>
 #include <lux/engine/editor/material/MaterialSession.hpp>
 #include <lux/engine/material/graph/Nodes.hpp>
@@ -8,7 +9,8 @@ int main()
     namespace model = lux::editor::material;
     namespace sessions = lux::editor::sessions;
     using lux::object::CodeLease;
-    sessions::SessionStore store{2};
+    lux::test::ObjectQueue store_messages;
+    sessions::SessionStore store{store_messages.dispatcherRef(), 2};
     auto reservation = store.reserve<model::MaterialSession>({"lux.editor.material"}, CodeLease::builtin());
     assert(reservation);
     lux::material::MaterialSource source;

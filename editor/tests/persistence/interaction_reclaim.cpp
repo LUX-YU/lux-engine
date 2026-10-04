@@ -1,3 +1,4 @@
+#include "ObjectQueue.hpp"
 #include <lux/engine/editor/scene/SceneInteraction.hpp>
 #include <lux/engine/editor/material/MaterialInteraction.hpp>
 #include <lux/engine/editor/flowforge/FlowInteraction.hpp>
@@ -321,7 +322,8 @@ namespace
         bool check_cleanup{};
         bool gate_held{};
         bool inactive_on_cleanup{};
-        sessions::SessionStore store{2};
+        lux::test::ObjectQueue store_messages;
+        sessions::SessionStore store{store_messages.dispatcherRef(), 2};
         auto [id, session] = Domain::create(store);
         const auto key = take(store.key<Session>(id));
         auto gesture = [&] {
@@ -460,6 +462,7 @@ namespace
         };
         hook.reset();
         close(store, other_id);
+        assert(store_messages.collect() == 1);
         unchanged();
         std::printf(
             "%s operation=%.*s callback=%d store_busy=%d live=%d result_ok=%d reported_busy=%d "

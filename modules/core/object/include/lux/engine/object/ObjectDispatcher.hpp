@@ -79,6 +79,8 @@ namespace lux::object
         ) noexcept;
         ObjectMessageQueue(ObjectMessageQueue&&) noexcept;
         ObjectMessageQueue& operator=(ObjectMessageQueue&&) noexcept;
+        // Final owner safe point: discard messages and reclaim surrendered objects, never dispatch business.
+        // Outstanding shared owners, active callbacks, or a foreign thread violate the lifetime contract.
         ~ObjectMessageQueue();
 
         ObjectMessageQueue(const ObjectMessageQueue&) = delete;
@@ -99,6 +101,7 @@ namespace lux::object
 
     private:
         explicit ObjectMessageQueue(std::shared_ptr<detail::ObjectMessageQueueState>) noexcept;
+        void closeAndReclaim() noexcept;
         std::shared_ptr<detail::ObjectMessageQueueState> state_;
     };
 } // namespace lux::object

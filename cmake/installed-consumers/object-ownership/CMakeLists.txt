@@ -24,3 +24,8 @@ else()
 endif()
 enable_testing()
 add_test(NAME installed.object.ownership COMMAND object_ownership $<TARGET_FILE:object_ownership_plugin>)
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+configure_file("${engine_source}/modules/core/object/test/retirement_contract.py"
+    "${CMAKE_BINARY_DIR}/retirement_contract.py" COPYONLY)
+add_test(NAME installed.object.retirement_contract COMMAND "${Python3_EXECUTABLE}"
+    "${CMAKE_BINARY_DIR}/retirement_contract.py" $<TARGET_FILE:object_ownership>)

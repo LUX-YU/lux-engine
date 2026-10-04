@@ -1,3 +1,4 @@
+#include "../../test-support/ObjectQueue.hpp"
 #include <lux/engine/editor/sessions/SessionStore.hpp>
 #include <lux/engine/editor/scene/SceneSession.hpp>
 #include <lux/engine/editor/scene/SceneAlgorithms.hpp>
@@ -35,7 +36,8 @@ int main()
     assert(package);
     auto source = SceneSource::create(*package, *schemas);
     assert(source);
-    sessions::SessionStore store{1};
+    lux::test::ObjectQueue store_messages;
+    sessions::SessionStore store{store_messages.dispatcherRef(), 1};
     auto reserved = store.reserve<SceneSession>({"lux.editor.scene"}, lux::object::CodeLease::builtin());
     assert(reserved);
     auto session = SceneSession::create(reserved->id(), {}, std::move(*source));

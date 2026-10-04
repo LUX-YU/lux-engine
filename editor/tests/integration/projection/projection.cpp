@@ -1,3 +1,4 @@
+#include "ObjectQueue.hpp"
 #include <lux/engine/editor/scene/SceneProjection.hpp>
 #include <lux/engine/editor/sessions/SessionStore.hpp>
 #include <lux/engine/editor/scene/SceneSession.hpp>
@@ -34,7 +35,8 @@ namespace
         process::ExecutionRuntime execution{take(process::ExecutionRuntime::create({1, 64, 64, {32}, {}, 0}))};
         std::unique_ptr<lux::scene::SceneRuntime> runtime{take(lux::scene::SceneRuntime::create(execution, {0, 1024}))};
         ScenePresentationHub hub{*runtime, execution, 2};
-        sessions::SessionStore authors{4};
+        lux::test::ObjectQueue authors_messages;
+        sessions::SessionStore authors{authors_messages.dispatcherRef(), 4};
         ecs::ComponentSchemaSet schemas;
         std::shared_ptr<const simulation::SimulationSystemRegistry> systems{
             std::make_shared<simulation::SimulationSystemRegistry>()

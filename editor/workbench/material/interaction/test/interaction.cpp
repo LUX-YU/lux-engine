@@ -1,3 +1,4 @@
+#include "ObjectQueue.hpp"
 #include "../../../../authoring/material/src/MaterialSessionData.hpp"
 #include <lux/engine/editor/material/PreparedMaterialReload.hpp>
 #include <lux/engine/editor/material/MaterialInteraction.hpp>
@@ -40,7 +41,8 @@ namespace
     }
     struct Fixture final
     {
-        sessions::SessionStore store{8};
+        lux::test::ObjectQueue store_messages;
+        sessions::SessionStore store{store_messages.dispatcherRef(), 8};
         MaterialSession* session{};
         sessions::SessionId id;
         Fixture(

@@ -1,3 +1,4 @@
+#include "ObjectQueue.hpp"
 #include "../../../../authoring/flow/src/FlowSessionData.hpp"
 #include <lux/engine/editor/flowforge/PreparedFlowReload.hpp>
 #include <lux/engine/editor/flowforge/FlowInteraction.hpp>
@@ -56,7 +57,8 @@ namespace
     }
     struct Fixture final
     {
-        sessions::SessionStore store{8};
+        lux::test::ObjectQueue store_messages;
+        sessions::SessionStore store{store_messages.dispatcherRef(), 8};
         FlowSession* session{};
         sessions::SessionId id;
         Fixture(

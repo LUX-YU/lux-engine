@@ -12,6 +12,7 @@ add_subdirectory(semantic)
 add_subdirectory(type_info)
 add_subdirectory(meta)
 add_subdirectory(object)
+add_subdirectory(services)
 add_subdirectory(serialization)
 add_subdirectory(log)
 add_subdirectory(events)
@@ -27,6 +28,7 @@ lux_engine_install_components(
 					type_info
 					meta
 					object
+                    services
                     serialization
 					log
 					events

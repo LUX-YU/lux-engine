@@ -1,3 +1,4 @@
+#include "../../test-support/ObjectQueue.hpp"
 #include <lux/engine/editor/scene/SceneInteraction.hpp>
 #include <lux/engine/editor/material/MaterialInteraction.hpp>
 #include <lux/engine/editor/flowforge/FlowInteraction.hpp>
@@ -18,7 +19,8 @@ int main()
     using namespace lux;
     using namespace lux::editor;
     using lux::object::CodeLease;
-    sessions::SessionStore store{3};
+    lux::test::ObjectQueue store_messages;
+    sessions::SessionStore store{store_messages.dispatcherRef(), 3};
     const asset::AssetId root{*uuids::uuid::from_string("12345678-1234-1234-1234-123456789abc")};
     auto scene_reservation =
         store.reserve<lux::editor::scene::SceneSession>({"lux.editor.scene"}, CodeLease::builtin());

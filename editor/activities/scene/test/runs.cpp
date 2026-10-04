@@ -1,3 +1,4 @@
+#include "ObjectQueue.hpp"
 #include <lux/engine/editor/editing/EditExecutor.hpp>
 #include <lux/engine/editor/scene/RunController.hpp>
 #include <lux/engine/editor/scene/ModelCreationOperation.hpp>
@@ -139,7 +140,8 @@ namespace
         std::unique_ptr<lux::scene::SceneRuntime> runtime{take(lux::scene::SceneRuntime::create(execution, {0, 1024}))};
         RunStore runs{*runtime, execution, 4};
         RunController controller{runs};
-        sessions::SessionStore authors{4};
+        lux::test::ObjectQueue authors_messages;
+        sessions::SessionStore authors{authors_messages.dispatcherRef(), 4};
         ecs::ComponentSchemaSet schemas;
         std::shared_ptr<const simulation::SimulationSystemRegistry> systems{
             std::make_shared<simulation::SimulationSystemRegistry>()

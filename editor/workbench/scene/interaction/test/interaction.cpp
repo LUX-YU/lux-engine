@@ -1,3 +1,4 @@
+#include "ObjectQueue.hpp"
 #include "../../../../authoring/scene/src/SceneSessionData.hpp"
 #include <lux/engine/editor/scene/PreparedSceneReload.hpp>
 #include <lux/engine/editor/scene/SceneInteraction.hpp>
@@ -71,7 +72,8 @@ namespace
     {
         ecs::ComponentSchemaSet metadata{schemas()};
         lux::scene::ScenePackage input{package(metadata)};
-        sessions::SessionStore store{8};
+        lux::test::ObjectQueue store_messages;
+        sessions::SessionStore store{store_messages.dispatcherRef(), 8};
         SceneSession* session{};
         sessions::SessionId id;
 

@@ -1219,7 +1219,12 @@
         "editor/editing/src/sessions/SessionState.cpp",
         "editor/editing/src/sessions/SessionStore.cpp",
         "editor/editing/test/sessions/sessions.cpp"
-      ]
+      ],
+      "test_headers": {
+        "editor/editing/test/sessions/sessions.cpp": [
+          "ObjectQueue.hpp"
+        ]
+      }
     }
   },
   "foundation_external_targets": {
@@ -1259,7 +1264,9 @@
     "object": {
       "path": "modules/core/object",
       "include_headers": [
-        "lux/engine/object/CodeLease.hpp"
+        "lux/engine/object/CodeLease.hpp",
+        "lux/engine/object/ObjectDispatcher.hpp",
+        "lux/engine/object/ObjectOwnership.hpp"
       ],
       "include_prefixes": []
     },
@@ -1529,6 +1536,12 @@
       "editor/authoring/scene/test/hierarchy_benchmark.cpp": [
         "chrono",
         "numeric"
+      ],
+      "editor/authoring/scene/test/plugin_snapshot.cpp": [
+        "ObjectQueue.hpp"
+      ],
+      "editor/authoring/scene/test/scene_session.cpp": [
+        "ObjectQueue.hpp"
       ]
     },
     "files": [
@@ -1689,7 +1702,12 @@
       "editor/authoring/material/test/material_session.cpp",
       "editor/authoring/material/include/lux/engine/editor/material/PreparedMaterialReload.hpp",
       "editor/authoring/material/src/PreparedMaterialReload.cpp"
-    ]
+    ],
+    "test_headers": {
+      "editor/authoring/material/test/material_session.cpp": [
+        "ObjectQueue.hpp"
+      ]
+    }
   },
   "flowforge_model": {
     "direct": [
@@ -1835,7 +1853,12 @@
       "editor/authoring/flow/test/flow_session.cpp",
       "editor/authoring/flow/include/lux/engine/editor/flowforge/PreparedFlowReload.hpp",
       "editor/authoring/flow/src/PreparedFlowReload.cpp"
-    ]
+    ],
+    "test_headers": {
+      "editor/authoring/flow/test/flow_session.cpp": [
+        "ObjectQueue.hpp"
+      ]
+    }
   },
   "editor_persistence": {
     "direct": [
@@ -2207,7 +2230,12 @@
       "editor/activities/scene/include/lux/engine/editor/scene/SceneSaveSource.hpp",
       "editor/activities/scene/src/SceneCodec.cpp",
       "editor/activities/scene/src/SceneSaveSource.cpp"
-    ]
+    ],
+    "test_headers": {
+      "editor/activities/scene/test/runs.cpp": [
+        "ObjectQueue.hpp"
+      ]
+    }
   },
   "material_persistence": {
     "direct": [
@@ -2781,7 +2809,12 @@
     "files": [
       "editor/activities/scene/include/lux/engine/editor/scene/RunInspectAccess.hpp",
       "editor/activities/scene/include/lux/engine/editor/scene/RunTypes.hpp"
-    ]
+    ],
+    "test_headers": {
+      "editor/activities/scene/test/runs.cpp": [
+        "ObjectQueue.hpp"
+      ]
+    }
   },
   "scene_execution": {
     "direct": [
@@ -3234,6 +3267,9 @@
         "lux/engine/project/PluginManager.hpp",
         "lux/engine/project/PluginRendering.hpp",
         "iostream"
+      ],
+      "editor/activities/scene/test/runs.cpp": [
+        "ObjectQueue.hpp"
       ]
     }
   },
@@ -3629,6 +3665,9 @@
     "test_headers": {
       "editor/tests/integration/projection/highlight.cpp": [
         "lux/engine/editor/views/ViewportPresentation.hpp"
+      ],
+      "editor/activities/scene/test/runs.cpp": [
+        "ObjectQueue.hpp"
       ]
     },
     "files": [
@@ -4874,9 +4913,12 @@
     "test_headers": {
       "editor/workbench/scene/interaction/test/interaction.cpp": [
         "lux/engine/editor/scene/PreparedSceneReload.hpp",
-        "../../../../authoring/scene/src/SceneSessionData.hpp"
+        "../../../../authoring/scene/src/SceneSessionData.hpp",
+        "ObjectQueue.hpp"
       ],
-      "editor/workbench/scene/interaction/test/run_selection.cpp": []
+      "editor/workbench/scene/interaction/test/run_selection.cpp": [
+        "ObjectQueue.hpp"
+      ]
     },
     "files": [
       "editor/workbench/scene/interaction/include/lux/engine/editor/scene/SceneInteraction.hpp",
@@ -4969,7 +5011,8 @@
     "test_headers": {
       "editor/workbench/material/interaction/test/interaction.cpp": [
         "lux/engine/editor/material/PreparedMaterialReload.hpp",
-        "../../../../authoring/material/src/MaterialSessionData.hpp"
+        "../../../../authoring/material/src/MaterialSessionData.hpp",
+        "ObjectQueue.hpp"
       ]
     },
     "files": [
@@ -5078,7 +5121,8 @@
     "test_headers": {
       "editor/workbench/flow/interaction/test/interaction.cpp": [
         "lux/engine/editor/flowforge/PreparedFlowReload.hpp",
-        "../../../../authoring/flow/src/FlowSessionData.hpp"
+        "../../../../authoring/flow/src/FlowSessionData.hpp",
+        "ObjectQueue.hpp"
       ]
     },
     "files": [
@@ -6839,7 +6883,13 @@
         "lux/engine/scene/RenderFeatureSceneBinding.hpp"
       ],
       "editor/tests/integration/scene_views/AuxiliaryViews.hpp": [],
-      "editor/tests/integration/scene_views/DraftSources.hpp": []
+      "editor/tests/integration/scene_views/DraftSources.hpp": [],
+      "editor/workbench/scene/interaction/test/interaction.cpp": [
+        "ObjectQueue.hpp"
+      ],
+      "editor/workbench/scene/interaction/test/run_selection.cpp": [
+        "ObjectQueue.hpp"
+      ]
     },
     "files": [
       "editor/workbench/scene/codegen/support/FirstPartyInspectorControls.hpp",
@@ -7369,7 +7419,11 @@
       "lux/engine/object/CodeLease.hpp"
     ],
     "prefixes": [],
-    "test_headers": {},
+    "test_headers": {
+      "editor/workbench/material/interaction/test/interaction.cpp": [
+        "ObjectQueue.hpp"
+      ]
+    },
     "project_include_dirs": [
       "editor/workbench/sinclude"
     ],
@@ -7977,7 +8031,11 @@
       "lux/engine/object/CodeLease.hpp"
     ],
     "prefixes": [],
-    "test_headers": {},
+    "test_headers": {
+      "editor/workbench/flow/interaction/test/interaction.cpp": [
+        "ObjectQueue.hpp"
+      ]
+    },
     "project_include_dirs": [
       "editor/workbench/sinclude"
     ],
@@ -9515,10 +9573,14 @@
         "lux/engine/editor/views/ViewportElement.hpp",
         "../../../authoring/flow/src/FlowSessionData.hpp",
         "lux/engine/editor/scene/AuthoringFacts.hpp",
-        "lux/engine/scene/RenderFeatureSceneBinding.hpp"
+        "lux/engine/scene/RenderFeatureSceneBinding.hpp",
+        "ObjectQueue.hpp"
       ],
       "editor/tests/integration/scene_views/AuxiliaryViews.hpp": [],
-      "editor/tests/integration/scene_views/DraftSources.hpp": []
+      "editor/tests/integration/scene_views/DraftSources.hpp": [],
+      "editor/tests/integration/scene_views/fixture.cpp": [
+        "ObjectQueue.hpp"
+      ]
     },
     "files": [
       "editor/tests/integration/scene_views/AuxiliaryViews.hpp",
@@ -10177,6 +10239,22 @@
   "editor_layering": {
     "version": 1,
     "targets": {
+      "services": {
+        "layer": "ENGINE",
+        "role": "PROVIDER",
+        "capabilities": [
+          "CPU"
+        ],
+        "path": "modules/core/services"
+      },
+      "services_test": {
+        "layer": "ENGINE",
+        "role": "TEST",
+        "capabilities": [
+          "CPU"
+        ],
+        "path": "modules/core/services"
+      },
       "render_features_plugin_identity": {
         "layer": "ENGINE",
         "role": "GENERATOR",
@@ -16229,6 +16307,31 @@
           "CPU"
         ],
         "path": "modules/core/object"
+      },
+      "services_plugin": {
+        "layer": "ENGINE",
+        "role": "TEST",
+        "capabilities": [
+          "CPU"
+        ],
+        "path": "modules/core/services"
+      },
+      "services_plugin_test": {
+        "layer": "ENGINE",
+        "role": "TEST",
+        "capabilities": [
+          "CPU"
+        ],
+        "path": "modules/core/services"
+      },
+      "service_tasks_test": {
+        "layer": "ENGINE",
+        "role": "TEST",
+        "capabilities": [
+          "CPU",
+          "PROCESS"
+        ],
+        "path": "engine/context"
       }
     },
     "files": {
@@ -19142,6 +19245,9 @@
       "modules/core/object/": [
         "object"
       ],
+      "modules/core/services/": [
+        "services"
+      ],
       "modules/core/semantic/": [
         "semantic"
       ],
@@ -19291,6 +19397,13 @@
       ]
     },
     "framework_dependencies": {
+      "services": [
+        "object",
+        "lux::cxx::core",
+        "lux::cxx::compile_time",
+        "lux::cxx::memory",
+        "lux::cxx::container"
+      ],
       "object": [
         "lux::cxx::core",
         "lux::cxx::compile_time",

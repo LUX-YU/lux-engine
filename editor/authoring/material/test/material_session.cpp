@@ -1,3 +1,4 @@
+#include "ObjectQueue.hpp"
 #include "../src/MaterialSessionData.hpp"
 #include <lux/engine/editor/sessions/SessionStore.hpp>
 #include <lux/engine/editor/material/MaterialSession.hpp>
@@ -39,7 +40,8 @@ namespace
     }
     struct Fixture final
     {
-        sessions::SessionStore store{8};
+        lux::test::ObjectQueue store_messages;
+        sessions::SessionStore store{store_messages.dispatcherRef(), 8};
         MaterialSession* session{};
         sessions::SessionId id;
         Fixture(
@@ -682,6 +684,7 @@ namespace
         adopted.report(f);
         auto permit = take(f.store.prepareClose(now.current));
         assert(f.store.close(permit));
+        assert(f.store_messages.collect() == 1);
         assert(alive == 0 && released && !released_early && !released_with_nodes);
         std::puts("bound identity/exception cleanup, atomic reload, stale rejection and last lease release PASS");
     }

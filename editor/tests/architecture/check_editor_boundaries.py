@@ -103,7 +103,8 @@ def check_foundations(repo, targets, rules, sources, report):
                 delimiter, header = match.groups()
                 is_local = delimiter == '"' and (repo / path).parent.joinpath(header).resolve().is_relative_to(
                     (repo / scope).resolve())
-                if header not in headers and not header.startswith(tuple(prefixes)) and not is_local:
+                test_header = header in policy.get("test_headers", {}).get(path, [])
+                if not test_header and header not in headers and not header.startswith(tuple(prefixes)) and not is_local:
                     report("FOUNDATION_FORBIDDEN_INCLUDE", path, header)
 
 

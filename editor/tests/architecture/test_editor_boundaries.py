@@ -21,6 +21,8 @@ def foundation_cases(args):
         ("X01-R2-05", "edit_sessions", None, "FOUNDATION_FORBIDDEN_INCLUDE", "lux/engine/ui/Pane.hpp", False),
         ("EC1-history-private", "edit_sessions", None, "FOUNDATION_FORBIDDEN_INCLUDE",
          "lux/engine/editor/editing/EditHistoryData.hpp", False),
+        ("EC4-test-support-private", "edit_sessions", None, "FOUNDATION_FORBIDDEN_INCLUDE",
+         "ObjectQueue.hpp", False),
         ("EC1-history-owner", "edit_history", None, None, "lux/engine/editor/editing/EditHistoryData.hpp", False),
         ("legal", "edit_sessions", "edit_history", None, "", False),
         ("legal-external", "edit_sessions", "lux::cxx::container", None, "", False),

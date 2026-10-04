@@ -193,6 +193,8 @@ namespace draft_test
     {
         auto permit = take(f.store.prepareClose(session.describe().current));
         assert(f.store.close(permit));
+        // Destruction probes borrow this case's local state, which still exists at this safe point.
+        assert(f.store_messages.collect() == 1);
     }
     template <class Session, class Fn> void underRead(Session& session, Fn&& fn)
     {

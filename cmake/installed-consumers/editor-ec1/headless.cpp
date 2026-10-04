@@ -1,3 +1,4 @@
+#include "../../test-support/ObjectQueue.hpp"
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
 #include <lux/engine/editor/storage/FileArtifactStore.hpp>
 #include <lux/engine/editor/material/MaterialSessionFactory.hpp>
@@ -79,7 +80,8 @@ int main(int argc, char** argv)
         }
     ));
     assert(tasks.join() && ready);
-    sessions::SessionStore sessions{4};
+    lux::test::ObjectQueue sessions_messages;
+    sessions::SessionStore sessions{sessions_messages.dispatcherRef(), 4};
     auto preparation = take(std::move(*ready).prepare(sessions, saves));
     auto installed = take(preparation.publish());
     const auto key = take(sessions.key<lux::editor::material::MaterialSession>(installed.id()));

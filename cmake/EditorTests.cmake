@@ -38,6 +38,7 @@ endif()
 
 # These helpers are deliberately limited to the current migration's test targets.
 function(lux_editor_test_options target)
+    target_include_directories(${target} PRIVATE "${PROJECT_SOURCE_DIR}/cmake/test-support")
     if(MSVC)
         target_compile_options(${target} PRIVATE /UNDEBUG /utf-8)
     else()

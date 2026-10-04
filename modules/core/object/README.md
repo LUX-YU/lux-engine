@@ -17,7 +17,8 @@
 
 `shareOnDispatcher()` 转移真实唯一 allocation 到共享控制块。最后引用可在 worker 释放，但回收节点
 在创建时就已准备，实际析构回到 dispatcher 的 owner 安全点。消息关闭后仍可收取退休责任；
-queue provider 必须活到所有已接纳 owner 退休，析构不会隐式泵业务消息。
+queue provider 的析构是最后一个 owner 安全点：关闭消息准入，分批收回已经交还的对象，不泵业务消息、
+不等待任务。若仍有外部共享 owner、活动回调或错误线程使回收无法推进，继续报告寿命契约错误。
 移动状态型 deleter 时仍处于对象的原结构保护内；拒绝准入不消耗调用方的候选或最后代码 pin。
 `CodeLease` 和 `pinCodeOwner()` 位于本模块；共享控制块及释放桥由本库编译，代码保活覆盖对象、
 deleter 清理及返回，过期 weak 引用不必继续保活插件。

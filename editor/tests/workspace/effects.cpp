@@ -1,3 +1,4 @@
+#include "ObjectQueue.hpp"
 #include <lux/engine/editor/workspace/LayoutPlan.hpp>
 #include <lux/engine/editor/material/MaterialSession.hpp>
 #include <lux/engine/editor/sessions/SessionStore.hpp>
@@ -24,7 +25,8 @@ int main()
     auto mount = take(root->prepareMount(pane));
     assert(root->commit(mount));
     const auto revision = root->windowRevision();
-    e::sessions::SessionStore store{4};
+    lux::test::ObjectQueue store_messages;
+    e::sessions::SessionStore store{store_messages.dispatcherRef(), 4};
     auto reserved =
         take(store.reserve<e::material::MaterialSession>({"lux.editor.material"}, lux::object::CodeLease::builtin()));
     const auto session_id = reserved.id();

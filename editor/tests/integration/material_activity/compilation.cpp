@@ -1,3 +1,4 @@
+#include "ObjectQueue.hpp"
 #include <lux/engine/editor/material/MaterialPreview.hpp>
 #include <lux/engine/editor/sessions/SessionStore.hpp>
 #include <lux/engine/editor/material/MaterialSession.hpp>
@@ -80,7 +81,8 @@ int main(int argc, char** argv)
     auto late_execution =
         take(process::ExecutionRuntime::create({.cpu_concurrency = 1, .cpu_queue_capacity = 32, .timer = {16}}));
     auto runtime = take(lux::scene::SceneRuntime::create(execution, {0, 1024}));
-    sessions::SessionStore authors{4};
+    lux::test::ObjectQueue authors_messages;
+    sessions::SessionStore authors{authors_messages.dispatcherRef(), 4};
     auto mr = take(authors.reserve<em::MaterialSession>({"lux.editor.material"}, lux::object::CodeLease::builtin()));
     auto material = take(
         em::MaterialSession::create(mr.id(), sessions::BoundSource{identity(), "author.material"}, materialSource())

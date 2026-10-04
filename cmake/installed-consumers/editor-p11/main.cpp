@@ -1,3 +1,4 @@
+#include "../../test-support/ObjectQueue.hpp"
 #include "Probe.hpp"
 #include <lux/engine/editor/extensions/EditorExtension.hpp>
 #include <lux/engine/editor/scene/SceneConfigurationElement.hpp>
@@ -115,7 +116,8 @@ int main(int argc, char** argv)
     auto messages = take(object::ObjectMessageQueue::create(32));
     auto ui_root = take(ui::Root::create(messages.dispatcherRef()));
     desktop::ViewHost host{*ui_root};
-    sessions::SessionStore store{4};
+    lux::test::ObjectQueue store_messages;
+    sessions::SessionStore store{store_messages.dispatcherRef(), 4};
     facts.sessions = &store;
     persistence::WriteCoordinator writes;
     persistence::SaveService saves{writes};

@@ -14,7 +14,8 @@ namespace lux::editor::sessions
         EDITING,
         CLOSING,
         REBINDING,
-        READING
+        READING,
+        CLOSED
     };
     class EditGate;
     class LUX_EDIT_SESSIONS_PUBLIC EditScope final
@@ -38,6 +39,7 @@ namespace lux::editor::sessions
         ~EditGate() noexcept;
         EditGate(const EditGate&) = delete;
         EditGate& operator=(const EditGate&) = delete;
+        [[nodiscard]] SessionResult<void> canEnter() const noexcept;
         [[nodiscard]] EEditAdmission admission() const noexcept
         {
             return admission_;
@@ -115,6 +117,10 @@ namespace lux::editor::sessions
             return checkpoint_;
         }
         [[nodiscard]] EditGate& gate() noexcept
+        {
+            return gate_;
+        }
+        [[nodiscard]] const EditGate& gate() const noexcept
         {
             return gate_;
         }

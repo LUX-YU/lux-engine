@@ -6,15 +6,24 @@ namespace lux::editor::sessions
 {
     EditGate::~EditGate() noexcept
     {
-        if (admission_ != EEditAdmission::AVAILABLE)
+        const bool is_active = admission_ != EEditAdmission::AVAILABLE && admission_ != EEditAdmission::CLOSED;
+        if (is_active)
             std::terminate();
     }
-    SessionResult<void> EditGate::enter(EEditAdmission admission) noexcept
+    SessionResult<void> EditGate::canEnter() const noexcept
     {
         if (owner_ != std::this_thread::get_id())
             return lux::cxx::unexpected(ESessionError::WRONG_THREAD);
+        if (admission_ == EEditAdmission::CLOSED)
+            return lux::cxx::unexpected(ESessionError::STALE_SESSION);
         if (admission_ != EEditAdmission::AVAILABLE)
             return lux::cxx::unexpected(ESessionError::BUSY);
+        return {};
+    }
+    SessionResult<void> EditGate::enter(EEditAdmission admission) noexcept
+    {
+        if (auto ready = canEnter(); !ready)
+            return ready;
         admission_ = admission;
         return {};
     }
@@ -53,6 +62,14 @@ namespace lux::editor::sessions
     {
         if (auto* gate = std::exchange(gate_, nullptr))
             gate->leave(stamp_.session, EEditAdmission::CLOSING);
+    }
+    void ClosePermit::commit() noexcept
+    {
+        if (auto* gate = std::exchange(gate_, nullptr))
+        {
+            gate->leave(stamp_.session, EEditAdmission::CLOSING);
+            gate->admission_ = EEditAdmission::CLOSED;
+        }
     }
     BindingChangePermit::BindingChangePermit(EditGate& gate, ContentStamp stamp) noexcept : gate_(&gate), stamp_(stamp)
     {}

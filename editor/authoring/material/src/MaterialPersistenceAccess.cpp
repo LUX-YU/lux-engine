@@ -11,10 +11,8 @@ namespace lux::editor::material
     )
     {
         const auto& data = *session.impl_;
-        if (data.owner != std::this_thread::get_id())
-            return lux::cxx::unexpected(sessions::ESessionError::WRONG_THREAD);
-        if (data.state.admission() != sessions::EEditAdmission::AVAILABLE)
-            return lux::cxx::unexpected(sessions::ESessionError::BUSY);
+        if (auto ready = data.state.gate().canEnter(); !ready)
+            return lux::cxx::unexpected(ready.error());
         return sessions::SessionPersistenceView{
             session.currentContent(),
             data.state.bindingRevision(),
@@ -29,10 +27,8 @@ namespace lux::editor::material
     ) noexcept
     {
         auto& data = *session.impl_;
-        if (data.owner != std::this_thread::get_id())
-            return lux::cxx::unexpected(sessions::ESessionError::WRONG_THREAD);
-        if (data.state.admission() != sessions::EEditAdmission::AVAILABLE)
-            return lux::cxx::unexpected(sessions::ESessionError::BUSY);
+        if (auto ready = data.state.gate().canEnter(); !ready)
+            return lux::cxx::unexpected(ready.error());
         return data.state.accept(session.currentContent(), captured, binding, order);
     }
     sessions::SessionResult<sessions::BindingChangePermit> MaterialPersistenceAccess::prepareRebind(

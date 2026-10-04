@@ -1,3 +1,4 @@
+#include "ObjectQueue.hpp"
 #include "../src/SceneSessionData.hpp"
 #include <lux/engine/editor/scene/SceneSession.hpp>
 #include <lux/engine/editor/scene/SceneAlgorithms.hpp>
@@ -197,7 +198,8 @@ void codecReadRegression(int scenario)
         std::make_shared<const simulation::SimulationDescription>(std::move(simulation)),
         description
     ));
-    sessions::SessionStore store{2};
+    lux::test::ObjectQueue store_messages;
+    sessions::SessionStore store{store_messages.dispatcherRef(), 2};
     auto reservation = take(store.reserve<SceneSession>({"lux.editor.scene"}, lux::object::CodeLease::builtin()));
     auto candidate = take(SceneSession::create(
         reservation.id(),

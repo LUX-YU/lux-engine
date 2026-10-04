@@ -1,3 +1,4 @@
+#include "../../test-support/ObjectQueue.hpp"
 #include <lux/engine/editor/storage/ProjectCommands.hpp>
 #include <lux/engine/editor/storage/ProjectContentSaving.hpp>
 #include <lux/engine/editor/storage/ProjectContentOpening.hpp>
@@ -122,7 +123,8 @@ int main(int argc, char** argv)
     Files files{root};
     p::WriteCoordinator writes;
     p::SaveService saves{writes};
-    s::SessionStore store{8};
+    lux::test::ObjectQueue store_messages;
+    s::SessionStore store{store_messages.dispatcherRef(), 8};
     s::SessionOpening opening{runtime, store, saves};
     p::SaveExecution execution{runtime, saves, writes, files};
     ProjectContentSaving saving{store, opening, saves, *project, writes, files};

@@ -1,3 +1,4 @@
+#include "ObjectQueue.hpp"
 #include <lux/engine/editor/material/MaterialCompilation.hpp>
 #include <lux/engine/editor/material/MaterialCompilationService.hpp>
 #include <lux/engine/editor/material/MaterialSession.hpp>
@@ -65,7 +66,8 @@ namespace
     }
     void checkMaterial(process::ExecutionRuntime& execution)
     {
-        sessions::SessionStore authors{1};
+        lux::test::ObjectQueue authors_messages;
+        sessions::SessionStore authors{authors_messages.dispatcherRef(), 1};
         auto slot =
             take(authors.reserve<em::MaterialSession>({"lux.editor.material"}, lux::object::CodeLease::builtin()));
         lux::material::MaterialSource source{identity(), "Ownership", {}};
@@ -169,7 +171,8 @@ namespace
     }
     void checkFlow(process::ExecutionRuntime& execution, const char* linker)
     {
-        sessions::SessionStore authors{1};
+        lux::test::ObjectQueue authors_messages;
+        sessions::SessionStore authors{authors_messages.dispatcherRef(), 1};
         auto slot = take(authors.reserve<ef::FlowSession>({"lux.editor.flowforge"}, lux::object::CodeLease::builtin()));
         ef::FlowAuthoringSource source{identity(), "Ownership", {}};
         const auto index = source.graph.addNodes(std::make_unique<lux::flowforge::OnEventNode>("tick"));

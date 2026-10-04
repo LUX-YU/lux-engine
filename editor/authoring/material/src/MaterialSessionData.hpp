@@ -24,10 +24,8 @@ namespace lux::editor::material
         }
         [[nodiscard]] MaterialEditResult<void> available() const noexcept
         {
-            if (owner != std::this_thread::get_id())
-                return lux::cxx::unexpected(sessions::ESessionError::WRONG_THREAD);
-            if (state.admission() != sessions::EEditAdmission::AVAILABLE)
-                return lux::cxx::unexpected(sessions::ESessionError::BUSY);
+            if (auto ready = state.gate().canEnter(); !ready)
+                return lux::cxx::unexpected(ready.error());
             return {};
         }
         [[nodiscard]] MaterialEditResult<MaterialEditReceipt> replay(bool forward);

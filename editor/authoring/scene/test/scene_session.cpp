@@ -1,3 +1,4 @@
+#include "ObjectQueue.hpp"
 #include "../src/SceneSessionData.hpp"
 #include <lux/engine/editor/sessions/SessionStore.hpp>
 #include <lux/engine/editor/scene/SceneSession.hpp>
@@ -72,7 +73,8 @@ namespace
     {
         ecs::ComponentSchemaSet metadata{schemas()};
         lux::scene::ScenePackage input{package(metadata)};
-        sessions::SessionStore store{8};
+        lux::test::ObjectQueue store_messages;
+        sessions::SessionStore store{store_messages.dispatcherRef(), 8};
         SceneSession* session{};
         sessions::SessionId id;
 
@@ -190,7 +192,8 @@ namespace
             auto description = take(std::move(lux::scene::SceneDescriptionBuilder{}).buildResolved());
             auto input = take(lux::scene::createScenePackage(asset::AssetId{uuid("applicability")}, "facts", ids,
                 std::make_shared<const simulation::SimulationDescription>(std::move(simulation)), description));
-            sessions::SessionStore store{8};
+            lux::test::ObjectQueue store_messages;
+            sessions::SessionStore store{store_messages.dispatcherRef(), 8};
             auto reservation = take(store.reserve<SceneSession>({"lux.editor.scene"}, lux::object::CodeLease::builtin()));
             auto candidate = take(SceneSession::create(reservation.id(), {}, take(SceneSource::create(input, metadata))));
             auto* session = candidate.get();

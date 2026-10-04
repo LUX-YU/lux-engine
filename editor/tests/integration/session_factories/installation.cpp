@@ -1,3 +1,4 @@
+#include "ObjectQueue.hpp"
 #include <lux/engine/editor/sessions/SessionCommands.hpp>
 #include <lux/engine/editor/scene/SceneSessionFactory.hpp>
 #include <lux/engine/editor/sessions/SessionOperations.hpp>
@@ -476,7 +477,8 @@ namespace
     }
     void installationStages(std::span<const std::byte> bytes)
     {
-        SessionStore store{1};
+        lux::test::ObjectQueue store_messages;
+        SessionStore store{store_messages.dispatcherRef(), 1};
         WriteCoordinator writes;
         SaveService saves{writes};
         for (unsigned boundary{}; boundary != 8; ++boundary)
@@ -558,6 +560,7 @@ namespace
                 assert(installed.close(take(store.describe(id)).current));
             };
             exercise();
+            assert(store_messages.collect() == (boundary >= 3 ? 1u : 0u));
             assert(released == 1 && store.size() == 0 && !store.describe(id) && !saves.requestSave({id}));
             assert(store.canReserve());
         }
@@ -606,7 +609,8 @@ namespace
         const std::filesystem::path& root
     )
     {
-        SessionStore store{8};
+        lux::test::ObjectQueue store_messages;
+        SessionStore store{store_messages.dispatcherRef(), 8};
         WriteCoordinator writes;
         SaveService saves{writes};
         SessionOpening opening{runtime, store, saves, 8};
@@ -916,7 +920,8 @@ int main(int argc, char** argv)
         }
     }
     std::array<SessionKindId, 3> kinds{{{"lux.editor.scene"}, {"lux.editor.material"}, {"lux.editor.flowforge"}}};
-    SessionStore store{8};
+    lux::test::ObjectQueue store_messages;
+    SessionStore store{store_messages.dispatcherRef(), 8};
     WriteCoordinator writes;
     SaveService saves{writes};
     storage::FileArtifactStore disk{root};

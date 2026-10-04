@@ -1,6 +1,8 @@
 #include <cassert>
 #include <cstdio>
 #include <functional>
+#include <optional>
+#include <string_view>
 #include <lux/engine/dynamic_library/DynamicLibrary.hpp>
 #include <lux/engine/object/LuxObject.hpp>
 #include <lux/engine/object/ObjectEvent.hpp>
@@ -394,6 +396,74 @@ namespace
         assert(!external && external.error() == EObjectTreeError::NOT_OWNED);
     }
 
+    void finalSafePoint()
+    {
+        int destroyed{}, delivered{};
+        std::shared_ptr<Node> second;
+        {
+            auto queue = ObjectMessageQueue::create(4);
+            assert(queue);
+            Node sender(queue->dispatcherRef()), receiver(queue->dispatcherRef());
+            auto connection = LuxObject::connect(
+                &sender, &Node::changed, &receiver, [&]() noexcept { ++delivered; }, EDelivery::QUEUED
+            );
+            assert(connection && sender.emit(sender.changed).queued == 1);
+            auto child = std::make_unique<Node>(queue->dispatcherRef());
+            child->cleanup = [&] { ++destroyed; };
+            auto shared = shareOnDispatcher(queue->dispatcherRef(), std::move(child));
+            assert(shared);
+            second = std::move(*shared);
+            auto first = std::make_unique<Node>(queue->dispatcherRef());
+            first->cleanup = [&] { second.reset(); ++destroyed; };
+            auto owner = shareOnDispatcher(queue->dispatcherRef(), std::move(first));
+            assert(owner);
+            owner->reset();
+            assert(!destroyed && queue->pendingRetirements() == 2);
+        }
+        assert(destroyed == 2 && delivered == 0 && !second);
+
+        auto first = ObjectMessageQueue::create(1), replacement = ObjectMessageQueue::create(1);
+        assert(first && replacement);
+        auto candidate = std::make_unique<Node>(first->dispatcherRef());
+        candidate->cleanup = [&] { ++destroyed; };
+        auto owner = shareOnDispatcher(first->dispatcherRef(), std::move(candidate));
+        assert(owner);
+        owner->reset();
+        *first = std::move(*replacement);
+        assert(destroyed == 3 && first->dispatcherRef().isCurrent());
+    }
+
+    int rejectFinalSafePoint(std::string_view mode)
+    {
+        auto queue = ObjectMessageQueue::create(4);
+        assert(queue);
+        auto candidate = std::make_unique<Node>(queue->dispatcherRef());
+        auto shared = shareOnDispatcher(queue->dispatcherRef(), std::move(candidate));
+        assert(shared);
+        std::optional<ObjectMessageQueue> provider{std::move(*queue)};
+        std::puts("reached final safe-point contract");
+        std::fflush(stdout);
+        if (mode == "--reject-held")
+            provider.reset();
+        else if (mode == "--reject-dispatch")
+        {
+            Node sender(provider->dispatcherRef()), receiver(provider->dispatcherRef());
+            auto connection = LuxObject::connect(&sender, &Node::changed, &receiver, [&]() noexcept {
+                shared->reset();
+                provider.reset();
+            });
+            assert(connection);
+            (void)sender.emit(sender.changed);
+        }
+        else if (mode == "--reject-foreign")
+        {
+            shared->reset();
+            std::thread worker([&] { provider.reset(); });
+            worker.join();
+        }
+        return 0; // Reaching this line means the negative contract was silently weakened.
+    }
+
     void pluginReplacement(const char* path)
     {
         using Library = lux::engine::platform::DynamicLibrary;
@@ -485,6 +555,8 @@ namespace
 
 int main(int argc, char** argv)
 {
+    if (argc == 2 && std::string_view(argv[1]).starts_with("--reject-"))
+        return rejectFinalSafePoint(argv[1]);
     mixedTree();
     refusalAndCleanup();
     retirement();
@@ -493,6 +565,7 @@ int main(int argc, char** argv)
     queuedRemovalAndShapes();
     sharingDeleterReentry();
     dispatcherRefusal();
+    finalSafePoint();
     if (argc == 2)
     {
         plugin(argv[1], true);

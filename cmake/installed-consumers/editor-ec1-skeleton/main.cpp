@@ -1,3 +1,4 @@
+#include "../../test-support/ObjectQueue.hpp"
 #include "Probe.hpp"
 #include "Settings.hpp"
 #include <lux/engine/editor/workspace/WorkspaceChanges.hpp>
@@ -176,7 +177,8 @@ int main(int argc, char** argv)
             take(ProjectStorage::open(project_data, vfs, take(runtime.blocking()), tasks, messages.dispatcherRef()));
         auto catalog = take(project->catalogModel().snapshot());
         assert(project->manifest().assets.front().sourceType() == asset::SkeletonAsset::asset_type);
-        sessions::SessionStore store{4};
+        lux::test::ObjectQueue store_messages;
+        sessions::SessionStore store{store_messages.dispatcherRef(), 4};
         persistence::WriteCoordinator writes;
         persistence::SaveService saves{writes};
         storage::FileArtifactStore disk{root};

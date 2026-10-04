@@ -1,4 +1,5 @@
 #include <lux/engine/editor/sessions/SessionStore.hpp>
+#include <lux/engine/object/ObjectOwnership.hpp>
 #include <lux/cxx/container/StableSlotMap.hpp>
 #include <atomic>
 #include <exception>
@@ -20,12 +21,30 @@ namespace lux::editor::sessions
             SessionKindId kind;
             lux::cxx::TypeToken type;
             ESlotStage stage{ESlotStage::RESERVED};
-            std::unique_ptr<IEditSession> session;
+            std::shared_ptr<IEditSession> session;
             Slot(lux::object::CodeLease lease, SessionKindId identity, lux::cxx::TypeToken token) noexcept
                 : code(std::move(lease)), kind(std::move(identity)), type(token)
             {}
         };
         struct SlotTag;
+        struct ReclamationState final
+        {
+            bool reclaiming{};
+        };
+        // This host-side deleter and its shared control block never execute from plugin code.
+        // The guard survives the Store, while the Store's logical IDs do not survive close.
+        struct SessionDelete final
+        {
+            std::shared_ptr<ReclamationState> state;
+            object::CodeLease code;
+            void operator()(IEditSession* session) noexcept
+            {
+                const auto was_reclaiming = std::exchange(state->reclaiming, true);
+                delete session;
+                code = object::CodeLease::builtin();
+                state->reclaiming = was_reclaiming;
+            }
+        };
         struct CallbackScope final
         {
             std::size_t& depth;
@@ -44,10 +63,11 @@ namespace lux::editor::sessions
     struct SessionStore::Impl final
     {
         std::thread::id owner{std::this_thread::get_id()};
+        object::ObjectDispatcherRef dispatcher;
         std::uint64_t domain{};
         std::size_t capacity{};
         std::size_t published{};
-        bool reclaiming{};
+        std::shared_ptr<ReclamationState> reclamation{std::make_shared<ReclamationState>()};
         std::size_t callback_depth{};
         Slots slots;
 
@@ -56,7 +76,7 @@ namespace lux::editor::sessions
             if (owner != std::this_thread::get_id())
                 return lux::cxx::unexpected(ESessionError::WRONG_THREAD);
             const bool is_in_callback = callback_depth != 0;
-            if (reclaiming || is_in_callback)
+            if (reclamation->reclaiming || is_in_callback)
                 return lux::cxx::unexpected(ESessionError::BUSY);
             return {};
         }
@@ -65,7 +85,7 @@ namespace lux::editor::sessions
         {
             if (owner != std::this_thread::get_id())
                 return lux::cxx::unexpected(ESessionError::WRONG_THREAD);
-            if (reclaiming)
+            if (reclamation->reclaiming)
                 return lux::cxx::unexpected(ESessionError::BUSY);
             if (id.domain != domain)
                 return lux::cxx::unexpected(ESessionError::WRONG_STORE);
@@ -76,8 +96,12 @@ namespace lux::editor::sessions
         }
     };
     IEditSession::~IEditSession() noexcept = default;
-    SessionStore::SessionStore(std::size_t capacity) : impl_(std::make_unique<Impl>())
+    SessionStore::SessionStore(object::ObjectDispatcherRef dispatcher, std::size_t capacity)
+        : impl_(std::make_unique<Impl>())
     {
+        if (!dispatcher.isCurrent())
+            std::terminate();
+        impl_->dispatcher = std::move(dispatcher);
         auto issued = next_domain.load(std::memory_order_relaxed);
         do
         {
@@ -92,10 +116,19 @@ namespace lux::editor::sessions
     {
         const bool is_wrong_thread = impl_->owner != std::this_thread::get_id();
         const bool has_reservations = impl_->slots.size() != impl_->published;
-        if (is_wrong_thread || has_reservations || impl_->reclaiming || impl_->callback_depth != 0)
+        if (is_wrong_thread || has_reservations || impl_->reclamation->reclaiming || impl_->callback_depth != 0)
             std::terminate();
-        impl_->reclaiming = true;
+        CallbackScope callback{impl_->callback_depth};
+        for (auto& slot : impl_->slots)
+        {
+            auto permit = slot.session->prepareClose(slot.session->currentContent());
+            if (!permit)
+                std::terminate();
+            permit->commit();
+        }
+        impl_->reclamation->reclaiming = true;
         impl_->slots.clear();
+        impl_->reclamation->reclaiming = false;
     }
     SessionResult<void> SessionStore::canReserve() const noexcept
     {
@@ -160,7 +193,15 @@ namespace lux::editor::sessions
     void SessionStore::install(SessionId id, std::unique_ptr<IEditSession> candidate) noexcept
     {
         auto& slot = **impl_->slot(id);
-        slot.session = std::move(candidate);
+        std::unique_ptr<IEditSession, SessionDelete> owned(
+            candidate.release(), SessionDelete{impl_->reclamation, slot.code}
+        );
+        // SessionDelete itself carries the pin: its release is inside the reclamation guard, after
+        // the virtual destructor has returned. The outer affinity bridge is compiled by the host.
+        auto shared = object::shareOnDispatcher(impl_->dispatcher, std::move(owned));
+        if (!shared)
+            std::terminate(); // Dispatcher affinity was established before ownership transfer.
+        slot.session = std::move(*shared);
         slot.stage = ESlotStage::PREPARED;
     }
     SessionResult<SessionId> SessionStore::publish(SessionReservation& reservation) noexcept
@@ -196,9 +237,16 @@ namespace lux::editor::sessions
         auto slot = impl_->slot(id);
         if (!slot || (*slot)->stage == ESlotStage::PUBLISHED || impl_->callback_depth != 0)
             std::terminate();
-        impl_->reclaiming = true;
+        impl_->reclamation->reclaiming = true;
+        if ((*slot)->session)
+        {
+            auto permit = (*slot)->session->prepareClose((*slot)->session->currentContent());
+            if (!permit)
+                std::terminate();
+            permit->commit();
+        }
         impl_->slots.erase({id.slot, id.generation});
-        impl_->reclaiming = false;
+        impl_->reclamation->reclaiming = false;
     }
     SessionResult<IEditSession*> SessionStore::find(SessionId id, lux::cxx::TypeToken type) const noexcept
     {
@@ -218,6 +266,15 @@ namespace lux::editor::sessions
             return lux::cxx::unexpected(found.error());
         CallbackScope callback{impl_->callback_depth};
         return (*found)->describe();
+    }
+    SessionResult<std::shared_ptr<IEditSession>> SessionStore::share(SessionId id, cxx::TypeToken type) const noexcept
+    {
+        if (auto admitted = impl_->canMutate(); !admitted)
+            return cxx::unexpected(admitted.error());
+        auto found = find(id, type);
+        if (!found)
+            return cxx::unexpected(found.error());
+        return (*impl_->slot(id))->session;
     }
     SessionResult<ClosePermit> SessionStore::prepareClose(ContentStamp expected) noexcept
     {
@@ -270,14 +327,14 @@ namespace lux::editor::sessions
                         return lux::cxx::unexpected(ESessionError::INVALID_ARGUMENT);
             }
         }
-        // No callbacks between final validation and logical removal. Release every gate before its owner dies.
-        impl_->reclaiming = true;
+        // Close the original gates before logical removal. Shared references only extend memory lifetime.
+        impl_->reclamation->reclaiming = true;
         for (auto& permit : permits)
-            permit.release();
+            permit.commit();
         impl_->published -= permits.size();
         for (const auto& permit : permits)
             impl_->slots.erase({permit.stamp_.session.slot, permit.stamp_.session.generation});
-        impl_->reclaiming = false;
+        impl_->reclamation->reclaiming = false;
         return {};
     }
     std::size_t SessionStore::size() const noexcept

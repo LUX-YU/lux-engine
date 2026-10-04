@@ -1,3 +1,4 @@
+#include "ObjectQueue.hpp"
 #include <lux/engine/editor/scene/SceneSaveSource.hpp>
 #include <lux/engine/editor/scene/SceneCodec.hpp>
 #include <lux/engine/editor/material/MaterialSaveSource.hpp>
@@ -91,7 +92,8 @@ namespace
     }
     struct Fixture final
     {
-        sessions::SessionStore store{8};
+        lux::test::ObjectQueue store_messages;
+        sessions::SessionStore store{store_messages.dispatcherRef(), 8};
         WriteCoordinator writes;
         SaveService saves{writes};
         storage::FileArtifactStore disk;

@@ -1,3 +1,4 @@
+#include "ObjectQueue.hpp"
 #include <lux/engine/editor/storage/ArtifactPublicationOperation.hpp>
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
 #include <lux/engine/editor/storage/FileArtifactStore.hpp>
@@ -81,7 +82,8 @@ int main(int argc, char** argv)
     p::WriteCoordinator writes;
     p::SaveService saves{writes};
     p::SaveExecution execution{runtime, saves, writes, files};
-    sessions::SessionStore authors{2};
+    lux::test::ObjectQueue authors_messages;
+    sessions::SessionStore authors{authors_messages.dispatcherRef(), 2};
     auto reserved = take(authors.reserve<em::MaterialSession>({"lux.editor.material"}, lux::object::CodeLease::builtin()));
     auto candidate = take(em::MaterialSession::create(reserved.id(), sessions::BoundSource{id, "author.material"},
         std::move(source)));

@@ -1,3 +1,4 @@
+#include "../../test-support/ObjectQueue.hpp"
 #include <lux/engine/editor/sessions/SessionStore.hpp>
 #include <lux/engine/editor/flowforge/FlowSession.hpp>
 #include <lux/engine/flowforge/graph/ControlNode.hpp>
@@ -9,7 +10,8 @@ int main()
     namespace flow = lux::flowforge;
     namespace sessions = lux::editor::sessions;
     using lux::object::CodeLease;
-    sessions::SessionStore store{1};
+    lux::test::ObjectQueue store_messages;
+    sessions::SessionStore store{store_messages.dispatcherRef(), 1};
     auto reservation = store.reserve<model::FlowSession>({"lux.editor.flowforge"}, CodeLease::builtin());
     assert(reservation);
     model::FlowAuthoringSource source;

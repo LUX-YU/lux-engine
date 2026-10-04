@@ -18,6 +18,7 @@ namespace lux::editor::project
     class SettingsView final : public lux::ui::Pane
     {
     public:
+        [[nodiscard]] static const views::ViewFactoryDescriptor& descriptor() noexcept;
         object::TSignal<PluginSelectionDraft> selectionRequested{*this};
         object::TSignal<> retryRequested{*this}, abandonRequested{*this}, acknowledgeRequested{*this};
         SettingsView(

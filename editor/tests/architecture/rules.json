@@ -16073,6 +16073,14 @@
         ],
         "path": "editor/tests/integration/application"
       },
+      "editor_settings_navigation_test": {
+        "layer": "TEST",
+        "role": "TEST",
+        "capabilities": [
+          "CPU"
+        ],
+        "path": "editor/tests/integration/application"
+      },
       "lux_inspector_generator": {
         "layer": "E3",
         "role": "GENERATOR",

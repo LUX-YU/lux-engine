@@ -133,7 +133,7 @@ namespace lux::editor::project
         const lux::project::PluginManager& plugins,
         std::shared_ptr<SettingsContentInput> input
     )
-        : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{"lux.editor.settings"}, "Settings"),
+        : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{descriptor().type.name()}, std::string{descriptor().label}),
           impl_(std::make_unique<Impl>(*this, project, plugins))
     {
         if (input)
@@ -211,6 +211,10 @@ namespace lux::editor::project
             "Window"
         };
     } // namespace
+    const views::ViewFactoryDescriptor& SettingsView::descriptor() noexcept
+    {
+        return kFactoryDescriptor;
+    }
     std::shared_ptr<views::ViewFactoryEntry> makeSettingsViewFactory(
         ProjectStorage& project,
         const lux::project::PluginManager& plugins,

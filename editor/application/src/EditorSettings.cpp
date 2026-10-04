@@ -78,7 +78,7 @@ namespace lux::editor::application
             return applicationFailure("settings.views", all.error());
         for (const auto& info : *all)
         {
-            if (info.type != views::ViewTypeId{"lux.editor.settings"})
+            if (info.type.view() != project::SettingsView::descriptor().type)
                 continue;
             auto receive = [&](lux::ui::Pane& pane)
             {

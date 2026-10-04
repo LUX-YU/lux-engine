@@ -425,6 +425,72 @@ namespace
         std::cout << "Rejected mount releases last input code owner inside original UI guard PASS\n";
     }
 
+    void contentRouting(object::ObjectMessageQueue& messages)
+    {
+        const auto entry = [](std::string name, bool is_default)
+        {
+            auto value = descriptor;
+            value.type = views::ViewTypeIdView{name};
+            std::string kind{"extension.author"};
+            const std::array kinds{sessions::SessionKindIdView{kind}};
+            value.content_kinds = kinds;
+            value.default_content_view = is_default;
+            return UiEntry::create(object::CodeLease::builtin(), value);
+        };
+        const auto first = entry("ec4.window", true);
+        const auto second = entry("extension.alternative", true);
+        assert(first->descriptor().content_kinds.front().name() == "extension.author");
+        for (const bool reversed : {false, true})
+        {
+            auto value = UiCatalog::prepare(reversed ? std::vector{second, first} : std::vector{first, second});
+            assert(value);
+            auto ambiguous = value->selectContent({"extension.author"});
+            assert(!ambiguous && ambiguous.error().code == EUiError::AMBIGUOUS);
+            assert(ambiguous.error().detail.find("ec4.window") != std::string::npos);
+            assert(ambiguous.error().detail.find("extension.alternative") != std::string::npos);
+            auto preferred = value->selectContent({"extension.author"}, views::ViewTypeId{"ec4.window"});
+            assert(preferred && &preferred->descriptor() == &first->descriptor());
+            auto unknown = value->selectContent({"extension.unknown"});
+            assert(!unknown && unknown.error().code == EUiError::NOT_FOUND);
+            auto missing = value->selectContent({"extension.author"}, views::ViewTypeId{"unavailable.window"});
+            assert(!missing && missing.error().code == EUiError::NOT_FOUND);
+        }
+        auto single = UiCatalog::prepare({entry("extension.alternative", false)});
+        assert(single && single->selectContent({"extension.author"}));
+        const std::array repeated{
+            sessions::SessionKindIdView{"extension.author"},
+            sessions::SessionKindIdView{"extension.author"}
+        };
+        auto invalid = descriptor;
+        invalid.content_kinds = repeated;
+        auto duplicate = UiCatalog::prepare({UiEntry::create(object::CodeLease::builtin(), invalid)});
+        assert(!duplicate && duplicate.error().code == EUiError::INVALID_DESCRIPTOR);
+
+        Counts counts;
+        EditorContext context{messages.dispatcherRef()};
+        auto& services = context.services();
+        auto& registry = context.ui();
+        assert(services.publish({ServiceEntry::bind<model_descriptor>(object::CodeLease::builtin())}));
+        auto scope = services.createScope();
+        assert(scope && scope->provide(ServiceNameView{"ec4.counts"}, counts));
+        auto value = UiCatalog::prepare({entry("extension.alternative", false), first});
+        assert(value && registry.publish(*value));
+        auto selected = value->selectContent({"extension.author"});
+        assert(selected && selected->descriptor().type.name() == "ec4.window");
+        assert(counts.models == 0 && counts.windows == 0);
+        const UiCreateInfo input{messages.dispatcherRef(), ui::PaneId{"selected"}, {}, {}};
+        auto owner = registry.create(*selected, *scope, input);
+        assert(owner && counts.models == 1 && counts.windows == 1);
+        owner->reset();
+        assert(counts.models_destroyed == 1 && counts.windows_destroyed == 1);
+        assert(registry.publish(catalog()));
+        auto stale = registry.create(*selected, *scope, input);
+        assert(!stale && stale.error().code == EUiError::STALE_REGISTRATION);
+        assert(counts.models == 1 && counts.windows == 1);
+        std::cout << "Content selection shares exact factory handles, preserves ambiguity and rejects stale generation "
+                     "PASS\n";
+    }
+
     void dynamicBacking()
     {
         std::shared_ptr<const UiEntry> frozen;
@@ -556,6 +622,7 @@ int main()
     publication(messages);
     rejection(messages);
     rejectedMountCleanup(messages);
+    contentRouting(messages);
     dynamicBacking();
     compoundCleanup(messages, false);
     compoundCleanup(messages, true);

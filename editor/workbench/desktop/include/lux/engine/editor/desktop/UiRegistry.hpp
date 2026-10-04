@@ -25,7 +25,8 @@ namespace lux::editor::desktop
         BUSY,
         CLOSED,
         DEPENDENCY,
-        FACTORY_FAILURE
+        FACTORY_FAILURE,
+        AMBIGUOUS
     };
     struct UiFailure final
     {
@@ -51,6 +52,8 @@ namespace lux::editor::desktop
         std::uint32_t schema{1};
         UiResult<void> (*validate)(std::span<const std::byte>) noexcept {};
         UiResult<std::unique_ptr<lux::ui::Pane>> (*create)(services::ServiceResolver&, const UiCreateInfo&){};
+        std::span<const sessions::SessionKindIdView> content_kinds;
+        bool default_content_view{true};
     };
     class UiEntry final
     {
@@ -108,6 +111,10 @@ namespace lux::editor::desktop
         );
         [[nodiscard]] UiResult<UiHandle> find(views::ViewTypeIdView) const noexcept;
         [[nodiscard]] UiResult<UiHandle> at(std::size_t) const noexcept;
+        [[nodiscard]] UiResult<UiHandle> selectContent(
+            const sessions::SessionKindId&,
+            std::optional<views::ViewTypeId> preferred = {}
+        ) const;
         [[nodiscard]] std::span<const std::shared_ptr<const UiEntry>> entries() const noexcept;
 
     private:

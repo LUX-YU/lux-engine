@@ -5580,7 +5580,8 @@
       "lux/engine/editor/desktop/ViewCommands.hpp",
       "lux/engine/editor/workbench/CommandSupport.hpp",
       "lux/engine/object/CodeLease.hpp",
-      "exception"
+      "exception",
+      "lux/engine/editor/desktop/ContentRouting.hpp"
     ],
     "prefixes": [],
     "test_headers": {
@@ -5617,7 +5618,8 @@
       "editor/workbench/desktop/include/lux/engine/editor/desktop/ViewCommands.hpp"
     ],
     "project_include_dirs": [
-      "editor/workbench/sinclude"
+      "editor/workbench/sinclude",
+      "editor/workbench/desktop/sinclude"
     ]
   },
   "desktop_shell": {
@@ -19105,6 +19107,13 @@
           "tasks_ui",
           "scene_ui"
         ]
+      },
+      "editor/workbench/desktop/sinclude/lux/engine/editor/desktop/ContentRouting.hpp": {
+        "layer": "E3",
+        "consumers": [
+          "editor_composition",
+          "view_host"
+        ]
       }
     },
     "concrete_save_providers": [
@@ -19191,7 +19200,8 @@
       {
         "segment": "/editor/application/extensions/module_gen/selectedModules/",
         "owner": "editor_modules_test",
-        "public": false
+        "public": false,
+        "suffix": ""
       }
     ],
     "header_roots": {

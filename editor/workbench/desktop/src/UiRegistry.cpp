@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <limits>
+#include <lux/engine/editor/desktop/ContentRouting.hpp>
 #include <lux/engine/editor/desktop/UiRegistry.hpp>
 #include <lux/engine/ui/Root.hpp>
 #include <unordered_map>
@@ -30,10 +31,11 @@ namespace lux::editor::desktop
     {
         std::vector<std::string> names;
         std::vector<services::ServiceDependency> dependencies;
+        std::vector<sessions::SessionKindIdView> content_kinds;
         UiDescriptor descriptor;
         explicit Storage(const UiDescriptor& input) : descriptor(input)
         {
-            names.reserve(2 + input.dependencies.size() * 4);
+            names.reserve(2 + input.dependencies.size() * 4 + input.content_kinds.size());
             auto name = [&](std::string_view value) -> std::string_view
             {
                 names.emplace_back(value);
@@ -53,6 +55,12 @@ namespace lux::editor::desktop
                 dependencies.push_back(value);
             }
             descriptor.dependencies = dependencies;
+            content_kinds.reserve(input.content_kinds.size());
+            for (const auto kind : input.content_kinds)
+            {
+                content_kinds.emplace_back(name(kind.name()));
+            }
+            descriptor.content_kinds = content_kinds;
         }
     };
     UiEntry::UiEntry(object::CodeLease code, const UiDescriptor& descriptor)
@@ -85,6 +93,7 @@ namespace lux::editor::desktop
         std::vector<std::shared_ptr<const UiEntry>> entries;
         std::vector<Index> index;
         std::unordered_set<const UiEntry*> handles;
+        std::unordered_map<std::string, std::vector<std::size_t>> content;
     };
     UiResult<UiCatalog> UiCatalog::prepare(std::vector<std::shared_ptr<const UiEntry>> input, std::size_t capacity)
     {
@@ -119,6 +128,17 @@ namespace lux::editor::desktop
             if (invalid_identity || invalid_factory)
             {
                 return reject(EUiError::INVALID_DESCRIPTOR);
+            }
+            std::unordered_set<std::string_view> kinds;
+            for (const auto kind : descriptor.content_kinds)
+            {
+                const bool invalid_kind = !kind.isValid() || kind.hash() != cxx::Fnv1a64::hash(kind.name()) ||
+                                          !kinds.insert(kind.name()).second;
+                if (invalid_kind)
+                {
+                    return reject(EUiError::INVALID_DESCRIPTOR, "Invalid or repeated content kind");
+                }
+                data->content[std::string{kind.name()}].push_back(i);
             }
             for (const auto& dependency : descriptor.dependencies)
             {
@@ -183,6 +203,33 @@ namespace lux::editor::desktop
         UiHandle result;
         result.entry_ = data_->entries[index];
         return result;
+    }
+    UiResult<UiHandle> UiCatalog::selectContent(
+        const sessions::SessionKindId& kind,
+        std::optional<views::ViewTypeId> preferred
+    ) const
+    {
+        if (!data_)
+        {
+            return reject(EUiError::NOT_FOUND);
+        }
+        const auto found = data_->content.find(kind.name);
+        if (found == data_->content.end())
+        {
+            return reject(EUiError::NOT_FOUND);
+        }
+        auto selected = detail::selectContent(entries(), found->second, preferred);
+        if (!selected)
+        {
+            return cxx::unexpected(UiFailure{
+                selected.error().code == detail::EContentSelectionError::AMBIGUOUS ? EUiError::AMBIGUOUS
+                                                                                  : EUiError::NOT_FOUND,
+                "view.content",
+                0,
+                std::move(selected.error().candidates)
+            });
+        }
+        return at(*selected);
     }
     std::span<const std::shared_ptr<const UiEntry>> UiCatalog::entries() const noexcept
     {

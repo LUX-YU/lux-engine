@@ -1,6 +1,7 @@
 add_component(COMPONENT_NAME editor_composition NAMESPACE lux::engine::editor STATIC
     SOURCE_FILES src/UiRegistry.cpp src/EditorContext.cpp)
-component_include_directories(editor_composition BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
+component_include_directories(editor_composition BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/sinclude INSTALL_TIME include)
 target_link_libraries(editor_composition PUBLIC lux::engine::core::services
     lux::engine::function::ui lux::engine::editor::editor_contracts lux::engine::editor::layout_model
     lux::engine::editor::editor_commands)
@@ -56,7 +57,8 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
 endif()
 
 add_component(COMPONENT_NAME view_host NAMESPACE lux::engine::editor STATIC SOURCE_FILES src/ViewCommands.cpp src/ViewHost.cpp src/ViewFactory.cpp src/ReviewView.cpp)
-component_include_directories(view_host BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
+component_include_directories(view_host BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include
+    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/sinclude INSTALL_TIME include)
 target_include_directories(view_host PRIVATE ${PROJECT_SOURCE_DIR}/editor/workbench/sinclude)
 target_link_libraries(view_host PUBLIC lux::engine::editor::editor_commands lux::engine::editor::view_api lux::engine::editor::layout_model)
 component_add_transitive_commands(view_host

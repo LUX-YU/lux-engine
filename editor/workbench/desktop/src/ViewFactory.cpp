@@ -1,4 +1,5 @@
 #include <lux/engine/editor/views/ViewFactory.hpp>
+#include <lux/engine/editor/desktop/ContentRouting.hpp>
 #include <algorithm>
 #include <unordered_map>
 #include <unordered_set>
@@ -262,41 +263,18 @@ namespace lux::editor::views
         {
             return cxx::unexpected(ViewFactoryFailure{EViewFactoryError::NOT_FOUND, "view.content"});
         }
-        std::optional<ViewTypeId> selected;
-        std::size_t defaults{};
-        std::string candidates;
-        for (const auto index : found->second)
+        auto selected = desktop::detail::selectContent(entries(), found->second, preferred);
+        if (!selected)
         {
-            const auto& descriptor = pinned->entries[index]->descriptor();
-            if (preferred && descriptor.type == preferred->view())
-            {
-                return ViewTypeId{descriptor.type.name()};
-            }
-            if (descriptor.default_content_view)
-            {
-                ++defaults;
-                selected.emplace(descriptor.type.name());
-            }
-            if (!candidates.empty())
-            {
-                candidates += ", ";
-            }
-            candidates += descriptor.type.name();
+            return cxx::unexpected(ViewFactoryFailure{
+                selected.error().code == desktop::detail::EContentSelectionError::AMBIGUOUS
+                    ? EViewFactoryError::AMBIGUOUS
+                    : EViewFactoryError::NOT_FOUND,
+                "view.content",
+                0,
+                std::move(selected.error().candidates)
+            });
         }
-        if (preferred)
-        {
-            return cxx::unexpected(ViewFactoryFailure{EViewFactoryError::NOT_FOUND, "view.content"});
-        }
-        if (defaults == 1)
-        {
-            return *selected;
-        }
-        if (found->second.size() == 1)
-        {
-            return ViewTypeId{pinned->entries[found->second.front()]->descriptor().type.name()};
-        }
-        return cxx::unexpected(
-            ViewFactoryFailure{EViewFactoryError::AMBIGUOUS, "view.content", 0, std::move(candidates)}
-        );
+        return ViewTypeId{pinned->entries[*selected]->descriptor().type.name()};
     }
 } // namespace lux::editor::views

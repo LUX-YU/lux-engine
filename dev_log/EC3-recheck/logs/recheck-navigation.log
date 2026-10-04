@@ -1,0 +1,16 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918
+    Start 139: editor.settings.navigation.scope
+1/3 Test #139: editor.settings.navigation.scope ......   Passed    0.02 sec
+    Start 140: editor.settings.navigation.readonly
+2/3 Test #140: editor.settings.navigation.readonly ...   Passed    0.02 sec
+    Start 141: editor.settings.navigation.catalog
+3/3 Test #141: editor.settings.navigation.catalog ....   Passed    0.02 sec
+
+100% tests passed, 0 tests failed out of 3
+
+Label Time Summary:
+EC3       =   0.07 sec*proc (3 tests)
+editor    =   0.07 sec*proc (3 tests)
+native    =   0.07 sec*proc (3 tests)
+
+Total Test time (real) =   0.11 sec

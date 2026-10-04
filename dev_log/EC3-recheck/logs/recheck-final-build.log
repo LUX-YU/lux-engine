@@ -1,0 +1,32 @@
+[0/2] Re-checking globbed directories...
+[1/31] Building CXX object editor\workbench\tasks\CMakeFiles\tasks_ui.dir\src\TaskView.cpp.obj
+[2/31] Linking CXX static library lib\tasks_ui.lib
+[3/31] Building CXX object editor\workbench\project\CMakeFiles\project_ui.dir\src\ProjectView.cpp.obj
+[4/31] Linking CXX static library lib\project_ui.lib
+[5/31] Linking CXX executable bin\editor_task_monitor_test.exe
+[6/31] Linking CXX executable bin\editor_project_views_test.exe
+[7/31] Building CXX object editor\workbench\flow\CMakeFiles\flow_ui.dir\src\FlowView.cpp.obj
+[8/31] Building CXX object editor\workbench\project\tools\CMakeFiles\project_tools_ui.dir\src\RecentProjectsView.cpp.obj
+[9/31] Building CXX object editor\workbench\project\tools\CMakeFiles\project_tools_ui.dir\src\ImportView.cpp.obj
+[10/31] Building CXX object editor\workbench\project\tools\CMakeFiles\project_tools_ui.dir\src\WorkspaceView.cpp.obj
+[11/31] Building CXX object editor\workbench\material\CMakeFiles\material_ui.dir\src\MaterialView.cpp.obj
+[12/31] Building CXX object editor\workbench\project\tools\CMakeFiles\project_tools_ui.dir\src\ProjectCreationView.cpp.obj
+[13/31] Linking CXX static library lib\material_ui.lib
+[14/31] Building CXX object editor\workbench\project\tools\CMakeFiles\project_tools_ui.dir\src\ResultsView.cpp.obj
+[15/31] Linking CXX static library lib\flow_ui.lib
+[16/31] Building CXX object editor\workbench\scene\CMakeFiles\scene_ui.dir\src\SceneCreationView.cpp.obj
+[17/31] Building CXX object editor\workbench\scene\CMakeFiles\scene_ui.dir\src\SceneView.cpp.obj
+[18/31] Linking CXX static library lib\scene_ui.lib
+[19/31] Linking CXX static library lib\project_tools_ui.lib
+[20/31] Linking CXX shared library bin\lux_engine_function_render_feature_meta.dll
+[21/31] Linking CXX executable bin\plugin_configuration_test.exe
+[22/31] Linking CXX executable bin\editor_scene_views_test.exe
+[23/31] Linking CXX executable bin\lux_launcher.exe
+[24/31] Linking CXX executable bin\lux_editor.exe
+[25/31] Linking CXX executable bin\editor_settings_navigation_test.exe
+[26/31] Linking CXX executable bin\editor_settings_content_test.exe
+[27/31] Linking CXX executable bin\editor_application_test.exe
+[28/31] Linking CXX executable bin\editor_project_panels.exe
+[29/31] Linking CXX executable bin\editor_scene_configuration.exe
+[30/31] Linking CXX shared library bin\consumer_gui.dll
+[31/31] Linking CXX executable bin\consumer_protocol.exe

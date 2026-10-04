@@ -1,0 +1,2 @@
+read-only rejected save: apply calls=1, applied=1, writes=0
+Assertion failed: applies == 0 && !page.settings.draft()->applied && writes.size() == 0, file E:\SyncForder\CodeRepos\lux-engine-ec2\editor\tests\integration\application\settings_navigation.cpp, line 90

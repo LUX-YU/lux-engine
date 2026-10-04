@@ -1,0 +1,29 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-recheck-sdk/regression/desktop-views
+      Start  1: installed.desktop.host
+ 1/12 Test  #1: installed.desktop.host .............................   Passed    0.02 sec
+      Start  2: installed.desktop.inspector_codegen
+ 2/12 Test  #2: installed.desktop.inspector_codegen ................   Passed    0.03 sec
+      Start  3: installed.desktop.real_views
+ 3/12 Test  #3: installed.desktop.real_views .......................   Passed    2.56 sec
+      Start  4: installed.desktop.draft_source_literal
+ 4/12 Test  #4: installed.desktop.draft_source_literal .............   Passed    0.58 sec
+      Start  5: installed.desktop.draft_source_signature
+ 5/12 Test  #5: installed.desktop.draft_source_signature ...........   Passed    0.54 sec
+      Start  6: installed.desktop.draft_source_flow-canvas
+ 6/12 Test  #6: installed.desktop.draft_source_flow-canvas .........   Passed    0.35 sec
+      Start  7: installed.desktop.draft_source_material-canvas
+ 7/12 Test  #7: installed.desktop.draft_source_material-canvas .....   Passed    0.31 sec
+      Start  8: installed.desktop.draft_source_flow-queue
+ 8/12 Test  #8: installed.desktop.draft_source_flow-queue ..........   Passed    0.36 sec
+      Start  9: installed.desktop.draft_source_material-queue
+ 9/12 Test  #9: installed.desktop.draft_source_material-queue ......   Passed    0.30 sec
+      Start 10: installed.desktop.draft_source_material-lifetime
+10/12 Test #10: installed.desktop.draft_source_material-lifetime ...   Passed    0.31 sec
+      Start 11: installed.desktop.draft_source_lifecycle
+11/12 Test #11: installed.desktop.draft_source_lifecycle ...........   Passed    0.52 sec
+      Start 12: installed.desktop.draft_source_positive
+12/12 Test #12: installed.desktop.draft_source_positive ............   Passed    0.44 sec
+
+100% tests passed, 0 tests failed out of 12
+
+Total Test time (real) =   6.32 sec

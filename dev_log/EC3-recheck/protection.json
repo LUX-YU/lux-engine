@@ -1,0 +1,7 @@
+{
+  "original_head": "f7c27f9375cbf8dd8af37b30a6027a460de26213",
+  "main": "2bb33ff1a1f11025cf404e074c0e9b259239d8a4",
+  "diff": "M editor/project/src/ProjectBuilder.cpp",
+  "patch_file_sha256": "ccac49618140d014236c9f23b55fc15d31c96e94b44395dee39fd67d35ab1f5c",
+  "user_patch_applied_to_implementation": false
+}

@@ -1,0 +1,75 @@
+Test project E:/SyncForder/CodeRepos/build/RelWithDebInfo/ec3-17ea8c407918
+      Start  94: editor.project_creation
+ 1/28 Test  #94: editor.project_creation .................   Passed    0.07 sec
+      Start  96: editor.tasks.monitor_cpu
+ 2/28 Test  #96: editor.tasks.monitor_cpu ................   Passed    0.06 sec
+      Start  97: editor.detached_views
+ 3/28 Test  #97: editor.detached_views ...................   Passed    0.02 sec
+      Start  98: editor.view_host
+ 4/28 Test  #98: editor.view_host ........................   Passed    0.02 sec
+      Start 105: editor.project_views
+ 5/28 Test #105: editor.project_views ....................   Passed    0.02 sec
+      Start 108: editor.contributions.r11-factory
+ 6/28 Test #108: editor.contributions.r11-factory ........   Passed    0.02 sec
+      Start 120: editor.tasks.monitor
+ 7/28 Test #120: editor.tasks.monitor ....................   Passed    0.06 sec
+      Start 122: editor.scene_views_gpu
+ 8/28 Test #122: editor.scene_views_gpu ..................   Passed    2.57 sec
+      Start 123: editor.draft_source_literal
+ 9/28 Test #123: editor.draft_source_literal .............   Passed    0.58 sec
+      Start 124: editor.draft_source_signature
+10/28 Test #124: editor.draft_source_signature ...........   Passed    0.57 sec
+      Start 125: editor.draft_source_flow-canvas
+11/28 Test #125: editor.draft_source_flow-canvas .........   Passed    0.35 sec
+      Start 126: editor.draft_source_material-canvas
+12/28 Test #126: editor.draft_source_material-canvas .....   Passed    0.32 sec
+      Start 127: editor.draft_source_flow-queue
+13/28 Test #127: editor.draft_source_flow-queue ..........   Passed    0.35 sec
+      Start 128: editor.draft_source_material-queue
+14/28 Test #128: editor.draft_source_material-queue ......   Passed    0.34 sec
+      Start 129: editor.draft_source_material-lifetime
+15/28 Test #129: editor.draft_source_material-lifetime ...   Passed    0.32 sec
+      Start 130: editor.draft_source_lifecycle
+16/28 Test #130: editor.draft_source_lifecycle ...........   Passed    0.56 sec
+      Start 131: editor.draft_source_positive
+17/28 Test #131: editor.draft_source_positive ............   Passed    0.45 sec
+      Start 132: editor.draft_source_history
+18/28 Test #132: editor.draft_source_history .............   Passed    0.56 sec
+      Start 138: editor.application
+19/28 Test #138: editor.application ......................   Passed    1.52 sec
+      Start 139: editor.settings.navigation.scope
+20/28 Test #139: editor.settings.navigation.scope ........   Passed    0.02 sec
+      Start 140: editor.settings.navigation.readonly
+21/28 Test #140: editor.settings.navigation.readonly .....   Passed    0.02 sec
+      Start 141: editor.settings.navigation.catalog
+22/28 Test #141: editor.settings.navigation.catalog ......   Passed    0.02 sec
+      Start 142: editor.settings.content
+23/28 Test #142: editor.settings.content .................   Passed    0.06 sec
+      Start 143: editor.settings.window
+24/28 Test #143: editor.settings.window ..................   Passed    0.27 sec
+      Start 145: editor.scene_configuration
+25/28 Test #145: editor.scene_configuration ..............   Passed    0.04 sec
+      Start 146: editor.project_panels
+26/28 Test #146: editor.project_panels ...................   Passed    0.02 sec
+      Start 148: editor.scene_configuration_native
+27/28 Test #148: editor.scene_configuration_native .......   Passed    0.10 sec
+      Start 245: editor.settings.core
+28/28 Test #245: editor.settings.core ....................   Passed    2.08 sec
+
+100% tests passed, 0 tests failed out of 28
+
+Label Time Summary:
+EC2                =   0.11 sec*proc (2 tests)
+EC3                =   2.48 sec*proc (6 tests)
+P08                =   0.02 sec*proc (1 test)
+P10                =   7.00 sec*proc (12 tests)
+P10Q               =   0.06 sec*proc (1 test)
+P12                =   1.52 sec*proc (1 test)
+R1                 =   4.40 sec*proc (10 tests)
+desktop            =   0.27 sec*proc (1 test)
+editor             =  11.36 sec*proc (26 tests)
+editor_layering    =   0.06 sec*proc (1 test)
+gpu                =   8.49 sec*proc (12 tests)
+native             =   2.60 sec*proc (13 tests)
+
+Total Test time (real) =  11.45 sec

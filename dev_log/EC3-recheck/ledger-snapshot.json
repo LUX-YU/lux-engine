@@ -1,0 +1,24 @@
+{
+  "status": "EC3_RECHECK_WINDOWS_SCOPE_PASS_WAITING_REVIEW",
+  "base": "da64134a485b61592175e61d9a86f22058e04a3b",
+  "findings": [
+    "SettingsContent initial selection ignores descriptor scope; failed selection leaves catalog unreachable.",
+    "Read-only SAVE invokes live Apply before rejecting publication."
+  ],
+  "protected_patch_applied": false,
+  "implementation_sha": "aa4509995ea511c4a4306fc8477e44184ca39cf5",
+  "acceptance_directory": "dev_log/EC3-recheck",
+  "findings_closed": [
+    "settings scope/catalog",
+    "read-only Save",
+    "12 shared view identities"
+  ],
+  "execution_scope": "244/244; excludes the user-deferred native_input test",
+  "deferred": [
+    "EC2 source/SDK native input",
+    "Linux",
+    "system IME",
+    "sanitizer",
+    "old performance samples"
+  ]
+}

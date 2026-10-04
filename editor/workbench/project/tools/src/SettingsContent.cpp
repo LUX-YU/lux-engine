@@ -73,6 +73,8 @@ namespace lux::editor::project
         std::optional<ResultAction> result_action;
         bool initialized{};
         bool dispatching{};
+        bool refresh_pages{};
+        bool page_menu_open{};
         struct Dispatch final
         {
             bool& active;
@@ -94,6 +96,48 @@ namespace lux::editor::project
             auto found = std::ranges::find(input->locations, scope, &SettingsLocation::scope);
             return found == input->locations.end() ? nullptr : &*found;
         }
+        void refreshPages()
+        {
+            auto catalog = input->pages();
+            std::vector<std::string> labels;
+            labels.reserve(catalog.size());
+            for (const auto& page : catalog)
+            {
+                labels.emplace_back(page.entry->descriptor().label);
+            }
+            // The old draft pins its own entry and control. Refreshing choices must not rebase it.
+            pages = std::move(catalog);
+            page_labels = std::move(labels);
+        }
+        std::optional<settings::ESettingsScope> preferredScope(const settings::SettingsEntry& entry) const noexcept
+        {
+            const auto scopes = entry.descriptor().scopes;
+            if (editing && (scopes & settings::scopeBit(editing->draft.scope)))
+            {
+                return editing->draft.scope;
+            }
+            const SettingsLocation* preferred{};
+            for (const auto& source : input->locations)
+            {
+                if (!(scopes & settings::scopeBit(source.scope)))
+                {
+                    continue;
+                }
+                if (!preferred)
+                {
+                    preferred = &source;
+                    continue;
+                }
+                const bool is_writable_upgrade = source.changes && !preferred->changes;
+                const bool is_same_access = bool(source.changes) == bool(preferred->changes);
+                const bool is_higher_scope = is_same_access && source.scope > preferred->scope;
+                if (is_writable_upgrade || is_higher_scope)
+                {
+                    preferred = &source;
+                }
+            }
+            return preferred ? std::optional{preferred->scope} : std::nullopt;
+        }
         EditorResult<void> select(SettingsContent& owner, settings::SettingsIdView id, settings::ESettingsScope scope)
         {
             auto* target = location(scope);
@@ -101,13 +145,16 @@ namespace lux::editor::project
                 return cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "settings.scope"});
             if (editing && editing->pending)
                 return cxx::unexpected(EditorFailure{EEditorError::BUSY, "settings.publication.pending"});
-            auto catalog = input->pages();
+            const std::string name{id.name()}; // The caller may borrow the catalog that refresh replaces.
+            refreshPages();
             const auto found = std::ranges::find_if(
-                catalog,
-                [&](const auto& page) { return page.entry->descriptor().id.name() == id.name(); }
+                pages,
+                [&](const auto& page) { return page.entry->descriptor().id.name() == name; }
             );
-            if (found == catalog.end())
+            if (found == pages.end())
+            {
                 return cxx::unexpected(EditorFailure{EEditorError::STALE_REQUEST, "settings.registration"});
+            }
             std::vector<settings::SettingsDocument> documents;
             std::optional<std::size_t> target_index;
             for (const auto& source : input->locations)
@@ -140,10 +187,6 @@ namespace lux::editor::project
             if (editing && editing->control)
                 finish(*editing->control, false);
             editing = std::move(candidate);
-            pages = std::move(catalog);
-            page_labels.clear();
-            for (const auto& page : pages)
-                page_labels.emplace_back(page.entry->descriptor().label);
             selected_label = editing->page.entry->descriptor().label;
             return {};
         }
@@ -153,6 +196,12 @@ namespace lux::editor::project
                 return cxx::unexpected(EditorFailure{EEditorError::INVALID_STATE, "settings.no-draft"});
             if (editing->pending)
                 return cxx::unexpected(EditorFailure{EEditorError::BUSY, "settings.publication.pending"});
+            auto* target = location(editing->draft.scope);
+            const bool is_read_only_save = requested == ESettingsAction::SAVE && !target->changes;
+            if (is_read_only_save)
+            {
+                return cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "settings.read-only"});
+            }
             if (editing->control)
                 finish(*editing->control, false);
             if (requested == ESettingsAction::REVERT)
@@ -163,7 +212,6 @@ namespace lux::editor::project
             if (entry == catalog.end())
                 return cxx::unexpected(EditorFailure{EEditorError::STALE_REQUEST, "settings.registration"});
             auto& draft = editing->draft;
-            auto* target = location(draft.scope);
             auto source = read(*target);
             if (!source)
                 return cxx::unexpected(source.error());
@@ -227,8 +275,6 @@ namespace lux::editor::project
                 const auto current = input->pages();
                 if (std::ranges::none_of(current, [&](const auto& page) { return page.entry == draft.entry; }))
                     return cxx::unexpected(EditorFailure{EEditorError::STALE_REQUEST, "settings.registration"});
-                if (!target->changes)
-                    return cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "settings.read-only"});
                 auto accepted = target->changes->saveSettings(target->relative, *prepared);
                 if (!accepted)
                     return cxx::unexpected(accepted.error());
@@ -290,6 +336,24 @@ namespace lux::editor::project
         setStretch({1, 1});
     }
     SettingsContent::~SettingsContent() = default;
+    EditorResult<void> SettingsContent::refreshPages()
+    {
+        if (!dispatcherRef().isCurrent())
+        {
+            return cxx::unexpected(EditorFailure{EEditorError::INVALID_STATE, "settings.owner-thread"});
+        }
+        if (impl_->dispatching)
+        {
+            return cxx::unexpected(EditorFailure{EEditorError::BUSY, "settings.dispatch"});
+        }
+        const Impl::Dispatch dispatch{impl_->dispatching};
+        impl_->refreshPages();
+        return {};
+    }
+    std::span<const settings::SettingsPage> SettingsContent::pages() const noexcept
+    {
+        return impl_->pages;
+    }
     EditorResult<void> SettingsContent::select(settings::SettingsIdView id, settings::ESettingsScope scope)
     {
         if (!dispatcherRef().isCurrent())
@@ -342,10 +406,30 @@ namespace lux::editor::project
         }
         if (!impl_->initialized)
         {
-            impl_->pages = impl_->input->pages();
             impl_->initialized = true;
-            if (!impl_->pages.empty() && !impl_->input->locations.empty())
-                (void)select(impl_->pages.front().entry->descriptor().id, impl_->input->locations.back().scope);
+            if (auto refreshed = refreshPages(); !refreshed)
+            {
+                impl_->error = refreshed.error();
+            }
+            else if (!impl_->pages.empty())
+            {
+                const auto& entry = *impl_->pages.front().entry;
+                if (auto scope = impl_->preferredScope(entry))
+                {
+                    (void)select(entry.descriptor().id, *scope);
+                }
+                else
+                {
+                    impl_->error = EditorFailure{EEditorError::INVALID_ARGUMENT, "settings.scope"};
+                }
+            }
+        }
+        if (std::exchange(impl_->refresh_pages, false))
+        {
+            if (auto refreshed = refreshPages(); !refreshed)
+            {
+                impl_->error = refreshed.error();
+            }
         }
         if (auto selection = std::exchange(impl_->selection, {}))
             (void)select(settings::SettingsIdView{selection->first}, selection->second);
@@ -358,16 +442,27 @@ namespace lux::editor::project
         const auto* selected = draft();
         const char* label = selected ? data.selected_label.c_str() : "Choose settings";
         ImGui::BeginDisabled(data.editing && data.editing->pending.has_value());
-        if (ImGui::BeginCombo("Page", label))
+        const bool is_page_menu_open = ImGui::BeginCombo("Page", label);
+        if (is_page_menu_open)
         {
+            // Acquire changed declarations at the following owner safe point, never during draw.
+            if (!data.page_menu_open)
+            {
+                data.refresh_pages = true;
+            }
             for (std::size_t i = 0; i < data.page_labels.size(); ++i)
+            {
+                const auto scope = data.preferredScope(*data.pages[i].entry);
+                ImGui::PushID(static_cast<int>(i));
+                ImGui::BeginDisabled(!scope);
                 if (ImGui::Selectable(data.page_labels[i].c_str()))
-                    data.selection = {
-                        std::string{data.pages[i].entry->descriptor().id.name()},
-                        selected ? selected->scope : data.input->locations.back().scope
-                    };
+                    data.selection = {std::string{data.pages[i].entry->descriptor().id.name()}, *scope};
+                ImGui::EndDisabled();
+                ImGui::PopID();
+            }
             ImGui::EndCombo();
         }
+        data.page_menu_open = is_page_menu_open;
         if (selected)
         {
             const auto scope_name = [](settings::ESettingsScope scope)

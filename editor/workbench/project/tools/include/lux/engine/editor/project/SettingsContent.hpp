@@ -48,6 +48,9 @@ namespace lux::editor::project
         SettingsContent(SettingsContent&&) = delete;
         SettingsContent& operator=(SettingsContent&&) = delete;
         // Owner safe-point entry points also used by non-mouse accessibility/SDK consumers.
+        // Refresh choices only: an active draft retains its declaration, source and values.
+        [[nodiscard]] EditorResult<void> refreshPages();
+        [[nodiscard]] std::span<const settings::SettingsPage> pages() const noexcept;
         [[nodiscard]] EditorResult<void> select(settings::SettingsIdView, settings::ESettingsScope);
         [[nodiscard]] EditorResult<void> request(ESettingsAction);
         [[nodiscard]] const settings::SettingsDraft* draft() const noexcept;

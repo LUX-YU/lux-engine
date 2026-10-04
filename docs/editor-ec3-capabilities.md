@@ -35,6 +35,15 @@ descriptor/codec binding; `SettingsDraft` couples edited values to their origin 
 separately from persistence. `SettingsPage` keeps the defining entry and page factory code outside the
 control. Busy, conflict and publication Unknown preserve the draft and original publication responsibility.
 
+`SettingsContent` chooses an available scope allowed by the selected descriptor, preferring a writable
+scope for a new selection. Explicit scope requests are still validated without fallback. Page choices
+are independent of draft preparation: a failed read does not empty the selector. Opening the page menu
+refreshes its catalog at the owner safe point; `refreshPages()` provides the same operation to SDK and
+accessibility consumers. `pages()` borrows that catalog until its next refresh/selection. Refreshing never
+changes an active draft's entry, origin, desired/applied/persisted values or conflict diagnostic. Revert or
+an explicit selection is required to replace the draft after a registration change. Stable frames do not
+query the catalog. Read-only Save is rejected before invoking Apply or admitting any publication.
+
 Scopes are installation, project, user, user-project and launch; each descriptor permits a subset.
 Project plugin selection still belongs to the project manifest. WorkspaceStore settings publication
 uses the existing coordinator; it does not change author checkpoints. The existing settings page has

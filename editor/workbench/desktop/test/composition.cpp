@@ -370,6 +370,61 @@ namespace
                      "original guards PASS\n";
     }
 
+    void rejectedMountCleanup(object::ObjectMessageQueue& messages)
+    {
+        EditorContext context{messages.dispatcherRef()};
+        auto& services = context.services();
+        auto& registry = context.ui();
+        auto scope = services.createScope();
+        auto root = ui::Root::create(messages.dispatcherRef());
+        assert(scope && root && registry.publish(catalog()));
+        const auto revision = registry.revision();
+        const auto window_revision = (*root)->windowRevision();
+        unsigned cleaned{};
+        bool cleanup_blocked{};
+        struct Code final
+        {
+            std::function<void()> cleanup;
+            ~Code()
+            {
+                cleanup();
+            }
+        };
+        std::vector<UiMountRequest> requests;
+        {
+            auto pin = object::CodeLease::plugin(std::make_shared<Code>(
+                [&]
+                {
+                    auto publish = registry.publish(catalog());
+                    cleanup_blocked = !publish && publish.error().code == EUiError::BUSY;
+                    ++cleaned;
+                }
+            ));
+            auto stale = UiCatalog::prepare({UiEntry::bind<descriptor>(std::move(pin))});
+            assert(stale);
+            auto handle = stale->at(0);
+            assert(handle);
+            requests.push_back({std::move(*handle), {messages.dispatcherRef(), ui::PaneId{"rejected"}, {}, {}}});
+        }
+        auto factory = [&](ServiceResolver&) -> ServiceResult<void>
+        {
+            // Actual service factory admission prevents this nested mount from acquiring its read scope.
+            auto rejected = registry.mount(**root, *scope, std::move(requests));
+            assert(!rejected && rejected.error().code == EUiError::BUSY);
+            assert(rejected.error().domain_code == static_cast<std::uint64_t>(EServiceError::BUSY));
+            std::cerr << "Rejected mount input cleanup count=" << cleaned << " blocked=" << cleanup_blocked
+                      << " catalog_revision=" << registry.revision() << " original=" << revision << std::endl;
+            assert(cleaned == 1 && cleanup_blocked && registry.revision() == revision);
+            assert((*root)->panes().empty() && (*root)->windowRevision() == window_revision);
+            auto publish = services.publish({});
+            assert(!publish && publish.error().code == EServiceError::BUSY);
+            return {};
+        };
+        assert(services.withDependencies(*scope, {}, factory));
+        assert(registry.publish(catalog()) && services.publish({}));
+        std::cout << "Rejected mount releases last input code owner inside original UI guard PASS\n";
+    }
+
     void dynamicBacking()
     {
         std::shared_ptr<const UiEntry> frozen;
@@ -500,6 +555,7 @@ int main()
     configuredMount(messages);
     publication(messages);
     rejection(messages);
+    rejectedMountCleanup(messages);
     dynamicBacking();
     compoundCleanup(messages, false);
     compoundCleanup(messages, true);

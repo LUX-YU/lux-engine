@@ -488,14 +488,18 @@ namespace lux::editor::desktop
             return cxx::unexpected(std::move(admission.error()));
         }
         Impl::Guard guard{impl_->active};
-        auto services = impl_->services.readScope();
-        if (!services)
+        // Input cleanup stays under UI admission even when service admission fails. On success,
+        // declaration order also keeps the service read alive until every input owner is gone.
+        std::optional<services::ServiceRegistry::ReadScope> services;
+        auto requests = std::move(input);
+        auto acquired = impl_->services.readScope();
+        if (!acquired)
         {
-            return cxx::unexpected(serviceFailure(std::move(services.error())));
+            return cxx::unexpected(serviceFailure(std::move(acquired.error())));
         }
+        services.emplace(std::move(*acquired));
         // All foreign input/candidate cleanup precedes both guards. Never borrow a mutable
         // caller vector or fill a new source stamp after a callback.
-        auto requests = std::move(input);
         if (root.dispatcherRef() != impl_->dispatcher)
         {
             return reject(EUiError::WRONG_THREAD);

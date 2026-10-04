@@ -2,6 +2,7 @@
 #include <lux/engine/editor/flowforge/PublishFlowArtifact.hpp>
 #include <lux/engine/editor/workbench/InteractionDelivery.hpp>
 #include <lux/engine/editor/flowforge/FlowView.hpp>
+#include <lux/engine/editor/desktop/UiRegistry.hpp>
 #include <lux/engine/editor/workbench/ViewPreparation.hpp>
 #include <lux/engine/serialization/BinaryReader.hpp>
 #include <lux/engine/editor/flowforge/FlowNodeControls.hpp>
@@ -60,6 +61,125 @@ namespace lux::editor::flowforge
                 failure
             );
         }
+        cxx::expected<std::optional<FlowViewState>, views::ViewPreparationFailure> decodeState(
+            std::uint32_t schema,
+            std::span<const std::byte> bytes
+        )
+        {
+            const auto invalid = [&]
+            {
+                return cxx::unexpected(
+                    views::ViewPreparationFailure{"flow.view.state", schema, "Invalid linker settings", false}
+                );
+            };
+            if (schema != 1)
+            {
+                return invalid();
+            }
+            if (bytes.empty())
+            {
+                return std::optional<FlowViewState>{};
+            }
+            serialization::BinaryReader reader(bytes);
+            const auto version = reader.readUnsigned<std::uint64_t>();
+            const auto size = reader.readUnsigned<std::uint32_t>();
+            const bool is_invalid_version = !version || !*version;
+            const bool is_invalid_size = !size || *size > 32768 || *size != reader.remaining();
+            const bool is_invalid_state = is_invalid_version || is_invalid_size;
+            if (is_invalid_state)
+            {
+                return invalid();
+            }
+            std::string path(reinterpret_cast<const char*>(bytes.data() + reader.offset()), *size);
+            if (path.find('\0') != std::string::npos)
+            {
+                return invalid();
+            }
+            try
+            {
+                return std::optional<FlowViewState>{{{std::filesystem::u8path(path), *version}}};
+            }
+            catch (const std::filesystem::filesystem_error&)
+            {
+                return invalid();
+            }
+        }
+        constexpr services::ServiceDependency ui_dependencies[]{
+            {services::ServiceNameView{"lux.editor.sessions"},
+             1,
+             cxx::typeToken<sessions::SessionStore>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT},
+            {services::ServiceNameView{"lux.editor.flow.compilation"}, 1, cxx::typeToken<FlowCompilationService>()},
+            {services::ServiceNameView{"lux.editor.flow.environment"}, 1, cxx::typeToken<FlowEnvironment>()}
+        };
+        desktop::UiResult<std::unique_ptr<lux::ui::Pane>> createView(
+            services::ServiceResolver& resolver,
+            const desktop::UiCreateInfo& input
+        )
+        {
+            auto state = decodeState(input.configuration.schema, input.configuration.bytes);
+            if (!state)
+            {
+                return cxx::unexpected(desktop::UiFailure{
+                    desktop::EUiError::INVALID_CONFIGURATION,
+                    state.error().domain,
+                    state.error().code,
+                    state.error().message
+                });
+            }
+            const auto dependencyFailure = [](const services::ServiceFailure& failure)
+            {
+                return cxx::unexpected(desktop::UiFailure{
+                    desktop::EUiError::DEPENDENCY,
+                    "services",
+                    static_cast<std::uint64_t>(failure.code),
+                    failure.detail
+                });
+            };
+            auto store = resolver.require<sessions::SessionStore>(0);
+            if (!store)
+            {
+                return dependencyFailure(store.error());
+            }
+            auto compiler = resolver.get<FlowCompilationService>(1);
+            if (!compiler)
+            {
+                return dependencyFailure(compiler.error());
+            }
+            auto environment = resolver.get<FlowEnvironment>(2);
+            if (!environment)
+            {
+                return dependencyFailure(environment.error());
+            }
+            const auto viewFailure = [](const VFlowViewFailure& failure)
+            {
+                auto error = workbench::detail::viewPreparationFailure(failure, temporary(failure));
+                return cxx::unexpected(desktop::UiFailure{
+                    error.retryable ? desktop::EUiError::BUSY : desktop::EUiError::FACTORY_FAILURE,
+                    std::move(error.domain),
+                    error.code,
+                    std::move(error.message)
+                });
+            };
+            auto view = FlowView::create(
+                input.dispatcher,
+                input.instance,
+                {store->get().access<FlowSession>(), std::move(*compiler), **environment},
+                {},
+                state->value_or(FlowViewState{})
+            );
+            if (!view)
+            {
+                return viewFailure(view.error());
+            }
+            auto bound = (*view)->rebindContent(input.content);
+            if (!bound)
+            {
+                return viewFailure(bound.error());
+            }
+            return std::unique_ptr<lux::ui::Pane>(std::move(*view));
+        }
         struct Display final
         {
             sessions::ContentStamp content;
@@ -74,7 +194,9 @@ namespace lux::editor::flowforge
             const auto content = session.describe().current;
             auto read = session.read();
             if (!read)
+            {
                 return rejected(read.error());
+            }
             auto current = read->withRead(
                 [&](const lux::flowforge::FlowSource& source) -> FlowEditResult<Display>
                 {
@@ -87,25 +209,45 @@ namespace lux::editor::flowforge
                         widgets::CanvasNode
                             row{node.id.value, node.name, {}, {node.layout.x, node.layout.y}, node.layout.placed};
                         for (const auto& pin : node.inputs)
+                        {
                             row.pins.push_back({pin.id.value, pin.name, true});
+                        }
                         for (const auto& pin : node.outputs)
+                        {
                             row.pins.push_back({pin.id.value, pin.name, false});
+                        }
                         value.nodes.push_back(std::move(row));
                     }
                     for (const auto& link : source.links)
+                    {
                         value.links.push_back({link.from.value, link.to.value});
+                    }
                     for (const auto& entry : source.exports)
+                    {
                         value.exports.push_back(
                             {lux::flowforge::FlowForgeExportNodeId{entry.id}, entry.entry, entry.symbol, entry.hints}
                         );
+                    }
                     return value;
                 }
             );
             if (!current)
+            {
                 return rejected(current.error());
+            }
             return std::move(*current);
         }
     } // namespace
+    constinit const desktop::UiDescriptor kFlowView{
+        views::ViewTypeIdView{"lux.editor.flowforge"},
+        "FlowForge",
+        ui_dependencies,
+        1,
+        nullptr,
+        createView,
+        kContentKinds
+    };
+
     struct FlowView::Impl final
     {
         enum class EControl : std::uint8_t
@@ -121,6 +263,7 @@ namespace lux::editor::flowforge
         };
         FlowView& view_;
         FlowViewServices services_;
+        std::shared_ptr<FlowSession> model_;
         std::unique_ptr<FlowInteraction> interaction_;
         FlowViewState state_;
         std::optional<FlowViewBinding> binding_;
@@ -470,7 +613,7 @@ namespace lux::editor::flowforge
         }
         ~Impl() noexcept
         {
-            if (!services_.compilation.releaseResult(compile_))
+            if (!services_.compilation->releaseResult(compile_))
                 std::terminate(); // The view and its service share the owner thread.
             if (!discardInputs())
                 std::terminate();
@@ -523,10 +666,15 @@ namespace lux::editor::flowforge
             if (binding == binding_)
                 return {};
             Display candidate;
+            std::shared_ptr<FlowSession> model;
             if (binding)
             {
                 if (!binding->interaction || binding->interaction->session() != binding->session)
                     return rejected(views::EViewError::INVALID_ID);
+                auto shared = services_.sessions.share(binding->session);
+                if (!shared)
+                    return rejected(FlowEditError{shared.error()});
+                model = std::move(*shared);
                 auto session = services_.sessions.read(binding->session);
                 if (!session)
                     return rejected(FlowEditError{session.error()});
@@ -547,10 +695,11 @@ namespace lux::editor::flowforge
             auto installed = install(std::move(candidate));
             if (!installed)
                 return installed;
-            if (!services_.compilation.releaseResult(compile_))
+            if (!services_.compilation->releaseResult(compile_))
                 std::terminate();
             compile_ = {};
             binding_ = binding;
+            model_ = std::move(model);
             compile_status_.clear();
             control_ = EControl::NONE;
             return {};
@@ -744,7 +893,7 @@ namespace lux::editor::flowforge
             }
             if (compile_.value)
             {
-                auto operation = services_.compilation.operation(compile_);
+                auto operation = services_.compilation->operation(compile_);
                 if (!operation)
                     return rejected(operation.error());
                 const auto& task = operation->get();
@@ -776,6 +925,8 @@ namespace lux::editor::flowforge
         FlowViewState state
     )
     {
+        if (!services.compilation)
+            return rejected(views::EViewError::INVALID_ID);
         auto view = std::unique_ptr<FlowView>(new FlowView(dispatcher, std::move(id), services, std::move(state)));
         if (!view->status())
             return cxx::unexpected(view->status().error());
@@ -856,39 +1007,21 @@ namespace lux::editor::flowforge
     }
     views::ViewStateResult FlowView::prepareState(std::uint32_t schema, std::span<const std::byte> bytes)
     {
-        const auto invalid = [&] {
-            return cxx::unexpected(
-                views::ViewPreparationFailure{"flow.view.state", schema, "Invalid linker settings", false}
-            );
-        };
-        if (schema != 1)
-            return invalid();
-        if (bytes.empty())
+        auto decoded = decodeState(schema, bytes);
+        if (!decoded)
+            return cxx::unexpected(std::move(decoded.error()));
+        if (!*decoded)
             return cxx::move_only_function<void()>{};
-        serialization::BinaryReader reader(bytes);
-        const auto version = reader.readUnsigned<std::uint64_t>();
-        const auto size = reader.readUnsigned<std::uint32_t>();
-        if (!version || !*version || !size || *size > 32768 || *size != reader.remaining())
-            return invalid();
-        std::string path(reinterpret_cast<const char*>(bytes.data() + reader.offset()), *size);
-        if (path.find('\0') != std::string::npos)
-            return invalid();
-        // External layout bytes cross the platform path codec here. Invalid native conversion
-        // is a preparation failure; the accepted view and its linker remain unchanged.
-        try
-        {
-            FlowViewState candidate{{std::filesystem::u8path(path), *version}};
-            return cxx::move_only_function<void()>{[this, candidate = std::move(candidate), path = std::move(path)](
-                                                   ) mutable noexcept
-                                                   {
-                                                       impl_->state_ = std::move(candidate);
-                                                       impl_->properties_ui_.linker_ = std::move(path);
-                                                   }};
-        }
-        catch (const std::filesystem::filesystem_error&)
-        {
-            return invalid();
-        }
+        auto candidate = std::move(**decoded);
+        const auto bytes_path = candidate.linker.executable.u8string();
+        std::string path(bytes_path.begin(), bytes_path.end());
+        return cxx::move_only_function<void()>{
+            [this, candidate = std::move(candidate), path = std::move(path)]() mutable noexcept
+            {
+                impl_->state_ = std::move(candidate);
+                impl_->properties_ui_.linker_ = std::move(path);
+            }
+        };
     }
     FlowViewResult<void> FlowView::cancelEdit()
     {
@@ -934,7 +1067,7 @@ namespace lux::editor::flowforge
         auto snapshot = owner->get().capture();
         if (!snapshot)
             return rejected(snapshot.error());
-        auto requested = impl_->services_.compilation.start(
+        auto requested = impl_->services_.compilation->start(
             std::move(*snapshot),
             impl_->services_.metadata,
             {},
@@ -942,18 +1075,18 @@ namespace lux::editor::flowforge
         );
         if (!requested)
             return rejected(requested.error());
-        if (!impl_->services_.compilation.releaseResult(impl_->compile_))
+        if (!impl_->services_.compilation->releaseResult(impl_->compile_))
             std::terminate();
         impl_->compile_ = *requested;
         return *requested;
     }
     FlowViewResult<void> FlowView::retryLink(LinkSettings settings)
     {
-        return accepted(impl_->services_.compilation.retryLink(impl_->compile_, std::move(settings)));
+        return accepted(impl_->services_.compilation->retryLink(impl_->compile_, std::move(settings)));
     }
     FlowViewResult<void> FlowView::requestPublication()
     {
-        auto operation = impl_->services_.compilation.operation(impl_->compile_);
+        auto operation = impl_->services_.compilation->operation(impl_->compile_);
         if (!operation)
             return rejected(operation.error());
         auto compiled = operation->get().result();

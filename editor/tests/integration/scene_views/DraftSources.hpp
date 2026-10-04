@@ -356,7 +356,7 @@ namespace draft_test
             assert(session->apply(std::move(batch)));
         }
         ef::FlowInteraction interaction(f.store.access<ef::FlowSession>(), key);
-        ef::FlowCompilationService compilation(f.execution);
+        auto compilation = std::make_shared<ef::FlowCompilationService>(f.execution);
         auto detached = take(ef::makeFlowView(
             f.messages.dispatcherRef(),
             ui::PaneId{"r1-flow"},
@@ -407,7 +407,13 @@ namespace draft_test
                 assert(busy(*view));
             });
             assert(unchanged(s0, session->describe()) && bytes(*session) == s0_bytes);
-            closeSession(f, *session);
+            std::weak_ptr<ef::FlowSession> old_model = take(f.store.access<ef::FlowSession>().share(key));
+            auto closed = take(f.store.prepareClose(s0.current));
+            assert(f.store.close(closed));
+            assert(!f.store.access<ef::FlowSession>().share(key) && !session->read());
+            assert(!old_model.expired() && f.store_messages.collect() == 0);
+            // Logical invalidation is immediate; the visible view retains only the old allocation.
+
             auto next_reservation =
                 take(f.store.reserve<ef::FlowSession>({"lux.editor.flowforge"}, lux::object::CodeLease::builtin()));
             ef::FlowAuthoringSource next_source{asset, "new generation", {}};
@@ -433,6 +439,8 @@ namespace draft_test
             assert(!view->status() && view->binding() == binding);
             assert(unchanged(new_info, replacement->describe()) && bytes(*replacement) == new_bytes);
             assert(view->rebind(ef::FlowViewBinding{next_key, &next_interaction}));
+            assert(old_model.expired() && f.store_messages.collect() == 1);
+
             CanvasInput::select(*graph, id.value);
             f.frame(false);
             input.text(input.property("Flow###r1-flow", "##value", static_cast<int>(pin.value)), "40");

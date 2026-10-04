@@ -29,7 +29,7 @@ namespace lux::editor::application
           opening_(engine_->execution(), sessions_, saves_),
           projections_(engine_->sceneRuntime(), engine_->execution()),
           runs_(engine_->sceneRuntime(), engine_->execution()), material_compilation_(engine_->execution()),
-          flow_compilation_(engine_->execution()), contributions_(messages_.dispatcherRef(), editor_context_),
+          flow_compilation_(std::make_shared<flowforge::FlowCompilationService>(engine_->execution())), contributions_(messages_.dispatcherRef(), editor_context_),
           workspace_(std::move(profile), writes_, files_),
           project_workspace_(config_.project_file.parent_path(), writes_, files_),
           installation_settings_(config_.installation, writes_, files_),

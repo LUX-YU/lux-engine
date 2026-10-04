@@ -266,7 +266,7 @@ namespace lux::editor::application
         scene::RunStore runs_;
         scene::RunController run_controller_{runs_};
         material::MaterialCompilationService material_compilation_;
-        flowforge::FlowCompilationService flow_compilation_;
+        std::shared_ptr<flowforge::FlowCompilationService> flow_compilation_;
         scene::ProjectionEnvironment environment_;
         flowforge::FlowEnvironment flow_environment_;
         desktop::EditorContext editor_context_{messages_.dispatcherRef()};

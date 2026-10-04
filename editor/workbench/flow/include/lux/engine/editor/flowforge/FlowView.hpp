@@ -15,8 +15,14 @@ namespace lux::editor::views
     class ViewFactoryEntry;
 }
 
+namespace lux::editor::desktop
+{
+    struct UiDescriptor;
+}
+
 namespace lux::editor::flowforge
 {
+    extern const desktop::UiDescriptor kFlowView;
     struct FlowViewBinding final
     {
         sessions::TSessionKey<FlowSession> session;
@@ -26,7 +32,7 @@ namespace lux::editor::flowforge
     struct FlowViewServices final
     {
         sessions::TSessionAccess<FlowSession> sessions;
-        FlowCompilationService& compilation;
+        std::shared_ptr<FlowCompilationService> compilation;
         FlowEnvironment metadata;
     };
     struct FlowViewState final

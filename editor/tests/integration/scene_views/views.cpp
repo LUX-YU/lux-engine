@@ -12,6 +12,7 @@
 #include <lux/engine/editor/project/ProjectView.hpp>
 #include <lux/engine/editor/project/AssetPickerElement.hpp>
 #include <fstream>
+#include <iostream>
 #include <source_location>
 #include <lux/engine/editor/desktop/DesktopShell.hpp>
 #include <lux/engine/editor/scene/SceneView.hpp>
@@ -25,6 +26,8 @@
 #include <lux/engine/editor/scene/SceneConfigurationView.hpp>
 #include "../../../../../cmake/installed-consumers/common/ControlsTestAccess.hpp"
 #include <lux/engine/editor/flowforge/FlowView.hpp>
+#include <lux/engine/editor/flowforge/FlowSessionFactory.hpp>
+#include <lux/engine/editor/desktop/UiRegistry.hpp>
 #include <lux/engine/editor/widgets/GraphCanvas.hpp>
 #include <lux/engine/editor/views/ViewportElement.hpp>
 #include <lux/engine/flowforge/graph/ArithmeticNode.hpp>
@@ -1012,6 +1015,114 @@ namespace
         f.runs = nullptr;
     }
 
+    void flowComposition(Fixture& f, const char* linker)
+    {
+        namespace ef = editor::flowforge;
+        using namespace lux::services;
+        auto slot = take(f.store.reserve<ef::FlowSession>({"lux.editor.flowforge"}, object::CodeLease::builtin()));
+        ef::FlowAuthoringSource source{asset::AssetId{uuid("ec4-flow")}, "EC4 shared", {}};
+        const auto node = source.graph.addNodes(std::make_unique<lux::flowforge::OnEventNode>("entry"));
+        assert(source.graph.addExport(
+            {lux::flowforge::FlowForgeExportNodeId{1}, source.graph.getNode(node).node->id(), 991}
+        ));
+        auto candidate = take(ef::FlowSession::create(slot.id(), sessions::SourceBinding{}, std::move(source)));
+        auto* model = candidate.get();
+        assert(f.store.prepare(slot, candidate));
+        const auto key = take(f.store.key<ef::FlowSession>(take(f.store.publish(slot))));
+        const auto initial = model->describe();
+        const auto bytes = take(take(model->read()).encode());
+        std::weak_ptr<ef::FlowSession> weak_model = take(f.store.access<ef::FlowSession>().share(key));
+
+        ServiceRegistry services(f.messages.dispatcherRef());
+        assert(services.publish(
+            {ServiceEntry::bind<ef::kFlowCompilationService>(object::CodeLease::builtin()),
+             ServiceEntry::bind<ef::kFlowEnvironmentService>(object::CodeLease::builtin())}
+        ));
+        auto scope = take(services.createScope());
+        assert(scope.provide(ServiceNameView{"lux.process.execution"}, f.execution));
+        assert(scope.provide(ServiceNameView{"lux.editor.sessions"}, f.store));
+        desktop::UiRegistry ui(f.messages.dispatcherRef(), services);
+        auto catalog =
+            take(desktop::UiCatalog::prepare({desktop::UiEntry::bind<ef::kFlowView>(object::CodeLease::builtin())}));
+        assert(ui.publish(catalog) && services.drained());
+        const auto factory = take(catalog.selectContent({"lux.editor.flowforge"}));
+        desktop::UiCreateInfo
+            input{f.messages.dispatcherRef(), lux::ui::PaneId{"ec4-flow-a"}, {{key.id()}, key.id()}, {}};
+        input.configuration.schema = 99;
+        auto invalid = ui.create(factory, scope, input);
+        assert(!invalid && invalid.error().code == desktop::EUiError::INVALID_CONFIGURATION && services.drained());
+        input.configuration.schema = 1;
+        {
+            serialization::BinaryWriter writer(input.configuration.bytes);
+            constexpr std::string_view missing_linker{"EC4-deliberately-missing-linker.exe"};
+            assert(writer.writeUnsigned(std::uint64_t{1}));
+            assert(writer.writeUnsigned(static_cast<std::uint32_t>(missing_linker.size())));
+            assert(writer.writeBytes(std::as_bytes(std::span(missing_linker))));
+        }
+        auto a_owner = take(ui.create(factory, scope, input));
+        input.instance = lux::ui::PaneId{"ec4-flow-b"};
+        auto b_owner = take(ui.create(factory, scope, input));
+        auto* a = static_cast<ef::FlowView*>(a_owner.get());
+        auto* b = static_cast<ef::FlowView*>(b_owner.get());
+        assert(!a->parent() && !b->parent() && !a->attachedRoot() && !b->attachedRoot());
+        assert(a->binding()->session == key && b->binding()->session == key);
+        assert(a->binding()->interaction != b->binding()->interaction);
+        std::array owners{std::move(a_owner), std::move(b_owner)};
+        auto& root = f.desktop->root();
+        const auto activeWindows = [&] { return std::ranges::count_if(root.panes(), [](auto* pane) { return pane; }); };
+        const auto before = activeWindows();
+        assert(root.addSubPanes(owners) && activeWindows() == before + 2);
+        f.frame();
+        assert(a->beginEdit("local draft"));
+        std::vector<ef::VFlowEdit> edits;
+        edits.emplace_back(ef::FlowRename{"uncommitted"});
+        assert(a->previewEdit(edits) && a->binding()->interaction->overlay());
+        assert(!b->binding()->interaction->overlay());
+        assert(model->describe().current == initial.current && take(take(model->read()).encode()) == bytes);
+        auto failed_binding = b->rebindContent({{sessions::SessionId{}}, sessions::SessionId{}});
+        assert(!failed_binding && b->binding()->session == key && a->binding()->interaction->overlay());
+        assert(a->cancelEdit());
+        const auto operation = take(a->compile());
+        auto compiler = take(services.get<ef::FlowCompilationService>(scope));
+        const auto& compiled = take(compiler->operation(operation)).get();
+        assert(a->cancelEdit() && root.removeSubPane(*a));
+        assert(b->cancelEdit() && root.removeSubPane(*b));
+        assert(activeWindows() == before);
+        (void)f.messages.collectRetired();
+        // No surviving Pane is responsible for this completion. The actual scoped service remains.
+        compiler.reset();
+        f.wait([&] { return compiled.ready(); });
+        compiler = take(services.get<ef::FlowCompilationService>(scope));
+        assert(compiled.retryable() && compiled.object());
+        const auto object = compiled.object();
+        assert(compiler->retryLink(operation, {linker, 2}));
+        f.wait([&] { return compiled.ready(); });
+        assert(compiled.result() && compiled.object() == object);
+
+        input.instance = lux::ui::PaneId{"ec4-flow-reopened"};
+        auto reopened = take(ui.create(factory, scope, input));
+        auto* view = static_cast<ef::FlowView*>(reopened.get());
+        assert(root.addSubPane(std::move(reopened)) && weak_model.lock().get() == model);
+        assert(view->binding()->session == key && !view->binding()->interaction->overlay());
+        assert(model->describe().current == initial.current && model->describe().observed == initial.observed);
+        assert(model->describe().dirty == initial.dirty && take(take(model->read()).encode()) == bytes);
+        auto permit = take(f.store.prepareClose(initial.current));
+        assert(f.store.close(permit) && !f.store.access<ef::FlowSession>().share(key));
+        assert(!weak_model.expired() && !view->beginEdit("closed identity"));
+        assert(view->cancelEdit() && root.removeSubPane(*view));
+        (void)f.messages.collectRetired();
+        assert(weak_model.expired());
+        (void)f.store_messages.collect();
+        auto result = take(compiled.result());
+        assert(compiler->acknowledge(operation));
+        compiler.reset();
+        assert(scope.release());
+        (void)f.messages.collectRetired();
+        assert(scope.drained() && services.drained() && !result->bytes().empty());
+        std::cout << "EC4 Flow: actual lazy UiRegistry factory, two local interactions/shared model, Root ownership, "
+                     "no-view completion/retry and logical-close lifetime PASS\n";
+    }
+
     void flowView(Fixture& f, const char* linker)
     {
         namespace ef = editor::flowforge;
@@ -1030,7 +1141,7 @@ namespace
         assert(f.store.prepare(reserved, model));
         const auto key = take(f.store.key<ef::FlowSession>(take(f.store.publish(reserved))));
         ef::FlowInteraction interaction(f.store.access<ef::FlowSession>(), key);
-        ef::FlowCompilationService compilation(f.execution);
+        auto compilation = std::make_shared<ef::FlowCompilationService>(f.execution);
         ef::FlowViewServices services{f.store.access<ef::FlowSession>(), compilation, ef::FlowEnvironment{}};
         auto detached = take(registered_views::flow(
             f.messages.dispatcherRef(),
@@ -1135,8 +1246,8 @@ namespace
         assert(view->previewEdit(edits) && view->commitEdit());
         f.frame();
         const auto operation = take(view->compile());
-        f.wait([&] { return take(compilation.operation(operation)).get().ready(); });
-        const auto& completed = take(compilation.operation(operation)).get();
+        f.wait([&] { return take(compilation->operation(operation)).get().ready(); });
+        const auto& completed = take(compilation->operation(operation)).get();
         assert(completed.object() && completed.retryable());
         const auto object = completed.object();
         assert(!view->retryLink({{}, 0}));
@@ -1169,13 +1280,13 @@ namespace
         assert(view->undo() && author->describe().current == initial.current);
         assert(f.desktop->views().close(next));
         f.wait([&] { return !f.desktop->views().describe(next); });
-        assert(take(compilation.operation(operation)).get().object() == object);
+        assert(take(compilation->operation(operation)).get().object() == object);
         f.wait([&] { return take(f.writes.status(publication)).stage == persistence::EWriteStage::TERMINAL; });
         assert(std::holds_alternative<persistence::CommitReceipt>(*take(f.writes.status(publication)).outcome));
         assert(std::filesystem::file_size(f.files / "derived.flow") == take(completed.result())->bytes().size());
         assert(author->describe().current == initial.current && author->describe().dirty == initial.dirty);
         assert(f.writes.acknowledge(publication));
-        assert(compilation.acknowledge(operation));
+        assert(compilation->acknowledge(operation));
         assert(take(take(author->read()).encode()) == encoded);
     }
 
@@ -2091,6 +2202,7 @@ int main(int argc, char** argv)
     runningView(f);
     const auto compiled = materialView(f);
     flowView(f, argv[1]);
+    flowComposition(f, argv[1]);
     auxiliaryViews(f);
     meshViews(f, *compiled);
     std::printf(

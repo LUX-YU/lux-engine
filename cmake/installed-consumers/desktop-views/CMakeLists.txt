@@ -64,6 +64,7 @@ configure_file("${engine_source}/editor/workbench/desktop/test/host.cpp" "${CMAK
 add_executable(desktop_views "${CMAKE_CURRENT_BINARY_DIR}/views.cpp")
 target_link_libraries(desktop_views PRIVATE lux::engine::editor::scene_ui lux::engine::editor::desktop_shell
     lux::engine::editor::material_ui lux::engine::editor::flow_ui lux::engine::editor::scene_execution
+    lux::engine::editor::flowforge_persistence
     lux::engine::editor::tasks_ui lux::engine::editor::editor_persistence_execution lux::engine::editor::editor_file_publication lux::engine::editor::material_persistence
     lux::engine::scene::scene_transform lux::engine::function::render_features
     lux::engine::function::ui_rendering imgui::core)

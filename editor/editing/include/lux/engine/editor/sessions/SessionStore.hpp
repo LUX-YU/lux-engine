@@ -121,6 +121,12 @@ namespace lux::editor::sessions
     template <class T> class TSessionAccess final
     {
     public:
+        // Retains the real allocation, never the validity of an old logical identity. Callers still
+        // enter read/edit for every access; closing the Store slot closes the shared domain gate.
+        [[nodiscard]] SessionResult<std::shared_ptr<T>> share(TSessionKey<T> key) const noexcept
+        {
+            return store_.share(key);
+        }
         [[nodiscard]] SessionResult<TSessionKey<T>> key(SessionId id) const noexcept
         {
             return store_.template key<T>(id);

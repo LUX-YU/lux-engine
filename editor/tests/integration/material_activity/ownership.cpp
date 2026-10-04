@@ -300,7 +300,7 @@ namespace
         }));
         auto scope = take(registry.createScope());
         // Merely registering metadata does not require or construct Process/Flow services.
-        assert(registry.drained());
+        assert(registry.drained() && take(scope.settled()));
         auto missing = registry.get<ef::FlowCompilationService>(scope);
         assert(!missing && missing.error().code == services::EServiceError::NOT_FOUND && registry.drained());
         assert(scope.provide(services::ServiceNameView{"lux.process.execution"}, execution));
@@ -312,6 +312,8 @@ namespace
             take(first->start(take(author->capture()), ef::FlowEnvironment{}, {}, {"missing-EC4-linker.exe"}));
         workerFinished(execution, take(first->operation(id)).get().task());
         assert(!take(first->operation(id)).get().ready());
+        assert(!take(scope.settled())); // Worker completion is not the service's business completion.
+        assert(scope.beginClose() && !take(scope.settled()));
         std::weak_ptr<ef::FlowCompilationService> weak = first;
         first.reset();
         second.reset();
@@ -327,6 +329,7 @@ namespace
             }
         );
         assert(delivered == 1 && dispatch(execution) == 0);
+        assert(take(scope.settled()) && scope.cancelClose());
 
         auto reopened = take(registry.get<ef::FlowCompilationService>(scope));
         assert(reopened.get() == allocation && take(reopened->snapshotIds()) == std::vector{id});

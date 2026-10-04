@@ -42,6 +42,8 @@ namespace lux::editor::flowforge
             compilation_dependencies
         );
         descriptor.retention = services::EServiceRetention::SCOPED;
+        descriptor.settled = [](const void* allocation) noexcept -> services::ServiceResult<bool>
+        { return static_cast<const FlowCompilationService*>(allocation)->settled(); };
         descriptor.affinity = services::EServiceAffinity::OWNER;
         return descriptor;
     }();

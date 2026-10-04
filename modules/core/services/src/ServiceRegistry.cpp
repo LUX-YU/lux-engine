@@ -4,6 +4,7 @@
 #include <limits>
 #include <lux/engine/object/LuxObject.hpp>
 #include <lux/engine/services/ServiceRegistry.hpp>
+#include <optional>
 #include <thread>
 #include <unordered_map>
 
@@ -280,6 +281,54 @@ namespace lux::services
                 return reject(EServiceError::BUSY);
             }
             return {};
+        }
+        [[nodiscard]] ServiceResult<bool> settled(const detail::ServiceScopeState& root) noexcept
+        {
+            CallbackScope callback{*callbacks};
+            std::optional<ServiceFailure> failure;
+            bool ready = true;
+            // Instance records cannot be added/erased under this callback guard. Each actual allocation
+            // participates once, regardless of the number of contracts or windows observing it.
+            for (const auto& instance : instances)
+            {
+                auto* scope = instance->scope.get();
+                while (scope && scope != &root)
+                {
+                    scope = scope->parent.get();
+                }
+                if (!scope || instance->lifetime->reclaimed.load(std::memory_order_acquire))
+                {
+                    continue;
+                }
+                const auto observe = instance->definition->entry->descriptor().settled;
+                if (!observe)
+                {
+                    continue;
+                }
+                auto allocation = instance->allocation.lock();
+                if (!allocation)
+                {
+                    ready = false; // Owner-affine retirement is pending; never fabricate its final fact.
+                    continue;
+                }
+                auto result = observe(allocation.get());
+                if (!result)
+                {
+                    if (!failure)
+                    {
+                        failure = std::move(result.error());
+                    }
+                }
+                else
+                {
+                    ready = ready && *result;
+                }
+            }
+            if (failure)
+            {
+                return cxx::unexpected(std::move(*failure));
+            }
+            return ready;
         }
         void prune() noexcept
         {
@@ -981,6 +1030,18 @@ namespace lux::services
         // until their own domain close is committed; parent drained() includes those allocations.
         state_->release();
         return {};
+    }
+    ServiceResult<bool> ServiceScope::settled() const noexcept
+    {
+        if (!registry_)
+        {
+            return reject(EServiceError::INVALID_SCOPE);
+        }
+        if (auto admitted = registry_->impl_->admission(); !admitted)
+        {
+            return cxx::unexpected(std::move(admitted.error()));
+        }
+        return registry_->impl_->settled(*state_);
     }
     bool ServiceScope::isOpen() const noexcept
     {

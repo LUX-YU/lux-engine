@@ -137,6 +137,9 @@ namespace lux::services
         // Immutable declaration input, distinct from per-instance serialized configuration. The entry
         // owns its backing and code; the factory may retain it without retaining the resolver.
         cxx::TypeToken definition_type;
+        // Optional fact query for accepted work. No cancellation, confirmation or destruction occurs here.
+        // Domain review/decisions precede release; READY here alone is not permission to discard data.
+        ServiceResult<bool> (*settled)(const void*) noexcept {};
 
         // Declaration-time adaptation only. The runtime invokes one erased boundary with a matching
         // destruction function; modules construct with their actual unique owner and error type.

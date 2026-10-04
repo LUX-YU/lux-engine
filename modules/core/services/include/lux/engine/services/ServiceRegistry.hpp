@@ -41,6 +41,9 @@ namespace lux::services
         ServiceScope& operator=(const ServiceScope&) = delete;
         [[nodiscard]] ServiceResult<void> beginClose() noexcept;
         [[nodiscard]] ServiceResult<void> cancelClose() noexcept;
+        // Queries only existing instances in this scope/subtree. It never creates unused services and
+        // observes all participants even when one fails. It is separate from decisions and physical drain.
+        [[nodiscard]] ServiceResult<bool> settled() const noexcept;
         // Call only after the domain's close prerequisites have been accepted. No business is run here.
         [[nodiscard]] ServiceResult<void> release() noexcept;
         [[nodiscard]] bool isOpen() const noexcept;

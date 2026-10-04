@@ -19,6 +19,9 @@ namespace
         std::function<void()> destroying;
         std::function<void()> creating;
         std::function<void()> projecting;
+        unsigned observations{};
+        bool ready{true}, failed{};
+        std::function<void()> observing;
     };
     struct Value
     {
@@ -722,6 +725,75 @@ namespace
         backing.reset();
         assert(registry.drained());
     }
+    void settlement(lux::object::ObjectMessageQueue& messages)
+    {
+        Counts root_counts, child_counts, unrelated_counts;
+        auto descriptor = calculator;
+        descriptor.retention = EServiceRetention::SCOPED;
+        descriptor.settled = [](const void* input) noexcept -> ServiceResult<bool>
+        {
+            auto& counts = static_cast<const Calculator*>(input)->counts;
+            ++counts.observations;
+            if (counts.observing)
+            {
+                counts.observing();
+            }
+            if (counts.failed)
+            {
+                return lux::cxx::unexpected(ServiceFailure{
+                    EServiceError::FACTORY_FAILURE,
+                    "Original participant diagnostic",
+                    "test.settlement",
+                    731
+                });
+            }
+            return counts.ready;
+        };
+        ServiceRegistry registry{messages.dispatcherRef()};
+        assert(registry.publish({ServiceEntry::create(CodeLease::builtin(), descriptor)}));
+        auto root = take(registry.createScope());
+        auto child = take(registry.createScope(&root));
+        auto unrelated = take(registry.createScope());
+        assert(take(root.settled()) && root_counts.created == 0);
+        assert(root.provide(ServiceNameView{"test.counts"}, root_counts));
+        assert(child.provide(ServiceNameView{"test.counts"}, child_counts));
+        assert(unrelated.provide(ServiceNameView{"test.counts"}, unrelated_counts));
+        auto first = take(registry.get<Calculator>(root));
+        auto alias = take(registry.get<Value>(root));
+        auto nested = take(registry.get<Calculator>(child));
+        auto other = take(registry.get<Calculator>(unrelated));
+        assert(first.get() == alias.get());
+        root_counts.ready = false;
+        assert(!take(root.settled()));
+        assert(root_counts.observations == 1 && child_counts.observations == 1 && unrelated_counts.observations == 0);
+        root_counts.observing = [&]
+        {
+            assert(registry.get<Calculator>(root).error().code == EServiceError::BUSY);
+            assert(registry.publish({}).error().code == EServiceError::BUSY);
+            assert(root.release().error().code == EServiceError::BUSY);
+            assert(root.settled().error().code == EServiceError::BUSY);
+        };
+        root_counts.failed = true;
+        auto failed = root.settled();
+        assert(!failed && failed.error().domain == "test.settlement" && failed.error().domain_code == 731);
+        assert(failed.error().detail == "Original participant diagnostic" && child_counts.observations == 2);
+        assert(unrelated_counts.observations == 0); // An unrelated scope is outside the fixed close range.
+        root_counts.failed = false;
+        root_counts.ready = true;
+        assert(root.beginClose() && take(root.settled()));
+        root_counts.observing = {};
+        assert(registry.get<Calculator>(child).error().code == EServiceError::CLOSED);
+        std::thread wrong([&] { assert(root.settled().error().code == EServiceError::WRONG_THREAD); });
+        wrong.join();
+        assert(root.cancelClose() && take(root.settled()));
+        first.reset();
+        alias.reset();
+        nested.reset();
+        other.reset();
+        assert(root_counts.destroyed == 0 && child_counts.destroyed == 0); // Fact queries never retire anything.
+        assert(root.release() && child.release() && unrelated.release());
+        assert(registry.drained() && root_counts.destroyed == 1 && child_counts.destroyed == 1);
+    }
     void churn(lux::object::ObjectMessageQueue& messages)
     {
         Counts counts;
@@ -776,6 +848,7 @@ int main(int argc, char** argv)
     externalFactoryDependencies(*messages);
     declarationOwnership(*messages, false);
     declarationOwnership(*messages, true);
+    settlement(*messages);
     churn(*messages);
     assert(messages->pendingRetirements() == 0);
     std::cout << "PASS lazy factories, one allocation, declared dependencies, scope/qualifier isolation, "

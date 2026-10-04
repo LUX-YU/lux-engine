@@ -30,6 +30,14 @@ completion. A Registry and its borrowed foundation must outlive its scopes and u
 Explicit release checks admission. A scope's destructor only releases existing retention and keeps
 any outer cleanup guard in force; it cannot admit work or dispatch business callbacks.
 
+Services with accepted asynchronous work may declare the optional `settled` fact query. Scope
+`settled()` visits only existing allocations in that scope and its descendants, once per allocation,
+including during review. It does not instantiate unused services, cancel tasks, acknowledge results,
+release retention or authorize loss of unsaved content. All queries execute under the same callback
+guard; one participant's error preserves its diagnostic while the remaining participants are still
+observed. Worker completion alone is not business completion. Domain decisions/close preparation
+remain separate, and `drained()` remains the physical reclamation condition after release.
+
 Factories, projections, validation and cleanup execute under the provider's existing callback guard.
 Ordinary reentrant requests fail with `BUSY`; declared dependency construction is the bounded internal
 path. A creating key reports a dependency cycle. A weak-expired allocation waiting for reclamation

@@ -16,7 +16,8 @@ lux 是一个项目簇；lux-engine 是其中的游戏引擎——`modules/` 提
 复用的基础应用功能，`engine/` 提供游戏与编辑器共用的引擎功能，顶层 `editor/` 提供编辑器产品。
 依赖方向为 `editor -> engine -> modules`，Editor 可以直接使用 modules，底层不得反向链接 Editor。
 Editor 正式实现按 `editing -> authoring -> activities -> workbench -> application` 由内向外组织；
-层目录不是聚合库。项目纯描述和 Builder 归 `authoring/project`，文件与资产活动归
+层目录不是聚合库。通用服务工厂归 `modules/core/services`，EditorContext 归 workbench 共同组合；
+创建期按声明解析准确依赖，稳定宿主不显式创建或维护具体业务。项目纯描述和 Builder 归 `authoring/project`，文件与资产活动归
 `activities/project`，保存和文件发布归 `activities/persistence`；领域 UI 归对应 workbench 主题。
 P12 已移除旧产品根与兼容接线；正式路径只能依赖相应层的真实 provider。
 公开逻辑 include 和安装包不随物理目录迁移改名。

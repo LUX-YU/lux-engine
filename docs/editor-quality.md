@@ -20,11 +20,18 @@
 
 不要求每个类都有接口。继承只用于真实替代关系、对象协议或已经存在的 polymorphic 边界；依赖和资源 owner 默认组合。纯值不因“统一对象体系”而继承 LuxObject。
 
-### QR02 — 不重新制造全局 Context
+LuxObject 相对父对象只有 EXTERNAL 与 PARENT_OWNED 两态。成员和外部智能指针为 EXTERNAL；
+父托管只由真实拥有型转移建立。Root 的窗口顺序和路由是非拥有索引，不建立第二份删除权。
 
-构造函数可以显式接受若干准确依赖，或者一个固定的依赖集合值。禁止 service locator、`get<T>()`、`map<string,any>`、可遍历整个应用的 getters 及多组件共同写入的 SharedApplicationState。
+### QR02 — 声明式依赖与受约束创建环境
 
-必须保留能力限制时，由实际提供者定义窄契约。不能由每个消费者先定义同义 Port，再让提供者分别加 Adapter。
+允许服务/UI 工厂在创建边界从已注册描述进行类型化解析，如 `get<T>(scope, key)`。
+工厂须声明依赖、实例范围与配置合同；缺失、歧义、循环、代次或配置失配准确失败。
+创建后对象保存自己的准确依赖，不在热路径反复解析；首次启动新用例也属于创建边界。
+
+禁止全局可变 service locator、`map<string,any>`、不断增长的具体 getter、把全部 Application
+字段搬进 Context、业务强持无限可变环境，以及注册时构造全部服务。UI 工厂可使用 workbench
+共同 EditorContext；无 UI 服务只能使用无 UI resolver 和明确依赖。引擎基础借用不得伪装成共享拥有。
 
 ### QR03 — 事实通知复用 LuxObject
 
@@ -55,6 +62,9 @@
 动态对象、memento、encoder、错误 payload、闭包及 deleter 必须在代码释放前完成最后析构。除了普通析构，还检查移动赋值、替换、早返回、拒绝准入和回调中的清理。
 
 `shared_ptr` 的数量不是控制责任协议。外部 code owner 放在正确的拥有单元，不能只将 lease 放进插件对象自身后就宣称虚析构尾部安全。
+
+父托管不得与外部共享删除同一对象。动态 deleter、析构返回及控制块清理使用下层代码保活合同；
+最后共享引用在 worker 释放时，实际 affinity 析构回到原对象 owner 的安全点。成员不得独立请求 delete。
 
 ### QR08 — 草稿必须携带真实来源
 

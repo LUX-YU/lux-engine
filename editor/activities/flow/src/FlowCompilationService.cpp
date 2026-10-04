@@ -268,16 +268,11 @@ namespace lux::editor::flowforge
         process::ExecutionRuntime& execution;
         const std::thread::id owner{std::this_thread::get_id()};
         std::size_t capacity;
-        struct Record final
-        {
-            std::unique_ptr<FlowCompileOperation> operation;
-            bool released{};
-        };
-        std::vector<Record> operations;
+        std::vector<std::unique_ptr<FlowCompileOperation>> operations;
         FlowCompileOperation* find(FlowCompileId id) const noexcept
         {
-            auto found = std::ranges::find(operations, id, [](const auto& p) { return p.operation->id(); });
-            return found == operations.end() ? nullptr : found->operation.get();
+            auto found = std::ranges::find(operations, id, [](const auto& p) { return p->id(); });
+            return found == operations.end() ? nullptr : found->get();
         }
     };
     FlowCompilationService::FlowCompilationService(process::ExecutionRuntime& execution, std::size_t capacity)
@@ -291,7 +286,7 @@ namespace lux::editor::flowforge
         std::vector<FlowCompileId> result;
         result.reserve(impl_->operations.size());
         for (const auto& operation : impl_->operations)
-            result.push_back(operation.operation->id());
+            result.push_back(operation->id());
         return result;
     }
     FlowCompilationResult<FlowCompileId> FlowCompilationService::start(
@@ -349,7 +344,7 @@ namespace lux::editor::flowforge
         state->attempts.back().task = submitted->id();
         state->task = std::move(*submitted);
         const auto id = state->id;
-        impl_->operations.push_back({std::unique_ptr<FlowCompileOperation>(new FlowCompileOperation(std::move(state)))});
+        impl_->operations.emplace_back(new FlowCompileOperation(std::move(state)));
         return id;
     }
     FlowCompilationResult<void> FlowCompilationService::retryLink(FlowCompileId id, LinkSettings link)
@@ -424,41 +419,29 @@ namespace lux::editor::flowforge
         if (!value->ready())
             return failed(EFlowCompilationError::BUSY);
         const auto found = std::ranges::find(impl_->operations, id, [](const auto& record) {
-            return record.operation->id();
+            return record->id();
         });
-        auto retiring = std::move(found->operation);
+        auto retiring = std::move(*found);
         impl_->operations.erase(found);
         return {};
-    }    FlowCompilationResult<void> FlowCompilationService::releaseResult(FlowCompileId id) noexcept
-    {
-        if (impl_->owner != std::this_thread::get_id())
-            return failed(EFlowCompilationError::WRONG_THREAD);
-        const auto found = std::ranges::find(impl_->operations, id, [](const auto& record) {
-            return record.operation->id();
-        });
-        if (found != impl_->operations.end())
-            found->released = true;
-        return {};
     }
-    FlowCompilationResult<void> FlowCompilationService::collectReleased()
+    FlowCompilationResult<std::optional<FlowCompileId>>
+    FlowCompilationService::latest(sessions::SessionId session) const noexcept
     {
         if (impl_->owner != std::this_thread::get_id())
             return failed(EFlowCompilationError::WRONG_THREAD);
-        std::vector<FlowCompileId> ready;
-        for (const auto& record : impl_->operations)
-            if (record.released && record.operation->ready())
-                ready.push_back(record.operation->id());
-        for (auto id : ready)
+        if (!session.valid())
+            return failed(EFlowCompilationError::INVALID_ID);
+        for (auto record = impl_->operations.rbegin(); record != impl_->operations.rend(); ++record)
         {
-            auto acknowledged = acknowledge(id);
-            if (!acknowledged)
-            {
-                const auto* error = std::get_if<EFlowCompilationError>(&acknowledged.error());
-                if (!error || *error != EFlowCompilationError::INVALID_ID)
-                    return acknowledged;
-            }
+            if ((*record)->key().content.session == session)
+                return (*record)->id();
         }
-        return {};
+        return std::optional<FlowCompileId>{};
+    }
+    bool FlowCompilationService::settled() const noexcept
+    {
+        return std::ranges::all_of(impl_->operations, [](const auto& operation) { return operation->ready(); });
     }
     bool FlowCompilationService::empty() const noexcept
     {

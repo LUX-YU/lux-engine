@@ -12,7 +12,6 @@
 #include <lux/engine/editor/project/ProjectView.hpp>
 #include <lux/engine/editor/project/AssetPickerElement.hpp>
 #include <fstream>
-#include <iostream>
 #include <source_location>
 #include <lux/engine/editor/desktop/DesktopShell.hpp>
 #include <lux/engine/editor/scene/SceneView.hpp>
@@ -1085,6 +1084,8 @@ namespace
         const auto operation = take(a->compile());
         auto compiler = take(services.get<ef::FlowCompilationService>(scope));
         const auto& compiled = take(compiler->operation(operation)).get();
+        f.frame();
+        assert(a->compilation() == operation && b->compilation() == operation);
         assert(a->cancelEdit() && root.removeSubPane(*a));
         assert(b->cancelEdit() && root.removeSubPane(*b));
         assert(activeWindows() == before);
@@ -1104,6 +1105,9 @@ namespace
         auto* view = static_cast<ef::FlowView*>(reopened.get());
         assert(root.addSubPane(std::move(reopened)) && weak_model.lock().get() == model);
         assert(view->binding()->session == key && !view->binding()->interaction->overlay());
+        assert(view->compilation() == operation); // Reopening observes the service's actual retained result.
+        f.frame();
+        assert(view->status() && view->compilation() == operation);
         assert(model->describe().current == initial.current && model->describe().observed == initial.observed);
         assert(model->describe().dirty == initial.dirty && take(take(model->read()).encode()) == bytes);
         auto permit = take(f.store.prepareClose(initial.current));
@@ -1119,8 +1123,10 @@ namespace
         assert(scope.release());
         (void)f.messages.collectRetired();
         assert(scope.drained() && services.drained() && !result->bytes().empty());
-        std::cout << "EC4 Flow: actual lazy UiRegistry factory, two local interactions/shared model, Root ownership, "
-                     "no-view completion/retry and logical-close lifetime PASS\n";
+        std::printf(
+            "EC4 Flow: actual lazy UiRegistry factory, two local interactions/shared model, Root ownership, "
+            "no-view completion/retry and logical-close lifetime PASS\n"
+        );
     }
 
     void flowView(Fixture& f, const char* linker)

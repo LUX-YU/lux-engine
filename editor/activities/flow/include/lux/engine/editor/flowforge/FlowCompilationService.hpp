@@ -136,12 +136,13 @@ namespace lux::editor::flowforge
         ) const;
         [[nodiscard]] FlowCompilationResult<void> acknowledge(FlowCompileId);
         [[nodiscard]] FlowCompilationResult<void> cancel(FlowCompileId);
-        // Release the caller's interest without cancelling accepted work. Idempotent after acknowledgement.
-        [[nodiscard]] FlowCompilationResult<void> releaseResult(FlowCompileId) noexcept;
-        // Collects only the released, ready set observed on entry; cleanup-created work waits for another turn.
-        [[nodiscard]] FlowCompilationResult<void> collectReleased();
+        // Results survive observers. Acknowledgement is explicit and cannot discard an undelivered completion.
+        // The full SessionId includes its generation; a replacement session never inherits this result.
+        [[nodiscard]] FlowCompilationResult<std::optional<FlowCompileId>> latest(sessions::SessionId) const noexcept;
         [[nodiscard]] FlowCompilationResult<std::vector<FlowCompileId>> snapshotIds() const;
         [[nodiscard]] bool empty() const noexcept;
+        // Completion fact only, not an instruction to acknowledge results. Called on the owner thread.
+        [[nodiscard]] bool settled() const noexcept;
 
 
     private:

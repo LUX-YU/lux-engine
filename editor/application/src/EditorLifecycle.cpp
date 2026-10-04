@@ -420,14 +420,12 @@ namespace lux::editor::application
             }
         if (auto received = material_compilation_.collectReleased(); !received)
             receive(applicationFailure("material.release", received.error()));
-        if (auto received = flow_compilation_->collectReleased(); !received)
-            receive(applicationFailure("flow.release", received.error()));
         receive(content_saving_->update(closing_ ? closing_->saves() : std::span<const sessions::SaveAllEntry>{}));
         receive(settleArtifacts());
         receive(settleWorkspace());
         const bool operations_settled =
             importer_->closeStatus().state == assets::EModelImportCloseState::CLOSED && material_compilation_.empty() &&
-            flow_compilation_->empty() && user_settings_changes_.settled() && project_settings_changes_.settled() &&
+            flow_compilation_->settled() && user_settings_changes_.settled() && project_settings_changes_.settled() &&
             content_saving_->settled() && opening_.settled() && recent_projects_->settled() && !project_launch_ &&
             std::ranges::all_of(
                 workspace_changes_.publications(),

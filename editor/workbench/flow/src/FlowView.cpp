@@ -257,6 +257,7 @@ namespace lux::editor::flowforge
             REDO,
             COMPILE,
             RETRY,
+            ACKNOWLEDGE,
             PUBLISH,
             REVERT,
             CANCEL
@@ -398,6 +399,8 @@ namespace lux::editor::flowforge
                 if (ImGui::Button("Publish artifact"))
                     state_.control_ = EControl::PUBLISH;
                 ImGui::EndDisabled();
+                if (ImGui::Button("Dismiss compilation result"))
+                    state_.control_ = EControl::ACKNOWLEDGE;
                 if (ImGui::Button("Cancel pending edits"))
                     state_.control_ = EControl::CANCEL;
                 ImGui::TextWrapped("%s", state_.compile_status_.c_str());
@@ -613,8 +616,6 @@ namespace lux::editor::flowforge
         }
         ~Impl() noexcept
         {
-            if (!services_.compilation->releaseResult(compile_))
-                std::terminate(); // The view and its service share the owner thread.
             if (!discardInputs())
                 std::terminate();
         }
@@ -666,6 +667,7 @@ namespace lux::editor::flowforge
             if (binding == binding_)
                 return {};
             Display candidate;
+            FlowCompileId compilation;
             std::shared_ptr<FlowSession> model;
             if (binding)
             {
@@ -682,6 +684,10 @@ namespace lux::editor::flowforge
                 if (!read)
                     return cxx::unexpected(read.error());
                 candidate = std::move(*read);
+                auto latest = services_.compilation->latest(binding->session.id());
+                if (!latest)
+                    return rejected(latest.error());
+                compilation = latest->value_or(FlowCompileId{});
             }
             if (binding_)
             {
@@ -695,9 +701,7 @@ namespace lux::editor::flowforge
             auto installed = install(std::move(candidate));
             if (!installed)
                 return installed;
-            if (!services_.compilation->releaseResult(compile_))
-                std::terminate();
-            compile_ = {};
+            compile_ = compilation;
             binding_ = binding;
             model_ = std::move(model);
             compile_status_.clear();
@@ -866,6 +870,9 @@ namespace lux::editor::flowforge
             case EControl::RETRY:
                 controlled = view_.retryLink(state_.linker);
                 break;
+            case EControl::ACKNOWLEDGE:
+                controlled = view_.acknowledgeCompilation();
+                break;
             case EControl::PUBLISH:
                 controlled = accepted(view_.requestPublication());
                 break;
@@ -891,6 +898,10 @@ namespace lux::editor::flowforge
                 if (auto installed = install(std::move(*read)); !installed)
                     return installed;
             }
+            auto latest = services_.compilation->latest(binding_->session.id());
+            if (!latest)
+                return rejected(latest.error());
+            compile_ = latest->value_or(FlowCompileId{});
             if (compile_.value)
             {
                 auto operation = services_.compilation->operation(compile_);
@@ -903,6 +914,8 @@ namespace lux::editor::flowforge
                 if (task.ready() && !task.result())
                     compile_status_ += "; failed (fixed artifact can be retried if available)";
             }
+            else
+                compile_status_.clear();
             return {};
         }
     };
@@ -1075,14 +1088,21 @@ namespace lux::editor::flowforge
         );
         if (!requested)
             return rejected(requested.error());
-        if (!impl_->services_.compilation->releaseResult(impl_->compile_))
-            std::terminate();
         impl_->compile_ = *requested;
         return *requested;
     }
     FlowViewResult<void> FlowView::retryLink(LinkSettings settings)
     {
         return accepted(impl_->services_.compilation->retryLink(impl_->compile_, std::move(settings)));
+    }
+    FlowViewResult<void> FlowView::acknowledgeCompilation()
+    {
+        auto acknowledged = impl_->services_.compilation->acknowledge(impl_->compile_);
+        if (!acknowledged)
+            return rejected(acknowledged.error());
+        impl_->compile_ = {};
+        impl_->compile_status_.clear();
+        return {};
     }
     FlowViewResult<void> FlowView::requestPublication()
     {

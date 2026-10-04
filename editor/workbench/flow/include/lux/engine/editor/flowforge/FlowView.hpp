@@ -68,6 +68,7 @@ namespace lux::editor::flowforge
         [[nodiscard]] FlowViewResult<void> redo();
         [[nodiscard]] FlowViewResult<FlowCompileId> compile();
         [[nodiscard]] FlowViewResult<void> retryLink(LinkSettings);
+        [[nodiscard]] FlowViewResult<void> acknowledgeCompilation();
         // This is a user intention. Admission and publication results belong to its explicit receiver.
         object::TSignal<persistence::DerivedArtifact> publishRequested{*this};
         [[nodiscard]] FlowViewResult<void> requestPublication();

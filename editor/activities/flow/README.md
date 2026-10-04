@@ -34,3 +34,9 @@ view pins the same immutable backing after the scoped service allocation has ret
 publishFlowArtifact shares the existing WriteCoordinator and SaveExecution. It publishes fixed bytes
 against an explicit expected target version and never marks author source clean. Legacy UI conversion bridges
 are private, consumer-limited, and expire at P12.
+
+Compilation records belong to `FlowCompilationService`, not to an observing window. Closing,
+rebinding, or recompiling in a view neither cancels nor acknowledges a prior record. `latest`
+uses the complete SessionId and searches the bounded admission-ordered records without copying
+a result directory. An explicit `acknowledge` requires actual business completion; `settled`
+does not free results. Published artifacts retain their original immutable result ownership.

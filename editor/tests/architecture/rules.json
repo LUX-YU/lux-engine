@@ -1838,7 +1838,8 @@
       "lux/engine/editor/flowforge/FlowSnapshot.hpp",
       "lux/engine/editor/flowforge/FlowPersistenceAccess.hpp",
       "lux/engine/editor/flowforge/PreparedFlowReload.hpp",
-      "lux/engine/object/CodeLease.hpp"
+      "lux/engine/object/CodeLease.hpp",
+      "lux/engine/editor/flowforge/FlowEnvironment.hpp"
     ],
     "prefixes": [
       "lux/engine/editor/sessions/",
@@ -1861,7 +1862,9 @@
       "editor/authoring/flow/src/edits/FlowGraphEdit.cpp",
       "editor/authoring/flow/test/flow_session.cpp",
       "editor/authoring/flow/include/lux/engine/editor/flowforge/PreparedFlowReload.hpp",
-      "editor/authoring/flow/src/PreparedFlowReload.cpp"
+      "editor/authoring/flow/src/PreparedFlowReload.cpp",
+      "editor/authoring/flow/include/lux/engine/editor/flowforge/FlowEnvironment.hpp",
+      "editor/authoring/flow/src/FlowEnvironment.cpp"
     ],
     "test_headers": {
       "editor/authoring/flow/test/flow_session.cpp": [
@@ -2417,7 +2420,9 @@
     "direct": [
       "editor_persistence",
       "flowforge_model",
-      "session_factories"
+      "session_factories",
+      "services",
+      "editor_configuration"
     ],
     "closure": {
       "Eigen3::Eigen": {
@@ -2509,6 +2514,12 @@
       },
       "services": {
         "path": "modules/core/services"
+      },
+      "editor_configuration": {
+        "path": "editor/authoring/configuration"
+      },
+      "layout_model": {
+        "path": "editor/authoring/layout"
       }
     },
     "headers": [
@@ -2568,7 +2579,10 @@
       "lux/engine/editor/flowforge/FlowSessionFactory.hpp",
       "lux/engine/editor/detail/PrepareSession.hpp",
       "lux/engine/editor/flowforge/PreparedFlowReload.hpp",
-      "lux/engine/object/CodeLease.hpp"
+      "lux/engine/object/CodeLease.hpp",
+      "lux/engine/services/ServiceRegistry.hpp",
+      "lux/engine/editor/configuration/EditorReflection.hpp",
+      "lux/engine/editor/flowforge/FlowEnvironment.hpp"
     ],
     "prefixes": [
       "lux/cxx/compile_time/",
@@ -19055,6 +19069,12 @@
       ],
       "editor/workbench/scene/api/src/SceneEditorCatalog.cpp": [
         "scene_control_api"
+      ],
+      "editor/authoring/flow/include/lux/engine/editor/flowforge/FlowEnvironment.hpp": [
+        "flowforge_model"
+      ],
+      "editor/authoring/flow/src/FlowEnvironment.cpp": [
+        "flowforge_model"
       ]
     },
     "native_libraries": [

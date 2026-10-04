@@ -189,9 +189,9 @@ namespace
         const auto bytes = take(take(author->read()).encode());
         ef::FlowCompilationService service(execution, 2);
         const auto id =
-            take(service.start(take(author->capture()), ef::FlowCompileEnvironment{}, {}, {"missing-P07-linker.exe"}));
+            take(service.start(take(author->capture()), ef::FlowEnvironment{}, {}, {"missing-P07-linker.exe"}));
         const auto second =
-            take(service.start(take(author->capture()), ef::FlowCompileEnvironment{}, {}, {"missing-P07-linker.exe"}));
+            take(service.start(take(author->capture()), ef::FlowEnvironment{}, {}, {"missing-P07-linker.exe"}));
         assert(id != second);
         assert((take(service.snapshotIds()) == std::vector{id, second}));
         std::thread observer([&] { assert(!service.snapshotIds()); });
@@ -219,7 +219,7 @@ namespace
         assert(operation.id() == id && operation.task() == task && operation.ready());
         assert(service.retryLink(id, {linker, 2}));
         assert(!operation.ready());
-        const auto recovered = take(service.start(take(author->capture()), ef::FlowCompileEnvironment{}, {}, {linker}));
+        const auto recovered = take(service.start(take(author->capture()), ef::FlowEnvironment{}, {}, {linker}));
         assert(recovered != id && recovered != second);
         workerFinished(execution, operation.attempts().back().task);
         workerFinished(execution, take(service.operation(recovered)).get().task());
@@ -245,7 +245,7 @@ namespace
         assert(take(take(service.operation(recovered)).get().result())->source()->name == "Ownership");
         assert(service.acknowledge(recovered));
         assert(take(service.snapshotIds()).empty());
-        const auto released = take(service.start(take(author->capture()), ef::FlowCompileEnvironment{}, {}, {linker}));
+        const auto released = take(service.start(take(author->capture()), ef::FlowEnvironment{}, {}, {linker}));
         workerFinished(execution, take(service.operation(released)).get().task());
         assert(service.releaseResult(released) && service.collectReleased());
         assert(!service.empty() && !take(service.operation(released)).get().ready());
@@ -296,7 +296,7 @@ namespace
         assert(first == second && !first.owner_before(second) && !second.owner_before(first));
         auto* allocation = first.get();
         const auto id =
-            take(first->start(take(author->capture()), ef::FlowCompileEnvironment{}, {}, {"missing-EC4-linker.exe"}));
+            take(first->start(take(author->capture()), ef::FlowEnvironment{}, {}, {"missing-EC4-linker.exe"}));
         workerFinished(execution, take(first->operation(id)).get().task());
         assert(!take(first->operation(id)).get().ready());
         std::weak_ptr<ef::FlowCompilationService> weak = first;

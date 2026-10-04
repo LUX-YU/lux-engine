@@ -837,6 +837,24 @@ namespace
 } // namespace
 int main(int argc, char** argv)
 {
+    {
+        lux::test::ObjectQueue messages;
+        services::ServiceRegistry registry(messages.dispatcherRef());
+        assert(registry.publish({services::ServiceEntry::bind<ef::kFlowEnvironmentService>(object::CodeLease::builtin())}));
+        auto scope = take(registry.createScope());
+        assert(registry.drained());
+        auto first = take(registry.get<ef::FlowEnvironment>(scope));
+        auto second = take(registry.get<ef::FlowEnvironment>(scope));
+        assert(first == second && first->view().code_lifetime == second->view().code_lifetime);
+        auto retained = first->view();
+        first.reset();
+        second.reset();
+        assert(scope.release());
+        (void)messages.collect();
+        assert(scope.drained() && registry.drained());
+        assert(lux::flowforge::validateFlowSourceEnvironment(retained));
+        std::cout << "PASS lazy Flow metadata capture without compiler or UI creation; shared immutable backing\n";
+    }
     assert(argc == 2 || argc == 3);
     menuDescriptorLifetime();
     shortcutOverrides();

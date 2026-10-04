@@ -219,7 +219,7 @@ namespace lux::editor::flowforge
             }
             void insert(std::unique_ptr<lux::flowforge::Node> node)
             {
-                const auto& owner = state_.services_.metadata.code_lifetime;
+                const auto owner = state_.services_.metadata.view().code_lifetime;
                 state_.status_ = state_.enqueue(
                     state_.display_.content,
                     [&]
@@ -288,7 +288,7 @@ namespace lux::editor::flowforge
                     for (auto kind : choices)
                         if (ImGui::Selectable(toString(kind)))
                             insert(makeFlowNode(kind));
-                    if (auto node = chooseRegisteredFlowNode(state_.services_.metadata))
+                    if (auto node = chooseRegisteredFlowNode(state_.services_.metadata.view()))
                         insert(std::move(node));
                     ImGui::EndCombo();
                 }
@@ -936,7 +936,7 @@ namespace lux::editor::flowforge
             return rejected(snapshot.error());
         auto requested = impl_->services_.compilation.start(
             std::move(*snapshot),
-            FlowCompileEnvironment{impl_->services_.metadata},
+            impl_->services_.metadata,
             {},
             impl_->state_.linker
         );

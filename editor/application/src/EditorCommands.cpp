@@ -2,8 +2,6 @@
 #include <algorithm>
 #include <lux/engine/log/Log.hpp>
 #include <lux/engine/editor/sessions/SessionCommands.hpp>
-#include <lux/engine/editor/configuration/EditorReflection.hpp>
-#include <lux/engine/meta/Meta.hpp>
 #include <lux/engine/editor/project/ProjectView.hpp>
 #include <lux/engine/editor/tasks/TaskView.hpp>
 
@@ -143,26 +141,10 @@ namespace lux::editor::application
         auto registered = contributions_.applyPending();
         if (!registered)
             return applicationFailure("reflection.register", registered.error());
-        struct FlowMetadata final
-        {
-            std::shared_ptr<const void> reflection{acquireEditorReflection()};
-            std::vector<const lux::meta::RefClass*> classes;
-            std::vector<const lux::meta::RefFunction*> functions;
-        };
-        auto metadata = std::make_shared<FlowMetadata>();
-        const auto& registry = meta::ReflectionRegistry::instance();
-        for (const auto& type : registry.classes())
-            if (type && type->type.size)
-                metadata->classes.push_back(type.get());
-        for (const auto& function : registry.functions())
-            if (function)
-                metadata->functions.push_back(function.get());
-        flow_environment_.classes = metadata->classes;
-        flow_environment_.functions = metadata->functions;
-        flow_environment_.code_lifetime = metadata;
-        auto valid = lux::flowforge::validateFlowSourceEnvironment(flow_environment_);
-        if (!valid)
-            return applicationFailure("flow.metadata", valid.error());
+        auto flow = flowforge::captureFlowEnvironment();
+        if (!flow)
+            return applicationFailure("flow.metadata", flow.error());
+        flow_environment_ = std::move(*flow);
         draft.views.push_back(scene::makeSceneViewFactory(
             sceneServices(),
             [this](const scene::ModelPlacement& value) { receiveModel(value); }
@@ -186,7 +168,7 @@ namespace lux::editor::application
         installSceneCommands(draft);
         draft.sessions.push_back(scene::makeSceneSessionFactory(registrations_.components));
         draft.sessions.push_back(material::makeMaterialSessionFactory());
-        draft.sessions.push_back(flowforge::makeFlowSessionFactory(flow_environment_));
+        draft.sessions.push_back(flowforge::makeFlowSessionFactory(flow_environment_.view()));
         auto prepared = extensions::ContributionSnapshot::prepare(std::move(draft));
         if (!prepared)
             return applicationFailure("contributions.prepare", prepared.error());

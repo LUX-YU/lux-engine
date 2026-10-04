@@ -46,42 +46,6 @@ namespace lux::editor::flowforge
         return descriptor;
     }();
 
-    struct FlowCompileEnvironment::Data final
-    {
-        std::shared_ptr<const void> code;
-        std::vector<const lux::meta::RefType*> types;
-        std::vector<const lux::meta::RefClass*> classes;
-        std::vector<const lux::meta::RefFunction*> functions;
-        std::vector<lux::flowforge::ScriptAbilityNodeDescription> abilities;
-        std::vector<lux::script::ScriptEventSourceDescription> events;
-        std::uint64_t version;
-    };
-    FlowCompileEnvironment::FlowCompileEnvironment(lux::flowforge::FlowSourceEnvironment env, std::uint64_t version)
-        : data_(std::make_shared<const Data>(Data{
-              std::move(env.code_lifetime),
-              {env.types.begin(), env.types.end()},
-              {env.classes.begin(), env.classes.end()},
-              {env.functions.begin(), env.functions.end()},
-              {env.abilities.nodes().begin(), env.abilities.nodes().end()},
-              {env.events.begin(), env.events.end()},
-              version
-          }))
-    {}
-    lux::flowforge::FlowSourceEnvironment FlowCompileEnvironment::view() const noexcept
-    {
-        return {
-            data_->types,
-            data_->classes,
-            data_->functions,
-            lux::flowforge::ScriptAbilityNodeCatalogView{data_->abilities},
-            data_->events,
-            data_
-        };
-    }
-    std::uint64_t FlowCompileEnvironment::version() const noexcept
-    {
-        return data_->version;
-    }
     struct detail::FlowCompilation final
     {
         static std::shared_ptr<const CompiledFlow> finish(
@@ -122,7 +86,7 @@ namespace lux::editor::flowforge
         };
         ObjectResult compile(
             const lux::flowforge::FlowSource& source,
-            const FlowCompileEnvironment& env,
+            const FlowEnvironment& env,
             FlowCompileSettings settings,
             std::stop_token stop
         )
@@ -219,7 +183,7 @@ namespace lux::editor::flowforge
     {
         std::thread::id owner{std::this_thread::get_id()};
         FlowCompileId id{allocateId()};
-        FlowCompileEnvironment environment;
+        FlowEnvironment environment;
         std::shared_ptr<const lux::flowforge::FlowSource> source;
         FlowCompileSettings settings;
         FlowCompileKey key;
@@ -332,7 +296,7 @@ namespace lux::editor::flowforge
     }
     FlowCompilationResult<FlowCompileId> FlowCompilationService::start(
         FlowSnapshot source,
-        FlowCompileEnvironment env,
+        FlowEnvironment env,
         FlowCompileSettings settings,
         LinkSettings link
     )

@@ -1031,7 +1031,7 @@ namespace
         const auto key = take(f.store.key<ef::FlowSession>(take(f.store.publish(reserved))));
         ef::FlowInteraction interaction(f.store.access<ef::FlowSession>(), key);
         ef::FlowCompilationService compilation(f.execution);
-        ef::FlowViewServices services{f.store.access<ef::FlowSession>(), compilation, {}};
+        ef::FlowViewServices services{f.store.access<ef::FlowSession>(), compilation, ef::FlowEnvironment{}};
         auto detached = take(registered_views::flow(
             f.messages.dispatcherRef(),
             ui::PaneId{"flow"},

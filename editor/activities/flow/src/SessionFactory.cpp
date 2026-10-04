@@ -1,12 +1,64 @@
-#include <random>
-#include <lux/engine/editor/flowforge/PreparedFlowReload.hpp>
-#include <lux/engine/editor/flowforge/FlowSessionFactory.hpp>
-#include <lux/engine/editor/flowforge/FlowSaveSource.hpp>
+#include <lux/engine/editor/configuration/EditorReflection.hpp>
 #include <lux/engine/editor/detail/PrepareSession.hpp>
+#include <lux/engine/editor/flowforge/FlowSaveSource.hpp>
+#include <lux/engine/editor/flowforge/FlowSessionFactory.hpp>
+#include <lux/engine/editor/flowforge/PreparedFlowReload.hpp>
+#include <lux/engine/meta/Meta.hpp>
+#include <lux/engine/services/ServiceRegistry.hpp>
+#include <random>
 namespace lux::editor::flowforge
 {
+    lux::flowforge::FlowSourceResult<FlowEnvironment> captureFlowEnvironment()
+    {
+        const auto reflection = acquireEditorReflection();
+        const auto& registry = meta::ReflectionRegistry::instance();
+        std::vector<const meta::RefClass*> classes;
+        std::vector<const meta::RefFunction*> functions;
+        for (const auto& type : registry.classes())
+        {
+            if (type && type->type.size)
+            {
+                classes.push_back(type.get());
+            }
+        }
+        for (const auto& function : registry.functions())
+        {
+            if (function)
+            {
+                functions.push_back(function.get());
+            }
+        }
+        FlowEnvironment environment{{.classes = classes, .functions = functions, .code_lifetime = reflection}};
+        auto valid = lux::flowforge::validateFlowSourceEnvironment(environment.view());
+        if (!valid)
+        {
+            return cxx::unexpected(std::move(valid.error()));
+        }
+        return environment;
+    }
+
     namespace
     {
+        constexpr services::ServiceContract environment_contracts[]{
+            services::ServiceContract::forType<FlowEnvironment, FlowEnvironment>(
+                services::ServiceNameView{"lux.editor.flow.environment"}
+            )
+        };
+        services::ServiceResult<std::unique_ptr<FlowEnvironment>>
+        createEnvironment(services::ServiceResolver&, const services::ServiceConfiguration&) noexcept
+        {
+            auto environment = captureFlowEnvironment();
+            if (!environment)
+            {
+                return cxx::unexpected(services::ServiceFailure{
+                    services::EServiceError::FACTORY_FAILURE,
+                    std::move(environment.error().field),
+                    "flow.environment",
+                    static_cast<std::uint64_t>(environment.error().code)
+                });
+            }
+            return std::make_unique<FlowEnvironment>(std::move(*environment));
+        }
         constexpr std::string_view extensions[]{"luxflow"};
         constexpr sessions::SessionKindDescriptor descriptor{
             sessions::SessionKindIdView{"lux.editor.flowforge"},
@@ -15,6 +67,17 @@ namespace lux::editor::flowforge
             sessions::SourceAuthoring{"lux.flowforge.source", 1, ".flow"}
         };
     } // namespace
+    constinit const services::ServiceDescriptor kFlowEnvironmentService = []
+    {
+        auto descriptor = services::ServiceDescriptor::forType<FlowEnvironment, createEnvironment>(
+            services::ServiceNameView{"lux.editor.flow.environment"},
+            environment_contracts
+        );
+        descriptor.retention = services::EServiceRetention::SCOPED;
+        descriptor.affinity = services::EServiceAffinity::OWNER;
+        return descriptor;
+    }();
+
     sessions::SessionPreparation prepareFlowSession(
         PreparedFlowData data,
         sessions::SourceBinding binding,

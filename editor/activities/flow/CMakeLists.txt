@@ -6,10 +6,13 @@ target_link_libraries(flowforge_persistence PUBLIC lux::engine::editor::flowforg
 component_add_transitive_commands(flowforge_persistence
     "find_package(lux-engine-editor-flowforge-model REQUIRED COMPONENTS flowforge_model)"
     "find_package(lux-engine-editor-persistence REQUIRED COMPONENTS editor_persistence)")
-target_link_libraries(flowforge_persistence PUBLIC lux::engine::editor::session_factories)
+target_link_libraries(flowforge_persistence PUBLIC lux::engine::editor::session_factories
+    PRIVATE lux::engine::core::services lux::engine::editor::editor_configuration)
 target_include_directories(flowforge_persistence PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../sessions/sinclude)
 component_add_transitive_commands(flowforge_persistence
-    "find_package(lux-engine-editor-session-factories REQUIRED COMPONENTS session_factories)")
+    "find_package(lux-engine-editor-session-factories REQUIRED COMPONENTS session_factories)"
+    "find_package(lux-engine-core REQUIRED COMPONENTS services)"
+    "find_package(lux-engine-editor-configuration REQUIRED COMPONENTS editor_configuration)")
 lux_classify_target(TARGET flowforge_persistence LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 lux_engine_install_components(PROJECT_NAME lux-engine-editor-flowforge-persistence VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS flowforge_persistence)

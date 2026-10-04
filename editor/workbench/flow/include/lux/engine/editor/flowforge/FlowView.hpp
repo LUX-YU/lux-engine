@@ -27,7 +27,7 @@ namespace lux::editor::flowforge
     {
         sessions::TSessionAccess<FlowSession> sessions;
         FlowCompilationService& compilation;
-        lux::flowforge::FlowSourceEnvironment metadata;
+        FlowEnvironment metadata;
     };
     struct FlowViewState final
     {

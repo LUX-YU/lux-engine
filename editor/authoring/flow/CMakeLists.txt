@@ -1,5 +1,5 @@
 add_component(COMPONENT_NAME flowforge_model NAMESPACE lux::engine::editor STATIC
-    SOURCE_FILES src/PreparedFlowReload.cpp src/FlowSession.cpp src/FlowPersistenceAccess.cpp src/edits/FlowGraphEdit.cpp)
+    SOURCE_FILES src/PreparedFlowReload.cpp src/FlowSession.cpp src/FlowPersistenceAccess.cpp src/FlowEnvironment.cpp src/edits/FlowGraphEdit.cpp)
 component_include_directories(flowforge_model
     BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
 target_link_libraries(flowforge_model PUBLIC lux::engine::editor::edit_sessions lux::engine::editor::edit_history

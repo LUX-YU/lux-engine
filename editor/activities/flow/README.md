@@ -15,7 +15,8 @@ object and original source stamp, even after author changes. Each record retains
 configured byte limit; record capacity includes unacknowledged terminal results. Acknowledge only terminal work.
 Completion storage is a leaf owner fact, never a new business admission or recursive confirmation.
 
-FlowCompileEnvironment copies catalog arrays and retains their code owner. Nested descriptor/string pointers
+The authoring `FlowEnvironment` owns one immutable set of catalog arrays; copying it shares that backing.
+Author construction, controls and compiler captures use the same value. Nested descriptor/string pointers
 remain covered by the environment's explicit owner contract (or static builtin lifetime). All service calls are
 on its owner thread. ExecutionRuntime must survive cancellation/terminal delivery.
 
@@ -24,6 +25,11 @@ Registration creates no compiler or task. The factory requires the explicitly bo
 root dependency; callers get the actual shared allocation. Releasing a caller reference does not cancel work
 or acknowledge a result. A later lookup in that scope can read and retry the original record. Scope release
 and Object dispatcher retirement remain separate from domain result acknowledgement.
+
+`kFlowEnvironmentService` captures registered reflection metadata on first use, through the original reflection
+lifetime provider. The enumeration and validation live in `captureFlowEnvironment()` here; the Application does
+not rebuild the catalog. This metadata service creates neither a compiler nor a UI. A returned source-environment
+view pins the same immutable backing after the scoped service allocation has retired.
 
 publishFlowArtifact shares the existing WriteCoordinator and SaveExecution. It publishes fixed bytes
 against an explicit expected target version and never marks author source clean. Legacy UI conversion bridges

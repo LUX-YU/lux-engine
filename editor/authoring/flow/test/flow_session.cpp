@@ -2,6 +2,7 @@
 #include "../src/FlowSessionData.hpp"
 #include <lux/engine/editor/sessions/SessionStore.hpp>
 #include <lux/engine/editor/flowforge/FlowSession.hpp>
+#include <lux/engine/editor/flowforge/FlowEnvironment.hpp>
 #include <lux/engine/flowforge/graph/ControlNode.hpp>
 #include <lux/engine/flowforge/graph/FunctionalNode.hpp>
 #include <lux/engine/flowforge/graph/ObjectNode.hpp>
@@ -775,6 +776,32 @@ namespace
     };
     void lifetime()
     {
+        // The catalog is an authoring input, independent of the compiler/Process/UI. Copying the
+        // environment shares its one immutable backing, while a returned view keeps that backing alive.
+        {
+            Lifetime shared_stats;
+            auto metadata = std::make_shared<Metadata>(shared_stats);
+            std::weak_ptr<Metadata> weak_metadata = metadata;
+            flow::FlowSourceEnvironment retained;
+            {
+                FlowEnvironment first{environment(metadata), 37};
+                auto second = first;
+                retained = second.view();
+                assert(first.version() == 37 && second.version() == 37);
+                assert(first.view().classes.data() == retained.classes.data());
+                assert(first.view().functions.data() == retained.functions.data());
+                assert(retained.classes.data() != metadata->classes.data());
+                metadata->classes.fill(nullptr);
+                metadata->functions.fill(nullptr);
+                assert(retained.classes.size() == 1 && retained.functions.size() == 1);
+                metadata.reset();
+            }
+            assert(!weak_metadata.expired() && !shared_stats.released);
+            assert(retained.classes.front()->fields.front().name == "value");
+            assert(flow::validateFlowSourceEnvironment(retained));
+            retained = {};
+            assert(weak_metadata.expired() && shared_stats.released && !shared_stats.premature);
+        }
         Lifetime stats;
         auto owner = std::make_shared<Metadata>(stats);
         std::weak_ptr<Metadata> weak = owner;

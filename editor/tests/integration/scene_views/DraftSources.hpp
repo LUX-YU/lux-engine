@@ -360,7 +360,7 @@ namespace draft_test
         auto detached = take(ef::makeFlowView(
             f.messages.dispatcherRef(),
             ui::PaneId{"r1-flow"},
-            {f.store.access<ef::FlowSession>(), compilation, {}},
+            {f.store.access<ef::FlowSession>(), compilation, ef::FlowEnvironment{}},
             ef::FlowViewBinding{key, &interaction}
         ));
         auto* view = static_cast<ef::FlowView*>(detached.pane());

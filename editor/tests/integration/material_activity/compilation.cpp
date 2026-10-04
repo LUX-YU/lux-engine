@@ -215,7 +215,7 @@ int main(int argc, char** argv)
     rename(*author, "Flow S10");
     const auto frozen = author->describe().current;
     const auto id =
-        take(flows.start(take(author->capture()), ef::FlowCompileEnvironment{}, {}, {"missing-P07-linker.exe"}));
+        take(flows.start(take(author->capture()), ef::FlowEnvironment{}, {}, {"missing-P07-linker.exe"}));
     until([&] {
         assert(execution.collectCompletions());
         assert(execution.dispatchTaskEvents());
@@ -272,11 +272,11 @@ int main(int argc, char** argv)
     assert(writes.acknowledge(first) && writes.acknowledge(conflict) && writes.acknowledge(flow_ticket));
     // Admission and retained retry state stay bounded, without recompiling a changed author.
     assert(
-        !ef::FlowCompilationService(execution, 1).start(take(author->capture()), ef::FlowCompileEnvironment{}, {1, 1})
+        !ef::FlowCompilationService(execution, 1).start(take(author->capture()), ef::FlowEnvironment{}, {1, 1})
     );
     ef::FlowCompilationService retry_limit(execution, 1);
     auto limited =
-        take(retry_limit.start(take(author->capture()), ef::FlowCompileEnvironment{}, {}, {"missing-P07-linker.exe"}));
+        take(retry_limit.start(take(author->capture()), ef::FlowEnvironment{}, {}, {"missing-P07-linker.exe"}));
     const auto& limited_operation = take(retry_limit.operation(limited)).get();
     until([&] {
         assert(execution.collectCompletions());

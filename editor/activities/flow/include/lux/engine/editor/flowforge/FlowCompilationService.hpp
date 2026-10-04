@@ -1,5 +1,6 @@
 #pragma once
 #include <lux/engine/editor/flowforge/FlowSnapshot.hpp>
+#include <lux/engine/editor/flowforge/FlowEnvironment.hpp>
 #include <lux/engine/flowforge/Compiler.hpp>
 #include <lux/engine/process/ExecutionRuntime.hpp>
 namespace lux::services
@@ -43,19 +44,6 @@ namespace lux::editor::flowforge
     {
         std::filesystem::path executable;
         std::uint64_t version{1};
-    };
-    // Owns the catalog arrays and keeps their descriptor/module owner alive. Program-lifetime
-    // descriptors need no code lease; dynamic descriptors follow FlowSourceEnvironment's contract.
-    class FlowCompileEnvironment final
-    {
-    public:
-        explicit FlowCompileEnvironment(lux::flowforge::FlowSourceEnvironment = {}, std::uint64_t version = 1);
-        [[nodiscard]] lux::flowforge::FlowSourceEnvironment view() const noexcept;
-        [[nodiscard]] std::uint64_t version() const noexcept;
-
-    private:
-        struct Data;
-        std::shared_ptr<const Data> data_;
     };
     struct FlowCompileKey final
     {
@@ -138,7 +126,7 @@ namespace lux::editor::flowforge
         FlowCompilationService& operator=(FlowCompilationService&&) = delete;
         [[nodiscard]] FlowCompilationResult<FlowCompileId> start(
             FlowSnapshot,
-            FlowCompileEnvironment = FlowCompileEnvironment{},
+            FlowEnvironment = FlowEnvironment{},
             FlowCompileSettings = {},
             LinkSettings = {}
         );

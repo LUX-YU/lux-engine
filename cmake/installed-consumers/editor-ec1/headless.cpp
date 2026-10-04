@@ -1,4 +1,4 @@
-#include "../../test-support/ObjectQueue.hpp"
+#include "ObjectQueue.hpp"
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
 #include <lux/engine/editor/storage/FileArtifactStore.hpp>
 #include <lux/engine/editor/material/MaterialSessionFactory.hpp>

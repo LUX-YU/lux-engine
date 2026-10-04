@@ -1,4 +1,4 @@
-#include "../../test-support/ObjectQueue.hpp"
+#include "ObjectQueue.hpp"
 #include <lux/engine/editor/storage/ProjectCommands.hpp>
 #include <lux/engine/editor/storage/ProjectContentSaving.hpp>
 #include <lux/engine/editor/storage/ProjectContentOpening.hpp>

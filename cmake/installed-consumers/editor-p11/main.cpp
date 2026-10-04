@@ -1,4 +1,4 @@
-#include "../../test-support/ObjectQueue.hpp"
+#include "ObjectQueue.hpp"
 #include "Probe.hpp"
 #include <lux/engine/editor/extensions/EditorExtension.hpp>
 #include <lux/engine/editor/scene/SceneConfigurationElement.hpp>
@@ -288,6 +288,7 @@ int main(int argc, char** argv)
     assert(facts.panes_destroyed == 1);
     assert(store.describe(installed->id())); // Closing a window never closes its content.
     assert(installed->close(take(store.describe(installed->id())).current));
+    assert(store_messages.collect() == 1); // Physical model reclamation precedes the remaining job's lifetime check.
     assert(!weak_library.expired()); // Frozen job/operation still pins the external code.
     persistence::SaveExecution saving{execution, saves, writes, disk};
     for (unsigned turn{}; turn != 10000; ++turn)

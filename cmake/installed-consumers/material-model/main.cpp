@@ -1,4 +1,4 @@
-#include "../../test-support/ObjectQueue.hpp"
+#include "ObjectQueue.hpp"
 #include <lux/engine/editor/sessions/SessionStore.hpp>
 #include <lux/engine/editor/material/MaterialSession.hpp>
 #include <lux/engine/material/graph/Nodes.hpp>

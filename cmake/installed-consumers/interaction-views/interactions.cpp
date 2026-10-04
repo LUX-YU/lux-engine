@@ -1,4 +1,4 @@
-#include "../../test-support/ObjectQueue.hpp"
+#include "ObjectQueue.hpp"
 #include <lux/engine/editor/scene/SceneInteraction.hpp>
 #include <lux/engine/editor/material/MaterialInteraction.hpp>
 #include <lux/engine/editor/flowforge/FlowInteraction.hpp>

@@ -1,4 +1,4 @@
-#include "../../test-support/ObjectQueue.hpp"
+#include "ObjectQueue.hpp"
 #include <consumer/Domain.hpp>
 #include <consumer/Gui.hpp>
 #include <lux/engine/editor/scene/SceneAlgorithms.hpp>

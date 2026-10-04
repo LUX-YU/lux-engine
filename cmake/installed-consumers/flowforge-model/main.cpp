@@ -1,4 +1,4 @@
-#include "../../test-support/ObjectQueue.hpp"
+#include "ObjectQueue.hpp"
 #include <lux/engine/editor/sessions/SessionStore.hpp>
 #include <lux/engine/editor/flowforge/FlowSession.hpp>
 #include <lux/engine/flowforge/graph/ControlNode.hpp>

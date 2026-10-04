@@ -1,4 +1,4 @@
-#include "../../test-support/ObjectQueue.hpp"
+#include "ObjectQueue.hpp"
 #include "Probe.hpp"
 #include "Settings.hpp"
 #include <lux/engine/editor/workspace/WorkspaceChanges.hpp>

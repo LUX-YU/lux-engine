@@ -1,6 +1,6 @@
 #pragma once
 #include <lux/engine/editor/configuration/Settings.hpp>
-#include <lux/engine/editor/scene/ConfigurationEditor.hpp>
+#include <lux/engine/editor/settings/SettingsPage.hpp>
 #include <lux/engine/editor/workspace/WorkspaceChanges.hpp>
 #include <lux/engine/ui/Element.hpp>
 

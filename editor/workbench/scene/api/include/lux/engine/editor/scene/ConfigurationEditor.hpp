@@ -22,14 +22,3 @@ namespace lux::editor::scene
     };
 } // namespace lux::editor::scene
 
-namespace lux::editor::settings
-{
-    class SettingsEntry;
-    // Optional configuration control factory. The immutable entry pins the code implementing it;
-    // a page owner must destroy its controls before releasing this record.
-    struct SettingsPage final
-    {
-        std::shared_ptr<SettingsEntry> entry;
-        scene::ConfigurationEditor::Create create{};
-    };
-} // namespace lux::editor::settings

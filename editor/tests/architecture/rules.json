@@ -18916,6 +18916,9 @@
       ],
       "editor/workbench/desktop/test/composition_dll.cpp": [
         "editor_composition_dll_test"
+      ],
+      "editor/workbench/desktop/include/lux/engine/editor/settings/SettingsPage.hpp": [
+        "editor_composition"
       ]
     },
     "native_libraries": [

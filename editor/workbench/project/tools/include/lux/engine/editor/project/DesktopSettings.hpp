@@ -4,7 +4,7 @@
 #include <lux/engine/editor/commands/Command.hpp>
 #include <lux/engine/window/WindowPlacement.hpp>
 #include <lux/engine/meta/TypeStaticInfo.hpp>
-#include <lux/engine/editor/scene/ConfigurationEditor.hpp>
+#include <lux/engine/editor/settings/SettingsPage.hpp>
 
 namespace lux::window
 {

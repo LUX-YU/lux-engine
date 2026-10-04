@@ -7,6 +7,7 @@
 #include <lux/engine/editor/scene/ConfigurationEditor.hpp>
 #include <lux/engine/editor/scene/InspectorComponent.hpp>
 #include <lux/engine/editor/sessions/SessionFactory.hpp>
+#include <lux/engine/editor/settings/SettingsPage.hpp>
 #include <lux/engine/editor/views/ViewFactory.hpp>
 #include <lux/engine/object/LuxObject.hpp>
 

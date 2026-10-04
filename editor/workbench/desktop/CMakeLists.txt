@@ -16,6 +16,8 @@ lux_engine_install_components(PROJECT_NAME lux-engine-editor-composition VERSION
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/desktop/UiRegistry.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/desktop/EditorContext.hpp
     DESTINATION include/lux/engine/editor/desktop COMPONENT lux_engine_editor_composition)
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/settings/SettingsPage.hpp
+    DESTINATION include/lux/engine/editor/settings COMPONENT lux_engine_editor_composition)
 
 if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     add_executable(editor_composition_test test/composition.cpp)

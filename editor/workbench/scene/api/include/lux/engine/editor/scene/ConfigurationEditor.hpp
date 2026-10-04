@@ -21,4 +21,3 @@ namespace lux::editor::scene
         Create create{};
     };
 } // namespace lux::editor::scene
-

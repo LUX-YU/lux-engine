@@ -17,7 +17,7 @@ derive from a universal editor or look up services in an application context.
 | Typed command lookup and dispatch | CommandRegistry |
 | Runtime drive, presentation and retirement | Original SceneRuntime and presentation owners |
 
-EC1 introduced the capability split in V8; the current Editor SDK uses V9, adding settings contributions.
+EC1 introduced the capability split in V8, EC3 added settings in V9, and EC4 upgrades the current SDK to V10.
 The current ABI separates immutable cold contributions from activation. The export declares needed
 SessionActivities, ProjectActivities and WorkbenchAccess; missing required capabilities reject activation.
 Unrequested groups are not supplied. Activation receives callback-lifetime group pointers and captures only

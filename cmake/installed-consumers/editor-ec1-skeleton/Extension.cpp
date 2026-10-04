@@ -392,7 +392,7 @@ lux::editor::sessions::SessionResult<void> skeleton_read_guard(
     auto invoke = [&] { callback(context); };
     return owner->get().withRead(invoke);
 }
-extern "C" SKELETON_EXPORT const lux::editor::extensions::EditorExtensionExports* lux_editor_exports_v9() noexcept
+extern "C" SKELETON_EXPORT const lux::editor::extensions::EditorExtensionExports* lux_editor_exports_v10() noexcept
 {
     using namespace skeleton;
     static const EditorExtensionExports exports{

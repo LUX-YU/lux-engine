@@ -24,7 +24,7 @@ Runnable examples (each has its own CMake entry):
 - [Independent workspace policy](../cmake/installed-consumers/editor-ec3-workspace/main.cpp).
 - [External extension capabilities and settings](../cmake/installed-consumers/editor-ec1-skeleton/CMakeLists.txt).
 
-Current Editor extension exports are V9. Runtime/script versions did not change. Fixed metadata is
+Current Editor extension exports are V10. Runtime/script versions did not change. Fixed metadata is
 declared by the implementing module, not registered by static initialization. Contributions are prepared
 and adopted under the original participating owners' synchronous guards.
 

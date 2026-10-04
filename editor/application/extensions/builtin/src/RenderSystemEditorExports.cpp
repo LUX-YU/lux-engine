@@ -3,7 +3,7 @@
 
 extern "C" void
 scene_runtime_render_configuration_meta(lux::meta::ReflectionRegistry&, lux::meta::qual_type_index_fix_list&);
-extern "C" LUX_RENDER_EDITOR_PUBLIC const lux::editor::extensions::EditorExtensionExports* lux_editor_exports_v9(
+extern "C" LUX_RENDER_EDITOR_PUBLIC const lux::editor::extensions::EditorExtensionExports* lux_editor_exports_v10(
 ) noexcept
 {
     using namespace lux::editor;

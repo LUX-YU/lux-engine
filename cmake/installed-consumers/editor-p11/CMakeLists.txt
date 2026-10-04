@@ -31,7 +31,7 @@ add_library(p11_runtime SHARED Runtime.cpp "${CMAKE_CURRENT_BINARY_DIR}/Identity
 target_link_libraries(p11_runtime PRIVATE lux::engine::simulation::ecs::transform)
 add_library(p11_extension SHARED Extension.cpp "${CMAKE_CURRENT_BINARY_DIR}/Identity.cpp")
 target_link_libraries(p11_extension PRIVATE lux::engine::editor::editor_extensions lux::engine::editor::material_persistence lux::engine::editor::scene_ui)
-foreach(mode RANGE 6 10)
+foreach(mode RANGE 6 11)
     add_library(p11_reject_${mode} SHARED Rejected.cpp "${CMAKE_CURRENT_BINARY_DIR}/Identity.cpp")
     target_link_libraries(p11_reject_${mode} PRIVATE lux::engine::editor::editor_extensions)
     target_compile_definitions(p11_reject_${mode} PRIVATE PROBE_REJECT=${mode})
@@ -52,5 +52,5 @@ foreach(mode IN ITEMS with-configuration without-configuration)
 add_test(NAME installed.p11.extension.${mode} COMMAND p11_consumer
     "$<TARGET_FILE:p11_runtime>" "$<TARGET_FILE:p11_extension>"
     "$<TARGET_FILE:p11_reject_6>" "$<TARGET_FILE:p11_reject_7>"
-    "$<TARGET_FILE:p11_reject_8>" "$<TARGET_FILE:p11_reject_9>" "$<TARGET_FILE:p11_reject_10>" "${mode}")
+    "$<TARGET_FILE:p11_reject_8>" "$<TARGET_FILE:p11_reject_9>" "$<TARGET_FILE:p11_reject_10>" "$<TARGET_FILE:p11_reject_11>" "${mode}")
 endforeach()

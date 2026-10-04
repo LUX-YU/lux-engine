@@ -2,7 +2,16 @@
 
 The application combines immutable command, content-factory, view-factory and configuration contributions. It does not own author sources, History, saves, Run sessions or rendering resources. `ContributionRegistry::enqueue()` prepares a bounded candidate; `applyPending()` publishes a fixed batch at the owner safe point. The participating CommandRegistry grants a narrow batch scope before callbacks. Ordinary command publication is BUSY through candidate cleanup, old-value disposal and notification. The prepared scope performs its one-use commit only after reflection validation; the contribution owner never unlocks and re-enters ordinary publication. Notifications follow publication. Requests made by a notification belong to the next batch. Failed candidates leave the visible catalog unchanged.
 
-`lux_editor_exports_v9` is the formal SDK entry. Header size, interface version, fingerprint and advertised counts are checked before invoking the contribution callback. The existing project plugin loader verifies the binary and pins its runtime dependencies. V6 is an explicitly rejected input; the current product uses V9 (V8 binaries are rejected).
+`lux_editor_exports_v10` is the formal SDK entry. Header size, interface version, fingerprint and advertised counts are checked before invoking the contribution callback. The existing project plugin loader verifies the binary and pins its runtime dependencies. Old V6/V8/V9 exports are rejected; the independent game plugin protocol is unchanged.
+
+Static modules declare a `LUX_META(luxmodule)` free function returning `const EditorModuleDescriptor&`
+with no arguments and `noexcept`. Keep that declaration header light: it needs only Marker.hpp and a
+forward declaration of EditorModuleDescriptor. `engine_declare_editor_module` records this header on
+the module target; the product selects module targets through `engine_target_add_editor_modules`.
+The original MetaUnit is validated and rendered by the installed inja generator into strong function
+references. No module factory runs during static initialization. `loadStaticEditorModules()` and the
+DLL loader use one export-table validator and the same contribution normalization. Static descriptors
+and their code must live for the process lifetime; a dynamic library must use the pinned DLL loader.
 
 Pure `contribute()` runs without live application services. Optional `activate()` declares separate
 counts and requirements for `SessionActivities`, `ProjectActivities` and `WorkbenchAccess`. Missing
@@ -24,7 +33,7 @@ The runtime fingerprint covers modules/engine public contracts; the Editor finge
 
 Factories return a complete, detached view or an owning decoded input. Host adoption and session publication are separate operations. A view closing does not close content. An accepted save can finish after its role or view disappears; publication facts survive, while invalid adoption is rejected by the original SaveService.
 
-Code must outlive the virtual destructor **and the shared control block's disposal call**. A plugin's object holding its own lease is insufficient. Drafts own outer code pins. At snapshot creation, the receiving module wraps foreign shared entries with `contracts::pinCodeOwner`; disposal of the foreign value finishes before releasing that outer pin. Published weak aliases refer to the receiving module's control block. These are cold registration allocations, not per-frame allocations. Do not bypass host-side snapshot preparation by returning a pre-published catalog from an extension.
+Code must outlive the virtual destructor **and the shared control block's disposal call**. A plugin's object holding its own lease is insufficient. Drafts own outer code pins. At snapshot creation, the receiving module wraps foreign shared entries with `object::pinCodeOwner`; disposal of the foreign value finishes before releasing that outer pin. Published weak aliases refer to the receiving module's control block. These are cold registration allocations, not per-frame allocations. Do not bypass host-side snapshot preparation by returning a pre-published catalog from an extension.
 
 When a later snapshot shares an unchanged entry, normalization unwraps its prior receiving-module wrapper and keeps the same underlying entry. It does not retain a chain of prior wrappers. The deleter clears the value before its code pin at the last strong release; expired weak aliases retain neither the value nor the DLL. External code remains responsible for any separate foreign weak records it creates outside this publication contract.
 
@@ -40,7 +49,7 @@ There is no central built-in factory archive. External extensions use the same i
 and Entry binding API, retaining their original code lease and activation dependencies.
 
 The installed `lux_editor` uses EditorApplication and the same formal providers. Original Context,
-mutable registration aggregates and V6 assembly have been deleted. Standalone V9 view factories take
+mutable registration aggregates and V6 assembly have been deleted. Standalone V10 view factories take
 `std::monostate`; content tools use explicit typed bindings. Product Window commands resolve those
 immutable factory entries and reuse an existing standalone tool of the same ViewTypeId.
 

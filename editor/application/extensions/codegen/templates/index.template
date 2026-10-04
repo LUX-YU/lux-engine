@@ -1,0 +1,23 @@
+#include "{{ name }}.modules.hpp"
+#include <array>
+#include <type_traits>
+{% for header in headers %}
+#include <{{ header }}>
+{% endfor %}
+
+namespace {{ namespace }}
+{
+    using GetModule = lux::editor::extensions::GetEditorModule;
+{% for symbol in modules %}
+    static_assert(std::is_same_v<decltype(&{{ symbol }}), GetModule*>);
+{% endfor %}
+    std::span<GetModule* const> {{ name }}() noexcept
+    {
+        static constexpr std::array<GetModule*, {{ length(modules) }}> modules{
+{% for symbol in modules %}
+            &{{ symbol }},
+{% endfor %}
+        };
+        return modules;
+    }
+}

@@ -41,7 +41,7 @@ EC1 的 History／开放能力及 EC2 的 ScriptAbility／配方与退休契约�
 
 Inspector 使用原 lux-cxx MetaUnit 和 inja，需要本轮匹配的 host 工具、反射运行库、模板及 support。
 EC3 的原 parser 扩充位于独立 `lux-cxx-ec3` 工作区，固定依赖 SHA 随验收记录提供；不将旧 DLL
-混入新前缀。当前 Editor 扩展 ABI 是 V9；runtime/script ABI 未因设置贡献改变。
+混入新前缀。当前 Editor 扩展 ABI 是 V10；runtime/script ABI 未因设置贡献改变。
 
 本轮使用 Windows x64、MSVC、RelWithDebInfo、C++20。GPU 路径需要兼容 Vulkan 的运行环境。
 Linux、系统 IME 和 sanitizer 仍为 **NOT_RUN**；旧 50k 性能长测保持原 **PARTIAL**。

@@ -1,19 +1,19 @@
 #include "ObjectQueue.hpp"
 #include "Probe.hpp"
-#include <lux/engine/editor/extensions/EditorExtension.hpp>
-#include <lux/engine/editor/scene/SceneConfigurationElement.hpp>
-#include <lux/engine/editor/material/MaterialSessionFactory.hpp>
-#include <lux/engine/editor/storage/FileArtifactStore.hpp>
-#include <lux/engine/editor/persistence/SaveExecution.hpp>
-#include <lux/engine/editor/desktop/ViewHost.hpp>
-#include <lux/engine/ui/Root.hpp>
-#include <lux/engine/ui/Layout.hpp>
-#include <lux/engine/dynamic_library/DynamicLibrary.hpp>
-#include <lux/engine/simulation/ecs/TransformSchema.hpp>
-#include <lux/engine/material/graph/Nodes.hpp>
-#include <fstream>
 #include <cassert>
+#include <fstream>
 #include <iostream>
+#include <lux/engine/dynamic_library/DynamicLibrary.hpp>
+#include <lux/engine/editor/desktop/ViewHost.hpp>
+#include <lux/engine/editor/extensions/EditorExtension.hpp>
+#include <lux/engine/editor/material/MaterialSessionFactory.hpp>
+#include <lux/engine/editor/persistence/SaveExecution.hpp>
+#include <lux/engine/editor/scene/SceneConfigurationElement.hpp>
+#include <lux/engine/editor/storage/FileArtifactStore.hpp>
+#include <lux/engine/material/graph/Nodes.hpp>
+#include <lux/engine/simulation/ecs/TransformSchema.hpp>
+#include <lux/engine/ui/Layout.hpp>
+#include <lux/engine/ui/Root.hpp>
 #include <thread>
 
 using namespace lux;
@@ -25,11 +25,17 @@ namespace
         if (!result)
         {
             if constexpr (requires { result.error().code; })
+            {
                 std::cerr << "error=" << int(result.error().code) << '\n';
+            }
             if constexpr (requires { result.error().subject; })
+            {
                 std::cerr << result.error().subject << '\n';
+            }
             if constexpr (requires { result.error().detail; })
+            {
                 std::cerr << result.error().detail << '\n';
+            }
             std::abort();
         }
         return std::move(*result);
@@ -50,14 +56,18 @@ namespace
         {
             return id == assetId();
         }
-        cxx::expected<asset::AssetBlob, asset::EAssetStorageError>
-        open(const asset::AssetId& id, std::size_t max_bytes) const override
+        cxx::expected<asset::AssetBlob, asset::EAssetStorageError> open(const asset::AssetId& id, std::size_t max_bytes)
+            const override
         {
             assert(std::this_thread::get_id() != owner_);
             if (!contains(id))
+            {
                 return cxx::unexpected(asset::EAssetStorageError::NOT_FOUND);
+            }
             if (std::filesystem::file_size(file_) > max_bytes)
+            {
                 return cxx::unexpected(asset::EAssetStorageError::LIMIT_EXCEEDED);
+            }
             std::ifstream file(file_, std::ios::binary);
             std::string bytes{std::istreambuf_iterator<char>(file), {}};
             return asset::AssetBlob::fromShared(cxx::SharedBytes<>::copyOf(std::as_bytes(std::span{bytes})));
@@ -75,11 +85,11 @@ namespace
         std::filesystem::path file_;
         std::thread::id owner_{std::this_thread::get_id()};
     };
-}
+} // namespace
 int main(int argc, char** argv)
 {
-    assert(argc == 9);
-    const bool with_configuration = std::string_view{argv[8]} == "with-configuration";
+    assert(argc == 10);
+    const bool with_configuration = std::string_view{argv[9]} == "with-configuration";
     const auto root = std::filesystem::path(argv[1]).parent_path();
     lux::project::PluginLibraryDescription library;
     library.path = std::filesystem::path(argv[1]).filename();
@@ -97,15 +107,15 @@ int main(int argc, char** argv)
     assert(runtime_plugin->components().size() == 1);
     assert(runtime_plugin->components().front().operations.valid());
     library.exports = {lux::project::EPluginExport::EDITOR};
-    for (int index = 3; index != 8; ++index)
+    for (int index = 3; index != 9; ++index)
     {
         library.path = std::filesystem::path(argv[index]).filename();
         description.editor_library = library;
         auto rejected = extensions::EditorExtension::load(description, *runtime_plugin);
         assert(!rejected);
-        const auto expected = index == 3   ? lux::project::EPluginError::MISSING_EXPORT
-                              : index == 6 ? lux::project::EPluginError::ABI_MISMATCH
-                                           : lux::project::EPluginError::INVALID_EXPORT;
+        const auto expected = (index == 3 || index == 8) ? lux::project::EPluginError::MISSING_EXPORT
+                              : index == 6               ? lux::project::EPluginError::ABI_MISMATCH
+                                                         : lux::project::EPluginError::INVALID_EXPORT;
         assert(rejected.error().code == expected);
     }
     library.path = std::filesystem::path(argv[2]).filename();
@@ -152,9 +162,8 @@ int main(int argc, char** argv)
         assert(set_probe);
         set_probe(&facts);
         auto bad_draft = take(extension.contributions());
-        bad_draft.configurations[0].value.reflection = [](meta::ReflectionRegistry&) noexcept -> const meta::RefClass* {
-            return nullptr;
-        };
+        bad_draft.configurations[0].value.reflection = [](meta::ReflectionRegistry&) noexcept -> const meta::RefClass*
+        { return nullptr; };
         auto bad = take(extensions::ContributionSnapshot::prepare(std::move(bad_draft)));
         assert(catalog.enqueue(bad));
         const auto rejected = catalog.applyPending();
@@ -166,20 +175,29 @@ int main(int argc, char** argv)
         assert(facts.activations == 0);
         const extensions::SessionActivities session_activities{store, saves};
         const extensions::WorkbenchAccess workbench{messages.dispatcherRef(), host, commands};
-        std::jthread foreign([&] {
-            auto refused = extension.activate({&session_activities, {}, &workbench});
-            assert(!refused && refused.error().code == extensions::EContributionError::WRONG_THREAD);
-        });
+        std::jthread foreign(
+            [&]
+            {
+                auto refused = extension.activate({&session_activities, {}, &workbench});
+                assert(!refused && refused.error().code == extensions::EContributionError::WRONG_THREAD);
+            }
+        );
         foreign.join();
         assert(facts.activations == 0);
         auto activated = take(extension.activate({&session_activities, {}, &workbench}));
         assert(facts.activations == 1 && activated.commands.size() == 1 && activated.views.size() == 1);
         for (auto& pin : activated.code)
+        {
             draft.code.push_back(std::move(pin));
+        }
         for (auto& entry : activated.commands)
+        {
             draft.commands.push_back(std::move(entry));
+        }
         for (auto& entry : activated.views)
+        {
             draft.views.push_back(std::move(entry));
+        }
         if (!with_configuration)
         {
             draft.configurations.clear();
@@ -192,12 +210,14 @@ int main(int argc, char** argv)
         retired_entry = current.commands().entries().front();
         assert(current.configurations().size() == (with_configuration ? 1 : 0));
         if (with_configuration)
+        {
             configuration.emplace(take(lux::editor::scene::makeConfigurationControl(
                 current.configurations()[0],
                 configuration_layout,
                 ui::ElementId{"fields"},
                 {}
             )));
+        }
         lux::material::MaterialSource material{assetId(), "external", {}};
         assert(material.graph.addNode(std::make_unique<lux::material::ConstantNode>()).valid());
         const auto bytes = take(lux::material::encodeMaterialSource(material));
@@ -221,14 +241,15 @@ int main(int argc, char** argv)
         assert(tasks.submit(
             {.name = "External decode"},
             [scheduler = take(execution.blocking()),
-             job =
-                 sessions::SessionLoadJob{factory, std::move(input)}](process::TaskReporter reporter) mutable noexcept {
+             job = sessions::SessionLoadJob{factory, std::move(input)}](process::TaskReporter reporter) mutable noexcept
+            {
                 return stdexec::then(
                     stdexec::schedule(scheduler),
                     [job = std::move(job), stop = reporter.stopToken()]() mutable { return std::move(job).run(stop); }
                 );
             },
-            [&](process::TTaskResult<sessions::SessionPreparation, sessions::SessionFactoryFailure>&& value) noexcept {
+            [&](process::TTaskResult<sessions::SessionPreparation, sessions::SessionFactoryFailure>&& value) noexcept
+            {
                 assert(std::this_thread::get_id() == owner && value);
                 completed.emplace(std::move(*value));
             }
@@ -290,14 +311,16 @@ int main(int argc, char** argv)
     assert(store.describe(installed->id())); // Closing a window never closes its content.
     assert(installed->close(take(store.describe(installed->id())).current));
     assert(store_messages.collect() == 1); // Physical model reclamation precedes the remaining job's lifetime check.
-    assert(!weak_library.expired()); // Frozen job/operation still pins the external code.
+    assert(!weak_library.expired());       // Frozen job/operation still pins the external code.
     persistence::SaveExecution saving{execution, saves, writes, disk};
     for (unsigned turn{}; turn != 10000; ++turn)
     {
         assert(saving.submitReady() && execution.collectCompletions());
         saves.adoptCompletions();
         if (take(saves.status(save_id)).stage == persistence::ESaveStage::TERMINAL)
+        {
             break;
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds{1});
     }
     const auto outcome = take(saves.status(save_id));

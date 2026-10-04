@@ -7,8 +7,8 @@
 
 namespace lux::editor::extensions
 {
-    inline constexpr std::uint32_t kEditorExtensionVersion = 9;
-    inline constexpr const char* kEditorExtensionSymbol = "lux_editor_exports_v9";
+    inline constexpr std::uint32_t kEditorExtensionVersion = 10;
+    inline constexpr const char* kEditorExtensionSymbol = "lux_editor_exports_v10";
     struct ContributionCounts final
     {
         std::uint32_t commands{}, sessions{}, views{}, configurations{}, components{}, reflection{}, settings{};
@@ -29,12 +29,23 @@ namespace lux::editor::extensions
         // contribution closures and is destroyed before their external code lease.
         ContributionCounts activation_counts;
         ExtensionRequirements requires_capabilities;
-        ContributionResult<void> (*activate)(ContributionDraft&, lux::object::CodeLease, const ExtensionCapabilities&){};
+        ContributionResult<void> (*activate)(ContributionDraft&, lux::object::CodeLease, const ExtensionCapabilities&){
+        };
     };
     using GetEditorExtension = const EditorExtensionExports*() noexcept;
+    // Product-generated strong references and DLL exports use the same validated table.
+    // Descriptors are module constants; this view never owns mutable registration state.
+    struct EditorModuleDescriptor final
+    {
+        std::string_view name;
+        std::uint32_t version{1};
+        GetEditorExtension* exports{};
+    };
+    using GetEditorModule = const EditorModuleDescriptor&() noexcept;
     class EditorExtension final
     {
     public:
+        [[nodiscard]] static lux::project::PluginResult<EditorExtension> fromStatic(const EditorModuleDescriptor&);
         [[nodiscard]] static lux::project::PluginResult<EditorExtension> load(
             const lux::project::PluginDescription&,
             const lux::project::PluginLibrary& runtime,
@@ -51,4 +62,6 @@ namespace lux::editor::extensions
         const EditorExtensionExports* exports_{};
         std::thread::id owner_{std::this_thread::get_id()};
     };
+    [[nodiscard]] lux::project::PluginResult<
+        std::vector<EditorExtension>> loadStaticEditorModules(std::span<GetEditorModule* const>);
 } // namespace lux::editor::extensions

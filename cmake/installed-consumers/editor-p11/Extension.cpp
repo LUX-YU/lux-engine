@@ -184,7 +184,7 @@ extern "C" PROBE_EXPORT void p11_probe(probe::Facts* value) noexcept
 {
     facts = value;
 }
-extern "C" PROBE_EXPORT const extensions::EditorExtensionExports* lux_editor_exports_v9() noexcept
+extern "C" PROBE_EXPORT const extensions::EditorExtensionExports* lux_editor_exports_v10() noexcept
 {
     static const extensions::EditorExtensionExports exports{
         sizeof(exports),

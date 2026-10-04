@@ -16376,6 +16376,60 @@
           "PROCESS"
         ],
         "path": "editor/workbench/desktop"
+      },
+      "lux_editor_module_generator": {
+        "layer": "E4",
+        "role": "GENERATOR",
+        "capabilities": [
+          "CPU",
+          "TOOLCHAIN"
+        ],
+        "path": "editor/application/extensions"
+      },
+      "editor_module_static": {
+        "layer": "TEST",
+        "role": "TEST",
+        "capabilities": [
+          "CPU",
+          "PROCESS"
+        ],
+        "path": "editor/application/extensions"
+      },
+      "editor_module_dynamic": {
+        "layer": "TEST",
+        "role": "TEST",
+        "capabilities": [
+          "CPU",
+          "PROCESS"
+        ],
+        "path": "editor/application/extensions"
+      },
+      "editor_modules_test": {
+        "layer": "TEST",
+        "role": "TEST",
+        "capabilities": [
+          "CPU",
+          "PROCESS"
+        ],
+        "path": "editor/application/extensions"
+      },
+      "editor_modules_test_selectedModules_editor_module_static": {
+        "layer": "TEST",
+        "role": "GENERATOR",
+        "capabilities": [
+          "CPU",
+          "TOOLCHAIN"
+        ],
+        "path": "editor/application/extensions"
+      },
+      "editor_modules_test_selectedModules_editor_module_static_generate": {
+        "layer": "TEST",
+        "role": "GENERATOR",
+        "capabilities": [
+          "CPU",
+          "TOOLCHAIN"
+        ],
+        "path": "editor/application/extensions"
       }
     },
     "files": {
@@ -18909,16 +18963,39 @@
       ],
       "editor/workbench/desktop/test/CompositionProbe.hpp": [
         "editor_composition_plugin",
-        "editor_composition_dll_test"
+        "editor_composition_dll_test",
+        "editor_module_static",
+        "editor_module_dynamic",
+        "editor_modules_test"
       ],
       "editor/workbench/desktop/test/composition_plugin.cpp": [
-        "editor_composition_plugin"
+        "editor_composition_plugin",
+        "editor_module_static",
+        "editor_module_dynamic"
       ],
       "editor/workbench/desktop/test/composition_dll.cpp": [
         "editor_composition_dll_test"
       ],
       "editor/workbench/desktop/include/lux/engine/editor/settings/SettingsPage.hpp": [
         "editor_composition"
+      ],
+      "editor/application/extensions/codegen/ModuleGenerator.cpp": [
+        "lux_editor_module_generator"
+      ],
+      "editor/application/extensions/test/ModuleFixture.cpp": [
+        "editor_module_static",
+        "editor_module_dynamic"
+      ],
+      "editor/application/extensions/test/ModuleFixture.hpp": [
+        "editor_module_static",
+        "editor_module_dynamic",
+        "editor_modules_test"
+      ],
+      "editor/application/extensions/test/ModuleExports.cpp": [
+        "editor_module_dynamic"
+      ],
+      "editor/application/extensions/test/modules.cpp": [
+        "editor_modules_test"
       ]
     },
     "native_libraries": [
@@ -19110,6 +19187,11 @@
         "suffix": "/gen/include/lux/engine/editor/extensions/builtin/physics2d_visibility.h",
         "owner": "physics2d_editor",
         "public": true
+      },
+      {
+        "segment": "/editor/application/extensions/module_gen/selectedModules/",
+        "owner": "editor_modules_test",
+        "public": false
       }
     ],
     "header_roots": {

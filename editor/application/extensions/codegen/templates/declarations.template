@@ -1,0 +1,7 @@
+#pragma once
+#include <lux/engine/editor/extensions/EditorExtension.hpp>
+
+namespace {{ namespace }}
+{
+    [[nodiscard]] std::span<lux::editor::extensions::GetEditorModule* const> {{ name }}() noexcept;
+}

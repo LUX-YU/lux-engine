@@ -11,7 +11,7 @@ find_package(lux-engine-editor-persistence REQUIRED COMPONENTS editor_persistenc
 find_package(lux-engine-editor-file-publication REQUIRED COMPONENTS editor_file_publication)
 find_package(lux-engine-editor-file-publication REQUIRED COMPONENTS editor_file_publication)
 find_package(lux-engine-editor-material-model REQUIRED COMPONENTS material_model)
-find_package(lux-engine-editor-view-api REQUIRED COMPONENTS view_api)
+find_package(lux-engine-editor-composition REQUIRED COMPONENTS editor_composition)
 if(TARGET lux::engine::editor::editor_context OR TARGET lux::engine::editor::editor_app
     OR TARGET lux::engine::editor::editor_scene OR TARGET lux::engine::editor::editor_material)
     message(FATAL_ERROR "Workspace consumer imported a legacy product")
@@ -21,7 +21,7 @@ target_link_libraries(workspace_consumer PRIVATE lux::engine::editor::workspace_
     lux::engine::editor::editor_persistence_execution lux::engine::editor::editor_file_publication lux::engine::editor::editor_file_publication)
 add_executable(layout_effects_consumer effects.cpp)
 target_link_libraries(layout_effects_consumer PRIVATE lux::engine::editor::layout_model
-    lux::engine::editor::material_model lux::engine::editor::view_api)
+    lux::engine::editor::material_model lux::engine::editor::editor_composition)
 foreach(target workspace_consumer layout_effects_consumer)
     if(MSVC)
         target_compile_options(${target} PRIVATE /UNDEBUG /utf-8)

@@ -398,6 +398,7 @@ namespace lux::services
                 std::terminate();
             }
             candidate.clear(); // Plugin cleanup stays inside the original participant guard.
+            owner.impl_->prune();
             --owner.impl_->callbacks->depth;
         }
     };
@@ -416,6 +417,7 @@ namespace lux::services
         }
         state_->committed = true;
         state_->candidate.clear();
+        state_->owner.impl_->prune();
     }
     void ServiceRegistry::Publication::commit() noexcept
     {
@@ -472,8 +474,8 @@ namespace lux::services
             const bool has_definition = bool(entry.definition_);
             const bool has_definition_type = descriptor.definition_type.isValid();
             const bool is_definition_mismatch = has_definition != has_definition_type ||
-                descriptor.definition_type.hash() != entry.definition_type_.hash() ||
-                descriptor.definition_type.name() != entry.definition_type_.name();
+                                                descriptor.definition_type.hash() != entry.definition_type_.hash() ||
+                                                descriptor.definition_type.name() != entry.definition_type_.name();
             if (is_definition_mismatch)
             {
                 return reject(EServiceError::INVALID_DESCRIPTOR, "Declaration input does not match its descriptor");

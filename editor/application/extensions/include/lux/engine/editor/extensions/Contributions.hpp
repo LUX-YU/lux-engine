@@ -39,7 +39,8 @@ namespace lux::editor::extensions
         // This executes under the existing participant guards, including rejected-input cleanup.
         services::ServiceResult<void> (*validate)(
             meta::ReflectionRegistry&,
-            std::span<const std::shared_ptr<const services::ServiceEntry>>
+            std::span<const std::shared_ptr<const services::ServiceEntry>>,
+            std::size_t capacity
         ) noexcept {};
     };
     // Mutable preparation only. Providers write their own lower-layer entries, never borrow old Context.

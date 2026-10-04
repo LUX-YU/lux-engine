@@ -42,6 +42,10 @@ caller's handle; it cannot invalidate the operation's owned input. Scope admissi
 after foreign validation, construction and projection. Rejected allocations are cleaned under the
 same callback guard, without publishing into a closed scope.
 
+Catalog publication also prunes physically retired instance metadata while its publication guard
+is held. Removing a module must not leave its code pinned by an already reclaimed instance until
+another factory happens to run. This does not reclaim live allocations or dispatch pending work.
+
 Owner-affine last references enqueue a preallocated reclamation through `ObjectDispatcher`; no
 service-specific queue or executor exists. Host code holds the deletion bridge and code lease through
 the virtual destructor, custom destruction callback and callback return. Plain, non-affine objects

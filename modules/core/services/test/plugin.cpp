@@ -49,6 +49,8 @@ int main(int argc, char** argv)
         assert(messages->collectRetired() == 1);
         assert(scope->drained() && registry.drained());
         assert(trace.destroyed == 1 && trace.returned == 1);
+        assert(registry.publish({})); // Owner publication reclaims only physically retired metadata.
+        assert(trace.unloaded == 1);
     }
     assert(trace.unloaded == 1);
     weak.reset(); // Host control block must be safe after actual DLL unload.

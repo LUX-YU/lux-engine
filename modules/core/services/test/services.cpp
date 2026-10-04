@@ -538,8 +538,10 @@ namespace
         auto entry = ServiceEntry::create(CodeLease::plugin(lease), previous);
         assert(registry.publish({entry}));
         auto old = take(registry.get<Calculator>(root));
-        old.reset();
         assert(registry.publish({ServiceEntry::bind<calculator>(CodeLease::builtin())}));
+        // Retire after publication so the next cold operation, rather than publication itself,
+        // invokes this cleanup callback. Keep the original reentrant-input assertions below.
+        old.reset();
         requested = take(registry.resolve<Calculator>());
         entry.reset();
         lease.reset();

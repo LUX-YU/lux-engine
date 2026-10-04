@@ -1,3 +1,4 @@
+#include <lux/engine/editor/configuration/EditorReflection.hpp>
 #include <lux/engine/editor/scene/SceneEditorCatalog.hpp>
 #include <lux/engine/services/ServiceRegistry.hpp>
 #include <set>
@@ -7,6 +8,11 @@ namespace lux::editor::scene
 {
     namespace
     {
+        struct DefinitionStorage final
+        {
+            std::shared_ptr<const void> reflection;
+            SceneEditorCatalog::Definition definition;
+        };
         constexpr services::ServiceContract contracts[]{
             services::ServiceContract::forType<SceneEditorCatalog, SceneEditorCatalog>(
                 services::ServiceNameView{"lux.editor.scene.editors"}
@@ -54,10 +60,12 @@ namespace lux::editor::scene
             contracts
         );
         descriptor.definition_type = cxx::typeToken<SceneEditorCatalog::Definition>();
+        auto storage = std::make_shared<const DefinitionStorage>(acquireEditorReflection(), std::move(definition));
+        auto* data = &storage->definition;
         return services::ServiceEntry::create(
             std::move(code),
             descriptor,
-            std::make_shared<const SceneEditorCatalog::Definition>(std::move(definition))
+            std::shared_ptr<const SceneEditorCatalog::Definition>(std::move(storage), data)
         );
     }
     services::ServiceResult<std::vector<std::shared_ptr<const SceneEditorCatalog::Definition>>> sceneEditorDefinitions(
@@ -89,7 +97,8 @@ namespace lux::editor::scene
     }
     services::ServiceResult<void> validateSceneEditors(
         meta::ReflectionRegistry& reflection,
-        std::span<const std::shared_ptr<const services::ServiceEntry>> entries
+        std::span<const std::shared_ptr<const services::ServiceEntry>> entries,
+        std::size_t capacity
     ) noexcept
     {
         auto definitions = sceneEditorDefinitions(entries);
@@ -102,7 +111,7 @@ namespace lux::editor::scene
         for (const auto& definition : *definitions)
         {
             const bool is_over_capacity =
-                definition->configurations.size() > 256 || definition->components.size() > 256;
+                definition->configurations.size() > capacity || definition->components.size() > capacity;
             if (is_over_capacity)
             {
                 return reject(services::EServiceError::CAPACITY, "scene.editors");
@@ -121,7 +130,7 @@ namespace lux::editor::scene
                 {
                     return reject(services::EServiceError::DUPLICATE, "configuration");
                 }
-                if (configurations.size() > 256)
+                if (configurations.size() > capacity)
                 {
                     return reject(services::EServiceError::CAPACITY, "configuration");
                 }
@@ -149,10 +158,10 @@ namespace lux::editor::scene
                 if (!inserted)
                 {
                     const auto code = existing->second == item.type.name() ? services::EServiceError::DUPLICATE
-                                                                         : services::EServiceError::HASH_COLLISION;
+                                                                           : services::EServiceError::HASH_COLLISION;
                     return reject(code, "component");
                 }
-                if (components.size() > 256)
+                if (components.size() > capacity)
                 {
                     return reject(services::EServiceError::CAPACITY, "component");
                 }

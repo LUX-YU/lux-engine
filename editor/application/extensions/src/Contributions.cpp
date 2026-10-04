@@ -18,6 +18,7 @@ namespace lux::editor::extensions
         views::ViewFactorySnapshot views;
         std::vector<settings::SettingsPage> settings;
         std::vector<std::pair<std::uint64_t, std::size_t>> setting_index;
+        std::size_t capacity;
     };
     ContributionResult<ContributionSnapshot> ContributionSnapshot::prepare(
         ContributionDraft draft,
@@ -125,7 +126,8 @@ namespace lux::editor::extensions
             std::move(*sessions),
             std::move(*views),
             std::move(draft.settings),
-            std::move(setting_index)
+            std::move(setting_index),
+            capacity
         );
         return result;
     }
@@ -338,7 +340,8 @@ namespace lux::editor::extensions
                     {
                         continue;
                     }
-                    auto valid = entry.validate(*reflection.registry(), candidate.services());
+                    auto valid =
+                        entry.validate(*reflection.registry(), candidate.services(), candidate.data_->capacity);
                     if (!valid)
                     {
                         return cxx::unexpected(ContributionFailure{

@@ -19,6 +19,14 @@ namespace lux::editor::flowforge
 {
     namespace
     {
+        constexpr sessions::SessionKindIdView kContentKinds[]{sessions::SessionKindIdView{"lux.editor.flowforge"}};
+        constexpr views::ViewFactoryDescriptor kViewDescriptor{
+            views::ViewTypeIdView{"lux.editor.flowforge"},
+            "FlowForge",
+            cxx::typeToken<views::ContentViewInput>(),
+            1,
+            kContentKinds
+        };
         template <class T> auto rejected(T error)
         {
             return cxx::unexpected(VFlowViewFailure{std::move(error)});
@@ -745,7 +753,7 @@ namespace lux::editor::flowforge
         FlowViewServices services,
         FlowViewState state
     )
-        : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{"lux.editor.flowforge"}, "FlowForge"),
+        : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{kViewDescriptor.type.name()}, "FlowForge"),
           impl_(std::make_unique<Impl>(*this, services, std::move(state)))
     {
     }
@@ -1020,17 +1028,6 @@ namespace lux::editor::flowforge
 
 namespace lux::editor::flowforge
 {
-    namespace
-    {
-        constexpr sessions::SessionKindIdView kContentKinds[]{sessions::SessionKindIdView{"lux.editor.flowforge"}};
-        constexpr views::ViewFactoryDescriptor kViewDescriptor{
-            views::ViewTypeIdView{"lux.editor.flowforge"},
-            "FlowForge",
-            cxx::typeToken<views::ContentViewInput>(),
-            1,
-            kContentKinds
-        };
-    } // namespace
     std::shared_ptr<views::ViewFactoryEntry> makeFlowViewFactory(
         flowforge::FlowViewServices flow,
         cxx::move_only_function<void(const persistence::DerivedArtifact&)> receiver

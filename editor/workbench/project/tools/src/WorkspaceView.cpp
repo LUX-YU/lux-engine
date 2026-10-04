@@ -7,6 +7,29 @@
 
 namespace lux::editor::project
 {
+    namespace
+    {
+        constexpr commands::CommandDescriptor kCaptureRecovery{
+            commands::CommandIdView{"lux.editor.recovery.capture"},
+            "Record content locations",
+            "Workspace"
+        };
+        constexpr commands::CommandDescriptor kRestoreRecovery{
+            commands::CommandIdView{"lux.editor.recovery.restore"},
+            "Restore recorded content",
+            "Workspace"
+        };
+        constexpr commands::CommandDescriptor kCommand{
+            commands::CommandIdView{"lux.editor.workspace"},
+            "Layouts and Recovery",
+            "Window"
+        };
+        constexpr views::ViewFactoryDescriptor kFactoryDescriptor{
+            views::ViewTypeIdView{"lux.editor.workspace"},
+            "Workspace",
+            cxx::typeToken<std::monostate>()
+        };
+    } // namespace
     struct WorkspaceView::Impl final : lux::ui::Element
     {
         Observe observe_;
@@ -114,7 +137,7 @@ namespace lux::editor::project
         Observe observe,
         Request request
     )
-        : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{"lux.editor.workspace"}, "Workspace"),
+        : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{kFactoryDescriptor.type.name()}, "Workspace"),
           impl_(std::make_unique<Impl>(*this, std::move(observe), std::move(request)))
     {
     }
@@ -139,29 +162,6 @@ namespace lux::editor::project
 
 namespace lux::editor::project
 {
-    namespace
-    {
-        constexpr commands::CommandDescriptor kCaptureRecovery{
-            commands::CommandIdView{"lux.editor.recovery.capture"},
-            "Record content locations",
-            "Workspace"
-        };
-        constexpr commands::CommandDescriptor kRestoreRecovery{
-            commands::CommandIdView{"lux.editor.recovery.restore"},
-            "Restore recorded content",
-            "Workspace"
-        };
-        constexpr commands::CommandDescriptor kCommand{
-            commands::CommandIdView{"lux.editor.workspace"},
-            "Layouts and Recovery",
-            "Window"
-        };
-        constexpr views::ViewFactoryDescriptor kFactoryDescriptor{
-            views::ViewTypeIdView{"lux.editor.workspace"},
-            "Workspace",
-            cxx::typeToken<std::monostate>()
-        };
-    } // namespace
     std::shared_ptr<views::ViewFactoryEntry> makeWorkspaceViewFactory(
         WorkspaceView::Observe observe,
         WorkspaceView::Request request

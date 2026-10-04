@@ -8,6 +8,19 @@
 
 namespace lux::editor::scene
 {
+    namespace
+    {
+        constexpr views::ViewFactoryDescriptor kCreationDescriptor{
+            views::ViewTypeIdView{"lux.editor.scene.creation"},
+            "New Scene",
+            cxx::typeToken<std::monostate>()
+        };
+        constexpr commands::CommandDescriptor kNewCommand{
+            commands::CommandIdView{"lux.editor.new.scene"},
+            "New Scene",
+            "File"
+        };
+    } // namespace
     struct SceneCreationView::Impl final
     {
         SceneCreationRequests requests_;
@@ -104,7 +117,7 @@ namespace lux::editor::scene
         SceneCreationRequests requests,
         SceneConfigurationResult<void>& status
     )
-        : Pane(dispatcher, id, lux::ui::PaneTypeId{"lux.editor.scene.creation"}, "New scene"),
+        : Pane(dispatcher, id, lux::ui::PaneTypeId{kCreationDescriptor.type.name()}, "New scene"),
           impl_(std::make_unique<Impl>(*this, std::move(inputs), std::move(requests)))
     {
         status = impl_->status_;
@@ -143,19 +156,6 @@ namespace lux::editor::scene
 
 namespace lux::editor::scene
 {
-    namespace
-    {
-        constexpr views::ViewFactoryDescriptor kCreationDescriptor{
-            views::ViewTypeIdView{"lux.editor.scene.creation"},
-            "New Scene",
-            cxx::typeToken<std::monostate>()
-        };
-        constexpr commands::CommandDescriptor kNewCommand{
-            commands::CommandIdView{"lux.editor.new.scene"},
-            "New Scene",
-            "File"
-        };
-    } // namespace
     std::shared_ptr<views::ViewFactoryEntry> makeSceneCreationViewFactory(
         scene::SceneConfigurationInputs configuration,
         sessions::SessionCreation receiver

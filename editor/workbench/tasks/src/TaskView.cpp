@@ -5,6 +5,19 @@
 #include <algorithm>
 namespace lux::editor::tasks
 {
+    namespace
+    {
+        constexpr commands::CommandDescriptor kCommand{
+            commands::CommandIdView{"lux.editor.tasks"},
+            "Background Tasks",
+            "Window"
+        };
+        constexpr views::ViewFactoryDescriptor kFactoryDescriptor{
+            views::ViewTypeIdView{"lux.editor.tasks"},
+            "Tasks",
+            cxx::typeToken<std::monostate>()
+        };
+    } // namespace
     TaskListElement::TaskListElement(lux::ui::Pane& parent, TaskMonitor& query)
         : Element(parent, lux::ui::ElementId{"tasks"}), query_(query), rows_(query_.snapshot()),
           revision_(query.revision())
@@ -38,7 +51,7 @@ namespace lux::editor::tasks
         }
     }
     TaskView::TaskView(object::ObjectDispatcherRef dispatcher, lux::ui::PaneId id, TaskMonitor& query)
-        : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{"lux.editor.tasks"}, "Background tasks"),
+        : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{kFactoryDescriptor.type.name()}, "Background tasks"),
           content_(*this, query)
     {
         setContent(content_);
@@ -97,19 +110,6 @@ namespace lux::editor::tasks
 
 namespace lux::editor::tasks
 {
-    namespace
-    {
-        constexpr commands::CommandDescriptor kCommand{
-            commands::CommandIdView{"lux.editor.tasks"},
-            "Background Tasks",
-            "Window"
-        };
-        constexpr views::ViewFactoryDescriptor kFactoryDescriptor{
-            views::ViewTypeIdView{"lux.editor.tasks"},
-            "Tasks",
-            cxx::typeToken<std::monostate>()
-        };
-    } // namespace
     std::shared_ptr<views::ViewFactoryEntry> makeTaskViewFactory(TaskMonitor& monitor)
     {
         return views::ViewFactoryEntry::bind<kFactoryDescriptor>(

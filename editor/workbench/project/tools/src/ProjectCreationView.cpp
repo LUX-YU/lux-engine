@@ -7,6 +7,19 @@
 
 namespace lux::editor::project
 {
+    namespace
+    {
+        constexpr commands::CommandDescriptor kCommand{
+            commands::CommandIdView{"lux.editor.project.create"},
+            "New Project",
+            "File"
+        };
+        constexpr views::ViewFactoryDescriptor kFactoryDescriptor{
+            views::ViewTypeIdView{"lux.editor.project.creation"},
+            "New project",
+            cxx::typeToken<std::monostate>()
+        };
+    } // namespace
     struct ProjectCreationView::Impl final
     {
         enum class EAction
@@ -303,7 +316,7 @@ namespace lux::editor::project
         ProjectCreationRequests requests,
         EditorResult<void>& status
     )
-        : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{"lux.editor.project.creation"}, "New project"),
+        : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{kFactoryDescriptor.type.name()}, "New project"),
           impl_(std::make_unique<Impl>(*this, std::move(requests), status))
     {
     }
@@ -316,19 +329,6 @@ namespace lux::editor::project
 
 namespace lux::editor::project
 {
-    namespace
-    {
-        constexpr commands::CommandDescriptor kCommand{
-            commands::CommandIdView{"lux.editor.project.create"},
-            "New Project",
-            "File"
-        };
-        constexpr views::ViewFactoryDescriptor kFactoryDescriptor{
-            views::ViewTypeIdView{"lux.editor.project.creation"},
-            "New project",
-            cxx::typeToken<std::monostate>()
-        };
-    } // namespace
     std::shared_ptr<views::ViewFactoryEntry> makeProjectCreationViewFactory(
         cxx::move_only_function<ProjectCreationRequests()> requests
     )

@@ -9,6 +9,29 @@
 
 namespace lux::editor::project
 {
+    namespace
+    {
+        constexpr commands::CommandDescriptor kOpenProject{
+            commands::CommandIdView{"lux.editor.project.open"},
+            "Open Project in New Editor",
+            "File"
+        };
+        constexpr commands::CommandDescriptor kInitialScene{
+            commands::CommandIdView{"lux.editor.initial-scene"},
+            "Open Initial Scene",
+            "File"
+        };
+        constexpr commands::CommandDescriptor kCommand{
+            commands::CommandIdView{"lux.editor.project.recent"},
+            "Recent Projects",
+            "File"
+        };
+        constexpr views::ViewFactoryDescriptor kFactoryDescriptor{
+            views::ViewTypeIdView{"lux.editor.recent-projects"},
+            "Recent Projects",
+            cxx::typeToken<std::monostate>()
+        };
+    } // namespace
     struct RecentProjectsView::Impl final
     {
         enum class EAction
@@ -85,7 +108,7 @@ namespace lux::editor::project
         lux::ui::PaneId id,
         RecentProjects& projects
     )
-        : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{"lux.editor.recent-projects"}, "Recent Projects"),
+        : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{kFactoryDescriptor.type.name()}, "Recent Projects"),
           impl_(std::make_unique<Impl>(*this, projects))
     {
     }
@@ -102,29 +125,6 @@ namespace lux::editor::project
 
 namespace lux::editor::project
 {
-    namespace
-    {
-        constexpr commands::CommandDescriptor kOpenProject{
-            commands::CommandIdView{"lux.editor.project.open"},
-            "Open Project in New Editor",
-            "File"
-        };
-        constexpr commands::CommandDescriptor kInitialScene{
-            commands::CommandIdView{"lux.editor.initial-scene"},
-            "Open Initial Scene",
-            "File"
-        };
-        constexpr commands::CommandDescriptor kCommand{
-            commands::CommandIdView{"lux.editor.project.recent"},
-            "Recent Projects",
-            "File"
-        };
-        constexpr views::ViewFactoryDescriptor kFactoryDescriptor{
-            views::ViewTypeIdView{"lux.editor.recent-projects"},
-            "Recent Projects",
-            cxx::typeToken<std::monostate>()
-        };
-    } // namespace
     std::shared_ptr<views::ViewFactoryEntry> makeRecentProjectsViewFactory(
         RecentProjects& recent,
         cxx::move_only_function<EditorResult<void>(const std::filesystem::path&)> open

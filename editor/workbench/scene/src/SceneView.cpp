@@ -18,6 +18,14 @@ namespace lux::editor::scene
 {
     namespace
     {
+        constexpr sessions::SessionKindIdView kContentKinds[]{sessions::SessionKindIdView{"lux.editor.scene"}};
+        constexpr views::ViewFactoryDescriptor kViewDescriptor{
+            views::ViewTypeIdView{"lux.editor.scene.view"},
+            "Scene",
+            cxx::typeToken<views::ContentViewInput>(),
+            1,
+            kContentKinds
+        };
         template <class T> auto rejected(T error)
         {
             return cxx::unexpected(SceneViewFailure{std::move(error)});
@@ -541,7 +549,7 @@ namespace lux::editor::scene
         }
     };
     SceneView::SceneView(object::ObjectDispatcherRef dispatcher, SceneViewServices services, SceneViewCreateInfo info)
-        : Pane(dispatcher, std::move(info.id), lux::ui::PaneTypeId{"lux.editor.scene.view"}, std::move(info.title)),
+        : Pane(dispatcher, std::move(info.id), lux::ui::PaneTypeId{kViewDescriptor.type.name()}, std::move(info.title)),
           impl_(std::make_unique<Impl>(*this, services, std::move(info.state), info.render_system))
     {
     }
@@ -818,17 +826,6 @@ namespace lux::editor::scene
 
 namespace lux::editor::scene
 {
-    namespace
-    {
-        constexpr sessions::SessionKindIdView kContentKinds[]{sessions::SessionKindIdView{"lux.editor.scene"}};
-        constexpr views::ViewFactoryDescriptor kViewDescriptor{
-            views::ViewTypeIdView{"lux.editor.scene.view"},
-            "Scene",
-            cxx::typeToken<views::ContentViewInput>(),
-            1,
-            kContentKinds
-        };
-    } // namespace
     std::shared_ptr<views::ViewFactoryEntry> makeSceneViewFactory(
         scene::SceneViewServices scene,
         cxx::move_only_function<void(const ModelPlacement&)> receiver

@@ -7,6 +7,19 @@
 
 namespace lux::editor::project
 {
+    namespace
+    {
+        constexpr commands::CommandDescriptor kCommand{
+            commands::CommandIdView{"lux.editor.assets"},
+            "Assets",
+            "Window"
+        };
+        constexpr views::ViewFactoryDescriptor kFactoryDescriptor{
+            views::ViewTypeIdView{"lux.editor.project"},
+            "Assets",
+            cxx::typeToken<std::monostate>()
+        };
+    } // namespace
     struct ProjectView::Impl final
     {
         struct Content final : lux::ui::Element
@@ -77,7 +90,7 @@ namespace lux::editor::project
         }
     };
     ProjectView::ProjectView(object::ObjectDispatcherRef dispatcher, lux::ui::PaneId id, ProjectCatalogModel& query)
-        : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{"lux.editor.project"}, "Project"),
+        : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{kFactoryDescriptor.type.name()}, "Project"),
           impl_(std::make_unique<Impl>(*this, query))
     {
         setContent(impl_->content);
@@ -151,19 +164,6 @@ namespace lux::editor::project
 
 namespace lux::editor::project
 {
-    namespace
-    {
-        constexpr commands::CommandDescriptor kCommand{
-            commands::CommandIdView{"lux.editor.assets"},
-            "Assets",
-            "Window"
-        };
-        constexpr views::ViewFactoryDescriptor kFactoryDescriptor{
-            views::ViewTypeIdView{"lux.editor.project"},
-            "Assets",
-            cxx::typeToken<std::monostate>()
-        };
-    } // namespace
     std::shared_ptr<views::ViewFactoryEntry> makeProjectViewFactory(
         ProjectCatalogModel& catalog,
         cxx::move_only_function<void(const AssetReference&)> open

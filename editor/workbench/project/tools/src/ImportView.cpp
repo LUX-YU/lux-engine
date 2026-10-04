@@ -8,6 +8,19 @@
 
 namespace lux::editor::project
 {
+    namespace
+    {
+        constexpr commands::CommandDescriptor kCommand{
+            commands::CommandIdView{"lux.editor.import"},
+            "Import Assets",
+            "File"
+        };
+        constexpr views::ViewFactoryDescriptor kFactoryDescriptor{
+            views::ViewTypeIdView{"lux.editor.import"},
+            "Import Assets",
+            cxx::typeToken<std::monostate>()
+        };
+    } // namespace
     struct ImportView::Impl final
     {
         enum class EAction
@@ -102,7 +115,7 @@ namespace lux::editor::project
         ProjectCatalogModel& catalog,
         assets::ModelImporter& importer
     )
-        : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{"lux.editor.import"}, "Import Assets"),
+        : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{kFactoryDescriptor.type.name()}, "Import Assets"),
           impl_(std::make_unique<Impl>(*this, catalog, importer))
     {
         setContent(impl_->content);
@@ -208,19 +221,6 @@ namespace lux::editor::project
 
 namespace lux::editor::project
 {
-    namespace
-    {
-        constexpr commands::CommandDescriptor kCommand{
-            commands::CommandIdView{"lux.editor.import"},
-            "Import Assets",
-            "File"
-        };
-        constexpr views::ViewFactoryDescriptor kFactoryDescriptor{
-            views::ViewTypeIdView{"lux.editor.import"},
-            "Import Assets",
-            cxx::typeToken<std::monostate>()
-        };
-    } // namespace
     std::shared_ptr<views::ViewFactoryEntry> makeImportViewFactory(
         ProjectCatalogModel& catalog,
         assets::ModelImporter& importer,

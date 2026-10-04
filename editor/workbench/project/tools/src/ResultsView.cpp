@@ -6,6 +6,19 @@
 
 namespace lux::editor::project
 {
+    namespace
+    {
+        constexpr commands::CommandDescriptor kCommand{
+            commands::CommandIdView{"lux.editor.content.results"},
+            "Content and Operations",
+            "Window"
+        };
+        constexpr views::ViewFactoryDescriptor kFactoryDescriptor{
+            views::ViewTypeIdView{"lux.editor.content.results"},
+            "Content and Operations",
+            cxx::typeToken<std::monostate>()
+        };
+    } // namespace
     struct ResultsView::Impl final : lux::ui::Element
     {
         Observe observe_;
@@ -64,7 +77,12 @@ namespace lux::editor::project
         Observe observe,
         Request request
     )
-        : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{"lux.editor.content.results"}, "Content and Operations"),
+        : Pane(
+              dispatcher,
+              std::move(id),
+              lux::ui::PaneTypeId{kFactoryDescriptor.type.name()},
+              "Content and Operations"
+          ),
           impl_(std::make_unique<Impl>(*this, std::move(observe), std::move(request)))
     {
     }
@@ -89,19 +107,6 @@ namespace lux::editor::project
 
 namespace lux::editor::project
 {
-    namespace
-    {
-        constexpr commands::CommandDescriptor kCommand{
-            commands::CommandIdView{"lux.editor.content.results"},
-            "Content and Operations",
-            "Window"
-        };
-        constexpr views::ViewFactoryDescriptor kFactoryDescriptor{
-            views::ViewTypeIdView{"lux.editor.content.results"},
-            "Content and Operations",
-            cxx::typeToken<std::monostate>()
-        };
-    } // namespace
     std::shared_ptr<views::ViewFactoryEntry> makeResultsViewFactory(
         ResultsView::Observe observe,
         ResultsView::Request request

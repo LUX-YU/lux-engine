@@ -18,6 +18,14 @@ namespace lux::editor::material
 {
     namespace
     {
+        constexpr sessions::SessionKindIdView kContentKinds[]{sessions::SessionKindIdView{"lux.editor.material"}};
+        constexpr views::ViewFactoryDescriptor kViewDescriptor{
+            views::ViewTypeIdView{"lux.editor.material"},
+            "Material",
+            cxx::typeToken<views::ContentViewInput>(),
+            1,
+            kContentKinds
+        };
         template <class T> auto rejected(T error)
         {
             return cxx::unexpected(VMaterialViewFailure{std::move(error)});
@@ -871,7 +879,7 @@ namespace lux::editor::material
         MaterialViewServices services,
         MaterialViewState state
     )
-        : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{"lux.editor.material"}, "Material"),
+        : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{kViewDescriptor.type.name()}, "Material"),
           impl_(std::make_unique<Impl>(*this, services, state))
     {
     }
@@ -1196,17 +1204,6 @@ namespace lux::editor::material
 
 namespace lux::editor::material
 {
-    namespace
-    {
-        constexpr sessions::SessionKindIdView kContentKinds[]{sessions::SessionKindIdView{"lux.editor.material"}};
-        constexpr views::ViewFactoryDescriptor kViewDescriptor{
-            views::ViewTypeIdView{"lux.editor.material"},
-            "Material",
-            cxx::typeToken<views::ContentViewInput>(),
-            1,
-            kContentKinds
-        };
-    } // namespace
     std::shared_ptr<views::ViewFactoryEntry> makeMaterialViewFactory(
         sessions::TSessionAccess<material::MaterialSession> sessions,
         lux::scene::SceneRuntime& runtime,

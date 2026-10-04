@@ -113,9 +113,10 @@ int main(int argc, char** argv)
     lux::flowforge::FlowGraph graph;
     auto node = graph.addNodes(std::make_unique<lux::flowforge::OnEventNode>("tick"));
     assert(graph.addExport({lux::flowforge::FlowForgeExportNodeId{1}, graph.getNode(node).node->id(), 1234}));
+    auto initial = take(lux::flowforge::captureFlowSource(asset, "Frozen Flow", graph));
     auto request = take(opening.create(
         project->catalogModel().reference({}).project_instance,
-        f::prepareFlowSession({asset, "Frozen Flow", std::move(graph)}, {}, {}, {}),
+        f::prepareFlowSession({std::move(initial)}, {}, {}, {}),
         factories
     ));
     assert(opening.update());
@@ -147,7 +148,7 @@ int main(int argc, char** argv)
     const auto baseline = model.describe();
     const auto encoded = take(take(model.read()).encode());
     f::FlowCompilationService compiler{execution};
-    auto compiling = take(compiler.start(take(model.capture()), {}, {}, {"EC4-missing-linker.exe"}));
+    auto compiling = take(compiler.start(take(model.capture()), f::FlowEnvironment{}, {}, {"EC4-missing-linker.exe"}));
     until([&] { return take(compiler.operation(compiling)).get().ready(); });
     const auto object = take(compiler.operation(compiling)).get().object();
     assert(object && take(compiler.operation(compiling)).get().retryable());
@@ -219,7 +220,17 @@ int main(int argc, char** argv)
     const auto after_busy = model.describe();
     assert(store_was_busy && after_busy.current == before_busy.current && after_busy.observed == before_busy.observed);
     assert(after_busy.binding == before_busy.binding && after_busy.dirty == before_busy.dirty);
-    assert(after_busy.admission == before_busy.admission && take(model.historyView()).snapshot == history_before_busy);
+    assert(after_busy.admission == before_busy.admission);
+    const auto history_after_busy = take(model.historyView()).snapshot;
+    assert(history_after_busy.history == history_before_busy.history);
+    assert(history_after_busy.current == history_before_busy.current);
+    assert(history_after_busy.revision == history_before_busy.revision);
+    assert(history_after_busy.event_sequence == history_before_busy.event_sequence);
+    assert(history_after_busy.entry_count == history_before_busy.entry_count);
+    assert(history_after_busy.cursor == history_before_busy.cursor);
+    assert(history_after_busy.charged_retained_bytes == history_before_busy.charged_retained_bytes);
+    assert(history_after_busy.history_metadata_bytes == history_before_busy.history_metadata_bytes);
+    assert(history_after_busy.closed == history_before_busy.closed);
     assert(take(take(model.read()).encode()) == encoded);
     assert(saving.update()); // Exact Session/current gate has accepted the frozen source.
     assert(take(saving.artifactReports()).front().admitted);

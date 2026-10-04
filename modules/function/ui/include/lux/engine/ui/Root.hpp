@@ -134,6 +134,9 @@ namespace lux::ui
         object::TSignal<object::LuxObject*> objectRemoved{*this};
 
         [[nodiscard]] Pane* findPane(PaneIdView) const noexcept;
+        [[nodiscard]] cxx::expected<PaneHandle, EAttachmentError> identify(const Pane&) const noexcept;
+        // A borrowed pointer valid only until the next callback or structure change.
+        [[nodiscard]] cxx::expected<Pane*, EAttachmentError> findPane(const PaneHandle&) const noexcept;
         void showPanes() noexcept;
         [[nodiscard]] Pane* focusedPane() const noexcept;
         [[nodiscard]] bool requestFocus(Pane&) noexcept;

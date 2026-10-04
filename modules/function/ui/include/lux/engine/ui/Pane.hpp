@@ -180,6 +180,7 @@ namespace lux::ui
         void invalidatePreparation() noexcept;
         detail::AttachmentState* preparation_{};
         std::size_t registration_slot_{SIZE_MAX}, window_slot_{SIZE_MAX};
+        std::uint64_t attachment_epoch_{};
 
         PaneId id_;
         PaneTypeId type_;

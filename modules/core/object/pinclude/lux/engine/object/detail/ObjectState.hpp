@@ -25,11 +25,13 @@ namespace lux::object::detail
 
     struct ObjectState final : Reclamation
     {
-        ObjectState(LuxObject* value, ObjectDispatcherRef queue) noexcept : object(value), dispatcher(std::move(queue))
+        ObjectState(LuxObject* value, ObjectDispatcherRef queue, std::thread::id owner) noexcept
+            : object(value), dispatcher(std::move(queue)), affinity(owner)
         {}
         std::atomic_size_t refs{};
         std::atomic<LuxObject*> object;
         ObjectDispatcherRef dispatcher;
+        const std::thread::id affinity;
         std::mutex mutex;
         ConnectionControl* incoming{};
         bool destruction_requested{}; // Affinity thread; one queued reference per identity.

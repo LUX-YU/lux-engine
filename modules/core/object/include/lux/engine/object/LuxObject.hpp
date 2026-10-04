@@ -23,6 +23,29 @@ namespace lux::object
     class EventView;
     class LuxObject;
 
+    // Non-owning identity backed by the same control block as signal receivers and retirement.
+    // Retaining it never keeps the object or its plugin code alive. Resolve only on the owner thread;
+    // the returned pointer is a synchronous borrow, not permission to retain it across callbacks.
+    class LUX_CORE_PUBLIC ObjectIdentity final
+    {
+    public:
+        ObjectIdentity() noexcept = default;
+        [[nodiscard]] ObjectResult<LuxObject*> resolve() const noexcept;
+        [[nodiscard]] bool valid() const noexcept
+        {
+            return bool(state_);
+        }
+        friend bool operator==(const ObjectIdentity& left, const ObjectIdentity& right) noexcept
+        {
+            return left.state_.get() == right.state_.get();
+        }
+
+    private:
+        friend class LuxObject;
+        explicit ObjectIdentity(cxx::intrusive_ptr<detail::ObjectState> state) noexcept : state_(std::move(state)) {}
+        cxx::intrusive_ptr<detail::ObjectState> state_;
+    };
+
     // Broadcast admission can be partial; never replay already delivered recipients.
     struct SignalDelivery final
     {
@@ -128,6 +151,7 @@ namespace lux::object
             return dispatcher_;
         }
         [[nodiscard]] EObjectOwnership ownership() const noexcept;
+        [[nodiscard]] ObjectIdentity identity() const noexcept;
         // Records intent only; the owning dispatcher reclaims at its explicit safe point.
         [[nodiscard]] ObjectResult<void> requestDestruction() noexcept;
 
@@ -319,6 +343,7 @@ namespace lux::object
         [[nodiscard]] bool acceptsCallbacks() const noexcept;
         void unlinkParent() noexcept;
         friend struct detail::ObjectState;
+        friend class ObjectIdentity;
         friend struct detail::AffinityOwner;
         friend ObjectResult<void>
         detail::prepareSharedObject(LuxObject&, const ObjectDispatcherRef&) noexcept;

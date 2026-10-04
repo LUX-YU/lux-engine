@@ -713,7 +713,7 @@ namespace lux::object
         auto* state = state_.load(std::memory_order_acquire);
         if (!state)
         {
-            auto* candidate = new detail::ObjectState{const_cast<LuxObject*>(this), dispatcher_};
+            auto* candidate = new detail::ObjectState{const_cast<LuxObject*>(this), dispatcher_, affinity_};
             detail::intrusive_ptr_add_ref(candidate); // object ownership
             if (!state_.compare_exchange_strong(state, candidate, std::memory_order_release, std::memory_order_acquire))
             {
@@ -726,6 +726,29 @@ namespace lux::object
             }
         }
         return lux::cxx::intrusive_ptr<detail::ObjectState>{state};
+    }
+
+    ObjectIdentity LuxObject::identity() const noexcept
+    {
+        return ObjectIdentity{ensureState()};
+    }
+
+    ObjectResult<LuxObject*> ObjectIdentity::resolve() const noexcept
+    {
+        if (!state_)
+        {
+            return cxx::unexpected(EObjectTreeError::INVALID_OBJECT);
+        }
+        if (state_->affinity != std::this_thread::get_id())
+        {
+            return cxx::unexpected(EObjectTreeError::WRONG_THREAD);
+        }
+        auto* object = state_->object.load(std::memory_order_acquire);
+        if (!object || object->isClosing())
+        {
+            return cxx::unexpected(EObjectTreeError::CLOSED);
+        }
+        return object;
     }
 
     LuxObject::ConnectResult LuxObject::connectSignal(

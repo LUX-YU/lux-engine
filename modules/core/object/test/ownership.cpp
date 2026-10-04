@@ -52,6 +52,32 @@ namespace
         }
     };
 
+    void objectIdentities()
+    {
+        ObjectIdentity empty;
+        assert(!empty.valid() && !empty.resolve() && empty.resolve().error() == EObjectTreeError::INVALID_OBJECT);
+        alignas(Node) std::byte memory[sizeof(Node)];
+        auto* first = ::new (memory) Node;
+        auto identity = first->identity();
+        assert(identity.valid() && identity == first->identity() && *identity.resolve() == first);
+        std::thread worker(
+            [identity]
+            {
+                auto resolved = identity.resolve();
+                assert(!resolved && resolved.error() == EObjectTreeError::WRONG_THREAD);
+            }
+        );
+        worker.join();
+        first->~Node();
+        auto* second = ::new (memory) Node;
+        assert(!identity.resolve() && identity.resolve().error() == EObjectTreeError::CLOSED);
+        assert(identity != second->identity() && *second->identity().resolve() == second);
+        second->~Node();
+        // An identity does not retain a node; its host-side control block is independently releasable.
+        std::thread release([identity = std::move(identity)]() mutable { identity = {}; });
+        release.join();
+    }
+
     void mixedTree()
     {
         Node survivor;
@@ -530,6 +556,8 @@ namespace
         assert(messages);
         Owner candidate;
         create(messages->dispatcherRef(), CodeLease::plugin(library), trace, candidate);
+        const auto identity = candidate->identity();
+        assert(identity.resolve());
         if (parent_owned)
         {
             Node parent(messages->dispatcherRef());
@@ -538,6 +566,7 @@ namespace
             assert(!trace[0] && !trace[3]);
             parent.clearChildren();
             assert(trace[0] == 1 && trace[1] == 1 && trace[2] == 1 && trace[3] == 1);
+            assert(!identity.resolve() && identity.resolve().error() == EObjectTreeError::CLOSED);
             return;
         }
         auto shared = shareOnDispatcher(messages->dispatcherRef(), std::move(candidate), CodeLease::plugin(library));
@@ -549,6 +578,7 @@ namespace
         assert(!trace[0] && !trace[3] && weak.expired());
         assert(messages->collectRetired() == 1);
         assert(trace[0] == 1 && trace[1] == 1 && trace[2] == 1 && trace[3] == 1);
+        assert(!identity.resolve() && identity.resolve().error() == EObjectTreeError::CLOSED);
         weak.reset(); // Host control block remains safe after the DLL has actually unloaded.
     }
 } // namespace
@@ -557,6 +587,7 @@ int main(int argc, char** argv)
 {
     if (argc == 2 && std::string_view(argv[1]).starts_with("--reject-"))
         return rejectFinalSafePoint(argv[1]);
+    objectIdentities();
     mixedTree();
     refusalAndCleanup();
     retirement();

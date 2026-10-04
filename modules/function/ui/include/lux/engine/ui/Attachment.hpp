@@ -9,6 +9,22 @@ namespace lux::ui
 {
     class Root;
     class Pane;
+    // Object lifetime is supplied by ObjectState. The epoch distinguishes successive UI attachments
+    // of the same external Pane, so queued input cannot cross an unmount/remount boundary.
+    class PaneHandle final
+    {
+    public:
+        [[nodiscard]] bool valid() const noexcept
+        {
+            return pane_.valid() && root_.valid() && attachment_ != 0;
+        }
+        friend bool operator==(const PaneHandle&, const PaneHandle&) = default;
+
+    private:
+        friend class Root;
+        object::ObjectIdentity pane_, root_;
+        std::uint64_t attachment_{};
+    };
     struct WindowVisibility final
     {
         Pane* pane{};

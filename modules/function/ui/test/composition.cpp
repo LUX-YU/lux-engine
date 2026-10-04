@@ -93,6 +93,8 @@ namespace
         assert(layout.addSubElement(button));
         assert(pane.setContent(layout));
         assert((*root)->addSubPane(pane));
+        const auto identity = (*root)->identify(pane);
+        assert(identity && *(*root)->findPane(*identity) == &pane);
         assert((*root)->requestFocus(button) && (*root)->capturePointer(button));
         (*root)->deferChange(button, [](object::LuxObject&) noexcept { std::abort(); });
         root->reset();
@@ -100,7 +102,23 @@ namespace
         assert(button.parent() == &layout && layout.parent() == &pane && pane.content() == &layout);
         auto replacement = ui::Root::create(messages.dispatcherRef());
         assert(replacement && (*replacement)->addSubPane(pane));
+        assert(!(*replacement)->findPane(*identity));
+        const auto remounted = (*replacement)->identify(pane);
+        assert(remounted && *remounted != *identity);
         assert((*replacement)->update({}, nullptr));
+        assert((*replacement)->removeSubPane(pane));
+        assert(!(*replacement)->findPane(*remounted));
+        assert((*replacement)->addSubPane(pane));
+        assert(!(*replacement)->findPane(*remounted)); // Same live object and Root, new attachment.
+        assert(*(*replacement)->findPane(*(*replacement)->identify(pane)) == &pane);
+        std::thread other(
+            [&]
+            {
+                auto lookup = (*replacement)->findPane(*remounted);
+                assert(!lookup && lookup.error() == ui::EAttachmentError::WRONG_THREAD);
+            }
+        );
+        other.join();
         assert((*replacement)->removeSubPane(pane));
         assert(!pane.parent() && !button.attachedRoot());
         std::cout << "UI external subtree survives Root, revoked routes and pending input, reattach PASS\n";
@@ -365,6 +383,8 @@ namespace
         {
             auto* old = ::new (storage) Window(messages.dispatcherRef(), "same", counts);
             assert((*root)->addSubPane(*old));
+            const auto identity = (*root)->identify(*old);
+            assert(identity && *(*root)->findPane(*identity) == old);
             auto connection = object::LuxObject::connect(
                 &sender, &Sender::changed, old, &Window::receive, object::EDelivery::QUEUED
             );
@@ -374,6 +394,8 @@ namespace
             old->~Window();
             auto* current = ::new (storage) Window(messages.dispatcherRef(), "same", counts);
             assert((*root)->addSubPane(*current));
+            assert(!(*root)->findPane(*identity));
+            assert(*(*root)->identify(*current) != *identity);
             (*root)->applyPendingChanges();
             static_cast<void>(messages.dispatchPending());
             assert(counts.callbacks == 0 && (*root)->findPane(ui::PaneIdView{"same"}) == current);

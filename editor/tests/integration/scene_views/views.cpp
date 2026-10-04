@@ -1074,6 +1074,9 @@ namespace
         const auto activeWindows = [&] { return std::ranges::count_if(root.panes(), [](auto* pane) { return pane; }); };
         const auto before = activeWindows();
         assert(root.addSubPanes(owners) && activeWindows() == before + 2);
+        const auto a_handle = take(root.identify(*a));
+        const auto b_handle = take(root.identify(*b));
+        assert(a_handle != b_handle && take(root.findPane(a_handle)) == a && take(root.findPane(b_handle)) == b);
         f.frame();
         assert(a->beginEdit("local draft"));
         std::vector<ef::VFlowEdit> edits;
@@ -1091,6 +1094,7 @@ namespace
         assert(a->compilation() == operation && b->compilation() == operation);
         assert(a->cancelEdit() && root.removeSubPane(*a));
         assert(b->cancelEdit() && root.removeSubPane(*b));
+        assert(!root.findPane(a_handle) && !root.findPane(b_handle));
         assert(activeWindows() == before);
         (void)f.messages.collectRetired();
         // No surviving Pane is responsible for this completion. The actual scoped service remains.
@@ -1107,6 +1111,7 @@ namespace
         auto reopened = take(ui.create(factory, scope, input));
         auto* view = static_cast<ef::FlowView*>(reopened.get());
         assert(root.addSubPane(std::move(reopened)) && weak_model.lock().get() == model);
+        assert(!root.findPane(a_handle) && take(root.findPane(take(root.identify(*view)))) == view);
         assert(view->binding()->session == key && !view->binding()->interaction->overlay());
         assert(view->compilation() == operation); // Reopening observes the service's actual retained result.
         f.frame();

@@ -544,6 +544,63 @@ namespace lux::ui
             return result;
         }
     }
+    cxx::expected<PaneHandle, EAttachmentError> Root::identify(const Pane& pane) const noexcept
+    {
+        const bool is_wrong_thread = !isOnAffinityThread() || !pane.isOnAffinityThread();
+        if (is_wrong_thread)
+        {
+            return cxx::unexpected(EAttachmentError::WRONG_THREAD);
+        }
+        if (isClosing())
+        {
+            return cxx::unexpected(EAttachmentError::CLOSED);
+        }
+        if (pane.attachedRoot() != this)
+        {
+            return cxx::unexpected(EAttachmentError::NOT_ATTACHED);
+        }
+        auto reference = pane.identity();
+        if (!reference.resolve())
+        {
+            return cxx::unexpected(EAttachmentError::CLOSED);
+        }
+        PaneHandle handle;
+        handle.pane_ = std::move(reference);
+        handle.root_ = identity();
+        handle.attachment_ = pane.attachment_epoch_;
+        return handle;
+    }
+
+    cxx::expected<Pane*, EAttachmentError> Root::findPane(const PaneHandle& handle) const noexcept
+    {
+        if (!isOnAffinityThread())
+        {
+            return cxx::unexpected(EAttachmentError::WRONG_THREAD);
+        }
+        if (isClosing())
+        {
+            return cxx::unexpected(EAttachmentError::CLOSED);
+        }
+        const bool is_wrong_root = !handle.valid() || handle.root_ != identity();
+        if (is_wrong_root)
+        {
+            return cxx::unexpected(EAttachmentError::NOT_ATTACHED);
+        }
+        auto resolved = handle.pane_.resolve();
+        if (!resolved)
+        {
+            return cxx::unexpected(EAttachmentError::NOT_ATTACHED);
+        }
+        // Only identify() can create this handle, from a real Pane on the same Root thread.
+        auto* pane = static_cast<Pane*>(*resolved);
+        const bool is_stale_attachment = pane->root_ != this || pane->attachment_epoch_ != handle.attachment_;
+        if (is_stale_attachment)
+        {
+            return cxx::unexpected(EAttachmentError::NOT_ATTACHED);
+        }
+        return pane;
+    }
+
     Pane* Root::findPane(PaneIdView id) const noexcept
     {
         requireOwner();
@@ -1194,6 +1251,10 @@ namespace lux::ui
         for (const auto node : prepared.nodes)
             if (node.pane)
             {
+                if (node.pane->attachment_epoch_ == UINT64_MAX)
+                {
+                    return cxx::unexpected(EAttachmentError::CAPACITY);
+                }
                 const auto name = node.pane->id().name();
                 if (findPane(node.pane->id().view()) || !names.emplace(name).second)
                     return cxx::unexpected(EAttachmentError::DUPLICATE_ID);
@@ -1547,6 +1608,11 @@ namespace lux::ui
 
     void Root::registerPane(Pane& pane)
     {
+        if (pane.attachment_epoch_ == UINT64_MAX)
+        {
+            detail::failContract(); // Legacy rooted constructors cannot report a failed attachment.
+        }
+        ++pane.attachment_epoch_;
         ++impl_->structure_revision;
         ++impl_->window_revision;
         checkContentChange();

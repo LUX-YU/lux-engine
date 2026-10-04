@@ -3,6 +3,7 @@
 #include <lux/engine/object/ObjectEvent.hpp>
 #include <lux/engine/object/detail/ObjectState.hpp>
 #include <cstdlib>
+#include <vector>
 #include <stdexcept>
 
 namespace
@@ -459,6 +460,43 @@ namespace lux::object
         child.owned_edge_->destroy = std::move(deleter);
         linkChild(child);
         changing_children_ = child.changing_children_ = false;
+    }
+
+    ObjectResult<void> LuxObject::adoptChildren(
+        std::span<LuxObject* const> children, cxx::function_ref<ObjectDeleter(std::size_t)> transfer
+    ) noexcept
+    {
+        std::vector<std::unique_ptr<OwnedEdge>> edges;
+        edges.reserve(children.size());
+        for (std::size_t i{}; i < children.size(); ++i)
+        {
+            auto* child = children[i];
+            if (!child)
+                return cxx::unexpected(EObjectTreeError::INVALID_OBJECT);
+            auto valid = validateChild(*child);
+            if (!valid)
+                return valid;
+            for (std::size_t j{}; j < i; ++j)
+                if (children[j] == child)
+                    return cxx::unexpected(EObjectTreeError::INVALID_TREE);
+            edges.push_back(std::make_unique<OwnedEdge>());
+        }
+        // Moving a stateful deleter can enter foreign code. Protect the complete candidate batch,
+        // including siblings not yet transferred; no parent relation is visible until all moves finish.
+        changing_children_ = true;
+        for (auto* child : children)
+            child->changing_children_ = true;
+        for (std::size_t i{}; i < children.size(); ++i)
+            edges[i]->destroy = transfer(i);
+        for (std::size_t i{}; i < children.size(); ++i)
+        {
+            children[i]->owned_edge_ = std::move(edges[i]);
+            linkChild(*children[i]);
+        }
+        for (auto* child : children)
+            child->changing_children_ = false;
+        changing_children_ = false;
+        return {};
     }
 
     ObjectResult<void> LuxObject::detachChild(LuxObject& child) noexcept

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional>
+#include <lux/cxx/core/function_ref.hpp>
 #include <lux/engine/object/ObjectDispatcher.hpp>
 #include <lux/engine/services/ServiceDescriptor.hpp>
 #include <vector>
@@ -98,15 +99,16 @@ namespace lux::services
             return std::ref(*static_cast<T*>(*result));
         }
         [[nodiscard]] const object::ObjectDispatcherRef& dispatcher() const noexcept;
+        [[nodiscard]] bool isOpen() const noexcept;
 
     private:
         friend class ServiceRegistry;
-        ServiceResolver(ServiceRegistry&, const ServiceHandle&, std::shared_ptr<detail::ServiceScopeState>) noexcept;
+        ServiceResolver(ServiceRegistry&, std::span<const ServiceDependency>, std::shared_ptr<detail::ServiceScopeState>) noexcept;
         [[nodiscard]] ServiceResult<std::shared_ptr<void>>
         get(std::size_t, cxx::TypeToken, const ServiceConfiguration&) noexcept;
         [[nodiscard]] ServiceResult<void*> require(std::size_t, cxx::TypeToken) noexcept;
         ServiceRegistry& registry_;
-        const ServiceHandle& handle_;
+        std::span<const ServiceDependency> dependencies_;
         std::shared_ptr<detail::ServiceScopeState> scope_;
     };
     struct ServiceLimits final
@@ -125,6 +127,31 @@ namespace lux::services
         ServiceRegistry& operator=(const ServiceRegistry&) = delete;
         ServiceRegistry(ServiceRegistry&&) = delete;
         ServiceRegistry& operator=(ServiceRegistry&&) = delete;
+        // A short owner-thread publication scope. It spans validation, all participating swaps,
+        // retired-descriptor cleanup and notifications; never keep it across an asynchronous operation.
+        class LUX_SERVICES_PUBLIC Publication final
+        {
+        public:
+            ~Publication();
+            Publication(Publication&&) noexcept;
+            Publication& operator=(Publication&&) = delete;
+            Publication(const Publication&) = delete;
+            Publication& operator=(const Publication&) = delete;
+            // One prepared swap, without allocation or callbacks. Old code remains protected until destruction.
+            void commit() noexcept;
+
+        private:
+            friend class ServiceRegistry;
+            struct State;
+            explicit Publication(std::unique_ptr<State>) noexcept;
+            std::unique_ptr<State> state_;
+        };
+        [[nodiscard]] ServiceResult<
+            Publication> preparePublication(std::vector<std::shared_ptr<const ServiceEntry>>) noexcept;
+        // Factory-only lexical dependency access. The caller pins its declaration throughout the call.
+        // The resolver cannot escape, publish catalogs, or discover undeclared dependencies.
+        [[nodiscard]] ServiceResult<void>
+        withDependencies(ServiceScope&, std::span<const ServiceDependency>, cxx::function_ref<ServiceResult<void>(ServiceResolver&)>) noexcept;
         // Validates a complete candidate. Existing handles/instances keep their original definition generation.
         [[nodiscard]] ServiceResult<void> publish(std::vector<std::shared_ptr<const ServiceEntry>>) noexcept;
         [[nodiscard]] ServiceResult<ServiceScope> createScope(const ServiceScope* parent = nullptr) noexcept;
@@ -185,12 +212,7 @@ namespace lux::services
             std::string_view,
             const ServiceConfiguration&) noexcept;
         [[nodiscard]] ServiceResult<std::shared_ptr<void>>
-        instantiate(
-            ServiceHandle,
-            std::shared_ptr<detail::ServiceScopeState>,
-            std::string_view,
-            const ServiceConfiguration&
-        ) noexcept;
+        instantiate(ServiceHandle, std::shared_ptr<detail::ServiceScopeState>, std::string_view, const ServiceConfiguration&) noexcept;
         [[nodiscard]] ServiceResult<std::shared_ptr<detail::ServiceScopeState>>
         dependencyScope(const ServiceResolver&, const ServiceDependency&) const noexcept;
         struct Impl;

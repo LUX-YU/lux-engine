@@ -122,7 +122,8 @@ namespace lux::object
     private:
         using Destroy = cxx::move_only_function<void(LuxObject*)>;
         ObjectDeleter(CodeLease, Destroy);
-        CodeLease code_;
-        Destroy destroy_;
+        // Stable destruction state: moving a prepared owner cannot execute a foreign deleter move.
+        struct Storage;
+        std::unique_ptr<Storage> storage_;
     };
 } // namespace lux::object

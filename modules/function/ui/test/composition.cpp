@@ -289,6 +289,65 @@ namespace
         std::cout << "UI retired content leaves layout before physical collection; nested removal PASS\n";
     }
 
+    void ownedBatch(object::ObjectMessageQueue& messages)
+    {
+        Counts counts;
+        auto root = ui::Root::create(messages.dispatcherRef(), {.attachment_capacity = 3});
+        assert(root);
+        Window existing(messages.dispatcherRef(), "existing", counts);
+        assert((*root)->addSubPane(existing));
+        std::vector<std::unique_ptr<ui::Pane, object::ObjectDeleter>> owners;
+        const auto append = [&](const char* id)
+        {
+            auto value = std::make_unique<Window>(messages.dispatcherRef(), id, counts);
+            auto deleter = object::ObjectDeleter::create<Window>(DeleteWindow{counts});
+            owners.emplace_back(value.release(), std::move(deleter));
+        };
+        append("first");
+        append("second");
+        append("third");
+        auto* first = owners[0].get();
+        auto* second = owners[1].get();
+        auto dock = (*root)->prepareDockTree({
+            {{ui::EDockSplit::LEAF, UINT32_MAX, UINT32_MAX, 0.5F, {"existing"}}},
+            {{0, {{20, 30}, {600, 400}}, false}}
+        });
+        assert(dock);
+        (*root)->commitDockTree(std::move(*dock));
+        const auto revision = (*root)->windowRevision();
+        auto failed = (*root)->addSubPanes(owners);
+        assert(!failed && failed.error() == ui::EAttachmentError::CAPACITY);
+        assert(owners[0].get() == first && owners[1].get() == second && owners[2]);
+        assert(!first->parent() && !second->parent() && (*root)->panes().size() == 1);
+        const auto unchanged = (*root)->captureDockTree();
+        assert((*root)->windowRevision() == revision);
+        assert(unchanged.nodes.size() == 1 && unchanged.nodes[0].windows == std::vector<std::string>{"existing"});
+        assert(unchanged.surfaces.size() == 1 && unchanged.surfaces[0].node == 0 && !unchanged.surfaces[0].floating);
+        owners.pop_back();
+        unsigned notifications{};
+        auto connection = object::LuxObject::connect(
+            root->get(), &ui::Root::attachmentChanged,
+            [&](const ui::AttachmentChanged& change) noexcept
+            {
+                if (!change.mounted) return;
+                assert(!owners[0] && !owners[1]);
+                assert(first->parent() == root->get() && second->parent() == root->get());
+                assert(first->ownership() == object::EObjectOwnership::PARENT_OWNED);
+                assert(second->ownership() == object::EObjectOwnership::PARENT_OWNED);
+                assert((*root)->findPane(first->id().view()) == first);
+                assert((*root)->findPane(second->id().view()) == second);
+                ++notifications;
+            }
+        );
+        assert(connection && (*root)->addSubPanes(owners));
+        assert(notifications == 2 && counts.deleted == 1);
+        assert((*root)->removeSubPane(*first));
+        assert(counts.deleted == 1 && messages.collectRetired() == 1 && counts.deleted == 2);
+        root->reset();
+        assert(counts.deleted == 3 && !existing.parent() && !existing.attachedRoot());
+        std::cout << "UI owned batch rejects Nth capacity failure intact, commits before notification, retires once PASS\n";
+    }
+
     void identityReuse(object::ObjectMessageQueue& messages)
     {
         class Sender final : public object::LuxObject
@@ -339,6 +398,7 @@ int main()
     batch(messages);
     frozenChanges(messages);
     retiredLayout(messages);
+    ownedBatch(messages);
     identityReuse(messages);
     static_cast<void>(messages.collectRetired());
     assert(messages.pendingRetirements() == 0);

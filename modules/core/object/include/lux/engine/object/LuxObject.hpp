@@ -5,6 +5,8 @@
 #include <concepts>
 #include <functional>
 #include <memory>
+#include <span>
+#include <lux/cxx/core/function_ref.hpp>
 #include <thread>
 #include <tuple>
 #include <type_traits>
@@ -267,6 +269,11 @@ namespace lux::object
             finishAdoption(*child, std::move(deleter));
             return child;
         }
+        // A typed UI owner supplies already checked candidates and transfers their matching deleters.
+        // No callback is entered until every relation and ownership record has been prepared.
+        [[nodiscard]] ObjectResult<void> adoptChildren(
+            std::span<LuxObject* const>, cxx::function_ref<ObjectDeleter(std::size_t)> transfer
+        ) noexcept;
         [[nodiscard]] ObjectResult<void> detachChild(LuxObject&) noexcept;
         // Call from the derived destructor when children borrow derived members.
         void clearChildren() noexcept;

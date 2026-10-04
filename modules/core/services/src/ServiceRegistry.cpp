@@ -322,12 +322,61 @@ namespace lux::services
             [](const auto& value) { return value->lifetime->reclaimed.load(std::memory_order_acquire); }
         );
     }
+    struct ServiceRegistry::Publication::State final
+    {
+        ServiceRegistry& owner;
+        std::vector<std::shared_ptr<const detail::ServiceDefinition>> candidate;
+        bool committed{};
+        State(ServiceRegistry& owner, std::vector<std::shared_ptr<const detail::ServiceDefinition>> candidate)
+            : owner(owner), candidate(std::move(candidate))
+        {
+            ++owner.impl_->callbacks->depth;
+        }
+        ~State()
+        {
+            if (owner.impl_->callbacks->owner != std::this_thread::get_id())
+            {
+                std::terminate();
+            }
+            candidate.clear(); // Plugin cleanup stays inside the original participant guard.
+            --owner.impl_->callbacks->depth;
+        }
+    };
+    ServiceRegistry::Publication::Publication(std::unique_ptr<State> state) noexcept : state_(std::move(state)) {}
+    ServiceRegistry::Publication::~Publication() = default;
+    ServiceRegistry::Publication::Publication(Publication&&) noexcept = default;
+    void ServiceRegistry::Publication::commit() noexcept
+    {
+        const bool invalid = !state_ || state_->committed;
+        if (invalid)
+        {
+            std::terminate();
+        }
+        if (state_->owner.impl_->callbacks->owner != std::this_thread::get_id())
+        {
+            std::terminate();
+        }
+        state_->owner.impl_->definitions.swap(state_->candidate);
+        state_->committed = true;
+    }
     ServiceResult<void> ServiceRegistry::publish(std::vector<std::shared_ptr<const ServiceEntry>> input) noexcept
+    {
+        auto publication = preparePublication(std::move(input));
+        if (!publication)
+        {
+            return cxx::unexpected(std::move(publication.error()));
+        }
+        publication->commit();
+        return {};
+    }
+    ServiceResult<ServiceRegistry::Publication> ServiceRegistry::preparePublication(
+        std::vector<std::shared_ptr<const ServiceEntry>> input
+    ) noexcept
     {
         auto admitted = impl_->admission();
         if (!admitted)
         {
-            return admitted;
+            return cxx::unexpected(std::move(admitted.error()));
         }
         CallbackScope callback{*impl_->callbacks};
         auto entries = std::move(input); // Rejected descriptor/code cleanup is still protected.
@@ -460,8 +509,7 @@ namespace lux::services
                 );
             }
         }
-        impl_->definitions.swap(candidate);
-        return {};
+        return Publication{std::make_unique<Publication::State>(*this, std::move(candidate))};
     }
     ServiceResult<ServiceHandle> ServiceRegistry::resolve(
         cxx::TypeToken type,
@@ -679,7 +727,7 @@ namespace lux::services
         {
             return reject(EServiceError::CLOSED);
         }
-        ServiceResolver resolver{*this, handle, scope};
+        ServiceResolver resolver{*this, descriptor.dependencies, scope};
         auto created = descriptor.create(resolver, active->configuration);
         if (!created)
         {
@@ -887,11 +935,39 @@ namespace lux::services
     }
     ServiceResolver::ServiceResolver(
         ServiceRegistry& registry,
-        const ServiceHandle& handle,
+        std::span<const ServiceDependency> dependencies,
         std::shared_ptr<detail::ServiceScopeState> scope
     ) noexcept
-        : registry_(registry), handle_(handle), scope_(std::move(scope))
+        : registry_(registry), dependencies_(dependencies), scope_(std::move(scope))
     {
+    }
+    bool ServiceResolver::isOpen() const noexcept
+    {
+        return registry_.impl_->callbacks->owner == std::this_thread::get_id() && scope_->open();
+    }
+    ServiceResult<void> ServiceRegistry::withDependencies(
+        ServiceScope& scope,
+        std::span<const ServiceDependency> dependencies,
+        cxx::function_ref<ServiceResult<void>(ServiceResolver&)> invoke
+    ) noexcept
+    {
+        if (auto admitted = impl_->admission(); !admitted)
+        {
+            return admitted;
+        }
+        const bool invalid_scope = scope.registry_ != this || !scope.state_;
+        if (invalid_scope)
+        {
+            return reject(EServiceError::INVALID_SCOPE);
+        }
+        auto pinned_scope = scope.state_;
+        if (!pinned_scope->open())
+        {
+            return reject(EServiceError::CLOSED);
+        }
+        CallbackScope callback{*impl_->callbacks};
+        ServiceResolver resolver{*this, dependencies, std::move(pinned_scope)};
+        return invoke(resolver);
     }
     const object::ObjectDispatcherRef& ServiceResolver::dispatcher() const noexcept
     {
@@ -926,7 +1002,11 @@ namespace lux::services
         const ServiceConfiguration& configuration
     ) noexcept
     {
-        const auto dependencies = handle_.descriptor().dependencies;
+        if (!isOpen())
+        {
+            return reject(EServiceError::CLOSED);
+        }
+        const auto dependencies = dependencies_;
         if (index >= dependencies.size())
         {
             return reject(EServiceError::UNDECLARED_DEPENDENCY);
@@ -956,7 +1036,11 @@ namespace lux::services
     }
     ServiceResult<void*> ServiceResolver::require(std::size_t index, cxx::TypeToken type) noexcept
     {
-        const auto dependencies = handle_.descriptor().dependencies;
+        if (!isOpen())
+        {
+            return reject(EServiceError::CLOSED);
+        }
+        const auto dependencies = dependencies_;
         if (index >= dependencies.size())
         {
             return reject(EServiceError::UNDECLARED_DEPENDENCY);

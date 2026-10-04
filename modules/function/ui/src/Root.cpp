@@ -1211,6 +1211,55 @@ namespace lux::ui
         impl_->windows.reserve(impl_->windows.size() + names.size());
         return {};
     }
+    cxx::expected<AttachmentCommit, EAttachmentError> Root::addSubPanes(
+        std::span<std::unique_ptr<Pane, object::ObjectDeleter>> owners,
+        std::span<const WindowVisibility> visibility,
+        PreparedDockTree* docking
+    ) noexcept
+    {
+        std::vector<Pane*> panes;
+        std::vector<object::LuxObject*> objects;
+        panes.reserve(owners.size());
+        objects.reserve(owners.size());
+        for (const auto& owner : owners)
+        {
+            panes.push_back(owner.get());
+            objects.push_back(owner.get());
+        }
+        auto prepared = prepareMount(panes, visibility);
+        if (!prepared)
+            return cxx::unexpected(prepared.error());
+        impl_->committing_structure = true;
+        auto transfer = [&](std::size_t index) noexcept
+        {
+            auto deleter = std::move(owners[index].get_deleter());
+            static_cast<void>(owners[index].release());
+            return deleter;
+        };
+        auto adopted = adoptChildren(objects, transfer);
+        impl_->committing_structure = false;
+        if (!adopted)
+        {
+            using enum object::EObjectTreeError;
+            switch (adopted.error())
+            {
+            case WRONG_THREAD: return cxx::unexpected(EAttachmentError::WRONG_THREAD);
+            case WRONG_DISPATCHER: return cxx::unexpected(EAttachmentError::WRONG_DISPATCHER);
+            case BUSY: return cxx::unexpected(EAttachmentError::BUSY);
+            case CLOSED: return cxx::unexpected(EAttachmentError::CLOSED);
+            case ALREADY_ATTACHED: return cxx::unexpected(EAttachmentError::ALREADY_ATTACHED);
+            default: return cxx::unexpected(EAttachmentError::INVALID_TREE);
+            }
+        }
+        prepared->state_->adopted = true;
+        auto apply_docking = [&]() noexcept { if (docking) commitDockTree(std::move(*docking)); };
+        auto committed = commit(*prepared, apply_docking);
+        // Every fallible check preceded ownership transfer. No business callback may invalidate that fact.
+        if (!committed)
+            detail::failContract();
+        return committed;
+    }
+
     Root::AttachmentResult Root::prepareMount(Pane& pane)
     {
         auto* value = &pane;
@@ -1358,8 +1407,9 @@ namespace lux::ui
         abandonAttachment(*state);
         if (mount)
         {
-            for (auto* pane : state->roots)
-                pane->attachTo(*this);
+            if (!state->adopted)
+                for (auto* pane : state->roots)
+                    pane->attachTo(*this);
             for (auto node : state->nodes)
             {
                 if (node.pane)

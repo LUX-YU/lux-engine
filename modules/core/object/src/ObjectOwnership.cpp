@@ -4,34 +4,32 @@
 
 namespace lux::object
 {
-    ObjectDeleter::ObjectDeleter() noexcept : code_(CodeLease::builtin()) {}
-    ObjectDeleter::ObjectDeleter(CodeLease code, Destroy destroy) : code_(std::move(code)), destroy_(std::move(destroy))
+    struct ObjectDeleter::Storage final
+    {
+        CodeLease code;
+        Destroy destroy;
+        Storage(CodeLease code, Destroy destroy) : code(std::move(code)), destroy(std::move(destroy)) {}
+    };
+    ObjectDeleter::ObjectDeleter() noexcept = default;
+    ObjectDeleter::ObjectDeleter(CodeLease code, Destroy destroy)
+        : storage_(std::make_unique<Storage>(std::move(code), std::move(destroy)))
     {
     }
     ObjectDeleter::~ObjectDeleter() = default;
     ObjectDeleter::ObjectDeleter(ObjectDeleter&&) noexcept = default;
-    ObjectDeleter& ObjectDeleter::operator=(ObjectDeleter&& other) noexcept
-    {
-        if (this != &other)
-        {
-            // Destroy the previous callable before releasing its code, including moved-from captures.
-            destroy_ = {};
-            code_ = std::move(other.code_);
-            destroy_ = std::move(other.destroy_);
-        }
-        return *this;
-    }
+    ObjectDeleter& ObjectDeleter::operator=(ObjectDeleter&& other) noexcept = default;
     void ObjectDeleter::operator()(LuxObject* value) noexcept
     {
-        if (destroy_)
+        if (storage_)
         {
-            destroy_(value);
+            storage_->destroy(value);
         }
         else
         {
             delete value;
         }
     }
+
 } // namespace lux::object
 
 namespace lux::object::detail

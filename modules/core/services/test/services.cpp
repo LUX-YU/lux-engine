@@ -558,6 +558,83 @@ namespace
         counts.destroying = {};
     }
 
+    void compoundPublication(lux::object::ObjectMessageQueue& messages)
+    {
+        Counts counts;
+        ServiceRegistry registry(messages.dispatcherRef());
+        auto scope = take(registry.createScope());
+        assert(scope.provide(ServiceNameView{"test.counts"}, counts));
+        struct Cleanup final
+        {
+            ServiceRegistry& registry;
+            bool& cleaned;
+            ~Cleanup()
+            {
+                assert(registry.publish({}).error().code == EServiceError::BUSY);
+                assert(!registry.resolve<Calculator>()); // Every participating catalog already committed.
+                cleaned = true;
+            }
+        };
+        bool cleaned{};
+        auto code = CodeLease::plugin(std::make_shared<Cleanup>(registry, cleaned));
+        auto entry = ServiceEntry::bind<calculator>(code);
+        assert(registry.publish({entry}));
+        code = CodeLease::builtin();
+        entry.reset();
+        {
+            auto publication = take(registry.preparePublication({}));
+            assert(registry.resolve<Calculator>() && !cleaned);
+            assert(registry.publish({}).error().code == EServiceError::BUSY);
+            assert(registry.get<Calculator>(scope).error().code == EServiceError::BUSY);
+            publication.commit();
+            assert(!registry.resolve<Calculator>() && !cleaned);
+            assert(registry.publish({}).error().code == EServiceError::BUSY);
+        }
+        assert(cleaned);
+        assert(registry.publish({ServiceEntry::bind<calculator>(CodeLease::builtin())}));
+        {
+            auto abandoned = take(registry.preparePublication({}));
+        }
+        assert(registry.resolve<Calculator>()); // Abandonment preserves the current catalog.
+    }
+
+    void externalFactoryDependencies(lux::object::ObjectMessageQueue& messages)
+    {
+        Counts counts;
+        ServiceRegistry registry(messages.dispatcherRef());
+        assert(registry.publish({ServiceEntry::bind<calculator>(CodeLease::builtin())}));
+        std::optional<ServiceScope> scope{take(registry.createScope())};
+        assert(scope->provide(ServiceNameView{"test.counts"}, counts));
+        const std::array declared{
+            ServiceDependency{ServiceNameView{"test.calculator"}, 1, lux::cxx::typeToken<Calculator>()}
+        };
+        std::shared_ptr<Calculator> first, second;
+        auto factory = [&](ServiceResolver& resolver) -> ServiceResult<void>
+        {
+            first = take(resolver.get<Calculator>(0));
+            second = take(resolver.get<Calculator>(0));
+            assert(resolver.get<Calculator>(1).error().code == EServiceError::UNDECLARED_DEPENDENCY);
+            assert(resolver.require<Calculator>(0).error().code == EServiceError::UNDECLARED_DEPENDENCY);
+            assert(registry.get<Calculator>(*scope).error().code == EServiceError::BUSY);
+            assert(registry.publish({}).error().code == EServiceError::BUSY);
+            assert(resolver.isOpen());
+            return {};
+        };
+        assert(registry.withDependencies(*scope, declared, factory));
+        assert(first == second && counts.created == 1);
+        auto closing = [&](ServiceResolver& resolver) -> ServiceResult<void>
+        {
+            scope.reset();
+            assert(!resolver.isOpen());
+            assert(resolver.get<Calculator>(0).error().code == EServiceError::CLOSED);
+            return {};
+        };
+        assert(registry.withDependencies(*scope, declared, closing));
+        first.reset();
+        second.reset();
+        assert(counts.destroyed == 1 && registry.drained());
+    }
+
     void churn(lux::object::ObjectMessageQueue& messages)
     {
         Counts counts;
@@ -608,6 +685,8 @@ int main(int argc, char** argv)
     cleanupInput(*messages, false);
     closeDuringCreation(*messages, false);
     closeDuringCreation(*messages, true);
+    compoundPublication(*messages);
+    externalFactoryDependencies(*messages);
     churn(*messages);
     assert(messages->pendingRetirements() == 0);
     std::cout << "PASS lazy factories, one allocation, declared dependencies, scope/qualifier isolation, "

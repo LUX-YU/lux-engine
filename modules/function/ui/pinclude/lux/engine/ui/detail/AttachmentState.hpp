@@ -23,7 +23,7 @@ namespace lux::ui
             std::vector<WindowVisibility> visibility;
             std::vector<Pane*> visibility_changed;
             std::uint64_t revision{}, window_revision{};
-            bool mount{}, valid{true};
+            bool mount{}, valid{true}, adopted{};
         };
     }
 }

@@ -91,6 +91,14 @@ namespace lux::ui
             return addSubPaneImpl(*candidate, attach);
         }
 
+        // Complete owned window batch. A refusal leaves every owner/deleter and the current UI intact.
+        // Docking is already validated by prepareDockTree and is consumed only after all windows commit.
+        [[nodiscard]] cxx::expected<AttachmentCommit, EAttachmentError> addSubPanes(
+            std::span<std::unique_ptr<Pane, object::ObjectDeleter>>,
+            std::span<const WindowVisibility> = {},
+            PreparedDockTree* docking = nullptr
+        ) noexcept;
+
         // Cold-path preparation reserves the complete subtree. Commit is owner-thread and outside callbacks.
         using AttachmentResult = lux::cxx::expected<PreparedAttachment, EAttachmentError>;
         [[nodiscard]] AttachmentResult prepareMount(Pane&);

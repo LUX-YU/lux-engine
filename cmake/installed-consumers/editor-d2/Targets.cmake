@@ -8,6 +8,10 @@ engine_target_add_ecs_component_codegen(NAME consumer_schema TARGET consumer_dom
     LOGICAL_PATH consumer/Component.hpp SYMBOL Consumer)
 
 add_library(consumer_gui SHARED ${D2_CONSUMER_SOURCE_DIR}/Gui.cpp ${D2_CONSUMER_SOURCE_DIR}/GuiGesture.cpp)
+if(NOT LUX_TEST_SUPPORT_DIR)
+    get_filename_component(LUX_TEST_SUPPORT_DIR "${D2_CONSUMER_SOURCE_DIR}/../../test-support" ABSOLUTE)
+endif()
+target_include_directories(consumer_gui PRIVATE "${LUX_TEST_SUPPORT_DIR}")
 set_property(TARGET consumer_gui PROPERTY LUX_ARCH_LAYER EDITOR)
 target_compile_definitions(consumer_gui PRIVATE CONSUMER_GUI_LIBRARY)
 target_link_libraries(consumer_gui PUBLIC consumer_domain lux::engine::editor::scene_ui PRIVATE lux::engine::editor::view_host)

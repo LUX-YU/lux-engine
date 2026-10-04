@@ -15,6 +15,7 @@
 #include <iostream>
 #include <cassert>
 #include <thread>
+#include <source_location>
 #if defined(EC1_APP)
 #include <lux/engine/editor/application/EditorApplication.hpp>
 #include <lux/engine/editor/project/ProjectView.hpp>
@@ -472,7 +473,7 @@ int main(int argc, char** argv)
             );
             return all;
         };
-        auto until = [&](auto predicate)
+        auto until = [&](auto predicate, std::source_location location = std::source_location::current())
         {
             for (unsigned i{}; i != 10000; ++i)
             {
@@ -481,6 +482,9 @@ int main(int argc, char** argv)
                     return;
                 std::this_thread::sleep_for(std::chrono::milliseconds{1});
             }
+            std::cerr << "APP wait failed at " << location.file_name() << ':' << location.line()
+                      << " phase=" << static_cast<unsigned>(app->phase())
+                      << " skeleton_views=" << content_views().size() << std::endl;
             std::abort();
         };
         // Exact public entry used by the asset browser's double-click, through its real LuxObject connection.
@@ -566,8 +570,11 @@ int main(int argc, char** argv)
         );
         verify(take(inspect(id)), "hip", 4);
         take(app->execute(commands::CommandId{"lux.editor.recovery.capture"}));
-        until([&] { return std::filesystem::exists(root / ".lux/workspace/recovery.toml"); });
-        auto recovery = take(workspace::decodeRecovery(read(root / ".lux/workspace/recovery.toml")));
+        const auto profile = root / "user/lux/editor/projects" / uuids::to_string(manifest.id.uuid());
+        const auto recovery_file = profile / ".lux/workspace/recovery.toml";
+        until([&] { return std::filesystem::exists(recovery_file); });
+        assert(!std::filesystem::exists(root / ".lux/workspace/recovery.toml"));
+        auto recovery = take(workspace::decodeRecovery(read(recovery_file)));
         assert(recovery.entries.size() == 2 && recovery.entries[0].contents.size() == 1);
         take(app->closeView(second));
         assert(content_views().size() == 1 && describe(id));
@@ -597,6 +604,8 @@ int main(int argc, char** argv)
         auto missing = take(EditorApplication::create(
             {.project_file = root / "Project.luxproject",
              .installation = sdk,
+             .width = 800,
+             .height = 600,
              .offscreen = true,
              .user_directory = root / "missing-user"}
         ));

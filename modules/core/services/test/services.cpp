@@ -17,6 +17,8 @@ namespace
     {
         int created{}, destroyed{};
         std::function<void()> destroying;
+        std::function<void()> creating;
+        std::function<void()> projecting;
     };
     struct Value
     {
@@ -28,6 +30,10 @@ namespace
         explicit Calculator(Counts& counts) : counts(counts)
         {
             ++counts.created;
+            if (counts.creating)
+            {
+                counts.creating();
+            }
         }
         ~Calculator()
         {
@@ -474,6 +480,84 @@ namespace
         thread.join();
         assert(wrong_thread);
     }
+    void cleanupInput(lux::object::ObjectMessageQueue& messages, bool close_parent)
+    {
+        Counts counts;
+        ServiceRegistry registry(messages.dispatcherRef());
+        auto root = take(registry.createScope());
+        assert(root.provide(ServiceNameView{"test.counts"}, counts));
+        std::optional<ServiceScope> parent{take(registry.createScope(&root))};
+        ServiceHandle requested;
+        bool cleaned{};
+        auto lease = std::shared_ptr<int>(
+            new int,
+            [&](int* value) noexcept
+            {
+                cleaned = true;
+                if (close_parent)
+                {
+                    parent.reset();
+                }
+                else
+                {
+                    requested = {};
+                }
+                delete value;
+            }
+        );
+        auto previous = calculator;
+        previous.implementation = ServiceNameView{"test.retired.inputs"};
+        auto entry = ServiceEntry::create(CodeLease::plugin(lease), previous);
+        assert(registry.publish({entry}));
+        auto old = take(registry.get<Calculator>(root));
+        old.reset();
+        assert(registry.publish({ServiceEntry::bind<calculator>(CodeLease::builtin())}));
+        requested = take(registry.resolve<Calculator>());
+        entry.reset();
+        lease.reset();
+        assert(!cleaned);
+        if (close_parent)
+        {
+            auto child = registry.createScope(&*parent);
+            assert(cleaned && !parent && !child && child.error().code == EServiceError::CLOSED);
+        }
+        else
+        {
+            auto retained = registry.get<Calculator>(requested, root);
+            assert(cleaned && !requested.valid() && retained && (*retained)->value() == 42);
+        }
+    }
+
+    void closeDuringCreation(lux::object::ObjectMessageQueue& messages, bool projection)
+    {
+        Counts counts;
+        ServiceRegistry registry(messages.dispatcherRef());
+        auto root = take(registry.createScope());
+        assert(root.provide(ServiceNameView{"test.counts"}, counts));
+        std::optional<ServiceScope> scope{take(registry.createScope(&root))};
+        assert(scope->provide(ServiceNameView{"test.counts"}, counts));
+        auto contract = calculator_contracts[0];
+        contract.project = [](void* value) noexcept -> void*
+        {
+            auto* calculator = static_cast<Calculator*>(value);
+            if (calculator->counts.projecting)
+            {
+                calculator->counts.projecting();
+            }
+            return calculator;
+        };
+        auto descriptor = calculator;
+        descriptor.contracts = std::span{&contract, 1};
+        assert(registry.publish({ServiceEntry::create(CodeLease::builtin(), descriptor)}));
+        auto& callback = projection ? counts.projecting : counts.creating;
+        callback = [&] { scope.reset(); };
+        counts.destroying = [&] { assert(registry.get<Calculator>(root).error().code == EServiceError::BUSY); };
+        auto result = registry.get<Calculator>(*scope);
+        assert(!scope && !result && result.error().code == EServiceError::CLOSED);
+        assert(counts.created == 1 && counts.destroyed == 1 && registry.drained());
+        counts.destroying = {};
+    }
+
     void churn(lux::object::ObjectMessageQueue& messages)
     {
         Counts counts;
@@ -496,10 +580,22 @@ namespace
         assert(child.provide(ServiceNameView{"test.counts"}, counts));
     }
 } // namespace
-int main()
+int main(int argc, char** argv)
 {
     auto messages = lux::object::ObjectMessageQueue::create(16);
     assert(messages);
+    if (argc == 2)
+    {
+        const std::string_view mode{argv[1]};
+        if (mode == "--factory-close" || mode == "--projection-close")
+        {
+            closeDuringCreation(*messages, mode == "--projection-close");
+            return 0;
+        }
+        assert(mode == "--scope-cleanup" || mode == "--handle-cleanup");
+        cleanupInput(*messages, mode == "--scope-cleanup");
+        return 0;
+    }
     sharing(*messages);
     retirement(*messages);
     retentionAndScope(*messages);
@@ -508,6 +604,10 @@ int main()
     dynamicBacking(*messages);
     dependencyLifetimes(*messages);
     cycles(*messages);
+    cleanupInput(*messages, true);
+    cleanupInput(*messages, false);
+    closeDuringCreation(*messages, false);
+    closeDuringCreation(*messages, true);
     churn(*messages);
     assert(messages->pendingRetirements() == 0);
     std::cout << "PASS lazy factories, one allocation, declared dependencies, scope/qualifier isolation, "

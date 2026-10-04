@@ -29,6 +29,12 @@ path. A creating key reports a dependency cycle. A weak-expired allocation waiti
 reports `RETIRING` until the original Object dispatcher has physically destroyed it. No replacement
 for that key can be published in between.
 
+Warm instance hits cannot run unrelated cleanup. Cold construction pins the definition, scope and
+configuration before releasing retired records. Cleanup may close a lexical scope or invalidate a
+caller's handle; it cannot invalidate the operation's owned input. Scope admission is checked again
+after foreign validation, construction and projection. Rejected allocations are cleaned under the
+same callback guard, without publishing into a closed scope.
+
 Owner-affine last references enqueue a preallocated reclamation through `ObjectDispatcher`; no
 service-specific queue or executor exists. Host code holds the deletion bridge and code lease through
 the virtual destructor, custom destruction callback and callback return. Plain, non-affine objects

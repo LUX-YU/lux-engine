@@ -538,7 +538,12 @@ namespace lux::services
                 return reject(EServiceError::CLOSED);
             }
         }
-        impl_->prune();
+        auto parent_state = parent ? parent->state_ : std::shared_ptr<detail::ServiceScopeState>{};
+        impl_->prune(); // Old code-owner cleanup may destroy the caller's lexical parent handle.
+        if (parent_state && !parent_state->open())
+        {
+            return reject(EServiceError::CLOSED);
+        }
         const bool exhausted = impl_->scopes.size() >= impl_->limits.scopes ||
                                impl_->next_scope == (std::numeric_limits<std::uint64_t>::max)();
         if (exhausted)
@@ -548,10 +553,10 @@ namespace lux::services
         auto scope = std::make_shared<detail::ServiceScopeState>();
         scope->registry = impl_->domain;
         scope->generation = ++impl_->next_scope;
-        if (parent)
+        if (parent_state)
         {
-            scope->parent = parent->state_;
-            parent->state_->children.push_back(scope);
+            scope->parent = parent_state;
+            parent_state->children.push_back(scope);
         }
         impl_->scopes.push_back(scope);
         return ServiceScope{*this, std::move(scope)};
@@ -585,13 +590,12 @@ namespace lux::services
         return instantiate(handle, scope.state_, qualifier, configuration);
     }
     ServiceResult<std::shared_ptr<void>> ServiceRegistry::instantiate(
-        const ServiceHandle& handle,
+        ServiceHandle handle,
         std::shared_ptr<detail::ServiceScopeState> scope,
         std::string_view qualifier,
         const ServiceConfiguration& configuration
     ) noexcept
     {
-        impl_->prune();
         if (!scope->open())
         {
             return reject(EServiceError::CLOSED);
@@ -600,7 +604,9 @@ namespace lux::services
         {
             const bool matches = value->definition->generation == handle.definition_->generation &&
                                  value->scope->generation == scope->generation && value->qualifier == qualifier;
-            if (!matches)
+            const bool is_reclaimed = value->lifetime->reclaimed.load(std::memory_order_acquire);
+            const bool is_other_instance = !matches || is_reclaimed;
+            if (is_other_instance)
             {
                 continue;
             }
@@ -619,6 +625,26 @@ namespace lux::services
             }
             return std::shared_ptr<void>(std::move(owner), value->projections[handle.contract_]);
         }
+        const auto& descriptor = handle.descriptor();
+        const auto& schema = descriptor.configuration;
+        const bool schema_matches = schema.id == configuration.schema.view() &&
+                                    schema.version == configuration.version && schema.type == configuration.type;
+        const bool unexpected_bytes = !schema.id.isValid() && !configuration.bytes.empty();
+        const bool is_invalid_configuration = !schema_matches || unexpected_bytes;
+        if (is_invalid_configuration)
+        {
+            return reject(EServiceError::INVALID_CONFIGURATION);
+        }
+        // Warm hits above cannot invoke cleanup. Cold construction fixes all borrowed input before
+        // pruning releases code owners; TypeToken then refers to the pinned definition.
+        std::string fixed_qualifier{qualifier};
+        auto fixed_configuration = configuration;
+        fixed_configuration.type = schema.type;
+        impl_->prune();
+        if (!scope->open())
+        {
+            return reject(EServiceError::CLOSED);
+        }
         if (impl_->instances.size() >= impl_->limits.instances)
         {
             return reject(EServiceError::CAPACITY);
@@ -626,8 +652,8 @@ namespace lux::services
         auto record = std::make_unique<Instance>();
         record->definition = handle.definition_;
         record->scope = scope;
-        record->qualifier = qualifier;
-        record->configuration = configuration;
+        record->qualifier = std::move(fixed_qualifier);
+        record->configuration = std::move(fixed_configuration);
         auto* active = record.get();
         impl_->instances.push_back(std::move(record));
         CallbackScope callback{*impl_->callbacks};
@@ -642,25 +668,19 @@ namespace lux::services
                 }
             }
         } creation{*active};
-        const auto& descriptor = handle.descriptor();
-        const auto& schema = descriptor.configuration;
-        const bool schema_matches = schema.id == configuration.schema.view() &&
-                                    schema.version == configuration.version && schema.type == configuration.type;
-        const bool unexpected_bytes = !schema.id.isValid() && !configuration.bytes.empty();
-        const bool is_invalid_configuration = !schema_matches || unexpected_bytes;
-        if (is_invalid_configuration)
-        {
-            return reject(EServiceError::INVALID_CONFIGURATION);
-        }
         if (schema.validate)
         {
-            if (auto valid = schema.validate(configuration); !valid)
+            if (auto valid = schema.validate(active->configuration); !valid)
             {
                 return cxx::unexpected(std::move(valid.error()));
             }
         }
+        if (!scope->open())
+        {
+            return reject(EServiceError::CLOSED);
+        }
         ServiceResolver resolver{*this, handle, scope};
-        auto created = descriptor.create(resolver, configuration);
+        auto created = descriptor.create(resolver, active->configuration);
         if (!created)
         {
             return cxx::unexpected(std::move(created.error()));
@@ -671,6 +691,10 @@ namespace lux::services
         }
         ServiceDelete destroy{impl_->callbacks, handle.definition_->entry, active->lifetime, *created};
         std::unique_ptr<void, ServiceDelete> candidate(*created, std::move(destroy));
+        if (!scope->open())
+        {
+            return reject(EServiceError::CLOSED);
+        }
         for (const auto& contract : descriptor.contracts)
         {
             auto* projected = contract.project(candidate.get());
@@ -680,17 +704,26 @@ namespace lux::services
             }
             active->projections.push_back(projected);
         }
+        // Factory/projection callbacks can surrender a lexical scope. Protect the returned owner first,
+        // then recheck admission before publishing; no mutable instance may enter an already closed scope.
+        auto* projected_object = descriptor.object ? descriptor.object(candidate.get()) : nullptr;
+        if (descriptor.object && !projected_object)
+        {
+            return reject(EServiceError::TYPE_MISMATCH);
+        }
+        if (!scope->open())
+        {
+            return reject(EServiceError::CLOSED);
+        }
         std::shared_ptr<void> owner;
         if (descriptor.affinity == EServiceAffinity::OWNER)
         {
             if (descriptor.object)
             {
-                auto* object = descriptor.object(candidate.get());
-                if (!object)
-                {
-                    return reject(EServiceError::TYPE_MISMATCH);
-                }
-                std::unique_ptr<object::LuxObject, ServiceDelete> typed(object, std::move(candidate.get_deleter()));
+                std::unique_ptr<object::LuxObject, ServiceDelete> typed(
+                    projected_object,
+                    std::move(candidate.get_deleter())
+                );
                 auto* allocation = candidate.release();
                 auto shared =
                     object::shareOnDispatcher(impl_->dispatcher, std::move(typed), handle.definition_->entry->code());
@@ -720,8 +753,6 @@ namespace lux::services
         }
         active->allocation = owner;
         active->creating = false;
-        // Keep canonical metadata owned by this definition, never a caller's plugin string view.
-        active->configuration.type = schema.type;
         if (descriptor.retention == EServiceRetention::SCOPED)
         {
             scope->retained.push_back(owner);

@@ -185,7 +185,12 @@ namespace lux::services
             std::string_view,
             const ServiceConfiguration&) noexcept;
         [[nodiscard]] ServiceResult<std::shared_ptr<void>>
-        instantiate(const ServiceHandle&, std::shared_ptr<detail::ServiceScopeState>, std::string_view, const ServiceConfiguration&) noexcept;
+        instantiate(
+            ServiceHandle,
+            std::shared_ptr<detail::ServiceScopeState>,
+            std::string_view,
+            const ServiceConfiguration&
+        ) noexcept;
         [[nodiscard]] ServiceResult<std::shared_ptr<detail::ServiceScopeState>>
         dependencyScope(const ServiceResolver&, const ServiceDependency&) const noexcept;
         struct Impl;

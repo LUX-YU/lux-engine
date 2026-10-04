@@ -1,6 +1,9 @@
 #include <cassert>
 #include <cstdio>
+#include <functional>
 #include <lux/engine/editor/commands/CommandRegistry.hpp>
+#include <lux/engine/object/ObjectDispatcher.hpp>
+#include <lux/engine/services/ServiceRegistry.hpp>
 #include <thread>
 
 namespace cxx = lux::cxx;
@@ -346,6 +349,243 @@ namespace
         );
         foreign.join();
     }
+    struct BindingTrace final
+    {
+        unsigned created{}, destroyed{}, factories{}, executed{};
+        bool malformed{};
+        std::function<void()> constructing, querying, destroying;
+    };
+    struct Receiver final
+    {
+        BindingTrace& trace;
+        explicit Receiver(BindingTrace& trace) : trace(trace)
+        {
+            ++trace.created;
+        }
+        ~Receiver()
+        {
+            ++trace.destroyed;
+            if (trace.destroying)
+            {
+                trace.destroying();
+            }
+        }
+        static lux::services::ServiceResult<std::unique_ptr<Receiver>>
+        create(lux::services::ServiceResolver& resolver, const lux::services::ServiceConfiguration&) noexcept
+        {
+            auto trace = resolver.require<BindingTrace>(0);
+            if (!trace)
+            {
+                return cxx::unexpected(std::move(trace.error()));
+            }
+            return std::make_unique<Receiver>(trace->get());
+        }
+    };
+    constexpr lux::services::ServiceDependency trace_dependency[]{
+        {lux::services::ServiceNameView{"test.command.trace"},
+         1,
+         cxx::typeToken<BindingTrace>(),
+         lux::services::EDependencyKind::BORROWED}
+    };
+    constexpr lux::services::ServiceContract receiver_contract[]{
+        lux::services::ServiceContract::forType<Receiver, Receiver>(
+            lux::services::ServiceNameView{"test.command.receiver"}
+        )
+    };
+    constexpr auto receiver_descriptor = lux::services::ServiceDescriptor::forType<Receiver, &Receiver::create>(
+        lux::services::ServiceNameView{"test.command.receiver.default"},
+        receiver_contract,
+        trace_dependency
+    );
+    constexpr lux::services::ServiceDependency command_dependencies[]{
+        {lux::services::ServiceNameView{"test.command.receiver"}, 1, cxx::typeToken<Receiver>()}
+    };
+    CommandResult<std::unique_ptr<CommandBinding>> createBinding(lux::services::ServiceResolver& resolver) noexcept
+    {
+        auto receiver = resolver.get<Receiver>(0);
+        if (!receiver)
+        {
+            const auto& error = receiver.error();
+            return cxx::unexpected(CommandFailure{
+                ECommandError::DOMAIN_FAILURE,
+                "binding.dependency",
+                static_cast<std::uint64_t>(error.code),
+                error.detail
+            });
+        }
+        assert(resolver.get<Receiver>(1).error().code == lux::services::EServiceError::UNDECLARED_DEPENDENCY);
+        ++(*receiver)->trace.factories;
+        if ((*receiver)->trace.constructing)
+        {
+            (*receiver)->trace.constructing();
+        }
+        if ((*receiver)->trace.malformed)
+        {
+            return std::make_unique<CommandBinding>(
+                [value = *receiver](const CommandQuery&) -> CommandResult<CommandState> { return CommandState{true}; },
+                CommandBinding::Execute{}
+            );
+        }
+        return std::make_unique<CommandBinding>(
+            [value = *receiver](const CommandQuery&) -> CommandResult<CommandState>
+            {
+                if (value->trace.querying)
+                {
+                    value->trace.querying();
+                }
+                return CommandState{true};
+            },
+            [value = *receiver](const CommandInvocation&) -> CommandResult<DispatchReceipt>
+            {
+                ++value->trace.executed;
+                return DispatchReceipt{ImmediateCompletion{}};
+            }
+        );
+    }
+    constexpr CommandDescriptor deferred_command{
+        .id = CommandIdView{"test.command.deferred"},
+        .label = "Deferred",
+        .dependencies = command_dependencies,
+        .create = &createBinding
+    };
+    void lazyBindings()
+    {
+        auto messages = lux::object::ObjectMessageQueue::create(16);
+        assert(messages);
+        lux::services::ServiceRegistry services{messages->dispatcherRef()};
+        assert(services.publish({lux::services::ServiceEntry::bind<receiver_descriptor>(lux::object::CodeLease::builtin(
+        ))}));
+        auto first_scope = services.createScope(), second_scope = services.createScope();
+        assert(first_scope && second_scope);
+        BindingTrace first, second;
+        assert(first_scope->provide(trace_dependency[0].contract, first));
+        assert(second_scope->provide(trace_dependency[0].contract, second));
+        auto entry = CommandEntry::bind<deferred_command>(lux::object::CodeLease::builtin());
+        auto catalog = CommandRegistrySnapshot::create({entry});
+        assert(catalog && &entry->descriptor() == &deferred_command);
+        auto handle = *catalog->at(0);
+        CommandInvocation input;
+        CommandRegistry direct;
+        assert(direct.query(handle, input.query()).error().code == ECommandError::DOMAIN_FAILURE);
+        {
+            CommandRegistry a{services, *first_scope}, b{services, *second_scope};
+            assert(a.publish(*catalog) && b.publish(*catalog));
+            assert(first.created == 0 && second.created == 0);
+            auto busy = [&](lux::services::ServiceResolver&) -> lux::services::ServiceResult<void>
+            {
+                assert(a.query(handle, input.query()).error().code == ECommandError::BUSY);
+                assert(first.factories == 0 && first.created == 0);
+                return {};
+            };
+            assert(services.withDependencies(*first_scope, {}, busy));
+            for (unsigned i{}; i < 100; ++i)
+            {
+                assert(a.query(handle, input.query()) && a.execute(handle, input));
+            }
+            assert(first.created == 1 && first.factories == 1 && first.executed == 100);
+            assert(b.execute(handle, input) && second.created == 1 && second.factories == 1 && second.executed == 1);
+            assert(first_scope->beginClose());
+            assert(a.execute(handle, input).error().code == ECommandError::CLOSED);
+            assert(first.executed == 100 && first.destroyed == 0);
+            assert(first_scope->cancelClose() && a.execute(handle, input));
+            first.querying = [&] { assert(first_scope->beginClose()); };
+            assert(a.execute(handle, input).error().code == ECommandError::CLOSED);
+            assert(first.executed == 101);
+            first.querying = {};
+            assert(first_scope->cancelClose());
+            // Original PINNED handles retain their receiver; publication does not rebase their dependencies.
+            assert(a.publish({}) && a.execute(handle, input));
+            first.destroying = [&] { assert(a.publish({}).error().code == ECommandError::BUSY); };
+            second.destroying = [&] { assert(b.publish({}).error().code == ECommandError::BUSY); };
+        }
+        assert(first.created == first.destroyed && second.created == second.destroyed);
+        first.destroying = {};
+        first.malformed = true;
+        first.constructing = [&]
+        { assert(first_scope->beginClose().error().code == lux::services::EServiceError::BUSY); };
+        {
+            CommandRegistry refused{services, *first_scope};
+            first.destroying = [&]
+            {
+                assert(refused.publish({}).error().code == ECommandError::BUSY);
+                assert(services.publish({}).error().code == lux::services::EServiceError::BUSY);
+            };
+            assert(refused.execute(handle, input).error().code == ECommandError::INVALID_ARGUMENT);
+            assert(first.created == first.destroyed && first.factories == 2);
+            first.constructing = {};
+            first.malformed = false;
+            assert(first_scope->isOpen() && refused.execute(handle, input));
+            assert(first.factories == 3);
+            first.destroying = {};
+        }
+        assert(first_scope->release() && second_scope->release() && services.drained());
+        std::puts("PASS lazy command bindings: zero registration construction, one binding per scope, pinned target, "
+                  "BUSY retry and guarded refusal");
+    }
+    void dynamicBindings()
+    {
+        auto messages = lux::object::ObjectMessageQueue::create(16);
+        assert(messages);
+        lux::services::ServiceRegistry services{messages->dispatcherRef()};
+        assert(services.publish({lux::services::ServiceEntry::bind<receiver_descriptor>(lux::object::CodeLease::builtin(
+        ))}));
+        auto scope = services.createScope();
+        assert(scope);
+        BindingTrace trace;
+        assert(scope->provide(trace_dependency[0].contract, trace));
+        const auto make = [](std::string id)
+        {
+            std::string contract{command_dependencies[0].contract.name()};
+            std::string type{command_dependencies[0].type.name()};
+            auto dependency = command_dependencies[0];
+            dependency.contract = lux::services::ServiceNameView{contract};
+            dependency.type = {command_dependencies[0].type.hash(), type};
+            auto descriptor = deferred_command;
+            descriptor.id = CommandIdView{id};
+            descriptor.dependencies = {&dependency, 1};
+            auto entry = CommandEntry::create(lux::object::CodeLease::builtin(), descriptor);
+            std::fill(contract.begin(), contract.end(), '?');
+            std::fill(type.begin(), type.end(), '?');
+            assert(entry->descriptor().dependencies[0].contract.name() == command_dependencies[0].contract.name());
+            assert(entry->descriptor().dependencies[0].type.name() == command_dependencies[0].type.name());
+            return entry;
+        };
+        {
+            CommandRegistry commands{services, *scope, 1};
+            auto next = CommandRegistrySnapshot::create({make("next")});
+            assert(next);
+            auto next_handle = *next->at(0);
+            {
+                auto first = CommandRegistrySnapshot::create({make("first")});
+                assert(first);
+                assert(commands.execute(*first->at(0), CommandInvocation{}));
+                assert(commands.execute(next_handle, CommandInvocation{}).error().code == ECommandError::CAPACITY);
+                assert(trace.factories == 1 && trace.created == 1 && trace.executed == 1);
+            }
+            trace.destroying = [&]
+            {
+                assert(commands.publish({}).error().code == ECommandError::BUSY);
+                assert(services.publish({}).error().code == lux::services::EServiceError::BUSY);
+            };
+            assert(commands.execute(next_handle, CommandInvocation{}));
+            assert(trace.factories == 2 && trace.created == 2 && trace.destroyed == 1 && trace.executed == 2);
+            trace.destroying = {};
+            auto malformed = deferred_command;
+            malformed.create = nullptr;
+            auto invalid =
+                CommandRegistrySnapshot::create({CommandEntry::create(lux::object::CodeLease::builtin(), malformed)});
+            assert(!invalid && invalid.error().code == ECommandError::INVALID_ARGUMENT);
+            invalid = CommandRegistrySnapshot::create({CommandEntry::create(
+                lux::object::CodeLease::builtin(),
+                deferred_command,
+                [](const CommandQuery&) -> CommandResult<CommandState> { return CommandState{true}; },
+                {}
+            )});
+            assert(!invalid && invalid.error().code == ECommandError::INVALID_ARGUMENT);
+        }
+        assert(trace.created == trace.destroyed && scope->release() && services.drained());
+        std::puts("PASS dynamic dependency backing, bounded lazy binding reclamation and incompatible binding refusal");
+    }
 } // namespace
 int main()
 {
@@ -356,5 +596,7 @@ int main()
     queryLifetime();
     repeatedSnapshotOwnership();
     busyAndReentry();
+    lazyBindings();
+    dynamicBindings();
     std::puts("PASS immutable command entries, pinned/current policy, bounded BUSY FIFO, recursive and foreign calls");
 }

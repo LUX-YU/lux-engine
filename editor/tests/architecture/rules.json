@@ -2152,6 +2152,9 @@
       },
       "object": {
         "path": "modules/core/object"
+      },
+      "services": {
+        "path": "modules/core/services"
       }
     },
     "headers": [
@@ -2333,6 +2336,9 @@
       },
       "object": {
         "path": "modules/core/object"
+      },
+      "services": {
+        "path": "modules/core/services"
       }
     },
     "headers": [
@@ -2500,6 +2506,9 @@
       },
       "object": {
         "path": "modules/core/object"
+      },
+      "services": {
+        "path": "modules/core/services"
       }
     },
     "headers": [
@@ -5523,6 +5532,9 @@
       },
       "edit_history": {
         "path": "editor/editing"
+      },
+      "services": {
+        "path": "modules/core/services"
       }
     },
     "native_libraries": [
@@ -7394,6 +7406,9 @@
       },
       "editor_commands": {
         "path": "editor/activities/commands"
+      },
+      "services": {
+        "path": "modules/core/services"
       }
     },
     "native_libraries": [
@@ -7999,6 +8014,9 @@
       },
       "editor_commands": {
         "path": "editor/activities/commands"
+      },
+      "services": {
+        "path": "modules/core/services"
       }
     },
     "native_libraries": [
@@ -8182,6 +8200,9 @@
       },
       "edit_history": {
         "path": "editor/editing"
+      },
+      "services": {
+        "path": "modules/core/services"
       }
     },
     "native_libraries": [
@@ -8404,6 +8425,9 @@
       },
       "edit_history": {
         "path": "editor/editing"
+      },
+      "services": {
+        "path": "modules/core/services"
       }
     },
     "native_libraries": [

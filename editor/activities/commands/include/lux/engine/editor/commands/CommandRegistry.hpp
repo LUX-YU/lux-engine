@@ -6,8 +6,27 @@
 #include <span>
 #include <vector>
 
+namespace lux::services
+{
+    class ServiceRegistry;
+    class ServiceScope;
+} // namespace lux::services
 namespace lux::editor::commands
 {
+    // Created only when this command is first used in a scope. Captures accurate dependencies,
+    // never an EditorContext. The registry retains the binding, not a second service allocation.
+    struct CommandBinding final
+    {
+        using Query = cxx::move_only_function<CommandResult<CommandState>(const CommandQuery&)>;
+        using Execute = cxx::move_only_function<CommandResult<DispatchReceipt>(const CommandInvocation&)>;
+        CommandBinding(Query query, Execute execute) : query(std::move(query)), execute(std::move(execute)) {}
+        CommandBinding(const CommandBinding&) = delete;
+        CommandBinding& operator=(const CommandBinding&) = delete;
+        CommandBinding(CommandBinding&&) = delete;
+        CommandBinding& operator=(CommandBinding&&) = delete;
+        Query query;
+        Execute execute;
+    };
     namespace detail
     {
         struct CommandIndexTestAccess;
@@ -15,14 +34,14 @@ namespace lux::editor::commands
     class CommandEntry final
     {
     public:
-        using Query = cxx::move_only_function<CommandResult<CommandState>(const CommandQuery&)>;
-        using Execute = cxx::move_only_function<CommandResult<DispatchReceipt>(const CommandInvocation&)>;
+        using Query = CommandBinding::Query;
+        using Execute = CommandBinding::Execute;
         // Fixed declarations have static storage, including plugin literals retained by code.
         template <const CommandDescriptor& Descriptor>
         [[nodiscard]] static std::shared_ptr<CommandEntry> bind(
             lux::object::CodeLease code,
-            Query query,
-            Execute execute
+            Query query = {},
+            Execute execute = {}
         )
         {
             static_assert(
@@ -48,8 +67,8 @@ namespace lux::editor::commands
         [[nodiscard]] static std::shared_ptr<CommandEntry> create(
             lux::object::CodeLease,
             const CommandDescriptor&,
-            Query,
-            Execute
+            Query = {},
+            Execute = {}
         );
         ~CommandEntry();
         CommandEntry(const CommandEntry&) = delete;
@@ -73,8 +92,7 @@ namespace lux::editor::commands
         std::unique_ptr<const DescriptorStorage> storage_;
         const CommandDescriptor* descriptor_;
         lux::ui::ShortcutResult shortcut_;
-        Query query_;
-        Execute execute_;
+        CommandBinding binding_;
     };
     class CommandHandle;
     class CommandRegistrySnapshot final
@@ -150,6 +168,8 @@ namespace lux::editor::commands
         [[nodiscard]] CommandResult<Batch> readBatch() noexcept;
         [[nodiscard]] CommandResult<Batch> preparePublication(CommandRegistrySnapshot) noexcept;
         CommandRegistry();
+        // The lexical scope and infrastructure outlive this registry. Direct commands need neither.
+        CommandRegistry(services::ServiceRegistry&, services::ServiceScope&, std::size_t binding_capacity = 256);
         ~CommandRegistry();
         CommandRegistry(const CommandRegistry&) = delete;
         CommandRegistry& operator=(const CommandRegistry&) = delete;
@@ -166,6 +186,7 @@ namespace lux::editor::commands
         friend class CommandDispatcher;
         [[nodiscard]] CommandResult<void> beginDispatch() noexcept;
         void endDispatch() noexcept;
+        [[nodiscard]] CommandResult<CommandBinding*> binding(const std::shared_ptr<CommandEntry>&);
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };

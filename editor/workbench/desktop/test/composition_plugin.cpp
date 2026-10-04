@@ -46,6 +46,7 @@ namespace
                 return cxx::unexpected(started.error());
             }
             const auto id = started->id();
+            trace_.submitted = id;
             task_.emplace(std::move(*started));
             return id;
         }

@@ -4,13 +4,28 @@
 
 namespace lux::editor::desktop
 {
+    namespace
+    {
+        services::ServiceScope initialScope(services::ServiceRegistry& registry)
+        {
+            // This is the first scope of the private registry with its fixed nonzero default limits.
+            auto scope = registry.createScope();
+            if (!scope)
+            {
+                std::terminate();
+            }
+            return std::move(*scope);
+        }
+    } // namespace
     struct EditorContext::Impl final
     {
         services::ServiceRegistry services;
+        services::ServiceScope scope;
         commands::CommandRegistry commands;
         UiRegistry ui;
         explicit Impl(object::ObjectDispatcherRef dispatcher)
-            : services(dispatcher), ui(std::move(dispatcher), services)
+            : services(dispatcher), scope(initialScope(services)), commands(services, scope),
+              ui(std::move(dispatcher), services)
         {
         }
     };
@@ -22,6 +37,10 @@ namespace lux::editor::desktop
     services::ServiceRegistry& EditorContext::services() noexcept
     {
         return impl_->services;
+    }
+    services::ServiceScope& EditorContext::scope() noexcept
+    {
+        return impl_->scope;
     }
     UiRegistry& EditorContext::ui() noexcept
     {

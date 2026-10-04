@@ -6,7 +6,8 @@
 namespace lux::services
 {
     class ServiceRegistry;
-}
+    class ServiceScope;
+} // namespace lux::services
 namespace lux::editor::commands
 {
     class CommandRegistry;
@@ -28,6 +29,7 @@ namespace lux::editor::desktop
         EditorContext& operator=(EditorContext&&) = delete;
 
         [[nodiscard]] services::ServiceRegistry& services() noexcept;
+        [[nodiscard]] services::ServiceScope& scope() noexcept;
         [[nodiscard]] UiRegistry& ui() noexcept;
         [[nodiscard]] commands::CommandRegistry& commands() noexcept;
 

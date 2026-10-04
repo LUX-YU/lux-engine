@@ -4,7 +4,9 @@
 #endif
 #include <algorithm>
 #include <lux/engine/editor/commands/CommandIndex.hpp>
+#include <lux/engine/services/ServiceRegistry.hpp>
 #include <thread>
+#include <unordered_map>
 #include <utility>
 
 namespace lux::editor::commands
@@ -30,6 +32,20 @@ namespace lux::editor::commands
         auto failure(ECommandError error)
         {
             return cxx::unexpected(CommandFailure{error, "command"});
+        }
+        auto dependencyFailure(services::ServiceFailure error)
+        {
+            using enum services::EServiceError;
+            const auto code = error.code == BUSY     ? ECommandError::BUSY
+                              : error.code == CLOSED ? ECommandError::CLOSED
+                                                     : ECommandError::DOMAIN_FAILURE;
+            const auto domain_code = error.domain.empty() ? static_cast<std::uint64_t>(error.code) : error.domain_code;
+            return cxx::unexpected(CommandFailure{
+                code,
+                error.domain.empty() ? "command.services" : std::move(error.domain),
+                domain_code,
+                std::move(error.detail)
+            });
         }
         CommandResult<void> validate(const CommandDescriptor& entry, const CommandQuery& query)
         {
@@ -139,6 +155,8 @@ namespace lux::editor::commands
     struct CommandEntry::DescriptorStorage final
     {
         std::string text;
+        std::vector<std::string> dependency_names;
+        std::vector<services::ServiceDependency> dependencies;
         CommandDescriptor descriptor;
         explicit DescriptorStorage(const CommandDescriptor& input)
         {
@@ -173,6 +191,25 @@ namespace lux::editor::commands
                 input.input_version,
                 {input.argument_type.hash(), bytes.substr(argument, argument_size)}
             };
+            dependency_names.reserve(input.dependencies.size() * 4);
+            const auto name = [&](std::string_view value) -> std::string_view
+            {
+                dependency_names.emplace_back(value);
+                return dependency_names.back();
+            };
+            for (auto value : input.dependencies)
+            {
+                value.contract = services::ServiceNameView{name(value.contract.name())};
+                if (value.implementation.isValid())
+                {
+                    value.implementation = services::ServiceNameView{name(value.implementation.name())};
+                }
+                value.type = {value.type.hash(), name(value.type.name())};
+                value.qualifier = name(value.qualifier);
+                dependencies.push_back(value);
+            }
+            descriptor.dependencies = dependencies;
+            descriptor.create = input.create;
         }
     };
     CommandEntry::CommandEntry(
@@ -182,7 +219,7 @@ namespace lux::editor::commands
         Execute execute
     )
         : code_(std::move(code)), descriptor_(&descriptor), shortcut_(lux::ui::parseShortcut(descriptor.shortcut)),
-          query_(std::move(query)), execute_(std::move(execute))
+          binding_(std::move(query), std::move(execute))
     {
         count(7);
         count(8);
@@ -254,6 +291,16 @@ namespace lux::editor::commands
         {
             return failure(ECommandError::CAPACITY);
         }
+        std::unordered_map<std::uint64_t, std::string_view> dependency_names;
+        const auto check_name = [&](services::ServiceNameView value)
+        {
+            if (!value.isValid())
+            {
+                return true;
+            }
+            const auto [found, inserted] = dependency_names.emplace(value.hash(), value.name());
+            return inserted || found->second == value.name();
+        };
         for (std::size_t i{}; i < entries.size(); ++i)
         {
             if (!entries[i])
@@ -268,11 +315,31 @@ namespace lux::editor::commands
             const bool is_invalid_description =
                 descriptor.label.empty() || descriptor.input_version == 0 ||
                 static_cast<unsigned>(descriptor.scope) > static_cast<unsigned>(ECommandScope::VIEW);
-            const bool is_invalid_binding = !entry.code_.valid() || !entry.query_ || !entry.execute_;
+            const bool is_direct_binding = entry.binding_.query && entry.binding_.execute;
+            const bool has_direct_binding = entry.binding_.query || entry.binding_.execute;
+            const bool is_invalid_binding =
+                !entry.code_.valid() ||
+                (descriptor.create ? has_direct_binding : (!is_direct_binding || !descriptor.dependencies.empty()));
             const bool is_invalid = is_invalid_identity || is_invalid_description || is_invalid_binding;
             if (is_invalid)
             {
                 return failure(ECommandError::INVALID_ARGUMENT);
+            }
+            for (const auto& dependency : descriptor.dependencies)
+            {
+                const bool is_invalid_dependency = !dependency.contract.isValid() || !dependency.version ||
+                                                   !dependency.type.isValid() ||
+                                                   dependency.kind > services::EDependencyKind::BORROWED ||
+                                                   dependency.scope > services::EDependencyScope::ROOT;
+                if (is_invalid_dependency)
+                {
+                    return failure(ECommandError::INVALID_ARGUMENT);
+                }
+                const bool has_collision = !check_name(dependency.contract) || !check_name(dependency.implementation);
+                if (has_collision)
+                {
+                    return failure(ECommandError::HASH_COLLISION);
+                }
             }
         }
         auto index = detail::commandIndex(entries, [](CommandIdView id) { return id.hash(); });
@@ -404,6 +471,17 @@ namespace lux::editor::commands
         std::size_t readers{};
         std::uint64_t revision{};
         CommandRegistrySnapshot current;
+        services::ServiceRegistry* services{};
+        services::ServiceScope* scope{};
+        std::size_t binding_capacity{};
+        struct BoundCommand final
+        {
+            lux::object::CodeLease code;
+            std::weak_ptr<CommandEntry> entry;
+            std::unique_ptr<CommandBinding> binding;
+        };
+        // Entry and scope identities are fixed; vector relocation never runs foreign binding destructors.
+        std::vector<std::unique_ptr<BoundCommand>> bindings;
         CommandResult<void> canBeginBatch() const noexcept
         {
             if (owner != std::this_thread::get_id())
@@ -431,7 +509,101 @@ namespace lux::editor::commands
         }
     };
     CommandRegistry::CommandRegistry() : impl_(std::make_unique<Impl>()) {}
-    CommandRegistry::~CommandRegistry() = default;
+    CommandRegistry::CommandRegistry(
+        services::ServiceRegistry& services,
+        services::ServiceScope& scope,
+        std::size_t binding_capacity
+    )
+        : CommandRegistry()
+    {
+        impl_->services = &services;
+        impl_->scope = &scope;
+        impl_->binding_capacity = binding_capacity;
+        impl_->bindings.reserve(binding_capacity);
+    }
+    CommandRegistry::~CommandRegistry()
+    {
+        if (!impl_->canBeginBatch())
+        {
+            std::terminate();
+        }
+        CallScope guard{impl_->calling};
+        impl_->bindings.clear();
+        impl_->current = {};
+    }
+    CommandResult<CommandBinding*> CommandRegistry::binding(const std::shared_ptr<CommandEntry>& entry)
+    {
+        const auto& descriptor = entry->descriptor();
+        if (!descriptor.create)
+        {
+            return &entry->binding_;
+        }
+        if (!impl_->scope)
+        {
+            return dependencyFailure({services::EServiceError::INVALID_SCOPE});
+        }
+        if (!impl_->scope->isOpen())
+        {
+            return failure(ECommandError::CLOSED);
+        }
+        for (const auto& record : impl_->bindings)
+        {
+            if (record->entry.lock() == entry)
+            {
+                return record->binding.get();
+            }
+        }
+        auto read = impl_->services->readScope();
+        if (!read)
+        {
+            return dependencyFailure(std::move(read.error()));
+        }
+        std::erase_if(impl_->bindings, [](const auto& record) { return record->entry.expired(); });
+        if (impl_->bindings.size() == impl_->binding_capacity)
+        {
+            return failure(ECommandError::CAPACITY);
+        }
+        auto record = std::make_unique<Impl::BoundCommand>(entry->code_, entry, nullptr);
+        CommandResult<void> outcome;
+        auto construct = [&](services::ServiceResolver& resolver) -> services::ServiceResult<void>
+        {
+            // Candidate cleanup happens inside service admission, including a scope closed by the factory.
+            auto candidate = descriptor.create(resolver);
+            if (!candidate)
+            {
+                outcome = cxx::unexpected(std::move(candidate.error()));
+            }
+            else if (!resolver.isOpen())
+            {
+                outcome = failure(ECommandError::CLOSED);
+            }
+            else
+            {
+                const bool is_valid_binding = *candidate && (*candidate)->query && (*candidate)->execute;
+                if (!is_valid_binding)
+                {
+                    outcome = failure(ECommandError::INVALID_ARGUMENT);
+                }
+                else
+                {
+                    record->binding = std::move(*candidate);
+                }
+            }
+            return {};
+        };
+        auto resolved = impl_->services->withDependencies(*impl_->scope, descriptor.dependencies, construct);
+        if (!resolved)
+        {
+            return dependencyFailure(std::move(resolved.error()));
+        }
+        if (!outcome)
+        {
+            return cxx::unexpected(std::move(outcome.error()));
+        }
+        auto* result = record->binding.get();
+        impl_->bindings.push_back(std::move(record));
+        return result;
+    }
     CommandResult<void> CommandRegistry::canPublish() const noexcept
     {
         if (const auto ready = impl_->canBeginBatch(); !ready)
@@ -583,14 +755,19 @@ namespace lux::editor::commands
         {
             return cxx::unexpected(checked.error());
         }
+        const auto target = binding(pinned.entry_);
+        if (!target)
+        {
+            return cxx::unexpected(target.error());
+        }
         if (pinned.entry_->code_.sameOwner(lux::object::CodeLease::builtin()))
         {
-            return pinned.entry_->query_(input);
+            return (*target)->query(input);
         }
         // Foreign callable boundary only; built-in dispatch does not pay for exception containment.
         try
         {
-            return pinned.entry_->query_(input);
+            return (*target)->query(input);
         }
         catch (const std::bad_alloc&)
         {
@@ -619,7 +796,12 @@ namespace lux::editor::commands
         }
         auto invoke = [&]() -> CommandResult<DispatchReceipt>
         {
-            const auto state = pinned.entry_->query_(input.query());
+            const auto target = binding(pinned.entry_);
+            if (!target)
+            {
+                return cxx::unexpected(target.error());
+            }
+            const auto state = (*target)->query(input.query());
             if (!state)
             {
                 return cxx::unexpected(state.error());
@@ -628,7 +810,11 @@ namespace lux::editor::commands
             {
                 return cxx::unexpected(CommandFailure{ECommandError::DISABLED, "command", 0, state->reason});
             }
-            return pinned.entry_->execute_(input);
+            if (pinned.descriptor().create && !impl_->scope->isOpen())
+            {
+                return failure(ECommandError::CLOSED);
+            }
+            return (*target)->execute(input);
         };
         if (pinned.entry_->code_.sameOwner(lux::object::CodeLease::builtin()))
         {

@@ -4,8 +4,9 @@ add_component(COMPONENT_NAME editor_commands NAMESPACE lux::engine::editor STATI
 component_include_directories(editor_commands BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
 target_include_directories(editor_commands PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude)
 target_link_libraries(editor_commands PUBLIC editor_contracts edit_sessions lux::cxx::core lux::cxx::compile_time
-    lux::engine::function::ui_input)
+    lux::engine::function::ui_input lux::engine::core::services)
 component_add_transitive_commands(editor_commands
+    "find_package(lux-engine-core REQUIRED COMPONENTS services)"
     "find_package(lux-engine-function REQUIRED COMPONENTS ui_input)"
     "find_package(lux-engine-editor-contracts REQUIRED COMPONENTS editor_contracts)"
     "find_package(lux-engine-edit-sessions REQUIRED COMPONENTS edit_sessions)"

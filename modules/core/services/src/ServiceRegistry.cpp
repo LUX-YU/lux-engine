@@ -982,6 +982,11 @@ namespace lux::services
         state_->release();
         return {};
     }
+    bool ServiceScope::isOpen() const noexcept
+    {
+        return registry_ && state_ && registry_->impl_->callbacks->owner == std::this_thread::get_id() &&
+               state_->open();
+    }
     bool ServiceScope::drained() const noexcept
     {
         return registry_ && registry_->impl_->callbacks->owner == std::this_thread::get_id() && state_->drained();

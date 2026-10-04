@@ -26,11 +26,11 @@ namespace
         {
             desktop::EditorContext context{messages.dispatcherRef()};
             extensions::ContributionRegistry contributions{messages.dispatcherRef(), context};
-            auto scope = take(context.services().createScope());
+            auto& scope = context.scope();
             assert(scope.provide(services::ServiceNameView{"ec4.execution"}, execution));
             assert(scope.provide(services::ServiceNameView{"ec4.trace"}, trace));
             auto draft = take(module.contributions());
-            assert(draft.services.size() == 1 && draft.ui.size() == 2);
+            assert(draft.services.size() == 1 && draft.ui.size() == 2 && draft.commands.size() == 1);
             auto prepared = take(extensions::ContributionSnapshot::prepare(std::move(draft)));
             assert(contributions.enqueue(prepared) && contributions.applyPending());
             assert(trace.created == 0 && trace.windows == 0);
@@ -57,7 +57,17 @@ namespace
             auto job = take(context.services().get<fixture::Job>(scope));
             assert(trace.created == 1 && trace.windows == 2);
             weak = job;
-            const auto task = take(job->start(job));
+            process::TaskId task;
+            {
+                // The same declaration resolves the module's actual service in static and DLL products.
+                // The command owner finishes before the scope drains; no callbacks escape into a worker.
+                commands::CommandRegistry command_owner{context.services(), scope};
+                auto command = take(contributions.snapshot().commands().at(0));
+                assert(take(command_owner.query(command, commands::CommandInvocation{}.query())).enabled);
+                auto receipt = take(command_owner.execute(command, commands::CommandInvocation{}));
+                assert(std::get<commands::AcceptedOperation>(receipt).value == 1);
+                task = trace.submitted;
+            }
             const std::vector<ui::Pane*> closing{root->panes().begin(), root->panes().end()};
             for (auto* pane : closing)
             {

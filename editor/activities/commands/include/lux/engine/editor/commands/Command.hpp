@@ -1,10 +1,11 @@
 #pragma once
 
-#include <lux/engine/object/CodeLease.hpp>
-#include <lux/engine/editor/sessions/ContentStamp.hpp>
-#include <lux/engine/editor/views/ViewInfo.hpp>
 #include <lux/cxx/compile_time/TypeToken.hpp>
 #include <lux/cxx/compile_time/expected.hpp>
+#include <lux/engine/editor/sessions/ContentStamp.hpp>
+#include <lux/engine/editor/views/ViewInfo.hpp>
+#include <lux/engine/object/CodeLease.hpp>
+#include <lux/engine/services/ServiceDescriptor.hpp>
 #include <optional>
 #include <variant>
 
@@ -56,6 +57,7 @@ namespace lux::editor::commands
         PINNED,
         CURRENT_REGISTRATION
     };
+    struct CommandBinding;
     struct CommandDescriptor final
     {
         CommandIdView id;
@@ -66,6 +68,8 @@ namespace lux::editor::commands
         ECommandScope scope{ECommandScope::APPLICATION};
         std::uint32_t input_version{1};
         cxx::TypeToken argument_type;
+        std::span<const services::ServiceDependency> dependencies;
+        CommandResult<std::unique_ptr<CommandBinding>> (*create)(services::ServiceResolver&) noexcept {};
     };
     struct ShortcutOverride final
     {

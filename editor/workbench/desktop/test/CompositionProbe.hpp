@@ -11,6 +11,7 @@ namespace fixture
         std::thread::id owner{std::this_thread::get_id()};
         unsigned created{}, destroyed{}, destructor_returns{}, windows{}, windows_destroyed{};
         unsigned received{}, shown{}, notifications{}, unloaded{};
+        lux::process::TaskId submitted;
     };
     class Job : public lux::object::LuxObject
     {

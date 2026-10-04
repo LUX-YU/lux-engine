@@ -43,6 +43,7 @@ namespace lux::services
         [[nodiscard]] ServiceResult<void> cancelClose() noexcept;
         // Call only after the domain's close prerequisites have been accepted. No business is run here.
         [[nodiscard]] ServiceResult<void> release() noexcept;
+        [[nodiscard]] bool isOpen() const noexcept;
         [[nodiscard]] bool drained() const noexcept;
         template <class T>
         [[nodiscard]] ServiceResult<void> provide(
@@ -100,8 +101,7 @@ namespace lux::services
         }
         [[nodiscard]] const object::ObjectDispatcherRef& dispatcher() const noexcept;
         [[nodiscard]] bool isOpen() const noexcept;
-        template <class T>
-        [[nodiscard]] ServiceResult<std::shared_ptr<const T>> definition() const noexcept
+        template <class T> [[nodiscard]] ServiceResult<std::shared_ptr<const T>> definition() const noexcept
         {
             if (!entry_)
             {

@@ -4,6 +4,8 @@
 
 `editor_composition` provides `EditorContext` and the immutable `UiRegistry` factory catalog. It depends
 on the neutral services, UI and command providers, with no concrete tool or old Host dependency.
+Its lexical root service scope is also used for declared command dependencies. It does not preconstruct
+any domain service. Explicit child scopes isolate content/project lifetimes and are passed to UI factories.
 The existing `CommandMenu` belongs to this same provider. Menu requests, programmatic commands and
 configuration batches can consume the same fixed `UiHandle`; BUSY retains queued input and replacing
 the catalog rejects a stale handle instead of silently resolving its name again. The installed

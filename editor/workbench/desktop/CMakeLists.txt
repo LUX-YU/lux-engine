@@ -1,3 +1,27 @@
+add_component(COMPONENT_NAME editor_composition NAMESPACE lux::engine::editor STATIC
+    SOURCE_FILES src/UiRegistry.cpp)
+component_include_directories(editor_composition BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
+target_link_libraries(editor_composition PUBLIC lux::engine::core::services
+    lux::engine::function::ui lux::engine::editor::editor_contracts lux::engine::editor::layout_model)
+component_add_transitive_commands(editor_composition
+    "find_package(lux-engine-core REQUIRED COMPONENTS services)"
+    "find_package(lux-engine-function REQUIRED COMPONENTS ui)"
+    "find_package(lux-engine-editor-contracts REQUIRED COMPONENTS editor_contracts)"
+    "find_package(lux-engine-editor-layout REQUIRED COMPONENTS layout_model)")
+lux_classify_target(TARGET editor_composition LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
+lux_engine_install_components(PROJECT_NAME lux-engine-editor-composition VERSION ${PROJECT_VERSION}
+    NAMESPACE lux::engine::editor COMPONENTS editor_composition)
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/desktop/UiRegistry.hpp
+    DESTINATION include/lux/engine/editor/desktop COMPONENT lux_engine_editor_composition)
+
+if(LUX_EDITOR_BUILD_NATIVE_TESTS)
+    add_executable(editor_composition_test test/composition.cpp)
+    target_link_libraries(editor_composition_test PRIVATE editor_composition)
+    lux_editor_test_options(editor_composition_test)
+    add_test(NAME editor.composition COMMAND editor_composition_test)
+    set_tests_properties(editor.composition PROPERTIES LABELS "editor;native;EC4" TIMEOUT 60 RUN_SERIAL TRUE)
+endif()
+
 add_interface_component(COMPONENT_NAME view_api NAMESPACE lux::engine::editor)
 component_include_directories(view_api BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
 target_link_libraries(view_api INTERFACE lux::engine::function::ui lux::engine::editor::editor_contracts lux::engine::editor::layout_model)

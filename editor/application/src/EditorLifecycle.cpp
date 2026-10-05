@@ -429,6 +429,21 @@ namespace lux::editor::application
             receive(applicationFailure("material.release", received.error()));
         receive(content_saving_->update(closing_ ? closing_->saves() : std::span<const sessions::SaveAllEntry>{}));
         receive(settleWorkspace());
+        if (phase_ == EApplicationPhase::DRAINING)
+        {
+            // Query only the scope's existing allocations. A service failure still observes the other
+            // participants; all independent completion pumps above have already run this frame.
+            auto services = editor_context_.scope().settled();
+            if (!services)
+            {
+                receive(applicationFailure("services.settled", services.error()));
+                return outcome;
+            }
+            if (!*services)
+            {
+                return outcome;
+            }
+        }
         const bool operations_settled =
             importer_->closeStatus().state == assets::EModelImportCloseState::CLOSED && material_compilation_.empty() &&
             flow_compilation_->settled() && user_settings_changes_.settled() && project_settings_changes_.settled() &&

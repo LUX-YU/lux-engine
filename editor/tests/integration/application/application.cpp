@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cassert>
 #include <fstream>
 #include <iostream>
@@ -70,6 +71,126 @@ namespace
     private:
         lux::editor::views::ViewContent content_;
     };
+    class CloseActivity final
+    {
+    public:
+        struct Completion final
+        {
+            std::atomic<bool> release{};
+            bool received{};
+        };
+        inline static unsigned created{}, destroyed{};
+        explicit CloseActivity(lux::process::ExecutionRuntime& execution) : execution_(execution)
+        {
+            ++created;
+        }
+        ~CloseActivity()
+        {
+            assert(!task_ || completion->received);
+            ++destroyed;
+        }
+        CloseActivity(const CloseActivity&) = delete;
+        CloseActivity& operator=(const CloseActivity&) = delete;
+        void start()
+        {
+            assert(!task_);
+            auto started = execution_.submit(
+                {"ec4.application.service-drain"},
+                [this](lux::process::TaskReporter) noexcept
+                {
+                    return stdexec::then(
+                        stdexec::schedule(execution_.cpu()),
+                        [state = completion]() noexcept -> lux::cxx::expected<int, int>
+                        {
+                            state->release.wait(false);
+                            return 73;
+                        }
+                    );
+                },
+                [state = completion](lux::process::TTaskResult<int, int>&& value) noexcept
+                {
+                    assert(value && *value == 73);
+                    state->received = true;
+                }
+            );
+            assert(started);
+            task_.emplace(std::move(*started));
+        }
+        void release() noexcept
+        {
+            completion->release.store(true);
+            completion->release.notify_all();
+        }
+        [[nodiscard]] lux::services::ServiceResult<bool> settled() const noexcept
+        {
+            ++observations;
+            if (refuse)
+            {
+                return lux::cxx::unexpected(lux::services::ServiceFailure{
+                    lux::services::EServiceError::FACTORY_FAILURE, "Retained service failure", "test.close", 71
+                });
+            }
+            return !task_ || completion->received;
+        }
+        std::shared_ptr<Completion> completion{std::make_shared<Completion>()};
+        mutable unsigned observations{};
+        bool refuse{};
+
+    private:
+        lux::process::ExecutionRuntime& execution_;
+        std::optional<lux::process::Task> task_;
+    };
+    constexpr lux::services::ServiceContract close_contracts[]{
+        lux::services::ServiceContract::forType<CloseActivity, CloseActivity>(
+            lux::services::ServiceNameView{"test.close.activity"}
+        )
+    };
+    constexpr lux::services::ServiceDependency close_dependencies[]{
+        {lux::services::ServiceNameView{"lux.process.execution"}, 1,
+         lux::cxx::typeToken<lux::process::ExecutionRuntime>(), lux::services::EDependencyKind::BORROWED}
+    };
+    constexpr auto close_factory = [](lux::services::ServiceResolver& resolver,
+                                      const lux::services::ServiceConfiguration&) noexcept
+        -> lux::services::ServiceResult<std::unique_ptr<CloseActivity>>
+    {
+        auto execution = resolver.require<lux::process::ExecutionRuntime>(0);
+        if (!execution)
+        {
+            return lux::cxx::unexpected(std::move(execution.error()));
+        }
+        return std::make_unique<CloseActivity>(execution->get());
+    };
+    constexpr auto close_service = []
+    {
+        auto value = lux::services::ServiceDescriptor::forType<CloseActivity, close_factory>(
+            lux::services::ServiceNameView{"test.close.service"}, close_contracts, close_dependencies
+        );
+        value.retention = lux::services::EServiceRetention::SCOPED;
+        value.settled = [](const void* allocation) noexcept
+        { return static_cast<const CloseActivity*>(allocation)->settled(); };
+        return value;
+    }();
+    const lux::editor::extensions::EditorModuleDescriptor& closeModule() noexcept
+    {
+        static constexpr lux::editor::extensions::EditorModuleDescriptor descriptor{
+            "test.close.module", 1,
+            +[]() noexcept -> const lux::editor::extensions::EditorExtensionExports*
+            {
+                static const lux::editor::extensions::EditorExtensionExports exports{
+                    .counts = {.services = 1},
+                    .contribute = +[](lux::editor::extensions::ContributionDraft& draft,
+                                      lux::object::CodeLease code)
+                        -> lux::editor::extensions::ContributionResult<void>
+                    {
+                        draft.services.push_back(lux::services::ServiceEntry::bind<close_service>(std::move(code)));
+                        return {};
+                    }
+                };
+                return &exports;
+            }
+        };
+        return descriptor;
+    }
     struct FailureSystem final
     {
         inline static constexpr std::string_view worlds[]{"*"};
@@ -340,7 +461,7 @@ int main(int argc, char** argv)
     }
     const auto after_override = storage::publicationFileDigest(personal_file);
     assert(after_override && *after_override == *before_override);
-    auto created = EditorApplication::create(config, std::array{&lux::editor::flowforge::flowModule});
+    auto created = EditorApplication::create(config, std::array{&lux::editor::flowforge::flowModule, &closeModule});
     if (!created)
     {
         std::cerr << created.error().domain << '\n';
@@ -1444,7 +1565,59 @@ int main(int argc, char** argv)
     assert(exit_operation && !exit_operation->get().ready());
     const auto exit_task = exit_operation->get().task();
     assert(impl.runs_.info(run) && !impl.engine_->renderContext()->resources().empty());
+    assert(CloseActivity::created == 0); // Declaration alone and all prior frames construct nothing.
+    auto first_service = impl.editor_context_.services().get<CloseActivity>(impl.editor_context_.scope(), "pending");
+    auto second_service = impl.editor_context_.services().get<CloseActivity>(impl.editor_context_.scope(), "ready");
+    assert(first_service && second_service && *first_service != *second_service && CloseActivity::created == 2);
+    assert(impl.editor_context_.services().get<CloseActivity>(impl.editor_context_.scope(), "pending")->get() ==
+           first_service->get());
+    (*first_service)->start();
     assert(app->requestExit());
+    const auto drain_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+    while (app->phase() != EApplicationPhase::DRAINING && app->phase() != EApplicationPhase::RELEASED)
+    {
+        assert(std::chrono::steady_clock::now() < drain_deadline);
+        if (impl.review_)
+            answer(desktop::EReviewChoice::DISCARD);
+        assert(app->update());
+    }
+    // The accepted worker is still blocked. Only the service knows this operation, not Application.
+    const auto pending_until = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+    while (app->phase() != EApplicationPhase::RELEASED && std::chrono::steady_clock::now() < pending_until)
+    {
+        assert(app->update());
+        std::this_thread::yield();
+    }
+    const bool retained_desktop = impl.desktop_ && app->phase() == EApplicationPhase::DRAINING;
+    if (!retained_desktop || (*first_service)->observations == 0)
+    {
+        // End the real worker before reporting the pre-fix failure; no destructor wait is hidden.
+        (*first_service)->release();
+        while (!(*first_service)->completion->received)
+        {
+            assert(impl.engine_->execution().collectCompletions());
+            assert(impl.engine_->execution().dispatchTaskEvents());
+        }
+        std::cerr << "EC4 missing service drain: retained=" << retained_desktop
+                  << " observations=" << (*first_service)->observations << std::endl;
+        assert(false && "Application released before lazily created service settled");
+    }
+    (*first_service)->refuse = true;
+    (*second_service)->start();
+    (*second_service)->release();
+    const auto second_observed = (*second_service)->observations;
+    do
+    {
+        auto failed = app->update();
+        assert(!failed && failed.error().domain == "services.settled");
+        const auto* cause = std::any_cast<services::ServiceFailure>(&failed.error().cause);
+        assert(cause && cause->domain == "test.close" && cause->domain_code == 71);
+        assert(impl.desktop_ && app->phase() == EApplicationPhase::DRAINING && CloseActivity::destroyed == 0);
+        assert(std::chrono::steady_clock::now() < drain_deadline);
+    } while (!(*second_service)->completion->received);
+    assert((*second_service)->observations > second_observed);
+    (*first_service)->refuse = false;
+    (*first_service)->release();
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
     while (app->phase() != EApplicationPhase::RELEASED)
     {
@@ -1460,6 +1633,11 @@ int main(int argc, char** argv)
         std::this_thread::yield();
     }
     assert(!impl.desktop_ && impl.engine_->renderContext()->resources().empty());
+    assert((*first_service)->completion->received && (*second_service)->completion->received);
+    assert(CloseActivity::created == 2 && CloseActivity::destroyed == 0);
+    std::cout << "EC4 lazy service shutdown: accepted completion retained; independent service failure does not "
+                 "skip other completion or participant; unused qualifier never constructed\n";
+
     assert(impl.material_compilation_.snapshotIds()->empty());
     assert(!impl.material_compilation_.operation(exit_compile));
     const auto exit_completed = impl.engine_->execution().taskInfo(exit_task);

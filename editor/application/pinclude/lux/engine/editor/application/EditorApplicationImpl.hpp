@@ -97,7 +97,7 @@ namespace lux::editor::application
         {
             commands::SessionTarget target;
             persistence::ESaveMode mode;
-            views::ViewId view;
+            lux::ui::PaneHandle view;
         };
 
         struct ReloadPresentation final
@@ -109,7 +109,7 @@ namespace lux::editor::application
         struct ReloadQuestion final
         {
             commands::SessionTarget target;
-            views::ViewId view;
+            lux::ui::PaneHandle view;
         };
         struct RunPresentation final
         {
@@ -307,7 +307,7 @@ namespace lux::editor::application
         std::optional<EditorFailure> exit_failure_;
         std::optional<LastViewQuestion> last_view_;
         bool close_application_{};
-        std::optional<views::ViewId> review_;
+        std::optional<lux::ui::PaneHandle> review_;
         std::optional<sessions::ContentStamp> review_content_;
         std::optional<scene::RunId> review_run_;
         std::vector<RunCloseDecision> close_run_decisions_;

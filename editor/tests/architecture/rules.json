@@ -5636,7 +5636,10 @@
       "lux/engine/object/CodeLease.hpp",
       "exception",
       "lux/engine/editor/desktop/ContentRouting.hpp",
-      "lux/engine/editor/workbench/DockLayoutMapping.hpp"
+      "lux/engine/editor/workbench/DockLayoutMapping.hpp",
+      "lux/engine/editor/views/ViewError.hpp",
+      "lux/engine/ui/Pane.hpp",
+      "memory"
     ],
     "prefixes": [],
     "test_headers": {
@@ -6106,7 +6109,9 @@
       "lux/engine/editor/commands/Command.hpp",
       "lux/engine/object/CodeLease.hpp",
       "exception",
-      "lux/engine/editor/workbench/DockLayoutMapping.hpp"
+      "lux/engine/editor/workbench/DockLayoutMapping.hpp",
+      "lux/engine/editor/views/ViewError.hpp",
+      "lux/engine/ui/Pane.hpp"
     ],
     "prefixes": [],
     "test_headers": {

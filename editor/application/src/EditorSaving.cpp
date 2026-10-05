@@ -67,10 +67,14 @@ namespace lux::editor::application
         );
         if (!question)
             return applicationFailure("save.question.create", question.error());
-        views::DetachedView candidate{lux::object::CodeLease::builtin(), std::move(*question)};
-        auto shown = adopt(candidate, "save-destination");
+        auto& root = desktop_->root();
+        auto* pane = question->get();
+        auto mounted = root.addSubPane(std::move(*question));
+        if (!mounted)
+            return applicationFailure("save-destination.mount", mounted.error());
+        auto shown = root.identify(*pane);
         if (!shown)
-            return cxx::unexpected(shown.error());
+            return applicationFailure("save-destination.identity", shown.error());
         save_question_ = SaveQuestion{target, mode, *shown};
         return {};
     }
@@ -80,12 +84,15 @@ namespace lux::editor::application
             return {};
         std::optional<desktop::ReviewAnswer> answer;
         auto read = [&](lux::ui::Pane& pane) { answer = static_cast<desktop::ReviewView&>(pane).response(); };
-        auto borrowed = desktop_->views().withView(save_question_->view, read);
+        auto borrowed = desktop_->root().withPane(save_question_->view, read);
         if (!borrowed)
             return applicationFailure("save.question.read", borrowed.error());
         if (!answer)
             return {};
-        auto prepared = desktop_->views().prepareClose(std::span{&save_question_->view, 1});
+        auto pane = desktop_->root().findPane(save_question_->view);
+        if (!pane)
+            return applicationFailure("save-destination.target", pane.error());
+        auto prepared = desktop_->root().prepareDetach(**pane);
         if (!prepared)
             return applicationFailure("save.question.close", prepared.error());
         if (answer->choice == desktop::EReviewChoice::SAVE)
@@ -109,13 +116,13 @@ namespace lux::editor::application
                         "\nThe original content and target were retained. Correct the path, or Cancel and start again."
                     );
                 };
-                auto displayed = desktop_->views().withView(save_question_->view, reject);
+                auto displayed = desktop_->root().withPane(save_question_->view, reject);
                 if (!displayed)
                     return applicationFailure("save.question.error", displayed.error());
                 return {};
             }
         }
-        auto closed = desktop_->views().commit(*prepared);
+        auto closed = desktop_->root().commit(*prepared);
         if (!closed)
             return applicationFailure("save.question.commit", closed.error());
         save_question_.reset();

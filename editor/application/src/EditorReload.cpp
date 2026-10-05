@@ -82,10 +82,14 @@ namespace lux::editor::application
         );
         if (!question)
             return applicationFailure("reload.question.create", question.error());
-        views::DetachedView candidate{lux::object::CodeLease::builtin(), std::move(*question)};
-        auto shown = adopt(candidate, "reload-review");
+        auto& root = desktop_->root();
+        auto* pane = question->get();
+        auto mounted = root.addSubPane(std::move(*question));
+        if (!mounted)
+            return applicationFailure("reload-review.mount", mounted.error());
+        auto shown = root.identify(*pane);
         if (!shown)
-            return cxx::unexpected(shown.error());
+            return applicationFailure("reload-review.identity", shown.error());
         reload_question_ = ReloadQuestion{target, *shown};
         return {};
     }
@@ -95,12 +99,15 @@ namespace lux::editor::application
             return {};
         std::optional<desktop::ReviewAnswer> answer;
         auto read = [&](lux::ui::Pane& pane) { answer = static_cast<desktop::ReviewView&>(pane).response(); };
-        auto borrowed = desktop_->views().withView(reload_question_->view, read);
+        auto borrowed = desktop_->root().withPane(reload_question_->view, read);
         if (!borrowed)
             return applicationFailure("reload.question.read", borrowed.error());
         if (!answer)
             return {};
-        auto close = desktop_->views().prepareClose(std::span{&reload_question_->view, 1});
+        auto pane = desktop_->root().findPane(reload_question_->view);
+        if (!pane)
+            return applicationFailure("reload-review.target", pane.error());
+        auto close = desktop_->root().prepareDetach(**pane);
         if (!close)
             return applicationFailure("reload.question.close", close.error());
         if (answer->choice == desktop::EReviewChoice::DISCARD)
@@ -121,13 +128,13 @@ namespace lux::editor::application
                         "\nNo replacement occurred. Cancel and review the current content before retrying."
                     );
                 };
-                auto displayed = desktop_->views().withView(reload_question_->view, reject);
+                auto displayed = desktop_->root().withPane(reload_question_->view, reject);
                 if (!displayed)
                     return applicationFailure("reload.question.error", displayed.error());
                 return {};
             }
         }
-        auto closed = desktop_->views().commit(*close);
+        auto closed = desktop_->root().commit(*close);
         if (!closed)
             return applicationFailure("reload.question.commit", closed.error());
         reload_question_.reset();

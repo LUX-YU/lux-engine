@@ -1,5 +1,8 @@
 #pragma once
-#include <lux/engine/editor/views/IViewHost.hpp>
+#include <lux/engine/editor/views/ViewError.hpp>
+#include <lux/engine/ui/Pane.hpp>
+#include <memory>
+#include <optional>
 
 namespace lux::editor::desktop
 {

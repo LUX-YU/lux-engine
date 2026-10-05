@@ -49,10 +49,14 @@ namespace lux::editor::application
             );
             if (!question)
                 return applicationFailure("exit.error", question.error());
-            views::DetachedView candidate{lux::object::CodeLease::builtin(), std::move(*question)};
-            auto shown = adopt(candidate, "exit-review");
+            auto& root = desktop_->root();
+            auto* pane = question->get();
+            auto mounted = root.addSubPane(std::move(*question));
+            if (!mounted)
+                return applicationFailure("exit-review.mount", mounted.error());
+            auto shown = root.identify(*pane);
             if (!shown)
-                return cxx::unexpected(shown.error());
+                return applicationFailure("exit-review.identity", shown.error());
             review_ = *shown;
             return {};
         }
@@ -64,7 +68,7 @@ namespace lux::editor::application
                 if (pane.type() == lux::ui::PaneTypeId{"lux.editor.review"})
                     response = static_cast<desktop::ReviewView&>(pane).response();
             };
-            auto borrowed = desktop_->views().withView(*review_, read_response);
+            auto borrowed = desktop_->root().withPane(*review_, read_response);
             if (!borrowed)
                 return applicationFailure("exit.review", borrowed.error());
             if (!response)
@@ -91,7 +95,7 @@ namespace lux::editor::application
                                 "\nChoose a valid unused source path, or cancel closing."
                             );
                         };
-                        auto shown = desktop_->views().withView(*review_, reject);
+                        auto shown = desktop_->root().withPane(*review_, reject);
                         if (!shown)
                             return applicationFailure("close.save.destination", shown.error());
                         return {};
@@ -105,10 +109,13 @@ namespace lux::editor::application
                     close_destinations_.push_back(std::move(destination->asset));
                 }
             }
-            auto closed = desktop_->views().prepareClose(std::span{&*review_, 1});
+            auto pane = desktop_->root().findPane(*review_);
+            if (!pane)
+                return applicationFailure("exit-review.target", pane.error());
+            auto closed = desktop_->root().prepareDetach(**pane);
             if (!closed)
                 return applicationFailure("exit.review.close", closed.error());
-            auto committed = desktop_->views().commit(*closed);
+            auto committed = desktop_->root().commit(*closed);
             if (!committed)
                 return applicationFailure("exit.review.commit", committed.error());
             review_.reset();
@@ -169,10 +176,14 @@ namespace lux::editor::application
                 );
                 if (!question)
                     return applicationFailure("exit.question", question.error());
-                views::DetachedView candidate{lux::object::CodeLease::builtin(), std::move(*question)};
-                auto adopted = adopt(candidate, "exit-review");
+                auto& root = desktop_->root();
+                auto* pane = question->get();
+                auto mounted = root.addSubPane(std::move(*question));
+                if (!mounted)
+                    return applicationFailure("exit-review.mount", mounted.error());
+                auto adopted = root.identify(*pane);
                 if (!adopted)
-                    return cxx::unexpected(adopted.error());
+                    return applicationFailure("exit-review.identity", adopted.error());
                 review_ = *adopted;
                 review_content_ = decision.content;
                 return {};
@@ -191,10 +202,14 @@ namespace lux::editor::application
                 );
                 if (!question)
                     return applicationFailure("close.run.question", question.error());
-                views::DetachedView candidate{lux::object::CodeLease::builtin(), std::move(*question)};
-                auto shown = adopt(candidate, "exit-review");
+                auto& root = desktop_->root();
+                auto* pane = question->get();
+                auto mounted = root.addSubPane(std::move(*question));
+                if (!mounted)
+                    return applicationFailure("exit-review.mount", mounted.error());
+                auto shown = root.identify(*pane);
                 if (!shown)
-                    return cxx::unexpected(shown.error());
+                    return applicationFailure("exit-review.identity", shown.error());
                 review_ = *shown;
                 review_run_ = decision.run;
                 return {};
@@ -591,6 +606,7 @@ namespace lux::editor::application
         receive(maintainRuns());
         projections_->collectReleased();
         receive(settleOperations());
+        (void)messages_.collectRetired();
         if (!outcome && !maintenance_failure_)
             maintenance_failure_ = outcome.error();
         return outcome;

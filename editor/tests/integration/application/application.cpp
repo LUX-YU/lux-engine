@@ -680,13 +680,22 @@ int main(int argc, char** argv)
     ));
     assert(impl.save_question_);
     const auto original_save_target = impl.save_question_->target;
+    const auto save_window = impl.save_question_->view;
+    const auto root_window = impl.desktop_->root().findPane(save_window);
+    assert(root_window && (*root_window)->ownership() == object::EObjectOwnership::PARENT_OWNED);
+    assert((*root_window)->parent() == &impl.desktop_->root());
+    auto legacy_windows = impl.desktop_->views().describeAll();
+    assert(legacy_windows && std::ranges::none_of(*legacy_windows, [](const auto& item) {
+        return item.type == views::ViewTypeId{"lux.editor.review"};
+    }));
+
     auto invalid_path = [&](ui::Pane& pane)
     {
         auto& question = static_cast<desktop::ReviewView&>(pane);
         assert(question.setText("../outside.source"));
         assert(question.answer(desktop::EReviewChoice::SAVE));
     };
-    assert(impl.desktop_->views().withView(impl.save_question_->view, invalid_path));
+    assert(impl.desktop_->root().withPane(impl.save_question_->view, invalid_path));
     assert(app->update() && impl.save_question_ && impl.content_saving_->pending().empty());
     assert(impl.save_question_->target.based_on == original_save_target.based_on);
     auto choose_source = [&](ui::Pane& pane)
@@ -695,8 +704,10 @@ int main(int argc, char** argv)
         assert(question.setText("Content/Beginner/Material.source"));
         assert(question.answer(desktop::EReviewChoice::SAVE));
     };
-    assert(impl.desktop_->views().withView(impl.save_question_->view, choose_source));
+    assert(impl.desktop_->root().withPane(impl.save_question_->view, choose_source));
     assert(app->update());
+    assert(!impl.save_question_ && !impl.desktop_->root().findPane(save_window));
+
     const auto save_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
     while (!impl.content_saving_->pending().empty())
     {
@@ -885,7 +896,7 @@ int main(int argc, char** argv)
         assert(question.setText("Content/Beginner/MaterialCopy.source"));
         assert(question.answer(desktop::EReviewChoice::SAVE));
     };
-    assert(impl.desktop_->views().withView(impl.save_question_->view, export_path));
+    assert(impl.desktop_->root().withPane(impl.save_question_->view, export_path));
     assert(app->update());
     while (!impl.content_saving_->pending().empty())
     {
@@ -952,15 +963,25 @@ int main(int argc, char** argv)
             assert(pane.type() == ui::PaneTypeId{"lux.editor.review"});
             assert(static_cast<desktop::ReviewView&>(pane).answer(choice));
         };
-        assert(impl.desktop_->views().withView(*impl.review_, choose));
+        assert(impl.desktop_->root().withPane(*impl.review_, choose));
     };
     assert(app->requestExit());
     assert(app->update() && impl.review_);
+    const auto first_review = *impl.review_;
     answer(desktop::EReviewChoice::CANCEL);
     assert(app->update() && app->phase() == EApplicationPhase::RUNNING);
     assert(impl.sessions_.describe(material_id)->current == material_before);
     assert(impl.sessions_.describe(flow_id)->current == flow_before);
     assert(impl.sessions_.size() == 2);
+    assert(!impl.desktop_->root().findPane(first_review));
+    assert(app->requestExit() && app->update() && impl.review_);
+    assert(*impl.review_ != first_review && !impl.desktop_->root().findPane(first_review));
+    answer(desktop::EReviewChoice::CANCEL);
+    assert(app->update() && app->phase() == EApplicationPhase::RUNNING);
+    assert(impl.sessions_.describe(material_id)->current == material_before);
+    assert(impl.sessions_.describe(flow_id)->current == flow_before);
+    assert(impl.sessions_.size() == 2);
+    std::cout << "Root owns actual review windows; old handles stay invalid after same PaneId reuse\n";
     std::cout << "Actual new commands, shared content views and cancel exit preserve all author state\n";
     const auto choose_last = [&](desktop::EReviewChoice choice)
     {
@@ -992,7 +1013,7 @@ int main(int argc, char** argv)
     assert(impl.review_ && impl.sessions_.size() == 2);
     auto choose_flow_source = [&](ui::Pane& pane)
     { assert(static_cast<desktop::ReviewView&>(pane).setText("Content/Beginner/Flow.source")); };
-    assert(impl.desktop_->views().withView(*impl.review_, choose_flow_source));
+    assert(impl.desktop_->root().withPane(*impl.review_, choose_flow_source));
     answer(desktop::EReviewChoice::SAVE);
     const auto close_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
     do

@@ -10,6 +10,7 @@
 #include <fstream>
 #include <functional>
 #include <iostream>
+#include <lux/engine/editor/commands/CommandRegistry.hpp>
 #include <lux/engine/editor/flowforge/FlowSessionFactory.hpp>
 #include <lux/engine/editor/material/MaterialSessionFactory.hpp>
 #include <lux/engine/editor/persistence/PersistenceServices.hpp>
@@ -278,6 +279,43 @@ int main(int argc, char** argv)
     assert(take(es::SceneCodec::decode(read(root / "Content/source-0"))).source.scene);
     assert(take(em::MaterialCodec::decode(read(root / "Content/source-1"))).source.name == "Material");
     assert(take(ef::FlowCodec::decode(read(root / "Content/source-2"))).source.name == "Flow");
+    {
+        commands::CommandRegistry registry{dependencies, scope};
+        const auto catalog = take(commands::CommandRegistrySnapshot::create(s::makeHistoryCommands()));
+        assert(registry.publish(catalog));
+        const auto undo = take(catalog.find(commands::CommandIdView{"lux.editor.undo"}));
+        const auto redo = take(catalog.find(commands::CommandIdView{"lux.editor.redo"}));
+        auto& model = take(store.access<em::MaterialSession>().edit(take(store.key<em::MaterialSession>(sessions[1])))).get();
+        const auto before = model.describe();
+        const auto encoded = take(take(model.read()).encode());
+        const auto scene_before = take(store.describe(sessions[0])).current;
+        const auto flow_before = take(store.describe(sessions[2])).current;
+        em::MaterialEditBatch edit{before.current, "Installed command", {}};
+        edit.edits.emplace_back(em::MaterialRename{"Installed command edit"});
+        assert(model.apply(std::move(edit)));
+        const auto edited = model.describe();
+        const commands::CommandInvocation captured{commands::SessionTarget{sessions[1], edited.current}};
+        assert(take(registry.query(undo, captured.query())).enabled);
+        assert(registry.execute(undo, captured));
+        assert(model.describe().current == before.current && model.describe().dirty == before.dirty);
+        assert(model.describe().binding == before.binding && take(take(model.read()).encode()) == encoded);
+        const auto stale = registry.execute(undo, captured);
+        assert(!stale && stale.error().code == commands::ECommandError::STALE_CONTENT);
+        assert(model.describe().current == before.current && take(take(model.read()).encode()) == encoded);
+        const commands::CommandInvocation restored{commands::SessionTarget{sessions[1], before.current}};
+        assert(registry.execute(redo, restored));
+        assert(model.describe().current == edited.current && model.describe().dirty == edited.dirty);
+        assert(model.describe().binding == before.binding);
+        assert(registry.publish({}));
+        assert(registry.execute(undo, captured));
+        assert(model.describe().current == before.current && model.describe().dirty == before.dirty);
+        assert(model.describe().binding == before.binding && take(take(model.read()).encode()) == encoded);
+        assert(take(store.describe(sessions[0])).current == scene_before);
+        assert(take(store.describe(sessions[2])).current == flow_before);
+        assert(take(dependencies.get<s::SessionStore>(scope)) == store_owner);
+        assert(take(dependencies.get<s::SessionOpening>(scope)) == opening_owner);
+        std::cout << "PASS installed declared history uses the actual bound source, checkpoint and shared roles\n";
+    }
     {
         auto reloads = take(dependencies.get<ProjectContentReloading>(scope));
         assert(take(dependencies.get<ProjectContentReloading>(scope)) == reloads);

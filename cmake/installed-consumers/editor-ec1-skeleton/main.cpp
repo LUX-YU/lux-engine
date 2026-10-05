@@ -18,6 +18,7 @@
 #include <source_location>
 #if defined(EC1_APP)
 #include <lux/engine/editor/application/EditorApplication.hpp>
+#include <lux/engine/editor/material/MaterialModule.hpp>
 #include <lux/engine/editor/project/ProjectView.hpp>
 #include <lux/engine/editor/workspace/RecoveryManifest.hpp>
 #include <lux/engine/material/graph/MaterialSource.hpp>
@@ -27,10 +28,11 @@ using namespace lux;
 using namespace lux::editor;
 namespace
 {
-    template <class T> auto take(T result)
+    template <class T> auto take(T result, std::source_location location = std::source_location::current())
     {
         if (!result)
         {
+            std::cerr << location.file_name() << ':' << location.line() << '\n';
             if constexpr (std::is_enum_v<typename T::error_type>)
                 std::cerr << "code=" << int(result.error()) << '\n';
             if constexpr (requires { result.error().code; })
@@ -463,7 +465,8 @@ int main(int argc, char** argv)
              .width = 800,
              .height = 600,
              .offscreen = true,
-             .user_directory = root / "user"}
+             .user_directory = root / "user"},
+            std::array{&lux::editor::material::materialModule}
         ));
         assert(facts.project && facts.root);
         struct ContentWindow final
@@ -631,7 +634,8 @@ int main(int argc, char** argv)
              .width = 800,
              .height = 600,
              .offscreen = true,
-             .user_directory = root / "missing-user"}
+             .user_directory = root / "missing-user"},
+            std::array{&lux::editor::material::materialModule}
         ));
         // Querying through an independent immutable catalog does not need any provider to decode its bytes.
         const auto catalog_only = take(prepareProjectOpen(root / "Project.luxproject"));

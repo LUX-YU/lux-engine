@@ -1,6 +1,11 @@
 #pragma once
 #include <lux/engine/editor/material/MaterialCompilation.hpp>
 
+namespace lux::services
+{
+    struct ServiceDescriptor;
+}
+
 namespace lux::editor::material
 {
     // Finite operation ownership. Task execution/completion and preview adoption retain their original owners.
@@ -28,8 +33,9 @@ namespace lux::editor::material
         // Collects only the released, ready set observed on entry; cleanup-created work waits for another turn.
         [[nodiscard]] MaterialCompileResult<void> collectReleased();
         [[nodiscard]] MaterialCompileResult<std::vector<MaterialCompileId>> snapshotIds() const;
+        // A terminal task does not settle the service until its business completion is received.
+        [[nodiscard]] bool settled() const noexcept;
         [[nodiscard]] bool empty() const noexcept;
-
 
     private:
         const std::thread::id owner_{std::this_thread::get_id()};
@@ -42,4 +48,5 @@ namespace lux::editor::material
         };
         std::vector<Record> operations_;
     };
-}
+    extern const services::ServiceDescriptor kMaterialCompilationService;
+} // namespace lux::editor::material

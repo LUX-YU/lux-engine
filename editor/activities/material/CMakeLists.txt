@@ -20,7 +20,7 @@ target_include_directories(material_preview PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/
 component_include_directories(material_preview BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
 target_link_libraries(material_preview PUBLIC lux::engine::editor::editor_persistence lux::engine::editor::material_model
     lux::engine::toolchain::toolchain_material_compiler lux::engine::process::process_execution
-    lux::engine::resource::asset lux::engine::editor::scene_projection
+    lux::engine::resource::asset lux::engine::editor::scene_projection lux::engine::core::services
     PRIVATE lux::engine::scene::scene_transform lux::engine::world::world_storage lux::engine::process::asset_loading)
 component_add_transitive_commands(material_preview
     "find_package(lux-engine-editor-persistence REQUIRED COMPONENTS editor_persistence)"
@@ -29,6 +29,7 @@ component_add_transitive_commands(material_preview
     "find_package(lux-engine-process-execution REQUIRED COMPONENTS process_execution)"
     "find_package(lux-engine-resource REQUIRED COMPONENTS asset)"
     "find_package(lux-engine-editor-scene-projection REQUIRED COMPONENTS scene_projection)"
+    "find_package(lux-engine-core REQUIRED COMPONENTS services)"
     "find_package(lux-engine-scene-transform REQUIRED COMPONENTS scene_transform)"
     "find_package(lux-engine-world-storage REQUIRED COMPONENTS world_storage)"
     "find_package(lux-engine-process-asset-loading REQUIRED COMPONENTS process_asset_loading)")

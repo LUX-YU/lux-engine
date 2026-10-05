@@ -1,16 +1,16 @@
 #include "ObjectQueue.hpp"
-#include <lux/engine/editor/material/MaterialCompilation.hpp>
-#include <lux/engine/editor/material/MaterialCompilationService.hpp>
-#include <lux/engine/editor/material/MaterialSession.hpp>
-#include <lux/engine/editor/flowforge/FlowCompilationService.hpp>
-#include <lux/engine/editor/flowforge/FlowSession.hpp>
-#include <lux/engine/editor/sessions/SessionStore.hpp>
-#include <lux/engine/services/ServiceRegistry.hpp>
-#include <lux/engine/material/graph/Nodes.hpp>
-#include <lux/engine/flowforge/graph/ControlNode.hpp>
 #include <algorithm>
 #include <cassert>
 #include <iostream>
+#include <lux/engine/editor/flowforge/FlowCompilationService.hpp>
+#include <lux/engine/editor/flowforge/FlowSession.hpp>
+#include <lux/engine/editor/material/MaterialCompilation.hpp>
+#include <lux/engine/editor/material/MaterialCompilationService.hpp>
+#include <lux/engine/editor/material/MaterialSession.hpp>
+#include <lux/engine/editor/sessions/SessionStore.hpp>
+#include <lux/engine/flowforge/graph/ControlNode.hpp>
+#include <lux/engine/material/graph/Nodes.hpp>
+#include <lux/engine/services/ServiceRegistry.hpp>
 #include <thread>
 #include <type_traits>
 
@@ -51,10 +51,13 @@ namespace
     void workerFinished(process::ExecutionRuntime& execution, process::TaskId task)
     {
         // Observe worker completion without collecting or dispatching the business result.
-        until([&] {
-            const auto info = execution.taskInfo(task);
-            return info && info->finished.has_value();
-        });
+        until(
+            [&]
+            {
+                const auto info = execution.taskInfo(task);
+                return info && info->finished.has_value();
+            }
+        );
     }
     std::size_t dispatch(process::ExecutionRuntime& execution)
     {
@@ -103,10 +106,13 @@ namespace
         assert(!transferred && owner->key() == key && owner->observed() == observed);
         abandoned.reset(); // Another operation's cleanup must not discard this owner's result.
         std::size_t delivered{};
-        until([&] {
-            delivered += dispatch(execution);
-            return owner->ready();
-        });
+        until(
+            [&]
+            {
+                delivered += dispatch(execution);
+                return owner->ready();
+            }
+        );
         assert(delivered == 1 && dispatch(execution) == 0);
         auto result = take(owner->result());
         auto shared_result = result;
@@ -114,16 +120,21 @@ namespace
         owner.reset();
         result.reset();
         assert(shared_result->source()->name == "Ownership" && !shared_result->bytes().empty());
-        assert(value_result.key() == key && std::ranges::equal(value_result.bytes().view(), shared_result->bytes().view()));
+        assert(
+            value_result.key() == key && std::ranges::equal(value_result.bytes().view(), shared_result->bytes().view())
+        );
         assert(value_result.source() == shared_result->source());
         // A later independent operation is still admitted and delivered exactly once.
         auto next = take(em::MaterialCompileOperation::start(execution, take(author->capture())));
         assert(next->id() != id);
         delivered = 0;
-        until([&] {
-            delivered += dispatch(execution);
-            return next->ready();
-        });
+        until(
+            [&]
+            {
+                delivered += dispatch(execution);
+                return next->ready();
+            }
+        );
         assert(delivered == 1 && take(next->result())->source()->name == "Ownership");
         em::MaterialCompilationService service(execution, 1);
         assert(take(service.snapshotIds()).empty());
@@ -135,19 +146,25 @@ namespace
         assert(!service.start(take(author->capture())) && !service.acknowledge(controlled));
         workerFinished(execution, operation.task());
         assert(!operation.ready() && !service.acknowledge(controlled));
-        until([&] {
-            dispatch(execution);
-            return operation.ready();
-        });
+        until(
+            [&]
+            {
+                dispatch(execution);
+                return operation.ready();
+            }
+        );
         auto retained = take(operation.result());
         assert(service.acknowledge(controlled) && !service.operation(controlled));
         assert(!retained->bytes().empty() && retained->source()->name == "Ownership");
         const auto again = take(service.start(take(author->capture())));
         assert(again != controlled);
-        until([&] {
-            dispatch(execution);
-            return take(service.operation(again)).get().ready();
-        });
+        until(
+            [&]
+            {
+                dispatch(execution);
+                return take(service.operation(again)).get().ready();
+            }
+        );
         assert(service.acknowledge(again));
         assert(take(service.snapshotIds()).empty());
         const auto released = take(service.start(take(author->capture())));
@@ -155,13 +172,18 @@ namespace
         assert(service.releaseResult(released) && service.collectReleased());
         assert(!service.empty() && !take(service.operation(released)).get().ready());
         std::shared_ptr<const em::CompiledMaterial> after_release;
-        until([&] {
-            dispatch(execution);
-            if (!take(service.operation(released)).get().ready())
-                return false;
-            after_release = take(take(service.operation(released)).get().result());
-            return true;
-        });
+        until(
+            [&]
+            {
+                dispatch(execution);
+                if (!take(service.operation(released)).get().ready())
+                {
+                    return false;
+                }
+                after_release = take(take(service.operation(released)).get().result());
+                return true;
+            }
+        );
         assert(service.collectReleased() && service.empty());
         assert(service.releaseResult(released) && !after_release->bytes().empty());
         assert(author->describe().current == before.current && author->describe().dirty == before.dirty);
@@ -169,6 +191,88 @@ namespace
         assert(take(take(author->read()).encode()) == bytes);
         std::cout << "Material: worker-finished handoff, unique_ptr moves, independent cleanup, exactly-once "
                      "completion, owning result after owner destruction; author unchanged.\n";
+    }
+    void checkScopedMaterial(process::ExecutionRuntime& execution)
+    {
+        lux::test::ObjectQueue messages;
+        sessions::SessionStore authors{messages.dispatcherRef(), 1};
+        auto slot = take(authors.reserve<em::MaterialSession>({"lux.editor.material"}, object::CodeLease::builtin()));
+        lux::material::MaterialSource source{identity(), "Scoped Material", {}};
+        auto constant = std::make_unique<lux::material::ConstantNode>();
+        constant->setType(lux::material::EValueType::VEC3);
+        const auto node = source.graph.addNode(std::move(constant));
+        const auto output = source.graph.addNode(std::make_unique<lux::material::OutputSurfaceNode>());
+        assert(source.graph.connect(node, 0, output, 0));
+        auto model = take(em::MaterialSession::create(slot.id(), {}, std::move(source)));
+        auto* author = model.get();
+        assert(authors.prepare(slot, model) && authors.publish(slot));
+        const auto before = author->describe();
+        const auto bytes = take(take(author->read()).encode());
+
+        services::ServiceRegistry registry(messages.dispatcherRef());
+        assert(registry.publish(
+            {services::ServiceEntry::bind<em::kMaterialCompilationService>(object::CodeLease::builtin())}
+        ));
+        auto scope = take(registry.createScope());
+        assert(registry.drained() && take(scope.settled()));
+        auto missing = registry.get<em::MaterialCompilationService>(scope);
+        assert(!missing && missing.error().code == services::EServiceError::NOT_FOUND && registry.drained());
+        assert(scope.provide(services::ServiceNameView{"lux.process.execution"}, execution));
+        auto first = take(registry.get<em::MaterialCompilationService>(scope));
+        auto second = take(registry.get<em::MaterialCompilationService>(scope));
+        assert(first == second && !first.owner_before(second) && !second.owner_before(first));
+        auto* allocation = first.get();
+        const auto id = take(first->start(take(author->capture())));
+        workerFinished(execution, take(first->operation(id)).get().task());
+        assert(!take(first->operation(id)).get().ready() && !take(scope.settled()));
+        assert(scope.beginClose() && !take(scope.settled()));
+        auto blocked_creation = registry.get<em::MaterialCompilationService>(scope);
+        assert(!blocked_creation && blocked_creation.error().code == services::EServiceError::CLOSED);
+        std::weak_ptr<em::MaterialCompilationService> weak = first;
+        first.reset();
+        second.reset();
+        assert(!weak.expired());
+        std::size_t delivered{};
+        until(
+            [&]
+            {
+                delivered += dispatch(execution);
+                auto retained = weak.lock();
+                assert(retained);
+                return take(retained->operation(id)).get().ready();
+            }
+        );
+        assert(delivered == 1 && dispatch(execution) == 0);
+        assert(take(scope.settled()) && scope.cancelClose());
+        auto reopened = take(registry.get<em::MaterialCompilationService>(scope));
+        assert(reopened.get() == allocation && take(reopened->snapshotIds()) == std::vector{id});
+        auto result = take(take(reopened->operation(id)).get().result());
+        assert(!result->bytes().empty() && result->source()->name == "Scoped Material");
+        assert(reopened->acknowledge(id) && reopened->empty());
+
+        const auto released = take(reopened->start(take(author->capture())));
+        workerFinished(execution, take(reopened->operation(released)).get().task());
+        assert(reopened->releaseResult(released) && reopened->collectReleased());
+        assert(!reopened->empty() && !take(scope.settled()));
+        delivered = 0;
+        until(
+            [&]
+            {
+                delivered += dispatch(execution);
+                return take(reopened->operation(released)).get().ready();
+            }
+        );
+        assert(delivered == 1 && dispatch(execution) == 0 && take(scope.settled()));
+        assert(reopened->collectReleased() && reopened->empty());
+        assert(author->describe().current == before.current && author->describe().dirty == before.dirty);
+        assert(author->describe().observed == before.observed && take(take(author->read()).encode()) == bytes);
+        reopened.reset();
+        assert(scope.release() && weak.expired());
+        (void)messages.collect();
+        assert(scope.drained() && registry.drained() && !result->bytes().empty());
+        std::cout
+            << "Scoped Material: lazy shared allocation; scope settlement waits for original completion; "
+               "close/cancel/reopen, no-view delivery, result acknowledgement and retirement; author unchanged.\n";
     }
     void checkFlow(process::ExecutionRuntime& execution, const char* linker)
     {
@@ -208,10 +312,13 @@ namespace
         auto full = service.start(take(author->capture()));
         assert(!full && std::get<ef::EFlowCompilationError>(full.error()) == ef::EFlowCompilationError::CAPACITY);
         std::size_t delivered{};
-        until([&] {
-            delivered += dispatch(execution);
-            return operation.ready() && take(service.operation(second)).get().ready();
-        });
+        until(
+            [&]
+            {
+                delivered += dispatch(execution);
+                return operation.ready() && take(service.operation(second)).get().ready();
+            }
+        );
         assert(delivered == 2 && dispatch(execution) == 0);
         assert(!operation.result() && operation.retryable());
         const auto fixed_object = operation.object();
@@ -226,10 +333,13 @@ namespace
         workerFinished(execution, operation.attempts().back().task);
         workerFinished(execution, take(service.operation(recovered)).get().task());
         delivered = 0;
-        until([&] {
-            delivered += dispatch(execution);
-            return operation.ready() && take(service.operation(recovered)).get().ready();
-        });
+        until(
+            [&]
+            {
+                delivered += dispatch(execution);
+                return operation.ready() && take(service.operation(recovered)).get().ready();
+            }
+        );
         assert(delivered == 2 && dispatch(execution) == 0);
         assert(operation.object() == fixed_object && operation.attempts().size() == 2);
         assert(operation.attempts()[0].failure && !operation.attempts()[1].failure);
@@ -250,7 +360,9 @@ namespace
         const auto retained = take(service.start(take(author->capture()), ef::FlowEnvironment{}, {}, {linker}));
         workerFinished(execution, take(service.operation(retained)).get().task());
         auto pending_ack = service.acknowledge(retained);
-        assert(!pending_ack && std::get<ef::EFlowCompilationError>(pending_ack.error()) == ef::EFlowCompilationError::BUSY);
+        assert(
+            !pending_ack && std::get<ef::EFlowCompilationError>(pending_ack.error()) == ef::EFlowCompilationError::BUSY
+        );
         assert(!service.empty() && !service.settled() && !take(service.operation(retained)).get().ready());
         assert(take(service.latest(slot.id())) == retained);
         auto replacement = slot.id();
@@ -261,13 +373,18 @@ namespace
         result_observer.join();
         std::shared_ptr<const ef::CompiledFlow> after_ack;
         delivered = 0;
-        until([&] {
-            delivered += dispatch(execution);
-            if (!take(service.operation(retained)).get().ready())
-                return false;
-            after_ack = take(take(service.operation(retained)).get().result());
-            return true;
-        });
+        until(
+            [&]
+            {
+                delivered += dispatch(execution);
+                if (!take(service.operation(retained)).get().ready())
+                {
+                    return false;
+                }
+                after_ack = take(take(service.operation(retained)).get().result());
+                return true;
+            }
+        );
         assert(delivered == 1 && dispatch(execution) == 0 && service.settled() && !service.empty());
         assert(take(service.latest(slot.id())) == retained && !after_ack->bytes().empty());
         assert(service.acknowledge(retained) && service.empty() && service.settled());
@@ -374,6 +491,7 @@ int main(int argc, char** argv)
     if (std::string_view(argv[1]) == "material")
     {
         checkMaterial(execution);
+        checkScopedMaterial(execution);
     }
     else
     {

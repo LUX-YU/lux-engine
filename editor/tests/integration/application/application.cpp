@@ -1659,8 +1659,17 @@ int main(int argc, char** argv)
     std::cout << "EC4 lazy service shutdown: accepted completion retained; independent service failure does not "
                  "skip other completion or participant; unused qualifier never constructed\n";
 
-    assert(impl.material_compilation_->snapshotIds()->empty());
-    assert(!impl.material_compilation_->operation(exit_compile));
+    // Closing the last observer settles accepted work but does not confirm its result.
+    const auto exit_retained_operation = impl.material_compilation_->operation(exit_compile);
+    assert(exit_retained_operation && exit_retained_operation->get().ready());
+    const auto exit_artifact = exit_retained_operation->get().result();
+    assert(exit_artifact && !(*exit_artifact)->bytes().empty());
+    const auto compile_ids = impl.material_compilation_->snapshotIds();
+    assert(compile_ids);
+    for (auto id : *compile_ids)
+        assert(impl.material_compilation_->acknowledge(id));
+    assert(impl.material_compilation_->empty() && !impl.material_compilation_->operation(exit_compile));
+    assert(!(*exit_artifact)->bytes().empty());
     const auto exit_completed = impl.engine_->execution().taskInfo(exit_task);
     assert(exit_completed && exit_completed->finished && exit_completed->state == process::ETaskState::SUCCEEDED);
     const auto exit_saved = std::ranges::find(impl.content_saving_->reports(), *exit_save, &ProjectSaveReport::id);

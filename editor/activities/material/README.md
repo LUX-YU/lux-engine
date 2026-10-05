@@ -11,6 +11,13 @@ settings and environment version. A preview destination is not a compile input. 
 is a leaf fact stored unconditionally when ExecutionRuntime dispatches accepted task events, independent of UI
 admission. Owners call collectCompletions then dispatchTaskEvents; collection alone does not deliver callbacks.
 
+MaterialCompilationService owns bounded operation records and the fixed RenderAssetInput captured at submission.
+Windows only observe those records: closing or rebinding a window does not acknowledge or cancel accepted work.
+Reopening queries the latest operation by the complete SessionId, including its generation, and uses that operation's
+original asset read view. Explicit acknowledgement requires delivered completion, removes the record before releasing
+its payload and code, and recovers capacity. Shared compiled bytes may outlive acknowledgement. Service settlement
+means every accepted operation received its completion, not that users have discarded all results.
+
 MaterialPreview accepts an owning completion and a PreviewAdoptionKey (target UUID, adoption generation, input,
 recipe generation and environment). MaterialPreviewRecipe is a public owning value: mesh AssetId and immutable
 encoded MeshAsset bytes. makeSphereMaterialPreviewRecipe creates the default recipe; an existing encoded mesh

@@ -1575,13 +1575,21 @@ namespace
         compiler = take(dependencies.get<em::MaterialCompilationService>(scope));
         assert(take(compiler->operation(pending)).get().ready());
         assert(take(take(compiler->operation(pending)).get().result())->key().content == initial.current);
-        assert(compiler->collectReleased() && compiler->empty());
+        assert((take(compiler->snapshotIds()) == std::vector{a_compile, b_compile, pending}));
+        assert(take(compiler->latest(key.id())) == pending);
+        const auto captured_assets = take(compiler->assets(pending));
+        assert(captured_assets.source == environment.assets.source && captured_assets.version == environment.assets.version);
+        ++environment.assets.version; // Reopening must not silently use the current project asset version.
         assert(model->describe().current == initial.current && model->describe().observed == initial.observed);
         assert(model->describe().dirty == initial.dirty && take(take(model->read()).encode()) == bytes);
         input.instance = ui::PaneId{"ec4-material-reopened"};
         auto reopened = take(windows.create(factory, scope, input));
         auto* view = static_cast<em::MaterialView*>(reopened.get());
         assert(root.addSubPane(std::move(reopened)) && weak_model.lock().get() == model);
+        assert(view->compilation() == pending);
+        f.wait([&] { return view->image().isValid(); });
+        assert(view->previewStatus().accepted && view->previewStatus().accepted->input.content == initial.current);
+        assert(take(compiler->assets(pending)).version == captured_assets.version);
         auto permit = take(f.store.prepareClose(initial.current));
         assert(f.store.close(permit) && !f.store.access<em::MaterialSession>().share(key));
         assert(!weak_model.expired() && !view->beginEdit("closed material identity"));
@@ -1591,6 +1599,8 @@ namespace
         (void)f.messages.collectRetired();
         (void)f.store_messages.collect();
         assert(weak_model.expired());
+        assert(compiler->acknowledge(a_compile) && compiler->acknowledge(b_compile) && compiler->acknowledge(pending));
+        assert(compiler->empty());
         compiler.reset();
         assert(scope.release());
         (void)f.messages.collectRetired();

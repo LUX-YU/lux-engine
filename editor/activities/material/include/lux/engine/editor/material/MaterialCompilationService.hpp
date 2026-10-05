@@ -1,5 +1,6 @@
 #pragma once
 #include <lux/engine/editor/material/MaterialCompilation.hpp>
+#include <lux/engine/scene/RenderResources.hpp>
 
 namespace lux::services
 {
@@ -21,17 +22,19 @@ namespace lux::editor::material
         [[nodiscard]] MaterialCompileResult<MaterialCompileId> start(
             MaterialSnapshot,
             MaterialCompileSettings = {},
-            std::uint64_t environment = 1
+            std::uint64_t environment = 1,
+            lux::scene::RenderAssetInput assets = {}
         );
         [[nodiscard]] MaterialCompileResult<std::reference_wrapper<const MaterialCompileOperation>> operation(
             MaterialCompileId
         ) const noexcept;
         [[nodiscard]] MaterialCompileResult<void> acknowledge(MaterialCompileId);
         [[nodiscard]] MaterialCompileResult<void> cancel(MaterialCompileId) noexcept;
-        // Release the caller's interest without cancelling accepted work. Idempotent after acknowledgement.
-        [[nodiscard]] MaterialCompileResult<void> releaseResult(MaterialCompileId) noexcept;
-        // Collects only the released, ready set observed on entry; cleanup-created work waits for another turn.
-        [[nodiscard]] MaterialCompileResult<void> collectReleased();
+        // Windows observe results; only explicit acknowledgement discards an operation. Reopening uses
+        // the full SessionId and the original asset read view, never today's mutable project version.
+        [[nodiscard]] MaterialCompileResult<std::optional<MaterialCompileId>>
+        latest(sessions::SessionId) const noexcept;
+        [[nodiscard]] MaterialCompileResult<lux::scene::RenderAssetInput> assets(MaterialCompileId) const noexcept;
         [[nodiscard]] MaterialCompileResult<std::vector<MaterialCompileId>> snapshotIds() const;
         // A terminal task does not settle the service until its business completion is received.
         [[nodiscard]] bool settled() const noexcept;
@@ -44,7 +47,7 @@ namespace lux::editor::material
         struct Record final
         {
             std::unique_ptr<MaterialCompileOperation> operation;
-            bool released{};
+            lux::scene::RenderAssetInput assets;
         };
         std::vector<Record> operations_;
     };

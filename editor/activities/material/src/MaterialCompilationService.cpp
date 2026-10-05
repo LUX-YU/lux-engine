@@ -70,7 +70,8 @@ namespace lux::editor::material
     MaterialCompileResult<MaterialCompileId> MaterialCompilationService::start(
         MaterialSnapshot snapshot,
         MaterialCompileSettings settings,
-        std::uint64_t environment
+        std::uint64_t environment,
+        lux::scene::RenderAssetInput assets
     )
     {
         if (owner_ != std::this_thread::get_id())
@@ -87,7 +88,7 @@ namespace lux::editor::material
             return cxx::unexpected(operation.error());
         }
         const auto id = (*operation)->id();
-        operations_.push_back({std::move(*operation)});
+        operations_.push_back({std::move(*operation), std::move(assets)});
         return id;
     }
     MaterialCompileResult<std::reference_wrapper<const MaterialCompileOperation>> MaterialCompilationService::operation(
@@ -122,7 +123,7 @@ namespace lux::editor::material
         {
             return rejected(EMaterialCompileRequestError::BUSY);
         }
-        auto retiring = std::move(found->operation);
+        auto retiring = std::move(*found);
         operations_.erase(found); // Erase before callbacks can reenter through payload/code destruction.
         return {};
     }
@@ -141,7 +142,29 @@ namespace lux::editor::material
         found->operation->cancel();
         return {};
     }
-    MaterialCompileResult<void> MaterialCompilationService::releaseResult(MaterialCompileId id) noexcept
+    MaterialCompileResult<std::optional<MaterialCompileId>> MaterialCompilationService::latest(
+        sessions::SessionId session
+    ) const noexcept
+    {
+        if (owner_ != std::this_thread::get_id())
+        {
+            return rejected(EMaterialCompileRequestError::WRONG_THREAD);
+        }
+        if (!session.valid())
+        {
+            return rejected(EMaterialCompileRequestError::INVALID_ID);
+        }
+        for (auto record = operations_.rbegin(); record != operations_.rend(); ++record)
+        {
+            if (record->operation->key().content.session == session)
+            {
+                return std::optional{record->operation->id()};
+            }
+        }
+        return std::optional<MaterialCompileId>{};
+    }
+    MaterialCompileResult<lux::scene::RenderAssetInput> MaterialCompilationService::assets(MaterialCompileId id
+    ) const noexcept
     {
         if (owner_ != std::this_thread::get_id())
         {
@@ -149,39 +172,11 @@ namespace lux::editor::material
         }
         const auto found =
             std::ranges::find_if(operations_, [id](const auto& value) { return value.operation->id() == id; });
-        if (found != operations_.end())
+        if (found == operations_.end())
         {
-            found->released = true;
+            return rejected(EMaterialCompileRequestError::INVALID_ID);
         }
-        return {};
-    }
-    MaterialCompileResult<void> MaterialCompilationService::collectReleased()
-    {
-        if (owner_ != std::this_thread::get_id())
-        {
-            return rejected(EMaterialCompileRequestError::WRONG_THREAD);
-        }
-        std::vector<MaterialCompileId> ready;
-        for (const auto& record : operations_)
-        {
-            if (record.released && record.operation->ready())
-            {
-                ready.push_back(record.operation->id());
-            }
-        }
-        for (auto id : ready)
-        {
-            auto acknowledged = acknowledge(id);
-            if (!acknowledged)
-            {
-                const auto* error = std::get_if<EMaterialCompileRequestError>(&acknowledged.error());
-                if (!error || *error != EMaterialCompileRequestError::INVALID_ID)
-                {
-                    return acknowledged;
-                }
-            }
-        }
-        return {};
+        return found->assets;
     }
     bool MaterialCompilationService::settled() const noexcept
     {

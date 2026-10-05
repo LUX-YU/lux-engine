@@ -169,7 +169,7 @@ namespace
         assert(take(service.snapshotIds()).empty());
         const auto released = take(service.start(take(author->capture())));
         workerFinished(execution, take(service.operation(released)).get().task());
-        assert(service.releaseResult(released) && service.collectReleased());
+        assert(!service.acknowledge(released));
         assert(!service.empty() && !take(service.operation(released)).get().ready());
         std::shared_ptr<const em::CompiledMaterial> after_release;
         until(
@@ -184,8 +184,49 @@ namespace
                 return true;
             }
         );
-        assert(service.collectReleased() && service.empty());
-        assert(service.releaseResult(released) && !after_release->bytes().empty());
+        assert(take(service.latest(author->describe().current.session)) == released);
+        auto other_generation = author->describe().current.session;
+        ++other_generation.generation;
+        assert(!take(service.latest(other_generation)));
+        assert(!service.start(take(author->capture()))); // An observer disappearing does not free a result slot.
+        assert(service.acknowledge(released) && service.empty());
+        assert(!service.acknowledge(released) && !after_release->bytes().empty());
+        assert(!service.latest({}));
+        // Reclamation can call extension code. The whole record leaves the table first, including
+        // the fixed read-view owner, so the reentrant request sees the recovered capacity.
+        em::MaterialCompileId reclaimed;
+        em::MaterialCompileId cleanup_created;
+        unsigned released_assets{};
+        scene::RenderAssetInput assets{{31, 2}, 7, {}, {}};
+        assets.code = std::shared_ptr<const void>(
+            new int(7),
+            [&](const void* value)
+            {
+                delete static_cast<const int*>(value);
+                ++released_assets;
+                assert(!service.operation(reclaimed));
+                cleanup_created = take(service.start(take(author->capture())));
+            }
+        );
+        reclaimed = take(service.start(take(author->capture()), {}, 1, std::move(assets)));
+        assert(released_assets == 0);
+        until(
+            [&]
+            {
+                dispatch(execution);
+                return take(service.operation(reclaimed)).get().ready();
+            }
+        );
+        assert(service.acknowledge(reclaimed) && released_assets == 1 && cleanup_created != reclaimed);
+        assert(take(service.latest(author->describe().current.session)) == cleanup_created);
+        until(
+            [&]
+            {
+                dispatch(execution);
+                return take(service.operation(cleanup_created)).get().ready();
+            }
+        );
+        assert(service.acknowledge(cleanup_created) && service.empty());
         assert(author->describe().current == before.current && author->describe().dirty == before.dirty);
         assert(author->describe().observed == before.observed);
         assert(take(take(author->read()).encode()) == bytes);
@@ -252,7 +293,7 @@ namespace
 
         const auto released = take(reopened->start(take(author->capture())));
         workerFinished(execution, take(reopened->operation(released)).get().task());
-        assert(reopened->releaseResult(released) && reopened->collectReleased());
+        assert(!reopened->acknowledge(released));
         assert(!reopened->empty() && !take(scope.settled()));
         delivered = 0;
         until(
@@ -263,7 +304,8 @@ namespace
             }
         );
         assert(delivered == 1 && dispatch(execution) == 0 && take(scope.settled()));
-        assert(reopened->collectReleased() && reopened->empty());
+        assert(take(reopened->latest(author->describe().current.session)) == released);
+        assert(reopened->acknowledge(released) && reopened->empty());
         assert(author->describe().current == before.current && author->describe().dirty == before.dirty);
         assert(author->describe().observed == before.observed && take(take(author->read()).encode()) == bytes);
         reopened.reset();

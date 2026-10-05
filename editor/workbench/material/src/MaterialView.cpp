@@ -374,7 +374,6 @@ namespace lux::editor::material
         std::unique_ptr<MaterialPreview> preview_owner_;
         std::unique_ptr<MaterialInteraction> interaction_;
         MaterialCompileId compile_;
-        lux::scene::RenderAssetInput compile_assets_;
         MaterialCompileId delivered_;
         std::optional<MaterialViewBinding> binding_;
         MaterialViewState state_;
@@ -845,10 +844,6 @@ namespace lux::editor::material
         }
         ~Impl() noexcept
         {
-            if (!services_.compilation->releaseResult(compile_))
-            {
-                std::terminate(); // The view and its service share the owner thread.
-            }
             if (!discardInputs())
             {
                 std::terminate();
@@ -915,6 +910,7 @@ namespace lux::editor::material
             }
             Display candidate;
             std::shared_ptr<MaterialSession> model;
+            MaterialCompileId compilation;
             if (binding)
             {
                 if (!binding->interaction || binding->interaction->session() != binding->session)
@@ -938,6 +934,12 @@ namespace lux::editor::material
                 }
                 model = std::move(*shared);
                 candidate = std::move(*read);
+                auto latest = services_.compilation->latest(binding->session.id());
+                if (!latest)
+                {
+                    return rejected(latest.error());
+                }
+                compilation = latest->value_or(MaterialCompileId{});
             }
             if (binding_)
             {
@@ -957,11 +959,8 @@ namespace lux::editor::material
             {
                 return installed;
             }
-            if (!services_.compilation->releaseResult(compile_))
-            {
-                std::terminate();
-            }
-            compile_ = {};
+            compile_ = compilation;
+            delivered_ = {};
             binding_ = binding;
             model_ = std::move(model);
             viewport_.setPresentation({}, state_.extent);
@@ -1272,6 +1271,12 @@ namespace lux::editor::material
                     return installed;
                 }
             }
+            auto latest = services_.compilation->latest(binding_->session.id());
+            if (!latest)
+            {
+                return rejected(latest.error());
+            }
+            compile_ = latest->value_or(MaterialCompileId{});
             if (compile_.value)
             {
                 auto operation = services_.compilation->operation(compile_);
@@ -1292,8 +1297,12 @@ namespace lux::editor::material
                         operation->get().ready() && operation->get().key() == desired && delivered_ != compile_;
                     if (has_current_completion)
                     {
-                        auto received =
-                            services_.preview.receive(*adoption, operation->get().result(), compile_assets_);
+                        auto assets = services_.compilation->assets(compile_);
+                        if (!assets)
+                        {
+                            return rejected(assets.error());
+                        }
+                        auto received = services_.preview.receive(*adoption, operation->get().result(), *assets);
                         if (received || !temporary(VMaterialViewFailure{received.error()}))
                         {
                             delivered_ = compile_;
@@ -1531,18 +1540,14 @@ namespace lux::editor::material
         {
             return rejected(snapshot.error());
         }
-        auto started =
-            impl_->services_.compilation->start(std::move(*snapshot), {}, impl_->services_.environment.version);
+        auto started = impl_->services_.compilation->start(
+            std::move(*snapshot), {}, impl_->services_.environment.version, impl_->services_.environment.assets
+        );
         if (!started)
         {
             return rejected(started.error());
         }
-        if (!impl_->services_.compilation->releaseResult(impl_->compile_))
-        {
-            std::terminate();
-        }
         impl_->compile_ = *started;
-        impl_->compile_assets_ = impl_->services_.environment.assets;
         const auto operation = impl_->services_.compilation->operation(*started);
         auto adoption = impl_->services_.preview.setDesired(operation->get().key());
         if (!adoption)

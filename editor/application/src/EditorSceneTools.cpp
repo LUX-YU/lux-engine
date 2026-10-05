@@ -65,7 +65,7 @@ namespace lux::editor::application
             return applicationFailure("run.environment", environment.error());
         }
         // The preparation owns the frozen author data and this exact environment, never a live Session.
-        auto prepared = run_controller_.prepare(
+        auto prepared = runs_.prepare(
             std::move(*captured),
             {(*environment)->components,
              (*environment)->simulation_systems,
@@ -100,7 +100,7 @@ namespace lux::editor::application
                     ++iterator;
                     continue;
                 }
-                auto adopted = run_controller_.adopt(*record.preparing);
+                auto adopted = runs_.adopt(*record.preparing);
                 if (!adopted)
                 {
                     const auto* control = std::get_if<scene::ERunError>(&adopted.error().cause);

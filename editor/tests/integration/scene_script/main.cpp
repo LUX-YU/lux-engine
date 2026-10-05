@@ -1,6 +1,7 @@
 #include "ObjectQueue.hpp"
 #include "AssetSceneFixture.hpp"
-#include <lux/engine/editor/scene/RunController.hpp>
+#include <lux/engine/editor/scene/RunStore.hpp>
+#include <lux/engine/editor/scene/SceneSession.hpp>
 #include <lux/engine/editor/sessions/SessionStore.hpp>
 int main(int argc, char** argv)
 {
@@ -20,11 +21,10 @@ int main(int argc, char** argv)
         take(editing_scene::buildSceneSnapshotPackage(take(model->capture()))), 1024 * 1024
     ));
     editing_scene::RunStore runs{*fixture.runtime, fixture.execution, 2};
-    editing_scene::RunController control{runs};
     editing_scene::RunEnvironment environment{fixture.schemas, fixture.systems,
         {fixture.registrations.begin(), fixture.registrations.end()}};
     environment.scripts = fixture.host;
-    auto preparation = take(control.prepare(*model, std::move(environment), {std::chrono::milliseconds{1}, {}}));
+    auto preparation = take(runs.prepare(*model, std::move(environment), {std::chrono::milliseconds{1}, {}}));
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
     while (!preparation->ready() && std::chrono::steady_clock::now() < deadline)
     {
@@ -32,7 +32,7 @@ int main(int argc, char** argv)
         std::this_thread::yield();
     }
     assert(preparation->ready());
-    const auto run = take(control.adopt(*preparation));
+    const auto run = take(runs.adopt(*preparation));
     const auto id = take(runs.info(run)).instance;
     fixture.frame(); // Starts the original Hook coroutine and its first real asset read.
     assert(fixture.value(id) == 7);

@@ -1,6 +1,6 @@
 #include "ObjectQueue.hpp"
 #include <lux/engine/editor/scene/SceneInteraction.hpp>
-#include <lux/engine/editor/scene/RunController.hpp>
+#include <lux/engine/editor/scene/RunStore.hpp>
 #include <lux/engine/editor/sessions/SessionStore.hpp>
 #include <lux/engine/editor/scene/SceneSession.hpp>
 #include <lux/engine/editor/scene/SceneAlgorithms.hpp>
@@ -133,7 +133,6 @@ namespace
         process::ExecutionRuntime execution{take(process::ExecutionRuntime::create({1, 64, 64, {32}, {}, 0}))};
         std::unique_ptr<lux::scene::SceneRuntime> runtime{take(lux::scene::SceneRuntime::create(execution, {0, 1024}))};
         RunStore runs{*runtime, execution, 4};
-        RunController controller{runs};
         lux::test::ObjectQueue authors_messages;
         sessions::SessionStore authors{authors_messages.dispatcherRef(), 4};
         ecs::ComponentSchemaSet schemas;
@@ -241,9 +240,9 @@ namespace
         }
         RunId start()
         {
-            auto prepared = take(controller.prepare(*author, environment()));
+            auto prepared = take(runs.prepare(*author, environment()));
             until([&] { return prepared->ready(); });
-            const auto id = take(controller.adopt(*prepared));
+            const auto id = take(runs.adopt(*prepared));
             until([&] { return entity(id) != ecs::NullEntity; });
             return id;
         }

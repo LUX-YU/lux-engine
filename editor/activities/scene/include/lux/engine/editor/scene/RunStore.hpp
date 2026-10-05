@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/editor/scene/RunInspectAccess.hpp>
+#include <lux/engine/editor/scene/StartRunOperation.hpp>
 #include <lux/engine/editor/scene/SceneSnapshot.hpp>
 #include <lux/engine/scene/RenderAssets.hpp>
 #include <lux/engine/scene/RenderFeatureSceneBinding.hpp>
@@ -14,7 +15,7 @@ namespace lux::scene
 
 namespace lux::editor::scene
 {
-    class RunController;
+    class SceneSession;
     class SceneEditing;
     struct RunEnvironment final
     {
@@ -37,6 +38,21 @@ namespace lux::editor::scene
         ~RunStore();
         RunStore(const RunStore&) = delete;
         RunStore& operator=(const RunStore&) = delete;
+        RunStore(RunStore&&) = delete;
+        RunStore& operator=(RunStore&&) = delete;
+
+        [[nodiscard]] RunResult<std::unique_ptr<StartRunOperation>> prepare(
+            SceneSession&,
+            RunEnvironment,
+            RunConfiguration = {}
+        );
+        [[nodiscard]] RunResult<std::unique_ptr<StartRunOperation>> prepare(
+            SceneSnapshot,
+            RunEnvironment,
+            RunConfiguration = {}
+        );
+        // Owner safe point only. A RunId is published only after successful instance construction.
+        [[nodiscard]] RunResult<RunId> adopt(StartRunOperation&);
 
         [[nodiscard]] RunResult<RunInfo> info(RunId) const;
         [[nodiscard]] RunResult<void> pause(RunId) noexcept;
@@ -62,8 +78,8 @@ namespace lux::editor::scene
         [[nodiscard]] RunResult<void> withEditing(RunningObjectRef, editing::StateId, editing::Revision, Edit);
 
     private:
-        friend class RunController;
         friend class RunInspectAccess;
+        [[nodiscard]] RunResult<std::unique_ptr<StartRunOperation>> launch(std::shared_ptr<StartRunOperation::Impl>);
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };

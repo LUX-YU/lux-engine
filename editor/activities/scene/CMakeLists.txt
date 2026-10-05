@@ -143,7 +143,7 @@ install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/scene/SceneConfigurationPreparation.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/scene/ModelCreationOperation.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/scene/ModelPlacement.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/scene/RunController.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/scene/StartRunOperation.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/scene/RunInspectAccess.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/scene/RunStore.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/scene/RunTypes.hpp

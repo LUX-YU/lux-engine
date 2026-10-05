@@ -20,7 +20,7 @@
 #include <lux/engine/editor/scene/InspectorView.hpp>
 #include <lux/engine/editor/scene/OutlinerView.hpp>
 #include <lux/engine/editor/scene/ResourceView.hpp>
-#include <lux/engine/editor/scene/RunController.hpp>
+#include <lux/engine/editor/scene/RunStore.hpp>
 #include <lux/engine/editor/scene/RunInspectorView.hpp>
 #include <lux/engine/editor/scene/SceneConfigurationView.hpp>
 #include <lux/engine/editor/scene/SceneCreationView.hpp>
@@ -953,7 +953,6 @@ namespace
     {
         author::RunStore runs(*f.runtime, f.execution);
         f.runs = &runs;
-        author::RunController controller(runs);
         auto reads = take(process::asset_loading::makeAssetReadOverlay({}, {}));
         author::RunEnvironment environment{
             f.environment.components,
@@ -964,9 +963,9 @@ namespace
             f.resources.get(),
             {{13, 1}, 1, std::move(reads), {}}
         };
-        auto prepare = take(controller.prepare(*f.session, std::move(environment), {.viewport = {3}}));
+        auto prepare = take(runs.prepare(*f.session, std::move(environment), {.viewport = {3}}));
         f.wait([&] { return prepare->ready(); });
-        const auto run = take(controller.adopt(*prepare));
+        const auto run = take(runs.adopt(*prepare));
         prepare.reset();
         auto services = f.services();
         services.runs.emplace(runs.inspect());

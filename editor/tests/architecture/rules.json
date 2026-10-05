@@ -3269,7 +3269,7 @@
       "lux/engine/function/render/client/core/"
     ],
     "files": [
-      "editor/activities/scene/include/lux/engine/editor/scene/RunController.hpp",
+      "editor/activities/scene/include/lux/engine/editor/scene/StartRunOperation.hpp",
       "editor/activities/scene/include/lux/engine/editor/scene/RunStore.hpp",
       "editor/activities/scene/src/RunDebugEdits.hpp",
       "editor/activities/scene/src/RunStore.cpp",
@@ -6532,7 +6532,7 @@
         "lux/engine/editor/scene/InspectorView.hpp",
         "lux/engine/editor/scene/OutlinerView.hpp",
         "lux/engine/editor/scene/ResourceView.hpp",
-        "lux/engine/editor/scene/RunController.hpp",
+        "lux/engine/editor/scene/RunStore.hpp",
         "lux/engine/editor/scene/SceneAlgorithms.hpp",
         "lux/engine/editor/scene/SceneConfigurationView.hpp",
         "lux/engine/editor/scene/SceneCreationView.hpp",
@@ -9278,7 +9278,7 @@
         "lux/engine/editor/scene/InspectorView.hpp",
         "lux/engine/editor/scene/OutlinerView.hpp",
         "lux/engine/editor/scene/ResourceView.hpp",
-        "lux/engine/editor/scene/RunController.hpp",
+        "lux/engine/editor/scene/RunStore.hpp",
         "lux/engine/editor/scene/SceneAlgorithms.hpp",
         "lux/engine/editor/scene/SceneConfigurationView.hpp",
         "lux/engine/editor/scene/SceneCreationView.hpp",
@@ -16467,7 +16467,7 @@
       "editor/activities/scene/include/lux/engine/editor/scene/ResourceStatus.hpp": [
         "scene_projection"
       ],
-      "editor/activities/scene/include/lux/engine/editor/scene/RunController.hpp": [
+      "editor/activities/scene/include/lux/engine/editor/scene/StartRunOperation.hpp": [
         "scene_execution"
       ],
       "editor/activities/scene/include/lux/engine/editor/scene/RunInspectAccess.hpp": [

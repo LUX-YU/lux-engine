@@ -20,7 +20,7 @@
 #include <lux/engine/editor/project/SettingsView.hpp>
 #include <lux/engine/editor/project/WorkspaceView.hpp>
 #include <lux/engine/editor/scene/ModelPlacementService.hpp>
-#include <lux/engine/editor/scene/RunController.hpp>
+#include <lux/engine/editor/scene/RunStore.hpp>
 #include <lux/engine/editor/scene/SceneCreationView.hpp>
 #include <lux/engine/editor/scene/SceneSessionFactory.hpp>
 #include <lux/engine/editor/scene/SceneTools.hpp>
@@ -280,7 +280,6 @@ namespace lux::editor::application
         } service_retirement_{editor_context_, messages_};
         std::shared_ptr<ProjectContentSaving> content_saving_;
         scene::RunStore runs_;
-        scene::RunController run_controller_{runs_};
         commands::CommandRegistry& commands_{editor_context_.commands()};
         commands::CommandDispatcher command_dispatcher_{commands_};
         extensions::ContributionRegistry contributions_;

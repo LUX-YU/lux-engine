@@ -1,5 +1,6 @@
 #include <lux/engine/editor/editing/EditExecutor.hpp>
-#include <lux/engine/editor/scene/RunController.hpp>
+#include <lux/engine/editor/scene/RunStore.hpp>
+#include <lux/engine/editor/scene/SceneSession.hpp>
 #include "RunDebugEdits.hpp"
 #include <lux/engine/process/TaskScope.hpp>
 #include <lux/engine/process/world_loading/WorldMemoryStorageSource.hpp>
@@ -520,21 +521,21 @@ namespace lux::editor::scene
         return impl_->id;
     }
 
-    RunResult<std::unique_ptr<StartRunOperation>> RunController::launch(std::shared_ptr<StartRunOperation::Impl> state)
+    RunResult<std::unique_ptr<StartRunOperation>> RunStore::launch(std::shared_ptr<StartRunOperation::Impl> state)
     {
-        auto allowed = store_.impl_->access();
+        auto allowed = impl_->access();
         if (!allowed)
             return lux::cxx::unexpected(allowed.error());
         const auto step = state->provenance.configuration.fixed_step;
         if (step.count() <= 0 || step > std::chrono::seconds(1) || !state->environment.simulation_systems)
             return rejected(ERunError::INVALID_CONFIGURATION);
-        if (store_.impl_->runs.size() == store_.impl_->capacity)
+        if (impl_->runs.size() == impl_->capacity)
             return rejected(ERunError::CAPACITY);
-        if (store_.impl_->next_start == UINT64_MAX)
+        if (impl_->next_start == UINT64_MAX)
             return rejected(ERunError::CAPACITY);
-        state->id = {store_.impl_->domain, store_.impl_->next_start++};
-        DispatchScope dispatch(store_.impl_->dispatching);
-        auto& execution = store_.impl_->execution;
+        state->id = {impl_->domain, impl_->next_start++};
+        DispatchScope dispatch(impl_->dispatching);
+        auto& execution = impl_->execution;
         auto submitted = execution.submit(
             {"Prepare scene run", "scene"},
             [state, cpu = execution.cpu()](process::TaskReporter reporter) noexcept {
@@ -565,7 +566,7 @@ namespace lux::editor::scene
         state->task = std::move(*submitted);
         return std::unique_ptr<StartRunOperation>(new StartRunOperation(std::move(state)));
     }
-    RunResult<std::unique_ptr<StartRunOperation>> RunController::prepare(
+    RunResult<std::unique_ptr<StartRunOperation>> RunStore::prepare(
         SceneSession& author,
         RunEnvironment environment,
         RunConfiguration configuration
@@ -576,7 +577,7 @@ namespace lux::editor::scene
             return rejected(frozen.error());
         return prepare(std::move(*frozen), std::move(environment), configuration);
     }
-    RunResult<std::unique_ptr<StartRunOperation>> RunController::prepare(
+    RunResult<std::unique_ptr<StartRunOperation>> RunStore::prepare(
         SceneSnapshot snapshot,
         RunEnvironment environment,
         RunConfiguration configuration
@@ -588,9 +589,9 @@ namespace lux::editor::scene
         state->snapshot = std::make_shared<const SceneSnapshot>(std::move(snapshot));
         return launch(std::move(state));
     }
-    RunResult<RunId> RunController::adopt(StartRunOperation& operation)
+    RunResult<RunId> RunStore::adopt(StartRunOperation& operation)
     {
-        auto& store = *store_.impl_;
+        auto& store = *impl_;
         auto allowed = store.access();
         if (!allowed)
             return lux::cxx::unexpected(allowed.error());

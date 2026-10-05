@@ -1,6 +1,6 @@
 #include "ObjectQueue.hpp"
 #include <lux/engine/editor/editing/EditExecutor.hpp>
-#include <lux/engine/editor/scene/RunController.hpp>
+#include <lux/engine/editor/scene/RunStore.hpp>
 #include <lux/engine/editor/scene/ModelCreationOperation.hpp>
 #include <lux/engine/process/asset_loading/AssetReadOverlay.hpp>
 #include <lux/engine/object/ObjectDispatcher.hpp>
@@ -22,6 +22,7 @@
 #include <cstdio>
 #include <thread>
 #include <source_location>
+#include <type_traits>
 
 namespace
 {
@@ -30,6 +31,12 @@ namespace
     using namespace lux::editor::scene;
     using namespace std::chrono_literals;
     namespace ecs = simulation::ecs;
+    static_assert(!std::is_copy_constructible_v<StartRunOperation>);
+    static_assert(!std::is_copy_assignable_v<StartRunOperation>);
+    static_assert(!std::is_move_constructible_v<StartRunOperation>);
+    static_assert(!std::is_move_assignable_v<StartRunOperation>);
+    static_assert(!std::is_copy_constructible_v<RunStore>);
+    static_assert(!std::is_move_constructible_v<RunStore>);
     template <class T> auto take(T value, std::source_location where = std::source_location::current())
     {
         if (!value)
@@ -139,7 +146,6 @@ namespace
         process::ExecutionRuntime execution{take(process::ExecutionRuntime::create({1, 64, 64, {32}, {}, 0}))};
         std::unique_ptr<lux::scene::SceneRuntime> runtime{take(lux::scene::SceneRuntime::create(execution, {0, 1024}))};
         RunStore runs{*runtime, execution, 4};
-        RunController controller{runs};
         lux::test::ObjectQueue authors_messages;
         sessions::SessionStore authors{authors_messages.dispatcherRef(), 4};
         ecs::ComponentSchemaSet schemas;
@@ -249,9 +255,9 @@ namespace
         }
         RunId start()
         {
-            auto prepared = take(controller.prepare(*author, environment()));
+            auto prepared = take(runs.prepare(*author, environment()));
             until([&] { return prepared->ready(); });
-            const auto id = take(controller.adopt(*prepared));
+            const auto id = take(runs.adopt(*prepared));
             until([&] { return entity(id) != ecs::NullEntity; });
             return id;
         }
@@ -292,12 +298,12 @@ namespace
     {
         Fixture f;
         const auto captured = f.author->describe();
-        auto prepared = take(f.controller.prepare(*f.author, f.environment()));
+        auto prepared = take(f.runs.prepare(*f.author, f.environment()));
         f.setAuthor(12);
         const auto modified = f.author->describe();
         f.until([&] { return prepared->ready(); });
-        auto id = take(f.controller.adopt(*prepared));
-        assert(!f.controller.adopt(*prepared));
+        auto id = take(f.runs.adopt(*prepared));
+        assert(!f.runs.adopt(*prepared));
         assert(take(f.runs.info(id)).provenance.content == captured.current);
         f.until([&] { return f.entity(id) != ecs::NullEntity; });
         assert(f.runs.pause(id));
@@ -404,22 +410,22 @@ namespace
         f.until([&] { return take(f.runs.info(id)).state == ERunState::FAILED; });
         assert(!take(f.runs.info(id)).result);
         assert(f.runs.acknowledgeStop(id));
-        auto cancelled = take(f.controller.prepare(*f.author, f.environment()));
+        auto cancelled = take(f.runs.prepare(*f.author, f.environment()));
         cancelled->cancel();
         f.until([&] { return cancelled->ready(); });
-        const auto rejected = f.controller.adopt(*cancelled);
+        const auto rejected = f.runs.adopt(*cancelled);
         assert(!rejected && std::get<ERunError>(rejected.error().cause) == ERunError::CANCELLED);
-        auto rejected_build = take(f.controller.prepare(*f.author, f.environment()));
+        auto rejected_build = take(f.runs.prepare(*f.author, f.environment()));
         f.until([&] { return rejected_build->ready(); });
         Probe::reject_install = true;
-        const auto failed = f.controller.adopt(*rejected_build);
+        const auto failed = f.runs.adopt(*rejected_build);
         Probe::reject_install = false;
         assert(!failed);
         const auto& runtime_error = std::get<lux::scene::SceneRuntimeFailure>(failed.error().cause);
         assert(
             std::any_cast<int>(std::get<lux::scene::SceneBuildFailure>(runtime_error.cause).scene_system.cause) == 419
         );
-        assert(!f.controller.adopt(*rejected_build));
+        assert(!f.runs.adopt(*rejected_build));
         const auto replacement = f.start();
         f.stop(replacement);
         std::puts("PASS X06-03 failed actual step never succeeds; cancelled preparation never publishes RunId");
@@ -627,7 +633,7 @@ namespace
             assert(!f.runs.acknowledgeStop(id));
             f.until([&] { return stop.complete(); });
             assert(Probe::destroyed == destroyed + cycle + 1);
-            const auto full = f.controller.prepare(*f.author, f.environment());
+            const auto full = f.runs.prepare(*f.author, f.environment());
             assert(!full && std::get<ERunError>(full.error().cause) == ERunError::CAPACITY);
             for (auto ticket : tickets)
                 assert(take(f.runs.stepStatus(ticket)).state == lux::scene::ESceneStepState::CANCELLED);
@@ -776,9 +782,9 @@ namespace
     void completion()
     {
         Fixture f;
-        auto first = take(f.controller.prepare(*f.author, f.environment()));
+        auto first = take(f.runs.prepare(*f.author, f.environment()));
         f.until([&] { return first->ready(); });
-        auto second = take(f.controller.prepare(*f.author, f.environment()));
+        auto second = take(f.runs.prepare(*f.author, f.environment()));
         const auto deadline = std::chrono::steady_clock::now() + 5s;
         while (true)
         {
@@ -795,23 +801,23 @@ namespace
             ++calls;
             assert(f.execution.collectCompletions() && f.execution.dispatchTaskEvents());
             assert(second->ready());
-            const auto nested = f.controller.adopt(*second);
+            const auto nested = f.runs.adopt(*second);
             assert(!nested && std::get<ERunError>(nested.error().cause) == ERunError::BUSY);
             const auto maintained = f.runs.update();
             assert(!maintained && std::get<ERunError>(maintained.error().cause) == ERunError::BUSY);
         };
-        const auto a = take(f.controller.adopt(*first));
+        const auto a = take(f.runs.adopt(*first));
         Probe::installing = {};
         assert(calls == 1);
-        const auto b = take(f.controller.adopt(*second));
-        assert(a != b && !f.controller.adopt(*second));
+        const auto b = take(f.runs.adopt(*second));
+        assert(a != b && !f.runs.adopt(*second));
         // Pause does not prevent accepted partition reads/completions from becoming resident.
         assert(f.runs.pause(b));
         f.until([&] { return f.entity(b) != ecs::NullEntity; });
         assert(take(f.runs.info(b)).progress.time.step_index == 0);
         f.stop(a);
         f.stop(b);
-        auto abandoned = take(f.controller.prepare(*f.author, f.environment()));
+        auto abandoned = take(f.runs.prepare(*f.author, f.environment()));
         abandoned.reset();
         f.until([&] { return f.execution.taskInfos().empty(); });
         std::puts("PASS X06-02/04 accepted completion during install, outer guard retained, once-only adoption, pause "

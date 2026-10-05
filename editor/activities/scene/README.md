@@ -8,7 +8,7 @@ Author state remains in authoring; workbench and application are consumers, neve
 
 `RunStore` owns private `RunSession` records. Each run retains its frozen SceneSnapshot, original
 ContentStamp, configuration, package, registration environment and one SceneInstanceLease. It never
-owns a Registry or invokes driveFrame. RunController submits package preparation through the existing
+owns a Registry or invokes driveFrame. RunStore submits package preparation through the existing
 ExecutionRuntime and publishes a generational RunId only after owner-thread instance creation succeeds.
 StartRunId addresses preparation; it is not a RunId. There is no implicit ApplyRunChanges operation.
 
@@ -46,7 +46,7 @@ late completion only releases owned data. A consumed failed build cannot be adop
 
 ### Execution and dependencies
 
-RunController accepts SceneSession capture or an owning SceneSnapshot. Worker preparation never
+RunStore accepts SceneSession capture or an owning SceneSnapshot. Worker preparation never
 borrows live author data. The old Registry capture friend and encoding branch have been removed.
 The formal RunInspector uses RunStore's existing paused Registry editing and its separate history.
 

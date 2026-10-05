@@ -476,6 +476,8 @@ int main(int argc, char** argv)
             std::vector<ContentWindow> all;
             for (auto* pane : facts.root->panes())
             {
+                if (!pane)
+                    continue;
                 if (pane->type() != ui::PaneTypeId{"example.skeleton.view"})
                     continue;
                 const auto handle = take(facts.root->identify(*pane));
@@ -500,6 +502,9 @@ int main(int argc, char** argv)
         };
         // Exact public entry used by the asset browser's double-click, through its real LuxObject connection.
         for (auto* pane : facts.root->panes())
+        {
+            if (!pane)
+                continue;
             if (pane->type() == ui::PaneTypeId{"lux.editor.project"})
             {
                 auto open = [&](ui::Pane& pane) {
@@ -509,6 +514,7 @@ int main(int argc, char** argv)
                 };
                 take(facts.root->withPane(take(facts.root->identify(*pane)), open));
             }
+        }
         until([&] { return content_views().size() == 1; });
         const auto first = content_views().front();
         const auto id = *first.content.primary;
@@ -548,6 +554,9 @@ int main(int argc, char** argv)
         {
             bool found{};
             for (auto* pane : facts.root->panes())
+            {
+                if (!pane)
+                    continue;
                 if (pane->type() == ui::PaneTypeId{"lux.editor.review"})
                 {
                     auto submit = [&](ui::Pane& pane)
@@ -560,6 +569,7 @@ int main(int argc, char** argv)
                     };
                     take(facts.root->withPane(take(facts.root->identify(*pane)), submit));
                 }
+            }
             assert(found);
         };
         take(app->execute(

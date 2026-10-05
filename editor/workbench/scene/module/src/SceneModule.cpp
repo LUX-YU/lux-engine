@@ -2,6 +2,7 @@
 #include <lux/engine/editor/scene/SceneCreationView.hpp>
 #include <lux/engine/editor/scene/SceneModule.hpp>
 #include <lux/engine/editor/scene/SceneSessionFactory.hpp>
+#include <lux/engine/editor/scene/SceneTools.hpp>
 #include <lux/engine/editor/scene/SceneView.hpp>
 
 namespace lux::editor::scene
@@ -14,14 +15,19 @@ namespace lux::editor::scene
             +[]() noexcept -> const extensions::EditorExtensionExports*
             {
                 static const extensions::EditorExtensionExports exports{
-                    .counts = {.sessions = 1, .services = 1, .ui = 2},
+                    .counts = {.sessions = 1, .services = 1, .ui = 7},
                     .contribute = +[](extensions::ContributionDraft& draft,
                                       object::CodeLease code) -> extensions::ContributionResult<void>
                     {
                         draft.services.push_back(services::ServiceEntry::bind<kScenePresentationHub>(code));
                         draft.sessions.push_back(makeSceneSessionFactory(code));
                         draft.ui.push_back(desktop::UiEntry::bind<kSceneView>(code));
-                        draft.ui.push_back(desktop::UiEntry::bind<kSceneCreationView>(std::move(code)));
+                        draft.ui.push_back(desktop::UiEntry::bind<kSceneCreationView>(code));
+                        draft.ui.push_back(desktop::UiEntry::bind<kOutlinerView>(code));
+                        draft.ui.push_back(desktop::UiEntry::bind<kInspectorView>(code));
+                        draft.ui.push_back(desktop::UiEntry::bind<kRunInspectorView>(code));
+                        draft.ui.push_back(desktop::UiEntry::bind<kResourceView>(code));
+                        draft.ui.push_back(desktop::UiEntry::bind<kSceneConfigurationView>(std::move(code)));
                         return {};
                     }
                 };

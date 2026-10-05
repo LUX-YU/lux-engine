@@ -231,23 +231,29 @@ namespace lux::editor::scene
     {
         if (!impl_->binding_)
             return {};
-        // Refresh discards the draft under the original read gate while preserving the binding.
-        // Another view may still refuse the same prepared close batch.
-        auto restored = impl_->rebind(*impl_->binding_);
-        if (!restored)
+        auto session = impl_->sessions_.read(*impl_->binding_);
+        if (!session)
         {
-            const auto* error = std::get_if<SceneEditError>(&restored.error().cause);
-            const bool closed = error && error->code == ESceneEditError::SESSION &&
-                                error->session == sessions::ESessionError::STALE_SESSION;
-            if (closed)
-                return impl_->clear();
+            if (session.error() == sessions::ESessionError::STALE_SESSION)
+                return {};
+            return rejected(SceneEditError{session.error()});
         }
-        if (restored)
+        auto read = session->get().read();
+        if (!read)
+            return rejected(read.error());
+        // Root lends a protected window during preparation: keep its control tree and binding intact.
+        // Release a pending encoded draft under the original domain gate. If another window refuses
+        // the batch, ordinary maintenance restores the form; a committed close destroys it after detach.
+        auto discarded = read->withRead([&](const SceneReadView&) -> SceneEditResult<void>
         {
+            impl_->pending_.reset();
             impl_->apply_requested_ = false;
-            impl_->revert_requested_ = false;
-        }
-        return restored;
+            impl_->revert_requested_ = true;
+            return {};
+        });
+        if (!discarded)
+            return rejected(discarded.error());
+        return {};
     }
     SceneConfigurationElement* SceneConfigurationView::form() noexcept
     {

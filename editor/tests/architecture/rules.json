@@ -7010,7 +7010,8 @@
       "editor/workbench/scene/src/RunInspectorView.cpp",
       "editor/workbench/scene/include/lux/engine/editor/scene/SceneTools.hpp",
       "editor/workbench/scene/src/SceneTools.cpp",
-      "editor/workbench/scene/src/SceneCommands.cpp"
+      "editor/workbench/scene/src/SceneCommands.cpp",
+      "editor/workbench/scene/src/SceneToolFactories.cpp"
     ],
     "project_include_dirs": [
       "editor/workbench/sinclude"
@@ -19269,6 +19270,9 @@
       ],
       "editor/workbench/scene/module/src/SceneModule.cpp": [
         "scene_module"
+      ],
+      "editor/workbench/scene/src/SceneToolFactories.cpp": [
+        "scene_ui"
       ]
     },
     "native_libraries": [

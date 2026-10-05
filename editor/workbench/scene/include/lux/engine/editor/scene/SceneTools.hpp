@@ -1,17 +1,26 @@
 #pragma once
-#include <lux/engine/editor/scene/InspectorView.hpp>
-#include <lux/engine/editor/views/ViewFactory.hpp>
-#include <lux/engine/editor/scene/SceneConfigurationView.hpp>
 #include <lux/engine/editor/commands/CommandRegistry.hpp>
+#include <lux/engine/editor/scene/InspectorView.hpp>
+#include <lux/engine/editor/scene/SceneConfigurationView.hpp>
+#include <lux/engine/editor/views/ViewFactory.hpp>
 #include <lux/engine/ui/Attachment.hpp>
 
 namespace lux::ui
 {
     class Root;
 }
+namespace lux::editor::desktop
+{
+    class UiRegistry;
+}
 
 namespace lux::editor::scene
 {
+    extern const desktop::UiDescriptor kOutlinerView;
+    extern const desktop::UiDescriptor kInspectorView;
+    extern const desktop::UiDescriptor kRunInspectorView;
+    extern const desktop::UiDescriptor kResourceView;
+    extern const desktop::UiDescriptor kSceneConfigurationView;
     enum class ESceneTool : std::uint8_t
     {
         OUTLINER,
@@ -37,10 +46,7 @@ namespace lux::editor::scene
     );
     // Retains only the interaction group, never a Pane pointer or a live Registry borrow.
     [[nodiscard]] cxx::expected<std::shared_ptr<SceneInteractionGroup>, lux::ui::EAttachmentError>
-    shareSceneInteraction(
-        lux::ui::Root&,
-        lux::ui::PaneHandle
-    );
+    shareSceneInteraction(lux::ui::Root&, lux::ui::PaneHandle);
     [[nodiscard]] views::ViewFactoryResult<views::DetachedView> makeSceneToolView(
         object::ObjectDispatcherRef,
         lux::ui::PaneId,
@@ -52,10 +58,7 @@ namespace lux::editor::scene
     // Commands retain their receivers; the bound Root and RunStore must outlive the command snapshot.
     // Step/stop retain their original ticket and view-close owners at the assembly boundary.
     [[nodiscard]] std::vector<std::shared_ptr<commands::CommandEntry>>
-    makeSceneToolCommands(
-        commands::CommandEntry::Query,
-        cxx::move_only_function<commands::CommandResult<void>(lux::ui::PaneHandle, ESceneTool)>
-    );
+        makeSceneToolCommands(commands::CommandEntry::Query, cxx::move_only_function<commands::CommandResult<void>(lux::ui::PaneHandle, ESceneTool)>);
     [[nodiscard]] std::vector<std::shared_ptr<commands::CommandEntry>> makeRunViewCommands(
         commands::CommandEntry::Query,
         lux::ui::Root&,

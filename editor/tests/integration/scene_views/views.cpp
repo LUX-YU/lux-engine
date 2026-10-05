@@ -447,6 +447,8 @@ namespace
             }
             if (hub)
                 hub->collectReleased();
+            // Match the product safe point: unmounted owning panes retire before borrowed services.
+            static_cast<void>(messages.collectRetired());
         }
         template <class Fn>
         void wait(Fn condition, bool draw = true, std::source_location location = std::source_location::current())
@@ -670,6 +672,132 @@ namespace
         assert(lifetime.expired());
         assert(f.session->describe().current == before.current && f.session->describe().dirty == before.dirty);
         std::puts("EC1 complete Scene tools: owner lifetime, no-target association, BUSY retry and release");
+    }
+    void declaredSceneTools(Fixture& f)
+    {
+        services::ServiceRegistry services(f.messages.dispatcherRef());
+        auto scope = take(services.createScope());
+        auto module = take(extensions::EditorExtension::fromStatic(author::sceneModule()));
+        auto declared = take(module.contributions());
+        assert(declared.ui.size() == 7 && declared.views.empty());
+        assert(services.publish(std::move(declared.services)));
+        assert(scope.provide(services::ServiceNameView{"lux.editor.sessions"}, f.store));
+        assert(scope.provide(services::ServiceNameView{"lux.simulation.components"}, f.environment.components));
+        assert(scope.provide(services::ServiceNameView{"lux.scene.runtime"}, *f.runtime));
+        assert(scope.provide(services::ServiceNameView{"lux.process.execution"}, f.execution));
+        assert(scope.provide(services::ServiceNameView{"lux.editor.scene.projection.environment"}, f.environment));
+        desktop::UiRegistry windows(f.messages.dispatcherRef(), services);
+        auto catalog = take(desktop::UiCatalog::prepare(std::move(declared.ui)));
+        assert(windows.publish(catalog));
+        auto& root = f.desktop->root();
+        const auto before = f.session->describe();
+        const author::SceneObjectRef target{f.key->id(), before.current.state.history, f.object};
+        const views::ViewContent content{{f.key->id()}, f.key->id()};
+        desktop::UiCreateInfo input{f.messages.dispatcherRef(), ui::PaneId{"declared-source"}, content, {}};
+        auto primary = take(windows.create(take(catalog.find(author::kSceneView.type)), scope, input));
+        auto* scene = static_cast<author::SceneView*>(primary.get());
+        auto group = scene->interactionOwner();
+        assert(group && group->select({{target}}));
+        assert(root.addSubPane(std::move(primary)));
+        auto source = take(root.identify(*scene));
+        f.wait([&] { return scene->image().isValid(); });
+        std::vector<ui::PaneHandle> handles;
+        author::InspectorView* inspector{};
+        author::ResourceView* resources{};
+        {
+            auto local = take(services.createScope(&scope));
+            assert(local.provide(services::ServiceNameView{"lux.editor.scene.interaction"}, group));
+            assert(local.provide(services::ServiceNameView{"lux.ui.root"}, root));
+            assert(local.provide(services::ServiceNameView{"lux.editor.scene.viewport"}, source));
+            const auto make = [&](const desktop::UiDescriptor& descriptor)
+            {
+                input.instance = ui::PaneId{descriptor.type.name()};
+                auto owner = take(windows.create(take(catalog.find(descriptor.type)), local, input));
+                auto* pointer = owner.get();
+                assert(!pointer->parent() && !pointer->attachedRoot());
+                assert(root.addSubPane(std::move(owner)));
+                handles.push_back(take(root.identify(*pointer)));
+                return pointer;
+            };
+            auto* outline = static_cast<author::OutlinerView*>(make(author::kOutlinerView));
+            inspector = static_cast<author::InspectorView*>(make(author::kInspectorView));
+            resources = static_cast<author::ResourceView*>(make(author::kResourceView));
+            assert(outline->interactionOwner() == group && inspector->interactionOwner() == group);
+            assert(outline->objects().size() == 1 && inspector->target() == target);
+            assert(resources->content() == content && resources->snapshot().instance == scene->presentedInstance());
+            input.instance = ui::PaneId{"declared-invalid"};
+            input.configuration.bytes.push_back(std::byte{1});
+            const auto invalid = windows.create(take(catalog.find(author::kInspectorView.type)), local, input);
+            assert(!invalid && invalid.error().code == desktop::EUiError::INVALID_CONFIGURATION);
+            input.configuration.bytes.clear();
+            auto stale = f.key->id();
+            ++stale.generation;
+            input.content = {{stale}, stale};
+            assert(!windows.create(take(catalog.find(author::kInspectorView.type)), local, input));
+            input.content = content;
+            assert(group->selection().objects == std::vector<author::VSceneSelectionTarget>{target});
+            assert(local.release() && local.drained());
+        }
+        const auto find = [&](auto&& self, object::LuxObject& object) -> ui::NumericEdit*
+        {
+            if (auto* value = dynamic_cast<ui::NumericEdit*>(&object)) return value;
+            for (auto* child = object.firstChild(); child; child = child->nextSibling())
+                if (auto* value = self(self, *child)) return value;
+            return nullptr;
+        };
+        f.frame(false);
+        auto* field = find(find, *inspector);
+        assert(field && std::get<double>(field->value()) == 0.0);
+        field->setValue(4.0);
+        static_cast<void>(ui::ControlsTestAccess::edited(*field, {true, true, false, false}));
+        f.frame(false);
+        assert(group->overlay() && f.session->describe().current == before.current);
+        assert(take(f.session->read()).withRead([&](const author::SceneReadView&) -> author::SceneEditResult<void>
+        {
+            auto denied = windows.prepareClose(root, handles);
+            assert(!denied && denied.error().code == desktop::EUiError::BUSY);
+            for (const auto& id : handles) assert(root.findPane(id));
+            assert(group->overlay() && inspector->target() == target);
+            return {};
+        }));
+        assert(inspector->finishEditing() && f.session->describe().current != before.current);
+        assert(f.session->undo());
+        f.frame(false);
+        assert(f.session->describe().current == before.current && std::get<double>(field->value()) == 0.0);
+        // Closing only the viewport neither closes the model nor steals its interaction from auxiliary UI.
+        auto detached = take(windows.prepareClose(root, std::span{&source, 1}));
+        assert(root.commit(detached) && !root.findPane(source));
+        std::weak_ptr<author::SceneInteractionGroup> retained = group;
+        group.reset();
+        f.frame(false);
+        assert(!retained.expired() && resources->content().sessions.empty());
+        assert(!author::shareSceneInteraction(root, source));
+        assert(retained.lock()->select({}));
+        f.frame(false);
+        assert(!inspector->target() && inspector->content() == content);
+        assert(retained.lock()->select({{target}}));
+        assert(take(f.session->read()).withRead([&](const author::SceneReadView&) -> author::SceneEditResult<void>
+        {
+            f.frame(false);
+            assert(!inspector->target() && !inspector->status());
+            assert(retained.lock()->selection().objects == std::vector<author::VSceneSelectionTarget>{target});
+            return {};
+        }));
+        f.frame(false);
+        assert(inspector->target() == target && inspector->status());
+        auto closed = take(windows.prepareClose(root, handles));
+        assert(root.commit(closed));
+        (void)f.messages.collectRetired();
+        assert(retained.expired());
+        auto hub = take(services.get<author::ScenePresentationHub>(scope));
+        f.wait([&] { hub->collectReleased(); return hub->size() == 0; });
+        hub.reset();
+        assert(scope.release());
+        (void)f.messages.collectRetired();
+        assert(scope.drained() && services.drained());
+        assert(f.session->describe().current == before.current && f.session->describe().dirty == before.dirty);
+        std::puts("EC4 declared Scene auxiliaries: off-tree factories, lexical input, shared selection, original gate, "
+                  "undo, viewport close and independent content lifetime PASS");
     }
     void closeInspectorContent(Fixture& f)
     {
@@ -928,6 +1056,42 @@ namespace
         const auto registry = take(runs.inspect().borrow(run));
         const auto entity = registry.get().view<const simulation::ecs::Transform3D>().front();
         const auto target = take(runs.inspect().reference(run, entity));
+        {
+            services::ServiceRegistry registry(f.messages.dispatcherRef());
+            auto scope = take(registry.createScope());
+            assert(scope.provide(services::ServiceNameView{"lux.editor.sessions"}, f.store));
+            assert(scope.provide(services::ServiceNameView{"lux.simulation.components"}, f.environment.components));
+            assert(scope.provide(services::ServiceNameView{"lux.editor.scene.runs"}, runs));
+            auto group = std::make_shared<author::SceneInteractionGroup>(
+                runs.inspect(), run, author::InteractionGroupId{902}
+            );
+            assert(group->select({{target}}));
+            desktop::UiRegistry windows(f.messages.dispatcherRef(), registry);
+            assert(windows.publish(take(desktop::UiCatalog::prepare(
+                {desktop::UiEntry::bind<author::kRunInspectorView>(object::CodeLease::builtin())}
+            ))));
+            auto factory = take(windows.snapshot().at(0));
+            auto local = take(registry.createScope(&scope));
+            assert(local.provide(services::ServiceNameView{"lux.editor.scene.interaction"}, group));
+            auto candidate = take(windows.create(factory, local,
+                {f.messages.dispatcherRef(), ui::PaneId{"declared-run-inspector"}}));
+            auto* inspector = static_cast<author::RunInspectorView*>(candidate.get());
+            assert(inspector->target() == target && inspector->interactionOwner() == group);
+            auto& root = f.desktop->root();
+            assert(root.addSubPane(std::move(candidate)));
+            const auto handle = take(root.identify(*inspector));
+            assert(local.release() && local.drained());
+            const auto paused = take(take(runs.debugHistory(run)).get().view()).snapshot;
+            f.frame(false);
+            assert(inspector->status() && inspector->target() == target);
+            auto closed = take(windows.prepareClose(root, std::span{&handle, 1}));
+            assert(root.commit(closed) && !root.findPane(handle));
+            f.frame(false);
+            assert(take(runs.info(run)).state == author::ERunState::PAUSED);
+            assert(take(take(runs.debugHistory(run)).get().view()).snapshot.current == paused.current);
+            assert(f.session->describe().current == stamp.current);
+            assert(scope.release() && scope.drained());
+        }
         auto run_inspector = take(author::makeRunInspectorView(
             f.messages.dispatcherRef(),
             ui::PaneId{"run-fields"},
@@ -1340,7 +1504,7 @@ namespace
         auto module = take(extensions::EditorExtension::fromStatic(author::sceneModule()));
         auto declared = take(module.contributions());
         assert(declared.views.empty() && declared.sessions.size() == 1 && declared.commands.empty());
-        assert(declared.services.size() == 1 && declared.ui.size() == 2);
+        assert(declared.services.size() == 1 && declared.ui.size() == 7);
         assert(services.publish(std::move(declared.services)));
         assert(scope.provide(services::ServiceNameView{"lux.editor.sessions"}, f.store));
         assert(scope.provide(services::ServiceNameView{"lux.scene.runtime"}, *f.runtime));
@@ -2738,6 +2902,7 @@ int main(int argc, char** argv)
     f.wait([&] { return take(f.desktop->views().describeAll()).empty(); });
     inspectorView(f);
     ownedSceneTools(f);
+    declaredSceneTools(f);
     closeInspectorContent(f);
     creationView(f, argv[2]);
     runningView(f);

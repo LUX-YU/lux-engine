@@ -9,6 +9,7 @@
 #include <lux/engine/editor/scene/ConfigurationEditor.hpp>
 #include <lux/engine/editor/scene/SceneConfigurationElement.hpp>
 #include <lux/engine/editor/scene/SceneCreationView.hpp>
+#include <lux/engine/editor/scene/SceneTools.hpp>
 #include <lux/engine/editor/scene/SceneEditorCatalog.hpp>
 #include <lux/engine/editor/scene/SceneSession.hpp>
 #include <lux/engine/editor/scene/SceneSessionFactory.hpp>
@@ -300,8 +301,10 @@ int main(int argc, char** argv)
         auto& scope = editor_context.scope();
         assert(scope.provide(services::ServiceNameView{"lux.editor.scene.configuration"}, form_inputs));
         assert(scope.provide(sessions::kSessionCreation, receive));
+        assert(scope.provide(services::ServiceNameView{"lux.editor.sessions"}, store));
         auto catalog = desktop::UiCatalog::prepare(
-            {desktop::UiEntry::bind<author::kSceneCreationView>(object::CodeLease::builtin())}
+            {desktop::UiEntry::bind<author::kSceneCreationView>(object::CodeLease::builtin()),
+             desktop::UiEntry::bind<author::kSceneConfigurationView>(object::CodeLease::builtin())}
         );
         assert(catalog && editor_context.ui().publish(*catalog));
         auto factory = catalog->at(0);
@@ -347,6 +350,48 @@ int main(int argc, char** argv)
             assert(snapshot->configuration().world->data().partitioner().id.name == "lux.spatial.builtin.single");
         }
         assert(requests == 3 && store.size() == 2);
+        {
+            const auto id = installed.front().id();
+            const auto prior = store.describe(id);
+            assert(prior);
+            auto configuration_factory = catalog->find(author::kSceneConfigurationView.type);
+            assert(configuration_factory);
+            input.instance = ui::PaneId{"declared-configuration"};
+            input.content = {{id}, id};
+            auto candidate = editor_context.ui().create(*configuration_factory, scope, input);
+            assert(candidate && !(*candidate)->attachedRoot());
+            auto* configured = static_cast<author::SceneConfigurationView*>(candidate->get());
+            assert(configured->status() && configured->form() && configured->content() == input.content);
+            assert((*root)->addSubPane(std::move(*candidate)));
+            const auto target = (*root)->identify(*configured);
+            assert(target);
+            auto access = store.access<author::SceneSession>();
+            auto key = access.key(id);
+            assert(key);
+            auto model = access.read(*key);
+            assert(model);
+            auto read = model->get().read();
+            assert(read && read->withRead([&](const author::SceneReadView&) -> author::SceneEditResult<void>
+            {
+                auto busy = editor_context.ui().prepareClose(**root, std::span{&*target, 1});
+                assert(!busy && busy.error().code == desktop::EUiError::BUSY);
+                assert((*root)->findPane(*target) && configured->form());
+                return {};
+            }));
+            auto* original_form = configured->form();
+            {
+                auto abandoned = editor_context.ui().prepareClose(**root, std::span{&*target, 1});
+                assert(abandoned && configured->form() == original_form && (*root)->findPane(*target));
+            }
+            assert((*root)->update({{1100, 820}, 1.0F / 60}, nullptr));
+            assert(configured->status() && configured->form() && configured->content() == input.content);
+            auto permit = editor_context.ui().prepareClose(**root, std::span{&*target, 1});
+            assert(permit && (*root)->commit(*permit));
+            static_cast<void>(queue->collectRetired());
+            auto after = store.describe(id);
+            assert(after && after->current == prior->current && after->dirty == prior->dirty);
+        }
+
         auto close = editor_context.ui().prepareClose(**root, std::span{&*handle, 1});
         assert(close && (*root)->commit(*close));
         assert((*root)->update({{1100, 820}, 1.0F / 60}, nullptr));

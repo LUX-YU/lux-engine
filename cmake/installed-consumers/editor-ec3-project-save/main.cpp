@@ -377,6 +377,26 @@ int main(int argc, char** argv)
         assert(std::filesystem::exists(root / "Content/review-copy"));
         const auto after = model.describe();
         assert(after.current == original.current && after.binding == original.binding && after.dirty == original.dirty);
+        em::MaterialEditBatch dirty_reload{after.current, "Reload after review", {}};
+        dirty_reload.edits.emplace_back(em::MaterialRename{"Discard this value"});
+        assert(model.apply(std::move(dirty_reload)));
+        const auto reload_source = model.describe();
+        assert(reload_source.dirty && review->askReload({sessions[1], reload_source.current}));
+        const auto reload_question = *review->question();
+        answer(desktop::EReviewChoice::DISCARD);
+        // Transport maintenance may hold the service registry. New UI decisions are admitted after it returns.
+        assert(scope.maintain() && review->question()->source == reload_source.current);
+        assert(take(reloads->reports()).empty() && model.describe().current == reload_source.current);
+        assert(review->update() && !review->question() && !ui_root->findPane(reload_question.view));
+        assert(!reloads->settled());
+        finish_reload();
+        const auto reloaded = model.describe();
+        const auto reload_reports = take(reloads->reports());
+        assert(reload_reports.size() == 1 && reload_reports[0].result && *reload_reports[0].result);
+        assert(reloaded.current != reload_source.current && reloaded.binding == after.binding && !reloaded.dirty);
+        const auto frozen = take(model.capture());
+        assert(frozen.source().name == "Material");
+        assert(reloads->acknowledge(reload_source.current) && take(reloads->reports()).empty());
         std::cout << "Public ContentReview retains source, rejects active-callback detach and outlives its modal\n";
 #endif
         const auto current = take(store.describe(sessions[1]));

@@ -723,7 +723,11 @@ namespace lux::editor::application
         {
             window_settings_->update(phase_ == EApplicationPhase::RUNNING);
         }
-        // UI factory resolution runs after the current service-maintenance guard has returned.
+        // New reload and UI factory admission runs after service maintenance releases its registry guard.
+        if (content_review_)
+        {
+            receive(content_review_->update());
+        }
         receive(content_views_->update());
         if (desktop_)
         {

@@ -596,22 +596,6 @@ namespace lux::editor::project
         );
         descriptor.retention = services::EServiceRetention::SCOPED;
         descriptor.affinity = services::EServiceAffinity::OWNER;
-        descriptor.maintain = [](void* instance) noexcept -> services::ServiceResult<void>
-        {
-            auto result = static_cast<ContentReview*>(instance)->update();
-            if (!result)
-            {
-                const auto& error = result.error();
-                return cxx::unexpected(services::ServiceFailure{
-                    error.code == EEditorError::BUSY ? services::EServiceError::BUSY
-                                                     : services::EServiceError::FACTORY_FAILURE,
-                    error.message,
-                    error.domain,
-                    static_cast<std::uint64_t>(error.code)
-                });
-            }
-            return {};
-        };
         return descriptor;
     }();
 } // namespace lux::editor::project

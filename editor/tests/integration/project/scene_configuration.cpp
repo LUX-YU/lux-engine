@@ -1,34 +1,47 @@
-#include <lux/engine/editor/scene/SceneEditorCatalog.hpp>
-#include <lux/engine/editor/scene/SceneConfigurationElement.hpp>
 #include "../../../../cmake/installed-consumers/common/UiTestContent.hpp"
-#include <lux/engine/editor/scene/ConfigurationEditor.hpp>
-#include <lux/engine/editor/extensions/EditorExtension.hpp>
-#include <lux/engine/editor/configuration/EditorReflection.hpp>
-#include <lux/engine/project/PluginManager.hpp>
-#include <lux/engine/project/PluginRendering.hpp>
-#include <lux/engine/scene/ScenePackage.hpp>
-#include <lux/engine/scene/RenderSystemConfiguration.hpp>
-#include <lux/engine/ui/Root.hpp>
-#include <lux/engine/ui/Pane.hpp>
-#include <lux/engine/ui/Layout.hpp>
-#include <lux/engine/ui/Controls.hpp>
+#include <algorithm>
 #include <cassert>
 #include <cstdio>
-#include <algorithm>
+#include <lux/engine/editor/configuration/EditorReflection.hpp>
+#include <lux/engine/editor/desktop/UiRegistry.hpp>
+#include <lux/engine/editor/extensions/EditorExtension.hpp>
+#include <lux/engine/editor/persistence/WriteCoordinator.hpp>
+#include <lux/engine/editor/scene/ConfigurationEditor.hpp>
+#include <lux/engine/editor/scene/SceneConfigurationElement.hpp>
+#include <lux/engine/editor/scene/SceneCreationView.hpp>
+#include <lux/engine/editor/scene/SceneEditorCatalog.hpp>
+#include <lux/engine/editor/scene/SceneSession.hpp>
+#include <lux/engine/editor/scene/SceneSessionFactory.hpp>
+#include <lux/engine/project/PluginManager.hpp>
+#include <lux/engine/project/PluginRendering.hpp>
+#include <lux/engine/scene/RenderSystemConfiguration.hpp>
+#include <lux/engine/scene/ScenePackage.hpp>
+#include <lux/engine/ui/Controls.hpp>
+#include <lux/engine/ui/Layout.hpp>
+#include <lux/engine/ui/Pane.hpp>
+#include <lux/engine/ui/Root.hpp>
 
 namespace
 {
     lux::ui::NumericEdit* coordinateField(lux::object::LuxObject& object)
     {
         if (auto* field = dynamic_cast<lux::ui::NumericEdit*>(&object))
+        {
             if (field->id().name() == "Coordinate page size")
+            {
                 return field;
+            }
+        }
         for (auto* child = object.firstChild(); child; child = child->nextSibling())
+        {
             if (auto* found = coordinateField(*child))
+            {
                 return found;
+            }
+        }
         return nullptr;
     }
-}
+} // namespace
 
 int main(int argc, char** argv)
 {
@@ -65,9 +78,8 @@ int main(int argc, char** argv)
         {
             auto supplied = extension.contributions();
             assert(supplied);
-            auto append = [](auto& to, auto& from) {
-                to.insert(to.end(), std::make_move_iterator(from.begin()), std::make_move_iterator(from.end()));
-            };
+            auto append = [](auto& to, auto& from)
+            { to.insert(to.end(), std::make_move_iterator(from.begin()), std::make_move_iterator(from.end())); };
             append(draft.code, supplied->code);
             append(draft.reflection, supplied->reflection);
             append(draft.services, supplied->services);
@@ -97,59 +109,88 @@ int main(int argc, char** argv)
         {"lux.world.loading", "world-storage"}
     };
     editor::scene::SceneConfigurationResult<void> status;
-    editor::scene::SceneConfigurationElement element(
-        layout,
-        ui::ElementId{"configuration"},
-        {manager->catalog(),
-         registrations->components,
-         *registrations->simulation_systems,
-         registrations->scene_systems,
-         registrations->features,
-         providers,
-         [snapshot = contributions.snapshot()](
-             ui::Element& parent,
-             std::string_view name,
-             std::uint32_t version,
-             const serialization::PortableValueCodec&,
-             std::optional<std::span<const std::byte>> initial
-         ) -> editor::scene::SceneConfigurationResult<editor::scene::ConfigurationControl> {
-             auto definitions = editor::scene::sceneEditorDefinitions(snapshot.services());
-             assert(definitions);
-             for (const auto& definition : *definitions)
-             for (const auto& descriptor : definition->configurations)
-                 if (descriptor.value.schema_name == name && descriptor.value.schema_version == version)
-                     return editor::scene::makeConfigurationControl(descriptor, parent, ui::ElementId{name}, initial);
-             return editor::scene::ConfigurationControl{};
-         }, registrations->render_bindings},
-        status
-    );
+    editor::scene::SceneConfigurationInputs form_inputs{
+        manager->catalog(),
+        registrations->components,
+        *registrations->simulation_systems,
+        registrations->scene_systems,
+        registrations->features,
+        providers,
+        [snapshot = contributions.snapshot()](
+            ui::Element& parent,
+            std::string_view name,
+            std::uint32_t version,
+            const serialization::PortableValueCodec&,
+            std::optional<std::span<const std::byte>> initial
+        ) -> editor::scene::SceneConfigurationResult<editor::scene::ConfigurationControl>
+        {
+            auto definitions = editor::scene::sceneEditorDefinitions(snapshot.services());
+            assert(definitions);
+            for (const auto& definition : *definitions)
+            {
+                for (const auto& descriptor : definition->configurations)
+                {
+                    if (descriptor.value.schema_name == name && descriptor.value.schema_version == version)
+                    {
+                        return editor::scene::makeConfigurationControl(
+                            descriptor,
+                            parent,
+                            ui::ElementId{name},
+                            initial
+                        );
+                    }
+                }
+            }
+            return editor::scene::ConfigurationControl{};
+        },
+        registrations->render_bindings
+    };
+    editor::scene::SceneConfigurationElement element(layout, ui::ElementId{"configuration"}, form_inputs, status);
     assert(status);
     for (const auto preset :
          {editor::scene::ESceneContentPreset::TWO_DIMENSIONAL, editor::scene::ESceneContentPreset::THREE_DIMENSIONAL})
     {
         auto applied = element.applyPreset(preset);
         if (!applied)
+        {
             std::fprintf(stderr, "%s: %s\n", applied.error().domain.c_str(), applied.error().message.c_str());
+        }
         assert(applied);
         auto captured_draft = element.capture();
         assert(captured_draft);
         const editor::scene::SceneConfigurationRegistrations inputs{
-            registrations->components, *registrations->simulation_systems,
-            registrations->scene_systems, registrations->features, providers, registrations->render_bindings
+            registrations->components,
+            *registrations->simulation_systems,
+            registrations->scene_systems,
+            registrations->features,
+            providers,
+            registrations->render_bindings
         };
         auto pure_draft = editor::scene::makeSceneConfigurationPreset(preset, "lux.spatial.builtin.single", 1, inputs);
         assert(pure_draft && captured_draft->schemas == pure_draft->schemas);
         for (auto* draft : {&*captured_draft, &*pure_draft})
+        {
             for (auto& row : draft->systems)
+            {
                 std::ranges::sort(row.providers, {}, &editor::scene::SceneProviderBinding::requirement);
+            }
+        }
         for (std::size_t index{}; index < captured_draft->systems.size(); ++index)
         {
             const auto& shown = captured_draft->systems[index];
             const auto& prepared = pure_draft->systems[index];
             if (shown != prepared)
-                std::fprintf(stderr, "configuration row %zu %s: name=%d bytes=%d providers=%d\n", index,
-                    shown.type.name.c_str(), shown.name == prepared.name,
-                    shown.configuration == prepared.configuration, shown.providers == prepared.providers);
+            {
+                std::fprintf(
+                    stderr,
+                    "configuration row %zu %s: name=%d bytes=%d providers=%d\n",
+                    index,
+                    shown.type.name.c_str(),
+                    shown.name == prepared.name,
+                    shown.configuration == prepared.configuration,
+                    shown.providers == prepared.providers
+                );
+            }
         }
         assert(captured_draft->systems == pure_draft->systems);
         auto* field = coordinateField(element);
@@ -171,13 +212,19 @@ int main(int argc, char** argv)
         }
         if (preset == editor::scene::ESceneContentPreset::THREE_DIMENSIONAL)
         {
-            const auto find_schema = [&](auto&& self, object::LuxObject& owner) -> ui::CheckBox* {
-                if (auto* field = dynamic_cast<ui::CheckBox*>(&owner);
-                    field && field->id().name() == "lux.ecs.Mesh3D")
+            const auto find_schema = [&](auto&& self, object::LuxObject& owner) -> ui::CheckBox*
+            {
+                if (auto* field = dynamic_cast<ui::CheckBox*>(&owner); field && field->id().name() == "lux.ecs.Mesh3D")
+                {
                     return field;
+                }
                 for (auto* child = owner.firstChild(); child; child = child->nextSibling())
+                {
                     if (auto* field = self(self, *child))
+                    {
                         return field;
+                    }
+                }
                 return nullptr;
             };
             auto* mesh = find_schema(find_schema, element);
@@ -200,9 +247,10 @@ int main(int argc, char** argv)
         const auto expected = preset == editor::scene::ESceneContentPreset::TWO_DIMENSIONAL
                                   ? "lux.render.canvas2d.v2"
                                   : "lux.render.forward_mesh.v1";
-        const auto feature = std::ranges::find_if(registrations->features, [&](const auto& value) {
-            return value.factory.descriptor.canonical_name == expected;
-        });
+        const auto feature = std::ranges::find_if(
+            registrations->features,
+            [&](const auto& value) { return value.factory.descriptor.canonical_name == expected; }
+        );
         assert(feature != registrations->features.end());
         assert(
             std::ranges::find(
@@ -220,5 +268,94 @@ int main(int argc, char** argv)
         );
         auto encoded = scene::encodeScenePackage(*package, 32 * 1024 * 1024);
         assert(encoded);
+    }
+    // The actual declared factory creates a complete off-tree form. No Host or Application is needed.
+    // Root owns only the mounted window; SessionStore independently owns both newly created scenes.
+    {
+        namespace author = editor::scene;
+        namespace sessions = editor::sessions;
+        namespace desktop = editor::desktop;
+        sessions::SessionStore store{queue->dispatcherRef(), 4};
+        editor::persistence::WriteCoordinator writes;
+        editor::persistence::SaveService saves{writes};
+        std::vector<sessions::InstalledSession> installed;
+        unsigned requests{};
+        sessions::SessionCreation receive = [&](sessions::SessionPreparation input
+                                            ) -> editor::commands::CommandResult<editor::commands::DispatchReceipt>
+        {
+            ++requests;
+            if (requests == 1)
+            {
+                return cxx::unexpected(
+                    editor::commands::CommandFailure{editor::commands::ECommandError::BUSY, "scene.test.creation"}
+                );
+            }
+            auto prepared = std::move(input).prepare(store, saves);
+            assert(prepared);
+            auto published = prepared->publish();
+            assert(published);
+            installed.push_back(std::move(*published));
+            return editor::commands::DispatchReceipt{editor::commands::ImmediateCompletion{}};
+        };
+        auto& scope = editor_context.scope();
+        assert(scope.provide(services::ServiceNameView{"lux.editor.scene.configuration"}, form_inputs));
+        assert(scope.provide(sessions::kSessionCreation, receive));
+        auto catalog = desktop::UiCatalog::prepare(
+            {desktop::UiEntry::bind<author::kSceneCreationView>(object::CodeLease::builtin())}
+        );
+        assert(catalog && editor_context.ui().publish(*catalog));
+        auto factory = catalog->at(0);
+        assert(factory);
+        desktop::UiCreateInfo input{queue->dispatcherRef(), ui::PaneId{"declared-creation"}};
+        input.configuration.bytes = {std::byte{1}};
+        const auto invalid = editor_context.ui().create(*factory, scope, input);
+        assert(!invalid && invalid.error().code == desktop::EUiError::INVALID_CONFIGURATION);
+        assert(requests == 0 && store.size() == 0);
+        input.configuration = {};
+        auto owner = editor_context.ui().create(*factory, scope, input);
+        assert(owner && !(*owner)->attachedRoot() && requests == 0 && store.size() == 0);
+        auto* form = static_cast<author::SceneCreationView*>(owner->get());
+        assert((*root)->addSubPane(std::move(*owner)));
+        const auto handle = (*root)->identify(*form);
+        assert(handle);
+        for (auto preset :
+             {author::ESceneContentPreset::TWO_DIMENSIONAL, author::ESceneContentPreset::THREE_DIMENSIONAL})
+        {
+            assert(form->configuration().applyPreset(preset));
+            auto expected = form->configuration().build();
+            assert(expected);
+            const auto before = installed.size();
+            form->requestCreate();
+            assert((*root)->update({{1100, 820}, 1.0F / 60}, nullptr));
+            if (requests == 1)
+            {
+                assert(installed.empty() && !form->status());
+                assert(form->status().error().code == author::ESceneConfigurationError::BUSY);
+                assert((*root)->update({{1100, 820}, 1.0F / 60}, nullptr));
+            }
+            assert(form->status() && installed.size() == before + 1);
+            const auto info = store.describe(installed.back().id());
+            assert(info && info->dirty && !info->binding);
+            const auto key = store.key<author::SceneSession>(installed.back().id());
+            assert(key);
+            auto model = store.access<author::SceneSession>().read(*key);
+            assert(model);
+            auto snapshot = model->get().capture();
+            assert(snapshot && snapshot->content() == info->current && snapshot->objects().empty());
+            assert(snapshot->configuration().simulation->data().systemCount() == expected->simulation->systemCount());
+            assert(snapshot->configuration().scene->data().systemCount() == expected->scene.systemCount());
+            assert(snapshot->configuration().world->data().partitioner().id.name == "lux.spatial.builtin.single");
+        }
+        assert(requests == 3 && store.size() == 2);
+        auto close = editor_context.ui().prepareClose(**root, std::span{&*handle, 1});
+        assert(close && (*root)->commit(*close));
+        assert((*root)->update({{1100, 820}, 1.0F / 60}, nullptr));
+        assert(!(*root)->findPane(*handle) && store.size() == 2);
+        for (auto& session : installed)
+        {
+            auto info = store.describe(session.id());
+            assert(info && session.close(info->current));
+        }
+        assert(store.size() == 0);
     }
 }

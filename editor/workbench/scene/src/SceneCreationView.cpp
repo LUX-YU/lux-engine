@@ -1,11 +1,12 @@
 #include <exception>
+#include <lux/engine/editor/desktop/UiRegistry.hpp>
+#include <lux/engine/editor/scene/SceneCreationView.hpp>
+#include <lux/engine/editor/scene/SceneSessionFactory.hpp>
 #include <lux/engine/editor/workbench/CommandSupport.hpp>
 #include <lux/engine/editor/workbench/ViewFactorySupport.hpp>
-#include <lux/engine/editor/scene/SceneSessionFactory.hpp>
-#include <random>
-#include <lux/engine/editor/scene/SceneCreationView.hpp>
 #include <lux/engine/ui/Controls.hpp>
 #include <lux/engine/ui/Layout.hpp>
+#include <random>
 
 namespace lux::editor::scene
 {
@@ -21,7 +22,127 @@ namespace lux::editor::scene
             "New Scene",
             "File"
         };
+        SceneCreationRequests creationRequests(
+            const SceneConfigurationInputs& configuration,
+            std::function<commands::CommandResult<commands::DispatchReceipt>(sessions::SessionPreparation)> create
+        )
+        {
+            return SceneCreationRequests{
+                [schemas = configuration.components,
+                 create](const scene::SceneCreationConfiguration& value) -> scene::SceneConfigurationResult<void>
+                {
+                    std::mt19937 random{std::random_device{}()};
+                    const asset::AssetId id{uuids::uuid_random_generator{random}()};
+                    auto package =
+                        lux::scene::createScenePackage(id, value.name, value.schemas, value.simulation, value.scene);
+                    if (!package)
+                    {
+                        return cxx::unexpected(scene::SceneConfigurationFailure{
+                            scene::ESceneConfigurationError::CONTROL_FAILURE,
+                            "scene.creation.package",
+                            0,
+                            {},
+                            std::any{package.error()}
+                        });
+                    }
+                    auto installed = create(scene::prepareSceneSession({std::move(*package)}, {}, {}, schemas));
+                    if (!installed)
+                    {
+                        const auto& error = installed.error();
+                        const auto code = error.code == commands::ECommandError::BUSY
+                                              ? scene::ESceneConfigurationError::BUSY
+                                              : scene::ESceneConfigurationError::CONTROL_FAILURE;
+                        return cxx::unexpected(scene::SceneConfigurationFailure{
+                            code,
+                            error.domain,
+                            error.domain_code,
+                            error.detail,
+                            std::any{error}
+                        });
+                    }
+                    return {};
+                }
+            };
+        }
+        constexpr services::ServiceDependency kCreationDependencies[]{
+            {services::ServiceNameView{"lux.editor.scene.configuration"},
+             1,
+             cxx::typeToken<SceneConfigurationInputs>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT},
+            {sessions::kSessionCreation,
+             1,
+             cxx::typeToken<sessions::SessionCreation>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT}
+        };
+        desktop::UiResult<std::unique_ptr<lux::ui::Pane>> createView(
+            services::ServiceResolver& resolver,
+            const desktop::UiCreateInfo& input
+        )
+        {
+            const bool has_content = !input.content.sessions.empty();
+            const bool has_configuration = !input.configuration.bytes.empty();
+            const bool is_invalid_input = has_content || has_configuration;
+            if (is_invalid_input)
+            {
+                return cxx::unexpected(
+                    desktop::UiFailure{desktop::EUiError::INVALID_CONFIGURATION, "scene.creation.input"}
+                );
+            }
+            const auto failedDependency = [](const services::ServiceFailure& error)
+            {
+                return cxx::unexpected(desktop::UiFailure{
+                    desktop::EUiError::DEPENDENCY,
+                    "scene.creation.dependencies",
+                    static_cast<std::uint64_t>(error.code),
+                    error.detail
+                });
+            };
+            auto configuration = resolver.require<SceneConfigurationInputs>(0);
+            if (!configuration)
+            {
+                return failedDependency(configuration.error());
+            }
+            auto receiver = resolver.require<sessions::SessionCreation>(1);
+            if (!receiver)
+            {
+                return failedDependency(receiver.error());
+            }
+            // The composition owner outlives this exact borrowed endpoint and the form registrations.
+            auto requests = creationRequests(
+                configuration->get(),
+                [&create = receiver->get()](sessions::SessionPreparation prepared)
+                { return create(std::move(prepared)); }
+            );
+            SceneConfigurationResult<void> status;
+            auto pane = std::make_unique<SceneCreationView>(
+                input.dispatcher,
+                input.instance,
+                configuration->get(),
+                std::move(requests),
+                status
+            );
+            if (!status)
+            {
+                const auto& error = status.error();
+                return cxx::unexpected(desktop::UiFailure{
+                    error.code == ESceneConfigurationError::BUSY ? desktop::EUiError::BUSY
+                                                                 : desktop::EUiError::FACTORY_FAILURE,
+                    error.domain,
+                    error.reason,
+                    error.message
+                });
+            }
+            return pane;
+        }
     } // namespace
+    constinit const desktop::UiDescriptor kSceneCreationView{
+        .type = kCreationDescriptor.type,
+        .label = kCreationDescriptor.label,
+        .dependencies = kCreationDependencies,
+        .create = createView
+    };
     struct SceneCreationView::Impl final
     {
         SceneCreationRequests requests_;
@@ -43,12 +164,17 @@ namespace lux::editor::scene
               message_(layout_, lux::ui::ElementId{"status"})
         {
             if (!view.setContent(layout_))
+            {
                 std::terminate(); // Fixed content in a detached Pane.
+            }
             const auto retain = [&](auto result, object::Connection& connection)
             {
                 if (result)
+                {
                     connection = std::move(*result);
+                }
                 else
+                {
                     status_ = cxx::unexpected(SceneConfigurationFailure{
                         ESceneConfigurationError::CONTROL_FAILURE,
                         "scene.creation.connect",
@@ -56,6 +182,7 @@ namespace lux::editor::scene
                         {},
                         result.error()
                     });
+                }
             };
             retain(
                 object::LuxObject::connect(
@@ -77,14 +204,20 @@ namespace lux::editor::scene
         void update()
         {
             if (std::exchange(preset_requested_, false))
+            {
                 status_ = form_.applyPreset(static_cast<ESceneContentPreset>(preset_.value()));
+            }
             if (std::exchange(create_requested_, false) && !pending_)
             {
                 auto configured = form_.build();
                 if (!configured)
+                {
                     status_ = cxx::unexpected(configured.error());
+                }
                 else
+                {
                     pending_.emplace(std::move(*configured));
+                }
             }
             if (pending_)
             {
@@ -103,7 +236,9 @@ namespace lux::editor::scene
                 {
                     status_ = cxx::unexpected(accepted.error());
                     if (accepted.error().code != ESceneConfigurationError::BUSY)
+                    {
                         pending_.reset();
+                    }
                 }
             }
             create_.setEnabled(!pending_);
@@ -151,7 +286,9 @@ namespace lux::editor::scene
         SceneConfigurationResult<void> status;
         auto view = std::make_unique<SceneCreationView>(dispatcher, id, std::move(inputs), std::move(requests), status);
         if (!status)
+        {
             return cxx::unexpected(status.error());
+        }
         return views::DetachedView{lux::object::CodeLease::builtin(), std::move(view)};
     }
 } // namespace lux::editor::scene
@@ -169,45 +306,10 @@ namespace lux::editor::scene
             [configuration = std::move(configuration),
              create](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView>
             {
-                scene::SceneCreationRequests requests{
-                    [schemas = configuration.components,
-                     create](const scene::SceneCreationConfiguration& value) -> scene::SceneConfigurationResult<void>
-                    {
-                        std::mt19937 random{std::random_device{}()};
-                        const asset::AssetId id{uuids::uuid_random_generator{random}()};
-                        auto package = lux::scene::createScenePackage(
-                            id,
-                            value.name,
-                            value.schemas,
-                            value.simulation,
-                            value.scene
-                        );
-                        if (!package)
-                            return cxx::unexpected(scene::SceneConfigurationFailure{
-                                scene::ESceneConfigurationError::CONTROL_FAILURE,
-                                "scene.creation.package",
-                                0,
-                                {},
-                                std::any{package.error()}
-                            });
-                        auto installed = (*create)(scene::prepareSceneSession({std::move(*package)}, {}, {}, schemas));
-                        if (!installed)
-                        {
-                            const auto& error = installed.error();
-                            const auto code = error.code == commands::ECommandError::BUSY
-                                                  ? scene::ESceneConfigurationError::BUSY
-                                                  : scene::ESceneConfigurationError::CONTROL_FAILURE;
-                            return cxx::unexpected(scene::SceneConfigurationFailure{
-                                code,
-                                error.domain,
-                                error.domain_code,
-                                error.detail,
-                                std::any{error}
-                            });
-                        }
-                        return {};
-                    }
-                };
+                auto requests = creationRequests(
+                    configuration,
+                    [create](sessions::SessionPreparation prepared) { return (*create)(std::move(prepared)); }
+                );
                 auto view = scene::makeSceneCreationView(
                     input.dispatcher(),
                     input.paneId(),
@@ -215,7 +317,9 @@ namespace lux::editor::scene
                     std::move(requests)
                 );
                 if (!view)
+                {
                     return cxx::unexpected(workbench::detail::viewFailure(view.error()));
+                }
                 return std::move(*view);
             }
         );

@@ -1,8 +1,13 @@
 #pragma once
 #include <lux/engine/editor/desktop/ViewCommands.hpp>
 #include <lux/engine/editor/scene/SceneConfigurationElement.hpp>
-#include <lux/engine/editor/views/IViewHost.hpp>
 #include <lux/engine/editor/sessions/SessionCommands.hpp>
+#include <lux/engine/ui/Pane.hpp>
+
+namespace lux::editor::desktop
+{
+    struct UiDescriptor;
+}
 
 namespace lux::editor::views
 {
@@ -11,6 +16,8 @@ namespace lux::editor::views
 
 namespace lux::editor::scene
 {
+    extern const desktop::UiDescriptor kSceneCreationView;
+
     struct SceneCreationRequests final
     {
         // The application creates/adopts the new Session. Rejection does not consume the form.

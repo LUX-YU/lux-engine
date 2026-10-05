@@ -14,7 +14,7 @@ namespace lux::editor::application
     }
     EditorResult<void> EditorApplication::Impl::requestClose(sessions::ContentStamp expected)
     {
-        if (phase_ != EApplicationPhase::RUNNING || last_view_ || save_question_ || reload_question_)
+        if (phase_ != EApplicationPhase::RUNNING || last_view_ || (content_review_ && content_review_->question()))
         {
             return cxx::unexpected(EditorFailure{EEditorError::BUSY, "close.review"});
         }

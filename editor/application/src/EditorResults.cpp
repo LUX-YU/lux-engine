@@ -106,7 +106,10 @@ namespace lux::editor::application
                 else if constexpr (std::same_as<Action, SaveContentAs>)
                 {
                     const auto target = action.target;
-                    return askSave({target.session, target}, persistence::ESaveMode::SAVE_AS);
+                    auto review = editor_context_.services().get<project::ContentReview>(editor_context_.scope());
+                    if (!review) return applicationFailure("content-review.service", review.error());
+                    content_review_ = std::move(*review);
+                    return content_review_->askSave({target.session, target}, persistence::ESaveMode::SAVE_AS);
                 }
                 else if constexpr (std::same_as<Action, AcknowledgeSaveAll>)
                 {

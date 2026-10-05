@@ -54,3 +54,21 @@ if(LUX_TEST_PROJECT_COMPILATION)
         COMMAND editor_ec4_artifact_publication "${CMAKE_BINARY_DIR}/artifacts" "${FLOW_LINKER}")
     set_tests_properties(installed.ec4.artifact_publication PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
 endif()
+
+option(LUX_TEST_CONTENT_REVIEW "Exercise CPU workbench save/reload prompts through the installed SDK" OFF)
+if(LUX_TEST_CONTENT_REVIEW)
+    find_package(lux-engine-editor-project-tools-ui REQUIRED COMPONENTS project_tools_ui)
+    add_executable(editor_ec4_content_review main.cpp)
+    target_compile_definitions(editor_ec4_content_review PRIVATE LUX_TEST_CONTENT_REVIEW=1)
+    target_link_libraries(editor_ec4_content_review PRIVATE
+        lux::engine::editor::editor_storage lux::engine::editor::editor_file_publication
+        lux::engine::editor::scene_persistence lux::engine::editor::material_persistence
+        lux::engine::editor::flowforge_persistence lux::engine::editor::project_tools_ui)
+    if(MSVC)
+        target_compile_options(editor_ec4_content_review PRIVATE /UNDEBUG /permissive- /utf-8)
+    else()
+        target_compile_options(editor_ec4_content_review PRIVATE -UNDEBUG)
+    endif()
+    add_test(NAME installed.ec4.content_review COMMAND editor_ec4_content_review "${CMAKE_BINARY_DIR}/review")
+    set_tests_properties(installed.ec4.content_review PROPERTIES TIMEOUT 90 RUN_SERIAL TRUE)
+endif()

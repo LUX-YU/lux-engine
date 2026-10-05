@@ -4,6 +4,7 @@
 #include <lux/engine/editor/application/EditorApplication.hpp>
 #include <lux/engine/editor/application/ProjectCreation.hpp>
 #include <lux/engine/editor/project/RestoreWorkbench.hpp>
+#include <lux/engine/editor/project/ContentReview.hpp>
 #include <lux/engine/editor/assets/ModelImporter.hpp>
 #include <lux/engine/editor/desktop/DesktopShell.hpp>
 #include <lux/engine/editor/desktop/ReviewView.hpp>
@@ -94,18 +95,6 @@ namespace lux::editor::application
             std::optional<lux::ui::PaneHandle> view;
             std::optional<EditorFailure> failure;
             bool cancelled{};
-        };
-        struct SaveQuestion final
-        {
-            commands::SessionTarget target;
-            persistence::ESaveMode mode;
-            lux::ui::PaneHandle view;
-        };
-
-        struct ReloadQuestion final
-        {
-            commands::SessionTarget target;
-            lux::ui::PaneHandle view;
         };
         struct RunCloseDecision final
         {
@@ -222,9 +211,8 @@ namespace lux::editor::application
         std::vector<OpenPresentation> opens_;
         std::vector<AssetReference> open_intents_;
         std::shared_ptr<scene::ModelPlacementService> model_placements_;
-        std::optional<SaveQuestion> save_question_;
+        std::shared_ptr<project::ContentReview> content_review_;
         std::shared_ptr<ProjectContentReloading> reloading_;
-        std::optional<ReloadQuestion> reload_question_;
         std::optional<project::VResultIntent> result_intent_;
         std::optional<EditorFailure> result_failure_;
         std::optional<EditorFailure> maintenance_failure_;
@@ -300,18 +288,7 @@ namespace lux::editor::application
         openCaptured(AssetReference, const extensions::ContributionSnapshot&);
         [[nodiscard]] EditorResult<void> receiveResultIntent();
 
-        [[nodiscard]] EditorResult<persistence::SaveId> save(
-            commands::SessionTarget,
-            persistence::ESaveMode,
-            std::string destination = {}
-        );
-        [[nodiscard]] EditorResult<void> askSave(commands::SessionTarget, persistence::ESaveMode);
-        [[nodiscard]] EditorResult<void> receiveSaveAnswer();
         void receiveArtifact(persistence::DerivedArtifact);
-        [[nodiscard]] EditorResult<void> cancelContentPreview(sessions::SessionId);
-        [[nodiscard]] EditorResult<void> reload(commands::SessionTarget);
-        [[nodiscard]] EditorResult<void> askReload(commands::SessionTarget);
-        [[nodiscard]] EditorResult<void> receiveReloadAnswer();
         [[nodiscard]] EditorResult<lux::ui::PaneHandle> show(sessions::SessionId, bool another_view);
         [[nodiscard]] EditorResult<lux::ui::PaneHandle> makeContentView(
             views::ViewContent,

@@ -963,9 +963,9 @@ int main(int argc, char** argv)
         commands::CommandId{"lux.editor.save-as"},
         commands::CommandInvocation{commands::SessionTarget{material_id, save_material_stamp}}
     ));
-    assert(impl.save_question_);
-    const auto original_save_target = impl.save_question_->target;
-    const auto save_window = impl.save_question_->view;
+    assert(impl.content_review_->question());
+    const auto original_save_target = impl.content_review_->question()->source;
+    const auto save_window = impl.content_review_->question()->view;
     const auto root_window = impl.desktop_->root().findPane(save_window);
     assert(root_window && (*root_window)->ownership() == object::EObjectOwnership::PARENT_OWNED);
     assert((*root_window)->parent() == &impl.desktop_->root());
@@ -983,18 +983,18 @@ int main(int argc, char** argv)
         assert(question.setText("../outside.source"));
         assert(question.answer(desktop::EReviewChoice::SAVE));
     };
-    assert(impl.desktop_->root().withPane(impl.save_question_->view, invalid_path));
-    assert(app->update() && impl.save_question_ && impl.content_saving_->pending().empty());
-    assert(impl.save_question_->target.based_on == original_save_target.based_on);
+    assert(impl.desktop_->root().withPane(impl.content_review_->question()->view, invalid_path));
+    assert(app->update() && impl.content_review_->question() && impl.content_saving_->pending().empty());
+    assert(impl.content_review_->question()->source == original_save_target);
     auto choose_source = [&](ui::Pane& pane)
     {
         auto& question = static_cast<desktop::ReviewView&>(pane);
         assert(question.setText("Content/Beginner/Material.source"));
         assert(question.answer(desktop::EReviewChoice::SAVE));
     };
-    assert(impl.desktop_->root().withPane(impl.save_question_->view, choose_source));
+    assert(impl.desktop_->root().withPane(impl.content_review_->question()->view, choose_source));
     checkUpdate(*app);
-    assert(!impl.save_question_ && !impl.desktop_->root().findPane(save_window));
+    assert(!impl.content_review_->question() && !impl.desktop_->root().findPane(save_window));
 
     const auto save_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
     while (!impl.content_saving_->pending().empty())
@@ -1196,7 +1196,7 @@ int main(int argc, char** argv)
         assert(question.setText("Content/Beginner/MaterialCopy.source"));
         assert(question.answer(desktop::EReviewChoice::SAVE));
     };
-    assert(impl.desktop_->root().withPane(impl.save_question_->view, export_path));
+    assert(impl.desktop_->root().withPane(impl.content_review_->question()->view, export_path));
     checkUpdate(*app);
     while (!impl.content_saving_->pending().empty())
     {
@@ -1674,7 +1674,7 @@ int main(int argc, char** argv)
 
     // An unrelated real SceneSystem failure must not bypass the accepted source-save/catalog handoff.
     auto saving =
-        impl.save({material_id, impl.sessions_->describe(material_id)->current}, persistence::ESaveMode::SAVE);
+        impl.content_review_->save({material_id, impl.sessions_->describe(material_id)->current}, persistence::ESaveMode::SAVE);
     assert(saving);
     const auto saving_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
     while (impl.saves_->status(*saving)->stage != persistence::ESaveStage::TERMINAL)
@@ -1973,7 +1973,7 @@ int main(int argc, char** argv)
 
     // Accepted source encoding and real material compilation remain owned while the Run/GPU are live.
     const auto exit_content = impl.sessions_->describe(material_id)->current;
-    auto exit_save = impl.save({material_id, exit_content}, persistence::ESaveMode::SAVE);
+    auto exit_save = impl.content_review_->save({material_id, exit_content}, persistence::ESaveMode::SAVE);
     assert(exit_save && impl.saves_->status(*exit_save)->stage != persistence::ESaveStage::TERMINAL);
     lux::editor::material::MaterialCompileId exit_compile;
     auto compile_at_exit = [&](ui::Pane& pane)

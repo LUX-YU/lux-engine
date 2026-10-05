@@ -3,12 +3,13 @@ add_component(COMPONENT_NAME project_module NAMESPACE lux::engine::editor STATIC
     SOURCE_FILES src/ProjectModule.cpp)
 component_include_directories(project_module BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
 target_link_libraries(project_module PUBLIC lux::engine::editor::editor_extensions
-    PRIVATE lux::engine::editor::project_ui lux::engine::editor::editor_storage lux::engine::editor::scene_project
+    PRIVATE lux::engine::editor::project_tools_ui lux::engine::editor::project_ui lux::engine::editor::editor_storage lux::engine::editor::scene_project
     lux::engine::editor::session_execution lux::engine::editor::editor_persistence_execution
     lux::engine::editor::editor_file_publication)
 component_add_transitive_commands(project_module
     "find_package(lux-engine-editor-extensions REQUIRED COMPONENTS editor_extensions)"
     "find_package(lux-engine-editor-project-ui REQUIRED COMPONENTS project_ui)"
+    "find_package(lux-engine-editor-project-tools-ui REQUIRED COMPONENTS project_tools_ui)"
     "find_package(lux-engine-editor-storage REQUIRED COMPONENTS editor_storage)"
     "find_package(lux-engine-editor-scene-execution REQUIRED COMPONENTS scene_project)"
     "find_package(lux-engine-editor-session-factories REQUIRED COMPONENTS session_execution)"

@@ -18516,9 +18516,6 @@
       "editor/application/src/EditorSaving.cpp": [
         "editor_bootstrap"
       ],
-      "editor/application/src/EditorReload.cpp": [
-        "editor_bootstrap"
-      ],
       "editor/application/src/EditorResults.cpp": [
         "editor_bootstrap"
       ],
@@ -18984,6 +18981,12 @@
       ],
       "editor/activities/project/src/ProjectContentReloading.cpp": [
         "editor_storage"
+      ],
+      "editor/workbench/project/tools/src/ContentReview.cpp": [
+        "project_tools_ui"
+      ],
+      "editor/workbench/project/tools/include/lux/engine/editor/project/ContentReview.hpp": [
+        "project_tools_ui"
       ]
     },
     "native_libraries": [

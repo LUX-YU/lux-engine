@@ -1,4 +1,10 @@
 #include "ObjectQueue.hpp"
+#if defined(LUX_TEST_CONTENT_REVIEW)
+#include <lux/engine/editor/project/ContentReview.hpp>
+#include <lux/engine/editor/desktop/ReviewView.hpp>
+#include <lux/engine/editor/desktop/UiRegistry.hpp>
+#include <lux/engine/ui/Root.hpp>
+#endif
 #include <atomic>
 #include <cassert>
 #include <fstream>
@@ -156,8 +162,16 @@ int main(int argc, char** argv)
     auto project =
         take(ProjectStorage::open(prepared_project, vfs, *runtime.blocking(), tasks, messages.dispatcherRef()));
     services::ServiceRegistry dependencies{messages.dispatcherRef()};
+#if defined(LUX_TEST_CONTENT_REVIEW)
+    auto ui_root = take(ui::Root::create(messages.dispatcherRef()));
+    desktop::UiRegistry windows{messages.dispatcherRef(), dependencies};
+#endif
     assert(dependencies.publish(
-        {services::ServiceEntry::bind<ef::kFlowEnvironmentService>(object::CodeLease::builtin()),
+        {
+#if defined(LUX_TEST_CONTENT_REVIEW)
+         services::ServiceEntry::bind<project::kContentReviewService>(object::CodeLease::builtin()),
+#endif
+         services::ServiceEntry::bind<ef::kFlowEnvironmentService>(object::CodeLease::builtin()),
          services::ServiceEntry::bind<kProjectContentSavingService>(object::CodeLease::builtin()),
          services::ServiceEntry::bind<kProjectContentReloadingService>(object::CodeLease::builtin()),
          services::ServiceEntry::bind<kProjectPluginSelectionService>(object::CodeLease::builtin()),
@@ -172,6 +186,10 @@ int main(int argc, char** argv)
          )}
     ));
     auto scope = take(dependencies.createScope());
+#if defined(LUX_TEST_CONTENT_REVIEW)
+    assert(scope.provide(services::ServiceNameView{"lux.ui.root"}, *ui_root));
+    assert(scope.provide(services::ServiceNameView{"lux.editor.ui"}, windows));
+#endif
     assert(scope.provide(services::ServiceNameView{"lux.process.execution"}, runtime));
     assert(scope.provide(services::ServiceNameView{"lux.services.registry"}, dependencies));
     assert(scope.provide(services::ServiceNameView{"lux.services.scope"}, scope));
@@ -304,6 +322,62 @@ int main(int argc, char** argv)
             const auto stale = reloads->request(before.current);
             assert(!stale && take(store.describe(session)).current == after.current);
         }
+#if defined(LUX_TEST_CONTENT_REVIEW)
+        auto review = take(dependencies.get<project::ContentReview>(scope));
+        assert(review == take(dependencies.get<project::ContentReview>(scope)) && !review->question());
+        const auto original = take(store.describe(sessions[1]));
+        auto& model = take(store.access<em::MaterialSession>().edit(take(store.key<em::MaterialSession>(sessions[1])))).get();
+        assert(review->askSave({sessions[1], original.current}, p::ESaveMode::EXPORT_COPY));
+        const auto question = *review->question();
+        assert(question.source == original.current && ui_root->findPane(question.view));
+        const auto other_question = review->askReload({sessions[1], original.current});
+        assert(!other_question && other_question.error().code == EEditorError::BUSY);
+        em::MaterialEditBatch change{original.current, "Concurrent review edit", {}};
+        change.edits.emplace_back(em::MaterialRename{"Concurrent review edit"});
+        assert(model.apply(std::move(change)));
+        const auto newer = model.describe();
+        auto answer = [&](desktop::EReviewChoice choice, std::string path = {})
+        {
+            auto respond = [&](ui::Pane& pane)
+            {
+                auto& prompt = static_cast<desktop::ReviewView&>(pane);
+                if (!path.empty()) assert(prompt.setText(std::move(path)));
+                assert(prompt.answer(choice));
+            };
+            assert(ui_root->withPane(review->question()->view, respond));
+        };
+        answer(desktop::EReviewChoice::SAVE, "Content/stale-review-copy");
+        assert(review->update() && review->question()->source == original.current);
+        assert(model.describe().current == newer.current && !std::filesystem::exists(root / "Content/stale-review-copy"));
+        bool rejected_answer{};
+        auto rejected = [&](ui::Pane& pane) { rejected_answer = !static_cast<desktop::ReviewView&>(pane).response(); };
+        assert(ui_root->withPane(question.view, rejected) && rejected_answer);
+        answer(desktop::EReviewChoice::CANCEL);
+        assert(review->update() && !review->question() && !ui_root->findPane(question.view));
+        assert(model.undo() && model.describe().current == original.current);
+        assert(review->askSave({sessions[1], model.describe().current}, p::ESaveMode::EXPORT_COPY));
+        const auto accepted_question = *review->question();
+        answer(desktop::EReviewChoice::SAVE, "Content/review-copy");
+        auto active_callback = [&](ui::Pane&)
+        {
+            const auto deferred = review->update();
+            assert(!deferred && deferred.error().code == EEditorError::BUSY);
+            assert(review->question()->source == accepted_question.source && saving.pending().empty());
+        };
+        assert(ui_root->withPane(accepted_question.view, active_callback));
+        files.during_resolve = [&]
+        {
+            const auto recursive = review->askReload({sessions[1], original.current});
+            assert(!recursive && recursive.error().code == EEditorError::BUSY);
+        };
+        assert(review->update() && !review->question() && !ui_root->findPane(accepted_question.view));
+        assert(!saving.pending().empty()); // The question is gone; the activity still owns accepted work.
+        until([&] { return saving.settled(); });
+        assert(std::filesystem::exists(root / "Content/review-copy"));
+        const auto after = model.describe();
+        assert(after.current == original.current && after.binding == original.binding && after.dirty == original.dirty);
+        std::cout << "Public ContentReview retains source, rejects active-callback detach and outlives its modal\n";
+#endif
         const auto current = take(store.describe(sessions[1]));
         bool wrong_thread{};
         std::jthread([&]

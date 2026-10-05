@@ -43,6 +43,7 @@ foreach(forbidden editor_ui editor_scene editor_material editor_flowforge editor
 endforeach()
 # The real publication fixture explicitly supplies its file backend after validating the UI closure.
 find_package(lux-engine-editor-storage REQUIRED COMPONENTS editor_storage)
+find_package(lux-engine-editor-project-tools-ui REQUIRED COMPONENTS project_tools_ui)
 get_filename_component(engine_source "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
 set(LUX_GENERATE_HEADER_DIR "${CMAKE_BINARY_DIR}/generated")
 include_component_cmake_scripts(lux::engine::core::meta)
@@ -81,7 +82,18 @@ target_link_libraries(desktop_views PRIVATE lux::engine::editor::editor_storage 
     lux::engine::function::ui_rendering imgui::core)
 add_executable(view_host "${CMAKE_CURRENT_BINARY_DIR}/host.cpp")
 target_link_libraries(view_host PRIVATE lux::engine::editor::view_host)
-foreach(target desktop_views view_host inspector_fields)
+file(READ "${engine_source}/editor/tests/integration/project/panels.cpp" panels)
+string(REPLACE "../../../../cmake/installed-consumers/common/UiTestContent.hpp"
+    "UiTestContent.hpp" panels "${panels}")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/panels.cpp" "${panels}")
+configure_file("${engine_source}/editor/tests/integration/project/ProjectToolFactories.hpp"
+    "${CMAKE_CURRENT_BINARY_DIR}/ProjectToolFactories.hpp" COPYONLY)
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/../common/UiTestContent.hpp"
+    "${CMAKE_CURRENT_BINARY_DIR}/UiTestContent.hpp" COPYONLY)
+add_executable(project_panels "${CMAKE_CURRENT_BINARY_DIR}/panels.cpp")
+target_link_libraries(project_panels PRIVATE lux::engine::editor::project_tools_ui
+    lux::engine::editor::editor_file_publication)
+foreach(target desktop_views view_host inspector_fields project_panels)
     if(MSVC)
         target_compile_options(${target} PRIVATE /UNDEBUG /utf-8 /Zc:__cplusplus /Zc:preprocessor)
     else()
@@ -103,6 +115,8 @@ if(NOT EXISTS "${sdk_prefix}/share/lux-engine/plugins/catalog.json")
 endif()
 enable_testing()
 add_test(NAME installed.desktop.host COMMAND view_host)
+add_test(NAME installed.desktop.project_tools COMMAND project_panels "${CMAKE_BINARY_DIR}/project-tools")
+set_tests_properties(installed.desktop.project_tools PROPERTIES TIMEOUT 60)
 add_test(NAME installed.desktop.inspector_codegen COMMAND inspector_fields)
 add_test(NAME installed.desktop.real_views COMMAND desktop_views "${P10_LINKER}" "${sdk_prefix}")
 set_tests_properties(installed.desktop.real_views PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)

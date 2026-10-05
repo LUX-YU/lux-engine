@@ -17,8 +17,14 @@ namespace lux::editor::views
     class ViewFactoryEntry;
 }
 
+namespace lux::editor::desktop
+{
+    struct UiDescriptor;
+}
+
 namespace lux::editor::project
 {
+    extern const desktop::UiDescriptor kRecentProjectsView;
     class RecentProjectsView final : public lux::ui::Pane
     {
     public:

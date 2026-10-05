@@ -1,3 +1,4 @@
+#include <lux/engine/editor/desktop/UiRegistry.hpp>
 #include <exception>
 #include <lux/engine/editor/workbench/CommandSupport.hpp>
 #include <lux/engine/editor/workbench/ViewFactorySupport.hpp>
@@ -21,7 +22,64 @@ namespace lux::editor::project
             "Import Assets",
             cxx::typeToken<std::monostate>()
         };
+        constexpr services::ServiceDependency kDependencies[]{
+            {services::ServiceNameView{"lux.editor.project.catalog"},
+             1,
+             cxx::typeToken<ProjectCatalogModel>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT},
+            {services::ServiceNameView{"lux.editor.assets.importer"},
+             1,
+             cxx::typeToken<assets::ModelImporter>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT}
+        };
+        desktop::UiResult<std::unique_ptr<lux::ui::Pane>> createView(
+            services::ServiceResolver& resolver,
+            const desktop::UiCreateInfo& input
+        )
+        {
+            const bool has_content = !input.content.sessions.empty();
+            const bool has_configuration = !input.configuration.bytes.empty();
+            const bool is_invalid_input = has_content || has_configuration;
+            if (is_invalid_input)
+            {
+                return cxx::unexpected(desktop::UiFailure{
+                    desktop::EUiError::INVALID_CONFIGURATION,
+                    "project.tool",
+                    0,
+                    "This window accepts no author binding or configuration payload"
+                });
+            }
+            auto catalog = resolver.require<ProjectCatalogModel>(0);
+            if (!catalog)
+            {
+                return cxx::unexpected(desktop::UiFailure{
+                    desktop::EUiError::DEPENDENCY,
+                    "lux.editor.project.catalog",
+                    static_cast<std::uint64_t>(catalog.error().code),
+                    catalog.error().detail
+                });
+            }
+            auto importer = resolver.require<assets::ModelImporter>(1);
+            if (!importer)
+            {
+                return cxx::unexpected(desktop::UiFailure{
+                    desktop::EUiError::DEPENDENCY,
+                    "lux.editor.assets.importer",
+                    static_cast<std::uint64_t>(importer.error().code),
+                    importer.error().detail
+                });
+            }
+            return std::make_unique<ImportView>(input.dispatcher, input.instance, catalog->get(), importer->get());
+        }
     } // namespace
+    constinit const desktop::UiDescriptor kImportView{
+        .type = kFactoryDescriptor.type,
+        .label = kFactoryDescriptor.label,
+        .dependencies = kDependencies,
+        .create = createView
+    };
     struct ImportView::Impl final
     {
         enum class EAction

@@ -4,9 +4,12 @@
 #include <lux/engine/object/ObjectDispatcher.hpp>
 #include <cassert>
 #include <iostream>
+#include "ProjectToolFactories.hpp"
 
-int main()
+int main(int argc, char** argv)
 {
+    assert(argc == 2);
+    projectToolFactories(argv[1]);
     using namespace lux;
     using namespace lux::editor;
     auto messages = object::ObjectMessageQueue::create(32);

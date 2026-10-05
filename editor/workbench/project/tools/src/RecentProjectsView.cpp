@@ -1,3 +1,4 @@
+#include <lux/engine/editor/desktop/UiRegistry.hpp>
 #include <exception>
 #include <lux/engine/editor/storage/ProjectContentOpening.hpp>
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
@@ -32,7 +33,49 @@ namespace lux::editor::project
             "Recent Projects",
             cxx::typeToken<std::monostate>()
         };
+        constexpr services::ServiceDependency kDependencies[]{
+            {services::ServiceNameView{"lux.editor.project.recent"},
+             1,
+             cxx::typeToken<RecentProjects>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT}
+        };
+        desktop::UiResult<std::unique_ptr<lux::ui::Pane>> createView(
+            services::ServiceResolver& resolver,
+            const desktop::UiCreateInfo& input
+        )
+        {
+            const bool has_content = !input.content.sessions.empty();
+            const bool has_configuration = !input.configuration.bytes.empty();
+            const bool is_invalid_input = has_content || has_configuration;
+            if (is_invalid_input)
+            {
+                return cxx::unexpected(desktop::UiFailure{
+                    desktop::EUiError::INVALID_CONFIGURATION,
+                    "project.tool",
+                    0,
+                    "This window accepts no author binding or configuration payload"
+                });
+            }
+            auto recent = resolver.require<RecentProjects>(0);
+            if (!recent)
+            {
+                return cxx::unexpected(desktop::UiFailure{
+                    desktop::EUiError::DEPENDENCY,
+                    "lux.editor.project.recent",
+                    static_cast<std::uint64_t>(recent.error().code),
+                    recent.error().detail
+                });
+            }
+            return std::make_unique<RecentProjectsView>(input.dispatcher, input.instance, recent->get());
+        }
     } // namespace
+    constinit const desktop::UiDescriptor kRecentProjectsView{
+        .type = kFactoryDescriptor.type,
+        .label = kFactoryDescriptor.label,
+        .dependencies = kDependencies,
+        .create = createView
+    };
     struct RecentProjectsView::Impl final
     {
         enum class EAction

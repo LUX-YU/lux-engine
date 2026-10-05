@@ -1,29 +1,26 @@
-#include <lux/engine/editor/application/EditorApplicationImpl.hpp>
-#include <lux/engine/scene/RenderSystem.hpp>
-#include <lux/engine/editor/storage/ProjectContentOpening.hpp>
 #include <algorithm>
+#include <lux/engine/editor/application/EditorApplicationImpl.hpp>
+#include <lux/engine/editor/storage/ProjectContentOpening.hpp>
+#include <lux/engine/scene/RenderSystem.hpp>
 
 namespace lux::editor::application
 {
-    scene::SceneViewServices EditorApplication::Impl::sceneServices()
+    EditorResult<lux::ui::PaneHandle> EditorApplication::Impl::adopt(
+        std::unique_ptr<lux::ui::Pane, object::ObjectDeleter>& candidate
+    )
     {
-        auto& rendering = *engine_->renderContext();
-        return {
-            sessions_.access<scene::SceneSession>(),
-            projections_,
-            engine_->sceneRuntime(),
-            rendering.resources(),
-            rendering.runtime(),
-            environment_,
-            runs_.inspect()
-        };
-    }
-    EditorResult<views::ViewId> EditorApplication::Impl::adopt(views::DetachedView& candidate, std::string key)
-    {
-        auto result = desktop_->views().adopt(candidate, views::ViewRestoreKey{key});
-        if (!result)
-            return applicationFailure("view.adopt", result.error());
-        return result->id;
+        auto* pane = candidate.get();
+        auto mounted = desktop_->root().addSubPane(std::move(candidate));
+        if (!mounted)
+        {
+            return applicationFailure("view.mount", mounted.error());
+        }
+        auto id = desktop_->root().identify(*pane);
+        if (!id)
+        {
+            return applicationFailure("view.identity", id.error());
+        }
+        return *id;
     }
     EditorResult<sessions::OpenAssetId> EditorApplication::Impl::open(AssetReference reference)
     {
@@ -35,7 +32,9 @@ namespace lux::editor::application
         };
         auto guarded = contributions_.withSnapshot(prepare);
         if (!guarded)
+        {
             return applicationFailure("open.catalog", guarded.error());
+        }
         return std::move(*result);
     }
     EditorResult<sessions::OpenAssetId> EditorApplication::Impl::openCaptured(
@@ -44,12 +43,18 @@ namespace lux::editor::application
     )
     {
         if (phase_ != EApplicationPhase::RUNNING)
+        {
             return cxx::unexpected(EditorFailure{EEditorError::CLOSING, "application.open"});
+        }
         if (opens_.size() == 64)
+        {
             return cxx::unexpected(EditorFailure{EEditorError::CAPACITY, "application.open"});
+        }
         auto opened = openProjectContent(*project_, files_, opening_, reference, snapshot.sessions());
         if (!opened)
+        {
             return cxx::unexpected(opened.error());
+        }
         opens_.push_back({*opened});
         return *opened;
     }
@@ -58,34 +63,48 @@ namespace lux::editor::application
     {
         const auto entry = std::ranges::find(impl_->opens_, id, &Impl::OpenPresentation::operation);
         if (entry == impl_->opens_.end())
+        {
             return cxx::unexpected(EditorFailure{EEditorError::STALE_REQUEST, "open.status"});
+        }
         auto status = impl_->opening_.status(id);
         if (!status)
+        {
             return applicationFailure("open.status", status.error());
+        }
         return OpenAndShowResult{std::move(*status), entry->view, entry->failure};
     }
     EditorResult<void> EditorApplication::cancelOpen(sessions::OpenAssetId id)
     {
         if (auto ready = impl_->admission(); !ready)
+        {
             return cxx::unexpected(ready.error());
+        }
         Impl::Dispatch scope{impl_->dispatching_};
         const auto entry = std::ranges::find(impl_->opens_, id, &Impl::OpenPresentation::operation);
         if (entry == impl_->opens_.end())
+        {
             return cxx::unexpected(EditorFailure{EEditorError::STALE_REQUEST, "open.cancel"});
+        }
         auto cancelled = impl_->opening_.cancel(id);
         if (!cancelled)
+        {
             return applicationFailure("open.cancel", cancelled.error());
+        }
         entry->cancelled = true;
         return {};
     }
     EditorResult<void> EditorApplication::acknowledgeOpen(sessions::OpenAssetId id)
     {
         if (auto ready = impl_->admission(); !ready)
+        {
             return cxx::unexpected(ready.error());
+        }
         Impl::Dispatch scope{impl_->dispatching_};
         auto acknowledged = impl_->opening_.acknowledge(id);
         if (!acknowledged)
+        {
             return applicationFailure("open.acknowledge", acknowledged.error());
+        }
         std::erase_if(impl_->opens_, [id](const auto& entry) { return entry.operation == id; });
         return {};
     }
@@ -93,27 +112,39 @@ namespace lux::editor::application
     {
         auto received = opening_.update();
         if (!received)
+        {
             return applicationFailure("open.receive", received.error());
+        }
         for (auto& entry : opens_)
         {
             if (entry.view || entry.failure || entry.cancelled)
+            {
                 continue;
+            }
             const auto status = opening_.status(entry.operation);
             if (!status)
+            {
                 return applicationFailure("open.status", status.error());
+            }
             if (status->stage != sessions::EOpenAssetStage::PUBLISHED)
+            {
                 continue;
+            }
             auto shown = show(status->session, false);
             if (shown)
+            {
                 entry.view = *shown;
+            }
             else if (shown.error().code != EEditorError::BUSY)
+            {
                 entry.failure = std::move(shown.error()); // Content remains owned and queryable without a view.
+            }
         }
         return {};
     }
-    EditorResult<views::ViewId> EditorApplication::Impl::show(sessions::SessionId id, bool another_view)
+    EditorResult<lux::ui::PaneHandle> EditorApplication::Impl::show(sessions::SessionId id, bool another_view)
     {
-        std::optional<EditorResult<views::ViewId>> result;
+        std::optional<EditorResult<lux::ui::PaneHandle>> result;
         auto prepare = [&](const extensions::ContributionSnapshot& snapshot) -> extensions::ContributionResult<void>
         {
             result.emplace(makeContentView({{id}, id}, another_view, snapshot));
@@ -121,10 +152,12 @@ namespace lux::editor::application
         };
         auto guarded = contributions_.withSnapshot(prepare);
         if (!guarded)
+        {
             return applicationFailure("show.catalog", guarded.error());
+        }
         return std::move(*result);
     }
-    EditorResult<views::ViewId> EditorApplication::Impl::makeContentView(
+    EditorResult<lux::ui::PaneHandle> EditorApplication::Impl::makeContentView(
         views::ViewContent association,
         bool another_view,
         const extensions::ContributionSnapshot& snapshot,
@@ -133,80 +166,122 @@ namespace lux::editor::application
     )
     {
         if (!association.valid())
+        {
             return cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "show.content"});
+        }
         std::optional<views::ViewTypeId> selected = preferred;
         std::string title;
         for (const auto id : association.sessions)
         {
             auto info = sessions_.describe(id);
             if (!info)
+            {
                 return applicationFailure("show.session", info.error());
-            auto candidate = snapshot.views().selectContent(info->kind, selected);
+            }
+            auto candidate = snapshot.ui().selectContent(info->kind, selected);
             if (!candidate)
+            {
                 return applicationFailure("show.provider", candidate.error());
-            selected = *candidate;
+            }
+            selected = views::ViewTypeId{candidate->descriptor().type.name()};
             if (association.primary == id && info->binding)
+            {
                 title = info->binding->location;
+            }
         }
         if (!selected)
+        {
             return cxx::unexpected(EditorFailure{EEditorError::MISSING_PROVIDER, "show.provider"});
-        auto views = desktop_->views().describeAll();
+        }
+        auto views = editor_context_.ui().describe(desktop_->root());
         if (!views)
+        {
             return applicationFailure("show.views", views.error());
-        std::optional<views::ViewId> existing;
+        }
+        std::optional<lux::ui::PaneHandle> existing;
         for (const auto& view : *views)
         {
             if (view.type != *selected)
+            {
                 continue;
+            }
             const bool is_restore_target = restore_key && view.restore_key == *restore_key;
             const bool is_reusable = !another_view && !restore_key && view.content == association;
             if (is_reusable)
             {
-                auto focused = desktop_->views().focus(view.id);
-                if (!focused)
-                    return applicationFailure("show.focus", focused.error());
-                return view.id;
+                auto pane = desktop_->root().findPane(view.handle);
+                if (!pane)
+                {
+                    return applicationFailure("show.target", pane.error());
+                }
+                (*pane)->setVisible(true);
+                if (!desktop_->root().requestFocus(**pane))
+                {
+                    return cxx::unexpected(EditorFailure{EEditorError::BUSY, "show.focus"});
+                }
+                return view.handle;
             }
             if (is_restore_target)
             {
                 if (!view.content.sessions.empty() && view.content != association)
+                {
                     return cxx::unexpected(EditorFailure{
                         EEditorError::STALE_REQUEST,
                         "recovery.binding",
                         0,
                         "The matching window already displays different content; original binding retained."
                     });
+                }
                 if (view.content == association)
-                    return view.id;
-                existing = view.id;
+                {
+                    return view.handle;
+                }
+                existing = view.handle;
                 break;
             }
         }
         const bool is_full = !existing && views->size() == 64;
         if (is_full || next_view_ == UINT64_MAX)
+        {
             return cxx::unexpected(EditorFailure{EEditorError::CAPACITY, "show.views"});
+        }
         const auto name = "content-" + std::to_string(next_view_++);
         if (existing)
         {
-            auto rebound = desktop_->views().rebindContent(*existing, association);
+            auto rebound = editor_context_.ui().rebind(desktop_->root(), *existing, association);
             if (!rebound)
+            {
                 return applicationFailure("recovery.binding", rebound.error());
+            }
             return *existing;
         }
-        views::ContentViewInput value{association, title.empty() ? name : std::move(title)};
-        const views::ViewFactoryInput input{
-            messages_.dispatcherRef(),
-            lux::ui::PaneId{name},
-            lux::object::CodeLease::builtin(),
-            cxx::typeToken<views::ContentViewInput>(),
-            std::make_shared<const views::ContentViewInput>(std::move(value))
-        };
-        auto view = snapshot.views().prepare(*selected, input);
+        auto factory = snapshot.ui().find(selected->view());
+        if (!factory)
+        {
+            return applicationFailure("view.factory", factory.error());
+        }
+        auto view = editor_context_.ui().create(
+            *factory,
+            editor_context_.scope(),
+            {messages_.dispatcherRef(),
+             lux::ui::PaneId{name},
+             association,
+             {factory->descriptor().schema, {}},
+             restore_key ? *restore_key : views::ViewRestoreKey{name}}
+        );
         if (!view)
-            return applicationFailure("view.factory", view.error());
-        auto adopted = adopt(*view, restore_key ? std::string(restore_key->name()) : name);
+        {
+            return applicationFailure("view.create", view.error());
+        }
+        if (!title.empty())
+        {
+            (*view)->setTitle(title);
+        }
+        auto adopted = adopt(*view);
         if (!adopted)
+        {
             return cxx::unexpected(adopted.error());
+        }
         return *adopted;
     }
 } // namespace lux::editor::application

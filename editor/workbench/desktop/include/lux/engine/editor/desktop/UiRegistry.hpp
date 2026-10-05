@@ -1,12 +1,12 @@
 #pragma once
 
+#include <lux/cxx/core/move_only_function.hpp>
 #include <lux/engine/editor/views/ViewInfo.hpp>
-#include <lux/engine/editor/workspace/WorkspaceValues.hpp>
 #include <lux/engine/editor/workspace/DockLayout.hpp>
+#include <lux/engine/editor/workspace/WorkspaceValues.hpp>
 #include <lux/engine/services/ServiceRegistry.hpp>
 #include <lux/engine/ui/Docking.hpp>
 #include <lux/engine/ui/Pane.hpp>
-#include <lux/cxx/core/move_only_function.hpp>
 #include <optional>
 
 namespace lux::editor::desktop
@@ -68,6 +68,9 @@ namespace lux::editor::desktop
         // preparation. It must not perform IO, dispatch, allocate or mutate the object tree.
         UiStateResult (*prepare_state)(lux::ui::Pane&, const workspace::VersionedViewState&){};
         UiResult<void> (*cancel_preview)(lux::ui::Pane&){};
+        // This factory can restore its content association from the independent recovery manifest.
+        // Auxiliary windows use layout only. This is independent of default content-view selection.
+        bool restore_content{};
     };
     class UiEntry final
     {
@@ -215,24 +218,30 @@ namespace lux::editor::desktop
         // Root's original handle/borrow and never reinterpret a type name as a concrete C++ object.
         [[nodiscard]] UiResult<std::vector<WindowInfo>> describe(lux::ui::Root&) noexcept;
         // Capture creating-factory UI state and Root docking only. No author source or recovery IO.
-        [[nodiscard]] UiResult<workspace::DockLayout>
-        captureLayout(lux::ui::Root&, workspace::LayoutId, std::string label) noexcept;
+        [[nodiscard]] UiResult<workspace::DockLayout> captureLayout(
+            lux::ui::Root&,
+            workspace::LayoutId,
+            std::string label
+        ) noexcept;
         // Uses persistent key/type matching. Extra windows and every existing content association survive.
         // Layout payload only configures UI; it never opens content or restores an asset locator.
-        [[nodiscard]] UiResult<lux::ui::AttachmentCommit>
-        applyLayout(lux::ui::Root&, services::ServiceScope&, workspace::DockLayout) noexcept;
+        [[nodiscard]] UiResult<lux::ui::AttachmentCommit> applyLayout(
+            lux::ui::Root&,
+            services::ServiceScope&,
+            workspace::DockLayout
+        ) noexcept;
         [[nodiscard]] UiResult<views::ViewContent> content(lux::ui::Root&, const lux::ui::PaneHandle&) noexcept;
         // End only this window's temporary overlay through its original factory/domain gate.
         // BUSY and other failures are returned unchanged; content and window ownership are untouched.
         [[nodiscard]] UiResult<void> cancelPreview(lux::ui::Root&, const lux::ui::PaneHandle&) noexcept;
-        [[nodiscard]] UiResult<void> rebind(
-            lux::ui::Root&, const lux::ui::PaneHandle&, const views::ViewContent&
-        ) noexcept;
+        [[nodiscard]] UiResult<void>
+        rebind(lux::ui::Root&, const lux::ui::PaneHandle&, const views::ViewContent&) noexcept;
         // Prepare the entire removal using Root's existing attachment token. A domain refusal leaves
         // every window mounted. The caller commits at its content/UI safe point; no model is closed here.
         [[nodiscard]] UiResult<lux::ui::PreparedAttachment>
         prepareClose(lux::ui::Root&, std::span<const lux::ui::PaneHandle>) noexcept;
-        [[nodiscard]] UiResult<workspace::VersionedViewState> captureState(lux::ui::Root&, const lux::ui::PaneHandle&) noexcept;
+        [[nodiscard]] UiResult<workspace::VersionedViewState>
+        captureState(lux::ui::Root&, const lux::ui::PaneHandle&) noexcept;
         // One synchronous construction/commit boundary shared by configuration, menu and recovery.
         // Existing state, candidate ownership and docking commit together. No retained window table:
         // successful owners transfer directly to Root's Object relation.
@@ -247,25 +256,14 @@ namespace lux::editor::desktop
     private:
         [[nodiscard]] UiResult<void> cancelPreviewAdmitted(lux::ui::Root&, const lux::ui::PaneHandle&) noexcept;
         [[nodiscard]] UiResult<std::vector<WindowInfo>> describeAdmitted(lux::ui::Root&) noexcept;
-        [[nodiscard]] UiResult<lux::ui::AttachmentCommit> mountAdmitted(
-            lux::ui::Root&,
-            services::ServiceScope&,
-            std::vector<UiMountRequest>,
-            std::optional<lux::ui::DockTree>,
-            std::vector<UiStateRequest>
-        ) noexcept;
+        [[nodiscard]] UiResult<lux::ui::AttachmentCommit>
+        mountAdmitted(lux::ui::Root&, services::ServiceScope&, std::vector<UiMountRequest>, std::optional<lux::ui::DockTree>, std::vector<UiStateRequest>) noexcept;
         [[nodiscard]] UiResult<std::unique_ptr<lux::ui::Pane, object::ObjectDeleter>>
         createImpl(const UiHandle&, services::ServiceScope&, const UiCreateInfo&) noexcept;
-        [[nodiscard]] UiResult<void> visit(
-            lux::ui::Root&,
-            const lux::ui::PaneHandle&,
-            cxx::function_ref<void(const std::shared_ptr<const UiEntry>&, lux::ui::Pane&)>
-        ) noexcept;
-        [[nodiscard]] UiResult<void> visitAdmitted(
-            lux::ui::Root&,
-            const lux::ui::PaneHandle&,
-            cxx::function_ref<void(const std::shared_ptr<const UiEntry>&, lux::ui::Pane&)>
-        ) noexcept;
+        [[nodiscard]] UiResult<void>
+        visit(lux::ui::Root&, const lux::ui::PaneHandle&, cxx::function_ref<void(const std::shared_ptr<const UiEntry>&, lux::ui::Pane&)>) noexcept;
+        [[nodiscard]] UiResult<void>
+        visitAdmitted(lux::ui::Root&, const lux::ui::PaneHandle&, cxx::function_ref<void(const std::shared_ptr<const UiEntry>&, lux::ui::Pane&)>) noexcept;
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };

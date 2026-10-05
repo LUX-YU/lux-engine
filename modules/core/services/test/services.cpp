@@ -794,6 +794,71 @@ namespace
         assert(root.release() && child.release() && unrelated.release());
         assert(registry.drained() && root_counts.destroyed == 1 && child_counts.destroyed == 1);
     }
+    void maintenance(lux::object::ObjectMessageQueue& messages)
+    {
+        Counts counts, nested_counts, unrelated_counts;
+        auto descriptor = calculator;
+        descriptor.retention = EServiceRetention::SCOPED;
+        descriptor.maintain = [](void* input) noexcept -> ServiceResult<void>
+        {
+            auto& counts = static_cast<Calculator*>(input)->counts;
+            ++counts.observations;
+            if (counts.observing)
+            {
+                counts.observing();
+            }
+            if (counts.failed)
+            {
+                return lux::cxx::unexpected(ServiceFailure{
+                    EServiceError::FACTORY_FAILURE,
+                    "Original maintenance error",
+                    "test.maintenance",
+                    732
+                });
+            }
+            return {};
+        };
+        ServiceRegistry registry{messages.dispatcherRef()};
+        assert(registry.publish({ServiceEntry::create(CodeLease::builtin(), descriptor)}));
+        auto root = take(registry.createScope());
+        auto child = take(registry.createScope(&root));
+        auto unrelated = take(registry.createScope());
+        assert(root.provide(ServiceNameView{"test.counts"}, counts));
+        assert(child.provide(ServiceNameView{"test.counts"}, nested_counts));
+        assert(unrelated.provide(ServiceNameView{"test.counts"}, unrelated_counts));
+        assert(root.maintain() && counts.created == 0 && nested_counts.created == 0);
+        auto first = take(registry.get<Calculator>(root));
+        auto alias = take(registry.get<Value>(root));
+        auto nested = take(registry.get<Calculator>(child));
+        auto other = take(registry.get<Calculator>(unrelated));
+        assert(first.get() == alias.get());
+        counts.observing = [&]
+        {
+            assert(root.maintain().error().code == EServiceError::BUSY);
+            assert(child.maintain().error().code == EServiceError::BUSY);
+            assert(root.release().error().code == EServiceError::BUSY);
+            assert(registry.get<Calculator>(root, "later").error().code == EServiceError::BUSY);
+            assert(registry.publish({}).error().code == EServiceError::BUSY);
+        };
+        counts.failed = true;
+        auto failed = root.maintain();
+        assert(!failed && failed.error().domain == "test.maintenance" && failed.error().domain_code == 732);
+        assert(counts.observations == 1 && nested_counts.observations == 1 && unrelated_counts.observations == 0);
+        counts.failed = false;
+        assert(root.beginClose() && root.maintain()); // Accepted work continues while new creation is closed.
+        assert(counts.observations == 2 && nested_counts.observations == 2);
+        std::thread wrong([&] { assert(root.maintain().error().code == EServiceError::WRONG_THREAD); });
+        wrong.join();
+        assert(root.cancelClose());
+        counts.observing = {};
+        first.reset();
+        alias.reset();
+        nested.reset();
+        other.reset();
+        assert(root.release() && child.release() && unrelated.release());
+        assert(registry.drained());
+        assert(root.maintain() && counts.observations == 2);
+    }
     void churn(lux::object::ObjectMessageQueue& messages)
     {
         Counts counts;
@@ -849,6 +914,7 @@ int main(int argc, char** argv)
     declarationOwnership(*messages, false);
     declarationOwnership(*messages, true);
     settlement(*messages);
+    maintenance(*messages);
     churn(*messages);
     assert(messages->pendingRetirements() == 0);
     std::cout << "PASS lazy factories, one allocation, declared dependencies, scope/qualifier isolation, "

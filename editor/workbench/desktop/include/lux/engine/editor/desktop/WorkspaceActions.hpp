@@ -10,24 +10,23 @@ namespace lux::editor::workspace
     class WorkspaceStore;
     class WorkspaceChanges;
 } // namespace lux::editor::workspace
-namespace lux::editor::views
+namespace lux::ui
 {
-    class ViewFactorySnapshot;
+    class Root;
+}
+namespace lux::services
+{
+    class ServiceScope;
 }
 namespace lux::editor::desktop
 {
-    class ViewHost;
-    // A short Host transaction, followed by an independent preferences publication. The caller
-    // holds the existing contribution batch protection while lending the factory snapshot.
+    class UiRegistry;
+    // A short Root transaction, followed by an independent preferences publication. The caller
+    // holds the existing contribution batch protection while lending the registered UI factories.
     class WorkspaceActions final
     {
     public:
-        WorkspaceActions(
-            ViewHost&,
-            workspace::WorkspaceStore&,
-            workspace::WorkspaceChanges&,
-            object::ObjectDispatcherRef
-        );
+        WorkspaceActions(lux::ui::Root&, UiRegistry&, services::ServiceScope&, workspace::WorkspaceStore&, workspace::WorkspaceChanges&);
         ~WorkspaceActions();
         WorkspaceActions(const WorkspaceActions&) = delete;
         WorkspaceActions& operator=(const WorkspaceActions&) = delete;
@@ -35,8 +34,8 @@ namespace lux::editor::desktop
         WorkspaceActions& operator=(WorkspaceActions&&) = delete;
 
         [[nodiscard]] EditorResult<void> save(std::string label);
-        [[nodiscard]] EditorResult<void> apply(const workspace::LayoutId&, const views::ViewFactorySnapshot&);
-        [[nodiscard]] EditorResult<void> apply(workspace::DockLayout, const views::ViewFactorySnapshot&);
+        [[nodiscard]] EditorResult<void> apply(const workspace::LayoutId&);
+        [[nodiscard]] EditorResult<void> apply(workspace::DockLayout);
 
     private:
         struct Impl;

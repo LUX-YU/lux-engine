@@ -4,6 +4,7 @@
 #include <imgui_internal.h>
 #include <lux/engine/editor/desktop/DesktopShell.hpp>
 #include <lux/engine/editor/desktop/UiRegistry.hpp>
+#include <lux/engine/editor/desktop/ViewHost.hpp>
 #include <lux/engine/editor/editing/EditExecutor.hpp>
 #include <lux/engine/editor/extensions/EditorExtension.hpp>
 #include <lux/engine/editor/flowforge/FlowModule.hpp>
@@ -272,6 +273,7 @@ namespace
         editor::commands::CommandRegistry commands;
         editor::commands::CommandDispatcher dispatcher{commands};
         std::unique_ptr<desktop::DesktopShell> desktop;
+        std::unique_ptr<desktop::ViewHost> legacy_host;
         author::ProjectionEnvironment environment;
         std::optional<sessions::TSessionKey<author::SceneSession>> key;
         author::SceneSession* session{};
@@ -443,6 +445,7 @@ namespace
                 window_,
                 {.docking = false}
             ));
+            legacy_host = std::make_unique<desktop::ViewHost>(desktop->root());
         }
         void frame(bool draw = true)
         {
@@ -469,6 +472,7 @@ namespace
                     input_.sample(*window_);
                     assert(desktop->feedInput(input_.snapshot()));
                 }
+                assert(legacy_host->drain());
                 assert(desktop->update(
                     draw && window_ ? std::nullopt
                                     : std::optional{ui::FrameInfo{draw ? ui::Size{1000, 650} : ui::Size{}, 1.F / 60.F}}
@@ -527,6 +531,7 @@ namespace
         {
             assert(transfer.tasks().join());
             saves.adoptCompletions();
+            legacy_host.reset();
             desktop.reset();
             hub.reset();
             wait([&] { return resources->empty(); }, false);
@@ -560,7 +565,7 @@ namespace
             author::sceneInspectorComponents()
         ));
         auto* inspector = static_cast<author::InspectorView*>(detached.pane());
-        const auto id = take(f.desktop->views().adopt(detached, views::ViewRestoreKey{"inspector"})).id;
+        const auto id = take((*f.legacy_host).adopt(detached, views::ViewRestoreKey{"inspector"})).id;
         f.frame(false);
         const auto find = [&](auto&& self, object::LuxObject& object) -> lux::ui::NumericEdit*
         {
@@ -615,14 +620,14 @@ namespace
             {
                 assert(!inspector->prepareClose());
                 assert(inspector->target() == target && group.overlay());
-                assert(f.desktop->views().close(id));
-                auto drain = take(f.desktop->views().drain());
-                assert(drain.pending == 1 && f.desktop->views().describe(id));
+                assert((*f.legacy_host).close(id));
+                auto drain = take((*f.legacy_host).drain());
+                assert(drain.pending == 1 && (*f.legacy_host).describe(id));
                 return {};
             }
         );
         assert(busy);
-        f.wait([&] { return !f.desktop->views().describe(id); }, false);
+        f.wait([&] { return !(*f.legacy_host).describe(id); }, false);
         assert(!group.overlay() && f.session->describe().current == before.current);
     }
     void ownedSceneTools(Fixture& f)
@@ -636,7 +641,7 @@ namespace
         assert(primary->rebindContent({{f.key->id()}, f.key->id()}));
         auto group = primary->interactionOwner();
         assert(group && group->select({{target}}));
-        const auto primary_id = take(f.desktop->views().adopt(detached, views::ViewRestoreKey{"owned-primary"})).id;
+        const auto primary_id = take((*f.legacy_host).adopt(detached, views::ViewRestoreKey{"owned-primary"})).id;
         f.wait([&] { return primary->image().isValid(); });
         const auto primary_window = take(f.desktop->root().identify(*primary));
         author::RunStore runs(*f.runtime, f.execution);
@@ -664,27 +669,27 @@ namespace
                 tool,
                 inputs
             ));
-            return take(f.desktop->views().adopt(candidate, views::ViewRestoreKey{name})).id;
+            return take((*f.legacy_host).adopt(candidate, views::ViewRestoreKey{name})).id;
         };
         const auto outline = make("owned-outline", author::ESceneTool::OUTLINER);
         const auto inspector = make("owned-inspector", author::ESceneTool::INSPECTOR);
         const auto resources = make("owned-resources", author::ESceneTool::RESOURCES);
         std::weak_ptr<author::SceneInteractionGroup> lifetime = group;
         group.reset();
-        assert(f.desktop->views().close(primary_id));
-        f.wait([&] { return !f.desktop->views().describe(primary_id); });
+        assert((*f.legacy_host).close(primary_id));
+        f.wait([&] { return !(*f.legacy_host).describe(primary_id); });
         assert(!lifetime.expired());
         assert(!author::shareSceneInteraction(f.desktop->root(), primary_window));
-        assert(take(f.desktop->views().describe(outline)).content.primary == f.key->id());
-        assert(take(f.desktop->views().describe(inspector)).content.primary == f.key->id());
+        assert(take((*f.legacy_host).describe(outline)).content.primary == f.key->id());
+        assert(take((*f.legacy_host).describe(inspector)).content.primary == f.key->id());
         f.frame(false);
-        assert(take(f.desktop->views().describe(resources)).content.sessions.empty());
+        assert(take((*f.legacy_host).describe(resources)).content.sessions.empty());
         assert(lifetime.lock()->select({}));
         f.frame(false);
         const auto no_target = [&](ui::Pane& pane) { assert(!static_cast<author::InspectorView&>(pane).target()); };
-        assert(f.desktop->views().withView(inspector, no_target));
+        assert((*f.legacy_host).withView(inspector, no_target));
         // An empty selection does not detach the still-live author's content association.
-        assert(take(f.desktop->views().describe(inspector)).content.primary == f.key->id());
+        assert(take((*f.legacy_host).describe(inspector)).content.primary == f.key->id());
         assert(lifetime.lock()->select({{target}}));
         auto read = take(f.session->read());
         assert(read.withRead(
@@ -696,7 +701,7 @@ namespace
                     auto& view = static_cast<author::InspectorView&>(pane);
                     assert(!view.target() && !view.status());
                 };
-                assert(f.desktop->views().withView(inspector, unchanged));
+                assert((*f.legacy_host).withView(inspector, unchanged));
                 assert(lifetime.lock()->selection().objects == std::vector<author::VSceneSelectionTarget>{target});
                 return {};
             }
@@ -707,15 +712,12 @@ namespace
             auto& view = static_cast<author::InspectorView&>(pane);
             assert(view.status() && view.target() == target);
         };
-        assert(f.desktop->views().withView(inspector, restored));
-        assert(f.desktop->views().close(outline));
-        f.wait([&] { return !f.desktop->views().describe(outline); }, false);
+        assert((*f.legacy_host).withView(inspector, restored));
+        assert((*f.legacy_host).close(outline));
+        f.wait([&] { return !(*f.legacy_host).describe(outline); }, false);
         assert(!lifetime.expired());
-        assert(f.desktop->views().close(inspector) && f.desktop->views().close(resources));
-        f.wait(
-            [&] { return !f.desktop->views().describe(inspector) && !f.desktop->views().describe(resources); },
-            false
-        );
+        assert((*f.legacy_host).close(inspector) && (*f.legacy_host).close(resources));
+        f.wait([&] { return !(*f.legacy_host).describe(inspector) && !(*f.legacy_host).describe(resources); }, false);
         assert(lifetime.expired());
         assert(f.session->describe().current == before.current && f.session->describe().dirty == before.dirty);
         std::puts("EC1 complete Scene tools: owner lifetime, no-target association, BUSY retry and release");
@@ -921,7 +923,7 @@ namespace
             author::sceneInspectorComponents()
         ));
         auto* inspector = static_cast<author::InspectorView*>(candidate.pane());
-        auto& host = f.desktop->views();
+        auto& host = (*f.legacy_host);
         const auto view = take(host.adopt(candidate, views::ViewRestoreKey{"closing-inspector"})).id;
         class BlockingPane final : public ui::Pane
         {
@@ -1018,12 +1020,12 @@ namespace
         viewConfiguration(running);
         auto* a = static_cast<author::SceneView*>(author_candidate.pane());
         auto* b = static_cast<author::SceneView*>(running.pane());
-        const auto aid = take(f.desktop->views().adopt(author_candidate, views::ViewRestoreKey{"author-run-pair"})).id;
-        const auto bid = take(f.desktop->views().adopt(running, views::ViewRestoreKey{"running"})).id;
+        const auto aid = take((*f.legacy_host).adopt(author_candidate, views::ViewRestoreKey{"author-run-pair"})).id;
+        const auto bid = take((*f.legacy_host).adopt(running, views::ViewRestoreKey{"running"})).id;
         auto command_candidate =
             take(author::makeRunSceneView(f.messages.dispatcherRef(), services, ui::PaneId{"run-commands"}, run, {3}));
         const auto command_view =
-            take(f.desktop->views().adopt(command_candidate, views::ViewRestoreKey{"run-commands"})).id;
+            take((*f.legacy_host).adopt(command_candidate, views::ViewRestoreKey{"run-commands"})).id;
         // The installed tool provider binds real run/view identities without an Application owner.
         const auto available = [](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
         { return commands::CommandState{true}; };
@@ -1071,7 +1073,7 @@ namespace
         const auto running_handle = take(f.desktop->root().identify(*b));
         std::optional<ui::PaneHandle> command_handle;
         const auto identify_command = [&](ui::Pane& pane) { command_handle = take(f.desktop->root().identify(pane)); };
-        assert(f.desktop->views().withView(command_view, identify_command) && command_handle);
+        assert((*f.legacy_host).withView(command_view, identify_command) && command_handle);
         const auto invoke = [&](const char* name, ui::PaneHandle target)
         {
             return controls.execute(
@@ -1103,7 +1105,7 @@ namespace
             f.environment.components
         ));
         auto* tree = static_cast<author::OutlinerView*>(outline.pane());
-        const auto tree_id = take(f.desktop->views().adopt(outline, views::ViewRestoreKey{"outline"})).id;
+        const auto tree_id = take((*f.legacy_host).adopt(outline, views::ViewRestoreKey{"outline"})).id;
         assert(tree->objects().size() == 1 && tree->select(tree->objects().front()));
         const auto stable_root = tree->objects().front();
         assert(tree->setCollapsed(stable_root, true) && tree->isCollapsed(stable_root));
@@ -1128,8 +1130,8 @@ namespace
         assert(author_group.selection().objects.size() == 1 && run_group.selection().objects.empty());
         assert(!tree->rebind(author::EditedSceneBinding{*f.key, nullptr}));
         assert(tree->objects().size() == 1 && tree->select(tree->objects().front()));
-        assert(f.desktop->views().close(tree_id));
-        f.wait([&] { return !f.desktop->views().describe(tree_id); });
+        assert((*f.legacy_host).close(tree_id));
+        f.wait([&] { return !(*f.legacy_host).describe(tree_id); });
         assert(a->presentedInstance() != b->presentedInstance());
         assert(b->presentedInstance() == take(runs.info(run)).instance);
         const auto stamp = f.session->describe();
@@ -1202,7 +1204,7 @@ namespace
             author::runInspectorComponents()
         ));
         auto* run_fields_view = static_cast<author::RunInspectorView*>(run_inspector.pane());
-        const auto inspector_id = take(f.desktop->views().adopt(run_inspector, views::ViewRestoreKey{"run-fields"})).id;
+        const auto inspector_id = take((*f.legacy_host).adopt(run_inspector, views::ViewRestoreKey{"run-fields"})).id;
         assert(run_fields_view->target() == target);
         {
             const auto components = author::runInspectorComponents();
@@ -1274,8 +1276,8 @@ namespace
             assert(take(take(runs.debugHistory(run)).get().view()).snapshot.history != paused.history);
             assert(f.session->describe().current == stamp.current);
         }
-        assert(f.desktop->views().close(inspector_id));
-        f.wait([&] { return !f.desktop->views().describe(inspector_id); });
+        assert((*f.legacy_host).close(inspector_id));
+        f.wait([&] { return !(*f.legacy_host).describe(inspector_id); });
         assert(invoke("lux.editor.scene.step", *command_handle) && command_step);
         f.wait([&] { return take(runs.stepStatus(*command_step)).state == lux::scene::ESceneStepState::COMPLETED; });
         assert(runs.acknowledgeStep(*command_step));
@@ -1285,18 +1287,18 @@ namespace
             f.frame();
         }
         assert(take(runs.info(run)).progress.time.elapsed == clock);
-        assert(f.desktop->views().close(bid));
-        f.wait([&] { return !f.desktop->views().describe(bid); });
+        assert((*f.legacy_host).close(bid));
+        f.wait([&] { return !(*f.legacy_host).describe(bid); });
         assert(!invoke("lux.editor.scene.resume", running_handle));
         assert(take(runs.info(run)).state == author::ERunState::PAUSED && a->image().isValid());
         assert(invoke("lux.editor.scene.stop", *command_handle) && command_stop);
-        assert(f.desktop->views().close(command_view));
-        f.wait([&] { return !f.desktop->views().describe(command_view); });
+        assert((*f.legacy_host).close(command_view));
+        f.wait([&] { return !(*f.legacy_host).describe(command_view); });
         const auto stopped = *command_stop;
         f.wait([&] { return stopped.complete(); });
         assert(runs.acknowledgeStop(run));
-        assert(f.desktop->views().close(aid));
-        f.wait([&] { return !f.desktop->views().describe(aid); });
+        assert((*f.legacy_host).close(aid));
+        f.wait([&] { return !(*f.legacy_host).describe(aid); });
         assert(f.session->describe().current == stamp.current);
         f.runs = nullptr;
     }
@@ -1966,7 +1968,7 @@ namespace
         ));
         auto* view = static_cast<ef::FlowView*>(detached.pane());
         viewConfiguration(detached);
-        const auto id = take(f.desktop->views().adopt(detached, views::ViewRestoreKey{"flow"})).id;
+        const auto id = take((*f.legacy_host).adopt(detached, views::ViewRestoreKey{"flow"})).id;
         const auto initial = author->describe();
         const auto encoded = take(take(author->read()).encode());
         assert(view->beginEdit("variable"));
@@ -1979,19 +1981,19 @@ namespace
         assert(view->previewEdit(edits));
         assert(author->describe().current == initial.current && take(take(author->read()).encode()) == encoded);
         // A real Session gate is held. The host must retain its owned Pane and interaction until later.
-        assert(f.desktop->views().close(id));
+        assert((*f.legacy_host).close(id));
         auto read = take(author->read());
         assert(read.withRead(
             [&]() -> ef::FlowEditResult<void>
             {
-                const auto report = take(f.desktop->views().drain());
+                const auto report = take((*f.legacy_host).drain());
                 assert(report.completed == 0 && report.pending == 1);
-                assert(f.desktop->views().describe(id) && interaction.overlay());
+                assert((*f.legacy_host).describe(id) && interaction.overlay());
                 return {};
             }
         ));
-        assert(take(f.desktop->views().drain()).completed == 1);
-        assert(!interaction.overlay() && !f.desktop->views().describe(id));
+        assert(take((*f.legacy_host).drain()).completed == 1);
+        assert(!interaction.overlay() && !(*f.legacy_host).describe(id));
         assert(author->describe().current == initial.current && take(take(author->read()).encode()) == encoded);
         auto reopened = take(registered_views::flow(
             f.messages.dispatcherRef(),
@@ -2001,7 +2003,7 @@ namespace
             ef::FlowViewState{{"P10-deliberately-missing-linker.exe"}}
         ));
         view = static_cast<ef::FlowView*>(reopened.pane());
-        const auto next = take(f.desktop->views().adopt(reopened, views::ViewRestoreKey{"flow"})).id;
+        const auto next = take((*f.legacy_host).adopt(reopened, views::ViewRestoreKey{"flow"})).id;
         // The public view commands used by the controls exercise the complete property matrix.
         auto apply_property = [&](std::vector<ef::VFlowEdit> changes)
         {
@@ -2086,8 +2088,8 @@ namespace
         assert(publication_owner.saving->update());
         assert(take(publication_owner.saving->artifactReports()).front().admitted);
         assert(view->undo() && author->describe().current == initial.current);
-        assert(f.desktop->views().close(next));
-        f.wait([&] { return !f.desktop->views().describe(next); });
+        assert((*f.legacy_host).close(next));
+        f.wait([&] { return !(*f.legacy_host).describe(next); });
         assert(take(compilation->operation(operation)).get().object() == object);
         f.wait([&] { return publication_owner.saving->settled(); });
         const auto report = take(publication_owner.saving->artifactReports()).front();
@@ -2194,7 +2196,7 @@ namespace
         ));
         auto* view = static_cast<em::MaterialView*>(detached.pane());
         viewConfiguration(detached);
-        const auto id = take(f.desktop->views().adopt(detached, views::ViewRestoreKey{"material"})).id;
+        const auto id = take((*f.legacy_host).adopt(detached, views::ViewRestoreKey{"material"})).id;
         const auto encoded = take(take(author->read()).encode());
         const auto initial = author->describe();
         {
@@ -2420,7 +2422,7 @@ namespace
         ));
         auto* resources = static_cast<editor::scene::ResourceView*>(resource_candidate.pane());
         const auto resource_id =
-            take(f.desktop->views().adopt(resource_candidate, views::ViewRestoreKey{"resources"})).id;
+            take((*f.legacy_host).adopt(resource_candidate, views::ViewRestoreKey{"resources"})).id;
         assert(!resources->snapshot().rows.empty());
         const auto previous_instance = resources->snapshot().instance;
         const auto previous_rows = resources->snapshot().rows.size();
@@ -2429,8 +2431,8 @@ namespace
             resources->snapshot().instance == previous_instance && resources->snapshot().rows.size() == previous_rows
         );
         assert(resources->refresh());
-        assert(f.desktop->views().close(resource_id));
-        f.wait([&] { return !f.desktop->views().describe(resource_id); });
+        assert((*f.legacy_host).close(resource_id));
+        f.wait([&] { return !(*f.legacy_host).describe(resource_id); });
         assert(view->image().isValid());
         const auto before_navigation = author->describe();
         lux::editor::views::CameraMotion motion;
@@ -2440,18 +2442,18 @@ namespace
         assert(view->beginEdit("pending close"));
         edits.emplace_back(em::MaterialRename{"not committed"});
         assert(view->previewEdit(edits));
-        assert(f.desktop->views().close(id));
+        assert((*f.legacy_host).close(id));
         auto read = take(author->read());
         assert(read.withRead(
             [&](const lux::material::MaterialSource&) -> em::MaterialEditResult<void>
             {
-                const auto report = take(f.desktop->views().drain());
+                const auto report = take((*f.legacy_host).drain());
                 assert(report.completed == 0 && report.pending == 1 && interaction.overlay());
-                assert(f.desktop->views().describe(id));
+                assert((*f.legacy_host).describe(id));
                 return {};
             }
         ));
-        f.wait([&] { return !f.desktop->views().describe(id); });
+        f.wait([&] { return !(*f.legacy_host).describe(id); });
         assert(!interaction.overlay() && take(take(author->read()).encode()) == encoded);
         // Accepted save work completes after its view is gone; the service alone adopts the baseline.
         const auto saved_content = author->describe().current;
@@ -2650,8 +2652,8 @@ namespace
         auto second = take(registered_views::scene(f.messages.dispatcherRef(), services, info));
         auto* a = static_cast<author::SceneView*>(first.pane());
         auto* b = static_cast<author::SceneView*>(second.pane());
-        const auto aid = take(f.desktop->views().adopt(first, views::ViewRestoreKey{"mesh-left"})).id;
-        const auto bid = take(f.desktop->views().adopt(second, views::ViewRestoreKey{"mesh-right"})).id;
+        const auto aid = take((*f.legacy_host).adopt(first, views::ViewRestoreKey{"mesh-left"})).id;
+        const auto bid = take((*f.legacy_host).adopt(second, views::ViewRestoreKey{"mesh-right"})).id;
         f.wait(
             [&]
             {
@@ -2670,8 +2672,7 @@ namespace
             author::ResourceViewBinding{a->presentedInstance(), {3}}
         ));
         auto* resource_view = static_cast<author::ResourceView*>(recovery.pane());
-        const auto recovery_id =
-            take(f.desktop->views().adopt(recovery, views::ViewRestoreKey{"resource-recovery"})).id;
+        const auto recovery_id = take((*f.legacy_host).adopt(recovery, views::ViewRestoreKey{"resource-recovery"})).id;
         const auto failed = std::ranges::find_if(
             resource_view->snapshot().rows,
             [](const auto& row) { return row.state == lux::scene::ERenderAssetState::FAILED; }
@@ -2679,8 +2680,8 @@ namespace
         assert(failed != resource_view->snapshot().rows.end() && failing->failures > 0);
         failing->available = true;
         assert(resource_view->retry(failed->key));
-        assert(f.desktop->views().close(recovery_id));
-        f.wait([&] { return !f.desktop->views().describe(recovery_id); });
+        assert((*f.legacy_host).close(recovery_id));
+        f.wait([&] { return !(*f.legacy_host).describe(recovery_id); });
         f.wait(
             [&]
             {
@@ -2758,17 +2759,17 @@ namespace
         assert(command_results.size() == 1 && command_results.front().result);
         assert(f.commands.publish({}));
         const auto receipt = take(f.resources->viewReceipt(a->viewport()));
-        assert(f.desktop->views().close(aid));
+        assert((*f.legacy_host).close(aid));
         f.wait(
             [&]
             {
-                return !f.desktop->views().describe(aid) &&
+                return !(*f.legacy_host).describe(aid) &&
                        receipt.status().status.state == lux::scene::EViewState::CLOSED;
             }
         );
         assert(pixels(*b) == right_selected);
-        assert(f.desktop->views().close(bid));
-        f.wait([&] { return !f.desktop->views().describe(bid); });
+        assert((*f.legacy_host).close(bid));
+        f.wait([&] { return !(*f.legacy_host).describe(bid); });
         auto permit = take(f.store.prepareClose(session->describe().current));
         assert(f.store.close(permit));
         std::printf("P10 dual SceneView GPU readback: failed material read -> ResourceView retry -> ready after close; "
@@ -2817,7 +2818,7 @@ namespace
         ));
         auto* configuration = static_cast<author::SceneConfigurationView*>(configuration_view.pane());
         const auto config_id =
-            take(f.desktop->views().adopt(configuration_view, views::ViewRestoreKey{"configuration"})).id;
+            take((*f.legacy_host).adopt(configuration_view, views::ViewRestoreKey{"configuration"})).id;
         const auto original = f.session->describe();
         const auto find_page = [&](auto&& self, object::LuxObject& owner) -> lux::ui::NumericEdit*
         {
@@ -2861,8 +2862,8 @@ namespace
         assert(configuration->status() && f.session->describe().current == original.current);
         page = find_page(find_page, *configuration);
         assert(page && std::get<double>(page->value()) == 1024.0);
-        assert(f.desktop->views().close(config_id));
-        f.wait([&] { return !f.desktop->views().describe(config_id); }, false);
+        assert((*f.legacy_host).close(config_id));
+        f.wait([&] { return !(*f.legacy_host).describe(config_id); }, false);
         std::optional<sessions::SessionId> created;
         const auto before = f.session->describe();
         std::size_t requests{};
@@ -2919,15 +2920,15 @@ namespace
             auto config = take(std::move(prepared));
             assert(config.scene.systemCount() == 3 && config.simulation->systemCount() == 0);
         }
-        const auto mounted = take(f.desktop->views().adopt(view, views::ViewRestoreKey{"creation"})).id;
+        const auto mounted = take((*f.legacy_host).adopt(view, views::ViewRestoreKey{"creation"})).id;
         pane->requestCreate();
         f.frame(false);
         assert(!created && requests == 1);
         f.frame(false);
         assert(created && requests == 2);
         assert(f.session->describe().current == before.current);
-        assert(f.desktop->views().close(mounted));
-        f.wait([&] { return !f.desktop->views().describe(mounted); });
+        assert((*f.legacy_host).close(mounted));
+        f.wait([&] { return !(*f.legacy_host).describe(mounted); });
         const auto current = take(f.store.describe(*created)).current;
         auto permit = take(f.store.prepareClose(current));
         assert(f.store.close(permit));
@@ -2968,8 +2969,8 @@ int main(int argc, char** argv)
     auto* a = static_cast<author::SceneView*>(first.pane());
     auto* b = static_cast<author::SceneView*>(second.pane());
     assert(!a->attachedRoot() && !b->attachedRoot());
-    const auto id_a = take(f.desktop->views().adopt(first, views::ViewRestoreKey{"one"})).id;
-    const auto id_b = take(f.desktop->views().adopt(second, views::ViewRestoreKey{"two"})).id;
+    const auto id_a = take((*f.legacy_host).adopt(first, views::ViewRestoreKey{"one"})).id;
+    const auto id_b = take((*f.legacy_host).adopt(second, views::ViewRestoreKey{"two"})).id;
     f.wait([&] { return a->image().isValid() && b->image().isValid(); });
     assert(a->presentedInstance() == b->presentedInstance() && a->viewport() != b->viewport());
     const auto before = f.session->describe();
@@ -3016,7 +3017,7 @@ int main(int argc, char** argv)
         },
         [&](const CommandQuery& input) -> CommandResult<CommandState>
         {
-            if (*input.view<views::ViewId>() != id_b || !f.desktop->views().describe(id_b))
+            if (*input.view<views::ViewId>() != id_b || !(*f.legacy_host).describe(id_b))
             {
                 return cxx::unexpected(CommandFailure{ECommandError::STALE_TARGET, "scene.view"});
             }
@@ -3056,15 +3057,15 @@ int main(int argc, char** argv)
         }
     );
     const auto receipt = take(f.resources->viewReceipt(a->viewport()));
-    assert(f.desktop->views().close(id_a));
-    f.wait([&] { return !f.desktop->views().describe(id_a); });
+    assert((*f.legacy_host).close(id_a));
+    f.wait([&] { return !(*f.legacy_host).describe(id_a); });
     assert(f.session->describe().current == before.current && b->image().isValid());
     f.wait([&] { return receipt.status().status.state == lux::scene::EViewState::CLOSED; });
     auto third = take(registered_views::scene(f.messages.dispatcherRef(), f.services(), f.info("three", first_group)));
-    const auto id_c = take(f.desktop->views().adopt(third, views::ViewRestoreKey{"three"})).id;
-    assert(id_c != id_a && !f.desktop->views().describe(id_a));
-    assert(f.desktop->views().close(id_b) && f.desktop->views().close(id_c));
-    f.wait([&] { return take(f.desktop->views().describeAll()).empty(); });
+    const auto id_c = take((*f.legacy_host).adopt(third, views::ViewRestoreKey{"three"})).id;
+    assert(id_c != id_a && !(*f.legacy_host).describe(id_a));
+    assert((*f.legacy_host).close(id_b) && (*f.legacy_host).close(id_c));
+    f.wait([&] { return take((*f.legacy_host).describeAll()).empty(); });
     inspectorView(f);
     ownedSceneTools(f);
     declaredSceneTools(f);

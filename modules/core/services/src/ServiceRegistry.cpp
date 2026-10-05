@@ -330,6 +330,46 @@ namespace lux::services
             }
             return ready;
         }
+        [[nodiscard]] ServiceResult<void> maintain(const detail::ServiceScopeState& root) noexcept
+        {
+            CallbackScope callback{*callbacks};
+            std::optional<ServiceFailure> failure;
+            // The guard fixes this batch and protects both records and code through callback cleanup.
+            // A second lookup, publication, close or recursive traversal cannot change its membership.
+            for (const auto& instance : instances)
+            {
+                auto* scope = instance->scope.get();
+                while (scope && scope != &root)
+                {
+                    scope = scope->parent.get();
+                }
+                const bool unavailable = !scope || instance->lifetime->reclaimed.load(std::memory_order_acquire);
+                if (unavailable)
+                {
+                    continue;
+                }
+                const auto action = instance->definition->entry->descriptor().maintain;
+                if (!action)
+                {
+                    continue;
+                }
+                auto allocation = instance->allocation.lock();
+                if (!allocation)
+                {
+                    continue; // Only dispatcher reclamation may destroy a retiring allocation.
+                }
+                auto result = action(allocation.get());
+                if (!result && !failure)
+                {
+                    failure = std::move(result.error());
+                }
+            }
+            if (failure)
+            {
+                return cxx::unexpected(std::move(*failure));
+            }
+            return {};
+        }
         void prune() noexcept
         {
             CallbackScope callback{*callbacks};
@@ -1042,6 +1082,18 @@ namespace lux::services
             return cxx::unexpected(std::move(admitted.error()));
         }
         return registry_->impl_->settled(*state_);
+    }
+    ServiceResult<void> ServiceScope::maintain() noexcept
+    {
+        if (!registry_)
+        {
+            return reject(EServiceError::INVALID_SCOPE);
+        }
+        if (auto admitted = registry_->impl_->admission(); !admitted)
+        {
+            return admitted;
+        }
+        return registry_->impl_->maintain(*state_);
     }
     bool ServiceScope::isOpen() const noexcept
     {

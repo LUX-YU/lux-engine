@@ -1,4 +1,9 @@
 #pragma once
+namespace lux::editor::views
+{
+    class ViewFactoryEntry;
+    struct ViewFactoryDescriptor;
+} // namespace lux::editor::views
 #include <lux/cxx/core/move_only_function.hpp>
 #include <lux/engine/editor/desktop/ViewCommands.hpp>
 #include <lux/engine/editor/scene/SceneConfigurationElement.hpp>

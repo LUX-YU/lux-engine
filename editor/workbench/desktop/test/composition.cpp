@@ -74,7 +74,9 @@ namespace
         {
             ++counts_.windows;
             if (!input.configuration.bytes.empty())
+            {
                 state_ = input.configuration.bytes;
+            }
             if (counts_.creating)
             {
                 counts_.creating();
@@ -93,51 +95,79 @@ namespace
             return model_.get();
         }
 
-        views::ViewContent content() const noexcept { return content_; }
+        views::ViewContent content() const noexcept
+        {
+            return content_;
+        }
         UiResult<void> rebind(const views::ViewContent& content)
         {
             ++counts_.rebound;
-            if (counts_.operating) counts_.operating();
+            if (counts_.operating)
+            {
+                counts_.operating();
+            }
             if (counts_.deny_rebind)
+            {
                 return cxx::unexpected(UiFailure{EUiError::OPERATION_FAILURE, "window.binding", 81, "Rejected"});
+            }
             content_ = content;
             return {};
         }
         UiResult<void> cancelPreview()
         {
-            if (counts_.operating) counts_.operating();
+            if (counts_.operating)
+            {
+                counts_.operating();
+            }
             if (counts_.deny_cancel)
+            {
                 return cxx::unexpected(UiFailure{EUiError::OPERATION_FAILURE, "window.preview", 83, "Rejected"});
+            }
             ++counts_.cancelled;
             return {};
         }
         UiResult<void> prepareClose()
         {
             ++counts_.closes;
-            if (counts_.operating) counts_.operating();
+            if (counts_.operating)
+            {
+                counts_.operating();
+            }
             if (counts_.deny_close)
+            {
                 return cxx::unexpected(UiFailure{EUiError::BUSY, "window.close", 82, "In flight"});
+            }
             return {};
         }
         UiResult<workspace::VersionedViewState> capture() const
         {
             ++counts_.captures;
-            if (counts_.operating) counts_.operating();
+            if (counts_.operating)
+            {
+                counts_.operating();
+            }
             if (counts_.deny_capture)
+            {
                 return cxx::unexpected(UiFailure{EUiError::OPERATION_FAILURE, "state.capture", 95, "Rejected"});
+            }
             return workspace::VersionedViewState{1, state_};
         }
         UiStateResult prepareState(const workspace::VersionedViewState& state)
         {
             ++counts_.state_prepared;
             if (state.bytes == std::vector{std::byte{200}})
-                return cxx::unexpected(UiFailure{EUiError::OPERATION_FAILURE, "state.prepare", 93});
-            if (counts_.operating) counts_.operating();
-            return cxx::move_only_function<void()>{[this, value = state.bytes]() mutable noexcept
             {
-                ++counts_.state_applied;
-                state_ = std::move(value);
-            }};
+                return cxx::unexpected(UiFailure{EUiError::OPERATION_FAILURE, "state.prepare", 93});
+            }
+            if (counts_.operating)
+            {
+                counts_.operating();
+            }
+            return cxx::move_only_function<void()>{[this, value = state.bytes]() mutable noexcept
+                                                   {
+                                                       ++counts_.state_applied;
+                                                       state_ = std::move(value);
+                                                   }};
         }
 
     private:
@@ -181,6 +211,22 @@ namespace
     static_assert(!std::is_copy_constructible_v<UiRegistry::Publication>);
     static_assert(!std::is_move_assignable_v<UiRegistry::Publication>);
 
+    void recoveryDeclaration()
+    {
+        auto value = descriptor;
+        value.restore_content = true;
+        auto missing = UiCatalog::prepare({UiEntry::create(object::CodeLease::builtin(), value)});
+        assert(!missing && missing.error().code == EUiError::INVALID_DESCRIPTOR);
+        constexpr sessions::SessionKindIdView kinds[]{sessions::SessionKindIdView{"test.author"}};
+        value.content_kinds = kinds;
+        auto no_content = UiCatalog::prepare({UiEntry::create(object::CodeLease::builtin(), value)});
+        assert(!no_content && no_content.error().code == EUiError::INVALID_DESCRIPTOR);
+        value.content = [](const ui::Pane&) noexcept { return views::ViewContent{}; };
+        value.default_content_view = false;
+        auto valid = UiCatalog::prepare({UiEntry::create(object::CodeLease::builtin(), value)});
+        assert(valid && valid->entries().front()->descriptor().restore_content);
+        assert(!valid->entries().front()->descriptor().default_content_view);
+    }
     void sharing(object::ObjectMessageQueue& messages)
     {
         Counts counts;
@@ -411,7 +457,9 @@ namespace
         counts.operating = [] { throw std::runtime_error("Foreign operation failure"); };
         auto failed_capture = registry.captureState(**root, *handle);
         assert(!failed_capture && failed_capture.error().code == EUiError::FACTORY_FAILURE);
-        assert(failed_capture.error().code != EUiError::BUSY && *registry.content(**root, *handle) == views::ViewContent{});
+        assert(
+            failed_capture.error().code != EUiError::BUSY && *registry.content(**root, *handle) == views::ViewContent{}
+        );
         counts.operating = {};
         counts.deny_close = false;
         // Replacing the catalog with a same-name factory must not change this object's concrete operations.
@@ -428,11 +476,13 @@ namespace
         auto unknown = registry.content(**root, *foreign);
         assert(!unknown && unknown.error().code == EUiError::NOT_FOUND);
         bool wrong_thread{};
-        std::jthread worker([&]
-        {
-            auto result = registry.content(**root, *handle);
-            wrong_thread = !result && result.error().code == EUiError::WRONG_THREAD;
-        });
+        std::jthread worker(
+            [&]
+            {
+                auto result = registry.content(**root, *handle);
+                wrong_thread = !result && result.error().code == EUiError::WRONG_THREAD;
+            }
+        );
         worker.join();
         assert(wrong_thread);
         assert((*root)->removeSubPane(*pane));
@@ -461,10 +511,8 @@ namespace
         auto entries = UiCatalog::prepare({UiEntry::create(object::CodeLease::builtin(), definition)});
         assert(entries && registry.publish(std::move(*entries)));
         const auto factory = *registry.snapshot().at(0);
-        auto left = registry.create(factory, *scope,
-            {messages.dispatcherRef(), ui::PaneId{"close-left"}, {}, {}});
-        auto right = registry.create(factory, *scope,
-            {messages.dispatcherRef(), ui::PaneId{"close-right"}, {}, {}});
+        auto left = registry.create(factory, *scope, {messages.dispatcherRef(), ui::PaneId{"close-left"}, {}, {}});
+        auto right = registry.create(factory, *scope, {messages.dispatcherRef(), ui::PaneId{"close-right"}, {}, {}});
         assert(left && right);
         auto* a = left->get();
         auto* b = right->get();
@@ -518,7 +566,8 @@ namespace
         bool content_committed{};
         unsigned notifications{};
         auto connection = object::LuxObject::connect(
-            root->get(), &ui::Root::attachmentChanged,
+            root->get(),
+            &ui::Root::attachmentChanged,
             [&](const ui::AttachmentChanged& change) noexcept
             {
                 assert(!change.mounted && content_committed && counts.windows_destroyed == 0);
@@ -624,8 +673,7 @@ namespace
         assert(!refused && refused.error().code == EUiError::INVALID_CONFIGURATION);
         unchanged();
         counts.creating = [] { throw std::runtime_error("Foreign candidate construction failed"); };
-        std::vector<UiMountRequest> new_window{
-            {factory, {messages.dispatcherRef(), ui::PaneId{"state-c"}, binding, {}}}
+        std::vector<UiMountRequest> new_window{{factory, {messages.dispatcherRef(), ui::PaneId{"state-c"}, binding, {}}}
         };
         refused = registry.mount(**root, *scope, new_window, {}, state_requests());
         assert(!refused && refused.error().code == EUiError::FACTORY_FAILURE && counts.closes == 0);
@@ -654,10 +702,14 @@ namespace
         };
         unsigned notifications{};
         auto connection = object::LuxObject::connect(
-            root->get(), &ui::Root::attachmentChanged,
+            root->get(),
+            &ui::Root::attachmentChanged,
             [&](const ui::AttachmentChanged& change) noexcept
             {
-                if (!change.mounted) return;
+                if (!change.mounted)
+                {
+                    return;
+                }
                 assert(change.pane == ui::PaneId{"state-c"});
                 assert(counts.state_applied == 2 && !a->visible() && b->visible());
                 assert(a->content() == binding && b->content() == binding);
@@ -698,8 +750,8 @@ namespace
         assert(registry.applyLayout(**root, *scope, layout));
         const auto restored = registry.describe(**root);
         assert(restored && restored->size() == 4 && a->visible());
-        const auto created = std::ranges::find_if(*restored, [](const auto& window)
-        { return window.restore_key.name() == "new"; });
+        const auto created =
+            std::ranges::find_if(*restored, [](const auto& window) { return window.restore_key.name() == "new"; });
         assert(created != restored->end() && created->content.sessions.empty());
         const auto created_handle = created->handle;
         assert(registry.captureState(**root, created_handle)->bytes == std::vector{std::byte{42}});
@@ -712,8 +764,10 @@ namespace
         const auto capture_layout = [&] { return registry.captureLayout(**root, capture_id, "Captured"); };
         auto captured_layout = capture_layout();
         assert(captured_layout && captured_layout->slots.size() == 4);
-        const auto a_slot = std::ranges::find_if(captured_layout->slots, [](const auto& slot)
-        { return slot.restore_key.name() == "state-a"; });
+        const auto a_slot = std::ranges::find_if(
+            captured_layout->slots,
+            [](const auto& slot) { return slot.restore_key.name() == "state-a"; }
+        );
         assert(a_slot != captured_layout->slots.end() && a_slot->state.bytes == std::vector{std::byte{41}});
         auto encoded = workspace::encodeLayout(*captured_layout);
         assert(encoded);
@@ -1114,9 +1168,8 @@ namespace
         auto created_root = ui::Root::create(messages.dispatcherRef());
         assert(created_root);
         auto& root = **created_root;
-        ui::Pane window{
-            messages.dispatcherRef(), ui::PaneId{"command-window"}, ui::PaneTypeId{"test.window"}, "Window"
-        };
+        ui::Pane
+            window{messages.dispatcherRef(), ui::PaneId{"command-window"}, ui::PaneTypeId{"test.window"}, "Window"};
         assert(root.addSubPane(window));
         const auto original = root.identify(window);
         assert(original);
@@ -1130,7 +1183,8 @@ namespace
             .target_type = cxx::typeToken<ui::PaneHandle>()
         };
         auto entry = commands::CommandEntry::create(
-            object::CodeLease::builtin(), descriptor,
+            object::CodeLease::builtin(),
+            descriptor,
             [&](const commands::CommandQuery& input) -> commands::CommandResult<commands::CommandState>
             {
                 const auto* target = input.view<ui::PaneHandle>();
@@ -1143,7 +1197,11 @@ namespace
             },
             [&](const commands::CommandInvocation& input) -> commands::CommandResult<commands::DispatchReceipt>
             {
-                auto execute = [&](ui::Pane& pane) { assert(&pane == &window); ++executions; };
+                auto execute = [&](ui::Pane& pane)
+                {
+                    assert(&pane == &window);
+                    ++executions;
+                };
                 auto visited = root.withPane(*input.view<ui::PaneHandle>(), execute);
                 assert(visited);
                 return commands::DispatchReceipt{};
@@ -1167,7 +1225,8 @@ namespace
         assert(completion->front().result.error().code == commands::ECommandError::STALE_TARGET);
         assert(executions == 1);
         const auto remounted_result = registry.execute(
-            *command, commands::CommandInvocation::forView(*remounted, lux::object::CodeLease::builtin())
+            *command,
+            commands::CommandInvocation::forView(*remounted, lux::object::CodeLease::builtin())
         );
         assert(remounted_result && executions == 2);
         std::cout << "Original Root attachment command: remount rejects queued old identity "
@@ -1278,6 +1337,7 @@ int main()
     assert(created);
     auto messages = std::move(*created);
     originalWindowCommand(messages);
+    recoveryDeclaration();
     sharing(messages);
     configuredMount(messages);
     windowOperations(messages);

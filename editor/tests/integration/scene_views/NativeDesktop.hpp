@@ -3,10 +3,16 @@
 template <class T> T* findControl(object::LuxObject& object)
 {
     if (auto* control = dynamic_cast<T*>(&object))
+    {
         return control;
+    }
     for (auto* child = object.firstChild(); child; child = child->nextSibling())
+    {
         if (auto* control = findControl<T>(*child))
+        {
             return control;
+        }
+    }
     return nullptr;
 }
 void nativeDesktop(Fixture& f, window::LuxWindow& window)
@@ -31,7 +37,9 @@ void nativeDesktop(Fixture& f, window::LuxWindow& window)
         SetForegroundWindow(hwnd);
         BringWindowToTop(hwnd);
         if (attached)
+        {
             AttachThreadInput(current_thread, foreground_thread, FALSE);
+        }
     }
     std::fprintf(
         stderr,
@@ -41,11 +49,13 @@ void nativeDesktop(Fixture& f, window::LuxWindow& window)
     );
     assert(GetForegroundWindow() == hwnd);
     SetFocus(hwnd);
-    const auto frames = [&] {
+    const auto frames = [&]
+    {
         const auto captured = f.desktop->presentation().capturedFrames();
         f.wait([&] { return f.desktop->presentation().capturedFrames() >= captured + 3; });
     };
-    const auto pointer = [&](ui::Point point) {
+    const auto pointer = [&](ui::Point point)
+    {
         POINT screen{static_cast<LONG>(point.x), static_cast<LONG>(point.y)};
         assert(ClientToScreen(hwnd, &screen));
         assert(SetCursorPos(screen.x, screen.y));
@@ -53,38 +63,46 @@ void nativeDesktop(Fixture& f, window::LuxWindow& window)
         // Wait for the actual platform position and for Root to consume that native event.
         std::uint64_t sequence{};
         auto next_diagnostic = std::chrono::steady_clock::now() + std::chrono::seconds(5);
-        f.wait([&] {
-            for (const auto& event : f.input_.snapshot().events)
-                if (const auto* cursor = std::get_if<input::CursorAction>(&event))
-                    sequence = std::max(sequence, cursor->sequence);
-            const auto& input = f.input_.snapshot();
-            const bool reached = std::abs(input.cursor_x - point.x) <= 1 && std::abs(input.cursor_y - point.y) <= 1;
-            if (!reached && std::chrono::steady_clock::now() >= next_diagnostic)
+        f.wait(
+            [&]
             {
-                POINT actual{};
-                GetCursorPos(&actual);
-                ScreenToClient(hwnd, &actual);
-                std::fprintf(
-                    stderr,
-                    "pointer pending: requested=(%.1f,%.1f) native=(%.1f,%.1f) OS=(%ld,%ld) sequences=%llu/%llu "
-                    "foreground=%d\n",
-                    point.x,
-                    point.y,
-                    input.cursor_x,
-                    input.cursor_y,
-                    actual.x,
-                    actual.y,
-                    static_cast<unsigned long long>(sequence),
-                    static_cast<unsigned long long>(f.desktop->root().inputSnapshot().sequence),
-                    GetForegroundWindow() == hwnd
-                );
-                next_diagnostic += std::chrono::seconds(5);
+                for (const auto& event : f.input_.snapshot().events)
+                {
+                    if (const auto* cursor = std::get_if<input::CursorAction>(&event))
+                    {
+                        sequence = std::max(sequence, cursor->sequence);
+                    }
+                }
+                const auto& input = f.input_.snapshot();
+                const bool reached = std::abs(input.cursor_x - point.x) <= 1 && std::abs(input.cursor_y - point.y) <= 1;
+                if (!reached && std::chrono::steady_clock::now() >= next_diagnostic)
+                {
+                    POINT actual{};
+                    GetCursorPos(&actual);
+                    ScreenToClient(hwnd, &actual);
+                    std::fprintf(
+                        stderr,
+                        "pointer pending: requested=(%.1f,%.1f) native=(%.1f,%.1f) OS=(%ld,%ld) sequences=%llu/%llu "
+                        "foreground=%d\n",
+                        point.x,
+                        point.y,
+                        input.cursor_x,
+                        input.cursor_y,
+                        actual.x,
+                        actual.y,
+                        static_cast<unsigned long long>(sequence),
+                        static_cast<unsigned long long>(f.desktop->root().inputSnapshot().sequence),
+                        GetForegroundWindow() == hwnd
+                    );
+                    next_diagnostic += std::chrono::seconds(5);
+                }
+                return reached && f.desktop->root().inputSnapshot().sequence >= sequence;
             }
-            return reached && f.desktop->root().inputSnapshot().sequence >= sequence;
-        });
+        );
         frames();
     };
-    const auto button = [&](DWORD flags) {
+    const auto button = [&](DWORD flags)
+    {
         if (flags == MOUSEEVENTF_LEFTDOWN || flags == MOUSEEVENTF_RIGHTDOWN)
         {
             POINT at{};
@@ -106,26 +124,30 @@ void nativeDesktop(Fixture& f, window::LuxWindow& window)
         const bool down = flags == MOUSEEVENTF_LEFTDOWN || flags == MOUSEEVENTF_RIGHTDOWN;
         auto next_diagnostic = std::chrono::steady_clock::now() + std::chrono::seconds(5);
         std::fprintf(stderr, "native button: flags=%lu right=%d down=%d\n", flags, right, down);
-        f.wait([&] {
-            const auto sampled = f.desktop->root().inputSnapshot().buttons[right ? 2 : 0];
-            if (sampled != down && std::chrono::steady_clock::now() >= next_diagnostic)
+        f.wait(
+            [&]
             {
-                std::fprintf(
-                    stderr,
-                    "button pending: flags=%lu expected=%d Root=%d OS=%d foreground=%d\n",
-                    flags,
-                    down,
-                    sampled,
-                    (GetAsyncKeyState(right ? VK_RBUTTON : VK_LBUTTON) & 0x8000) != 0,
-                    GetForegroundWindow() == hwnd
-                );
-                next_diagnostic += std::chrono::seconds(5);
+                const auto sampled = f.desktop->root().inputSnapshot().buttons[right ? 2 : 0];
+                if (sampled != down && std::chrono::steady_clock::now() >= next_diagnostic)
+                {
+                    std::fprintf(
+                        stderr,
+                        "button pending: flags=%lu expected=%d Root=%d OS=%d foreground=%d\n",
+                        flags,
+                        down,
+                        sampled,
+                        (GetAsyncKeyState(right ? VK_RBUTTON : VK_LBUTTON) & 0x8000) != 0,
+                        GetForegroundWindow() == hwnd
+                    );
+                    next_diagnostic += std::chrono::seconds(5);
+                }
+                return sampled == down;
             }
-            return sampled == down;
-        });
+        );
         frames();
     };
-    const auto key = [&](WORD value) {
+    const auto key = [&](WORD value)
+    {
         INPUT inputs[2]{};
         for (auto& input : inputs)
         {
@@ -137,7 +159,8 @@ void nativeDesktop(Fixture& f, window::LuxWindow& window)
         assert(SendInput(2, inputs, sizeof(INPUT)) == 2);
         frames();
     };
-    const auto center = [](const ui::Element& element) {
+    const auto center = [](const ui::Element& element)
+    {
         const auto origin = element.contentOrigin();
         return ui::Point{origin.x + element.rect().size.width / 2, origin.y + element.rect().size.height / 2};
     };
@@ -156,8 +179,8 @@ void nativeDesktop(Fixture& f, window::LuxWindow& window)
         author::sceneInspectorComponents()
     ));
     auto* inspector = static_cast<author::InspectorView*>(detached.pane());
-    const auto id = take(f.desktop->views().adopt(detached, views::ViewRestoreKey{"native-inspector"})).id;
-    assert(f.desktop->views().focus(id));
+    const auto id = take((*f.legacy_host).adopt(detached, views::ViewRestoreKey{"native-inspector"})).id;
+    assert((*f.legacy_host).focus(id));
     frames();
     auto* number = findControl<ui::NumericEdit>(*inspector);
     assert(number && number->displayed());
@@ -193,15 +216,15 @@ void nativeDesktop(Fixture& f, window::LuxWindow& window)
     assert(f.session->redo());
     assert(f.session->undo());
     assert(f.desktop->root().focusedPane() == inspector);
-    assert(f.desktop->views().close(id));
+    assert((*f.legacy_host).close(id));
     frames();
-    assert(!f.desktop->views().describe(id) && !f.desktop->root().focusedElement());
+    assert(!(*f.legacy_host).describe(id) && !f.desktop->root().focusedElement());
 
     auto scene_owner =
         take(author::makeSceneView(f.messages.dispatcherRef(), f.services(), f.info("native-scene", group)));
     auto* scene_view = static_cast<author::SceneView*>(scene_owner.pane());
-    const auto scene_id = take(f.desktop->views().adopt(scene_owner, views::ViewRestoreKey{"native-scene"})).id;
-    assert(f.desktop->views().focus(scene_id));
+    const auto scene_id = take((*f.legacy_host).adopt(scene_owner, views::ViewRestoreKey{"native-scene"})).id;
+    assert((*f.legacy_host).focus(scene_id));
     f.wait([&] { return scene_view->image().isValid(); });
     frames();
     auto* viewport = findControl<lux::editor::views::ViewportElement>(*scene_view);
@@ -213,9 +236,9 @@ void nativeDesktop(Fixture& f, window::LuxWindow& window)
     pointer({975, 725});
     assert(scene_view->state().camera.transform.rotation != rotation);
     assert(f.session->describe().current == before.current);
-    assert(f.desktop->views().close(scene_id));
+    assert((*f.legacy_host).close(scene_id));
     frames();
-    assert(!f.desktop->views().describe(scene_id));
+    assert(!(*f.legacy_host).describe(scene_id));
     button(MOUSEEVENTF_RIGHTUP); // Must not deliver to the retired lux::editor::views::ViewportElement.
 
     // Real OS keyboard input through the same desktop, plus close during DIRECT delivery.
@@ -233,8 +256,8 @@ void nativeDesktop(Fixture& f, window::LuxWindow& window)
     auto text_owner = std::make_unique<TextWindow>(f.messages.dispatcherRef());
     auto* text = text_owner.get();
     views::DetachedView text_view(lux::object::CodeLease::builtin(), std::move(text_owner));
-    const auto text_id = take(f.desktop->views().adopt(text_view, views::ViewRestoreKey{"native-text"})).id;
-    assert(f.desktop->views().focus(text_id));
+    const auto text_id = take((*f.legacy_host).adopt(text_view, views::ViewRestoreKey{"native-text"})).id;
+    assert((*f.legacy_host).focus(text_id));
     frames();
     pointer(center(text->text));
     button(MOUSEEVENTF_LEFTDOWN);
@@ -251,21 +274,30 @@ void nativeDesktop(Fixture& f, window::LuxWindow& window)
     assert(text->text.value() == "ab");
     assert(f.desktop->root().focusedElement() == &text->text);
     bool signalled{};
-    auto connection = take(object::LuxObject::connect(&text->close, &ui::Button::activated, [&]() noexcept {
-        assert(f.desktop->views().close(text_id));
-        assert(text->attachedRoot() && !signalled);
-        signalled = true;
-    }));
+    auto connection = take(object::LuxObject::connect(
+        &text->close,
+        &ui::Button::activated,
+        [&]() noexcept
+        {
+            assert((*f.legacy_host).close(text_id));
+            assert(text->attachedRoot() && !signalled);
+            signalled = true;
+        }
+    ));
     pointer(center(text->close));
     button(MOUSEEVENTF_LEFTDOWN);
     button(MOUSEEVENTF_LEFTUP);
-    assert(signalled && !f.desktop->views().describe(text_id));
+    assert(signalled && !(*f.legacy_host).describe(text_id));
     assert(!f.desktop->root().focusedElement());
     assert(SetCursorPos(previous_pointer.x, previous_pointer.y));
     if (!was_topmost)
+    {
         assert(SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE));
+    }
     if (previous_window)
+    {
         SetForegroundWindow(previous_window);
+    }
     std::printf(
         "P10 native desktop: OS mouse drag -> generated Inspector preview/commit/undo; "
         "captured lux::editor::views::ViewportElement navigates outside its rectangle and closes while held; "

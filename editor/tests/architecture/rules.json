@@ -5671,9 +5671,7 @@
       "editor/workbench/desktop/src/WindowOutput.cpp",
       "editor/workbench/desktop/test/host.cpp",
       "editor/workbench/desktop/src/ReviewView.cpp",
-      "editor/workbench/desktop/include/lux/engine/editor/desktop/ReviewView.hpp",
-      "editor/workbench/desktop/src/ViewCommands.cpp",
-      "editor/workbench/desktop/include/lux/engine/editor/desktop/ViewCommands.hpp"
+      "editor/workbench/desktop/include/lux/engine/editor/desktop/ReviewView.hpp"
     ],
     "project_include_dirs": [
       "editor/workbench/sinclude",
@@ -6111,7 +6109,8 @@
       "exception",
       "lux/engine/editor/workbench/DockLayoutMapping.hpp",
       "lux/engine/editor/views/ViewError.hpp",
-      "lux/engine/ui/Pane.hpp"
+      "lux/engine/ui/Pane.hpp",
+      "lux/engine/editor/desktop/UiRegistry.hpp"
     ],
     "prefixes": [],
     "test_headers": {
@@ -8576,7 +8575,8 @@
       "flow_module",
       "editor_storage",
       "material_module",
-      "scene_module"
+      "scene_module",
+      "view_host"
     ],
     "closure": {
       "Eigen3::Eigen": {
@@ -9667,7 +9667,8 @@
       "lux/engine/editor/extensions/EditorExtension.hpp",
       "lux/engine/editor/flowforge/FlowModule.hpp",
       "lux/engine/editor/material/MaterialModule.hpp",
-      "lux/engine/editor/scene/SceneModule.hpp"
+      "lux/engine/editor/scene/SceneModule.hpp",
+      "lux/engine/editor/desktop/ViewHost.hpp"
     ],
     "prefixes": [],
     "test_headers": {
@@ -19130,17 +19131,18 @@
         "ui_input"
       ],
       "editor/workbench/desktop/src/ViewCommands.cpp": [
-        "view_host"
+        "editor_composition"
       ],
       "editor/workbench/desktop/include/lux/engine/editor/desktop/ViewCommands.hpp": [
-        "view_host"
+        "editor_composition"
       ],
       "editor/workbench/sinclude/lux/engine/editor/workbench/CommandSupport.hpp": [
         "view_host",
         "project_ui",
         "project_tools_ui",
         "tasks_ui",
-        "scene_ui"
+        "scene_ui",
+        "editor_composition"
       ],
       "editor/activities/commands/pinclude/lux/engine/editor/commands/CommandIndexTestAccess.hpp": [
         "editor_commands"
@@ -19383,11 +19385,11 @@
       "editor/workbench/sinclude/lux/engine/editor/workbench/CommandSupport.hpp": {
         "layer": "E3",
         "consumers": [
-          "view_host",
           "project_ui",
           "project_tools_ui",
           "tasks_ui",
-          "scene_ui"
+          "scene_ui",
+          "editor_composition"
         ]
       },
       "editor/workbench/desktop/sinclude/lux/engine/editor/desktop/ContentRouting.hpp": {

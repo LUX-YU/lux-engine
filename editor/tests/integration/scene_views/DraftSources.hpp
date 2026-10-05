@@ -9,10 +9,16 @@ namespace draft_test
     template <class T> T* find(object::LuxObject& owner)
     {
         if (auto* value = dynamic_cast<T*>(&owner))
+        {
             return value;
+        }
         for (auto* child = owner.firstChild(); child; child = child->nextSibling())
+        {
             if (auto* value = find<T>(*child))
+            {
                 return value;
+            }
+        }
         return nullptr;
     }
     struct CanvasInput : object::LuxObject
@@ -70,7 +76,8 @@ namespace draft_test
             ImGuiContextHook value;
             value.Type = ImGuiContextHookType_NewFramePost;
             value.UserData = this;
-            value.Callback = [](ImGuiContext* context, ImGuiContextHook* hook) {
+            value.Callback = [](ImGuiContext* context, ImGuiContextHook* hook)
+            {
                 auto& input = *static_cast<UiInput*>(hook->UserData);
                 if (input.activate)
                 {
@@ -98,7 +105,9 @@ namespace draft_test
             id = ImHashStr("content", 0, id);
             id = ImHashStr("properties", 0, id);
             if (pin)
+            {
                 id = ImHashData(&*pin, sizeof(int), id);
+            }
             return ImHashStr(label, 0, id);
         }
         void click(ImGuiID id, ImGuiActivateFlags activation = ImGuiActivateFlags_None)
@@ -137,20 +146,29 @@ namespace draft_test
     template <class View> bool stale(const View& view)
     {
         if (view.status())
+        {
             return false;
+        }
         return std::visit(
-            [](const auto& error) {
+            [](const auto& error)
+            {
                 using T = std::decay_t<decltype(error)>;
                 if constexpr (std::same_as<T, ef::FlowEditError>)
+                {
                     return error.code == ef::EFlowEditError::STALE_CONTENT ||
                            (error.code == ef::EFlowEditError::SESSION &&
                             error.session == sessions::ESessionError::STALE_CONTENT);
+                }
                 else if constexpr (std::same_as<T, em::MaterialEditError>)
+                {
                     return error.code == em::EMaterialEditError::STALE_CONTENT ||
                            (error.code == em::EMaterialEditError::SESSION &&
                             error.session == sessions::ESessionError::STALE_CONTENT);
+                }
                 else
+                {
                     return false;
+                }
             },
             view.status().error()
         );
@@ -159,9 +177,13 @@ namespace draft_test
     template <class Session> const auto& data(Session& session)
     {
         if constexpr (std::same_as<Session, ef::FlowSession>)
+        {
             return ef::detail::FlowSessionAccess::data(session);
+        }
         else
+        {
             return em::detail::MaterialSessionAccess::data(session);
+        }
     }
     struct NativeFacts final
     {
@@ -172,7 +194,8 @@ namespace draft_test
         explicit NativeFacts(Session& session)
             : history(take(data(session).history->view()).snapshot), binding(data(session).state.bindingRevision()),
               persisted(data(session).state.checkpoint().persisted())
-        {}
+        {
+        }
         template <class Session> void check(Session& session) const
         {
             const auto h = take(data(session).history->view()).snapshot;
@@ -200,26 +223,43 @@ namespace draft_test
     {
         auto read = take(session.read());
         if constexpr (std::same_as<Session, ef::FlowSession>)
-            assert(read.withRead([&]() -> ef::FlowEditResult<void> {
-                fn();
-                return {};
-            }));
+        {
+            assert(read.withRead(
+                [&]() -> ef::FlowEditResult<void>
+                {
+                    fn();
+                    return {};
+                }
+            ));
+        }
         else
-            assert(read.withRead([&](const lux::material::MaterialSource&) -> em::MaterialEditResult<void> {
-                fn();
-                return {};
-            }));
+        {
+            assert(read.withRead(
+                [&](const lux::material::MaterialSource&) -> em::MaterialEditResult<void>
+                {
+                    fn();
+                    return {};
+                }
+            ));
+        }
     }
     template <class View> bool busy(const View& view)
     {
         if (view.status())
+        {
             return false;
+        }
         return std::visit(
-            [](const auto& error) {
+            [](const auto& error)
+            {
                 if constexpr (requires { error.session; })
+                {
                     return error.session == sessions::ESessionError::BUSY;
+                }
                 else
+                {
                     return false;
+                }
             },
             view.status().error()
         );
@@ -267,19 +307,27 @@ namespace draft_test
         const auto before = bytes(session);
         const auto original = session.describe();
         CanvasInput::move(graph, id, 20, true, false);
-        underRead(session, [&] {
-            f.frame(false);
-            assert(busy(view) && !interaction.overlay());
-        });
+        underRead(
+            session,
+            [&]
+            {
+                f.frame(false);
+                assert(busy(view) && !interaction.overlay());
+            }
+        );
         assert(unchanged(original, session.describe()) && bytes(session) == before);
         f.frame(false);
         const auto* overlay = interaction.overlay();
         assert(overlay && overlay->expected == original.current && previewX(interaction) == 20);
         CanvasInput::move(graph, id, 25, false, false);
-        underRead(session, [&] {
-            f.frame(false);
-            assert(busy(view) && interaction.overlay() == overlay && previewX(interaction) == 20);
-        });
+        underRead(
+            session,
+            [&]
+            {
+                f.frame(false);
+                assert(busy(view) && interaction.overlay() == overlay && previewX(interaction) == 20);
+            }
+        );
         f.frame(false);
         assert(interaction.overlay() == overlay && interaction.overlay()->expected == original.current);
         assert(previewX(interaction) == 25);
@@ -296,12 +344,18 @@ namespace draft_test
         const auto held_bytes = bytes(session);
         // Capacity stays bounded while an accepted request cannot BEGIN. Cancel restores it.
         for (int i = 0; i < 65; ++i)
+        {
             CanvasInput::move(graph, id, 70, true, true);
+        }
         assert(!view.status() && !graph.enabled());
-        underRead(session, [&] {
-            f.frame(false);
-            assert(busy(view));
-        });
+        underRead(
+            session,
+            [&]
+            {
+                f.frame(false);
+                assert(busy(view));
+            }
+        );
         assert(unchanged(held, session.describe()));
         assert(view.cancelEdit());
         assert(graph.enabled() && bytes(session) == held_bytes);
@@ -322,16 +376,20 @@ namespace draft_test
         ef::FlowAuthoringSource source{asset, "S0", {}};
         std::unique_ptr<lux::flowforge::Node> node;
         if (signature)
+        {
             node = std::make_unique<lux::flowforge::FuncDefNode>(
                 "S0 function",
                 std::vector<lux::flowforge::FuncArgInfo>{}
             );
+        }
         else
+        {
             node = std::make_unique<lux::flowforge::BinaryOpNode>(
                 0,
                 lux::flowforge::ENodeOperation::ADD,
                 meta::builtin_ref_type_ptr<double>()
             );
+        }
         const auto handle = source.graph.addNodes(std::move(node));
         const auto id = source.graph.getNode(handle).node->id();
         auto reservation =
@@ -364,7 +422,7 @@ namespace draft_test
             ef::FlowViewBinding{key, &interaction}
         ));
         auto* view = static_cast<ef::FlowView*>(detached.pane());
-        const auto mounted = take(f.desktop->views().adopt(detached, views::ViewRestoreKey{"r1-flow"})).id;
+        const auto mounted = take((*f.legacy_host).adopt(detached, views::ViewRestoreKey{"r1-flow"})).id;
         UiInput input(f);
         auto* graph = find<widgets::GraphCanvas>(*view);
         assert(graph);
@@ -375,37 +433,51 @@ namespace draft_test
         {
             queueCases(f, *session, *view, interaction, *graph, id.value);
             assert(view->cancelEdit());
-            assert(f.desktop->views().close(mounted));
-            f.wait([&] { return !f.desktop->views().describe(mounted); });
+            assert((*f.legacy_host).close(mounted));
+            f.wait([&] { return !(*f.legacy_host).describe(mounted); });
             closeSession(f, *session);
             return true;
         }
         const auto s0 = session->describe();
         const auto s0_bytes = take(take(session->read()).encode());
         if (canvas_case)
+        {
             CanvasInput::move(*graph, id.value, 20, true, true);
+        }
         else if (signature)
+        {
             input.text(input.property("Flow###r1-flow", "Function name"), "Draft function");
+        }
         else
+        {
             input.text(input.property("Flow###r1-flow", "##value", static_cast<int>(pin.value)), "20");
+        }
         assert(unchanged(s0, session->describe()) && s0_bytes == take(take(session->read()).encode()));
         if (canvas_case)
         {
-            underRead(*session, [&] {
-                f.frame(false);
-                assert(busy(*view) && !interaction.overlay());
-            });
+            underRead(
+                *session,
+                [&]
+                {
+                    f.frame(false);
+                    assert(busy(*view) && !interaction.overlay());
+                }
+            );
             assert(unchanged(s0, session->describe()));
         }
         if (mode == "r1-lifecycle")
         {
             const auto binding = view->binding();
-            underRead(*session, [&] {
-                auto rejected = view->rebind(std::nullopt);
-                assert(!rejected && view->binding() == binding);
-                f.frame(false);
-                assert(busy(*view));
-            });
+            underRead(
+                *session,
+                [&]
+                {
+                    auto rejected = view->rebind(std::nullopt);
+                    assert(!rejected && view->binding() == binding);
+                    f.frame(false);
+                    assert(busy(*view));
+                }
+            );
             assert(unchanged(s0, session->describe()) && bytes(*session) == s0_bytes);
             std::weak_ptr<ef::FlowSession> old_model = take(f.store.access<ef::FlowSession>().share(key));
             auto closed = take(f.store.prepareClose(s0.current));
@@ -448,8 +520,8 @@ namespace draft_test
             assert(view->status());
             roundTrip(*replacement, *view, new_bytes);
             assert(view->cancelEdit());
-            assert(f.desktop->views().close(mounted));
-            f.wait([&] { return !f.desktop->views().describe(mounted); });
+            assert((*f.legacy_host).close(mounted));
+            f.wait([&] { return !(*f.legacy_host).describe(mounted); });
             closeSession(f, *replacement);
             std::fputs(
                 "R10-R1-03 failed BUSY rebind preserves; old generation rejected; new binding same IDs recaptured "
@@ -460,7 +532,9 @@ namespace draft_test
         }
         ef::FlowEditBatch external{session->describe().current, "S1 elsewhere", {}};
         if (canvas_case)
+        {
             external.edits.emplace_back(ef::FlowMoveNodes{{{id, {30, 50, true}}}});
+        }
         else if (signature)
         {
             auto value = std::get<lux::flowforge::FlowSourceSignature>(captured.source().nodes.front().parameters);
@@ -469,7 +543,9 @@ namespace draft_test
             external.edits.emplace_back(ef::FlowSetSignature{id, "S1 function", value});
         }
         else
+        {
             external.edits.emplace_back(ef::FlowSetLiteral{pin, {lux::flowforge::EFlowLiteralKind::REAL, "30"}});
+        }
         if (!positive)
         {
 #ifdef LUX_P10_R1_NATIVE
@@ -496,7 +572,9 @@ namespace draft_test
 #endif
         const auto bytes = take(take(session->read()).encode());
         if (canvas_case)
+        {
             f.frame(false);
+        }
         else
         {
             f.frame(false); // Normal display refresh happens BEFORE the old property Apply.
@@ -512,8 +590,8 @@ namespace draft_test
             assert(view->status() && !interaction.overlay());
             roundTrip(*session, *view, s0_bytes);
             assert(view->cancelEdit());
-            assert(f.desktop->views().close(mounted));
-            f.wait([&] { return !f.desktop->views().describe(mounted); });
+            assert((*f.legacy_host).close(mounted));
+            f.wait([&] { return !(*f.legacy_host).describe(mounted); });
             closeSession(f, *session);
             std::fputs("R10-R1-01 positive actual property Apply/Undo/Redo PASS\n", stderr);
             return true;
@@ -541,9 +619,13 @@ namespace draft_test
             input.click(input.property("Flow###r1-flow", "Revert properties"));
             assert(view->status() && unchanged(s1, session->describe()));
             if (signature)
+            {
                 input.text(input.property("Flow###r1-flow", "Function name"), "Recovered function");
+            }
             else
+            {
                 input.text(input.property("Flow###r1-flow", "##value", static_cast<int>(pin.value)), "40");
+            }
             assert(unchanged(s1, session->describe()) && bytes == take(take(session->read()).encode()));
             input.click(input.property(
                 "Flow###r1-flow",
@@ -555,8 +637,8 @@ namespace draft_test
             std::fputs("R10-R1-06 actual Revert/edit/Apply one-history Undo/Redo PASS\n", stderr);
         }
         assert(view->cancelEdit());
-        assert(f.desktop->views().close(mounted));
-        f.wait([&] { return !f.desktop->views().describe(mounted); });
+        assert((*f.legacy_host).close(mounted));
+        f.wait([&] { return !(*f.legacy_host).describe(mounted); });
         auto permit = take(f.store.prepareClose(session->describe().current));
         assert(f.store.close(permit));
         return preserved && rejected;
@@ -633,7 +715,7 @@ namespace draft_test
             em::MaterialViewBinding{key, &interaction}
         ));
         auto* view = static_cast<em::MaterialView*>(detached.pane());
-        const auto mounted = take(f.desktop->views().adopt(detached, views::ViewRestoreKey{"r1-material"})).id;
+        const auto mounted = take((*f.legacy_host).adopt(detached, views::ViewRestoreKey{"r1-material"})).id;
         auto* graph = find<widgets::GraphCanvas>(*view);
         assert(graph);
         if (lifetime)
@@ -643,19 +725,23 @@ namespace draft_test
             const auto original = session->describe();
             const auto encoded = bytes(*session);
             probe.armed = true;
-            underRead(*session, [&] {
-                auto cancel = view->cancelEdit();
-                assert(!cancel && probe.released == 0);
-                auto rebound = view->rebind(std::nullopt);
-                assert(!rebound && view->binding()->session == key && probe.released == 0);
-            });
+            underRead(
+                *session,
+                [&]
+                {
+                    auto cancel = view->cancelEdit();
+                    assert(!cancel && probe.released == 0);
+                    auto rebound = view->rebind(std::nullopt);
+                    assert(!rebound && view->binding()->session == key && probe.released == 0);
+                }
+            );
             assert(probe.released == 0);
             assert(view->cancelEdit());
             assert(probe.released == 1);
             probe.armed = false;
             assert(unchanged(original, session->describe()) && bytes(*session) == encoded);
-            assert(f.desktop->views().close(mounted));
-            f.wait([&] { return !f.desktop->views().describe(mounted); });
+            assert((*f.legacy_host).close(mounted));
+            f.wait([&] { return !(*f.legacy_host).describe(mounted); });
             closeSession(f, *session);
             std::fputs(
                 "R10-R1-05 dynamic node draft: BUSY retains/code alive/disposal under original gate PASS\n",
@@ -667,17 +753,21 @@ namespace draft_test
         {
             queueCases(f, *session, *view, interaction, *graph, id.value);
             assert(view->cancelEdit());
-            assert(f.desktop->views().close(mounted));
-            f.wait([&] { return !f.desktop->views().describe(mounted); });
+            assert((*f.legacy_host).close(mounted));
+            f.wait([&] { return !(*f.legacy_host).describe(mounted); });
             closeSession(f, *session);
             return true;
         }
         const auto s0 = session->describe();
         CanvasInput::move(*graph, id.value, 20, true, true);
-        underRead(*session, [&] {
-            f.frame(false);
-            assert(busy(*view) && !interaction.overlay());
-        });
+        underRead(
+            *session,
+            [&]
+            {
+                f.frame(false);
+                assert(busy(*view) && !interaction.overlay());
+            }
+        );
         assert(unchanged(s0, session->describe()));
         std::vector<em::VMaterialEdit> edits;
         edits.emplace_back(em::MaterialPlaceNode{id, {30, 50, true}});
@@ -701,10 +791,10 @@ namespace draft_test
             rejected
         );
         assert(view->cancelEdit());
-        assert(f.desktop->views().close(mounted));
-        f.wait([&] { return !f.desktop->views().describe(mounted); });
+        assert((*f.legacy_host).close(mounted));
+        f.wait([&] { return !(*f.legacy_host).describe(mounted); });
         auto permit = take(f.store.prepareClose(session->describe().current));
         assert(f.store.close(permit));
         return preserved && rejected;
     }
-}
+} // namespace draft_test

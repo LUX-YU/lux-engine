@@ -68,6 +68,11 @@ namespace lux::editor::scene
         );
         descriptor.retention = services::EServiceRetention::SCOPED;
         descriptor.affinity = services::EServiceAffinity::OWNER;
+        descriptor.maintain = [](void* allocation) noexcept -> services::ServiceResult<void>
+        {
+            static_cast<ScenePresentationHub*>(allocation)->collectReleased();
+            return {};
+        };
         return descriptor;
     }();
     ProjectionResult<lux::scene::SceneInstanceLease> instantiateAuthorProjection(

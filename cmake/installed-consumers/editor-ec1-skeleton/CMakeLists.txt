@@ -19,7 +19,7 @@ find_package(lux-engine-editor-storage REQUIRED COMPONENTS editor_storage)
 find_package(lux-engine-editor-persistence REQUIRED COMPONENTS editor_persistence_execution)
 find_package(lux-engine-editor-file-publication REQUIRED COMPONENTS editor_file_publication)
 find_package(lux-engine-editor-workspace-store REQUIRED COMPONENTS workspace_store)
-find_package(lux-engine-editor-desktop REQUIRED COMPONENTS view_host)
+find_package(lux-engine-editor-desktop REQUIRED COMPONENTS editor_composition)
 add_library(skeleton_runtime SHARED Runtime.cpp)
 target_link_libraries(skeleton_runtime PRIVATE lux::engine::editor::editor_extensions)
 add_library(skeleton_extension SHARED Model.cpp Extension.cpp)
@@ -32,7 +32,7 @@ add_executable(skeleton_consumer main.cpp)
 target_link_libraries(skeleton_consumer PRIVATE lux::engine::editor::editor_extensions
     lux::engine::editor::editor_storage lux::engine::editor::editor_persistence_execution
     lux::engine::editor::editor_file_publication lux::engine::editor::workspace_store
-    lux::engine::editor::view_host)
+    lux::engine::editor::editor_composition)
 if(EC1_MODE STREQUAL "APP")
     add_library(witness_runtime SHARED Runtime.cpp)
     target_link_libraries(witness_runtime PRIVATE lux::engine::editor::editor_extensions)

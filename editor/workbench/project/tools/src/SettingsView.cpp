@@ -6,6 +6,7 @@
 #include <lux/engine/editor/project/SettingsView.hpp>
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
 #include <lux/engine/editor/workbench/CommandSupport.hpp>
+#include <lux/engine/editor/workbench/ViewFactorySupport.hpp>
 #include <lux/engine/project/PluginManager.hpp>
 #include <lux/engine/ui/Element.hpp>
 namespace lux::editor::project

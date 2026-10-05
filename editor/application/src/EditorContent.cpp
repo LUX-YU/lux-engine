@@ -1,22 +1,28 @@
+#include <lux/engine/editor/application/EditorApplicationImpl.hpp>
 #include <lux/engine/editor/project/ProjectView.hpp>
 #include <lux/engine/editor/tasks/TaskView.hpp>
-#include <lux/engine/editor/application/EditorApplicationImpl.hpp>
 
 namespace lux::editor::application
 {
     EditorResult<sessions::OpenAssetId> EditorApplication::Impl::createContent(sessions::SessionPreparation data)
     {
         if (phase_ != EApplicationPhase::RUNNING)
+        {
             return cxx::unexpected(EditorFailure{EEditorError::CLOSING, "content.create"});
+        }
         if (opens_.size() >= 64)
+        {
             return cxx::unexpected(EditorFailure{EEditorError::CAPACITY, "content.create"});
+        }
         auto installed = opening_.create(
             project_->catalogModel().reference({}).project_instance,
             std::move(data),
             contributions_.snapshot().sessions()
         );
         if (!installed)
+        {
             return applicationFailure("content.create", installed.error());
+        }
         opens_.push_back({*installed});
         return *installed;
     }
@@ -26,16 +32,18 @@ namespace lux::editor::application
         { return commands::CommandState{phase_ == EApplicationPhase::RUNNING && !last_view_}; };
         draft.commands.push_back(desktop::makeCloseViewCommand(
             running,
-            [this](views::ViewId id) -> commands::CommandResult<void>
+            [this](lux::ui::PaneHandle id) -> commands::CommandResult<void>
             {
                 auto result = closeView(id);
                 if (!result)
+                {
                     return cxx::unexpected(commands::CommandFailure{
                         commands::ECommandError::DOMAIN_FAILURE,
                         result.error().domain,
                         result.error().reason,
                         result.error().message
                     });
+                }
                 return {};
             }
         ));
@@ -45,12 +53,14 @@ namespace lux::editor::application
             {
                 auto result = makeContentView({{target.id}, target.id}, true, contributions_.snapshot());
                 if (!result)
+                {
                     return cxx::unexpected(commands::CommandFailure{
                         commands::ECommandError::DOMAIN_FAILURE,
                         result.error().domain,
                         result.error().reason,
                         result.error().message
                     });
+                }
                 return {};
             }
         ));

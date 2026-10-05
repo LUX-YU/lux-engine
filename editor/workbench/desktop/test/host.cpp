@@ -1,12 +1,12 @@
-#include <lux/engine/editor/desktop/ViewHost.hpp>
+#include <algorithm>
+#include <array>
+#include <cassert>
+#include <cstdio>
 #include <lux/engine/editor/desktop/ReviewView.hpp>
 #include <lux/engine/editor/desktop/ViewCommands.hpp>
-#include <lux/engine/ui/Root.hpp>
+#include <lux/engine/editor/desktop/ViewHost.hpp>
 #include <lux/engine/ui/Element.hpp>
-#include <cassert>
-#include <algorithm>
-#include <cstdio>
-#include <array>
+#include <lux/engine/ui/Root.hpp>
 #include <source_location>
 
 using namespace lux;
@@ -16,7 +16,9 @@ namespace
     template <class T> auto take(T value, std::source_location location = std::source_location::current())
     {
         if (!value)
+        {
             std::fprintf(stderr, "Failed result at %s:%u\n", location.file_name(), location.line());
+        }
         assert(value);
         return std::move(*value);
     }
@@ -81,7 +83,9 @@ namespace
         {
             ++close_attempts;
             if (close_error)
+            {
                 return cxx::unexpected(*close_error);
+            }
             return {};
         }
 
@@ -164,7 +168,9 @@ namespace
                 const auto nested = comparison.host_.rebindContent(comparison.id_, {});
                 assert(!nested && nested.error().retryable);
                 if (comparison.busy_)
+                {
                     return cxx::unexpected(views::ViewPreparationFailure{"comparison", 7, "Reading", true});
+                }
                 comparison.content_ = content;
                 ++comparison.changes_;
                 return {};
@@ -261,7 +267,9 @@ namespace
                 assert(!nested && nested.error() == views::EViewError::BUSY);
                 saw_busy = true;
                 if (changed.mounted && changed.pane == ui::PaneId{"notice-second"})
+                {
                     assert(host.close(first_id));
+                }
             }
         ));
         first_id = take(host.adopt(a, views::ViewRestoreKey{"notice-first"})).id;
@@ -304,9 +312,11 @@ namespace
         auto code = std::make_shared<Code>(facts);
         auto pane = std::make_unique<Window>(dispatcher, "close-errors", facts);
         auto& window = *pane;
-        views::DetachedView view{lux::object::CodeLease::plugin(code), std::move(pane), +[](ui::Pane& target) {
-                                     return static_cast<Window&>(target).prepareClose();
-                                 }};
+        views::DetachedView view{
+            lux::object::CodeLease::plugin(code),
+            std::move(pane),
+            +[](ui::Pane& target) { return static_cast<Window&>(target).prepareClose(); }
+        };
         code.reset();
         const auto id = take(host.adopt(view, views::ViewRestoreKey{"close-errors"})).id;
         window.close_error = views::ViewPreparationFailure{"test.permission", 37, "Explicit refusal", false};
@@ -315,7 +325,9 @@ namespace
         const auto saved = take(host.closeFailure(id));
         assert(saved && saved->domain == "test.permission" && saved->code == 37 && !saved->retryable);
         for (int i{}; i != 10; ++i)
+        {
             take(host.drain());
+        }
         assert(window.close_attempts == 1 && facts.alive && !facts.pane);
         window.close_error = views::ViewPreparationFailure{"session", 9, "Temporarily reading", true};
         assert(host.close(id));
@@ -338,7 +350,9 @@ namespace
             const auto id = take(host.adopt(next, views::ViewRestoreKey{"reused"})).id;
             assert(id != previous && !next.pane());
             if (turn)
+            {
                 assert(!host.describe(previous) && !host.close(previous));
+            }
             assert(host.focus(id) && host.show(id) && host.close(id));
             assert(take(host.drain()).completed == 3);
             assert(facts.pane == 1 && facts.element == 1 && facts.code == 1);
@@ -373,7 +387,9 @@ namespace
             [&](const ui::AttachmentChanged& change) noexcept
             {
                 if (!change.mounted)
+                {
                     return;
+                }
                 ++notices;
                 assert(root->findPane(ui::PaneIdView{"batch-first"}));
                 assert(root->findPane(ui::PaneIdView{"batch-second"}));
@@ -438,7 +454,9 @@ namespace
             [&](const ui::AttachmentChanged& change) noexcept
             {
                 if (change.mounted)
+                {
                     return;
+                }
                 ++detached;
                 assert(!root->findPane(ui::PaneIdView{"close-a"}) && !root->findPane(ui::PaneIdView{"close-b"}));
                 assert(first.pane == 0 && second.pane == 0 && first.alive && second.alive);
@@ -480,6 +498,7 @@ namespace
         layout.id.value = "12345678123456781234567812345678";
         layout.label = "P12 atomic workbench";
         for (std::uint32_t i = 1; i <= 3; ++i)
+        {
             layout.slots.push_back(
                 {{i},
                  views::ViewRestoreKey{
@@ -491,6 +510,7 @@ namespace
                  true,
                  {1, {}}}
             );
+        }
         layout.dock.nodes = {
             {1, workspace::EDockSplit::HORIZONTAL, 2, 3, .5, {}},
             {2, workspace::EDockSplit::LEAF, 0, 0, .5, {{1}, {2}}},
@@ -507,12 +527,14 @@ namespace
                 ++creations;
                 assert(*static_cast<const int*>(input.binding()) == 0); // Unbound, not a recovered asset locator.
                 if (reject_second && creations == 2)
+                {
                     return cxx::unexpected(views::ViewFactoryFailure{
                         views::EViewFactoryError::CONSTRUCT,
                         "test.second.factory",
                         7,
                         "Deliberate second factory failure"
                     });
+                }
                 return make(std::string(input.paneId().name()));
             }
         );
@@ -556,7 +578,9 @@ namespace
         structure = root->captureDockTree();
         unsigned windows{};
         for (const auto& node : structure.nodes)
+        {
             windows += static_cast<unsigned>(node.windows.size());
+        }
         assert(windows == 4 && host.describe(extra_id));
         // Captured actual docking is structurally valid and can be prepared without changing the current UI.
         assert(root->prepareDockTree(std::move(structure)));
@@ -621,27 +645,36 @@ namespace
 void toolCommandFactory(object::ObjectDispatcherRef dispatcher)
 {
     auto root = take(ui::Root::create(dispatcher));
-    desktop::ViewHost host(*root);
     unsigned constructions{};
+    services::ServiceRegistry services(dispatcher);
+    auto scope = take(services.createScope());
+    assert(scope.provide(services::ServiceNameView{"test.constructions"}, constructions));
+    desktop::UiRegistry windows(dispatcher, services);
     std::string type{"p10.test"}, label{"External tool"};
-    auto factory = views::ViewFactoryEntry::create(
-        lux::object::CodeLease::builtin(),
-        {views::ViewTypeIdView{type}, label, cxx::typeToken<std::monostate>()},
-        [&constructions](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView>
-        {
-            ++constructions;
-            return views::DetachedView{
-                lux::object::CodeLease::builtin(),
-                std::make_unique<ui::Pane>(input.dispatcher(), input.paneId(), ui::PaneTypeId{"p10.test"}, "Tool")
-            };
-        }
-    );
+    const services::ServiceDependency dependencies[]{
+        {services::ServiceNameView{"test.constructions"},
+         1,
+         cxx::typeToken<unsigned>(),
+         services::EDependencyKind::BORROWED}
+    };
+    desktop::UiDescriptor descriptor{views::ViewTypeIdView{type}, label, dependencies};
+    descriptor.create = [](services::ServiceResolver& resolver,
+                           const desktop::UiCreateInfo& input) -> desktop::UiResult<std::unique_ptr<ui::Pane>>
+    {
+        auto count = resolver.require<unsigned>(0);
+        assert(count);
+        ++count->get();
+        return std::make_unique<ui::Pane>(input.dispatcher, input.instance, ui::PaneTypeId{"p10.test"}, "Tool");
+    };
+    auto factory = desktop::UiEntry::create(object::CodeLease::builtin(), descriptor);
     type.clear();
     label.assign(1000, 'x');
-    const auto factories = take(views::ViewFactorySnapshot::create({factory}));
+    const auto factories = take(desktop::UiCatalog::prepare({factory}));
+    assert(windows.publish(factories));
     auto query = [](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
     { return commands::CommandState{true}; };
-    auto open = [&](views::ViewTypeId id) { return desktop::showTool(host, factories, dispatcher, std::move(id)); };
+    auto open = [&](views::ViewTypeId id)
+    { return desktop::showTool(*root, windows, scope, factories, std::move(id)); };
     auto entries = take(desktop::makeToolCommands(std::array{factory}, query, open));
     assert(entries.size() == 1 && entries.front()->descriptor().label == "External tool");
     commands::CommandRegistry registry;
@@ -650,31 +683,33 @@ void toolCommandFactory(object::ObjectDispatcherRef dispatcher)
     const auto handle = take(snapshot.find(commands::CommandIdView{"lux.editor.tool/p10.test"}));
     commands::CommandInvocation input;
     assert(registry.execute(handle, input));
-    const auto first = take(host.describeAll());
+    const auto first = take(windows.describe(*root));
     assert(first.size() == 1 && constructions == 1);
     assert(registry.execute(handle, input));
-    const auto second = take(host.describeAll());
-    assert(second.size() == 1 && constructions == 1 && second.front().id == first.front().id);
-    assert(!desktop::showTool(host, factories, dispatcher, views::ViewTypeId{"absent"}));
-    assert(!desktop::makeToolCommands(std::array<std::shared_ptr<views::ViewFactoryEntry>, 1>{}, query, open));
+    const auto second = take(windows.describe(*root));
+    assert(second.size() == 1 && constructions == 1 && second.front().handle == first.front().handle);
+    assert(!desktop::showTool(*root, windows, scope, factories, views::ViewTypeId{"absent"}));
+    assert(!desktop::makeToolCommands(std::array<std::shared_ptr<const desktop::UiEntry>, 1>{}, query, open));
     auto close = desktop::makeCloseViewCommand(
         query,
-        [&](views::ViewId id) -> commands::CommandResult<void>
+        [&](ui::PaneHandle id) -> commands::CommandResult<void>
         {
-            auto batch = host.prepareClose(std::span{&id, 1});
+            auto batch = windows.prepareClose(*root, std::span{&id, 1});
             if (!batch)
+            {
                 return cxx::unexpected(commands::CommandFailure{commands::ECommandError::STALE_TARGET});
-            auto committed = host.commit(*batch);
+            }
+            auto committed = root->commit(*batch);
             assert(committed);
             return {};
         }
     );
     const auto closing = take(commands::CommandRegistrySnapshot::create({close}));
-    auto target = commands::CommandInvocation::forView(first.front().id, lux::object::CodeLease::builtin());
+    auto target = commands::CommandInvocation::forView(first.front().handle, lux::object::CodeLease::builtin());
     assert(registry.execute(take(closing.at(0)), target));
-    assert(take(host.describeAll()).empty());
+    assert(take(windows.describe(*root)).empty());
     assert(!registry.execute(take(closing.at(0)), target));
-    std::puts("PASS module tool command, frozen dynamic text, actual Host reuse/adoption, close and stale target");
+    std::puts("PASS module tool command, frozen dynamic text, actual Root reuse/adoption, close and stale target");
 }
 int main()
 {

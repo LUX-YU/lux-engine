@@ -25,7 +25,7 @@ find_package(lux-engine-project-plugin-rendering REQUIRED COMPONENTS project_plu
 find_package(lux-engine-editor-scene-persistence REQUIRED COMPONENTS scene_persistence)
 find_package(lux-engine-editor-material-persistence REQUIRED COMPONENTS material_persistence)
 find_package(lux-engine-editor-flowforge-persistence REQUIRED COMPONENTS flowforge_persistence)
-find_package(lux-engine-editor-desktop REQUIRED COMPONENTS desktop_shell)
+find_package(lux-engine-editor-desktop REQUIRED COMPONENTS desktop_shell view_host)
 find_package(lux-engine-editor-tasks-ui REQUIRED COMPONENTS tasks_ui)
 find_package(lux-engine-editor-persistence REQUIRED COMPONENTS editor_persistence_execution)
 find_package(lux-engine-editor-file-publication REQUIRED COMPONENTS editor_file_publication)
@@ -76,14 +76,14 @@ configure_file("${CMAKE_CURRENT_SOURCE_DIR}/../common/ControlsTestAccess.hpp"
     "${CMAKE_CURRENT_BINARY_DIR}/ControlsTestAccess.hpp" COPYONLY)
 configure_file("${engine_source}/editor/workbench/desktop/test/host.cpp" "${CMAKE_CURRENT_BINARY_DIR}/host.cpp" COPYONLY)
 add_executable(desktop_views "${CMAKE_CURRENT_BINARY_DIR}/views.cpp")
-target_link_libraries(desktop_views PRIVATE lux::engine::editor::editor_storage lux::engine::editor::scene_ui lux::engine::editor::desktop_shell
+target_link_libraries(desktop_views PRIVATE lux::engine::editor::view_host lux::engine::editor::editor_storage lux::engine::editor::scene_ui lux::engine::editor::desktop_shell
     lux::engine::editor::material_ui lux::engine::editor::flow_ui lux::engine::editor::scene_execution
     lux::engine::editor::flowforge_persistence lux::engine::editor::flow_module lux::engine::editor::material_module lux::engine::editor::scene_module lux::engine::editor::editor_extensions
     lux::engine::editor::tasks_ui lux::engine::editor::editor_persistence_execution lux::engine::editor::editor_file_publication lux::engine::editor::material_persistence
     lux::engine::scene::scene_transform lux::engine::function::render_features
     lux::engine::function::ui_rendering imgui::core)
 add_executable(view_host "${CMAKE_CURRENT_BINARY_DIR}/host.cpp")
-target_link_libraries(view_host PRIVATE lux::engine::editor::view_host)
+target_link_libraries(view_host PRIVATE lux::engine::editor::view_host lux::engine::editor::editor_composition)
 file(READ "${engine_source}/editor/tests/integration/project/panels.cpp" panels)
 string(REPLACE "../../../../cmake/installed-consumers/common/UiTestContent.hpp"
     "UiTestContent.hpp" panels "${panels}")
@@ -131,7 +131,7 @@ add_test(NAME installed.desktop.inspector_codegen COMMAND inspector_fields)
 add_test(NAME installed.desktop.real_views COMMAND desktop_views "${P10_LINKER}" "${sdk_prefix}")
 set_tests_properties(installed.desktop.real_views PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)
 if(WIN32)
-    target_link_libraries(desktop_views PRIVATE user32)
+    target_link_libraries(desktop_views PRIVATE lux::engine::editor::view_host user32)
     add_test(NAME installed.desktop.native_input COMMAND desktop_views "${P10_LINKER}" "${sdk_prefix}" native)
     set_tests_properties(installed.desktop.native_input PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)
 endif()

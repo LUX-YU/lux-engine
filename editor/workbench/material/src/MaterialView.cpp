@@ -352,6 +352,7 @@ namespace lux::editor::material
             return std::move(*result);
         };
         value.cancel_preview = value.prepare_close;
+        value.restore_content = true;
         return value;
     }();
 
@@ -1541,7 +1542,10 @@ namespace lux::editor::material
             return rejected(snapshot.error());
         }
         auto started = impl_->services_.compilation->start(
-            std::move(*snapshot), {}, impl_->services_.environment.version, impl_->services_.environment.assets
+            std::move(*snapshot),
+            {},
+            impl_->services_.environment.version,
+            impl_->services_.environment.assets
         );
         if (!started)
         {
@@ -1778,10 +1782,9 @@ namespace lux::editor::material
              &environment,
              features,
              assets,
-             publication = std::move(publication)](
-                const views::ViewFactoryInput& input,
-                const views::ContentViewInput& value
-            ) -> views::ViewFactoryResult<views::DetachedView>
+             publication = std::move(publication
+             )](const views::ViewFactoryInput& input,
+                const views::ContentViewInput& value) -> views::ViewFactoryResult<views::DetachedView>
             {
                 auto view = MaterialView::createContent(
                     input.dispatcher(),

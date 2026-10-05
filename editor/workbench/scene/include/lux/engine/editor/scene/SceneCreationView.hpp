@@ -1,4 +1,10 @@
 #pragma once
+namespace lux::editor::views
+{
+    class ViewFactoryEntry;
+    class DetachedView;
+    struct ViewFactoryDescriptor;
+} // namespace lux::editor::views
 #include <lux/engine/editor/desktop/ViewCommands.hpp>
 #include <lux/engine/editor/scene/SceneConfigurationElement.hpp>
 #include <lux/engine/editor/sessions/SessionCommands.hpp>

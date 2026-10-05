@@ -307,6 +307,7 @@ namespace lux::editor::scene
             return std::move(*result);
         };
         descriptor.cancel_preview = descriptor.prepare_close;
+        descriptor.restore_content = true;
         return descriptor;
     }();
     struct SceneView::Impl final
@@ -1087,7 +1088,7 @@ namespace lux::editor::scene
     {
         return impl_->interaction_;
     }
-    SceneViewResult<void> SceneView::rebindRun(RunId run)
+    SceneViewResult<void> SceneView::rebindRun(RunId run, std::optional<system::SystemInstanceId> render_system)
     {
         if (!impl_->services_.runs)
         {
@@ -1095,7 +1096,7 @@ namespace lux::editor::scene
         }
         auto group =
             std::make_shared<SceneInteractionGroup>(*impl_->services_.runs, run, InteractionGroupId{id().hash()});
-        auto adopted = impl_->rebind(RunningSceneBinding{run, group.get()});
+        auto adopted = impl_->rebind(RunningSceneBinding{run, group.get()}, render_system);
         if (!adopted)
         {
             return adopted;

@@ -140,6 +140,9 @@ namespace lux::services
         // Optional fact query for accepted work. No cancellation, confirmation or destruction occurs here.
         // Domain review/decisions precede release; READY here alone is not permission to discard data.
         ServiceResult<bool> (*settled)(const void*) noexcept {};
+        // Owner safe-point work of an already created instance. No factory runs and failures do not
+        // skip independent participants. Accepted completion and retirement remain the domain's facts.
+        ServiceResult<void> (*maintain)(void*) noexcept {};
 
         // Declaration-time adaptation only. The runtime invokes one erased boundary with a matching
         // destruction function; modules construct with their actual unique owner and error type.

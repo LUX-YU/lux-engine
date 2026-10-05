@@ -4,9 +4,11 @@ namespace lux::editor::application
 {
     EditorResult<void> EditorApplication::Impl::captureRecovery()
     {
-        auto views = desktop_->views().describeAll();
+        auto views = editor_context_.ui().describe(desktop_->root());
         if (!views)
+        {
             return applicationFailure("recovery.views", views.error());
+        }
         return restoration_->capture(*views);
     }
     EditorResult<void> EditorApplication::Impl::restoreRecovery()
@@ -17,9 +19,13 @@ namespace lux::editor::application
     {
         auto progress = ERestorationProgress::SUSPENDED;
         if (phase_ == EApplicationPhase::RUNNING)
+        {
             progress = ERestorationProgress::ACTIVE;
+        }
         else if (phase_ == EApplicationPhase::DRAINING)
+        {
             progress = ERestorationProgress::CLOSING;
+        }
         auto present = [&](views::ViewContent content,
                            const extensions::ContributionSnapshot& catalog,
                            views::ViewRestoreKey key,

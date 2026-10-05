@@ -1,21 +1,21 @@
 #include "ObjectQueue.hpp"
 #include "Probe.hpp"
 #include "Settings.hpp"
-#include <lux/engine/editor/workspace/WorkspaceChanges.hpp>
-#include <lux/engine/editor/extensions/EditorExtension.hpp>
-#include <lux/engine/editor/storage/ProjectStorage.hpp>
-#include <lux/engine/editor/storage/FileArtifactStore.hpp>
-#include <lux/engine/editor/persistence/SaveExecution.hpp>
-#include <lux/engine/editor/desktop/ViewHost.hpp>
-#include <lux/engine/editor/desktop/ReviewView.hpp>
-#include <lux/engine/ui/Root.hpp>
-#include <lux/engine/resource/asset/animation/SkeletonAsset.hpp>
-#include <lux/engine/dynamic_library/DynamicLibrary.hpp>
+#include <cassert>
 #include <fstream>
 #include <iostream>
-#include <cassert>
-#include <thread>
+#include <lux/engine/dynamic_library/DynamicLibrary.hpp>
+#include <lux/engine/editor/desktop/ReviewView.hpp>
+#include <lux/engine/editor/desktop/UiRegistry.hpp>
+#include <lux/engine/editor/extensions/EditorExtension.hpp>
+#include <lux/engine/editor/persistence/SaveExecution.hpp>
+#include <lux/engine/editor/storage/FileArtifactStore.hpp>
+#include <lux/engine/editor/storage/ProjectStorage.hpp>
+#include <lux/engine/editor/workspace/WorkspaceChanges.hpp>
+#include <lux/engine/resource/asset/animation/SkeletonAsset.hpp>
+#include <lux/engine/ui/Root.hpp>
 #include <source_location>
+#include <thread>
 #if defined(EC1_APP)
 #include <lux/engine/editor/application/EditorApplication.hpp>
 #include <lux/engine/editor/material/MaterialModule.hpp>
@@ -34,19 +34,31 @@ namespace
         {
             std::cerr << location.file_name() << ':' << location.line() << '\n';
             if constexpr (std::is_enum_v<typename T::error_type>)
+            {
                 std::cerr << "code=" << int(result.error()) << '\n';
+            }
             if constexpr (requires { result.error().code; })
+            {
                 std::cerr << "code=" << int(result.error().code) << '\n';
+            }
             if constexpr (requires { result.error().domain; })
+            {
                 std::cerr << result.error().domain << '\n';
+            }
             if constexpr (requires { result.error().subject; })
+            {
                 std::cerr << result.error().subject << '\n';
+            }
             if constexpr (requires { result.error().detail; })
+            {
                 std::cerr << result.error().detail << '\n';
+            }
             std::abort();
         }
         if constexpr (!std::is_void_v<typename T::value_type>)
+        {
             return std::move(*result);
+        }
     }
     void write(const std::filesystem::path& path, std::span<const std::byte> bytes)
     {
@@ -128,7 +140,9 @@ namespace
             take(runtime.collectCompletions());
             saves.adoptCompletions();
             if (take(saves.status(id)).stage == persistence::ESaveStage::TERMINAL)
+            {
                 return;
+            }
             std::this_thread::sleep_for(std::chrono::milliseconds{1});
         }
         std::abort();
@@ -241,7 +255,8 @@ int main(int argc, char** argv)
              assetId(),
              sessions::BoundSource{assetId(), take(disk.resolve(source_path)).key.value},
              take(disk.resolve(source_path))},
-            editor_context.services(), editor_context.scope()
+            editor_context.services(),
+            editor_context.scope()
         ));
         std::optional<sessions::SessionPreparation> completed;
         const auto owner = std::this_thread::get_id();
@@ -275,7 +290,7 @@ int main(int argc, char** argv)
         const auto id = installed.id();
         const auto before = take(store.describe(id));
         verify(take(inspect(id)), "root", 0);
-        auto missing_view = take(views::ViewFactorySnapshot::create({})).selectContent(before.kind);
+        auto missing_view = take(desktop::UiCatalog::prepare({})).selectContent(before.kind);
         assert(!missing_view && store.size() == 1 && take(store.describe(id)).current == before.current);
         auto other = sessions::SessionFactoryEntry::create(
             lux::object::CodeLease::builtin(),
@@ -334,7 +349,8 @@ int main(int argc, char** argv)
         auto reload_job = take(sessions::SessionLoadJob::prepare(
             provider,
             {std::move(reload_input), assetId(), reload_before.binding, reload_target, 16 << 20, reload_before.current},
-            editor_context.services(), editor_context.scope()
+            editor_context.services(),
+            editor_context.scope()
         ));
         take(reload_tasks.submit(
             {.name = "Skeleton reload"},
@@ -377,45 +393,50 @@ int main(int argc, char** argv)
             take(installed.queryHistory()).content == saved_history.content && take(installed.queryHistory()).can_undo
         );
         verifyFile(root / copied_path, copyId(), "pelvis", 3);
-        auto snapshot = take(views::ViewFactorySnapshot::create(active.views));
+        auto snapshot = take(desktop::UiCatalog::prepare(active.ui));
+        take(editor_context.ui().publish(snapshot));
+        take(editor_context.scope().provide(services::ServiceNameView{"lux.editor.sessions"}, store));
         if (mode == "WINDOW")
         {
             auto ui_root = take(ui::Root::create(messages.dispatcherRef()));
-            desktop::ViewHost host{*ui_root};
+            auto& registry = editor_context.ui();
             const views::ViewContent content{{id}, id};
-            const auto type = take(snapshot.selectContent(stamp.kind));
+            const auto factory = take(snapshot.selectContent(stamp.kind));
             const auto make = [&](std::string name)
             {
-                return take(snapshot.prepare(
-                    type,
-                    {messages.dispatcherRef(),
-                     ui::PaneId{name},
-                     lux::object::CodeLease::builtin(),
-                     cxx::typeToken<views::ContentViewInput>(),
-                     std::make_shared<const views::ContentViewInput>(content, "Skeleton")}
+                return take(registry.create(
+                    factory,
+                    editor_context.scope(),
+                    {messages.dispatcherRef(), ui::PaneId{name}, content, {}, views::ViewRestoreKey{name}}
                 ));
             };
             auto first = make("first"), second = make("second");
-            assert(!first.pane()->attachedRoot());
-            auto first_id = take(host.adopt(first, views::ViewRestoreKey{"first"})).id;
-            auto second_id = take(host.adopt(second, views::ViewRestoreKey{"second"})).id;
-            assert(
-                take(host.describe(first_id)).content == content && take(host.describe(second_id)).content == content
-            );
-            take(host.focus(first_id));
-            take(host.drain());
-            auto close_from_callback = [&](ui::Pane&)
+            assert(!first->attachedRoot());
+            auto* first_pane = first.get();
+            auto* second_pane = second.get();
+            take(ui_root->addSubPane(std::move(first)));
+            take(ui_root->addSubPane(std::move(second)));
+            const auto first_id = take(ui_root->identify(*first_pane));
+            const auto second_id = take(ui_root->identify(*second_pane));
+            assert(take(registry.content(*ui_root, first_id)) == content);
+            assert(take(registry.content(*ui_root, second_id)) == content);
+            assert(ui_root->requestFocus(*first_pane));
+            auto close_from_callback = [&](ui::Pane& pane)
             {
-                take(host.close(first_id));
-                assert(!host.drain());
+                pane.requestClose();
+                auto blocked = registry.prepareClose(*ui_root, std::span{&first_id, 1});
+                assert(!blocked && blocked.error().code == desktop::EUiError::BUSY);
+                assert(ui_root->findPane(first_id));
             };
-            take(host.withView(first_id, close_from_callback));
-            take(host.drain());
-            assert(!host.describe(first_id) && store.size() == 1);
-            take(host.close(second_id));
-            take(host.drain());
+            take(ui_root->withPane(first_id, close_from_callback));
+            assert(first_pane->hasCloseRequest());
+            auto closed = take(registry.prepareClose(*ui_root, std::span{&first_id, 1}));
+            take(ui_root->commit(closed));
+            assert(!ui_root->findPane(first_id) && store.size() == 1);
+            auto closed_second = take(registry.prepareClose(*ui_root, std::span{&second_id, 1}));
+            take(ui_root->commit(closed_second));
             assert(facts.panes_created == facts.panes_destroyed && facts.rows_prepared >= 4);
-            assert(!facts.indices_displayed); // Actual skeleton row rendering consumes the same public setting.
+            assert(!facts.indices_displayed);
         }
         auto final_stamp = take(store.describe(id)).current;
         take(installed.close(final_stamp));
@@ -431,8 +452,12 @@ int main(int argc, char** argv)
         using namespace application;
         std::filesystem::create_directories(root / "bin");
         for (const auto& entry : std::filesystem::directory_iterator{build / "bin"})
+        {
             if (entry.path().extension() == ".dll")
+            {
                 std::filesystem::copy_file(entry.path(), root / "bin" / entry.path().filename());
+            }
+        }
         std::filesystem::copy_file(build / "share/lux-engine/plugins/example.skeleton.json", root / "skeleton.json");
         std::filesystem::copy_file(build / "share/lux-engine/plugins/example.witness.json", root / "witness.json");
         manifest.plugins.push_back({"example.skeleton", 1, "skeleton.json"});
@@ -480,9 +505,13 @@ int main(int argc, char** argv)
             for (auto* pane : facts.root->panes())
             {
                 if (!pane)
+                {
                     continue;
+                }
                 if (pane->type() != ui::PaneTypeId{"example.skeleton.view"})
+                {
                     continue;
+                }
                 const auto handle = take(facts.root->identify(*pane));
                 auto observe_content = [&](ui::Pane& target) { all.push_back({handle, api->content(target)}); };
                 take(facts.root->withPane(handle, observe_content));
@@ -495,7 +524,9 @@ int main(int argc, char** argv)
             {
                 take(app->update());
                 if (predicate())
+                {
                     return;
+                }
                 std::this_thread::sleep_for(std::chrono::milliseconds{1});
             }
             std::cerr << "APP wait failed at " << location.file_name() << ':' << location.line()
@@ -507,10 +538,13 @@ int main(int argc, char** argv)
         for (auto* pane : facts.root->panes())
         {
             if (!pane)
+            {
                 continue;
+            }
             if (pane->type() == ui::PaneTypeId{"lux.editor.project"})
             {
-                auto open = [&](ui::Pane& pane) {
+                auto open = [&](ui::Pane& pane)
+                {
                     take(static_cast<lux::editor::project::ProjectView&>(pane).requestOpen(
                         facts.project->reference(assetId())
                     ));
@@ -559,14 +593,18 @@ int main(int argc, char** argv)
             for (auto* pane : facts.root->panes())
             {
                 if (!pane)
+                {
                     continue;
+                }
                 if (pane->type() == ui::PaneTypeId{"lux.editor.review"})
                 {
                     auto submit = [&](ui::Pane& pane)
                     {
                         auto& prompt = static_cast<desktop::ReviewView&>(pane);
                         if (!text.empty())
+                        {
                             take(prompt.setText(text));
+                        }
                         take(prompt.answer(choice));
                         found = true;
                     };
@@ -648,7 +686,9 @@ int main(int argc, char** argv)
         {
             take(missing->update());
             if (take(missing->openStatus(supported)).content.stage == sessions::EOpenAssetStage::PUBLISHED)
+            {
                 break;
+            }
             std::this_thread::sleep_for(std::chrono::milliseconds{1});
         }
         const auto supported_status = take(missing->openStatus(supported));
@@ -657,7 +697,9 @@ int main(int argc, char** argv)
         verifyFile(root / source_path, assetId(), "hip", 4);
         take(missing->requestExit());
         for (unsigned i{}; i != 10000 && missing->phase() != EApplicationPhase::RELEASED; ++i)
+        {
             take(missing->update());
+        }
         assert(missing->phase() == EApplicationPhase::RELEASED);
         observe(nullptr);
         std::cout << "PASS real installed Application: asset-browser open, shared views, fields, history, Save/SaveAs, "
@@ -665,7 +707,11 @@ int main(int argc, char** argv)
     }
 #endif
     if (mode != "APP")
+    {
         assert(facts.unloaded == 1);
+    }
     else
+    {
         set_probe(nullptr);
+    }
 }

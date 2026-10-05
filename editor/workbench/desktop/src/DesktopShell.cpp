@@ -12,7 +12,7 @@ namespace lux::editor::desktop
         {
             reject_menu_connection = true;
         }
-    }
+    } // namespace testing
 #endif
 
     struct DesktopShell::Impl final
@@ -24,6 +24,10 @@ namespace lux::editor::desktop
             [[nodiscard]] lux::cxx::expected<void, lux::ui::EInitError> start(lux::ui::RootConfig config) noexcept
             {
                 return initialize(config);
+            }
+            void clearWindows() noexcept
+            {
+                clearChildren();
             }
             Presentation* presentation{};
             // This synchronous private route is the only menu receiver. The request is a stack borrow;
@@ -47,12 +51,12 @@ namespace lux::editor::desktop
         };
         ShellRoot root_;
         std::unique_ptr<Presentation> presentation_;
-        ViewHost host_;
         std::unique_ptr<CommandMenu> menu_;
         object::Connection menu_connection_;
-        Impl(object::ObjectDispatcherRef dispatcher, ViewHostLimits limits) : root_(dispatcher), host_(root_, limits) {}
+        explicit Impl(object::ObjectDispatcherRef dispatcher) : root_(dispatcher) {}
         ~Impl() noexcept
         {
+            root_.clearWindows();
             menu_connection_.disconnect();
             root_.closeInput();
             root_.bindWindow(nullptr);
@@ -65,18 +69,21 @@ namespace lux::editor::desktop
         render::RenderRuntime& renderer,
         lux::scene::RenderResources& resources,
         window::LuxWindow* window,
-        lux::ui::RootConfig config,
-        ViewHostLimits limits
+        lux::ui::RootConfig config
     )
     {
-        auto impl = std::make_unique<Impl>(dispatcher, limits);
+        auto impl = std::make_unique<Impl>(dispatcher);
         const auto started = impl->root_.start(config);
         if (!started)
+        {
             return cxx::unexpected(DesktopFailure{"desktop.root", started.error()});
+        }
         impl->root_.bindWindow(window);
         auto presentation = Presentation::create(impl->root_, execution, scenes, renderer, resources, window);
         if (!presentation)
+        {
             return cxx::unexpected(presentation.error());
+        }
         impl->presentation_ = std::move(*presentation);
         impl->root_.presentation = impl->presentation_.get();
         return std::unique_ptr<DesktopShell>(new DesktopShell(std::move(impl)));
@@ -90,9 +97,11 @@ namespace lux::editor::desktop
     )
     {
         if (impl_->menu_ || !capture)
+        {
             return cxx::unexpected(
                 commands::CommandFailure{commands::ECommandError::INVALID_ARGUMENT, "desktop.commands"}
             );
+        }
         auto menu = std::make_unique<CommandMenu>(impl_->root_, registry, dispatcher, std::move(capture));
         auto connected = object::LuxObject::connect(
             &impl_->root_,
@@ -101,18 +110,24 @@ namespace lux::editor::desktop
         );
 #if defined(LUX_DESKTOP_TEST_ACCESS)
         if (std::exchange(testing::reject_menu_connection, false))
+        {
             connected = cxx::unexpected(object::EConnectError::CAPACITY_EXHAUSTED);
+        }
 #endif
         if (!connected)
+        {
             return cxx::unexpected(commands::CommandFailure{
                 commands::ECommandError::DOMAIN_FAILURE,
                 "object.connect",
                 static_cast<std::uint64_t>(connected.error()),
                 "Desktop menu route could not be installed"
             });
+        }
         auto installed = menu->update();
         if (!installed)
+        {
             return installed;
+        }
         impl_->menu_ = std::move(menu);
         impl_->menu_connection_ = std::move(*connected);
         return {};
@@ -125,10 +140,6 @@ namespace lux::editor::desktop
     {
         return impl_->root_;
     }
-    ViewHost& DesktopShell::views() noexcept
-    {
-        return impl_->host_;
-    }
     Presentation& DesktopShell::presentation() noexcept
     {
         return *impl_->presentation_;
@@ -137,10 +148,12 @@ namespace lux::editor::desktop
     {
         const auto result = feedWindowInput(impl_->root_, input);
         if (!result)
+        {
             return cxx::unexpected(DesktopFailure{"desktop.input", result.error()});
+        }
         return {};
     }
-    DesktopResult<ViewDrain> DesktopShell::update(std::optional<lux::ui::FrameInfo> frame)
+    DesktopResult<void> DesktopShell::update(std::optional<lux::ui::FrameInfo> frame)
     {
         auto& root = impl_->root_;
         auto& presentation = *impl_->presentation_;
@@ -149,20 +162,23 @@ namespace lux::editor::desktop
         auto* ui_draw_data = information.display_size.width > 0 ? presentation.tryAcquireDrawData() : nullptr;
         const auto updated = root.update(information, ui_draw_data);
         if (!updated)
+        {
             return cxx::unexpected(DesktopFailure{"desktop.update", updated.error()});
+        }
         root.applyPendingChanges();
         if (impl_->menu_)
         {
             const auto commands = impl_->menu_->update();
             if (!commands)
+            {
                 return cxx::unexpected(DesktopFailure{"desktop.commands", commands.error()});
+            }
         }
-        auto drained = impl_->host_.drain();
-        if (!drained)
-            return cxx::unexpected(DesktopFailure{"desktop.views", drained.error()});
         const auto applied = presentation.applySceneInput();
         if (!applied)
+        {
             return cxx::unexpected(applied.error());
-        return *drained;
+        }
+        return {};
     }
-}
+} // namespace lux::editor::desktop

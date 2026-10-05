@@ -6,6 +6,7 @@
 #include <lux/engine/editor/project/AssetCatalog.hpp>
 #include <lux/engine/editor/sessions/SessionOpening.hpp>
 #include <lux/engine/editor/views/ViewInfo.hpp>
+#include <lux/engine/ui/Pane.hpp>
 #include <lux/engine/window/WindowPlacement.hpp>
 #include <span>
 
@@ -41,7 +42,7 @@ namespace lux::editor::application
     struct OpenAndShowResult final
     {
         sessions::OpenAssetStatus content;
-        std::optional<views::ViewId> view;
+        std::optional<lux::ui::PaneHandle> view;
         std::optional<EditorFailure> presentation_failure;
     };
     class EditorApplication final
@@ -63,9 +64,9 @@ namespace lux::editor::application
         [[nodiscard]] EditorResult<OpenAndShowResult> openStatus(sessions::OpenAssetId) const;
         [[nodiscard]] EditorResult<void> cancelOpen(sessions::OpenAssetId);
         [[nodiscard]] EditorResult<void> acknowledgeOpen(sessions::OpenAssetId);
-        [[nodiscard]] EditorResult<views::ViewId> show(sessions::SessionId, bool another_view = false);
+        [[nodiscard]] EditorResult<lux::ui::PaneHandle> show(sessions::SessionId, bool another_view = false);
         [[nodiscard]] EditorResult<void> requestExit();
-        [[nodiscard]] EditorResult<void> closeView(views::ViewId);
+        [[nodiscard]] EditorResult<void> closeView(lux::ui::PaneHandle);
         [[nodiscard]] EditorResult<void> applyLayout(workspace::DockLayout);
         [[nodiscard]] commands::CommandResult<commands::DispatchReceipt> execute(
             commands::CommandId,

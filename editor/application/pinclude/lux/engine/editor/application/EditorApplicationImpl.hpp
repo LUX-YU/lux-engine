@@ -1,47 +1,49 @@
 #pragma once
-#include <lux/engine/editor/desktop/ViewCommands.hpp>
-#include <lux/engine/editor/project/DesktopSettings.hpp>
-#include <lux/engine/editor/project/SettingsContent.hpp>
-#include <lux/engine/editor/application/RestoreWorkbench.hpp>
-#include <lux/engine/editor/workspace/WorkspaceChanges.hpp>
-#include <lux/engine/editor/desktop/WorkspaceActions.hpp>
-#include <lux/engine/editor/project/ResultsView.hpp>
-#include <lux/engine/editor/project/WorkspaceView.hpp>
-#include <lux/engine/editor/storage/ProjectContentSaving.hpp>
-#include <lux/engine/editor/storage/ProjectPluginSelection.hpp>
-#include <lux/engine/editor/storage/RecentProjects.hpp>
-#include <lux/engine/editor/application/ProjectCreation.hpp>
-#include <lux/engine/editor/application/EditorApplication.hpp>
 #include <lux/engine/EngineContext.hpp>
 #include <lux/engine/EngineRendering.hpp>
-#include <lux/engine/window/GlfwRuntime.hpp>
-#include <lux/engine/window/LuxWindow.hpp>
-#include <lux/engine/input/Input.hpp>
-#include <lux/engine/object/ObjectDispatcher.hpp>
-#include <lux/engine/editor/storage/ProjectStorage.hpp>
-#include <lux/engine/editor/storage/ProjectPlugins.hpp>
-#include <lux/engine/editor/storage/ProjectPublicationOperation.hpp>
-#include <lux/engine/editor/storage/FileArtifactStore.hpp>
+#include <lux/engine/editor/application/EditorApplication.hpp>
+#include <lux/engine/editor/application/ProjectCreation.hpp>
+#include <lux/engine/editor/application/RestoreWorkbench.hpp>
 #include <lux/engine/editor/assets/ModelImporter.hpp>
-#include <lux/engine/editor/persistence/SaveExecution.hpp>
-#include <lux/engine/editor/sessions/SessionOperations.hpp>
-#include <lux/engine/editor/sessions/ReloadSessionOperation.hpp>
-#include <lux/engine/editor/scene/SceneSessionFactory.hpp>
-#include <lux/engine/editor/material/MaterialSessionFactory.hpp>
-#include <lux/engine/editor/flowforge/FlowSessionFactory.hpp>
-#include <lux/engine/editor/scene/SceneView.hpp>
-#include <lux/engine/editor/scene/SceneTools.hpp>
-#include <lux/engine/editor/material/MaterialView.hpp>
-#include <lux/engine/editor/flowforge/FlowView.hpp>
-#include <lux/engine/editor/extensions/EditorExtension.hpp>
 #include <lux/engine/editor/desktop/DesktopShell.hpp>
 #include <lux/engine/editor/desktop/ReviewView.hpp>
-#include <lux/engine/editor/scene/RunController.hpp>
+#include <lux/engine/editor/desktop/ViewCommands.hpp>
+#include <lux/engine/editor/desktop/WorkspaceActions.hpp>
+#include <lux/engine/editor/extensions/EditorExtension.hpp>
+#include <lux/engine/editor/material/MaterialSessionFactory.hpp>
+#include <lux/engine/editor/material/MaterialView.hpp>
+#include <lux/engine/editor/persistence/SaveExecution.hpp>
+#include <lux/engine/editor/project/DesktopSettings.hpp>
+#include <lux/engine/editor/project/ImportView.hpp>
+#include <lux/engine/editor/project/ProjectView.hpp>
+#include <lux/engine/editor/project/RecentProjectsView.hpp>
+#include <lux/engine/editor/project/ResultsView.hpp>
+#include <lux/engine/editor/project/SettingsContent.hpp>
+#include <lux/engine/editor/project/SettingsView.hpp>
+#include <lux/engine/editor/project/WorkspaceView.hpp>
 #include <lux/engine/editor/scene/ModelCreationOperation.hpp>
+#include <lux/engine/editor/scene/RunController.hpp>
 #include <lux/engine/editor/scene/SceneCreationView.hpp>
+#include <lux/engine/editor/scene/SceneSessionFactory.hpp>
+#include <lux/engine/editor/scene/SceneTools.hpp>
+#include <lux/engine/editor/scene/SceneView.hpp>
+#include <lux/engine/editor/sessions/ReloadSessionOperation.hpp>
+#include <lux/engine/editor/sessions/SessionOperations.hpp>
+#include <lux/engine/editor/storage/FileArtifactStore.hpp>
+#include <lux/engine/editor/storage/ProjectContentSaving.hpp>
+#include <lux/engine/editor/storage/ProjectPluginSelection.hpp>
+#include <lux/engine/editor/storage/ProjectPlugins.hpp>
+#include <lux/engine/editor/storage/ProjectPublicationOperation.hpp>
+#include <lux/engine/editor/storage/ProjectStorage.hpp>
+#include <lux/engine/editor/storage/RecentProjects.hpp>
 #include <lux/engine/editor/tasks/TaskMonitor.hpp>
+#include <lux/engine/editor/workspace/WorkspaceChanges.hpp>
 #include <lux/engine/editor/workspace/WorkspaceStore.hpp>
+#include <lux/engine/input/Input.hpp>
+#include <lux/engine/object/ObjectDispatcher.hpp>
 #include <lux/engine/project/PluginRendering.hpp>
+#include <lux/engine/window/GlfwRuntime.hpp>
+#include <lux/engine/window/LuxWindow.hpp>
 
 namespace lux::editor::application
 {
@@ -52,21 +54,31 @@ namespace lux::editor::application
         if constexpr (requires { cause.code == decltype(cause.code)::BUSY; })
         {
             if (cause.code == decltype(cause.code)::BUSY)
+            {
                 code = EEditorError::BUSY;
+            }
         }
         else if constexpr (requires { cause == Error::BUSY; })
         {
             if (cause == Error::BUSY)
+            {
                 code = EEditorError::BUSY;
+            }
         }
         if constexpr (requires { cause.session == sessions::ESessionError::BUSY; })
         {
             if (cause.session == sessions::ESessionError::BUSY)
+            {
                 code = EEditorError::BUSY;
+            }
         }
         if constexpr (requires { cause.retryable; })
+        {
             if (cause.retryable)
+            {
                 code = EEditorError::BUSY;
+            }
+        }
         return cxx::unexpected(EditorFailure{code, std::move(domain), 0, {}, cause});
     }
     struct EditorApplication::Impl final
@@ -80,7 +92,7 @@ namespace lux::editor::application
         struct OpenPresentation final
         {
             sessions::OpenAssetId operation;
-            std::optional<views::ViewId> view;
+            std::optional<lux::ui::PaneHandle> view;
             std::optional<EditorFailure> failure;
             bool cancelled{};
         };
@@ -117,7 +129,7 @@ namespace lux::editor::application
             sessions::ContentStamp source;
             std::unique_ptr<scene::StartRunOperation> preparing;
             std::optional<scene::RunId> run;
-            std::vector<views::ViewId> views;
+            std::vector<lux::ui::PaneHandle> views;
             std::optional<scene::StopTicket> stopping;
             bool stop_requested{};
             std::vector<scene::StepTicket> steps;
@@ -130,9 +142,9 @@ namespace lux::editor::application
         };
         struct LastViewQuestion final
         {
-            views::ViewId view;
+            lux::ui::PaneHandle view;
             sessions::ContentStamp content;
-            views::ViewId question;
+            lux::ui::PaneHandle question;
         };
         struct Dispatch final
         {
@@ -185,21 +197,25 @@ namespace lux::editor::application
             {
                 auto& target = select(query.target.key.value);
                 if (&target == &installation_)
+                {
                     return persistence::NotPublished{
                         {persistence::EPersistenceError::UNSUPPORTED_TARGET, "Installation settings are read only"}
                     };
+                }
                 return target.publish(query, stop);
             }
             persistence::Reconciliation reconcile(const persistence::PublicationQuery& query) override
             {
                 auto& target = select(query.target.key.value);
                 if (&target == &installation_)
+                {
                     return {
                         true,
                         persistence::NotPublished{
                             {persistence::EPersistenceError::UNSUPPORTED_TARGET, "Installation settings are read only"}
                         }
                     };
+                }
                 return target.reconcile(query);
             }
 
@@ -207,9 +223,13 @@ namespace lux::editor::application
             storage::FileArtifactStore& select(std::string_view key)
             {
                 if (key.starts_with(user_prefix_))
+                {
                     return user_;
+                }
                 if (!key.starts_with(project_prefix_) && key.starts_with(installation_prefix_))
+                {
                     return installation_;
+                }
                 return project_;
             }
             static std::string prefix(const std::filesystem::path& root)
@@ -226,7 +246,7 @@ namespace lux::editor::application
         persistence::SaveExecution save_execution_;
         std::unique_ptr<assets::ModelImporter> importer_;
         std::unique_ptr<ProjectCreation> project_creation_;
-        std::optional<lux::ui::PaneId> import_browse_;
+        std::optional<lux::ui::PaneHandle> import_browse_;
         bool project_open_requested_{};
         std::optional<std::filesystem::path> project_launch_intent_;
         std::unique_ptr<RecentProjects> recent_projects_;
@@ -261,7 +281,8 @@ namespace lux::editor::application
             object::ObjectMessageQueue& messages_;
             ServiceRetirement(desktop::EditorContext& context, object::ObjectMessageQueue& messages) noexcept
                 : context_(context), messages_(messages)
-            {}
+            {
+            }
             ~ServiceRetirement() noexcept;
             ServiceRetirement(const ServiceRetirement&) = delete;
             ServiceRetirement& operator=(const ServiceRetirement&) = delete;
@@ -269,13 +290,9 @@ namespace lux::editor::application
             ServiceRetirement& operator=(ServiceRetirement&&) = delete;
         } service_retirement_{editor_context_, messages_};
         std::shared_ptr<ProjectContentSaving> content_saving_;
-        std::shared_ptr<scene::ScenePresentationHub> projections_;
         scene::RunStore runs_;
         scene::RunController run_controller_{runs_};
-        std::shared_ptr<material::MaterialCompilationService> material_compilation_;
-        std::shared_ptr<flowforge::FlowCompilationService> flow_compilation_;
         scene::ProjectionEnvironment environment_;
-        flowforge::FlowEnvironment flow_environment_;
         commands::CommandRegistry& commands_{editor_context_.commands()};
         commands::CommandDispatcher command_dispatcher_{commands_};
         extensions::ContributionRegistry contributions_;
@@ -314,6 +331,19 @@ namespace lux::editor::application
         std::uint64_t next_view_{1}, next_review_{1};
         EApplicationPhase phase_{EApplicationPhase::RUNNING};
         bool dispatching_{};
+        project::ProjectView::Open asset_open_;
+        project::ImportView::Browse import_browse_request_;
+        project::RecentProjectsView::Open recent_open_;
+        project::PluginSelectionRequests plugin_requests_;
+        scene::SceneView::ModelDrop model_drop_;
+        project::ResultsView::Observe results_observe_;
+        project::ResultsView::Request results_request_;
+        project::WorkspaceView::Observe workspace_observe_;
+        project::WorkspaceView::Request workspace_request_;
+        cxx::move_only_function<project::ProjectCreationRequests()> creation_requests_;
+        scene::RunInspectAccess run_inspection_{runs_.inspect()};
+        std::unique_ptr<scene::SceneConfigurationInputs> scene_configuration_;
+        std::vector<scene::InspectorComponent> inspector_components_;
         input::Input input_;
         // Last owner: views release borrows before interactions, code, services and content.
         lux::ui::FontSource font_;
@@ -379,10 +409,10 @@ namespace lux::editor::application
         [[nodiscard]] EditorResult<scene::StartRunId> play(commands::SessionTarget);
         [[nodiscard]] EditorResult<void> maintainRuns();
         [[nodiscard]] EditorResult<void> stopRun(scene::RunId);
-        [[nodiscard]] EditorResult<views::ViewId> showSceneTool(lux::ui::PaneHandle, scene::ESceneTool);
+        [[nodiscard]] EditorResult<lux::ui::PaneHandle> showSceneTool(lux::ui::PaneHandle, scene::ESceneTool);
         [[nodiscard]] EditorResult<void> stepRun(scene::RunId);
-        [[nodiscard]] EditorResult<views::ViewId> show(sessions::SessionId, bool another_view);
-        [[nodiscard]] EditorResult<views::ViewId> makeContentView(
+        [[nodiscard]] EditorResult<lux::ui::PaneHandle> show(sessions::SessionId, bool another_view);
+        [[nodiscard]] EditorResult<lux::ui::PaneHandle> makeContentView(
             views::ViewContent,
             bool another_view,
             const extensions::ContributionSnapshot&,
@@ -393,14 +423,13 @@ namespace lux::editor::application
         [[nodiscard]] EditorResult<void> receiveOpenResults();
         [[nodiscard]] EditorResult<void> reviewClose();
         [[nodiscard]] EditorResult<void> requestClose(sessions::ContentStamp);
-        [[nodiscard]] EditorResult<void> closeView(views::ViewId);
+        [[nodiscard]] EditorResult<void> closeView(lux::ui::PaneHandle);
         [[nodiscard]] EditorResult<void> receiveViewClose();
         [[nodiscard]] desktop::ToolOpening toolOpening();
         [[nodiscard]] EditorResult<void> settleOperations();
         void receiveModel(scene::ModelPlacement);
         void settleModels();
         [[nodiscard]] EditorResult<void> requestExit();
-        [[nodiscard]] EditorResult<views::ViewId> adopt(views::DetachedView&, std::string key);
-        [[nodiscard]] scene::SceneViewServices sceneServices();
+        [[nodiscard]] EditorResult<lux::ui::PaneHandle> adopt(std::unique_ptr<lux::ui::Pane, object::ObjectDeleter>&);
     };
 } // namespace lux::editor::application

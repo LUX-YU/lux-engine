@@ -1,10 +1,10 @@
-#include <lux/engine/editor/scene/SceneEditorCatalog.hpp>
+#include <algorithm>
 #include <lux/engine/editor/application/EditorApplicationImpl.hpp>
+#include <lux/engine/editor/scene/SceneConfigurationView.hpp>
+#include <lux/engine/editor/scene/SceneEditorCatalog.hpp>
 #include <lux/engine/editor/scene/SceneTools.hpp>
 #include <lux/engine/log/Log.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
-#include <lux/engine/editor/scene/SceneConfigurationView.hpp>
-#include <algorithm>
 
 namespace lux::editor::application
 {
@@ -18,31 +18,47 @@ namespace lux::editor::application
     EditorResult<scene::StartRunId> EditorApplication::Impl::play(commands::SessionTarget target)
     {
         if (phase_ != EApplicationPhase::RUNNING || run_presentations_.size() >= 16)
+        {
             return cxx::unexpected(EditorFailure{EEditorError::BUSY, "run.admission"});
+        }
         auto information = sessions_.describe(target.id);
         if (!information)
+        {
             return applicationFailure("run.source", information.error());
+        }
         if (!target.based_on || information->current != *target.based_on)
+        {
             return applicationFailure("run.source", sessions::ESessionError::STALE_CONTENT);
+        }
         auto key = sessions_.key<scene::SceneSession>(target.id);
         if (!key)
+        {
             return applicationFailure("run.source.kind", key.error());
+        }
         auto author = sessions_.access<scene::SceneSession>().read(*key);
         if (!author)
+        {
             return applicationFailure("run.source.read", author.error());
+        }
         auto captured = author->get().capture();
         if (!captured)
+        {
             return applicationFailure("run.source.capture", captured.error());
+        }
         scene::RunConfiguration configuration;
         const auto& description = captured->configuration().scene->data();
         for (std::size_t i{}; i < description.systemCount(); ++i)
+        {
             if (const auto system = description.systemAt(i);
                 system.type() == lux::scene::builtinRenderSystemRegistration().type)
             {
                 if (configuration.viewport.value)
+                {
                     return cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "run.viewport.ambiguous"});
+                }
                 configuration.viewport = system.instanceId();
             }
+        }
         // The preparation owns the frozen author data and this exact environment, never a live Session.
         auto prepared = run_controller_.prepare(
             std::move(*captured),
@@ -56,7 +72,9 @@ namespace lux::editor::application
             configuration
         );
         if (!prepared)
+        {
             return applicationFailure("run.prepare", prepared.error());
+        }
         const auto id = (*prepared)->id();
         run_presentations_.push_back({id, information->current, std::move(*prepared)});
         return id;
@@ -69,7 +87,9 @@ namespace lux::editor::application
             if (record.preparing)
             {
                 if (phase_ == EApplicationPhase::DRAINING)
+                {
                     record.preparing->cancel();
+                }
                 if (!record.preparing->ready() || phase_ == EApplicationPhase::REVIEWING)
                 {
                     ++iterator;
@@ -95,25 +115,48 @@ namespace lux::editor::application
                 {
                     const auto information = runs_.info(*adopted);
                     if (!information)
+                    {
                         return applicationFailure("run.info", information.error());
+                    }
                     const auto name = "run-" + std::to_string(next_view_++);
-                    auto candidate = scene::makeRunSceneView(
-                        messages_.dispatcherRef(),
-                        sceneServices(),
-                        lux::ui::PaneId{name},
-                        *adopted,
-                        information->provenance.configuration.viewport
+                    auto factory = contributions_.snapshot().ui().find(scene::kSceneView.type);
+                    if (!factory)
+                    {
+                        return applicationFailure("run.factory", factory.error());
+                    }
+                    auto candidate = editor_context_.ui().create(
+                        *factory,
+                        editor_context_.scope(),
+                        {messages_.dispatcherRef(),
+                         lux::ui::PaneId{name},
+                         {},
+                         {factory->descriptor().schema, {}},
+                         views::ViewRestoreKey{name}}
                     );
                     if (!candidate)
+                    {
                         record.failure = applicationFailure("run.view", candidate.error()).value();
+                    }
                     else
                     {
-                        auto shown = adopt(*candidate, name);
-                        if (!shown)
-                            record.failure = shown.error();
+                        auto& view = static_cast<scene::SceneView&>(**candidate);
+                        view.setTitle("Run (frozen author content)");
+                        auto bound = view.rebindRun(*adopted, information->provenance.configuration.viewport);
+                        if (!bound)
+                        {
+                            record.failure = applicationFailure("run.view.bind", bound.error()).value();
+                        }
                         else
                         {
-                            record.views.push_back(*shown);
+                            auto shown = adopt(*candidate);
+                            if (!shown)
+                            {
+                                record.failure = shown.error();
+                            }
+                            else
+                            {
+                                record.views.push_back(*shown);
+                            }
                         }
                     }
                 }
@@ -122,7 +165,9 @@ namespace lux::editor::application
             {
                 auto stopped = runs_.stop(*record.run);
                 if (!stopped)
+                {
                     return applicationFailure("run.stop", stopped.error());
+                }
                 record.stopping = *stopped;
             }
             // RunStore retains each original terminal result until the user's explicit Stop confirmation.
@@ -131,11 +176,15 @@ namespace lux::editor::application
             {
                 auto acknowledged = runs_.acknowledgeStop(*record.run);
                 if (!acknowledged)
+                {
                     return applicationFailure("run.stop.acknowledge", acknowledged.error());
+                }
                 iterator = run_presentations_.erase(iterator);
             }
             else
+            {
                 ++iterator;
+            }
         }
         return {};
     }
@@ -143,58 +192,114 @@ namespace lux::editor::application
     {
         auto record = std::ranges::find(run_presentations_, std::optional{id}, &RunPresentation::run);
         if (record == run_presentations_.end())
+        {
             return cxx::unexpected(EditorFailure{EEditorError::STALE_REQUEST, "run.stop"});
+        }
         const auto ids = record->views;
-        auto prepared = desktop_->views().prepareClose(ids);
+        auto prepared = editor_context_.ui().prepareClose(desktop_->root(), ids);
         if (!prepared)
+        {
             return applicationFailure("run.views.prepare", prepared.error());
+        }
         auto stopped = runs_.stop(id);
         if (!stopped)
+        {
             return applicationFailure("run.stop", stopped.error());
+        }
         record->stopping = *stopped;
-        auto committed = desktop_->views().commit(*prepared);
+        auto committed = desktop_->root().commit(*prepared);
         if (!committed)
+        {
             return applicationFailure("run.views.close", committed.error());
+        }
         record->views.clear();
         return {};
     }
-    EditorResult<views::ViewId> EditorApplication::Impl::showSceneTool(lux::ui::PaneHandle source, scene::ESceneTool kind)
+    EditorResult<lux::ui::PaneHandle> EditorApplication::Impl::showSceneTool(
+        lux::ui::PaneHandle source,
+        scene::ESceneTool kind
+    )
     {
         auto source_group = scene::shareSceneInteraction(desktop_->root(), source);
         if (!source_group)
+        {
             return applicationFailure("scene.tool.source", source_group.error());
+        }
         const auto run = (*source_group)->run();
-        const auto snapshot = contributions_.snapshot();
-        auto components = scene::sceneInspectorComponents();
-        auto definitions = scene::sceneEditorDefinitions(snapshot.services());
-        if (!definitions)
-            return applicationFailure("scene.tool.catalog", definitions.error());
-        for (const auto& definition : *definitions)
-            components.insert(components.end(), definition->components.begin(), definition->components.end());
+        const desktop::UiDescriptor* descriptor{};
+        switch (kind)
+        {
+        case scene::ESceneTool::OUTLINER:
+            descriptor = &scene::kOutlinerView;
+            break;
+        case scene::ESceneTool::INSPECTOR:
+            descriptor = run ? &scene::kRunInspectorView : &scene::kInspectorView;
+            break;
+        case scene::ESceneTool::RESOURCES:
+            descriptor = &scene::kResourceView;
+            break;
+        case scene::ESceneTool::CONFIGURATION:
+            descriptor = &scene::kSceneConfigurationView;
+            break;
+        }
+        if (!descriptor)
+        {
+            return cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "scene.tool.kind"});
+        }
+        auto scope = editor_context_.services().createScope(&editor_context_.scope());
+        if (!scope)
+        {
+            return applicationFailure("scene.tool.scope", scope.error());
+        }
+        if (auto provided = scope->provide(services::ServiceNameView{"lux.editor.scene.interaction"}, *source_group);
+            !provided)
+        {
+            return applicationFailure("scene.tool.group", provided.error());
+        }
+        if (auto provided = scope->provide(services::ServiceNameView{"lux.ui.root"}, desktop_->root()); !provided)
+        {
+            return applicationFailure("scene.tool.root", provided.error());
+        }
+        if (auto provided = scope->provide(services::ServiceNameView{"lux.editor.scene.viewport"}, source); !provided)
+        {
+            return applicationFailure("scene.tool.viewport", provided.error());
+        }
+        views::ViewContent content;
+        if (auto session = (*source_group)->session())
+        {
+            content = {{session->id()}, session->id()};
+        }
         const auto name = "scene-tool-" + std::to_string(next_view_++);
-        auto candidate = scene::makeSceneToolView(
-            messages_.dispatcherRef(),
-            lux::ui::PaneId{name},
-            desktop_->root(),
-            source,
-            kind,
-            {sceneServices(),
-             runs_,
-             registrations_.components,
-             std::move(components),
-             &project_->catalogModel(),
-             sceneConfigurationInputs()}
+        auto factory = contributions_.snapshot().ui().find(descriptor->type);
+        if (!factory)
+        {
+            return applicationFailure("scene.tool.factory", factory.error());
+        }
+        auto candidate = editor_context_.ui().create(
+            *factory,
+            *scope,
+            {messages_.dispatcherRef(),
+             lux::ui::PaneId{name},
+             content,
+             {factory->descriptor().schema, {}},
+             views::ViewRestoreKey{name}}
         );
         if (!candidate)
+        {
             return applicationFailure("scene.tool.create", candidate.error());
-        auto shown = adopt(*candidate, name);
+        }
+        auto shown = adopt(*candidate);
         if (!shown)
+        {
             return shown;
+        }
         if (run)
         {
             auto owner = std::ranges::find(run_presentations_, run, &RunPresentation::run);
             if (owner != run_presentations_.end())
+            {
                 owner->views.push_back(*shown);
+            }
         }
         return *shown;
     }
@@ -225,13 +330,22 @@ namespace lux::editor::application
             {
                 auto definitions = scene::sceneEditorDefinitions(snapshot.services());
                 if (!definitions)
+                {
                     return cxx::unexpected(scene::SceneConfigurationFailure{
-                        scene::ESceneConfigurationError::CONTROL_FAILURE, "configuration.catalog"
+                        scene::ESceneConfigurationError::CONTROL_FAILURE,
+                        "configuration.catalog"
                     });
+                }
                 for (const auto& definition : *definitions)
-                for (const auto& editor : definition->configurations)
-                    if (editor.value.schema_name == name && editor.value.schema_version == version)
-                        return scene::makeConfigurationControl(editor, parent, lux::ui::ElementId{name}, initial);
+                {
+                    for (const auto& editor : definition->configurations)
+                    {
+                        if (editor.value.schema_name == name && editor.value.schema_version == version)
+                        {
+                            return scene::makeConfigurationControl(editor, parent, lux::ui::ElementId{name}, initial);
+                        }
+                    }
+                }
                 return scene::ConfigurationControl{};
             },
             registrations_.render_bindings
@@ -242,10 +356,14 @@ namespace lux::editor::application
         auto owner = std::ranges::find(run_presentations_, std::optional{run}, &RunPresentation::run);
         const bool is_full = owner == run_presentations_.end() || owner->steps.size() >= 64;
         if (is_full)
+        {
             return cxx::unexpected(EditorFailure{EEditorError::BUSY, "run.steps"});
+        }
         auto step = runs_.step(run);
         if (!step)
+        {
             return applicationFailure("run.step", step.error());
+        }
         owner->steps.push_back(*step);
         return {};
     }
@@ -253,7 +371,6 @@ namespace lux::editor::application
     {
         const auto available = [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
         { return commands::CommandState{phase_ == EApplicationPhase::RUNNING}; };
-        draft.views.push_back(scene::makeSceneCreationViewFactory(sceneConfigurationInputs(), contentCreation()));
         draft.commands.push_back(scene::makeNewSceneCommand(available, toolOpening()));
         draft.commands.push_back(scene::makePlaySceneCommand(
             available,
@@ -261,7 +378,9 @@ namespace lux::editor::application
             {
                 auto started = play(target);
                 if (!started)
+                {
                     return cxx::unexpected(commandFailure(started.error()));
+                }
                 return *started;
             }
         ));
@@ -271,7 +390,9 @@ namespace lux::editor::application
             {
                 auto shown = showSceneTool(view, kind);
                 if (!shown)
+                {
                     return cxx::unexpected(commandFailure(shown.error()));
+                }
                 return {};
             }
         );
@@ -285,7 +406,9 @@ namespace lux::editor::application
                 if (!result)
                 {
                     if (result.error().code == EEditorError::BUSY)
+                    {
                         return cxx::unexpected(commands::CommandFailure{commands::ECommandError::BUSY, "run.steps"});
+                    }
                     return cxx::unexpected(commandFailure(result.error()));
                 }
                 return {};
@@ -294,7 +417,9 @@ namespace lux::editor::application
             {
                 auto result = stopRun(id);
                 if (!result)
+                {
                     return cxx::unexpected(commandFailure(result.error()));
+                }
                 return {};
             }
         );

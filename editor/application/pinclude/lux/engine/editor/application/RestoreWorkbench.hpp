@@ -1,10 +1,10 @@
 #pragma once
 
+#include <lux/cxx/core/function_ref.hpp>
 #include <lux/engine/editor/EditorError.hpp>
+#include <lux/engine/editor/desktop/UiRegistry.hpp>
 #include <lux/engine/editor/sessions/SessionOpening.hpp>
 #include <lux/engine/editor/workspace/RecoveryManifest.hpp>
-#include <lux/engine/editor/views/ViewInfo.hpp>
-#include <lux/cxx/core/function_ref.hpp>
 #include <memory>
 
 namespace lux::editor::persistence
@@ -32,7 +32,7 @@ namespace lux::editor::application
         workspace::RecoveryEntry entry;
         std::optional<sessions::OpenAssetId> opening;
         std::vector<sessions::OpenAssetStatus> sources;
-        std::optional<EditorResult<views::ViewId>> result;
+        std::optional<EditorResult<lux::ui::PaneHandle>> result;
     };
     enum class ERestorationProgress : std::uint8_t
     {
@@ -46,7 +46,7 @@ namespace lux::editor::application
     class RestoreWorkbench final
     {
     public:
-        using Present = cxx::function_ref<EditorResult<views::ViewId>(
+        using Present = cxx::function_ref<EditorResult<lux::ui::PaneHandle>(
             views::ViewContent,
             const extensions::ContributionSnapshot&,
             views::ViewRestoreKey,
@@ -59,7 +59,7 @@ namespace lux::editor::application
         RestoreWorkbench(RestoreWorkbench&&) = delete;
         RestoreWorkbench& operator=(RestoreWorkbench&&) = delete;
 
-        [[nodiscard]] EditorResult<void> capture(std::span<const views::ViewInfo>);
+        [[nodiscard]] EditorResult<void> capture(std::span<const desktop::WindowInfo>);
         [[nodiscard]] EditorResult<void> start();
         [[nodiscard]] EditorResult<void> update(ERestorationProgress, Present);
         [[nodiscard]] std::span<const RestoredView> items() const noexcept;

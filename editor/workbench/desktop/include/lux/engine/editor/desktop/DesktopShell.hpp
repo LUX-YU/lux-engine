@@ -1,8 +1,7 @@
 #pragma once
-#include <lux/engine/editor/desktop/Presentation.hpp>
-#include <lux/engine/editor/desktop/ViewHost.hpp>
-#include <optional>
 #include <lux/engine/editor/desktop/CommandMenu.hpp>
+#include <lux/engine/editor/desktop/Presentation.hpp>
+#include <optional>
 
 namespace lux::input
 {
@@ -22,8 +21,7 @@ namespace lux::editor::desktop
             render::RenderRuntime&,
             lux::scene::RenderResources&,
             window::LuxWindow* = nullptr,
-            lux::ui::RootConfig = {},
-            ViewHostLimits = {}
+            lux::ui::RootConfig = {}
         );
         ~DesktopShell() noexcept;
         DesktopShell(const DesktopShell&) = delete;
@@ -37,16 +35,15 @@ namespace lux::editor::desktop
         );
         [[nodiscard]] CommandMenu* commands() noexcept;
         [[nodiscard]] lux::ui::Root& root() noexcept;
-        [[nodiscard]] ViewHost& views() noexcept;
         [[nodiscard]] Presentation& presentation() noexcept;
         [[nodiscard]] DesktopResult<void> feedInput(const input::InputSnapshot&) noexcept;
         // Native size when a window is present; explicit extent enables the same production desktop in
         // offscreen harnesses. No UI frame available still advances owner maintenance and pending closes.
-        [[nodiscard]] DesktopResult<ViewDrain> update(std::optional<lux::ui::FrameInfo> = {});
+        [[nodiscard]] DesktopResult<void> update(std::optional<lux::ui::FrameInfo> = {});
 
     private:
         struct Impl;
         explicit DesktopShell(std::unique_ptr<Impl>) noexcept;
         std::unique_ptr<Impl> impl_;
     };
-}
+} // namespace lux::editor::desktop

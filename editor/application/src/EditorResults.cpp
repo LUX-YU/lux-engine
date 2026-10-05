@@ -1,5 +1,5 @@
-#include <lux/engine/editor/application/EditorApplicationImpl.hpp>
 #include <algorithm>
+#include <lux/engine/editor/application/EditorApplicationImpl.hpp>
 
 namespace lux::editor::application
 {
@@ -7,7 +7,9 @@ namespace lux::editor::application
     EditorResult<void> EditorApplication::Impl::receiveResultIntent()
     {
         if (!result_intent_)
+        {
             return {};
+        }
         const auto intent = std::exchange(result_intent_, {});
         return std::visit(
             [&](const auto& action) -> EditorResult<void>
@@ -37,13 +39,17 @@ namespace lux::editor::application
                 {
                     auto cancelled = saves_.requestCancel(action.target);
                     if (!cancelled)
+                    {
                         return applicationFailure("save.cancel", cancelled.error());
+                    }
                 }
                 else if constexpr (std::same_as<Action, ReconcilePublication>)
                 {
                     auto reconciled = writes_.reconcile(action.target, files_);
                     if (!reconciled)
+                    {
                         return applicationFailure("publication.reconcile", reconciled.error());
+                    }
                 }
                 else if constexpr (std::same_as<Action, AcknowledgeReload>)
                 {
@@ -70,10 +76,16 @@ namespace lux::editor::application
                     const auto ticket = action.target;
                     auto acknowledged = runs_.acknowledgeStep(ticket);
                     if (!acknowledged)
+                    {
                         return applicationFailure("run.step.acknowledge", acknowledged.error());
+                    }
                     for (auto& run : run_presentations_)
+                    {
                         if (run.run == ticket.run)
+                        {
                             std::erase(run.steps, ticket);
+                        }
+                    }
                 }
                 else if constexpr (std::same_as<Action, AcknowledgeModel>)
                 {
@@ -90,20 +102,30 @@ namespace lux::editor::application
                 else if constexpr (std::same_as<Action, CancelModel>)
                 {
                     for (auto& model : model_placements_)
+                    {
                         if (model.id == action.target)
+                        {
                             model.cancel_requested = true;
+                        }
+                    }
                 }
                 else if constexpr (std::same_as<Action, ShowContent>)
                 {
                     const auto target = action.target;
                     auto current = sessions_.describe(target.session);
                     if (!current)
+                    {
                         return applicationFailure("content.show", current.error());
+                    }
                     if (current->current != target)
+                    {
                         return applicationFailure("content.show", sessions::ESessionError::STALE_CONTENT);
+                    }
                     auto shown = show(target.session, false);
                     if (!shown)
+                    {
                         return cxx::unexpected(shown.error());
+                    }
                 }
                 else if constexpr (std::same_as<Action, SaveContentAs>)
                 {
@@ -115,7 +137,9 @@ namespace lux::editor::application
                     return content_saving_->acknowledgeSaveAll();
                 }
                 else
+                {
                     static_assert(sizeof(Action) == 0, "Every result action requires an explicit receiver");
+                }
                 return {};
             },
             *intent
@@ -134,7 +158,9 @@ namespace lux::editor::application
         {
             auto status = writes_.status(ticket);
             if (!status)
+            {
                 return applicationFailure("results.publication", status.error());
+            }
             if (status->stage == persistence::EWriteStage::UNKNOWN)
             {
                 to.messages.emplace_back("Publication unknown; this physical target remains reserved.");
@@ -144,7 +170,9 @@ namespace lux::editor::application
         };
         snapshot.sections.push_back({"Diagnostics"});
         if (result_failure_)
+        {
             diagnostic(row("request"), *result_failure_);
+        }
         if (maintenance_failure_)
         {
             auto& to = row("maintenance");
@@ -154,19 +182,27 @@ namespace lux::editor::application
         snapshot.sections.push_back({"Open content (including content without a window)"});
         auto ids = sessions_.snapshotIds();
         if (!ids)
+        {
             return applicationFailure("results.contents", ids.error());
+        }
         for (auto id : *ids)
         {
             auto info = sessions_.describe(id);
             if (!info)
+            {
                 return applicationFailure("results.content", info.error());
+            }
             auto& to = row(session_key(id));
             to.messages.push_back(info->kind.name + (info->dirty ? " *" : ""));
             if (info->binding)
+            {
                 to.messages.push_back(info->binding->location);
+            }
             to.actions.push_back({"Show", ShowContent{info->current}});
             if (!info->binding)
+            {
                 to.actions.push_back({"Save As", SaveContentAs{info->current}});
+            }
         }
         snapshot.sections.push_back({"Run results"});
         for (const auto& run : run_presentations_)
@@ -176,20 +212,26 @@ namespace lux::editor::application
             {
                 diagnostic(to, *run.failure);
                 if (!run.preparing && !run.run)
+                {
                     to.actions.push_back({"Acknowledge failed Run", AcknowledgeRunFailure{run.start}});
+                }
             }
             for (const auto& ticket : run.steps)
             {
                 auto step = runs_.stepStatus(ticket);
                 if (!step)
+                {
                     return applicationFailure("results.step", step.error());
+                }
                 const auto name = "Step " + std::to_string(ticket.step.serial);
                 to.messages.push_back(name + ": " + std::to_string(static_cast<unsigned>(step->state)));
                 const bool completed = step->state == lux::scene::ESceneStepState::COMPLETED ||
                                        step->state == lux::scene::ESceneStepState::FAILED ||
                                        step->state == lux::scene::ESceneStepState::CANCELLED;
                 if (completed)
+                {
                     to.actions.push_back({"Acknowledge " + name, AcknowledgeStep{ticket}});
+                }
             }
         }
         snapshot.sections.push_back({"Compiled publications"});
@@ -244,23 +286,35 @@ namespace lux::editor::application
                     "; baseline adoption: " + std::to_string(static_cast<unsigned>(report.result->adoption))
                 );
                 if (const auto* failed = std::get_if<persistence::NotPublished>(&outcome))
+                {
                     to.messages.push_back(failed->failure.detail);
+                }
                 if (report.failure)
+                {
                     diagnostic(to, *report.failure);
+                }
                 to.actions.push_back({"Acknowledge result", AcknowledgeSave{report.id}});
             }
             else
             {
                 auto status = saves_.status(report.id);
                 if (!status)
+                {
                     return applicationFailure("results.save", status.error());
+                }
                 to.messages.push_back("Accepted save, stage " + std::to_string(static_cast<unsigned>(status->stage)));
                 if (auto observed = publication(to, status->ticket); !observed)
+                {
                     return cxx::unexpected(observed.error());
+                }
                 to.actions.push_back({"Cancel before publication", CancelSave{report.id}});
                 if (report.catalog_ticket)
+                {
                     if (auto observed = publication(to, *report.catalog_ticket); !observed)
+                    {
                         return cxx::unexpected(observed.error());
+                    }
+                }
             }
         }
         if (content_saving_->hasSaveAll())
@@ -276,7 +330,9 @@ namespace lux::editor::application
                                          : "not admitted")
                 );
                 if (entry.failure)
+                {
                     to.messages.push_back(entry.failure->domain + ": " + entry.failure->detail);
+                }
             }
             auto& to = row("report");
             to.messages.emplace_back("Unbound content: use Save As above. Other accepted saves continue independently."
@@ -293,28 +349,42 @@ namespace lux::editor::application
                                                                : "loading / waiting for the target gate";
             to.messages.push_back("Content " + session_key(model.placement.target.id()) + ": " + state);
             if (model.failure)
+            {
                 diagnostic(to, *model.failure);
+            }
             if (model.result && !*model.result)
+            {
                 std::visit(
                     [&](const auto& error)
                     {
                         using Error = std::decay_t<decltype(error)>;
                         if constexpr (std::same_as<Error, scene::SceneEditError>)
+                        {
                             to.messages.push_back(
                                 "Scene edit rejected (" + std::to_string(static_cast<unsigned>(error.code)) +
                                 "); the captured target was not rebased."
                             );
+                        }
                         else if constexpr (std::same_as<Error, process::TaskCancelled>)
+                        {
                             to.messages.emplace_back("Cancelled; no author edit was committed.");
+                        }
                         else
+                        {
                             to.messages.emplace_back("Model read or dependency validation failed; source retained.");
+                        }
                     },
                     model.result->error().cause
                 );
+            }
             if (model.result || model.failure)
+            {
                 to.actions.push_back({"Acknowledge insertion", AcknowledgeModel{model.id}});
+            }
             else
+            {
                 to.actions.push_back({"Cancel insertion", CancelModel{model.id}});
+            }
         }
         snapshot.sections.push_back({"Reload results"});
         for (std::size_t index{}; index < reloads_.size(); ++index)
@@ -329,7 +399,9 @@ namespace lux::editor::application
             if (reload.result)
             {
                 if (!*reload.result)
+                {
                     to.messages.push_back(reload.result->error().domain + ": " + reload.result->error().detail);
+                }
                 to.actions.push_back({"Acknowledge reload", AcknowledgeReload{reload.source}});
             }
         }
@@ -340,16 +412,17 @@ namespace lux::editor::application
     {
         // An application composition view, not another operation owner. It records button intents only;
         // service calls and structural changes run after Root returns from draw/update.
-        draft.views.push_back(project::makeResultsViewFactory(
-            [this] { return observeResults(); },
-            [this](VResultIntent intent) -> EditorResult<void>
+        results_observe_ = [this] { return observeResults(); };
+        results_request_ = [this](VResultIntent intent) -> EditorResult<void>
+        {
+            if (result_intent_)
             {
-                if (result_intent_)
-                    return cxx::unexpected(EditorFailure{EEditorError::BUSY, "result.intent.capacity"});
-                result_intent_ = std::move(intent);
-                return {};
+                return cxx::unexpected(EditorFailure{EEditorError::BUSY, "result.intent.capacity"});
             }
-        ));
+            result_intent_ = std::move(intent);
+            return {};
+        };
+        draft.ui.push_back(desktop::UiEntry::bind<project::kResultsView>(object::CodeLease::builtin()));
         draft.commands.push_back(project::makeResultsCommand(
             [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
             { return commands::CommandState{phase_ == EApplicationPhase::RUNNING}; },

@@ -1,8 +1,8 @@
 #pragma once
-#include <lux/engine/editor/desktop/ViewCommands.hpp>
 #include <lux/cxx/core/move_only_function.hpp>
-#include <lux/engine/editor/project/ProjectCatalogModel.hpp>
 #include <lux/engine/editor/assets/ModelImporter.hpp>
+#include <lux/engine/editor/desktop/ViewCommands.hpp>
+#include <lux/engine/editor/project/ProjectCatalogModel.hpp>
 #include <lux/engine/editor/views/IViewHost.hpp>
 
 namespace lux::editor::views
@@ -13,6 +13,13 @@ namespace lux::editor::views
 namespace lux::editor::desktop
 {
     struct UiDescriptor;
+    struct UiFailure;
+    struct UiCreateInfo;
+} // namespace lux::editor::desktop
+
+namespace lux::services
+{
+    class ServiceResolver;
 }
 
 namespace lux::editor::project
@@ -21,6 +28,9 @@ namespace lux::editor::project
     class ImportView final : public lux::ui::Pane
     {
     public:
+        using Browse = cxx::move_only_function<void(lux::ui::PaneHandle)>;
+        [[nodiscard]] static cxx::expected<std::unique_ptr<lux::ui::Pane>, desktop::UiFailure>
+        createConfigured(services::ServiceResolver&, const desktop::UiCreateInfo&);
         object::TSignal<> browseRequested{*this};
         ImportView(object::ObjectDispatcherRef, lux::ui::PaneId, ProjectCatalogModel&, assets::ModelImporter&);
         ~ImportView() noexcept override;
@@ -28,6 +38,8 @@ namespace lux::editor::project
         ImportView& operator=(const ImportView&) = delete;
         ImportView(ImportView&&) = delete;
         ImportView& operator=(ImportView&&) = delete;
+        // UI intent delivery only; the connected owner performs native dialog admission.
+        [[nodiscard]] EditorResult<void> requestBrowse();
         void setSource(std::filesystem::path);
         void showFailure(EditorFailure);
         [[nodiscard]] EditorResult<assets::ModelImportId> importModel(assets::ModelImportRequest);
@@ -37,6 +49,7 @@ namespace lux::editor::project
         void update() noexcept override;
         struct Impl;
         std::unique_ptr<Impl> impl_;
+        object::Connection request_connection_;
     };
     [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> makeImportViewFactory(
         ProjectCatalogModel& catalog,

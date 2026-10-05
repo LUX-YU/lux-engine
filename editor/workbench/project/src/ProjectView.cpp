@@ -29,43 +29,87 @@ namespace lux::editor::project
              1,
              cxx::typeToken<ProjectCatalogModel>(),
              services::EDependencyKind::BORROWED,
-             services::EDependencyScope::ROOT}
+             services::EDependencyScope::ROOT},
+            {services::ServiceNameView{"lux.editor.project.open"},
+             1,
+             cxx::typeToken<ProjectView::Open>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT,
+             {},
+             {},
+             true}
         };
-        desktop::UiResult<std::unique_ptr<lux::ui::Pane>> createView(
-            services::ServiceResolver& resolver,
-            const desktop::UiCreateInfo& input
-        )
-        {
-            const bool has_content = !input.content.sessions.empty();
-            const bool has_configuration = !input.configuration.bytes.empty();
-            const bool is_invalid_input = has_content || has_configuration;
-            if (is_invalid_input)
-            {
-                return cxx::unexpected(desktop::UiFailure{
-                    desktop::EUiError::INVALID_CONFIGURATION,
-                    "project.window",
-                    0,
-                    "The project window accepts no author binding or configuration payload"
-                });
-            }
-            auto catalog = resolver.require<ProjectCatalogModel>(0);
-            if (!catalog)
-            {
-                return cxx::unexpected(desktop::UiFailure{
-                    desktop::EUiError::DEPENDENCY,
-                    "project.catalog",
-                    static_cast<std::uint64_t>(catalog.error().code),
-                    catalog.error().detail
-                });
-            }
-            return std::make_unique<ProjectView>(input.dispatcher, input.instance, catalog->get());
-        }
     } // namespace
+    desktop::UiResult<std::unique_ptr<lux::ui::Pane>> ProjectView::createConfigured(
+        services::ServiceResolver& resolver,
+        const desktop::UiCreateInfo& input
+    )
+    {
+        const bool has_content = !input.content.sessions.empty();
+        const bool has_configuration = !input.configuration.bytes.empty();
+        const bool is_invalid_input = has_content || has_configuration;
+        if (is_invalid_input)
+        {
+            return cxx::unexpected(desktop::UiFailure{
+                desktop::EUiError::INVALID_CONFIGURATION,
+                "project.window",
+                0,
+                "The project window accepts no author binding or configuration payload"
+            });
+        }
+        auto receiver = resolver.require<Open>(1);
+        const bool has_receiver_failure = !receiver && receiver.error().code != services::EServiceError::NOT_FOUND;
+        if (has_receiver_failure)
+        {
+            return cxx::unexpected(desktop::UiFailure{
+                desktop::EUiError::DEPENDENCY,
+                "lux.editor.project.open",
+                static_cast<std::uint64_t>(receiver.error().code),
+                receiver.error().detail
+            });
+        }
+        const bool is_empty_receiver = receiver && !receiver->get();
+        if (is_empty_receiver)
+        {
+            return cxx::unexpected(
+                desktop::UiFailure{desktop::EUiError::INVALID_CONFIGURATION, "lux.editor.project.open"}
+            );
+        }
+        auto catalog = resolver.require<ProjectCatalogModel>(0);
+        if (!catalog)
+        {
+            return cxx::unexpected(desktop::UiFailure{
+                desktop::EUiError::DEPENDENCY,
+                "project.catalog",
+                static_cast<std::uint64_t>(catalog.error().code),
+                catalog.error().detail
+            });
+        }
+        auto pane = std::make_unique<ProjectView>(input.dispatcher, input.instance, catalog->get());
+        if (receiver)
+        {
+            auto connection = object::LuxObject::connect(
+                pane.get(),
+                &ProjectView::openRequested,
+                [receiver = *receiver](const AssetReference& value) noexcept { receiver.get()(value); }
+            );
+            if (!connection)
+            {
+                return cxx::unexpected(desktop::UiFailure{
+                    desktop::EUiError::FACTORY_FAILURE,
+                    "lux.editor.project.open",
+                    static_cast<std::uint64_t>(connection.error())
+                });
+            }
+            pane->request_connection_ = std::move(*connection);
+        }
+        return pane;
+    }
     constinit const desktop::UiDescriptor kProjectView{
         .type = kFactoryDescriptor.type,
         .label = kFactoryDescriptor.label,
         .dependencies = kDependencies,
-        .create = createView
+        .create = ProjectView::createConfigured
     };
     struct ProjectView::Impl final
     {

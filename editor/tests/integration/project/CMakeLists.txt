@@ -14,7 +14,7 @@ endif()
 
 if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     add_executable(editor_project_panels panels.cpp)
-    target_link_libraries(editor_project_panels PRIVATE project_tools_ui editor_file_publication)
+    target_link_libraries(editor_project_panels PRIVATE project_tools_ui project_ui editor_file_publication)
     lux_editor_test_options(editor_project_panels)
     add_test(NAME editor.project_panels COMMAND editor_project_panels "${CMAKE_CURRENT_BINARY_DIR}/panels")
     set_tests_properties(editor.project_panels PROPERTIES TIMEOUT 60 LABELS "editor;native;EC2;EC4")

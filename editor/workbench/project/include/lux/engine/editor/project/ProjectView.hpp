@@ -12,6 +12,13 @@ namespace lux::editor::views
 namespace lux::editor::desktop
 {
     struct UiDescriptor;
+    struct UiFailure;
+    struct UiCreateInfo;
+} // namespace lux::editor::desktop
+
+namespace lux::services
+{
+    class ServiceResolver;
 }
 
 namespace lux::editor::project
@@ -20,6 +27,9 @@ namespace lux::editor::project
     class ProjectView final : public lux::ui::Pane
     {
     public:
+        using Open = cxx::move_only_function<void(const AssetReference&)>;
+        [[nodiscard]] static cxx::expected<std::unique_ptr<lux::ui::Pane>, desktop::UiFailure>
+        createConfigured(services::ServiceResolver&, const desktop::UiCreateInfo&);
         object::TSignal<AssetReference> openRequested{*this};
         ProjectView(object::ObjectDispatcherRef, lux::ui::PaneId, ProjectCatalogModel&);
         ~ProjectView() noexcept override;
@@ -36,6 +46,7 @@ namespace lux::editor::project
         void update() noexcept override;
         struct Impl;
         std::unique_ptr<Impl> impl_;
+        object::Connection request_connection_;
     };
     [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> makeProjectViewFactory(
         ProjectCatalogModel& catalog,

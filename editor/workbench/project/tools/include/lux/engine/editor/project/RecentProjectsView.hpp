@@ -1,10 +1,10 @@
 #pragma once
-#include <lux/engine/editor/desktop/ViewCommands.hpp>
 #include <lux/cxx/core/move_only_function.hpp>
+#include <lux/engine/editor/desktop/ViewCommands.hpp>
 
+#include <filesystem>
 #include <lux/engine/editor/EditorError.hpp>
 #include <lux/engine/ui/Pane.hpp>
-#include <filesystem>
 
 namespace lux::editor
 {
@@ -20,6 +20,13 @@ namespace lux::editor::views
 namespace lux::editor::desktop
 {
     struct UiDescriptor;
+    struct UiFailure;
+    struct UiCreateInfo;
+} // namespace lux::editor::desktop
+
+namespace lux::services
+{
+    class ServiceResolver;
 }
 
 namespace lux::editor::project
@@ -28,6 +35,9 @@ namespace lux::editor::project
     class RecentProjectsView final : public lux::ui::Pane
     {
     public:
+        using Open = cxx::move_only_function<EditorResult<void>(const std::filesystem::path&)>;
+        [[nodiscard]] static cxx::expected<std::unique_ptr<lux::ui::Pane>, desktop::UiFailure>
+        createConfigured(services::ServiceResolver&, const desktop::UiCreateInfo&);
         object::TSignal<std::filesystem::path> openRequested{*this};
         RecentProjectsView(object::ObjectDispatcherRef, lux::ui::PaneId, RecentProjects&);
         ~RecentProjectsView() noexcept override;
@@ -35,12 +45,15 @@ namespace lux::editor::project
         RecentProjectsView& operator=(const RecentProjectsView&) = delete;
         RecentProjectsView(RecentProjectsView&&) = delete;
         RecentProjectsView& operator=(RecentProjectsView&&) = delete;
+        // Delivers the intent, not a claim that the asynchronous project launch was admitted.
+        [[nodiscard]] EditorResult<void> requestOpen(std::filesystem::path);
         void showFailure(EditorFailure);
 
     private:
         void update() noexcept override;
         struct Impl;
         std::unique_ptr<Impl> impl_;
+        object::Connection request_connection_;
     };
     [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> makeRecentProjectsViewFactory(
         RecentProjects& recent,

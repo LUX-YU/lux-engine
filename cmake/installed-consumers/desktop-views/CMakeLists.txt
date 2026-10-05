@@ -45,6 +45,7 @@ endforeach()
 # The real publication fixture explicitly supplies its file backend after validating the UI closure.
 find_package(lux-engine-editor-storage REQUIRED COMPONENTS editor_storage)
 find_package(lux-engine-editor-project-tools-ui REQUIRED COMPONENTS project_tools_ui)
+find_package(lux-engine-editor-project-ui REQUIRED COMPONENTS project_ui)
 get_filename_component(engine_source "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
 set(LUX_GENERATE_HEADER_DIR "${CMAKE_BINARY_DIR}/generated")
 include_component_cmake_scripts(lux::engine::core::meta)
@@ -92,7 +93,7 @@ configure_file("${engine_source}/editor/tests/integration/project/ProjectToolFac
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/../common/UiTestContent.hpp"
     "${CMAKE_CURRENT_BINARY_DIR}/UiTestContent.hpp" COPYONLY)
 add_executable(project_panels "${CMAKE_CURRENT_BINARY_DIR}/panels.cpp")
-target_link_libraries(project_panels PRIVATE lux::engine::editor::project_tools_ui
+target_link_libraries(project_panels PRIVATE lux::engine::editor::project_tools_ui lux::engine::editor::project_ui
     lux::engine::editor::editor_file_publication)
 file(READ "${engine_source}/editor/tests/integration/project/scene_configuration.cpp" scene_configuration)
 string(REPLACE "../../../../cmake/installed-consumers/common/UiTestContent.hpp"

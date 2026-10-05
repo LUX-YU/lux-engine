@@ -8,6 +8,7 @@
 #include <lux/engine/editor/persistence/SaveExecution.hpp>
 #include <lux/engine/editor/project/ImportView.hpp>
 #include <lux/engine/editor/project/ProjectCreationView.hpp>
+#include <lux/engine/editor/project/ProjectView.hpp>
 #include <lux/engine/editor/project/RecentProjectsView.hpp>
 #include <lux/engine/editor/project/ResultsView.hpp>
 #include <lux/engine/editor/project/SettingsView.hpp>
@@ -65,7 +66,8 @@ inline void projectToolFactories(const std::filesystem::path& artifacts)
     assert(scope.provide(services::ServiceNameView{"lux.editor.assets.importer"}, importer));
     desktop::UiRegistry windows{messages.dispatcherRef(), services};
     const auto catalog = take(desktop::UiCatalog::prepare(
-        {desktop::UiEntry::bind<lux::editor::project::kImportView>(object::CodeLease::builtin()),
+        {desktop::UiEntry::bind<lux::editor::project::kProjectView>(object::CodeLease::builtin()),
+         desktop::UiEntry::bind<lux::editor::project::kImportView>(object::CodeLease::builtin()),
          desktop::UiEntry::bind<lux::editor::project::kRecentProjectsView>(object::CodeLease::builtin()),
          desktop::UiEntry::bind<lux::editor::project::kSettingsView>(object::CodeLease::builtin()),
          desktop::UiEntry::bind<lux::editor::project::kResultsView>(object::CodeLease::builtin()),
@@ -146,6 +148,75 @@ inline void projectToolFactories(const std::filesystem::path& artifacts)
     assert(replacement_handle != import_handle && !root->findPane(import_handle));
     auto final_close = take(windows.prepareClose(*root, std::span{&replacement_handle, 1}));
     assert(root->commit(final_close));
+    assert(messages.collectRetired() >= 1);
+    // Factory-time connections are owned by their actual window and already active off-tree.
+    // Only a mounted import may issue a native request, which retains Root's original generation.
+    const auto project_factory = take(catalog.find(views::ViewTypeIdView{"lux.editor.project"}));
+    const desktop::UiCreateInfo project_input{messages.dispatcherRef(), ui::PaneId{"assets"}, {}, {}};
+    unsigned asset_opens{}, recent_opens{}, browse_requests{};
+    std::optional<ui::PaneHandle> browse_target;
+    lux::editor::project::ProjectView::Open asset_open;
+    lux::editor::project::ImportView::Browse browse = [&](ui::PaneHandle id) noexcept
+    {
+        ++browse_requests;
+        browse_target = id;
+    };
+    lux::editor::project::RecentProjectsView::Open recent_open = [&](const std::filesystem::path& path
+                                                                 ) -> EditorResult<void>
+    {
+        ++recent_opens;
+        assert(path == directory / "Project.luxproject");
+        return cxx::unexpected(EditorFailure{EEditorError::BUSY, "actual.project.owner"});
+    };
+    assert(scope.provide(services::ServiceNameView{"lux.editor.project.open"}, asset_open));
+    assert(scope.provide(services::ServiceNameView{"lux.editor.project.import.browse"}, browse));
+    assert(scope.provide(services::ServiceNameView{"lux.editor.project.recent.open"}, recent_open));
+    const auto unchanged_revision = root->windowRevision();
+    auto missing_open = windows.mount(*root, scope, {{import_factory, import_input}, {project_factory, project_input}});
+    assert(!missing_open && missing_open.error().code == desktop::EUiError::INVALID_CONFIGURATION);
+    assert(root->windowRevision() == unchanged_revision && take(windows.describe(*root)).empty());
+    asset_open = [&](const AssetReference& reference) noexcept
+    {
+        ++asset_opens;
+        const auto expected = project->catalogModel().reference(asset_id);
+        assert(reference.project_instance == expected.project_instance);
+        assert(reference.asset == expected.asset);
+        assert(reference.catalog_revision == expected.catalog_revision);
+    };
+    auto browse_candidate = take(windows.create(import_factory, scope, import_input));
+    auto* browse_view = static_cast<lux::editor::project::ImportView*>(browse_candidate.get());
+    auto detached_browse = browse_view->requestBrowse();
+    assert(!detached_browse && detached_browse.error().code == EEditorError::INVALID_STATE);
+    assert(browse_requests == 0); // No identity is invented for an off-tree window.
+    assert(root->addSubPane(std::move(browse_candidate)));
+    const auto first_browse = take(root->identify(*browse_view));
+    assert(browse_view->requestBrowse());
+    assert(browse_requests == 1 && browse_target == first_browse);
+    assert(windows.mount(*root, scope, {{project_factory, project_input}, {recent_factory, recent_input}}));
+    auto* assets_view = static_cast<lux::editor::project::ProjectView*>(root->findPane(ui::PaneIdView{"assets"}));
+    assert(assets_view && asset_opens == 0 && recent_opens == 0);
+    assert(assets_view->requestOpen(project->catalogModel().reference(asset_id)) && asset_opens == 1);
+    auto* recent_view =
+        static_cast<lux::editor::project::RecentProjectsView*>(root->findPane(ui::PaneIdView{"recent"}));
+    assert(recent_view->requestOpen(directory / "Project.luxproject"));
+    assert(recent_opens == 1);
+    std::vector<ui::PaneHandle> wired;
+    for (const auto& info : take(windows.describe(*root)))
+    {
+        wired.push_back(info.handle);
+    }
+    auto detach_wired = take(windows.prepareClose(*root, wired));
+    assert(root->commit(detach_wired));
+    assert(messages.collectRetired() >= 3);
+    assert(!root->findPane(*browse_target));
+    assert(windows.mount(*root, scope, {{import_factory, import_input}}));
+    auto* new_browse_view = static_cast<lux::editor::project::ImportView*>(root->findPane(ui::PaneIdView{"import"}));
+    const auto second_browse = take(root->identify(*new_browse_view));
+    assert(second_browse != first_browse && !root->findPane(first_browse));
+    assert(new_browse_view->requestBrowse());
+    assert(browse_requests == 2 && browse_target == second_browse);
+    auto detach_new = take(windows.prepareClose(*root, std::span{&second_browse, 1}));
+    assert(root->commit(detach_new));
     assert(messages.collectRetired() >= 1);
     // The remaining real project windows construct through the same registry without a Host.
     // Exact callback providers remain explicit borrowed inputs; they are not services with fake shared owners.

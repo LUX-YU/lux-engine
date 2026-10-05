@@ -35,3 +35,16 @@ request-provider boundary and construction does not submit IO. Settings user-int
 actual Pane; their business receiver owns its connections. No factory creates a Host or a parallel task owner.
 Results' current builtin action protocol and Settings' saved-value policy still require the EC4 M7 migration;
 these construction declarations do not certify that later business work as complete.
+
+### EC4 project intent construction
+
+Project, import and recent-project UiDescriptors accept optional, exact borrowed receiver dependencies.
+An absent receiver leaves the public signal available for an explicit caller connection; a registered empty
+receiver is rejected before construction. Configured connections belong to the concrete Pane and are
+installed before mounting, so configuration and layout construction retain the same input behavior.
+The receiver must remain callable for the lifetime of its borrowing window. No native dialog, launch or
+asset IO is executed during construction. Import browse carries the current Root PaneHandle, including
+its generation; a receiver must retain that identity when delivering a later result. `requestBrowse` and
+`requestOpen` report intent delivery, not acceptance or completion of an asynchronous business operation.
+Application still uses legacy factories pending the joint M5/M6 product cutover. This construction closure
+is not evidence that ViewHost, the legacy settings protocol or the product close workflow has been removed.

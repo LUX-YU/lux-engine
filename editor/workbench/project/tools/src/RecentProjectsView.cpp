@@ -1,13 +1,13 @@
-#include <lux/engine/editor/desktop/UiRegistry.hpp>
 #include <exception>
+#include <imgui.h>
+#include <lux/engine/editor/desktop/UiRegistry.hpp>
+#include <lux/engine/editor/project/RecentProjectsView.hpp>
 #include <lux/engine/editor/storage/ProjectContentOpening.hpp>
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
+#include <lux/engine/editor/storage/RecentProjects.hpp>
 #include <lux/engine/editor/workbench/CommandSupport.hpp>
 #include <lux/engine/editor/workbench/ViewFactorySupport.hpp>
-#include <lux/engine/editor/project/RecentProjectsView.hpp>
-#include <lux/engine/editor/storage/RecentProjects.hpp>
 #include <lux/engine/ui/Element.hpp>
-#include <imgui.h>
 
 namespace lux::editor::project
 {
@@ -38,43 +38,94 @@ namespace lux::editor::project
              1,
              cxx::typeToken<RecentProjects>(),
              services::EDependencyKind::BORROWED,
-             services::EDependencyScope::ROOT}
+             services::EDependencyScope::ROOT},
+            {services::ServiceNameView{"lux.editor.project.recent.open"},
+             1,
+             cxx::typeToken<RecentProjectsView::Open>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT,
+             {},
+             {},
+             true}
         };
-        desktop::UiResult<std::unique_ptr<lux::ui::Pane>> createView(
-            services::ServiceResolver& resolver,
-            const desktop::UiCreateInfo& input
-        )
-        {
-            const bool has_content = !input.content.sessions.empty();
-            const bool has_configuration = !input.configuration.bytes.empty();
-            const bool is_invalid_input = has_content || has_configuration;
-            if (is_invalid_input)
-            {
-                return cxx::unexpected(desktop::UiFailure{
-                    desktop::EUiError::INVALID_CONFIGURATION,
-                    "project.tool",
-                    0,
-                    "This window accepts no author binding or configuration payload"
-                });
-            }
-            auto recent = resolver.require<RecentProjects>(0);
-            if (!recent)
-            {
-                return cxx::unexpected(desktop::UiFailure{
-                    desktop::EUiError::DEPENDENCY,
-                    "lux.editor.project.recent",
-                    static_cast<std::uint64_t>(recent.error().code),
-                    recent.error().detail
-                });
-            }
-            return std::make_unique<RecentProjectsView>(input.dispatcher, input.instance, recent->get());
-        }
     } // namespace
+    desktop::UiResult<std::unique_ptr<lux::ui::Pane>> RecentProjectsView::createConfigured(
+        services::ServiceResolver& resolver,
+        const desktop::UiCreateInfo& input
+    )
+    {
+        const bool has_content = !input.content.sessions.empty();
+        const bool has_configuration = !input.configuration.bytes.empty();
+        const bool is_invalid_input = has_content || has_configuration;
+        if (is_invalid_input)
+        {
+            return cxx::unexpected(desktop::UiFailure{
+                desktop::EUiError::INVALID_CONFIGURATION,
+                "project.tool",
+                0,
+                "This window accepts no author binding or configuration payload"
+            });
+        }
+        auto receiver = resolver.require<Open>(1);
+        const bool has_receiver_failure = !receiver && receiver.error().code != services::EServiceError::NOT_FOUND;
+        if (has_receiver_failure)
+        {
+            return cxx::unexpected(desktop::UiFailure{
+                desktop::EUiError::DEPENDENCY,
+                "lux.editor.project.recent.open",
+                static_cast<std::uint64_t>(receiver.error().code),
+                receiver.error().detail
+            });
+        }
+        const bool is_empty_receiver = receiver && !receiver->get();
+        if (is_empty_receiver)
+        {
+            return cxx::unexpected(
+                desktop::UiFailure{desktop::EUiError::INVALID_CONFIGURATION, "lux.editor.project.recent.open"}
+            );
+        }
+        auto recent = resolver.require<RecentProjects>(0);
+        if (!recent)
+        {
+            return cxx::unexpected(desktop::UiFailure{
+                desktop::EUiError::DEPENDENCY,
+                "lux.editor.project.recent",
+                static_cast<std::uint64_t>(recent.error().code),
+                recent.error().detail
+            });
+        }
+        auto pane = std::make_unique<RecentProjectsView>(input.dispatcher, input.instance, recent->get());
+        if (receiver)
+        {
+            auto connection = object::LuxObject::connect(
+                pane.get(),
+                &RecentProjectsView::openRequested,
+                [receiver = *receiver, target = pane.get()](const std::filesystem::path& path) noexcept
+                {
+                    auto result = receiver.get()(path);
+                    if (!result)
+                    {
+                        target->showFailure(std::move(result.error()));
+                    }
+                }
+            );
+            if (!connection)
+            {
+                return cxx::unexpected(desktop::UiFailure{
+                    desktop::EUiError::FACTORY_FAILURE,
+                    "lux.editor.project.recent.open",
+                    static_cast<std::uint64_t>(connection.error())
+                });
+            }
+            pane->request_connection_ = std::move(*connection);
+        }
+        return pane;
+    }
     constinit const desktop::UiDescriptor kRecentProjectsView{
         .type = kFactoryDescriptor.type,
         .label = kFactoryDescriptor.label,
         .dependencies = kDependencies,
-        .create = createView
+        .create = RecentProjectsView::createConfigured
     };
     struct RecentProjectsView::Impl final
     {
@@ -98,28 +149,44 @@ namespace lux::editor::project
             void draw() noexcept override
             {
                 if (const auto* error = owner_.projects_.failure())
+                {
                     ImGui::TextWrapped("%s: %s", error->domain.c_str(), error->message.c_str());
+                }
                 if (owner_.failure_)
+                {
                     ImGui::TextWrapped("%s: %s", owner_.failure_->domain.c_str(), owner_.failure_->message.c_str());
+                }
                 if (const auto* result = owner_.projects_.publication())
+                {
                     std::visit(
                         [](const auto& value)
                         {
                             if constexpr (!std::same_as<std::decay_t<decltype(value)>, persistence::CommitReceipt>)
+                            {
                                 ImGui::TextWrapped("Preferences publication: %s", value.failure.detail.c_str());
+                            }
                         },
                         *result
                     );
+                }
                 if (ImGui::Button("Refresh recent projects"))
+                {
                     owner_.action_ = EAction::REFRESH;
+                }
                 if (owner_.projects_.ticket())
+                {
                     if (ImGui::Button("Reconcile publication"))
+                    {
                         owner_.action_ = EAction::RECONCILE;
+                    }
+                }
                 for (const auto& path : owner_.projects_.entries())
                 {
                     const auto text = path.generic_u8string();
                     if (ImGui::Button(reinterpret_cast<const char*>(text.c_str())))
+                    {
                         owner_.opening_ = path; // Owned input survives a subsequent catalog refresh.
+                    }
                 }
             }
         } content_;
@@ -128,7 +195,9 @@ namespace lux::editor::project
             : view_(view), projects_(projects), content_(view, *this)
         {
             if (!view_.setContent(content_))
+            {
                 std::terminate(); // Fixed content in a detached Pane.
+            }
         }
         void update() noexcept
         {
@@ -136,15 +205,21 @@ namespace lux::editor::project
             {
                 auto result = *action == EAction::REFRESH ? projects_.refresh() : projects_.reconcile();
                 if (!result)
+                {
                     failure_ = std::move(result.error());
+                }
                 else
+                {
                     failure_.reset();
+                }
             }
             if (auto path = std::exchange(opening_, {}))
             {
-                auto delivered = view_.emit(view_.openRequested, std::move(*path));
-                if (!delivered.complete())
-                    failure_ = EditorFailure{EEditorError::BUSY, "recent.open.delivery"};
+                auto delivered = view_.requestOpen(std::move(*path));
+                if (!delivered)
+                {
+                    failure_ = std::move(delivered.error());
+                }
             }
         }
     };
@@ -161,6 +236,14 @@ namespace lux::editor::project
     void RecentProjectsView::update() noexcept
     {
         impl_->update();
+    }
+    EditorResult<void> RecentProjectsView::requestOpen(std::filesystem::path path)
+    {
+        if (!emit(openRequested, std::move(path)).complete())
+        {
+            return cxx::unexpected(EditorFailure{EEditorError::BUSY, "recent.open.delivery"});
+        }
+        return {};
     }
     void RecentProjectsView::showFailure(EditorFailure failure)
     {
@@ -190,11 +273,15 @@ namespace lux::editor::project
                     {
                         auto result = (*receiver)(path);
                         if (!result)
+                        {
                             target->showFailure(std::move(result.error()));
+                        }
                     }
                 );
                 if (!connection)
+                {
                     return cxx::unexpected(workbench::detail::viewFailure(connection.error()));
+                }
                 views::DetachedView view{lux::object::CodeLease::builtin(), std::move(pane)};
                 view.addConnection(std::move(*connection));
                 return view;
@@ -231,7 +318,9 @@ namespace lux::editor::project
             {
                 auto state = query(input);
                 if (state)
+                {
                     state->enabled = state->enabled && !project.manifest().default_scene.empty();
+                }
                 return state;
             },
             [&project,
@@ -239,12 +328,14 @@ namespace lux::editor::project
             {
                 auto reference = initialSceneReference(project);
                 if (!reference)
+                {
                     return cxx::unexpected(commands::CommandFailure{
                         commands::ECommandError::INVALID_ARGUMENT,
                         reference.error().domain,
                         reference.error().reason,
                         reference.error().message
                     });
+                }
                 return open(*reference);
             }
         );

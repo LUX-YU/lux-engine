@@ -56,7 +56,7 @@ lux_engine_install_components(PROJECT_NAME lux-engine-editor-view-api VERSION ${
 
 if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     add_executable(editor_detached_views_test test/lifecycle.cpp)
-    target_link_libraries(editor_detached_views_test PRIVATE view_api)
+    target_link_libraries(editor_detached_views_test PRIVATE lux::engine::function::ui editor_contracts)
     lux_editor_test_options(editor_detached_views_test)
     add_test(NAME editor.detached_views COMMAND editor_detached_views_test)
     set_tests_properties(editor.detached_views PROPERTIES LABELS "editor;native;P08" TIMEOUT 60 RUN_SERIAL TRUE)

@@ -9,16 +9,18 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(lux-engine-editor-scene-interaction REQUIRED COMPONENTS scene_interaction)
 find_package(lux-engine-editor-material-interaction REQUIRED COMPONENTS material_interaction)
 find_package(lux-engine-editor-flowforge-interaction REQUIRED COMPONENTS flowforge_interaction)
-find_package(lux-engine-editor-view-api REQUIRED COMPONENTS view_api)
+find_package(lux-engine-function REQUIRED COMPONENTS ui)
+find_package(lux-engine-editor-contracts REQUIRED COMPONENTS editor_contracts)
 if(TARGET lux::engine::editor::editor_ui OR TARGET lux::engine::editor::editor_context
-    OR TARGET lux::engine::editor::editor_scene OR TARGET lux::engine::editor::editor_material)
+    OR TARGET lux::engine::editor::editor_scene OR TARGET lux::engine::editor::editor_material
+    OR TARGET lux::engine::editor::view_api OR TARGET lux::engine::editor::view_host)
     message(FATAL_ERROR "P08 consumer imports a legacy product")
 endif()
 add_executable(interaction_consumer interactions.cpp)
 target_link_libraries(interaction_consumer PRIVATE lux::engine::editor::scene_interaction
     lux::engine::editor::material_interaction lux::engine::editor::flowforge_interaction)
 add_executable(detached_views_consumer lifecycle.cpp)
-target_link_libraries(detached_views_consumer PRIVATE lux::engine::editor::view_api)
+target_link_libraries(detached_views_consumer PRIVATE lux::engine::function::ui lux::engine::editor::editor_contracts)
 add_executable(interaction_reclaim_consumer interaction_reclaim.cpp)
 target_link_libraries(interaction_reclaim_consumer PRIVATE lux::engine::editor::scene_interaction
     lux::engine::editor::material_interaction lux::engine::editor::flowforge_interaction)

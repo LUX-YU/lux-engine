@@ -18,3 +18,5 @@ lux_engine_install_components(PROJECT_NAME lux-engine-editor-material-ui VERSION
     NAMESPACE lux::engine::editor COMPONENTS material_ui)
 
 target_include_directories(material_ui PRIVATE ${PROJECT_SOURCE_DIR}/editor/workbench/sinclude)
+
+add_subdirectory(module)

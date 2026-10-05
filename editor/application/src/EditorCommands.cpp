@@ -229,7 +229,6 @@ namespace lux::editor::application
         installContentCommands(draft);
         installSceneCommands(draft);
         draft.sessions.push_back(scene::makeSceneSessionFactory(registrations_.components));
-        draft.sessions.push_back(material::makeMaterialSessionFactory());
         auto prepared = extensions::ContributionSnapshot::prepare(std::move(draft));
         if (!prepared)
             return applicationFailure("contributions.prepare", prepared.error());

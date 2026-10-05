@@ -56,10 +56,6 @@ namespace lux::editor::application
         ));
         draft.commands.push_back(project::makeAssetsCommand(running, toolOpening()));
         draft.commands.push_back(tasks::makeTasksCommand(running, toolOpening()));
-        auto creation_available =
-            [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
-        { return commands::CommandState{phase_ == EApplicationPhase::RUNNING && opens_.size() < 64}; };
-        draft.commands.push_back(material::makeNewMaterialCommand(creation_available, contentCreation()));
     }
     sessions::SessionCreation EditorApplication::Impl::contentCreation()
     {

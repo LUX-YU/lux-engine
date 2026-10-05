@@ -7,6 +7,7 @@
 #include <lux/engine/editor/editing/EditExecutor.hpp>
 #include <lux/engine/editor/extensions/EditorExtension.hpp>
 #include <lux/engine/editor/flowforge/FlowModule.hpp>
+#include <lux/engine/editor/material/MaterialModule.hpp>
 #include <lux/engine/editor/flowforge/FlowSessionFactory.hpp>
 #include <lux/engine/editor/flowforge/FlowView.hpp>
 #include <lux/engine/editor/flowforge/PublishFlowArtifact.hpp>
@@ -1502,10 +1503,14 @@ namespace
         ArtifactPublication publication(f);
         auto& dependencies = publication.dependencies;
         auto& scope = publication.scope;
-        assert(dependencies.publish(
-            {services::ServiceEntry::bind<em::kMaterialCompilationService>(object::CodeLease::builtin()),
-             services::ServiceEntry::bind<kProjectContentSavingService>(object::CodeLease::builtin())}
-        ));
+        auto module = take(extensions::EditorExtension::fromStatic(em::materialModule()));
+        auto declared = take(module.contributions());
+        assert(declared.views.empty() && declared.sessions.size() == 1 && declared.commands.size() == 1);
+        assert(declared.services.size() == 1 && declared.ui.size() == 1);
+        declared.services.push_back(
+            services::ServiceEntry::bind<kProjectContentSavingService>(object::CodeLease::builtin())
+        );
+        assert(dependencies.publish(std::move(declared.services)));
         auto environment = f.environment;
         environment.assets = {{29, 1}, 1, take(process::asset_loading::makeAssetReadOverlay({}, {})), {}};
         std::vector<render::RenderFeatureRegistration> features;
@@ -1517,9 +1522,7 @@ namespace
         assert(scope.provide(services::ServiceNameView{"lux.editor.scene.projection.environment"}, environment));
         assert(scope.provide(services::ServiceNameView{"lux.render.features"}, features));
         desktop::UiRegistry windows(f.messages.dispatcherRef(), dependencies);
-        auto catalog =
-            take(desktop::UiCatalog::prepare({desktop::UiEntry::bind<em::kMaterialView>(object::CodeLease::builtin())})
-            );
+        auto catalog = take(desktop::UiCatalog::prepare(std::move(declared.ui)));
         assert(windows.publish(catalog) && dependencies.drained());
         const auto factory = take(catalog.selectContent({"lux.editor.material"}));
         auto slot = take(f.store.reserve<em::MaterialSession>({"lux.editor.material"}, object::CodeLease::builtin()));

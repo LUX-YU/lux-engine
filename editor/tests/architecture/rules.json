@@ -2256,7 +2256,8 @@
     "direct": [
       "editor_persistence",
       "material_model",
-      "session_factories"
+      "session_factories",
+      "services"
     ],
     "closure": {
       "Eigen3::Eigen": {
@@ -2400,7 +2401,8 @@
       "lux/engine/editor/material/MaterialSessionFactory.hpp",
       "lux/engine/editor/detail/PrepareSession.hpp",
       "lux/engine/editor/material/PreparedMaterialReload.hpp",
-      "lux/engine/object/CodeLease.hpp"
+      "lux/engine/object/CodeLease.hpp",
+      "lux/engine/services/ServiceRegistry.hpp"
     ],
     "prefixes": [
       "lux/cxx/compile_time/",
@@ -8563,7 +8565,8 @@
       "flowforge_persistence",
       "editor_extensions",
       "flow_module",
-      "editor_storage"
+      "editor_storage",
+      "material_module"
     ],
     "closure": {
       "Eigen3::Eigen": {
@@ -9612,6 +9615,12 @@
       },
       "editor_storage_meta_generate": {
         "path": "editor/activities/project"
+      },
+      "material_module": {
+        "path": "editor/workbench/material/module"
+      },
+      "lux_editor_productModules_material_module_generate": {
+        "path": "editor/application"
       }
     },
     "native_libraries": [
@@ -9640,7 +9649,8 @@
       "lux/engine/editor/flowforge/FlowSessionFactory.hpp",
       "lux/engine/editor/desktop/UiRegistry.hpp",
       "lux/engine/editor/extensions/EditorExtension.hpp",
-      "lux/engine/editor/flowforge/FlowModule.hpp"
+      "lux/engine/editor/flowforge/FlowModule.hpp",
+      "lux/engine/editor/material/MaterialModule.hpp"
     ],
     "prefixes": [],
     "test_headers": {
@@ -16590,6 +16600,33 @@
           "CPU",
           "TOOLCHAIN"
         ]
+      },
+      "material_module": {
+        "layer": "E3",
+        "role": "COMPOSITION",
+        "capabilities": [
+          "CPU",
+          "GUI",
+          "TOOLCHAIN",
+          "PROCESS"
+        ],
+        "path": "editor/workbench/material/module"
+      },
+      "lux_editor_productModules_material_module": {
+        "layer": "TOOLCHAIN",
+        "role": "GENERATOR",
+        "capabilities": [
+          "CPU",
+          "TOOLCHAIN"
+        ]
+      },
+      "lux_editor_productModules_material_module_generate": {
+        "layer": "TOOLCHAIN",
+        "role": "GENERATOR",
+        "capabilities": [
+          "CPU",
+          "TOOLCHAIN"
+        ]
       }
     },
     "files": {
@@ -19177,6 +19214,12 @@
       ],
       "editor/workbench/flow/module/src/FlowModule.cpp": [
         "flow_module"
+      ],
+      "editor/workbench/material/module/include/lux/engine/editor/material/MaterialModule.hpp": [
+        "material_module"
+      ],
+      "editor/workbench/material/module/src/MaterialModule.cpp": [
+        "material_module"
       ]
     },
     "native_libraries": [
@@ -19713,6 +19756,9 @@
       ],
       "editor/workbench/flow/module/": [
         "flow_module"
+      ],
+      "editor/workbench/material/module/": [
+        "material_module"
       ]
     },
     "script_boundaries": {

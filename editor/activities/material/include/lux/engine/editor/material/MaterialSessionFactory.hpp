@@ -15,7 +15,6 @@ namespace lux::editor::material
         lux::object::CodeLease code = lux::object::CodeLease::builtin()
     );
     [[nodiscard]] std::shared_ptr<commands::CommandEntry> makeNewMaterialCommand(
-        commands::CommandEntry::Query,
-        sessions::SessionCreation
+        lux::object::CodeLease code = lux::object::CodeLease::builtin()
     );
 } // namespace lux::editor::material

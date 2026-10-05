@@ -1,3 +1,4 @@
+#include <lux/engine/services/ServiceRegistry.hpp>
 #include <random>
 #include <lux/engine/editor/material/PreparedMaterialReload.hpp>
 #include <lux/engine/editor/material/MaterialSessionFactory.hpp>
@@ -102,27 +103,80 @@ namespace lux::editor::material
 {
     namespace
     {
-        constexpr commands::CommandDescriptor kNewCommand{
-            commands::CommandIdView{"lux.editor.new.material"},
-            "New Material",
-            "File"
+        constexpr services::ServiceDependency new_dependencies[]{
+            {sessions::kSessionCreationAvailability,
+             1,
+             cxx::typeToken<commands::CommandEntry::Query>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT},
+            {sessions::kSessionCreation,
+             1,
+             cxx::typeToken<sessions::SessionCreation>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT}
         };
-    }
-    std::shared_ptr<commands::CommandEntry> makeNewMaterialCommand(
-        commands::CommandEntry::Query query,
-        sessions::SessionCreation receiver
-    )
-    {
-        return commands::CommandEntry::bind<kNewCommand>(
-            lux::object::CodeLease::builtin(),
-            std::move(query),
-            [create = std::move(receiver)](const commands::CommandInvocation&) mutable
+        commands::CommandResult<std::unique_ptr<commands::CommandBinding>> bindNewCommand(
+            services::ServiceResolver& resolver,
+            const object::CodeLease& code
+        ) noexcept
+        {
+            const auto failure = [](services::ServiceFailure error)
             {
-                std::mt19937 random{std::random_device{}()};
-                const asset::AssetId id{uuids::uuid_random_generator{random}()};
-                lux::material::MaterialSource source{id, "Untitled Material", {}};
-                return create(prepareMaterialSession({std::move(source)}, {}, {}));
+                auto value = sessions::factoryFailure(std::move(error));
+                auto code = commands::ECommandError::DOMAIN_FAILURE;
+                switch (value.code)
+                {
+                case sessions::ESessionFactoryError::BUSY:
+                    code = commands::ECommandError::BUSY;
+                    break;
+                case sessions::ESessionFactoryError::CLOSED:
+                    code = commands::ECommandError::CLOSED;
+                    break;
+                default:
+                    break;
+                }
+                return cxx::unexpected(
+                    commands::CommandFailure{code, std::move(value.domain), value.domain_code, std::move(value.detail)}
+                );
+            };
+            auto available = resolver.require<commands::CommandEntry::Query>(0);
+            if (!available)
+            {
+                return failure(std::move(available.error()));
             }
-        );
+            auto create = resolver.require<sessions::SessionCreation>(1);
+            if (!create)
+            {
+                return failure(std::move(create.error()));
+            }
+            const bool has_missing_endpoint = !available->get() || !create->get();
+            if (has_missing_endpoint)
+            {
+                return cxx::unexpected(
+                    commands::CommandFailure{commands::ECommandError::INVALID_ARGUMENT, "content.creation-endpoint"}
+                );
+            }
+            return std::make_unique<commands::CommandBinding>(
+                [query = *available](const commands::CommandQuery& input) { return query.get()(input); },
+                [receiver = *create, code](const commands::CommandInvocation&)
+                {
+                    std::mt19937 random{std::random_device{}()};
+                    const asset::AssetId id{uuids::uuid_random_generator{random}()};
+                    lux::material::MaterialSource source{id, "Untitled Material", {}};
+                    return receiver.get()(prepareMaterialSession({std::move(source)}, {}, {}, code));
+                }
+            );
+        }
+        constexpr commands::CommandDescriptor kNewCommand{
+            .id = commands::CommandIdView{"lux.editor.new.material"},
+            .label = "New Material",
+            .group = "File",
+            .dependencies = new_dependencies,
+            .create = bindNewCommand
+        };
+    } // namespace
+    std::shared_ptr<commands::CommandEntry> makeNewMaterialCommand(object::CodeLease code)
+    {
+        return commands::CommandEntry::bind<kNewCommand>(std::move(code));
     }
 } // namespace lux::editor::material

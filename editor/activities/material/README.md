@@ -42,3 +42,10 @@ retirement protocol.
 publishCompiledMaterial reserves the same WriteCoordinator used by source saves and submits the already
 encoded artifact. Expected destination version and FIFO remain authoritative. There is no Session pointer or
 checkpoint adoption. A source change does not silently relabel an old compiled artifact.
+
+The selected `material_module` contributes the source factory, New Material command, lazy compilation service
+and formal UiDescriptor through the same static/DLL module protocol. The New command declares only creation
+admission and the owning preparation receiver; it does not create a renderer or compilation service. Its
+accepted preparation retains the original defining code after command/catalog disposal. Application no longer
+registers that command or source factory itself. The remaining old product window factory is a tracked M6
+consumer; it is not used by the module's formal Root/UiRegistry path.

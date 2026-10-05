@@ -134,8 +134,9 @@ int main(int argc, char** argv)
     p::SaveExecution execution{runtime, saves, writes, files};
     ProjectContentSaving saving{store, opening, saves, *project, writes, files, runtime, execution};
     auto schemas = take(simulation::ecs::ComponentSchemaSet::build({}));
+    assert(scope.provide(services::ServiceNameView{"lux.simulation.components"}, schemas));
     auto factories = take(s::SessionFactorySnapshot::create(
-        {es::makeSceneSessionFactory(schemas), em::makeMaterialSessionFactory(), ef::makeFlowSessionFactory()}
+        {es::makeSceneSessionFactory(), em::makeMaterialSessionFactory(), ef::makeFlowSessionFactory()}
     ));
     auto simulation = take(std::move(simulation::SimulationDescriptionBuilder{}).build());
     auto description = take(std::move(lux::scene::SceneDescriptionBuilder{}).buildResolved());

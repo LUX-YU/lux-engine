@@ -55,6 +55,11 @@ namespace lux::editor::application
     EditorResult<void> EditorApplication::Impl::installContributions()
     {
         auto& scope = editor_context_.scope();
+        auto components = scope.provide(services::ServiceNameView{"lux.simulation.components"}, registrations_.components);
+        if (!components)
+        {
+            return applicationFailure("service.components", components.error());
+        }
         auto creation = scope.provide(sessions::kSessionCreation, content_creation_);
         if (!creation)
         {
@@ -228,7 +233,6 @@ namespace lux::editor::application
         // startup catalog. Their controls and new-content preparations retain the same defining code.
         installContentCommands(draft);
         installSceneCommands(draft);
-        draft.sessions.push_back(scene::makeSceneSessionFactory(registrations_.components));
         auto prepared = extensions::ContributionSnapshot::prepare(std::move(draft));
         if (!prepared)
             return applicationFailure("contributions.prepare", prepared.error());

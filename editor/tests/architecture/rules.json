@@ -1988,7 +1988,8 @@
     "direct": [
       "editor_persistence",
       "scene_model",
-      "session_factories"
+      "session_factories",
+      "services"
     ],
     "closure": {
       "Eigen3::Eigen": {
@@ -2227,7 +2228,8 @@
       "lux/engine/editor/detail/PrepareSession.hpp",
       "lux/engine/editor/scene/PreparedSceneReload.hpp",
       "lux/engine/editor/scene/AuthoringFacts.hpp",
-      "lux/engine/object/CodeLease.hpp"
+      "lux/engine/object/CodeLease.hpp",
+      "lux/engine/services/ServiceRegistry.hpp"
     ],
     "prefixes": [
       "Eigen/",
@@ -8566,7 +8568,8 @@
       "editor_extensions",
       "flow_module",
       "editor_storage",
-      "material_module"
+      "material_module",
+      "scene_module"
     ],
     "closure": {
       "Eigen3::Eigen": {
@@ -9621,6 +9624,12 @@
       },
       "lux_editor_productModules_material_module_generate": {
         "path": "editor/application"
+      },
+      "scene_module": {
+        "path": "editor/workbench/scene/module"
+      },
+      "lux_editor_productModules_scene_module_generate": {
+        "path": "editor/application"
       }
     },
     "native_libraries": [
@@ -9650,7 +9659,8 @@
       "lux/engine/editor/desktop/UiRegistry.hpp",
       "lux/engine/editor/extensions/EditorExtension.hpp",
       "lux/engine/editor/flowforge/FlowModule.hpp",
-      "lux/engine/editor/material/MaterialModule.hpp"
+      "lux/engine/editor/material/MaterialModule.hpp",
+      "lux/engine/editor/scene/SceneModule.hpp"
     ],
     "prefixes": [],
     "test_headers": {
@@ -16627,6 +16637,33 @@
           "CPU",
           "TOOLCHAIN"
         ]
+      },
+      "scene_module": {
+        "layer": "E3",
+        "role": "COMPOSITION",
+        "capabilities": [
+          "CPU",
+          "GUI",
+          "TOOLCHAIN",
+          "PROCESS"
+        ],
+        "path": "editor/workbench/scene/module"
+      },
+      "lux_editor_productModules_scene_module": {
+        "layer": "TOOLCHAIN",
+        "role": "GENERATOR",
+        "capabilities": [
+          "CPU",
+          "TOOLCHAIN"
+        ]
+      },
+      "lux_editor_productModules_scene_module_generate": {
+        "layer": "TOOLCHAIN",
+        "role": "GENERATOR",
+        "capabilities": [
+          "CPU",
+          "TOOLCHAIN"
+        ]
       }
     },
     "files": {
@@ -19220,6 +19257,12 @@
       ],
       "editor/workbench/material/module/src/MaterialModule.cpp": [
         "material_module"
+      ],
+      "editor/workbench/scene/module/include/lux/engine/editor/scene/SceneModule.hpp": [
+        "scene_module"
+      ],
+      "editor/workbench/scene/module/src/SceneModule.cpp": [
+        "scene_module"
       ]
     },
     "native_libraries": [
@@ -19759,6 +19802,9 @@
       ],
       "editor/workbench/material/module/": [
         "material_module"
+      ],
+      "editor/workbench/scene/module/": [
+        "scene_module"
       ]
     },
     "script_boundaries": {

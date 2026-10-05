@@ -98,3 +98,17 @@ All calls are on the Runtime owner thread. Environment registrations, fixed asse
 must describe one version. Renderer/resources/executor outlive all consumers and their Runtime retirement.
 The original product host remains the only frame driver. Shared projections rebuild together; callers resolve
 new instance/camera bindings when ProjectionVersion changes. No persistent raw Entity is an author identity.
+
+## Declarative source admission (EC4)
+
+`makeSceneSessionFactory()` declares its original source-format relationship and the exact borrowed
+`lux.simulation.components` dependency. Selection and registration do not capture schemas or create
+services. At load admission the factory copies the immutable ComponentSchemaSet; its backing and code
+pins travel with the decoder and prepared installation. A later directory replacement, scope release or
+window closure cannot change that accepted input. Worker IO/codec and owner installation/reload continue
+through the original SessionLoadJob, SessionStore and SaveService gates.
+
+The selected `scene_module` archive declares this source factory, the existing projection service and
+formal Scene UI factory. It uses the same module declaration as a dynamic extension and introduces no
+second projection or Runtime. The product's remaining legacy window factory is a tracked M6 consumer;
+its removal and the Application cutover are not certified by this declaration closure.

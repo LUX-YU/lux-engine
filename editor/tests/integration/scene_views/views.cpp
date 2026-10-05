@@ -8,6 +8,7 @@
 #include <lux/engine/editor/extensions/EditorExtension.hpp>
 #include <lux/engine/editor/flowforge/FlowModule.hpp>
 #include <lux/engine/editor/material/MaterialModule.hpp>
+#include <lux/engine/editor/scene/SceneModule.hpp>
 #include <lux/engine/editor/flowforge/FlowSessionFactory.hpp>
 #include <lux/engine/editor/flowforge/FlowView.hpp>
 #include <lux/engine/editor/flowforge/PublishFlowArtifact.hpp>
@@ -1329,16 +1330,17 @@ namespace
     {
         services::ServiceRegistry services(f.messages.dispatcherRef());
         auto scope = take(services.createScope());
-        assert(services.publish({services::ServiceEntry::bind<author::kScenePresentationHub>(object::CodeLease::builtin(
-        ))}));
+        auto module = take(extensions::EditorExtension::fromStatic(author::sceneModule()));
+        auto declared = take(module.contributions());
+        assert(declared.views.empty() && declared.sessions.size() == 1 && declared.commands.empty());
+        assert(declared.services.size() == 1 && declared.ui.size() == 1);
+        assert(services.publish(std::move(declared.services)));
         assert(scope.provide(services::ServiceNameView{"lux.editor.sessions"}, f.store));
         assert(scope.provide(services::ServiceNameView{"lux.scene.runtime"}, *f.runtime));
         assert(scope.provide(services::ServiceNameView{"lux.process.execution"}, f.execution));
         assert(scope.provide(services::ServiceNameView{"lux.editor.scene.projection.environment"}, f.environment));
         desktop::UiRegistry windows(f.messages.dispatcherRef(), services);
-        auto catalog =
-            take(desktop::UiCatalog::prepare({desktop::UiEntry::bind<author::kSceneView>(object::CodeLease::builtin())})
-            );
+        auto catalog = take(desktop::UiCatalog::prepare(std::move(declared.ui)));
         assert(windows.publish(catalog) && services.drained());
         auto factory = take(catalog.selectContent({"lux.editor.scene"}));
         const auto package = take(author::buildSceneSnapshotPackage(take(f.session->capture())));

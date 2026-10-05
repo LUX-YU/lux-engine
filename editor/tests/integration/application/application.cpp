@@ -8,6 +8,7 @@
 #include <lux/engine/editor/desktop/DesktopTestAccess.hpp>
 #include <lux/engine/editor/flowforge/FlowModule.hpp>
 #include <lux/engine/editor/material/MaterialModule.hpp>
+#include <lux/engine/editor/scene/SceneModule.hpp>
 #include <lux/engine/editor/project/ImportView.hpp>
 #include <lux/engine/editor/project/SettingsView.hpp>
 #include <lux/engine/editor/scene/InspectorView.hpp>
@@ -305,7 +306,7 @@ int main(int argc, char** argv)
     config.user_directory = root.parent_path() / (root.filename().string() + "-user");
     std::filesystem::create_directories(*config.user_directory);
     config.font = root / "missing-font.ttf";
-    auto missing_font = EditorApplication::create(config, std::array{&lux::editor::material::materialModule, &lux::editor::flowforge::flowModule});
+    auto missing_font = EditorApplication::create(config, std::array{&lux::editor::scene::sceneModule, &lux::editor::material::materialModule, &lux::editor::flowforge::flowModule});
     if (!missing_font)
     {
         std::cerr << "Missing-font construction: " << missing_font.error().domain << '\n';
@@ -317,7 +318,7 @@ int main(int argc, char** argv)
     assert(!missing_font && missing_font.error().domain == "editor.font.read");
     config.font.reset();
     desktop::testing::rejectNextMenuConnection();
-    auto rejected = EditorApplication::create(config, std::array{&lux::editor::material::materialModule, &lux::editor::flowforge::flowModule});
+    auto rejected = EditorApplication::create(config, std::array{&lux::editor::scene::sceneModule, &lux::editor::material::materialModule, &lux::editor::flowforge::flowModule});
     if (!rejected)
         std::cerr << "Application construction: " << rejected.error().domain << ": " << rejected.error().message
                   << '\n';
@@ -329,7 +330,7 @@ int main(int argc, char** argv)
     );
     std::cout << "C04: actual EditorApplication::create rejects required menu connection failure\n";
     {
-        auto direct = EditorApplication::create(config, std::array{&lux::editor::material::materialModule, &lux::editor::flowforge::flowModule});
+        auto direct = EditorApplication::create(config, std::array{&lux::editor::scene::sceneModule, &lux::editor::material::materialModule, &lux::editor::flowforge::flowModule});
         assert(direct);
         if (const auto* failure = ApplicationTestAccess::implementation(**direct).workspace_changes_.migrationFailure())
         {
@@ -450,7 +451,7 @@ int main(int argc, char** argv)
     {
         auto launch_override = config;
         launch_override.scale = 2.f;
-        auto overridden = EditorApplication::create(launch_override, std::array{&lux::editor::material::materialModule, &lux::editor::flowforge::flowModule});
+        auto overridden = EditorApplication::create(launch_override, std::array{&lux::editor::scene::sceneModule, &lux::editor::material::materialModule, &lux::editor::flowforge::flowModule});
         if (!overridden)
         {
             std::cerr << "Settings restart: " << overridden.error().domain << ": " << overridden.error().message
@@ -462,7 +463,7 @@ int main(int argc, char** argv)
     }
     const auto after_override = storage::publicationFileDigest(personal_file);
     assert(after_override && *after_override == *before_override);
-    auto created = EditorApplication::create(config, std::array{&lux::editor::material::materialModule, &lux::editor::flowforge::flowModule, &closeModule});
+    auto created = EditorApplication::create(config, std::array{&lux::editor::scene::sceneModule, &lux::editor::material::materialModule, &lux::editor::flowforge::flowModule, &closeModule});
     if (!created)
     {
         std::cerr << created.error().domain << '\n';
@@ -1685,7 +1686,7 @@ int main(int argc, char** argv)
     assert(default_project && !default_project->manifest().default_scene.empty());
     // Earlier local activity fixtures still borrow this application execution owner until scope exit.
     config.project_file = default_path;
-    auto initial = EditorApplication::create(config, std::array{&lux::editor::material::materialModule, &lux::editor::flowforge::flowModule});
+    auto initial = EditorApplication::create(config, std::array{&lux::editor::scene::sceneModule, &lux::editor::material::materialModule, &lux::editor::flowforge::flowModule});
     assert(initial);
     auto& initial_owner = ApplicationTestAccess::implementation(**initial);
     const auto initial_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);

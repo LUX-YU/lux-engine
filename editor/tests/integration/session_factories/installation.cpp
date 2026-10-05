@@ -579,6 +579,8 @@ namespace
             object::CodeLease::builtin()
         )}));
         auto scope = take(dependencies.createScope());
+        simulation::ecs::ComponentSchemaSet schemas;
+        assert(scope.provide(services::ServiceNameView{"lux.simulation.components"}, schemas));
         auto prepared = SessionLoadJob::prepare(std::move(factory), std::move(input), dependencies, scope);
         if (!prepared)
         {
@@ -878,6 +880,99 @@ namespace
         std::cout << "PASS EC4 cold Flow factory; owner dependency admission; frozen worker after service retirement\n";
     }
 
+    void lazySceneDecoder(process::ExecutionRuntime& runtime, asset::AssetVfs& vfs)
+    {
+        lux::test::ObjectQueue messages;
+        services::ServiceRegistry dependencies{messages.dispatcherRef()};
+        auto scope = take(dependencies.createScope());
+        auto code = std::make_shared<const int>(7);
+        const std::weak_ptr<const int> weak_code = code;
+        auto factory = es::makeSceneSessionFactory(object::CodeLease::plugin(code));
+        SessionLoadInput input{
+            vfs.view().capture(),
+            identity(SourceFiles::names[0]),
+            BoundSource{identity(SourceFiles::names[0]), SourceFiles::names[0]}
+        };
+        auto missing = SessionLoadJob::prepare(factory, input, dependencies, scope);
+        assert(!missing && missing.error().code == ESessionFactoryError::NOT_FOUND && dependencies.drained());
+        struct Component final
+        {
+            int value{};
+        };
+        auto schema_code = std::make_shared<const int>(11);
+        const std::weak_ptr<const int> weak_schema = schema_code;
+        auto schemas = take(simulation::ecs::ComponentSchemaSet::build({simulation::ecs::makeComponentSchema<Component>(
+            simulation::ecs::componentSchemaId("test.scene.decoder.capture"),
+            1,
+            simulation::ecs::EComponentSnapshotPolicy::COPY,
+            std::move(schema_code),
+            nullptr,
+            simulation::ecs::EComponentSemanticKind::DOMAIN_CONTRACT
+        )}));
+        assert(scope.provide(services::ServiceNameView{"lux.simulation.components"}, schemas));
+        {
+            auto publication = take(dependencies.preparePublication({}));
+            auto busy = SessionLoadJob::prepare(factory, input, dependencies, scope);
+            assert(!busy && busy.error().code == ESessionFactoryError::BUSY);
+        }
+        std::thread wrong_thread(
+            [&]
+            {
+                auto refused = SessionLoadJob::prepare(factory, input, dependencies, scope);
+                assert(!refused && refused.error().code == ESessionFactoryError::WRONG_THREAD);
+            }
+        );
+        wrong_thread.join();
+        auto job = take(SessionLoadJob::prepare(factory, input, dependencies, scope));
+        // Both directories can now disappear or be replaced. The admitted job owns its original inputs.
+        schemas = {};
+        factory.reset();
+        code.reset();
+        assert(scope.release() && scope.drained() && dependencies.drained());
+        assert(!weak_code.expired() && !weak_schema.expired());
+        const auto owner = std::this_thread::get_id();
+        std::optional<SessionFactoryResult<SessionPreparation>> result;
+        {
+            process::TaskScope tasks{runtime};
+            auto submitted = tasks.submit(
+                {.name = "Read Scene after schema directory replacement"},
+                [scheduler = take(runtime.blocking()), job = std::move(job)](process::TaskReporter) mutable noexcept
+                {
+                    return stdexec::then(
+                        stdexec::schedule(scheduler),
+                        [job = std::move(job)]() mutable { return std::move(job).run(); }
+                    );
+                },
+                [&](process::TTaskResult<SessionPreparation, SessionFactoryFailure>&& completion) noexcept
+                {
+                    assert(std::this_thread::get_id() == owner && completion);
+                    result.emplace(std::move(*completion));
+                }
+            );
+            assert(submitted && tasks.join() && result && *result);
+        }
+        assert(!weak_code.expired() && !weak_schema.expired());
+        SessionStore store{messages.dispatcherRef(), 2};
+        WriteCoordinator writes;
+        SaveService saves{writes};
+        {
+            auto installation = take(std::move(**result).prepare(store, saves));
+            result.reset();
+            auto installed = take(installation.publish());
+            const auto key = take(store.key<es::SceneSession>(installed.id()));
+            auto& model = take(store.access<es::SceneSession>().edit(key)).get();
+            const auto initial = model.describe();
+            const auto encoded = take(es::SceneCodec::encode(take(model.capture()), input.asset));
+            assert(!encoded.bytes.empty() && !initial.dirty && !take(model.historyView()).can_undo);
+            assert(!weak_code.expired() && !weak_schema.expired());
+            assert(installed.close(initial.current));
+        }
+        (void)messages.collect();
+        assert(store.size() == 0 && weak_code.expired() && weak_schema.expired());
+        std::cout
+            << "PASS Scene decoder captures schema and code at admission; worker and installation own fixed input\n";
+    }
+
     void contentOperations(
         process::ExecutionRuntime& runtime,
         const SessionFactorySnapshot& factories,
@@ -895,6 +990,8 @@ namespace
             object::CodeLease::builtin()
         )}));
         auto scope = take(dependencies.createScope());
+        simulation::ecs::ComponentSchemaSet schemas;
+        assert(scope.provide(services::ServiceNameView{"lux.simulation.components"}, schemas));
         SessionOpening opening{runtime, store, saves, dependencies, scope, 8};
         SaveExecution execution{runtime, saves, writes, disk};
         const std::array<SessionKindId, 3> kinds{
@@ -1206,9 +1303,8 @@ int main(int argc, char** argv)
     auto source = take(lux::flowforge::captureFlowSource(identity(SourceFiles::names[2]), "flow", graph));
     const auto flow_bytes = take(lux::flowforge::encodeFlowSource(source));
     write(root / SourceFiles::names[2], std::as_bytes(std::span{flow_bytes}));
-    auto schemas = take(simulation::ecs::ComponentSchemaSet::build({}));
     auto factories = take(SessionFactorySnapshot::create(std::vector{
-        lux::editor::scene::makeSceneSessionFactory(schemas),
+        lux::editor::scene::makeSceneSessionFactory(),
         lux::editor::material::makeMaterialSessionFactory(),
         lux::editor::flowforge::makeFlowSessionFactory()
     }));
@@ -1240,7 +1336,7 @@ int main(int argc, char** argv)
         for (bool reverse : {false, true})
         {
             auto entries = std::vector{
-                lux::editor::scene::makeSceneSessionFactory(schemas),
+                lux::editor::scene::makeSceneSessionFactory(),
                 lux::editor::material::makeMaterialSessionFactory(),
                 lux::editor::flowforge::makeFlowSessionFactory()
             };
@@ -1275,6 +1371,7 @@ int main(int argc, char** argv)
     asset::AssetVfs vfs;
     assert(vfs.mount({"/sources", std::make_shared<SourceFiles>(root)}));
     lazyFlowDecoder(runtime, vfs);
+    lazySceneDecoder(runtime, vfs);
     if (argc == 3)
     {
         contentOperations(runtime, factories, vfs, disk, root);

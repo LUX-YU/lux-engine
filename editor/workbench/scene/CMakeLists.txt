@@ -91,3 +91,5 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
         "$<TARGET_FILE:lux_inspector_generator>" "${CMAKE_CURRENT_SOURCE_DIR}/codegen/templates")
     set_tests_properties(editor.inspector_codegen PROPERTIES LABELS "editor;native")
 endif()
+
+add_subdirectory(module)

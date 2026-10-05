@@ -10,6 +10,8 @@ target_link_libraries(scene_persistence PUBLIC lux::engine::editor::session_fact
 target_include_directories(scene_persistence PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../sessions/sinclude)
 component_add_transitive_commands(scene_persistence
     "find_package(lux-engine-editor-session-factories REQUIRED COMPONENTS session_factories)")
+target_link_libraries(scene_persistence PRIVATE lux::engine::core::services)
+component_add_transitive_commands(scene_persistence "find_package(lux-engine-core REQUIRED COMPONENTS services)")
 lux_classify_target(TARGET scene_persistence LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 lux_engine_install_components(PROJECT_NAME lux-engine-editor-scene-persistence VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS scene_persistence)

@@ -1302,17 +1302,37 @@ namespace lux::ui
     ) noexcept
     {
         std::vector<Pane*> panes;
-        std::vector<object::LuxObject*> objects;
         panes.reserve(owners.size());
-        objects.reserve(owners.size());
         for (const auto& owner : owners)
         {
             panes.push_back(owner.get());
-            objects.push_back(owner.get());
         }
         auto prepared = prepareMount(panes, visibility);
         if (!prepared)
             return cxx::unexpected(prepared.error());
+        auto apply_docking = [&]() noexcept { if (docking) commitDockTree(std::move(*docking)); };
+        return commit(*prepared, owners, apply_docking);
+    }
+    cxx::expected<AttachmentCommit, EAttachmentError> Root::commit(
+        PreparedAttachment& prepared,
+        std::span<std::unique_ptr<Pane, object::ObjectDeleter>> owners,
+        cxx::function_ref<void()> apply
+    ) noexcept
+    {
+        if (auto valid = validateAttachment(prepared); !valid)
+            return cxx::unexpected(valid.error());
+        const auto& state = *prepared.state_;
+        const bool is_invalid_batch = !state.mount || owners.size() != state.roots.size();
+        if (is_invalid_batch)
+            return cxx::unexpected(EAttachmentError::INVALID_TREE);
+        std::vector<object::LuxObject*> objects;
+        objects.reserve(owners.size());
+        for (std::size_t i{}; i < owners.size(); ++i)
+        {
+            if (owners[i].get() != state.roots[i])
+                return cxx::unexpected(EAttachmentError::INVALID_TREE);
+            objects.push_back(owners[i].get());
+        }
         impl_->committing_structure = true;
         auto transfer = [&](std::size_t index) noexcept
         {
@@ -1335,13 +1355,10 @@ namespace lux::ui
             default: return cxx::unexpected(EAttachmentError::INVALID_TREE);
             }
         }
-        prepared->state_->adopted = true;
-        auto apply_docking = [&]() noexcept { if (docking) commitDockTree(std::move(*docking)); };
-        auto committed = commit(*prepared, apply_docking);
-        // Every fallible check preceded ownership transfer. No business callback may invalidate that fact.
-        if (!committed)
-            detail::failContract();
-        return committed;
+        // The transfer uses host ObjectDeleter moves, not extension callbacks. The validated token
+        // and prepared routing remain valid throughout this no-callback ownership commit.
+        prepared.state_->adopted = true;
+        return commitPrepared(prepared, apply);
     }
 
     Root::AttachmentResult Root::prepareMount(Pane& pane)
@@ -1474,6 +1491,12 @@ namespace lux::ui
         cxx::function_ref<void()> adopt
     ) noexcept
     {
+        if (auto valid = validateAttachment(token); !valid)
+            return cxx::unexpected(valid.error());
+        return commitPrepared(token, adopt);
+    }
+    cxx::expected<void, EAttachmentError> Root::validateAttachment(const PreparedAttachment& token) const noexcept
+    {
         if (!isOnAffinityThread())
             return lux::cxx::unexpected(EAttachmentError::WRONG_THREAD);
         if (!attachmentSafe())
@@ -1484,6 +1507,11 @@ namespace lux::ui
                            state->window_revision != impl_->window_revision;
         if (stale)
             return lux::cxx::unexpected(EAttachmentError::STALE_PREPARATION);
+        return {};
+    }
+    AttachmentCommit Root::commitPrepared(PreparedAttachment& token, cxx::function_ref<void()> adopt) noexcept
+    {
+        auto* state = token.state_.get();
         // Consume the public token before notifications. Callers may release or replace it in a callback.
         auto committed = std::move(token.state_);
         const bool mount = state->mount;

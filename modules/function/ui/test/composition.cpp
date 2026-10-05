@@ -343,13 +343,27 @@ namespace
         assert(unchanged.nodes.size() == 1 && unchanged.nodes[0].windows == std::vector<std::string>{"existing"});
         assert(unchanged.surfaces.size() == 1 && unchanged.surfaces[0].node == 0 && !unchanged.surfaces[0].floating);
         owners.pop_back();
+        const std::array candidates{first, second};
+        bool applied{};
+        auto apply = [&]() noexcept { applied = true; };
+        {
+            auto prepared = (*root)->prepareMount(candidates);
+            assert(prepared);
+            std::swap(owners[0], owners[1]);
+            auto mismatch = (*root)->commit(*prepared, owners, apply);
+            assert(!mismatch && mismatch.error() == ui::EAttachmentError::INVALID_TREE);
+            assert(!applied && owners[0].get() == second && owners[1].get() == first);
+            assert(!first->parent() && !second->parent() && counts.deleted == 1);
+            std::swap(owners[0], owners[1]);
+        }
+        assert(owners[0].get() == first && owners[1].get() == second);
         unsigned notifications{};
         auto connection = object::LuxObject::connect(
             root->get(), &ui::Root::attachmentChanged,
             [&](const ui::AttachmentChanged& change) noexcept
             {
                 if (!change.mounted) return;
-                assert(!owners[0] && !owners[1]);
+                assert(applied && !owners[0] && !owners[1]);
                 assert(first->parent() == root->get() && second->parent() == root->get());
                 assert(first->ownership() == object::EObjectOwnership::PARENT_OWNED);
                 assert(second->ownership() == object::EObjectOwnership::PARENT_OWNED);
@@ -358,7 +372,8 @@ namespace
                 ++notifications;
             }
         );
-        assert(connection && (*root)->addSubPanes(owners));
+        auto prepared = (*root)->prepareMount(candidates);
+        assert(prepared && connection && (*root)->commit(*prepared, owners, apply));
         assert(notifications == 2 && counts.deleted == 1);
         assert((*root)->removeSubPane(*first));
         assert(counts.deleted == 1 && messages.collectRetired() == 1 && counts.deleted == 2);

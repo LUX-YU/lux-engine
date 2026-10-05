@@ -5,6 +5,7 @@
 #include <lux/engine/services/ServiceRegistry.hpp>
 #include <lux/engine/ui/Docking.hpp>
 #include <lux/engine/ui/Pane.hpp>
+#include <lux/cxx/core/move_only_function.hpp>
 #include <optional>
 
 namespace lux::editor::desktop
@@ -37,6 +38,7 @@ namespace lux::editor::desktop
         std::string detail;
     };
     template <class T> using UiResult = cxx::expected<T, UiFailure>;
+    using UiStateResult = UiResult<cxx::move_only_function<void()>>;
     // Existing workspace state schema and explicit content association, never an asset from layout opaque.
     struct UiCreateInfo final
     {
@@ -60,6 +62,10 @@ namespace lux::editor::desktop
         UiResult<void> (*rebind)(lux::ui::Pane&, const views::ViewContent&){};
         UiResult<void> (*prepare_close)(lux::ui::Pane&){};
         UiResult<workspace::VersionedViewState> (*capture_state)(const lux::ui::Pane&){};
+        // Prepare an owning, no-fail value transfer. It runs only within the Root commit, never in
+        // preparation. It must not perform IO, dispatch, allocate or mutate the object tree.
+        UiStateResult (*prepare_state)(lux::ui::Pane&, const workspace::VersionedViewState&){};
+        UiResult<void> (*cancel_preview)(lux::ui::Pane&){};
     };
     class UiEntry final
     {
@@ -136,6 +142,12 @@ namespace lux::editor::desktop
         UiCreateInfo input;
         bool visible{true};
     };
+    struct UiStateRequest final
+    {
+        lux::ui::PaneHandle target;
+        workspace::VersionedViewState configuration;
+        std::optional<bool> visible;
+    };
     // Keeps immutable declarations and weak output metadata, never a Pane owner. A successful creation
     // is a standard unique owner; Root's Object relation takes over when the caller mounts the candidate.
     class UiRegistry final
@@ -199,12 +211,14 @@ namespace lux::editor::desktop
         prepareClose(lux::ui::Root&, std::span<const lux::ui::PaneHandle>) noexcept;
         [[nodiscard]] UiResult<workspace::VersionedViewState> captureState(lux::ui::Root&, const lux::ui::PaneHandle&) noexcept;
         // One synchronous construction/commit boundary shared by configuration, menu and recovery.
-        // No retained window table: successful owners transfer directly to Root's Object relation.
+        // Existing state, candidate ownership and docking commit together. No retained window table:
+        // successful owners transfer directly to Root's Object relation.
         [[nodiscard]] UiResult<lux::ui::AttachmentCommit> mount(
             lux::ui::Root&,
             services::ServiceScope&,
             std::vector<UiMountRequest>,
-            std::optional<lux::ui::DockTree> = {}
+            std::optional<lux::ui::DockTree> = {},
+            std::vector<UiStateRequest> = {}
         ) noexcept;
 
     private:
@@ -213,12 +227,12 @@ namespace lux::editor::desktop
         [[nodiscard]] UiResult<void> visit(
             lux::ui::Root&,
             const lux::ui::PaneHandle&,
-            cxx::function_ref<void(const UiDescriptor&, lux::ui::Pane&)>
+            cxx::function_ref<void(const std::shared_ptr<const UiEntry>&, lux::ui::Pane&)>
         ) noexcept;
         [[nodiscard]] UiResult<void> visitAdmitted(
             lux::ui::Root&,
             const lux::ui::PaneHandle&,
-            cxx::function_ref<void(const UiDescriptor&, lux::ui::Pane&)>
+            cxx::function_ref<void(const std::shared_ptr<const UiEntry>&, lux::ui::Pane&)>
         ) noexcept;
         struct Impl;
         std::unique_ptr<Impl> impl_;

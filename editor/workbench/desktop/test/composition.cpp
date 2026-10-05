@@ -26,6 +26,7 @@ namespace
         std::function<void()> operating;
         unsigned captures{}, closes{}, rebound{};
         bool deny_close{}, deny_rebind{};
+        unsigned state_prepared{}, state_applied{};
     };
     struct Model final
     {
@@ -110,13 +111,26 @@ namespace
         {
             ++counts_.captures;
             if (counts_.operating) counts_.operating();
-            return workspace::VersionedViewState{1, {std::byte{7}}};
+            return workspace::VersionedViewState{1, state_};
+        }
+        UiStateResult prepareState(const workspace::VersionedViewState& state)
+        {
+            ++counts_.state_prepared;
+            if (state.bytes == std::vector{std::byte{200}})
+                return cxx::unexpected(UiFailure{EUiError::OPERATION_FAILURE, "state.prepare", 93});
+            if (counts_.operating) counts_.operating();
+            return cxx::move_only_function<void()>{[this, value = state.bytes]() mutable noexcept
+            {
+                ++counts_.state_applied;
+                state_ = std::move(value);
+            }};
         }
 
     private:
         std::shared_ptr<Model> model_;
         Counts& counts_;
         views::ViewContent content_;
+        std::vector<std::byte> state_{std::byte{7}};
     };
     UiResult<std::unique_ptr<ui::Pane>> createWindow(ServiceResolver& resolver, const UiCreateInfo& input)
     {
@@ -505,6 +519,127 @@ namespace
         assert(scope->release() && scope->drained() && services.drained());
         std::cout << "Factory batch close: refusal and abandon preserve ownership; all content commits before "
                      "notifications; external callback destruction invalidates the exact batch PASS\n";
+    }
+
+    void configuredStateBatch(object::ObjectMessageQueue& messages)
+    {
+        Counts counts;
+        EditorContext context{messages.dispatcherRef()};
+        auto& registry = context.ui();
+        auto& services = context.services();
+        assert(services.publish({ServiceEntry::bind<model_descriptor>(object::CodeLease::builtin())}));
+        auto scope = services.createScope();
+        assert(scope && scope->provide(ServiceNameView{"ec4.counts"}, counts));
+        auto definition = descriptor;
+        definition.validate = nullptr;
+        definition.prepare_state = [](ui::Pane& pane, const workspace::VersionedViewState& state)
+        { return static_cast<Window&>(pane).prepareState(state); };
+        definition.cancel_preview = [](ui::Pane& pane) { return static_cast<Window&>(pane).prepareClose(); };
+        definition.capture_state = [](const ui::Pane& pane) { return static_cast<const Window&>(pane).capture(); };
+        definition.content = [](const ui::Pane& pane) noexcept { return static_cast<const Window&>(pane).content(); };
+        auto entries = UiCatalog::prepare({UiEntry::create(object::CodeLease::builtin(), definition)});
+        assert(entries && registry.publish(std::move(*entries)));
+        auto factory = *registry.snapshot().at(0);
+        const sessions::SessionId session{19, 2, 5};
+        const views::ViewContent binding{{session}, session};
+        auto root = ui::Root::create(messages.dispatcherRef());
+        assert(root);
+        std::vector<UiMountRequest> initial{
+            {factory, {messages.dispatcherRef(), ui::PaneId{"state-a"}, binding, {}}},
+            {factory, {messages.dispatcherRef(), ui::PaneId{"state-b"}, binding, {}}}
+        };
+        assert(registry.mount(**root, *scope, std::move(initial)));
+        auto* a = static_cast<Window*>((*root)->findPane(ui::PaneIdView{"state-a"}));
+        auto* b = static_cast<Window*>((*root)->findPane(ui::PaneIdView{"state-b"}));
+        assert(a && b);
+        const auto a_handle = *(*root)->identify(*a);
+        const auto b_handle = *(*root)->identify(*b);
+        const auto revision = (*root)->windowRevision();
+        const auto dock = (*root)->captureDockTree();
+        const auto state_requests = [&]
+        {
+            return std::vector<UiStateRequest>{
+                {a_handle, {1, {std::byte{31}}}, false},
+                {b_handle, {1, {std::byte{32}}}, true}
+            };
+        };
+        const auto unchanged = [&]
+        {
+            assert((*root)->windowRevision() == revision && (*root)->findPane(a_handle) && (*root)->findPane(b_handle));
+            assert(a->visible() && b->visible() && a->content() == binding && b->content() == binding);
+            assert(a->capture()->bytes == std::vector{std::byte{7}});
+            assert(b->capture()->bytes == std::vector{std::byte{7}} && counts.state_applied == 0);
+            const auto current = (*root)->captureDockTree();
+            assert(current.nodes.size() == dock.nodes.size() && current.surfaces.size() == dock.surfaces.size());
+        };
+        auto invalid = state_requests();
+        invalid[1].configuration.bytes = {std::byte{200}};
+        auto refused = registry.mount(**root, *scope, {}, {}, std::move(invalid));
+        assert(!refused && refused.error().domain == "state.prepare" && refused.error().domain_code == 93);
+        assert(counts.state_prepared == 2 && counts.closes == 0);
+        unchanged();
+        invalid = state_requests();
+        invalid[1].target = a_handle;
+        const auto prepared_count = counts.state_prepared;
+        refused = registry.mount(**root, *scope, {}, {}, std::move(invalid));
+        assert(!refused && refused.error().code == EUiError::DUPLICATE && counts.state_prepared == prepared_count);
+        unchanged();
+        invalid = state_requests();
+        invalid[1].configuration.schema = 99;
+        refused = registry.mount(**root, *scope, {}, {}, std::move(invalid));
+        assert(!refused && refused.error().code == EUiError::INVALID_CONFIGURATION);
+        unchanged();
+        counts.creating = [] { throw std::runtime_error("Foreign candidate construction failed"); };
+        std::vector<UiMountRequest> new_window{
+            {factory, {messages.dispatcherRef(), ui::PaneId{"state-c"}, binding, {}}}
+        };
+        refused = registry.mount(**root, *scope, new_window, {}, state_requests());
+        assert(!refused && refused.error().code == EUiError::FACTORY_FAILURE && counts.closes == 0);
+        assert(!(*root)->findPane(ui::PaneIdView{"state-c"}));
+        counts.creating = {};
+        unchanged();
+        counts.deny_close = true;
+        refused = registry.mount(**root, *scope, new_window, {}, state_requests());
+        assert(!refused && refused.error().code == EUiError::BUSY && refused.error().domain_code == 82);
+        assert(!(*root)->findPane(ui::PaneIdView{"state-c"}));
+        counts.deny_close = false;
+        unchanged();
+
+        // Existing windows keep the exact creating definition after catalog replacement.
+        assert(registry.publish(catalog()));
+        new_window[0].factory = *registry.snapshot().at(0);
+        ui::DockTree candidate;
+        candidate.nodes.push_back({ui::EDockSplit::LEAF, UINT32_MAX, UINT32_MAX, .5f, {"state-a", "state-c"}});
+        candidate.surfaces.push_back({0, {{0, 0}, {800, 600}}, false});
+        counts.operating = [&]
+        {
+            auto nested = registry.mount(**root, *scope, {});
+            assert(!nested && nested.error().code == EUiError::BUSY);
+            auto removal = (*root)->removeSubPane(*a);
+            assert(!removal && removal.error() == ui::EAttachmentError::BUSY);
+        };
+        unsigned notifications{};
+        auto connection = object::LuxObject::connect(
+            root->get(), &ui::Root::attachmentChanged,
+            [&](const ui::AttachmentChanged& change) noexcept
+            {
+                if (!change.mounted) return;
+                assert(change.pane == ui::PaneId{"state-c"});
+                assert(counts.state_applied == 2 && !a->visible() && b->visible());
+                assert(a->content() == binding && b->content() == binding);
+                assert((*root)->captureDockTree().nodes.front().windows == candidate.nodes.front().windows);
+                ++notifications;
+            }
+        );
+        assert(connection && registry.mount(**root, *scope, new_window, candidate, state_requests()));
+        counts.operating = {};
+        assert(notifications == 1 && counts.state_applied == 2);
+        assert(registry.captureState(**root, a_handle)->bytes == std::vector{std::byte{31}});
+        assert(registry.captureState(**root, b_handle)->bytes == std::vector{std::byte{32}});
+        root->reset();
+        assert(counts.models_destroyed == 1 && scope->release() && scope->drained());
+        std::cout << "UI state and owned mount prepare together; failure preserves binding, values and DockTree; "
+                     "commit precedes notifications and keeps original factory operations PASS\n";
     }
 
     void publication(object::ObjectMessageQueue& messages)
@@ -956,6 +1091,7 @@ int main()
     configuredMount(messages);
     windowOperations(messages);
     batchClose(messages);
+    configuredStateBatch(messages);
     publication(messages);
     rejection(messages);
     rejectedMountCleanup(messages);

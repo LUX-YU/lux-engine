@@ -1177,6 +1177,29 @@ namespace
         }));
         assert(model->describe().current == initial.current && model->describe().observed == observed_before_close);
         assert(model->describe().dirty == initial.dirty && take(take(model->read()).encode()) == bytes);
+        workspace::VersionedViewState changed_state{1, {}};
+        {
+            serialization::BinaryWriter writer(changed_state.bytes);
+            constexpr std::string_view another_missing_linker{"EC4-another-missing-linker.exe"};
+            assert(writer.writeUnsigned(std::uint64_t{1}));
+            assert(writer.writeUnsigned(static_cast<std::uint32_t>(another_missing_linker.size())));
+            assert(writer.writeBytes(std::as_bytes(std::span(another_missing_linker))));
+        }
+        const std::vector<desktop::UiStateRequest> state_change{{a_handle, changed_state, {}}};
+        assert(take(model->read()).withRead([&]() -> ef::FlowEditResult<void>
+        {
+            auto busy_state = ui.mount(root, scope, {}, {}, state_change);
+            assert(!busy_state && busy_state.error().code == desktop::EUiError::BUSY);
+            assert(a->binding()->interaction->overlay() && a->binding()->session == key);
+            assert(take(ui.captureState(root, a_handle)).bytes == b_state.bytes);
+            return {};
+        }));
+        assert(ui.mount(root, scope, {}, {}, state_change));
+        assert(!a->binding()->interaction->overlay() && a->binding()->session == key);
+        assert(b->binding()->session == key && take(ui.captureState(root, b_handle)).bytes == b_state.bytes);
+        assert(take(ui.captureState(root, a_handle)).bytes == changed_state.bytes);
+        assert(model->describe().current == initial.current && model->describe().observed == observed_before_close);
+        assert(model->describe().dirty == initial.dirty && take(take(model->read()).encode()) == bytes);
         assert(a->cancelEdit());
         const auto operation = take(a->compile());
         auto compiler = take(services.get<ef::FlowCompilationService>(scope));

@@ -103,6 +103,16 @@ int main(int argc, char** argv)
             assert(state && state->bytes == std::vector{std::byte{73}});
         }
         assert(trace.operations == 2 && trace.unloaded == 0);
+        std::vector<UiStateRequest> configurations;
+        for (auto* pane : (*root)->panes())
+            configurations.push_back({*(*root)->identify(*pane), {1, {std::byte{91}}}, {}});
+        assert(context.ui().mount(**root, *scope, {}, {}, configurations));
+        for (const auto& input : configurations)
+        {
+            auto state = context.ui().captureState(**root, input.target);
+            assert(state && state->bytes == input.configuration.bytes);
+        }
+        assert(trace.operations == 4 && trace.unloaded == 0);
         root->reset();
         assert(trace.windows_destroyed == 4);
         assert(scope->release() && !scope->drained());

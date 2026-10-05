@@ -148,9 +148,19 @@ namespace
         {
             assert(trace_.unloaded == 0);
             ++trace_.operations;
-            return lux::editor::workspace::VersionedViewState{1, {std::byte{73}}};
+            return lux::editor::workspace::VersionedViewState{1, state_};
+        }
+        UiStateResult prepareState(const lux::editor::workspace::VersionedViewState& state)
+        {
+            assert(trace_.unloaded == 0);
+            return cxx::move_only_function<void()>{[this, value = state.bytes]() mutable noexcept
+            {
+                assert(trace_.unloaded == 0);
+                state_ = std::move(value);
+            }};
         }
     private:
+        std::vector<std::byte> state_{std::byte{73}};
         std::shared_ptr<fixture::Job> job_;
         fixture::Trace& trace_;
         object::Connection connection_;
@@ -174,6 +184,8 @@ namespace
     {
         UiDescriptor descriptor{lux::editor::views::ViewTypeIdView{type}, label, ui_dependencies, 1, nullptr, create};
         descriptor.capture_state = [](const ui::Pane& pane) { return static_cast<const Panel&>(pane).captureState(); };
+        descriptor.prepare_state = [](ui::Pane& pane, const lux::editor::workspace::VersionedViewState& state)
+        { return static_cast<Panel&>(pane).prepareState(state); };
         return descriptor;
     }
     constexpr auto left = panelDescriptor(

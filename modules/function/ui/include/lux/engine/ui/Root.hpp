@@ -112,6 +112,13 @@ namespace lux::ui
             PreparedAttachment&,
             cxx::function_ref<void()> adopt
         ) noexcept;
+        // Transfer exactly the owners reserved by a mount preparation, then apply already-prepared
+        // local values before notifications. Failure preserves all candidates and deleters.
+        [[nodiscard]] cxx::expected<AttachmentCommit, EAttachmentError> commit(
+            PreparedAttachment&,
+            std::span<std::unique_ptr<Pane, object::ObjectDeleter>>,
+            cxx::function_ref<void()> adopt
+        ) noexcept;
         object::TSignal<AttachmentChanged> attachmentChanged{*this};
 
         using ChangeCallback = void (*)(object::LuxObject&) noexcept;
@@ -202,6 +209,8 @@ namespace lux::ui
             std::span<const WindowVisibility> = {}
         );
         void abandonAttachment(detail::AttachmentState&) noexcept;
+        [[nodiscard]] cxx::expected<void, EAttachmentError> validateAttachment(const PreparedAttachment&) const noexcept;
+        [[nodiscard]] AttachmentCommit commitPrepared(PreparedAttachment&, cxx::function_ref<void()>) noexcept;
         bool allowsGenericChildren() const noexcept override
         {
             return false;

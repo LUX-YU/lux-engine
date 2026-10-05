@@ -244,60 +244,79 @@ namespace lux::editor::flowforge
             return std::move(*current);
         }
     } // namespace
-    constinit const desktop::UiDescriptor kFlowView{
-        views::ViewTypeIdView{"lux.editor.flowforge"},
-        "FlowForge",
-        ui_dependencies,
-        1,
-        nullptr,
-        createView,
-        kContentKinds,
-        true,
-        +[](const lux::ui::Pane& pane) noexcept -> views::ViewContent
-        {
-            const auto& binding = static_cast<const FlowView&>(pane).binding();
-            return binding ? views::ViewContent{{binding->session.id()}, binding->session.id()} : views::ViewContent{};
-        },
-        +[](lux::ui::Pane& pane, const views::ViewContent& content) -> desktop::UiResult<void>
-        {
-            auto result = static_cast<FlowView&>(pane).rebindContent(content);
-            if (!result)
+    constinit const desktop::UiDescriptor kFlowView = []
+    {
+        desktop::UiDescriptor value{
+            views::ViewTypeIdView{"lux.editor.flowforge"},
+            "FlowForge",
+            ui_dependencies,
+            1,
+            nullptr,
+            createView,
+            kContentKinds,
+            true,
+            +[](const lux::ui::Pane& pane) noexcept -> views::ViewContent
             {
-                auto failure = workbench::detail::viewPreparationFailure(result.error(), temporary(result.error()));
+                const auto& binding = static_cast<const FlowView&>(pane).binding();
+                return binding ? views::ViewContent{{binding->session.id()}, binding->session.id()} : views::ViewContent{};
+            },
+            +[](lux::ui::Pane& pane, const views::ViewContent& content) -> desktop::UiResult<void>
+            {
+                auto result = static_cast<FlowView&>(pane).rebindContent(content);
+                if (!result)
+                {
+                    auto failure = workbench::detail::viewPreparationFailure(result.error(), temporary(result.error()));
+                    return cxx::unexpected(desktop::UiFailure{
+                        failure.retryable ? desktop::EUiError::BUSY : desktop::EUiError::OPERATION_FAILURE,
+                        std::move(failure.domain), failure.code, std::move(failure.message)
+                    });
+                }
+                return {};
+            },
+            +[](lux::ui::Pane& pane) -> desktop::UiResult<void>
+            {
+                auto result = static_cast<FlowView&>(pane).cancelEdit();
+                if (!result)
+                {
+                    auto failure = workbench::detail::viewPreparationFailure(result.error(), temporary(result.error()));
+                    return cxx::unexpected(desktop::UiFailure{
+                        failure.retryable ? desktop::EUiError::BUSY : desktop::EUiError::OPERATION_FAILURE,
+                        std::move(failure.domain), failure.code, std::move(failure.message)
+                    });
+                }
+                return {};
+            },
+            +[](const lux::ui::Pane& pane) -> desktop::UiResult<workspace::VersionedViewState>
+            {
+                auto captured = static_cast<const FlowView&>(pane).captureState();
+                if (!captured)
+                {
+                    auto failure = std::move(captured.error());
+                    return cxx::unexpected(desktop::UiFailure{
+                        failure.retryable ? desktop::EUiError::BUSY : desktop::EUiError::OPERATION_FAILURE,
+                        std::move(failure.domain), failure.code, std::move(failure.message)
+                    });
+                }
+                return std::move(*captured);
+            }
+        };
+        value.prepare_state = +[](lux::ui::Pane& pane, const workspace::VersionedViewState& state)
+            -> desktop::UiStateResult
+        {
+            auto prepared = static_cast<FlowView&>(pane).prepareState(state.schema, state.bytes);
+            if (!prepared)
+            {
+                auto failure = std::move(prepared.error());
                 return cxx::unexpected(desktop::UiFailure{
                     failure.retryable ? desktop::EUiError::BUSY : desktop::EUiError::OPERATION_FAILURE,
                     std::move(failure.domain), failure.code, std::move(failure.message)
                 });
             }
-            return {};
-        },
-        +[](lux::ui::Pane& pane) -> desktop::UiResult<void>
-        {
-            auto result = static_cast<FlowView&>(pane).cancelEdit();
-            if (!result)
-            {
-                auto failure = workbench::detail::viewPreparationFailure(result.error(), temporary(result.error()));
-                return cxx::unexpected(desktop::UiFailure{
-                    failure.retryable ? desktop::EUiError::BUSY : desktop::EUiError::OPERATION_FAILURE,
-                    std::move(failure.domain), failure.code, std::move(failure.message)
-                });
-            }
-            return {};
-        },
-        +[](const lux::ui::Pane& pane) -> desktop::UiResult<workspace::VersionedViewState>
-        {
-            auto captured = static_cast<const FlowView&>(pane).captureState();
-            if (!captured)
-            {
-                auto failure = std::move(captured.error());
-                return cxx::unexpected(desktop::UiFailure{
-                    failure.retryable ? desktop::EUiError::BUSY : desktop::EUiError::OPERATION_FAILURE,
-                    std::move(failure.domain), failure.code, std::move(failure.message)
-                });
-            }
-            return std::move(*captured);
-        }
-    };
+            return std::move(*prepared);
+        };
+        value.cancel_preview = value.prepare_close;
+        return value;
+    }();
 
     struct FlowView::Impl final
     {

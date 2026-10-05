@@ -544,7 +544,7 @@ namespace lux::editor::desktop
     UiResult<void> UiRegistry::visit(
         lux::ui::Root& root,
         const lux::ui::PaneHandle& handle,
-        cxx::function_ref<void(const UiDescriptor&, lux::ui::Pane&)> callback
+        cxx::function_ref<void(const std::shared_ptr<const UiEntry>&, lux::ui::Pane&)> callback
     ) noexcept
     {
         if (auto admitted = impl_->admission(); !admitted)
@@ -557,7 +557,7 @@ namespace lux::editor::desktop
     UiResult<void> UiRegistry::visitAdmitted(
         lux::ui::Root& root,
         const lux::ui::PaneHandle& handle,
-        cxx::function_ref<void(const UiDescriptor&, lux::ui::Pane&)> callback
+        cxx::function_ref<void(const std::shared_ptr<const UiEntry>&, lux::ui::Pane&)> callback
     ) noexcept
     {
         UiResult<void> result = reject(EUiError::NOT_FOUND, "Pane was not created by this registry");
@@ -572,7 +572,7 @@ namespace lux::editor::desktop
                     // Registered extension callbacks are a foreign boundary, never the draw/update hot path.
                     try
                     {
-                        callback(output->declaration->descriptor(), pane);
+                        callback(output->declaration, pane);
                         result = {};
                     }
                     catch (const std::bad_alloc&)
@@ -597,8 +597,9 @@ namespace lux::editor::desktop
     UiResult<views::ViewContent> UiRegistry::content(lux::ui::Root& root, const lux::ui::PaneHandle& handle) noexcept
     {
         views::ViewContent result;
-        auto capture = [&](const UiDescriptor& descriptor, lux::ui::Pane& pane)
+        auto capture = [&](const std::shared_ptr<const UiEntry>& entry, lux::ui::Pane& pane)
         {
+            const auto& descriptor = entry->descriptor();
             if (descriptor.content)
             {
                 result = descriptor.content(pane);
@@ -618,8 +619,9 @@ namespace lux::editor::desktop
         // Capture before an extension callback; a caller may mutate its own input in that callback.
         const auto candidate = content;
         UiResult<void> result;
-        auto bind = [&](const UiDescriptor& descriptor, lux::ui::Pane& pane)
+        auto bind = [&](const std::shared_ptr<const UiEntry>& entry, lux::ui::Pane& pane)
         {
+            const auto& descriptor = entry->descriptor();
             if (!candidate.valid())
             {
                 result = reject(EUiError::INVALID_CONFIGURATION, "Invalid content association");
@@ -684,8 +686,9 @@ namespace lux::editor::desktop
         }
         const auto revision = root.windowRevision();
         UiResult<void> result;
-        auto prepare = [&](const UiDescriptor& descriptor, lux::ui::Pane& pane)
+        auto prepare = [&](const std::shared_ptr<const UiEntry>& entry, lux::ui::Pane& pane)
         {
+            const auto& descriptor = entry->descriptor();
             if (descriptor.prepare_close)
             {
                 result = descriptor.prepare_close(pane);
@@ -715,8 +718,9 @@ namespace lux::editor::desktop
     UiRegistry::captureState(lux::ui::Root& root, const lux::ui::PaneHandle& handle) noexcept
     {
         UiResult<workspace::VersionedViewState> result{workspace::VersionedViewState{}};
-        auto capture = [&](const UiDescriptor& descriptor, lux::ui::Pane& pane)
+        auto capture = [&](const std::shared_ptr<const UiEntry>& entry, lux::ui::Pane& pane)
         {
+            const auto& descriptor = entry->descriptor();
             if (descriptor.capture_state)
             {
                 result = descriptor.capture_state(pane);
@@ -733,7 +737,8 @@ namespace lux::editor::desktop
         lux::ui::Root& root,
         services::ServiceScope& scope,
         std::vector<UiMountRequest> input,
-        std::optional<lux::ui::DockTree> docking
+        std::optional<lux::ui::DockTree> docking,
+        std::vector<UiStateRequest> state_input
     ) noexcept
     {
         if (auto admission = impl_->admission(); !admission)
@@ -745,6 +750,7 @@ namespace lux::editor::desktop
         // declaration order also keeps the service read alive until every input owner is gone.
         std::optional<services::ServiceRegistry::ReadScope> services;
         auto requests = std::move(input);
+        auto state_requests = std::move(state_input);
         auto acquired = impl_->services.readScope();
         if (!acquired)
         {
@@ -786,8 +792,83 @@ namespace lux::editor::desktop
         }
         std::vector<std::unique_ptr<lux::ui::Pane, object::ObjectDeleter>> owners;
         std::vector<lux::ui::WindowVisibility> visibility;
+        struct State final
+        {
+            std::shared_ptr<const UiEntry> declaration;
+            cxx::move_only_function<void()> apply;
+        };
+        std::vector<State> states;
+        states.reserve(state_requests.size());
         owners.reserve(requests.size());
-        visibility.reserve(requests.size());
+        visibility.reserve(requests.size() + state_requests.size());
+        // Reject the whole input topology before any provider prepares or cancels an interaction.
+        std::vector<lux::ui::Pane*> existing;
+        existing.reserve(state_requests.size());
+        for (const auto& request : state_requests)
+        {
+            auto found = root.findPane(request.target);
+            if (!found)
+            {
+                return attachmentFailure(found.error());
+            }
+            if (std::ranges::find(existing, *found) != existing.end())
+            {
+                return reject(EUiError::DUPLICATE, "Repeated state target");
+            }
+            existing.push_back(*found);
+        }
+        for (const auto& request : state_requests)
+        {
+            UiResult<void> result;
+            auto prepare = [&](const std::shared_ptr<const UiEntry>& entry, lux::ui::Pane& pane)
+            {
+                const auto& descriptor = entry->descriptor();
+                const auto& configuration = request.configuration;
+                if (configuration.schema != descriptor.schema)
+                {
+                    result = reject(EUiError::INVALID_CONFIGURATION, "Unsupported state schema");
+                    return;
+                }
+                if (descriptor.validate)
+                {
+                    result = descriptor.validate(configuration.bytes);
+                    if (!result)
+                    {
+                        return;
+                    }
+                }
+                cxx::move_only_function<void()> apply;
+                if (descriptor.prepare_state)
+                {
+                    auto prepared = descriptor.prepare_state(pane, configuration);
+                    if (!prepared)
+                    {
+                        result = cxx::unexpected(std::move(prepared.error()));
+                        return;
+                    }
+                    apply = std::move(*prepared);
+                }
+                else if (!configuration.bytes.empty())
+                {
+                    result = reject(EUiError::INVALID_CONFIGURATION, "This factory has no configurable state");
+                    return;
+                }
+                states.push_back({entry, std::move(apply)});
+                if (request.visible)
+                {
+                    visibility.push_back({&pane, *request.visible});
+                }
+            };
+            auto visited = visitAdmitted(root, request.target, prepare);
+            if (!visited)
+            {
+                return cxx::unexpected(std::move(visited.error()));
+            }
+            if (!result)
+            {
+                return cxx::unexpected(std::move(result.error()));
+            }
+        }
         for (const auto& request : requests)
         {
             auto created = createImpl(request.factory, scope, request.input);
@@ -803,12 +884,57 @@ namespace lux::editor::desktop
             // Preserve any legitimate callback change; never replace its state with an older layout.
             return reject(EUiError::STALE_ROOT);
         }
-        auto committed = root.addSubPanes(owners, visibility, prepared_docking ? &*prepared_docking : nullptr);
+        std::vector<lux::ui::Pane*> panes;
+        panes.reserve(owners.size());
+        for (const auto& owner : owners)
+        {
+            panes.push_back(owner.get());
+        }
+        auto prepared = root.prepareMount(panes, visibility);
+        if (!prepared)
+        {
+            return attachmentFailure(prepared.error());
+        }
+        // Capacity, providers and all value preparations have succeeded. End overlays using the
+        // original domain gates; no source, binding, or persisted configuration is applied here.
+        for (const auto& request : state_requests)
+        {
+            UiResult<void> result;
+            auto cancel = [&](const std::shared_ptr<const UiEntry>& entry, lux::ui::Pane& pane)
+            {
+                if (entry->descriptor().cancel_preview)
+                {
+                    result = entry->descriptor().cancel_preview(pane);
+                }
+            };
+            auto visited = visitAdmitted(root, request.target, cancel);
+            if (!visited)
+            {
+                return cxx::unexpected(std::move(visited.error()));
+            }
+            if (!result)
+            {
+                return cxx::unexpected(std::move(result.error()));
+            }
+        }
+        auto apply = [&]() noexcept
+        {
+            for (auto& state : states)
+            {
+                if (state.apply)
+                {
+                    state.apply();
+                }
+            }
+            if (prepared_docking)
+            {
+                root.commitDockTree(std::move(*prepared_docking));
+            }
+        };
+        auto committed = root.commit(*prepared, owners, apply);
         if (!committed)
         {
-            return cxx::unexpected(
-                UiFailure{EUiError::ATTACHMENT, "ui.attachment", static_cast<std::uint64_t>(committed.error()), {}}
-            );
+            return attachmentFailure(committed.error());
         }
         return std::move(*committed);
     }

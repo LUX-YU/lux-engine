@@ -1,14 +1,21 @@
 #include <cassert>
 #include <chrono>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <lux/engine/editor/desktop/UiRegistry.hpp>
+#include <lux/engine/editor/launcher/LaunchEditor.hpp>
 #include <lux/engine/editor/project/ProjectCreationView.hpp>
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
 #include <lux/engine/object/ObjectDispatcher.hpp>
 #include <lux/engine/process/ExecutionRuntime.hpp>
 #include <lux/engine/ui/Root.hpp>
 #include <thread>
+
+static_assert(!std::is_copy_constructible_v<lux::editor::ProjectLaunching>);
+static_assert(!std::is_copy_assignable_v<lux::editor::ProjectLaunching>);
+static_assert(!std::is_move_constructible_v<lux::editor::ProjectLaunching>);
+static_assert(!std::is_move_assignable_v<lux::editor::ProjectLaunching>);
 
 template <class Result> auto take(Result&& value)
 {
@@ -21,6 +28,12 @@ int main(int argc, char** argv)
     using namespace lux;
     using namespace lux::editor;
     assert(argc == 3);
+    if (std::string_view{argv[1]} == "--project")
+    {
+        std::ofstream received(argv[2]);
+        received << "actual process received project argument";
+        return received ? 0 : 3;
+    }
     const auto directory = std::filesystem::absolute(argv[2]);
     // This isolated consumer owns only its exact test directory.
     assert(directory.filename() == "creation" && directory.has_parent_path());
@@ -92,5 +105,73 @@ int main(int argc, char** argv)
     assert(scope.release());
     assert(lifetime.expired() && !scope.drained());
     assert(messages.collectRetired() == 1 && scope.drained() && registry.drained());
+
+    // Actual public asynchronous launching, including a failed installation and later real child process.
+    // The parent uses only SDK headers; the child witnesses the existing platform launch arguments.
+    {
+        auto launch_scope = take(registry.createScope());
+        auto installation = directory / "installation with spaces";
+        assert(launch_scope.provide(services::ServiceNameView{"lux.process.execution"}, execution));
+        assert(launch_scope.provide(services::ServiceNameView{"lux.editor.installation"}, installation));
+        assert(registry.publish({services::ServiceEntry::bind<kProjectLaunchingService>(object::CodeLease::builtin())})
+        );
+        auto launching = take(registry.get<ProjectLaunching>(launch_scope));
+        assert(launching == take(registry.get<ProjectLaunching>(launch_scope)));
+        const auto received = directory / "received-project.txt";
+        auto settle_launch = [&]()
+        {
+            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+            while (launching->pending())
+            {
+                assert(std::chrono::steady_clock::now() < deadline);
+                assert(execution.collectCompletions());
+                std::this_thread::yield();
+            }
+        };
+        assert(launching->request(received));
+        auto full = launching->request(received);
+        assert(!full && full.error().code == EEditorError::BUSY);
+        auto unfinished = launching->acknowledge();
+        assert(!unfinished && unfinished.error().code == EEditorError::BUSY);
+        settle_launch();
+        assert(launching->result() && !*launching->result());
+        assert(launching->result()->error().domain == "editor.launch");
+        const auto retained_failure = launching->result()->error();
+        full = launching->request(received);
+        assert(!full && full.error().code == EEditorError::BUSY);
+        assert(launching->result()->error().reason == retained_failure.reason);
+        assert(launching->acknowledge());
+        std::filesystem::create_directories(installation / "bin");
+        const auto executable = std::filesystem::absolute(argv[0]);
+        auto child = installation / "bin/lux_editor";
+        child += executable.extension();
+        std::filesystem::copy_file(executable, child);
+        assert(launching->request(received));
+        settle_launch();
+        assert(launching->result() && *launching->result());
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+        std::string argument;
+        while (argument.empty())
+        {
+            assert(std::chrono::steady_clock::now() < deadline);
+            std::ifstream input(received);
+            std::getline(input, argument);
+            std::this_thread::yield();
+        }
+        assert(argument == "actual process received project argument");
+        assert(launching->acknowledge());
+        std::thread foreign(
+            [&]()
+            {
+                auto rejected = launching->request(received);
+                assert(!rejected && rejected.error().code == EEditorError::INVALID_STATE);
+            }
+        );
+        foreign.join();
+        assert(!launching->pending() && !launching->result());
+        launching.reset();
+        assert(launch_scope.release());
+        assert(messages.collectRetired() == 1 && launch_scope.drained() && registry.drained());
+    }
     std::cout << "Installed ProjectCreation: same allocation, real files, closed UI, conflict, safe retirement\n";
 }

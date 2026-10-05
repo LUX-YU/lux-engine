@@ -72,16 +72,15 @@ namespace lux::editor::application
         commands::CommandRegistry commands;
         commands::CommandDispatcher dispatcher(commands);
         bool closing{}, open_requested{};
-        std::optional<EditorResult<void>> launched;
-        std::optional<process::TaskId> launching;
-        process::TaskScope tasks(execution);
         project::ProjectCreationOptions creation_options{installation, true};
         services::ServiceRegistry services(messages->dispatcherRef());
         auto scope = services.createScope();
         if (!scope || !scope->provide(services::ServiceNameView{"lux.process.execution"}, execution) ||
             !scope->provide(services::ServiceNameView{"lux.editor.project.creation.options"}, creation_options) ||
+            !scope->provide(services::ServiceNameView{"lux.editor.installation"}, creation_options.installation) ||
             !services.publish(
-                {services::ServiceEntry::bind<project::kProjectCreationService>(object::CodeLease::builtin())}
+                {services::ServiceEntry::bind<project::kProjectCreationService>(object::CodeLease::builtin()),
+                 services::ServiceEntry::bind<kProjectLaunchingService>(object::CodeLease::builtin())}
             ))
         {
             return 3;
@@ -103,6 +102,7 @@ namespace lux::editor::application
             }
         };
         const cxx::scope_exit retire_services{retire};
+        std::shared_ptr<ProjectLaunching> launching;
         auto creation = services.get<project::ProjectCreation>(*scope);
         if (!creation)
         {
@@ -161,7 +161,7 @@ namespace lux::editor::application
         entries.push_back(commands::CommandEntry::bind<command_lux_project_open>(
             lux::object::CodeLease::builtin(),
             [&](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
-            { return commands::CommandState{!closing && !launching}; },
+            { return commands::CommandState{!closing && (!launching || !launching->pending())}; },
             [&](const commands::CommandInvocation&) -> commands::CommandResult<commands::DispatchReceipt>
             {
                 open_requested = true;
@@ -212,17 +212,23 @@ namespace lux::editor::application
             {
                 fail("services");
             }
-            if (launched)
+            if (launching)
             {
-                if (!*launched)
+                if (const auto* launched = launching->result())
                 {
-                    fail(launched->error().domain);
+                    if (!*launched)
+                    {
+                        fail(launched->error().domain);
+                    }
+                    else
+                    {
+                        closing = true;
+                    }
+                    if (!launching->acknowledge())
+                    {
+                        fail("launch.acknowledge");
+                    }
                 }
-                else
-                {
-                    closing = true;
-                }
-                launched.reset();
             }
             if ((*creation)->progress().launched)
             {
@@ -241,7 +247,7 @@ namespace lux::editor::application
             {
                 window.hide(true);
                 (*creation)->cancel();
-                if (!(*creation)->progress().pending && !launching)
+                if (!(*creation)->progress().pending && (!launching || !launching->pending()))
                 {
                     break;
                 }
@@ -275,43 +281,21 @@ namespace lux::editor::application
                 }
                 else if (*chosen)
                 {
-                    auto accepted = tasks.submit(
-                        {"Open project", "Project"},
-                        [installation,
-                         file = std::move(**chosen),
-                         scheduler = *execution.blocking()](process::TaskReporter) noexcept
+                    if (!launching)
+                    {
+                        auto service = services.get<ProjectLaunching>(*scope);
+                        if (!service)
                         {
-                            return stdexec::then(
-                                stdexec::schedule(scheduler),
-                                [installation, file]() noexcept { return launchEditor(installation, file); }
-                            );
-                        },
-                        [&](process::TTaskResult<void, EditorFailure>&& result) noexcept
-                        {
-                            launching.reset();
-                            if (result)
-                            {
-                                launched.emplace();
-                            }
-                            else if (auto* error = result.error().domainFailure())
-                            {
-                                launched.emplace(cxx::unexpected(std::move(*error)));
-                            }
-                            else
-                            {
-                                launched.emplace(
-                                    cxx::unexpected(EditorFailure{EEditorError::EXECUTION_FAILURE, "launcher.task"})
-                                );
-                            }
+                            fail("launch.service");
                         }
-                    );
-                    if (!accepted)
-                    {
-                        fail("submit");
+                        else
+                        {
+                            launching = std::move(*service);
+                        }
                     }
-                    else
+                    if (launching && !launching->request(std::move(**chosen)))
                     {
-                        launching = *accepted;
+                        fail("launch.request");
                     }
                 }
             }

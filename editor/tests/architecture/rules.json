@@ -12804,7 +12804,8 @@
         "role": "IO",
         "capabilities": [
           "CPU",
-          "PLATFORM"
+          "PLATFORM",
+          "PROCESS"
         ],
         "path": "editor/activities/project/launch"
       },

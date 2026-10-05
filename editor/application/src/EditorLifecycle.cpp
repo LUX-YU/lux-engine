@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <lux/engine/editor/application/EditorApplicationImpl.hpp>
+#include <lux/engine/editor/launcher/LaunchEditor.hpp>
 #include <lux/engine/log/Log.hpp>
 #include <thread>
 
@@ -483,7 +484,7 @@ namespace lux::editor::application
             }
             return {};
         }
-        if (close_application_ && project_launch_)
+        if (close_application_ && project_launching_ && project_launching_->pending())
         {
             return {};
         }
@@ -636,7 +637,7 @@ namespace lux::editor::application
         const bool operations_settled = importer_->closeStatus().state == assets::EModelImportCloseState::CLOSED &&
                                         user_settings_changes_->settled() && project_settings_changes_->settled() &&
                                         content_saving_->settled() && opening_->settled() &&
-                                        recent_projects_->settled() && !project_launch_ &&
+                                        recent_projects_->settled() && (!project_launching_ || !project_launching_->pending()) &&
                                         std::ranges::all_of(
                                             workspace_changes_->publications(),
                                             [](const auto& value) { return value.result.has_value(); }
@@ -706,9 +707,13 @@ namespace lux::editor::application
         (void)task_monitor_.dispatchChanges();
         project_->dispatchEvents();
         (void)messages_.dispatchPending();
-        if (auto result = std::exchange(project_launch_result_, {}))
+        if (project_launching_)
         {
-            receive(std::move(*result));
+            if (const auto* result = project_launching_->result())
+            {
+                receive(*result);
+                receive(project_launching_->acknowledge());
+            }
         }
         receive(recent_projects_->update(phase_ == EApplicationPhase::RUNNING));
         importer_->update();

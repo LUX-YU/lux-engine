@@ -46,6 +46,11 @@
 #include <lux/engine/window/GlfwRuntime.hpp>
 #include <lux/engine/window/LuxWindow.hpp>
 
+namespace lux::editor
+{
+    class ProjectLaunching;
+}
+
 namespace lux::editor::application
 {
     // Error conversion is a cold application boundary, preserving the exact owning cause.
@@ -140,8 +145,6 @@ namespace lux::editor::application
         std::optional<lux::ui::PaneHandle> import_browse_;
         bool project_open_requested_{};
         std::optional<std::filesystem::path> project_launch_intent_;
-        std::optional<process::TaskId> project_launch_;
-        std::optional<EditorResult<void>> project_launch_result_;
         struct PluginSelection final
         {
             std::vector<ProjectPluginEntry> based_on, desired;
@@ -181,6 +184,7 @@ namespace lux::editor::application
             ServiceRetirement(ServiceRetirement&&) = delete;
             ServiceRetirement& operator=(ServiceRetirement&&) = delete;
         } service_retirement_{editor_context_, messages_};
+        std::shared_ptr<ProjectLaunching> project_launching_;
         std::shared_ptr<persistence::IArtifactStore> files_;
         std::shared_ptr<persistence::WriteCoordinator> writes_;
         std::shared_ptr<persistence::SaveService> saves_;

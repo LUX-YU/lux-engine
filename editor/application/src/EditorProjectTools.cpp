@@ -49,13 +49,14 @@ namespace lux::editor::application
             [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
             {
                 return commands::CommandState{
-                    phase_ == EApplicationPhase::RUNNING && !project_launch_ && !project_open_requested_ &&
-                    !project_launch_intent_
+                    phase_ == EApplicationPhase::RUNNING && (!project_launching_ || !project_launching_->pending()) &&
+                    !project_open_requested_ && !project_launch_intent_
                 };
             },
             [this]() -> commands::CommandResult<void>
             {
-                if (project_launch_ || project_open_requested_ || project_launch_intent_)
+                if ((project_launching_ && project_launching_->pending()) || project_open_requested_ ||
+                    project_launch_intent_)
                 {
                     return cxx::unexpected(commands::CommandFailure{commands::ECommandError::BUSY, "project.open"});
                 }
@@ -87,41 +88,22 @@ namespace lux::editor::application
                 project_launch_intent_ = std::move(**selected);
             }
         }
-        if (project_launch_intent_ && !project_launch_)
+        if (project_launch_intent_)
         {
-            auto accepted = project_tasks_.submit(
-                {"Open project in Editor", "Project"},
-                [file = *project_launch_intent_,
-                 installation = config_.installation,
-                 scheduler = *engine_->execution().blocking()](process::TaskReporter) noexcept
+            if (!project_launching_)
+            {
+                auto launching = editor_context_.services().get<ProjectLaunching>(editor_context_.scope());
+                if (!launching)
                 {
-                    return stdexec::then(
-                        stdexec::schedule(scheduler),
-                        [file, installation]() noexcept { return launchEditor(installation, file); }
-                    );
-                },
-                [this](process::TTaskResult<void, EditorFailure>&& result) noexcept
-                {
-                    project_launch_.reset();
-                    if (result)
-                    {
-                        project_launch_result_.emplace();
-                    }
-                    else if (auto* error = result.error().domainFailure())
-                    {
-                        project_launch_result_.emplace(cxx::unexpected(std::move(*error)));
-                    }
-                    else
-                    {
-                        project_launch_result_.emplace(applicationFailure("project.launch.task", result.error()));
-                    }
+                    return applicationFailure("project.launch.service", launching.error());
                 }
-            );
+                project_launching_ = std::move(*launching);
+            }
+            auto accepted = project_launching_->request(*project_launch_intent_);
             if (!accepted)
             {
-                return applicationFailure("project.launch.submit", accepted.error());
+                return accepted;
             }
-            project_launch_ = *accepted;
             project_launch_intent_.reset();
         }
         if (!import_browse_)
@@ -162,7 +144,8 @@ namespace lux::editor::application
     {
         recent_open_ = [this](const std::filesystem::path& path) -> EditorResult<void>
         {
-            const bool is_unavailable = phase_ != EApplicationPhase::RUNNING || project_launch_.has_value() ||
+            const bool is_unavailable = phase_ != EApplicationPhase::RUNNING ||
+                                        (project_launching_ && project_launching_->pending()) ||
                                         project_launch_intent_.has_value();
             if (is_unavailable)
             {

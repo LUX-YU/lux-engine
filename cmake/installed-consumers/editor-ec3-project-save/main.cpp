@@ -166,7 +166,7 @@ int main(int argc, char** argv)
     auto ui_root = take(ui::Root::create(messages.dispatcherRef()));
     desktop::UiRegistry windows{messages.dispatcherRef(), dependencies};
 #endif
-    assert(dependencies.publish(
+    const auto published = dependencies.publish(
         {
 #if defined(LUX_TEST_CONTENT_REVIEW)
          services::ServiceEntry::bind<project::kContentReviewService>(object::CodeLease::builtin()),
@@ -184,7 +184,8 @@ int main(int argc, char** argv)
              object::CodeLease::builtin(),
              std::make_shared<const std::filesystem::path>(root)
          )}
-    ));
+    );
+    assert(published);
     auto scope = take(dependencies.createScope());
 #if defined(LUX_TEST_CONTENT_REVIEW)
     assert(scope.provide(services::ServiceNameView{"lux.ui.root"}, *ui_root));

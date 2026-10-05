@@ -1,10 +1,11 @@
 #include <exception>
-#include <lux/engine/editor/workbench/CommandSupport.hpp>
-#include <lux/engine/editor/workbench/ViewFactorySupport.hpp>
-#include <lux/engine/editor/project/ProjectView.hpp>
-#include <lux/engine/ui/Element.hpp>
 #include <imgui.h>
 #include <imgui_stdlib.h>
+#include <lux/engine/editor/desktop/UiRegistry.hpp>
+#include <lux/engine/editor/project/ProjectView.hpp>
+#include <lux/engine/editor/workbench/CommandSupport.hpp>
+#include <lux/engine/editor/workbench/ViewFactorySupport.hpp>
+#include <lux/engine/ui/Element.hpp>
 
 namespace lux::editor::project
 {
@@ -21,6 +22,51 @@ namespace lux::editor::project
             cxx::typeToken<std::monostate>()
         };
     } // namespace
+    namespace
+    {
+        constexpr services::ServiceDependency kDependencies[]{
+            {services::ServiceNameView{"lux.editor.project.catalog"},
+             1,
+             cxx::typeToken<ProjectCatalogModel>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT}
+        };
+        desktop::UiResult<std::unique_ptr<lux::ui::Pane>> createView(
+            services::ServiceResolver& resolver,
+            const desktop::UiCreateInfo& input
+        )
+        {
+            const bool has_content = !input.content.sessions.empty();
+            const bool has_configuration = !input.configuration.bytes.empty();
+            const bool is_invalid_input = has_content || has_configuration;
+            if (is_invalid_input)
+            {
+                return cxx::unexpected(desktop::UiFailure{
+                    desktop::EUiError::INVALID_CONFIGURATION,
+                    "project.window",
+                    0,
+                    "The project window accepts no author binding or configuration payload"
+                });
+            }
+            auto catalog = resolver.require<ProjectCatalogModel>(0);
+            if (!catalog)
+            {
+                return cxx::unexpected(desktop::UiFailure{
+                    desktop::EUiError::DEPENDENCY,
+                    "project.catalog",
+                    static_cast<std::uint64_t>(catalog.error().code),
+                    catalog.error().detail
+                });
+            }
+            return std::make_unique<ProjectView>(input.dispatcher, input.instance, catalog->get());
+        }
+    } // namespace
+    constinit const desktop::UiDescriptor kProjectView{
+        .type = kFactoryDescriptor.type,
+        .label = kFactoryDescriptor.label,
+        .dependencies = kDependencies,
+        .create = createView
+    };
     struct ProjectView::Impl final
     {
         struct Content final : lux::ui::Element
@@ -37,17 +83,23 @@ namespace lux::editor::project
                 ImGui::InputTextWithHint("##filter", "Filter assets", &filter);
                 ImGui::Separator();
                 if (state.failure)
+                {
                     ImGui::TextUnformatted("Catalog request failed; retaining the previous entries.");
+                }
                 // The list is a display projection; opening/dragging keeps the exact revision shown here.
                 for (std::size_t index{}; index < state.catalog.assets().size(); ++index)
                 {
                     const auto& row = state.catalog.assets()[index];
                     if (!filter.empty() && row.path.find(filter) == std::string::npos)
+                    {
                         continue;
+                    }
                     ImGui::PushID(static_cast<int>(index));
                     if (ImGui::Selectable(row.path.c_str(), false, ImGuiSelectableFlags_AllowDoubleClick) &&
                         ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+                    {
                         state.pending = state.catalog.reference(row.id);
+                    }
                     if (ImGui::BeginDragDropSource())
                     {
                         const auto reference = state.catalog.reference(row.id);
@@ -73,19 +125,27 @@ namespace lux::editor::project
                 [this](std::uint64_t) noexcept { refresh_requested = true; }
             );
             if (!connected)
+            {
                 std::terminate();
+            }
             changes = std::move(*connected);
         }
         ProjectQueryResult<void> refresh()
         {
             auto version = query.version();
             if (!version)
+            {
                 return lux::cxx::unexpected(version.error());
+            }
             if (*version == catalog.version())
+            {
                 return {};
+            }
             auto read = query.snapshot();
             if (!read)
+            {
                 return lux::cxx::unexpected(read.error());
+            }
             catalog = std::move(*read);
             return {};
         }
@@ -95,7 +155,9 @@ namespace lux::editor::project
           impl_(std::make_unique<Impl>(*this, query))
     {
         if (!setContent(impl_->content))
+        {
             std::terminate(); // Fixed content in a detached Pane.
+        }
         static_cast<void>(refresh());
     }
     ProjectView::~ProjectView() noexcept = default;
@@ -103,9 +165,13 @@ namespace lux::editor::project
     {
         auto result = impl_->refresh();
         if (!result)
+        {
             impl_->failure = result.error();
+        }
         else
+        {
             impl_->failure.reset();
+        }
         return result;
     }
     ProjectQueryResult<void> ProjectView::requestOpen(AssetReference reference)
@@ -151,16 +217,10 @@ namespace lux::editor::project
             const auto* error = result ? nullptr : std::get_if<EProjectQueryError>(&result.error());
             const bool is_busy = error && *error == EProjectQueryError::BUSY;
             if (!is_busy)
+            {
                 impl_->pending.reset();
+            }
         }
-    }
-    views::DetachedView makeProjectView(
-        object::ObjectDispatcherRef dispatcher,
-        lux::ui::PaneId id,
-        ProjectCatalogModel& query
-    )
-    {
-        return {lux::object::CodeLease::builtin(), std::make_unique<ProjectView>(dispatcher, std::move(id), query)};
     }
 } // namespace lux::editor::project
 
@@ -176,10 +236,15 @@ namespace lux::editor::project
             lux::object::CodeLease::builtin(),
             [&catalog, receiver](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView>
             {
-                auto view = makeProjectView(input.dispatcher(), input.paneId(), catalog);
+                views::DetachedView view{
+                    object::CodeLease::builtin(),
+                    std::make_unique<ProjectView>(input.dispatcher(), input.paneId(), catalog)
+                };
                 auto connected = workbench::detail::connectIntent(view, &ProjectView::openRequested, receiver);
                 if (!connected)
+                {
                     return cxx::unexpected(connected.error());
+                }
                 return view;
             }
         );

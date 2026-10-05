@@ -6742,6 +6742,9 @@
       },
       "services": {
         "path": "modules/core/services"
+      },
+      "editor_composition": {
+        "path": "editor/workbench/desktop"
       }
     },
     "native_libraries": [
@@ -7439,6 +7442,9 @@
       },
       "services": {
         "path": "modules/core/services"
+      },
+      "editor_composition": {
+        "path": "editor/workbench/desktop"
       }
     },
     "native_libraries": [
@@ -8295,7 +8301,8 @@
       "imgui::core",
       "ui",
       "view_api",
-      "view_host"
+      "view_host",
+      "editor_composition"
     ],
     "closure": {
       "Eigen3::Eigen": {
@@ -8465,6 +8472,9 @@
       },
       "services": {
         "path": "modules/core/services"
+      },
+      "editor_composition": {
+        "path": "editor/workbench/desktop"
       }
     },
     "native_libraries": [
@@ -8491,7 +8501,8 @@
       "lux/engine/editor/desktop/ViewCommands.hpp",
       "lux/engine/editor/workbench/CommandSupport.hpp",
       "lux/engine/object/CodeLease.hpp",
-      "exception"
+      "exception",
+      "lux/engine/editor/desktop/UiRegistry.hpp"
     ],
     "prefixes": [],
     "test_headers": {
@@ -8503,7 +8514,9 @@
         "lux/engine/ui/Layout.hpp",
         "lux/engine/ui/Root.hpp",
         "lux/engine/editor/desktop/ReviewView.hpp",
-        "cstdio"
+        "cstdio",
+        "lux/engine/editor/desktop/UiRegistry.hpp",
+        "array"
       ]
     },
     "files": [

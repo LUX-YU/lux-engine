@@ -1,10 +1,12 @@
-#include <lux/engine/editor/project/AssetPickerElement.hpp>
-#include <lux/engine/editor/project/ProjectView.hpp>
-#include <lux/engine/editor/desktop/ViewHost.hpp>
-#include <lux/engine/ui/Root.hpp>
-#include <lux/engine/ui/Layout.hpp>
+#include <array>
 #include <cassert>
 #include <cstdio>
+#include <lux/engine/editor/desktop/UiRegistry.hpp>
+#include <lux/engine/editor/desktop/ViewHost.hpp>
+#include <lux/engine/editor/project/AssetPickerElement.hpp>
+#include <lux/engine/editor/project/ProjectView.hpp>
+#include <lux/engine/ui/Layout.hpp>
+#include <lux/engine/ui/Root.hpp>
 
 using namespace lux;
 using namespace lux::editor;
@@ -27,8 +29,24 @@ int main()
     AssetReference opened;
     const asset::AssetId asset{*uuids::uuid::from_string("9bef91a4-0d25-4dff-8245-1c968a3dcce5")};
     assert(source.replace("test", {{asset, {}, 13, "UserPackage/test.asset"}}));
-    auto candidate = project::makeProjectView(messages.dispatcherRef(), ui::PaneId{"project"}, source);
-    auto* view = static_cast<project::ProjectView*>(candidate.pane());
+    services::ServiceRegistry services(messages.dispatcherRef());
+    auto scope = take(services.createScope());
+    assert(scope.provide(services::ServiceNameView{"lux.editor.project.catalog"}, source));
+    desktop::UiRegistry windows(messages.dispatcherRef(), services);
+    auto catalog =
+        take(desktop::UiCatalog::prepare({desktop::UiEntry::bind<project::kProjectView>(object::CodeLease::builtin())})
+        );
+    assert(windows.publish(catalog));
+    const auto create = [&](const char* name)
+    { return take(windows.create(take(catalog.at(0)), scope, {messages.dispatcherRef(), ui::PaneId{name}, {}, {}})); };
+    auto invalid = windows.create(
+        take(catalog.at(0)),
+        scope,
+        {messages.dispatcherRef(), ui::PaneId{"invalid"}, {}, {1, {std::byte{1}}}}
+    );
+    assert(!invalid && invalid.error().code == desktop::EUiError::INVALID_CONFIGURATION);
+    auto candidate = create("project");
+    auto* view = static_cast<project::ProjectView*>(candidate.get());
     auto open = take(object::LuxObject::connect(
         view,
         &project::ProjectView::openRequested,
@@ -39,7 +57,8 @@ int main()
         }
     ));
     assert(root->panes().empty() && view->catalog().assets().size() == 1);
-    const auto id = take(host.adopt(candidate, views::ViewRestoreKey{"project"})).id;
+    assert(root->addSubPane(std::move(candidate)));
+    const auto id = take(root->identify(*view));
     const auto ref = source.reference(asset);
     assert(view->requestOpen(ref) && opens == 1 && opened.asset == asset);
     const auto original = take(source.snapshot());
@@ -81,10 +100,13 @@ int main()
     assert(source.revision() == current && original.assets().data() == rows && original.assets()[0].magic == 13);
     source.setFailure({});
     for (int i{}; i != 1000; ++i)
+    {
         assert(view->refresh() && view->catalog().assets().data() == source.entries().data());
-    auto other = project::makeProjectView(messages.dispatcherRef(), ui::PaneId{"project-second"}, source);
-    auto* second = static_cast<project::ProjectView*>(other.pane());
-    const auto second_id = take(host.adopt(other, views::ViewRestoreKey{"project-second"})).id;
+    }
+    auto other = create("project-second");
+    auto* second = static_cast<project::ProjectView*>(other.get());
+    assert(root->addSubPane(std::move(other)));
+    const auto second_id = take(root->identify(*second));
     assert(second->catalog().assets().data() == view->catalog().assets().data());
     auto queue = take(object::ObjectMessageQueue::create(1));
     object::LuxObject receiver(queue.dispatcherRef());
@@ -126,8 +148,10 @@ int main()
     project::ProjectCatalogModel next_project(messages.dispatcherRef(), 42);
     assert(next_project.replace("other project", {{asset, {}, 13, "a"}}));
     assert(!next_project.resolve(source.reference(asset), 13));
-    assert(host.close(second_id) && host.drain());
-    assert(host.close(id) && host.drain());
+    const std::array closing{id, second_id};
+    auto close = take(windows.prepareClose(*root, closing));
+    assert(root->commit(close) && messages.collectRetired() == 2);
+    assert(scope.release() && scope.drained());
     assert(source.entries().size() == 1 && opens == 1);
     // Delivery failure is not open admission; a partial broadcast must not be replayed.
     project::ProjectView intents(messages.dispatcherRef(), ui::PaneId{"intents"}, source);

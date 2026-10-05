@@ -61,7 +61,6 @@ namespace lux::editor::tasks
     private:
         TaskListElement content_;
     };
-    [[nodiscard]] views::DetachedView makeTaskView(object::ObjectDispatcherRef, lux::ui::PaneId, TaskMonitor&);
     [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> makeTaskViewFactory(TaskMonitor& monitor);
     [[nodiscard]] std::shared_ptr<commands::CommandEntry> makeTasksCommand(
         commands::CommandEntry::Query,

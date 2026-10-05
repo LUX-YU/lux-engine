@@ -111,10 +111,6 @@ namespace lux::editor::tasks
             std::terminate(); // Fixed content in a detached Pane.
         }
     }
-    views::DetachedView makeTaskView(object::ObjectDispatcherRef dispatcher, lux::ui::PaneId id, TaskMonitor& query)
-    {
-        return {lux::object::CodeLease::builtin(), std::make_unique<TaskView>(dispatcher, std::move(id), query)};
-    }
     void TaskListElement::draw() noexcept
     {
         constexpr const char* states[]{"Queued", "Running", "Succeeded", "Failed", "Cancelled"};
@@ -180,7 +176,12 @@ namespace lux::editor::tasks
         return views::ViewFactoryEntry::bind<kFactoryDescriptor>(
             lux::object::CodeLease::builtin(),
             [&monitor](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView>
-            { return makeTaskView(input.dispatcher(), input.paneId(), monitor); }
+            {
+                return views::DetachedView{
+                    object::CodeLease::builtin(),
+                    std::make_unique<TaskView>(input.dispatcher(), input.paneId(), monitor)
+                };
+            }
         );
     }
     std::shared_ptr<commands::CommandEntry> makeTasksCommand(

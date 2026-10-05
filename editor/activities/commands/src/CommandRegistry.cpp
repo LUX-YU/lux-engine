@@ -580,7 +580,7 @@ namespace lux::editor::commands
         auto construct = [&](services::ServiceResolver& resolver) -> services::ServiceResult<void>
         {
             // Candidate cleanup happens inside service admission, including a scope closed by the factory.
-            auto candidate = descriptor.create(resolver);
+            auto candidate = descriptor.create(resolver, entry->code_);
             if (!candidate)
             {
                 outcome = cxx::unexpected(std::move(candidate.error()));

@@ -27,7 +27,9 @@ Stable calls use that binding without interpreting names. Old pinned entries kee
 catalog replacement does not redirect them to another service. Expired entries are collected before a new
 binding is admitted, under the command and service publication guards. Capacity or BUSY leaves the existing
 bindings unchanged. Factory failure destroys its candidate within the original service callback protection.
-The external code pin outlives the binding's callbacks and their disposal return.
+The external code pin outlives the binding's callbacks and their disposal return. The factory receives
+that same code lease explicitly. Owning work that escapes the command (for example a SessionPreparation)
+retains it independently; dropping the catalog and binding must not unload accepted work.
 
 The scope and service infrastructure outlive the command registry. Closing the scope refuses new calls,
 including when a query closes it before execute. Cancelling close keeps the same binding. The command owner

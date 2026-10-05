@@ -679,6 +679,69 @@ namespace
         std::cout << "PASS EC4 lazy New Flow command; exact borrowed admission; two real sessions and closed scope\n";
     }
 
+    void deferredFlowCreationCode()
+    {
+        lux::test::ObjectQueue messages;
+        services::ServiceRegistry dependencies{messages.dispatcherRef()};
+        auto root = take(dependencies.createScope());
+        auto scope = take(dependencies.createScope(&root));
+        SessionStore store{messages.dispatcherRef(), 1};
+        WriteCoordinator writes;
+        SaveService saves{writes};
+        std::optional<SessionPreparation> input;
+        std::weak_ptr<const int> code_owner;
+        bool uses_original_code{};
+        commands::CommandEntry::Query query =
+            [](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
+        { return commands::CommandState{true}; };
+        SessionCreation receive = [&](SessionPreparation prepared) -> commands::CommandResult<commands::DispatchReceipt>
+        {
+            input.emplace(std::move(prepared));
+            return commands::DispatchReceipt{commands::ImmediateCompletion{}};
+        };
+        assert(root.provide(kSessionCreation, receive));
+        assert(root.provide(kSessionCreationAvailability, query));
+        assert(dependencies.publish(
+            {services::ServiceEntry::bind<ef::kFlowEnvironmentService>(object::CodeLease::builtin())}
+        ));
+        {
+            auto owner = std::make_shared<const int>(42);
+            code_owner = owner;
+            const auto code = object::CodeLease::plugin(std::move(owner));
+            commands::CommandRegistry commands{dependencies, scope};
+            auto catalog = take(commands::CommandRegistrySnapshot::create({ef::makeNewFlowCommand(code)}));
+            assert(commands.publish(catalog));
+            const auto handle = take(catalog.find(commands::CommandIdView{"lux.editor.new.flow"}));
+            assert(commands.execute(handle, commands::CommandInvocation{}) && input);
+            uses_original_code = input->usesCode(code);
+        }
+        // No command entry, binding or caller lease survives. The accepted content owns its code.
+        std::cout << "deferred Flow creation: original_code=" << uses_original_code
+                  << " code_alive=" << !code_owner.expired() << std::endl;
+        assert(uses_original_code && !code_owner.expired());
+        assert(scope.release() && root.release());
+        (void)messages.collect();
+        assert(dependencies.drained());
+        {
+            auto prepared = take(std::move(*input).prepare(store, saves));
+            input.reset();
+            auto installed = take(prepared.publish());
+            assert(!code_owner.expired());
+            const auto key = take(store.key<ef::FlowSession>(installed.id()));
+            auto& model = take(store.access<ef::FlowSession>().edit(key)).get();
+            const auto initial = model.describe();
+            const auto bytes = take(take(model.read()).encode());
+            ef::FlowEditBatch edit{initial.current, "delayed creation", {}};
+            edit.edits.emplace_back(ef::FlowRename{"code survives its command"});
+            assert(model.apply(std::move(edit)) && installed.undo());
+            assert(take(take(model.read()).encode()) == bytes);
+            assert(installed.close(model.describe().current));
+        }
+        (void)messages.collect();
+        assert(code_owner.expired() && store.size() == 0);
+        std::cout << "PASS deferred Flow creation preserves original code through installation and close\n";
+    }
+
     void factoryDependencies()
     {
         const auto fixed = ef::makeFlowSessionFactory();
@@ -1105,6 +1168,7 @@ int main(int argc, char** argv)
     menuDescriptorLifetime();
     shortcutOverrides();
     lazyFlowCreation();
+    deferredFlowCreationCode();
     factoryDependencies();
     const auto root =
         std::filesystem::path(argv[1]) / std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());

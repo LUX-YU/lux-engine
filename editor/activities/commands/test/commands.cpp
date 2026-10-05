@@ -457,7 +457,8 @@ namespace
     constexpr lux::services::ServiceDependency command_dependencies[]{
         {lux::services::ServiceNameView{"test.command.receiver"}, 1, cxx::typeToken<Receiver>()}
     };
-    CommandResult<std::unique_ptr<CommandBinding>> createBinding(lux::services::ServiceResolver& resolver) noexcept
+    CommandResult<std::unique_ptr<CommandBinding>>
+    createBinding(lux::services::ServiceResolver& resolver, const lux::object::CodeLease&) noexcept
     {
         auto receiver = resolver.get<Receiver>(0);
         if (!receiver)

@@ -68,7 +68,9 @@ namespace lux::editor::commands
         std::uint32_t input_version{1};
         cxx::TypeToken argument_type;
         std::span<const services::ServiceDependency> dependencies;
-        CommandResult<std::unique_ptr<CommandBinding>> (*create)(services::ServiceResolver&) noexcept {};
+        // Prepared work may outlive this binding. Its owning result must retain this original code lease.
+        CommandResult<std::unique_ptr<CommandBinding>>
+        (*create)(services::ServiceResolver&, const object::CodeLease&) noexcept {};
         // VIEW targets are defined by their workbench provider (for example Root's PaneHandle).
         // Activities retain the immutable target and code without importing UI or inventing an ID.
         cxx::TypeToken target_type;

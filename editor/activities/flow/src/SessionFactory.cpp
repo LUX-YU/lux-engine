@@ -236,7 +236,8 @@ namespace lux::editor::flowforge
             {services::ServiceNameView{"lux.editor.flow.environment"}, 1, cxx::typeToken<FlowEnvironment>()}
         };
         commands::CommandResult<std::unique_ptr<commands::CommandBinding>> bindNewCommand(
-            services::ServiceResolver& resolver
+            services::ServiceResolver& resolver,
+            const object::CodeLease& code
         ) noexcept
         {
             const auto failure = [](services::ServiceFailure error)
@@ -282,14 +283,14 @@ namespace lux::editor::flowforge
             }
             return std::make_unique<commands::CommandBinding>(
                 [query = *available](const commands::CommandQuery& input) { return query.get()(input); },
-                [receiver = *create, environment = (*environment)->view()](const commands::CommandInvocation&)
+                [receiver = *create, environment = (*environment)->view(), code](const commands::CommandInvocation&)
                 {
                     std::mt19937 random{std::random_device{}()};
                     const asset::AssetId id{uuids::uuid_random_generator{random}()};
                     lux::flowforge::FlowSource source;
                     source.id = id;
                     source.name = "Untitled Flow";
-                    return receiver.get()(prepareFlowSession({std::move(source)}, {}, {}, environment));
+                    return receiver.get()(prepareFlowSession({std::move(source)}, {}, {}, environment, code));
                 }
             );
         }

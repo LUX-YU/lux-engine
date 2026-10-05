@@ -14,7 +14,8 @@ namespace module_fixture
         constexpr services::ServiceDependency dependencies[]{
             {services::ServiceNameView{"ec4.external.job"}, 1, cxx::typeToken<fixture::Job>()}
         };
-        CommandResult<std::unique_ptr<CommandBinding>> bindCommand(services::ServiceResolver& resolver) noexcept
+        CommandResult<std::unique_ptr<CommandBinding>>
+        bindCommand(services::ServiceResolver& resolver, const object::CodeLease&) noexcept
         {
             auto job = resolver.get<fixture::Job>(0);
             if (!job)

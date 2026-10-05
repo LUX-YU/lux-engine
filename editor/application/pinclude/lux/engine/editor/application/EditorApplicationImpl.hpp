@@ -3,7 +3,7 @@
 #include <lux/engine/EngineRendering.hpp>
 #include <lux/engine/editor/application/EditorApplication.hpp>
 #include <lux/engine/editor/application/ProjectCreation.hpp>
-#include <lux/engine/editor/application/RestoreWorkbench.hpp>
+#include <lux/engine/editor/project/RestoreWorkbench.hpp>
 #include <lux/engine/editor/assets/ModelImporter.hpp>
 #include <lux/engine/editor/desktop/DesktopShell.hpp>
 #include <lux/engine/editor/desktop/ReviewView.hpp>
@@ -293,7 +293,7 @@ namespace lux::editor::application
         std::unique_ptr<desktop::WorkspaceActions> workspace_actions_;
         std::optional<EditorFailure> workspace_failure_;
         std::optional<project::VWorkspaceIntent> workspace_intent_;
-        std::unique_ptr<RestoreWorkbench> restoration_;
+        std::unique_ptr<project::RestoreWorkbench> restoration_;
         std::vector<RunPresentation> run_presentations_;
         std::vector<OpenPresentation> opens_;
         std::vector<AssetReference> open_intents_;

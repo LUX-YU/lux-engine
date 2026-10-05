@@ -17,14 +17,14 @@ namespace lux::editor::application
     }
     EditorResult<void> EditorApplication::Impl::settleRecovery()
     {
-        auto progress = ERestorationProgress::SUSPENDED;
+        auto progress = project::ERestorationProgress::SUSPENDED;
         if (phase_ == EApplicationPhase::RUNNING)
         {
-            progress = ERestorationProgress::ACTIVE;
+            progress = project::ERestorationProgress::ACTIVE;
         }
         else if (phase_ == EApplicationPhase::DRAINING)
         {
-            progress = ERestorationProgress::CLOSING;
+            progress = project::ERestorationProgress::CLOSING;
         }
         auto present = [&](views::ViewContent content,
                            const extensions::ContributionSnapshot& catalog,

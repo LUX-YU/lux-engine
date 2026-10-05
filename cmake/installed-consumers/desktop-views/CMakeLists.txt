@@ -147,3 +147,22 @@ foreach(case literal signature flow-canvas material-canvas flow-queue material-q
     add_test(NAME installed.desktop.draft_source_${case} COMMAND desktop_views "${P10_LINKER}" "${sdk_prefix}" "r1-${case}")
     set_tests_properties(installed.desktop.draft_source_${case} PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)
 endforeach()
+
+# The recovery workflow is installed by the workbench. Its real Session/IO consumer must not import Application.
+if(TARGET lux::engine::editor::editor_bootstrap)
+    message(FATAL_ERROR "Standalone workbench recovery imported Application")
+endif()
+configure_file("${engine_source}/editor/tests/integration/project/recovery.cpp"
+    "${CMAKE_CURRENT_BINARY_DIR}/recovery.cpp" COPYONLY)
+add_executable(workbench_recovery "${CMAKE_CURRENT_BINARY_DIR}/recovery.cpp")
+target_link_libraries(workbench_recovery PRIVATE lux::engine::editor::project_tools_ui
+    lux::engine::editor::editor_extensions lux::engine::editor::editor_storage
+    lux::engine::editor::editor_file_publication lux::engine::editor::material_persistence
+    lux::engine::editor::session_execution)
+if(MSVC)
+    target_compile_options(workbench_recovery PRIVATE /UNDEBUG /permissive- /utf-8)
+else()
+    target_compile_options(workbench_recovery PRIVATE -UNDEBUG)
+endif()
+add_test(NAME installed.desktop.recovery COMMAND workbench_recovery "${CMAKE_BINARY_DIR}/recovery")
+set_tests_properties(installed.desktop.recovery PROPERTIES TIMEOUT 60)

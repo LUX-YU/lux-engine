@@ -32,3 +32,12 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     add_test(NAME editor.scene_configuration_native COMMAND editor_scene_configuration_native "${CMAKE_BINARY_DIR}")
     set_tests_properties(editor.scene_configuration_native PROPERTIES TIMEOUT 30 LABELS "editor;native;EC2")
 endif()
+
+if(LUX_EDITOR_BUILD_NATIVE_TESTS)
+    add_executable(editor_workbench_recovery recovery.cpp)
+    target_link_libraries(editor_workbench_recovery PRIVATE project_tools_ui editor_extensions
+        editor_storage editor_file_publication material_persistence session_execution)
+    lux_editor_test_options(editor_workbench_recovery)
+    add_test(NAME editor.workbench_recovery COMMAND editor_workbench_recovery "${CMAKE_CURRENT_BINARY_DIR}/recovery")
+    set_tests_properties(editor.workbench_recovery PROPERTIES TIMEOUT 60 LABELS "editor;native;EC4")
+endif()

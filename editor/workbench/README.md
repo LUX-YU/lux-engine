@@ -52,3 +52,13 @@ its generation; a receiver must retain that identity when delivering a later res
 `requestOpen` report intent delivery, not acceptance or completion of an asynchronous business operation.
 Application uses these same factories. The legacy settings protocol and remaining domain-specific
 product lifecycle policy still require their designated EC4 migration.
+
+`project::RestoreWorkbench` is provided by `project_tools_ui`, independently of Application. It captures
+only explicitly associated content windows and reads the independent recovery manifest; it never opens
+content from layout opaque data. It borrows the original SessionOpening, SessionStore, WorkspaceChanges,
+file backend and contribution registry. The fixed contribution snapshot and accepted opening waiters remain
+with this use case through suspension, BUSY retry and terminal completion. Presentation is a synchronous,
+non-escaping callback: callers use the same UiRegistry/Root path and retain their exact restore key/type.
+Closing drains accepted opening results with `ERestorationProgress::CLOSING`; it does not close author
+sessions or rewrite recovery files. Application still composes this use case and invokes its progress until
+the remaining workspace/close orchestration is migrated in EC4. This extraction is not the M6 exit gate.

@@ -358,8 +358,9 @@ namespace lux::editor::application
             workspace_,
             workspace_changes_
         );
-        restoration_ = std::make_unique<
-            RestoreWorkbench>(*project_, files_, sessions_, opening_, workspace_, workspace_changes_, contributions_);
+        restoration_ = std::make_unique<project::RestoreWorkbench>(
+            *project_, files_, sessions_, opening_, workspace_, workspace_changes_, contributions_
+        );
         // Migration owns no worker or publisher: the existing changes/execution pair retains accepted
         // records. Failure is shown in Workspace; it does not masquerade as an empty personal catalog.
         if (auto migrated = workspace_changes_.migrateProfile(project_workspace_, project_->manifest().id); !migrated)

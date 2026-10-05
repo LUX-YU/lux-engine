@@ -15736,6 +15736,16 @@
         ],
         "path": "editor/tests/integration/project"
       },
+      "editor_workbench_recovery": {
+        "layer": "TEST",
+        "role": "TEST",
+        "capabilities": [
+          "CPU",
+          "PROCESS",
+          "GPU"
+        ],
+        "path": "editor/tests/integration/project"
+      },
       "editor_artifact_publication": {
         "layer": "TEST",
         "role": "TEST",
@@ -18628,6 +18638,9 @@
       "editor/tests/integration/project/panels.cpp": [
         "editor_project_panels"
       ],
+      "editor/tests/integration/project/recovery.cpp": [
+        "editor_workbench_recovery"
+      ],
       "editor/tests/integration/project/artifact_publication.cpp": [
         "editor_artifact_publication"
       ],
@@ -18691,11 +18704,11 @@
       "editor/activities/project/include/lux/engine/editor/storage/ProjectContentOpening.hpp": [
         "editor_storage"
       ],
-      "editor/application/pinclude/lux/engine/editor/application/RestoreWorkbench.hpp": [
-        "editor_bootstrap"
+      "editor/workbench/project/tools/include/lux/engine/editor/project/RestoreWorkbench.hpp": [
+        "project_tools_ui"
       ],
-      "editor/application/src/RestoreWorkbench.cpp": [
-        "editor_bootstrap"
+      "editor/workbench/project/tools/src/RestoreWorkbench.cpp": [
+        "project_tools_ui"
       ],
       "editor/activities/sessions/include/lux/engine/editor/sessions/SessionCommands.hpp": [
         "session_factories"

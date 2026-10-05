@@ -1,5 +1,5 @@
 #include <algorithm>
-#include <lux/engine/editor/application/RestoreWorkbench.hpp>
+#include <lux/engine/editor/project/RestoreWorkbench.hpp>
 #include <lux/engine/editor/desktop/UiRegistry.hpp>
 #include <lux/engine/editor/extensions/Contributions.hpp>
 #include <lux/engine/editor/storage/ProjectContentOpening.hpp>
@@ -7,7 +7,7 @@
 #include <lux/engine/editor/workspace/WorkspaceChanges.hpp>
 #include <thread>
 
-namespace lux::editor::application
+namespace lux::editor::project
 {
     namespace
     {
@@ -429,4 +429,4 @@ namespace lux::editor::application
         return impl_->recovery_ ? std::span<const RestoredView>{impl_->recovery_->items}
                                 : std::span<const RestoredView>{};
     }
-} // namespace lux::editor::application
+} // namespace lux::editor::project

@@ -812,12 +812,12 @@ int main(int argc, char** argv)
         }
     );
     const auto compile_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
-    while (!impl.material_compilation_.operation(compilation)->get().ready())
+    while (!impl.material_compilation_->operation(compilation)->get().ready())
     {
         assert(std::chrono::steady_clock::now() < compile_deadline);
         assert(app->update());
     }
-    assert(impl.material_compilation_.operation(compilation)->get().result());
+    assert(impl.material_compilation_->operation(compilation)->get().result());
     auto rename_material = [&]
     {
         material_action(
@@ -1582,7 +1582,7 @@ int main(int argc, char** argv)
         exit_compile = *compiled;
     };
     assert(impl.desktop_->views().withView(*shown_again, compile_at_exit));
-    auto exit_operation = impl.material_compilation_.operation(exit_compile);
+    auto exit_operation = impl.material_compilation_->operation(exit_compile);
     assert(exit_operation && !exit_operation->get().ready());
     const auto exit_task = exit_operation->get().task();
     assert(impl.runs_.info(run) && !impl.engine_->renderContext()->resources().empty());
@@ -1659,8 +1659,8 @@ int main(int argc, char** argv)
     std::cout << "EC4 lazy service shutdown: accepted completion retained; independent service failure does not "
                  "skip other completion or participant; unused qualifier never constructed\n";
 
-    assert(impl.material_compilation_.snapshotIds()->empty());
-    assert(!impl.material_compilation_.operation(exit_compile));
+    assert(impl.material_compilation_->snapshotIds()->empty());
+    assert(!impl.material_compilation_->operation(exit_compile));
     const auto exit_completed = impl.engine_->execution().taskInfo(exit_task);
     assert(exit_completed && exit_completed->finished && exit_completed->state == process::ETaskState::SUCCEEDED);
     const auto exit_saved = std::ranges::find(impl.content_saving_->reports(), *exit_save, &ProjectSaveReport::id);

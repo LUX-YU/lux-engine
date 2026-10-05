@@ -425,7 +425,7 @@ namespace lux::editor::application
                     reload.operation.reset();
                 }
             }
-        if (auto received = material_compilation_.collectReleased(); !received)
+        if (auto received = material_compilation_->collectReleased(); !received)
             receive(applicationFailure("material.release", received.error()));
         receive(content_saving_->update(closing_ ? closing_->saves() : std::span<const sessions::SaveAllEntry>{}));
         receive(settleWorkspace());
@@ -445,7 +445,7 @@ namespace lux::editor::application
             }
         }
         const bool operations_settled =
-            importer_->closeStatus().state == assets::EModelImportCloseState::CLOSED && material_compilation_.empty() &&
+            importer_->closeStatus().state == assets::EModelImportCloseState::CLOSED && material_compilation_->empty() &&
             flow_compilation_->settled() && user_settings_changes_.settled() && project_settings_changes_.settled() &&
             content_saving_->settled() && opening_.settled() && recent_projects_->settled() && !project_launch_ &&
             std::ranges::all_of(

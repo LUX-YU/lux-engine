@@ -219,7 +219,7 @@ namespace lux::editor::application
             environment_,
             registrations_.features,
             &project_->catalogModel(),
-            [this](const persistence::DerivedArtifact& value) { receiveArtifact(value); }
+            content_saving_
         ));
         draft.views.push_back(flowforge::makeFlowViewFactory(
             {sessions_.access<flowforge::FlowSession>(), flow_compilation_, flow_environment_, content_saving_}

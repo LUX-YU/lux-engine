@@ -1,7 +1,7 @@
 #pragma once
+#include <lux/engine/editor/material/MaterialCompilationService.hpp>
 #include <lux/engine/editor/material/MaterialInteraction.hpp>
 #include <lux/engine/editor/material/MaterialPreview.hpp>
-#include <lux/engine/editor/material/MaterialCompilationService.hpp>
 #include <lux/engine/editor/persistence/DerivedArtifact.hpp>
 #include <lux/engine/editor/views/CameraNavigation.hpp>
 #include <lux/engine/editor/views/IViewHost.hpp>
@@ -21,8 +21,14 @@ namespace lux::editor::views
     class ViewFactoryEntry;
 }
 
+namespace lux::editor::desktop
+{
+    struct UiDescriptor;
+}
+
 namespace lux::editor::material
 {
+    extern const desktop::UiDescriptor kMaterialView;
     struct MaterialViewBinding final
     {
         sessions::TSessionKey<MaterialSession> session;
@@ -36,10 +42,11 @@ namespace lux::editor::material
         lux::scene::RenderResources& resources;
         render::RenderRuntime& renderer;
         MaterialPreview& preview;
-        MaterialCompilationService& compilation;
+        std::shared_ptr<MaterialCompilationService> compilation;
         const scene::ProjectionEnvironment& environment;
         project::ProjectCatalogModel* assets{};
         system::SystemInstanceId render_system;
+        std::shared_ptr<persistence::IArtifactSubmission> publication;
     };
     struct MaterialViewState final
     {
@@ -67,6 +74,19 @@ namespace lux::editor::material
             std::optional<MaterialViewBinding> = {},
             MaterialViewState = {}
         );
+        [[nodiscard]] static MaterialViewResult<std::unique_ptr<MaterialView>> createContent(
+            object::ObjectDispatcherRef,
+            lux::ui::PaneId,
+            sessions::TSessionAccess<MaterialSession>,
+            lux::scene::SceneRuntime&,
+            std::shared_ptr<MaterialCompilationService>,
+            const scene::ProjectionEnvironment&,
+            std::span<const render::RenderFeatureRegistration>,
+            project::ProjectCatalogModel*,
+            const views::ViewContent&,
+            std::shared_ptr<persistence::IArtifactSubmission>,
+            std::optional<MaterialViewState> = {}
+        );
         ~MaterialView() noexcept override;
         MaterialView(const MaterialView&) = delete;
         MaterialView& operator=(const MaterialView&) = delete;
@@ -81,9 +101,8 @@ namespace lux::editor::material
         [[nodiscard]] MaterialViewResult<void> undo();
         [[nodiscard]] MaterialViewResult<void> redo();
         [[nodiscard]] MaterialViewResult<MaterialCompileId> compile();
-        // This is a user intention. Admission and publication results belong to its explicit receiver.
-        object::TSignal<persistence::DerivedArtifact> publishRequested{*this};
-        [[nodiscard]] MaterialViewResult<void> requestPublication();
+        // Returns the publication owner's admission identity, not a file commit or signal delivery.
+        [[nodiscard]] MaterialViewResult<std::uint64_t> requestPublication();
         [[nodiscard]] MaterialCompileId compilation() const noexcept;
         [[nodiscard]] MaterialViewResult<void> navigate(const lux::editor::views::CameraMotion&);
         [[nodiscard]] const std::optional<MaterialViewBinding>& binding() const noexcept;
@@ -95,8 +114,6 @@ namespace lux::editor::material
         [[nodiscard]] MaterialPreviewStatus previewStatus() const;
 
     private:
-        friend MaterialViewResult<views::DetachedView>
-        makeMaterialContentView(object::ObjectDispatcherRef, lux::ui::PaneId, sessions::TSessionAccess<MaterialSession>, lux::scene::SceneRuntime&, MaterialCompilationService&, const scene::ProjectionEnvironment&, std::span<const render::RenderFeatureRegistration>, project::ProjectCatalogModel*, const views::ViewContent&);
         MaterialView(object::ObjectDispatcherRef, lux::ui::PaneId, MaterialViewServices, MaterialViewState);
         void update() noexcept override;
         struct Impl;
@@ -109,18 +126,13 @@ namespace lux::editor::material
         std::optional<MaterialViewBinding> = {},
         MaterialViewState = {}
     );
-    // A complete content view owns its interaction and preview target. Low-level makeMaterialView
-    // remains available for explicitly borrowed tools using an independently owned preview target.
-    [[nodiscard]] MaterialViewResult<views::DetachedView>
-    makeMaterialContentView(object::ObjectDispatcherRef, lux::ui::PaneId, sessions::TSessionAccess<MaterialSession>, lux::scene::SceneRuntime&, MaterialCompilationService&, const scene::ProjectionEnvironment&, std::span<const render::RenderFeatureRegistration>, project::ProjectCatalogModel*, const views::ViewContent&);
-
     [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> makeMaterialViewFactory(
-        sessions::TSessionAccess<material::MaterialSession> sessions,
-        lux::scene::SceneRuntime& runtime,
-        material::MaterialCompilationService& compilation,
-        const scene::ProjectionEnvironment& environment,
-        std::span<const render::RenderFeatureRegistration> features,
-        project::ProjectCatalogModel* assets,
-        cxx::move_only_function<void(const persistence::DerivedArtifact&)> = {}
+        sessions::TSessionAccess<MaterialSession>,
+        lux::scene::SceneRuntime&,
+        std::shared_ptr<MaterialCompilationService>,
+        const scene::ProjectionEnvironment&,
+        std::span<const render::RenderFeatureRegistration>,
+        project::ProjectCatalogModel*,
+        std::shared_ptr<persistence::IArtifactSubmission>
     );
 } // namespace lux::editor::material

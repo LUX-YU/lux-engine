@@ -617,7 +617,7 @@ namespace draft_test
         const auto key = take(f.store.key<em::MaterialSession>(take(f.store.publish(reservation))));
         em::MaterialInteraction interaction(f.store.access<em::MaterialSession>(), key);
         em::MaterialPreview preview{*f.runtime, {f.environment, {}}};
-        em::MaterialCompilationService compilation(f.execution);
+        auto compilation = std::make_shared<em::MaterialCompilationService>(f.execution);
         auto detached = take(em::makeMaterialView(
             f.messages.dispatcherRef(),
             ui::PaneId{"r1-material"},

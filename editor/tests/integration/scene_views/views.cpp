@@ -1025,7 +1025,7 @@ namespace
         f.runs = nullptr;
     }
 
-    struct FlowPublication final
+    struct ArtifactPublication final
     {
         Fixture& fixture;
         asset::AssetVfs assets;
@@ -1034,7 +1034,7 @@ namespace
         services::ServiceScope scope;
         sessions::SessionOpening opening;
         std::shared_ptr<ProjectContentSaving> saving;
-        explicit FlowPublication(Fixture& f)
+        explicit ArtifactPublication(Fixture& f)
             : fixture(f), dependencies(f.messages.dispatcherRef()), scope(take(dependencies.createScope())),
               opening(f.execution, f.store, f.saves, dependencies, scope)
         {
@@ -1044,6 +1044,11 @@ namespace
                 const auto relative = std::string{name} + ".lux";
                 manifest.assets.push_back({asset::AssetId{uuid(name)}, "lux.flowforge.source", relative});
                 std::ofstream(f.files / relative) << "Initial author source";
+            }
+            manifest.assets.push_back({asset::AssetId{uuid("material")}, "lux.material.source", "material.lux"});
+            if (!std::filesystem::exists(f.files / "material.lux"))
+            {
+                std::ofstream(f.files / "material.lux") << "Initial material source";
             }
             const auto path = f.files / "Project.luxproject";
             {
@@ -1071,7 +1076,7 @@ namespace
             saving = take(dependencies.get<ProjectContentSaving>(scope));
             fixture.publication = saving.get();
         }
-        ~FlowPublication()
+        ~ArtifactPublication()
         {
             assert(!saving || saving->settled());
             fixture.publication = nullptr;
@@ -1088,7 +1093,7 @@ namespace
     {
         namespace ef = editor::flowforge;
         using namespace lux::services;
-        FlowPublication publication(f);
+        ArtifactPublication publication(f);
         auto slot = take(f.store.reserve<ef::FlowSession>({"lux.editor.flowforge"}, object::CodeLease::builtin()));
         ef::FlowAuthoringSource source{asset::AssetId{uuid("ec4-flow")}, "EC4 shared", {}};
         const auto node = source.graph.addNodes(std::make_unique<lux::flowforge::OnEventNode>("entry"));
@@ -1319,10 +1324,129 @@ namespace
         );
     }
 
+    void materialComposition(Fixture& f)
+    {
+        namespace em = editor::material;
+        ArtifactPublication publication(f);
+        auto& dependencies = publication.dependencies;
+        auto& scope = publication.scope;
+        assert(dependencies.publish({
+            services::ServiceEntry::bind<em::kMaterialCompilationService>(object::CodeLease::builtin()),
+            services::ServiceEntry::bind<kProjectContentSavingService>(object::CodeLease::builtin())
+        }));
+        auto environment = f.environment;
+        environment.assets = {{29, 1}, 1, take(process::asset_loading::makeAssetReadOverlay({}, {})), {}};
+        std::vector<render::RenderFeatureRegistration> features;
+        for (const auto& feature : render::builtinRenderFeatureRegistrations())
+            features.push_back(feature);
+        assert(scope.provide(services::ServiceNameView{"lux.scene.runtime"}, *f.runtime));
+        assert(scope.provide(services::ServiceNameView{"lux.editor.scene.projection.environment"}, environment));
+        assert(scope.provide(services::ServiceNameView{"lux.render.features"}, features));
+        desktop::UiRegistry windows(f.messages.dispatcherRef(), dependencies);
+        auto catalog = take(desktop::UiCatalog::prepare({desktop::UiEntry::bind<em::kMaterialView>(object::CodeLease::builtin())}));
+        assert(windows.publish(catalog) && dependencies.drained());
+        const auto factory = take(catalog.selectContent({"lux.editor.material"}));
+        auto slot = take(f.store.reserve<em::MaterialSession>({"lux.editor.material"}, object::CodeLease::builtin()));
+        lux::material::MaterialSource source{asset::AssetId{uuid("material")}, "EC4 material", {}};
+        auto constant = std::make_unique<lux::material::ConstantNode>();
+        constant->setType(lux::material::EValueType::VEC3);
+        constant->value[0] = .7F;
+        const auto node = source.graph.addNode(std::move(constant));
+        const auto output = source.graph.addNode(std::make_unique<lux::material::OutputSurfaceNode>());
+        assert(source.graph.connect(node, 0, output, 0));
+        auto model_owner = take(em::MaterialSession::create(slot.id(), {}, std::move(source)));
+        auto* model = model_owner.get();
+        assert(f.store.prepare(slot, model_owner) && f.store.publish(slot));
+        const auto key = take(f.store.key<em::MaterialSession>(slot.id()));
+        const auto initial = model->describe();
+        const auto bytes = take(take(model->read()).encode());
+        std::weak_ptr<em::MaterialSession> weak_model = take(f.store.access<em::MaterialSession>().share(key));
+        desktop::UiCreateInfo input{f.messages.dispatcherRef(), ui::PaneId{"ec4-material-a"}, {{key.id()}, key.id()}, {}};
+        input.configuration.schema = 99;
+        auto invalid = windows.create(factory, scope, input);
+        assert(!invalid && invalid.error().code == desktop::EUiError::INVALID_CONFIGURATION && dependencies.drained());
+        input.configuration.schema = 1;
+        auto first = take(windows.create(factory, scope, input));
+        input.instance = ui::PaneId{"ec4-material-b"};
+        auto second = take(windows.create(factory, scope, input));
+        auto* a = static_cast<em::MaterialView*>(first.get());
+        auto* b = static_cast<em::MaterialView*>(second.get());
+        assert(!a->parent() && !b->parent() && !a->attachedRoot() && !b->attachedRoot());
+        assert(a->binding()->session == key && b->binding()->session == key);
+        assert(a->binding()->interaction != b->binding()->interaction);
+        auto& root = f.desktop->root();
+        std::array owners{std::move(first), std::move(second)};
+        assert(root.addSubPanes(owners));
+        const auto a_id = take(root.identify(*a));
+        const auto b_id = take(root.identify(*b));
+        const std::array closing{a_id, b_id};
+        assert(a->beginEdit("local material gesture"));
+        std::vector<em::VMaterialEdit> edits;
+        edits.emplace_back(em::MaterialSetConstant{node, {.1F, .8F, .3F, 1.F}});
+        assert(a->previewEdit(edits));
+        assert(!b->binding()->interaction->overlay());
+        assert(model->describe().current == initial.current && take(take(model->read()).encode()) == bytes);
+        assert(take(model->read()).withRead([&](const lux::material::MaterialSource&) -> em::MaterialEditResult<void>
+        {
+            auto busy = windows.prepareClose(root, closing);
+            assert(!busy && busy.error().code == desktop::EUiError::BUSY);
+            assert(a->binding()->interaction->overlay() && root.findPane(a_id) && root.findPane(b_id));
+            return {};
+        }));
+        assert(a->cancelEdit());
+        const auto a_compile = take(a->compile());
+        const auto b_compile = take(b->compile());
+        auto compiler = take(dependencies.get<em::MaterialCompilationService>(scope));
+        assert((take(compiler->snapshotIds()) == std::vector{a_compile, b_compile}));
+        f.wait([&] { return a->image().isValid() && b->image().isValid(); });
+        assert(a->previewStatus().accepted && b->previewStatus().accepted);
+        assert(a->previewStatus().accepted->target != b->previewStatus().accepted->target);
+        const auto b_camera = b->state().camera.transform.translation;
+        views::CameraMotion motion;
+        motion.local_translation.x() = 1;
+        assert(a->navigate(motion) && b->state().camera.transform.translation == b_camera);
+        auto state = take(windows.captureState(root, a_id));
+        const std::vector<desktop::UiStateRequest> state_change{{b_id, state, {}}};
+        assert(windows.mount(root, scope, {}, {}, state_change));
+        assert(take(windows.captureState(root, b_id)).bytes == state.bytes);
+        auto result = take(take(compiler->operation(a_compile)).get().result());
+        const auto pending = take(a->compile());
+        auto close = take(windows.prepareClose(root, closing));
+        assert(root.commit(close) && !root.findPane(a_id) && !root.findPane(b_id));
+        (void)f.messages.collectRetired();
+        compiler.reset();
+        f.wait([&] { return take(scope.settled()); });
+        compiler = take(dependencies.get<em::MaterialCompilationService>(scope));
+        assert(take(compiler->operation(pending)).get().ready());
+        assert(take(take(compiler->operation(pending)).get().result())->key().content == initial.current);
+        assert(compiler->collectReleased() && compiler->empty());
+        assert(model->describe().current == initial.current && model->describe().observed == initial.observed);
+        assert(model->describe().dirty == initial.dirty && take(take(model->read()).encode()) == bytes);
+        input.instance = ui::PaneId{"ec4-material-reopened"};
+        auto reopened = take(windows.create(factory, scope, input));
+        auto* view = static_cast<em::MaterialView*>(reopened.get());
+        assert(root.addSubPane(std::move(reopened)) && weak_model.lock().get() == model);
+        auto permit = take(f.store.prepareClose(initial.current));
+        assert(f.store.close(permit) && !f.store.access<em::MaterialSession>().share(key));
+        assert(!weak_model.expired() && !view->beginEdit("closed material identity"));
+        const auto reopened_id = take(root.identify(*view));
+        auto closed = take(windows.prepareClose(root, std::span{&reopened_id, 1}));
+        assert(root.commit(closed));
+        (void)f.messages.collectRetired();
+        (void)f.store_messages.collect();
+        assert(weak_model.expired());
+        compiler.reset();
+        assert(scope.release());
+        (void)f.messages.collectRetired();
+        assert(scope.drained() && dependencies.drained() && !result->bytes().empty());
+        std::printf("EC4 Material: declared complete factories, shared model/compiler, local GPU targets, "
+                    "BUSY-safe close, camera state, no-view completion and logical-close lifetime PASS\n");
+    }
+
     void flowView(Fixture& f, const char* linker)
     {
         namespace ef = editor::flowforge;
-        FlowPublication publication_owner(f);
+        ArtifactPublication publication_owner(f);
         assert(publication_owner.dependencies.publish(
             {services::ServiceEntry::bind<kProjectContentSavingService>(object::CodeLease::builtin())}
         ));
@@ -1516,6 +1640,11 @@ namespace
     std::shared_ptr<const editor::material::CompiledMaterial> materialView(Fixture& f)
     {
         namespace em = editor::material;
+        ArtifactPublication publication_owner(f);
+        assert(publication_owner.dependencies.publish(
+            {services::ServiceEntry::bind<kProjectContentSavingService>(object::CodeLease::builtin())}
+        ));
+        publication_owner.observe();
         const asset::AssetId asset{uuid("material")};
         lux::material::MaterialSource source{asset, "P10 material", {}};
         auto constant = std::make_unique<lux::material::ConstantNode>();
@@ -1541,7 +1670,7 @@ namespace
         const auto shared_environment = environment;
         em::MaterialPreview preview{*f.runtime, std::move(environment)};
         f.material_preview = &preview;
-        em::MaterialCompilationService compilation(f.execution);
+        auto compilation = std::make_shared<em::MaterialCompilationService>(f.execution);
         em::MaterialSaveSource save_source(
             f.store.access<em::MaterialSession>(),
             key,
@@ -1562,7 +1691,8 @@ namespace
              compilation,
              f.environment,
              {},
-             {2}},
+             {2},
+             publication_owner.saving},
             em::MaterialViewBinding{key, &interaction},
             state
         ));
@@ -1603,41 +1733,37 @@ namespace
         assert(view->previewEdit(edits) && view->commitEdit());
         assert(author->describe().current != initial.current);
         const auto compile_id = take(view->compile());
-        const auto* operation = &take(compilation.operation(compile_id)).get();
+        const auto* operation = &take(compilation->operation(compile_id)).get();
         f.wait([&] { return operation->ready(); });
         const auto compiled = take(operation->result());
         const auto unsaved = author->describe();
-        std::optional<persistence::WriteTicket> published_ticket;
-        auto publish_connection = take(object::LuxObject::connect(
-            view,
-            &em::MaterialView::publishRequested,
-            [&](const persistence::DerivedArtifact& result) noexcept
-            {
-                assert(result.valid() && result.info().content == unsaved.current);
-                assert(result.info().type() == asset::MaterialAsset::asset_type);
-                const auto encoded_source = take(result.encodeSource({}));
-                const auto expected_source = take(lux::material::encodeMaterialSource(*compiled->source()));
-                assert(std::ranges::equal(encoded_source.bytes.view(), std::as_bytes(std::span(expected_source))));
-                published_ticket = take(persistence::publishEncodedArtifact(
-                    f.writes,
-                    take(f.disk.resolve("derived.material")),
-                    {result.bytes()}
-                ));
-            }
-        ));
-        assert(view->requestPublication() && published_ticket);
-        const auto publication = *published_ticket;
-        f.wait([&] { return take(f.writes.status(publication)).stage == persistence::EWriteStage::TERMINAL; });
-        assert(std::holds_alternative<persistence::CommitReceipt>(*take(f.writes.status(publication)).outcome));
-        assert(std::filesystem::file_size(f.files / "derived.material") == compiled->bytes().size());
+        const auto artifact = take(em::captureMaterialArtifact(compiled));
+        assert(artifact.valid() && artifact.info().content == unsaved.current);
+        assert(artifact.info().type() == asset::MaterialAsset::asset_type);
+        const auto encoded_source = take(artifact.encodeSource({}));
+        const auto expected_source = take(lux::material::encodeMaterialSource(*compiled->source()));
+        assert(std::ranges::equal(encoded_source.bytes.view(), std::as_bytes(std::span(expected_source))));
+        const auto publication = take(view->requestPublication());
+        f.wait([&] { return publication_owner.saving->settled(); });
+        const auto report = take(publication_owner.saving->artifactReports()).front();
+        assert(report.id == publication && report.terminal && std::holds_alternative<PublicationSucceeded>(report.status));
+        const auto package = take(asset::inspectPak(f.files / report.path));
+        assert(package.entries.size() == 1 && package.entries.front().size == compiled->bytes().size());
+        {
+            std::ifstream file(f.files / report.path, std::ios::binary);
+            file.seekg(static_cast<std::streamoff>(package.entries.front().offset));
+            std::vector<std::byte> disk_bytes(package.entries.front().size);
+            assert(file.read(reinterpret_cast<char*>(disk_bytes.data()), static_cast<std::streamsize>(disk_bytes.size())));
+            assert(std::ranges::equal(disk_bytes, compiled->bytes().view()));
+        }
         assert(author->describe().current == unsaved.current && author->describe().dirty == unsaved.dirty);
-        assert(f.writes.acknowledge(publication));
+        assert(publication_owner.saving->acknowledgeArtifact(publication));
         auto reads = take(process::asset_loading::makeAssetReadOverlay({}, {}));
         const lux::scene::RenderAssetInput preview_assets{{9, 1}, 1, std::move(reads), {}};
         assert(preview.receive(preview.status().desired, operation->result(), preview_assets));
         f.wait([&] { return preview.status().accepted.has_value() && view->image().isValid(); });
         assert(preview.status().accepted->input == operation->key());
-        assert(compilation.acknowledge(compile_id));
+        assert(compilation->acknowledge(compile_id));
         operation = nullptr;
         assert(view->image().isValid());
         // Both real GPU targets consume one immutable compilation, after task acknowledgement.
@@ -2405,6 +2531,7 @@ int main(int argc, char** argv)
     creationView(f, argv[2]);
     runningView(f);
     const auto compiled = materialView(f);
+    materialComposition(f);
     flowView(f, argv[1]);
     flowComposition(f, argv[1]);
     auxiliaryViews(f);

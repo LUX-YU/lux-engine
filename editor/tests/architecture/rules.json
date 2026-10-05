@@ -7007,7 +7007,8 @@
       "material_preview",
       "project_ui",
       "editor_viewport",
-      "view_host"
+      "view_host",
+      "editor_composition"
     ],
     "closure": {
       "Eigen3::Eigen": {
@@ -7490,7 +7491,8 @@
       "lux/engine/editor/workbench/ViewFactorySupport.hpp",
       "lux/engine/editor/desktop/ViewCommands.hpp",
       "lux/engine/editor/workbench/CommandSupport.hpp",
-      "lux/engine/object/CodeLease.hpp"
+      "lux/engine/object/CodeLease.hpp",
+      "lux/engine/editor/desktop/UiRegistry.hpp"
     ],
     "prefixes": [],
     "test_headers": {

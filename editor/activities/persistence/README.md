@@ -9,6 +9,18 @@ writable roots is read only. Roots must be normalized with `publicationTargetKey
 The router owns neither an additional publication queue nor a coordinator. Version checks, Unknown
 reconciliation and durable replacement remain in the original backend. Asset reads still use VFS.
 
+The `PersistenceServices.hpp` declarations live in `editor_persistence_execution`, so the pure
+coordinator/save target remains independent of Process and ServiceRegistry. SaveService resolves and
+retains the root coordinator; SaveExecution retains that same coordinator, SaveService and file backend.
+ExecutionRuntime is an explicit application-lifetime borrow. These are real shared owners, not no-op
+deleters or a second operation store. Direct stack composition still uses the reference constructors.
+
+The file provider freezes `PublicationRoots` as its definition input and normalizes them when requested.
+Publishing declarations creates no instances. Scope maintenance adopts settled save facts and submits
+ready work through the original adapter; Process completion collection remains separate. A caller must
+finish its domain close protocol before releasing the scope. These declarations do not grant permission
+to discard unconfirmed results, perform a user decision, or infer drainage from shared-reference counts.
+
 
 ## Frozen saves and ordered publication (P05)
 

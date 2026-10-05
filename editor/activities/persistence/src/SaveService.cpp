@@ -120,6 +120,7 @@ namespace lux::editor::persistence
             bool cancel_requested{};
             std::optional<SaveOutcome> outcome;
         };
+        std::shared_ptr<WriteCoordinator> coordinator_owner;
         const std::thread::id owner{std::this_thread::get_id()};
         WriteCoordinator& coordinator;
         SaveLimits limits;
@@ -191,6 +192,11 @@ namespace lux::editor::persistence
     SaveService::SaveService(WriteCoordinator& coordinator, SaveLimits limits)
         : impl_(std::make_unique<Impl>(coordinator, limits))
     {
+    }
+    SaveService::SaveService(std::shared_ptr<WriteCoordinator> coordinator, SaveLimits limits)
+        : SaveService(*coordinator, limits)
+    {
+        impl_->coordinator_owner = std::move(coordinator);
     }
     SaveService::~SaveService()
     {

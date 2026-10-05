@@ -14,6 +14,9 @@ namespace lux::editor::persistence
     {
     public:
         explicit SaveService(WriteCoordinator& coordinator, SaveLimits limits = {});
+        // Declared activities retain the real shared coordinator; direct stack composition may borrow it.
+        // The owning input must be non-null, as with the reference constructor.
+        explicit SaveService(std::shared_ptr<WriteCoordinator> coordinator, SaveLimits limits = {});
         ~SaveService();
         SaveService(const SaveService&) = delete;
         SaveService& operator=(const SaveService&) = delete;

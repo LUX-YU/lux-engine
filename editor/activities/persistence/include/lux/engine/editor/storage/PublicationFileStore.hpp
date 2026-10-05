@@ -2,8 +2,19 @@
 
 #include <lux/engine/editor/storage/FileArtifactStore.hpp>
 
+namespace lux::services
+{
+    struct ServiceDescriptor;
+}
+
 namespace lux::editor::storage
 {
+    struct PublicationRoots final
+    {
+        std::filesystem::path project, user, installation;
+    };
+    extern const services::ServiceDescriptor kPublicationFileStoreService;
+
     // Physical publication roots, not an asset VFS. Every selected backend enforces its own root;
     // installation data outside explicit writable roots is read only. Supply normalized roots.
     class PublicationFileStore final : public persistence::IArtifactStore

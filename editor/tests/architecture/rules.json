@@ -5284,6 +5284,9 @@
       },
       "object": {
         "path": "modules/core/object"
+      },
+      "services": {
+        "path": "modules/core/services"
       }
     },
     "headers": [
@@ -9364,7 +9367,8 @@
   "editor_persistence_execution": {
     "direct": [
       "editor_persistence",
-      "process_execution"
+      "process_execution",
+      "services"
     ],
     "closure": {
       "STDEXEC::stdexec": {
@@ -9414,6 +9418,9 @@
       },
       "object": {
         "path": "modules/core/object"
+      },
+      "services": {
+        "path": "modules/core/services"
       }
     },
     "headers": [
@@ -9460,7 +9467,8 @@
       "utility",
       "variant",
       "vector",
-      "lux/engine/object/CodeLease.hpp"
+      "lux/engine/object/CodeLease.hpp",
+      "lux/engine/services/ServiceRegistry.hpp"
     ],
     "prefixes": [
       "lux/engine/editor/contracts/",
@@ -9471,7 +9479,9 @@
     ],
     "files": [
       "editor/activities/persistence/src/SaveExecution.cpp",
-      "editor/activities/persistence/include/lux/engine/editor/persistence/SaveExecution.hpp"
+      "editor/activities/persistence/include/lux/engine/editor/persistence/SaveExecution.hpp",
+      "editor/activities/persistence/src/PersistenceServices.cpp",
+      "editor/activities/persistence/include/lux/engine/editor/persistence/PersistenceServices.hpp"
     ]
   },
   "editor_file_publication": {
@@ -9479,7 +9489,8 @@
       "lux::cxx::compile_time",
       "lux::cxx::algorithm",
       "editor_persistence",
-      "platform_process"
+      "platform_process",
+      "services"
     ],
     "closure": {
       "edit_history": {
@@ -9520,6 +9531,9 @@
       },
       "object": {
         "path": "modules/core/object"
+      },
+      "services": {
+        "path": "modules/core/services"
       }
     },
     "headers": [
@@ -9575,7 +9589,8 @@
       "unistd.h",
       "lux/engine/platform/FilePath.hpp",
       "lux/engine/object/CodeLease.hpp",
-      "lux/engine/editor/storage/PublicationFileStore.hpp"
+      "lux/engine/editor/storage/PublicationFileStore.hpp",
+      "lux/engine/services/ServiceRegistry.hpp"
     ],
     "prefixes": [
       "lux/engine/editor/contracts/",
@@ -16302,6 +16317,14 @@
           "CPU",
           "TOOLCHAIN"
         ]
+      },
+      "editor_persistence_services_test": {
+        "layer": "TEST",
+        "role": "TEST",
+        "capabilities": [
+          "CPU"
+        ],
+        "path": "editor/tests/persistence"
       }
     },
     "files": {
@@ -18919,6 +18942,15 @@
       ],
       "editor/activities/persistence/src/PublicationFileStore.cpp": [
         "editor_file_publication"
+      ],
+      "editor/activities/persistence/src/PersistenceServices.cpp": [
+        "editor_persistence_execution"
+      ],
+      "editor/activities/persistence/include/lux/engine/editor/persistence/PersistenceServices.hpp": [
+        "editor_persistence_execution"
+      ],
+      "editor/tests/persistence/services.cpp": [
+        "editor_persistence_services_test"
       ]
     },
     "native_libraries": [

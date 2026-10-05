@@ -775,10 +775,18 @@ int main(int argc, char** argv)
         assert(app->update());
         assert(std::chrono::steady_clock::now() < recent_deadline);
     } while (impl.recent_projects_->failure() || !impl.recent_projects_->settled());
-    assert(
-        impl.recent_projects_->entries().size() == 1 &&
-        !impl.files_.resolve((root.parent_path() / "outside-user-root.txt").generic_string())
-    );
+    // This fixture lives below the installation root. That root is readable, but cannot publish;
+    // previously a case-sensitive dispatch mistake made this read look like an out-of-root rejection.
+    const auto installation_probe =
+        impl.files_.resolve((root.parent_path() / "outside-user-root.txt").generic_string());
+    assert(installation_probe);
+    const auto rejected_write = impl.files_.publish({{1}, *installation_probe, {}});
+    assert(std::get<persistence::NotPublished>(rejected_write).failure.code ==
+           persistence::EPersistenceError::UNSUPPORTED_TARGET);
+    const auto outside_all_roots = config.installation.parent_path() /
+                                   ("outside-publication-" + root.filename().string()) / "payload";
+    assert(impl.recent_projects_->entries().size() == 1 &&
+           !impl.files_.resolve(outside_all_roots.generic_string()));
     std::cout << "Recent projects: real legacy-format read, one coordinator publication, malformed input preserves "
                  "file/list, explicit retry\n";
 

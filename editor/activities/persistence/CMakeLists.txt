@@ -8,13 +8,14 @@ component_add_transitive_commands(editor_persistence
     "find_package(lux-cxx REQUIRED COMPONENTS memory)")
 lux_classify_target(TARGET editor_persistence LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 add_component(COMPONENT_NAME editor_persistence_execution NAMESPACE lux::engine::editor STATIC
-    SOURCE_FILES src/SaveExecution.cpp)
+    SOURCE_FILES src/SaveExecution.cpp src/PersistenceServices.cpp)
 component_include_directories(editor_persistence_execution
     BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
-target_link_libraries(editor_persistence_execution PUBLIC editor_persistence lux::engine::process::process_execution)
+target_link_libraries(editor_persistence_execution PUBLIC editor_persistence lux::engine::process::process_execution lux::engine::core::services)
 component_add_transitive_commands(editor_persistence_execution
     "find_package(lux-engine-editor-persistence REQUIRED COMPONENTS editor_persistence)"
-    "find_package(lux-engine-process-execution REQUIRED COMPONENTS process_execution)")
+    "find_package(lux-engine-process-execution REQUIRED COMPONENTS process_execution)"
+    "find_package(lux-engine-core REQUIRED COMPONENTS services)")
 lux_classify_target(TARGET editor_persistence_execution LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 lux_engine_install_components(PROJECT_NAME lux-engine-editor-persistence VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS editor_persistence editor_persistence_execution)
@@ -30,11 +31,12 @@ add_component(COMPONENT_NAME editor_file_publication NAMESPACE lux::engine::edit
     SOURCE_FILES src/FilePublication.cpp src/FileArtifactStore.cpp src/PublicationFileStore.cpp)
 component_include_directories(editor_file_publication
     BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
-target_link_libraries(editor_file_publication PUBLIC lux::cxx::compile_time lux::engine::editor::editor_persistence PRIVATE lux::cxx::algorithm lux::engine::platform::platform_process)
+target_link_libraries(editor_file_publication PUBLIC lux::cxx::compile_time lux::engine::editor::editor_persistence lux::engine::core::services PRIVATE lux::cxx::algorithm lux::engine::platform::platform_process)
 component_add_transitive_commands(editor_file_publication
     "find_package(lux-engine-platform REQUIRED COMPONENTS platform_process)"
     "find_package(lux-cxx REQUIRED COMPONENTS compile_time algorithm)"
-    "find_package(lux-engine-editor-persistence REQUIRED COMPONENTS editor_persistence)")
+    "find_package(lux-engine-editor-persistence REQUIRED COMPONENTS editor_persistence)"
+    "find_package(lux-engine-core REQUIRED COMPONENTS services)")
 lux_classify_target(TARGET editor_file_publication LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 lux_engine_install_components(PROJECT_NAME lux-engine-editor-file-publication VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS editor_file_publication)
@@ -59,6 +61,7 @@ install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/persistence/DerivedArtifact.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/persistence/EncodeJob.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/persistence/SaveExecution.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/persistence/PersistenceServices.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/persistence/SaveService.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/persistence/SaveSource.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/persistence/SaveTypes.hpp

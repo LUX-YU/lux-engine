@@ -42,6 +42,17 @@ namespace lux::editor::persistence
         tasks_.requestStop();
         (void)tasks_.join();
     }
+    SaveExecution::SaveExecution(
+        process::ExecutionRuntime& runtime,
+        std::shared_ptr<SaveService> service,
+        std::shared_ptr<WriteCoordinator> coordinator,
+        std::shared_ptr<IArtifactStore> store
+    )
+        : service_owner_(std::move(service)), coordinator_owner_(std::move(coordinator)),
+          store_owner_(std::move(store)), tasks_(runtime), service_(*service_owner_), coordinator_(*coordinator_owner_),
+          store_(*store_owner_)
+    {
+    }
     PersistenceResult<void> SaveExecution::submitReady()
     {
         for (;;)

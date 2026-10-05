@@ -15,6 +15,13 @@ namespace lux::editor::persistence
             persistence::WriteCoordinator& coordinator,
             persistence::IArtifactStore& store
         );
+        // A service allocation retains its exact providers until TaskScope has drained. Non-null inputs.
+        SaveExecution(
+            process::ExecutionRuntime& runtime,
+            std::shared_ptr<SaveService> service,
+            std::shared_ptr<WriteCoordinator> coordinator,
+            std::shared_ptr<IArtifactStore> store
+        );
         ~SaveExecution();
         SaveExecution(const SaveExecution&) = delete;
         SaveExecution& operator=(const SaveExecution&) = delete;
@@ -27,6 +34,9 @@ namespace lux::editor::persistence
         }
 
     private:
+        std::shared_ptr<SaveService> service_owner_;
+        std::shared_ptr<WriteCoordinator> coordinator_owner_;
+        std::shared_ptr<IArtifactStore> store_owner_;
         process::TaskScope tasks_;
         persistence::SaveService& service_;
         persistence::WriteCoordinator& coordinator_;

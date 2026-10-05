@@ -50,7 +50,7 @@ namespace lux::editor::application
     public:
         [[nodiscard]] static EditorResult<std::unique_ptr<EditorApplication>> create(
             EditorApplicationConfig,
-            std::span<extensions::GetEditorModule* const> modules = {}
+            std::span<extensions::GetEditorModule* const> modules
         );
         ~EditorApplication();
         EditorApplication(const EditorApplication&) = delete;

@@ -128,3 +128,7 @@ capture preserves the complete previous environment and reports the original err
 revision maintenance performs no capture. Run preparation and compilation copy that fixed input,
 so a later refresh does not change an already accepted task. Pure projection/Run consumers can still
 construct the existing ProjectionEnvironment value without ProjectStorage or UI.
+
+The project module declares this provider exactly once alongside project saving and the browser.
+Products select project_module plus their desired author modules; Material does not require the Scene
+module to obtain it. The service stays unconstructed until a view or Run actually asks for it.

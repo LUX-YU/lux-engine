@@ -42,10 +42,11 @@ if(EC1_MODE STREQUAL "APP")
         DESCRIPTION "${CMAKE_CURRENT_SOURCE_DIR}/witness.json"
         INPUTS "${CMAKE_CURRENT_SOURCE_DIR}/Witness.cpp" "${CMAKE_CURRENT_SOURCE_DIR}/Probe.hpp")
     find_package(lux-engine-editor-application REQUIRED COMPONENTS editor_bootstrap)
+    find_package(lux-engine-editor-project-module REQUIRED COMPONENTS project_module)
     find_package(lux-engine-editor-material-module REQUIRED COMPONENTS material_module)
     target_compile_definitions(skeleton_consumer PRIVATE EC1_APP=1)
     target_link_libraries(skeleton_consumer PRIVATE lux::engine::editor::editor_bootstrap
-        lux::engine::editor::material_module)
+        lux::engine::editor::project_module lux::engine::editor::material_module)
 elseif(NOT EC1_MODE MATCHES "^(HEADLESS|WINDOW)$")
     message(FATAL_ERROR "Unknown EC1_MODE")
 endif()

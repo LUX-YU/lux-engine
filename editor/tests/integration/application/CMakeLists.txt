@@ -2,7 +2,7 @@ if(LUX_EDITOR_TEST_DESKTOP_GPU AND LUX_EDITOR_BUILD_NATIVE_TESTS)
     add_executable(editor_application_test application.cpp)
     target_compile_definitions(editor_application_test PRIVATE LUX_APPLICATION_TEST_ACCESS=1)
     target_compile_definitions(editor_bootstrap PRIVATE LUX_APPLICATION_TEST_ACCESS=1)
-    target_link_libraries(editor_application_test PRIVATE scene_ui material_ui flow_ui flow_module material_module scene_module scene_persistence material_persistence flowforge_persistence editor_bootstrap project_tools_ui editor_extensions desktop_shell editor_assets editor_storage
+    target_link_libraries(editor_application_test PRIVATE project_module scene_ui material_ui flow_ui flow_module material_module scene_module scene_persistence material_persistence flowforge_persistence editor_bootstrap project_tools_ui editor_extensions desktop_shell editor_assets editor_storage
         editor_file_publication editor_persistence_execution workspace_store project_ui tasks_ui
         lux::engine::engine_context_render lux::engine::project::project_plugin_rendering)
     target_include_directories(editor_application_test PRIVATE

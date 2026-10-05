@@ -39,3 +39,7 @@ an exact descriptor, draft origin and applied/persisted states. Startup reads ex
 creating a window; absent and unreadable are different outcomes. Personal project state lives under
 the user-project profile. Read-only migration validates the complete legacy source set before publishing
 a final marker, preserves unknown bytes, and does not rewrite project-side originals.
+
+Product selection is explicit: include project_module for project saving/browser/environment and any
+required author modules. The host does not inject missing domain providers. The public create call
+requires the selected module span; the installed Material-without-Scene consumer uses project+material.

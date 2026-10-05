@@ -9215,6 +9215,12 @@
       },
       "scene_project": {
         "path": "editor/activities/scene"
+      },
+      "project_module": {
+        "path": "editor/workbench/project/module"
+      },
+      "lux_editor_productModules_project_module_generate": {
+        "path": "editor/application"
       }
     },
     "native_libraries": [
@@ -16247,6 +16253,33 @@
           "CPU"
         ],
         "path": "editor/activities/scene"
+      },
+      "project_module": {
+        "layer": "E3",
+        "role": "COMPOSITION",
+        "capabilities": [
+          "CPU",
+          "GUI",
+          "TOOLCHAIN",
+          "PROCESS"
+        ],
+        "path": "editor/workbench/project/module"
+      },
+      "lux_editor_productModules_project_module": {
+        "layer": "TOOLCHAIN",
+        "role": "GENERATOR",
+        "capabilities": [
+          "CPU",
+          "TOOLCHAIN"
+        ]
+      },
+      "lux_editor_productModules_project_module_generate": {
+        "layer": "TOOLCHAIN",
+        "role": "GENERATOR",
+        "capabilities": [
+          "CPU",
+          "TOOLCHAIN"
+        ]
       }
     },
     "files": {
@@ -18843,6 +18876,12 @@
       ],
       "editor/activities/scene/include/lux/engine/editor/scene/ProjectSceneEnvironment.hpp": [
         "scene_project"
+      ],
+      "editor/workbench/project/module/src/ProjectModule.cpp": [
+        "project_module"
+      ],
+      "editor/workbench/project/module/include/lux/engine/editor/project/ProjectModule.hpp": [
+        "project_module"
       ]
     },
     "native_libraries": [
@@ -19371,6 +19410,9 @@
       ],
       "editor/workbench/scene/module/": [
         "scene_module"
+      ],
+      "editor/workbench/project/module/": [
+        "project_module"
       ]
     },
     "script_boundaries": {

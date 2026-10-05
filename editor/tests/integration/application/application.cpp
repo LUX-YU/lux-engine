@@ -1,3 +1,4 @@
+#include <lux/engine/editor/project/ProjectModule.hpp>
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -503,7 +504,7 @@ int main(int argc, char** argv)
         config,
         std::array{
             &lux::editor::scene::sceneModule,
-            &lux::editor::material::materialModule,
+            &lux::editor::project::projectModule, &lux::editor::material::materialModule,
             &lux::editor::flowforge::flowModule
         }
     );
@@ -526,7 +527,7 @@ int main(int argc, char** argv)
         config,
         std::array{
             &lux::editor::scene::sceneModule,
-            &lux::editor::material::materialModule,
+            &lux::editor::project::projectModule, &lux::editor::material::materialModule,
             &lux::editor::flowforge::flowModule
         }
     );
@@ -547,7 +548,7 @@ int main(int argc, char** argv)
             config,
             std::array{
                 &lux::editor::scene::sceneModule,
-                &lux::editor::material::materialModule,
+                &lux::editor::project::projectModule, &lux::editor::material::materialModule,
                 &lux::editor::flowforge::flowModule
             }
         );
@@ -686,7 +687,7 @@ int main(int argc, char** argv)
             launch_override,
             std::array{
                 &lux::editor::scene::sceneModule,
-                &lux::editor::material::materialModule,
+                &lux::editor::project::projectModule, &lux::editor::material::materialModule,
                 &lux::editor::flowforge::flowModule
             }
         );
@@ -707,7 +708,7 @@ int main(int argc, char** argv)
         config,
         std::array{
             &lux::editor::scene::sceneModule,
-            &lux::editor::material::materialModule,
+            &lux::editor::project::projectModule, &lux::editor::material::materialModule,
             &lux::editor::flowforge::flowModule,
             &closeModule
         }
@@ -2058,7 +2059,7 @@ int main(int argc, char** argv)
         config,
         std::array{
             &lux::editor::scene::sceneModule,
-            &lux::editor::material::materialModule,
+            &lux::editor::project::projectModule, &lux::editor::material::materialModule,
             &lux::editor::flowforge::flowModule
         }
     );

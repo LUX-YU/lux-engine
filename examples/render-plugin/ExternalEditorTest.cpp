@@ -1,3 +1,4 @@
+#include <lux/engine/editor/project/ProjectModule.hpp>
 #include <lux/engine/editor/application/EditorApplication.hpp>
 #include <lux/engine/editor/project/ProjectManifest.hpp>
 #include <cassert>
@@ -34,7 +35,7 @@ int main(int argc, char** argv)
     config.height = 820;
     config.offscreen = true;
     config.user_directory = root;
-    auto editor = application::EditorApplication::create(std::move(config));
+    auto editor = application::EditorApplication::create(std::move(config), std::array{&project::projectModule});
     if (!editor)
         std::fprintf(stderr, "%s: %s\n", editor.error().domain.c_str(), editor.error().message.c_str());
     assert(editor);

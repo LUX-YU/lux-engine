@@ -119,8 +119,6 @@ namespace lux::editor::application
             return applicationFailure("service.infrastructure", provided.error());
         }
         extensions::ContributionDraft draft;
-        draft.services.push_back(services::ServiceEntry::bind<kProjectContentSavingService>(object::CodeLease::builtin()
-        ));
 
         draft.reflection.push_back({lux::object::CodeLease::builtin(), project::registerDesktopSettings});
         draft.settings = builtin_settings_;
@@ -158,7 +156,6 @@ namespace lux::editor::application
                 open_intents_.push_back(ref);
             }
         };
-        draft.ui.push_back(desktop::UiEntry::bind<project::kProjectView>(object::CodeLease::builtin()));
         draft.ui.push_back(desktop::UiEntry::bind<tasks::kTaskView>(object::CodeLease::builtin()));
         const extensions::SessionActivities session_activities{sessions_, saves_};
         const extensions::ProjectActivities project_activities{*project_, writes_, engine_->execution()};

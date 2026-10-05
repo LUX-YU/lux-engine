@@ -1601,9 +1601,9 @@ namespace
         auto scope = take(services.createScope());
         auto module = take(extensions::EditorExtension::fromStatic(author::sceneModule()));
         auto declared = take(module.contributions());
-        useFixedEnvironment(declared, f.environment);
         assert(declared.sessions.size() == 1 && declared.commands.empty());
-        assert(declared.services.size() == 3 && declared.ui.size() == 7);
+        assert(declared.services.size() == 2 && declared.ui.size() == 7);
+        useFixedEnvironment(declared, f.environment);
         assert(services.publish(std::move(declared.services)));
         assert(scope.provide(services::ServiceNameView{"lux.editor.sessions"}, f.store));
         assert(scope.provide(services::ServiceNameView{"lux.scene.runtime"}, *f.runtime));

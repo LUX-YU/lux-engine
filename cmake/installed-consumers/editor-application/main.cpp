@@ -1,3 +1,5 @@
+#include <array>
+#include <lux/engine/editor/project/ProjectModule.hpp>
 #include <cassert>
 #include <chrono>
 #include <fstream>
@@ -32,10 +34,10 @@ int main(int argc, char** argv)
     EditorApplicationConfig config{file, argv[1], "Command thread qualification", 320, 240, true};
     config.user_directory = directory;
 #if defined(EC4_NO_FLOW)
-    const std::array modules{&lux::editor::material::materialModule};
+    const std::array modules{&project::projectModule, &material::materialModule};
     auto created = EditorApplication::create(config, modules);
 #else
-    auto created = EditorApplication::create(config);
+    auto created = EditorApplication::create(config, std::array{&project::projectModule});
 #endif
     if (!created)
     {

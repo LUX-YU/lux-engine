@@ -1,3 +1,4 @@
+#include <lux/engine/editor/project/ProjectModule.hpp>
 #include "ObjectQueue.hpp"
 #include "Probe.hpp"
 #include "Settings.hpp"
@@ -493,7 +494,7 @@ int main(int argc, char** argv)
              .height = 600,
              .offscreen = true,
              .user_directory = root / "user"},
-            std::array{&lux::editor::material::materialModule}
+            std::array{&lux::editor::project::projectModule, &lux::editor::material::materialModule}
         ));
         assert(facts.project && facts.root);
         struct ContentWindow final
@@ -675,7 +676,7 @@ int main(int argc, char** argv)
              .height = 600,
              .offscreen = true,
              .user_directory = root / "missing-user"},
-            std::array{&lux::editor::material::materialModule}
+            std::array{&lux::editor::project::projectModule, &lux::editor::material::materialModule}
         ));
         // Querying through an independent immutable catalog does not need any provider to decode its bytes.
         const auto catalog_only = take(prepareProjectOpen(root / "Project.luxproject"));

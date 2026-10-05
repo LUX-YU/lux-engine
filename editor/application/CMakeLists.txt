@@ -51,6 +51,6 @@ foreach(product lux_editor lux_launcher)
 endforeach()
 
 # The executable selects domain declarations; the reusable host has no built-in module fallback.
-set(LUX_EDITOR_PRODUCT_MODULES "flow_module;material_module;scene_module" CACHE STRING "Selected Editor module providers")
+set(LUX_EDITOR_PRODUCT_MODULES "project_module;flow_module;material_module;scene_module" CACHE STRING "Selected Editor module providers")
 engine_target_add_editor_modules(TARGET lux_editor NAME productModules NAMESPACE lux::editor::product
     MODULES ${LUX_EDITOR_PRODUCT_MODULES})

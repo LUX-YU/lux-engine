@@ -1,3 +1,4 @@
+#include <lux/engine/project/PluginManager.hpp>
 #include "../../../../../cmake/installed-consumers/common/ControlsTestAccess.hpp"
 #include "ObjectQueue.hpp"
 #include <fstream>
@@ -2790,27 +2791,23 @@ namespace
         const auto metadata = take(ecs::ComponentSchemaSet::build(std::move(types)));
         lux::project::PluginCatalog catalog;
         assert(catalog.read(installation / "share/lux-engine/plugins/catalog.json", installation));
-        constexpr author::SceneProviderOption providers[]{
-            {"lux.render.runtime", "main-window"},
-            {"lux.render.scene_bindings", "render-bindings"},
-            {"lux.render.resources", "resources"},
-            {"lux.render.assets", "assets"},
-            {"lux.world.loading", "world-storage"}
-        };
-        author::SceneConfigurationInputs inputs{
-            catalog,
-            metadata,
-            *f.environment.simulation_systems,
-            f.environment.scene_systems,
-            render::builtinRenderFeatureRegistrations(),
-            providers,
-            {},
-            lux::scene::builtinRenderFeatureSceneBindings()
-        };
+        auto plugins = take(lux::project::PluginManager::create(std::move(catalog), {}));
+        auto components = metadata;
+        auto simulation_systems = f.environment.simulation_systems;
+        auto scene_systems = f.environment.scene_systems;
+        const auto builtin_features = render::builtinRenderFeatureRegistrations();
+        const auto builtin_bindings = lux::scene::builtinRenderFeatureSceneBindings();
+        std::vector<render::RenderFeatureRegistration> features(builtin_features.begin(), builtin_features.end());
+        std::vector<lux::scene::RenderFeatureSceneBinding> bindings(builtin_bindings.begin(), builtin_bindings.end());
         services::ServiceRegistry services(f.messages.dispatcherRef());
         auto scope = take(services.createScope());
         assert(scope.provide(services::ServiceNameView{"lux.editor.sessions"}, f.store));
-        assert(scope.provide(services::ServiceNameView{"lux.editor.scene.configuration"}, inputs));
+        assert(scope.provide(services::ServiceNameView{"lux.project.plugins"}, plugins));
+        assert(scope.provide(services::ServiceNameView{"lux.simulation.components"}, components));
+        assert(scope.provide(services::ServiceNameView{"lux.simulation.systems"}, simulation_systems));
+        assert(scope.provide(services::ServiceNameView{"lux.scene.systems"}, scene_systems));
+        assert(scope.provide(services::ServiceNameView{"lux.render.features"}, features));
+        assert(scope.provide(services::ServiceNameView{"lux.render.scene.bindings"}, bindings));
         auto module = take(extensions::EditorExtension::fromStatic(author::sceneModule()));
         auto declared = take(module.contributions());
         useFixedEnvironment(declared, f.environment);

@@ -640,10 +640,7 @@ namespace lux::services
             }
             for (const auto& dependency : descriptor.dependencies)
             {
-                const bool invalid_dependency =
-                    !dependency.contract.isValid() || dependency.version == 0 || !dependency.type.isValid() ||
-                    dependency.kind > EDependencyKind::BORROWED || dependency.scope > EDependencyScope::ROOT;
-                if (invalid_dependency)
+                if (!dependency.isValid())
                 {
                     return reject(EServiceError::INVALID_DESCRIPTOR);
                 }
@@ -1251,6 +1248,68 @@ namespace lux::services
             return cxx::unexpected(std::move(handle.error()));
         }
         return registry_.instantiate(*handle, std::move(*scope), dependency.qualifier, configuration);
+    }
+    ServiceResult<std::vector<std::shared_ptr<const ServiceEntry>>>
+    ServiceResolver::definitionEntries(std::size_t index, cxx::TypeToken type) noexcept
+    {
+        if (!isOpen())
+        {
+            return reject(EServiceError::CLOSED);
+        }
+        if (index >= dependencies_.size())
+        {
+            return reject(EServiceError::UNDECLARED_DEPENDENCY);
+        }
+        const auto& dependency = dependencies_[index];
+        const bool is_invalid_dependency = !dependency.isValid() ||
+                                           dependency.kind != EDependencyKind::DEFINITIONS || dependency.type != type;
+        if (is_invalid_dependency)
+        {
+            return reject(EServiceError::UNDECLARED_DEPENDENCY);
+        }
+        // Definitions belong to the catalog, not an instance scope or qualifier. Scope openness above
+        // still controls factory admission. Publication is excluded by the original enclosing call guard.
+        std::vector<std::shared_ptr<const ServiceEntry>> result;
+        bool has_other_version{};
+        for (const auto& definition : registry_.impl_->definitions)
+        {
+            const auto& descriptor = definition->entry->descriptor();
+            const bool is_other_implementation = dependency.implementation.isValid() &&
+                                                 dependency.implementation != descriptor.implementation;
+            if (is_other_implementation)
+            {
+                continue;
+            }
+            for (const auto& contract : descriptor.contracts)
+            {
+                if (contract.id != dependency.contract)
+                {
+                    continue;
+                }
+                if (contract.version != dependency.version)
+                {
+                    has_other_version = true;
+                    continue;
+                }
+                if (descriptor.definition_type != type)
+                {
+                    return reject(EServiceError::TYPE_MISMATCH);
+                }
+                result.push_back(definition->entry);
+            }
+        }
+        if (result.empty())
+        {
+            if (has_other_version)
+            {
+                return reject(EServiceError::VERSION_MISMATCH);
+            }
+            if (!dependency.optional)
+            {
+                return reject(EServiceError::NOT_FOUND);
+            }
+        }
+        return result;
     }
     ServiceResult<void*> ServiceResolver::require(std::size_t index, cxx::TypeToken type) noexcept
     {

@@ -1,3 +1,5 @@
+#include <lux/engine/editor/scene/SceneControlInputs.hpp>
+#include <lux/engine/editor/scene/SceneEditorCatalog.hpp>
 #include <lux/engine/editor/desktop/UiRegistry.hpp>
 #include <lux/engine/editor/scene/OutlinerView.hpp>
 #include <lux/engine/editor/scene/ResourceView.hpp>
@@ -108,14 +110,7 @@ namespace lux::editor::scene
              {},
              {},
              true},
-            {services::ServiceNameView{"lux.editor.scene.inspector.components"},
-             1,
-             cxx::typeToken<std::vector<InspectorComponent>>(),
-             services::EDependencyKind::BORROWED,
-             services::EDependencyScope::ROOT,
-             {},
-             {},
-             true}
+            detail::editorDefinitions
         };
         struct InspectionInput final
         {
@@ -252,17 +247,22 @@ namespace lux::editor::scene
             {
                 return failure(catalog.error());
             }
-            auto components = resolver.require<std::vector<InspectorComponent>>(5);
-            if (!components && components.error().code != services::EServiceError::NOT_FOUND)
+            auto definitions = resolver.definitions<SceneEditorCatalog::Definition>(5);
+            if (!definitions)
             {
-                return failure(components.error());
+                return failure(definitions.error());
+            }
+            auto components = sceneInspectorComponents();
+            for (const auto& definition : *definitions)
+            {
+                components.insert(components.end(), definition->components.begin(), definition->components.end());
             }
             auto view = std::make_unique<InspectorView>(
                 input.dispatcher,
                 input.instance,
                 dependencies->sessions,
                 dependencies->schemas,
-                components ? components->get() : sceneInspectorComponents(),
+                std::move(components),
                 catalog ? &catalog->get() : nullptr,
                 dependencies->group
             );
@@ -346,11 +346,10 @@ namespace lux::editor::scene
         }
         constexpr services::ServiceDependency configuration_dependencies[]{
             inspection_dependencies[0],
-            {services::ServiceNameView{"lux.editor.scene.configuration"},
-             1,
-             cxx::typeToken<SceneConfigurationInputs>(),
-             services::EDependencyKind::BORROWED,
-             services::EDependencyScope::ROOT}
+            detail::configurationDependencies[0], detail::configurationDependencies[1],
+            detail::configurationDependencies[2], detail::configurationDependencies[3],
+            detail::configurationDependencies[4], detail::configurationDependencies[5],
+            detail::configurationDependencies[6]
         };
         PaneResult createConfiguration(services::ServiceResolver& resolver, const desktop::UiCreateInfo& input)
         {
@@ -363,7 +362,7 @@ namespace lux::editor::scene
             {
                 return failure(store.error());
             }
-            auto configuration = resolver.require<SceneConfigurationInputs>(1);
+            auto configuration = detail::resolveSceneConfigurationInputs(resolver, 1);
             if (!configuration)
             {
                 return failure(configuration.error());
@@ -373,7 +372,7 @@ namespace lux::editor::scene
                 input.dispatcher,
                 input.instance,
                 access,
-                configuration->get()
+                std::move(*configuration)
             );
             if (!view->status())
             {

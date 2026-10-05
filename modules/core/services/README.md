@@ -65,3 +65,9 @@ cycles, cleanup reentry, dependency failure and bounded scope churn. `services.p
 DLL and verifies destructor-tail and weak-control-block cleanup after unloading. `services.tasks`
 uses the original Process submission, cancellation, transport collection and business dispatch paths.
 The installed `services` consumer independently exercises core, tasks and three actual author models.
+
+A `DEFINITIONS` dependency reads immutable backing for one declared contract/version and optional
+implementation. `ServiceResolver::definitions<T>(index)` never constructs a service; it returns owning,
+code-pinned values. Multiple implementations are allowed, absent optional input is empty, and type/version
+failures remain errors. This cold factory path has no instance qualifier or parent-scope selection.
+Service/UI/command declarations share `ServiceDependency::isValid()`; publication still checks collisions.

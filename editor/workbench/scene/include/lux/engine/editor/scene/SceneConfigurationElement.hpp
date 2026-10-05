@@ -15,6 +15,8 @@
 #include <any>
 #include <lux/engine/editor/scene/SceneEdit.hpp>
 
+namespace lux::services { class ServiceEntry; }
+
 namespace lux::scene { struct RenderFeatureSceneBinding; }
 
 namespace lux::editor::scene
@@ -137,6 +139,16 @@ namespace lux::editor::scene
             return {components, simulation_systems, scene_systems, features, providers, feature_bindings};
         }
     };
+    // Freeze only the selected editor definitions. Foundation borrows remain explicit; a temporary
+    // project-creation environment supplies its owning lifetime here. No live catalog is retained.
+    [[nodiscard]] SceneConfigurationResult<SceneConfigurationInputs> makeSceneConfigurationInputs(
+        const lux::project::PluginCatalog&,
+        const SceneConfigurationRegistrations&,
+        std::span<const std::shared_ptr<const services::ServiceEntry>>,
+        std::shared_ptr<const void> foundation_owner = {}
+    );
+    [[nodiscard]] std::span<const SceneProviderOption> defaultSceneProviders() noexcept;
+
     class SceneConfigurationElement final : public lux::ui::Element
     {
     public:

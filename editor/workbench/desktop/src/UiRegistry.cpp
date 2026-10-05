@@ -157,11 +157,7 @@ namespace lux::editor::desktop
             }
             for (const auto& dependency : descriptor.dependencies)
             {
-                const bool invalid_dependency = !dependency.contract.isValid() || !dependency.version ||
-                                                !dependency.type.isValid() ||
-                                                dependency.kind > services::EDependencyKind::BORROWED ||
-                                                dependency.scope > services::EDependencyScope::ROOT;
-                if (invalid_dependency)
+                if (!dependency.isValid())
                 {
                     return reject(EUiError::INVALID_DESCRIPTOR, "Invalid declared UI dependency");
                 }

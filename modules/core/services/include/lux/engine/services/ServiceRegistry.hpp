@@ -103,6 +103,29 @@ namespace lux::services
             }
             return std::ref(*static_cast<T*>(*result));
         }
+        // Creation-time metadata for one explicitly declared contract. This freezes provider inputs;
+        // it neither constructs service instances nor exposes an open-ended registry to the factory.
+        template <class T>
+        [[nodiscard]] ServiceResult<std::vector<std::shared_ptr<const T>>> definitions(std::size_t dependency) noexcept
+        {
+            auto entries = definitionEntries(dependency, cxx::typeToken<T>());
+            if (!entries)
+            {
+                return cxx::unexpected(std::move(entries.error()));
+            }
+            std::vector<std::shared_ptr<const T>> result;
+            result.reserve(entries->size());
+            for (const auto& entry : *entries)
+            {
+                auto value = entry->definition<T>();
+                if (!value)
+                {
+                    return cxx::unexpected(std::move(value.error()));
+                }
+                result.push_back(std::move(*value));
+            }
+            return result;
+        }
         [[nodiscard]] const object::ObjectDispatcherRef& dispatcher() const noexcept;
         [[nodiscard]] bool isOpen() const noexcept;
         template <class T> [[nodiscard]] ServiceResult<std::shared_ptr<const T>> definition() const noexcept
@@ -125,6 +148,8 @@ namespace lux::services
         [[nodiscard]] ServiceResult<std::shared_ptr<void>>
         get(std::size_t, cxx::TypeToken, const ServiceConfiguration&) noexcept;
         [[nodiscard]] ServiceResult<void*> require(std::size_t, cxx::TypeToken) noexcept;
+        [[nodiscard]] ServiceResult<std::vector<std::shared_ptr<const ServiceEntry>>>
+        definitionEntries(std::size_t, cxx::TypeToken) noexcept;
         ServiceRegistry& registry_;
         std::span<const ServiceDependency> dependencies_;
         std::shared_ptr<detail::ServiceScopeState> scope_;

@@ -65,7 +65,8 @@ namespace lux::services
     enum class EDependencyKind : std::uint8_t
     {
         SHARED,
-        BORROWED
+        BORROWED,
+        DEFINITIONS
     };
     enum class EDependencyScope : std::uint8_t
     {
@@ -117,6 +118,14 @@ namespace lux::services
         ServiceNameView implementation;
         std::string_view qualifier;
         bool optional{};
+        [[nodiscard]] bool isValid() const noexcept
+        {
+            const bool has_identity = contract.isValid() && version != 0 && type.isValid();
+            const bool has_valid_policy = kind <= EDependencyKind::DEFINITIONS && scope <= EDependencyScope::ROOT;
+            const bool is_invalid_definition_scope = kind == EDependencyKind::DEFINITIONS &&
+                                                     (!qualifier.empty() || scope != EDependencyScope::SAME);
+            return has_identity && has_valid_policy && !is_invalid_definition_scope;
+        }
     };
     class ServiceResolver;
     // Static declarations reference module constants. Dynamic declarations freeze this same shape once.

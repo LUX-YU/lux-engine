@@ -1,4 +1,3 @@
-#include <lux/engine/editor/scene/SceneEditorCatalog.hpp>
 #include <lux/engine/editor/application/ProjectCreation.hpp>
 #include <lux/engine/editor/extensions/EditorExtension.hpp>
 #include <lux/engine/editor/storage/ProjectPlugins.hpp>
@@ -245,51 +244,20 @@ namespace lux::editor::application
                 return cxx::unexpected(*progress_.failure);
             if (progress_.pending || !environment_)
                 return cxx::unexpected(EditorFailure{EEditorError::BUSY, "project.plugins"});
-            static constexpr scene::SceneProviderOption providers[]{
-                {"lux.render.runtime", "main-window"},
-                {"lux.render.scene_bindings", "render-bindings"},
-                {"lux.render.resources", "resources"},
-                {"lux.render.assets", "assets"},
-                {"lux.world.loading", "world-storage"}
-            };
             auto environment = environment_;
             const auto& registrations = environment->plugins.registrations;
-            return project::ProjectCreationConfiguration{
-                scene::SceneConfigurationInputs{
-                    environment->plugins.manager.catalog(),
-                    registrations.components,
-                    *registrations.simulation_systems,
-                    registrations.scene_systems,
-                    registrations.features,
-                    providers,
-                    [environment](
-                        lux::ui::Element& parent,
-                        std::string_view name,
-                        std::uint32_t version,
-                        const serialization::PortableValueCodec&,
-                        std::optional<std::span<const std::byte>> initial
-                    ) -> scene::SceneConfigurationResult<scene::ConfigurationControl>
-                    {
-                        auto definitions = scene::sceneEditorDefinitions(environment->contributions.snapshot().services());
-                        if (!definitions)
-                            return cxx::unexpected(scene::SceneConfigurationFailure{
-                                scene::ESceneConfigurationError::CONTROL_FAILURE, "configuration.catalog"
-                            });
-                        for (const auto& definition : *definitions)
-                        for (const auto& editor : definition->configurations)
-                            if (editor.value.schema_name == name && editor.value.schema_version == version)
-                                return scene::makeConfigurationControl(
-                                    editor,
-                                    parent,
-                                    lux::ui::ElementId{name},
-                                    initial
-                                );
-                        return scene::ConfigurationControl{};
-                    },
-                    registrations.render_bindings
-                },
-                selected_
-            };
+            auto inputs = scene::makeSceneConfigurationInputs(
+                environment->plugins.manager.catalog(),
+                {registrations.components, *registrations.simulation_systems, registrations.scene_systems,
+                 registrations.features, scene::defaultSceneProviders(), registrations.render_bindings},
+                environment->contributions.snapshot().services(),
+                environment
+            );
+            if (!inputs)
+            {
+                return failure("project.configuration", inputs.error());
+            }
+            return project::ProjectCreationConfiguration{std::move(*inputs), selected_};
         }
         EditorResult<void> create(project::ProjectCreationDraft draft)
         {

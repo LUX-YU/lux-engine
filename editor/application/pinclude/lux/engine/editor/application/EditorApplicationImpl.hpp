@@ -328,8 +328,6 @@ namespace lux::editor::application
         project::WorkspaceView::Request workspace_request_;
         cxx::move_only_function<project::ProjectCreationRequests()> creation_requests_;
         scene::RunInspectAccess run_inspection_{runs_.inspect()};
-        std::unique_ptr<scene::SceneConfigurationInputs> scene_configuration_;
-        std::vector<scene::InspectorComponent> inspector_components_;
         input::Input input_;
         // Last owner: views release borrows before interactions, code, services and content.
         lux::ui::FontSource font_;
@@ -391,7 +389,6 @@ namespace lux::editor::application
         [[nodiscard]] EditorResult<void> reload(commands::SessionTarget);
         [[nodiscard]] EditorResult<void> askReload(commands::SessionTarget);
         [[nodiscard]] EditorResult<void> receiveReloadAnswer();
-        [[nodiscard]] scene::SceneConfigurationInputs sceneConfigurationInputs();
         [[nodiscard]] EditorResult<scene::StartRunId> play(commands::SessionTarget);
         [[nodiscard]] EditorResult<void> maintainRuns();
         [[nodiscard]] EditorResult<void> stopRun(scene::RunId);

@@ -1,3 +1,4 @@
+#include <lux/engine/editor/scene/SceneControlInputs.hpp>
 #include <exception>
 #include <lux/engine/editor/desktop/UiRegistry.hpp>
 #include <lux/engine/editor/scene/SceneCreationView.hpp>
@@ -59,11 +60,10 @@ namespace lux::editor::scene
             };
         }
         constexpr services::ServiceDependency kCreationDependencies[]{
-            {services::ServiceNameView{"lux.editor.scene.configuration"},
-             1,
-             cxx::typeToken<SceneConfigurationInputs>(),
-             services::EDependencyKind::BORROWED,
-             services::EDependencyScope::ROOT},
+            detail::configurationDependencies[0], detail::configurationDependencies[1],
+            detail::configurationDependencies[2], detail::configurationDependencies[3],
+            detail::configurationDependencies[4], detail::configurationDependencies[5],
+            detail::configurationDependencies[6],
             {sessions::kSessionCreation,
              1,
              cxx::typeToken<sessions::SessionCreation>(),
@@ -93,19 +93,24 @@ namespace lux::editor::scene
                     error.detail
                 });
             };
-            auto configuration = resolver.require<SceneConfigurationInputs>(0);
+            auto configuration = detail::resolveSceneConfigurationInputs(resolver, 0);
             if (!configuration)
             {
-                return failedDependency(configuration.error());
+                const auto& error = configuration.error();
+                return cxx::unexpected(desktop::UiFailure{
+                    error.code == ESceneConfigurationError::BUSY ? desktop::EUiError::BUSY
+                                                               : desktop::EUiError::DEPENDENCY,
+                    error.domain, error.reason, error.message
+                });
             }
-            auto receiver = resolver.require<sessions::SessionCreation>(1);
+            auto receiver = resolver.require<sessions::SessionCreation>(7);
             if (!receiver)
             {
                 return failedDependency(receiver.error());
             }
             // The composition owner outlives this exact borrowed endpoint and the form registrations.
             auto requests = creationRequests(
-                configuration->get(),
+                *configuration,
                 [&create = receiver->get()](sessions::SessionPreparation prepared)
                 { return create(std::move(prepared)); }
             );
@@ -113,7 +118,7 @@ namespace lux::editor::scene
             auto pane = std::make_unique<SceneCreationView>(
                 input.dispatcher,
                 input.instance,
-                configuration->get(),
+                *configuration,
                 std::move(requests),
                 status
             );

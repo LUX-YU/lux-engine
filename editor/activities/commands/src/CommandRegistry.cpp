@@ -338,11 +338,7 @@ namespace lux::editor::commands
             }
             for (const auto& dependency : descriptor.dependencies)
             {
-                const bool is_invalid_dependency = !dependency.contract.isValid() || !dependency.version ||
-                                                   !dependency.type.isValid() ||
-                                                   dependency.kind > services::EDependencyKind::BORROWED ||
-                                                   dependency.scope > services::EDependencyScope::ROOT;
-                if (is_invalid_dependency)
+                if (!dependency.isValid())
                 {
                     return failure(ECommandError::INVALID_ARGUMENT);
                 }

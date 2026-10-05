@@ -725,6 +725,97 @@ namespace
         backing.reset();
         assert(registry.drained());
     }
+    void declaredDefinitions(lux::object::ObjectMessageQueue& messages)
+    {
+        Counts counts;
+        bool code_alive = true;
+        auto code = CodeLease::plugin(std::shared_ptr<const void>(new int{1}, [&](const void* value)
+        {
+            assert(counts.created == 0 && counts.destroyed == 0);
+            code_alive = false;
+            delete static_cast<const int*>(value);
+        }));
+        static constexpr ServiceContract contracts[]{
+            ServiceContract::forType<DeclaredService, DeclaredService>(ServiceNameView{"test.declared"})
+        };
+        auto descriptor = ServiceDescriptor::forType<DeclaredService, &DeclaredService::create>(
+            ServiceNameView{"test.first"}, contracts
+        );
+        descriptor.definition_type = lux::cxx::typeToken<Declaration>();
+        auto first = ServiceEntry::create(code, descriptor, std::make_shared<const Declaration>(counts, 17));
+        descriptor.implementation = ServiceNameView{"test.second"};
+        auto second = ServiceEntry::create(code, descriptor, std::make_shared<const Declaration>(counts, 29));
+        ServiceRegistry registry{messages.dispatcherRef()};
+        auto scope = take(registry.createScope());
+        assert(registry.publish({first, second}));
+        first.reset();
+        second.reset();
+        code = CodeLease::builtin();
+        std::vector<std::shared_ptr<const Declaration>> retained;
+        ServiceDependency dependency{
+            ServiceNameView{"test.declared"}, 1, lux::cxx::typeToken<Declaration>(), EDependencyKind::DEFINITIONS
+        };
+        auto capture = [&](ServiceResolver& resolver) -> ServiceResult<void>
+        {
+            assert(resolver.definitions<int>(0).error().code == EServiceError::UNDECLARED_DEPENDENCY);
+            assert(resolver.definitions<Declaration>(1).error().code == EServiceError::UNDECLARED_DEPENDENCY);
+            assert(resolver.get<Declaration>(0).error().code == EServiceError::UNDECLARED_DEPENDENCY);
+            assert(resolver.require<Declaration>(0).error().code == EServiceError::UNDECLARED_DEPENDENCY);
+            retained = take(resolver.definitions<Declaration>(0));
+            assert(registry.publish({}).error().code == EServiceError::BUSY);
+            return {};
+        };
+        assert(registry.withDependencies(scope, std::span{&dependency, 1}, capture));
+        assert(retained.size() == 2 && retained[0]->value == 17 && retained[1]->value == 29);
+        assert(counts.created == 0 && code_alive);
+        dependency.implementation = ServiceNameView{"test.second"};
+        assert(registry.withDependencies(scope, std::span{&dependency, 1}, capture));
+        assert(retained.size() == 1 && retained[0]->value == 29);
+        auto expectError = [&](EServiceError expected)
+        {
+            auto inspect = [&](ServiceResolver& resolver) -> ServiceResult<void>
+            {
+                auto result = resolver.definitions<Declaration>(0);
+                assert(!result && result.error().code == expected);
+                return {};
+            };
+            assert(registry.withDependencies(scope, std::span{&dependency, 1}, inspect));
+        };
+        dependency.kind = EDependencyKind::BORROWED;
+        expectError(EServiceError::UNDECLARED_DEPENDENCY);
+        dependency.kind = EDependencyKind::DEFINITIONS;
+        dependency.qualifier = "not-an-instance";
+        expectError(EServiceError::UNDECLARED_DEPENDENCY);
+        assert(!dependency.isValid());
+        dependency.qualifier = {};
+        dependency.version = 2;
+        dependency.optional = true;
+        expectError(EServiceError::VERSION_MISMATCH); // Optional never suppresses mismatched input.
+        dependency.version = 1;
+        dependency.type = lux::cxx::typeToken<int>();
+        auto wrongType = [&](ServiceResolver& resolver) -> ServiceResult<void>
+        {
+            assert(resolver.definitions<int>(0).error().code == EServiceError::TYPE_MISMATCH);
+            return {};
+        };
+        assert(registry.withDependencies(scope, std::span{&dependency, 1}, wrongType));
+        dependency.type = lux::cxx::typeToken<Declaration>();
+        dependency.implementation = ServiceNameView{"test.absent"};
+        auto missing = [&](ServiceResolver& resolver) -> ServiceResult<void>
+        {
+            auto result = resolver.definitions<Declaration>(0);
+            assert(result && result->empty());
+            return {};
+        };
+        assert(registry.withDependencies(scope, std::span{&dependency, 1}, missing));
+        dependency.optional = false;
+        expectError(EServiceError::NOT_FOUND);
+        assert(scope.beginClose());
+        assert(registry.withDependencies(scope, std::span{&dependency, 1}, missing).error().code == EServiceError::CLOSED);
+        assert(registry.publish({}) && retained.front()->value == 29 && code_alive);
+        retained.clear();
+        assert(!code_alive && counts.created == 0 && registry.drained());
+    }
     void settlement(lux::object::ObjectMessageQueue& messages)
     {
         Counts root_counts, child_counts, unrelated_counts;
@@ -913,6 +1004,7 @@ int main(int argc, char** argv)
     externalFactoryDependencies(*messages);
     declarationOwnership(*messages, false);
     declarationOwnership(*messages, true);
+    declaredDefinitions(*messages);
     settlement(*messages);
     maintenance(*messages);
     churn(*messages);

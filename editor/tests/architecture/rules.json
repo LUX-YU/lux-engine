@@ -6504,7 +6504,9 @@
       "lux/engine/ui/Attachment.hpp",
       "lux/engine/editor/views/ViewContent.hpp",
       "lux/engine/editor/desktop/UiError.hpp",
-      "lux/engine/editor/workspace/WorkspaceValues.hpp"
+      "lux/engine/editor/workspace/WorkspaceValues.hpp",
+      "lux/engine/editor/scene/SceneControlInputs.hpp",
+      "lux/engine/editor/scene/SceneEditorCatalog.hpp"
     ],
     "prefixes": [],
     "test_headers": {
@@ -6624,7 +6626,8 @@
       "editor/workbench/scene/src/SceneToolFactories.cpp"
     ],
     "project_include_dirs": [
-      "editor/workbench/sinclude"
+      "editor/workbench/sinclude",
+      "editor/workbench/scene/pinclude"
     ]
   },
   "material_ui": {
@@ -9250,7 +9253,8 @@
       "lux/engine/editor/extensions/EditorExtension.hpp",
       "lux/engine/editor/flowforge/FlowModule.hpp",
       "lux/engine/editor/material/MaterialModule.hpp",
-      "lux/engine/editor/scene/SceneModule.hpp"
+      "lux/engine/editor/scene/SceneModule.hpp",
+      "lux/engine/project/PluginManager.hpp"
     ],
     "prefixes": [],
     "test_headers": {
@@ -18882,6 +18886,12 @@
       ],
       "editor/workbench/project/module/include/lux/engine/editor/project/ProjectModule.hpp": [
         "project_module"
+      ],
+      "editor/workbench/scene/pinclude/lux/engine/editor/scene/SceneControlInputs.hpp": [
+        "scene_ui"
+      ],
+      "editor/workbench/scene/src/SceneControlInputs.cpp": [
+        "scene_ui"
       ]
     },
     "native_libraries": [

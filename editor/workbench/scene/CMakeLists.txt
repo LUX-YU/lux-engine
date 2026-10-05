@@ -1,9 +1,9 @@
 add_subdirectory(api)
 find_package(imgui REQUIRED COMPONENTS core)
 add_component(COMPONENT_NAME scene_ui NAMESPACE lux::engine::editor STATIC
-    SOURCE_FILES src/ConfigurationEditor.cpp src/SceneCreationPoint.cpp src/SceneView.cpp src/SceneTools.cpp src/SceneToolFactories.cpp src/SceneCommands.cpp src/OutlinerView.cpp src/ResourceView.cpp src/InspectorFields.cpp src/InspectorView.cpp src/RunInspectorFields.cpp src/RunInspectorView.cpp src/ComponentEditors.cpp src/CodegenInput.cpp src/SceneConfigurationElement.cpp src/SceneCreationView.cpp src/SceneConfigurationView.cpp)
+    SOURCE_FILES src/SceneControlInputs.cpp src/ConfigurationEditor.cpp src/SceneCreationPoint.cpp src/SceneView.cpp src/SceneTools.cpp src/SceneToolFactories.cpp src/SceneCommands.cpp src/OutlinerView.cpp src/ResourceView.cpp src/InspectorFields.cpp src/InspectorView.cpp src/RunInspectorFields.cpp src/RunInspectorView.cpp src/ComponentEditors.cpp src/CodegenInput.cpp src/SceneConfigurationElement.cpp src/SceneCreationView.cpp src/SceneConfigurationView.cpp)
 component_include_directories(scene_ui BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
-target_include_directories(scene_ui PRIVATE ${PROJECT_SOURCE_DIR}/editor/workbench/sinclude)
+target_include_directories(scene_ui PRIVATE ${PROJECT_SOURCE_DIR}/editor/workbench/sinclude ${CMAKE_CURRENT_SOURCE_DIR}/pinclude)
 target_link_libraries(scene_ui PUBLIC lux::engine::editor::editor_composition lux::engine::editor::session_factories lux::engine::editor::scene_control_api lux::engine::editor::scene_execution lux::engine::editor::editor_configuration lux::engine::editor::editor_viewport lux::engine::editor::scene_projection
     lux::engine::editor::scene_interaction lux::engine::editor::project_ui lux::engine::editor::editor_widgets lux::engine::scene::scene_mesh_query PUBLIC lux::engine::project::project_plugins PRIVATE lux::engine::editor::scene_persistence lux::engine::scene::scene_transform imgui::core)
 component_add_transitive_commands(scene_ui

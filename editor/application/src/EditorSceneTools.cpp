@@ -1,7 +1,6 @@
 #include <algorithm>
 #include <lux/engine/editor/application/EditorApplicationImpl.hpp>
 #include <lux/engine/editor/scene/SceneConfigurationView.hpp>
-#include <lux/engine/editor/scene/SceneEditorCatalog.hpp>
 #include <lux/engine/editor/scene/SceneTools.hpp>
 #include <lux/engine/log/Log.hpp>
 #include <lux/engine/scene/RenderSystem.hpp>
@@ -307,54 +306,6 @@ namespace lux::editor::application
             }
         }
         return *shown;
-    }
-    scene::SceneConfigurationInputs EditorApplication::Impl::sceneConfigurationInputs()
-    {
-        static constexpr scene::SceneProviderOption providers[]{
-            {"lux.render.runtime", "main-window"},
-            {"lux.render.scene_bindings", "render-bindings"},
-            {"lux.render.resources", "resources"},
-            {"lux.render.assets", "assets"},
-            {"lux.world.loading", "world-storage"}
-        };
-        auto snapshot = contributions_.snapshot();
-        return {
-            plugins_.catalog(),
-            registrations_.components,
-            *registrations_.simulation_systems,
-            registrations_.scene_systems,
-            registrations_.features,
-            providers,
-            [snapshot = std::move(snapshot)](
-                lux::ui::Element& parent,
-                std::string_view name,
-                std::uint32_t version,
-                const serialization::PortableValueCodec&,
-                std::optional<std::span<const std::byte>> initial
-            ) -> scene::SceneConfigurationResult<scene::ConfigurationControl>
-            {
-                auto definitions = scene::sceneEditorDefinitions(snapshot.services());
-                if (!definitions)
-                {
-                    return cxx::unexpected(scene::SceneConfigurationFailure{
-                        scene::ESceneConfigurationError::CONTROL_FAILURE,
-                        "configuration.catalog"
-                    });
-                }
-                for (const auto& definition : *definitions)
-                {
-                    for (const auto& editor : definition->configurations)
-                    {
-                        if (editor.value.schema_name == name && editor.value.schema_version == version)
-                        {
-                            return scene::makeConfigurationControl(editor, parent, lux::ui::ElementId{name}, initial);
-                        }
-                    }
-                }
-                return scene::ConfigurationControl{};
-            },
-            registrations_.render_bindings
-        };
     }
     EditorResult<void> EditorApplication::Impl::stepRun(scene::RunId run)
     {

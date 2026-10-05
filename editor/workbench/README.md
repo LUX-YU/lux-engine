@@ -15,12 +15,16 @@ A lexical child ServiceScope may lend `lux.editor.scene.interaction` as the exis
 `shared_ptr<SceneInteractionGroup>`; outputs copy that actual owner and never keep the scope/resolver.
 A supplied group's author association must match UiCreateInfo.content. Standalone author views can instead
 use that content association to create their own local interaction. Run Inspector uses the supplied Run group
-and the root `lux.editor.scene.runs` RunStore. Optional `lux.editor.scene.inspector.components` supplies the
-complete component list (including its code pins); absent contributions use the builtin component list.
+and the root `lux.editor.scene.runs` RunStore. Inspector declares the `lux.editor.scene.editors` definition dependency, then owns its
+complete component list and code pins. No contributed definitions means only builtin components.
+The resolver cannot construct or discover any undeclared service through this metadata read.
 
 Resource view creation optionally borrows the pair `lux.ui.root` and `lux.editor.scene.viewport` in its
 lexical scope. Only the original PaneHandle is retained, and removal/identity reuse never redirects it.
-The configuration form borrows `lux.editor.scene.configuration`. Its close preparation releases pending
+The configuration/creation factories declare their actual plugin, schema, system and render metadata
+borrows. Scene-local conversion freezes editor definitions from one contribution snapshot; controls never
+re-read the mutable catalog. Project creation calls the same conversion and pins its temporary environment.
+Application no longer assembles or owns these control inputs/component lists. Close preparation releases pending
 encoded input inside the Session gate without rebuilding controls in Root's callback; an abandoned close
 restores the form in ordinary maintenance. Physical Pane reclamation uses the Object dispatcher safe point
 before the borrowed infrastructure can be destroyed.

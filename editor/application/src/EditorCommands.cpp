@@ -1,7 +1,6 @@
 #include <algorithm>
 #include <lux/engine/editor/application/EditorApplicationImpl.hpp>
 #include <lux/engine/editor/project/ProjectView.hpp>
-#include <lux/engine/editor/scene/SceneEditorCatalog.hpp>
 #include <lux/engine/editor/sessions/SessionCommands.hpp>
 #include <lux/engine/editor/tasks/TaskView.hpp>
 #include <lux/engine/log/Log.hpp>
@@ -375,32 +374,6 @@ namespace lux::editor::application
             !provided)
         {
             return applicationFailure("service.infrastructure", provided.error());
-        }
-        scene_configuration_ = std::make_unique<scene::SceneConfigurationInputs>(sceneConfigurationInputs());
-        inspector_components_ = scene::sceneInspectorComponents();
-        auto definitions = scene::sceneEditorDefinitions(contributions_.snapshot().services());
-        if (!definitions)
-        {
-            return applicationFailure("scene.components", definitions.error());
-        }
-        for (const auto& definition : *definitions)
-        {
-            inspector_components_
-                .insert(inspector_components_.end(), definition->components.begin(), definition->components.end());
-        }
-        if (auto provided =
-                scope.provide(services::ServiceNameView{"lux.editor.scene.configuration"}, *scene_configuration_);
-            !provided)
-        {
-            return applicationFailure("scene.configuration", provided.error());
-        }
-        if (auto provided = scope.provide(
-                services::ServiceNameView{"lux.editor.scene.inspector.components"},
-                inspector_components_
-            );
-            !provided)
-        {
-            return applicationFailure("scene.components", provided.error());
         }
         return {};
     }

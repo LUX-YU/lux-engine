@@ -110,42 +110,43 @@ int main(int argc, char** argv)
         {"lux.world.loading", "world-storage"}
     };
     editor::scene::SceneConfigurationResult<void> status;
-    editor::scene::SceneConfigurationInputs form_inputs{
+    auto prepared_inputs = editor::scene::makeSceneConfigurationInputs(
         manager->catalog(),
-        registrations->components,
-        *registrations->simulation_systems,
-        registrations->scene_systems,
-        registrations->features,
-        providers,
-        [snapshot = contributions.snapshot()](
-            ui::Element& parent,
-            std::string_view name,
-            std::uint32_t version,
-            const serialization::PortableValueCodec&,
-            std::optional<std::span<const std::byte>> initial
-        ) -> editor::scene::SceneConfigurationResult<editor::scene::ConfigurationControl>
-        {
-            auto definitions = editor::scene::sceneEditorDefinitions(snapshot.services());
-            assert(definitions);
-            for (const auto& definition : *definitions)
-            {
-                for (const auto& descriptor : definition->configurations)
-                {
-                    if (descriptor.value.schema_name == name && descriptor.value.schema_version == version)
-                    {
-                        return editor::scene::makeConfigurationControl(
-                            descriptor,
-                            parent,
-                            ui::ElementId{name},
-                            initial
-                        );
-                    }
-                }
-            }
-            return editor::scene::ConfigurationControl{};
-        },
-        registrations->render_bindings
-    };
+        {registrations->components, *registrations->simulation_systems, registrations->scene_systems,
+         registrations->features, providers, registrations->render_bindings},
+        contributions.snapshot().services()
+    );
+    assert(prepared_inputs);
+    auto form_inputs = std::move(*prepared_inputs);
+    // Replacement affects only later forms. Existing controls keep their captured immutable definitions,
+    // including real extension code; no callback reads the mutable contribution table again.
+    {
+        auto original = contributions.snapshot();
+        auto definitions = editor::scene::sceneEditorDefinitions(original.services());
+        assert(definitions && !definitions->empty() && !definitions->front()->configurations.empty());
+        const auto registration = definitions->front()->configurations.front();
+        auto empty = editor::extensions::ContributionSnapshot::prepare({});
+        assert(empty && contributions.enqueue(*empty) && contributions.applyPending());
+        auto next_inputs = editor::scene::makeSceneConfigurationInputs(
+            manager->catalog(), form_inputs.registrations(), contributions.snapshot().services()
+        );
+        assert(next_inputs);
+        auto old_control = form_inputs.configuration(
+            layout, registration.value.schema_name, registration.value.schema_version, registration.value.codec, {}
+        );
+        auto new_control = next_inputs->configuration(
+            layout, registration.value.schema_name, registration.value.schema_version, registration.value.codec, {}
+        );
+        assert(old_control && bool(*old_control) && new_control && !bool(*new_control));
+        std::vector<std::byte> frozen;
+        assert(old_control->encode(frozen));
+        const std::shared_ptr<const services::ServiceEntry> invalid[]{{}};
+        auto rejected = editor::scene::makeSceneConfigurationInputs(
+            manager->catalog(), form_inputs.registrations(), invalid
+        );
+        assert(!rejected && rejected.error().code == editor::scene::ESceneConfigurationError::CONTROL_FAILURE);
+        assert(contributions.enqueue(original) && contributions.applyPending());
+    }
     editor::scene::SceneConfigurationElement element(layout, ui::ElementId{"configuration"}, form_inputs, status);
     assert(status);
     for (const auto preset :
@@ -299,7 +300,12 @@ int main(int argc, char** argv)
             return editor::commands::DispatchReceipt{editor::commands::ImmediateCompletion{}};
         };
         auto& scope = editor_context.scope();
-        assert(scope.provide(services::ServiceNameView{"lux.editor.scene.configuration"}, form_inputs));
+        assert(scope.provide(services::ServiceNameView{"lux.project.plugins"}, *manager));
+        assert(scope.provide(services::ServiceNameView{"lux.simulation.components"}, registrations->components));
+        assert(scope.provide(services::ServiceNameView{"lux.simulation.systems"}, registrations->simulation_systems));
+        assert(scope.provide(services::ServiceNameView{"lux.scene.systems"}, registrations->scene_systems));
+        assert(scope.provide(services::ServiceNameView{"lux.render.features"}, registrations->features));
+        assert(scope.provide(services::ServiceNameView{"lux.render.scene.bindings"}, registrations->render_bindings));
         assert(scope.provide(sessions::kSessionCreation, receive));
         assert(scope.provide(services::ServiceNameView{"lux.editor.sessions"}, store));
         auto catalog = desktop::UiCatalog::prepare(

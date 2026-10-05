@@ -114,11 +114,5 @@ namespace lux::editor::material
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };
-    [[nodiscard]] MaterialViewResult<views::DetachedView> makeMaterialView(
-        object::ObjectDispatcherRef,
-        lux::ui::PaneId,
-        MaterialViewServices,
-        std::optional<MaterialViewBinding> = {},
-        MaterialViewState = {}
-    );
+
 } // namespace lux::editor::material

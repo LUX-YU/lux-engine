@@ -147,45 +147,6 @@ namespace registered_views
             std::monostate{}
         );
     }
-    auto material(
-        lux::object::ObjectDispatcherRef dispatcher,
-        lux::ui::PaneId id,
-        material::MaterialViewServices services,
-        std::optional<material::MaterialViewBinding> binding,
-        material::MaterialViewState state
-    )
-    {
-        return prepare(
-            dispatcher,
-            id,
-            fixtureFactory(
-                views::ViewTypeId{"lux.editor.material"},
-                [services, binding, state](const views::ViewFactoryInput& input)
-                { return material::makeMaterialView(input.dispatcher(), input.paneId(), services, binding, state); }
-            ),
-            std::monostate{}
-        );
-    }
-    auto flow(
-        lux::object::ObjectDispatcherRef dispatcher,
-        lux::ui::PaneId id,
-        flowforge::FlowViewServices services,
-        std::optional<flowforge::FlowViewBinding> binding,
-        flowforge::FlowViewState state
-    )
-    {
-        return prepare(
-            dispatcher,
-            id,
-            fixtureFactory(
-                views::ViewTypeId{"lux.editor.flowforge"},
-                [services, binding, state](const views::ViewFactoryInput& input)
-                { return flowforge::makeFlowView(input.dispatcher(), input.paneId(), services, binding, state); }
-            ),
-            std::monostate{}
-        );
-    }
-
 } // namespace registered_views
 namespace
 {
@@ -1999,16 +1960,18 @@ namespace
         auto compilation = std::make_shared<ef::FlowCompilationService>(f.execution);
         ef::FlowViewServices
             services{f.store.access<ef::FlowSession>(), compilation, ef::FlowEnvironment{}, publication_owner.saving};
-        auto detached = take(registered_views::flow(
+        auto detached = take(ef::FlowView::create(
             f.messages.dispatcherRef(),
             ui::PaneId{"flow"},
             services,
             ef::FlowViewBinding{key, &interaction},
             ef::FlowViewState{{"P10-deliberately-missing-linker.exe"}}
         ));
-        auto* view = static_cast<ef::FlowView*>(detached.pane());
+        auto* view = detached.get();
         viewConfiguration(*view);
-        const auto id = take((*f.legacy_host).adopt(detached, views::ViewRestoreKey{"flow"})).id;
+        auto& root = f.desktop->root();
+        assert(root.addSubPane(std::move(detached)));
+        const auto id = take(root.identify(*view));
         const auto initial = author->describe();
         const auto encoded = take(take(author->read()).encode());
         assert(view->beginEdit("variable"));
@@ -2020,30 +1983,32 @@ namespace
         });
         assert(view->previewEdit(edits));
         assert(author->describe().current == initial.current && take(take(author->read()).encode()) == encoded);
-        // A real Session gate is held. The host must retain its owned Pane and interaction until later.
-        assert((*f.legacy_host).close(id));
+        // A real Session gate is held. Failed preparation retains the original window and gesture.
         auto read = take(author->read());
         assert(read.withRead(
             [&]() -> ef::FlowEditResult<void>
             {
-                const auto report = take((*f.legacy_host).drain());
-                assert(report.completed == 0 && report.pending == 1);
-                assert((*f.legacy_host).describe(id) && interaction.overlay());
+                const auto refused = ef::kFlowView.prepare_close(*view);
+                assert(!refused && refused.error().code == desktop::EUiError::BUSY);
+                assert(root.findPane(id) && interaction.overlay());
                 return {};
             }
         ));
-        assert(take((*f.legacy_host).drain()).completed == 1);
-        assert(!interaction.overlay() && !(*f.legacy_host).describe(id));
+        assert(ef::kFlowView.prepare_close(*view) && root.removeSubPane(*view));
+        (void)f.messages.collectRetired();
+        assert(!interaction.overlay() && !root.findPane(id));
         assert(author->describe().current == initial.current && take(take(author->read()).encode()) == encoded);
-        auto reopened = take(registered_views::flow(
+        auto reopened = take(ef::FlowView::create(
             f.messages.dispatcherRef(),
             ui::PaneId{"flow"},
             services,
             ef::FlowViewBinding{key, &interaction},
             ef::FlowViewState{{"P10-deliberately-missing-linker.exe"}}
         ));
-        view = static_cast<ef::FlowView*>(reopened.pane());
-        const auto next = take((*f.legacy_host).adopt(reopened, views::ViewRestoreKey{"flow"})).id;
+        view = reopened.get();
+        assert(root.addSubPane(std::move(reopened)));
+        const auto next = take(root.identify(*view));
+        assert(next != id && !root.findPane(id));
         // The public view commands used by the controls exercise the complete property matrix.
         auto apply_property = [&](std::vector<ef::VFlowEdit> changes)
         {
@@ -2128,8 +2093,9 @@ namespace
         assert(publication_owner.saving->update());
         assert(take(publication_owner.saving->artifactReports()).front().admitted);
         assert(view->undo() && author->describe().current == initial.current);
-        assert((*f.legacy_host).close(next));
-        f.wait([&] { return !(*f.legacy_host).describe(next); });
+        assert(ef::kFlowView.prepare_close(*view) && root.removeSubPane(*view));
+        (void)f.messages.collectRetired();
+        assert(!root.findPane(next));
         assert(take(compilation->operation(operation)).get().object() == object);
         f.wait([&] { return publication_owner.saving->settled(); });
         const auto report = take(publication_owner.saving->artifactReports()).front();
@@ -2218,7 +2184,7 @@ namespace
         auto save_registration = take(f.saves.registerSource(save_source));
         em::MaterialViewState state;
         state.camera.transform.translation = {0, 0, 3.5};
-        auto detached = take(registered_views::material(
+        auto detached = take(em::MaterialView::create(
             f.messages.dispatcherRef(),
             ui::PaneId{"material"},
             {f.store.access<em::MaterialSession>(),
@@ -2234,9 +2200,11 @@ namespace
             em::MaterialViewBinding{key, &interaction},
             state
         ));
-        auto* view = static_cast<em::MaterialView*>(detached.pane());
+        auto* view = detached.get();
         viewConfiguration(*view);
-        const auto id = take((*f.legacy_host).adopt(detached, views::ViewRestoreKey{"material"})).id;
+        auto& root = f.desktop->root();
+        assert(root.addSubPane(std::move(detached)));
+        const auto id = take(root.identify(*view));
         const auto encoded = take(take(author->read()).encode());
         const auto initial = author->describe();
         {
@@ -2482,18 +2450,19 @@ namespace
         assert(view->beginEdit("pending close"));
         edits.emplace_back(em::MaterialRename{"not committed"});
         assert(view->previewEdit(edits));
-        assert((*f.legacy_host).close(id));
         auto read = take(author->read());
         assert(read.withRead(
             [&](const lux::material::MaterialSource&) -> em::MaterialEditResult<void>
             {
-                const auto report = take((*f.legacy_host).drain());
-                assert(report.completed == 0 && report.pending == 1 && interaction.overlay());
-                assert((*f.legacy_host).describe(id));
+                const auto refused = em::kMaterialView.prepare_close(*view);
+                assert(!refused && refused.error().code == desktop::EUiError::BUSY && interaction.overlay());
+                assert(root.findPane(id));
                 return {};
             }
         ));
-        f.wait([&] { return !(*f.legacy_host).describe(id); });
+        assert(em::kMaterialView.prepare_close(*view) && root.removeSubPane(*view));
+        (void)f.messages.collectRetired();
+        assert(!root.findPane(id));
         assert(!interaction.overlay() && take(take(author->read()).encode()) == encoded);
         // Accepted save work completes after its view is gone; the service alone adopts the baseline.
         const auto saved_content = author->describe().current;

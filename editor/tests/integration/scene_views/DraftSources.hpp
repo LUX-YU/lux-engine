@@ -415,14 +415,16 @@ namespace draft_test
         }
         ef::FlowInteraction interaction(f.store.access<ef::FlowSession>(), key);
         auto compilation = std::make_shared<ef::FlowCompilationService>(f.execution);
-        auto detached = take(ef::makeFlowView(
+        auto detached = take(ef::FlowView::create(
             f.messages.dispatcherRef(),
             ui::PaneId{"r1-flow"},
             {f.store.access<ef::FlowSession>(), compilation, ef::FlowEnvironment{}},
             ef::FlowViewBinding{key, &interaction}
         ));
-        auto* view = static_cast<ef::FlowView*>(detached.pane());
-        const auto mounted = take((*f.legacy_host).adopt(detached, views::ViewRestoreKey{"r1-flow"})).id;
+        auto* view = detached.get();
+        auto& root = f.desktop->root();
+        assert(root.addSubPane(std::move(detached)));
+        const auto mounted = take(root.identify(*view));
         UiInput input(f);
         auto* graph = find<widgets::GraphCanvas>(*view);
         assert(graph);
@@ -433,8 +435,9 @@ namespace draft_test
         {
             queueCases(f, *session, *view, interaction, *graph, id.value);
             assert(view->cancelEdit());
-            assert((*f.legacy_host).close(mounted));
-            f.wait([&] { return !(*f.legacy_host).describe(mounted); });
+            assert(root.removeSubPane(*view));
+            (void)f.messages.collectRetired();
+            assert(!root.findPane(mounted));
             closeSession(f, *session);
             return true;
         }
@@ -520,8 +523,9 @@ namespace draft_test
             assert(view->status());
             roundTrip(*replacement, *view, new_bytes);
             assert(view->cancelEdit());
-            assert((*f.legacy_host).close(mounted));
-            f.wait([&] { return !(*f.legacy_host).describe(mounted); });
+            assert(root.removeSubPane(*view));
+            (void)f.messages.collectRetired();
+            assert(!root.findPane(mounted));
             closeSession(f, *replacement);
             std::fputs(
                 "R10-R1-03 failed BUSY rebind preserves; old generation rejected; new binding same IDs recaptured "
@@ -590,8 +594,9 @@ namespace draft_test
             assert(view->status() && !interaction.overlay());
             roundTrip(*session, *view, s0_bytes);
             assert(view->cancelEdit());
-            assert((*f.legacy_host).close(mounted));
-            f.wait([&] { return !(*f.legacy_host).describe(mounted); });
+            assert(root.removeSubPane(*view));
+            (void)f.messages.collectRetired();
+            assert(!root.findPane(mounted));
             closeSession(f, *session);
             std::fputs("R10-R1-01 positive actual property Apply/Undo/Redo PASS\n", stderr);
             return true;
@@ -637,8 +642,9 @@ namespace draft_test
             std::fputs("R10-R1-06 actual Revert/edit/Apply one-history Undo/Redo PASS\n", stderr);
         }
         assert(view->cancelEdit());
-        assert((*f.legacy_host).close(mounted));
-        f.wait([&] { return !(*f.legacy_host).describe(mounted); });
+        assert(root.removeSubPane(*view));
+        (void)f.messages.collectRetired();
+        assert(!root.findPane(mounted));
         auto permit = take(f.store.prepareClose(session->describe().current));
         assert(f.store.close(permit));
         return preserved && rejected;
@@ -700,7 +706,7 @@ namespace draft_test
         em::MaterialInteraction interaction(f.store.access<em::MaterialSession>(), key);
         em::MaterialPreview preview{*f.runtime, {f.environment, {}}};
         auto compilation = std::make_shared<em::MaterialCompilationService>(f.execution);
-        auto detached = take(em::makeMaterialView(
+        auto detached = take(em::MaterialView::create(
             f.messages.dispatcherRef(),
             ui::PaneId{"r1-material"},
             {f.store.access<em::MaterialSession>(),
@@ -714,8 +720,10 @@ namespace draft_test
              {3}},
             em::MaterialViewBinding{key, &interaction}
         ));
-        auto* view = static_cast<em::MaterialView*>(detached.pane());
-        const auto mounted = take((*f.legacy_host).adopt(detached, views::ViewRestoreKey{"r1-material"})).id;
+        auto* view = detached.get();
+        auto& root = f.desktop->root();
+        assert(root.addSubPane(std::move(detached)));
+        const auto mounted = take(root.identify(*view));
         auto* graph = find<widgets::GraphCanvas>(*view);
         assert(graph);
         if (lifetime)
@@ -740,8 +748,9 @@ namespace draft_test
             assert(probe.released == 1);
             probe.armed = false;
             assert(unchanged(original, session->describe()) && bytes(*session) == encoded);
-            assert((*f.legacy_host).close(mounted));
-            f.wait([&] { return !(*f.legacy_host).describe(mounted); });
+            assert(root.removeSubPane(*view));
+            (void)f.messages.collectRetired();
+            assert(!root.findPane(mounted));
             closeSession(f, *session);
             std::fputs(
                 "R10-R1-05 dynamic node draft: BUSY retains/code alive/disposal under original gate PASS\n",
@@ -753,8 +762,9 @@ namespace draft_test
         {
             queueCases(f, *session, *view, interaction, *graph, id.value);
             assert(view->cancelEdit());
-            assert((*f.legacy_host).close(mounted));
-            f.wait([&] { return !(*f.legacy_host).describe(mounted); });
+            assert(root.removeSubPane(*view));
+            (void)f.messages.collectRetired();
+            assert(!root.findPane(mounted));
             closeSession(f, *session);
             return true;
         }
@@ -791,8 +801,9 @@ namespace draft_test
             rejected
         );
         assert(view->cancelEdit());
-        assert((*f.legacy_host).close(mounted));
-        f.wait([&] { return !(*f.legacy_host).describe(mounted); });
+        assert(root.removeSubPane(*view));
+        (void)f.messages.collectRetired();
+        assert(!root.findPane(mounted));
         auto permit = take(f.store.prepareClose(session->describe().current));
         assert(f.store.close(permit));
         return preserved && rejected;

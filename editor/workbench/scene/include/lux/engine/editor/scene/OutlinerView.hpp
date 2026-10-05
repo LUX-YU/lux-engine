@@ -40,13 +40,4 @@ namespace lux::editor::scene
         std::unique_ptr<Impl> impl_;
         void update() noexcept override;
     };
-    [[nodiscard]] SceneViewResult<views::DetachedView> makeOutlinerView(
-        object::ObjectDispatcherRef,
-        lux::ui::PaneId,
-        sessions::TSessionAccess<SceneSession>,
-        VSceneViewBinding,
-        std::optional<RunInspectAccess> = {},
-        simulation::ecs::ComponentSchemaSet = {},
-        std::shared_ptr<SceneInteractionGroup> = {}
-    );
 }

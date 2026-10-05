@@ -82,11 +82,5 @@ namespace lux::editor::flowforge
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };
-    [[nodiscard]] FlowViewResult<views::DetachedView> makeFlowView(
-        object::ObjectDispatcherRef,
-        lux::ui::PaneId,
-        FlowViewServices,
-        std::optional<FlowViewBinding> = {},
-        FlowViewState = {}
-    );
+
 } // namespace lux::editor::flowforge

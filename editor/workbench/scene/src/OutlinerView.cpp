@@ -567,30 +567,4 @@ namespace lux::editor::scene
     {
         impl_->update();
     }
-    SceneViewResult<views::DetachedView> makeOutlinerView(
-        object::ObjectDispatcherRef dispatcher,
-        lux::ui::PaneId id,
-        sessions::TSessionAccess<SceneSession> sessions,
-        VSceneViewBinding binding,
-        std::optional<RunInspectAccess> runs,
-        simulation::ecs::ComponentSchemaSet schemas,
-        std::shared_ptr<SceneInteractionGroup> interaction
-    )
-    {
-        auto view = std::make_unique<OutlinerView>(
-            dispatcher,
-            std::move(id),
-            sessions,
-            std::move(binding),
-            runs,
-            std::move(schemas),
-            std::move(interaction)
-        );
-        if (!view->status())
-            return cxx::unexpected(view->status().error());
-        return views::DetachedView{
-            lux::object::CodeLease::builtin(), std::move(view), nullptr, nullptr, nullptr, nullptr,
-            +[](const lux::ui::Pane& pane) noexcept { return static_cast<const OutlinerView&>(pane).content(); }
-        };
-    }
 }

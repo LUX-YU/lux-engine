@@ -40,7 +40,7 @@ int main(int argc, char** argv)
         std::fprintf(stderr, "%s: %s\n", editor.error().domain.c_str(), editor.error().message.c_str());
     assert(editor);
     // A contributed standalone factory is exposed through the real Window menu command.
-    // Repeating it focuses the same tool; duplicate IDs would be rejected by Host.
+    // Repeating it focuses the same tool; duplicate IDs would be rejected by Root.
     for (unsigned i{}; i != 2; ++i)
     {
         assert((*editor)->execute(commands::CommandId{"lux.editor.tool/sample.editor"}));
@@ -50,5 +50,5 @@ int main(int argc, char** argv)
     assert((*editor)->exec());
     assert((*editor)->phase() == application::EApplicationPhase::RELEASED);
     editor->reset();
-    std::puts("PASS installed V8 plugin: formal application Window command, reuse, close and retirement");
+    std::puts("PASS installed V10 plugin: formal application Window command, reuse, close and retirement");
 }

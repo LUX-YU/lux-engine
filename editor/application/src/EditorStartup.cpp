@@ -124,12 +124,6 @@ namespace lux::editor::application
             return applicationFailure("services.bootstrap.sessions", sessions.error());
         }
         sessions_ = std::move(*sessions);
-        auto save_execution = editor_context_.services().get<persistence::SaveExecution>(scope);
-        if (!save_execution)
-        {
-            return applicationFailure("services.bootstrap.save_execution", save_execution.error());
-        }
-        save_execution_ = std::move(*save_execution);
         auto opening = editor_context_.services().get<sessions::SessionOpening>(scope);
         if (!opening)
         {

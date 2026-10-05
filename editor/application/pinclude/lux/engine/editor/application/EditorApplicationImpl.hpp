@@ -8,7 +8,6 @@
 #include <lux/engine/editor/desktop/ViewCommands.hpp>
 #include <lux/engine/editor/desktop/WorkspaceActions.hpp>
 #include <lux/engine/editor/extensions/EditorExtension.hpp>
-#include <lux/engine/editor/persistence/SaveExecution.hpp>
 #include <lux/engine/editor/project/ContentReview.hpp>
 #include <lux/engine/editor/project/ContentViews.hpp>
 #include <lux/engine/editor/project/DesktopSettings.hpp>
@@ -180,7 +179,6 @@ namespace lux::editor::application
         std::shared_ptr<persistence::WriteCoordinator> writes_;
         std::shared_ptr<persistence::SaveService> saves_;
         std::shared_ptr<sessions::SessionStore> sessions_;
-        std::shared_ptr<persistence::SaveExecution> save_execution_;
         std::shared_ptr<sessions::SessionOpening> opening_;
         std::shared_ptr<RecentProjects> recent_projects_;
         std::shared_ptr<assets::ModelImporter> importer_;

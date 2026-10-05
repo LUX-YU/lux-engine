@@ -1719,7 +1719,8 @@ int main(int argc, char** argv)
         assert(std::chrono::steady_clock::now() < saving_deadline);
         assert(impl.engine_->execution().collectCompletions());
         impl.saves_->adoptCompletions();
-        assert(impl.save_execution_->submitReady());
+        // The scope maintains the same declared execution owner; Application has no private pump.
+        assert(impl.editor_context_.scope().maintain());
         std::this_thread::yield();
     }
     auto registration = failureRegistration();

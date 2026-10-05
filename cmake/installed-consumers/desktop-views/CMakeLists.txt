@@ -56,7 +56,7 @@ configure_file("${CMAKE_CURRENT_SOURCE_DIR}/../editor-d2/include/consumer/Compon
 add_executable(inspector_fields Inspector.cpp)
 set_property(TARGET inspector_fields PROPERTY LUX_ARCH_LAYER EDITOR)
 target_include_directories(inspector_fields PRIVATE "${CMAKE_CURRENT_BINARY_DIR}" "${CMAKE_CURRENT_BINARY_DIR}/include" "${LUX_GENERATE_HEADER_DIR}")
-target_link_libraries(inspector_fields PRIVATE lux::engine::editor::scene_ui lux::engine::editor::view_host)
+target_link_libraries(inspector_fields PRIVATE lux::engine::editor::scene_ui)
 engine_target_add_ecs_component_codegen(NAME desktop_consumer_schema TARGET inspector_fields
     SOURCE_FILE "${CMAKE_CURRENT_SOURCE_DIR}/Inspector.cpp" HEADER "${component_input}"
     LOGICAL_PATH consumer/Component.hpp SYMBOL DesktopConsumer)

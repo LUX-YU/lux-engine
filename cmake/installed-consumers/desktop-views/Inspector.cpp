@@ -3,7 +3,6 @@
 #include <desktop_consumer.inspector.generated.hpp>
 #include <lux/engine/editor/scene/SceneAlgorithms.hpp>
 #include <lux/engine/editor/scene/InspectorView.hpp>
-#include <lux/engine/editor/desktop/ViewHost.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include <lux/engine/object/ObjectDispatcher.hpp>
 #include <lux/engine/ui/Root.hpp>
@@ -28,7 +27,6 @@ int main()
     auto root = take(ui::Root::create(queue.dispatcherRef(), {.docking = false}));
     lux::test::ObjectQueue store_messages;
     sessions::SessionStore store{store_messages.dispatcherRef(), 4};
-    desktop::ViewHost host(*root);
     const auto generated = simulation::ecs::generated::DesktopConsumerComponentSchemas();
     std::vector<simulation::ecs::ComponentSchema> copies;
     for (const auto& schema : generated)
@@ -67,17 +65,18 @@ int main()
     author::SceneInteractionGroup interaction(store.access<author::SceneSession>(), key, {1});
     const author::SceneObjectRef target{key.id(), initial.current.state.history, world::WorldObjectId{uuid}};
     const auto bindings = author::generated::desktop_consumerBindings();
-    auto detached = take(author::makeInspectorView(
+    auto candidate = std::make_unique<author::InspectorView>(
         queue.dispatcherRef(),
         ui::PaneId{"sdk-fields"},
         store.access<author::SceneSession>(),
-        {key, &interaction},
-        target,
         schemas,
-        {bindings.begin(), bindings.end()}
-    ));
-    auto* inspector = static_cast<author::InspectorView*>(detached.pane());
-    const auto id = take(host.adopt(detached, views::ViewRestoreKey{"sdk-fields"})).id;
+        std::vector<author::InspectorComponent>{bindings.begin(), bindings.end()}
+    );
+    auto* inspector = candidate.get();
+    assert(inspector->status() && inspector->rebind({key, &interaction}, target));
+    assert(!inspector->attachedRoot());
+    assert(root->addSubPane(std::move(candidate)) && !candidate);
+    const auto id = take(root->identify(*inspector));
     const auto frame = [&] { assert(root->update({{900, 800}, .016F}, nullptr)); };
     frame();
     const auto find = [](auto&& self, object::LuxObject& object) -> ui::NumericEdit* {
@@ -132,8 +131,12 @@ int main()
     assert(session->redo());
     frame();
     assert(take(take(session->read()).component(target, encoded.schema)).bytes == encoded.bytes);
-    assert(host.close(id) && host.drain());
-    assert(!host.describe(id) && store.describe(key.id()));
+    const auto final_content = session->describe().current;
+    assert(inspector->prepareClose());
+    assert(root->removeSubPane(*inspector));
+    assert(!root->findPane(id));
+    (void)queue.collectRetired();
+    assert(store.describe(key.id()) && session->describe().current == final_content);
     std::puts("PASS SDK generated nested/container Inspector Elements, scalar preview/commit, set insertion, "
               "exact author encoding, Undo/Redo, close without legacy UI");
 }

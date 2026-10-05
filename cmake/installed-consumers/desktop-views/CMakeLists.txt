@@ -18,9 +18,6 @@ endforeach()
 find_package(lux-engine-editor-extensions REQUIRED COMPONENTS editor_extensions)
 find_package(lux-engine-editor-scene-ui REQUIRED COMPONENTS scene_ui)
 find_package(lux-engine-editor-material-ui REQUIRED COMPONENTS material_ui)
-find_package(lux-engine-editor-flow-module REQUIRED COMPONENTS flow_module)
-find_package(lux-engine-editor-material-module REQUIRED COMPONENTS material_module)
-find_package(lux-engine-editor-scene-module REQUIRED COMPONENTS scene_module)
 find_package(lux-engine-project-plugin-rendering REQUIRED COMPONENTS project_plugin_rendering)
 find_package(lux-engine-editor-scene-persistence REQUIRED COMPONENTS scene_persistence)
 find_package(lux-engine-editor-material-persistence REQUIRED COMPONENTS material_persistence)
@@ -42,6 +39,11 @@ foreach(forbidden editor_ui editor_scene editor_material editor_flowforge editor
         message(FATAL_ERROR "New desktop SDK imported legacy target ${forbidden}")
     endif()
 endforeach()
+# Module composition includes optional activities (for example Scene model placement). Qualify
+# the UI-only closure above before importing those real activity providers for integration tests.
+find_package(lux-engine-editor-flow-module REQUIRED COMPONENTS flow_module)
+find_package(lux-engine-editor-material-module REQUIRED COMPONENTS material_module)
+find_package(lux-engine-editor-scene-module REQUIRED COMPONENTS scene_module)
 # The real publication fixture explicitly supplies its file backend after validating the UI closure.
 find_package(lux-engine-editor-storage REQUIRED COMPONENTS editor_storage)
 find_package(lux-engine-editor-project-tools-ui REQUIRED COMPONENTS project_tools_ui)

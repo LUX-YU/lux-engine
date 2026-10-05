@@ -30,6 +30,17 @@ namespace lux::editor::scene
     // Retains only the interaction group, never a Pane pointer or a live Registry borrow.
     [[nodiscard]] cxx::expected<std::shared_ptr<SceneInteractionGroup>, lux::ui::EAttachmentError>
     shareSceneInteraction(lux::ui::Root&, lux::ui::PaneHandle);
+    // Prepares a detached tool through its declared factory. The source keeps its existing
+    // interaction and content; the caller decides whether to transfer the candidate to Root.
+    [[nodiscard]] desktop::UiResult<std::unique_ptr<lux::ui::Pane, object::ObjectDeleter>> createSceneTool(
+        desktop::UiRegistry&,
+        services::ServiceRegistry&,
+        services::ServiceScope&,
+        lux::ui::Root&,
+        lux::ui::PaneHandle source,
+        ESceneTool,
+        lux::ui::PaneId
+    );
     // Commands retain their receivers; the bound Root and RunStore must outlive the command snapshot.
     // Step/stop retain their original ticket and view-close owners at the assembly boundary.
     [[nodiscard]] std::vector<std::shared_ptr<commands::CommandEntry>>

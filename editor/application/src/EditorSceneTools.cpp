@@ -230,63 +230,14 @@ namespace lux::editor::application
             return applicationFailure("scene.tool.source", source_group.error());
         }
         const auto run = (*source_group)->run();
-        const desktop::UiDescriptor* descriptor{};
-        switch (kind)
-        {
-        case scene::ESceneTool::OUTLINER:
-            descriptor = &scene::kOutlinerView;
-            break;
-        case scene::ESceneTool::INSPECTOR:
-            descriptor = run ? &scene::kRunInspectorView : &scene::kInspectorView;
-            break;
-        case scene::ESceneTool::RESOURCES:
-            descriptor = &scene::kResourceView;
-            break;
-        case scene::ESceneTool::CONFIGURATION:
-            descriptor = &scene::kSceneConfigurationView;
-            break;
-        }
-        if (!descriptor)
-        {
-            return cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "scene.tool.kind"});
-        }
-        auto scope = editor_context_.services().createScope(&editor_context_.scope());
-        if (!scope)
-        {
-            return applicationFailure("scene.tool.scope", scope.error());
-        }
-        if (auto provided = scope->provide(services::ServiceNameView{"lux.editor.scene.interaction"}, *source_group);
-            !provided)
-        {
-            return applicationFailure("scene.tool.group", provided.error());
-        }
-        if (auto provided = scope->provide(services::ServiceNameView{"lux.ui.root"}, desktop_->root()); !provided)
-        {
-            return applicationFailure("scene.tool.root", provided.error());
-        }
-        if (auto provided = scope->provide(services::ServiceNameView{"lux.editor.scene.viewport"}, source); !provided)
-        {
-            return applicationFailure("scene.tool.viewport", provided.error());
-        }
-        views::ViewContent content;
-        if (auto session = (*source_group)->session())
-        {
-            content = {{session->id()}, session->id()};
-        }
-        const auto name = "scene-tool-" + std::to_string(next_view_++);
-        auto factory = contributions_.snapshot().ui().find(descriptor->type);
-        if (!factory)
-        {
-            return applicationFailure("scene.tool.factory", factory.error());
-        }
-        auto candidate = editor_context_.ui().create(
-            *factory,
-            *scope,
-            {messages_.dispatcherRef(),
-             lux::ui::PaneId{name},
-             content,
-             {factory->descriptor().schema, {}},
-             views::ViewRestoreKey{name}}
+        auto candidate = scene::createSceneTool(
+            editor_context_.ui(),
+            editor_context_.services(),
+            editor_context_.scope(),
+            desktop_->root(),
+            source,
+            kind,
+            lux::ui::PaneId{"scene-tool-" + std::to_string(next_view_++)}
         );
         if (!candidate)
         {

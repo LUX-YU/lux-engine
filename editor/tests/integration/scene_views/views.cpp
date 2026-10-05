@@ -722,6 +722,38 @@ namespace
         assert(received_drop->asset.asset == dropped_asset.asset && received_drop->position.allFinite());
         assert(f.session->describe().current == before.current && f.session->describe().dirty == before.dirty);
 
+        const auto live_before = take(windows.describe(root));
+        const auto failed_tool = [&](ui::Root& target_root, ui::PaneHandle source_handle, author::ESceneTool tool)
+        {
+            auto candidate = author::createSceneTool(
+                windows, services, scope, target_root, source_handle, tool, ui::PaneId{"rejected-scene-tool"}
+            );
+            assert(!candidate && take(windows.describe(root)).size() == live_before.size());
+            assert(group->selection().objects == std::vector<author::VSceneSelectionTarget>{target});
+            assert(f.session->describe().current == before.current && f.session->describe().dirty == before.dirty);
+            return candidate.error();
+        };
+        assert(failed_tool(root, source, static_cast<author::ESceneTool>(255)).code ==
+               desktop::EUiError::INVALID_CONFIGURATION);
+        auto foreign_root = take(ui::Root::create(f.messages.dispatcherRef()));
+        assert(failed_tool(*foreign_root, source, author::ESceneTool::OUTLINER).code == desktop::EUiError::ATTACHMENT);
+        foreign_root.reset();
+        // Source lookup obeys Root's actual access gate; no candidate can be mounted by preparation.
+        const auto nested = [&](ui::Pane&)
+        {
+            auto denied = author::createSceneTool(
+                windows, services, scope, root, source, author::ESceneTool::OUTLINER, ui::PaneId{"busy-tool"}
+            );
+            assert(!denied && denied.error().code == desktop::EUiError::BUSY);
+        };
+        assert(root.withPane(source, nested));
+        // The owning source survives temporary Session BUSY with its selection unchanged.
+        assert(take(f.session->read()).withRead([&](const author::SceneReadView&) -> author::SceneEditResult<void>
+        {
+            assert(failed_tool(root, source, author::ESceneTool::INSPECTOR).code == desktop::EUiError::BUSY);
+            return {};
+        }));
+
         std::vector<ui::PaneHandle> handles;
         author::InspectorView* inspector{};
         author::ResourceView* resources{};
@@ -730,19 +762,19 @@ namespace
             assert(local.provide(services::ServiceNameView{"lux.editor.scene.interaction"}, group));
             assert(local.provide(services::ServiceNameView{"lux.ui.root"}, root));
             assert(local.provide(services::ServiceNameView{"lux.editor.scene.viewport"}, source));
-            const auto make = [&](const desktop::UiDescriptor& descriptor)
+            const auto make = [&](const desktop::UiDescriptor& descriptor, author::ESceneTool tool)
             {
                 input.instance = ui::PaneId{descriptor.type.name()};
-                auto owner = take(windows.create(take(catalog.find(descriptor.type)), local, input));
+                auto owner = take(author::createSceneTool(windows, services, scope, root, source, tool, input.instance));
                 auto* pointer = owner.get();
                 assert(!pointer->parent() && !pointer->attachedRoot());
                 assert(root.addSubPane(std::move(owner)));
                 handles.push_back(take(root.identify(*pointer)));
                 return pointer;
             };
-            auto* outline = static_cast<author::OutlinerView*>(make(author::kOutlinerView));
-            inspector = static_cast<author::InspectorView*>(make(author::kInspectorView));
-            resources = static_cast<author::ResourceView*>(make(author::kResourceView));
+            auto* outline = static_cast<author::OutlinerView*>(make(author::kOutlinerView, author::ESceneTool::OUTLINER));
+            inspector = static_cast<author::InspectorView*>(make(author::kInspectorView, author::ESceneTool::INSPECTOR));
+            resources = static_cast<author::ResourceView*>(make(author::kResourceView, author::ESceneTool::RESOURCES));
             assert(outline->interactionOwner() == group && inspector->interactionOwner() == group);
             assert(outline->objects().size() == 1 && inspector->target() == target);
             assert(resources->content() == content && resources->snapshot().instance == scene->presentedInstance());
@@ -807,6 +839,10 @@ namespace
         f.frame(false);
         assert(!retained.expired() && resources->content().sessions.empty());
         assert(!author::shareSceneInteraction(root, source));
+        const auto stale_tool = author::createSceneTool(
+            windows, services, scope, root, source, author::ESceneTool::OUTLINER, ui::PaneId{"stale-tool"}
+        );
+        assert(!stale_tool && stale_tool.error().code == desktop::EUiError::ATTACHMENT);
         assert(retained.lock()->select({}));
         f.frame(false);
         assert(!inspector->target() && inspector->content() == content);
@@ -1169,6 +1205,13 @@ namespace
             assert(root.addSubPane(std::move(candidate)));
             const auto handle = take(root.identify(*inspector));
             assert(local.release() && local.drained());
+            auto shared_tool = take(author::createSceneTool(
+                windows, registry, scope, root, handle, author::ESceneTool::INSPECTOR, ui::PaneId{"shared-run-inspector"}
+            ));
+            auto* shared_inspector = dynamic_cast<author::RunInspectorView*>(shared_tool.get());
+            assert(shared_inspector && shared_inspector->interactionOwner() == group);
+            assert(!shared_tool->parent() && !shared_tool->attachedRoot() && shared_inspector->target() == target);
+            shared_tool.reset();
             const auto paused = take(take(runs.debugHistory(run)).get().view()).snapshot;
             f.frame(false);
             assert(inspector->status() && inspector->target() == target);

@@ -23,28 +23,6 @@ namespace lux::editor::application
             { return commands::CommandState{*phase == EApplicationPhase::RUNNING}; },
             toolOpening()
         ));
-        draft.commands.push_back(project::makeInitialSceneCommand(
-            [phase = &phase_](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
-            { return commands::CommandState{*phase == EApplicationPhase::RUNNING}; },
-            *project_,
-            [this](AssetReference reference) -> commands::CommandResult<void>
-            {
-                auto queued = content_views_->enqueue(reference);
-                if (!queued)
-                {
-                    const auto& error = queued.error();
-                    return cxx::unexpected(commands::CommandFailure{
-                        error.code == EEditorError::CAPACITY ? commands::ECommandError::CAPACITY
-                                                             : commands::ECommandError::BUSY,
-                        error.domain,
-                        error.reason,
-                        error.message
-                    });
-                }
-                return {};
-            }
-        ));
-
         draft.commands.push_back(project::makeOpenProjectCommand(
             [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
             {

@@ -9,7 +9,7 @@ cmake --build build --target all -j 4 -- -k 0
 ctest --test-dir build --output-on-failure
 ```
 
-Use `WINDOW` to qualify detached construction and the actual Root/ViewHost without a renderer. `APP` explicitly
+Use `WINDOW` to qualify detached construction and actual Root ownership without a renderer. `APP` explicitly
 links the installed application and its LLVM/render dependencies; it runs the real offscreen desktop. Pass the
 usual dependency toolchain/LLVM/MLIR paths when required by that SDK. CPU modes reject importing the concrete
 tool UI or application targets. They do not construct a render runtime or perform compilation.

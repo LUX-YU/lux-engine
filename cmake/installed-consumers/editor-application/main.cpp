@@ -61,6 +61,8 @@ int main(int argc, char** argv)
     );
     foreign.join();
     assert(app->phase() == EApplicationPhase::RUNNING);
+    const auto initial = app->execute(commands::CommandId{"lux.editor.initial-scene"});
+    assert(!initial && initial.error().code == commands::ECommandError::DISABLED);
     assert(app->execute(commands::CommandId{"lux.editor.assets"}));
     const auto about = app->execute(commands::CommandId{"lux.editor.about"});
     assert(!about && about.error().code == commands::ECommandError::DISABLED);

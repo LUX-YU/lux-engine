@@ -2171,6 +2171,11 @@ int main(int argc, char** argv)
         assert(std::chrono::steady_clock::now() < initial_deadline);
     }
     assert(initial_owner.sessions_->size() == 1);
+    assert(initial_owner.content_views_->suspend());
+    const auto suspended_initial = (*initial)->execute(commands::CommandId{"lux.editor.initial-scene"});
+    assert(!suspended_initial && suspended_initial.error().code == commands::ECommandError::DISABLED);
+    assert(initial_owner.sessions_->size() == 1);
+    assert(initial_owner.content_views_->resume());
     assert((*initial)->execute(commands::CommandId{"lux.editor.initial-scene"}));
     for (int frame{}; frame < 12; ++frame)
     {

@@ -26,12 +26,13 @@ namespace lux::editor::project
             +[]() noexcept -> const extensions::EditorExtensionExports*
             {
                 static const extensions::EditorExtensionExports exports{
-                    .counts = {.commands = 2, .services = 16, .ui = 2},
+                    .counts = {.commands = 3, .services = 16, .ui = 2},
                     .contribute = +[](extensions::ContributionDraft& draft,
                                       object::CodeLease code) -> extensions::ContributionResult<void>
                     {
                         auto history = sessions::makeHistoryCommands(code);
                         draft.commands.insert(draft.commands.end(), history.begin(), history.end());
+                        draft.commands.push_back(makeInitialSceneCommand(code));
                         draft.services.push_back(services::ServiceEntry::bind<sessions::kSessionStoreService>(code));
                         draft.services.push_back(services::ServiceEntry::bind<sessions::kSessionOpeningService>(code));
                         draft.services.push_back(

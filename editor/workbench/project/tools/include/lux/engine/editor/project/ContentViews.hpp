@@ -34,6 +34,10 @@ namespace lux::editor::extensions
 } // namespace lux::editor::extensions
 namespace lux::editor::project
 {
+    // Declared receiver for the project's default content. Uses the same bounded open/show owner.
+    [[nodiscard]] std::shared_ptr<commands::CommandEntry> makeInitialSceneCommand(
+        object::CodeLease code = object::CodeLease::builtin()
+    );
     struct OpenAndShowResult final
     {
         sessions::OpenAssetStatus content;

@@ -14,6 +14,86 @@ namespace lux::editor::project
 {
     namespace
     {
+        constexpr services::ServiceDependency initial_scene_dependencies[]{
+            {services::ServiceNameView{"lux.editor.project.content-views"},
+             1,
+             cxx::typeToken<ContentViews>(),
+             services::EDependencyKind::SHARED,
+             services::EDependencyScope::ROOT},
+            {services::ServiceNameView{"lux.editor.project.storage"},
+             1,
+             cxx::typeToken<ProjectStorage>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT}
+        };
+        commands::CommandResult<std::unique_ptr<commands::CommandBinding>> initialSceneBinding(
+            services::ServiceResolver& resolver, const object::CodeLease&
+        ) noexcept
+        {
+            auto views = resolver.get<ContentViews>(0);
+            if (!views)
+            {
+                return cxx::unexpected(commands::CommandFailure{
+                    views.error().code == services::EServiceError::BUSY ? commands::ECommandError::BUSY
+                                                                       : commands::ECommandError::DOMAIN_FAILURE,
+                    "content-views.service",
+                    static_cast<std::uint64_t>(views.error().code),
+                    views.error().detail
+                });
+            }
+            auto project = resolver.require<ProjectStorage>(1);
+            if (!project)
+            {
+                return cxx::unexpected(commands::CommandFailure{
+                    commands::ECommandError::DOMAIN_FAILURE,
+                    "project.storage",
+                    static_cast<std::uint64_t>(project.error().code),
+                    project.error().detail
+                });
+            }
+            return std::make_unique<commands::CommandBinding>(
+                [owner = *views, storage = *project](const commands::CommandQuery&)
+                    -> commands::CommandResult<commands::CommandState>
+                {
+                    const bool has_source = !storage.get().manifest().default_scene.empty();
+                    return commands::CommandState{has_source && owner->hasCapacity()};
+                },
+                [owner = *views, storage = *project](const commands::CommandInvocation&)
+                    -> commands::CommandResult<commands::DispatchReceipt>
+                {
+                    auto reference = initialSceneReference(storage.get());
+                    if (!reference)
+                    {
+                        const auto& error = reference.error();
+                        return cxx::unexpected(commands::CommandFailure{
+                            commands::ECommandError::INVALID_ARGUMENT, error.domain, error.reason, error.message
+                        });
+                    }
+                    auto accepted = owner->enqueue(*reference);
+                    if (!accepted)
+                    {
+                        const auto& error = accepted.error();
+                        auto code = commands::ECommandError::DOMAIN_FAILURE;
+                        switch (error.code)
+                        {
+                        case EEditorError::BUSY: code = commands::ECommandError::BUSY; break;
+                        case EEditorError::CAPACITY: code = commands::ECommandError::CAPACITY; break;
+                        case EEditorError::CLOSING: code = commands::ECommandError::CLOSED; break;
+                        default: break;
+                        }
+                        return cxx::unexpected(commands::CommandFailure{code, error.domain, error.reason, error.message});
+                    }
+                    return commands::DispatchReceipt{commands::ImmediateCompletion{}};
+                }
+            );
+        }
+        constexpr commands::CommandDescriptor kInitialScene{
+            .id = commands::CommandIdView{"lux.editor.initial-scene"},
+            .label = "Open Initial Scene",
+            .group = "File",
+            .dependencies = initial_scene_dependencies,
+            .create = initialSceneBinding
+        };
         bool isBusy(sessions::ESessionError error) noexcept
         {
             return error == sessions::ESessionError::BUSY;
@@ -63,6 +143,10 @@ namespace lux::editor::project
             Dispatch& operator=(const Dispatch&) = delete;
         };
     } // namespace
+    std::shared_ptr<commands::CommandEntry> makeInitialSceneCommand(object::CodeLease code)
+    {
+        return commands::CommandEntry::bind<kInitialScene>(std::move(code));
+    }
     struct ContentViews::Impl final
     {
         struct OpenPresentation final

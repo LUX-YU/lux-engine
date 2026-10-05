@@ -13,7 +13,7 @@ derive from a universal editor or look up services in an application context.
 | Read/decode/prepare/install author content | SessionFactorySnapshot / SessionOpening |
 | Save admission, ordered publication and adoption | SaveService / WriteCoordinator / domain save role |
 | Background execution and reliable completion | ExecutionRuntime / TaskScope |
-| UI ownership and mounting | DetachedView / ViewHost; Pane members own their subtrees |
+| UI ownership and mounting | UiRegistry returns standard unique Pane owners; Root commits through LuxObject ownership; fixed members remain externally owned |
 | Typed command lookup and dispatch | CommandRegistry |
 | Runtime drive, presentation and retirement | Original SceneRuntime and presentation owners |
 

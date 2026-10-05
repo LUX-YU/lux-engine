@@ -64,3 +64,9 @@ non-escaping callback: callers use the same UiRegistry/Root path and retain thei
 Closing drains accepted opening results with `ERestorationProgress::CLOSING`; it does not close author
 sessions or rewrite recovery files. Application still composes this use case and invokes its progress until
 the remaining workspace/close orchestration is migrated in EC4. This extraction is not the M6 exit gate.
+
+The Project module declares Undo/Redo and Open Initial Scene commands. Their factories retain the existing
+shared content/role owners; Application no longer supplies these lookup or open callbacks. Initial Scene
+uses the same bounded ContentViews queue, fixed AssetReference and open/show policy as asset selection.
+Suspended presentation disables new command admission without discarding accepted opening results.
+This does not yet migrate the remaining save, Run, workspace and close command composition.

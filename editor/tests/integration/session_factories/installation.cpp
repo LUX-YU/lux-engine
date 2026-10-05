@@ -11,8 +11,8 @@
 #include <lux/engine/editor/persistence/SaveExecution.hpp>
 #include <lux/engine/editor/extensions/Contributions.hpp>
 #include <lux/engine/editor/desktop/CommandMenu.hpp>
-#include <lux/engine/editor/desktop/ViewHost.hpp>
 #include <lux/engine/ui/Root.hpp>
+#include <lux/engine/ui/Pane.hpp>
 #include <lux/engine/object/ObjectEvent.hpp>
 #include <lux/engine/material/graph/Nodes.hpp>
 #include <lux/engine/flowforge/graph/ControlNode.hpp>
@@ -1498,19 +1498,14 @@ int main(int argc, char** argv)
             { return CommandInvocation{SessionTarget{selected}}; }
         };
         root.menu = &menu;
-        desktop::ViewHost host{root};
-        views::DetachedView window{
-            lux::object::CodeLease::builtin(),
-            std::make_unique<ui::Pane>(
-                messages.dispatcherRef(),
-                ui::PaneId{"commands"},
-                ui::PaneTypeId{"commands"},
-                "Commands"
-            )
-        };
-        const auto window_id = take(host.adopt(window, views::ViewRestoreKey{"commands"})).id;
-        assert(host.focus(window_id));
-        take(host.drain());
+        auto window = std::make_unique<ui::Pane>(
+            messages.dispatcherRef(),
+            ui::PaneId{"commands"},
+            ui::PaneTypeId{"commands"},
+            "Commands"
+        );
+        assert(root.addSubPane(std::move(window)));
+        assert(!window && root.requestFocus(ui::PaneIdView{"commands"}));
         assert(menu.update());
         const auto original_undo = take(snapshot.find(CommandIdView{"lux.editor.undo"}));
         assert(

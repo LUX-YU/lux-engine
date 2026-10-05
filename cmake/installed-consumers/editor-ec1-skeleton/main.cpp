@@ -233,13 +233,14 @@ int main(int argc, char** argv)
         auto provider = take(factories.selectSource("lux.skeleton", 1));
         auto input =
             take(project->captureSource(assetId(), 16 << 20, take(disk.resolve(source_path)).expected_version));
-        sessions::SessionLoadJob job{
+        auto job = take(sessions::SessionLoadJob::prepare(
             provider,
             {std::move(input),
              assetId(),
              sessions::BoundSource{assetId(), take(disk.resolve(source_path)).key.value},
-             take(disk.resolve(source_path))}
-        };
+             take(disk.resolve(source_path))},
+            editor_context.services(), editor_context.scope()
+        ));
         std::optional<sessions::SessionPreparation> completed;
         const auto owner = std::this_thread::get_id();
         take(tasks.submit(
@@ -328,10 +329,11 @@ int main(int argc, char** argv)
         auto reload_input = take(project->captureSource(assetId(), 16 << 20, reload_target.expected_version));
         std::optional<sessions::SessionPreparation> reload_ready;
         process::TaskScope reload_tasks{runtime};
-        sessions::SessionLoadJob reload_job{
+        auto reload_job = take(sessions::SessionLoadJob::prepare(
             provider,
-            {std::move(reload_input), assetId(), reload_before.binding, reload_target, 16 << 20, reload_before.current}
-        };
+            {std::move(reload_input), assetId(), reload_before.binding, reload_target, 16 << 20, reload_before.current},
+            editor_context.services(), editor_context.scope()
+        ));
         take(reload_tasks.submit(
             {.name = "Skeleton reload"},
             [scheduler = take(runtime.blocking()),

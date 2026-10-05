@@ -183,7 +183,7 @@ int main(int argc, char** argv)
         assert(!missing && missing.error().code == extensions::EContributionError::UNAVAILABLE);
         assert(facts.activations == 0);
         const extensions::SessionActivities session_activities{store, saves};
-        const extensions::WorkbenchAccess workbench{messages.dispatcherRef(), host, commands};
+        const extensions::WorkbenchAccess workbench{messages.dispatcherRef(), *ui_root, commands};
         std::jthread foreign(
             [&]
             {

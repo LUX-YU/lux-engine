@@ -6,6 +6,10 @@ namespace lux::process
 {
     class ExecutionRuntime;
 }
+namespace lux::ui
+{
+    class Root;
+}
 namespace lux::editor
 {
     class ProjectStorage;
@@ -17,10 +21,6 @@ namespace lux::editor
     {
         class SaveService;
         class WriteCoordinator;
-    }
-    namespace desktop
-    {
-        class ViewHost;
     }
     namespace commands
     {
@@ -41,10 +41,11 @@ namespace lux::editor::extensions
         persistence::WriteCoordinator& writes;
         process::ExecutionRuntime& execution;
     };
+    // Root supplies the original window identity and bounded borrow. This capability owns no window.
     struct WorkbenchAccess final
     {
         object::ObjectDispatcherRef dispatcher;
-        desktop::ViewHost& views;
+        lux::ui::Root& root;
         commands::CommandRegistry& commands;
     };
     struct ExtensionRequirements final

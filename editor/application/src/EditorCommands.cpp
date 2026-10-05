@@ -153,7 +153,7 @@ namespace lux::editor::application
         draft.views.push_back(tasks::makeTaskViewFactory(task_monitor_));
         const extensions::SessionActivities session_activities{sessions_, saves_};
         const extensions::ProjectActivities project_activities{*project_, writes_, engine_->execution()};
-        const extensions::WorkbenchAccess workbench{messages_.dispatcherRef(), desktop_->views(), commands_};
+        const extensions::WorkbenchAccess workbench{messages_.dispatcherRef(), desktop_->root(), commands_};
         for (const auto& extension : extensions_)
         {
             auto contributed = extension.contributions();

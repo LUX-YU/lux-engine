@@ -1,14 +1,16 @@
 #pragma once
 #include <lux/engine/editor/sessions/SessionStore.hpp>
 #include <lux/engine/description/Skeleton.hpp>
+#include <lux/engine/editor/views/ViewInfo.hpp>
 #include <atomic>
+namespace lux::ui
+{
+    class Root;
+    class Pane;
+}
 namespace lux::editor
 {
     class ProjectStorage;
-    namespace desktop
-    {
-        class ViewHost;
-    }
 } // namespace lux::editor
 
 #if defined(_WIN32)
@@ -26,7 +28,7 @@ namespace skeleton
         bool indices_applied{true}, indices_displayed{true};
         // Qualification observations only. No production extension looks up capabilities through this record.
         lux::editor::ProjectStorage* project{};
-        lux::editor::desktop::ViewHost* host{};
+        lux::ui::Root* root{};
     };
     struct Rename final
     {
@@ -45,5 +47,6 @@ namespace skeleton
         Inspect* inspect;
         Describe* describe;
         ReadGuard* read_guard;
+        lux::editor::views::ViewContent (*content)(const lux::ui::Pane&) noexcept;
     };
 } // namespace skeleton

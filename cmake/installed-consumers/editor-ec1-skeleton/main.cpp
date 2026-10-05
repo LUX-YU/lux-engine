@@ -463,14 +463,23 @@ int main(int argc, char** argv)
              .offscreen = true,
              .user_directory = root / "user"}
         ));
-        assert(facts.project && facts.host);
+        assert(facts.project && facts.root);
+        struct ContentWindow final
+        {
+            ui::PaneHandle handle;
+            views::ViewContent content;
+        };
         auto content_views = [&]
         {
-            auto all = take(facts.host->describeAll());
-            std::erase_if(
-                all,
-                [](const auto& view) { return view.type != views::ViewTypeId{"example.skeleton.view"}; }
-            );
+            std::vector<ContentWindow> all;
+            for (auto* pane : facts.root->panes())
+            {
+                if (pane->type() != ui::PaneTypeId{"example.skeleton.view"})
+                    continue;
+                const auto handle = take(facts.root->identify(*pane));
+                auto observe_content = [&](ui::Pane& target) { all.push_back({handle, api->content(target)}); };
+                take(facts.root->withPane(handle, observe_content));
+            }
             return all;
         };
         auto until = [&](auto predicate, std::source_location location = std::source_location::current())
@@ -488,21 +497,24 @@ int main(int argc, char** argv)
             std::abort();
         };
         // Exact public entry used by the asset browser's double-click, through its real LuxObject connection.
-        for (const auto& view : take(facts.host->describeAll()))
-            if (view.type == views::ViewTypeId{"lux.editor.project"})
+        for (auto* pane : facts.root->panes())
+            if (pane->type() == ui::PaneTypeId{"lux.editor.project"})
             {
                 auto open = [&](ui::Pane& pane) {
                     take(static_cast<lux::editor::project::ProjectView&>(pane).requestOpen(
                         facts.project->reference(assetId())
                     ));
                 };
-                take(facts.host->withView(view.id, open));
+                take(facts.root->withPane(take(facts.root->identify(*pane)), open));
             }
         until([&] { return content_views().size() == 1; });
         const auto first = content_views().front();
         const auto id = *first.content.primary;
+        const auto first_id = take(app->show(id));
         const auto second = take(app->show(id, true));
-        assert(content_views().size() == 2 && take(facts.host->describe(second)).content == first.content);
+        const auto both = content_views();
+        assert(both.size() == 2 && both[0].content == first.content && both[1].content == first.content);
+        assert(both[0].handle != both[1].handle && both[0].handle == first.handle);
         auto repeated = take(app->open(facts.project->reference(assetId())));
         until([&] { return take(app->openStatus(repeated)).content.stage == sessions::EOpenAssetStage::PUBLISHED; });
         assert(take(app->openStatus(repeated)).content.session == id && content_views().size() == 2);
@@ -533,8 +545,8 @@ int main(int argc, char** argv)
         auto answer = [&](desktop::EReviewChoice choice, std::string text = {})
         {
             bool found{};
-            for (const auto& view : take(facts.host->describeAll()))
-                if (view.type == views::ViewTypeId{"lux.editor.review"})
+            for (auto* pane : facts.root->panes())
+                if (pane->type() == ui::PaneTypeId{"lux.editor.review"})
                 {
                     auto submit = [&](ui::Pane& pane)
                     {
@@ -544,7 +556,7 @@ int main(int argc, char** argv)
                         take(prompt.answer(choice));
                         found = true;
                     };
-                    take(facts.host->withView(view.id, submit));
+                    take(facts.root->withPane(take(facts.root->identify(*pane)), submit));
                 }
             assert(found);
         };
@@ -578,10 +590,10 @@ int main(int argc, char** argv)
         assert(recovery.entries.size() == 2 && recovery.entries[0].contents.size() == 1);
         take(app->closeView(second));
         assert(content_views().size() == 1 && describe(id));
-        take(app->closeView(first.id));
+        take(app->closeView(first_id));
         answer(desktop::EReviewChoice::CLOSE_CONTENT);
         until([&] { return !describe(id) && app->phase() == EApplicationPhase::RUNNING; });
-        assert(content_views().empty());
+        assert(content_views().empty() && !facts.root->findPane(first.handle));
         take(app->execute(commands::CommandId{"lux.editor.recovery.restore"}));
         until([&] { return content_views().size() == 2; });
         const auto recovered = *content_views().front().content.primary;

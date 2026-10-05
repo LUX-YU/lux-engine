@@ -22,7 +22,7 @@ namespace
         if (observations)
         {
             observations->project = &capabilities.project->project;
-            observations->host = &capabilities.workbench->views;
+            observations->root = &capabilities.workbench->root;
         }
         return {};
     }

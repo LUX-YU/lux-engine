@@ -410,6 +410,14 @@ extern "C" SKELETON_EXPORT const lux::editor::extensions::EditorExtensionExports
 
 extern "C" SKELETON_EXPORT const skeleton::ProbeApi* skeleton_probe_api() noexcept
 {
-    static const skeleton::ProbeApi api{&skeleton_probe, &skeleton_read, &skeleton_describe, &skeleton_read_guard};
+    static const skeleton::ProbeApi api{
+        &skeleton_probe, &skeleton_read, &skeleton_describe, &skeleton_read_guard,
+        +[](const lux::ui::Pane& pane) noexcept -> lux::editor::views::ViewContent
+        {
+            const auto* window = dynamic_cast<const skeleton::Window*>(&pane);
+            assert(window);
+            return window->content();
+        }
+    };
     return &api;
 }

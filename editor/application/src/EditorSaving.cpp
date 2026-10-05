@@ -204,7 +204,11 @@ namespace lux::editor::application
         auto requested = content_saving_->requestArtifact(std::move(source));
         if (!requested)
         {
-            result_failure_ = std::move(requested.error());
+            result_failure_ = EditorFailure{
+                requested.error().code == persistence::EPersistenceError::BUSY ? EEditorError::BUSY
+                                                                              : EEditorError::SOURCE_FAILURE,
+                "artifact.admission", 0, {}, std::move(requested.error())
+            };
         }
     }
 } // namespace lux::editor::application

@@ -65,7 +65,52 @@ namespace lux::editor::application
         {
             return applicationFailure("content.creation-availability", availability.error());
         }
+        if (auto provided = scope.provide(services::ServiceNameView{"lux.editor.sessions"}, sessions_); !provided)
+        {
+            return applicationFailure("service.infrastructure", provided.error());
+        }
+        if (auto provided = scope.provide(services::ServiceNameView{"lux.editor.sessions.opening"}, opening_);
+            !provided)
+        {
+            return applicationFailure("service.infrastructure", provided.error());
+        }
+        if (auto provided = scope.provide(services::ServiceNameView{"lux.editor.persistence.saves"}, saves_); !provided)
+        {
+            return applicationFailure("service.infrastructure", provided.error());
+        }
+        if (auto provided = scope.provide(services::ServiceNameView{"lux.editor.project.storage"}, *project_);
+            !provided)
+        {
+            return applicationFailure("service.infrastructure", provided.error());
+        }
+        if (auto provided = scope.provide(services::ServiceNameView{"lux.editor.persistence.writes"}, writes_);
+            !provided)
+        {
+            return applicationFailure("service.infrastructure", provided.error());
+        }
+        if (auto provided = scope.provide(
+                services::ServiceNameView{"lux.editor.persistence.files"},
+                static_cast<persistence::IArtifactStore&>(files_)
+            );
+            !provided)
+        {
+            return applicationFailure("service.infrastructure", provided.error());
+        }
+        if (auto provided = scope.provide(services::ServiceNameView{"lux.process.execution"}, engine_->execution());
+            !provided)
+        {
+            return applicationFailure("service.infrastructure", provided.error());
+        }
+        if (auto provided =
+                scope.provide(services::ServiceNameView{"lux.editor.persistence.execution"}, save_execution_);
+            !provided)
+        {
+            return applicationFailure("service.infrastructure", provided.error());
+        }
         extensions::ContributionDraft draft;
+        draft.services.push_back(
+            services::ServiceEntry::bind<kProjectContentSavingService>(object::CodeLease::builtin())
+        );
 
         draft.reflection.push_back({lux::object::CodeLease::builtin(), project::registerDesktopSettings});
         draft.settings = builtin_settings_;
@@ -153,6 +198,12 @@ namespace lux::editor::application
         auto registered = contributions_.applyPending();
         if (!registered)
             return applicationFailure("reflection.register", registered.error());
+        auto saving = editor_context_.services().get<ProjectContentSaving>(scope);
+        if (!saving)
+        {
+            return applicationFailure("service.content-saving", saving.error());
+        }
+        content_saving_ = std::move(*saving);
         auto flow = flowforge::captureFlowEnvironment();
         if (!flow)
             return applicationFailure("flow.metadata", flow.error());
@@ -171,8 +222,7 @@ namespace lux::editor::application
             [this](const persistence::DerivedArtifact& value) { receiveArtifact(value); }
         ));
         draft.views.push_back(flowforge::makeFlowViewFactory(
-            {sessions_.access<flowforge::FlowSession>(), flow_compilation_, flow_environment_},
-            [this](const persistence::DerivedArtifact& value) { receiveArtifact(value); }
+            {sessions_.access<flowforge::FlowSession>(), flow_compilation_, flow_environment_, content_saving_}
         ));
         // Factories capture this established immutable metadata environment, never the uninitialized
         // startup catalog. Their controls and new-content preparations retain the same defining code.

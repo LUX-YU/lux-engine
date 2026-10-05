@@ -48,12 +48,22 @@ namespace lux::editor::application
         // release the accepted task handles before member destruction begins.
         if (!project_tasks_.join())
             std::terminate();
-        // Only physical service retirement remains here; accepted business work is settled by exec.
-        if (!editor_context_.scope().release())
+    }
+    EditorApplication::Impl::ServiceRetirement::~ServiceRetirement() noexcept
+    {
+        // No business adoption or waiting here. exec has settled accepted work; failed construction
+        // has not published tasks. Releasing one service may surrender a dependency in the next batch.
+        if (!context_.scope().release())
         {
             std::terminate();
         }
-        (void)messages_.collectRetired();
+        while (!context_.scope().drained())
+        {
+            if (!messages_.collectRetired())
+            {
+                std::terminate();
+            }
+        }
     }
     EditorApplication::EditorApplication(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}
     EditorApplication::~EditorApplication() = default;
@@ -193,16 +203,6 @@ namespace lux::editor::application
         if (!project)
             return cxx::unexpected(project.error());
         project_ = std::move(*project);
-        content_saving_ = std::make_unique<ProjectContentSaving>(
-            sessions_,
-            opening_,
-            saves_,
-            *project_,
-            writes_,
-            files_,
-            engine_->execution(),
-            save_execution_
-        );
         plugin_saving_ =
             std::make_unique<ProjectPluginSelection>(*project_, engine_->execution(), writes_, files_, save_execution_);
         recent_projects_ = std::make_unique<RecentProjects>(

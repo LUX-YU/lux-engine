@@ -1,9 +1,14 @@
 #pragma once
 
-#include <lux/engine/editor/storage/ProjectPublication.hpp>
 #include <lux/engine/editor/persistence/SaveTypes.hpp>
+#include <lux/engine/editor/persistence/DerivedArtifact.hpp>
+#include <lux/engine/editor/storage/ProjectPublication.hpp>
 #include <span>
 
+namespace lux::services
+{
+    struct ServiceDescriptor;
+}
 namespace lux::editor::persistence
 {
     class SaveService;
@@ -24,6 +29,7 @@ namespace lux::editor::sessions
 } // namespace lux::editor::sessions
 namespace lux::editor
 {
+    extern const services::ServiceDescriptor kProjectContentSavingService;
     // Immutable observation of the existing publication owner, never another disk/result authority.
     struct ArtifactPublicationReport final
     {
@@ -60,7 +66,7 @@ namespace lux::editor
     // Owns source-save/catalog association and compiled publication requests/results. Encoding, disk
     // publication and checkpoint adoption remain in the existing operations and WriteCoordinator.
     // Drive accepted work to settled() before destruction, while those borrowed owners are still alive.
-    class ProjectContentSaving final
+    class ProjectContentSaving final : public persistence::IArtifactSubmission
     {
     public:
         ProjectContentSaving(
@@ -73,7 +79,7 @@ namespace lux::editor
             process::ExecutionRuntime&,
             persistence::SaveExecution&
         );
-        ~ProjectContentSaving();
+        ~ProjectContentSaving() override;
         ProjectContentSaving(const ProjectContentSaving&) = delete;
         ProjectContentSaving& operator=(const ProjectContentSaving&) = delete;
         ProjectContentSaving(ProjectContentSaving&&) = delete;
@@ -104,7 +110,8 @@ namespace lux::editor
 
         // Accept a fixed input for owner-stage admission. BUSY retains it; later source changes are
         // rejected, never silently recaptured. Accepted work survives all observing windows.
-        [[nodiscard]] EditorResult<std::uint64_t> requestArtifact(persistence::DerivedArtifact);
+        [[nodiscard]] persistence::PersistenceResult<std::uint64_t>
+        requestArtifact(persistence::DerivedArtifact) noexcept override;
         [[nodiscard]] EditorResult<std::vector<ArtifactPublicationReport>> artifactReports() const;
         [[nodiscard]] EditorResult<void> retryArtifact(std::uint64_t);
         [[nodiscard]] EditorResult<void> abandonArtifact(std::uint64_t);

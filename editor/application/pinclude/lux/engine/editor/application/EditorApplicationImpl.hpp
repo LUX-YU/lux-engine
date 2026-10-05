@@ -254,7 +254,21 @@ namespace lux::editor::application
         };
         desktop::EditorContext editor_context_{messages_.dispatcherRef()};
         sessions::SessionOpening opening_;
-        std::unique_ptr<ProjectContentSaving> content_saving_;
+        // Runs after all window/factory/service references, before any borrowed foundation dies.
+        struct ServiceRetirement final
+        {
+            desktop::EditorContext& context_;
+            object::ObjectMessageQueue& messages_;
+            ServiceRetirement(desktop::EditorContext& context, object::ObjectMessageQueue& messages) noexcept
+                : context_(context), messages_(messages)
+            {}
+            ~ServiceRetirement() noexcept;
+            ServiceRetirement(const ServiceRetirement&) = delete;
+            ServiceRetirement& operator=(const ServiceRetirement&) = delete;
+            ServiceRetirement(ServiceRetirement&&) = delete;
+            ServiceRetirement& operator=(ServiceRetirement&&) = delete;
+        } service_retirement_{editor_context_, messages_};
+        std::shared_ptr<ProjectContentSaving> content_saving_;
         scene::ScenePresentationHub projections_;
         scene::RunStore runs_;
         scene::RunController run_controller_{runs_};

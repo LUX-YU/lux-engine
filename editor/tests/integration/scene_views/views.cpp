@@ -26,6 +26,10 @@
 #include <lux/engine/editor/scene/SceneTools.hpp>
 #include <lux/engine/editor/scene/SceneView.hpp>
 #include <lux/engine/editor/storage/FileArtifactStore.hpp>
+#include <lux/engine/editor/storage/ProjectContentSaving.hpp>
+#include <lux/engine/editor/storage/ProjectStorage.hpp>
+#include <lux/engine/editor/sessions/SessionOpening.hpp>
+#include <lux/engine/resource/asset/storage/pak/PakArchive.hpp>
 #include <lux/engine/editor/tasks/TaskView.hpp>
 #include <lux/engine/editor/views/ViewFactory.hpp>
 #include <lux/engine/editor/views/ViewportElement.hpp>
@@ -267,6 +271,7 @@ namespace
         persistence::WriteCoordinator writes;
         persistence::SaveService saves{writes};
         persistence::SaveExecution transfer{execution, saves, writes, disk};
+        ProjectContentSaving* publication{};
 
         window::LuxWindow* window_{};
         input::Input input_;
@@ -411,6 +416,10 @@ namespace
             assert(execution.collectCompletions());
             assert(execution.dispatchTaskEvents());
             saves.adoptCompletions();
+            if (publication)
+            {
+                assert(publication->update());
+            }
             if (material_preview)
                 material_preview->update();
             if (desktop)
@@ -1016,17 +1025,81 @@ namespace
         f.runs = nullptr;
     }
 
+    struct FlowPublication final
+    {
+        Fixture& fixture;
+        asset::AssetVfs assets;
+        std::unique_ptr<ProjectStorage> project;
+        services::ServiceRegistry dependencies;
+        services::ServiceScope scope;
+        sessions::SessionOpening opening;
+        std::shared_ptr<ProjectContentSaving> saving;
+        explicit FlowPublication(Fixture& f)
+            : fixture(f), dependencies(f.messages.dispatcherRef()), scope(take(dependencies.createScope())),
+              opening(f.execution, f.store, f.saves, dependencies, scope)
+        {
+            ProjectManifest manifest{asset::AssetId{uuid("flow-project")}, "Flow publication", {}, {}};
+            for (const auto name : {"flow", "ec4-flow"})
+            {
+                const auto relative = std::string{name} + ".lux";
+                manifest.assets.push_back({asset::AssetId{uuid(name)}, "lux.flowforge.source", relative});
+                std::ofstream(f.files / relative) << "Initial author source";
+            }
+            const auto path = f.files / "Project.luxproject";
+            {
+                std::ofstream file(path);
+                file << take(encodeProjectManifest(manifest));
+            }
+            auto prepared = take(prepareProjectOpen(path));
+            project = take(
+                ProjectStorage::open(prepared, assets, *f.execution.blocking(), f.tasks, f.messages.dispatcherRef())
+            );
+            assert(scope.provide(services::ServiceNameView{"lux.editor.sessions"}, f.store));
+            assert(scope.provide(services::ServiceNameView{"lux.editor.sessions.opening"}, opening));
+            assert(scope.provide(services::ServiceNameView{"lux.editor.persistence.saves"}, f.saves));
+            assert(scope.provide(services::ServiceNameView{"lux.editor.project.storage"}, *project));
+            assert(scope.provide(services::ServiceNameView{"lux.editor.persistence.writes"}, f.writes));
+            assert(scope.provide(
+                services::ServiceNameView{"lux.editor.persistence.files"},
+                static_cast<persistence::IArtifactStore&>(f.disk)
+            ));
+            assert(scope.provide(services::ServiceNameView{"lux.process.execution"}, f.execution));
+            assert(scope.provide(services::ServiceNameView{"lux.editor.persistence.execution"}, f.transfer));
+        }
+        void observe()
+        {
+            saving = take(dependencies.get<ProjectContentSaving>(scope));
+            fixture.publication = saving.get();
+        }
+        ~FlowPublication()
+        {
+            assert(!saving || saving->settled());
+            fixture.publication = nullptr;
+            saving.reset();
+            assert(scope.release());
+            (void)fixture.messages.collectRetired();
+            assert(scope.drained() && dependencies.drained());
+            project->requestClose();
+            assert(take(project->advanceClose()));
+        }
+    };
+
     void flowComposition(Fixture& f, const char* linker)
     {
         namespace ef = editor::flowforge;
         using namespace lux::services;
+        FlowPublication publication(f);
         auto slot = take(f.store.reserve<ef::FlowSession>({"lux.editor.flowforge"}, object::CodeLease::builtin()));
         ef::FlowAuthoringSource source{asset::AssetId{uuid("ec4-flow")}, "EC4 shared", {}};
         const auto node = source.graph.addNodes(std::make_unique<lux::flowforge::OnEventNode>("entry"));
         assert(source.graph.addExport(
             {lux::flowforge::FlowForgeExportNodeId{1}, source.graph.getNode(node).node->id(), 991}
         ));
-        auto candidate = take(ef::FlowSession::create(slot.id(), sessions::SourceBinding{}, std::move(source)));
+        auto candidate = take(ef::FlowSession::create(
+            slot.id(),
+            sessions::BoundSource{asset::AssetId{uuid("ec4-flow")}, "ec4-flow.lux"},
+            std::move(source)
+        ));
         auto* model = candidate.get();
         assert(f.store.prepare(slot, candidate));
         const auto key = take(f.store.key<ef::FlowSession>(take(f.store.publish(slot))));
@@ -1034,16 +1107,15 @@ namespace
         const auto bytes = take(take(model->read()).encode());
         std::weak_ptr<ef::FlowSession> weak_model = take(f.store.access<ef::FlowSession>().share(key));
 
-        ServiceRegistry services(f.messages.dispatcherRef());
+        auto& services = publication.dependencies;
         auto module = take(extensions::EditorExtension::fromStatic(ef::flowModule()));
         auto declarations = take(module.contributions());
         assert(declarations.services.size() == 2 && declarations.ui.size() == 1);
         assert(declarations.sessions.size() == 1 && declarations.commands.size() == 1);
         assert(declarations.views.empty()); // No legacy factory or activation is hidden in the module.
+        declarations.services.push_back(ServiceEntry::bind<kProjectContentSavingService>(object::CodeLease::builtin()));
         assert(services.publish(declarations.services));
-        auto scope = take(services.createScope());
-        assert(scope.provide(ServiceNameView{"lux.process.execution"}, f.execution));
-        assert(scope.provide(ServiceNameView{"lux.editor.sessions"}, f.store));
+        auto& scope = publication.scope;
         desktop::UiRegistry ui(f.messages.dispatcherRef(), services);
         auto catalog = take(desktop::UiCatalog::prepare(std::move(declarations.ui)));
         assert(ui.publish(catalog) && services.drained());
@@ -1064,6 +1136,7 @@ namespace
         auto a_owner = take(ui.create(factory, scope, input));
         input.instance = lux::ui::PaneId{"ec4-flow-b"};
         auto b_owner = take(ui.create(factory, scope, input));
+        publication.observe();
         auto* a = static_cast<ef::FlowView*>(a_owner.get());
         auto* b = static_cast<ef::FlowView*>(b_owner.get());
         assert(!a->parent() && !b->parent() && !a->attachedRoot() && !b->attachedRoot());
@@ -1127,6 +1200,9 @@ namespace
         assert(view->status() && view->compilation() == operation);
         assert(model->describe().current == initial.current && model->describe().observed == initial.observed);
         assert(model->describe().dirty == initial.dirty && take(take(model->read()).encode()) == bytes);
+        const auto published = take(view->requestPublication());
+        assert(publication.saving->update());
+        assert(take(publication.saving->artifactReports()).front().admitted);
         auto permit = take(f.store.prepareClose(initial.current));
         assert(f.store.close(permit) && !f.store.access<ef::FlowSession>().share(key));
         assert(!weak_model.expired() && !view->beginEdit("closed identity"));
@@ -1134,9 +1210,18 @@ namespace
         (void)f.messages.collectRetired();
         assert(weak_model.expired());
         (void)f.store_messages.collect();
+        f.wait([&] { return publication.saving->settled(); });
+        const auto report = take(publication.saving->artifactReports()).front();
+        assert(
+            report.id == published && report.terminal && std::holds_alternative<PublicationSucceeded>(report.status)
+        );
+        assert(std::filesystem::exists(f.files / report.path));
+        assert(publication.saving->acknowledgeArtifact(published));
         auto result = take(compiled.result());
         assert(compiler->acknowledge(operation));
         compiler.reset();
+        publication.saving.reset();
+        f.publication = nullptr;
         assert(scope.release());
         (void)f.messages.collectRetired();
         assert(scope.drained() && services.drained() && !result->bytes().empty());
@@ -1149,6 +1234,11 @@ namespace
     void flowView(Fixture& f, const char* linker)
     {
         namespace ef = editor::flowforge;
+        FlowPublication publication_owner(f);
+        assert(publication_owner.dependencies.publish(
+            {services::ServiceEntry::bind<kProjectContentSavingService>(object::CodeLease::builtin())}
+        ));
+        publication_owner.observe();
         const asset::AssetId asset{uuid("flow")};
         ef::FlowAuthoringSource source{asset, "P10 Flow", {}};
         const auto event = source.graph.addNodes(std::make_unique<lux::flowforge::OnEventNode>("event"));
@@ -1165,7 +1255,8 @@ namespace
         const auto key = take(f.store.key<ef::FlowSession>(take(f.store.publish(reserved))));
         ef::FlowInteraction interaction(f.store.access<ef::FlowSession>(), key);
         auto compilation = std::make_shared<ef::FlowCompilationService>(f.execution);
-        ef::FlowViewServices services{f.store.access<ef::FlowSession>(), compilation, ef::FlowEnvironment{}};
+        ef::FlowViewServices
+            services{f.store.access<ef::FlowSession>(), compilation, ef::FlowEnvironment{}, publication_owner.saving};
         auto detached = take(registered_views::flow(
             f.messages.dispatcherRef(),
             ui::PaneId{"flow"},
@@ -1279,36 +1370,33 @@ namespace
         assert(completed.result() && completed.attempts().size() == 2);
         assert(completed.object() == object); // Failed linker configuration cannot discard the compiled artifact.
         const auto published_author = author->describe();
-        std::optional<persistence::WriteTicket> published_ticket;
-        auto publish_connection = take(object::LuxObject::connect(
-            view,
-            &ef::FlowView::publishRequested,
-            [&](const persistence::DerivedArtifact& result) noexcept
-            {
-                assert(result.valid() && result.info().content == published_author.current);
-                assert(result.info().type() == script::ScriptArtifactAsset::asset_type);
-                const auto encoded_source = take(result.encodeSource({}));
-                const auto expected_source =
-                    take(lux::flowforge::encodeFlowSource(*take(completed.result())->source()));
-                assert(std::ranges::equal(encoded_source.bytes.view(), std::as_bytes(std::span(expected_source))));
-                published_ticket = take(persistence::publishEncodedArtifact(
-                    f.writes,
-                    take(f.disk.resolve("derived.flow")),
-                    {result.bytes()}
-                ));
-            }
-        ));
-        assert(view->requestPublication() && published_ticket);
-        const auto publication = *published_ticket;
+        const auto artifact = take(ef::captureFlowArtifact(take(completed.result())));
+        assert(artifact.valid() && artifact.info().content == published_author.current);
+        assert(artifact.info().type() == script::ScriptArtifactAsset::asset_type);
+        const auto encoded_source = take(artifact.encodeSource({}));
+        const auto expected_source = take(lux::flowforge::encodeFlowSource(*take(completed.result())->source()));
+        assert(std::ranges::equal(encoded_source.bytes.view(), std::as_bytes(std::span(expected_source))));
+        const auto publication = take(view->requestPublication());
+        assert(publication_owner.saving->update());
+        assert(take(publication_owner.saving->artifactReports()).front().admitted);
         assert(view->undo() && author->describe().current == initial.current);
         assert(f.desktop->views().close(next));
         f.wait([&] { return !f.desktop->views().describe(next); });
         assert(take(compilation->operation(operation)).get().object() == object);
-        f.wait([&] { return take(f.writes.status(publication)).stage == persistence::EWriteStage::TERMINAL; });
-        assert(std::holds_alternative<persistence::CommitReceipt>(*take(f.writes.status(publication)).outcome));
-        assert(std::filesystem::file_size(f.files / "derived.flow") == take(completed.result())->bytes().size());
+        f.wait([&] { return publication_owner.saving->settled(); });
+        const auto report = take(publication_owner.saving->artifactReports()).front();
+        assert(
+            report.id == publication && report.terminal && std::holds_alternative<PublicationSucceeded>(report.status)
+        );
+        const auto package = take(asset::inspectPak(f.files / report.path));
+        assert(package.entries.size() == 1 && package.entries.front().size == take(completed.result())->bytes().size());
+        std::ifstream file(f.files / report.path, std::ios::binary);
+        file.seekg(static_cast<std::streamoff>(package.entries.front().offset));
+        std::vector<std::byte> disk_bytes(package.entries.front().size);
+        assert(file.read(reinterpret_cast<char*>(disk_bytes.data()), static_cast<std::streamsize>(disk_bytes.size())));
+        assert(std::ranges::equal(disk_bytes, take(completed.result())->bytes().view()));
         assert(author->describe().current == initial.current && author->describe().dirty == initial.dirty);
-        assert(f.writes.acknowledge(publication));
+        assert(publication_owner.saving->acknowledgeArtifact(publication));
         assert(compilation->acknowledge(operation));
         assert(take(take(author->read()).encode()) == encoded);
     }

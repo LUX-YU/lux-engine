@@ -1,11 +1,13 @@
 #include <algorithm>
 #include <lux/engine/editor/persistence/DerivedArtifact.hpp>
+#include <lux/engine/editor/persistence/SaveExecution.hpp>
 #include <lux/engine/editor/persistence/SaveService.hpp>
 #include <lux/engine/editor/sessions/SessionOpening.hpp>
 #include <lux/engine/editor/sessions/SessionOperations.hpp>
 #include <lux/engine/editor/storage/ArtifactPublicationOperation.hpp>
 #include <lux/engine/editor/storage/ProjectContentSaving.hpp>
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
+#include <lux/engine/services/ServiceRegistry.hpp>
 #include <random>
 #include <thread>
 
@@ -31,7 +33,125 @@ namespace lux::editor
                     code = EEditorError::BUSY;
             return cxx::unexpected(EditorFailure{code, std::move(domain), 0, {}, cause});
         }
+        constexpr services::ServiceContract saving_contracts[]{
+            services::ServiceContract::forType<ProjectContentSaving, ProjectContentSaving>(
+                services::ServiceNameView{"lux.editor.project.content-saving"}
+            ),
+            services::ServiceContract::forType<ProjectContentSaving, persistence::IArtifactSubmission>(
+                services::ServiceNameView{"lux.editor.artifacts"}
+            )
+        };
+        constexpr services::ServiceDependency saving_dependencies[]{
+            {services::ServiceNameView{"lux.editor.sessions"},
+             1,
+             cxx::typeToken<sessions::SessionStore>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT},
+            {services::ServiceNameView{"lux.editor.sessions.opening"},
+             1,
+             cxx::typeToken<sessions::SessionOpening>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT},
+            {services::ServiceNameView{"lux.editor.persistence.saves"},
+             1,
+             cxx::typeToken<persistence::SaveService>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT},
+            {services::ServiceNameView{"lux.editor.project.storage"},
+             1,
+             cxx::typeToken<ProjectStorage>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT},
+            {services::ServiceNameView{"lux.editor.persistence.writes"},
+             1,
+             cxx::typeToken<persistence::WriteCoordinator>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT},
+            {services::ServiceNameView{"lux.editor.persistence.files"},
+             1,
+             cxx::typeToken<persistence::IArtifactStore>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT},
+            {services::ServiceNameView{"lux.process.execution"},
+             1,
+             cxx::typeToken<process::ExecutionRuntime>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT},
+            {services::ServiceNameView{"lux.editor.persistence.execution"},
+             1,
+             cxx::typeToken<persistence::SaveExecution>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT}
+        };
+        services::ServiceResult<std::unique_ptr<ProjectContentSaving>>
+        createSaving(services::ServiceResolver& resolver, const services::ServiceConfiguration&) noexcept
+        {
+            auto sessions = resolver.require<sessions::SessionStore>(0);
+            if (!sessions)
+            {
+                return cxx::unexpected(std::move(sessions.error()));
+            }
+            auto opening = resolver.require<sessions::SessionOpening>(1);
+            if (!opening)
+            {
+                return cxx::unexpected(std::move(opening.error()));
+            }
+            auto saves = resolver.require<persistence::SaveService>(2);
+            if (!saves)
+            {
+                return cxx::unexpected(std::move(saves.error()));
+            }
+            auto project = resolver.require<ProjectStorage>(3);
+            if (!project)
+            {
+                return cxx::unexpected(std::move(project.error()));
+            }
+            auto writes = resolver.require<persistence::WriteCoordinator>(4);
+            if (!writes)
+            {
+                return cxx::unexpected(std::move(writes.error()));
+            }
+            auto files = resolver.require<persistence::IArtifactStore>(5);
+            if (!files)
+            {
+                return cxx::unexpected(std::move(files.error()));
+            }
+            auto runtime = resolver.require<process::ExecutionRuntime>(6);
+            if (!runtime)
+            {
+                return cxx::unexpected(std::move(runtime.error()));
+            }
+            auto execution = resolver.require<persistence::SaveExecution>(7);
+            if (!execution)
+            {
+                return cxx::unexpected(std::move(execution.error()));
+            }
+            return std::make_unique<ProjectContentSaving>(
+                sessions->get(),
+                opening->get(),
+                saves->get(),
+                project->get(),
+                writes->get(),
+                files->get(),
+                runtime->get(),
+                execution->get()
+            );
+        }
     } // namespace
+    constinit const services::ServiceDescriptor kProjectContentSavingService = []
+    {
+        auto descriptor = services::ServiceDescriptor::forType<ProjectContentSaving, createSaving>(
+            services::ServiceNameView{"lux.editor.project.content-saving"},
+            saving_contracts,
+            saving_dependencies
+        );
+        descriptor.retention = services::EServiceRetention::SCOPED;
+        descriptor.affinity = services::EServiceAffinity::OWNER;
+        descriptor.settled = [](const void* allocation) noexcept -> services::ServiceResult<bool>
+        { return static_cast<const ProjectContentSaving*>(allocation)->settled(); };
+        return descriptor;
+    }();
+
     ProjectSaveReport::ProjectSaveReport(persistence::SaveId value, ProjectAssetEntry entry)
         : id(value), asset(std::move(entry))
     {
@@ -551,24 +671,32 @@ namespace lux::editor
         impl_->save_all_.reset();
         return {};
     }
-    EditorResult<std::uint64_t> ProjectContentSaving::requestArtifact(persistence::DerivedArtifact input)
+    persistence::PersistenceResult<std::uint64_t>
+    ProjectContentSaving::requestArtifact(persistence::DerivedArtifact input) noexcept
     {
         if (auto admitted = impl_->admission(); !admitted)
         {
-            return cxx::unexpected(admitted.error());
+            const auto code = admitted.error().code == EEditorError::BUSY
+                                  ? persistence::EPersistenceError::BUSY
+                                  : persistence::EPersistenceError::WRONG_THREAD;
+            return cxx::unexpected(persistence::PersistenceFailure{code, admitted.error().domain});
         }
         Impl::Dispatch scope{impl_->dispatching_};
         // Rejected extension input is destroyed before this dispatch guard is released.
         auto source = std::move(input);
         if (!source.valid())
         {
-            return cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "artifact.input"});
+            return cxx::unexpected(persistence::PersistenceFailure{
+                persistence::EPersistenceError::INVALID_ARGUMENT, "artifact.input"
+            });
         }
         const bool is_full = impl_->artifacts_.size() == 64;
         const bool is_exhausted = impl_->next_artifact_ == UINT64_MAX;
         if (is_full || is_exhausted)
         {
-            return cxx::unexpected(EditorFailure{EEditorError::CAPACITY, "artifact.results"});
+            return cxx::unexpected(persistence::PersistenceFailure{
+                persistence::EPersistenceError::CAPACITY, "artifact.results"
+            });
         }
         const auto id = impl_->next_artifact_++;
         impl_->artifacts_.push_back({id, std::move(source)});

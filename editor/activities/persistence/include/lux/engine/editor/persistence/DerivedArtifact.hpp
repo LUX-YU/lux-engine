@@ -49,4 +49,13 @@ namespace lux::editor::persistence
         cxx::SharedBytes<> bytes_;
         std::shared_ptr<const IArtifactSource> source_;
     };
+    // Admission to an existing publication owner, independent of its project/file implementation.
+    // A request ID observes that owner's retained work; it is not a disk commit or a save checkpoint.
+    class IArtifactSubmission
+    {
+    public:
+        virtual ~IArtifactSubmission() = default;
+        [[nodiscard]] virtual PersistenceResult<std::uint64_t> requestArtifact(DerivedArtifact) noexcept = 0;
+    };
+
 }

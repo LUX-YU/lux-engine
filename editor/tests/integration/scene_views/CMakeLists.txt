@@ -11,7 +11,7 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
 endif()
 if(LUX_EDITOR_TEST_DESKTOP_GPU AND LUX_EDITOR_BUILD_TOOLCHAIN_TESTS)
     add_executable(editor_scene_views_test views.cpp)
-    target_link_libraries(editor_scene_views_test PRIVATE editor_extensions scene_ui desktop_shell material_ui flow_ui flow_module scene_execution tasks_ui flowforge_persistence editor_persistence_execution editor_file_publication material_persistence
+    target_link_libraries(editor_scene_views_test PRIVATE editor_storage editor_extensions scene_ui desktop_shell material_ui flow_ui flow_module scene_execution tasks_ui flowforge_persistence editor_persistence_execution editor_file_publication material_persistence
         lux::engine::scene::scene_transform lux::engine::function::ui_rendering
         lux::engine::function::render_features imgui::core)
     lux_editor_test_options(editor_scene_views_test)

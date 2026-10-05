@@ -12,6 +12,7 @@ component_include_directories(editor_storage
     INSTALL_TIME include)
 target_link_libraries(editor_storage PUBLIC lux::engine::editor::session_execution)
 component_add_transitive_commands(editor_storage
+    "find_package(lux-engine-core REQUIRED COMPONENTS services)"
     "find_package(lux-engine-editor-session-factories REQUIRED COMPONENTS session_execution)")
 target_compile_definitions(editor_storage PUBLIC LUX_EDITOR_STORAGE_DLL_DISABLE)
 find_package(tomlplusplus CONFIG REQUIRED)
@@ -25,7 +26,7 @@ if(LUX_EDITOR_PUBLICATION_DIAGNOSTICS)
     target_compile_definitions(editor_storage PRIVATE LUX_EDITOR_PUBLICATION_DIAGNOSTICS)
 endif()
 target_link_libraries(editor_storage PUBLIC lux::engine::editor::editor_project lux::engine::editor::editor_contracts
-    lux::engine::core::object lux::engine::core::log lux::engine::core::meta
+    lux::engine::core::object lux::engine::core::services lux::engine::core::log lux::engine::core::meta
     lux::engine::process::process_execution lux::engine::process::asset_loading lux::engine::resource::asset)
 target_link_libraries(editor_storage PUBLIC lux::engine::project::project_plugins lux::engine::editor::editor_persistence_execution)
 component_add_transitive_commands(editor_storage "find_package(lux-engine-editor-persistence REQUIRED COMPONENTS editor_persistence_execution)")

@@ -1,7 +1,7 @@
 #pragma once
-#include <lux/engine/editor/flowforge/FlowInteraction.hpp>
-#include <lux/engine/editor/flowforge/FlowCompilationService.hpp>
 #include <lux/engine/editor/persistence/DerivedArtifact.hpp>
+#include <lux/engine/editor/flowforge/FlowCompilationService.hpp>
+#include <lux/engine/editor/flowforge/FlowInteraction.hpp>
 #include <lux/engine/editor/views/IViewHost.hpp>
 
 namespace lux::editor::persistence
@@ -34,14 +34,18 @@ namespace lux::editor::flowforge
         sessions::TSessionAccess<FlowSession> sessions;
         std::shared_ptr<FlowCompilationService> compilation;
         FlowEnvironment metadata;
+        std::shared_ptr<persistence::IArtifactSubmission> publication;
     };
     struct FlowViewState final
     {
         LinkSettings linker;
     };
-    using VFlowViewFailure =
-        std::variant<FlowEditError, VFlowCompilationFailure, persistence::PersistenceFailure,
-            views::EViewError, lux::ui::EAttachmentError>;
+    using VFlowViewFailure = std::variant<
+        FlowEditError,
+        VFlowCompilationFailure,
+        persistence::PersistenceFailure,
+        views::EViewError,
+        lux::ui::EAttachmentError>;
     template <class T> using FlowViewResult = cxx::expected<T, VFlowViewFailure>;
     class FlowView final : public lux::ui::Pane
     {
@@ -69,9 +73,8 @@ namespace lux::editor::flowforge
         [[nodiscard]] FlowViewResult<FlowCompileId> compile();
         [[nodiscard]] FlowViewResult<void> retryLink(LinkSettings);
         [[nodiscard]] FlowViewResult<void> acknowledgeCompilation();
-        // This is a user intention. Admission and publication results belong to its explicit receiver.
-        object::TSignal<persistence::DerivedArtifact> publishRequested{*this};
-        [[nodiscard]] FlowViewResult<void> requestPublication();
+        // Returns the original publication owner's accepted request identity, not signal delivery success.
+        [[nodiscard]] FlowViewResult<std::uint64_t> requestPublication();
         [[nodiscard]] const std::optional<FlowViewBinding>& binding() const noexcept;
         [[nodiscard]] const FlowViewResult<void>& status() const noexcept;
         [[nodiscard]] FlowCompileId compilation() const noexcept;
@@ -91,8 +94,5 @@ namespace lux::editor::flowforge
         std::optional<FlowViewBinding> = {},
         FlowViewState = {}
     );
-    [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> makeFlowViewFactory(
-        FlowViewServices,
-        cxx::move_only_function<void(const persistence::DerivedArtifact&)> = {}
-    );
+    [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> makeFlowViewFactory(FlowViewServices);
 } // namespace lux::editor::flowforge

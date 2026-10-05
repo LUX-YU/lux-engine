@@ -8531,7 +8531,8 @@
       "editor_file_publication",
       "flowforge_persistence",
       "editor_extensions",
-      "flow_module"
+      "flow_module",
+      "editor_storage"
     ],
     "closure": {
       "Eigen3::Eigen": {
@@ -9568,6 +9569,18 @@
       },
       "lux_editor_productModules_flow_module_generate": {
         "path": "editor/application"
+      },
+      "editor_storage": {
+        "path": "editor/activities/project"
+      },
+      "session_execution": {
+        "path": "editor/activities/sessions"
+      },
+      "log": {
+        "path": "modules/core/log"
+      },
+      "editor_storage_meta_generate": {
+        "path": "editor/activities/project"
       }
     },
     "native_libraries": [
@@ -9668,7 +9681,11 @@
         "../../../authoring/flow/src/FlowSessionData.hpp",
         "lux/engine/editor/scene/AuthoringFacts.hpp",
         "lux/engine/scene/RenderFeatureSceneBinding.hpp",
-        "ObjectQueue.hpp"
+        "ObjectQueue.hpp",
+        "lux/engine/editor/storage/ProjectContentSaving.hpp",
+        "lux/engine/editor/sessions/SessionOpening.hpp",
+        "lux/engine/resource/asset/storage/pak/PakArchive.hpp",
+        "lux/engine/editor/storage/ProjectStorage.hpp"
       ],
       "editor/tests/integration/scene_views/AuxiliaryViews.hpp": [],
       "editor/tests/integration/scene_views/DraftSources.hpp": [],

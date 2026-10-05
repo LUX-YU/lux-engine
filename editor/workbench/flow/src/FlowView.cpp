@@ -111,7 +111,8 @@ namespace lux::editor::flowforge
              services::EDependencyKind::BORROWED,
              services::EDependencyScope::ROOT},
             {services::ServiceNameView{"lux.editor.flow.compilation"}, 1, cxx::typeToken<FlowCompilationService>()},
-            {services::ServiceNameView{"lux.editor.flow.environment"}, 1, cxx::typeToken<FlowEnvironment>()}
+            {services::ServiceNameView{"lux.editor.flow.environment"}, 1, cxx::typeToken<FlowEnvironment>()},
+            {services::ServiceNameView{"lux.editor.artifacts"}, 1, cxx::typeToken<persistence::IArtifactSubmission>()}
         };
         desktop::UiResult<std::unique_ptr<lux::ui::Pane>> createView(
             services::ServiceResolver& resolver,
@@ -152,6 +153,11 @@ namespace lux::editor::flowforge
             {
                 return dependencyFailure(environment.error());
             }
+            auto publication = resolver.get<persistence::IArtifactSubmission>(3);
+            if (!publication)
+            {
+                return dependencyFailure(publication.error());
+            }
             const auto viewFailure = [](const VFlowViewFailure& failure)
             {
                 auto error = workbench::detail::viewPreparationFailure(failure, temporary(failure));
@@ -165,7 +171,7 @@ namespace lux::editor::flowforge
             auto view = FlowView::create(
                 input.dispatcher,
                 input.instance,
-                {store->get().access<FlowSession>(), std::move(*compiler), **environment},
+                {store->get().access<FlowSession>(), std::move(*compiler), **environment, std::move(*publication)},
                 {},
                 state->value_or(FlowViewState{})
             );
@@ -395,7 +401,7 @@ namespace lux::editor::flowforge
                     ++state_.state_.linker.version;
                     state_.control_ = EControl::RETRY;
                 }
-                ImGui::BeginDisabled(!state_.binding_);
+                ImGui::BeginDisabled(!state_.binding_ || !state_.services_.publication);
                 if (ImGui::Button("Publish artifact"))
                     state_.control_ = EControl::PUBLISH;
                 ImGui::EndDisabled();
@@ -1104,8 +1110,14 @@ namespace lux::editor::flowforge
         impl_->compile_status_.clear();
         return {};
     }
-    FlowViewResult<void> FlowView::requestPublication()
+    FlowViewResult<std::uint64_t> FlowView::requestPublication()
     {
+        if (!impl_->services_.publication)
+        {
+            return rejected(persistence::PersistenceFailure{
+                persistence::EPersistenceError::UNBOUND, "flow.publication.unavailable"
+            });
+        }
         auto operation = impl_->services_.compilation->operation(impl_->compile_);
         if (!operation)
             return rejected(operation.error());
@@ -1115,10 +1127,12 @@ namespace lux::editor::flowforge
         auto artifact = captureFlowArtifact(std::move(*compiled));
         if (!artifact)
             return rejected(artifact.error());
-        auto sent = emit(publishRequested, *artifact);
-        if (!sent.complete())
-            return rejected(views::EViewError::BUSY);
-        return {};
+        auto admitted = impl_->services_.publication->requestArtifact(std::move(*artifact));
+        if (!admitted)
+        {
+            return rejected(std::move(admitted.error()));
+        }
+        return *admitted;
     }
     void FlowView::update() noexcept
     {
@@ -1191,15 +1205,10 @@ namespace lux::editor::flowforge
 
 namespace lux::editor::flowforge
 {
-    std::shared_ptr<views::ViewFactoryEntry> makeFlowViewFactory(
-        flowforge::FlowViewServices flow,
-        cxx::move_only_function<void(const persistence::DerivedArtifact&)> receiver
-    )
+    std::shared_ptr<views::ViewFactoryEntry> makeFlowViewFactory(flowforge::FlowViewServices flow)
     {
-        using ArtifactIntent = cxx::move_only_function<void(const persistence::DerivedArtifact&)>;
-        auto intent = std::make_shared<ArtifactIntent>(std::move(receiver));
         return workbench::detail::bindViewFactory<kViewDescriptor, views::ContentViewInput>(
-            [flow, intent](const views::ViewFactoryInput& input, const views::ContentViewInput& value)
+            [flow](const views::ViewFactoryInput& input, const views::ContentViewInput& value)
                 -> views::ViewFactoryResult<views::DetachedView>
             {
                 auto view = flowforge::makeFlowView(input.dispatcher(), input.paneId(), flow);
@@ -1213,10 +1222,6 @@ namespace lux::editor::flowforge
                         bound.error().code,
                         bound.error().message
                     });
-                auto connected =
-                    workbench::detail::connectIntent(*view, &flowforge::FlowView::publishRequested, intent);
-                if (!connected)
-                    return cxx::unexpected(std::move(connected.error()));
                 return std::move(*view);
             }
         );

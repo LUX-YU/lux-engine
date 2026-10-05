@@ -103,12 +103,29 @@ int main(int argc, char** argv)
     p::SaveService saves{writes};
     s::SessionStore authors{messages.dispatcherRef(), 8};
     services::ServiceRegistry dependencies{messages.dispatcherRef()};
-    assert(dependencies.publish({services::ServiceEntry::bind<f::kFlowEnvironmentService>(object::CodeLease::builtin())}
+    assert(dependencies.publish(
+        {services::ServiceEntry::bind<f::kFlowEnvironmentService>(object::CodeLease::builtin()),
+         services::ServiceEntry::bind<kProjectContentSavingService>(object::CodeLease::builtin())}
     ));
     auto scope = take(dependencies.createScope());
     s::SessionOpening opening{execution, authors, saves, dependencies, scope};
     p::SaveExecution io{execution, saves, writes, files};
-    ProjectContentSaving saving{authors, opening, saves, *project, writes, files, execution, io};
+    assert(scope.provide(services::ServiceNameView{"lux.editor.sessions"}, authors));
+    assert(scope.provide(services::ServiceNameView{"lux.editor.sessions.opening"}, opening));
+    assert(scope.provide(services::ServiceNameView{"lux.editor.persistence.saves"}, saves));
+    assert(scope.provide(services::ServiceNameView{"lux.editor.project.storage"}, *project));
+    assert(scope.provide(services::ServiceNameView{"lux.editor.persistence.writes"}, writes));
+    assert(
+        scope.provide(services::ServiceNameView{"lux.editor.persistence.files"}, static_cast<p::IArtifactStore&>(files))
+    );
+    assert(scope.provide(services::ServiceNameView{"lux.process.execution"}, execution));
+    assert(scope.provide(services::ServiceNameView{"lux.editor.persistence.execution"}, io));
+    assert(dependencies.drained()); // Declarations did not construct the publication owner.
+    auto saving_owner = take(dependencies.get<ProjectContentSaving>(scope));
+    assert(take(dependencies.get<ProjectContentSaving>(scope)).get() == saving_owner.get());
+    auto& saving = *saving_owner;
+    auto submission = take(dependencies.get<p::IArtifactSubmission>(scope));
+    assert(submission.get() == static_cast<p::IArtifactSubmission*>(saving_owner.get()));
     const auto factories = take(s::SessionFactorySnapshot::create({f::makeFlowSessionFactory()}));
     lux::flowforge::FlowGraph graph;
     auto node = graph.addNodes(std::make_unique<lux::flowforge::OnEventNode>("tick"));
@@ -167,12 +184,12 @@ int main(int argc, char** argv)
             cleaned = true;
             auto nested = saving.requestArtifact(source);
             auto observed = saving.artifactReports();
-            assert(!nested && nested.error().code == EEditorError::BUSY);
+            assert(!nested && nested.error().code == p::EPersistenceError::BUSY);
             assert(!observed && observed.error().code == EEditorError::BUSY);
         }
     );
     auto rejected = saving.requestArtifact({object::CodeLease::builtin(), {}, {}, std::move(cleanup)});
-    assert(!rejected && rejected.error().code == EEditorError::INVALID_ARGUMENT && cleaned);
+    assert(!rejected && rejected.error().code == p::EPersistenceError::INVALID_ARGUMENT && cleaned);
 
     std::vector<std::uint64_t> ids;
     for (unsigned i{}; i < 64; ++i)
@@ -180,7 +197,7 @@ int main(int argc, char** argv)
         ids.push_back(take(saving.requestArtifact(source)));
     }
     auto full = saving.requestArtifact(source);
-    assert(!full && full.error().code == EEditorError::CAPACITY);
+    assert(!full && full.error().code == p::EPersistenceError::CAPACITY);
     f::FlowEditBatch rename{model.describe().current, "After captured intent", {}};
     rename.edits.emplace_back(f::FlowRename{"Changed"});
     assert(model.apply(std::move(rename)) && saving.update());
@@ -245,7 +262,7 @@ int main(int argc, char** argv)
         protected_callback = true;
         auto nested = saving.requestArtifact(source);
         auto acknowledged = saving.acknowledgeArtifact(published);
-        assert(!nested && nested.error().code == EEditorError::BUSY);
+        assert(!nested && nested.error().code == p::EPersistenceError::BUSY);
         assert(!acknowledged && acknowledged.error().code == EEditorError::BUSY);
     };
     std::optional<p::WriteTicket> uncertain;
@@ -272,8 +289,11 @@ int main(int argc, char** argv)
     assert(std::filesystem::exists(root / report.path) && project->catalogAsset(entry->id));
     assert(saving.acknowledgeArtifact(published) && take(saving.artifactReports()).empty());
     assert(!saving.acknowledgeArtifact(published) && writes.size() == 0);
+    submission.reset();
+    saving_owner.reset();
     assert(scope.release());
     (void)messages.collectRetired();
+    assert(scope.drained() && dependencies.drained());
     project->requestClose();
     assert(take(project->advanceClose()));
     std::cout << "PASS no-UI fixed Flow compile/retry, source cleanup, bounded publication, close-after-admission, "

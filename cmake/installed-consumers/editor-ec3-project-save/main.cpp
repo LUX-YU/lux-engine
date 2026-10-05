@@ -10,7 +10,7 @@
 #include <lux/engine/editor/scene/SceneSessionFactory.hpp>
 #include <lux/engine/editor/sessions/SessionOpening.hpp>
 #include <lux/engine/editor/sessions/SessionOperations.hpp>
-#include <lux/engine/editor/storage/FileArtifactStore.hpp>
+#include <lux/engine/editor/storage/PublicationFileStore.hpp>
 #include <lux/engine/editor/storage/ProjectCommands.hpp>
 #include <lux/engine/editor/storage/ProjectContentOpening.hpp>
 #include <lux/engine/editor/storage/ProjectContentSaving.hpp>
@@ -68,7 +68,8 @@ namespace
     {
     public:
         explicit Files(const std::filesystem::path& root)
-            : real_(root), manifest_key_(take(real_.resolve("Project.luxproject")).key)
+            : real_(root, root / "personal", root / "installation"),
+              manifest_key_(take(real_.resolve("Project.luxproject")).key)
         {
         }
         // Only publication result delivery is injected; every successful write uses the real backend.
@@ -99,7 +100,7 @@ namespace
         }
 
     private:
-        storage::FileArtifactStore real_;
+        storage::PublicationFileStore real_;
         p::WriteTargetKey manifest_key_;
     };
 } // namespace
@@ -109,6 +110,8 @@ int main(int argc, char** argv)
     const auto root = std::filesystem::absolute(argv[1]) /
                       std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
     std::filesystem::create_directories(root / "Content");
+    std::filesystem::create_directories(root / "personal");
+    std::filesystem::create_directories(root / "installation");
     const auto project_file = root / "Project.luxproject";
     {
         std::ofstream output(project_file);

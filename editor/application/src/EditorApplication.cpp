@@ -24,7 +24,7 @@ namespace lux::editor::application
           engine_(std::move(engine)), messages_(std::move(messages)), project_tasks_(engine_->execution()),
           task_monitor_(messages_.dispatcherRef(), engine_->execution()), plugins_(std::move(plugins)),
           registrations_(std::move(registrations)),
-          files_(config_.project_file.parent_path(), *config_.user_directory, config_.installation),
+          files_(config_.project_file.parent_path(), *config_.user_directory / "lux/editor", config_.installation),
           save_execution_(engine_->execution(), saves_, writes_, files_),
           opening_(engine_->execution(), sessions_, saves_, editor_context_.services(), editor_context_.scope()),
           contributions_(messages_.dispatcherRef(), editor_context_), workspace_(std::move(profile), writes_, files_),

@@ -27,7 +27,7 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
 endif()
 
 add_component(COMPONENT_NAME editor_file_publication NAMESPACE lux::engine::editor STATIC
-    SOURCE_FILES src/FilePublication.cpp src/FileArtifactStore.cpp)
+    SOURCE_FILES src/FilePublication.cpp src/FileArtifactStore.cpp src/PublicationFileStore.cpp)
 component_include_directories(editor_file_publication
     BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include INSTALL_TIME include)
 target_link_libraries(editor_file_publication PUBLIC lux::cxx::compile_time lux::engine::editor::editor_persistence PRIVATE lux::cxx::algorithm lux::engine::platform::platform_process)
@@ -51,6 +51,7 @@ endif()
 # Exact SDK ownership: sibling providers share a build include root, never an install manifest.
 install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/storage/FileArtifactStore.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/storage/PublicationFileStore.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/storage/FilePublication.hpp
     DESTINATION include/lux/engine/editor/storage COMPONENT lux_engine_editor_file_publication)
 install(FILES

@@ -1,4 +1,5 @@
 #include <lux/engine/editor/storage/FileArtifactStore.hpp>
+#include <lux/engine/editor/storage/PublicationFileStore.hpp>
 #include <lux/engine/editor/storage/FilePublication.hpp>
 #include <cassert>
 #include <algorithm>
@@ -31,6 +32,56 @@ namespace
         assert(read(file) == "replaced");
         return lux::cxx::unexpected(PersistenceFailure{EPersistenceError::IO, "post-replace durability fault"});
     }
+    void publicationRoots(const std::filesystem::path& directory)
+    {
+        const auto makeRoot = [&](const char* name)
+        {
+            const auto path = directory / name;
+            std::filesystem::create_directories(path);
+            const auto key = storage::publicationTargetKey(path, "root-marker");
+            assert(key);
+            return std::filesystem::u8path(*key).parent_path();
+        };
+        const auto project = makeRoot("project");
+        const auto user = makeRoot("personal");
+        const auto installation = makeRoot("installation");
+        storage::PublicationFileStore files(project, user, installation);
+        const auto local = files.resolve("Content/payload");
+        const auto personal = files.resolve((user / "settings.toml").generic_string());
+        assert(local && personal);
+        assert(std::holds_alternative<CommitReceipt>(files.publish({{11}, *local, artifact("project")})));
+        assert(std::holds_alternative<CommitReceipt>(files.publish({{12}, *personal, artifact("personal")})));
+        assert(read(project / "Content/payload") == "project");
+        assert(read(user / "settings.toml") == "personal");
+        const auto alias = files.resolve((user / "sub/../settings.toml").generic_string());
+        assert(alias && alias->key == personal->key);
+        assert(std::holds_alternative<NotPublished>(files.publish({{13}, *personal, artifact("stale")})));
+        assert(!files.resolve((directory / "outside").generic_string()));
+        assert(!files.resolve((user.parent_path() / "personal-sibling/payload").generic_string()));
+        assert(!files.resolve((user / "../outside").generic_string()));
+        const auto installed_bytes = std::as_bytes(std::span("installed", 9));
+        assert(storage::writePublicationFile(installation / "settings.toml", installed_bytes));
+        const auto installed = files.resolve((installation / "settings.toml").generic_string());
+        assert(installed);
+        PublicationQuery forbidden{{14}, *installed, artifact("must not replace")};
+        const auto refused = files.publish(forbidden);
+        assert(std::get<NotPublished>(refused).failure.code == EPersistenceError::UNSUPPORTED_TARGET);
+        const auto checked = files.reconcile(forbidden);
+        assert(checked.writer_retired);
+        assert(std::get<NotPublished>(checked.outcome).failure.code == EPersistenceError::UNSUPPORTED_TARGET);
+        forbidden.action = EPublicationAction::REMOVE;
+        assert(std::holds_alternative<NotPublished>(files.publish(forbidden)));
+        assert(read(installation / "settings.toml") == "installed");
+        // A project below the installation directory retains its explicitly granted project root.
+        const auto nested_project = installation / "sample";
+        std::filesystem::create_directories(nested_project);
+        storage::PublicationFileStore nested(nested_project, user, installation);
+        const auto nested_target = nested.resolve((nested_project / "source").generic_string());
+        assert(nested_target);
+        assert(std::holds_alternative<CommitReceipt>(nested.publish({{15}, *nested_target, artifact("nested")})));
+        assert(read(nested_project / "source") == "nested");
+        std::cout << "Publication roots: project/personal IO, alias, conflict, escape, read-only installation PASS\n";
+    }
 }
 int main(int argc, char** argv)
 {
@@ -40,6 +91,7 @@ int main(int argc, char** argv)
     // Every test invocation gets its own directory; never overwrite user data.
     root /= std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
     std::filesystem::create_directories(root);
+    publicationRoots(root / "roots");
     storage::FileArtifactStore store(root);
     auto target = store.resolve("Content/a.lux");
     assert(target && target->expected_version == "missing");

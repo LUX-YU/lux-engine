@@ -3,6 +3,12 @@
 Existing domain activities, relocated with their separate real targets and ownership.
 Author state remains in authoring; workbench and application are consumers, never dependencies.
 
+`PublicationFileStore` is the physical root router used by the product. It delegates project and
+personal writes to the existing `FileArtifactStore`; installation data outside those explicitly
+writable roots is read only. Roots must be normalized with `publicationTargetKey` before construction.
+The router owns neither an additional publication queue nor a coordinator. Version checks, Unknown
+reconciliation and durable replacement remain in the original backend. Asset reads still use VFS.
+
 
 ## Frozen saves and ordered publication (P05)
 

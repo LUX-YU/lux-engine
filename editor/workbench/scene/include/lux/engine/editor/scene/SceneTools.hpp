@@ -2,7 +2,6 @@
 #include <lux/engine/editor/commands/CommandRegistry.hpp>
 #include <lux/engine/editor/scene/InspectorView.hpp>
 #include <lux/engine/editor/scene/SceneConfigurationView.hpp>
-#include <lux/engine/editor/views/ViewFactory.hpp>
 #include <lux/engine/ui/Attachment.hpp>
 
 namespace lux::ui
@@ -28,15 +27,6 @@ namespace lux::editor::scene
         RESOURCES,
         CONFIGURATION
     };
-    struct SceneToolInputs final
-    {
-        SceneViewServices scene;
-        RunStore& runs;
-        simulation::ecs::ComponentSchemaSet schemas;
-        std::vector<InspectorComponent> components;
-        project::ProjectCatalogModel* assets{};
-        SceneConfigurationInputs configuration;
-    };
     [[nodiscard]] SceneViewResult<views::DetachedView> makeRunSceneView(
         object::ObjectDispatcherRef,
         SceneViewServices,
@@ -47,14 +37,6 @@ namespace lux::editor::scene
     // Retains only the interaction group, never a Pane pointer or a live Registry borrow.
     [[nodiscard]] cxx::expected<std::shared_ptr<SceneInteractionGroup>, lux::ui::EAttachmentError>
     shareSceneInteraction(lux::ui::Root&, lux::ui::PaneHandle);
-    [[nodiscard]] views::ViewFactoryResult<views::DetachedView> makeSceneToolView(
-        object::ObjectDispatcherRef,
-        lux::ui::PaneId,
-        lux::ui::Root&,
-        lux::ui::PaneHandle,
-        ESceneTool,
-        SceneToolInputs
-    );
     // Commands retain their receivers; the bound Root and RunStore must outlive the command snapshot.
     // Step/stop retain their original ticket and view-close owners at the assembly boundary.
     [[nodiscard]] std::vector<std::shared_ptr<commands::CommandEntry>>

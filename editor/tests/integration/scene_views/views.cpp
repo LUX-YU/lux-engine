@@ -634,62 +634,73 @@ namespace
     {
         const auto before = f.session->describe();
         const author::SceneObjectRef target{f.key->id(), before.current.state.history, f.object};
-        author::SceneViewCreateInfo input;
-        input.id = ui::PaneId{"owned-primary"};
-        auto detached = take(author::makeSceneView(f.messages.dispatcherRef(), f.services(), std::move(input)));
-        auto* primary = static_cast<author::SceneView*>(detached.pane());
-        assert(primary->rebindContent({{f.key->id()}, f.key->id()}));
+        services::ServiceRegistry services(f.messages.dispatcherRef());
+        auto scope = take(services.createScope());
+        auto module = take(extensions::EditorExtension::fromStatic(author::sceneModule()));
+        auto declared = take(module.contributions());
+        assert(services.publish(std::move(declared.services)));
+        assert(scope.provide(services::ServiceNameView{"lux.editor.sessions"}, f.store));
+        assert(scope.provide(services::ServiceNameView{"lux.simulation.components"}, f.environment.components));
+        assert(scope.provide(services::ServiceNameView{"lux.scene.runtime"}, *f.runtime));
+        assert(scope.provide(services::ServiceNameView{"lux.process.execution"}, f.execution));
+        assert(scope.provide(services::ServiceNameView{"lux.editor.scene.projection.environment"}, f.environment));
+        desktop::UiRegistry windows(f.messages.dispatcherRef(), services);
+        auto catalog = take(desktop::UiCatalog::prepare(std::move(declared.ui)));
+        assert(windows.publish(catalog));
+        auto& root = f.desktop->root();
+        const views::ViewContent content{{f.key->id()}, f.key->id()};
+        auto detached = take(windows.create(
+            take(catalog.find(author::kSceneView.type)), scope,
+            {f.messages.dispatcherRef(), ui::PaneId{"owned-primary"}, content}
+        ));
+        auto* primary = static_cast<author::SceneView*>(detached.get());
         auto group = primary->interactionOwner();
         assert(group && group->select({{target}}));
-        const auto primary_id = take((*f.legacy_host).adopt(detached, views::ViewRestoreKey{"owned-primary"})).id;
+        assert(root.addSubPane(std::move(detached)));
+        auto primary_window = take(root.identify(*primary));
         f.wait([&] { return primary->image().isValid(); });
-        const auto primary_window = take(f.desktop->root().identify(*primary));
-        author::RunStore runs(*f.runtime, f.execution);
-        lux::project::PluginCatalog catalog;
-        author::SceneToolInputs inputs{
-            f.services(),
-            runs,
-            f.environment.components,
-            author::sceneInspectorComponents(),
-            nullptr,
-            {catalog,
-             f.environment.components,
-             *f.environment.simulation_systems,
-             f.environment.scene_systems,
-             render::builtinRenderFeatureRegistrations(),
-             {}}
-        };
-        const auto make = [&](const char* name, author::ESceneTool tool)
+        ui::PaneHandle outline, inspector, resources;
         {
-            auto candidate = take(author::makeSceneToolView(
-                f.messages.dispatcherRef(),
-                ui::PaneId{name},
-                f.desktop->root(),
-                primary_window,
-                tool,
-                inputs
-            ));
-            return take((*f.legacy_host).adopt(candidate, views::ViewRestoreKey{name})).id;
+            auto local = take(services.createScope(&scope));
+            assert(local.provide(services::ServiceNameView{"lux.editor.scene.interaction"}, group));
+            assert(local.provide(services::ServiceNameView{"lux.ui.root"}, root));
+            assert(local.provide(services::ServiceNameView{"lux.editor.scene.viewport"}, primary_window));
+            const auto make = [&](const char* name, const desktop::UiDescriptor& descriptor)
+            {
+                auto owner = take(windows.create(
+                    take(catalog.find(descriptor.type)), local,
+                    {f.messages.dispatcherRef(), ui::PaneId{name}, content}
+                ));
+                auto* pointer = owner.get();
+                assert(root.addSubPane(std::move(owner)));
+                return take(root.identify(*pointer));
+            };
+            outline = make("owned-outline", author::kOutlinerView);
+            inspector = make("owned-inspector", author::kInspectorView);
+            resources = make("owned-resources", author::kResourceView);
+            assert(local.release() && local.drained());
+        }
+        const auto close = [&](ui::PaneHandle id)
+        {
+            auto removal = take(windows.prepareClose(root, std::span{&id, 1}));
+            assert(root.commit(removal) && !root.findPane(id));
+            f.frame(false); // Original Object/SceneRuntime retirement owners reclaim at their safe points.
         };
-        const auto outline = make("owned-outline", author::ESceneTool::OUTLINER);
-        const auto inspector = make("owned-inspector", author::ESceneTool::INSPECTOR);
-        const auto resources = make("owned-resources", author::ESceneTool::RESOURCES);
         std::weak_ptr<author::SceneInteractionGroup> lifetime = group;
         group.reset();
-        assert((*f.legacy_host).close(primary_id));
-        f.wait([&] { return !(*f.legacy_host).describe(primary_id); });
+        close(primary_window);
         assert(!lifetime.expired());
-        assert(!author::shareSceneInteraction(f.desktop->root(), primary_window));
-        assert(take((*f.legacy_host).describe(outline)).content.primary == f.key->id());
-        assert(take((*f.legacy_host).describe(inspector)).content.primary == f.key->id());
+        assert(!author::shareSceneInteraction(root, primary_window));
+        assert(take(windows.content(root, outline)).primary == f.key->id());
+        assert(take(windows.content(root, inspector)).primary == f.key->id());
         f.frame(false);
-        assert(take((*f.legacy_host).describe(resources)).content.sessions.empty());
+        assert(take(windows.content(root, resources)).sessions.empty());
         assert(lifetime.lock()->select({}));
         f.frame(false);
         const auto no_target = [&](ui::Pane& pane) { assert(!static_cast<author::InspectorView&>(pane).target()); };
-        assert((*f.legacy_host).withView(inspector, no_target));
+        assert(root.withPane(inspector, no_target));
         // An empty selection does not detach the still-live author's content association.
-        assert(take((*f.legacy_host).describe(inspector)).content.primary == f.key->id());
+        assert(take(windows.content(root, inspector)).primary == f.key->id());
         assert(lifetime.lock()->select({{target}}));
         auto read = take(f.session->read());
         assert(read.withRead(
@@ -701,7 +712,7 @@ namespace
                     auto& view = static_cast<author::InspectorView&>(pane);
                     assert(!view.target() && !view.status());
                 };
-                assert((*f.legacy_host).withView(inspector, unchanged));
+                assert(root.withPane(inspector, unchanged));
                 assert(lifetime.lock()->selection().objects == std::vector<author::VSceneSelectionTarget>{target});
                 return {};
             }
@@ -712,13 +723,18 @@ namespace
             auto& view = static_cast<author::InspectorView&>(pane);
             assert(view.status() && view.target() == target);
         };
-        assert((*f.legacy_host).withView(inspector, restored));
-        assert((*f.legacy_host).close(outline));
-        f.wait([&] { return !(*f.legacy_host).describe(outline); }, false);
+        assert(root.withPane(inspector, restored));
+        close(outline);
         assert(!lifetime.expired());
-        assert((*f.legacy_host).close(inspector) && (*f.legacy_host).close(resources));
-        f.wait([&] { return !(*f.legacy_host).describe(inspector) && !(*f.legacy_host).describe(resources); }, false);
+        close(inspector);
+        close(resources);
         assert(lifetime.expired());
+        auto hub = take(services.get<author::ScenePresentationHub>(scope));
+        f.wait([&] { hub->collectReleased(); return hub->size() == 0; });
+        hub.reset();
+        assert(scope.release());
+        (void)f.messages.collectRetired();
+        assert(scope.drained() && services.drained());
         assert(f.session->describe().current == before.current && f.session->describe().dirty == before.dirty);
         std::puts("EC1 complete Scene tools: owner lifetime, no-target association, BUSY retry and release");
     }

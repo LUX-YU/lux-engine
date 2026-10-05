@@ -10,8 +10,6 @@
 #include <lux/engine/editor/desktop/ViewCommands.hpp>
 #include <lux/engine/editor/desktop/WorkspaceActions.hpp>
 #include <lux/engine/editor/extensions/EditorExtension.hpp>
-#include <lux/engine/editor/material/MaterialSessionFactory.hpp>
-#include <lux/engine/editor/material/MaterialView.hpp>
 #include <lux/engine/editor/persistence/SaveExecution.hpp>
 #include <lux/engine/editor/project/DesktopSettings.hpp>
 #include <lux/engine/editor/project/ImportView.hpp>

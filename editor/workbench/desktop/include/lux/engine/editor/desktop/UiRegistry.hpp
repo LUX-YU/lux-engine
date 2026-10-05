@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/cxx/core/move_only_function.hpp>
+#include <lux/engine/editor/desktop/UiError.hpp>
 #include <lux/engine/editor/views/ViewInfo.hpp>
 #include <lux/engine/editor/workspace/DockLayout.hpp>
 #include <lux/engine/editor/workspace/WorkspaceValues.hpp>
@@ -11,34 +12,6 @@
 
 namespace lux::editor::desktop
 {
-    enum class EUiError : std::uint8_t
-    {
-        INVALID_DESCRIPTOR,
-        INVALID_CONFIGURATION,
-        INVALID_OUTPUT,
-        CAPACITY,
-        DUPLICATE,
-        HASH_COLLISION,
-        NOT_FOUND,
-        STALE_REGISTRATION,
-        STALE_ROOT,
-        ATTACHMENT,
-        WRONG_THREAD,
-        BUSY,
-        CLOSED,
-        DEPENDENCY,
-        FACTORY_FAILURE,
-        AMBIGUOUS,
-        OPERATION_FAILURE
-    };
-    struct UiFailure final
-    {
-        EUiError code;
-        std::string domain;
-        std::uint64_t domain_code{};
-        std::string detail;
-    };
-    template <class T> using UiResult = cxx::expected<T, UiFailure>;
     using UiStateResult = UiResult<cxx::move_only_function<void()>>;
     // Existing workspace state schema and explicit content association, never an asset from layout opaque.
     struct UiCreateInfo final

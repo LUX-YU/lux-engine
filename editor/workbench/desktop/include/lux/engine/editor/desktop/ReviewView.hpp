@@ -1,5 +1,5 @@
 #pragma once
-#include <lux/engine/editor/views/ViewError.hpp>
+#include <lux/engine/editor/desktop/UiError.hpp>
 #include <lux/engine/ui/Pane.hpp>
 #include <memory>
 #include <optional>
@@ -35,7 +35,7 @@ namespace lux::editor::desktop
     class ReviewView final : public lux::ui::Pane
     {
     public:
-        [[nodiscard]] static cxx::expected<std::unique_ptr<ReviewView>, views::ViewPreparationFailure> create(
+        [[nodiscard]] static UiResult<std::unique_ptr<ReviewView>> create(
             object::ObjectDispatcherRef,
             lux::ui::PaneId,
             ReviewQuestion
@@ -46,10 +46,10 @@ namespace lux::editor::desktop
         ReviewView(ReviewView&&) = delete;
         ReviewView& operator=(ReviewView&&) = delete;
         // Same path used by actual buttons. The first valid answer remains owned until this view retires.
-        [[nodiscard]] views::ViewResult<void> answer(EReviewChoice) noexcept;
+        [[nodiscard]] UiResult<void> answer(EReviewChoice) noexcept;
         [[nodiscard]] const std::optional<ReviewAnswer>& response() const noexcept;
         [[nodiscard]] const ReviewQuestion& question() const noexcept;
-        [[nodiscard]] views::ViewResult<void> setText(std::string);
+        [[nodiscard]] UiResult<void> setText(std::string);
         // Reopen the same owned draft after a rejected answer; the caller retains its original source stamp.
         void rejectAnswer(std::string message);
 
@@ -58,4 +58,4 @@ namespace lux::editor::desktop
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };
-}
+} // namespace lux::editor::desktop

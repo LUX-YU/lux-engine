@@ -5669,9 +5669,7 @@
       "editor/workbench/desktop/src/ViewHost.cpp",
       "editor/workbench/desktop/src/WindowInput.cpp",
       "editor/workbench/desktop/src/WindowOutput.cpp",
-      "editor/workbench/desktop/test/host.cpp",
-      "editor/workbench/desktop/src/ReviewView.cpp",
-      "editor/workbench/desktop/include/lux/engine/editor/desktop/ReviewView.hpp"
+      "editor/workbench/desktop/test/host.cpp"
     ],
     "project_include_dirs": [
       "editor/workbench/sinclude",
@@ -6141,8 +6139,6 @@
       "editor/workbench/desktop/src/WindowInput.cpp",
       "editor/workbench/desktop/src/WindowOutput.cpp",
       "editor/workbench/desktop/test/host.cpp",
-      "editor/workbench/desktop/src/ReviewView.cpp",
-      "editor/workbench/desktop/include/lux/engine/editor/desktop/ReviewView.hpp",
       "editor/workbench/desktop/include/lux/engine/editor/desktop/WorkspaceActions.hpp",
       "editor/workbench/desktop/src/WorkspaceActions.cpp"
     ]
@@ -18807,10 +18803,10 @@
         "scene_execution"
       ],
       "editor/workbench/desktop/src/ReviewView.cpp": [
-        "view_host"
+        "editor_composition"
       ],
       "editor/workbench/desktop/include/lux/engine/editor/desktop/ReviewView.hpp": [
-        "view_host"
+        "editor_composition"
       ],
       "editor/activities/project/include/lux/engine/editor/storage/ProjectPlugins.hpp": [
         "editor_storage"
@@ -19275,6 +19271,9 @@
       ],
       "editor/workbench/scene/src/SceneToolFactories.cpp": [
         "scene_ui"
+      ],
+      "editor/workbench/desktop/include/lux/engine/editor/desktop/UiError.hpp": [
+        "editor_composition"
       ]
     },
     "native_libraries": [

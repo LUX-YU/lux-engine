@@ -10,6 +10,7 @@
 #include <lux/engine/editor/flowforge/FlowView.hpp>
 #include <lux/engine/editor/material/MaterialCompilationService.hpp>
 #include <lux/engine/editor/material/MaterialModule.hpp>
+#include <lux/engine/editor/material/MaterialView.hpp>
 #include <lux/engine/editor/project/ImportView.hpp>
 #include <lux/engine/editor/project/SettingsView.hpp>
 #include <lux/engine/editor/scene/InspectorView.hpp>

@@ -6,6 +6,7 @@
 #include <lux/engine/editor/commands/CommandRegistry.hpp>
 #include <lux/engine/editor/desktop/CommandMenu.hpp>
 #include <lux/engine/editor/desktop/EditorContext.hpp>
+#include <lux/engine/editor/desktop/ReviewView.hpp>
 #include <lux/engine/editor/desktop/UiRegistry.hpp>
 #include <lux/engine/ui/Root.hpp>
 #include <optional>
@@ -1331,11 +1332,46 @@ namespace
     }
 } // namespace
 
+namespace
+{
+    void reviewWithoutHost(object::ObjectMessageQueue& messages)
+    {
+        const ReviewQuestion question{
+            71,
+            "Close content",
+            "Pending changes",
+            {EReviewChoice::SAVE, EReviewChoice::CANCEL},
+            "Name",
+            "original"
+        };
+        auto created = ReviewView::create(messages.dispatcherRef(), ui::PaneId{"review-independent"}, question);
+        assert(created);
+        auto& view = **created;
+        assert(!view.parent() && !view.response());
+        auto invalid = view.answer(EReviewChoice::DISCARD);
+        assert(!invalid && invalid.error().code == EUiError::INVALID_CONFIGURATION);
+        assert(!view.response() && view.question().request == question.request);
+        assert(view.setText("captured"));
+        assert(view.answer(EReviewChoice::SAVE));
+        auto repeated = view.answer(EReviewChoice::CANCEL);
+        assert(!repeated && repeated.error().code == EUiError::BUSY);
+        assert(!view.setText("replacement"));
+        assert(view.response()->text == "captured" && view.response()->choice == EReviewChoice::SAVE);
+        view.rejectAnswer("Source changed; choose again");
+        assert(!view.response() && view.question().request == question.request);
+        assert(view.answer(EReviewChoice::CANCEL));
+        assert(view.response()->request == question.request && view.response()->text == "captured");
+        assert(view.response()->choice == EReviewChoice::CANCEL);
+        std::cout << "Review retains exact request, draft and first answer without ViewHost PASS\n";
+    }
+} // namespace
+
 int main()
 {
     auto created = object::ObjectMessageQueue::create(128);
     assert(created);
     auto messages = std::move(*created);
+    reviewWithoutHost(messages);
     originalWindowCommand(messages);
     recoveryDeclaration();
     sharing(messages);

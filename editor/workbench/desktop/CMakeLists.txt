@@ -1,5 +1,5 @@
 add_component(COMPONENT_NAME editor_composition NAMESPACE lux::engine::editor STATIC
-    SOURCE_FILES src/UiRegistry.cpp src/EditorContext.cpp src/CommandMenu.cpp src/ViewCommands.cpp)
+    SOURCE_FILES src/UiRegistry.cpp src/EditorContext.cpp src/CommandMenu.cpp src/ViewCommands.cpp src/ReviewView.cpp)
 component_include_directories(editor_composition BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/sinclude INSTALL_TIME include)
 target_include_directories(editor_composition PRIVATE ${PROJECT_SOURCE_DIR}/editor/workbench/sinclude)
@@ -15,7 +15,9 @@ component_add_transitive_commands(editor_composition
 lux_classify_target(TARGET editor_composition LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 lux_engine_install_components(PROJECT_NAME lux-engine-editor-composition VERSION ${PROJECT_VERSION}
     NAMESPACE lux::engine::editor COMPONENTS editor_composition)
-install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/desktop/ViewCommands.hpp
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/desktop/ReviewView.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/desktop/UiError.hpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/desktop/ViewCommands.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/desktop/UiRegistry.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/desktop/EditorContext.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/desktop/CommandMenu.hpp
@@ -60,7 +62,7 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     set_tests_properties(editor.detached_views PROPERTIES LABELS "editor;native;P08" TIMEOUT 60 RUN_SERIAL TRUE)
 endif()
 
-add_component(COMPONENT_NAME view_host NAMESPACE lux::engine::editor STATIC SOURCE_FILES src/ViewHost.cpp src/ReviewView.cpp)
+add_component(COMPONENT_NAME view_host NAMESPACE lux::engine::editor STATIC SOURCE_FILES src/ViewHost.cpp)
 component_include_directories(view_host BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/sinclude INSTALL_TIME include)
 target_include_directories(view_host PRIVATE ${PROJECT_SOURCE_DIR}/editor/workbench/sinclude)
@@ -103,7 +105,6 @@ install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/desktop/DesktopShell.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/desktop/Presentation.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/desktop/ViewHost.hpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/desktop/ReviewView.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/desktop/WindowInput.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/desktop/WindowOutput.hpp
     DESTINATION include/lux/engine/editor/desktop COMPONENT lux_engine_editor_desktop)

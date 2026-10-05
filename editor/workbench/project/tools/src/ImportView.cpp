@@ -4,7 +4,6 @@
 #include <lux/engine/editor/desktop/UiRegistry.hpp>
 #include <lux/engine/editor/project/ImportView.hpp>
 #include <lux/engine/editor/workbench/CommandSupport.hpp>
-#include <lux/engine/editor/workbench/ViewFactorySupport.hpp>
 #include <lux/engine/ui/Element.hpp>
 #include <lux/engine/ui/Root.hpp>
 #include <random>
@@ -17,11 +16,6 @@ namespace lux::editor::project
             commands::CommandIdView{"lux.editor.import"},
             "Import Assets",
             "File"
-        };
-        constexpr views::ViewFactoryDescriptor kFactoryDescriptor{
-            views::ViewTypeIdView{"lux.editor.import"},
-            "Import Assets",
-            cxx::typeToken<std::monostate>()
         };
         constexpr services::ServiceDependency kDependencies[]{
             {services::ServiceNameView{"lux.editor.project.catalog"},
@@ -135,8 +129,8 @@ namespace lux::editor::project
         return pane;
     }
     constinit const desktop::UiDescriptor kImportView{
-        .type = kFactoryDescriptor.type,
-        .label = kFactoryDescriptor.label,
+        .type = views::ViewTypeIdView{"lux.editor.import"},
+        .label = "Import Assets",
         .dependencies = kDependencies,
         .create = ImportView::createConfigured
     };
@@ -260,7 +254,7 @@ namespace lux::editor::project
         ProjectCatalogModel& catalog,
         assets::ModelImporter& importer
     )
-        : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{kFactoryDescriptor.type.name()}, "Import Assets"),
+        : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{kImportView.type.name()}, "Import Assets"),
           impl_(std::make_unique<Impl>(*this, catalog, importer))
     {
         if (!setContent(impl_->content))
@@ -410,40 +404,12 @@ namespace lux::editor::project
 
 namespace lux::editor::project
 {
-    std::shared_ptr<views::ViewFactoryEntry> makeImportViewFactory(
-        ProjectCatalogModel& catalog,
-        assets::ModelImporter& importer,
-        cxx::move_only_function<void(lux::ui::PaneId)> browse
-    )
-    {
-        auto receiver = std::make_shared<cxx::move_only_function<void(lux::ui::PaneId)>>(std::move(browse));
-        return views::ViewFactoryEntry::bind<kFactoryDescriptor>(
-            lux::object::CodeLease::builtin(),
-            [&catalog, &importer, receiver](const views::ViewFactoryInput& input
-            ) -> views::ViewFactoryResult<views::DetachedView>
-            {
-                auto pane = std::make_unique<ImportView>(input.dispatcher(), input.paneId(), catalog, importer);
-                auto connection = object::LuxObject::connect(
-                    pane.get(),
-                    &ImportView::browseRequested,
-                    [id = input.paneId(), receiver]() noexcept { (*receiver)(id); }
-                );
-                if (!connection)
-                {
-                    return cxx::unexpected(workbench::detail::viewFailure(connection.error()));
-                }
-                views::DetachedView view{lux::object::CodeLease::builtin(), std::move(pane)};
-                view.addConnection(std::move(*connection));
-                return view;
-            }
-        );
-    }
     std::shared_ptr<commands::CommandEntry> makeImportCommand(
         commands::CommandEntry::Query query,
         desktop::ToolOpening open
     )
     {
-        return workbench::detail::bindToolCommand<kCommand, kFactoryDescriptor>(std::move(query), std::move(open));
+        return workbench::detail::bindToolCommand<kCommand, kImportView>(std::move(query), std::move(open));
     }
 
 } // namespace lux::editor::project

@@ -1,9 +1,4 @@
 #pragma once
-namespace lux::editor::views
-{
-    class ViewFactoryEntry;
-    struct ViewFactoryDescriptor;
-} // namespace lux::editor::views
 #include <lux/cxx/core/move_only_function.hpp>
 #include <lux/engine/editor/desktop/ViewCommands.hpp>
 
@@ -17,10 +12,6 @@ namespace lux::editor
     class ProjectStorage;
     struct AssetReference;
 } // namespace lux::editor
-namespace lux::editor::views
-{
-    class ViewFactoryEntry;
-}
 
 namespace lux::editor::desktop
 {
@@ -60,10 +51,6 @@ namespace lux::editor::project
         std::unique_ptr<Impl> impl_;
         object::Connection request_connection_;
     };
-    [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> makeRecentProjectsViewFactory(
-        RecentProjects& recent,
-        cxx::move_only_function<EditorResult<void>(const std::filesystem::path&)> open
-    );
     [[nodiscard]] std::shared_ptr<commands::CommandEntry> makeRecentProjectsCommand(
         commands::CommandEntry::Query,
         desktop::ToolOpening

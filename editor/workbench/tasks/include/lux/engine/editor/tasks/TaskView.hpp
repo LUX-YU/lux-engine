@@ -1,18 +1,8 @@
 #pragma once
-namespace lux::editor::views
-{
-    class ViewFactoryEntry;
-    struct ViewFactoryDescriptor;
-} // namespace lux::editor::views
 #include <lux/cxx/core/move_only_function.hpp>
 #include <lux/engine/editor/desktop/ViewCommands.hpp>
 #include <lux/engine/editor/tasks/TaskMonitor.hpp>
-#include <lux/engine/editor/views/IViewHost.hpp>
 #include <lux/engine/ui/Element.hpp>
-namespace lux::editor::views
-{
-    class ViewFactoryEntry;
-}
 
 namespace lux::editor::desktop
 {
@@ -66,7 +56,6 @@ namespace lux::editor::tasks
     private:
         TaskListElement content_;
     };
-    [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> makeTaskViewFactory(TaskMonitor& monitor);
     [[nodiscard]] std::shared_ptr<commands::CommandEntry> makeTasksCommand(
         commands::CommandEntry::Query,
         desktop::ToolOpening

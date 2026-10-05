@@ -6,7 +6,6 @@
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
 #include <lux/engine/editor/storage/RecentProjects.hpp>
 #include <lux/engine/editor/workbench/CommandSupport.hpp>
-#include <lux/engine/editor/workbench/ViewFactorySupport.hpp>
 #include <lux/engine/ui/Element.hpp>
 
 namespace lux::editor::project
@@ -27,11 +26,6 @@ namespace lux::editor::project
             commands::CommandIdView{"lux.editor.project.recent"},
             "Recent Projects",
             "File"
-        };
-        constexpr views::ViewFactoryDescriptor kFactoryDescriptor{
-            views::ViewTypeIdView{"lux.editor.recent-projects"},
-            "Recent Projects",
-            cxx::typeToken<std::monostate>()
         };
         constexpr services::ServiceDependency kDependencies[]{
             {services::ServiceNameView{"lux.editor.project.recent"},
@@ -122,8 +116,8 @@ namespace lux::editor::project
         return pane;
     }
     constinit const desktop::UiDescriptor kRecentProjectsView{
-        .type = kFactoryDescriptor.type,
-        .label = kFactoryDescriptor.label,
+        .type = views::ViewTypeIdView{"lux.editor.recent-projects"},
+        .label = "Recent Projects",
         .dependencies = kDependencies,
         .create = RecentProjectsView::createConfigured
     };
@@ -228,7 +222,7 @@ namespace lux::editor::project
         lux::ui::PaneId id,
         RecentProjects& projects
     )
-        : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{kFactoryDescriptor.type.name()}, "Recent Projects"),
+        : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{kRecentProjectsView.type.name()}, "Recent Projects"),
           impl_(std::make_unique<Impl>(*this, projects))
     {
     }
@@ -253,47 +247,12 @@ namespace lux::editor::project
 
 namespace lux::editor::project
 {
-    std::shared_ptr<views::ViewFactoryEntry> makeRecentProjectsViewFactory(
-        RecentProjects& recent,
-        cxx::move_only_function<EditorResult<void>(const std::filesystem::path&)> open
-    )
-    {
-        auto receiver =
-            std::make_shared<cxx::move_only_function<EditorResult<void>(const std::filesystem::path&)>>(std::move(open)
-            );
-        return views::ViewFactoryEntry::bind<kFactoryDescriptor>(
-            lux::object::CodeLease::builtin(),
-            [&recent, receiver](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView>
-            {
-                auto pane = std::make_unique<RecentProjectsView>(input.dispatcher(), input.paneId(), recent);
-                auto connection = object::LuxObject::connect(
-                    pane.get(),
-                    &RecentProjectsView::openRequested,
-                    [target = pane.get(), receiver](const std::filesystem::path& path) noexcept
-                    {
-                        auto result = (*receiver)(path);
-                        if (!result)
-                        {
-                            target->showFailure(std::move(result.error()));
-                        }
-                    }
-                );
-                if (!connection)
-                {
-                    return cxx::unexpected(workbench::detail::viewFailure(connection.error()));
-                }
-                views::DetachedView view{lux::object::CodeLease::builtin(), std::move(pane)};
-                view.addConnection(std::move(*connection));
-                return view;
-            }
-        );
-    }
     std::shared_ptr<commands::CommandEntry> makeRecentProjectsCommand(
         commands::CommandEntry::Query query,
         desktop::ToolOpening open
     )
     {
-        return workbench::detail::bindToolCommand<kCommand, kFactoryDescriptor>(std::move(query), std::move(open));
+        return workbench::detail::bindToolCommand<kCommand, kRecentProjectsView>(std::move(query), std::move(open));
     }
 
     std::shared_ptr<commands::CommandEntry> makeOpenProjectCommand(

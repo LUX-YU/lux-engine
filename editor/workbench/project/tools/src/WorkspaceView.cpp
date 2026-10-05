@@ -4,7 +4,6 @@
 #include <lux/engine/editor/desktop/UiRegistry.hpp>
 #include <lux/engine/editor/project/WorkspaceView.hpp>
 #include <lux/engine/editor/workbench/CommandSupport.hpp>
-#include <lux/engine/editor/workbench/ViewFactorySupport.hpp>
 #include <lux/engine/ui/Element.hpp>
 
 namespace lux::editor::project
@@ -25,11 +24,6 @@ namespace lux::editor::project
             commands::CommandIdView{"lux.editor.workspace"},
             "Layouts and Recovery",
             "Window"
-        };
-        constexpr views::ViewFactoryDescriptor kFactoryDescriptor{
-            views::ViewTypeIdView{"lux.editor.workspace"},
-            "Workspace",
-            cxx::typeToken<std::monostate>()
         };
         constexpr services::ServiceDependency kDependencies[]{
             {services::ServiceNameView{"lux.editor.workspace.observe"},
@@ -89,8 +83,8 @@ namespace lux::editor::project
         }
     } // namespace
     constinit const desktop::UiDescriptor kWorkspaceView{
-        .type = kFactoryDescriptor.type,
-        .label = kFactoryDescriptor.label,
+        .type = views::ViewTypeIdView{"lux.editor.workspace"},
+        .label = "Workspace",
         .dependencies = kDependencies,
         .create = createView
     };
@@ -228,7 +222,7 @@ namespace lux::editor::project
         Observe observe,
         Request request
     )
-        : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{kFactoryDescriptor.type.name()}, "Workspace"),
+        : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{kWorkspaceView.type.name()}, "Workspace"),
           impl_(std::make_unique<Impl>(*this, std::move(observe), std::move(request)))
     {
     }
@@ -253,39 +247,12 @@ namespace lux::editor::project
 
 namespace lux::editor::project
 {
-    std::shared_ptr<views::ViewFactoryEntry> makeWorkspaceViewFactory(
-        WorkspaceView::Observe observe,
-        WorkspaceView::Request request
-    )
-    {
-        struct Receivers final
-        {
-            WorkspaceView::Observe observe;
-            WorkspaceView::Request request;
-        };
-        auto receivers = std::make_shared<Receivers>(std::move(observe), std::move(request));
-        return views::ViewFactoryEntry::bind<kFactoryDescriptor>(
-            lux::object::CodeLease::builtin(),
-            [receivers](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView>
-            {
-                return views::DetachedView{
-                    lux::object::CodeLease::builtin(),
-                    std::make_unique<WorkspaceView>(
-                        input.dispatcher(),
-                        input.paneId(),
-                        [receivers] { return receivers->observe(); },
-                        [receivers](VWorkspaceIntent intent) { return receivers->request(std::move(intent)); }
-                    )
-                };
-            }
-        );
-    }
     std::shared_ptr<commands::CommandEntry> makeWorkspaceCommand(
         commands::CommandEntry::Query query,
         desktop::ToolOpening open
     )
     {
-        return workbench::detail::bindToolCommand<kCommand, kFactoryDescriptor>(std::move(query), std::move(open));
+        return workbench::detail::bindToolCommand<kCommand, kWorkspaceView>(std::move(query), std::move(open));
     }
 
     std::vector<std::shared_ptr<commands::CommandEntry>> makeRecoveryCommands(

@@ -1,9 +1,4 @@
 #pragma once
-namespace lux::editor::views
-{
-    class ViewFactoryEntry;
-    struct ViewFactoryDescriptor;
-} // namespace lux::editor::views
 #include <lux/cxx/core/move_only_function.hpp>
 #include <lux/engine/editor/EditorError.hpp>
 #include <lux/engine/editor/desktop/ViewCommands.hpp>
@@ -14,10 +9,6 @@ namespace lux::editor::views
 namespace lux::editor::desktop
 {
     struct UiDescriptor;
-}
-namespace lux::editor::views
-{
-    class ViewFactoryEntry;
 }
 
 namespace lux::editor::project
@@ -141,10 +132,6 @@ namespace lux::editor::project
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };
-    [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> makeResultsViewFactory(
-        ResultsView::Observe observe,
-        ResultsView::Request request
-    );
     [[nodiscard]] std::shared_ptr<commands::CommandEntry> makeResultsCommand(
         commands::CommandEntry::Query,
         desktop::ToolOpening

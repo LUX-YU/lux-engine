@@ -3,7 +3,6 @@
 #include <lux/engine/editor/desktop/UiRegistry.hpp>
 #include <lux/engine/editor/project/ProjectCreationView.hpp>
 #include <lux/engine/editor/workbench/CommandSupport.hpp>
-#include <lux/engine/editor/workbench/ViewFactorySupport.hpp>
 #include <lux/engine/ui/Controls.hpp>
 #include <lux/engine/ui/Layout.hpp>
 
@@ -15,11 +14,6 @@ namespace lux::editor::project
             commands::CommandIdView{"lux.editor.project.create"},
             "New Project",
             "File"
-        };
-        constexpr views::ViewFactoryDescriptor kFactoryDescriptor{
-            views::ViewTypeIdView{"lux.editor.project.creation"},
-            "New project",
-            cxx::typeToken<std::monostate>()
         };
     } // namespace
     namespace
@@ -90,8 +84,8 @@ namespace lux::editor::project
         }
     } // namespace
     constinit const desktop::UiDescriptor kProjectCreationView{
-        .type = kFactoryDescriptor.type,
-        .label = kFactoryDescriptor.label,
+        .type = views::ViewTypeIdView{"lux.editor.project.creation"},
+        .label = "New project",
         .dependencies = kDependencies,
         .create = createView
     };
@@ -434,7 +428,7 @@ namespace lux::editor::project
         ProjectCreationRequests requests,
         EditorResult<void>& status
     )
-        : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{kFactoryDescriptor.type.name()}, "New project"),
+        : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{kProjectCreationView.type.name()}, "New project"),
           impl_(std::make_unique<Impl>(*this, std::move(requests), status))
     {
     }
@@ -447,26 +441,6 @@ namespace lux::editor::project
 
 namespace lux::editor::project
 {
-    std::shared_ptr<views::ViewFactoryEntry> makeProjectCreationViewFactory(
-        cxx::move_only_function<ProjectCreationRequests()> requests
-    )
-    {
-        return views::ViewFactoryEntry::bind<kFactoryDescriptor>(
-            lux::object::CodeLease::builtin(),
-            [requests = std::move(requests)](const views::ViewFactoryInput& input
-            ) mutable -> views::ViewFactoryResult<views::DetachedView>
-            {
-                EditorResult<void> ready;
-                auto pane =
-                    std::make_unique<ProjectCreationView>(input.dispatcher(), input.paneId(), requests(), ready);
-                if (!ready)
-                {
-                    return cxx::unexpected(workbench::detail::viewFailure(ready.error()));
-                }
-                return views::DetachedView{lux::object::CodeLease::builtin(), std::move(pane)};
-            }
-        );
-    }
     std::shared_ptr<commands::CommandEntry> makeProjectCreationCommand(
         commands::CommandEntry::Query query,
         desktop::ToolOpening open,
@@ -478,12 +452,12 @@ namespace lux::editor::project
             [open = std::move(open),
              start = std::move(start)](const commands::CommandInvocation&) mutable -> commands::CommandResult<void>
             {
-                auto shown = open(views::ViewTypeId{kFactoryDescriptor.type.name()});
+                auto shown = open(views::ViewTypeId{kProjectCreationView.type.name()});
                 if (!shown)
                 {
                     return cxx::unexpected(shown.error());
                 }
-                // Construction and Host adoption precede work which needs the new view's maintenance.
+                // Construction and Root adoption precede work which needs the new view's maintenance.
                 return start();
             }
         );

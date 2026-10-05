@@ -1,9 +1,4 @@
 #pragma once
-namespace lux::editor::views
-{
-    class ViewFactoryEntry;
-    struct ViewFactoryDescriptor;
-} // namespace lux::editor::views
 #include <lux/cxx/core/move_only_function.hpp>
 #include <lux/engine/editor/desktop/ViewCommands.hpp>
 #include <lux/engine/editor/scene/SceneConfigurationElement.hpp>
@@ -13,10 +8,6 @@ namespace lux::editor::views
 namespace lux::editor::desktop
 {
     struct UiDescriptor;
-}
-namespace lux::editor::views
-{
-    class ViewFactoryEntry;
 }
 
 namespace lux::editor::project
@@ -67,9 +58,6 @@ namespace lux::editor::project
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };
-    [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> makeProjectCreationViewFactory(
-        cxx::move_only_function<ProjectCreationRequests()> requests
-    );
     [[nodiscard]] std::shared_ptr<commands::CommandEntry> makeProjectCreationCommand(
         commands::CommandEntry::Query,
         desktop::ToolOpening,

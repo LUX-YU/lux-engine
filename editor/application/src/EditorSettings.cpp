@@ -104,7 +104,7 @@ namespace lux::editor::application
         }
         for (const auto& info : *all)
         {
-            if (info.type.view() != project::SettingsView::descriptor().type)
+            if (info.type.view() != project::kSettingsView.type)
             {
                 continue;
             }

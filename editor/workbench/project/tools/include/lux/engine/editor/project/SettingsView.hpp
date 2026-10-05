@@ -1,9 +1,4 @@
 #pragma once
-namespace lux::editor::views
-{
-    class ViewFactoryEntry;
-    struct ViewFactoryDescriptor;
-} // namespace lux::editor::views
 #include <array>
 #include <lux/engine/editor/desktop/ViewCommands.hpp>
 #include <lux/engine/editor/storage/ProjectPublication.hpp>
@@ -43,7 +38,6 @@ namespace lux::editor::project
     public:
         [[nodiscard]] static cxx::expected<std::unique_ptr<lux::ui::Pane>, desktop::UiFailure>
         createConfigured(services::ServiceResolver&, const desktop::UiCreateInfo&);
-        [[nodiscard]] static const views::ViewFactoryDescriptor& descriptor() noexcept;
         object::TSignal<PluginSelectionDraft> selectionRequested{*this};
         object::TSignal<> retryRequested{*this}, abandonRequested{*this}, acknowledgeRequested{*this};
         SettingsView(
@@ -67,15 +61,6 @@ namespace lux::editor::project
         std::unique_ptr<Impl> impl_;
         std::array<object::Connection, 4> request_connections_;
     };
-    [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> makeSettingsViewFactory(
-        ProjectStorage&,
-        const lux::project::PluginManager&,
-        cxx::move_only_function<void(const PluginSelectionDraft&)>,
-        cxx::move_only_function<void()> retry,
-        cxx::move_only_function<void()> abandon,
-        cxx::move_only_function<void()> acknowledge,
-        std::shared_ptr<SettingsContentInput> = {}
-    );
     [[nodiscard]] std::shared_ptr<commands::CommandEntry> makeSettingsCommand(
         commands::CommandEntry::Query,
         desktop::ToolOpening

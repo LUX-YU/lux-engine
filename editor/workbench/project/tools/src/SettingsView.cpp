@@ -6,7 +6,6 @@
 #include <lux/engine/editor/project/SettingsView.hpp>
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
 #include <lux/engine/editor/workbench/CommandSupport.hpp>
-#include <lux/engine/editor/workbench/ViewFactorySupport.hpp>
 #include <lux/engine/project/PluginManager.hpp>
 #include <lux/engine/ui/Element.hpp>
 namespace lux::editor::project
@@ -167,8 +166,8 @@ namespace lux::editor::project
         : Pane(
               dispatcher,
               std::move(id),
-              lux::ui::PaneTypeId{descriptor().type.name()},
-              std::string{descriptor().label}
+              lux::ui::PaneTypeId{kSettingsView.type.name()},
+              std::string{kSettingsView.label}
           ),
           impl_(std::make_unique<Impl>(*this, project, plugins))
     {
@@ -255,21 +254,12 @@ namespace lux::editor::project
 {
     namespace
     {
-        constexpr views::ViewFactoryDescriptor kFactoryDescriptor{
-            views::ViewTypeIdView{"lux.editor.settings"},
-            "Settings",
-            cxx::typeToken<std::monostate>()
-        };
         constexpr commands::CommandDescriptor kCommand{
             commands::CommandIdView{"lux.editor.settings"},
             "Project Settings",
             "Window"
         };
     } // namespace
-    const views::ViewFactoryDescriptor& SettingsView::descriptor() noexcept
-    {
-        return kFactoryDescriptor;
-    }
     namespace
     {
         constexpr services::ServiceDependency kDependencies[]{
@@ -411,77 +401,16 @@ namespace lux::editor::project
         return pane;
     }
     constinit const desktop::UiDescriptor kSettingsView{
-        .type = kFactoryDescriptor.type,
-        .label = kFactoryDescriptor.label,
+        .type = views::ViewTypeIdView{"lux.editor.settings"},
+        .label = "Settings",
         .dependencies = kDependencies,
         .create = SettingsView::createConfigured
     };
-    std::shared_ptr<views::ViewFactoryEntry> makeSettingsViewFactory(
-        ProjectStorage& project,
-        const lux::project::PluginManager& plugins,
-        cxx::move_only_function<void(const PluginSelectionDraft&)> save,
-        cxx::move_only_function<void()> retry,
-        cxx::move_only_function<void()> abandon,
-        cxx::move_only_function<void()> acknowledge,
-        std::shared_ptr<SettingsContentInput> settings
-    )
-    {
-        auto receivers = std::make_shared<PluginSelectionRequests>(
-            std::move(save),
-            std::move(retry),
-            std::move(abandon),
-            std::move(acknowledge)
-        );
-        return views::ViewFactoryEntry::bind<kFactoryDescriptor>(
-            lux::object::CodeLease::builtin(),
-            [&project, &plugins, receivers, settings](const views::ViewFactoryInput& input
-            ) -> views::ViewFactoryResult<views::DetachedView>
-            {
-                auto pane =
-                    std::make_unique<SettingsView>(input.dispatcher(), input.paneId(), project, plugins, settings);
-                std::array<object::LuxObject::ConnectResult, 4> bindings{
-                    object::LuxObject::connect(
-                        pane.get(),
-                        &SettingsView::selectionRequested,
-                        [receivers](const PluginSelectionDraft& value) noexcept { receivers->save(value); }
-                    ),
-                    object::LuxObject::connect(
-                        pane.get(),
-                        &SettingsView::retryRequested,
-                        [receivers]() noexcept { receivers->retry(); }
-                    ),
-                    object::LuxObject::connect(
-                        pane.get(),
-                        &SettingsView::abandonRequested,
-                        [receivers]() noexcept { receivers->abandon(); }
-                    ),
-                    object::LuxObject::connect(
-                        pane.get(),
-                        &SettingsView::acknowledgeRequested,
-                        [receivers]() noexcept { receivers->acknowledge(); }
-                    )
-                };
-                for (const auto& binding : bindings)
-                {
-                    if (!binding)
-                    {
-                        return cxx::unexpected(workbench::detail::viewFailure(binding.error()));
-                    }
-                }
-                views::DetachedView result{lux::object::CodeLease::builtin(), std::move(pane)};
-                for (auto& binding : bindings)
-                {
-                    result.addConnection(std::move(*binding));
-                }
-                return result;
-            }
-        );
-    }
     std::shared_ptr<commands::CommandEntry> makeSettingsCommand(
         commands::CommandEntry::Query query,
         desktop::ToolOpening open
     )
     {
-        return workbench::detail::bindToolCommand<kCommand, kFactoryDescriptor>(std::move(query), std::move(open));
+        return workbench::detail::bindToolCommand<kCommand, kSettingsView>(std::move(query), std::move(open));
     }
 } // namespace lux::editor::project

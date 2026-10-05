@@ -555,6 +555,14 @@ namespace lux::editor::application
         }
         // The irreversible handoff has completed. Failures from now on cannot return to review.
         phase_ = EApplicationPhase::DRAINING;
+        if (model_placements_)
+        {
+            auto closing = model_placements_->requestClose();
+            if (!closing)
+            {
+                return closing;
+            }
+        }
         opening_.requestStop();
         importer_->requestClose();
         desktop_->presentation().stopFrames();
@@ -614,7 +622,7 @@ namespace lux::editor::application
             std::ranges::none_of(run_presentations_, [](const auto& run) { return bool(run.preparing) || run.run; });
         if (phase_ == EApplicationPhase::DRAINING && operations_settled &&
             std::ranges::none_of(reloads_, [](const auto& reload) { return bool(reload.operation); }) &&
-            std::ranges::none_of(model_placements_, [](const auto& model) { return bool(model.operation); }))
+            (!model_placements_ || model_placements_->settled()))
         {
             project_->requestClose();
             auto closed = project_->advanceClose();
@@ -771,7 +779,6 @@ namespace lux::editor::application
         {
             receive(receiveProjectIntents());
         }
-        settleModels();
         receive(receiveSaveAnswer());
         receive(receiveReloadAnswer());
         if (phase_ == EApplicationPhase::RUNNING)

@@ -15,3 +15,7 @@ engine_declare_editor_module(TARGET scene_module
     HEADER "${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/scene/SceneModule.hpp"
     LOGICAL_PATH lux/engine/editor/scene/SceneModule.hpp
     SOURCE_FILE "${CMAKE_CURRENT_SOURCE_DIR}/src/SceneModule.cpp")
+
+target_link_libraries(scene_module PRIVATE lux::engine::editor::scene_project)
+component_add_transitive_commands(scene_module
+    "find_package(lux-engine-editor-scene-execution REQUIRED COMPONENTS scene_project)")

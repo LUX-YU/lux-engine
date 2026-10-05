@@ -1386,7 +1386,7 @@ int main(int argc, char** argv)
                 std::cerr << "Model drop preparation failed, variant " << requested.error().cause.index() << '\n';
             }
             assert(is_pending_output);
-            assert(impl.model_placements_.empty());
+            assert((!impl.model_placements_ || impl.model_placements_->reports().empty()));
             assert(impl.sessions_.describe(scene_id)->current == model_source);
             return;
         }
@@ -1405,22 +1405,22 @@ int main(int argc, char** argv)
             std::this_thread::yield();
         }
     }
-    assert(impl.model_placements_.size() == 1 && !impl.model_placements_.front().operation);
-    assert(impl.model_placements_.front().placement.based_on == model_source);
+    assert(impl.model_placements_->reports().size() == 1 && !impl.model_placements_->reports().front().active());
+    assert(impl.model_placements_->reports().front().placement.based_on == model_source);
     const auto model_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
-    while (!impl.model_placements_.front().result)
+    while (!impl.model_placements_->reports().front().result)
     {
         assert(std::chrono::steady_clock::now() < model_deadline);
         assert(app->update());
-        assert(!impl.model_placements_.front().failure);
+        assert(!impl.model_placements_->reports().front().failure);
         std::this_thread::yield();
     }
-    const auto& model_result = *impl.model_placements_.front().result;
+    const auto& model_result = *impl.model_placements_->reports().front().result;
     if (!model_result)
     {
         std::cerr << "Model insertion failed, variant " << model_result.error().cause.index() << '\n';
     }
-    assert(model_result && !impl.model_placements_.front().operation);
+    assert(model_result && !impl.model_placements_->reports().front().active());
     assert(impl.sessions_.describe(scene_id)->current != model_source);
     auto author_key = impl.sessions_.key<lux::editor::scene::SceneSession>(scene_id);
     assert(author_key);
@@ -1432,8 +1432,8 @@ int main(int argc, char** argv)
         assert(author->get().describe().current == model_source);
         assert(author->get().redo());
     }
-    impl.result_intent_ = lux::editor::project::AcknowledgeModel{impl.model_placements_.front().id};
-    assert(app->update() && impl.model_placements_.empty());
+    impl.result_intent_ = lux::editor::project::AcknowledgeModel{impl.model_placements_->reports().front().id};
+    assert(app->update() && (!impl.model_placements_ || impl.model_placements_->reports().empty()));
     std::cout << "Actual SceneView drop reads project pak through Process and commits one undoable model batch\n";
     for (int frame = 0; frame < 8; ++frame)
     {

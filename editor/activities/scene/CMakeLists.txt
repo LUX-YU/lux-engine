@@ -64,7 +64,10 @@ lux_classify_target(TARGET scene_execution_api LAYER EDITOR PRODUCT EDITOR ROLE 
 
 
 
-add_component(COMPONENT_NAME scene_execution NAMESPACE lux::engine::editor STATIC SOURCE_FILES src/SceneConfigurationPreparation.cpp src/RunStore.cpp src/ModelCreationOperation.cpp)
+add_component(COMPONENT_NAME scene_execution NAMESPACE lux::engine::editor STATIC
+    SOURCE_FILES src/SceneConfigurationPreparation.cpp src/RunStore.cpp src/ModelCreationOperation.cpp)
+
+
 target_link_libraries(scene_execution PRIVATE lux::engine::scene::scene_transform)
 target_link_libraries(scene_execution PRIVATE lux::engine::scene::scene_script_runtime)
 component_add_transitive_commands(scene_execution
@@ -85,8 +88,21 @@ component_add_transitive_commands(scene_execution
     "find_package(lux-engine-scene-world-loading REQUIRED COMPONENTS scene_world_loading)"
     "find_package(lux-engine-process-world-loading REQUIRED COMPONENTS process_world_loading)")
 lux_classify_target(TARGET scene_execution LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
+# Project-backed placement is a separate dependency closure from Run/Scene execution.
+# Runtime and operation consumers do not acquire project publication, plugins or platform IO.
+add_component(COMPONENT_NAME scene_project NAMESPACE lux::engine::editor STATIC
+    SOURCE_FILES src/ModelPlacementService.cpp)
+component_include_directories(scene_project BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include
+    INSTALL_TIME include)
+target_link_libraries(scene_project PUBLIC lux::engine::editor::scene_execution
+    PRIVATE lux::engine::editor::editor_storage lux::engine::core::services)
+component_add_transitive_commands(scene_project
+    "find_package(lux-engine-editor-scene-execution REQUIRED COMPONENTS scene_execution)"
+    "find_package(lux-engine-editor-storage REQUIRED COMPONENTS editor_storage)"
+    "find_package(lux-engine-core REQUIRED COMPONENTS services)")
+lux_classify_target(TARGET scene_project LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 lux_engine_install_components(PROJECT_NAME lux-engine-editor-scene-execution VERSION ${PROJECT_VERSION}
-    NAMESPACE lux::engine::editor COMPONENTS scene_execution_api scene_execution)
+    NAMESPACE lux::engine::editor COMPONENTS scene_execution_api scene_execution scene_project)
 if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     add_executable(editor_scene_execution_test test/runs.cpp)
     target_link_libraries(editor_scene_execution_test PRIVATE scene_execution lux::engine::scene::scene_transform)
@@ -132,6 +148,9 @@ install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/scene/RunTypes.hpp
     DESTINATION include/lux/engine/editor/scene COMPONENT lux_engine_editor_scene_execution)
 install(FILES
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/scene/ModelPlacementService.hpp
+    DESTINATION include/lux/engine/editor/scene COMPONENT lux_engine_editor_scene_project)
+install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/scene/SceneCodec.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/scene/SceneSaveSource.hpp
     DESTINATION include/lux/engine/editor/scene COMPONENT lux_engine_editor_scene_persistence)
@@ -142,3 +161,12 @@ install(FILES
 
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/scene/SceneSessionFactory.hpp
     DESTINATION include/lux/engine/editor/scene COMPONENT lux_engine_editor_scene_persistence)
+
+if(LUX_EDITOR_BUILD_NATIVE_TESTS)
+    add_executable(editor_model_placement_test test/model_placement.cpp)
+    target_link_libraries(editor_model_placement_test PRIVATE scene_project editor_storage lux::engine::core::services
+        lux::engine::toolchain::toolchain_material_cooker)
+    lux_editor_test_options(editor_model_placement_test)
+    add_test(NAME editor.scene.model-placement COMMAND editor_model_placement_test "${CMAKE_CURRENT_BINARY_DIR}/placements")
+    set_tests_properties(editor.scene.model-placement PROPERTIES LABELS "editor;native;EC4" RUN_SERIAL TRUE TIMEOUT 60)
+endif()

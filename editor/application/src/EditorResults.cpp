@@ -89,24 +89,16 @@ namespace lux::editor::application
                 }
                 else if constexpr (std::same_as<Action, AcknowledgeModel>)
                 {
-                    std::erase_if(
-                        model_placements_,
-                        [&](const auto& model)
-                        {
-                            const bool is_target = model.id == action.target;
-                            const bool has_result = model.result || model.failure;
-                            return is_target && !model.operation && has_result;
-                        }
-                    );
+                    if (model_placements_)
+                    {
+                        return model_placements_->acknowledge(action.target);
+                    }
                 }
                 else if constexpr (std::same_as<Action, CancelModel>)
                 {
-                    for (auto& model : model_placements_)
+                    if (model_placements_)
                     {
-                        if (model.id == action.target)
-                        {
-                            model.cancel_requested = true;
-                        }
+                        return model_placements_->cancel(action.target);
                     }
                 }
                 else if constexpr (std::same_as<Action, ShowContent>)
@@ -340,7 +332,8 @@ namespace lux::editor::application
             to.actions.push_back({"Acknowledge Save All report", AcknowledgeSaveAll{}});
         }
         snapshot.sections.push_back({"Model insertion"});
-        for (const auto& model : model_placements_)
+        for (const auto& model :
+             model_placements_ ? model_placements_->reports() : std::span<const scene::ModelPlacementReport>{})
         {
             auto& to = row(std::to_string(model.id));
             const auto state = model.result && *model.result   ? "inserted"

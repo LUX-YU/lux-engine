@@ -1,16 +1,17 @@
 add_subdirectory(launch)
 
 add_component(COMPONENT_NAME editor_bootstrap NAMESPACE lux::engine::editor STATIC
-    SOURCE_FILES src/EditorStartup.cpp src/EditorApplication.cpp src/EditorViews.cpp src/EditorCommands.cpp src/EditorLifecycle.cpp src/EditorWorkspace.cpp src/EditorContent.cpp src/EditorViewClosure.cpp src/EditorSceneTools.cpp src/EditorSaving.cpp src/EditorReload.cpp src/EditorResults.cpp src/EditorModels.cpp src/EditorRecovery.cpp src/RestoreWorkbench.cpp src/EditorProjectTools.cpp src/EditorSettings.cpp src/ProjectCreation.cpp src/EditorProjectCreation.cpp src/Launcher.cpp)
+    SOURCE_FILES src/EditorStartup.cpp src/EditorApplication.cpp src/EditorViews.cpp src/EditorCommands.cpp src/EditorLifecycle.cpp src/EditorWorkspace.cpp src/EditorContent.cpp src/EditorViewClosure.cpp src/EditorSceneTools.cpp src/EditorSaving.cpp src/EditorReload.cpp src/EditorResults.cpp src/EditorRecovery.cpp src/RestoreWorkbench.cpp src/EditorProjectTools.cpp src/EditorSettings.cpp src/ProjectCreation.cpp src/EditorProjectCreation.cpp src/Launcher.cpp)
 component_include_directories(editor_bootstrap BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/pinclude ${CMAKE_CURRENT_SOURCE_DIR}/sinclude INSTALL_TIME include)
 target_link_libraries(editor_bootstrap PUBLIC lux::engine::platform::window lux::engine::editor::session_execution lux::engine::editor::editor_project lux::engine::editor::editor_commands lux::engine::editor::editor_extensions
-    PRIVATE lux::engine::platform::platform_process lux::engine::editor::editor_launch lux::engine::engine_context_render lux::engine::project::project_plugin_rendering
+    PRIVATE lux::engine::editor::scene_project lux::engine::platform::platform_process lux::engine::editor::editor_launch lux::engine::engine_context_render lux::engine::project::project_plugin_rendering
     lux::engine::editor::editor_extensions lux::engine::editor::scene_ui lux::engine::editor::scene_persistence lux::engine::editor::desktop_shell
     lux::engine::editor::editor_assets lux::engine::editor::editor_storage
     lux::engine::editor::editor_file_publication lux::engine::editor::editor_persistence_execution
     lux::engine::editor::project_tools_ui lux::engine::editor::workspace_store lux::engine::editor::project_ui lux::engine::editor::tasks_ui imgui::core)
 component_add_transitive_commands(editor_bootstrap
+    "find_package(lux-engine-editor-scene-execution REQUIRED COMPONENTS scene_project)"
     "find_package(lux-engine-platform REQUIRED COMPONENTS platform_process window)"
     "find_package(lux-engine-editor-commands REQUIRED COMPONENTS editor_commands)"
     "find_package(lux-engine-editor-launch REQUIRED COMPONENTS editor_launch)"

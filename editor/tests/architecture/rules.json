@@ -9633,6 +9633,9 @@
       },
       "lux_editor_productModules_scene_module_generate": {
         "path": "editor/application"
+      },
+      "scene_project": {
+        "path": "editor/activities/scene"
       }
     },
     "native_libraries": [
@@ -16668,6 +16671,24 @@
           "CPU",
           "TOOLCHAIN"
         ]
+      },
+      "scene_project": {
+        "layer": "E2",
+        "role": "PROVIDER",
+        "capabilities": [
+          "CPU",
+          "PROCESS",
+          "GPU"
+        ],
+        "path": "editor/activities/scene"
+      },
+      "editor_model_placement_test": {
+        "layer": "TEST",
+        "role": "TEST",
+        "capabilities": [
+          "CPU"
+        ],
+        "path": "editor/activities/scene"
       }
     },
     "files": {
@@ -18874,9 +18895,6 @@
       "editor/activities/scene/include/lux/engine/editor/scene/ModelPlacement.hpp": [
         "scene_execution"
       ],
-      "editor/application/src/EditorModels.cpp": [
-        "editor_bootstrap"
-      ],
       "editor/application/src/EditorArtifacts.cpp": [
         "editor_bootstrap"
       ],
@@ -19274,6 +19292,15 @@
       ],
       "editor/workbench/desktop/include/lux/engine/editor/desktop/UiError.hpp": [
         "editor_composition"
+      ],
+      "editor/activities/scene/src/ModelPlacementService.cpp": [
+        "scene_project"
+      ],
+      "editor/activities/scene/include/lux/engine/editor/scene/ModelPlacementService.hpp": [
+        "scene_project"
+      ],
+      "editor/activities/scene/test/model_placement.cpp": [
+        "editor_model_placement_test"
       ]
     },
     "native_libraries": [

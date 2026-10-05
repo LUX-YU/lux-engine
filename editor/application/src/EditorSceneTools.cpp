@@ -427,3 +427,31 @@ namespace lux::editor::application
         draft.commands.insert(draft.commands.end(), runs.begin(), runs.end());
     }
 } // namespace lux::editor::application
+
+namespace lux::editor::application
+{
+    void EditorApplication::Impl::receiveModel(scene::ModelPlacement placement)
+    {
+        if (phase_ != EApplicationPhase::RUNNING)
+        {
+            result_failure_ = EditorFailure{EEditorError::CLOSING, "model.admission"};
+            return;
+        }
+        if (!model_placements_)
+        {
+            auto service = editor_context_.services().get<scene::ModelPlacementService>(editor_context_.scope());
+            if (!service)
+            {
+                EditorResult<void> failure = applicationFailure("model.service", service.error());
+                result_failure_ = std::move(failure.error());
+                return;
+            }
+            model_placements_ = std::move(*service);
+        }
+        auto request = model_placements_->request(std::move(placement));
+        if (!request)
+        {
+            result_failure_ = std::move(request.error());
+        }
+    }
+} // namespace lux::editor::application

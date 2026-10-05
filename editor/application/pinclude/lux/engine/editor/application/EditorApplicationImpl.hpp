@@ -19,7 +19,7 @@
 #include <lux/engine/editor/project/SettingsContent.hpp>
 #include <lux/engine/editor/project/SettingsView.hpp>
 #include <lux/engine/editor/project/WorkspaceView.hpp>
-#include <lux/engine/editor/scene/ModelCreationOperation.hpp>
+#include <lux/engine/editor/scene/ModelPlacementService.hpp>
 #include <lux/engine/editor/scene/RunController.hpp>
 #include <lux/engine/editor/scene/SceneCreationView.hpp>
 #include <lux/engine/editor/scene/SceneSessionFactory.hpp>
@@ -93,15 +93,6 @@ namespace lux::editor::application
             std::optional<lux::ui::PaneHandle> view;
             std::optional<EditorFailure> failure;
             bool cancelled{};
-        };
-        struct ModelPresentation final
-        {
-            std::uint64_t id;
-            scene::ModelPlacement placement;
-            std::unique_ptr<scene::ModelCreationOperation> operation;
-            std::optional<scene::ModelCreationResult<scene::SceneEditReceipt>> result;
-            std::optional<EditorFailure> failure;
-            bool cancel_requested{};
         };
         struct SaveQuestion final
         {
@@ -308,8 +299,7 @@ namespace lux::editor::application
         std::vector<RunPresentation> run_presentations_;
         std::vector<OpenPresentation> opens_;
         std::vector<AssetReference> open_intents_;
-        std::vector<ModelPresentation> model_placements_;
-        std::uint64_t next_model_{1};
+        std::shared_ptr<scene::ModelPlacementService> model_placements_;
         std::optional<SaveQuestion> save_question_;
         std::vector<ReloadPresentation> reloads_;
         std::optional<ReloadQuestion> reload_question_;
@@ -426,7 +416,6 @@ namespace lux::editor::application
         [[nodiscard]] desktop::ToolOpening toolOpening();
         [[nodiscard]] EditorResult<void> settleOperations();
         void receiveModel(scene::ModelPlacement);
-        void settleModels();
         [[nodiscard]] EditorResult<void> requestExit();
         [[nodiscard]] EditorResult<lux::ui::PaneHandle> adopt(std::unique_ptr<lux::ui::Pane, object::ObjectDeleter>&);
     };

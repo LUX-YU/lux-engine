@@ -7,6 +7,7 @@
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
 #include <lux/engine/object/ObjectDispatcher.hpp>
 #include <lux/engine/process/ExecutionRuntime.hpp>
+#include <lux/engine/ui/Root.hpp>
 #include <thread>
 
 template <class Result> auto take(Result&& value)

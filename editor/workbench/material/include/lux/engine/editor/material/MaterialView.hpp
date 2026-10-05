@@ -16,11 +16,6 @@ namespace lux::editor::persistence
     class IArtifactStore;
 } // namespace lux::editor::persistence
 
-namespace lux::editor::views
-{
-    class ViewFactoryEntry;
-}
-
 namespace lux::editor::desktop
 {
     struct UiDescriptor;
@@ -125,14 +120,5 @@ namespace lux::editor::material
         MaterialViewServices,
         std::optional<MaterialViewBinding> = {},
         MaterialViewState = {}
-    );
-    [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> makeMaterialViewFactory(
-        sessions::TSessionAccess<MaterialSession>,
-        lux::scene::SceneRuntime&,
-        std::shared_ptr<MaterialCompilationService>,
-        const scene::ProjectionEnvironment&,
-        std::span<const render::RenderFeatureRegistration>,
-        project::ProjectCatalogModel*,
-        std::shared_ptr<persistence::IArtifactSubmission>
     );
 } // namespace lux::editor::material

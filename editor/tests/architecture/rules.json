@@ -6881,7 +6881,6 @@
       "lux/engine/editor/scene/AuthoringFacts.hpp",
       "lux/engine/scene/RenderFeatureSceneBinding.hpp",
       "lux/engine/editor/scene/SceneConfigurationPreparation.hpp",
-      "lux/engine/editor/workbench/ViewFactorySupport.hpp",
       "lux/engine/editor/sessions/SessionCommands.hpp",
       "lux/engine/editor/scene/SceneSessionFactory.hpp",
       "lux/engine/editor/commands/CommandRegistry.hpp",
@@ -7501,7 +7500,6 @@
       "lux/engine/editor/workbench/ViewPreparation.hpp",
       "lux/engine/editor/persistence/DerivedArtifact.hpp",
       "lux/engine/editor/views/ViewFactory.hpp",
-      "lux/engine/editor/workbench/ViewFactorySupport.hpp",
       "lux/engine/editor/desktop/ViewCommands.hpp",
       "lux/engine/editor/workbench/CommandSupport.hpp",
       "lux/engine/object/CodeLease.hpp",
@@ -8117,7 +8115,6 @@
       "lux/engine/editor/persistence/DerivedArtifact.hpp",
       "lux/engine/flowforge/graph/FlowSource.hpp",
       "lux/engine/editor/views/ViewFactory.hpp",
-      "lux/engine/editor/workbench/ViewFactorySupport.hpp",
       "lux/engine/editor/desktop/ViewCommands.hpp",
       "lux/engine/editor/workbench/CommandSupport.hpp",
       "lux/engine/object/CodeLease.hpp",
@@ -19372,18 +19369,6 @@
           "scene_ui",
           "material_ui",
           "flow_ui"
-        ]
-      },
-      "editor/workbench/sinclude/lux/engine/editor/workbench/ViewFactorySupport.hpp": {
-        "layer": "E3",
-        "consumers": [
-          "scene_ui",
-          "material_ui",
-          "flow_ui",
-          "project_ui",
-          "tasks_ui",
-          "project_tools_ui",
-          "view_host"
         ]
       },
       "editor/workbench/sinclude/lux/engine/editor/workbench/CommandSupport.hpp": {

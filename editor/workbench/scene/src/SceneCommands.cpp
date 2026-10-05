@@ -1,6 +1,6 @@
-#include <lux/engine/editor/scene/SceneTools.hpp>
 #include <lux/engine/editor/scene/RunStore.hpp>
-#include <lux/engine/editor/workbench/ViewFactorySupport.hpp>
+#include <lux/engine/editor/scene/SceneTools.hpp>
+#include <lux/engine/editor/workbench/CommandSupport.hpp>
 
 namespace lux::editor::scene
 {
@@ -76,17 +76,6 @@ namespace lux::editor::scene
             commands::ECommandScope::SESSION
         };
 
-        template <class Error> auto commandFailure(const Error& error)
-        {
-            auto detail = workbench::detail::viewFailure(error);
-            return cxx::unexpected(commands::CommandFailure{
-                detail.code == views::EViewFactoryError::BUSY ? commands::ECommandError::BUSY
-                                                              : commands::ECommandError::DOMAIN_FAILURE,
-                std::move(detail.domain),
-                detail.domain_code,
-                std::move(detail.detail)
-            });
-        }
         template <const commands::CommandDescriptor& Descriptor, class Action>
         std::shared_ptr<commands::CommandEntry> bindViewCommand(
             std::shared_ptr<commands::CommandEntry::Query> query,
@@ -101,21 +90,28 @@ namespace lux::editor::scene
                 {
                     auto result = action(*input.view<lux::ui::PaneHandle>());
                     if (!result)
+                    {
                         return cxx::unexpected(result.error());
+                    }
                     return commands::DispatchReceipt{commands::ImmediateCompletion{}};
                 }
             );
         }
         template <class Action> auto forRun(lux::ui::Root& root, Action action)
         {
-            return [&root, action = std::move(action)](lux::ui::PaneHandle view) mutable -> commands::CommandResult<void>
+            return
+                [&root, action = std::move(action)](lux::ui::PaneHandle view) mutable -> commands::CommandResult<void>
             {
                 auto group = shareSceneInteraction(root, view);
                 if (!group)
-                    return commandFailure(group.error());
+                {
+                    return workbench::detail::commandFailure(group.error());
+                }
                 const auto run = (*group)->run();
                 if (!run)
+                {
                     return cxx::unexpected(commands::CommandFailure{commands::ECommandError::STALE_TARGET, "run.view"});
+                }
                 return action(*run);
             };
         }
@@ -164,7 +160,9 @@ namespace lux::editor::scene
                     {
                         auto result = runs.pause(id);
                         if (!result)
-                            return commandFailure(result.error());
+                        {
+                            return workbench::detail::commandFailure(result.error());
+                        }
                         return {};
                     }
                 )
@@ -177,7 +175,9 @@ namespace lux::editor::scene
                     {
                         auto result = runs.resume(id);
                         if (!result)
-                            return commandFailure(result.error());
+                        {
+                            return workbench::detail::commandFailure(result.error());
+                        }
                         return {};
                     }
                 )
@@ -199,7 +199,9 @@ namespace lux::editor::scene
             {
                 auto result = start(std::get<commands::SessionTarget>(input.target()));
                 if (!result)
+                {
                     return cxx::unexpected(result.error());
+                }
                 return commands::DispatchReceipt{
                     commands::AcceptedOperation{commands::OperationKindId{"run"}, result->serial}
                 };

@@ -1159,6 +1159,17 @@ namespace
         const auto registry = take(runs.inspect().borrow(run));
         const auto entity = registry.get().view<const simulation::ecs::Transform3D>().front();
         const auto target = take(runs.inspect().reference(run, entity));
+        const auto inspect_command = [&](const simulation::ecs::Registry&,
+                                         const std::optional<editing::HistorySnapshot>&) -> author::RunResult<void>
+        {
+            const auto refused = invoke("lux.editor.scene.resume", *command_handle);
+            assert(!refused && refused.error().code == commands::ECommandError::BUSY);
+            assert(refused.error().domain == cxx::typeToken<author::ERunError>().name());
+            assert(refused.error().domain_code == static_cast<std::uint64_t>(author::ERunError::BUSY));
+            return {};
+        };
+        assert(runs.withInspection(target, inspect_command));
+        assert(take(runs.info(run)).state == author::ERunState::PAUSED);
         {
             services::ServiceRegistry registry(f.messages.dispatcherRef());
             auto scope = take(registry.createScope());

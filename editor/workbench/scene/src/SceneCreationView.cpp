@@ -2,8 +2,8 @@
 #include <lux/engine/editor/desktop/UiRegistry.hpp>
 #include <lux/engine/editor/scene/SceneCreationView.hpp>
 #include <lux/engine/editor/scene/SceneSessionFactory.hpp>
+#include <lux/engine/editor/views/IViewHost.hpp>
 #include <lux/engine/editor/workbench/CommandSupport.hpp>
-#include <lux/engine/editor/workbench/ViewFactorySupport.hpp>
 #include <lux/engine/ui/Controls.hpp>
 #include <lux/engine/ui/Layout.hpp>
 #include <random>
@@ -12,11 +12,6 @@ namespace lux::editor::scene
 {
     namespace
     {
-        constexpr views::ViewFactoryDescriptor kCreationDescriptor{
-            views::ViewTypeIdView{"lux.editor.scene.creation"},
-            "New Scene",
-            cxx::typeToken<std::monostate>()
-        };
         constexpr commands::CommandDescriptor kNewCommand{
             commands::CommandIdView{"lux.editor.new.scene"},
             "New Scene",
@@ -138,8 +133,8 @@ namespace lux::editor::scene
         }
     } // namespace
     constinit const desktop::UiDescriptor kSceneCreationView{
-        .type = kCreationDescriptor.type,
-        .label = kCreationDescriptor.label,
+        .type = views::ViewTypeIdView{"lux.editor.scene.creation"},
+        .label = "New Scene",
         .dependencies = kCreationDependencies,
         .create = createView
     };
@@ -254,7 +249,7 @@ namespace lux::editor::scene
         SceneCreationRequests requests,
         SceneConfigurationResult<void>& status
     )
-        : Pane(dispatcher, id, lux::ui::PaneTypeId{kCreationDescriptor.type.name()}, "New scene"),
+        : Pane(dispatcher, id, lux::ui::PaneTypeId{kSceneCreationView.type.name()}, "New scene"),
           impl_(std::make_unique<Impl>(*this, std::move(inputs), std::move(requests)))
     {
         status = impl_->status_;
@@ -295,40 +290,11 @@ namespace lux::editor::scene
 
 namespace lux::editor::scene
 {
-    std::shared_ptr<views::ViewFactoryEntry> makeSceneCreationViewFactory(
-        scene::SceneConfigurationInputs configuration,
-        sessions::SessionCreation receiver
-    )
-    {
-        auto create = std::make_shared<sessions::SessionCreation>(std::move(receiver));
-        return views::ViewFactoryEntry::bind<kCreationDescriptor>(
-            lux::object::CodeLease::builtin(),
-            [configuration = std::move(configuration),
-             create](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView>
-            {
-                auto requests = creationRequests(
-                    configuration,
-                    [create](sessions::SessionPreparation prepared) { return (*create)(std::move(prepared)); }
-                );
-                auto view = scene::makeSceneCreationView(
-                    input.dispatcher(),
-                    input.paneId(),
-                    configuration,
-                    std::move(requests)
-                );
-                if (!view)
-                {
-                    return cxx::unexpected(workbench::detail::viewFailure(view.error()));
-                }
-                return std::move(*view);
-            }
-        );
-    }
     std::shared_ptr<commands::CommandEntry> makeNewSceneCommand(
         commands::CommandEntry::Query query,
         desktop::ToolOpening open
     )
     {
-        return workbench::detail::bindToolCommand<kNewCommand, kCreationDescriptor>(std::move(query), std::move(open));
+        return workbench::detail::bindToolCommand<kNewCommand, kSceneCreationView>(std::move(query), std::move(open));
     }
 } // namespace lux::editor::scene

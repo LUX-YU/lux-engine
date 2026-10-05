@@ -8,7 +8,6 @@
 #include <lux/engine/editor/flowforge/PublishFlowArtifact.hpp>
 #include <lux/engine/editor/widgets/GraphCanvas.hpp>
 #include <lux/engine/editor/workbench/InteractionDelivery.hpp>
-#include <lux/engine/editor/workbench/ViewFactorySupport.hpp>
 #include <lux/engine/editor/workbench/ViewPreparation.hpp>
 #include <lux/engine/flowforge/graph/ObjectNode.hpp>
 #include <lux/engine/flowforge/script/ScriptAbilityNode.hpp>
@@ -21,13 +20,6 @@ namespace lux::editor::flowforge
     namespace
     {
         constexpr sessions::SessionKindIdView kContentKinds[]{sessions::SessionKindIdView{"lux.editor.flowforge"}};
-        constexpr views::ViewFactoryDescriptor kViewDescriptor{
-            views::ViewTypeIdView{"lux.editor.flowforge"},
-            "FlowForge",
-            cxx::typeToken<views::ContentViewInput>(),
-            1,
-            kContentKinds
-        };
         template <class T> auto rejected(T error)
         {
             return cxx::unexpected(VFlowViewFailure{std::move(error)});
@@ -1190,7 +1182,7 @@ namespace lux::editor::flowforge
         FlowViewServices services,
         FlowViewState state
     )
-        : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{kViewDescriptor.type.name()}, "FlowForge"),
+        : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{kFlowView.type.name()}, "FlowForge"),
           impl_(std::make_unique<Impl>(*this, services, std::move(state)))
     {
     }
@@ -1516,34 +1508,5 @@ namespace lux::editor::flowforge
                 );
             }
         };
-    }
-} // namespace lux::editor::flowforge
-
-namespace lux::editor::flowforge
-{
-    std::shared_ptr<views::ViewFactoryEntry> makeFlowViewFactory(flowforge::FlowViewServices flow)
-    {
-        return workbench::detail::bindViewFactory<kViewDescriptor, views::ContentViewInput>(
-            [flow](const views::ViewFactoryInput& input, const views::ContentViewInput& value)
-                -> views::ViewFactoryResult<views::DetachedView>
-            {
-                auto view = flowforge::makeFlowView(input.dispatcher(), input.paneId(), flow);
-                if (!view)
-                {
-                    return cxx::unexpected(workbench::detail::viewFailure(view.error()));
-                }
-                auto bound = view->rebindContent(value.content);
-                if (!bound)
-                {
-                    return cxx::unexpected(views::ViewFactoryFailure{
-                        views::EViewFactoryError::CONSTRUCT,
-                        bound.error().domain,
-                        bound.error().code,
-                        bound.error().message
-                    });
-                }
-                return std::move(*view);
-            }
-        );
     }
 } // namespace lux::editor::flowforge

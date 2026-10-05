@@ -1,4 +1,5 @@
 #pragma once
+#include <algorithm>
 #include <lux/engine/editor/desktop/ViewCommands.hpp>
 #include <variant>
 
@@ -44,10 +45,27 @@ namespace lux::editor::workbench::detail
         }
         else
         {
+            if constexpr (requires {
+                              error.session;
+                              error.code == decltype(error.code)::SESSION;
+                          })
+            {
+                if (error.code == decltype(error.code)::SESSION)
+                {
+                    return commandFailure(error.session);
+                }
+            }
             commands::CommandFailure result{
                 commands::ECommandError::DOMAIN_FAILURE,
                 std::string(cxx::typeToken<Error>().name())
             };
+            if constexpr (requires { error.retryable; })
+            {
+                if (error.retryable)
+                {
+                    result.code = commands::ECommandError::BUSY;
+                }
+            }
             if constexpr (requires { error == Error::BUSY; })
             {
                 if (error == Error::BUSY)
@@ -58,6 +76,26 @@ namespace lux::editor::workbench::detail
             if constexpr (std::is_enum_v<Error>)
             {
                 result.domain_code = static_cast<std::uint64_t>(error);
+            }
+            else if constexpr (requires { error.code; })
+            {
+                result.domain_code = static_cast<std::uint64_t>(error.code);
+            }
+            if constexpr (std::is_convertible_v<Error, std::string_view>)
+            {
+                result.detail = std::string_view(error);
+            }
+            else if constexpr (requires { std::string{error.message}; })
+            {
+                result.detail = error.message;
+            }
+            else if constexpr (requires {
+                                   error.message.begin();
+                                   error.message.end();
+                               })
+            {
+                const auto end = std::find(error.message.begin(), error.message.end(), '\0');
+                result.detail.assign(error.message.begin(), end);
             }
             return cxx::unexpected(std::move(result));
         }

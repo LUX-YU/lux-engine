@@ -1,7 +1,7 @@
 #pragma once
-#include <lux/engine/editor/persistence/DerivedArtifact.hpp>
 #include <lux/engine/editor/flowforge/FlowCompilationService.hpp>
 #include <lux/engine/editor/flowforge/FlowInteraction.hpp>
+#include <lux/engine/editor/persistence/DerivedArtifact.hpp>
 #include <lux/engine/editor/views/IViewHost.hpp>
 
 namespace lux::editor::persistence
@@ -9,11 +9,6 @@ namespace lux::editor::persistence
     class WriteCoordinator;
     class IArtifactStore;
 } // namespace lux::editor::persistence
-
-namespace lux::editor::views
-{
-    class ViewFactoryEntry;
-}
 
 namespace lux::editor::desktop
 {
@@ -94,5 +89,4 @@ namespace lux::editor::flowforge
         std::optional<FlowViewBinding> = {},
         FlowViewState = {}
     );
-    [[nodiscard]] std::shared_ptr<views::ViewFactoryEntry> makeFlowViewFactory(FlowViewServices);
 } // namespace lux::editor::flowforge

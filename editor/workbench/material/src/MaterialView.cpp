@@ -10,7 +10,6 @@
 #include <lux/engine/editor/views/ViewportElement.hpp>
 #include <lux/engine/editor/widgets/GraphCanvas.hpp>
 #include <lux/engine/editor/workbench/InteractionDelivery.hpp>
-#include <lux/engine/editor/workbench/ViewFactorySupport.hpp>
 #include <lux/engine/editor/workbench/ViewPreparation.hpp>
 #include <lux/engine/resource/asset/texture/TextureAsset.hpp>
 #include <lux/engine/ui/Layout.hpp>
@@ -20,13 +19,6 @@ namespace lux::editor::material
     namespace
     {
         constexpr sessions::SessionKindIdView kContentKinds[]{sessions::SessionKindIdView{"lux.editor.material"}};
-        constexpr views::ViewFactoryDescriptor kViewDescriptor{
-            views::ViewTypeIdView{"lux.editor.material"},
-            "Material",
-            cxx::typeToken<views::ContentViewInput>(),
-            1,
-            kContentKinds
-        };
         template <class T> auto rejected(T error)
         {
             return cxx::unexpected(VMaterialViewFailure{std::move(error)});
@@ -1346,7 +1338,7 @@ namespace lux::editor::material
         MaterialViewServices services,
         MaterialViewState state
     )
-        : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{kViewDescriptor.type.name()}, "Material"),
+        : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{kMaterialView.type.name()}, "Material"),
           impl_(std::make_unique<Impl>(*this, std::move(services), state))
     {
     }
@@ -1761,49 +1753,4 @@ namespace lux::editor::material
         return candidate;
     }
 
-} // namespace lux::editor::material
-
-namespace lux::editor::material
-{
-    std::shared_ptr<views::ViewFactoryEntry> makeMaterialViewFactory(
-        sessions::TSessionAccess<material::MaterialSession> sessions,
-        lux::scene::SceneRuntime& runtime,
-        std::shared_ptr<MaterialCompilationService> compilation,
-        const scene::ProjectionEnvironment& environment,
-        std::span<const render::RenderFeatureRegistration> features,
-        project::ProjectCatalogModel* assets,
-        std::shared_ptr<persistence::IArtifactSubmission> publication
-    )
-    {
-        return workbench::detail::bindViewFactory<kViewDescriptor, views::ContentViewInput>(
-            [sessions,
-             &runtime,
-             compilation = std::move(compilation),
-             &environment,
-             features,
-             assets,
-             publication = std::move(publication
-             )](const views::ViewFactoryInput& input,
-                const views::ContentViewInput& value) -> views::ViewFactoryResult<views::DetachedView>
-            {
-                auto view = MaterialView::createContent(
-                    input.dispatcher(),
-                    input.paneId(),
-                    sessions,
-                    runtime,
-                    compilation,
-                    environment,
-                    features,
-                    assets,
-                    value.content,
-                    publication
-                );
-                if (!view)
-                {
-                    return cxx::unexpected(workbench::detail::viewFailure(view.error()));
-                }
-                return detachedView(std::move(*view));
-            }
-        );
-    }
 } // namespace lux::editor::material

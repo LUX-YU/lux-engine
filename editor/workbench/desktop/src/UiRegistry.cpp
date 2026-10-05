@@ -659,6 +659,59 @@ namespace lux::editor::desktop
         }
         return result;
     }
+    UiResult<workspace::DockLayout> UiRegistry::captureLayout(
+        lux::ui::Root& root, workspace::LayoutId id, std::string label
+    ) noexcept
+    {
+        if (auto admitted = impl_->admission(); !admitted)
+            return cxx::unexpected(std::move(admitted.error()));
+        Impl::Guard guard{impl_->active};
+        auto services = impl_->services.readScope();
+        if (!services)
+            return cxx::unexpected(serviceFailure(std::move(services.error())));
+        const auto revision = root.windowRevision();
+        auto windows = describeAdmitted(root);
+        if (!windows)
+            return cxx::unexpected(std::move(windows.error()));
+        const auto tree = root.captureDockTree();
+        workspace::DockLayout layout;
+        layout.id = std::move(id);
+        layout.label = std::move(label);
+        layout.slots.reserve(windows->size());
+        std::map<std::string, workspace::LayoutSlotId> ids;
+        for (const auto& window : *windows)
+        {
+            UiResult<workspace::VersionedViewState> captured{workspace::VersionedViewState{}};
+            auto capture = [&](const std::shared_ptr<const UiEntry>& entry, lux::ui::Pane& pane)
+            {
+                const auto& descriptor = entry->descriptor();
+                captured->schema = descriptor.schema;
+                if (descriptor.capture_state)
+                    captured = descriptor.capture_state(pane);
+            };
+            auto visited = visitAdmitted(root, window.handle, capture);
+            if (!visited)
+                return cxx::unexpected(std::move(visited.error()));
+            if (!captured)
+                return cxx::unexpected(std::move(captured.error()));
+            if (root.windowRevision() != revision)
+                return reject(EUiError::STALE_ROOT, "Window state changed during layout capture");
+            const workspace::LayoutSlotId slot_id{static_cast<std::uint32_t>(layout.slots.size() + 1)};
+            ids.emplace(window.instance.name(), slot_id);
+            layout.slots.push_back({
+                slot_id, window.restore_key, window.type, window.visible, std::move(*captured)
+            });
+        }
+        layout.dock = workbench::detail::captureDockTree(tree, ids);
+        auto validated = workspace::ValidatedLayout::validate(layout);
+        if (!validated)
+            return cxx::unexpected(UiFailure{
+                EUiError::INVALID_CONFIGURATION, "layout", static_cast<std::uint64_t>(validated.error().code),
+                std::move(validated.error().detail)
+            });
+        return layout;
+    }
+
     UiResult<lux::ui::AttachmentCommit> UiRegistry::applyLayout(
         lux::ui::Root& root, services::ServiceScope& scope, workspace::DockLayout input
     ) noexcept
@@ -855,6 +908,7 @@ namespace lux::editor::desktop
         auto capture = [&](const std::shared_ptr<const UiEntry>& entry, lux::ui::Pane& pane)
         {
             const auto& descriptor = entry->descriptor();
+            result->schema = descriptor.schema;
             if (descriptor.capture_state)
             {
                 result = descriptor.capture_state(pane);

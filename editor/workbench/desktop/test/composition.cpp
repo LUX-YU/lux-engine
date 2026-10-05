@@ -26,7 +26,7 @@ namespace
         std::function<void()> destroying;
         std::function<void()> operating;
         unsigned captures{}, closes{}, rebound{};
-        bool deny_close{}, deny_rebind{};
+        bool deny_close{}, deny_rebind{}, deny_capture{};
         unsigned state_prepared{}, state_applied{};
     };
     struct Model final
@@ -114,6 +114,8 @@ namespace
         {
             ++counts_.captures;
             if (counts_.operating) counts_.operating();
+            if (counts_.deny_capture)
+                return cxx::unexpected(UiFailure{EUiError::OPERATION_FAILURE, "state.capture", 95, "Rejected"});
             return workspace::VersionedViewState{1, state_};
         }
         UiStateResult prepareState(const workspace::VersionedViewState& state)
@@ -677,6 +679,60 @@ namespace
         assert(a->content() == binding && b->content() == binding && (*root)->findPane(ui::PaneIdView{"state-c"}));
         assert(registry.applyLayout(**root, *scope, layout));
         assert(registry.describe(**root)->size() == 4 && (*root)->findPane(created_handle));
+        const workspace::LayoutId capture_id{"abcdef0123456789abcdef0123456789"};
+        const auto capture_layout = [&] { return registry.captureLayout(**root, capture_id, "Captured"); };
+        auto captured_layout = capture_layout();
+        assert(captured_layout && captured_layout->slots.size() == 4);
+        const auto a_slot = std::ranges::find_if(captured_layout->slots, [](const auto& slot)
+        { return slot.restore_key.name() == "state-a"; });
+        assert(a_slot != captured_layout->slots.end() && a_slot->state.bytes == std::vector{std::byte{41}});
+        auto encoded = workspace::encodeLayout(*captured_layout);
+        assert(encoded);
+        auto decoded = workspace::decodeLayout(*encoded);
+        assert(decoded && decoded->slots.size() == captured_layout->slots.size());
+        for (std::size_t i{}; i < decoded->slots.size(); ++i)
+        {
+            const auto& expected = captured_layout->slots[i];
+            const auto& actual = decoded->slots[i];
+            assert(actual.id == expected.id && actual.restore_key == expected.restore_key);
+            assert(actual.type == expected.type && actual.visible == expected.visible);
+            assert(actual.state == expected.state);
+        }
+        assert(registry.applyLayout(**root, *scope, *decoded));
+        assert(registry.describe(**root)->size() == 4 && (*root)->findPane(created_handle));
+        assert(a->content() == binding && b->content() == binding);
+        const auto capture_revision = (*root)->windowRevision();
+        counts.deny_capture = true;
+        auto denied_capture = capture_layout();
+        assert(!denied_capture && denied_capture.error().domain == "state.capture");
+        assert(denied_capture.error().domain_code == 95 && (*root)->windowRevision() == capture_revision);
+        counts.deny_capture = false;
+        counts.operating = [&]
+        {
+            auto recursive = capture_layout();
+            assert(!recursive && recursive.error().code == EUiError::BUSY);
+            auto publish_services = services.publish({});
+            assert(!publish_services && publish_services.error().code == EServiceError::BUSY);
+            auto publish_ui = registry.publish(catalog());
+            assert(!publish_ui && publish_ui.error().code == EUiError::BUSY);
+            auto remove = (*root)->removeSubPane(*a);
+            assert(!remove && remove.error() == ui::EAttachmentError::BUSY);
+        };
+        assert(capture_layout());
+        bool changed{};
+        counts.operating = [&]
+        {
+            if (!changed)
+            {
+                b->setVisible(!b->visible());
+                changed = true;
+            }
+        };
+        auto stale_capture = capture_layout();
+        assert(changed && !stale_capture && stale_capture.error().code == EUiError::STALE_ROOT);
+        counts.operating = {};
+        assert(capture_layout());
+
         root->reset();
         assert(counts.models_destroyed == 1 && scope->release() && scope->drained());
         std::cout << "UI state and owned mount prepare together; failure preserves binding, values and DockTree; "

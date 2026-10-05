@@ -214,6 +214,9 @@ namespace lux::editor::desktop
         // Existing windows keep their creating descriptor after catalog replacement. These calls use
         // Root's original handle/borrow and never reinterpret a type name as a concrete C++ object.
         [[nodiscard]] UiResult<std::vector<WindowInfo>> describe(lux::ui::Root&) noexcept;
+        // Capture creating-factory UI state and Root docking only. No author source or recovery IO.
+        [[nodiscard]] UiResult<workspace::DockLayout>
+        captureLayout(lux::ui::Root&, workspace::LayoutId, std::string label) noexcept;
         // Uses persistent key/type matching. Extra windows and every existing content association survive.
         // Layout payload only configures UI; it never opens content or restores an asset locator.
         [[nodiscard]] UiResult<lux::ui::AttachmentCommit>

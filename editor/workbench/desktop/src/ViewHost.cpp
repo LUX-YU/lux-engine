@@ -642,32 +642,7 @@ namespace lux::editor::desktop
             ids.emplace(pane.id().name(), slot_id);
             layout.slots.push_back({slot_id, slot.restore_key, pane.type(), pane.visible(), std::move(*captured)});
         }
-        for (std::size_t i{}; i < tree.nodes.size(); ++i)
-        {
-            const auto& node = tree.nodes[i];
-            workspace::DockNode result;
-            result.id = static_cast<std::uint32_t>(i + 1);
-            result.split = static_cast<workspace::EDockSplit>(node.split);
-            result.ratio = node.ratio;
-            if (node.split != lux::ui::EDockSplit::LEAF)
-            {
-                result.first = node.first + 1;
-                result.second = node.second + 1;
-            }
-            for (const auto& window : node.windows)
-                if (auto found = ids.find(window); found != ids.end())
-                    result.slots.push_back(found->second);
-            layout.dock.nodes.push_back(std::move(result));
-        }
-        for (const auto& surface : tree.surfaces)
-            layout.dock.roots.push_back(
-                {surface.node + 1,
-                 surface.bounds.position.x,
-                 surface.bounds.position.y,
-                 surface.bounds.size.width,
-                 surface.bounds.size.height,
-                 surface.floating}
-            );
+        layout.dock = workbench::detail::captureDockTree(tree, ids);
         if (revision != impl_->root_.windowRevision())
             return failure("Workbench changed during configuration capture");
         auto valid = workspace::ValidatedLayout::validate(layout);

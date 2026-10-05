@@ -27,7 +27,12 @@ owner. Registry replacement does not substitute the operations of an already cre
 registered factory with empty content, and extra windows survive. It never interprets payloads as asset
 locators. State, candidate ownership, visibility and DockTree use the existing Root batch commit before
 notifications. A preparation failure preserves the original window set, configuration and author binding.
-The remaining Host caller uses the same planner and dock mapping until its M6 removal.
+`captureLayout` fixes the original window handles and Root revision, invokes each creating factory's
+state capture under the existing Object borrow, and converts docking through the same mapping as the
+remaining Host caller. The returned value uses the existing workspace codec. Callback errors and
+structural changes reject the whole capture; it neither reads author source nor creates a recovery
+manifest. Catalog replacement does not replace a live window's codec. The remaining Host caller uses
+the same planner and dock mapping until its M6 removal.
 
 `SessionStore` keeps the sole logical identity/close authority while its actual allocations are shared.
 Holding a shared allocation does not restore a closed SessionId. Services and views keep their original

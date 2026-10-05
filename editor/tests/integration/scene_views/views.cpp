@@ -1222,6 +1222,17 @@ namespace
         f.frame();
         assert(ui.applyLayout(root, scope, flow_layout));
         assert(take(ui.describe(root)).size() == 3 && root.findPane(empty_handle));
+        const auto captured_layout = take(ui.captureLayout(root, flow_layout.id, flow_layout.label));
+        assert(captured_layout.slots.size() == 3);
+        const auto restored_layout = take(workspace::decodeLayout(take(workspace::encodeLayout(captured_layout))));
+        assert(ui.applyLayout(root, scope, restored_layout));
+        assert(take(ui.describe(root)).size() == 3 && root.findPane(empty_handle));
+        assert(a->binding()->session == key && b->binding()->session == key);
+        assert(take(ui.captureState(root, a_handle)).bytes == changed_state.bytes);
+        assert(take(ui.captureState(root, b_handle)).bytes == b_state.bytes);
+        assert(model->describe().current == initial.current && model->describe().observed == observed_before_close);
+        assert(model->describe().dirty == initial.dirty && take(take(model->read()).encode()) == bytes);
+
         auto empty_close = take(ui.prepareClose(root, std::span{&empty_handle, 1}));
         assert(root.commit(empty_close));
         (void)f.messages.collectRetired();

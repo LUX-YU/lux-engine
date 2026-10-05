@@ -4,7 +4,7 @@ The shared `editor_contracts`, `edit_history` and `edit_sessions` targets own th
 history algorithm, SessionStore and SessionState. They share one physical public include root,
 but retain their binary identity owners and separate installed packages.
 
-ViewInfo is a pure observation; window errors and close preparation belong to view_api.
+ViewInfo is a pure observation; window errors and close preparation belong to the workbench composition provider.
 EditorError is a pure value supplied by editor_contracts.
 
 ## History storage and execution (EC1)

@@ -42,18 +42,6 @@ if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     set_tests_properties(editor.composition.dll PROPERTIES LABELS "editor;native;EC4" TIMEOUT 60 RUN_SERIAL TRUE)
 endif()
 
-add_component(COMPONENT_NAME view_api NAMESPACE lux::engine::editor STATIC SOURCE_FILES src/ViewFactory.cpp)
-component_include_directories(view_api BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include
-    PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/sinclude INSTALL_TIME include)
-target_link_libraries(view_api PUBLIC lux::engine::function::ui lux::engine::editor::editor_contracts lux::engine::editor::layout_model)
-component_add_transitive_commands(view_api
-    "find_package(lux-engine-function REQUIRED COMPONENTS ui)"
-    "find_package(lux-engine-editor-contracts REQUIRED COMPONENTS editor_contracts)"
-    "find_package(lux-engine-editor-layout REQUIRED COMPONENTS layout_model)")
-lux_classify_target(TARGET view_api LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
-lux_engine_install_components(PROJECT_NAME lux-engine-editor-view-api VERSION ${PROJECT_VERSION}
-    NAMESPACE lux::engine::editor COMPONENTS view_api)
-
 if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     add_executable(editor_detached_views_test test/lifecycle.cpp)
     target_link_libraries(editor_detached_views_test PRIVATE lux::engine::function::ui editor_contracts)
@@ -66,10 +54,11 @@ add_component(COMPONENT_NAME view_host NAMESPACE lux::engine::editor STATIC SOUR
 component_include_directories(view_host BUILD_TIME_SHARED ${CMAKE_CURRENT_SOURCE_DIR}/include
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/sinclude INSTALL_TIME include)
 target_include_directories(view_host PRIVATE ${PROJECT_SOURCE_DIR}/editor/workbench/sinclude)
-target_link_libraries(view_host PUBLIC lux::engine::editor::editor_commands lux::engine::editor::view_api lux::engine::editor::layout_model)
+target_link_libraries(view_host PUBLIC lux::engine::editor::editor_commands lux::engine::function::ui lux::engine::editor::editor_contracts lux::engine::editor::layout_model)
 component_add_transitive_commands(view_host
     "find_package(lux-engine-editor-commands REQUIRED COMPONENTS editor_commands)"
-    "find_package(lux-engine-editor-view-api REQUIRED COMPONENTS view_api)"
+    "find_package(lux-engine-function REQUIRED COMPONENTS ui)"
+    "find_package(lux-engine-editor-contracts REQUIRED COMPONENTS editor_contracts)"
     "find_package(lux-engine-editor-layout REQUIRED COMPONENTS layout_model)")
 lux_classify_target(TARGET view_host LAYER EDITOR PRODUCT EDITOR ROLE LIBRARY)
 add_component(COMPONENT_NAME desktop_shell NAMESPACE lux::engine::editor STATIC
@@ -111,10 +100,7 @@ install(FILES
 install(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/views/IViewHost.hpp
     ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/views/ViewError.hpp
-    DESTINATION include/lux/engine/editor/views COMPONENT lux_engine_editor_view_api)
-
-install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/include/lux/engine/editor/views/ViewFactory.hpp
-    DESTINATION include/lux/engine/editor/views COMPONENT lux_engine_editor_view_api)
+    DESTINATION include/lux/engine/editor/views COMPONENT lux_engine_editor_desktop)
 
 if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     target_compile_definitions(desktop_shell PRIVATE LUX_DESKTOP_TEST_ACCESS=1)

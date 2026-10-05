@@ -1,10 +1,8 @@
 #include <lux/engine/editor/desktop/ViewHost.hpp>
-#include <lux/engine/editor/workbench/DockLayoutMapping.hpp>
 #include <lux/engine/ui/Root.hpp>
 #include <algorithm>
 #include <atomic>
 #include <optional>
-#include <map>
 
 namespace lux::editor::desktop
 {
@@ -52,7 +50,6 @@ namespace lux::editor::desktop
         std::vector<views::DetachedView> retiring;
         bool detach{};
         std::optional<lux::ui::PreparedDockTree> docking;
-        std::vector<views::PreparedViewState> states;
         std::optional<lux::ui::PreparedAttachment> attachment;
     };
     PreparedViewBatch::PreparedViewBatch(std::unique_ptr<Data> data) noexcept : data_(std::move(data)) {}
@@ -261,8 +258,6 @@ namespace lux::editor::desktop
                     slot.close_requested = false;
                     slot.close_failure.reset();
                 }
-                for (auto& state : data->states)
-                    state.apply();
                 ++revision_;
                 if (data->docking)
                     root_.commitDockTree(std::move(*data->docking));
@@ -334,107 +329,6 @@ namespace lux::editor::desktop
                 return failure(attachmentError(prepared.error()), "Detach preparation refused");
             data->attachment.emplace(std::move(*prepared));
             return PreparedViewBatch{std::move(data)};
-        }
-        cxx::expected<PreparedViewBatch, views::ViewPreparationFailure> prepareLayout(
-            workspace::DockLayout layout,
-            const views::ViewFactorySnapshot& factories,
-            ViewHost::LayoutInput make_input
-        )
-        {
-            const auto failure = [](std::string domain, std::uint64_t code, std::string text, bool retry = false)
-            { return cxx::unexpected(views::ViewPreparationFailure{std::move(domain), code, std::move(text), retry}); };
-            if (closing_ || busy())
-                return failure("view.host", 0, "Workbench is unavailable", !closing_);
-            Dispatch guard(dispatching_);
-            // These values precede every provider/codec callback. No observation is silently refreshed later.
-            const auto original_revision = revision_;
-            const auto original_windows = root_.windowRevision();
-            auto validated = workspace::ValidatedLayout::validate(std::move(layout));
-            if (!validated)
-                return failure("layout", static_cast<std::uint64_t>(validated.error().code), validated.error().detail);
-            std::vector<views::ViewInfo> live;
-            for (const auto& slot : slots_)
-                if (slot.owner)
-                    live.push_back(info(slot));
-            std::vector<workspace::ViewProviderInfo> providers;
-            for (const auto& entry : factories.entries())
-                providers.push_back({views::ViewTypeId{entry->descriptor().type.name()}, 1, UINT32_MAX});
-            std::vector<workspace::LayoutTarget> targets;
-            targets.reserve(live.size());
-            for (const auto& view : live)
-                targets.push_back({view.restore_key, view.type});
-            auto plan = workspace::LayoutPlanner::resolve(*validated, targets, providers);
-            if (!plan)
-                return failure("layout", static_cast<std::uint64_t>(plan.error().code), plan.error().detail);
-            std::vector<ViewCandidate> candidates;
-            candidates.reserve(plan->views.size());
-            std::vector<ViewVisibility> visibility;
-            std::vector<views::PreparedViewState> states;
-            std::map<std::uint32_t, std::string> windows;
-            for (const auto& planned : plan->views)
-            {
-                views::DetachedView* owner{};
-                if (planned.existing)
-                {
-                    auto* slot = find(live[*planned.existing].id);
-                    if (!slot)
-                        return failure("view.identity", 0, "Layout target no longer exists");
-                    owner = &*slot->owner;
-                    visibility.push_back({live[*planned.existing].id, planned.slot.visible});
-                }
-                else
-                {
-                    if (planned.resolution != workspace::ELayoutResolution::CREATE_UNBOUND)
-                        return failure("layout.provider", 0, "Required view provider or state schema is unavailable");
-                    const auto name = std::string{"layout/"} + std::string(planned.slot.type.name()) + "/" +
-                                      std::string(planned.slot.restore_key.name());
-                    auto input = make_input(planned.slot.type, lux::ui::PaneId{name});
-                    if (!input)
-                        return failure(input.error().domain, input.error().domain_code, input.error().detail);
-                    auto candidate = factories.prepare(planned.slot.type, *input);
-                    if (!candidate)
-                        return failure(
-                            candidate.error().domain,
-                            candidate.error().domain_code,
-                            candidate.error().detail
-                        );
-                    candidates.push_back({planned.slot.restore_key, std::move(*candidate), planned.slot.visible});
-                    owner = &candidates.back().owner;
-                }
-                auto prepared = owner->prepareState(planned.slot.state.schema, planned.slot.state.bytes);
-                if (!prepared)
-                    return cxx::unexpected(std::move(prepared.error()));
-                states.push_back(std::move(*prepared));
-                windows.emplace(planned.slot.id.value, std::string(owner->pane()->id().name()));
-            }
-            auto docking = workbench::detail::makeDockTree(plan->layout.dock, windows);
-            auto dock = root_.prepareDockTree(std::move(docking));
-            if (!dock)
-                return failure("layout.dock", static_cast<std::uint64_t>(dock.error()), "Unsupported window placement");
-            if (revision_ != original_revision || root_.windowRevision() != original_windows)
-                return failure("view.stale", 0, "Workbench changed during layout preparation");
-            auto prepared = prepareAdmitted(candidates, visibility, std::move(*dock));
-            if (!prepared)
-                return failure(
-                    "view.attach",
-                    static_cast<std::uint64_t>(prepared.error()),
-                    "Layout attachment was refused",
-                    prepared.error() == views::EViewError::BUSY
-                );
-            prepared->data_->states = std::move(states);
-            // All fallible capacity/routing/configuration work precedes cancellation. It uses the original
-            // domain gate, without committing drafts or replacing bindings. Failure abandons only candidates.
-            std::size_t next_candidate{};
-            for (const auto& planned : plan->views)
-            {
-                auto* owner = planned.existing ? &*find(live[*planned.existing].id)->owner
-                                               : &prepared->data_->candidates[next_candidate++].owner;
-                if (auto ended = owner->cancelPreview(); !ended)
-                    return cxx::unexpected(std::move(ended.error()));
-            }
-            if (revision_ != original_revision || root_.windowRevision() != original_windows)
-                return failure("view.stale", 0, "Workbench changed while ending interaction");
-            return std::move(*prepared);
         }
         views::ViewResult<void> request(views::ViewId id, EAction action) noexcept
         {
@@ -582,54 +476,9 @@ namespace lux::editor::desktop
         slot->owner->pane()->dismissCloseRequest();
         return {};
     }
-    cxx::expected<PreparedViewBatch, views::ViewPreparationFailure> ViewHost::prepareLayout(
-        workspace::DockLayout layout,
-        const views::ViewFactorySnapshot& factories,
-        LayoutInput make_input
-    )
-    {
-        return impl_->prepareLayout(std::move(layout), factories, make_input);
-    }
     views::ViewResult<void> ViewHost::hide(views::ViewId id) noexcept
     {
         return impl_->request(id, Impl::EAction::HIDE);
-    }
-    cxx::expected<workspace::DockLayout, views::ViewPreparationFailure> ViewHost::captureLayout(
-        workspace::LayoutId id,
-        std::string label
-    ) const
-    {
-        const auto failure = [](std::string message, bool retry = false)
-        { return cxx::unexpected(views::ViewPreparationFailure{"view.capture", 0, std::move(message), retry}); };
-        if (impl_->busy())
-            return failure("Workbench unavailable", true);
-        Dispatch guard(impl_->dispatching_);
-        const auto revision = impl_->root_.windowRevision();
-        auto tree = impl_->root_.captureDockTree();
-        workspace::DockLayout layout;
-        layout.id = std::move(id);
-        layout.label = std::move(label);
-        std::map<std::string, workspace::LayoutSlotId> ids;
-        for (std::size_t i{}; i < impl_->slots_.size(); ++i)
-        {
-            const auto& slot = impl_->slots_[i];
-            if (!slot.owner)
-                continue;
-            auto captured = slot.owner->captureState();
-            if (!captured)
-                return cxx::unexpected(std::move(captured.error()));
-            const auto& pane = *slot.owner->pane();
-            const workspace::LayoutSlotId slot_id{static_cast<std::uint32_t>(i + 1)};
-            ids.emplace(pane.id().name(), slot_id);
-            layout.slots.push_back({slot_id, slot.restore_key, pane.type(), pane.visible(), std::move(*captured)});
-        }
-        layout.dock = workbench::detail::captureDockTree(tree, ids);
-        if (revision != impl_->root_.windowRevision())
-            return failure("Workbench changed during configuration capture");
-        auto valid = workspace::ValidatedLayout::validate(layout);
-        if (!valid)
-            return failure(valid.error().detail);
-        return layout;
     }
     views::ViewResult<views::ViewInfo> ViewHost::describe(views::ViewId id) const
     {

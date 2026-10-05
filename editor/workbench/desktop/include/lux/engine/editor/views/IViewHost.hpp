@@ -3,51 +3,15 @@
 #include <lux/engine/object/CodeLease.hpp>
 #include <lux/engine/ui/Pane.hpp>
 #include <utility>
-#include <lux/cxx/core/move_only_function.hpp>
-#include <lux/engine/editor/workspace/WorkspaceValues.hpp>
 
 namespace lux::editor::views
 {
-    using ViewStateResult = cxx::expected<cxx::move_only_function<void()>, ViewPreparationFailure>;
-    using ViewCaptureResult = cxx::expected<workspace::VersionedViewState, ViewPreparationFailure>;
-    class PreparedViewState final
-    {
-    public:
-        PreparedViewState(PreparedViewState&&) noexcept = default;
-        PreparedViewState& operator=(PreparedViewState&& other) noexcept
-        {
-            PreparedViewState previous(std::move(other));
-            using std::swap;
-            swap(code_, previous.code_);
-            swap(apply_, previous.apply_);
-            return *this;
-        }
-        PreparedViewState(const PreparedViewState&) = delete;
-        PreparedViewState& operator=(const PreparedViewState&) = delete;
-        // Called once after preparation/preview cancellation, at the host commit boundary. No callbacks or IO.
-        void apply() noexcept
-        {
-            auto adopted = std::move(apply_);
-            if (adopted)
-                adopted();
-        }
-
-    private:
-        friend class DetachedView;
-        PreparedViewState(lux::object::CodeLease code, cxx::move_only_function<void()> apply)
-            : code_(std::move(code)), apply_(std::move(apply))
-        {}
-        lux::object::CodeLease code_;
-        cxx::move_only_function<void()> apply_;
-    };
     // Owner order is intentional, including move assignment. The host completes detach and transfers
     // resource retirement before destroying a mounted result. Factories use detached Pane constructors.
     class DetachedView final
     {
     public:
         using PrepareClose = ViewCloseResult (*)(lux::ui::Pane&);
-        using PrepareState = ViewStateResult (*)(lux::ui::Pane&, std::uint32_t, std::span<const std::byte>);
-        using CaptureState = ViewCaptureResult (*)(const lux::ui::Pane&);
         using CaptureContent = ViewContent (*)(const lux::ui::Pane&) noexcept;
         using RebindContent = ViewCloseResult (*)(lux::ui::Pane&, const ViewContent&);
         DetachedView(
@@ -55,25 +19,26 @@ namespace lux::editor::views
             std::unique_ptr<lux::ui::Pane> pane,
             PrepareClose prepare_close = nullptr,
             PrepareClose cancel_preview = nullptr,
-            PrepareState prepare_state = nullptr,
-            CaptureState capture_state = nullptr,
             CaptureContent capture_content = nullptr,
             RebindContent rebind_content = nullptr
         ) noexcept
             : code_(std::move(code)), pane_(std::move(pane)), prepare_close_(prepare_close),
-              cancel_preview_(cancel_preview), prepare_state_(prepare_state), capture_state_(capture_state),
-              capture_content_(capture_content), rebind_content_(rebind_content)
+              cancel_preview_(cancel_preview), capture_content_(capture_content), rebind_content_(rebind_content)
         {
             const bool is_invalid_owner = !code_.valid() || !pane_;
             const bool is_attached = pane_ && (pane_->attachedRoot() || pane_->parent());
             const bool is_invalid_candidate = is_invalid_owner || is_attached;
             if (is_invalid_candidate)
+            {
                 std::terminate();
+            }
         }
         ~DetachedView() noexcept
         {
             if (pane_ && pane_->attachedRoot())
+            {
                 std::terminate();
+            }
         }
         DetachedView(DetachedView&&) noexcept = default;
         DetachedView& operator=(DetachedView&& other) noexcept
@@ -84,8 +49,6 @@ namespace lux::editor::views
             swap(pane_, previous.pane_);
             swap(prepare_close_, previous.prepare_close_);
             swap(cancel_preview_, previous.cancel_preview_);
-            swap(prepare_state_, previous.prepare_state_);
-            swap(capture_state_, previous.capture_state_);
             swap(capture_content_, previous.capture_content_);
             swap(rebind_content_, previous.rebind_content_);
             swap(connections_, previous.connections_);
@@ -123,35 +86,19 @@ namespace lux::editor::views
         [[nodiscard]] ViewCloseResult rebindContent(const ViewContent& content)
         {
             if (!content.valid())
-                return cxx::unexpected(ViewPreparationFailure{"view.content", 0, "Invalid content association", false});
-            if (rebind_content_)
-                return rebind_content_(*pane_, content);
-            if (content == this->content())
-                return {};
-            return cxx::unexpected(ViewPreparationFailure{"view.content", 0, "This view has no content binding", false});
-        }
-        [[nodiscard]] ViewCaptureResult captureState() const
-        {
-            return capture_state_ ? capture_state_(*pane_) : ViewCaptureResult{workspace::VersionedViewState{}};
-        }
-        [[nodiscard]] cxx::expected<PreparedViewState, ViewPreparationFailure> prepareState(
-            std::uint32_t schema,
-            std::span<const std::byte> bytes
-        )
-        {
-            if (!prepare_state_)
             {
-                const bool is_unsupported_state = schema != 1 || !bytes.empty();
-                if (is_unsupported_state)
-                    return cxx::unexpected(
-                        ViewPreparationFailure{"view.state", schema, "Unsupported view configuration", false}
-                    );
-                return PreparedViewState{code_, {}};
+                return cxx::unexpected(ViewPreparationFailure{"view.content", 0, "Invalid content association", false});
             }
-            auto prepared = prepare_state_(*pane_, schema, bytes);
-            if (!prepared)
-                return cxx::unexpected(std::move(prepared.error()));
-            return PreparedViewState{code_, std::move(*prepared)};
+            if (rebind_content_)
+            {
+                return rebind_content_(*pane_, content);
+            }
+            if (content == this->content())
+            {
+                return {};
+            }
+            return cxx::unexpected(ViewPreparationFailure{"view.content", 0, "This view has no content binding", false}
+            );
         }
 
     private:
@@ -159,8 +106,6 @@ namespace lux::editor::views
         std::unique_ptr<lux::ui::Pane> pane_;
         PrepareClose prepare_close_{};
         PrepareClose cancel_preview_{};
-        PrepareState prepare_state_{};
-        CaptureState capture_state_{};
         CaptureContent capture_content_{};
         RebindContent rebind_content_{};
         std::vector<object::Connection> connections_;
@@ -179,4 +124,4 @@ namespace lux::editor::views
     public:
         [[nodiscard]] virtual ViewResult<ViewInfo> describe(ViewId) const = 0;
     };
-}
+} // namespace lux::editor::views

@@ -2,8 +2,6 @@
 #include <optional>
 #include <lux/engine/editor/views/IViewHost.hpp>
 #include <lux/engine/ui/Docking.hpp>
-#include <lux/engine/editor/workspace/LayoutPlan.hpp>
-#include <lux/engine/editor/views/ViewFactory.hpp>
 #include <lux/cxx/core/function_ref.hpp>
 
 namespace lux::editor::desktop
@@ -85,18 +83,6 @@ namespace lux::editor::desktop
         // Native close is an unapproved user intent. Only the application decides last-view/content policy.
         [[nodiscard]] views::ViewResult<std::vector<views::ViewId>> closeIntents() const;
         [[nodiscard]] views::ViewResult<void> dismissCloseIntent(views::ViewId) noexcept;
-        using LayoutInput =
-            cxx::function_ref<views::ViewFactoryResult<views::ViewFactoryInput>(views::ViewTypeId, lux::ui::PaneId)>;
-        // Factories receive unbound typed inputs, never an asset locator decoded from opaque layout state.
-        [[nodiscard]] cxx::expected<PreparedViewBatch, views::ViewPreparationFailure> prepareLayout(
-            workspace::DockLayout,
-            const views::ViewFactorySnapshot&,
-            LayoutInput
-        );
-        [[nodiscard]] cxx::expected<workspace::DockLayout, views::ViewPreparationFailure> captureLayout(
-            workspace::LayoutId,
-            std::string label
-        ) const;
         [[nodiscard]] views::ViewResult<views::ViewInfo> describe(views::ViewId) const override;
         // Synchronous owner-thread borrow only. Structural requests are deferred until it returns.
         // A caller checks pane.type() before a concrete cast and never retains the reference.

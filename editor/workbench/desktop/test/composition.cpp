@@ -8,6 +8,7 @@
 #include <lux/engine/editor/desktop/EditorContext.hpp>
 #include <lux/engine/editor/desktop/ReviewView.hpp>
 #include <lux/engine/editor/desktop/UiRegistry.hpp>
+#include <lux/engine/editor/workspace/LayoutPlan.hpp>
 #include <lux/engine/ui/Root.hpp>
 #include <optional>
 #include <stdexcept>
@@ -30,6 +31,8 @@ namespace
         bool deny_close{}, deny_rebind{}, deny_capture{};
         unsigned state_prepared{}, state_applied{}, cancelled{};
         bool deny_cancel{};
+        unsigned layout_creations{};
+        bool reject_second_layout{};
     };
     struct Model final
     {
@@ -964,6 +967,135 @@ namespace
         std::cout << "Rejected mount releases last input code owner inside original UI guard PASS\n";
     }
 
+    // Original P12 Host layout assertions, now exercising the only production layout owner.
+    void layoutFactoryAtomicity(object::ObjectMessageQueue& messages)
+    {
+        Counts counts;
+        EditorContext context{messages.dispatcherRef()};
+        auto scope = context.services().createScope();
+        assert(scope && scope->provide(ServiceNameView{"ec4.counts"}, counts));
+        auto& registry = context.ui();
+        const UiDescriptor definition{
+            views::ViewTypeIdView{"layout.test"},
+            "Layout test",
+            counts_dependency,
+            1,
+            nullptr,
+            [](ServiceResolver& resolver, const UiCreateInfo& input) -> UiResult<std::unique_ptr<ui::Pane>>
+            {
+                auto borrowed = resolver.require<Counts>(0);
+                assert(borrowed);
+                auto& facts = borrowed->get();
+                ++facts.layout_creations;
+                assert(input.content.sessions.empty() && !input.content.primary);
+                if (facts.creating)
+                {
+                    facts.creating();
+                }
+                if (facts.reject_second_layout && facts.layout_creations == 2)
+                {
+                    return cxx::unexpected(UiFailure{
+                        EUiError::FACTORY_FAILURE,
+                        "test.second.factory",
+                        7,
+                        "Deliberate second factory failure"
+                    });
+                }
+                return std::make_unique<ui::Pane>(
+                    input.dispatcher,
+                    input.instance,
+                    ui::PaneTypeId{"layout.test"},
+                    std::string{input.instance.name()}
+                );
+            }
+        };
+        auto entries = UiCatalog::prepare({UiEntry::create(object::CodeLease::builtin(), definition)});
+        assert(entries && registry.publish(*entries));
+        auto factory = entries->find(definition.type);
+        assert(factory);
+        auto created = ui::Root::create(messages.dispatcherRef());
+        assert(created);
+        auto root = std::move(*created);
+        counts.reject_second_layout = false;
+        auto make = [&](std::string name)
+        {
+            return registry.create(
+                *factory,
+                *scope,
+                {messages.dispatcherRef(), ui::PaneId{name}, {}, {1, {}}, views::ViewRestoreKey{name}}
+            );
+        };
+        auto first = make("existing");
+        assert(first);
+        auto* original = first->get();
+        assert(root->addSubPane(std::move(*first)));
+        auto extra = make("extra");
+        assert(extra);
+        auto* extra_pane = extra->get();
+        assert(root->addSubPane(std::move(*extra)));
+        const auto extra_id = root->identify(*extra_pane);
+        assert(extra_id);
+        original->setVisible(false);
+        workspace::DockLayout layout;
+        layout.id.value = "12345678123456781234567812345678";
+        layout.label = "P12 atomic workbench";
+        for (std::uint32_t i = 1; i <= 3; ++i)
+        {
+            const std::string_view key = i == 1 ? "existing" : i == 2 ? "new-a" : "new-b";
+            layout.slots.push_back({{i}, views::ViewRestoreKey{key}, views::ViewTypeId{"layout.test"}, true, {1, {}}});
+        }
+        layout.dock.nodes = {
+            {1, workspace::EDockSplit::HORIZONTAL, 2, 3, .5, {}},
+            {2, workspace::EDockSplit::LEAF, 0, 0, .5, {{1}, {2}}},
+            {3, workspace::EDockSplit::LEAF, 0, 0, .5, {{3}}}
+        };
+        layout.dock.roots.push_back({1, 0, 0, 1000, 700, false});
+        const auto window_revision = root->windowRevision();
+        auto bytes = root->captureDockState();
+        const std::vector before(bytes.bytes().begin(), bytes.bytes().end());
+        counts.layout_creations = 0;
+        counts.reject_second_layout = true;
+        counts.creating = [&]
+        {
+            // Every candidate is prepared while the complete original tree remains unchanged.
+            assert(!original->visible() && root->windowRevision() == window_revision);
+            assert(std::ranges::count_if(root->panes(), [](auto* pane) { return pane != nullptr; }) == 2);
+        };
+        auto malformed = layout;
+        malformed.dock.nodes.front().second = 99;
+        auto invalid = registry.applyLayout(*root, *scope, std::move(malformed));
+        assert(!invalid && counts.layout_creations == 0 && !original->visible());
+        assert(registry.describe(*root)->size() == 2);
+        assert(std::ranges::equal(before, root->captureDockState().bytes()));
+        auto refused = registry.applyLayout(*root, *scope, layout);
+        assert(!refused && refused.error().domain == "test.second.factory" && refused.error().domain_code == 7);
+        assert(counts.layout_creations == 2 && !original->visible() && registry.describe(*root)->size() == 2);
+        assert(root->windowRevision() == window_revision);
+        assert(std::ranges::equal(before, root->captureDockState().bytes()));
+        counts.reject_second_layout = false;
+        assert(registry.applyLayout(*root, *scope, layout));
+        assert(original->visible() && registry.describe(*root)->size() == 4 && root->findPane(*extra_id));
+        auto structure = root->captureDockTree();
+        assert(structure.nodes.size() == 4 && structure.surfaces.size() == 2);
+        const workspace::LayoutId capture_id{"abcdef1234567890abcdef1234567890"};
+        assert(registry.captureLayout(*root, capture_id, "Before drawing")->slots.size() == 4);
+        ui::DrawData draw;
+        assert(root->update({{1000, 700}, .016F}, &draw));
+        assert(root->update({{1000, 700}, .016F}, &draw));
+        structure = root->captureDockTree();
+        unsigned windows{};
+        for (const auto& node : structure.nodes)
+        {
+            windows += static_cast<unsigned>(node.windows.size());
+        }
+        assert(windows == 4 && root->findPane(*extra_id));
+        assert(root->prepareDockTree(std::move(structure)));
+        auto captured = registry.captureLayout(*root, capture_id, "Captured layout");
+        assert(captured && captured->slots.size() == 4 && captured->id == capture_id);
+        assert(workspace::ValidatedLayout::validate(*captured));
+        std::cout << "P12 C01 original layout preflight/factory rollback/extra-window assertions on UiRegistry PASS\n";
+    }
+
     void contentRouting(object::ObjectMessageQueue& messages)
     {
         const auto entry = [](std::string name, bool is_default)
@@ -1382,6 +1514,7 @@ int main()
     publication(messages);
     rejection(messages);
     rejectedMountCleanup(messages);
+    layoutFactoryAtomicity(messages);
     contentRouting(messages);
     menuFactoryBinding(messages);
     dynamicBacking();

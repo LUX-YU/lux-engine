@@ -30,7 +30,7 @@ def main():
         ("N01", "material_model", "material_ui", "authoring_outer_dependency", "include"),
         ("N02", "edit_sessions", "material_model", "editing_domain_dependency", "link"),
         ("N03", "editor_persistence", "scene_persistence", "persistence_policy_concrete_source", "link"),
-        ("N04", "workspace_store", "view_api", "activity_workbench_dependency", "include"),
+        ("N04", "workspace_store", "editor_composition", "activity_workbench_dependency", "include"),
         ("N05", "editor_widgets", "edit_sessions", "widget_authoring_dependency", "include"),
         ("N06", "editor_tasks", "tasks_ui", "task_monitor_ui_dependency", "link"),
         ("N07", "material_ui", "scene_ui", "cross_tool_ui_dependency", "link"),

@@ -152,8 +152,6 @@ namespace
             std::move(pane),
             nullptr,
             nullptr,
-            nullptr,
-            nullptr,
             +[](const ui::Pane& pane) noexcept
             {
                 const auto& comparison = static_cast<const Comparison&>(pane);
@@ -476,119 +474,6 @@ namespace
         assert(!host.commitClose(prepared, handoff) && handed_off == 1);
         assert(take(host.describeAll()).empty() && !host.commit(prepared));
     }
-    void layoutAtomicity(object::ObjectDispatcherRef dispatcher)
-    {
-        auto root = take(ui::Root::create(dispatcher));
-        desktop::ViewHost host(*root, {8, 32});
-        auto make = [&](std::string name)
-        {
-            return views::DetachedView{
-                lux::object::CodeLease::builtin(),
-                std::make_unique<ui::Pane>(dispatcher, ui::PaneId{name}, ui::PaneTypeId{"layout.test"}, name)
-            };
-        };
-        auto first = make("existing");
-        auto* original = first.pane();
-        const auto existing = take(host.adopt(first, views::ViewRestoreKey{"existing"})).id;
-        auto extra = make("extra");
-        const auto extra_id = take(host.adopt(extra, views::ViewRestoreKey{"extra"})).id;
-        assert(host.hide(existing));
-        take(host.drain());
-        workspace::DockLayout layout;
-        layout.id.value = "12345678123456781234567812345678";
-        layout.label = "P12 atomic workbench";
-        for (std::uint32_t i = 1; i <= 3; ++i)
-        {
-            layout.slots.push_back(
-                {{i},
-                 views::ViewRestoreKey{
-                     i == 1   ? "existing"
-                     : i == 2 ? "new-a"
-                              : "new-b"
-                 },
-                 views::ViewTypeId{"layout.test"},
-                 true,
-                 {1, {}}}
-            );
-        }
-        layout.dock.nodes = {
-            {1, workspace::EDockSplit::HORIZONTAL, 2, 3, .5, {}},
-            {2, workspace::EDockSplit::LEAF, 0, 0, .5, {{1}, {2}}},
-            {3, workspace::EDockSplit::LEAF, 0, 0, .5, {{3}}}
-        };
-        layout.dock.roots.push_back({1, 0, 0, 1000, 700, false});
-        bool reject_second = true;
-        unsigned inputs{}, creations{};
-        auto entry = views::ViewFactoryEntry::create(
-            lux::object::CodeLease::builtin(),
-            views::ViewFactoryDescriptor{views::ViewTypeIdView{"layout.test"}, "Layout test", cxx::typeToken<int>()},
-            [&](const views::ViewFactoryInput& input) -> views::ViewFactoryResult<views::DetachedView>
-            {
-                ++creations;
-                assert(*static_cast<const int*>(input.binding()) == 0); // Unbound, not a recovered asset locator.
-                if (reject_second && creations == 2)
-                {
-                    return cxx::unexpected(views::ViewFactoryFailure{
-                        views::EViewFactoryError::CONSTRUCT,
-                        "test.second.factory",
-                        7,
-                        "Deliberate second factory failure"
-                    });
-                }
-                return make(std::string(input.paneId().name()));
-            }
-        );
-        auto factories = take(views::ViewFactorySnapshot::create({entry}));
-        const auto input = [&](views::ViewTypeId, ui::PaneId id) -> views::ViewFactoryResult<views::ViewFactoryInput>
-        {
-            ++inputs;
-            return views::ViewFactoryInput{
-                dispatcher,
-                std::move(id),
-                lux::object::CodeLease::builtin(),
-                cxx::typeToken<int>(),
-                std::make_shared<const int>(0)
-            };
-        };
-        auto bytes = root->captureDockState();
-        const std::vector before(bytes.bytes().begin(), bytes.bytes().end());
-        auto malformed = layout;
-        malformed.dock.nodes.front().second = 99;
-        auto invalid = host.prepareLayout(std::move(malformed), factories, input);
-        assert(!invalid && !inputs && !creations && !original->visible());
-        assert(take(host.describeAll()).size() == 2);
-        auto after = root->captureDockState();
-        assert(std::ranges::equal(before, after.bytes()));
-        auto refused = host.prepareLayout(layout, factories, input);
-        assert(!refused && refused.error().domain == "test.second.factory" && creations == 2);
-        assert(!original->visible() && take(host.describeAll()).size() == 2);
-        after = root->captureDockState();
-        assert(std::ranges::equal(before, after.bytes()));
-        reject_second = false;
-        auto prepared = take(host.prepareLayout(layout, factories, input));
-        assert(!original->visible() && take(host.describeAll()).size() == 2);
-        assert(host.commit(prepared));
-        assert(original->visible() && take(host.describeAll()).size() == 4 && host.describe(extra_id));
-        auto structure = root->captureDockTree();
-        assert(structure.nodes.size() == 4 && structure.surfaces.size() == 2);
-        assert(take(host.captureLayout({"abcdef1234567890abcdef1234567890"}, "Before drawing")).slots.size() == 4);
-        ui::DrawData draw;
-        assert(root->update({{1000, 700}, .016F}, &draw));
-        assert(root->update({{1000, 700}, .016F}, &draw));
-        structure = root->captureDockTree();
-        unsigned windows{};
-        for (const auto& node : structure.nodes)
-        {
-            windows += static_cast<unsigned>(node.windows.size());
-        }
-        assert(windows == 4 && host.describe(extra_id));
-        // Captured actual docking is structurally valid and can be prepared without changing the current UI.
-        assert(root->prepareDockTree(std::move(structure)));
-        const auto captured = take(host.captureLayout({"abcdef1234567890abcdef1234567890"}, "Captured layout"));
-        assert(captured.slots.size() == 4 && captured.id.value == "abcdef1234567890abcdef1234567890");
-        assert(workspace::ValidatedLayout::validate(captured));
-        std::puts("PASS P12 C01 full layout preflight, factory rollback, complete batch and retained extra view");
-    }
     void batchFailure(object::ObjectDispatcherRef dispatcher)
     {
         auto root = take(ui::Root::create(dispatcher, {.attachment_capacity = 3}));
@@ -713,42 +598,6 @@ void toolCommandFactory(object::ObjectDispatcherRef dispatcher)
 }
 int main()
 {
-    {
-        const auto entry = [](std::string name, bool is_default)
-        {
-            return views::ViewFactoryEntry::create(
-                lux::object::CodeLease::builtin(),
-                views::ViewFactoryDescriptor{
-                    views::ViewTypeIdView{name},
-                    name,
-                    cxx::typeToken<std::monostate>(),
-                    1,
-                    std::array{sessions::SessionKindIdView{"test.author"}},
-                    is_default
-                },
-                [](const views::ViewFactoryInput&) -> views::ViewFactoryResult<views::DetachedView>
-                {
-                    std::abort(); // Metadata lookup cannot construct a window.
-                }
-            );
-        };
-        const auto a = entry("test.first", true);
-        const auto b = entry("test.second", true);
-        for (bool reverse : {false, true})
-        {
-            auto catalog = take(views::ViewFactorySnapshot::create(reverse ? std::vector{b, a} : std::vector{a, b}));
-            const auto ambiguous = catalog.selectContent({"test.author"});
-            assert(!ambiguous && ambiguous.error().code == views::EViewFactoryError::AMBIGUOUS);
-            assert(
-                take(catalog.selectContent({"test.author"}, views::ViewTypeId{"test.second"})) ==
-                views::ViewTypeId{"test.second"}
-            );
-            assert(!catalog.selectContent({"test.other"}));
-            assert(!catalog.selectContent({"test.author"}, views::ViewTypeId{"test.missing"}));
-        }
-        auto one_default = take(views::ViewFactorySnapshot::create({entry("test.other", false), a}));
-        assert(take(one_default.selectContent({"test.author"})) == views::ViewTypeId{"test.first"});
-    }
     static_assert(!std::is_copy_constructible_v<desktop::ViewHost>);
     static_assert(!std::is_move_constructible_v<desktop::ViewHost>);
     auto queue = take(object::ObjectMessageQueue::create(32));
@@ -762,7 +611,6 @@ int main()
     closeFailures(queue.dispatcherRef());
     batchOwnership(queue.dispatcherRef());
     batchFailure(queue.dispatcherRef());
-    layoutAtomicity(queue.dispatcherRef());
     atomicClose(queue.dispatcherRef());
     review(queue.dispatcherRef());
     std::puts("PASS P10 real ViewHost ownership, bounded requests, generation, callback batches and prepare failure");

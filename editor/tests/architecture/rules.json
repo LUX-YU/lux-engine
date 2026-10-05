@@ -864,22 +864,10 @@
       "actual_cmake_target": "flowforge_interaction"
     },
     {
-      "name": "view_api",
-      "path": "editor/workbench/desktop",
-      "first_phase": "P08",
-      "dependencies": [
-        "editor_contracts"
-      ],
-      "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
-      "actual_cmake_target": "view_api"
-    },
-    {
       "name": "editor_widgets",
       "path": "editor/workbench/widgets",
       "first_phase": "P08",
-      "dependencies": [
-        "view_api"
-      ],
+      "dependencies": [],
       "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
       "actual_cmake_target": "editor_widgets"
     },
@@ -909,7 +897,6 @@
       "path": "editor/workbench/desktop",
       "first_phase": "P10",
       "dependencies": [
-        "view_api",
         "layout_model"
       ],
       "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
@@ -920,7 +907,6 @@
       "path": "editor/workbench/scene",
       "first_phase": "P10",
       "dependencies": [
-        "view_api",
         "editor_widgets",
         "scene_model",
         "scene_interaction",
@@ -935,7 +921,6 @@
       "path": "editor/workbench/material",
       "first_phase": "P10",
       "dependencies": [
-        "view_api",
         "editor_widgets",
         "material_model",
         "material_interaction",
@@ -949,7 +934,6 @@
       "path": "editor/workbench/tasks",
       "first_phase": "P10",
       "dependencies": [
-        "view_api",
         "editor_widgets"
       ],
       "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
@@ -960,7 +944,6 @@
       "path": "editor/workbench/project",
       "first_phase": "P10",
       "dependencies": [
-        "view_api",
         "editor_widgets",
         "editor_persistence_execution"
       ],
@@ -973,8 +956,7 @@
       "first_phase": "P11",
       "dependencies": [
         "editor_contracts",
-        "edit_sessions",
-        "view_api"
+        "edit_sessions"
       ],
       "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
       "actual_cmake_target": null
@@ -986,7 +968,6 @@
       "dependencies": [
         "edit_sessions",
         "editor_persistence",
-        "view_api",
         "editor_commands"
       ],
       "external_dependency_rule": "外部 engine/modules/lux-cxx 精确依赖在 P00 和实际 CMake 中记录；不得因用 PRIVATE 就忽略静态链接闭包。",
@@ -1009,7 +990,6 @@
       "dependencies": [
         "edit_sessions",
         "editor_persistence",
-        "view_api",
         "layout_model",
         "workspace_store",
         "editor_commands",
@@ -1129,10 +1109,19 @@
       "name": "editor_viewport",
       "path": "editor/workbench/viewport",
       "first_phase": "P10Q",
-      "dependencies": [
-        "view_api"
-      ],
+      "dependencies": [],
       "actual_cmake_target": "editor_viewport"
+    },
+    {
+      "name": "editor_composition",
+      "path": "editor/workbench/desktop",
+      "first_phase": "EC4",
+      "dependencies": [
+        "editor_contracts",
+        "layout_model",
+        "editor_commands"
+      ],
+      "actual_cmake_target": "editor_composition"
     }
   ],
   "legacy_targets": [
@@ -5182,138 +5171,6 @@
       "editor/workbench/flow/interaction/test/interaction.cpp"
     ]
   },
-  "view_api": {
-    "direct": [
-      "ui",
-      "editor_contracts",
-      "layout_model"
-    ],
-    "closure": {
-      "Eigen3::Eigen": {
-        "imported": true
-      },
-      "Vulkan::Headers": {
-        "imported": true
-      },
-      "description": {
-        "path": "modules/resource/description"
-      },
-      "editor_contracts": {
-        "path": "editor/editing"
-      },
-      "glfw": {
-        "imported": true
-      },
-      "identity": {
-        "path": "modules/resource/identity"
-      },
-      "imgui::core": {
-        "imported": true
-      },
-      "lux::cxx::binary": {
-        "imported": true
-      },
-      "lux::cxx::compile_time": {
-        "imported": true
-      },
-      "lux::cxx::concurrent": {
-        "imported": true
-      },
-      "lux::cxx::container": {
-        "imported": true
-      },
-      "lux::cxx::core": {
-        "imported": true
-      },
-      "lux::cxx::memory": {
-        "imported": true
-      },
-      "math": {
-        "path": "modules/core/math"
-      },
-      "nfd::nfd": {
-        "imported": true
-      },
-      "object": {
-        "path": "modules/core/object"
-      },
-      "render_client": {
-        "path": "modules/function/render/client"
-      },
-      "script_core": {
-        "path": "modules/function/script/core"
-      },
-      "semantic": {
-        "path": "modules/core/semantic"
-      },
-      "serialization": {
-        "path": "modules/core/serialization"
-      },
-      "stduuid": {
-        "imported": true
-      },
-      "type_info": {
-        "path": "modules/core/type_info"
-      },
-      "ui": {
-        "path": "modules/function/ui"
-      },
-      "ui_imgui_backend": {
-        "path": "modules/function/ui"
-      },
-      "window": {
-        "path": "modules/platform/window"
-      },
-      "layout_model": {
-        "path": "editor/authoring/layout"
-      },
-      "ui_input": {
-        "path": "modules/function/ui"
-      }
-    },
-    "native_libraries": [
-      "comctl32"
-    ],
-    "headers": [
-      "array",
-      "cassert",
-      "cstdint",
-      "cstdio",
-      "limits",
-      "optional",
-      "string",
-      "type_traits",
-      "utility",
-      "lux/engine/editor/views/ViewError.hpp",
-      "lux/cxx/core/move_only_function.hpp",
-      "lux/engine/editor/workspace/WorkspaceValues.hpp",
-      "lux/engine/object/CodeLease.hpp",
-      "algorithm",
-      "unordered_map",
-      "unordered_set",
-      "span",
-      "variant",
-      "lux/engine/editor/sessions/SessionId.hpp",
-      "lux/engine/editor/desktop/ContentRouting.hpp"
-    ],
-    "prefixes": [
-      "lux/cxx/",
-      "lux/engine/editor/contracts/",
-      "lux/engine/editor/views/",
-      "lux/engine/ui/",
-      "lux/engine/object/"
-    ],
-    "test_headers": {
-      "editor/workbench/desktop/test/lifecycle.cpp": []
-    },
-    "files": [
-      "editor/workbench/desktop/include/lux/engine/editor/views/IViewHost.hpp",
-      "editor/workbench/desktop/test/lifecycle.cpp",
-      "editor/workbench/desktop/include/lux/engine/editor/views/ViewError.hpp",
-      "editor/workbench/desktop/include/lux/engine/editor/views/ViewFactory.hpp",
-      "editor/workbench/desktop/src/ViewFactory.cpp"
-    ]
-  },
   "layout_model": {
     "direct": [
       "editor_contracts"
@@ -5478,8 +5335,9 @@
   "view_host": {
     "direct": [
       "layout_model",
-      "view_api",
-      "editor_commands"
+      "editor_commands",
+      "ui",
+      "editor_contracts"
     ],
     "closure": {
       "Eigen3::Eigen": {
@@ -5557,9 +5415,6 @@
       "ui_imgui_backend": {
         "path": "modules/function/ui"
       },
-      "view_api": {
-        "path": "editor/workbench/desktop"
-      },
       "window": {
         "path": "modules/platform/window"
       },
@@ -5617,7 +5472,6 @@
       "lux/engine/editor/commands/CommandRegistry.hpp",
       "lux/engine/ui/Menu.hpp",
       "lux/engine/object/ObjectEvent.hpp",
-      "lux/engine/editor/views/ViewFactory.hpp",
       "lux/cxx/core/move_only_function.hpp",
       "lux/cxx/compile_time/TypeToken.hpp",
       "span",
@@ -5639,7 +5493,9 @@
       "lux/engine/editor/workbench/DockLayoutMapping.hpp",
       "lux/engine/editor/views/ViewError.hpp",
       "lux/engine/ui/Pane.hpp",
-      "memory"
+      "memory",
+      "utility",
+      "lux/engine/editor/views/ViewInfo.hpp"
     ],
     "prefixes": [],
     "test_headers": {
@@ -5669,7 +5525,9 @@
       "editor/workbench/desktop/src/ViewHost.cpp",
       "editor/workbench/desktop/src/WindowInput.cpp",
       "editor/workbench/desktop/src/WindowOutput.cpp",
-      "editor/workbench/desktop/test/host.cpp"
+      "editor/workbench/desktop/test/host.cpp",
+      "editor/workbench/desktop/include/lux/engine/editor/views/IViewHost.hpp",
+      "editor/workbench/desktop/include/lux/engine/editor/views/ViewError.hpp"
     ],
     "project_include_dirs": [
       "editor/workbench/sinclude",
@@ -5984,9 +5842,6 @@
       "ui_rendering": {
         "path": "modules/function/ui/rendering"
       },
-      "view_api": {
-        "path": "editor/workbench/desktop"
-      },
       "view_host": {
         "path": "editor/workbench/desktop"
       },
@@ -6079,7 +5934,6 @@
       "lux/engine/editor/commands/CommandRegistry.hpp",
       "lux/engine/ui/Menu.hpp",
       "lux/engine/object/ObjectEvent.hpp",
-      "lux/engine/editor/views/ViewFactory.hpp",
       "lux/cxx/core/move_only_function.hpp",
       "lux/cxx/compile_time/TypeToken.hpp",
       "span",
@@ -9455,9 +9309,6 @@
       "ui_rendering": {
         "path": "modules/function/ui/rendering"
       },
-      "view_api": {
-        "path": "editor/workbench/desktop"
-      },
       "view_host": {
         "path": "editor/workbench/desktop"
       },
@@ -9619,7 +9470,6 @@
       "lux/engine/editor/scene/RunInspectorView.hpp",
       "lux/engine/editor/editing/EditExecutor.hpp",
       "lux/engine/editor/scene/SceneTools.hpp",
-      "lux/engine/editor/views/ViewFactory.hpp",
       "lux/engine/editor/desktop/ViewCommands.hpp",
       "lux/engine/editor/workbench/CommandSupport.hpp",
       "lux/engine/object/CodeLease.hpp",
@@ -12899,15 +12749,6 @@
           "CPU"
         ],
         "path": "editor/activities/tasks"
-      },
-      "view_api": {
-        "layer": "E3",
-        "role": "UI",
-        "capabilities": [
-          "CPU",
-          "GUI"
-        ],
-        "path": "editor/workbench/desktop"
       },
       "editor_detached_views_test": {
         "layer": "TEST",
@@ -17205,10 +17046,10 @@
         "desktop_shell"
       ],
       "editor/workbench/desktop/include/lux/engine/editor/views/IViewHost.hpp": [
-        "view_api"
+        "view_host"
       ],
       "editor/workbench/desktop/include/lux/engine/editor/views/ViewError.hpp": [
-        "view_api"
+        "view_host"
       ],
       "editor/workbench/desktop/pinclude/lux/engine/editor/desktop/detail/UiFrame.hpp": [
         "desktop_shell"
@@ -18704,12 +18545,6 @@
       "editor/authoring/configuration/include/lux/engine/editor/configuration/EditorReflection.hpp": [
         "editor_configuration"
       ],
-      "editor/workbench/desktop/include/lux/engine/editor/views/ViewFactory.hpp": [
-        "view_api"
-      ],
-      "editor/workbench/desktop/src/ViewFactory.cpp": [
-        "view_api"
-      ],
       "editor/workbench/scene/include/lux/engine/editor/scene/ConfigurationForm.hpp": [
         "scene_ui"
       ],
@@ -19285,8 +19120,7 @@
       "editor/workbench/sinclude/lux/engine/editor/workbench/DockLayoutMapping.hpp": {
         "layer": "E3",
         "consumers": [
-          "editor_composition",
-          "view_host"
+          "editor_composition"
         ]
       },
       "editor/workbench/sinclude/lux/engine/editor/workbench/InteractionDelivery.hpp": {
@@ -19363,8 +19197,7 @@
       "editor/workbench/desktop/sinclude/lux/engine/editor/desktop/ContentRouting.hpp": {
         "layer": "E3",
         "consumers": [
-          "editor_composition",
-          "view_api"
+          "editor_composition"
         ]
       },
       "editor/workbench/sinclude/lux/engine/editor/workbench/UiFailure.hpp": {
@@ -19850,5 +19683,169 @@
         "lux::cxx::container"
       ]
     }
+  },
+  "editor_composition": {
+    "direct": [
+      "editor_commands",
+      "editor_contracts",
+      "layout_model",
+      "services",
+      "ui"
+    ],
+    "closure": {
+      "services": {
+        "path": "modules/core/services"
+      },
+      "ui": {
+        "path": "modules/function/ui"
+      },
+      "editor_contracts": {
+        "path": "editor/editing"
+      },
+      "layout_model": {
+        "path": "editor/authoring/layout"
+      },
+      "editor_commands": {
+        "path": "editor/activities/commands"
+      },
+      "edit_sessions": {
+        "path": "editor/editing"
+      },
+      "lux::cxx::core": {
+        "path": "."
+      },
+      "lux::cxx::compile_time": {
+        "path": "."
+      },
+      "ui_input": {
+        "path": "modules/function/ui"
+      },
+      "object": {
+        "path": "modules/core/object"
+      },
+      "lux::cxx::memory": {
+        "path": "."
+      },
+      "lux::cxx::container": {
+        "path": "modules/core/meta"
+      },
+      "edit_history": {
+        "path": "editor/editing"
+      },
+      "identity": {
+        "path": "modules/resource/identity"
+      },
+      "stduuid": {
+        "path": "."
+      },
+      "ui_imgui_backend": {
+        "path": "modules/function/ui"
+      },
+      "render_client": {
+        "path": "modules/function/render/client"
+      },
+      "lux::cxx::concurrent": {
+        "path": "modules/function/render/client"
+      },
+      "math": {
+        "path": "modules/core/math"
+      },
+      "serialization": {
+        "path": "modules/core/serialization"
+      },
+      "description": {
+        "path": "modules/resource/description"
+      },
+      "script_core": {
+        "path": "modules/function/script/core"
+      },
+      "semantic": {
+        "path": "modules/core/semantic"
+      },
+      "Eigen3::Eigen": {
+        "path": "."
+      },
+      "lux::cxx::binary": {
+        "path": "."
+      },
+      "type_info": {
+        "path": "modules/core/type_info"
+      },
+      "imgui::core": {
+        "path": "modules/function/ui"
+      },
+      "window": {
+        "path": "modules/platform/window"
+      },
+      "Vulkan::Headers": {
+        "path": "."
+      },
+      "glfw": {
+        "path": "."
+      },
+      "nfd::nfd": {
+        "path": "."
+      }
+    },
+    "native_libraries": [
+      "comctl32"
+    ],
+    "files": [
+      "editor/workbench/desktop/src/CommandMenu.cpp",
+      "editor/workbench/desktop/include/lux/engine/editor/desktop/CommandMenu.hpp",
+      "editor/workbench/desktop/src/ReviewView.cpp",
+      "editor/workbench/desktop/include/lux/engine/editor/desktop/ReviewView.hpp",
+      "editor/workbench/desktop/src/ViewCommands.cpp",
+      "editor/workbench/desktop/include/lux/engine/editor/desktop/ViewCommands.hpp",
+      "editor/workbench/desktop/include/lux/engine/editor/desktop/UiRegistry.hpp",
+      "editor/workbench/desktop/src/UiRegistry.cpp",
+      "editor/workbench/desktop/include/lux/engine/editor/desktop/EditorContext.hpp",
+      "editor/workbench/desktop/src/EditorContext.cpp",
+      "editor/workbench/desktop/include/lux/engine/editor/settings/SettingsPage.hpp",
+      "editor/workbench/desktop/include/lux/engine/editor/desktop/UiError.hpp"
+    ],
+    "headers": [
+      "algorithm",
+      "cstdint",
+      "deque",
+      "exception",
+      "limits",
+      "lux/cxx/compile_time/expected.hpp",
+      "lux/cxx/core/move_only_function.hpp",
+      "lux/engine/editor/EditorError.hpp",
+      "lux/engine/editor/commands/CommandRegistry.hpp",
+      "lux/engine/editor/desktop/CommandMenu.hpp",
+      "lux/engine/editor/desktop/ContentRouting.hpp",
+      "lux/engine/editor/desktop/EditorContext.hpp",
+      "lux/engine/editor/desktop/ReviewView.hpp",
+      "lux/engine/editor/desktop/UiError.hpp",
+      "lux/engine/editor/desktop/UiRegistry.hpp",
+      "lux/engine/editor/desktop/ViewCommands.hpp",
+      "lux/engine/editor/views/ViewInfo.hpp",
+      "lux/engine/editor/workbench/CommandSupport.hpp",
+      "lux/engine/editor/workbench/DockLayoutMapping.hpp",
+      "lux/engine/editor/workspace/DockLayout.hpp",
+      "lux/engine/editor/workspace/LayoutPlan.hpp",
+      "lux/engine/editor/workspace/WorkspaceValues.hpp",
+      "lux/engine/object/ObjectDispatcher.hpp",
+      "lux/engine/services/ServiceRegistry.hpp",
+      "lux/engine/ui/Controls.hpp",
+      "lux/engine/ui/Docking.hpp",
+      "lux/engine/ui/Ids.hpp",
+      "lux/engine/ui/Layout.hpp",
+      "lux/engine/ui/Menu.hpp",
+      "lux/engine/ui/Pane.hpp",
+      "lux/engine/ui/Root.hpp",
+      "memory",
+      "optional",
+      "string",
+      "unordered_map",
+      "unordered_set"
+    ],
+    "prefixes": [],
+    "project_include_dirs": [
+      "editor/workbench/sinclude",
+      "editor/workbench/desktop/sinclude"
+    ]
   }
 }

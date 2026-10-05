@@ -255,10 +255,10 @@ def inspect(repo, records, rules, stage, compile_db=None, layering_mode=None, co
             check_model(repo, targets, rules, sources, report, target)
 
     if phase(stage) >= phase("P08"):
-        for target in ["scene_interaction", "material_interaction", "flowforge_interaction", "view_api"]:
+        for target in ["scene_interaction", "material_interaction", "flowforge_interaction", "editor_composition"]:
             check_model(repo, targets, rules, sources, report, target)
         # Factories in the new protocol must receive a dispatcher, never a Root for construction.
-        factory_sources = owned_sources(repo, targets.get("view_api", {}), rules["view_api"])
+        factory_sources = owned_sources(repo, targets.get("editor_composition", {}), rules["editor_composition"])
         for path, source in sources.items():
             if path in factory_sources and "/test/" not in path:
                 if constructs_rooted_ui(source):

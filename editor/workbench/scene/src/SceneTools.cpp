@@ -4,6 +4,7 @@
 #include <lux/engine/editor/scene/ResourceView.hpp>
 #include <lux/engine/editor/desktop/ViewHost.hpp>
 #include <lux/engine/editor/workbench/ViewPreparation.hpp>
+#include <lux/engine/ui/Root.hpp>
 
 namespace lux::editor::scene
 {
@@ -135,7 +136,20 @@ namespace lux::editor::scene
             auto result = makeResourceView(dispatcher, std::move(id), inputs.scene.runtime);
             if (!result)
                 return failure(result.error());
-            auto followed = static_cast<ResourceView*>(result->pane())->followViewport(host, source);
+            render::RenderResult<void> followed;
+            const auto bind = [&](lux::ui::Pane& pane)
+            {
+                auto handle = pane.root().identify(pane);
+                if (!handle)
+                {
+                    followed = cxx::unexpected(render::RendererFailure{render::ERendererError::INVALID_ARGUMENT});
+                    return;
+                }
+                followed = static_cast<ResourceView*>(result->pane())->followViewport(pane.root(), *handle);
+            };
+            auto visited = host.withView(source, bind);
+            if (!visited)
+                return failure(visited.error());
             if (!followed)
                 return failure(followed.error());
             return std::move(*result);

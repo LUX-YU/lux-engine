@@ -1381,6 +1381,17 @@ namespace
         const std::array handles{aid, bid};
         f.wait([&] { return a->image().isValid() && b->image().isValid(); });
         assert(a->presentedInstance() == b->presentedInstance() && a->viewport() != b->viewport());
+        author::ResourceView diagnostics(f.messages.dispatcherRef(), ui::PaneId{"ec4-resources"}, *f.runtime);
+        assert(root.addSubPane(diagnostics));
+        f.wait([&] { return bool(diagnostics.followViewport(root, aid)); });
+        const auto diagnosed_instance = diagnostics.snapshot().instance;
+        assert(diagnosed_instance == a->presentedInstance() && diagnostics.content().primary == key.id());
+        auto foreign_root = take(ui::Root::create(f.messages.dispatcherRef()));
+        auto refused = diagnostics.followViewport(*foreign_root, aid);
+        assert(!refused && refused.error().code == render::ERendererError::INVALID_ARGUMENT);
+        assert(!diagnostics.followViewport(root, {}));
+        assert(diagnostics.snapshot().instance == diagnosed_instance && diagnostics.content().primary == key.id());
+        foreign_root.reset();
         assert(a->beginEdit("scene factory temporary gesture"));
         std::vector<author::VSceneEdit> changes;
         changes.emplace_back(author::SceneSetField::make<ecs::Transform3D>(
@@ -1452,6 +1463,19 @@ namespace
         assert(!a->beginEdit("logically closed") && !f.store.access<author::SceneSession>().share(key));
         auto close = take(windows.prepareClose(root, handles));
         assert(root.commit(close) && !root.findPane(aid) && !root.findPane(bid));
+        // Reusing the visible name cannot redirect the diagnostic's captured attachment identity.
+        ui::Pane reused(
+            f.messages.dispatcherRef(),
+            ui::PaneId{"ec4-scene-a"},
+            ui::PaneTypeId{"ec4.unrelated"},
+            "Replacement"
+        );
+        assert(root.addSubPane(reused));
+        f.frame(false);
+        assert(
+            diagnostics.status() && !diagnostics.snapshot().instance.valid() && diagnostics.content().sessions.empty()
+        );
+        assert(root.removeSubPane(reused) && root.removeSubPane(diagnostics));
         (void)f.messages.collectRetired();
         (void)f.store_messages.collect();
         assert(weak_model.expired());

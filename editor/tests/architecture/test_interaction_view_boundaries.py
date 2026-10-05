@@ -40,6 +40,8 @@ def main():
         ("scene-old-bridge", "scene_interaction", None, None, "SceneRunCaptureAccess.hpp"),
         ("view-model-include", "view_api", None, None, "lux/engine/editor/scene/SceneSession.hpp"),
         ("view-rooted-factory", "view_api", None, None, "ROOTED_FACTORY"),
+        ("view-rooted-base", "view_api", None, None, "ROOTED_BASE"),
+        ("view-root-reader-legal", "view_api", None, None, "ROOT_READER"),
         ("scene-legal", "scene_interaction", "scene_model", None, ""),
         ("material-legal", "material_interaction", "material_model", None, ""),
         ("flow-legal", "flowforge_interaction", "flowforge_model", None, ""),
@@ -65,6 +67,8 @@ def main():
             ("scene-old-header", "scene_ui", None, None, "lux/engine/editor/scene/SceneEditor.hpp"),
             ("widgets-private-header", "editor_widgets", None, None, "../../tools/scene/pinclude/SceneEditorData.hpp"),
             ("scene-rooted-factory", "scene_ui", None, None, "ROOTED_FACTORY"),
+            ("scene-rooted-base", "scene_ui", None, None, "ROOTED_BASE"),
+            ("scene-root-reader-legal", "scene_ui", None, None, "ROOT_READER"),
             ("host-legal", "view_host", "view_api", None, ""),
             ("desktop-legal", "desktop_shell", "view_host", None, ""),
             ("widgets-legal", "editor_widgets", None, None, ""),
@@ -123,7 +127,12 @@ def main():
             tail = f'include("{repo.as_posix()}/cmake/EditorArchitectureChecks.cmake")\nlux_editor_check_architecture()\n'
             (root / "CMakeLists.txt").write_text(top + edges + tail)
             probe = root / locations[target] / "probe.hpp"
-            probe.write_text('auto build(ui::Root& root) { return std::make_unique<ui::Pane>(root, ui::PaneId{"bad"}, ui::PaneTypeId{"test"}, "bad"); }\n' if header == "ROOTED_FACTORY" else f"#include <{header}>\n" if header else "")
+            source_probes = {
+                "ROOTED_FACTORY": 'auto build(ui::Root& root) { return std::make_unique<ui::Pane>(root, ui::PaneId{"bad"}, ui::PaneTypeId{"test"}, "bad"); }\n',
+                "ROOTED_BASE": 'struct Derived : ui::Pane { Derived(ui::Root& parent) : Pane(parent, {}, {}, "bad") {} };\n',
+                "ROOT_READER": 'struct Derived : ui::Pane { Derived(ObjectDispatcherRef dispatcher) : Pane(dispatcher, {}, {}, "detached") {} void inspect(ui::Root& root) { (void)root.findPane({}); } };\n',
+            }
+            probe.write_text(source_probes.get(header, f"#include <{header}>\n" if header else ""))
             provider = root / locations[target] / "CMakeLists.txt"
             provider.write_text(provider.read_text() + f'target_sources({target} PRIVATE "{probe.as_posix()}")\n')
             build = root / "build"
@@ -131,7 +140,7 @@ def main():
             output = result.stdout + result.stderr
             rule = target.upper() + ("_FORBIDDEN_INCLUDE" if header else "_FORBIDDEN_DEPENDENCY")
             if target == "ui_fixture": rule = "ENGINE_DEPENDS_ON_EDITOR"
-            if header == "ROOTED_FACTORY": rule = "NEW_ROOTED_FACTORY"
+            if header in ("ROOTED_FACTORY", "ROOTED_BASE"): rule = "NEW_ROOTED_FACTORY"
             if name == "unused-old-editor": rule = "NEW_DEPENDS_ON_OLD"
             legal = name.endswith("-legal")
             rejected = result.returncode == 0 if legal else result.returncode != 0 and rule in output

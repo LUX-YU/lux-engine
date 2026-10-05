@@ -2,19 +2,14 @@
 #include <lux/engine/editor/scene/ResourceView.hpp>
 #include <lux/engine/ui/Element.hpp>
 #include <lux/engine/editor/scene/SceneView.hpp>
-#include <lux/engine/editor/desktop/ViewHost.hpp>
+#include <lux/engine/ui/Root.hpp>
 #include <imgui.h>
 
 namespace lux::editor::scene
 {
     struct ResourceView::Impl final
     {
-        struct Viewport final
-        {
-            desktop::ViewHost& host;
-            views::ViewId id;
-        };
-        std::optional<Viewport> viewport_;
+        std::optional<lux::ui::PaneHandle> viewport_;
         views::ViewContent association_;
         lux::scene::SceneRuntime& runtime_;
         std::optional<ResourceViewBinding> binding_;
@@ -81,13 +76,17 @@ namespace lux::editor::scene
             retry_.reset();
             return {};
         }
-        render::RenderResult<void> synchronizeViewport(const Viewport& source)
+        render::RenderResult<void> synchronizeViewport(lux::ui::Root& root, const lux::ui::PaneHandle& source)
         {
             std::optional<ResourceViewBinding> target;
             views::ViewContent content;
             bool is_scene{};
-            const auto read = [&](lux::ui::Pane& pane) {
-                if (const auto* view = dynamic_cast<const SceneView*>(&pane))
+            // This is a read during Root maintenance, not a provider callback. Copy the concrete
+            // view's identity values before entering Runtime; no Pane borrow crosses that boundary.
+            auto observed = root.findPane(source);
+            if (observed)
+            {
+                if (const auto* view = dynamic_cast<const SceneView*>(*observed))
                 {
                     is_scene = true;
                     if (view->presentedInstance().valid())
@@ -95,12 +94,11 @@ namespace lux::editor::scene
                     if (const auto* author = std::get_if<EditedSceneBinding>(&view->binding()))
                         content = {{author->session.id()}, author->session.id()};
                 }
-            };
-            auto observed = source.host.withView(source.id, read);
-            if (!observed && observed.error() != views::EViewError::INVALID_ID)
+            }
+            if (!observed && observed.error() != lux::ui::EAttachmentError::NOT_ATTACHED)
                 return cxx::unexpected(render::RendererFailure{
-                    observed.error() == views::EViewError::BUSY ? render::ERendererError::BUSY
-                                                               : render::ERendererError::INVALID_ARGUMENT
+                    observed.error() == lux::ui::EAttachmentError::BUSY ? render::ERendererError::BUSY
+                                                                        : render::ERendererError::INVALID_ARGUMENT
                 });
             if (observed && !is_scene)
                 return cxx::unexpected(render::RendererFailure{render::ERendererError::INVALID_ARGUMENT});
@@ -152,10 +150,15 @@ namespace lux::editor::scene
     {
         return impl_->status_ = impl_->rebind(binding);
     }
-    render::RenderResult<void> ResourceView::followViewport(desktop::ViewHost& host, views::ViewId id)
+    render::RenderResult<void> ResourceView::followViewport(lux::ui::Root& root, lux::ui::PaneHandle source)
     {
-        const Impl::Viewport source{host, id};
-        auto changed = impl_->synchronizeViewport(source);
+        const bool is_foreign_root = attachedRoot() && attachedRoot() != &root;
+        const bool is_foreign_dispatcher = dispatcherRef() != root.dispatcherRef();
+        if (is_foreign_root || is_foreign_dispatcher)
+            return cxx::unexpected(render::RendererFailure{render::ERendererError::INVALID_ARGUMENT});
+        if (!root.findPane(source))
+            return cxx::unexpected(render::RendererFailure{render::ERendererError::INVALID_ARGUMENT});
+        auto changed = impl_->synchronizeViewport(root, source);
         if (changed)
             impl_->viewport_.emplace(source);
         return changed;
@@ -185,9 +188,9 @@ namespace lux::editor::scene
     }
     void ResourceView::update() noexcept
     {
-        if (impl_->viewport_)
+        if (impl_->viewport_ && attachedRoot())
         {
-            impl_->status_ = impl_->synchronizeViewport(*impl_->viewport_);
+            impl_->status_ = impl_->synchronizeViewport(*attachedRoot(), *impl_->viewport_);
             if (!impl_->status_)
                 return;
         }

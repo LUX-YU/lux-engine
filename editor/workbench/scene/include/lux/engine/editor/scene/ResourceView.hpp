@@ -2,8 +2,6 @@
 #include <lux/engine/editor/scene/ResourceStatus.hpp>
 #include <lux/engine/editor/views/IViewHost.hpp>
 
-namespace lux::editor::desktop { class ViewHost; }
-
 namespace lux::editor::scene
 {
     struct ResourceViewBinding final
@@ -25,7 +23,9 @@ namespace lux::editor::scene
         ResourceView(ResourceView&&) = delete;
         ResourceView& operator=(ResourceView&&) = delete;
         [[nodiscard]] render::RenderResult<void> rebind(std::optional<ResourceViewBinding>);
-        [[nodiscard]] render::RenderResult<void> followViewport(desktop::ViewHost&, views::ViewId);
+        // Validate at the composition boundary, then retain only the original attachment identity.
+        // Later reads use this window's Root; a removed/replaced source cannot redirect the binding.
+        [[nodiscard]] render::RenderResult<void> followViewport(lux::ui::Root&, lux::ui::PaneHandle);
         [[nodiscard]] views::ViewContent content() const noexcept;
         [[nodiscard]] render::RenderResult<void> refresh();
         [[nodiscard]] render::RenderResult<void> retry(const lux::scene::RenderAssetKey&);

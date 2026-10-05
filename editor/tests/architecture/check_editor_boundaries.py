@@ -16,6 +16,17 @@ def phase(value):
     return STAGES.index(value)
 
 
+def constructs_rooted_ui(source):
+    # Check the construction argument, not an unrelated Root query elsewhere in the same file.
+    # This remains a narrow source rule; actual constructors and attachment tests enforce the API.
+    roots = re.findall(r"\bRoot\s*&\s*(\w+)", source)
+    for root in roots:
+        constructor = r"(?:make_unique<[^>]*(?:Pane|Element)\s*>|\b(?:Pane|Element))\s*[(\{]\s*"
+        if re.search(constructor + re.escape(root) + r"\s*[,)}]", source):
+            return True
+    return False
+
+
 def owned_sources(repo, node, policy):
     owned = set(policy.get("files", []))
     for key in ("SOURCES", "INTERFACE_SOURCES"):
@@ -250,7 +261,7 @@ def inspect(repo, records, rules, stage, compile_db=None, layering_mode=None, co
         factory_sources = owned_sources(repo, targets.get("view_api", {}), rules["view_api"])
         for path, source in sources.items():
             if path in factory_sources and "/test/" not in path:
-                if re.search(r"\bRoot\s*&", source) and re.search(r"(?:make_unique<[^>]*(?:Pane|Element)|(?:Pane|Element)\s*[({])", source):
+                if constructs_rooted_ui(source):
                     report("NEW_ROOTED_FACTORY", path, "P08 factory calls the expiring rooted constructor")
 
     if phase(stage) >= phase("P09"):
@@ -264,8 +275,7 @@ def inspect(repo, records, rules, stage, compile_db=None, layering_mode=None, co
             is_factory = (path.startswith("editor/tools/") and "/ui/" in path) or path.startswith((
                 "editor/workbench/scene/", "editor/workbench/material/", "editor/workbench/flow/",
                 "editor/workbench/project/", "editor/workbench/tasks/"))
-            if is_factory and "/test/" not in path and re.search(r"\bRoot\s*&", source) and re.search(
-                    r"(?:make_unique<[^>]*(?:Pane|Element)|(?:Pane|Element)\s*[({])", source):
+            if is_factory and "/test/" not in path and constructs_rooted_ui(source):
                 report("NEW_ROOTED_FACTORY", path, "P10 factories must assemble detached subtrees")
 
     scopes = tuple(rules["new_scopes"])

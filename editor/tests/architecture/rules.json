@@ -5621,7 +5621,8 @@
       "lux/engine/editor/workbench/CommandSupport.hpp",
       "lux/engine/object/CodeLease.hpp",
       "exception",
-      "lux/engine/editor/desktop/ContentRouting.hpp"
+      "lux/engine/editor/desktop/ContentRouting.hpp",
+      "lux/engine/editor/workbench/DockLayoutMapping.hpp"
     ],
     "prefixes": [],
     "test_headers": {
@@ -6090,7 +6091,8 @@
       "lux/engine/editor/workbench/CommandSupport.hpp",
       "lux/engine/editor/commands/Command.hpp",
       "lux/engine/object/CodeLease.hpp",
-      "exception"
+      "exception",
+      "lux/engine/editor/workbench/DockLayoutMapping.hpp"
     ],
     "prefixes": [],
     "test_headers": {
@@ -19161,6 +19163,13 @@
     ],
     "construction_exceptions": [],
     "shared_headers": {
+      "editor/workbench/sinclude/lux/engine/editor/workbench/DockLayoutMapping.hpp": {
+        "layer": "E3",
+        "consumers": [
+          "editor_composition",
+          "view_host"
+        ]
+      },
       "editor/workbench/sinclude/lux/engine/editor/workbench/InteractionDelivery.hpp": {
         "layer": "E3",
         "consumers": [

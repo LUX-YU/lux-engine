@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <array>
 #include <cassert>
 #include <functional>
@@ -71,6 +72,8 @@ namespace
               counts_(counts), content_(input.content)
         {
             ++counts_.windows;
+            if (!input.configuration.bytes.empty())
+                state_ = input.configuration.bytes;
             if (counts_.creating)
             {
                 counts_.creating();
@@ -636,6 +639,44 @@ namespace
         assert(notifications == 1 && counts.state_applied == 2);
         assert(registry.captureState(**root, a_handle)->bytes == std::vector{std::byte{31}});
         assert(registry.captureState(**root, b_handle)->bytes == std::vector{std::byte{32}});
+        connection->disconnect();
+        entries = UiCatalog::prepare({UiEntry::create(object::CodeLease::builtin(), definition)});
+        assert(entries && registry.publish(std::move(*entries)));
+        const auto discovered = registry.describe(**root);
+        assert(discovered && discovered->size() == 3);
+        assert((*discovered)[0].handle == a_handle && (*discovered)[0].restore_key.name() == "state-a");
+        assert((*discovered)[0].content == binding && (*discovered)[1].handle == b_handle);
+        workspace::DockLayout layout;
+        layout.id = {"1234567890abcdef1234567890abcdef"};
+        layout.label = "Factory restore";
+        layout.slots = {
+            {{1}, views::ViewRestoreKey{"state-a"}, views::ViewTypeId{"ec4.window"}, true, {1, {std::byte{41}}}},
+            {{2}, views::ViewRestoreKey{"new"}, views::ViewTypeId{"ec4.window"}, true, {1, {std::byte{42}}}},
+            {{3}, views::ViewRestoreKey{"state-b"}, views::ViewTypeId{"ec4.window"}, true, {1, {std::byte{200}}}}
+        };
+        layout.dock.nodes = {{1, workspace::EDockSplit::LEAF, 0, 0, .5, {{1}, {2}, {3}}}};
+        layout.dock.roots = {{1}};
+        const auto before_layout = (*root)->windowRevision();
+        auto rejected_layout = registry.applyLayout(**root, *scope, layout);
+        assert(!rejected_layout && rejected_layout.error().domain == "state.prepare");
+        assert((*root)->windowRevision() == before_layout && !a->visible());
+        assert(registry.captureState(**root, a_handle)->bytes == std::vector{std::byte{31}});
+        assert(a->content() == binding && b->content() == binding);
+        layout.slots.pop_back();
+        layout.dock.nodes.front().slots.pop_back();
+        assert(registry.applyLayout(**root, *scope, layout));
+        const auto restored = registry.describe(**root);
+        assert(restored && restored->size() == 4 && a->visible());
+        const auto created = std::ranges::find_if(*restored, [](const auto& window)
+        { return window.restore_key.name() == "new"; });
+        assert(created != restored->end() && created->content.sessions.empty());
+        const auto created_handle = created->handle;
+        assert(registry.captureState(**root, created_handle)->bytes == std::vector{std::byte{42}});
+        assert(registry.captureState(**root, a_handle)->bytes == std::vector{std::byte{41}});
+        assert(registry.captureState(**root, b_handle)->bytes == std::vector{std::byte{32}});
+        assert(a->content() == binding && b->content() == binding && (*root)->findPane(ui::PaneIdView{"state-c"}));
+        assert(registry.applyLayout(**root, *scope, layout));
+        assert(registry.describe(**root)->size() == 4 && (*root)->findPane(created_handle));
         root->reset();
         assert(counts.models_destroyed == 1 && scope->release() && scope->drained());
         std::cout << "UI state and owned mount prepare together; failure preserves binding, values and DockTree; "

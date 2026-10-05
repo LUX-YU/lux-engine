@@ -6,9 +6,10 @@ Pure values and plans are provided here by layout_model. The file/publication im
 ## Workspace values and storage (P09)
 
 `layout_model` contains persistent DockLayout, RecoveryManifest, preferences and immutable validated plans.
-It has no live UI, author model, renderer, content loader or file implementation dependency. ViewInfo is the
-existing P08 identity value, now published by `editor_contracts` at the same public include path. Recovery
-headers belong to this same layout library rather than adding a tiny library.
+It has no live UI, author model, renderer, content loader or file implementation dependency. `LayoutTarget`
+contains only the persistent restore key and window type. Resolution returns the matched position in the
+caller's immutable target snapshot, not a host-issued runtime ID. Recovery headers belong to this same
+layout library rather than adding a tiny library.
 
 `workspace_store` borrows the application's P05 WriteCoordinator and IArtifactStore. Production uses the
 existing FileArtifactStore. It does not construct a coordinator, drain someone else's ready work or own
@@ -35,7 +36,9 @@ bytes in an explicit opaque envelope. Limits apply to counts, tree depth, text, 
 Dock nodes are explicit binary split or leaf values with stable local numeric identities. Roots carry geometry
 and floating status. Every slot and node must be reachable exactly once. Validation precedes resolve. Plans
 own their values, match exact ViewRestoreKey + ViewType, preserve unmatched live views and describe unbound
-creation. Provider entries are data, never callbacks. P10/P12 must revalidate transient ViewIds when adopting.
+creation. Provider entries are data, never callbacks. The workbench retains the corresponding original Root
+handles and validates those handles and the Root revision after provider callbacks, before adoption. No
+synthetic runtime IDs are generated to use the pure planner.
 
 Read failures propagate: BUSY, permission errors, changing files and incomplete enumeration never mean missing.
 Missing/corrupt selected layouts produce a diagnostic read-only default choice. Individual bad catalog records

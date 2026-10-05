@@ -4,7 +4,6 @@
 #include <cmath>
 #include <map>
 #include <set>
-#include <tuple>
 
 namespace lux::editor::workspace
 {
@@ -129,7 +128,7 @@ namespace lux::editor::workspace
     }
     WorkspaceResult<LayoutPlan> LayoutPlanner::resolve(
         const ValidatedLayout& input,
-        std::span<const views::ViewInfo> existing,
+        std::span<const LayoutTarget> existing,
         std::span<const ViewProviderInfo> providers,
         WorkspaceLimits limits
     )
@@ -137,14 +136,13 @@ namespace lux::editor::workspace
         if (existing.size() > limits.entries || providers.size() > limits.entries)
             return failed(EWorkspaceError::CAPACITY, "planner inputs");
         std::map<ViewKey, std::size_t> identities;
-        std::set<std::tuple<std::uint64_t, std::uint32_t, std::uint64_t>> live_ids;
         for (std::size_t i = 0; i < existing.size(); ++i)
         {
             const auto& view = existing[i];
             const bool valid_identity =
-                view.id.valid() && text(view.type.name(), limits) && text(view.restore_key.name(), limits);
-            if (!valid_identity || !identities.emplace(key(view.restore_key, view.type), i).second ||
-                !live_ids.emplace(view.id.domain, view.id.slot, view.id.generation).second)
+                text(view.type.name(), limits) && text(view.restore_key.name(), limits);
+            const bool unique_identity = valid_identity && identities.emplace(key(view.restore_key, view.type), i).second;
+            if (!unique_identity)
                 return failed(EWorkspaceError::INVALID_DATA, "ambiguous view snapshot");
         }
         std::map<std::string, ViewProviderInfo> registered;
@@ -162,7 +160,7 @@ namespace lux::editor::workspace
             PlannedView view{slot};
             if (const auto found = identities.find(key(slot.restore_key, slot.type)); found != identities.end())
             {
-                view.existing = existing[found->second].id;
+                view.existing = found->second;
                 used[found->second] = true;
             }
             if (const auto provider = registered.find(std::string(slot.type.name())); provider != registered.end())

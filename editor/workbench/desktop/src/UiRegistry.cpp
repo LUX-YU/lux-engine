@@ -2,6 +2,8 @@
 #include <limits>
 #include <lux/engine/editor/desktop/ContentRouting.hpp>
 #include <lux/engine/editor/desktop/UiRegistry.hpp>
+#include <lux/engine/editor/workspace/LayoutPlan.hpp>
+#include <lux/engine/editor/workbench/DockLayoutMapping.hpp>
 #include <lux/engine/ui/Root.hpp>
 #include <unordered_map>
 #include <unordered_set>
@@ -252,6 +254,7 @@ namespace lux::editor::desktop
         {
             std::shared_ptr<const UiEntry> declaration;
             object::ObjectIdentity identity;
+            views::ViewRestoreKey restore_key;
         };
         // Only the standard candidate deleter retains this metadata. The registry observes it weakly;
         // it never owns a Pane, retains a model, or creates another instance ID/retirement queue.
@@ -459,7 +462,8 @@ namespace lux::editor::desktop
         const bool wrong_identity = !fixed.instance.isValid() || fixed.dispatcher != impl_->dispatcher;
         const bool wrong_configuration =
             fixed.configuration.schema != entry->descriptor().schema || !fixed.content.valid();
-        if (wrong_identity || wrong_configuration)
+        const bool wrong_restore_key = fixed.restore_key && !fixed.restore_key->isValid();
+        if (wrong_identity || wrong_configuration || wrong_restore_key)
         {
             return reject(EUiError::INVALID_CONFIGURATION);
         }
@@ -510,7 +514,9 @@ namespace lux::editor::desktop
                 return {};
             }
             std::erase_if(impl_->outputs, [](const auto& output) { return output.expired(); });
-            auto output = std::make_shared<const Impl::Output>(entry, pane.identity());
+            auto output = std::make_shared<const Impl::Output>(
+                entry, pane.identity(), fixed.restore_key.value_or(views::ViewRestoreKey{pane.id().name()})
+            );
             auto destroy = [output](lux::ui::Pane* pane) noexcept { delete pane; };
             auto deleter = object::ObjectDeleter::create<lux::ui::Pane>(std::move(destroy), entry->code());
             impl_->outputs.push_back(output);
@@ -594,6 +600,134 @@ namespace lux::editor::desktop
         }
         return result;
     }
+    UiResult<std::vector<WindowInfo>> UiRegistry::describe(lux::ui::Root& root) noexcept
+    {
+        if (auto admitted = impl_->admission(); !admitted)
+            return cxx::unexpected(std::move(admitted.error()));
+        Impl::Guard guard{impl_->active};
+        return describeAdmitted(root);
+    }
+    UiResult<std::vector<WindowInfo>> UiRegistry::describeAdmitted(lux::ui::Root& root) noexcept
+    {
+        if (root.dispatcherRef() != impl_->dispatcher)
+            return reject(EUiError::WRONG_THREAD);
+        const auto revision = root.windowRevision();
+        // Fix original handles before any extension content callback; no raw pointer crosses a callback.
+        std::vector<lux::ui::PaneHandle> handles;
+        for (auto* pane : root.panes())
+        {
+            if (!pane)
+                continue;
+            const auto identity = pane->identity();
+            const bool registered = std::ranges::any_of(impl_->outputs, [&](const auto& weak)
+            {
+                const auto output = weak.lock();
+                return output && output->identity == identity;
+            });
+            if (!registered)
+                continue;
+            auto handle = root.identify(*pane);
+            if (!handle)
+                return attachmentFailure(handle.error());
+            handles.push_back(std::move(*handle));
+        }
+        std::vector<WindowInfo> result;
+        result.reserve(handles.size());
+        for (const auto& handle : handles)
+        {
+            auto capture = [&](const std::shared_ptr<const UiEntry>& entry, lux::ui::Pane& pane)
+            {
+                const auto identity = pane.identity();
+                // visitAdmitted established this exact output; no callback intervenes in the lookup.
+                const auto found = std::ranges::find_if(impl_->outputs, [&](const auto& weak)
+                {
+                    const auto output = weak.lock();
+                    return output && output->identity == identity;
+                });
+                const auto output = found->lock();
+                const auto& descriptor = entry->descriptor();
+                result.push_back({
+                    handle, pane.id(), pane.type(), output->restore_key, std::string{pane.title()},
+                    pane.visible(), pane.focused(), descriptor.content ? descriptor.content(pane) : views::ViewContent{}
+                });
+            };
+            auto visited = visitAdmitted(root, handle, capture);
+            if (!visited)
+                return cxx::unexpected(std::move(visited.error()));
+            if (root.windowRevision() != revision)
+                return reject(EUiError::STALE_ROOT, "Window set changed during description");
+        }
+        return result;
+    }
+    UiResult<lux::ui::AttachmentCommit> UiRegistry::applyLayout(
+        lux::ui::Root& root, services::ServiceScope& scope, workspace::DockLayout input
+    ) noexcept
+    {
+        if (auto admitted = impl_->admission(); !admitted)
+            return cxx::unexpected(std::move(admitted.error()));
+        Impl::Guard guard{impl_->active};
+        const auto revision = root.windowRevision();
+        auto layout = workspace::ValidatedLayout::validate(std::move(input));
+        if (!layout)
+            return cxx::unexpected(UiFailure{
+                EUiError::INVALID_CONFIGURATION, "layout", static_cast<std::uint64_t>(layout.error().code),
+                std::move(layout.error().detail)
+            });
+        auto services = impl_->services.readScope();
+        if (!services)
+            return cxx::unexpected(serviceFailure(std::move(services.error())));
+        auto live = describeAdmitted(root);
+        if (!live)
+            return cxx::unexpected(std::move(live.error()));
+        std::vector<workspace::LayoutTarget> targets;
+        targets.reserve(live->size());
+        for (const auto& window : *live)
+            targets.push_back({window.restore_key, window.type});
+        std::vector<workspace::ViewProviderInfo> providers;
+        const auto catalog = snapshot();
+        for (const auto& entry : catalog.entries())
+        {
+            const auto& descriptor = entry->descriptor();
+            providers.push_back({views::ViewTypeId{descriptor.type.name()}, descriptor.schema, descriptor.schema});
+        }
+        auto plan = workspace::LayoutPlanner::resolve(*layout, targets, providers);
+        if (!plan)
+            return cxx::unexpected(UiFailure{
+                EUiError::INVALID_CONFIGURATION, "layout", static_cast<std::uint64_t>(plan.error().code),
+                std::move(plan.error().detail)
+            });
+        std::vector<UiMountRequest> candidates;
+        std::vector<UiStateRequest> states;
+        std::map<std::uint32_t, std::string> windows;
+        for (const auto& planned : plan->views)
+        {
+            const auto& slot = planned.slot;
+            if (planned.existing)
+            {
+                const auto& window = (*live)[*planned.existing];
+                states.push_back({window.handle, slot.state, slot.visible});
+                windows.emplace(slot.id.value, std::string{window.instance.name()});
+                continue;
+            }
+            if (planned.resolution != workspace::ELayoutResolution::CREATE_UNBOUND)
+                return reject(EUiError::INVALID_CONFIGURATION, "Required window provider or schema unavailable");
+            auto factory = catalog.find(slot.type.view());
+            if (!factory)
+                return cxx::unexpected(std::move(factory.error()));
+            auto name = std::string{"layout/"} + std::string{slot.type.name()} + "/" +
+                        std::string{slot.restore_key.name()};
+            windows.emplace(slot.id.value, name);
+            candidates.push_back({
+                std::move(*factory),
+                {impl_->dispatcher, lux::ui::PaneId{name}, {}, slot.state, slot.restore_key}, slot.visible
+            });
+        }
+        auto docking = workbench::detail::makeDockTree(plan->layout.dock, windows);
+        if (root.windowRevision() != revision)
+            return reject(EUiError::STALE_ROOT, "Window set changed during layout preparation");
+        return mountAdmitted(root, scope, std::move(candidates), std::move(docking), std::move(states));
+    }
+
     UiResult<views::ViewContent> UiRegistry::content(lux::ui::Root& root, const lux::ui::PaneHandle& handle) noexcept
     {
         views::ViewContent result;
@@ -757,6 +891,16 @@ namespace lux::editor::desktop
             return cxx::unexpected(serviceFailure(std::move(acquired.error())));
         }
         services.emplace(std::move(*acquired));
+        return mountAdmitted(root, scope, std::move(requests), std::move(docking), std::move(state_requests));
+    }
+    UiResult<lux::ui::AttachmentCommit> UiRegistry::mountAdmitted(
+        lux::ui::Root& root,
+        services::ServiceScope& scope,
+        std::vector<UiMountRequest> requests,
+        std::optional<lux::ui::DockTree> docking,
+        std::vector<UiStateRequest> state_requests
+    ) noexcept
+    {
         // All foreign input/candidate cleanup precedes both guards. Never borrow a mutable
         // caller vector or fill a new source stamp after a callback.
         if (root.dispatcherRef() != impl_->dispatcher)

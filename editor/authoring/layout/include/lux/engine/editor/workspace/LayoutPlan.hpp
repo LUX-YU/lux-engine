@@ -28,18 +28,25 @@ namespace lux::editor::workspace
         MISSING_PROVIDER,
         UNSUPPORTED_STATE
     };
+    // Exact persistent matching input. Runtime handles and content remain with the caller's fixed snapshot.
+    struct LayoutTarget final
+    {
+        views::ViewRestoreKey restore_key;
+        views::ViewTypeId type;
+    };
     struct PlannedView final
     {
         LayoutSlot slot;
         ELayoutResolution resolution{ELayoutResolution::MISSING_PROVIDER};
-        // Existing identity is preserved even when its provider or payload schema cannot currently be restored.
-        std::optional<views::ViewId> existing;
+        // Index into the immutable input snapshot, never a fabricated or retained runtime identity.
+        // Preserve the match even when its provider or schema is currently unavailable.
+        std::optional<std::size_t> existing;
     };
     struct LayoutPlan final
     {
         DockLayout layout;
         std::vector<PlannedView> views;
-        std::vector<views::ViewInfo> retained;
+        std::vector<LayoutTarget> retained;
     };
     class LayoutPlanner final
     {
@@ -47,7 +54,7 @@ namespace lux::editor::workspace
         // These are fixed value snapshots; no factories, content binding or live UI are accepted.
         [[nodiscard]] static WorkspaceResult<LayoutPlan> resolve(
             const ValidatedLayout&,
-            std::span<const views::ViewInfo>,
+            std::span<const LayoutTarget>,
             std::span<const ViewProviderInfo>,
             WorkspaceLimits = {}
         );

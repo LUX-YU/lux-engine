@@ -310,11 +310,19 @@ int main()
     auto bad = layout;
     bad.dock.nodes[0].first = 123;
     assert(!w::ValidatedLayout::validate(bad));
-    auto plan = take(w::LayoutPlanner::resolve(take(w::ValidatedLayout::validate(layout)), existing, providers));
-    assert(plan.views[0].existing == existing[1].id);
+    std::vector<w::LayoutTarget> targets;
+    for (const auto& view : existing)
+        targets.push_back({view.restore_key, view.type});
+    auto ambiguous = targets;
+    ambiguous.push_back(targets.front());
+    assert(!w::LayoutPlanner::resolve(take(w::ValidatedLayout::validate(layout)), ambiguous, providers));
+    auto plan = take(w::LayoutPlanner::resolve(take(w::ValidatedLayout::validate(layout)), targets, providers));
+    assert(plan.views[0].existing && existing[*plan.views[0].existing].id == existing[1].id);
     assert(plan.views[1].resolution == w::ELayoutResolution::CREATE_UNBOUND);
     assert(plan.views[2].resolution == w::ELayoutResolution::CREATE_UNBOUND);
-    assert(plan.retained.size() == 2 && plan.retained[0].id == existing[0].id && plan.retained[1].id == existing[2].id);
+    assert(plan.retained.size() == 2);
+    assert(plan.retained[0].restore_key == existing[0].restore_key && plan.retained[0].type == existing[0].type);
+    assert(plan.retained[1].restore_key == existing[2].restore_key && plan.retained[1].type == existing[2].type);
     layout.slots.clear(); // Output has its own full value lifetime.
     assert(plan.layout.slots.size() == 3 && plan.views[0].slot.restore_key.name() == "exact");
     const auto after = model->describe();

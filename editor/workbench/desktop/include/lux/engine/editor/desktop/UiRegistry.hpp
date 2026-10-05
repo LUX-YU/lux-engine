@@ -2,6 +2,7 @@
 
 #include <lux/engine/editor/views/ViewInfo.hpp>
 #include <lux/engine/editor/workspace/WorkspaceValues.hpp>
+#include <lux/engine/editor/workspace/DockLayout.hpp>
 #include <lux/engine/services/ServiceRegistry.hpp>
 #include <lux/engine/ui/Docking.hpp>
 #include <lux/engine/ui/Pane.hpp>
@@ -46,6 +47,7 @@ namespace lux::editor::desktop
         lux::ui::PaneId instance;
         views::ViewContent content;
         workspace::VersionedViewState configuration;
+        std::optional<views::ViewRestoreKey> restore_key;
     };
     struct UiDescriptor final
     {
@@ -148,6 +150,16 @@ namespace lux::editor::desktop
         workspace::VersionedViewState configuration;
         std::optional<bool> visible;
     };
+    struct WindowInfo final
+    {
+        lux::ui::PaneHandle handle;
+        lux::ui::PaneId instance;
+        views::ViewTypeId type;
+        views::ViewRestoreKey restore_key;
+        std::string title;
+        bool visible{}, focused{};
+        views::ViewContent content;
+    };
     // Keeps immutable declarations and weak output metadata, never a Pane owner. A successful creation
     // is a standard unique owner; Root's Object relation takes over when the caller mounts the candidate.
     class UiRegistry final
@@ -201,6 +213,11 @@ namespace lux::editor::desktop
         create(const UiHandle&, services::ServiceScope&, const UiCreateInfo&) noexcept;
         // Existing windows keep their creating descriptor after catalog replacement. These calls use
         // Root's original handle/borrow and never reinterpret a type name as a concrete C++ object.
+        [[nodiscard]] UiResult<std::vector<WindowInfo>> describe(lux::ui::Root&) noexcept;
+        // Uses persistent key/type matching. Extra windows and every existing content association survive.
+        // Layout payload only configures UI; it never opens content or restores an asset locator.
+        [[nodiscard]] UiResult<lux::ui::AttachmentCommit>
+        applyLayout(lux::ui::Root&, services::ServiceScope&, workspace::DockLayout) noexcept;
         [[nodiscard]] UiResult<views::ViewContent> content(lux::ui::Root&, const lux::ui::PaneHandle&) noexcept;
         [[nodiscard]] UiResult<void> rebind(
             lux::ui::Root&, const lux::ui::PaneHandle&, const views::ViewContent&
@@ -222,6 +239,14 @@ namespace lux::editor::desktop
         ) noexcept;
 
     private:
+        [[nodiscard]] UiResult<std::vector<WindowInfo>> describeAdmitted(lux::ui::Root&) noexcept;
+        [[nodiscard]] UiResult<lux::ui::AttachmentCommit> mountAdmitted(
+            lux::ui::Root&,
+            services::ServiceScope&,
+            std::vector<UiMountRequest>,
+            std::optional<lux::ui::DockTree>,
+            std::vector<UiStateRequest>
+        ) noexcept;
         [[nodiscard]] UiResult<std::unique_ptr<lux::ui::Pane, object::ObjectDeleter>>
         createImpl(const UiHandle&, services::ServiceScope&, const UiCreateInfo&) noexcept;
         [[nodiscard]] UiResult<void> visit(

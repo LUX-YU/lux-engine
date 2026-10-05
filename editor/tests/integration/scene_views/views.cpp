@@ -1200,6 +1200,34 @@ namespace
         assert(take(ui.captureState(root, a_handle)).bytes == changed_state.bytes);
         assert(model->describe().current == initial.current && model->describe().observed == observed_before_close);
         assert(model->describe().dirty == initial.dirty && take(take(model->read()).encode()) == bytes);
+        workspace::DockLayout flow_layout;
+        flow_layout.id = {"1234567890abcdef1234567890abcdef"};
+        flow_layout.label = "Flow factory layout";
+        flow_layout.slots = {
+            {{1}, views::ViewRestoreKey{"ec4-flow-a"}, views::ViewTypeId{"lux.editor.flowforge"}, true, changed_state},
+            {{2}, views::ViewRestoreKey{"empty-flow"}, views::ViewTypeId{"lux.editor.flowforge"}, true, b_state}
+        };
+        flow_layout.dock.nodes = {{1, workspace::EDockSplit::LEAF, 0, 0, .5, {{1}, {2}}}};
+        flow_layout.dock.roots = {{1}};
+        assert(ui.applyLayout(root, scope, flow_layout));
+        const auto windows = take(ui.describe(root));
+        assert(windows.size() == 3 && activeWindows() == before + 3);
+        const auto empty = std::ranges::find_if(windows, [](const auto& window)
+        { return window.restore_key.name() == "empty-flow"; });
+        assert(empty != windows.end() && empty->content.sessions.empty());
+        assert(take(ui.captureState(root, empty->handle)).bytes == b_state.bytes);
+        assert(a->binding()->session == key && b->binding()->session == key);
+        assert(take(ui.captureState(root, b_handle)).bytes == b_state.bytes);
+        const auto empty_handle = empty->handle;
+        f.frame();
+        assert(ui.applyLayout(root, scope, flow_layout));
+        assert(take(ui.describe(root)).size() == 3 && root.findPane(empty_handle));
+        auto empty_close = take(ui.prepareClose(root, std::span{&empty_handle, 1}));
+        assert(root.commit(empty_close));
+        (void)f.messages.collectRetired();
+        assert(activeWindows() == before + 2);
+        assert(model->describe().current == initial.current && model->describe().observed == observed_before_close);
+        assert(model->describe().dirty == initial.dirty && take(take(model->read()).encode()) == bytes);
         assert(a->cancelEdit());
         const auto operation = take(a->compile());
         auto compiler = take(services.get<ef::FlowCompilationService>(scope));

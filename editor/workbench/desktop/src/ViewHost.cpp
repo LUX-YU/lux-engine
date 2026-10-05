@@ -1,4 +1,5 @@
 #include <lux/engine/editor/desktop/ViewHost.hpp>
+#include <lux/engine/editor/workbench/DockLayoutMapping.hpp>
 #include <lux/engine/ui/Root.hpp>
 #include <algorithm>
 #include <atomic>
@@ -377,7 +378,11 @@ namespace lux::editor::desktop
             std::vector<workspace::ViewProviderInfo> providers;
             for (const auto& entry : factories.entries())
                 providers.push_back({views::ViewTypeId{entry->descriptor().type.name()}, 1, UINT32_MAX});
-            auto plan = workspace::LayoutPlanner::resolve(*validated, live, providers);
+            std::vector<workspace::LayoutTarget> targets;
+            targets.reserve(live.size());
+            for (const auto& view : live)
+                targets.push_back({view.restore_key, view.type});
+            auto plan = workspace::LayoutPlanner::resolve(*validated, targets, providers);
             if (!plan)
                 return failure("layout", static_cast<std::uint64_t>(plan.error().code), plan.error().detail);
             std::vector<ViewCandidate> candidates;
@@ -390,11 +395,11 @@ namespace lux::editor::desktop
                 views::DetachedView* owner{};
                 if (planned.existing)
                 {
-                    auto* slot = find(*planned.existing);
+                    auto* slot = find(live[*planned.existing].id);
                     if (!slot)
                         return failure("view.identity", 0, "Layout target no longer exists");
                     owner = &*slot->owner;
-                    visibility.push_back({*planned.existing, planned.slot.visible});
+                    visibility.push_back({live[*planned.existing].id, planned.slot.visible});
                 }
                 else
                 {
@@ -421,34 +426,7 @@ namespace lux::editor::desktop
                 states.push_back(std::move(*prepared));
                 windows.emplace(planned.slot.id.value, std::string(owner->pane()->id().name()));
             }
-            lux::ui::DockTree docking;
-            std::map<std::uint32_t, std::uint32_t> indices;
-            for (const auto& node : plan->layout.dock.nodes)
-            {
-                indices.emplace(node.id, static_cast<std::uint32_t>(docking.nodes.size()));
-                docking.nodes.emplace_back();
-            }
-            for (const auto& node : plan->layout.dock.nodes)
-            {
-                auto& output = docking.nodes[indices.at(node.id)];
-                if (node.split != workspace::EDockSplit::LEAF)
-                {
-                    output.split = node.split == workspace::EDockSplit::HORIZONTAL ? lux::ui::EDockSplit::HORIZONTAL
-                                                                                   : lux::ui::EDockSplit::VERTICAL;
-                    output.first = indices.at(node.first);
-                    output.second = indices.at(node.second);
-                    output.ratio = static_cast<float>(node.ratio);
-                }
-                for (auto slot : node.slots)
-                    output.windows.push_back(windows.at(slot.value));
-            }
-            for (const auto& root : plan->layout.dock.roots)
-                docking.surfaces.push_back(
-                    {indices.at(root.node),
-                     {{static_cast<float>(root.x), static_cast<float>(root.y)},
-                      {static_cast<float>(root.width), static_cast<float>(root.height)}},
-                     root.floating}
-                );
+            auto docking = workbench::detail::makeDockTree(plan->layout.dock, windows);
             auto dock = root_.prepareDockTree(std::move(docking));
             if (!dock)
                 return failure("layout.dock", static_cast<std::uint64_t>(dock.error()), "Unsupported window placement");
@@ -468,7 +446,7 @@ namespace lux::editor::desktop
             std::size_t next_candidate{};
             for (const auto& planned : plan->views)
             {
-                auto* owner = planned.existing ? &*find(*planned.existing)->owner
+                auto* owner = planned.existing ? &*find(live[*planned.existing].id)->owner
                                                : &prepared->data_->candidates[next_candidate++].owner;
                 if (auto ended = owner->cancelPreview(); !ended)
                     return cxx::unexpected(std::move(ended.error()));

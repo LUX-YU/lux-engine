@@ -7503,8 +7503,7 @@
       "flowforge_compilation",
       "flowforge_interaction",
       "imgui::core",
-      "view_api",
-      "view_host"
+      "view_api"
     ],
     "closure": {
       "Eigen3::Eigen": {
@@ -8034,9 +8033,6 @@
       },
       "layout_model": {
         "path": "editor/authoring/layout"
-      },
-      "view_host": {
-        "path": "editor/workbench/desktop"
       },
       "ui_input": {
         "path": "modules/function/ui"

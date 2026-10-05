@@ -83,6 +83,8 @@ def check(repo, records, sources, rules, mode, report, compiler_dependencies=Non
             return "extension_optional_capability_leak"
         if owner == "editor_extensions" and dependency in ("view_host", "desktop_shell"):
             return "module_host_dependency"
+        if owner in ("editor_composition", "flow_ui") and dependency in ("view_host", "desktop_shell"):
+            return "ui_factory_host_dependency"
         if layer == "E2" and dest in ("E3", "E4"):
             return "activity_workbench_dependency"
         if layer == "E3" and dest == "E4":

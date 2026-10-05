@@ -22,6 +22,7 @@
 #include <lux/engine/ui/Root.hpp>
 #include <source_location>
 #include <thread>
+#include "../../../../cmake/test-support/ProjectOpenFixture.hpp"
 
 inline void projectToolFactories(const std::filesystem::path& artifacts)
 {
@@ -86,7 +87,8 @@ inline void projectToolFactories(const std::filesystem::path& artifacts)
         services::ServiceEntry::bind<persistence::kWriteCoordinatorService>(object::CodeLease::builtin()),
         services::ServiceEntry::bind<persistence::kSaveService>(object::CodeLease::builtin()),
         services::ServiceEntry::bind<persistence::kSaveExecutionService>(object::CodeLease::builtin()),
-        services::ServiceEntry::bind<assets::kModelImporterService>(object::CodeLease::builtin())
+        services::ServiceEntry::bind<assets::kModelImporterService>(object::CodeLease::builtin()),
+        test::projectOpenFixture()
     };
     assert(services.publish(service_entries));
     auto importer_owner = take(services.get<assets::ModelImporter>(scope));
@@ -194,7 +196,7 @@ inline void projectToolFactories(const std::filesystem::path& artifacts)
     const desktop::UiCreateInfo project_input{messages.dispatcherRef(), ui::PaneId{"assets"}, {}, {}};
     unsigned asset_opens{}, recent_opens{}, browse_requests{};
     std::optional<ui::PaneHandle> browse_target;
-    lux::editor::project::ProjectView::Open asset_open;
+    auto asset_open = take(services.get<lux::editor::project::ProjectView::Open>(scope));
     lux::editor::project::ImportView::Browse browse = [&](ui::PaneHandle id) noexcept
     {
         ++browse_requests;
@@ -207,14 +209,13 @@ inline void projectToolFactories(const std::filesystem::path& artifacts)
         assert(path == directory / "Project.luxproject");
         return cxx::unexpected(EditorFailure{EEditorError::BUSY, "actual.project.owner"});
     };
-    assert(scope.provide(services::ServiceNameView{"lux.editor.project.open"}, asset_open));
     assert(scope.provide(services::ServiceNameView{"lux.editor.project.import.browse"}, browse));
     assert(scope.provide(services::ServiceNameView{"lux.editor.project.recent.open"}, recent_open));
     const auto unchanged_revision = root->windowRevision();
     auto missing_open = windows.mount(*root, scope, {{import_factory, import_input}, {project_factory, project_input}});
     assert(!missing_open && missing_open.error().code == desktop::EUiError::INVALID_CONFIGURATION);
     assert(root->windowRevision() == unchanged_revision && take(windows.describe(*root)).empty());
-    asset_open = [&](const AssetReference& reference) noexcept
+    *asset_open = [&](const AssetReference& reference) noexcept
     {
         ++asset_opens;
         const auto expected = project->catalogModel().reference(asset_id);
@@ -383,6 +384,7 @@ inline void projectToolFactories(const std::filesystem::path& artifacts)
     importer.requestClose();
     assert(importer.closeStatus().state == assets::EModelImportCloseState::CLOSED);
     recent_owner.reset();
+    asset_open.reset();
     std::weak_ptr<assets::ModelImporter> retained_importer = importer_owner;
     importer_owner.reset();
     publishing.reset();

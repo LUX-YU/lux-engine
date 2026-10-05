@@ -1,10 +1,12 @@
 #include <algorithm>
 #include <lux/engine/editor/extensions/Contributions.hpp>
 #include <lux/engine/editor/project/ContentViews.hpp>
+#include <lux/engine/editor/project/ProjectView.hpp>
 #include <lux/engine/editor/sessions/SessionCommands.hpp>
 #include <lux/engine/editor/storage/ProjectContentOpening.hpp>
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
 #include <lux/engine/services/ServiceRegistry.hpp>
+#include <lux/engine/log/Log.hpp>
 #include <lux/engine/ui/Root.hpp>
 #include <thread>
 
@@ -86,6 +88,7 @@ namespace lux::editor::project
         std::uint64_t next_view_{1};
         sessions::SessionCreation creation_;
         commands::CommandEntry::Query creation_available_;
+        ProjectView::Open asset_open_;
         Impl(
             std::shared_ptr<sessions::SessionStore> sessions,
             std::shared_ptr<sessions::SessionOpening> opening,
@@ -384,6 +387,13 @@ namespace lux::editor::project
               contributions
           ))
     {
+        impl_->asset_open_ = [this](const AssetReference& reference)
+        {
+            if (auto queued = enqueue(reference); !queued)
+            {
+                log::error("content.open", "Asset open intent rejected: {}", queued.error().domain);
+            }
+        };
         impl_->creation_ = [this](sessions::SessionPreparation prepared
                            ) -> commands::CommandResult<commands::DispatchReceipt>
         {
@@ -736,7 +746,11 @@ namespace lux::editor::project
         {sessions::kSessionCreationAvailability,
          1,
          cxx::typeToken<commands::CommandEntry::Query>(),
-         [](void* value) noexcept -> void* { return &static_cast<ContentViews*>(value)->impl_->creation_available_; }}
+         [](void* value) noexcept -> void* { return &static_cast<ContentViews*>(value)->impl_->creation_available_; }},
+        {services::ServiceNameView{"lux.editor.project.open"},
+         1,
+         cxx::typeToken<ProjectView::Open>(),
+         [](void* value) noexcept -> void* { return &static_cast<ContentViews*>(value)->impl_->asset_open_; }}
     };
     constinit const services::ServiceDescriptor ContentViews::service = []
     {

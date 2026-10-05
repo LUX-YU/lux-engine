@@ -6,8 +6,10 @@ target_link_libraries(project_tools_ui PUBLIC lux::engine::editor::editor_compos
     lux::engine::editor::editor_assets
     lux::engine::editor::editor_project lux::engine::editor::scene_ui lux::engine::editor::desktop_shell
     lux::engine::editor::session_execution
-    PRIVATE lux::engine::editor::editor_launch lux::engine::project::project_plugin_rendering lux::engine::editor::editor_extensions lux::engine::editor::editor_storage imgui::core)
+    PRIVATE lux::engine::editor::project_ui lux::engine::core::log lux::engine::editor::editor_launch lux::engine::project::project_plugin_rendering lux::engine::editor::editor_extensions lux::engine::editor::editor_storage imgui::core)
 component_add_transitive_commands(project_tools_ui
+    "find_package(lux-engine-editor-project-ui REQUIRED COMPONENTS project_ui)"
+    "find_package(lux-engine-core REQUIRED COMPONENTS log)"
     "find_package(lux-engine-editor-launch REQUIRED COMPONENTS editor_launch)"
     "find_package(lux-engine-project-plugin-rendering REQUIRED COMPONENTS project_plugin_rendering)"
     "find_package(lux-engine-editor-composition REQUIRED COMPONENTS editor_composition)"

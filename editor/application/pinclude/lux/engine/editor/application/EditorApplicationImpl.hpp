@@ -221,7 +221,6 @@ namespace lux::editor::application
         std::uint64_t next_view_{1}, next_review_{1};
         EApplicationPhase phase_{EApplicationPhase::RUNNING};
         bool dispatching_{};
-        project::ProjectView::Open asset_open_;
         project::ImportView::Browse import_browse_request_;
         project::RecentProjectsView::Open recent_open_;
         project::PluginSelectionRequests plugin_requests_;

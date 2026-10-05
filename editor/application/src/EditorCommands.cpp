@@ -3,7 +3,6 @@
 #include <lux/engine/editor/project/ProjectView.hpp>
 #include <lux/engine/editor/sessions/SessionCommands.hpp>
 #include <lux/engine/editor/tasks/TaskView.hpp>
-#include <lux/engine/log/Log.hpp>
 
 namespace
 {
@@ -116,13 +115,6 @@ namespace lux::editor::application
         installResultView(draft);
         installWorkspaceView(draft);
         installProjectTools(draft);
-        asset_open_ = [this](const AssetReference& ref)
-        {
-            if (auto queued = content_views_->enqueue(ref); !queued)
-            {
-                log::error("content.open", "Asset open intent rejected: {}", queued.error().domain);
-            }
-        };
         draft.ui.push_back(desktop::UiEntry::bind<tasks::kTaskView>(object::CodeLease::builtin()));
         const extensions::SessionActivities session_activities{*sessions_, *saves_};
         const extensions::ProjectActivities project_activities{*project_, *writes_, engine_->execution()};
@@ -278,10 +270,6 @@ namespace lux::editor::application
         }
         if (auto provided = scope.provide(services::ServiceNameView{"lux.editor.settings.content"}, settings_content_);
             !provided)
-        {
-            return applicationFailure("service.infrastructure", provided.error());
-        }
-        if (auto provided = scope.provide(services::ServiceNameView{"lux.editor.project.open"}, asset_open_); !provided)
         {
             return applicationFailure("service.infrastructure", provided.error());
         }

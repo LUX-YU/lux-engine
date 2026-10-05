@@ -17,6 +17,7 @@ lux_engine_install_components(PROJECT_NAME lux-engine-editor-project-ui VERSION 
 if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     add_executable(editor_project_views_test test/catalog.cpp)
     target_link_libraries(editor_project_views_test PRIVATE project_ui)
+    target_include_directories(editor_project_views_test PRIVATE ${PROJECT_SOURCE_DIR}/cmake/test-support)
     lux_editor_test_options(editor_project_views_test)
     add_test(NAME editor.project_views COMMAND editor_project_views_test)
 endif()

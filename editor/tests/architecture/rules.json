@@ -8144,7 +8144,8 @@
         "lux/engine/editor/desktop/ReviewView.hpp",
         "cstdio",
         "lux/engine/editor/desktop/UiRegistry.hpp",
-        "array"
+        "array",
+        "ProjectOpenFixture.hpp"
       ]
     },
     "files": [

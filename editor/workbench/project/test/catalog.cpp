@@ -6,6 +6,7 @@
 #include <lux/engine/editor/project/ProjectView.hpp>
 #include <lux/engine/ui/Layout.hpp>
 #include <lux/engine/ui/Root.hpp>
+#include "ProjectOpenFixture.hpp"
 
 using namespace lux;
 using namespace lux::editor;
@@ -182,14 +183,16 @@ int main()
     unsigned received{};
     auto lifetime = std::make_shared<int>(17);
     std::weak_ptr<int> weak = lifetime;
-    project::ProjectView::Open receiver_open = [pin = lifetime.get(), &received](const AssetReference&)
+    assert(services.publish({test::projectOpenFixture()}));
+    auto binding_scope = take(services.createScope());
+    auto receiver_open = take(services.get<project::ProjectView::Open>(binding_scope));
+    std::weak_ptr<project::ProjectView::Open> receiver_lifetime = receiver_open;
+    *receiver_open = [pin = lifetime.get(), &received](const AssetReference&)
     {
         assert(*pin == 17);
         ++received;
     };
-    auto binding_scope = take(services.createScope());
     assert(binding_scope.provide(services::ServiceNameView{"lux.editor.project.catalog"}, source));
-    assert(binding_scope.provide(services::ServiceNameView{"lux.editor.project.open"}, receiver_open));
     auto factory = desktop::UiEntry::bind<project::kProjectView>(object::CodeLease::plugin(lifetime));
     lifetime.reset();
     auto peer_factory = desktop::UiEntry::bind<project::kProjectView>(object::CodeLease::builtin());
@@ -216,12 +219,14 @@ int main()
     factories = {};
     assert(windows.publish(take(desktop::UiCatalog::prepare({}))));
     assert(!weak.expired());
+    receiver_open.reset();
+    assert(!receiver_lifetime.expired());
     assert(first_pane->requestOpen(current_reference) && received == 1);
     auto first_close = take(windows.prepareClose(*root, std::array{first_id}));
     assert(root->commit(first_close) && messages.collectRetired() == 1);
     assert(!weak.expired() && second_pane->requestOpen(current_reference) && received == 2);
     auto last_close = take(windows.prepareClose(*root, std::array{last_id}));
     assert(root->commit(last_close) && messages.collectRetired() == 1);
-    assert(weak.expired());
+    assert(weak.expired() && receiver_lifetime.expired());
     assert(binding_scope.release() && binding_scope.drained());
 }

@@ -27,7 +27,7 @@ namespace lux::editor::project
             {services::ServiceNameView{"lux.editor.project.open"},
              1,
              cxx::typeToken<ProjectView::Open>(),
-             services::EDependencyKind::BORROWED,
+             services::EDependencyKind::SHARED,
              services::EDependencyScope::ROOT,
              {},
              {},
@@ -51,7 +51,7 @@ namespace lux::editor::project
                 "The project window accepts no author binding or configuration payload"
             });
         }
-        auto receiver = resolver.require<Open>(1);
+        auto receiver = resolver.get<Open>(1);
         const bool has_receiver_failure = !receiver && receiver.error().code != services::EServiceError::NOT_FOUND;
         if (has_receiver_failure)
         {
@@ -62,7 +62,10 @@ namespace lux::editor::project
                 receiver.error().detail
             });
         }
-        const bool is_empty_receiver = receiver && !receiver->get();
+        // An absent optional shared dependency is a successful empty owner, distinct from a
+        // present receiver with an empty callable. Only the latter is invalid configuration.
+        const bool has_receiver = receiver && static_cast<bool>(*receiver);
+        const bool is_empty_receiver = has_receiver && !**receiver;
         if (is_empty_receiver)
         {
             return cxx::unexpected(
@@ -80,12 +83,12 @@ namespace lux::editor::project
             });
         }
         auto pane = std::make_unique<ProjectView>(input.dispatcher, input.instance, catalog->get());
-        if (receiver)
+        if (has_receiver)
         {
             auto connection = object::LuxObject::connect(
                 pane.get(),
                 &ProjectView::openRequested,
-                [receiver = *receiver](const AssetReference& value) noexcept { receiver.get()(value); }
+                [receiver = std::move(*receiver)](const AssetReference& value) noexcept { (*receiver)(value); }
             );
             if (!connection)
             {

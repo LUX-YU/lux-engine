@@ -1,8 +1,7 @@
 #pragma once
 #include <lux/cxx/core/move_only_function.hpp>
 #include <lux/engine/editor/desktop/ViewCommands.hpp>
-#include <lux/engine/editor/scene/SceneConfigurationElement.hpp>
-#include <lux/engine/editor/storage/ProjectCreation.hpp>
+#include <lux/engine/editor/project/ProjectCreation.hpp>
 #include <lux/engine/ui/Pane.hpp>
 
 namespace lux::editor::desktop
@@ -13,40 +12,10 @@ namespace lux::editor::desktop
 namespace lux::editor::project
 {
     extern const desktop::UiDescriptor kProjectCreationView;
-    struct ProjectCreationDraft final
-    {
-        std::filesystem::path directory;
-        std::string name, package;
-        std::optional<scene::SceneCreationConfiguration> scene;
-        std::vector<ProjectPluginEntry> plugins;
-    };
-    struct ProjectCreationConfiguration final
-    {
-        scene::SceneConfigurationInputs scene;
-        std::vector<ProjectPluginEntry> plugins;
-    };
-    struct ProjectCreationProgress final
-    {
-        bool pending{}, launched{};
-        std::optional<EditorFailure> failure;
-        std::optional<ProjectCreationResult> committed;
-    };
-    // Synchronous admission/query only. The application owns accepted tasks and durable results.
-    struct ProjectCreationRequests final
-    {
-        std::function<const lux::project::PluginCatalog*()> catalog;
-        std::function<const ProjectCreationProgress&()> progress;
-        std::function<EditorResult<void>(std::vector<ProjectPluginEntry>)> select;
-        std::function<EditorResult<ProjectCreationConfiguration>()> configuration;
-        std::function<EditorResult<void>(ProjectCreationDraft)> create;
-        std::function<EditorResult<void>()> launch;
-        std::function<void()> cancel;
-        std::function<EditorResult<void>()> beginNew;
-    };
     class ProjectCreationView final : public lux::ui::Pane
     {
     public:
-        ProjectCreationView(object::ObjectDispatcherRef, lux::ui::PaneId, ProjectCreationRequests, EditorResult<void>&);
+        ProjectCreationView(object::ObjectDispatcherRef, lux::ui::PaneId, std::shared_ptr<ProjectCreation>, EditorResult<void>&);
         ~ProjectCreationView() noexcept override;
         ProjectCreationView(const ProjectCreationView&) = delete;
         ProjectCreationView& operator=(const ProjectCreationView&) = delete;
@@ -60,8 +29,7 @@ namespace lux::editor::project
     };
     [[nodiscard]] std::shared_ptr<commands::CommandEntry> makeProjectCreationCommand(
         commands::CommandEntry::Query,
-        desktop::ToolOpening,
-        cxx::move_only_function<commands::CommandResult<void>()> start
+        desktop::ToolOpening
     );
 
 } // namespace lux::editor::project

@@ -337,12 +337,6 @@ namespace lux::editor::application
         {
             return applicationFailure("service.infrastructure", provided.error());
         }
-        if (auto provided =
-                scope.provide(services::ServiceNameView{"lux.editor.project.creation.requests"}, creation_requests_);
-            !provided)
-        {
-            return applicationFailure("service.infrastructure", provided.error());
-        }
         return {};
     }
     commands::CommandResult<commands::CommandInvocation> EditorApplication::Impl::

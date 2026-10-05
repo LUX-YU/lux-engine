@@ -64,6 +64,12 @@ namespace lux::editor::application
             return applicationFailure("services.bootstrap.install", installed.error());
         }
         auto& scope = editor_context_.scope();
+        if (auto provided =
+                scope.provide(services::ServiceNameView{"lux.editor.project.creation.options"}, creation_options_);
+            !provided)
+        {
+            return applicationFailure("services.bootstrap.creation-options", provided.error());
+        }
         if (auto provided = scope.provide(services::ServiceNameView{"lux.process.execution"}, engine_->execution());
             !provided)
         {

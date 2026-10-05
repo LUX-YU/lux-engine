@@ -12800,13 +12800,13 @@
         "path": "editor/workbench/flow"
       },
       "editor_launch": {
-        "layer": "E4",
-        "role": "COMPOSITION",
+        "layer": "E2",
+        "role": "IO",
         "capabilities": [
           "CPU",
           "PLATFORM"
         ],
-        "path": "editor/application/launch"
+        "path": "editor/activities/project/launch"
       },
       "editor_metadata": {
         "layer": "RETAINED",
@@ -16596,10 +16596,10 @@
       "editor/activities/workspace/src/WorkspaceStore.cpp": [
         "workspace_store"
       ],
-      "editor/application/launch/include/lux/engine/editor/launcher/LaunchEditor.hpp": [
+      "editor/activities/project/launch/include/lux/engine/editor/launcher/LaunchEditor.hpp": [
         "editor_launch"
       ],
-      "editor/application/launch/src/LaunchEditor.cpp": [
+      "editor/activities/project/launch/src/LaunchEditor.cpp": [
         "editor_launch"
       ],
       "editor/authoring/flow/include/lux/engine/editor/flowforge/FlowAuthoringSource.hpp": [
@@ -18558,14 +18558,11 @@
       "editor/workbench/project/tools/include/lux/engine/editor/project/SettingsView.hpp": [
         "project_tools_ui"
       ],
-      "editor/application/pinclude/lux/engine/editor/application/ProjectCreation.hpp": [
-        "editor_bootstrap"
+      "editor/workbench/project/tools/include/lux/engine/editor/project/ProjectCreation.hpp": [
+        "project_tools_ui"
       ],
-      "editor/application/src/ProjectCreation.cpp": [
-        "editor_bootstrap"
-      ],
-      "editor/application/src/EditorProjectCreation.cpp": [
-        "editor_bootstrap"
+      "editor/workbench/project/tools/src/ProjectCreation.cpp": [
+        "project_tools_ui"
       ],
       "editor/workbench/project/tools/include/lux/engine/editor/project/ProjectCreationView.hpp": [
         "project_tools_ui"

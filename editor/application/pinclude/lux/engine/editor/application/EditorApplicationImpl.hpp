@@ -2,7 +2,6 @@
 #include <lux/engine/EngineContext.hpp>
 #include <lux/engine/EngineRendering.hpp>
 #include <lux/engine/editor/application/EditorApplication.hpp>
-#include <lux/engine/editor/application/ProjectCreation.hpp>
 #include <lux/engine/editor/assets/ModelImporter.hpp>
 #include <lux/engine/editor/desktop/DesktopShell.hpp>
 #include <lux/engine/editor/desktop/ReviewView.hpp>
@@ -14,6 +13,7 @@
 #include <lux/engine/editor/project/ContentViews.hpp>
 #include <lux/engine/editor/project/DesktopSettings.hpp>
 #include <lux/engine/editor/project/ImportView.hpp>
+#include <lux/engine/editor/project/ProjectCreationView.hpp>
 #include <lux/engine/editor/project/ProjectView.hpp>
 #include <lux/engine/editor/project/RecentProjectsView.hpp>
 #include <lux/engine/editor/project/RestoreWorkbench.hpp>
@@ -117,6 +117,7 @@ namespace lux::editor::application
         };
         const std::thread::id owner_{std::this_thread::get_id()};
         EditorApplicationConfig config_;
+        project::ProjectCreationOptions creation_options_{config_.installation, !config_.offscreen};
         std::shared_ptr<const storage::PublicationRoots> publication_roots_{
             std::make_shared<const storage::PublicationRoots>(
                 config_.project_file.parent_path(),
@@ -136,7 +137,6 @@ namespace lux::editor::application
         std::vector<extensions::EditorExtension> extensions_;
         std::vector<extensions::ContributionDraft> module_declarations_;
         std::unique_ptr<ProjectStorage> project_;
-        std::unique_ptr<ProjectCreation> project_creation_;
         std::optional<lux::ui::PaneHandle> import_browse_;
         bool project_open_requested_{};
         std::optional<std::filesystem::path> project_launch_intent_;
@@ -235,7 +235,6 @@ namespace lux::editor::application
         project::ResultsView::Request results_request_;
         project::WorkspaceView::Observe workspace_observe_;
         project::WorkspaceView::Request workspace_request_;
-        cxx::move_only_function<project::ProjectCreationRequests()> creation_requests_;
         input::Input input_;
         // Last owner: views release borrows before interactions, code, services and content.
         lux::ui::FontSource font_;
@@ -268,7 +267,6 @@ namespace lux::editor::application
         [[nodiscard]] EditorResult<project::WorkspaceSnapshot> observeWorkspace();
         void installResultView(extensions::ContributionDraft&);
         void installWorkspaceView(extensions::ContributionDraft&);
-        void installProjectCreation(extensions::ContributionDraft&);
         void installProjectTools(extensions::ContributionDraft&);
         void installSettingsView(extensions::ContributionDraft&);
         [[nodiscard]] EditorResult<void> maintainProjectSettings();

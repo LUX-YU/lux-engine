@@ -1873,97 +1873,116 @@ int main(int argc, char** argv)
     assert(impl.project_->asset(imported_id) && !windowRecord(impl, import_view));
     assert(impl.importer_->acknowledge(*importing));
     assert(app->execute(commands::CommandId{"lux.editor.project.create"}));
-    auto creation_requests = impl.project_creation_->requests();
-    const auto creation_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
-    auto settle_creation = [&](ProjectCreation& activity)
     {
-        while (activity.progress().pending)
+        auto creation_owner =
+            *impl.editor_context_.services().get<lux::editor::project::ProjectCreation>(impl.editor_context_.scope());
+        auto& shared_creation = *creation_owner;
+        assert(shared_creation.start());
+        const auto creation_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+        auto settle_creation = [&](lux::editor::project::ProjectCreation& activity)
         {
-            assert(std::chrono::steady_clock::now() < creation_deadline);
-            checkUpdate(*app);
-            activity.update();
-            std::this_thread::yield();
-        }
-    };
-    settle_creation(*impl.project_creation_);
-    assert(creation_requests.catalog() && !impl.project_creation_->progress().failure);
-    assert(creation_requests.select({}));
-    settle_creation(*impl.project_creation_);
-    assert(!impl.project_creation_->progress().failure);
-    const auto minimal = root / "MinimalProject";
-    assert(creation_requests.create({std::filesystem::absolute(minimal), "Minimal", "", {}}));
-    tool_views = windowRecords(impl);
-    const auto creation_view =
-        std::ranges::find(*tool_views, views::ViewTypeId{"lux.editor.project.creation"}, &desktop::WindowInfo::type)
-            ->handle;
-    assert(app->closeView(creation_view));
-    settle_creation(*impl.project_creation_);
-    assert(impl.project_creation_->progress().committed && !impl.project_creation_->progress().failure);
-    assert(std::filesystem::exists(minimal / "Project.luxproject") && !std::filesystem::exists(minimal / "Content"));
-    assert(prepareProjectOpen(minimal / "Project.luxproject"));
-    for (const auto preset :
-         {editor::scene::ESceneContentPreset::TWO_DIMENSIONAL, editor::scene::ESceneContentPreset::THREE_DIMENSIONAL})
-    {
-        ProjectCreation creation(impl.engine_->execution(), impl.messages_.dispatcherRef(), argv[1], false);
-        auto requests = creation.requests();
-        assert(creation.start());
-        settle_creation(creation);
-        std::vector<ProjectPluginEntry> selection;
-        for (const auto& plugin : requests.catalog()->plugins())
-        {
-            if (plugin.builtin)
+            while (activity.progress().pending)
             {
-                selection.push_back({plugin.identity.id, plugin.identity.version});
+                assert(std::chrono::steady_clock::now() < creation_deadline);
+                checkUpdate(*app);
+                if (&activity != creation_owner.get())
+                {
+                    activity.update(); // Standalone owner; scoped creation is maintained only by Application.
+                }
+                std::this_thread::yield();
             }
-        }
-        assert(requests.select(std::move(selection)));
-        settle_creation(creation);
-        if (creation.progress().failure)
-        {
-            std::cerr << creation.progress().failure->domain << '\n';
-        }
-        assert(!creation.progress().failure);
-        auto inputs = requests.configuration();
-        assert(inputs);
-        editor::scene::SceneConfigurationResult<void> configured;
-        ui::Pane form_pane(
-            impl.messages_.dispatcherRef(),
-            ui::PaneId{"creation-test"},
-            ui::PaneTypeId{"creation-test"},
-            "Creation"
+        };
+        settle_creation(*creation_owner);
+        assert(shared_creation.catalog() && !creation_owner->progress().failure);
+        assert(shared_creation.select({}));
+        settle_creation(*creation_owner);
+        assert(!creation_owner->progress().failure);
+        const auto minimal = root / "MinimalProject";
+        assert(shared_creation.create({std::filesystem::absolute(minimal), "Minimal", "", {}}));
+        tool_views = windowRecords(impl);
+        const auto creation_view =
+            std::ranges::find(*tool_views, views::ViewTypeId{"lux.editor.project.creation"}, &desktop::WindowInfo::type)
+                ->handle;
+        assert(app->closeView(creation_view));
+        settle_creation(*creation_owner);
+        assert(creation_owner->progress().committed && !creation_owner->progress().failure);
+        assert(
+            std::filesystem::exists(minimal / "Project.luxproject") && !std::filesystem::exists(minimal / "Content")
         );
-        ui::Layout fields(form_pane, ui::ElementId{"fields"});
-        editor::scene::SceneConfigurationElement
-            form(fields, ui::ElementId{"configuration"}, inputs->scene, configured);
-        assert(configured && form.applyPreset(preset));
-        auto description = form.build();
-        assert(description);
-        const auto destination =
-            root / (preset == editor::scene::ESceneContentPreset::TWO_DIMENSIONAL ? "Initial2D" : "Initial3D");
-        assert(requests.create(
-            {std::filesystem::absolute(destination), "Beginner", "Beginner", std::move(*description), inputs->plugins}
-        ));
-        settle_creation(creation);
-        if (creation.progress().failure)
+        assert(prepareProjectOpen(minimal / "Project.luxproject"));
+        for (const auto preset :
+             {editor::scene::ESceneContentPreset::TWO_DIMENSIONAL, editor::scene::ESceneContentPreset::THREE_DIMENSIONAL
+             })
         {
-            std::cerr << creation.progress().failure->domain << '\n';
+            lux::editor::project::ProjectCreation
+                creation(impl.engine_->execution(), impl.messages_.dispatcherRef(), argv[1], false);
+            auto& requests = creation;
+            assert(creation.start());
+            settle_creation(creation);
+            std::vector<ProjectPluginEntry> selection;
+            for (const auto& plugin : requests.catalog()->plugins())
+            {
+                if (plugin.builtin)
+                {
+                    selection.push_back({plugin.identity.id, plugin.identity.version});
+                }
+            }
+            assert(requests.select(std::move(selection)));
+            settle_creation(creation);
+            if (creation.progress().failure)
+            {
+                std::cerr << creation.progress().failure->domain << '\n';
+            }
+            assert(!creation.progress().failure);
+            auto inputs = requests.configuration();
+            assert(inputs);
+            editor::scene::SceneConfigurationResult<void> configured;
+            ui::Pane form_pane(
+                impl.messages_.dispatcherRef(),
+                ui::PaneId{"creation-test"},
+                ui::PaneTypeId{"creation-test"},
+                "Creation"
+            );
+            ui::Layout fields(form_pane, ui::ElementId{"fields"});
+            editor::scene::SceneConfigurationElement
+                form(fields, ui::ElementId{"configuration"}, inputs->scene, configured);
+            assert(configured && form.applyPreset(preset));
+            auto description = form.build();
+            assert(description);
+            const auto destination =
+                root / (preset == editor::scene::ESceneContentPreset::TWO_DIMENSIONAL ? "Initial2D" : "Initial3D");
+            assert(requests.create(
+                {std::filesystem::absolute(destination),
+                 "Beginner",
+                 "Beginner",
+                 std::move(*description),
+                 inputs->plugins}
+            ));
+            settle_creation(creation);
+            if (creation.progress().failure)
+            {
+                std::cerr << creation.progress().failure->domain << '\n';
+            }
+            assert(creation.progress().committed && !creation.progress().failure);
+            assert(prepareProjectOpen(destination / "Project.luxproject"));
+            assert(std::filesystem::exists(destination / "Content/Beginner/Main.scene"));
         }
-        assert(creation.progress().committed && !creation.progress().failure);
-        assert(prepareProjectOpen(destination / "Project.luxproject"));
-        assert(std::filesystem::exists(destination / "Content/Beginner/Main.scene"));
+        // Failed creation of an existing directory never overwrites its manifest or adopts a false commit.
+        lux::editor::project::ProjectCreation
+            rejected_creation(impl.engine_->execution(), impl.messages_.dispatcherRef(), argv[1], false);
+        auto& rejected_requests = rejected_creation;
+        assert(rejected_requests.select({}));
+        settle_creation(rejected_creation);
+        const auto original_manifest = prepareProjectOpen(minimal / "Project.luxproject");
+        assert(rejected_requests.create({std::filesystem::absolute(minimal), "Overwrite", "", {}}));
+        settle_creation(rejected_creation);
+        assert(rejected_creation.progress().failure && !rejected_creation.progress().committed);
+        assert(
+            prepareProjectOpen(minimal / "Project.luxproject")->manifest().name == original_manifest->manifest().name
+        );
+        std::cout
+            << "Formal project creation: module service, minimal/2D/3D real files, closed view, conflict retained\n";
     }
-    // Failed creation of an existing directory never overwrites its manifest or adopts a false commit.
-    ProjectCreation rejected_creation(impl.engine_->execution(), impl.messages_.dispatcherRef(), argv[1], false);
-    auto rejected_requests = rejected_creation.requests();
-    assert(rejected_requests.select({}));
-    settle_creation(rejected_creation);
-    const auto original_manifest = prepareProjectOpen(minimal / "Project.luxproject");
-    assert(rejected_requests.create({std::filesystem::absolute(minimal), "Overwrite", "", {}}));
-    settle_creation(rejected_creation);
-    assert(rejected_creation.progress().failure && !rejected_creation.progress().committed);
-    assert(prepareProjectOpen(minimal / "Project.luxproject")->manifest().name == original_manifest->manifest().name);
-    std::cout
-        << "Formal project creation: selected V7 plugins, minimal/2D/3D real files, closed view, conflict retained\n";
 
     assert(app->execute(commands::CommandId{"lux.editor.settings"}));
     tool_views = windowRecords(impl);
@@ -2183,8 +2202,9 @@ int main(int argc, char** argv)
     assert(failing_factories && initial_owner.contributions_.enqueue(*failing_factories));
     assert(initial_owner.contributions_.applyPending());
     assert(
-        *initial_owner.editor_context_.services().get<lux::editor::project::ContentViews>(initial_owner.editor_context_.scope()) ==
-        initial_owner.content_views_
+        *initial_owner.editor_context_.services().get<lux::editor::project::ContentViews>(
+            initial_owner.editor_context_.scope()
+        ) == initial_owner.content_views_
     );
     std::thread wrong_thread(
         [&]

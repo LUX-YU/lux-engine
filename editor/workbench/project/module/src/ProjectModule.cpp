@@ -2,6 +2,7 @@
 #include <lux/engine/editor/persistence/PersistenceServices.hpp>
 #include <lux/engine/editor/project/ContentReview.hpp>
 #include <lux/engine/editor/project/ContentViews.hpp>
+#include <lux/engine/editor/project/ProjectCreationView.hpp>
 #include <lux/engine/editor/project/ProjectModule.hpp>
 #include <lux/engine/editor/project/ProjectView.hpp>
 #include <lux/engine/editor/scene/ProjectSceneEnvironment.hpp>
@@ -21,7 +22,7 @@ namespace lux::editor::project
             +[]() noexcept -> const extensions::EditorExtensionExports*
             {
                 static const extensions::EditorExtensionExports exports{
-                    .counts = {.services = 12, .ui = 1},
+                    .counts = {.services = 13, .ui = 2},
                     .contribute = +[](extensions::ContributionDraft& draft,
                                       object::CodeLease code) -> extensions::ContributionResult<void>
                     {
@@ -42,6 +43,8 @@ namespace lux::editor::project
                         draft.services.push_back(services::ServiceEntry::bind<scene::kProjectSceneEnvironment>(code));
                         draft.services.push_back(services::ServiceEntry::bind<kContentReviewService>(code));
                         draft.services.push_back(services::ServiceEntry::bind<kContentViewsService>(code));
+                        draft.services.push_back(services::ServiceEntry::bind<kProjectCreationService>(code));
+                        draft.ui.push_back(desktop::UiEntry::bind<kProjectCreationView>(code));
                         draft.ui.push_back(desktop::UiEntry::bind<kProjectView>(std::move(code)));
                         return {};
                     }

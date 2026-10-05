@@ -1,3 +1,5 @@
+add_subdirectory(launch)
+
 generate_visibility_header(ENABLE_MACRO_NAME LUX_EDITOR_STORAGE_LIBRARY
     PUBLIC_MACRO_NAME LUX_EDITOR_STORAGE_PUBLIC DISABLE_DLL_MACRO_NAME LUX_EDITOR_STORAGE_DLL_DISABLE
     GENERATE_FILE_PATH lux/engine/editor/storage/visibility.h)

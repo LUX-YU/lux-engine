@@ -18,12 +18,11 @@ namespace lux::editor::project
     } // namespace
     namespace
     {
-        using CreateRequests = cxx::move_only_function<ProjectCreationRequests()>;
         constexpr services::ServiceDependency kDependencies[]{
-            {services::ServiceNameView{"lux.editor.project.creation.requests"},
+            {services::ServiceNameView{"lux.editor.project.creation"},
              1,
-             cxx::typeToken<CreateRequests>(),
-             services::EDependencyKind::BORROWED,
+             cxx::typeToken<ProjectCreation>(),
+             services::EDependencyKind::SHARED,
              services::EDependencyScope::ROOT}
         };
         desktop::UiResult<std::unique_ptr<lux::ui::Pane>> createView(
@@ -40,36 +39,19 @@ namespace lux::editor::project
                     desktop::UiFailure{desktop::EUiError::INVALID_CONFIGURATION, "project.creation.input"}
                 );
             }
-            auto requests = resolver.require<CreateRequests>(0);
-            if (!requests)
+            auto creation = resolver.get<ProjectCreation>(0);
+            if (!creation)
             {
                 return cxx::unexpected(desktop::UiFailure{
                     desktop::EUiError::DEPENDENCY,
-                    "project.creation.requests",
-                    static_cast<std::uint64_t>(requests.error().code),
-                    requests.error().detail
+                    "project.creation.service",
+                    static_cast<std::uint64_t>(creation.error().code),
+                    creation.error().detail
                 });
-            }
-            if (!requests->get())
-            {
-                return cxx::unexpected(
-                    desktop::UiFailure{desktop::EUiError::INVALID_CONFIGURATION, "project.creation.requests"}
-                );
-            }
-            auto callbacks = requests->get()();
-            const bool has_queries = callbacks.catalog && callbacks.progress && callbacks.configuration;
-            const bool has_actions =
-                callbacks.select && callbacks.create && callbacks.launch && callbacks.cancel && callbacks.beginNew;
-            const bool is_invalid_requests = !has_queries || !has_actions;
-            if (is_invalid_requests)
-            {
-                return cxx::unexpected(
-                    desktop::UiFailure{desktop::EUiError::INVALID_CONFIGURATION, "project.creation.requests"}
-                );
             }
             EditorResult<void> ready;
             auto pane =
-                std::make_unique<ProjectCreationView>(input.dispatcher, input.instance, std::move(callbacks), ready);
+                std::make_unique<ProjectCreationView>(input.dispatcher, input.instance, std::move(*creation), ready);
             if (!ready)
             {
                 return cxx::unexpected(desktop::UiFailure{
@@ -109,7 +91,7 @@ namespace lux::editor::project
                 ImGui::Text("%s Working...", frames[static_cast<unsigned>(ImGui::GetTime() * 8) % 4]);
             }
         };
-        ProjectCreationRequests requests_;
+        std::shared_ptr<ProjectCreation> creation_;
         lux::ui::Layout layout_, fields_, plugin_list_, actions_;
         lux::ui::Label heading_, name_label_, directory_label_, spatial_, confirmation_, error_;
         lux::ui::TextEdit name_, directory_, package_;
@@ -123,11 +105,11 @@ namespace lux::editor::project
         std::vector<ProjectPluginEntry> configured_plugins_;
         std::optional<EAction> action_;
         std::optional<std::int64_t> preset_applied_;
-        bool catalog_loaded_{}, selecting_{};
+        bool catalog_loaded_{}, selecting_{}, started_{};
         unsigned step_{};
 
-        Impl(ProjectCreationView& view, ProjectCreationRequests requests, EditorResult<void>& status)
-            : requests_(std::move(requests)), layout_(view, lux::ui::ElementId{"content"}),
+        Impl(ProjectCreationView& view, std::shared_ptr<ProjectCreation> creation, EditorResult<void>& status)
+            : creation_(std::move(creation)), layout_(view, lux::ui::ElementId{"content"}),
               fields_(layout_, lux::ui::ElementId{"fields"}), plugin_list_(fields_, lux::ui::ElementId{"plugins"}),
               actions_(layout_, lux::ui::ElementId{"actions"}, lux::ui::ELayoutType::HORIZONTAL),
               heading_(fields_, lux::ui::ElementId{"heading"}),
@@ -155,6 +137,11 @@ namespace lux::editor::project
               cancel_(actions_, lux::ui::ElementId{"cancel"}, "Cancel pending task"),
               new_(actions_, lux::ui::ElementId{"new"}, "Create another project")
         {
+            if (!creation_)
+            {
+                status = cxx::unexpected(EditorFailure{EEditorError::INVALID_ARGUMENT, "creation.service"});
+                return;
+            }
             if (!view.setContent(layout_))
             {
                 std::terminate(); // Fixed content in a detached Pane.
@@ -189,7 +176,7 @@ namespace lux::editor::project
         }
         void showStep()
         {
-            const auto& progress = requests_.progress();
+            const auto& progress = creation_->progress();
             const bool busy = progress.pending || selecting_;
             fields_.setEnabled(!busy && !progress.committed);
             waiting_.setVisible(busy);
@@ -256,9 +243,18 @@ namespace lux::editor::project
         }
         void update()
         {
+            if (!started_)
+            {
+                auto started = creation_->start();
+                if (!started && started.error().code != EEditorError::BUSY)
+                {
+                    report(started.error());
+                }
+                started_ = true;
+            }
             if (!catalog_loaded_)
             {
-                if (const auto* catalog = requests_.catalog())
+                if (const auto* catalog = creation_->catalog())
                 {
                     for (const auto& plugin : catalog->plugins())
                     {
@@ -276,7 +272,7 @@ namespace lux::editor::project
                     catalog_loaded_ = true;
                 }
             }
-            const auto& progress = requests_.progress();
+            const auto& progress = creation_->progress();
             if (progress.failure)
             {
                 report(*progress.failure);
@@ -284,7 +280,7 @@ namespace lux::editor::project
             if (selecting_ && !progress.pending)
             {
                 selecting_ = false;
-                auto inputs = requests_.configuration();
+                auto inputs = creation_->configuration();
                 if (!inputs)
                 {
                     report(inputs.error());
@@ -333,13 +329,13 @@ namespace lux::editor::project
                 EditorResult<void> result;
                 if (*action == EAction::CANCEL)
                 {
-                    requests_.cancel();
+                    creation_->cancel();
                 }
                 else if (*action == EAction::RESET)
                 {
                     form_.reset();
                     preset_applied_.reset();
-                    result = requests_.beginNew();
+                    result = creation_->beginNew();
                     if (result)
                     {
                         step_ = 0;
@@ -347,7 +343,7 @@ namespace lux::editor::project
                 }
                 else if (*action == EAction::LAUNCH)
                 {
-                    result = requests_.launch();
+                    result = creation_->launch();
                 }
                 else if (!progress.pending && !progress.committed)
                 {
@@ -383,7 +379,7 @@ namespace lux::editor::project
                                         selected.push_back({identity.id, identity.version});
                                     }
                                 }
-                                result = requests_.select(std::move(selected));
+                                result = creation_->select(std::move(selected));
                                 selecting_ = result.has_value();
                             }
                         }
@@ -411,7 +407,7 @@ namespace lux::editor::project
                             draft.scene.emplace(std::move(*configured));
                         }
                         draft.plugins = configured_plugins_;
-                        result = requests_.create(std::move(draft));
+                        result = creation_->create(std::move(draft));
                     }
                 }
                 if (!result)
@@ -425,11 +421,11 @@ namespace lux::editor::project
     ProjectCreationView::ProjectCreationView(
         object::ObjectDispatcherRef dispatcher,
         lux::ui::PaneId id,
-        ProjectCreationRequests requests,
+        std::shared_ptr<ProjectCreation> creation,
         EditorResult<void>& status
     )
         : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{kProjectCreationView.type.name()}, "New project"),
-          impl_(std::make_unique<Impl>(*this, std::move(requests), status))
+          impl_(std::make_unique<Impl>(*this, std::move(creation), status))
     {
     }
     ProjectCreationView::~ProjectCreationView() noexcept = default;
@@ -443,22 +439,19 @@ namespace lux::editor::project
 {
     std::shared_ptr<commands::CommandEntry> makeProjectCreationCommand(
         commands::CommandEntry::Query query,
-        desktop::ToolOpening open,
-        cxx::move_only_function<commands::CommandResult<void>()> start
+        desktop::ToolOpening open
     )
     {
         return workbench::detail::bindCommand<kCommand>(
             std::move(query),
-            [open = std::move(open),
-             start = std::move(start)](const commands::CommandInvocation&) mutable -> commands::CommandResult<void>
+            [open = std::move(open)](const commands::CommandInvocation&) mutable -> commands::CommandResult<void>
             {
                 auto shown = open(views::ViewTypeId{kProjectCreationView.type.name()});
                 if (!shown)
                 {
                     return cxx::unexpected(shown.error());
                 }
-                // Construction and Root adoption precede work which needs the new view's maintenance.
-                return start();
+                return {};
             }
         );
     }

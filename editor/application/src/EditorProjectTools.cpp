@@ -18,7 +18,11 @@ namespace lux::editor::application
     {
         installRecentProjects(draft);
         installSettingsView(draft);
-        installProjectCreation(draft);
+        draft.commands.push_back(project::makeProjectCreationCommand(
+            [phase = &phase_](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
+            { return commands::CommandState{*phase == EApplicationPhase::RUNNING}; },
+            toolOpening()
+        ));
         draft.commands.push_back(project::makeInitialSceneCommand(
             [phase = &phase_](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
             { return commands::CommandState{*phase == EApplicationPhase::RUNNING}; },

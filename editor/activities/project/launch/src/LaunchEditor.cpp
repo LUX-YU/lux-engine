@@ -1,6 +1,6 @@
+#include <array>
 #include <lux/engine/editor/launcher/LaunchEditor.hpp>
 #include <lux/engine/platform/Process.hpp>
-#include <array>
 
 namespace lux::editor
 {
@@ -13,19 +13,23 @@ namespace lux::editor
         const std::array arguments{std::string{"--project"}, std::string(encoded.begin(), encoded.end())};
         auto executable = engine::platform::executablePath();
         if (!executable)
+        {
             return lux::cxx::unexpected(
                 EditorFailure{EEditorError::SOURCE_FAILURE, "editor.executable", executable.error().native_code}
             );
+        }
         auto editor = installation / "bin/lux_editor";
         editor += executable->extension();
         const auto launched = engine::platform::launchProcess(editor, arguments);
         if (!launched)
+        {
             return lux::cxx::unexpected(EditorFailure{
                 EEditorError::SOURCE_FAILURE,
                 "editor.launch",
                 launched.error().native_code,
                 "The project remains saved. Check the Editor installation and retry opening it."
             });
+        }
         return {};
     }
-}
+} // namespace lux::editor

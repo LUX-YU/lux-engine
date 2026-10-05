@@ -483,7 +483,7 @@ namespace lux::editor::application
             }
             return {};
         }
-        if (close_application_ && (project_launch_ || (project_creation_ && project_creation_->progress().pending)))
+        if (close_application_ && project_launch_)
         {
             return {};
         }
@@ -712,10 +712,6 @@ namespace lux::editor::application
         }
         receive(recent_projects_->update(phase_ == EApplicationPhase::RUNNING));
         importer_->update();
-        if (project_creation_)
-        {
-            project_creation_->update();
-        }
         receive(maintainProjectSettings());
         receive(user_settings_changes_->update(false));
         receive(project_settings_changes_->update(false));

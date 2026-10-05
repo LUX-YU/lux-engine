@@ -1,14 +1,14 @@
-#include <lux/engine/editor/application/ProjectCreation.hpp>
 #include <lux/engine/editor/extensions/EditorExtension.hpp>
-#include <lux/engine/editor/storage/ProjectPlugins.hpp>
 #include <lux/engine/editor/launcher/LaunchEditor.hpp>
 #include <lux/engine/editor/project/ProjectBuilder.hpp>
-#include <lux/engine/project/PluginRendering.hpp>
+#include <lux/engine/editor/project/ProjectCreation.hpp>
+#include <lux/engine/editor/storage/ProjectPlugins.hpp>
 #include <lux/engine/process/TaskScope.hpp>
+#include <lux/engine/project/PluginRendering.hpp>
 #include <lux/engine/scene/ScenePackage.hpp>
 #include <random>
 
-namespace lux::editor::application
+namespace lux::editor::project
 {
     namespace
     {
@@ -39,12 +39,18 @@ namespace lux::editor::application
             if (result)
             {
                 if constexpr (std::is_void_v<T>)
+                {
                     return {};
+                }
                 else
+                {
                     return std::move(*result);
+                }
             }
             if (auto* domain = result.error().domainFailure())
+            {
                 return cxx::unexpected(std::move(*domain));
+            }
             return failure("project.task", result.error());
         }
         EditorResult<ProjectBuildConfig> buildProject(project::ProjectCreationDraft draft)
@@ -64,7 +70,9 @@ namespace lux::editor::application
                     draft.scene->scene
                 );
                 if (!package)
+                {
                     return failure("project.scene", package.error());
+                }
                 builder.setInitialScene(
                     {draft.package + "/Main.scene",
                      draft.package + "/Main.scene",
@@ -73,7 +81,9 @@ namespace lux::editor::application
             }
             auto built = std::move(builder).build();
             if (!built)
+            {
                 return failure("project.build", built.error());
+            }
             return std::move(*built);
         }
     } // namespace
@@ -111,12 +121,16 @@ namespace lux::editor::application
             // TaskScope drains before callback state/environment is destroyed. Closing a view does not cancel it.
             tasks_.requestStop();
             if (!tasks_.join())
+            {
                 std::terminate();
+            }
         }
         template <class Factory> EditorResult<void> submit(std::string label, Factory factory)
         {
             if (progress_.pending)
+            {
                 return cxx::unexpected(EditorFailure{EEditorError::BUSY, "project.task"});
+            }
             auto accepted = tasks_.submit(
                 {std::move(label), "Project"},
                 std::move(factory),
@@ -128,7 +142,9 @@ namespace lux::editor::application
                 }
             );
             if (!accepted)
+            {
                 return failure("project.submit", accepted.error());
+            }
             progress_.pending = true;
             cancelled_ = false;
             progress_.failure.reset();
@@ -138,10 +154,14 @@ namespace lux::editor::application
         EditorResult<void> start()
         {
             if (catalog_)
+            {
                 return {};
+            }
             auto blocking = tasks_.execution().blocking();
             if (!blocking)
+            {
                 return failure("project.scheduler", blocking.error());
+            }
             return submit(
                 "Read project plugin catalog",
                 [scheduler = *blocking, installation = installation_](process::TaskReporter) noexcept
@@ -154,7 +174,9 @@ namespace lux::editor::application
                             auto read =
                                 catalog.read(installation / "share/lux-engine/plugins/catalog.json", installation);
                             if (!read)
+                            {
                                 return failure("project.catalog", read.error());
+                            }
                             return catalog;
                         }
                     );
@@ -164,10 +186,14 @@ namespace lux::editor::application
         EditorResult<void> select(std::vector<ProjectPluginEntry> selected)
         {
             if (progress_.committed)
+            {
                 return cxx::unexpected(EditorFailure{EEditorError::INVALID_STATE, "project.published"});
+            }
             auto blocking = tasks_.execution().blocking();
             if (!blocking)
+            {
                 return failure("project.scheduler", blocking.error());
+            }
             auto accepted = submit(
                 "Load creation plugins",
                 [scheduler = *blocking, installation = installation_, selected](process::TaskReporter) noexcept
@@ -178,7 +204,9 @@ namespace lux::editor::application
                         {
                             auto manager = loadProjectPlugins({}, selected, installation);
                             if (!manager)
+                            {
                                 return failure("project.plugins", manager.error());
+                            }
                             LoadedPlugins loaded{std::move(*manager)};
                             for (const auto& runtime : loaded.manager.libraries())
                             {
@@ -188,12 +216,16 @@ namespace lux::editor::application
                                     loaded.extensions
                                 );
                                 if (!extension)
+                                {
                                     return failure("project.extension", extension.error());
+                                }
                                 loaded.extensions.push_back(std::move(*extension));
                             }
                             auto registrations = lux::project::readSceneRegistrations({}, loaded.manager.libraries());
                             if (!registrations)
+                            {
                                 return failure("project.registrations", registrations.error());
+                            }
                             loaded.registrations = std::move(*registrations);
                             return loaded;
                         }
@@ -201,7 +233,9 @@ namespace lux::editor::application
                 }
             );
             if (accepted)
+            {
                 selected_ = std::move(selected);
+            }
             return accepted;
         }
         EditorResult<void> adopt(LoadedPlugins loaded)
@@ -212,8 +246,11 @@ namespace lux::editor::application
             {
                 auto supplied = extension.contributions();
                 if (!supplied)
+                {
                     return failure("creation.contributions", supplied.error());
-                auto append = [](auto& target, auto& source) {
+                }
+                auto append = [](auto& target, auto& source)
+                {
                     target.insert(
                         target.end(),
                         std::make_move_iterator(source.begin()),
@@ -228,28 +265,42 @@ namespace lux::editor::application
             }
             auto prepared = extensions::ContributionSnapshot::prepare(std::move(draft));
             if (!prepared)
+            {
                 return failure("creation.prepare", prepared.error());
+            }
             auto queued = candidate->contributions.enqueue(*prepared);
             if (!queued)
+            {
                 return failure("creation.enqueue", queued.error());
+            }
             auto applied = candidate->contributions.applyPending();
             if (!applied)
+            {
                 return failure("creation.reflect", applied.error());
+            }
             environment_ = std::move(candidate);
             return {};
         }
         EditorResult<project::ProjectCreationConfiguration> configuration()
         {
             if (progress_.failure)
+            {
                 return cxx::unexpected(*progress_.failure);
+            }
             if (progress_.pending || !environment_)
+            {
                 return cxx::unexpected(EditorFailure{EEditorError::BUSY, "project.plugins"});
+            }
             auto environment = environment_;
             const auto& registrations = environment->plugins.registrations;
             auto inputs = scene::makeSceneConfigurationInputs(
                 environment->plugins.manager.catalog(),
-                {registrations.components, *registrations.simulation_systems, registrations.scene_systems,
-                 registrations.features, scene::defaultSceneProviders(), registrations.render_bindings},
+                {registrations.components,
+                 *registrations.simulation_systems,
+                 registrations.scene_systems,
+                 registrations.features,
+                 scene::defaultSceneProviders(),
+                 registrations.render_bindings},
                 environment->contributions.snapshot().services(),
                 environment
             );
@@ -262,12 +313,18 @@ namespace lux::editor::application
         EditorResult<void> create(project::ProjectCreationDraft draft)
         {
             if (progress_.failure)
+            {
                 return cxx::unexpected(*progress_.failure);
+            }
             if (!environment_ || progress_.committed)
+            {
                 return cxx::unexpected(EditorFailure{EEditorError::INVALID_STATE, "project.create"});
+            }
             auto blocking = tasks_.execution().blocking();
             if (!blocking)
+            {
                 return failure("project.scheduler", blocking.error());
+            }
             return submit(
                 "Create project",
                 [draft = std::move(draft),
@@ -285,25 +342,35 @@ namespace lux::editor::application
                             auto directory = draft.directory;
                             auto config = buildProject(std::move(draft));
                             if (!config)
+                            {
                                 return cxx::unexpected(config.error());
-                            return detail::prepareProjectCreation(
+                            }
+                            return lux::editor::detail::prepareProjectCreation(
                                 std::move(directory),
                                 std::move(*config),
                                 reporter.stopToken()
                             );
                         }
                     );
-                    return detail::publishPreparedProject(std::move(prepared), blocking, reporter.stopToken());
+                    return lux::editor::detail::publishPreparedProject(
+                        std::move(prepared),
+                        blocking,
+                        reporter.stopToken()
+                    );
                 }
             );
         }
         EditorResult<void> launch()
         {
             if (!progress_.committed)
+            {
                 return cxx::unexpected(EditorFailure{EEditorError::INVALID_STATE, "project.launch"});
+            }
             auto blocking = tasks_.execution().blocking();
             if (!blocking)
+            {
                 return failure("project.scheduler", blocking.error());
+            }
             return submit(
                 "Open project in Editor",
                 [scheduler = *blocking,
@@ -321,12 +388,16 @@ namespace lux::editor::application
         {
             cancelled_ = true;
             if (task_)
+            {
                 static_cast<void>(tasks_.execution().requestStop(*task_));
+            }
         }
         void update()
         {
             if (std::holds_alternative<std::monostate>(completed_))
+            {
                 return;
+            }
             auto result = std::move(completed_);
             completed_.emplace<std::monostate>();
             progress_.pending = false;
@@ -342,12 +413,16 @@ namespace lux::editor::application
                             return;
                         }
                         if constexpr (std::is_same_v<T, EditorResult<lux::project::PluginCatalog>>)
+                        {
                             catalog_ = std::move(*value);
+                        }
                         else if constexpr (std::is_same_v<T, EditorResult<LoadedPlugins>>)
                         {
                             auto adopted = adopt(std::move(*value));
                             if (!adopted)
+                            {
                                 progress_.failure = std::move(adopted.error());
+                            }
                         }
                         else if constexpr (std::is_same_v<T, EditorResult<ProjectCreationResult>>)
                         {
@@ -356,11 +431,15 @@ namespace lux::editor::application
                             {
                                 auto opened = launch();
                                 if (!opened)
+                                {
                                     progress_.failure = std::move(opened.error());
+                                }
                             }
                         }
                         else
+                        {
                             progress_.launched = true;
+                        }
                     }
                 },
                 result
@@ -393,23 +472,91 @@ namespace lux::editor::application
     {
         impl_->cancel();
     }
-    project::ProjectCreationRequests ProjectCreation::requests()
+    const lux::project::PluginCatalog* ProjectCreation::catalog() const noexcept
     {
-        return {
-            [this]() { return impl_->catalog_ ? &*impl_->catalog_ : nullptr; },
-            [this]() -> const project::ProjectCreationProgress& { return impl_->progress_; },
-            [this](auto selected) { return impl_->select(std::move(selected)); },
-            [this]() { return impl_->configuration(); },
-            [this](auto draft) { return impl_->create(std::move(draft)); },
-            [this]() { return impl_->launch(); },
-            [this]() { impl_->cancel(); },
-            [this]() -> EditorResult<void>
-            {
-                if (impl_->progress_.pending)
-                    return cxx::unexpected(EditorFailure{EEditorError::BUSY, "project.reset"});
-                impl_->progress_ = {};
-                return {};
-            }
-        };
+        return impl_->catalog_ ? &*impl_->catalog_ : nullptr;
     }
-} // namespace lux::editor::application
+    EditorResult<void> ProjectCreation::select(std::vector<ProjectPluginEntry> value)
+    {
+        return impl_->select(std::move(value));
+    }
+    EditorResult<ProjectCreationConfiguration> ProjectCreation::configuration()
+    {
+        return impl_->configuration();
+    }
+    EditorResult<void> ProjectCreation::create(ProjectCreationDraft value)
+    {
+        return impl_->create(std::move(value));
+    }
+    EditorResult<void> ProjectCreation::launch()
+    {
+        return impl_->launch();
+    }
+    EditorResult<void> ProjectCreation::beginNew()
+    {
+        if (impl_->progress_.pending)
+        {
+            return cxx::unexpected(EditorFailure{EEditorError::BUSY, "project.reset"});
+        }
+        impl_->progress_ = {};
+        return {};
+    }
+    namespace
+    {
+        constexpr services::ServiceContract contracts[]{
+            services::ServiceContract::forType<ProjectCreation, ProjectCreation>(
+                services::ServiceNameView{"lux.editor.project.creation"}
+            )
+        };
+        constexpr services::ServiceDependency dependencies[]{
+            {services::ServiceNameView{"lux.process.execution"},
+             1,
+             cxx::typeToken<process::ExecutionRuntime>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT},
+            {services::ServiceNameView{"lux.editor.project.creation.options"},
+             1,
+             cxx::typeToken<ProjectCreationOptions>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT}
+        };
+        services::ServiceResult<std::unique_ptr<ProjectCreation>>
+        createCreation(services::ServiceResolver& resolver, const services::ServiceConfiguration&) noexcept
+        {
+            auto execution = resolver.require<process::ExecutionRuntime>(0);
+            if (!execution)
+            {
+                return cxx::unexpected(std::move(execution.error()));
+            }
+            auto options = resolver.require<ProjectCreationOptions>(1);
+            if (!options)
+            {
+                return cxx::unexpected(std::move(options.error()));
+            }
+            return std::make_unique<ProjectCreation>(
+                execution->get(),
+                resolver.dispatcher(),
+                options->get().installation,
+                options->get().launch_created
+            );
+        }
+    } // namespace
+    constinit const services::ServiceDescriptor kProjectCreationService = []
+    {
+        auto descriptor = services::ServiceDescriptor::forType<ProjectCreation, createCreation>(
+            services::ServiceNameView{"lux.editor.project.creation"},
+            contracts,
+            dependencies
+        );
+        descriptor.retention = services::EServiceRetention::SCOPED;
+        descriptor.affinity = services::EServiceAffinity::OWNER;
+        descriptor.maintain = [](void* value) noexcept -> services::ServiceResult<void>
+        {
+            static_cast<ProjectCreation*>(value)->update();
+            return {};
+        };
+        descriptor.settled = [](const void* value) noexcept -> services::ServiceResult<bool>
+        { return !static_cast<const ProjectCreation*>(value)->progress().pending; };
+        return descriptor;
+    }();
+} // namespace lux::editor::project

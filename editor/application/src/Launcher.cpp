@@ -1,11 +1,12 @@
 #include <cstdio>
+#include <lux/cxx/core/scope_exit.hpp>
 #include <lux/engine/EngineContext.hpp>
 #include <lux/engine/EngineRendering.hpp>
 #include <lux/engine/editor/application/Launcher.hpp>
-#include <lux/engine/editor/application/ProjectCreation.hpp>
 #include <lux/engine/editor/desktop/DesktopShell.hpp>
 #include <lux/engine/editor/desktop/UiRegistry.hpp>
 #include <lux/engine/editor/launcher/LaunchEditor.hpp>
+#include <lux/engine/editor/project/ProjectCreationView.hpp>
 #include <lux/engine/input/Input.hpp>
 #include <lux/engine/process/TaskScope.hpp>
 #include <lux/engine/ui/rendering/RenderFeature.hpp>
@@ -68,17 +69,42 @@ namespace lux::editor::application
             return 3;
         }
         auto& execution = (*engine)->execution();
-        ProjectCreation creation(execution, messages->dispatcherRef(), installation);
         commands::CommandRegistry commands;
         commands::CommandDispatcher dispatcher(commands);
         bool closing{}, open_requested{};
         std::optional<EditorResult<void>> launched;
         std::optional<process::TaskId> launching;
         process::TaskScope tasks(execution);
-        cxx::move_only_function<project::ProjectCreationRequests()> requests = [&] { return creation.requests(); };
+        project::ProjectCreationOptions creation_options{installation, true};
         services::ServiceRegistry services(messages->dispatcherRef());
         auto scope = services.createScope();
-        if (!scope || !scope->provide(services::ServiceNameView{"lux.editor.project.creation.requests"}, requests))
+        if (!scope || !scope->provide(services::ServiceNameView{"lux.process.execution"}, execution) ||
+            !scope->provide(services::ServiceNameView{"lux.editor.project.creation.options"}, creation_options) ||
+            !services.publish(
+                {services::ServiceEntry::bind<project::kProjectCreationService>(object::CodeLease::builtin())}
+            ))
+        {
+            return 3;
+        }
+        auto retire = [&]() noexcept
+        {
+            // Later locals release UI/shared owners first, including startup failure paths.
+            // Accepted work is settled by the loop; only dispatcher reclamation remains here.
+            if (!scope->release())
+            {
+                std::terminate();
+            }
+            while (!scope->drained())
+            {
+                if (!messages->collectRetired())
+                {
+                    std::terminate();
+                }
+            }
+        };
+        const cxx::scope_exit retire_services{retire};
+        auto creation = services.get<project::ProjectCreation>(*scope);
+        if (!creation)
         {
             return 3;
         }
@@ -156,7 +182,7 @@ namespace lux::editor::application
         {
             return 3;
         }
-        if (!creation.start())
+        if (!(*creation)->start())
         {
             return 3;
         }
@@ -182,7 +208,10 @@ namespace lux::editor::application
                 fail("tasks");
             }
             (void)messages->dispatchPending();
-            creation.update();
+            if (!scope->maintain())
+            {
+                fail("services");
+            }
             if (launched)
             {
                 if (!*launched)
@@ -195,7 +224,7 @@ namespace lux::editor::application
                 }
                 launched.reset();
             }
-            if (creation.progress().launched)
+            if ((*creation)->progress().launched)
             {
                 closing = true;
             }
@@ -211,8 +240,8 @@ namespace lux::editor::application
             if (closing)
             {
                 window.hide(true);
-                creation.cancel();
-                if (!creation.progress().pending && !launching)
+                (*creation)->cancel();
+                if (!(*creation)->progress().pending && !launching)
                 {
                     break;
                 }

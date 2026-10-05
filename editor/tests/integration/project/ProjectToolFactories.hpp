@@ -61,7 +61,7 @@ inline void projectToolFactories(const std::filesystem::path& artifacts)
     lux::editor::project::ResultsView::Request results_request;
     lux::editor::project::WorkspaceView::Observe workspace_observe;
     lux::editor::project::WorkspaceView::Request workspace_request;
-    cxx::move_only_function<lux::editor::project::ProjectCreationRequests()> creation_requests;
+    lux::editor::project::ProjectCreationOptions creation_options{directory, false};
     services::ServiceRegistry services{messages.dispatcherRef()};
     auto scope = take(services.createScope());
     assert(scope.provide(services::ServiceNameView{"lux.editor.project.catalog"}, project->catalogModel()));
@@ -259,44 +259,20 @@ inline void projectToolFactories(const std::filesystem::path& artifacts)
     workspace_request = [](lux::editor::project::VWorkspaceIntent) -> EditorResult<void> { return {}; };
     assert(scope.provide(services::ServiceNameView{"lux.editor.workspace.observe"}, workspace_observe));
     assert(scope.provide(services::ServiceNameView{"lux.editor.workspace.request"}, workspace_request));
-    assert(scope.provide(services::ServiceNameView{"lux.editor.project.creation.requests"}, creation_requests));
+    const auto unready_revision = root->windowRevision();
     auto missing_creation = windows.create(creation_factory, scope, creation_input);
-    assert(!missing_creation && missing_creation.error().code == desktop::EUiError::INVALID_CONFIGURATION);
-    creation_requests = [] { return lux::editor::project::ProjectCreationRequests{}; };
+    assert(!missing_creation && missing_creation.error().code == desktop::EUiError::DEPENDENCY);
+    assert(services.publish(
+        {services::ServiceEntry::bind<lux::editor::project::kProjectCreationService>(object::CodeLease::builtin())}
+    ));
     auto incomplete_creation = windows.create(creation_factory, scope, creation_input);
-    assert(!incomplete_creation && incomplete_creation.error().code == desktop::EUiError::INVALID_CONFIGURATION);
-    unsigned creation_actions{};
-    lux::editor::project::ProjectCreationProgress progress;
-    creation_requests = [&]
-    {
-        return lux::editor::project::ProjectCreationRequests{
-            [&] { return &plugins.catalog(); },
-            [&]() -> const auto& { return progress; },
-            [&](std::vector<ProjectPluginEntry>) -> EditorResult<void>
-            {
-                ++creation_actions;
-                return {};
-            },
-            []() -> EditorResult<lux::editor::project::ProjectCreationConfiguration>
-            { return cxx::unexpected(EditorFailure{EEditorError::BUSY, "not.configured"}); },
-            [&](lux::editor::project::ProjectCreationDraft) -> EditorResult<void>
-            {
-                ++creation_actions;
-                return {};
-            },
-            [&]() -> EditorResult<void>
-            {
-                ++creation_actions;
-                return {};
-            },
-            [&] { ++creation_actions; },
-            [&]() -> EditorResult<void>
-            {
-                ++creation_actions;
-                return {};
-            }
-        };
-    };
+    assert(!incomplete_creation && incomplete_creation.error().code == desktop::EUiError::DEPENDENCY);
+    assert(root->windowRevision() == unready_revision);
+    assert(scope.provide(services::ServiceNameView{"lux.process.execution"}, execution));
+    assert(scope.provide(services::ServiceNameView{"lux.editor.project.creation.options"}, creation_options));
+    auto creation = take(services.get<lux::editor::project::ProjectCreation>(scope));
+    assert(take(services.get<lux::editor::project::ProjectCreation>(scope)) == creation);
+    assert(!creation->progress().pending && !creation->catalog() && !creation->progress().committed);
     assert(scope.provide(services::ServiceNameView{"lux.editor.project.plugins.requests"}, plugin_requests));
     auto incomplete_plugins = windows.create(settings_factory, scope, settings_input);
     assert(!incomplete_plugins && incomplete_plugins.error().code == desktop::EUiError::INVALID_CONFIGURATION);
@@ -329,7 +305,7 @@ inline void projectToolFactories(const std::filesystem::path& artifacts)
         scope,
         {{results_factory, results_input}, {workspace_factory, workspace_input}, {creation_factory, creation_input}}
     ));
-    assert(observed == 0 && requested == 0 && creation_actions == 0);
+    assert(observed == 0 && requested == 0 && !creation->progress().pending);
     auto all = take(windows.describe(*root));
     assert(all.size() == 4);
     std::vector<ui::PaneHandle> tool_handles;
@@ -356,7 +332,21 @@ inline void projectToolFactories(const std::filesystem::path& artifacts)
     assert(!settings_connection.connected() && plugin_requests_received == 1);
     const auto old_observed = observed;
     assert(root->update({}, nullptr));
-    assert(observed == old_observed && creation_actions == 0);
+    assert(observed == old_observed && !creation->progress().committed);
+    // Closing the view leaves the admitted read with the same scoped owner.
+    const auto creation_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(30);
+    while (creation->progress().pending)
+    {
+        assert(std::chrono::steady_clock::now() < creation_deadline);
+        assert(execution.collectCompletions() && scope.maintain());
+        std::this_thread::yield();
+    }
+    assert(creation->progress().failure && !creation->progress().committed);
+    assert(take(scope.settled()));
+    creation.reset();
+    assert(scope.release());
+    assert(!scope.drained());
+    assert(messages.collectRetired() == 1 && scope.drained() && services.drained());
     importer.requestClose();
     assert(importer.closeStatus().state == assets::EModelImportCloseState::CLOSED);
     std::cout << "EC4 project tools: exact dependencies, atomic mount, Root ownership, "

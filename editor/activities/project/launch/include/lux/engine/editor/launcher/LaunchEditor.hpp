@@ -1,6 +1,6 @@
 #pragma once
-#include <lux/engine/editor/EditorError.hpp>
 #include <filesystem>
+#include <lux/engine/editor/EditorError.hpp>
 
 namespace lux::editor
 {
@@ -9,4 +9,4 @@ namespace lux::editor
         const std::filesystem::path& installation,
         const std::filesystem::path& project_file
     ) noexcept;
-}
+} // namespace lux::editor

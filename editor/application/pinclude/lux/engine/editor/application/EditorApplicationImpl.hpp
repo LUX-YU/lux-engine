@@ -21,6 +21,7 @@
 #include <lux/engine/editor/project/WorkspaceView.hpp>
 #include <lux/engine/editor/scene/ModelPlacementService.hpp>
 #include <lux/engine/editor/scene/RunStore.hpp>
+#include <lux/engine/editor/scene/ScenePlayback.hpp>
 #include <lux/engine/editor/scene/SceneCreationView.hpp>
 #include <lux/engine/editor/scene/SceneSessionFactory.hpp>
 #include <lux/engine/editor/scene/SceneTools.hpp>
@@ -111,18 +112,6 @@ namespace lux::editor::application
         {
             commands::SessionTarget target;
             lux::ui::PaneHandle view;
-        };
-        struct RunPresentation final
-        {
-            scene::StartRunId start;
-            sessions::ContentStamp source;
-            std::unique_ptr<scene::StartRunOperation> preparing;
-            std::optional<scene::RunId> run;
-            std::vector<lux::ui::PaneHandle> views;
-            std::optional<scene::StopTicket> stopping;
-            bool stop_requested{};
-            std::vector<scene::StepTicket> steps;
-            std::optional<EditorFailure> failure;
         };
         struct RunCloseDecision final
         {
@@ -221,7 +210,7 @@ namespace lux::editor::application
         std::unique_ptr<assets::ModelImporter> importer_;
         std::shared_ptr<ProjectContentSaving> content_saving_;
         std::shared_ptr<ProjectPluginSelection> plugin_saving_;
-        std::shared_ptr<scene::RunStore> runs_;
+        std::shared_ptr<scene::ScenePlayback> playback_;
         commands::CommandRegistry& commands_{editor_context_.commands()};
         commands::CommandDispatcher command_dispatcher_{commands_};
         extensions::ContributionRegistry contributions_;
@@ -236,7 +225,6 @@ namespace lux::editor::application
         std::optional<EditorFailure> workspace_failure_;
         std::optional<project::VWorkspaceIntent> workspace_intent_;
         std::unique_ptr<project::RestoreWorkbench> restoration_;
-        std::vector<RunPresentation> run_presentations_;
         std::vector<OpenPresentation> opens_;
         std::vector<AssetReference> open_intents_;
         std::shared_ptr<scene::ModelPlacementService> model_placements_;
@@ -330,11 +318,6 @@ namespace lux::editor::application
         [[nodiscard]] EditorResult<void> reload(commands::SessionTarget);
         [[nodiscard]] EditorResult<void> askReload(commands::SessionTarget);
         [[nodiscard]] EditorResult<void> receiveReloadAnswer();
-        [[nodiscard]] EditorResult<scene::StartRunId> play(commands::SessionTarget);
-        [[nodiscard]] EditorResult<void> maintainRuns();
-        [[nodiscard]] EditorResult<void> stopRun(scene::RunId);
-        [[nodiscard]] EditorResult<lux::ui::PaneHandle> showSceneTool(lux::ui::PaneHandle, scene::ESceneTool);
-        [[nodiscard]] EditorResult<void> stepRun(scene::RunId);
         [[nodiscard]] EditorResult<lux::ui::PaneHandle> show(sessions::SessionId, bool another_view);
         [[nodiscard]] EditorResult<lux::ui::PaneHandle> makeContentView(
             views::ViewContent,

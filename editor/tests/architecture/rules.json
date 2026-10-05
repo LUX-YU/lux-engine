@@ -6514,7 +6514,15 @@
       "lux/engine/editor/desktop/UiError.hpp",
       "lux/engine/editor/workspace/WorkspaceValues.hpp",
       "lux/engine/editor/scene/SceneControlInputs.hpp",
-      "lux/engine/editor/scene/SceneEditorCatalog.hpp"
+      "lux/engine/editor/scene/SceneEditorCatalog.hpp",
+      "lux/engine/editor/scene/ScenePlayback.hpp",
+      "thread",
+      "lux/engine/editor/scene/RunTypes.hpp",
+      "lux/engine/editor/sessions/ContentStamp.hpp",
+      "memory",
+      "optional",
+      "span",
+      "vector"
     ],
     "prefixes": [],
     "test_headers": {
@@ -6631,7 +6639,9 @@
       "editor/workbench/scene/include/lux/engine/editor/scene/SceneTools.hpp",
       "editor/workbench/scene/src/SceneTools.cpp",
       "editor/workbench/scene/src/SceneCommands.cpp",
-      "editor/workbench/scene/src/SceneToolFactories.cpp"
+      "editor/workbench/scene/src/SceneToolFactories.cpp",
+      "editor/workbench/scene/include/lux/engine/editor/scene/ScenePlayback.hpp",
+      "editor/workbench/scene/src/ScenePlayback.cpp"
     ],
     "project_include_dirs": [
       "editor/workbench/sinclude",
@@ -9266,7 +9276,8 @@
       "lux/engine/project/PluginManager.hpp",
       "lux/engine/editor/sessions/SessionServices.hpp",
       "lux/engine/editor/persistence/PersistenceServices.hpp",
-      "lux/engine/editor/storage/PublicationFileStore.hpp"
+      "lux/engine/editor/storage/PublicationFileStore.hpp",
+      "lux/engine/editor/scene/ScenePlayback.hpp"
     ],
     "prefixes": [],
     "test_headers": {
@@ -18961,6 +18972,12 @@
       ],
       "editor/activities/sessions/src/SessionServices.cpp": [
         "session_execution"
+      ],
+      "editor/workbench/scene/include/lux/engine/editor/scene/ScenePlayback.hpp": [
+        "scene_ui"
+      ],
+      "editor/workbench/scene/src/ScenePlayback.cpp": [
+        "scene_ui"
       ]
     },
     "native_libraries": [

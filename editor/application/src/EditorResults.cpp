@@ -60,36 +60,15 @@ namespace lux::editor::application
                 }
                 else if constexpr (std::same_as<Action, AcknowledgeRunFailure>)
                 {
-                    std::erase_if(
-                        run_presentations_,
-                        [&](const auto& run)
-                        {
-                            const bool is_target = run.start == action.target;
-                            const bool is_failed = run.failure.has_value();
-                            const bool is_released = !run.preparing && !run.run;
-                            return is_target && is_failed && is_released;
-                        }
-                    );
+                    if (playback_) return playback_->acknowledgeFailure(action.target);
                 }
                 else if constexpr (std::same_as<Action, AcknowledgeStep>)
                 {
-                    const auto ticket = action.target;
-                    if (!runs_)
+                    if (!playback_)
                     {
                         return applicationFailure("run.step.acknowledge", scene::ERunError::INVALID_ID);
                     }
-                    auto acknowledged = runs_->acknowledgeStep(ticket);
-                    if (!acknowledged)
-                    {
-                        return applicationFailure("run.step.acknowledge", acknowledged.error());
-                    }
-                    for (auto& run : run_presentations_)
-                    {
-                        if (run.run == ticket.run)
-                        {
-                            std::erase(run.steps, ticket);
-                        }
-                    }
+                    return playback_->acknowledgeStep(action.target);
                 }
                 else if constexpr (std::same_as<Action, AcknowledgeModel>)
                 {
@@ -201,7 +180,12 @@ namespace lux::editor::application
             }
         }
         snapshot.sections.push_back({"Run results"});
-        for (const auto& run : run_presentations_)
+        auto run_reports = playback_ ? playback_->reports() : EditorResult<std::vector<scene::RunPresentationInfo>>{};
+        if (!run_reports)
+        {
+            return cxx::unexpected(run_reports.error());
+        }
+        for (const auto& run : *run_reports)
         {
             auto& to = row(std::to_string(run.start.domain) + "/" + std::to_string(run.start.serial));
             if (run.failure)
@@ -212,18 +196,14 @@ namespace lux::editor::application
                     to.actions.push_back({"Acknowledge failed Run", AcknowledgeRunFailure{run.start}});
                 }
             }
-            for (const auto& ticket : run.steps)
+            for (const auto& step : run.steps)
             {
-                auto step = runs_->stepStatus(ticket);
-                if (!step)
-                {
-                    return applicationFailure("results.step", step.error());
-                }
+                const auto ticket = step.ticket;
                 const auto name = "Step " + std::to_string(ticket.step.serial);
-                to.messages.push_back(name + ": " + std::to_string(static_cast<unsigned>(step->state)));
-                const bool completed = step->state == lux::scene::ESceneStepState::COMPLETED ||
-                                       step->state == lux::scene::ESceneStepState::FAILED ||
-                                       step->state == lux::scene::ESceneStepState::CANCELLED;
+                to.messages.push_back(name + ": " + std::to_string(static_cast<unsigned>(step.status.state)));
+                const bool completed = step.status.state == lux::scene::ESceneStepState::COMPLETED ||
+                                       step.status.state == lux::scene::ESceneStepState::FAILED ||
+                                       step.status.state == lux::scene::ESceneStepState::CANCELLED;
                 if (completed)
                 {
                     to.actions.push_back({"Acknowledge " + name, AcknowledgeStep{ticket}});

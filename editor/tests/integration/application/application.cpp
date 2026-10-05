@@ -1748,7 +1748,16 @@ int main(int argc, char** argv)
         commands::CommandId{"lux.editor.play"},
         commands::CommandInvocation{commands::SessionTarget{scene_id, run_source}}
     ));
-    while (impl.run_presentations_.empty() || !impl.run_presentations_.front().run)
+    auto playback = impl.editor_context_.services().get<lux::editor::scene::ScenePlayback>(impl.editor_context_.scope());
+    auto runs = impl.editor_context_.services().get<lux::editor::scene::RunStore>(impl.editor_context_.scope());
+    assert(playback && runs);
+    const auto presentations = [&]
+    {
+        auto values = (*playback)->reports();
+        assert(values);
+        return std::move(*values);
+    };
+    while (presentations().empty() || !presentations().front().run)
     {
         assert(std::chrono::steady_clock::now() < scene_deadline);
         auto updated = app->update();
@@ -1758,15 +1767,15 @@ int main(int argc, char** argv)
         }
         assert(updated);
     }
-    const auto run = *impl.run_presentations_.front().run;
-    assert(!impl.run_presentations_.front().failure);
-    assert(!impl.run_presentations_.front().views.empty());
-    const auto run_view = impl.run_presentations_.front().views.front();
+    const auto run = *presentations().front().run;
+    assert(!presentations().front().failure);
+    assert(!presentations().front().views.empty());
+    const auto run_view = presentations().front().views.front();
     assert(app->execute(
         commands::CommandId{"lux.editor.scene.pause"},
         commands::CommandInvocation::forView(windowHandle(run_view), lux::object::CodeLease::builtin())
     ));
-    while (impl.runs_->info(run)->pause_pending)
+    while ((*runs)->info(run)->pause_pending)
     {
         checkUpdate(*app);
     }
@@ -1774,23 +1783,23 @@ int main(int argc, char** argv)
         commands::CommandId{"lux.editor.scene.step"},
         commands::CommandInvocation::forView(windowHandle(run_view), lux::object::CodeLease::builtin())
     ));
-    const auto step = impl.run_presentations_.front().steps.front();
+    const auto step = presentations().front().steps.front().ticket;
     const auto step_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
-    while (impl.runs_->info(run)->pause_pending)
+    while ((*runs)->info(run)->pause_pending)
     {
         assert(std::chrono::steady_clock::now() < step_deadline);
         checkUpdate(*app);
         std::this_thread::yield();
     }
-    assert(impl.runs_->stepStatus(step)); // Completion has not been silently acknowledged by an update.
-    assert(impl.runs_->stepStatus(step)->state == lux::scene::ESceneStepState::COMPLETED);
+    assert((*runs)->stepStatus(step)); // Completion has not been silently acknowledged by an update.
+    assert((*runs)->stepStatus(step)->state == lux::scene::ESceneStepState::COMPLETED);
     assert(impl.requestClose(impl.sessions_->describe(scene_id)->current));
     assert(app->update() && impl.review_);
     answer(desktop::EReviewChoice::DISCARD);
     assert(app->update() && impl.review_ && impl.review_run_ == run);
     answer(desktop::EReviewChoice::KEEP_RUN);
     assert(app->update() && app->phase() == EApplicationPhase::RUNNING);
-    assert(!impl.sessions_->describe(scene_id) && impl.runs_->info(run));
+    assert(!impl.sessions_->describe(scene_id) && (*runs)->info(run));
     assert(windowRecord(impl, run_view));
     auto running_interaction = lux::editor::scene::shareSceneInteraction(impl.desktop_->root(), windowHandle(run_view));
     assert(running_interaction && (*running_interaction)->synchronize());
@@ -1806,7 +1815,7 @@ int main(int argc, char** argv)
     {
         checkUpdate(*app);
     }
-    assert(impl.runs_->info(run)->provenance.content == run_source);
+    assert((*runs)->info(run)->provenance.content == run_source);
     std::cout << "Formal scene form, Outliner, frozen Play/Pause/Step/Resume and Keep Run after author close\n";
 
     // Formal factories, concrete UI admission and application-owned completion survive the window.
@@ -1977,7 +1986,7 @@ int main(int argc, char** argv)
     auto exit_operation = (*material_compilation)->operation(exit_compile);
     assert(exit_operation && !exit_operation->get().ready());
     const auto exit_task = exit_operation->get().task();
-    assert(impl.runs_->info(run) && !impl.engine_->renderContext()->resources().empty());
+    assert((*runs)->info(run) && !impl.engine_->renderContext()->resources().empty());
     assert(CloseActivity::created == 0); // Declaration alone and all prior frames construct nothing.
     auto first_service = impl.editor_context_.services().get<CloseActivity>(impl.editor_context_.scope(), "pending");
     auto second_service = impl.editor_context_.services().get<CloseActivity>(impl.editor_context_.scope(), "ready");

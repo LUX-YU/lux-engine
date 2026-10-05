@@ -26,6 +26,7 @@
 #include <lux/engine/editor/scene/SceneConfigurationView.hpp>
 #include <lux/engine/editor/scene/SceneCreationView.hpp>
 #include <lux/engine/editor/scene/SceneModule.hpp>
+#include <lux/engine/editor/scene/ScenePlayback.hpp>
 #include <lux/engine/editor/scene/SceneTools.hpp>
 #include <lux/engine/editor/scene/SceneView.hpp>
 #include <lux/engine/editor/sessions/SessionOpening.hpp>
@@ -1718,7 +1719,10 @@ namespace
         auto module = take(extensions::EditorExtension::fromStatic(author::sceneModule()));
         auto declared = take(module.contributions());
         assert(declared.sessions.size() == 1 && declared.commands.empty());
-        assert(declared.services.size() == 3 && declared.ui.size() == 7);
+        assert(declared.services.size() == 4 && declared.ui.size() == 7);
+        // Run installation supplies an asset capability, so it must be a real valid read port even
+        // for this asset-free scene. Match the standalone Run fixture, not an invalid empty input.
+        f.environment.assets = {{13, 1}, 1, take(process::asset_loading::makeAssetReadOverlay({}, {})), {}};
         useFixedEnvironment(declared, f.environment);
         const auto cold_services = declared.services;
         assert(f.publish(std::move(declared.services)));
@@ -1866,6 +1870,111 @@ namespace
         );
         const auto receipt = take(f.resources->viewReceipt(a->viewport()));
         const auto instance = a->presentedInstance();
+        {
+            // The actual public workbench owner runs without EditorApplication or a private Impl.
+            assert(scope.provide(services::ServiceNameView{"lux.ui.root"}, root));
+            assert(scope.provide(services::ServiceNameView{"lux.editor.ui"}, windows));
+            auto playback = take(services.get<author::ScenePlayback>(scope));
+            auto runs = take(services.get<author::RunStore>(scope));
+            assert(take(services.get<author::ScenePlayback>(scope)) == playback);
+            f.runs = runs.get();
+            const auto source = model->describe().current;
+            const auto first_run = take(playback->play(source));
+            const auto second_run = take(playback->play(source));
+            assert(first_run != second_run && take(playback->reports()).size() == 2);
+            std::thread wrong_thread([&]
+            {
+                auto refused = playback->reports();
+                assert(!refused && refused.error().code == editor::EEditorError::INVALID_STATE);
+            });
+            wrong_thread.join();
+            // Review retains both accepted preparations; it neither starts instances nor discards them.
+            f.wait([&]
+            {
+                assert(playback->update(false));
+                for (const auto& report : take(playback->reports()))
+                {
+                    assert(report.preparing && !report.run);
+                }
+                return std::ranges::count_if(f.execution.taskInfos(), [](const auto& task)
+                {
+                    return task.name == "Prepare scene run" && task.finished &&
+                           task.state == process::ETaskState::SUCCEEDED;
+                }) == 2;
+            }, false);
+            f.wait([&]
+            {
+                assert(playback->update());
+                const auto reports = take(playback->reports());
+                for (const auto& report : reports)
+                {
+                    if (report.failure)
+                    {
+                        std::fprintf(stderr, "playback failed: %s code=%u\n", report.failure->domain.c_str(),
+                                     static_cast<unsigned>(report.failure->code));
+                        if (const auto* run = std::any_cast<author::RunFailure>(&report.failure->cause))
+                        {
+                            std::fprintf(stderr, "run cause index=%zu\n", run->cause.index());
+                            if (const auto* runtime = std::get_if<lux::scene::SceneRuntimeFailure>(&run->cause))
+                            {
+                                std::fprintf(stderr, "runtime cause index=%zu\n", runtime->cause.index());
+                                if (const auto* build = std::get_if<lux::scene::SceneBuildFailure>(&runtime->cause))
+                                    std::fprintf(stderr, "build code=%u system=%u subject=%llu\n", unsigned(build->code),
+                                                 unsigned(build->scene_system.code),
+                                                 static_cast<unsigned long long>(build->subject_hash));
+                            }
+                        }
+                        assert(false && "An accepted preparation failed, not a wait timeout");
+                    }
+                }
+                return std::ranges::all_of(reports, [](const auto& report) { return bool(report.run); });
+            });
+            const auto accepted = take(playback->reports());
+            const auto run_a = *accepted[0].run, run_b = *accepted[1].run;
+            assert(!accepted[0].failure && !accepted[1].failure);
+            assert(accepted[0].views.size() == 1 && accepted[1].views.size() == 1);
+            assert(take(runs->info(run_a)).instance != take(runs->info(run_b)).instance);
+            assert(take(runs->info(run_a)).provenance.content == source);
+            assert(runs->pause(run_a));
+            f.wait([&] { return !take(runs->info(run_a)).pause_pending; });
+            assert(playback->step(run_a));
+            f.wait([&]
+            {
+                const auto reports = take(playback->reports());
+                assert(reports.front().steps.size() == 1);
+                return reports.front().steps.front().status.state == lux::scene::ESceneStepState::COMPLETED;
+            });
+            const auto ticket = take(playback->reports()).front().steps.front().ticket;
+            // Closing a Run window does not consume its result or stop the Run.
+            auto detach = take(windows.prepareClose(root, accepted[0].views));
+            assert(root.commit(detach) && playback->forgetViews(accepted[0].views));
+            f.frame(false);
+            assert(take(runs->stepStatus(ticket)).state == lux::scene::ESceneStepState::COMPLETED);
+            assert(playback->acknowledgeStep(ticket) && take(playback->reports()).front().steps.empty());
+            assert(playback->stop(run_a));
+            f.wait([&]
+            {
+                assert(playback->update());
+                return take(playback->reports()).size() == 1;
+            });
+            assert(!runs->info(run_a) && runs->info(run_b));
+            assert(model->describe().current == source && encode() == bytes);
+            // A later accepted preparation is cancelled by close; existing windows detach first.
+            assert(playback->play(source));
+            auto detach_last = take(windows.prepareClose(root, accepted[1].views));
+            assert(root.commit(detach_last) && playback->forgetViews(accepted[1].views));
+            assert(playback->requestClose());
+            assert(!playback->play(source) && !playback->step(run_b));
+            f.wait([&]
+            {
+                assert(playback->update());
+                return playback->settled();
+            });
+            assert(!runs->info(run_b) && take(runs->settled()));
+            f.runs = nullptr;
+            std::printf("EC4 ScenePlayback: declared owner without Application; independent Runs, review, "
+                        "late step result, view close and cancelled preparation PASS\n");
+        }
         auto permit = take(f.store.prepareClose(model->describe().current));
         assert(f.store.close(permit) && !weak_model.expired());
         assert(!a->beginEdit("logically closed") && !f.store.access<author::SceneSession>().share(key));

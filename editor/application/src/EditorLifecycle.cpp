@@ -292,6 +292,11 @@ namespace lux::editor::application
         {
             return applicationFailure("exit.views", views.error());
         }
+        auto run_reports = playback_ ? playback_->reports() : EditorResult<std::vector<scene::RunPresentationInfo>>{};
+        if (!run_reports)
+        {
+            return cxx::unexpected(run_reports.error());
+        }
         std::vector<lux::ui::PaneHandle> ids;
         ids.reserve(views->size());
         for (const auto& view : *views)
@@ -305,7 +310,7 @@ namespace lux::editor::application
                 }
             );
             const bool stops_run = std::ranges::any_of(
-                run_presentations_,
+                *run_reports,
                 [&](const auto& run)
                 {
                     return run.run && std::ranges::find(run.views, view.handle) != run.views.end() &&
@@ -532,20 +537,18 @@ namespace lux::editor::application
             return applicationFailure("exit.views.commit", committed.error());
         }
         closing_.reset();
-        for (auto& run : run_presentations_)
+        if (playback_)
         {
-            std::erase_if(run.views, [&](auto view) { return std::ranges::find(ids, view) != ids.end(); });
+            auto forgotten = playback_->forgetViews(ids);
+            if (!forgotten) return forgotten;
         }
         close_decisions_.clear();
         for (const auto& decision : close_run_decisions_)
         {
             if (decision.choice == desktop::EReviewChoice::STOP_RUN)
             {
-                auto run = std::ranges::find(run_presentations_, std::optional{decision.run}, &RunPresentation::run);
-                if (run != run_presentations_.end())
-                {
-                    run->stop_requested = true;
-                }
+                auto requested = playback_->requestStop(decision.run);
+                if (!requested) return requested;
             }
         }
         close_run_decisions_.clear();
@@ -563,6 +566,11 @@ namespace lux::editor::application
             {
                 return closing;
             }
+        }
+        if (playback_)
+        {
+            auto closing = playback_->requestClose();
+            if (!closing) return closing;
         }
         opening_->requestStop();
         importer_->requestClose();
@@ -620,7 +628,7 @@ namespace lux::editor::application
                 workspace_changes_->publications(),
                 [](const auto& value) { return value.result.has_value(); }
             ) &&
-            std::ranges::none_of(run_presentations_, [](const auto& run) { return bool(run.preparing) || run.run; });
+            (!playback_ || playback_->settled());
         if (phase_ == EApplicationPhase::DRAINING && operations_settled &&
             std::ranges::none_of(reloads_, [](const auto& reload) { return bool(reload.operation); }) &&
             (!model_placements_ || model_placements_->settled()))
@@ -783,7 +791,10 @@ namespace lux::editor::application
             }
             receive(applicationFailure("scene.execution", std::shared_ptr<const SceneFailures>{std::move(failure)}));
         }
-        receive(maintainRuns());
+        if (playback_)
+        {
+            receive(playback_->update(phase_ != EApplicationPhase::REVIEWING));
+        }
         receive(settleOperations());
         (void)messages_.collectRetired();
         if (!outcome && !maintenance_failure_)

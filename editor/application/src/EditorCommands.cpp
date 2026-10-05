@@ -80,6 +80,14 @@ namespace lux::editor::application
         {
             return applicationFailure("service.infrastructure", provided.error());
         }
+        if (auto provided = scope.provide(services::ServiceNameView{"lux.ui.root"}, desktop_->root()); !provided)
+        {
+            return applicationFailure("service.root", provided.error());
+        }
+        if (auto provided = scope.provide(services::ServiceNameView{"lux.editor.ui"}, editor_context_.ui()); !provided)
+        {
+            return applicationFailure("service.ui", provided.error());
+        }
         extensions::ContributionDraft draft;
 
         draft.reflection.push_back({lux::object::CodeLease::builtin(), project::registerDesktopSettings});

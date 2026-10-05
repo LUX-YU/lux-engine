@@ -36,7 +36,12 @@ namespace lux::editor::application
         };
         close_run_decisions_.clear();
         close_destinations_.clear();
-        for (const auto& run : run_presentations_)
+        auto run_reports = playback_ ? playback_->reports() : EditorResult<std::vector<scene::RunPresentationInfo>>{};
+        if (!run_reports)
+        {
+            return cxx::unexpected(run_reports.error());
+        }
+        for (const auto& run : *run_reports)
         {
             if (run.source.session == expected.session && run.run && !run.stopping)
             {
@@ -117,9 +122,9 @@ namespace lux::editor::application
         {
             return applicationFailure("close.view.commit", committed.error());
         }
-        for (auto& run : run_presentations_)
+        if (playback_)
         {
-            std::erase(run.views, id);
+            return playback_->forgetViews(std::span{&id, 1});
         }
         return {};
     }
@@ -184,9 +189,10 @@ namespace lux::editor::application
             last_view_.reset();
             if (keep)
             {
-                for (auto& run : run_presentations_)
+                if (playback_)
                 {
-                    std::erase(run.views, decision.view);
+                    auto forgotten = playback_->forgetViews(std::span{&decision.view, 1});
+                    if (!forgotten) return forgotten;
                 }
             }
             else

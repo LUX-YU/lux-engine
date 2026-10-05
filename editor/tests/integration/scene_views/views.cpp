@@ -2835,16 +2835,23 @@ namespace
             {},
             lux::scene::builtinRenderFeatureSceneBindings()
         };
-        auto configuration_view = take(author::makeSceneConfigurationView(
-            f.messages.dispatcherRef(),
-            lux::ui::PaneId{"configuration"},
-            f.store.access<author::SceneSession>(),
-            inputs,
-            *f.key
+        services::ServiceRegistry services(f.messages.dispatcherRef());
+        auto scope = take(services.createScope());
+        assert(scope.provide(services::ServiceNameView{"lux.editor.sessions"}, f.store));
+        assert(scope.provide(services::ServiceNameView{"lux.editor.scene.configuration"}, inputs));
+        auto module = take(extensions::EditorExtension::fromStatic(author::sceneModule()));
+        auto declared = take(module.contributions());
+        desktop::UiRegistry windows(f.messages.dispatcherRef(), services);
+        auto ui_catalog = take(desktop::UiCatalog::prepare(std::move(declared.ui)));
+        assert(windows.publish(ui_catalog));
+        auto& root = f.desktop->root();
+        auto configuration_view = take(windows.create(
+            take(ui_catalog.find(author::kSceneConfigurationView.type)), scope,
+            {f.messages.dispatcherRef(), ui::PaneId{"configuration"}, {{f.key->id()}, f.key->id()}}
         ));
-        auto* configuration = static_cast<author::SceneConfigurationView*>(configuration_view.pane());
-        const auto config_id =
-            take((*f.legacy_host).adopt(configuration_view, views::ViewRestoreKey{"configuration"})).id;
+        auto* configuration = static_cast<author::SceneConfigurationView*>(configuration_view.get());
+        assert(root.addSubPane(std::move(configuration_view)));
+        const auto config_id = take(root.identify(*configuration));
         const auto original = f.session->describe();
         const auto find_page = [&](auto&& self, object::LuxObject& owner) -> lux::ui::NumericEdit*
         {
@@ -2888,45 +2895,41 @@ namespace
         assert(configuration->status() && f.session->describe().current == original.current);
         page = find_page(find_page, *configuration);
         assert(page && std::get<double>(page->value()) == 1024.0);
-        assert((*f.legacy_host).close(config_id));
-        f.wait([&] { return !(*f.legacy_host).describe(config_id); }, false);
+        assert(take(f.session->read()).withRead([&](const author::SceneReadView&) -> author::SceneEditResult<void>
+        {
+            auto denied = windows.prepareClose(root, std::span{&config_id, 1});
+            assert(!denied && denied.error().code == desktop::EUiError::BUSY);
+            assert(root.findPane(config_id) && configuration->form());
+            return {};
+        }));
+        auto config_close = take(windows.prepareClose(root, std::span{&config_id, 1}));
+        assert(root.commit(config_close) && !root.findPane(config_id));
+        f.frame(false);
         std::optional<sessions::SessionId> created;
         const auto before = f.session->describe();
         std::size_t requests{};
-        author::SceneCreationRequests sink{
-            [&](const author::SceneCreationConfiguration& config) -> author::SceneConfigurationResult<void>
+        std::optional<sessions::InstalledSession> installed;
+        sessions::SessionCreation sink =
+            [&](sessions::SessionPreparation input) -> commands::CommandResult<commands::DispatchReceipt>
+        {
+            ++requests;
+            if (requests == 1)
             {
-                ++requests;
-                if (requests == 1)
-                {
-                    return cxx::unexpected(author::SceneConfigurationFailure{
-                        author::ESceneConfigurationError::BUSY,
-                        "scene.create.admission"
-                    });
-                }
-                auto package = take(lux::scene::createScenePackage(
-                    asset::AssetId{uuid("created-by-form")},
-                    config.name,
-                    config.schemas,
-                    config.simulation,
-                    config.scene
-                ));
-                auto reservation =
-                    take(f.store.reserve<author::SceneSession>({"lux.editor.scene"}, lux::object::CodeLease::builtin())
-                    );
-                auto model = take(author::SceneSession::create(
-                    reservation.id(),
-                    {},
-                    take(author::SceneSource::create(package, metadata))
-                ));
-                assert(f.store.prepare(reservation, model));
-                created = take(f.store.publish(reservation));
-                return {};
+                return cxx::unexpected(commands::CommandFailure{
+                    commands::ECommandError::BUSY, "scene.create.admission"
+                });
             }
+            auto prepared = take(std::move(input).prepare(f.store, f.saves));
+            installed.emplace(take(prepared.publish()));
+            created = installed->id();
+            return commands::DispatchReceipt{commands::ImmediateCompletion{}};
         };
-        auto view =
-            take(author::makeSceneCreationView(f.messages.dispatcherRef(), lux::ui::PaneId{"creation"}, inputs, sink));
-        auto* pane = static_cast<author::SceneCreationView*>(view.pane());
+        assert(scope.provide(sessions::kSessionCreation, sink));
+        auto view = take(windows.create(
+            take(ui_catalog.find(author::kSceneCreationView.type)), scope,
+            {f.messages.dispatcherRef(), ui::PaneId{"creation"}}
+        ));
+        auto* pane = static_cast<author::SceneCreationView*>(view.get());
         assert(!pane->attachedRoot());
         for (auto preset :
              {author::ESceneContentPreset::TWO_DIMENSIONAL, author::ESceneContentPreset::THREE_DIMENSIONAL})
@@ -2946,18 +2949,22 @@ namespace
             auto config = take(std::move(prepared));
             assert(config.scene.systemCount() == 3 && config.simulation->systemCount() == 0);
         }
-        const auto mounted = take((*f.legacy_host).adopt(view, views::ViewRestoreKey{"creation"})).id;
+        assert(root.addSubPane(std::move(view)));
+        const auto mounted = take(root.identify(*pane));
         pane->requestCreate();
         f.frame(false);
         assert(!created && requests == 1);
         f.frame(false);
         assert(created && requests == 2);
         assert(f.session->describe().current == before.current);
-        assert((*f.legacy_host).close(mounted));
-        f.wait([&] { return !(*f.legacy_host).describe(mounted); });
+        auto close = take(windows.prepareClose(root, std::span{&mounted, 1}));
+        assert(root.commit(close) && !root.findPane(mounted));
+        f.frame(false);
         const auto current = take(f.store.describe(*created)).current;
-        auto permit = take(f.store.prepareClose(current));
-        assert(f.store.close(permit));
+        assert(installed->close(current));
+        installed.reset();
+        assert(scope.release() && scope.drained());
+        std::puts("EC4 scene configuration/creation: declared factories, BUSY retention, actual session roles and close PASS");
     }
 
 #include "AuxiliaryViews.hpp"

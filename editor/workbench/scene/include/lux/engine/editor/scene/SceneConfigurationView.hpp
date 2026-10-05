@@ -2,7 +2,8 @@
 #include <lux/engine/editor/scene/SceneConfigurationElement.hpp>
 #include <lux/engine/editor/sessions/SessionStore.hpp>
 #include <lux/engine/editor/scene/SceneSession.hpp>
-#include <lux/engine/editor/views/IViewHost.hpp>
+#include <lux/engine/editor/views/ViewInfo.hpp>
+#include <lux/engine/ui/Pane.hpp>
 
 namespace lux::editor::scene
 {
@@ -33,12 +34,5 @@ namespace lux::editor::scene
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };
-    [[nodiscard]] SceneConfigurationResult<views::DetachedView>
-    makeSceneConfigurationView(
-        object::ObjectDispatcherRef,
-        lux::ui::PaneId,
-        sessions::TSessionAccess<SceneSession>,
-        SceneConfigurationInputs,
-        sessions::TSessionKey<SceneSession>
-    );
+
 }

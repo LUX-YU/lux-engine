@@ -2,7 +2,6 @@
 #include <lux/engine/editor/desktop/UiRegistry.hpp>
 #include <lux/engine/editor/scene/SceneCreationView.hpp>
 #include <lux/engine/editor/scene/SceneSessionFactory.hpp>
-#include <lux/engine/editor/views/IViewHost.hpp>
 #include <lux/engine/editor/workbench/CommandSupport.hpp>
 #include <lux/engine/ui/Controls.hpp>
 #include <lux/engine/ui/Layout.hpp>
@@ -270,21 +269,6 @@ namespace lux::editor::scene
     void SceneCreationView::update() noexcept
     {
         impl_->update();
-    }
-    SceneConfigurationResult<views::DetachedView> makeSceneCreationView(
-        object::ObjectDispatcherRef dispatcher,
-        lux::ui::PaneId id,
-        SceneConfigurationInputs inputs,
-        SceneCreationRequests requests
-    )
-    {
-        SceneConfigurationResult<void> status;
-        auto view = std::make_unique<SceneCreationView>(dispatcher, id, std::move(inputs), std::move(requests), status);
-        if (!status)
-        {
-            return cxx::unexpected(status.error());
-        }
-        return views::DetachedView{lux::object::CodeLease::builtin(), std::move(view)};
     }
 } // namespace lux::editor::scene
 

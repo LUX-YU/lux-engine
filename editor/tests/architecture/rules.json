@@ -6888,7 +6888,8 @@
       "lux/engine/editor/workbench/CommandSupport.hpp",
       "lux/engine/object/CodeLease.hpp",
       "lux/engine/editor/desktop/UiRegistry.hpp",
-      "lux/engine/ui/Attachment.hpp"
+      "lux/engine/ui/Attachment.hpp",
+      "lux/engine/editor/views/ViewInfo.hpp"
     ],
     "prefixes": [],
     "test_headers": {

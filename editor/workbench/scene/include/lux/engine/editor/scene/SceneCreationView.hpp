@@ -1,8 +1,4 @@
 #pragma once
-namespace lux::editor::views
-{
-    class DetachedView;
-} // namespace lux::editor::views
 #include <lux/engine/editor/desktop/ViewCommands.hpp>
 #include <lux/engine/editor/scene/SceneConfigurationElement.hpp>
 #include <lux/engine/editor/sessions/SessionCommands.hpp>
@@ -40,12 +36,6 @@ namespace lux::editor::scene
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };
-    [[nodiscard]] SceneConfigurationResult<views::DetachedView> makeSceneCreationView(
-        object::ObjectDispatcherRef,
-        lux::ui::PaneId,
-        SceneConfigurationInputs,
-        SceneCreationRequests
-    );
     [[nodiscard]] std::shared_ptr<commands::CommandEntry> makeNewSceneCommand(
         commands::CommandEntry::Query,
         desktop::ToolOpening

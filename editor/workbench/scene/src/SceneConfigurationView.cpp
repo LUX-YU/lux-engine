@@ -275,38 +275,4 @@ namespace lux::editor::scene
     {
         impl_->update();
     }
-    SceneConfigurationResult<views::DetachedView> makeSceneConfigurationView(
-        object::ObjectDispatcherRef dispatcher,
-        lux::ui::PaneId id,
-        sessions::TSessionAccess<SceneSession> sessions,
-        SceneConfigurationInputs inputs,
-        sessions::TSessionKey<SceneSession> target
-    )
-    {
-        auto view = std::make_unique<SceneConfigurationView>(dispatcher, id, sessions, std::move(inputs));
-        if (!view->status())
-            return cxx::unexpected(view->status().error());
-        auto bound = view->rebind(target);
-        if (!bound)
-            return cxx::unexpected(bound.error());
-        return views::DetachedView{
-            lux::object::CodeLease::builtin(),
-            std::move(view),
-            [](lux::ui::Pane& pane) -> views::ViewCloseResult {
-                auto closed = static_cast<SceneConfigurationView&>(pane).prepareClose();
-                if (!closed)
-                    return cxx::unexpected(views::ViewPreparationFailure{
-                        closed.error().domain,
-                        closed.error().reason,
-                        closed.error().message,
-                        busy(closed.error())
-                    });
-                return {};
-            },
-            nullptr, nullptr, nullptr,
-            +[](const lux::ui::Pane& pane) noexcept {
-                return static_cast<const SceneConfigurationView&>(pane).content();
-            }
-        };
-    }
 }

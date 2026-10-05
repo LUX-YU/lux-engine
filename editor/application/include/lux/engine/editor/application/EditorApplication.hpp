@@ -3,8 +3,6 @@
 #include <lux/engine/editor/EditorError.hpp>
 #include <lux/engine/editor/commands/Command.hpp>
 #include <lux/engine/editor/extensions/EditorModule.hpp>
-#include <lux/engine/editor/project/AssetCatalog.hpp>
-#include <lux/engine/editor/sessions/SessionOpening.hpp>
 #include <lux/engine/editor/views/ViewContent.hpp>
 #include <lux/engine/ui/Pane.hpp>
 #include <lux/engine/window/WindowPlacement.hpp>
@@ -39,12 +37,6 @@ namespace lux::editor::application
         DRAINING,
         RELEASED
     };
-    struct OpenAndShowResult final
-    {
-        sessions::OpenAssetStatus content;
-        std::optional<lux::ui::PaneHandle> view;
-        std::optional<EditorFailure> presentation_failure;
-    };
     class EditorApplication final
     {
     public:
@@ -60,11 +52,6 @@ namespace lux::editor::application
         [[nodiscard]] EditorResult<void> exec();
         [[nodiscard]] EditorResult<void> update();
         [[nodiscard]] EApplicationPhase phase() const noexcept;
-        [[nodiscard]] EditorResult<sessions::OpenAssetId> open(AssetReference);
-        [[nodiscard]] EditorResult<OpenAndShowResult> openStatus(sessions::OpenAssetId) const;
-        [[nodiscard]] EditorResult<void> cancelOpen(sessions::OpenAssetId);
-        [[nodiscard]] EditorResult<void> acknowledgeOpen(sessions::OpenAssetId);
-        [[nodiscard]] EditorResult<lux::ui::PaneHandle> show(sessions::SessionId, bool another_view = false);
         [[nodiscard]] EditorResult<void> requestExit();
         [[nodiscard]] EditorResult<void> closeView(lux::ui::PaneHandle);
         [[nodiscard]] EditorResult<void> applyLayout(workspace::DockLayout);

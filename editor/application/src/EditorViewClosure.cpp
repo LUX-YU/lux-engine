@@ -48,6 +48,10 @@ namespace lux::editor::application
                 close_run_decisions_.push_back({*run.run, {}});
             }
         }
+        if (auto suspended = content_views_->suspend(); !suspended)
+        {
+            return suspended;
+        }
         close_application_ = false;
         phase_ = EApplicationPhase::REVIEWING;
         return {};
@@ -192,7 +196,10 @@ namespace lux::editor::application
                 if (playback_)
                 {
                     auto forgotten = playback_->forgetViews(std::span{&decision.view, 1});
-                    if (!forgotten) return forgotten;
+                    if (!forgotten)
+                    {
+                        return forgotten;
+                    }
                 }
             }
             else

@@ -23,15 +23,20 @@ namespace lux::editor::application
             [phase = &phase_](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
             { return commands::CommandState{*phase == EApplicationPhase::RUNNING}; },
             *project_,
-            [intents = &open_intents_](AssetReference reference) -> commands::CommandResult<void>
+            [this](AssetReference reference) -> commands::CommandResult<void>
             {
-                if (intents->size() == 64)
+                auto queued = content_views_->enqueue(reference);
+                if (!queued)
                 {
-                    return cxx::unexpected(
-                        commands::CommandFailure{commands::ECommandError::CAPACITY, "initial-scene.queue"}
-                    );
+                    const auto& error = queued.error();
+                    return cxx::unexpected(commands::CommandFailure{
+                        error.code == EEditorError::CAPACITY ? commands::ECommandError::CAPACITY
+                                                             : commands::ECommandError::BUSY,
+                        error.domain,
+                        error.reason,
+                        error.message
+                    });
                 }
-                intents->push_back(reference);
                 return {};
             }
         ));

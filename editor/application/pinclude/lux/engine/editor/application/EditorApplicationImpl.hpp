@@ -3,8 +3,6 @@
 #include <lux/engine/EngineRendering.hpp>
 #include <lux/engine/editor/application/EditorApplication.hpp>
 #include <lux/engine/editor/application/ProjectCreation.hpp>
-#include <lux/engine/editor/project/RestoreWorkbench.hpp>
-#include <lux/engine/editor/project/ContentReview.hpp>
 #include <lux/engine/editor/assets/ModelImporter.hpp>
 #include <lux/engine/editor/desktop/DesktopShell.hpp>
 #include <lux/engine/editor/desktop/ReviewView.hpp>
@@ -12,29 +10,32 @@
 #include <lux/engine/editor/desktop/WorkspaceActions.hpp>
 #include <lux/engine/editor/extensions/EditorExtension.hpp>
 #include <lux/engine/editor/persistence/SaveExecution.hpp>
+#include <lux/engine/editor/project/ContentReview.hpp>
+#include <lux/engine/editor/project/ContentViews.hpp>
 #include <lux/engine/editor/project/DesktopSettings.hpp>
 #include <lux/engine/editor/project/ImportView.hpp>
 #include <lux/engine/editor/project/ProjectView.hpp>
 #include <lux/engine/editor/project/RecentProjectsView.hpp>
+#include <lux/engine/editor/project/RestoreWorkbench.hpp>
 #include <lux/engine/editor/project/ResultsView.hpp>
 #include <lux/engine/editor/project/SettingsContent.hpp>
 #include <lux/engine/editor/project/SettingsView.hpp>
 #include <lux/engine/editor/project/WorkspaceView.hpp>
 #include <lux/engine/editor/scene/ModelPlacementService.hpp>
 #include <lux/engine/editor/scene/RunStore.hpp>
-#include <lux/engine/editor/scene/ScenePlayback.hpp>
 #include <lux/engine/editor/scene/SceneCreationView.hpp>
+#include <lux/engine/editor/scene/ScenePlayback.hpp>
 #include <lux/engine/editor/scene/SceneSessionFactory.hpp>
 #include <lux/engine/editor/scene/SceneTools.hpp>
 #include <lux/engine/editor/scene/SceneView.hpp>
-#include <lux/engine/editor/storage/ProjectContentReloading.hpp>
 #include <lux/engine/editor/sessions/SessionOperations.hpp>
-#include <lux/engine/editor/storage/PublicationFileStore.hpp>
+#include <lux/engine/editor/storage/ProjectContentReloading.hpp>
 #include <lux/engine/editor/storage/ProjectContentSaving.hpp>
 #include <lux/engine/editor/storage/ProjectPluginSelection.hpp>
 #include <lux/engine/editor/storage/ProjectPlugins.hpp>
 #include <lux/engine/editor/storage/ProjectPublicationOperation.hpp>
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
+#include <lux/engine/editor/storage/PublicationFileStore.hpp>
 #include <lux/engine/editor/storage/RecentProjects.hpp>
 #include <lux/engine/editor/tasks/TaskMonitor.hpp>
 #include <lux/engine/editor/workspace/WorkspaceChanges.hpp>
@@ -88,13 +89,6 @@ namespace lux::editor::application
             // Immutable owning diagnostic: values finish destruction before the plugin libraries.
             std::vector<std::shared_ptr<const lux::project::PluginLibrary>> code;
             std::vector<lux::scene::SceneRuntimeFailure> values;
-        };
-        struct OpenPresentation final
-        {
-            sessions::OpenAssetId operation;
-            std::optional<lux::ui::PaneHandle> view;
-            std::optional<EditorFailure> failure;
-            bool cancelled{};
         };
         struct RunCloseDecision final
         {
@@ -165,7 +159,11 @@ namespace lux::editor::application
         sessions::SessionCreation content_creation_{contentCreation()};
         commands::CommandEntry::Query content_creation_available_{
             [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
-            { return commands::CommandState{phase_ == EApplicationPhase::RUNNING && opens_.size() < 64}; }
+            {
+                return commands::CommandState{
+                    phase_ == EApplicationPhase::RUNNING && content_views_ && content_views_->hasCapacity()
+                };
+            }
         };
         desktop::EditorContext editor_context_{messages_.dispatcherRef()};
         // Runs after all window/factory/service references, before any borrowed foundation dies.
@@ -208,8 +206,7 @@ namespace lux::editor::application
         std::optional<EditorFailure> workspace_failure_;
         std::optional<project::VWorkspaceIntent> workspace_intent_;
         std::unique_ptr<project::RestoreWorkbench> restoration_;
-        std::vector<OpenPresentation> opens_;
-        std::vector<AssetReference> open_intents_;
+        std::shared_ptr<project::ContentViews> content_views_;
         std::shared_ptr<scene::ModelPlacementService> model_placements_;
         std::shared_ptr<project::ContentReview> content_review_;
         std::shared_ptr<ProjectContentReloading> reloading_;
@@ -263,8 +260,6 @@ namespace lux::editor::application
         [[nodiscard]] EditorResult<void> installContributions();
         [[nodiscard]] commands::CommandResult<commands::CommandInvocation>
         captureCommand(const commands::CommandDescriptor&, const lux::ui::Pane*, const lux::ui::Element*);
-        [[nodiscard]] EditorResult<sessions::OpenAssetId> open(AssetReference);
-        [[nodiscard]] EditorResult<sessions::OpenAssetId> createContent(sessions::SessionPreparation);
         [[nodiscard]] sessions::SessionCreation contentCreation();
         void installContentCommands(extensions::ContributionDraft&);
         void installSceneCommands(extensions::ContributionDraft&);
@@ -284,21 +279,10 @@ namespace lux::editor::application
         [[nodiscard]] EditorResult<void> captureRecovery();
         [[nodiscard]] EditorResult<void> restoreRecovery();
         [[nodiscard]] EditorResult<void> settleRecovery();
-        [[nodiscard]] EditorResult<sessions::OpenAssetId>
-        openCaptured(AssetReference, const extensions::ContributionSnapshot&);
         [[nodiscard]] EditorResult<void> receiveResultIntent();
 
         void receiveArtifact(persistence::DerivedArtifact);
-        [[nodiscard]] EditorResult<lux::ui::PaneHandle> show(sessions::SessionId, bool another_view);
-        [[nodiscard]] EditorResult<lux::ui::PaneHandle> makeContentView(
-            views::ViewContent,
-            bool another_view,
-            const extensions::ContributionSnapshot&,
-            std::optional<views::ViewRestoreKey> = {},
-            std::optional<views::ViewTypeId> = {}
-        );
         [[nodiscard]] EditorResult<void> update();
-        [[nodiscard]] EditorResult<void> receiveOpenResults();
         [[nodiscard]] EditorResult<void> reviewClose();
         [[nodiscard]] EditorResult<void> requestClose(sessions::ContentStamp);
         [[nodiscard]] EditorResult<void> closeView(lux::ui::PaneHandle);

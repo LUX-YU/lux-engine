@@ -61,7 +61,10 @@ namespace lux::editor::application
                 }
                 else if constexpr (std::same_as<Action, AcknowledgeRunFailure>)
                 {
-                    if (playback_) return playback_->acknowledgeFailure(action.target);
+                    if (playback_)
+                    {
+                        return playback_->acknowledgeFailure(action.target);
+                    }
                 }
                 else if constexpr (std::same_as<Action, AcknowledgeStep>)
                 {
@@ -97,7 +100,7 @@ namespace lux::editor::application
                     {
                         return applicationFailure("content.show", sessions::ESessionError::STALE_CONTENT);
                     }
-                    auto shown = show(target.session, false);
+                    auto shown = content_views_->show(target.session);
                     if (!shown)
                     {
                         return cxx::unexpected(shown.error());
@@ -107,7 +110,10 @@ namespace lux::editor::application
                 {
                     const auto target = action.target;
                     auto review = editor_context_.services().get<project::ContentReview>(editor_context_.scope());
-                    if (!review) return applicationFailure("content-review.service", review.error());
+                    if (!review)
+                    {
+                        return applicationFailure("content-review.service", review.error());
+                    }
                     content_review_ = std::move(*review);
                     return content_review_->askSave({target.session, target}, persistence::ESaveMode::SAVE_AS);
                 }
@@ -369,7 +375,10 @@ namespace lux::editor::application
         }
         snapshot.sections.push_back({"Reload results"});
         auto reloads = reloading_ ? reloading_->reports() : EditorResult<std::vector<ProjectReloadReport>>{};
-        if (!reloads) return cxx::unexpected(reloads.error());
+        if (!reloads)
+        {
+            return cxx::unexpected(reloads.error());
+        }
         for (std::size_t index{}; index < reloads->size(); ++index)
         {
             const auto& reload = (*reloads)[index];

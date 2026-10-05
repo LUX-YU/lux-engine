@@ -18987,6 +18987,12 @@
       ],
       "editor/workbench/project/tools/include/lux/engine/editor/project/ContentReview.hpp": [
         "project_tools_ui"
+      ],
+      "editor/workbench/project/tools/src/ContentViews.cpp": [
+        "project_tools_ui"
+      ],
+      "editor/workbench/project/tools/include/lux/engine/editor/project/ContentViews.hpp": [
+        "project_tools_ui"
       ]
     },
     "native_libraries": [

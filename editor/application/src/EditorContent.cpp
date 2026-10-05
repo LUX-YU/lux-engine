@@ -4,28 +4,6 @@
 
 namespace lux::editor::application
 {
-    EditorResult<sessions::OpenAssetId> EditorApplication::Impl::createContent(sessions::SessionPreparation data)
-    {
-        if (phase_ != EApplicationPhase::RUNNING)
-        {
-            return cxx::unexpected(EditorFailure{EEditorError::CLOSING, "content.create"});
-        }
-        if (opens_.size() >= 64)
-        {
-            return cxx::unexpected(EditorFailure{EEditorError::CAPACITY, "content.create"});
-        }
-        auto installed = opening_->create(
-            project_->catalogModel().reference({}).project_instance,
-            std::move(data),
-            contributions_.snapshot().sessions()
-        );
-        if (!installed)
-        {
-            return applicationFailure("content.create", installed.error());
-        }
-        opens_.push_back({*installed});
-        return *installed;
-    }
     void EditorApplication::Impl::installContentCommands(extensions::ContributionDraft& draft)
     {
         const auto running = [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
@@ -51,7 +29,7 @@ namespace lux::editor::application
             running,
             [this](commands::SessionTarget target) -> commands::CommandResult<void>
             {
-                auto result = makeContentView({{target.id}, target.id}, true, contributions_.snapshot());
+                auto result = content_views_->show(target.id, true);
                 if (!result)
                 {
                     return cxx::unexpected(commands::CommandFailure{
@@ -71,7 +49,7 @@ namespace lux::editor::application
     {
         return [this](sessions::SessionPreparation prepared) -> commands::CommandResult<commands::DispatchReceipt>
         {
-            auto opened = createContent(std::move(prepared));
+            auto opened = content_views_->create(std::move(prepared));
             if (!opened)
             {
                 const auto& error = opened.error();

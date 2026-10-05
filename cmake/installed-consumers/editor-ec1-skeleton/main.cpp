@@ -21,6 +21,7 @@
 #if defined(EC1_APP)
 #include <lux/engine/editor/application/EditorApplication.hpp>
 #include <lux/engine/editor/material/MaterialModule.hpp>
+#include <lux/engine/editor/project/ContentViews.hpp>
 #include <lux/engine/editor/project/ProjectView.hpp>
 #include <lux/engine/editor/workspace/RecoveryManifest.hpp>
 #include <lux/engine/material/graph/MaterialSource.hpp>
@@ -30,6 +31,68 @@ using namespace lux;
 using namespace lux::editor;
 namespace
 {
+#if defined(EC1_APP)
+    std::weak_ptr<lux::editor::project::ContentViews> observed_content_views;
+    const extensions::EditorModuleDescriptor& contentAccessModule() noexcept
+    {
+        static const extensions::EditorModuleDescriptor module{
+            "test.content-access",
+            1,
+            +[]() noexcept -> const extensions::EditorExtensionExports*
+            {
+                static const extensions::EditorExtensionExports exports{
+                    .counts = {.commands = 1},
+                    .contribute = +[](extensions::ContributionDraft& draft,
+                                      object::CodeLease code) -> extensions::ContributionResult<void>
+                    {
+                        static constexpr services::ServiceDependency dependencies[]{
+                            {services::ServiceNameView{"lux.editor.project.content-views"},
+                             1,
+                             cxx::typeToken<lux::editor::project::ContentViews>(),
+                             services::EDependencyKind::SHARED,
+                             services::EDependencyScope::ROOT}
+                        };
+                        static constexpr commands::CommandDescriptor descriptor{
+                            .id = commands::CommandIdView{"test.content-access"},
+                            .label = "SDK content access",
+                            .dependencies = dependencies,
+                            .create = +[](services::ServiceResolver& resolver, const object::CodeLease&) noexcept
+                                -> commands::CommandResult<std::unique_ptr<commands::CommandBinding>>
+                            {
+                                auto owner = resolver.get<lux::editor::project::ContentViews>(0);
+                                if (!owner)
+                                {
+                                    return cxx::unexpected(commands::CommandFailure{
+                                        commands::ECommandError::DOMAIN_FAILURE,
+                                        "test.content-access"
+                                    });
+                                }
+                                observed_content_views = *owner;
+                                return std::make_unique<commands::CommandBinding>(
+                                    [](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
+                                    { return commands::CommandState{true}; },
+                                    [](const commands::CommandInvocation&)
+                                        -> commands::CommandResult<commands::DispatchReceipt>
+                                    { return commands::DispatchReceipt{commands::ImmediateCompletion{}}; }
+                                );
+                            }
+                        };
+                        draft.commands.push_back(commands::CommandEntry::bind<descriptor>(std::move(code)));
+                        return {};
+                    }
+                };
+                return &exports;
+            }
+        };
+        return module;
+    }
+    auto contentAccess()
+    {
+        auto result = observed_content_views.lock();
+        assert(result);
+        return result;
+    }
+#endif
     template <class T> auto take(T result, std::source_location location = std::source_location::current())
     {
         if (!result)
@@ -505,8 +568,13 @@ int main(int argc, char** argv)
              .height = 600,
              .offscreen = true,
              .user_directory = root / "user"},
-            std::array{&lux::editor::project::projectModule, &lux::editor::material::materialModule}
+            std::array{
+                &lux::editor::project::projectModule,
+                &lux::editor::material::materialModule,
+                &contentAccessModule
+            }
         ));
+        take(app->execute(commands::CommandId{"test.content-access"}));
         assert(facts.project && facts.root);
         struct ContentWindow final
         {
@@ -569,15 +637,17 @@ int main(int argc, char** argv)
         until([&] { return content_views().size() == 1; });
         const auto first = content_views().front();
         const auto id = *first.content.primary;
-        const auto first_id = take(app->show(id));
-        const auto second = take(app->show(id, true));
+        const auto first_id = take(contentAccess()->show(id));
+        const auto second = take(contentAccess()->show(id, true));
         const auto both = content_views();
         assert(both.size() == 2 && both[0].content == first.content && both[1].content == first.content);
         assert(both[0].handle != both[1].handle && both[0].handle == first.handle);
-        auto repeated = take(app->open(facts.project->reference(assetId())));
-        until([&] { return take(app->openStatus(repeated)).content.stage == sessions::EOpenAssetStage::PUBLISHED; });
-        assert(take(app->openStatus(repeated)).content.session == id && content_views().size() == 2);
-        take(app->acknowledgeOpen(repeated));
+        auto repeated = take(contentAccess()->open(facts.project->reference(assetId())));
+        until([&]
+              { return take(contentAccess()->status(repeated)).content.stage == sessions::EOpenAssetStage::PUBLISHED; }
+        );
+        assert(take(contentAccess()->status(repeated)).content.session == id && content_views().size() == 2);
+        take(contentAccess()->acknowledge(repeated));
         auto info = take(describe(id));
         take(app->execute(commands::CommandId{"example.skeleton.rename"}, rename(info, "hip", 4)));
         verify(take(inspect(id)), "hip", 4);
@@ -687,27 +757,32 @@ int main(int argc, char** argv)
              .height = 600,
              .offscreen = true,
              .user_directory = root / "missing-user"},
-            std::array{&lux::editor::project::projectModule, &lux::editor::material::materialModule}
+            std::array{
+                &lux::editor::project::projectModule,
+                &lux::editor::material::materialModule,
+                &contentAccessModule
+            }
         ));
+        take(missing->execute(commands::CommandId{"test.content-access"}));
         // Querying through an independent immutable catalog does not need any provider to decode its bytes.
         const auto catalog_only = take(prepareProjectOpen(root / "Project.luxproject"));
         assert(catalog_only.manifest().assets.size() == 3);
         verifyFile(root / "Content/Characters/copied.luxskeleton", rebound_id, "hip", 4);
-        const auto absent = missing->open(facts.project->reference(rebound_id));
+        const auto absent = contentAccess()->open(facts.project->reference(rebound_id));
         assert(!absent && absent.error().domain == "asset.authoring");
-        const auto supported = take(missing->open(facts.project->reference(material_id)));
+        const auto supported = take(contentAccess()->open(facts.project->reference(material_id)));
         for (unsigned i{}; i != 10000; ++i)
         {
             take(missing->update());
-            if (take(missing->openStatus(supported)).content.stage == sessions::EOpenAssetStage::PUBLISHED)
+            if (take(contentAccess()->status(supported)).content.stage == sessions::EOpenAssetStage::PUBLISHED)
             {
                 break;
             }
             std::this_thread::sleep_for(std::chrono::milliseconds{1});
         }
-        const auto supported_status = take(missing->openStatus(supported));
+        const auto supported_status = take(contentAccess()->status(supported));
         assert(supported_status.content.stage == sessions::EOpenAssetStage::PUBLISHED && supported_status.view);
-        take(missing->acknowledgeOpen(supported));
+        take(contentAccess()->acknowledge(supported));
         verifyFile(root / source_path, assetId(), "hip", 4);
         take(missing->requestExit());
         for (unsigned i{}; i != 10000 && missing->phase() != EApplicationPhase::RELEASED; ++i)

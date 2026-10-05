@@ -24,8 +24,6 @@ namespace lux::editor::application
           task_monitor_(messages_.dispatcherRef(), engine_->execution()), plugins_(std::move(plugins)),
           registrations_(std::move(registrations)), contributions_(messages_.dispatcherRef(), editor_context_)
     {
-        opens_.reserve(64);
-        open_intents_.reserve(64);
     }
     EditorApplication::Impl::~Impl()
     {
@@ -414,7 +412,10 @@ namespace lux::editor::application
                 std::ranges::find(manifest.assets, manifest.default_scene, &ProjectAssetEntry::source_path);
             if (initial != manifest.assets.end())
             {
-                open_intents_.push_back(project_->catalogModel().reference(initial->id));
+                if (auto queued = content_views_->enqueue(project_->catalogModel().reference(initial->id)); !queued)
+                {
+                    return queued;
+                }
             }
         }
         if (window_)
@@ -458,23 +459,5 @@ namespace lux::editor::application
         }
         Impl::Dispatch scope{impl_->dispatching_};
         return impl_->requestExit();
-    }
-    EditorResult<sessions::OpenAssetId> EditorApplication::open(AssetReference asset)
-    {
-        if (auto ready = impl_->admission(); !ready)
-        {
-            return cxx::unexpected(ready.error());
-        }
-        Impl::Dispatch scope{impl_->dispatching_};
-        return impl_->open(asset);
-    }
-    EditorResult<lux::ui::PaneHandle> EditorApplication::show(sessions::SessionId id, bool another)
-    {
-        if (auto ready = impl_->admission(); !ready)
-        {
-            return cxx::unexpected(ready.error());
-        }
-        Impl::Dispatch scope{impl_->dispatching_};
-        return impl_->show(id, another);
     }
 } // namespace lux::editor::application

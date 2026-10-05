@@ -33,6 +33,10 @@ namespace lux::editor::application
                 {info->current, info->dirty ? sessions::ECloseChoice::CANCEL : sessions::ECloseChoice::DISCARD}
             );
         }
+        if (auto suspended = content_views_->suspend(); !suspended)
+        {
+            return suspended;
+        }
         close_run_decisions_.clear();
         close_destinations_.clear();
         close_application_ = true;
@@ -176,6 +180,10 @@ namespace lux::editor::application
                 closing_.reset();
                 exit_failure_.reset();
                 close_decisions_.clear();
+                if (auto resumed = content_views_->resume(); !resumed)
+                {
+                    return resumed;
+                }
                 phase_ = EApplicationPhase::RUNNING;
                 return {};
             }
@@ -540,7 +548,10 @@ namespace lux::editor::application
         if (playback_)
         {
             auto forgotten = playback_->forgetViews(ids);
-            if (!forgotten) return forgotten;
+            if (!forgotten)
+            {
+                return forgotten;
+            }
         }
         close_decisions_.clear();
         for (const auto& decision : close_run_decisions_)
@@ -548,12 +559,19 @@ namespace lux::editor::application
             if (decision.choice == desktop::EReviewChoice::STOP_RUN)
             {
                 auto requested = playback_->requestStop(decision.run);
-                if (!requested) return requested;
+                if (!requested)
+                {
+                    return requested;
+                }
             }
         }
         close_run_decisions_.clear();
         if (!close_application_)
         {
+            if (auto resumed = content_views_->resume(); !resumed)
+            {
+                return resumed;
+            }
             phase_ = EApplicationPhase::RUNNING;
             return {};
         }
@@ -570,12 +588,18 @@ namespace lux::editor::application
         if (playback_)
         {
             auto closing = playback_->requestClose();
-            if (!closing) return closing;
+            if (!closing)
+            {
+                return closing;
+            }
         }
         if (reloading_)
         {
             auto closing = reloading_->requestClose();
-            if (!closing) return closing;
+            if (!closing)
+            {
+                return closing;
+            }
         }
         opening_->requestStop();
         importer_->requestClose();
@@ -609,17 +633,16 @@ namespace lux::editor::application
                 return outcome;
             }
         }
-        const bool operations_settled =
-            importer_->closeStatus().state == assets::EModelImportCloseState::CLOSED &&
-            user_settings_changes_->settled() && project_settings_changes_->settled() && content_saving_->settled() &&
-            opening_->settled() && recent_projects_->settled() && !project_launch_ &&
-            std::ranges::all_of(
-                workspace_changes_->publications(),
-                [](const auto& value) { return value.result.has_value(); }
-            ) &&
-            (!playback_ || playback_->settled());
-        if (phase_ == EApplicationPhase::DRAINING && operations_settled &&
-            (!reloading_ || reloading_->settled()) &&
+        const bool operations_settled = importer_->closeStatus().state == assets::EModelImportCloseState::CLOSED &&
+                                        user_settings_changes_->settled() && project_settings_changes_->settled() &&
+                                        content_saving_->settled() && opening_->settled() &&
+                                        recent_projects_->settled() && !project_launch_ &&
+                                        std::ranges::all_of(
+                                            workspace_changes_->publications(),
+                                            [](const auto& value) { return value.result.has_value(); }
+                                        ) &&
+                                        (!playback_ || playback_->settled());
+        if (phase_ == EApplicationPhase::DRAINING && operations_settled && (!reloading_ || reloading_->settled()) &&
             (!model_placements_ || model_placements_->settled()))
         {
             project_->requestClose();
@@ -700,19 +723,8 @@ namespace lux::editor::application
         {
             window_settings_->update(phase_ == EApplicationPhase::RUNNING);
         }
-        if (phase_ == EApplicationPhase::RUNNING)
-        {
-            auto requests = std::exchange(open_intents_, {});
-            open_intents_.reserve(64);
-            for (auto reference : requests)
-            {
-                if (auto opened = open(reference); !opened)
-                {
-                    receive(cxx::unexpected(opened.error()));
-                }
-            }
-            receive(receiveOpenResults());
-        }
+        // UI factory resolution runs after the current service-maintenance guard has returned.
+        receive(content_views_->update());
         if (desktop_)
         {
             auto frame = config_.offscreen

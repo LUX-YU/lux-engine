@@ -30,7 +30,7 @@ namespace lux::editor::application
                            const extensions::ContributionSnapshot& catalog,
                            views::ViewRestoreKey key,
                            views::ViewTypeId type)
-        { return makeContentView(std::move(content), true, catalog, std::move(key), std::move(type)); };
+        { return content_views_->restore(std::move(content), catalog, std::move(key), std::move(type)); };
         return restoration_->update(progress, present);
     }
 } // namespace lux::editor::application

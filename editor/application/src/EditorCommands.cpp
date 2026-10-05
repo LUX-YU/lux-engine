@@ -65,16 +65,6 @@ namespace lux::editor::application
         {
             return applicationFailure("service.components", components.error());
         }
-        auto creation = scope.provide(sessions::kSessionCreation, content_creation_);
-        if (!creation)
-        {
-            return applicationFailure("content.creation", creation.error());
-        }
-        auto availability = scope.provide(sessions::kSessionCreationAvailability, content_creation_available_);
-        if (!availability)
-        {
-            return applicationFailure("content.creation-availability", availability.error());
-        }
         if (auto provided = scope.provide(services::ServiceNameView{"lux.editor.project.storage"}, *project_);
             !provided)
         {
@@ -87,6 +77,27 @@ namespace lux::editor::application
         if (auto provided = scope.provide(services::ServiceNameView{"lux.editor.ui"}, editor_context_.ui()); !provided)
         {
             return applicationFailure("service.ui", provided.error());
+        }
+        if (auto provided = scope.provide(services::ServiceNameView{"lux.editor.contributions"}, contributions_);
+            !provided)
+        {
+            return applicationFailure("content.catalog", provided.error());
+        }
+        auto content_views = editor_context_.services().get<project::ContentViews>(scope);
+        if (!content_views)
+        {
+            return applicationFailure("content.views", content_views.error());
+        }
+        content_views_ = std::move(*content_views);
+        auto creation = scope.provide(sessions::kSessionCreation, content_creation_);
+        if (!creation)
+        {
+            return applicationFailure("content.creation", creation.error());
+        }
+        auto availability = scope.provide(sessions::kSessionCreationAvailability, content_creation_available_);
+        if (!availability)
+        {
+            return applicationFailure("content.creation-availability", availability.error());
         }
         extensions::ContributionDraft draft;
 
@@ -117,13 +128,9 @@ namespace lux::editor::application
         installProjectTools(draft);
         asset_open_ = [this](const AssetReference& ref)
         {
-            if (phase_ != EApplicationPhase::RUNNING || open_intents_.size() == 64)
+            if (auto queued = content_views_->enqueue(ref); !queued)
             {
-                log::error("application.open", "Asset open intent rejected: application closing or queue full");
-            }
-            else
-            {
-                open_intents_.push_back(ref);
+                log::error("content.open", "Asset open intent rejected: {}", queued.error().domain);
             }
         };
         draft.ui.push_back(desktop::UiEntry::bind<tasks::kTaskView>(object::CodeLease::builtin()));

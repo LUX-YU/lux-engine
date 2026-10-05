@@ -1,4 +1,3 @@
-#include <lux/engine/editor/project/ProjectModule.hpp>
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -13,6 +12,7 @@
 #include <lux/engine/editor/material/MaterialModule.hpp>
 #include <lux/engine/editor/material/MaterialView.hpp>
 #include <lux/engine/editor/project/ImportView.hpp>
+#include <lux/engine/editor/project/ProjectModule.hpp>
 #include <lux/engine/editor/project/SettingsView.hpp>
 #include <lux/engine/editor/scene/InspectorView.hpp>
 #include <lux/engine/editor/scene/OutlinerView.hpp>
@@ -60,6 +60,12 @@ namespace
         assert(updated);
     }
 
+    struct ContentFactoryCheck final
+    {
+        lux::editor::project::ContentViews* owner{};
+        lux::editor::sessions::OpenAssetId operation;
+        unsigned calls{};
+    } content_factory_check;
     struct CloseFacts final
     {
         unsigned attempts{}, panes{}, elements{}, code{};
@@ -522,7 +528,8 @@ int main(int argc, char** argv)
         config,
         std::array{
             &lux::editor::scene::sceneModule,
-            &lux::editor::project::projectModule, &lux::editor::material::materialModule,
+            &lux::editor::project::projectModule,
+            &lux::editor::material::materialModule,
             &lux::editor::flowforge::flowModule
         }
     );
@@ -545,7 +552,8 @@ int main(int argc, char** argv)
         config,
         std::array{
             &lux::editor::scene::sceneModule,
-            &lux::editor::project::projectModule, &lux::editor::material::materialModule,
+            &lux::editor::project::projectModule,
+            &lux::editor::material::materialModule,
             &lux::editor::flowforge::flowModule
         }
     );
@@ -566,7 +574,8 @@ int main(int argc, char** argv)
             config,
             std::array{
                 &lux::editor::scene::sceneModule,
-                &lux::editor::project::projectModule, &lux::editor::material::materialModule,
+                &lux::editor::project::projectModule,
+                &lux::editor::material::materialModule,
                 &lux::editor::flowforge::flowModule
             }
         );
@@ -706,7 +715,8 @@ int main(int argc, char** argv)
             launch_override,
             std::array{
                 &lux::editor::scene::sceneModule,
-                &lux::editor::project::projectModule, &lux::editor::material::materialModule,
+                &lux::editor::project::projectModule,
+                &lux::editor::material::materialModule,
                 &lux::editor::flowforge::flowModule
             }
         );
@@ -727,7 +737,8 @@ int main(int argc, char** argv)
         config,
         std::array{
             &lux::editor::scene::sceneModule,
-            &lux::editor::project::projectModule, &lux::editor::material::materialModule,
+            &lux::editor::project::projectModule,
+            &lux::editor::material::materialModule,
             &lux::editor::flowforge::flowModule,
             &closeModule
         }
@@ -800,10 +811,12 @@ int main(int argc, char** argv)
         impl.files_->resolve((root.parent_path() / "outside-user-root.txt").generic_string());
     assert(installation_probe);
     const auto rejected_write = impl.files_->publish({{1}, *installation_probe, {}});
-    assert(std::get<persistence::NotPublished>(rejected_write).failure.code ==
-           persistence::EPersistenceError::UNSUPPORTED_TARGET);
-    const auto outside_all_roots = config.installation.parent_path() /
-                                   ("outside-publication-" + root.filename().string()) / "payload";
+    assert(
+        std::get<persistence::NotPublished>(rejected_write).failure.code ==
+        persistence::EPersistenceError::UNSUPPORTED_TARGET
+    );
+    const auto outside_all_roots =
+        config.installation.parent_path() / ("outside-publication-" + root.filename().string()) / "payload";
     assert(impl.recent_projects_->entries().size() == 1 && !impl.files_->resolve(outside_all_roots.generic_string()));
     std::cout << "Recent projects: real legacy-format read, one coordinator publication, malformed input preserves "
                  "file/list, explicit retry\n";
@@ -927,13 +940,13 @@ int main(int argc, char** argv)
         {
             assert(std::chrono::steady_clock::now() < limit);
             checkUpdate(*app);
-            const auto status = app->openStatus(open);
+            const auto status = impl.content_views_->status(open);
             assert(status && !status->presentation_failure);
             if (status->view)
             {
                 const auto id = status->content.session;
                 assert(impl.sessions_->describe(id)->dirty);
-                assert(app->acknowledgeOpen(open));
+                assert(impl.content_views_->acknowledge(open));
                 return id;
             }
         }
@@ -1016,12 +1029,12 @@ int main(int argc, char** argv)
     assert(saved_material && !saved_material->dirty && saved_material->current == save_material_stamp);
     assert(saved_material->binding && impl.project_->asset(saved_material->binding->asset));
     assert(std::filesystem::exists(impl.project_->root() / "Content/Beginner/Material.source"));
-    const auto reopened = app->open(impl.project_->reference(saved_material->binding->asset));
+    const auto reopened = impl.content_views_->open(impl.project_->reference(saved_material->binding->asset));
     assert(reopened);
     checkUpdate(*app);
-    const auto reopened_status = app->openStatus(*reopened);
+    const auto reopened_status = impl.content_views_->status(*reopened);
     assert(reopened_status && reopened_status->content.session == material_id);
-    assert(app->acknowledgeOpen(*reopened));
+    assert(impl.content_views_->acknowledge(*reopened));
     std::cout << "Real Save As preserves author history, publishes source/catalog and reopens the same Session\n";
     // Layouts prepare unbound windows. Only the independent recovery manifest opens author content.
     auto unbound_capture = impl.executeWorkspaceIntent(lux::editor::project::CaptureRecovery{});
@@ -1306,7 +1319,7 @@ int main(int argc, char** argv)
     choose_last(desktop::EReviewChoice::KEEP_CONTENT);
     assert(!windowRecord(impl, material_views.front()));
     assert(impl.sessions_->describe(material_id)->current == material_before);
-    const auto shown_again = app->show(material_id);
+    const auto shown_again = impl.content_views_->show(material_id);
     assert(shown_again && *shown_again != material_views.front());
     const auto flow_views = contentViews(impl, flow_id);
     assert(!flow_views.empty());
@@ -1673,8 +1686,10 @@ int main(int argc, char** argv)
     assert(impl.desktop_->root().withPane(inspector_info->handle, no_target));
 
     // An unrelated real SceneSystem failure must not bypass the accepted source-save/catalog handoff.
-    auto saving =
-        impl.content_review_->save({material_id, impl.sessions_->describe(material_id)->current}, persistence::ESaveMode::SAVE);
+    auto saving = impl.content_review_->save(
+        {material_id, impl.sessions_->describe(material_id)->current},
+        persistence::ESaveMode::SAVE
+    );
     assert(saving);
     const auto saving_deadline = std::chrono::steady_clock::now() + std::chrono::seconds(15);
     while (impl.saves_->status(*saving)->stage != persistence::ESaveStage::TERMINAL)
@@ -1748,7 +1763,8 @@ int main(int argc, char** argv)
         commands::CommandId{"lux.editor.play"},
         commands::CommandInvocation{commands::SessionTarget{scene_id, run_source}}
     ));
-    auto playback = impl.editor_context_.services().get<lux::editor::scene::ScenePlayback>(impl.editor_context_.scope());
+    auto playback =
+        impl.editor_context_.services().get<lux::editor::scene::ScenePlayback>(impl.editor_context_.scope());
     auto runs = impl.editor_context_.services().get<lux::editor::scene::RunStore>(impl.editor_context_.scope());
     assert(playback && runs);
     const auto presentations = [&]
@@ -2097,7 +2113,8 @@ int main(int argc, char** argv)
         config,
         std::array{
             &lux::editor::scene::sceneModule,
-            &lux::editor::project::projectModule, &lux::editor::material::materialModule,
+            &lux::editor::project::projectModule,
+            &lux::editor::material::materialModule,
             &lux::editor::flowforge::flowModule
         }
     );
@@ -2140,6 +2157,18 @@ int main(int argc, char** argv)
             descriptor.create = [](lux::services::ServiceResolver&,
                                    const desktop::UiCreateInfo&) -> desktop::UiResult<std::unique_ptr<ui::Pane>>
             {
+                auto& probe = content_factory_check;
+                assert(probe.owner);
+                ++probe.calls;
+                for (auto denied :
+                     {probe.owner->suspend(),
+                      probe.owner->cancel(probe.operation),
+                      probe.owner->acknowledge(probe.operation)})
+                {
+                    assert(!denied && denied.error().code == EEditorError::BUSY);
+                }
+                const auto denied_status = probe.owner->status(probe.operation);
+                assert(!denied_status && denied_status.error().code == EEditorError::BUSY);
                 return cxx::unexpected(desktop::UiFailure{
                     desktop::EUiError::FACTORY_FAILURE,
                     "test.actual-material-factory",
@@ -2153,16 +2182,31 @@ int main(int argc, char** argv)
     auto failing_factories = extensions::ContributionSnapshot::prepare(std::move(failing_draft));
     assert(failing_factories && initial_owner.contributions_.enqueue(*failing_factories));
     assert(initial_owner.contributions_.applyPending());
+    assert(
+        *initial_owner.editor_context_.services().get<lux::editor::project::ContentViews>(initial_owner.editor_context_.scope()) ==
+        initial_owner.content_views_
+    );
+    std::thread wrong_thread(
+        [&]
+        {
+            const auto rejected = initial_owner.content_views_->status({});
+            assert(!rejected && rejected.error().code == EEditorError::INVALID_STATE);
+        }
+    );
+    wrong_thread.join();
+    content_factory_check.owner = initial_owner.content_views_.get();
     const auto view_count = windowRecords(initial_owner)->size();
     const auto partial_command = (*initial)->execute(commands::CommandId{"lux.editor.new.material"});
     assert(partial_command);
     const sessions::OpenAssetId partial_id{std::get<commands::AcceptedOperation>(*partial_command).value};
-    while (!(*initial)->openStatus(partial_id)->presentation_failure)
+    content_factory_check.operation = partial_id;
+    while (!initial_owner.content_views_->status(partial_id)->presentation_failure)
     {
         assert((*initial)->update());
         assert(std::chrono::steady_clock::now() < initial_deadline);
     }
-    const auto partial = (*initial)->openStatus(partial_id);
+    assert(content_factory_check.calls == 1);
+    const auto partial = initial_owner.content_views_->status(partial_id);
     assert(partial && partial->content.stage == sessions::EOpenAssetStage::PUBLISHED && !partial->view);
     const auto retained_content = initial_owner.sessions_->describe(partial->content.session);
     assert(
@@ -2172,11 +2216,11 @@ int main(int argc, char** argv)
     assert(initial_owner.opening_->find(partial->content.session));
     assert(windowRecords(initial_owner)->size() == view_count);
     assert(initial_owner.contributions_.enqueue(original_factories) && initial_owner.contributions_.applyPending());
-    assert((*initial)->show(partial->content.session));
+    assert(initial_owner.content_views_->show(partial->content.session));
     const auto recovered = initial_owner.sessions_->describe(partial->content.session);
     assert(recovered && recovered->current == retained_content->current && recovered->dirty == retained_content->dirty);
     assert(initial_owner.sessions_->size() == 2 && windowRecords(initial_owner)->size() == view_count + 1);
-    assert((*initial)->acknowledgeOpen(partial_id));
+    assert(initial_owner.content_views_->acknowledge(partial_id));
     std::cout
         << "X12-01: real factory failure preserves published unbound content; explicit show recovers same Session\n";
 }

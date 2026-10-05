@@ -108,91 +108,16 @@ namespace lux::editor::scene
              services::EDependencyScope::ROOT,
              {},
              {},
+             true},
+            {services::ServiceNameView{"lux.editor.scene.model-drop"},
+             1,
+             cxx::typeToken<SceneView::ModelDrop>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT,
+             {},
+             {},
              true}
         };
-        desktop::UiResult<std::unique_ptr<lux::ui::Pane>> createView(
-            services::ServiceResolver& resolver,
-            const desktop::UiCreateInfo& input
-        )
-        {
-            auto state = decodeState(input.configuration.schema, input.configuration.bytes);
-            if (!state)
-            {
-                return cxx::unexpected(desktop::UiFailure{
-                    desktop::EUiError::INVALID_CONFIGURATION,
-                    state.error().domain,
-                    state.error().code,
-                    state.error().message
-                });
-            }
-            const auto rejectedDependency = [](const services::ServiceFailure& error)
-            {
-                return cxx::unexpected(desktop::UiFailure{
-                    desktop::EUiError::DEPENDENCY,
-                    "services",
-                    static_cast<std::uint64_t>(error.code),
-                    error.detail
-                });
-            };
-            auto store = resolver.require<sessions::SessionStore>(0);
-            if (!store)
-            {
-                return rejectedDependency(store.error());
-            }
-            auto runtime = resolver.require<lux::scene::SceneRuntime>(1);
-            if (!runtime)
-            {
-                return rejectedDependency(runtime.error());
-            }
-            auto projections = resolver.get<ScenePresentationHub>(2);
-            if (!projections)
-            {
-                return rejectedDependency(projections.error());
-            }
-            auto environment = resolver.require<ProjectionEnvironment>(3);
-            if (!environment)
-            {
-                return rejectedDependency(environment.error());
-            }
-            const bool is_invalid_environment = !environment->get().resources || !environment->get().renderer;
-            if (is_invalid_environment)
-            {
-                return cxx::unexpected(uiFailure(SceneViewFailure{views::EViewError::NOT_ATTACHED}));
-            }
-            auto runs = resolver.require<RunInspectAccess>(4);
-            if (!runs && runs.error().code != services::EServiceError::NOT_FOUND)
-            {
-                return rejectedDependency(runs.error());
-            }
-            SceneViewCreateInfo info;
-            info.id = input.instance;
-            info.state.camera.transform.translation = {0, 3, 8};
-            if (*state)
-            {
-                info.state = **state;
-            }
-            auto view = SceneView::create(
-                input.dispatcher,
-                {store->get().access<SceneSession>(),
-                 std::move(*projections),
-                 runtime->get(),
-                 *environment->get().resources,
-                 *environment->get().renderer,
-                 environment->get(),
-                 runs ? std::optional{runs->get()} : std::nullopt},
-                std::move(info)
-            );
-            if (!view)
-            {
-                return cxx::unexpected(uiFailure(view.error()));
-            }
-            auto bound = (*view)->rebindContent(input.content);
-            if (!bound)
-            {
-                return cxx::unexpected(uiFailure(bound.error()));
-            }
-            return std::unique_ptr<lux::ui::Pane>(std::move(*view));
-        }
         SceneInteractionGroup* interaction(const VSceneViewBinding& binding) noexcept
         {
             return std::visit(
@@ -211,6 +136,122 @@ namespace lux::editor::scene
             );
         }
     } // namespace
+    desktop::UiResult<std::unique_ptr<lux::ui::Pane>> SceneView::createConfigured(
+        services::ServiceResolver& resolver,
+        const desktop::UiCreateInfo& input
+    )
+    {
+        auto receiver = resolver.require<ModelDrop>(5);
+        const bool has_receiver_failure = !receiver && receiver.error().code != services::EServiceError::NOT_FOUND;
+        if (has_receiver_failure)
+        {
+            return cxx::unexpected(desktop::UiFailure{
+                desktop::EUiError::DEPENDENCY,
+                "scene.model-drop",
+                static_cast<std::uint64_t>(receiver.error().code),
+                receiver.error().detail
+            });
+        }
+        const bool is_empty_receiver = receiver && !receiver->get();
+        if (is_empty_receiver)
+        {
+            return cxx::unexpected(desktop::UiFailure{desktop::EUiError::INVALID_CONFIGURATION, "scene.model-drop"});
+        }
+        auto state = decodeState(input.configuration.schema, input.configuration.bytes);
+        if (!state)
+        {
+            return cxx::unexpected(desktop::UiFailure{
+                desktop::EUiError::INVALID_CONFIGURATION,
+                state.error().domain,
+                state.error().code,
+                state.error().message
+            });
+        }
+        const auto rejectedDependency = [](const services::ServiceFailure& error)
+        {
+            return cxx::unexpected(desktop::UiFailure{
+                desktop::EUiError::DEPENDENCY,
+                "services",
+                static_cast<std::uint64_t>(error.code),
+                error.detail
+            });
+        };
+        auto store = resolver.require<sessions::SessionStore>(0);
+        if (!store)
+        {
+            return rejectedDependency(store.error());
+        }
+        auto runtime = resolver.require<lux::scene::SceneRuntime>(1);
+        if (!runtime)
+        {
+            return rejectedDependency(runtime.error());
+        }
+        auto projections = resolver.get<ScenePresentationHub>(2);
+        if (!projections)
+        {
+            return rejectedDependency(projections.error());
+        }
+        auto environment = resolver.require<ProjectionEnvironment>(3);
+        if (!environment)
+        {
+            return rejectedDependency(environment.error());
+        }
+        const bool is_invalid_environment = !environment->get().resources || !environment->get().renderer;
+        if (is_invalid_environment)
+        {
+            return cxx::unexpected(uiFailure(SceneViewFailure{views::EViewError::NOT_ATTACHED}));
+        }
+        auto runs = resolver.require<RunInspectAccess>(4);
+        if (!runs && runs.error().code != services::EServiceError::NOT_FOUND)
+        {
+            return rejectedDependency(runs.error());
+        }
+        SceneViewCreateInfo info;
+        info.id = input.instance;
+        info.state.camera.transform.translation = {0, 3, 8};
+        if (*state)
+        {
+            info.state = **state;
+        }
+        auto view = SceneView::create(
+            input.dispatcher,
+            {store->get().access<SceneSession>(),
+             std::move(*projections),
+             runtime->get(),
+             *environment->get().resources,
+             *environment->get().renderer,
+             environment->get(),
+             runs ? std::optional{runs->get()} : std::nullopt},
+            std::move(info)
+        );
+        if (!view)
+        {
+            return cxx::unexpected(uiFailure(view.error()));
+        }
+        auto bound = (*view)->rebindContent(input.content);
+        if (!bound)
+        {
+            return cxx::unexpected(uiFailure(bound.error()));
+        }
+        if (receiver)
+        {
+            auto connection = object::LuxObject::connect(
+                view->get(),
+                &SceneView::modelDropped,
+                [receiver = *receiver](const ModelPlacement& value) noexcept { receiver.get()(value); }
+            );
+            if (!connection)
+            {
+                return cxx::unexpected(desktop::UiFailure{
+                    desktop::EUiError::FACTORY_FAILURE,
+                    "scene.model-drop",
+                    static_cast<std::uint64_t>(connection.error())
+                });
+            }
+            (*view)->model_connection_ = std::move(*connection);
+        }
+        return std::unique_ptr<lux::ui::Pane>(std::move(*view));
+    }
     constinit const desktop::UiDescriptor kSceneView = []
     {
         desktop::UiDescriptor descriptor{
@@ -219,7 +260,7 @@ namespace lux::editor::scene
             ui_dependencies,
             1,
             nullptr,
-            createView,
+            SceneView::createConfigured,
             kContentKinds,
             true,
             +[](const lux::ui::Pane& pane) noexcept -> views::ViewContent

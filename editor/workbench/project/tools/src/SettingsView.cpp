@@ -289,59 +289,131 @@ namespace lux::editor::project
              services::EDependencyScope::ROOT,
              {},
              {},
+             true},
+            {services::ServiceNameView{"lux.editor.project.plugins.requests"},
+             1,
+             cxx::typeToken<PluginSelectionRequests>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT,
+             {},
+             {},
              true}
         };
-        desktop::UiResult<std::unique_ptr<lux::ui::Pane>> createView(
-            services::ServiceResolver& resolver,
-            const desktop::UiCreateInfo& input
-        )
-        {
-            const bool has_content = !input.content.sessions.empty();
-            const bool has_configuration = !input.configuration.bytes.empty();
-            const bool is_invalid_input = has_content || has_configuration;
-            if (is_invalid_input)
-            {
-                return cxx::unexpected(desktop::UiFailure{desktop::EUiError::INVALID_CONFIGURATION, "settings.input"});
-            }
-            auto project = resolver.require<ProjectStorage>(0);
-            auto plugins = resolver.require<lux::project::PluginManager>(1);
-            auto settings = resolver.require<std::shared_ptr<SettingsContentInput>>(2);
-            const bool is_missing_project = !project;
-            const bool is_missing_plugins = !plugins;
-            const bool has_missing_dependency = is_missing_project || is_missing_plugins;
-            if (has_missing_dependency)
-            {
-                const auto& error = !project ? project.error() : plugins.error();
-                return cxx::unexpected(desktop::UiFailure{
-                    desktop::EUiError::DEPENDENCY,
-                    "settings.provider",
-                    static_cast<std::uint64_t>(error.code),
-                    error.detail
-                });
-            }
-            if (!settings && settings.error().code != services::EServiceError::NOT_FOUND)
-            {
-                return cxx::unexpected(desktop::UiFailure{
-                    desktop::EUiError::DEPENDENCY,
-                    "settings.content",
-                    static_cast<std::uint64_t>(settings.error().code),
-                    settings.error().detail
-                });
-            }
-            return std::make_unique<SettingsView>(
-                input.dispatcher,
-                input.instance,
-                project->get(),
-                plugins->get(),
-                settings ? settings->get() : std::shared_ptr<SettingsContentInput>{}
-            );
-        }
     } // namespace
+    desktop::UiResult<std::unique_ptr<lux::ui::Pane>> SettingsView::createConfigured(
+        services::ServiceResolver& resolver,
+        const desktop::UiCreateInfo& input
+    )
+    {
+        const bool has_content = !input.content.sessions.empty();
+        const bool has_configuration = !input.configuration.bytes.empty();
+        const bool is_invalid_input = has_content || has_configuration;
+        if (is_invalid_input)
+        {
+            return cxx::unexpected(desktop::UiFailure{desktop::EUiError::INVALID_CONFIGURATION, "settings.input"});
+        }
+        auto requests = resolver.require<PluginSelectionRequests>(3);
+        const bool has_request_failure = !requests && requests.error().code != services::EServiceError::NOT_FOUND;
+        if (has_request_failure)
+        {
+            return cxx::unexpected(desktop::UiFailure{
+                desktop::EUiError::DEPENDENCY,
+                "settings.plugin.requests",
+                static_cast<std::uint64_t>(requests.error().code),
+                requests.error().detail
+            });
+        }
+        if (requests)
+        {
+            const auto& value = requests->get();
+            const bool has_save = bool(value.save);
+            const bool has_retry = bool(value.retry);
+            const bool has_abandon = bool(value.abandon);
+            const bool has_acknowledge = bool(value.acknowledge);
+            const bool is_complete = has_save && has_retry && has_abandon && has_acknowledge;
+            if (!is_complete)
+            {
+                return cxx::unexpected(
+                    desktop::UiFailure{desktop::EUiError::INVALID_CONFIGURATION, "settings.plugin.requests"}
+                );
+            }
+        }
+        auto project = resolver.require<ProjectStorage>(0);
+        auto plugins = resolver.require<lux::project::PluginManager>(1);
+        auto settings = resolver.require<std::shared_ptr<SettingsContentInput>>(2);
+        const bool is_missing_project = !project;
+        const bool is_missing_plugins = !plugins;
+        const bool has_missing_dependency = is_missing_project || is_missing_plugins;
+        if (has_missing_dependency)
+        {
+            const auto& error = !project ? project.error() : plugins.error();
+            return cxx::unexpected(desktop::UiFailure{
+                desktop::EUiError::DEPENDENCY,
+                "settings.provider",
+                static_cast<std::uint64_t>(error.code),
+                error.detail
+            });
+        }
+        if (!settings && settings.error().code != services::EServiceError::NOT_FOUND)
+        {
+            return cxx::unexpected(desktop::UiFailure{
+                desktop::EUiError::DEPENDENCY,
+                "settings.content",
+                static_cast<std::uint64_t>(settings.error().code),
+                settings.error().detail
+            });
+        }
+        auto pane = std::make_unique<SettingsView>(
+            input.dispatcher,
+            input.instance,
+            project->get(),
+            plugins->get(),
+            settings ? settings->get() : std::shared_ptr<SettingsContentInput>{}
+        );
+        if (requests)
+        {
+            std::array<object::LuxObject::ConnectResult, 4> connections{
+                object::LuxObject::connect(
+                    pane.get(),
+                    &SettingsView::selectionRequested,
+                    [requests = *requests](const PluginSelectionDraft& value) noexcept { requests.get().save(value); }
+                ),
+                object::LuxObject::connect(
+                    pane.get(),
+                    &SettingsView::retryRequested,
+                    [requests = *requests]() noexcept { requests.get().retry(); }
+                ),
+                object::LuxObject::connect(
+                    pane.get(),
+                    &SettingsView::abandonRequested,
+                    [requests = *requests]() noexcept { requests.get().abandon(); }
+                ),
+                object::LuxObject::connect(
+                    pane.get(),
+                    &SettingsView::acknowledgeRequested,
+                    [requests = *requests]() noexcept { requests.get().acknowledge(); }
+                )
+            };
+            for (std::size_t index{}; index < connections.size(); ++index)
+            {
+                if (!connections[index])
+                {
+                    return cxx::unexpected(desktop::UiFailure{
+                        desktop::EUiError::FACTORY_FAILURE,
+                        "settings.plugin.connection",
+                        static_cast<std::uint64_t>(connections[index].error())
+                    });
+                }
+                pane->request_connections_[index] = std::move(*connections[index]);
+            }
+        }
+        return pane;
+    }
     constinit const desktop::UiDescriptor kSettingsView{
         .type = kFactoryDescriptor.type,
         .label = kFactoryDescriptor.label,
         .dependencies = kDependencies,
-        .create = createView
+        .create = SettingsView::createConfigured
     };
     std::shared_ptr<views::ViewFactoryEntry> makeSettingsViewFactory(
         ProjectStorage& project,
@@ -353,13 +425,12 @@ namespace lux::editor::project
         std::shared_ptr<SettingsContentInput> settings
     )
     {
-        struct Receivers final
-        {
-            cxx::move_only_function<void(const PluginSelectionDraft&)> save;
-            cxx::move_only_function<void()> retry, abandon, acknowledge;
-        };
-        auto receivers =
-            std::make_shared<Receivers>(std::move(save), std::move(retry), std::move(abandon), std::move(acknowledge));
+        auto receivers = std::make_shared<PluginSelectionRequests>(
+            std::move(save),
+            std::move(retry),
+            std::move(abandon),
+            std::move(acknowledge)
+        );
         return views::ViewFactoryEntry::bind<kFactoryDescriptor>(
             lux::object::CodeLease::builtin(),
             [&project, &plugins, receivers, settings](const views::ViewFactoryInput& input

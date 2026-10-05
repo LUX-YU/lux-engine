@@ -55,6 +55,8 @@ inline void projectToolFactories(const std::filesystem::path& artifacts)
     assets::ModelImporter importer{*project, execution, writes, files, publishing};
     RecentProjects recent{directory / "user", directory / "Project.luxproject", execution, writes, files, publishing};
     auto plugins = take(lux::project::PluginManager::create({}, {}));
+    lux::editor::project::PluginSelectionRequests plugin_requests;
+    unsigned plugin_requests_received{};
     lux::editor::project::ResultsView::Observe results_observe;
     lux::editor::project::ResultsView::Request results_request;
     lux::editor::project::WorkspaceView::Observe workspace_observe;
@@ -295,6 +297,20 @@ inline void projectToolFactories(const std::filesystem::path& artifacts)
             }
         };
     };
+    assert(scope.provide(services::ServiceNameView{"lux.editor.project.plugins.requests"}, plugin_requests));
+    auto incomplete_plugins = windows.create(settings_factory, scope, settings_input);
+    assert(!incomplete_plugins && incomplete_plugins.error().code == desktop::EUiError::INVALID_CONFIGURATION);
+    assert(take(windows.describe(*root)).empty() && plugin_requests_received == 0);
+    plugin_requests.save = [&](const lux::editor::project::PluginSelectionDraft& value) noexcept
+    {
+        ++plugin_requests_received;
+        assert(value.based_on == project->manifest().plugins && value.desired.empty());
+    };
+    auto still_incomplete = windows.create(settings_factory, scope, settings_input);
+    assert(!still_incomplete && still_incomplete.error().code == desktop::EUiError::INVALID_CONFIGURATION);
+    plugin_requests.retry = [&]() noexcept { plugin_requests_received += 10; };
+    plugin_requests.abandon = [&]() noexcept { plugin_requests_received += 100; };
+    plugin_requests.acknowledge = [&]() noexcept { plugin_requests_received += 1000; };
     auto settings_pane = take(windows.create(settings_factory, scope, settings_input));
     assert(!settings_pane->attachedRoot() && settings_pane->content());
     unsigned selection_requests{};
@@ -325,7 +341,8 @@ inline void projectToolFactories(const std::filesystem::path& artifacts)
     auto* actual_settings =
         static_cast<lux::editor::project::SettingsView*>(root->findPane(ui::PaneIdView{"settings"}));
     assert(actual_results && actual_settings);
-    assert(actual_settings->requestSave({}) && selection_requests == 1);
+    assert(plugin_requests_received == 0);
+    assert(actual_settings->requestSave({}) && selection_requests == 1 && plugin_requests_received == 1);
     assert(root->update({}, nullptr));
     assert(observed == 1 && !actual_results->snapshot().sections.empty());
     busy = true;
@@ -336,7 +353,7 @@ inline void projectToolFactories(const std::filesystem::path& artifacts)
     auto close_tools = take(windows.prepareClose(*root, tool_handles));
     assert(root->commit(close_tools));
     assert(messages.collectRetired() >= 4);
-    assert(!settings_connection.connected());
+    assert(!settings_connection.connected() && plugin_requests_received == 1);
     const auto old_observed = observed;
     assert(root->update({}, nullptr));
     assert(observed == old_observed && creation_actions == 0);

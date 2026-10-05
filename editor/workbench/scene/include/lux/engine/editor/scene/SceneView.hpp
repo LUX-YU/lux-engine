@@ -1,9 +1,9 @@
 #pragma once
-#include <lux/engine/editor/sessions/SessionStore.hpp>
-#include <lux/engine/editor/scene/SceneSession.hpp>
+#include <lux/engine/editor/scene/ModelPlacement.hpp>
 #include <lux/engine/editor/scene/SceneInteraction.hpp>
 #include <lux/engine/editor/scene/SceneProjection.hpp>
-#include <lux/engine/editor/scene/ModelPlacement.hpp>
+#include <lux/engine/editor/scene/SceneSession.hpp>
+#include <lux/engine/editor/sessions/SessionStore.hpp>
 #include <lux/engine/editor/views/CameraNavigation.hpp>
 #include <lux/engine/editor/views/IViewHost.hpp>
 #include <lux/engine/scene/MeshQuery.hpp>
@@ -16,8 +16,14 @@ namespace lux::editor::views
 namespace lux::editor::desktop
 {
     struct UiDescriptor;
-}
+    struct UiFailure;
+    struct UiCreateInfo;
+} // namespace lux::editor::desktop
 
+namespace lux::services
+{
+    class ServiceResolver;
+}
 namespace lux::editor::scene
 {
     extern const desktop::UiDescriptor kSceneView;
@@ -80,6 +86,9 @@ namespace lux::editor::scene
     class SceneView final : public lux::ui::Pane
     {
     public:
+        using ModelDrop = cxx::move_only_function<void(const ModelPlacement&)>;
+        [[nodiscard]] static cxx::expected<std::unique_ptr<lux::ui::Pane>, desktop::UiFailure>
+        createConfigured(services::ServiceResolver&, const desktop::UiCreateInfo&);
         // UI intent only. The receiver owns admission, transport and the eventual domain result.
         object::TSignal<ModelPlacement> modelDropped{*this};
         [[nodiscard]] static SceneViewResult<std::unique_ptr<SceneView>> create(
@@ -121,6 +130,7 @@ namespace lux::editor::scene
         void update() noexcept override;
         struct Impl;
         std::unique_ptr<Impl> impl_;
+        object::Connection model_connection_;
     };
     [[nodiscard]] SceneViewResult<views::DetachedView> makeSceneView(
         object::ObjectDispatcherRef,

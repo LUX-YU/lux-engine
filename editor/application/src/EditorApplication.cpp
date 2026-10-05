@@ -250,8 +250,6 @@ namespace lux::editor::application
             return cxx::unexpected(project.error());
         }
         project_ = std::move(*project);
-        plugin_saving_ =
-            std::make_unique<ProjectPluginSelection>(*project_, engine_->execution(), writes_, files_, save_execution_);
         recent_projects_ = std::make_unique<RecentProjects>(
             *config_.user_directory,
             config_.project_file,

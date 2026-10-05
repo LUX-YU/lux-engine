@@ -46,10 +46,27 @@ namespace lux::editor::application
     }
     EditorResult<void> EditorApplication::Impl::maintainProjectSettings()
     {
+        // First use is a creation boundary. A temporarily unavailable factory must not consume
+        // the pending action or its original source selection.
+        const bool needs_selection = plugin_action_.has_value() && !plugin_saving_;
+        if (needs_selection && phase_ == EApplicationPhase::RUNNING)
+        {
+            auto selection = editor_context_.services().get<ProjectPluginSelection>(editor_context_.scope());
+            if (!selection)
+            {
+                return applicationFailure("settings.plugin-service", selection.error());
+            }
+            plugin_saving_ = std::move(*selection);
+        }
         if (auto action = std::exchange(plugin_action_, {}))
         {
             EditorResult<void> result;
-            if (*action == EPluginAction::SAVE)
+            if (!plugin_saving_)
+            {
+                plugin_selection_.reset();
+                result = cxx::unexpected(EditorFailure{EEditorError::BUSY, "settings.publication"});
+            }
+            else if (*action == EPluginAction::SAVE)
             {
                 auto input = std::exchange(plugin_selection_, {});
                 if (phase_ != EApplicationPhase::RUNNING)
@@ -89,10 +106,6 @@ namespace lux::editor::application
                 plugin_failure_.reset();
             }
         }
-        if (auto updated = plugin_saving_->update(); !updated)
-        {
-            return updated;
-        }
         if (!desktop_)
         {
             return {};
@@ -115,7 +128,7 @@ namespace lux::editor::application
                 {
                     status = *plugin_failure_;
                 }
-                else if (const auto* publication = plugin_saving_->status())
+                else if (const auto* publication = plugin_saving_ ? plugin_saving_->status() : nullptr)
                 {
                     status = *publication;
                 }

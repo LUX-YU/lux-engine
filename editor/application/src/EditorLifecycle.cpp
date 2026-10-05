@@ -461,7 +461,7 @@ namespace lux::editor::application
                 }
             }
         }
-        if (close_application_ && !plugin_saving_->settled())
+        if (close_application_ && plugin_saving_ && !plugin_saving_->settled())
         {
             if (const auto* failure = std::get_if<EditorFailure>(plugin_saving_->status()))
             {

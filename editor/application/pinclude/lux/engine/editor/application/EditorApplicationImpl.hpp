@@ -254,7 +254,6 @@ namespace lux::editor::application
         };
         std::optional<PluginSelection> plugin_selection_;
         std::optional<EPluginAction> plugin_action_;
-        std::unique_ptr<ProjectPluginSelection> plugin_saving_;
         std::optional<EditorFailure> plugin_failure_;
         sessions::SessionCreation content_creation_{contentCreation()};
         commands::CommandEntry::Query content_creation_available_{
@@ -279,6 +278,7 @@ namespace lux::editor::application
             ServiceRetirement& operator=(ServiceRetirement&&) = delete;
         } service_retirement_{editor_context_, messages_};
         std::shared_ptr<ProjectContentSaving> content_saving_;
+        std::shared_ptr<ProjectPluginSelection> plugin_saving_;
         scene::RunStore runs_;
         commands::CommandRegistry& commands_{editor_context_.commands()};
         commands::CommandDispatcher command_dispatcher_{commands_};

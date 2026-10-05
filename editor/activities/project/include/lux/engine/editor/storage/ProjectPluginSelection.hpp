@@ -3,6 +3,10 @@
 #include <lux/engine/editor/storage/ProjectPublication.hpp>
 #include <memory>
 
+namespace lux::services
+{
+    struct ServiceDescriptor;
+}
 namespace lux::process
 {
     class ExecutionRuntime;
@@ -15,6 +19,7 @@ namespace lux::editor::persistence
 } // namespace lux::editor::persistence
 namespace lux::editor
 {
+    extern const services::ServiceDescriptor kProjectPluginSelectionService;
     // The manifest remains authoritative. This activity owns only the outstanding publication;
     // its successful result changes the next project-open selection, never the active plugin set.
     class ProjectPluginSelection final

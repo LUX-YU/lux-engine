@@ -303,7 +303,26 @@ int main(int argc, char** argv)
     opening.requestStop();
     assert(opening.settled() && writes.size() == 0);
     {
-        ProjectPluginSelection plugins{*project, runtime, writes, files, execution};
+        services::ServiceRegistry plugin_services{store_messages.dispatcherRef()};
+        auto plugin_scope = take(plugin_services.createScope());
+        assert(plugin_services.publish(
+            {services::ServiceEntry::bind<kProjectPluginSelectionService>(object::CodeLease::builtin())}
+        ));
+        // Publishing a definition does not construct this activity or create a file request.
+        assert(plugin_services.drained() && take(plugin_scope.settled()) && writes.size() == 0);
+        const auto missing = plugin_services.get<ProjectPluginSelection>(plugin_scope);
+        assert(!missing && plugin_services.drained() && writes.size() == 0);
+        assert(plugin_scope.provide(services::ServiceNameView{"lux.editor.project.storage"}, *project));
+        assert(plugin_scope.provide(services::ServiceNameView{"lux.process.execution"}, runtime));
+        assert(plugin_scope.provide(services::ServiceNameView{"lux.editor.persistence.writes"}, writes));
+        assert(plugin_scope.provide(
+            services::ServiceNameView{"lux.editor.persistence.files"}, static_cast<p::IArtifactStore&>(files)
+        ));
+        assert(plugin_scope.provide(services::ServiceNameView{"lux.editor.persistence.execution"}, execution));
+        auto owned_plugins = take(plugin_services.get<ProjectPluginSelection>(plugin_scope));
+        auto& plugins = *owned_plugins;
+        std::weak_ptr<ProjectPluginSelection> plugin_lifetime = owned_plugins;
+        assert(take(plugin_services.get<ProjectPluginSelection>(plugin_scope)) == owned_plugins);
         const auto original = project->manifest().plugins;
         const std::vector<ProjectPluginEntry> desired{{"ec3.selection", 1, {}}};
         auto stale_selection = plugins.request(desired, {});
@@ -311,13 +330,15 @@ int main(int argc, char** argv)
         assert(!plugins.status() && writes.size() == 0 && project->manifest().plugins == original);
         files.fault = 2;
         assert(plugins.request(original, desired));
+        owned_plugins.reset(); // No view/caller reference remains; the same scoped activity accepts completion.
+        assert(!plugin_lifetime.expired() && !take(plugin_scope.settled()));
         auto busy_selection = plugins.request(original, desired);
         assert(!busy_selection && busy_selection.error().code == EEditorError::BUSY);
         assert(project->manifest().plugins == original);
         until(
             [&]
             {
-                assert(plugins.update());
+                assert(plugin_scope.maintain());
                 return plugins.status() && std::holds_alternative<EditorFailure>(*plugins.status());
             }
         );
@@ -327,7 +348,7 @@ int main(int argc, char** argv)
         until(
             [&]
             {
-                assert(plugins.update());
+                assert(plugin_scope.maintain());
                 return plugins.settled();
             }
         );
@@ -350,12 +371,19 @@ int main(int argc, char** argv)
         until(
             [&]
             {
-                assert(plugins.update());
+                assert(plugin_scope.maintain());
                 return plugins.settled();
             }
         );
         assert(std::holds_alternative<PublicationAbandoned>(*plugins.status()));
         assert(project->manifest().plugins == desired && plugins.acknowledge() && writes.size() == 0);
+        assert(take(plugin_scope.settled()) && !plugin_lifetime.expired());
+        assert(plugin_scope.beginClose());
+        const auto closed = plugin_services.get<ProjectPluginSelection>(plugin_scope);
+        assert(!closed && closed.error().code == services::EServiceError::CLOSED);
+        assert(plugin_scope.release());
+        (void)store_messages.collect();
+        assert(plugin_scope.drained() && plugin_services.drained() && plugin_lifetime.expired());
     }
     {
         const auto user_root = root.parent_path() / (root.filename().string() + "-user");

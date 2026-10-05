@@ -3,6 +3,7 @@
 #include <lux/engine/editor/project/ProjectView.hpp>
 #include <lux/engine/editor/scene/ProjectSceneEnvironment.hpp>
 #include <lux/engine/editor/storage/ProjectContentSaving.hpp>
+#include <lux/engine/editor/storage/ProjectPluginSelection.hpp>
 
 namespace lux::editor::project
 {
@@ -14,11 +15,12 @@ namespace lux::editor::project
             +[]() noexcept -> const extensions::EditorExtensionExports*
             {
                 static const extensions::EditorExtensionExports exports{
-                    .counts = {.services = 2, .ui = 1},
+                    .counts = {.services = 3, .ui = 1},
                     .contribute = +[](extensions::ContributionDraft& draft,
                                       object::CodeLease code) -> extensions::ContributionResult<void>
                     {
                         draft.services.push_back(services::ServiceEntry::bind<kProjectContentSavingService>(code));
+                        draft.services.push_back(services::ServiceEntry::bind<kProjectPluginSelectionService>(code));
                         draft.services.push_back(services::ServiceEntry::bind<scene::kProjectSceneEnvironment>(code));
                         draft.ui.push_back(desktop::UiEntry::bind<kProjectView>(std::move(code)));
                         return {};

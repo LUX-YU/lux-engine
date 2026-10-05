@@ -1,11 +1,107 @@
 #include <lux/engine/editor/storage/ProjectPluginSelection.hpp>
 #include <lux/engine/editor/storage/ProjectPublicationOperation.hpp>
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
+#include <lux/engine/services/ServiceRegistry.hpp>
 #include <algorithm>
 #include <thread>
 
 namespace lux::editor
 {
+    namespace
+    {
+        constexpr services::ServiceContract contracts[]{
+            services::ServiceContract::forType<ProjectPluginSelection, ProjectPluginSelection>(
+                services::ServiceNameView{"lux.editor.project.plugin-selection"}
+            )
+        };
+        constexpr services::ServiceDependency dependencies[]{
+            {services::ServiceNameView{"lux.editor.project.storage"},
+             1,
+             cxx::typeToken<ProjectStorage>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT},
+            {services::ServiceNameView{"lux.process.execution"},
+             1,
+             cxx::typeToken<process::ExecutionRuntime>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT},
+            {services::ServiceNameView{"lux.editor.persistence.writes"},
+             1,
+             cxx::typeToken<persistence::WriteCoordinator>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT},
+            {services::ServiceNameView{"lux.editor.persistence.files"},
+             1,
+             cxx::typeToken<persistence::IArtifactStore>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT},
+            {services::ServiceNameView{"lux.editor.persistence.execution"},
+             1,
+             cxx::typeToken<persistence::SaveExecution>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT}
+        };
+        services::ServiceResult<std::unique_ptr<ProjectPluginSelection>>
+        createSelection(services::ServiceResolver& resolver, const services::ServiceConfiguration&) noexcept
+        {
+            auto project = resolver.require<ProjectStorage>(0);
+            if (!project)
+            {
+                return cxx::unexpected(std::move(project.error()));
+            }
+            auto runtime = resolver.require<process::ExecutionRuntime>(1);
+            if (!runtime)
+            {
+                return cxx::unexpected(std::move(runtime.error()));
+            }
+            auto writes = resolver.require<persistence::WriteCoordinator>(2);
+            if (!writes)
+            {
+                return cxx::unexpected(std::move(writes.error()));
+            }
+            auto files = resolver.require<persistence::IArtifactStore>(3);
+            if (!files)
+            {
+                return cxx::unexpected(std::move(files.error()));
+            }
+            auto execution = resolver.require<persistence::SaveExecution>(4);
+            if (!execution)
+            {
+                return cxx::unexpected(std::move(execution.error()));
+            }
+            return std::make_unique<ProjectPluginSelection>(
+                project->get(), runtime->get(), writes->get(), files->get(), execution->get()
+            );
+        }
+    } // namespace
+    constinit const services::ServiceDescriptor kProjectPluginSelectionService = []
+    {
+        auto descriptor = services::ServiceDescriptor::forType<ProjectPluginSelection, createSelection>(
+            services::ServiceNameView{"lux.editor.project.plugin-selection"}, contracts, dependencies
+        );
+        descriptor.retention = services::EServiceRetention::SCOPED;
+        descriptor.affinity = services::EServiceAffinity::OWNER;
+        descriptor.settled = [](const void* allocation) noexcept -> services::ServiceResult<bool>
+        { return static_cast<const ProjectPluginSelection*>(allocation)->settled(); };
+        descriptor.maintain = [](void* allocation) noexcept -> services::ServiceResult<void>
+        {
+            auto maintained = static_cast<ProjectPluginSelection*>(allocation)->update();
+            if (!maintained)
+            {
+                const auto& error = maintained.error();
+                return cxx::unexpected(services::ServiceFailure{
+                    error.code == EEditorError::BUSY ? services::EServiceError::BUSY
+                                                     : services::EServiceError::FACTORY_FAILURE,
+                    error.message,
+                    error.domain,
+                    static_cast<std::uint64_t>(error.code)
+                });
+            }
+            return {};
+        };
+        return descriptor;
+    }();
+
     struct ProjectPluginSelection::Impl final
     {
         ProjectStorage& project_;

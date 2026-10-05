@@ -50,6 +50,8 @@ namespace lux::editor::sessions
             }
             Dispatch(const Dispatch&) = delete;
         };
+        std::shared_ptr<SessionStore> store_owner;
+        std::shared_ptr<persistence::SaveService> saves_owner;
         const std::thread::id owner{std::this_thread::get_id()};
         SessionStore& store;
         persistence::SaveService& saves;
@@ -122,6 +124,19 @@ namespace lux::editor::sessions
     {
     }
     SessionOpening::~SessionOpening() = default;
+    SessionOpening::SessionOpening(
+        process::ExecutionRuntime& runtime,
+        std::shared_ptr<SessionStore> store,
+        std::shared_ptr<persistence::SaveService> saves,
+        services::ServiceRegistry& services,
+        services::ServiceScope& scope,
+        std::size_t capacity
+    )
+        : SessionOpening(runtime, *store, *saves, services, scope, capacity)
+    {
+        impl_->store_owner = std::move(store);
+        impl_->saves_owner = std::move(saves);
+    }
     SessionFactoryResult<OpenAssetId> SessionOpening::create(
         std::uint64_t project_instance,
         SessionPreparation input,

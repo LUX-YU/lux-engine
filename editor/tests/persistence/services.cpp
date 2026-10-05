@@ -1,5 +1,8 @@
 #include <lux/engine/editor/material/MaterialCodec.hpp>
 #include <lux/engine/editor/material/MaterialSaveSource.hpp>
+#include <lux/engine/editor/material/MaterialSessionFactory.hpp>
+#include <lux/engine/editor/sessions/SessionOpening.hpp>
+#include <lux/engine/editor/sessions/SessionServices.hpp>
 #include <lux/engine/editor/persistence/PersistenceServices.hpp>
 #include <lux/engine/editor/persistence/SaveExecution.hpp>
 #include <lux/engine/editor/storage/PublicationFileStore.hpp>
@@ -40,6 +43,38 @@ namespace
     {
         return asset::AssetId{*uuids::uuid::from_string("8b7f75de-3d9a-45a0-9c6e-ffefeea203b5")};
     }
+    class MaterialFile final : public asset::IAssetProvider
+    {
+    public:
+        explicit MaterialFile(std::filesystem::path file) : file_(std::move(file)) {}
+        std::optional<asset::AssetId> resolve(std::string_view path) const override
+        {
+            return path == "material.luxmaterial" ? std::optional{identity()} : std::nullopt;
+        }
+        bool contains(const asset::AssetId& id) const override { return id == identity(); }
+        cxx::expected<asset::AssetBlob, asset::EAssetStorageError>
+        open(const asset::AssetId& id, std::size_t max_bytes) const override
+        {
+            assert(std::this_thread::get_id() != owner_);
+            if (!contains(id))
+                return cxx::unexpected(asset::EAssetStorageError::NOT_FOUND);
+            auto bytes = storage::readPublicationFile(file_, max_bytes);
+            if (!bytes)
+                return cxx::unexpected(asset::EAssetStorageError::IO_FAILURE);
+            return asset::AssetBlob::fromShared(cxx::SharedBytes<>::copyOf(*bytes));
+        }
+        void enumerate(const std::function<void(const asset::ProviderEntry&)>& receiver) const override
+        {
+            receiver({identity(), 0, "material.luxmaterial"});
+        }
+        std::optional<std::string> pathOf(const asset::AssetId& id) const override
+        {
+            return contains(id) ? std::optional<std::string>{"material.luxmaterial"} : std::nullopt;
+        }
+    private:
+        std::filesystem::path file_;
+        std::thread::id owner_{std::this_thread::get_id()};
+    };
     void runServices(const std::filesystem::path& root)
     {
         auto runtime = take(process::ExecutionRuntime::create(
@@ -58,6 +93,8 @@ namespace
             lux::services::ServiceEntry::bind<p::kWriteCoordinatorService>(code),
             lux::services::ServiceEntry::bind<p::kSaveService>(code),
             lux::services::ServiceEntry::bind<p::kSaveExecutionService>(code),
+            lux::services::ServiceEntry::bind<sessions::kSessionStoreService>(code),
+            lux::services::ServiceEntry::bind<sessions::kSessionOpeningService>(code),
             lux::services::ServiceEntry::bind<storage::kPublicationFileStoreService>(code, roots)
         }));
         assert(scope.drained()); // Descriptors and file roots do not eagerly create providers.
@@ -65,6 +102,8 @@ namespace
         assert(!missing && missing.error().code == lux::services::EServiceError::NOT_FOUND);
         assert(scope.drained());
         assert(scope.provide(lux::services::ServiceNameView{"lux.process.execution"}, runtime));
+        assert(scope.provide(lux::services::ServiceNameView{"lux.services.registry"}, registry));
+        assert(scope.provide(lux::services::ServiceNameView{"lux.services.scope"}, scope));
 
         auto execution = take(registry.get<p::SaveExecution>(scope));
         auto saves = take(registry.get<p::SaveService>(scope));
@@ -118,6 +157,56 @@ namespace
             assert(saves->acknowledge(operation));
             assert(writes->size() == 0);
         }
+        // Real asynchronous file opening through the public declaration, with no UI or project owner.
+        auto opening = take(registry.get<sessions::SessionOpening>(scope));
+        auto store = take(registry.get<sessions::SessionStore>(scope));
+        assert(take(registry.get<sessions::SessionOpening>(scope)) == opening);
+        assert(take(registry.get<sessions::SessionStore>(scope)) == store);
+        {
+            asset::AssetVfs vfs;
+            assert(vfs.mount({"/sources", std::make_shared<MaterialFile>(roots->project / "material.luxmaterial")}));
+            const auto factories = take(sessions::SessionFactorySnapshot::create({em::makeMaterialSessionFactory()}));
+            sessions::OpenAssetRequest request{
+                17, {"lux.editor.material"},
+                {vfs.view().capture(), identity(), sessions::BoundSource{identity(), "material.luxmaterial"},
+                 take(files->resolve("material.luxmaterial"))}
+            };
+            const auto cancelled = take(opening->open(request, factories));
+            const auto wanted = take(opening->open(request, factories));
+            assert(cancelled != wanted && opening->cancel(cancelled));
+            for (unsigned turn = 0; turn < 10000 && !opening->settled(); ++turn)
+            {
+                assert(runtime.collectCompletions());
+                assert(scope.maintain());
+                std::this_thread::sleep_for(std::chrono::milliseconds{1});
+            }
+            const auto loaded = take(opening->status(wanted));
+            assert(loaded.stage == sessions::EOpenAssetStage::PUBLISHED && store->size() == 1);
+            assert(take(opening->status(cancelled)).cancellation_requested);
+            const auto reused = take(opening->open(request, factories));
+            assert(take(opening->status(reused)).reused && take(opening->status(reused)).session == loaded.session);
+            auto model = take(store->share(take(store->key<em::MaterialSession>(loaded.session))));
+            const auto initial = model->describe();
+            assert(!initial.dirty);
+            em::MaterialEditBatch edit{initial.current, "Opened edit", {}};
+            edit.edits.emplace_back(em::MaterialRename{"Opened and saved"});
+            assert(model->apply(std::move(edit)));
+            const auto saved = take(saves->requestSave({loaded.session}));
+            for (unsigned turn = 0; turn < 10000 && !take(saves->status(saved)).outcome; ++turn)
+            {
+                assert(runtime.collectCompletions());
+                assert(scope.maintain());
+                std::this_thread::sleep_for(std::chrono::milliseconds{1});
+            }
+            assert(take(saves->status(saved)).outcome->adoption == p::EAdoption::APPLIED && !model->describe().dirty);
+            assert(saves->acknowledge(saved));
+            assert(opening->find(loaded.session)->close(model->describe().current));
+            assert(!store->describe(loaded.session) && store->size() == 0);
+            assert(opening->acknowledge(cancelled) && opening->acknowledge(wanted) && opening->acknowledge(reused));
+            assert(scope.maintain());
+            opening->requestStop();
+            assert(opening->settled());
+        }
         // The very same execution adapter publishes another admitted producer's ticket.
         const auto bytes = std::as_bytes(std::span("frozen", 6));
         const auto target = take(files->resolve((roots->user / "derived").generic_string()));
@@ -138,19 +227,27 @@ namespace
         std::weak_ptr<p::SaveService> weak_saves = saves;
         std::weak_ptr<p::WriteCoordinator> weak_writes = writes;
         std::weak_ptr<p::IArtifactStore> weak_files = files;
+        std::weak_ptr<sessions::SessionStore> weak_store = store;
         assert(scope.release());
         saves.reset();
         writes.reset();
         files.reset();
+        store.reset();
         assert(!weak_saves.expired() && !weak_writes.expired() && !weak_files.expired());
         assert(!scope.drained());
-        std::thread worker([owned = std::move(execution)]() mutable { owned.reset(); });
+        std::thread worker([owned = std::move(execution), reading = std::move(opening)]() mutable
+        {
+            reading.reset();
+            owned.reset();
+        });
         worker.join();
         // The public allocation retires on its original owner; its dependency pins survive the worker release.
         assert(!weak_saves.expired() && !weak_writes.expired() && !weak_files.expired());
+        assert(!weak_store.expired());
         for (unsigned turn = 0; turn < 16 && !registry.drained(); ++turn)
             (void)messages.collectRetired();
         assert(weak_saves.expired() && weak_writes.expired() && weak_files.expired());
+        assert(weak_store.expired());
         assert(scope.drained() && registry.drained());
         // Invalid definition input is rejected on demand without constructing a fallback backend.
         assert(registry.publish({lux::services::ServiceEntry::bind<storage::kPublicationFileStoreService>(

@@ -70,10 +70,12 @@ elseif(CONSUMER_MODE STREQUAL "PERSISTENCE")
     find_package(lux-engine-editor-material-persistence REQUIRED COMPONENTS material_persistence)
     find_package(lux-engine-editor-persistence REQUIRED COMPONENTS editor_persistence_execution)
     find_package(lux-engine-editor-file-publication REQUIRED COMPONENTS editor_file_publication)
+    find_package(lux-engine-editor-session-factories REQUIRED COMPONENTS session_execution)
     configure_file("${engine_source}/editor/tests/persistence/services.cpp" "${CMAKE_BINARY_DIR}/persistence.cpp" COPYONLY)
     add_executable(services_consumer "${CMAKE_BINARY_DIR}/persistence.cpp")
     target_link_libraries(services_consumer PRIVATE lux::engine::editor::material_persistence
-        lux::engine::editor::editor_persistence_execution lux::engine::editor::editor_file_publication)
+        lux::engine::editor::editor_persistence_execution lux::engine::editor::editor_file_publication
+        lux::engine::editor::session_execution)
     set(consumers services_consumer)
     add_test(NAME installed.services.persistence COMMAND services_consumer "${CMAKE_BINARY_DIR}/files")
     foreach(forbidden editor_composition desktop_shell scene_ui material_ui flowforge_ui editor_bootstrap)

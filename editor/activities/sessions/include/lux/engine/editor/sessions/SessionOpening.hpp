@@ -49,6 +49,16 @@ namespace lux::editor::sessions
             services::ServiceScope&,
             std::size_t capacity = 64
         );
+        // Retains the exact providers while accepted reads and installed role bundles are drained.
+        // Both shared dependencies are required. Execution and the composition scope outlive this owner.
+        SessionOpening(
+            process::ExecutionRuntime&,
+            std::shared_ptr<SessionStore>,
+            std::shared_ptr<persistence::SaveService>,
+            services::ServiceRegistry&,
+            services::ServiceScope&,
+            std::size_t capacity = 64
+        );
         ~SessionOpening();
         SessionOpening(const SessionOpening&) = delete;
         SessionOpening& operator=(const SessionOpening&) = delete;

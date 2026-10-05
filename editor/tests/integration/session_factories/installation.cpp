@@ -3,6 +3,9 @@
 #include <lux/engine/editor/scene/SceneSessionFactory.hpp>
 #include <lux/engine/editor/sessions/SessionOperations.hpp>
 #include <lux/engine/editor/sessions/SessionOpening.hpp>
+#include <lux/engine/editor/sessions/SessionServices.hpp>
+#include <lux/engine/editor/persistence/PersistenceServices.hpp>
+#include <lux/engine/editor/storage/PublicationFileStore.hpp>
 #include <lux/engine/editor/sessions/ReloadSessionOperation.hpp>
 #include <lux/engine/editor/material/MaterialSessionFactory.hpp>
 #include <lux/engine/editor/material/MaterialSaveSource.hpp>
@@ -982,265 +985,299 @@ namespace
     )
     {
         lux::test::ObjectQueue store_messages;
-        SessionStore store{store_messages.dispatcherRef(), 8};
-        WriteCoordinator writes;
-        SaveService saves{writes};
         services::ServiceRegistry dependencies{store_messages.dispatcherRef()};
-        assert(dependencies.publish({services::ServiceEntry::bind<lux::editor::flowforge::kFlowEnvironmentService>(
-            object::CodeLease::builtin()
-        )}));
+        const auto code = object::CodeLease::builtin();
+        const auto roots = std::make_shared<const storage::PublicationRoots>(
+            root, root / "personal", root / "installation"
+        );
+        std::filesystem::create_directories(roots->user);
+        std::filesystem::create_directories(roots->installation);
+        assert(dependencies.publish({
+            services::ServiceEntry::bind<lux::editor::flowforge::kFlowEnvironmentService>(code),
+            services::ServiceEntry::bind<kSessionStoreService>(code),
+            services::ServiceEntry::bind<kSessionOpeningService>(code),
+            services::ServiceEntry::bind<kWriteCoordinatorService>(code),
+            services::ServiceEntry::bind<kSaveService>(code),
+            services::ServiceEntry::bind<kSaveExecutionService>(code),
+            services::ServiceEntry::bind<storage::kPublicationFileStoreService>(code, roots)
+        }));
         auto scope = take(dependencies.createScope());
         simulation::ecs::ComponentSchemaSet schemas;
+        assert(scope.drained());
         assert(scope.provide(services::ServiceNameView{"lux.simulation.components"}, schemas));
-        SessionOpening opening{runtime, store, saves, dependencies, scope, 8};
-        SaveExecution execution{runtime, saves, writes, disk};
-        const std::array<SessionKindId, 3> kinds{
-            {{"lux.editor.scene"}, {"lux.editor.material"}, {"lux.editor.flowforge"}}
-        };
-        auto input = [&](std::size_t i)
+        assert(scope.provide(services::ServiceNameView{"lux.process.execution"}, runtime));
+        assert(scope.provide(services::ServiceNameView{"lux.services.registry"}, dependencies));
+        assert(scope.provide(services::ServiceNameView{"lux.services.scope"}, scope));
+        auto opening_owner = take(dependencies.get<SessionOpening>(scope));
+        auto store_owner = take(dependencies.get<SessionStore>(scope));
+        auto saves_owner = take(dependencies.get<SaveService>(scope));
+        auto writes_owner = take(dependencies.get<WriteCoordinator>(scope));
+        auto execution_owner = take(dependencies.get<SaveExecution>(scope));
+        assert(take(dependencies.get<SessionOpening>(scope)) == opening_owner);
+        assert(take(dependencies.get<SessionStore>(scope)) == store_owner);
+        auto& opening = *opening_owner;
+        auto& store = *store_owner;
+        auto& saves = *saves_owner;
+        auto& writes = *writes_owner;
         {
-            return SessionLoadInput{
-                vfs.view().capture(),
-                identity(SourceFiles::names[i]),
-                BoundSource{identity(SourceFiles::names[i]), SourceFiles::names[i]},
-                take(disk.resolve(SourceFiles::names[i]))
+            const std::array<SessionKindId, 3> kinds{
+                {{"lux.editor.scene"}, {"lux.editor.material"}, {"lux.editor.flowforge"}}
             };
-        };
-        auto turn = [&]
-        {
-            assert(runtime.collectCompletions());
-            assert(opening.update());
-            assert(execution.submitReady());
-            saves.adoptCompletions();
-            std::this_thread::sleep_for(std::chrono::milliseconds{1});
-        };
-        std::array<SessionId, 3> ids;
-        for (std::size_t i{}; i < 3; ++i)
-        {
-            OpenAssetRequest request{17, kinds[i], input(i)};
-            const auto first = take(opening.open(request, factories));
-            const auto second = take(opening.open(request, factories));
-            assert(first != second && opening.cancel(first));
-            for (unsigned n{}; n < 10000 && take(opening.status(second)).stage != EOpenAssetStage::PUBLISHED; ++n)
-                turn();
-            const auto published = take(opening.status(second));
-            assert(published.stage == EOpenAssetStage::PUBLISHED && !published.reused);
-            ids[i] = published.session;
-            assert(store.size() == i + 1 && opening.find(ids[i]));
-            // Cancellation of one waiter does not delete the other's published content or erase its fact.
-            const auto cancelled = take(opening.status(first));
-            assert(cancelled.cancellation_requested && cancelled.session == ids[i]);
-            assert(opening.acknowledge(first) && opening.acknowledge(second));
-            const auto again = take(opening.open(request, factories));
-            assert(take(opening.status(again)).reused && take(opening.status(again)).session == ids[i]);
-            assert(opening.acknowledge(again));
-            turn();
-        }
-        auto frozen_set = take(SaveAllOperation::begin(store, saves));
-        assert(frozen_set.entries().size() == 3);
-        const auto copy = take(opening.open({17, kinds[1], input(1), 42}, factories));
-        for (unsigned n{}; n < 10000 && take(opening.status(copy)).stage != EOpenAssetStage::PUBLISHED; ++n)
-            turn();
-        const auto copy_id = take(opening.status(copy)).session;
-        assert(copy_id != ids[1] && store.size() == 4 && frozen_set.entries().size() == 3);
-        assert(opening.find(copy_id)->close(take(store.describe(copy_id)).current));
-        assert(opening.acknowledge(copy));
-        turn();
-        assert(!opening.find(copy_id) && store.size() == 3);
-
-        for (std::size_t i{}; i < 3; ++i)
-        {
-            const auto before = take(store.describe(ids[i]));
-            auto request = input(i);
-            request.reload = before.current;
-            auto reload = take(ReloadSessionOperation::start(
-                runtime,
-                store,
-                writes,
-                dependencies,
-                scope,
-                take(factories.find(kinds[i])),
-                request
-            ));
-            // Completion while CLOSING is transient, not a failed/consumed reload candidate.
+            auto input = [&](std::size_t i)
             {
-                auto closing = take(store.prepareClose(before.current));
-                for (unsigned n{}; n < 20; ++n)
+                return SessionLoadInput{
+                    vfs.view().capture(),
+                    identity(SourceFiles::names[i]),
+                    BoundSource{identity(SourceFiles::names[i]), SourceFiles::names[i]},
+                    take(disk.resolve(SourceFiles::names[i]))
+                };
+            };
+            auto turn = [&]
+            {
+                assert(runtime.collectCompletions());
+                assert(scope.maintain());
+                std::this_thread::sleep_for(std::chrono::milliseconds{1});
+            };
+            std::array<SessionId, 3> ids;
+            for (std::size_t i{}; i < 3; ++i)
+            {
+                OpenAssetRequest request{17, kinds[i], input(i)};
+                const auto first = take(opening.open(request, factories));
+                const auto second = take(opening.open(request, factories));
+                assert(first != second && opening.cancel(first));
+                for (unsigned n{}; n < 10000 && take(opening.status(second)).stage != EOpenAssetStage::PUBLISHED; ++n)
+                    turn();
+                const auto published = take(opening.status(second));
+                assert(published.stage == EOpenAssetStage::PUBLISHED && !published.reused);
+                ids[i] = published.session;
+                assert(store.size() == i + 1 && opening.find(ids[i]));
+                // Cancellation of one waiter does not delete the other's published content or erase its fact.
+                const auto cancelled = take(opening.status(first));
+                assert(cancelled.cancellation_requested && cancelled.session == ids[i]);
+                assert(opening.acknowledge(first) && opening.acknowledge(second));
+                const auto again = take(opening.open(request, factories));
+                assert(take(opening.status(again)).reused && take(opening.status(again)).session == ids[i]);
+                assert(opening.acknowledge(again));
+                turn();
+            }
+            auto frozen_set = take(SaveAllOperation::begin(store, saves));
+            assert(frozen_set.entries().size() == 3);
+            const auto copy = take(opening.open({17, kinds[1], input(1), 42}, factories));
+            for (unsigned n{}; n < 10000 && take(opening.status(copy)).stage != EOpenAssetStage::PUBLISHED; ++n)
+                turn();
+            const auto copy_id = take(opening.status(copy)).session;
+            assert(copy_id != ids[1] && store.size() == 4 && frozen_set.entries().size() == 3);
+            assert(opening.find(copy_id)->close(take(store.describe(copy_id)).current));
+            assert(opening.acknowledge(copy));
+            turn();
+            assert(!opening.find(copy_id) && store.size() == 3);
+
+            for (std::size_t i{}; i < 3; ++i)
+            {
+                const auto before = take(store.describe(ids[i]));
+                auto request = input(i);
+                request.reload = before.current;
+                auto reload = take(ReloadSessionOperation::start(
+                    runtime,
+                    store,
+                    writes,
+                    dependencies,
+                    scope,
+                    take(factories.find(kinds[i])),
+                    request
+                ));
+                // Completion while CLOSING is transient, not a failed/consumed reload candidate.
+                {
+                    auto closing = take(store.prepareClose(before.current));
+                    for (unsigned n{}; n < 20; ++n)
+                    {
+                        turn();
+                        reload->update(opening.find(ids[i]));
+                    }
+                    assert(!reload->outcome() && take(store.describe(ids[i])).current == before.current);
+                }
+                for (unsigned n{}; n < 10000 && !reload->outcome(); ++n)
                 {
                     turn();
                     reload->update(opening.find(ids[i]));
                 }
-                assert(!reload->outcome() && take(store.describe(ids[i])).current == before.current);
+                assert(reload->outcome() && *reload->outcome());
+                const auto after = take(store.describe(ids[i]));
+                assert(after.id == before.id && after.current.state.history != before.current.state.history);
+                assert(!after.dirty && after.binding == before.binding);
+                assert(!take(opening.find(ids[i])->queryHistory()).can_undo);
             }
-            for (unsigned n{}; n < 10000 && !reload->outcome(); ++n)
+            // A writer admitted and acknowledged during decode still invalidates the source read.
+            {
+                auto request = input(1);
+                const auto before = take(store.describe(ids[1]));
+                request.reload = before.current;
+                auto reload = take(ReloadSessionOperation::start(
+                    runtime,
+                    store,
+                    writes,
+                    dependencies,
+                    scope,
+                    take(factories.find(kinds[1])),
+                    request
+                ));
+                auto write = take(writes.reserve(*request.target, {}));
+                assert(writes.cancelBeforePublish(write, {EPersistenceError::CANCELLED}));
+                assert(writes.acknowledge(write));
+                for (unsigned n{}; n < 10000 && !reload->outcome(); ++n)
+                {
+                    turn();
+                    reload->update(opening.find(ids[1]));
+                }
+                assert(reload->outcome() && !*reload->outcome());
+                assert(reload->outcome()->error().code == ESessionFactoryError::STALE_CONTENT);
+                const auto after = take(store.describe(ids[1]));
+                assert(after.current == before.current && after.observed == before.observed && after.dirty == before.dirty);
+            }
+            // A real external source replacement changes the target version. Reload must install the new role
+            // target as well as the source; the next ordinary Save must not conflict with its own loaded version.
+            {
+                auto decoded = take(em::MaterialCodec::decode(read(root / SourceFiles::names[1])));
+                decoded.source.name = "external material";
+                const auto encoded = take(lux::material::encodeMaterialSource(decoded.source));
+                write(root / SourceFiles::names[1], std::as_bytes(std::span(encoded)));
+                auto request = input(1);
+                request.reload = take(store.describe(ids[1])).current;
+                auto reload = take(ReloadSessionOperation::start(
+                    runtime,
+                    store,
+                    writes,
+                    dependencies,
+                    scope,
+                    take(factories.find(kinds[1])),
+                    request
+                ));
+                for (unsigned n{}; n < 10000 && !reload->outcome(); ++n)
+                {
+                    turn();
+                    reload->update(opening.find(ids[1]));
+                }
+                assert(reload->outcome() && *reload->outcome());
+            }
+            auto& scene = take(store.access<es::SceneSession>().edit(take(store.key<es::SceneSession>(ids[0])))).get();
+            es::SceneEditBatch object{scene.describe().current, "P12 object", {}};
+            object.edits.emplace_back(es::SceneCreateObject{
+                {{identity("P12 object").uuid()},
+                 {0},
+                 {{simulation::ecs::componentSchemaId("test.unknown"), 1, {std::byte{7}}}}}
+            });
+            assert(scene.apply(std::move(object)));
+            auto& material =
+                take(store.access<em::MaterialSession>().edit(take(store.key<em::MaterialSession>(ids[1])))).get();
+            em::MaterialEditBatch renamed{material.describe().current, "P12 material", {}};
+            renamed.edits.emplace_back(em::MaterialRename{"P12 saved material"});
+            assert(material.apply(std::move(renamed)));
+            auto& flow = take(store.access<ef::FlowSession>().edit(take(store.key<ef::FlowSession>(ids[2])))).get();
+            ef::FlowEditBatch flow_edit{flow.describe().current, "P12 flow", {}};
+            flow_edit.edits.emplace_back(ef::FlowRename{"P12 saved flow"});
+            assert(flow.apply(std::move(flow_edit)));
+            auto all = take(SaveAllOperation::begin(store, saves));
+            assert(all.entries().size() == 3);
+            for (const auto& entry : all.entries())
+                assert(entry.save && !entry.failure && !entry.already_clean);
+            for (unsigned n{}; n < 10000; ++n)
             {
                 turn();
-                reload->update(opening.find(ids[i]));
+                if (std::ranges::all_of(
+                        all.entries(),
+                        [&](const auto& e) { return take(saves.status(*e.save)).stage == ESaveStage::TERMINAL; }
+                    ))
+                    break;
             }
-            assert(reload->outcome() && *reload->outcome());
-            const auto after = take(store.describe(ids[i]));
-            assert(after.id == before.id && after.current.state.history != before.current.state.history);
-            assert(!after.dirty && after.binding == before.binding);
-            assert(!take(opening.find(ids[i])->queryHistory()).can_undo);
-        }
-        // A writer admitted and acknowledged during decode still invalidates the source read.
-        {
-            auto request = input(1);
-            const auto before = take(store.describe(ids[1]));
-            request.reload = before.current;
-            auto reload = take(ReloadSessionOperation::start(
+            for (const auto& entry : all.entries())
+            {
+                auto result = take(saves.status(*entry.save));
+                assert(result.outcome && std::holds_alternative<CommitReceipt>(result.outcome->publication));
+                assert(result.outcome->adoption == EAdoption::APPLIED && !take(store.describe(entry.session)).dirty);
+                assert(saves.acknowledge(*entry.save));
+            }
+            assert(take(em::MaterialCodec::decode(read(root / SourceFiles::names[1]))).source.name == "P12 saved material");
+            std::vector<SessionCloseDecision> decisions;
+            for (auto id : take(store.snapshotIds()))
+                decisions.push_back({take(store.describe(id)).current, ECloseChoice::SAVE});
+            auto closing = take(CloseSessionsOperation::begin(store, saves, decisions));
+            auto permits = take(closing.prepare());
+            assert(permits.size() == 3 && store.size() == 3);
+            auto closing_read = input(1);
+            closing_read.reload = take(store.describe(ids[1])).current;
+            auto late_reload = take(ReloadSessionOperation::start(
                 runtime,
                 store,
                 writes,
                 dependencies,
                 scope,
                 take(factories.find(kinds[1])),
-                request
+                closing_read
             ));
-            auto write = take(writes.reserve(*request.target, {}));
-            assert(writes.cancelBeforePublish(write, {EPersistenceError::CANCELLED}));
-            assert(writes.acknowledge(write));
-            for (unsigned n{}; n < 10000 && !reload->outcome(); ++n)
+            assert(store.close(permits) && store.size() == 0);
+            turn();
+            for (auto id : ids)
+                assert(!opening.find(id));
+            for (unsigned n{}; n < 10000 && !late_reload->outcome(); ++n)
             {
                 turn();
-                reload->update(opening.find(ids[1]));
+                late_reload->update(nullptr);
             }
-            assert(reload->outcome() && !*reload->outcome());
-            assert(reload->outcome()->error().code == ESessionFactoryError::STALE_CONTENT);
-            const auto after = take(store.describe(ids[1]));
-            assert(after.current == before.current && after.observed == before.observed && after.dirty == before.dirty);
-        }
-        // A real external source replacement changes the target version. Reload must install the new role
-        // target as well as the source; the next ordinary Save must not conflict with its own loaded version.
-        {
-            auto decoded = take(em::MaterialCodec::decode(read(root / SourceFiles::names[1])));
-            decoded.source.name = "external material";
-            const auto encoded = take(lux::material::encodeMaterialSource(decoded.source));
-            write(root / SourceFiles::names[1], std::as_bytes(std::span(encoded)));
-            auto request = input(1);
-            request.reload = take(store.describe(ids[1])).current;
-            auto reload = take(ReloadSessionOperation::start(
-                runtime,
-                store,
-                writes,
-                dependencies,
-                scope,
-                take(factories.find(kinds[1])),
-                request
-            ));
-            for (unsigned n{}; n < 10000 && !reload->outcome(); ++n)
+            assert(late_reload->outcome() && !*late_reload->outcome());
+            assert(late_reload->outcome()->error().code == ESessionFactoryError::STALE_SESSION);
+            assert(store.size() == 0);
+            // New sources enter the same installation directory directly, without a VFS task or encoding pass.
+            std::array<SessionPreparation, 3> new_sources{
+                es::prepareSceneSession(take(es::SceneCodec::decode(read(root / SourceFiles::names[0]))), {}, {}, {}),
+                em::prepareMaterialSession(take(em::MaterialCodec::decode(read(root / SourceFiles::names[1]))), {}, {}),
+                ef::prepareFlowSession(take(ef::FlowCodec::decode(read(root / SourceFiles::names[2]))), {}, {}, {})
+            };
+            for (std::size_t i{}; i < new_sources.size(); ++i)
             {
-                turn();
-                reload->update(opening.find(ids[1]));
+                const auto created = take(opening.create(17, std::move(new_sources[i]), factories));
+                assert(take(opening.status(created)).stage == EOpenAssetStage::PREPARING);
+                assert(opening.update());
+                const auto done = take(opening.status(created));
+                assert(done.stage == EOpenAssetStage::PUBLISHED && opening.find(done.session));
+                const auto current = take(store.describe(done.session));
+                assert(!current.binding && current.dirty);
+                const auto provider = take(opening.factory(done.session));
+                assert(provider == take(factories.find(current.kind)) && provider->descriptor().source);
+                // Replacing the caller's directory cannot change the admitted content's source policy or code owner.
+                auto removed = take(SessionFactorySnapshot::create({}));
+                assert(!removed.find(current.kind));
+                assert(take(opening.factory(done.session)) == provider);
+                assert(opening.acknowledge(created));
             }
-            assert(reload->outcome() && *reload->outcome());
-        }
-        auto& scene = take(store.access<es::SceneSession>().edit(take(store.key<es::SceneSession>(ids[0])))).get();
-        es::SceneEditBatch object{scene.describe().current, "P12 object", {}};
-        object.edits.emplace_back(es::SceneCreateObject{
-            {{identity("P12 object").uuid()},
-             {0},
-             {{simulation::ecs::componentSchemaId("test.unknown"), 1, {std::byte{7}}}}}
-        });
-        assert(scene.apply(std::move(object)));
-        auto& material =
-            take(store.access<em::MaterialSession>().edit(take(store.key<em::MaterialSession>(ids[1])))).get();
-        em::MaterialEditBatch renamed{material.describe().current, "P12 material", {}};
-        renamed.edits.emplace_back(em::MaterialRename{"P12 saved material"});
-        assert(material.apply(std::move(renamed)));
-        auto& flow = take(store.access<ef::FlowSession>().edit(take(store.key<ef::FlowSession>(ids[2])))).get();
-        ef::FlowEditBatch flow_edit{flow.describe().current, "P12 flow", {}};
-        flow_edit.edits.emplace_back(ef::FlowRename{"P12 saved flow"});
-        assert(flow.apply(std::move(flow_edit)));
-        auto all = take(SaveAllOperation::begin(store, saves));
-        assert(all.entries().size() == 3);
-        for (const auto& entry : all.entries())
-            assert(entry.save && !entry.failure && !entry.already_clean);
-        for (unsigned n{}; n < 10000; ++n)
-        {
+            const auto unbound = take(SaveAllOperation::begin(store, saves));
+            assert(unbound.entries().size() == 3);
+            for (const auto& entry : unbound.entries())
+                assert(entry.failure && !entry.save && !entry.already_clean);
+            decisions.clear();
+            for (auto id : take(store.snapshotIds()))
+                decisions.push_back({take(store.describe(id)).current, ECloseChoice::DISCARD});
+            auto discard_new = take(CloseSessionsOperation::begin(store, saves, decisions));
+            auto new_permits = take(discard_new.prepare());
+            assert(store.close(new_permits));
             turn();
-            if (std::ranges::all_of(
-                    all.entries(),
-                    [&](const auto& e) { return take(saves.status(*e.save)).stage == ESaveStage::TERMINAL; }
-                ))
-                break;
+            opening.requestStop();
+            assert(opening.settled());
         }
-        for (const auto& entry : all.entries())
-        {
-            auto result = take(saves.status(*entry.save));
-            assert(result.outcome && std::holds_alternative<CommitReceipt>(result.outcome->publication));
-            assert(result.outcome->adoption == EAdoption::APPLIED && !take(store.describe(entry.session)).dirty);
-            assert(saves.acknowledge(*entry.save));
-        }
-        assert(take(em::MaterialCodec::decode(read(root / SourceFiles::names[1]))).source.name == "P12 saved material");
-        std::vector<SessionCloseDecision> decisions;
-        for (auto id : take(store.snapshotIds()))
-            decisions.push_back({take(store.describe(id)).current, ECloseChoice::SAVE});
-        auto closing = take(CloseSessionsOperation::begin(store, saves, decisions));
-        auto permits = take(closing.prepare());
-        assert(permits.size() == 3 && store.size() == 3);
-        auto closing_read = input(1);
-        closing_read.reload = take(store.describe(ids[1])).current;
-        auto late_reload = take(ReloadSessionOperation::start(
-            runtime,
-            store,
-            writes,
-            dependencies,
-            scope,
-            take(factories.find(kinds[1])),
-            closing_read
-        ));
-        assert(store.close(permits) && store.size() == 0);
-        turn();
-        for (auto id : ids)
-            assert(!opening.find(id));
-        for (unsigned n{}; n < 10000 && !late_reload->outcome(); ++n)
-        {
-            turn();
-            late_reload->update(nullptr);
-        }
-        assert(late_reload->outcome() && !*late_reload->outcome());
-        assert(late_reload->outcome()->error().code == ESessionFactoryError::STALE_SESSION);
-        assert(store.size() == 0);
-        // New sources enter the same installation directory directly, without a VFS task or encoding pass.
-        std::array<SessionPreparation, 3> new_sources{
-            es::prepareSceneSession(take(es::SceneCodec::decode(read(root / SourceFiles::names[0]))), {}, {}, {}),
-            em::prepareMaterialSession(take(em::MaterialCodec::decode(read(root / SourceFiles::names[1]))), {}, {}),
-            ef::prepareFlowSession(take(ef::FlowCodec::decode(read(root / SourceFiles::names[2]))), {}, {}, {})
-        };
-        for (std::size_t i{}; i < new_sources.size(); ++i)
-        {
-            const auto created = take(opening.create(17, std::move(new_sources[i]), factories));
-            assert(take(opening.status(created)).stage == EOpenAssetStage::PREPARING);
-            assert(opening.update());
-            const auto done = take(opening.status(created));
-            assert(done.stage == EOpenAssetStage::PUBLISHED && opening.find(done.session));
-            const auto current = take(store.describe(done.session));
-            assert(!current.binding && current.dirty);
-            const auto provider = take(opening.factory(done.session));
-            assert(provider == take(factories.find(current.kind)) && provider->descriptor().source);
-            // Replacing the caller's directory cannot change the admitted content's source policy or code owner.
-            auto removed = take(SessionFactorySnapshot::create({}));
-            assert(!removed.find(current.kind));
-            assert(take(opening.factory(done.session)) == provider);
-            assert(opening.acknowledge(created));
-        }
-        const auto unbound = take(SaveAllOperation::begin(store, saves));
-        assert(unbound.entries().size() == 3);
-        for (const auto& entry : unbound.entries())
-            assert(entry.failure && !entry.save && !entry.already_clean);
-        decisions.clear();
-        for (auto id : take(store.snapshotIds()))
-            decisions.push_back({take(store.describe(id)).current, ECloseChoice::DISCARD});
-        auto discard_new = take(CloseSessionsOperation::begin(store, saves, decisions));
-        auto new_permits = take(discard_new.prepare());
-        assert(store.close(new_permits));
-        turn();
-        opening.requestStop();
-        assert(opening.settled());
+        std::weak_ptr<SessionStore> weak_store = store_owner;
+        std::weak_ptr<SaveService> weak_saves = saves_owner;
         assert(scope.release());
-        (void)store_messages.collect();
-        assert(dependencies.drained());
+        store_owner.reset();
+        saves_owner.reset();
+        writes_owner.reset();
+        execution_owner.reset();
+        // Scope release cannot destroy dependencies still used by the retained opening allocation.
+        assert(!weak_store.expired() && !weak_saves.expired());
+        std::thread last_release{[owned = std::move(opening_owner)]() mutable { owned.reset(); }};
+        last_release.join();
+        assert(!weak_store.expired() && !weak_saves.expired());
+        for (unsigned turn = 0; turn < 16 && !dependencies.drained(); ++turn)
+            (void)store_messages.collect();
+        assert(weak_store.expired() && weak_saves.expired() && dependencies.drained());
         std::cout
             << "PASS P12 real content open dedup/cancel/reuse/copy, reload/gate/write-race, SaveAll and atomic close\n";
     }

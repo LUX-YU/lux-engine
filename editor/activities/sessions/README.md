@@ -14,3 +14,11 @@ Admission is checked before consuming accepted decoded input. BUSY, wrong-thread
 `PreparedSessionInstallation::publish()` checks the original owners and commits only prepared, non-allocating, non-callback state changes. `InstalledSession` owns role registrations and their code, **not** a second session. SessionStore remains the sole logical content owner; shared references retain the same allocation without extending a closed SessionId. Close uses the original content stamp and gate; a refusal retains the installation. A published session survives notification failure. Callers must explicitly close installed content before destroying Store/SaveService.
 
 History observation is read-only; undo/redo invoke the domain's existing history. Save, Save As and Export Copy use the original SaveService and source roles. Existing operation IDs, checkpoints, identity high watermarks, publication facts and reliable completion delivery are unchanged.
+
+The activity module declares `kSessionStoreService` and `kSessionOpeningService`. Registration alone
+allocates neither. Opening retains the actual shared Store/SaveService allocations until accepted work
+and installed role bundles are released. The pure Store does not acquire a services or Process dependency.
+At its existing dynamic factory boundary, Opening borrows the composition registry/scope explicitly;
+each content descriptor still resolves only its declared dependencies, after admission and deduplication.
+The worker never receives the registry, scope, resolver or a live session. Scope maintenance calls the
+same update algorithm. Domain close remains explicit; releasing references is not a discard decision.

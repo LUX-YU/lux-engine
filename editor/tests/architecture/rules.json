@@ -18951,6 +18951,12 @@
       ],
       "editor/tests/persistence/services.cpp": [
         "editor_persistence_services_test"
+      ],
+      "editor/activities/sessions/include/lux/engine/editor/sessions/SessionServices.hpp": [
+        "session_execution"
+      ],
+      "editor/activities/sessions/src/SessionServices.cpp": [
+        "session_execution"
       ]
     },
     "native_libraries": [

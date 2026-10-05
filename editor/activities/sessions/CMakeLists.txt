@@ -16,7 +16,7 @@ lux_classify_target(TARGET session_factories LAYER EDITOR PRODUCT EDITOR ROLE LI
 # Factory/installation and fixed-set operations remain independent of execution. These two concrete
 # asynchronous activities form the single Process-facing boundary in the same installed package.
 add_component(COMPONENT_NAME session_execution NAMESPACE lux::engine::editor STATIC
-    SOURCE_FILES src/SessionOpening.cpp src/ReloadSessionOperation.cpp)
+    SOURCE_FILES src/SessionOpening.cpp src/ReloadSessionOperation.cpp src/SessionServices.cpp)
 component_include_directories(session_execution BUILD_TIME_EXPORT ${CMAKE_CURRENT_SOURCE_DIR}/include
     INSTALL_TIME include)
 target_link_libraries(session_execution PUBLIC lux::engine::editor::session_factories

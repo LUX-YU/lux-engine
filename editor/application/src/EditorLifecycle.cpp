@@ -716,7 +716,6 @@ namespace lux::editor::application
             }
         }
         receive(recent_projects_->update(phase_ == EApplicationPhase::RUNNING));
-        importer_->update();
         receive(maintainProjectSettings());
         receive(user_settings_changes_->update(false));
         receive(project_settings_changes_->update(false));

@@ -26,7 +26,7 @@ namespace lux::editor::project
             {services::ServiceNameView{"lux.editor.assets.importer"},
              1,
              cxx::typeToken<assets::ModelImporter>(),
-             services::EDependencyKind::BORROWED,
+             services::EDependencyKind::SHARED,
              services::EDependencyScope::ROOT},
             {services::ServiceNameView{"lux.editor.project.import.browse"},
              1,
@@ -83,7 +83,7 @@ namespace lux::editor::project
                 catalog.error().detail
             });
         }
-        auto importer = resolver.require<assets::ModelImporter>(1);
+        auto importer = resolver.get<assets::ModelImporter>(1);
         if (!importer)
         {
             return cxx::unexpected(desktop::UiFailure{
@@ -93,7 +93,8 @@ namespace lux::editor::project
                 importer.error().detail
             });
         }
-        auto pane = std::make_unique<ImportView>(input.dispatcher, input.instance, catalog->get(), importer->get());
+        auto pane = std::make_unique<ImportView>(input.dispatcher, input.instance, catalog->get(), **importer);
+        pane->importer_owner_ = std::move(*importer);
         if (receiver)
         {
             auto connection = object::LuxObject::connect(

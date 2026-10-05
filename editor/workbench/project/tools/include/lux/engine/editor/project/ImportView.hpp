@@ -4,7 +4,6 @@
 #include <lux/engine/editor/desktop/ViewCommands.hpp>
 #include <lux/engine/editor/project/ProjectCatalogModel.hpp>
 
-
 namespace lux::editor::desktop
 {
     struct UiDescriptor;
@@ -43,6 +42,7 @@ namespace lux::editor::project
     private:
         void update() noexcept override;
         struct Impl;
+        std::shared_ptr<assets::ModelImporter> importer_owner_;
         std::unique_ptr<Impl> impl_;
         object::Connection request_connection_;
     };

@@ -5,6 +5,7 @@
 #include <fstream>
 #include <iostream>
 #include <lux/engine/editor/desktop/UiRegistry.hpp>
+#include <lux/engine/editor/persistence/PersistenceServices.hpp>
 #include <lux/engine/editor/persistence/SaveExecution.hpp>
 #include <lux/engine/editor/project/ImportView.hpp>
 #include <lux/engine/editor/project/ProjectCreationView.hpp>
@@ -15,23 +16,39 @@
 #include <lux/engine/editor/project/WorkspaceView.hpp>
 #include <lux/engine/editor/storage/FileArtifactStore.hpp>
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
+#include <lux/engine/editor/storage/PublicationFileStore.hpp>
 #include <lux/engine/editor/storage/RecentProjects.hpp>
 #include <lux/engine/project/PluginManager.hpp>
 #include <lux/engine/ui/Root.hpp>
+#include <source_location>
 #include <thread>
 
 inline void projectToolFactories(const std::filesystem::path& artifacts)
 {
     using namespace lux;
     using namespace lux::editor;
-    const auto take = [](auto result)
+    const auto take = [](auto result, std::source_location location = std::source_location::current())
     {
+        if (!result)
+        {
+            std::cerr << location.file_name() << ':' << location.line() << '\n';
+            if constexpr (requires { result.error().domain; })
+            {
+                std::cerr << result.error().domain << '\n';
+            }
+            if constexpr (requires { result.error().detail; })
+            {
+                std::cerr << result.error().detail << '\n';
+            }
+        }
         assert(result);
         return std::move(*result);
     };
     const auto directory = std::filesystem::absolute(artifacts) /
                            std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
     std::filesystem::create_directories(directory);
+    std::filesystem::create_directories(directory / "user");
+    std::filesystem::create_directories(directory / "installation");
     const asset::AssetId project_id{*uuids::uuid::from_string("67b2a3c4-17d3-4771-a278-dd95bb084c21")};
     const asset::AssetId asset_id{*uuids::uuid::from_string("07948e66-dcad-417c-aa62-8f91256372e2")};
     {
@@ -48,12 +65,6 @@ inline void projectToolFactories(const std::filesystem::path& artifacts)
     auto prepared = take(prepareProjectOpen(directory / "Project.luxproject"));
     auto project =
         take(ProjectStorage::open(prepared, vfs, *execution.blocking(), project_tasks, messages.dispatcherRef()));
-    storage::FileArtifactStore files{directory};
-    persistence::WriteCoordinator writes;
-    persistence::SaveService saves{writes};
-    persistence::SaveExecution publishing{execution, saves, writes, files};
-    assets::ModelImporter importer{*project, execution, writes, files, publishing};
-    RecentProjects recent{directory / "user", directory / "Project.luxproject", execution, writes, files, publishing};
     auto plugins = take(lux::project::PluginManager::create({}, {}));
     lux::editor::project::PluginSelectionRequests plugin_requests;
     unsigned plugin_requests_received{};
@@ -65,7 +76,35 @@ inline void projectToolFactories(const std::filesystem::path& artifacts)
     services::ServiceRegistry services{messages.dispatcherRef()};
     auto scope = take(services.createScope());
     assert(scope.provide(services::ServiceNameView{"lux.editor.project.catalog"}, project->catalogModel()));
-    assert(scope.provide(services::ServiceNameView{"lux.editor.assets.importer"}, importer));
+    auto roots =
+        std::make_shared<const storage::PublicationRoots>(directory, directory / "user", directory / "installation");
+    assert(scope.provide(services::ServiceNameView{"lux.process.execution"}, execution));
+    assert(scope.provide(services::ServiceNameView{"lux.editor.publication.roots"}, roots));
+    assert(scope.provide(services::ServiceNameView{"lux.editor.project.storage"}, *project));
+    std::vector service_entries{
+        services::ServiceEntry::bind<storage::kPublicationFileStoreService>(object::CodeLease::builtin()),
+        services::ServiceEntry::bind<persistence::kWriteCoordinatorService>(object::CodeLease::builtin()),
+        services::ServiceEntry::bind<persistence::kSaveService>(object::CodeLease::builtin()),
+        services::ServiceEntry::bind<persistence::kSaveExecutionService>(object::CodeLease::builtin()),
+        services::ServiceEntry::bind<assets::kModelImporterService>(object::CodeLease::builtin())
+    };
+    assert(services.publish(service_entries));
+    auto importer_owner = take(services.get<assets::ModelImporter>(scope));
+    auto& importer = *importer_owner;
+    assert(importer_owner == take(services.get<assets::ModelImporter>(scope)));
+    auto writes = take(services.get<persistence::WriteCoordinator>(scope));
+    auto files = take(services.get<persistence::IArtifactStore>(scope));
+    auto saves = take(services.get<persistence::SaveService>(scope));
+    auto publishing = take(services.get<persistence::SaveExecution>(scope));
+    auto recent_owner = std::make_unique<RecentProjects>(
+        directory / "user",
+        directory / "Project.luxproject",
+        execution,
+        *writes,
+        *files,
+        *publishing
+    );
+    auto& recent = *recent_owner;
     desktop::UiRegistry windows{messages.dispatcherRef(), services};
     const auto catalog = take(desktop::UiCatalog::prepare(
         {desktop::UiEntry::bind<lux::editor::project::kProjectView>(object::CodeLease::builtin()),
@@ -126,9 +165,7 @@ inline void projectToolFactories(const std::filesystem::path& artifacts)
     {
         assert(std::chrono::steady_clock::now() < deadline);
         assert(execution.collectCompletions());
-        importer.update();
-        saves.adoptCompletions();
-        assert(publishing.submitReady());
+        assert(scope.maintain());
         const auto status = take(importer.status(*operation));
         if (const auto* failure = std::get_if<EditorFailure>(&status))
         {
@@ -230,7 +267,6 @@ inline void projectToolFactories(const std::filesystem::path& artifacts)
     const desktop::UiCreateInfo results_input{messages.dispatcherRef(), ui::PaneId{"results"}, {}, {}};
     const desktop::UiCreateInfo workspace_input{messages.dispatcherRef(), ui::PaneId{"workspace"}, {}, {}};
     const desktop::UiCreateInfo creation_input{messages.dispatcherRef(), ui::PaneId{"creation"}, {}, {}};
-    assert(scope.provide(services::ServiceNameView{"lux.editor.project.storage"}, *project));
     auto missing_plugins = windows.create(settings_factory, scope, settings_input);
     assert(!missing_plugins && missing_plugins.error().code == desktop::EUiError::DEPENDENCY);
     assert(scope.provide(services::ServiceNameView{"lux.project.plugins"}, plugins));
@@ -262,13 +298,13 @@ inline void projectToolFactories(const std::filesystem::path& artifacts)
     const auto unready_revision = root->windowRevision();
     auto missing_creation = windows.create(creation_factory, scope, creation_input);
     assert(!missing_creation && missing_creation.error().code == desktop::EUiError::DEPENDENCY);
-    assert(services.publish(
-        {services::ServiceEntry::bind<lux::editor::project::kProjectCreationService>(object::CodeLease::builtin())}
-    ));
+    service_entries.push_back(
+        services::ServiceEntry::bind<lux::editor::project::kProjectCreationService>(object::CodeLease::builtin())
+    );
+    assert(services.publish(service_entries));
     auto incomplete_creation = windows.create(creation_factory, scope, creation_input);
     assert(!incomplete_creation && incomplete_creation.error().code == desktop::EUiError::DEPENDENCY);
     assert(root->windowRevision() == unready_revision);
-    assert(scope.provide(services::ServiceNameView{"lux.process.execution"}, execution));
     assert(scope.provide(services::ServiceNameView{"lux.editor.project.creation.options"}, creation_options));
     auto creation = take(services.get<lux::editor::project::ProjectCreation>(scope));
     assert(take(services.get<lux::editor::project::ProjectCreation>(scope)) == creation);
@@ -344,11 +380,23 @@ inline void projectToolFactories(const std::filesystem::path& artifacts)
     assert(creation->progress().failure && !creation->progress().committed);
     assert(take(scope.settled()));
     creation.reset();
-    assert(scope.release());
-    assert(!scope.drained());
-    assert(messages.collectRetired() == 1 && scope.drained() && services.drained());
     importer.requestClose();
     assert(importer.closeStatus().state == assets::EModelImportCloseState::CLOSED);
+    recent_owner.reset();
+    std::weak_ptr<assets::ModelImporter> retained_importer = importer_owner;
+    importer_owner.reset();
+    publishing.reset();
+    saves.reset();
+    files.reset();
+    writes.reset();
+    assert(!retained_importer.expired());
+    assert(scope.release());
+    assert(retained_importer.expired() && !scope.drained());
+    while (!scope.drained())
+    {
+        assert(messages.collectRetired() > 0);
+    }
+    assert(services.drained());
     std::cout << "EC4 project tools: exact dependencies, atomic mount, Root ownership, "
                  "IO survives close, fresh identity\n";
 }

@@ -270,11 +270,13 @@ namespace lux::editor::application
         {
             return applicationFailure("service.infrastructure", provided.error());
         }
-        if (auto provided = scope.provide(services::ServiceNameView{"lux.editor.assets.importer"}, *importer_);
-            !provided)
+        // Transitional close observation until M8; actual allocation and maintenance belong to the module.
+        auto importer = editor_context_.services().get<assets::ModelImporter>(scope);
+        if (!importer)
         {
-            return applicationFailure("service.infrastructure", provided.error());
+            return applicationFailure("service.importer", importer.error());
         }
+        importer_ = std::move(*importer);
         if (auto provided = scope.provide(services::ServiceNameView{"lux.editor.project.recent"}, *recent_projects_);
             !provided)
         {

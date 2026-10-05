@@ -248,13 +248,6 @@ namespace lux::editor::application
             *files_,
             *save_execution_
         );
-        importer_ = std::make_unique<assets::ModelImporter>(
-            *project_,
-            engine_->execution(),
-            *writes_,
-            *files_,
-            *save_execution_
-        );
         if (config_.font)
         {
             std::optional<EditorResult<lux::ui::FontSource>> loaded;

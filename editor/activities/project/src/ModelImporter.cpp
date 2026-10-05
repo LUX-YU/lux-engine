@@ -1,20 +1,133 @@
-#include <lux/engine/platform/FilePath.hpp>
 #include <algorithm>
 #include <atomic>
 #include <fstream>
 #include <lux/cxx/algorithm/Sha256.hpp>
-#include <lux/engine/editor/storage/ProjectPublicationOperation.hpp>
-#include <lux/engine/editor/storage/ProjectStorage.hpp>
-#include <lux/engine/editor/persistence/SaveExecution.hpp>
+#include <lux/engine/editor/assets/ModelImportRecipe.hpp>
+#include <lux/engine/editor/assets/ModelImporter.hpp>
 #include <lux/engine/editor/detail/SignalDelivery.hpp>
 #include <lux/engine/editor/detail/TaskResult.hpp>
-#include <lux/engine/editor/assets/ModelImporter.hpp>
-#include <lux/engine/editor/assets/ModelImportRecipe.hpp>
+#include <lux/engine/editor/persistence/SaveExecution.hpp>
+#include <lux/engine/editor/storage/ProjectPublicationOperation.hpp>
+#include <lux/engine/editor/storage/ProjectStorage.hpp>
+#include <lux/engine/platform/FilePath.hpp>
 #include <lux/engine/resource/asset/AssetSerDeser.hpp>
 #include <lux/engine/resource/asset/storage/pak/PakArchive.hpp>
+#include <lux/engine/services/ServiceRegistry.hpp>
 
 namespace lux::editor::assets
 {
+    namespace
+    {
+        constexpr services::ServiceContract contracts[]{
+            services::ServiceContract::forType<ModelImporter, ModelImporter>(
+                services::ServiceNameView{"lux.editor.assets.importer"}
+            )
+        };
+        constexpr services::ServiceDependency dependencies[]{
+            {services::ServiceNameView{"lux.editor.project.storage"},
+             1,
+             cxx::typeToken<ProjectStorage>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT},
+            {services::ServiceNameView{"lux.process.execution"},
+             1,
+             cxx::typeToken<process::ExecutionRuntime>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT},
+            {services::ServiceNameView{"lux.editor.persistence.writes"},
+             1,
+             cxx::typeToken<persistence::WriteCoordinator>(),
+             services::EDependencyKind::SHARED,
+             services::EDependencyScope::ROOT},
+            {services::ServiceNameView{"lux.editor.persistence.files"},
+             1,
+             cxx::typeToken<persistence::IArtifactStore>(),
+             services::EDependencyKind::SHARED,
+             services::EDependencyScope::ROOT},
+            {services::ServiceNameView{"lux.editor.persistence.execution"},
+             1,
+             cxx::typeToken<persistence::SaveExecution>(),
+             services::EDependencyKind::SHARED,
+             services::EDependencyScope::ROOT}
+        };
+        services::ServiceResult<std::unique_ptr<ModelImporter>>
+        createImporter(services::ServiceResolver& resolver, const services::ServiceConfiguration&) noexcept
+        {
+            auto project = resolver.require<ProjectStorage>(0);
+            if (!project)
+            {
+                return cxx::unexpected(std::move(project.error()));
+            }
+            auto runtime = resolver.require<process::ExecutionRuntime>(1);
+            if (!runtime)
+            {
+                return cxx::unexpected(std::move(runtime.error()));
+            }
+            auto writes = resolver.get<persistence::WriteCoordinator>(2);
+            if (!writes)
+            {
+                return cxx::unexpected(std::move(writes.error()));
+            }
+            auto files = resolver.get<persistence::IArtifactStore>(3);
+            if (!files)
+            {
+                return cxx::unexpected(std::move(files.error()));
+            }
+            auto execution = resolver.get<persistence::SaveExecution>(4);
+            if (!execution)
+            {
+                return cxx::unexpected(std::move(execution.error()));
+            }
+            return std::make_unique<ModelImporter>(
+                project->get(),
+                runtime->get(),
+                std::move(*writes),
+                std::move(*files),
+                std::move(*execution)
+            );
+        }
+    } // namespace
+    constinit const services::ServiceDescriptor kModelImporterService = []
+    {
+        auto descriptor = services::ServiceDescriptor::forType<ModelImporter, createImporter>(
+            services::ServiceNameView{"lux.editor.assets.importer"},
+            contracts,
+            dependencies
+        );
+        descriptor.retention = services::EServiceRetention::SCOPED;
+        descriptor.affinity = services::EServiceAffinity::OWNER;
+        descriptor.settled = [](const void* allocation) noexcept -> services::ServiceResult<bool>
+        {
+            const auto& importer = *static_cast<const ModelImporter*>(allocation);
+            const auto request = importer.currentRequest();
+            if (!request)
+            {
+                return true;
+            }
+            auto status = importer.status(*request);
+            if (!status)
+            {
+                return cxx::unexpected(services::ServiceFailure{
+                    services::EServiceError::FACTORY_FAILURE,
+                    status.error().message,
+                    status.error().domain,
+                    static_cast<std::uint64_t>(status.error().code)
+                });
+            }
+            // Errors may retain an unresolved publication; only the original close protocol
+            // determines whether those responsibilities have actually ended.
+            const bool has_terminal_fact = std::holds_alternative<ModelImportSucceeded>(*status) ||
+                                           std::holds_alternative<ModelImportAbandoned>(*status);
+            return has_terminal_fact || importer.closeStatus().state == EModelImportCloseState::CLOSED;
+        };
+        descriptor.maintain = [](void* allocation) noexcept -> services::ServiceResult<void>
+        {
+            static_cast<ModelImporter*>(allocation)->update();
+            return {};
+        };
+        return descriptor;
+    }();
+
     namespace
     {
         constexpr std::size_t source_limit = 256U * 1024U * 1024U;
@@ -681,6 +794,9 @@ namespace lux::editor::assets
                 }
             }
         };
+        std::shared_ptr<persistence::WriteCoordinator> writes_owner_;
+        std::shared_ptr<persistence::IArtifactStore> files_owner_;
+        std::shared_ptr<persistence::SaveExecution> execution_owner_;
         ProjectStorage& project;
         process::ExecutionRuntime& runtime;
         persistence::WriteCoordinator& writes;
@@ -746,6 +862,19 @@ namespace lux::editor::assets
     )
         : impl_(std::make_unique<Impl>(project, runtime, writes, files, execution))
     {}
+    ModelImporter::ModelImporter(
+        ProjectStorage& project,
+        process::ExecutionRuntime& runtime,
+        std::shared_ptr<persistence::WriteCoordinator> writes,
+        std::shared_ptr<persistence::IArtifactStore> files,
+        std::shared_ptr<persistence::SaveExecution> execution
+    )
+        : impl_(std::make_unique<Impl>(project, runtime, *writes, *files, *execution))
+    {
+        impl_->writes_owner_ = std::move(writes);
+        impl_->files_owner_ = std::move(files);
+        impl_->execution_owner_ = std::move(execution);
+    }
     ModelImporter::~ModelImporter() = default;
     EditorResult<ModelImportId> ModelImporter::Impl::requestModel(const ModelImportRequest& input)
     {

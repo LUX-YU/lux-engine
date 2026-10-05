@@ -1,11 +1,15 @@
 #pragma once
 
 #include <lux/engine/editor/EditorError.hpp>
-#include <variant>
-#include <optional>
 #include <lux/engine/editor/assets/visibility.h>
 #include <lux/engine/toolchain/asset/model/ModelCooker.hpp>
+#include <optional>
+#include <variant>
 
+namespace lux::services
+{
+    struct ServiceDescriptor;
+}
 namespace lux::process
 {
     class ExecutionRuntime;
@@ -20,10 +24,12 @@ namespace lux::editor::persistence
     class WriteCoordinator;
     class IArtifactStore;
     class SaveExecution;
-}
+} // namespace lux::editor::persistence
 
 namespace lux::editor::assets
 {
+    extern const services::ServiceDescriptor kModelImporterService;
+
     enum class EModelImportCloseState : std::uint8_t
     {
         OPEN,
@@ -82,6 +88,7 @@ namespace lux::editor::assets
     {
     public:
         ModelImporter(ProjectStorage&, process::ExecutionRuntime&, persistence::WriteCoordinator&, persistence::IArtifactStore&, persistence::SaveExecution&);
+        ModelImporter(ProjectStorage&, process::ExecutionRuntime&, std::shared_ptr<persistence::WriteCoordinator>, std::shared_ptr<persistence::IArtifactStore>, std::shared_ptr<persistence::SaveExecution>);
         ~ModelImporter();
         ModelImporter(const ModelImporter&) = delete;
         ModelImporter(ModelImporter&&) = delete;

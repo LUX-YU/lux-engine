@@ -41,4 +41,9 @@ Importer 负责真实读取、cook 和发布，不再内嵌另一份 TOML 配方
 通用 History 与会话位于 editor/editing；正式保存协议位于 activities/persistence。
 旧 AssetSource/AssetSave 协议已删除。ModelImporter 继续拥有导入任务和完成事实，关闭状态由其自身的 ModelImportCloseStatus 表达。
 
+`kModelImporterService` 在项目作用域按需构造同一导入 owner，保留正式 WriteCoordinator、
+文件后端和 SaveExecution 的共享 allocation。ImportView 借用目录并共享这个实际 owner；
+最后一个窗口关闭后，已接纳的读取、cook、发布和 Unknown 核对继续通过原活动完成。
+原关闭协议判定未决发布是否结束，不把普通错误当成可回收结果。
+
 `editor_assets` 为 STATIC，无独立资产 DLL；其安装 include 前缀仍为 lux/engine/editor。

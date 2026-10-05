@@ -4,7 +4,6 @@
 #include <imgui_internal.h>
 #include <lux/engine/editor/desktop/DesktopShell.hpp>
 #include <lux/engine/editor/desktop/UiRegistry.hpp>
-#include <lux/engine/editor/desktop/ViewHost.hpp>
 #include <lux/engine/editor/editing/EditExecutor.hpp>
 #include <lux/engine/editor/extensions/EditorExtension.hpp>
 #include <lux/engine/editor/flowforge/FlowModule.hpp>
@@ -33,7 +32,6 @@
 #include <lux/engine/editor/storage/ProjectContentSaving.hpp>
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
 #include <lux/engine/editor/tasks/TaskView.hpp>
-#include <lux/engine/editor/views/ViewFactory.hpp>
 #include <lux/engine/editor/views/ViewportElement.hpp>
 #include <lux/engine/editor/widgets/GraphCanvas.hpp>
 #include <lux/engine/flowforge/graph/ArithmeticNode.hpp>
@@ -83,71 +81,6 @@
 #include <source_location>
 #include <thread>
 
-namespace registered_views
-{
-    using namespace lux::editor;
-    template <class Value>
-    views::ViewFactoryResult<views::DetachedView> prepare(
-        lux::object::ObjectDispatcherRef dispatcher,
-        lux::ui::PaneId id,
-        std::shared_ptr<views::ViewFactoryEntry> entry,
-        Value value
-    )
-    {
-        auto snapshot = views::ViewFactorySnapshot::create({entry});
-        if (!snapshot)
-        {
-            return lux::cxx::unexpected(snapshot.error());
-        }
-        const views::ViewFactoryInput input{
-            dispatcher,
-            std::move(id),
-            lux::object::CodeLease::builtin(),
-            lux::cxx::typeToken<Value>(),
-            std::make_shared<const Value>(std::move(value))
-        };
-        return snapshot->prepare(views::ViewTypeId{entry->descriptor().type.name()}, input);
-    }
-    // These fixtures deliberately borrow an explicit interaction to inspect its gesture lifetime.
-    // Production content factories instead construct the complete owner from ContentViewInput.
-    template <class Create> auto fixtureFactory(views::ViewTypeId type, Create create)
-    {
-        return views::ViewFactoryEntry::create(
-            lux::object::CodeLease::builtin(),
-            views::ViewFactoryDescriptor{type.view(), "Borrowed fixture", lux::cxx::typeToken<std::monostate>()},
-            [create = std::move(create)](const views::ViewFactoryInput& input
-            ) mutable -> views::ViewFactoryResult<views::DetachedView>
-            {
-                auto view = create(input);
-                if (!view)
-                {
-                    return lux::cxx::unexpected(
-                        views::ViewFactoryFailure{views::EViewFactoryError::CONSTRUCT, "fixture"}
-                    );
-                }
-                return std::move(*view);
-            }
-        );
-    }
-    auto scene(
-        lux::object::ObjectDispatcherRef dispatcher,
-        scene::SceneViewServices services,
-        scene::SceneViewCreateInfo info
-    )
-    {
-        const auto id = info.id;
-        return prepare(
-            dispatcher,
-            id,
-            fixtureFactory(
-                views::ViewTypeId{"lux.editor.scene.view"},
-                [services, info = std::move(info)](const views::ViewFactoryInput& input) mutable
-                { return scene::makeSceneView(input.dispatcher(), services, std::move(info)); }
-            ),
-            std::monostate{}
-        );
-    }
-} // namespace registered_views
 namespace
 {
     using namespace lux;
@@ -234,7 +167,6 @@ namespace
         editor::commands::CommandRegistry commands;
         editor::commands::CommandDispatcher dispatcher{commands};
         std::unique_ptr<desktop::DesktopShell> desktop;
-        std::unique_ptr<desktop::ViewHost> legacy_host;
         author::ProjectionEnvironment environment;
         std::optional<sessions::TSessionKey<author::SceneSession>> key;
         author::SceneSession* session{};
@@ -406,7 +338,6 @@ namespace
                 window_,
                 {.docking = false}
             ));
-            legacy_host = std::make_unique<desktop::ViewHost>(desktop->root());
         }
         void frame(bool draw = true)
         {
@@ -433,7 +364,7 @@ namespace
                     input_.sample(*window_);
                     assert(desktop->feedInput(input_.snapshot()));
                 }
-                assert(legacy_host->drain());
+                desktop->root().applyPendingChanges();
                 assert(desktop->update(
                     draw && window_ ? std::nullopt
                                     : std::optional{ui::FrameInfo{draw ? ui::Size{1000, 650} : ui::Size{}, 1.F / 60.F}}
@@ -492,7 +423,6 @@ namespace
         {
             assert(transfer.tasks().join());
             saves.adoptCompletions();
-            legacy_host.reset();
             desktop.reset();
             hub.reset();
             wait([&] { return resources->empty(); }, false);
@@ -516,17 +446,16 @@ namespace
         auto before = f.session->describe();
         author::SceneInteractionGroup group(f.store.access<author::SceneSession>(), *f.key, {55});
         const author::SceneObjectRef target{f.key->id(), before.current.state.history, f.object};
-        auto detached = take(author::makeInspectorView(
-            f.messages.dispatcherRef(),
-            lux::ui::PaneId{"inspector"},
-            f.store.access<author::SceneSession>(),
-            {*f.key, &group},
-            target,
-            f.environment.components,
+        auto detached = std::make_unique<author::InspectorView>(
+            f.messages.dispatcherRef(), lux::ui::PaneId{"inspector"},
+            f.store.access<author::SceneSession>(), f.environment.components,
             author::sceneInspectorComponents()
-        ));
-        auto* inspector = static_cast<author::InspectorView*>(detached.pane());
-        const auto id = take((*f.legacy_host).adopt(detached, views::ViewRestoreKey{"inspector"})).id;
+        );
+        assert(detached->status() && detached->rebind({*f.key, &group}, target));
+        auto* inspector = detached.get();
+        auto& root = f.desktop->root();
+        assert(root.addSubPane(std::move(detached)));
+        const auto id = take(root.identify(*inspector));
         f.frame(false);
         const auto find = [&](auto&& self, object::LuxObject& object) -> lux::ui::NumericEdit*
         {
@@ -581,14 +510,16 @@ namespace
             {
                 assert(!inspector->prepareClose());
                 assert(inspector->target() == target && group.overlay());
-                assert((*f.legacy_host).close(id));
-                auto drain = take((*f.legacy_host).drain());
-                assert(drain.pending == 1 && (*f.legacy_host).describe(id));
+                const auto refused = author::kInspectorView.prepare_close(*inspector);
+                assert(!refused && refused.error().code == desktop::EUiError::BUSY);
+                assert(root.findPane(id));
                 return {};
             }
         );
         assert(busy);
-        f.wait([&] { return !(*f.legacy_host).describe(id); }, false);
+        assert(author::kInspectorView.prepare_close(*inspector) && root.removeSubPane(*inspector));
+        (void)f.messages.collectRetired();
+        assert(!root.findPane(id));
         assert(!group.overlay() && f.session->describe().current == before.current);
     }
     void ownedSceneTools(Fixture& f)
@@ -887,54 +818,69 @@ namespace
         auto* source = model.get();
         assert(f.store.prepare(reservation, model));
         auto key = take(f.store.key<author::SceneSession>(take(f.store.publish(reservation))));
-        author::SceneInteractionGroup group(f.store.access<author::SceneSession>(), key, {901});
+        auto group = std::make_shared<author::SceneInteractionGroup>(
+            f.store.access<author::SceneSession>(), key, author::InteractionGroupId{901}
+        );
         const auto before = source->describe();
         const author::SceneObjectRef target{key.id(), before.current.state.history, f.object};
-        auto candidate = take(author::makeInspectorView(
-            f.messages.dispatcherRef(),
-            ui::PaneId{"closing-inspector"},
-            f.store.access<author::SceneSession>(),
-            {key, &group},
-            target,
-            f.environment.components,
-            author::sceneInspectorComponents()
-        ));
-        auto* inspector = static_cast<author::InspectorView*>(candidate.pane());
-        auto& host = (*f.legacy_host);
-        const auto view = take(host.adopt(candidate, views::ViewRestoreKey{"closing-inspector"})).id;
+        assert(group->select({{target}}));
+        services::ServiceRegistry services(f.messages.dispatcherRef());
+        auto scope = take(services.createScope());
+        assert(scope.provide(services::ServiceNameView{"lux.editor.sessions"}, f.store));
+        assert(scope.provide(services::ServiceNameView{"lux.simulation.components"}, f.environment.components));
+        assert(scope.provide(services::ServiceNameView{"lux.editor.scene.interaction"}, group));
         class BlockingPane final : public ui::Pane
         {
         public:
             using Pane::Pane;
             bool refuse{true};
         };
-        auto blocker = std::make_unique<BlockingPane>(
-            f.messages.dispatcherRef(),
-            ui::PaneId{"close-blocker"},
-            ui::PaneTypeId{"test.blocker"},
-            "Blocker"
-        );
-        auto* blocking = blocker.get();
-        views::DetachedView other{
-            lux::object::CodeLease::builtin(),
-            std::move(blocker),
-            +[](ui::Pane& pane) -> views::ViewCloseResult
+        const desktop::UiDescriptor blocker{
+            .type = views::ViewTypeIdView{"test.blocker"},
+            .label = "Blocker",
+            .create = +[](services::ServiceResolver&, const desktop::UiCreateInfo& input)
+                -> desktop::UiResult<std::unique_ptr<ui::Pane>>
+            {
+                return std::unique_ptr<ui::Pane>(std::make_unique<BlockingPane>(
+                    input.dispatcher, input.instance, ui::PaneTypeId{"test.blocker"}, "Blocker"
+                ));
+            },
+            .prepare_close = +[](ui::Pane& pane) -> desktop::UiResult<void>
             {
                 if (static_cast<BlockingPane&>(pane).refuse)
                 {
-                    return cxx::unexpected(views::ViewPreparationFailure{"test.close", 7, "Not ready", true});
+                    return cxx::unexpected(desktop::UiFailure{desktop::EUiError::BUSY, "test.close", 7, "Not ready"});
                 }
                 return {};
             }
         };
-        const auto other_id = take(host.adopt(other, views::ViewRestoreKey{"close-blocker"})).id;
+        desktop::UiRegistry windows(f.messages.dispatcherRef(), services);
+        auto catalog = take(desktop::UiCatalog::prepare({
+            desktop::UiEntry::bind<author::kInspectorView>(object::CodeLease::builtin()),
+            desktop::UiEntry::create(object::CodeLease::builtin(), blocker)
+        }));
+        assert(windows.publish(catalog));
+        auto candidate = take(windows.create(
+            take(catalog.find(author::kInspectorView.type)), scope,
+            {f.messages.dispatcherRef(), ui::PaneId{"closing-inspector"}, {{key.id()}, key.id()}}
+        ));
+        auto* inspector = static_cast<author::InspectorView*>(candidate.get());
+        auto other = take(windows.create(
+            take(catalog.find(blocker.type)), scope,
+            {f.messages.dispatcherRef(), ui::PaneId{"close-blocker"}}
+        ));
+        auto* blocking = static_cast<BlockingPane*>(other.get());
+        auto& root = f.desktop->root();
+        assert(root.addSubPane(std::move(candidate)) && root.addSubPane(std::move(other)));
+        const auto view = take(root.identify(*inspector));
+        const auto other_id = take(root.identify(*blocking));
         f.frame(false);
         const std::array ids{view, other_id};
-        assert(!host.prepareClose(ids));
-        assert(host.describe(view) && host.describe(other_id));
+        assert(!windows.prepareClose(root, ids));
+        assert(root.findPane(view) && root.findPane(other_id));
         assert(inspector->target() == target && source->describe().current == before.current);
         blocking->refuse = false;
-        auto prepared = take(host.prepareClose(ids));
+        auto prepared = take(windows.prepareClose(root, ids));
         assert(inspector->target() == target);
         std::array permits{take(f.store.prepareClose(before.current))};
         bool notified{};
@@ -954,13 +900,11 @@ namespace
                 assert(inspector->target() == target); // Still owned until the handoff completes.
             }
         ));
-        const auto commit_content = [&]() noexcept
-        {
-            assert(notified && f.store.close(permits));
-            assert(!f.store.describe(key.id()));
-        };
-        assert(host.commitClose(prepared, commit_content));
-        assert(notified && !host.describe(view) && !host.describe(other_id));
+        assert(root.commit(prepared));
+        assert(notified && f.store.close(permits));
+        assert(!f.store.describe(key.id()) && !root.findPane(view) && !root.findPane(other_id));
+        (void)f.messages.collectRetired();
+        assert(scope.release() && scope.drained());
         assert(f.store.describe(f.key->id()));
         std::puts("PASS P12 real Inspector abandonable close preparation and guarded content retirement handoff");
     }
@@ -2422,15 +2366,13 @@ namespace
             f.wait([&] { return retired.complete(); });
             assert(view->image().isValid() && preview.status().accepted->input == compiled->key());
         }
-        auto resource_candidate = take(editor::scene::makeResourceView(
-            f.messages.dispatcherRef(),
-            ui::PaneId{"resources"},
-            *f.runtime,
-            editor::scene::ResourceViewBinding{preview.instance(), {2}}
-        ));
-        auto* resources = static_cast<editor::scene::ResourceView*>(resource_candidate.pane());
-        const auto resource_id =
-            take((*f.legacy_host).adopt(resource_candidate, views::ViewRestoreKey{"resources"})).id;
+        auto resource_candidate = std::make_unique<editor::scene::ResourceView>(
+            f.messages.dispatcherRef(), ui::PaneId{"resources"}, *f.runtime
+        );
+        assert(resource_candidate->rebind(editor::scene::ResourceViewBinding{preview.instance(), {2}}));
+        auto* resources = resource_candidate.get();
+        assert(root.addSubPane(std::move(resource_candidate)));
+        const auto resource_id = take(root.identify(*resources));
         assert(!resources->snapshot().rows.empty());
         const auto previous_instance = resources->snapshot().instance;
         const auto previous_rows = resources->snapshot().rows.size();
@@ -2439,8 +2381,8 @@ namespace
             resources->snapshot().instance == previous_instance && resources->snapshot().rows.size() == previous_rows
         );
         assert(resources->refresh());
-        assert((*f.legacy_host).close(resource_id));
-        f.wait([&] { return !(*f.legacy_host).describe(resource_id); });
+        assert(root.removeSubPane(*resources));
+        f.wait([&] { return !root.findPane(resource_id); });
         assert(view->image().isValid());
         const auto before_navigation = author->describe();
         lux::editor::views::CameraMotion motion;
@@ -2654,15 +2596,17 @@ namespace
         auto info = f.info("mesh-left", left);
         info.binding = author::EditedSceneBinding{key, &left};
         info.state.camera.transform.translation = {0, 0, 4};
-        auto first = take(registered_views::scene(f.messages.dispatcherRef(), services, info));
+        auto first = take(author::SceneView::create(f.messages.dispatcherRef(), services, info));
         info.id = ui::PaneId{"mesh-right"};
         info.title = "Mesh right";
         info.binding = author::EditedSceneBinding{key, &right};
-        auto second = take(registered_views::scene(f.messages.dispatcherRef(), services, info));
-        auto* a = static_cast<author::SceneView*>(first.pane());
-        auto* b = static_cast<author::SceneView*>(second.pane());
-        const auto aid = take((*f.legacy_host).adopt(first, views::ViewRestoreKey{"mesh-left"})).id;
-        const auto bid = take((*f.legacy_host).adopt(second, views::ViewRestoreKey{"mesh-right"})).id;
+        auto second = take(author::SceneView::create(f.messages.dispatcherRef(), services, info));
+        auto* a = first.get();
+        auto* b = second.get();
+        auto& root = f.desktop->root();
+        assert(root.addSubPane(std::move(first)) && root.addSubPane(std::move(second)));
+        const auto aid = take(root.identify(*a));
+        const auto bid = take(root.identify(*b));
         f.wait(
             [&]
             {
@@ -2674,14 +2618,13 @@ namespace
                        );
             }
         );
-        auto recovery = take(author::makeResourceView(
-            f.messages.dispatcherRef(),
-            ui::PaneId{"resource-recovery"},
-            *f.runtime,
-            author::ResourceViewBinding{a->presentedInstance(), {3}}
-        ));
-        auto* resource_view = static_cast<author::ResourceView*>(recovery.pane());
-        const auto recovery_id = take((*f.legacy_host).adopt(recovery, views::ViewRestoreKey{"resource-recovery"})).id;
+        auto recovery = std::make_unique<author::ResourceView>(
+            f.messages.dispatcherRef(), ui::PaneId{"resource-recovery"}, *f.runtime
+        );
+        assert(recovery->rebind(author::ResourceViewBinding{a->presentedInstance(), {3}}));
+        auto* resource_view = recovery.get();
+        assert(root.addSubPane(std::move(recovery)));
+        const auto recovery_id = take(root.identify(*resource_view));
         const auto failed = std::ranges::find_if(
             resource_view->snapshot().rows,
             [](const auto& row) { return row.state == lux::scene::ERenderAssetState::FAILED; }
@@ -2689,8 +2632,8 @@ namespace
         assert(failed != resource_view->snapshot().rows.end() && failing->failures > 0);
         failing->available = true;
         assert(resource_view->retry(failed->key));
-        assert((*f.legacy_host).close(recovery_id));
-        f.wait([&] { return !(*f.legacy_host).describe(recovery_id); });
+        assert(root.removeSubPane(*resource_view));
+        f.wait([&] { return !root.findPane(recovery_id); });
         f.wait(
             [&]
             {
@@ -2768,17 +2711,17 @@ namespace
         assert(command_results.size() == 1 && command_results.front().result);
         assert(f.commands.publish({}));
         const auto receipt = take(f.resources->viewReceipt(a->viewport()));
-        assert((*f.legacy_host).close(aid));
+        assert(a->cancelEdit() && root.removeSubPane(*a));
         f.wait(
             [&]
             {
-                return !(*f.legacy_host).describe(aid) &&
+                return !root.findPane(aid) &&
                        receipt.status().status.state == lux::scene::EViewState::CLOSED;
             }
         );
         assert(pixels(*b) == right_selected);
-        assert((*f.legacy_host).close(bid));
-        f.wait([&] { return !(*f.legacy_host).describe(bid); });
+        assert(b->cancelEdit() && root.removeSubPane(*b));
+        f.wait([&] { return !root.findPane(bid); });
         auto permit = take(f.store.prepareClose(session->describe().current));
         assert(f.store.close(permit));
         std::printf("P10 dual SceneView GPU readback: failed material read -> ResourceView retry -> ready after close; "
@@ -2980,13 +2923,15 @@ int main(int argc, char** argv)
     Fixture f;
     author::SceneInteractionGroup first_group(f.store.access<author::SceneSession>(), *f.key, {1});
     author::SceneInteractionGroup second_group(f.store.access<author::SceneSession>(), *f.key, {2});
-    auto first = take(registered_views::scene(f.messages.dispatcherRef(), f.services(), f.info("one", first_group)));
-    auto second = take(registered_views::scene(f.messages.dispatcherRef(), f.services(), f.info("two", second_group)));
-    auto* a = static_cast<author::SceneView*>(first.pane());
-    auto* b = static_cast<author::SceneView*>(second.pane());
+    auto first = take(author::SceneView::create(f.messages.dispatcherRef(), f.services(), f.info("one", first_group)));
+    auto second = take(author::SceneView::create(f.messages.dispatcherRef(), f.services(), f.info("two", second_group)));
+    auto* a = first.get();
+    auto* b = second.get();
     assert(!a->attachedRoot() && !b->attachedRoot());
-    const auto id_a = take((*f.legacy_host).adopt(first, views::ViewRestoreKey{"one"})).id;
-    const auto id_b = take((*f.legacy_host).adopt(second, views::ViewRestoreKey{"two"})).id;
+    auto& root = f.desktop->root();
+    assert(root.addSubPane(std::move(first)) && root.addSubPane(std::move(second)));
+    const auto id_a = take(root.identify(*a));
+    const auto id_b = take(root.identify(*b));
     f.wait([&] { return a->image().isValid() && b->image().isValid(); });
     assert(a->presentedInstance() == b->presentedInstance() && a->viewport() != b->viewport());
     const auto before = f.session->describe();
@@ -3029,11 +2974,11 @@ int main(int argc, char** argv)
             .group = "Edit",
             .shortcut = "Ctrl+Z",
             .scope = ECommandScope::VIEW,
-            .target_type = cxx::typeToken<views::ViewId>()
+            .target_type = cxx::typeToken<ui::PaneHandle>()
         },
         [&](const CommandQuery& input) -> CommandResult<CommandState>
         {
-            if (*input.view<views::ViewId>() != id_b || !(*f.legacy_host).describe(id_b))
+            if (*input.view<ui::PaneHandle>() != id_b || !root.findPane(id_b))
             {
                 return cxx::unexpected(CommandFailure{ECommandError::STALE_TARGET, "scene.view"});
             }
@@ -3073,15 +3018,20 @@ int main(int argc, char** argv)
         }
     );
     const auto receipt = take(f.resources->viewReceipt(a->viewport()));
-    assert((*f.legacy_host).close(id_a));
-    f.wait([&] { return !(*f.legacy_host).describe(id_a); });
+    assert(a->cancelEdit() && root.removeSubPane(*a));
+    f.wait([&] { return !root.findPane(id_a); });
     assert(f.session->describe().current == before.current && b->image().isValid());
     f.wait([&] { return receipt.status().status.state == lux::scene::EViewState::CLOSED; });
-    auto third = take(registered_views::scene(f.messages.dispatcherRef(), f.services(), f.info("three", first_group)));
-    const auto id_c = take((*f.legacy_host).adopt(third, views::ViewRestoreKey{"three"})).id;
-    assert(id_c != id_a && !(*f.legacy_host).describe(id_a));
-    assert((*f.legacy_host).close(id_b) && (*f.legacy_host).close(id_c));
-    f.wait([&] { return take((*f.legacy_host).describeAll()).empty(); });
+    auto third = take(author::SceneView::create(f.messages.dispatcherRef(), f.services(), f.info("three", first_group)));
+    auto* c = third.get();
+    assert(root.addSubPane(std::move(third)));
+    const auto id_c = take(root.identify(*c));
+    assert(id_c != id_a && !root.findPane(id_a));
+    assert(b->cancelEdit() && c->cancelEdit());
+    assert(root.removeSubPane(*b) && root.removeSubPane(*c));
+    (void)f.messages.collectRetired();
+    assert(!root.findPane(id_a) && !root.findPane(id_b) && !root.findPane(id_c));
+    assert(std::ranges::none_of(root.panes(), [](const auto* pane) { return pane != nullptr; }));
     inspectorView(f);
     ownedSceneTools(f);
     declaredSceneTools(f);

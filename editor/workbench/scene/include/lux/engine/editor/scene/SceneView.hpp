@@ -130,9 +130,4 @@ namespace lux::editor::scene
         std::unique_ptr<Impl> impl_;
         object::Connection model_connection_;
     };
-    [[nodiscard]] SceneViewResult<views::DetachedView> makeSceneView(
-        object::ObjectDispatcherRef,
-        SceneViewServices,
-        SceneViewCreateInfo
-    );
 } // namespace lux::editor::scene

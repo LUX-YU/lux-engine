@@ -42,15 +42,4 @@ namespace lux::editor::scene
         std::unique_ptr<Impl> impl_;
         void update() noexcept override;
     };
-    [[nodiscard]] SceneViewResult<views::DetachedView> makeInspectorView(
-        object::ObjectDispatcherRef,
-        lux::ui::PaneId,
-        sessions::TSessionAccess<SceneSession>,
-        EditedSceneBinding,
-        SceneObjectRef,
-        simulation::ecs::ComponentSchemaSet,
-        std::vector<InspectorComponent>,
-        project::ProjectCatalogModel* = {},
-        std::shared_ptr<SceneInteractionGroup> = {}
-    );
 }

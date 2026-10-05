@@ -204,20 +204,4 @@ namespace lux::editor::scene
                 impl_->retry_.reset();
         }
     }
-    render::RenderResult<views::DetachedView> makeResourceView(
-        object::ObjectDispatcherRef dispatcher,
-        lux::ui::PaneId id,
-        lux::scene::SceneRuntime& runtime,
-        std::optional<ResourceViewBinding> binding
-    )
-    {
-        auto result = std::make_unique<ResourceView>(dispatcher, std::move(id), runtime);
-        auto bound = result->rebind(binding);
-        if (!bound)
-            return cxx::unexpected(bound.error());
-        return views::DetachedView{
-            lux::object::CodeLease::builtin(), std::move(result), nullptr, nullptr, nullptr, nullptr,
-            +[](const lux::ui::Pane& pane) noexcept { return static_cast<const ResourceView&>(pane).content(); }
-        };
-    }
 }

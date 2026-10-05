@@ -78,7 +78,7 @@ configure_file("${CMAKE_CURRENT_SOURCE_DIR}/../common/ControlsTestAccess.hpp"
     "${CMAKE_CURRENT_BINARY_DIR}/ControlsTestAccess.hpp" COPYONLY)
 configure_file("${engine_source}/editor/workbench/desktop/test/host.cpp" "${CMAKE_CURRENT_BINARY_DIR}/host.cpp" COPYONLY)
 add_executable(desktop_views "${CMAKE_CURRENT_BINARY_DIR}/views.cpp")
-target_link_libraries(desktop_views PRIVATE lux::engine::editor::view_host lux::engine::editor::editor_storage lux::engine::editor::scene_ui lux::engine::editor::desktop_shell
+target_link_libraries(desktop_views PRIVATE lux::engine::editor::editor_storage lux::engine::editor::scene_ui lux::engine::editor::desktop_shell
     lux::engine::editor::material_ui lux::engine::editor::flow_ui lux::engine::editor::scene_execution
     lux::engine::editor::flowforge_persistence lux::engine::editor::flow_module lux::engine::editor::material_module lux::engine::editor::scene_module lux::engine::editor::editor_extensions
     lux::engine::editor::tasks_ui lux::engine::editor::editor_persistence_execution lux::engine::editor::editor_file_publication lux::engine::editor::material_persistence
@@ -133,7 +133,7 @@ add_test(NAME installed.desktop.inspector_codegen COMMAND inspector_fields)
 add_test(NAME installed.desktop.real_views COMMAND desktop_views "${P10_LINKER}" "${sdk_prefix}")
 set_tests_properties(installed.desktop.real_views PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)
 if(WIN32)
-    target_link_libraries(desktop_views PRIVATE lux::engine::editor::view_host user32)
+    target_link_libraries(desktop_views PRIVATE user32)
     add_test(NAME installed.desktop.native_input COMMAND desktop_views "${P10_LINKER}" "${sdk_prefix}" native)
     set_tests_properties(installed.desktop.native_input PROPERTIES TIMEOUT 120 RUN_SERIAL TRUE)
 endif()

@@ -169,18 +169,18 @@ void nativeDesktop(Fixture& f, window::LuxWindow& window)
     button(MOUSEEVENTF_LEFTUP);
     button(MOUSEEVENTF_RIGHTUP);
     author::SceneInteractionGroup group(f.store.access<author::SceneSession>(), *f.key, {77});
-    auto detached = take(author::makeInspectorView(
-        f.messages.dispatcherRef(),
-        ui::PaneId{"native-inspector"},
-        f.store.access<author::SceneSession>(),
-        {*f.key, &group},
-        {f.key->id(), before.current.state.history, f.object},
-        f.environment.components,
-        author::sceneInspectorComponents()
+    auto detached = std::make_unique<author::InspectorView>(
+        f.messages.dispatcherRef(), ui::PaneId{"native-inspector"},
+        f.store.access<author::SceneSession>(), f.environment.components, author::sceneInspectorComponents()
+    );
+    assert(detached->status() && detached->rebind(
+        {*f.key, &group}, {f.key->id(), before.current.state.history, f.object}
     ));
-    auto* inspector = static_cast<author::InspectorView*>(detached.pane());
-    const auto id = take((*f.legacy_host).adopt(detached, views::ViewRestoreKey{"native-inspector"})).id;
-    assert((*f.legacy_host).focus(id));
+    auto* inspector = detached.get();
+    auto& root = f.desktop->root();
+    assert(root.addSubPane(std::move(detached)));
+    const auto id = take(root.identify(*inspector));
+    assert(root.requestFocus(*inspector));
     frames();
     auto* number = findControl<ui::NumericEdit>(*inspector);
     assert(number && number->displayed());
@@ -216,15 +216,16 @@ void nativeDesktop(Fixture& f, window::LuxWindow& window)
     assert(f.session->redo());
     assert(f.session->undo());
     assert(f.desktop->root().focusedPane() == inspector);
-    assert((*f.legacy_host).close(id));
+    assert(inspector->prepareClose() && root.removeSubPane(*inspector));
     frames();
-    assert(!(*f.legacy_host).describe(id) && !f.desktop->root().focusedElement());
+    assert(!root.findPane(id) && !f.desktop->root().focusedElement());
 
     auto scene_owner =
-        take(author::makeSceneView(f.messages.dispatcherRef(), f.services(), f.info("native-scene", group)));
-    auto* scene_view = static_cast<author::SceneView*>(scene_owner.pane());
-    const auto scene_id = take((*f.legacy_host).adopt(scene_owner, views::ViewRestoreKey{"native-scene"})).id;
-    assert((*f.legacy_host).focus(scene_id));
+        take(author::SceneView::create(f.messages.dispatcherRef(), f.services(), f.info("native-scene", group)));
+    auto* scene_view = scene_owner.get();
+    assert(root.addSubPane(std::move(scene_owner)));
+    const auto scene_id = take(root.identify(*scene_view));
+    assert(root.requestFocus(*scene_view));
     f.wait([&] { return scene_view->image().isValid(); });
     frames();
     auto* viewport = findControl<lux::editor::views::ViewportElement>(*scene_view);
@@ -236,9 +237,9 @@ void nativeDesktop(Fixture& f, window::LuxWindow& window)
     pointer({975, 725});
     assert(scene_view->state().camera.transform.rotation != rotation);
     assert(f.session->describe().current == before.current);
-    assert((*f.legacy_host).close(scene_id));
+    assert(scene_view->cancelEdit() && root.removeSubPane(*scene_view));
     frames();
-    assert(!(*f.legacy_host).describe(scene_id));
+    assert(!root.findPane(scene_id));
     button(MOUSEEVENTF_RIGHTUP); // Must not deliver to the retired lux::editor::views::ViewportElement.
 
     // Real OS keyboard input through the same desktop, plus close during DIRECT delivery.
@@ -255,9 +256,9 @@ void nativeDesktop(Fixture& f, window::LuxWindow& window)
     };
     auto text_owner = std::make_unique<TextWindow>(f.messages.dispatcherRef());
     auto* text = text_owner.get();
-    views::DetachedView text_view(lux::object::CodeLease::builtin(), std::move(text_owner));
-    const auto text_id = take((*f.legacy_host).adopt(text_view, views::ViewRestoreKey{"native-text"})).id;
-    assert((*f.legacy_host).focus(text_id));
+    assert(root.addSubPane(std::move(text_owner)));
+    const auto text_id = take(root.identify(*text));
+    assert(root.requestFocus(*text));
     frames();
     pointer(center(text->text));
     button(MOUSEEVENTF_LEFTDOWN);
@@ -279,7 +280,11 @@ void nativeDesktop(Fixture& f, window::LuxWindow& window)
         &ui::Button::activated,
         [&]() noexcept
         {
-            assert((*f.legacy_host).close(text_id));
+            root.deferChange(*text, +[](object::LuxObject& object) noexcept
+            {
+                auto& pane = static_cast<TextWindow&>(object);
+                assert(pane.attachedRoot()->removeSubPane(pane));
+            });
             assert(text->attachedRoot() && !signalled);
             signalled = true;
         }
@@ -287,7 +292,7 @@ void nativeDesktop(Fixture& f, window::LuxWindow& window)
     pointer(center(text->close));
     button(MOUSEEVENTF_LEFTDOWN);
     button(MOUSEEVENTF_LEFTUP);
-    assert(signalled && !(*f.legacy_host).describe(text_id));
+    assert(signalled && !root.findPane(text_id));
     assert(!f.desktop->root().focusedElement());
     assert(SetCursorPos(previous_pointer.x, previous_pointer.y));
     if (!was_topmost)

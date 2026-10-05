@@ -3,7 +3,6 @@
 #include <consumer/Gui.hpp>
 #include <lux/engine/editor/scene/SceneAlgorithms.hpp>
 #include <lux/engine/editor/scene/InspectorView.hpp>
-#include <lux/engine/editor/desktop/ViewHost.hpp>
 #include <lux/engine/simulation/SimulationDescriptionBuilder.hpp>
 #include <lux/engine/object/ObjectDispatcher.hpp>
 #include <lux/engine/ui/Root.hpp>
@@ -150,7 +149,6 @@ void consumer::checkInspector()
     auto root = take(ui::Root::create(queue.dispatcherRef(), {.docking = false}));
     lux::test::ObjectQueue store_messages;
     sessions::SessionStore store{store_messages.dispatcherRef(), 4};
-    desktop::ViewHost host(*root);
     const auto generated = consumer::schemas();
     std::vector<simulation::ecs::ComponentSchema> copies;
     for (const auto& schema : generated)
@@ -189,20 +187,17 @@ void consumer::checkInspector()
     author::SceneInteractionGroup interaction(store.access<author::SceneSession>(), key, {1});
     const author::SceneObjectRef target{key.id(), initial.current.state.history, world::WorldObjectId{uuid}};
     const auto bindings = std::array{consumer::binding()};
-    auto detached = take(author::makeInspectorView(
+    auto detached = std::make_unique<author::InspectorView>(
         queue.dispatcherRef(),
         ui::PaneId{"sdk-fields"},
         store.access<author::SceneSession>(),
-        {key, &interaction},
-        target,
         schemas,
-        {bindings.begin(), bindings.end()}
-    ));
-    auto* inspector = static_cast<author::InspectorView*>(detached.pane());
-    auto adopted = host.adopt(detached, views::ViewRestoreKey{"sdk-fields"});
-    if (!adopted)
-        std::fprintf(stderr, "Inspector mount error: %u\n", unsigned(adopted.error()));
-    const auto id = take(std::move(adopted)).id;
+        std::vector<author::InspectorComponent>{bindings.begin(), bindings.end()}
+    );
+    assert(detached->status() && detached->rebind({key, &interaction}, target));
+    auto* inspector = detached.get();
+    assert(root->addSubPane(std::move(detached)));
+    const auto id = take(root->identify(*inspector));
     const auto frame = [&] { assert(root->update({{900, 800}, .016F}, nullptr)); };
     frame();
     const auto& schema = schemas.all().front();
@@ -448,8 +443,9 @@ void consumer::checkInspector()
         author::InspectorFields fields(store.access<author::SceneSession>(), interaction, target, schema);
         checkCompletedGesture(fields, *session);
     }
-    assert(host.close(id) && host.drain());
-    assert(!host.describe(id) && store.describe(key.id()));
+    assert(inspector->prepareClose() && root->removeSubPane(*inspector));
+    static_cast<void>(queue.collectRetired());
+    assert(!root->findPane(id) && store.describe(key.id()));
     // A binding record retains code until the generated object destructor has returned.
     bool destroyed{}, released{};
     struct Probe final : ui::Element
@@ -489,22 +485,24 @@ void consumer::checkInspector()
                               ui::ElementId id,
                               author::InspectorFields&) noexcept -> author::InspectorComponent::CreateResult
     { return std::make_unique<Probe>(parent, std::move(id), *state.destroyed, *state.released); };
-    auto candidate = take(author::makeInspectorView(
+    auto candidate = std::make_unique<author::InspectorView>(
         queue.dispatcherRef(),
         ui::PaneId{"code-owner"},
         store.access<author::SceneSession>(),
-        {key, &interaction},
-        target,
         schemas,
-        {registration}
-    ));
-    const auto probe = take(host.adopt(candidate, views::ViewRestoreKey{"code-owner"})).id;
+        std::vector<author::InspectorComponent>{registration}
+    );
+    assert(candidate->status() && candidate->rebind({key, &interaction}, target));
+    auto* probe_inspector = candidate.get();
+    assert(root->addSubPane(std::move(candidate)));
+    const auto probe = take(root->identify(*probe_inspector));
     frame();
     registration = {};
     code.reset();
     assert(!released && !destroyed);
-    assert(host.close(probe) && host.drain());
-    assert(destroyed && released);
+    assert(probe_inspector->prepareClose() && root->removeSubPane(*probe_inspector));
+    static_cast<void>(queue.collectRetired());
+    assert(!root->findPane(probe) && destroyed && released);
     std::puts("PASS generated Inspector: scalar preview/commit/cancel; nested/sequence/variant/optional/map/list; "
               "bounded rows; explicit finish; code lifetime");
 }

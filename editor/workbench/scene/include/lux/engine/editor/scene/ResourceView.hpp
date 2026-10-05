@@ -1,6 +1,7 @@
 #pragma once
 #include <lux/engine/editor/scene/ResourceStatus.hpp>
-#include <lux/engine/editor/views/IViewHost.hpp>
+#include <lux/engine/editor/views/ViewInfo.hpp>
+#include <lux/engine/ui/Pane.hpp>
 
 namespace lux::editor::scene
 {
@@ -37,10 +38,4 @@ namespace lux::editor::scene
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };
-    [[nodiscard]] render::RenderResult<views::DetachedView> makeResourceView(
-        object::ObjectDispatcherRef,
-        lux::ui::PaneId,
-        lux::scene::SceneRuntime&,
-        std::optional<ResourceViewBinding> = {}
-    );
 }

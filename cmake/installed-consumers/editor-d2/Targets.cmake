@@ -14,7 +14,7 @@ endif()
 target_include_directories(consumer_gui PRIVATE "${LUX_TEST_SUPPORT_DIR}")
 set_property(TARGET consumer_gui PROPERTY LUX_ARCH_LAYER EDITOR)
 target_compile_definitions(consumer_gui PRIVATE CONSUMER_GUI_LIBRARY)
-target_link_libraries(consumer_gui PUBLIC consumer_domain lux::engine::editor::scene_ui PRIVATE lux::engine::editor::view_host)
+target_link_libraries(consumer_gui PUBLIC consumer_domain lux::engine::editor::scene_ui)
 engine_target_add_imgui_inspector_codegen(NAME consumer TARGET consumer_gui
     SOURCE_FILE "${D2_CONSUMER_SOURCE_DIR}/Gui.cpp"
     HEADER "${D2_CONSUMER_SOURCE_DIR}/include/consumer/Component.hpp"

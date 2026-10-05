@@ -2,6 +2,7 @@
 #include <fstream>
 #include <iostream>
 #include <lux/engine/editor/desktop/EditorContext.hpp>
+#include <lux/engine/editor/desktop/UiRegistry.hpp>
 #include <lux/engine/editor/desktop/WorkspaceActions.hpp>
 #include <lux/engine/editor/storage/FileArtifactStore.hpp>
 #include <lux/engine/editor/workspace/WorkspaceChanges.hpp>

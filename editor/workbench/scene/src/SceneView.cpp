@@ -4,6 +4,7 @@
 #include <lux/engine/editor/detail/ViewportStateCodec.hpp>
 #include <lux/engine/editor/project/ProjectCatalogModel.hpp>
 #include <lux/engine/editor/scene/SceneCreationPoint.hpp>
+#include <lux/engine/editor/scene/RunStore.hpp>
 #include <lux/engine/editor/scene/SceneView.hpp>
 #include <lux/engine/editor/views/ViewportElement.hpp>
 #include <lux/engine/editor/workbench/UiFailure.hpp>
@@ -88,10 +89,10 @@ namespace lux::editor::scene
              cxx::typeToken<ProjectionEnvironment>(),
              services::EDependencyKind::SHARED,
              services::EDependencyScope::ROOT},
-            {services::ServiceNameView{"lux.editor.scene.run.inspect"},
+            {services::ServiceNameView{"lux.editor.scene.runs"},
              1,
-             cxx::typeToken<RunInspectAccess>(),
-             services::EDependencyKind::BORROWED,
+             cxx::typeToken<RunStore>(),
+             services::EDependencyKind::SHARED,
              services::EDependencyScope::ROOT,
              {},
              {},
@@ -183,10 +184,20 @@ namespace lux::editor::scene
         {
             return cxx::unexpected(uiFailure(SceneViewFailure{desktop::EUiError::ATTACHMENT}));
         }
-        auto runs = resolver.require<RunInspectAccess>(4);
+        auto runs = resolver.get<RunStore>(4);
         if (!runs && runs.error().code != services::EServiceError::NOT_FOUND)
         {
             return rejectedDependency(runs.error());
+        }
+        std::optional<RunInspectAccess> inspection;
+        if (runs)
+        {
+            auto retained = RunInspectAccess::create(*runs);
+            if (!retained)
+            {
+                return cxx::unexpected(uiFailure(SceneViewFailure{retained.error()}));
+            }
+            inspection.emplace(std::move(*retained));
         }
         SceneViewCreateInfo info;
         info.id = input.instance;
@@ -203,7 +214,7 @@ namespace lux::editor::scene
              *(*environment)->resources,
              *(*environment)->renderer,
              std::move(*environment),
-             runs ? std::optional{runs->get()} : std::nullopt},
+             std::move(inspection)},
             std::move(info)
         );
         if (!view)

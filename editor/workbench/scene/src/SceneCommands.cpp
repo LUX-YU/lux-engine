@@ -145,20 +145,23 @@ namespace lux::editor::scene
     std::vector<std::shared_ptr<commands::CommandEntry>> makeRunViewCommands(
         commands::CommandEntry::Query query,
         lux::ui::Root& root,
-        RunStore& runs,
+        cxx::move_only_function<RunResult<void>(RunId, bool)> set_paused,
         cxx::move_only_function<commands::CommandResult<void>(RunId)> step,
         cxx::move_only_function<commands::CommandResult<void>(RunId)> stop
     )
     {
         auto check = std::make_shared<commands::CommandEntry::Query>(std::move(query));
+        auto control = std::make_shared<cxx::move_only_function<RunResult<void>(RunId, bool)>>(
+            std::move(set_paused)
+        );
         return {
             bindViewCommand<kPause>(
                 check,
                 forRun(
                     root,
-                    [&runs](RunId id) -> commands::CommandResult<void>
+                    [control](RunId id) -> commands::CommandResult<void>
                     {
-                        auto result = runs.pause(id);
+                        auto result = (*control)(id, true);
                         if (!result)
                         {
                             return workbench::detail::commandFailure(result.error());
@@ -171,9 +174,9 @@ namespace lux::editor::scene
                 check,
                 forRun(
                     root,
-                    [&runs](RunId id) -> commands::CommandResult<void>
+                    [control](RunId id) -> commands::CommandResult<void>
                     {
-                        auto result = runs.resume(id);
+                        auto result = (*control)(id, false);
                         if (!result)
                         {
                             return workbench::detail::commandFailure(result.error());

@@ -1,5 +1,6 @@
 #include <lux/engine/editor/extensions/EditorExtension.hpp>
 #include <lux/engine/editor/scene/ModelPlacementService.hpp>
+#include <lux/engine/editor/scene/RunStore.hpp>
 #include <lux/engine/editor/scene/SceneCreationView.hpp>
 #include <lux/engine/editor/scene/SceneModule.hpp>
 #include <lux/engine/editor/scene/SceneSessionFactory.hpp>
@@ -16,10 +17,11 @@ namespace lux::editor::scene
             +[]() noexcept -> const extensions::EditorExtensionExports*
             {
                 static const extensions::EditorExtensionExports exports{
-                    .counts = {.sessions = 1, .services = 2, .ui = 7},
+                    .counts = {.sessions = 1, .services = 3, .ui = 7},
                     .contribute = +[](extensions::ContributionDraft& draft,
                                       object::CodeLease code) -> extensions::ContributionResult<void>
                     {
+                        draft.services.push_back(services::ServiceEntry::bind<kRunStoreService>(code));
                         draft.services.push_back(services::ServiceEntry::bind<kScenePresentationHub>(code));
                         draft.services.push_back(services::ServiceEntry::bind<kModelPlacementService>(code));
                         draft.sessions.push_back(makeSceneSessionFactory(code));

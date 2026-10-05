@@ -279,7 +279,7 @@ namespace lux::editor::application
         } service_retirement_{editor_context_, messages_};
         std::shared_ptr<ProjectContentSaving> content_saving_;
         std::shared_ptr<ProjectPluginSelection> plugin_saving_;
-        scene::RunStore runs_;
+        std::shared_ptr<scene::RunStore> runs_;
         commands::CommandRegistry& commands_{editor_context_.commands()};
         commands::CommandDispatcher command_dispatcher_{commands_};
         extensions::ContributionRegistry contributions_;
@@ -327,7 +327,6 @@ namespace lux::editor::application
         project::WorkspaceView::Observe workspace_observe_;
         project::WorkspaceView::Request workspace_request_;
         cxx::move_only_function<project::ProjectCreationRequests()> creation_requests_;
-        scene::RunInspectAccess run_inspection_{runs_.inspect()};
         input::Input input_;
         // Last owner: views release borrows before interactions, code, services and content.
         lux::ui::FontSource font_;

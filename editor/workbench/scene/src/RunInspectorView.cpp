@@ -53,7 +53,7 @@ namespace lux::editor::scene
             }
         };
         std::shared_ptr<SceneInteractionGroup> selection_;
-        RunStore& runs_;
+        std::shared_ptr<RunStore> runs_;
         simulation::ecs::ComponentSchemaSet schemas_;
         std::vector<RunInspectorComponent> registrations_;
         project::ProjectCatalogModel* catalog_;
@@ -69,13 +69,14 @@ namespace lux::editor::scene
         RunResult<void> status_;
         Impl(
             RunInspectorView& pane,
-            RunStore& runs,
+            std::shared_ptr<RunStore> runs,
             simulation::ecs::ComponentSchemaSet schemas,
             std::vector<RunInspectorComponent> registrations,
             project::ProjectCatalogModel* catalog
         )
-            : runs_(runs), schemas_(std::move(schemas)), registrations_(std::move(registrations)), catalog_(catalog),
-              layout_(pane, lux::ui::ElementId{"run-inspector"}), message_(layout_, lux::ui::ElementId{"status"}, ""),
+            : runs_(std::move(runs)), schemas_(std::move(schemas)), registrations_(std::move(registrations)),
+              catalog_(catalog), layout_(pane, lux::ui::ElementId{"run-inspector"}),
+              message_(layout_, lux::ui::ElementId{"status"}, ""),
               cancel_(layout_, lux::ui::ElementId{"cancel"}, "Cancel field draft")
         {
             if (!pane.setContent(layout_))
@@ -123,7 +124,7 @@ namespace lux::editor::scene
                         types.push_back(schema.cpp_type);
                 return {};
             };
-            auto checked = runs_.withInspection(target, enumerate);
+            auto checked = runs_->withInspection(target, enumerate);
             if (!checked)
                 return checked;
             for (auto type : types)
@@ -135,7 +136,7 @@ namespace lux::editor::scene
                 auto entry = std::make_unique<Component>();
                 entry->registration = *registered;
                 entry->fields =
-                    std::make_unique<RunInspectorFields>(runs_, target, *schema, registered->copy, catalog_);
+                    std::make_unique<RunInspectorFields>(*runs_, target, *schema, registered->copy, catalog_);
                 auto refreshed = entry->fields->refresh();
                 if (!refreshed)
                     return refreshed;
@@ -182,7 +183,7 @@ namespace lux::editor::scene
                         types.push_back(schema.cpp_type);
                 return {};
             };
-            status_ = runs_.withInspection(*target_, enumerate);
+            status_ = runs_->withInspection(*target_, enumerate);
             if (status_ && types != types_)
                 status_ = rebind(*target_);
             if (status_)
@@ -203,17 +204,41 @@ namespace lux::editor::scene
                 std::terminate();
         }
     };
+    RunResult<std::unique_ptr<RunInspectorView>> RunInspectorView::create(
+        object::ObjectDispatcherRef dispatcher,
+        lux::ui::PaneId id,
+        std::shared_ptr<RunStore> runs,
+        simulation::ecs::ComponentSchemaSet schemas,
+        std::vector<RunInspectorComponent> registrations,
+        project::ProjectCatalogModel* catalog,
+        std::shared_ptr<SceneInteractionGroup> selection
+    )
+    {
+        if (!runs)
+        {
+            return cxx::unexpected(RunFailure{ERunError::INVALID_ID});
+        }
+        auto view = std::unique_ptr<RunInspectorView>(new RunInspectorView(
+            dispatcher, std::move(id), std::move(runs), std::move(schemas), std::move(registrations), catalog,
+            std::move(selection)
+        ));
+        if (!view->status())
+        {
+            return cxx::unexpected(view->status().error());
+        }
+        return view;
+    }
     RunInspectorView::RunInspectorView(
         object::ObjectDispatcherRef dispatcher,
         lux::ui::PaneId id,
-        RunStore& runs,
+        std::shared_ptr<RunStore> runs,
         simulation::ecs::ComponentSchemaSet schemas,
         std::vector<RunInspectorComponent> registrations,
         project::ProjectCatalogModel* catalog,
         std::shared_ptr<SceneInteractionGroup> selection
     )
         : Pane(dispatcher, std::move(id), lux::ui::PaneTypeId{"lux.editor.run-inspector"}, "Run Inspector"),
-          impl_(std::make_unique<Impl>(*this, runs, std::move(schemas), std::move(registrations), catalog))
+          impl_(std::make_unique<Impl>(*this, std::move(runs), std::move(schemas), std::move(registrations), catalog))
     {
         impl_->selection_ = std::move(selection);
     }

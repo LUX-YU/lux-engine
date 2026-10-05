@@ -8,7 +8,9 @@ InteractionDelivery is a private shared algorithm for the two graph tools, not a
 
 The Scene module declares its viewport, creation form, Outliner, author/Run Inspectors, resource view,
 and configuration form through the same UiRegistry. Auxiliary factories return complete unique Pane owners;
-the Root receives them through Object ownership. They do not construct or own a SessionStore/RunStore.
+the Root receives them through Object ownership. They borrow SessionStore and resolve the declared scoped
+RunStore. Run-capable views retain that actual shared allocation through RunInspectAccess/RunInspectorView;
+closing a window neither stops nor acknowledges a Run. No factory creates another Runtime or RunStore.
 
 At their creation boundary, inspection factories borrow the root SessionStore and component schemas.
 A lexical child ServiceScope may lend `lux.editor.scene.interaction` as the existing

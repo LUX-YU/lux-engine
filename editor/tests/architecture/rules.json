@@ -2844,7 +2844,8 @@
       "scene_render",
       "scene_world_loading",
       "scene_transform",
-      "scene_script_runtime"
+      "scene_script_runtime",
+      "services"
     ],
     "closure": {
       "Eigen3::Eigen": {
@@ -3206,6 +3207,9 @@
       },
       "simulation_script_script_abilities_generate": {
         "path": "engine/domain/simulation/builtin_systems/script"
+      },
+      "services": {
+        "path": "modules/core/services"
       }
     },
     "native_libraries": [
@@ -3253,7 +3257,8 @@
       "variant",
       "lux/engine/serialization/PortableValueCodec.hpp",
       "lux/engine/scene/ScriptRuntimeSystem.hpp",
-      "lux/engine/object/CodeLease.hpp"
+      "lux/engine/object/CodeLease.hpp",
+      "lux/engine/services/ServiceRegistry.hpp"
     ],
     "prefixes": [
       "lux/cxx/",

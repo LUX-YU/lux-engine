@@ -41,14 +41,14 @@ namespace lux::editor::scene
         ESceneTool,
         lux::ui::PaneId
     );
-    // Commands retain their receivers; the bound Root and RunStore must outlive the command snapshot.
+    // Commands retain their receivers; the bound Root must outlive the command snapshot.
     // Step/stop retain their original ticket and view-close owners at the assembly boundary.
     [[nodiscard]] std::vector<std::shared_ptr<commands::CommandEntry>>
         makeSceneToolCommands(commands::CommandEntry::Query, cxx::move_only_function<commands::CommandResult<void>(lux::ui::PaneHandle, ESceneTool)>);
     [[nodiscard]] std::vector<std::shared_ptr<commands::CommandEntry>> makeRunViewCommands(
         commands::CommandEntry::Query,
         lux::ui::Root&,
-        RunStore&,
+        cxx::move_only_function<RunResult<void>(RunId, bool)> set_paused,
         cxx::move_only_function<commands::CommandResult<void>(RunId)> step,
         cxx::move_only_function<commands::CommandResult<void>(RunId)> stop
     );

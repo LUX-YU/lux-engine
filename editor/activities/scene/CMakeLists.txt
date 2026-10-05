@@ -68,7 +68,8 @@ add_component(COMPONENT_NAME scene_execution NAMESPACE lux::engine::editor STATI
     SOURCE_FILES src/SceneConfigurationPreparation.cpp src/RunStore.cpp src/ModelCreationOperation.cpp)
 
 
-target_link_libraries(scene_execution PRIVATE lux::engine::scene::scene_transform)
+target_link_libraries(scene_execution PRIVATE lux::engine::scene::scene_transform lux::engine::core::services)
+component_add_transitive_commands(scene_execution "find_package(lux-engine-core REQUIRED COMPONENTS services)")
 target_link_libraries(scene_execution PRIVATE lux::engine::scene::scene_script_runtime)
 component_add_transitive_commands(scene_execution
     "find_package(lux-engine-scene-script-runtime REQUIRED COMPONENTS scene_script_runtime)")
@@ -106,12 +107,13 @@ lux_engine_install_components(PROJECT_NAME lux-engine-editor-scene-execution VER
     NAMESPACE lux::engine::editor COMPONENTS scene_execution_api scene_execution scene_project)
 if(LUX_EDITOR_BUILD_NATIVE_TESTS)
     add_executable(editor_scene_execution_test test/runs.cpp)
-    target_link_libraries(editor_scene_execution_test PRIVATE scene_execution lux::engine::scene::scene_transform)
+    target_link_libraries(editor_scene_execution_test PRIVATE scene_execution lux::engine::scene::scene_transform lux::engine::core::services)
     lux_editor_test_options(editor_scene_execution_test)
-    foreach(scenario isolation controls failure completion r1-queued r1-mixed r1-failed r1-callback r1-capacity model-insertion)
+    foreach(scenario isolation controls failure completion r1-queued r1-mixed r1-failed r1-callback r1-capacity model-insertion service)
         add_test(NAME editor.scene_execution.${scenario} COMMAND editor_scene_execution_test ${scenario})
         set_tests_properties(editor.scene_execution.${scenario} PROPERTIES LABELS "editor;native;P06")
     endforeach()
+    set_tests_properties(editor.scene_execution.service PROPERTIES LABELS "editor;native;EC4")
     set_tests_properties(editor.scene_execution.model-insertion PROPERTIES LABELS "editor;native;P12")
 endif()
 

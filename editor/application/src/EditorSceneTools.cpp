@@ -63,8 +63,17 @@ namespace lux::editor::application
         {
             return applicationFailure("run.environment", environment.error());
         }
+        if (!runs_)
+        {
+            auto runs = editor_context_.services().get<scene::RunStore>(editor_context_.scope());
+            if (!runs)
+            {
+                return applicationFailure("run.service", runs.error());
+            }
+            runs_ = std::move(*runs);
+        }
         // The preparation owns the frozen author data and this exact environment, never a live Session.
-        auto prepared = runs_.prepare(
+        auto prepared = runs_->prepare(
             std::move(*captured),
             {(*environment)->components,
              (*environment)->simulation_systems,
@@ -99,7 +108,7 @@ namespace lux::editor::application
                     ++iterator;
                     continue;
                 }
-                auto adopted = runs_.adopt(*record.preparing);
+                auto adopted = runs_->adopt(*record.preparing);
                 if (!adopted)
                 {
                     const auto* control = std::get_if<scene::ERunError>(&adopted.error().cause);
@@ -117,7 +126,7 @@ namespace lux::editor::application
                 record.run = *adopted;
                 if (phase_ != EApplicationPhase::DRAINING)
                 {
-                    const auto information = runs_.info(*adopted);
+                    const auto information = runs_->info(*adopted);
                     if (!information)
                     {
                         return applicationFailure("run.info", information.error());
@@ -167,7 +176,7 @@ namespace lux::editor::application
             }
             if ((phase_ == EApplicationPhase::DRAINING || record.stop_requested) && record.run && !record.stopping)
             {
-                auto stopped = runs_.stop(*record.run);
+                auto stopped = runs_->stop(*record.run);
                 if (!stopped)
                 {
                     return applicationFailure("run.stop", stopped.error());
@@ -178,7 +187,7 @@ namespace lux::editor::application
             // A frame must not manufacture acknowledgement merely because execution has finished.
             if (record.stopping && record.stopping->complete())
             {
-                auto acknowledged = runs_.acknowledgeStop(*record.run);
+                auto acknowledged = runs_->acknowledgeStop(*record.run);
                 if (!acknowledged)
                 {
                     return applicationFailure("run.stop.acknowledge", acknowledged.error());
@@ -205,7 +214,7 @@ namespace lux::editor::application
         {
             return applicationFailure("run.views.prepare", prepared.error());
         }
-        auto stopped = runs_.stop(id);
+        auto stopped = runs_->stop(id);
         if (!stopped)
         {
             return applicationFailure("run.stop", stopped.error());
@@ -266,7 +275,7 @@ namespace lux::editor::application
         {
             return cxx::unexpected(EditorFailure{EEditorError::BUSY, "run.steps"});
         }
-        auto step = runs_.step(run);
+        auto step = runs_->step(run);
         if (!step)
         {
             return applicationFailure("run.step", step.error());
@@ -306,7 +315,14 @@ namespace lux::editor::application
         auto runs = scene::makeRunViewCommands(
             available,
             desktop_->root(),
-            runs_,
+            [this](scene::RunId id, bool paused) -> scene::RunResult<void>
+            {
+                if (!runs_)
+                {
+                    return cxx::unexpected(scene::RunFailure{scene::ERunError::INVALID_ID});
+                }
+                return paused ? runs_->pause(id) : runs_->resume(id);
+            },
             [this](scene::RunId id) -> commands::CommandResult<void>
             {
                 auto result = stepRun(id);

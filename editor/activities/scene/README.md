@@ -132,3 +132,18 @@ construct the existing ProjectionEnvironment value without ProjectStorage or UI.
 The project module declares this provider exactly once alongside project saving and the browser.
 Products select project_module plus their desired author modules; Material does not require the Scene
 module to obtain it. The service stays unconstructed until a view or Run actually asks for it.
+
+### EC4 scoped Run allocation
+
+`kRunStoreService` declares the existing RunStore over borrowed SceneRuntime/ExecutionRuntime.
+Registration is cold. One project scope retains one allocation; all consumers use that allocation,
+while each Run keeps its original identity, history and retirement ledger. Scope maintenance calls
+RunStore.update only; SceneRuntime still has exactly one external frame driver. An unacknowledged
+Run keeps settled() false even after its heavy instance has retired. StartRunOperation separately
+owns accepted preparation and completion; no live author state or UI is borrowed.
+
+Registered UI uses RunInspectAccess::create(shared_ptr<const RunStore>) and RunInspectorView's
+fallible shared-owner factory. Inspection copies retain the actual allocation; logical Run IDs still
+expire on acknowledgement. Direct RunStore.inspect() is a non-owning option for explicitly
+stack-owned consumers. Final service release follows the existing Object dispatcher affinity path.
+Application's Run-window orchestration remains a separate M6 migration, not completed by this factory.

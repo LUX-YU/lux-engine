@@ -282,15 +282,6 @@ namespace lux::editor::application
         {
             return applicationFailure("service.infrastructure", provided.error());
         }
-        if (auto provided = scope.provide(services::ServiceNameView{"lux.editor.scene.run.inspect"}, run_inspection_);
-            !provided)
-        {
-            return applicationFailure("service.infrastructure", provided.error());
-        }
-        if (auto provided = scope.provide(services::ServiceNameView{"lux.editor.scene.runs"}, runs_); !provided)
-        {
-            return applicationFailure("service.infrastructure", provided.error());
-        }
         if (auto provided =
                 scope.provide(services::ServiceNameView{"lux.editor.project.catalog"}, project_->catalogModel());
             !provided)

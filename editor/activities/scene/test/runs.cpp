@@ -22,6 +22,7 @@
 #include <cstdio>
 #include <thread>
 #include <source_location>
+#include <lux/engine/services/ServiceRegistry.hpp>
 #include <type_traits>
 
 namespace
@@ -779,6 +780,106 @@ namespace
         std::puts("PASS X12-07 real model decode, one batch/undo, BUSY retry, stale/cancel/catalog/closed no insertion"
         );
     }
+    void scopedService()
+    {
+        Fixture f;
+        const auto author_before = f.author->describe();
+        services::ServiceRegistry registry(f.authors_messages.dispatcherRef());
+        auto scope = take(registry.createScope());
+        assert(registry.publish({services::ServiceEntry::bind<kRunStoreService>(object::CodeLease::builtin())}));
+        assert(registry.drained() && take(scope.settled())); // Registering a definition does not construct it.
+        const auto missing = registry.get<RunStore>(scope);
+        assert(!missing && missing.error().code == services::EServiceError::NOT_FOUND && registry.drained());
+        assert(scope.provide(services::ServiceNameView{"lux.scene.runtime"}, *f.runtime));
+        assert(scope.provide(services::ServiceNameView{"lux.process.execution"}, f.execution));
+        const auto empty_access = RunInspectAccess::create({});
+        assert(!empty_access && std::get<ERunError>(empty_access.error().cause) == ERunError::INVALID_ID);
+        auto runs = take(registry.get<RunStore>(scope));
+        assert(take(registry.get<RunStore>(scope)) == runs);
+        auto child = take(registry.createScope(&scope));
+        auto independent = take(registry.get<RunStore>(child));
+        assert(independent != runs);
+        independent.reset();
+        assert(child.release());
+        (void)f.authors_messages.collect();
+        assert(child.drained());
+        auto prepared = take(runs->prepare(*f.author, f.environment()));
+        std::weak_ptr<RunStore> identity = runs;
+        runs.reset(); // The accepted preparation does not depend on a UI/client shared reference.
+        f.until([&] { return prepared->ready(); });
+        runs = take(registry.get<RunStore>(scope));
+        assert(identity.lock() == runs);
+        const auto id = take(runs->adopt(*prepared));
+        prepared.reset();
+        assert(runs->pause(id));
+        f.until([&]
+        {
+            assert(scope.maintain());
+            return take(runs->info(id)).state == ERunState::PAUSED;
+        });
+        const auto clock = take(runs->info(id)).progress.time;
+        assert(scope.maintain());
+        const auto maintained_clock = take(runs->info(id)).progress.time;
+        assert(maintained_clock.elapsed == clock.elapsed && maintained_clock.delta == clock.delta);
+        assert(maintained_clock.step_index == clock.step_index); // Maintenance is not another frame driver.
+        std::optional<RunInspectAccess> inspection{take(RunInspectAccess::create(runs))};
+        f.until([&]
+        {
+            assert(scope.maintain());
+            const auto data = inspection->borrow(id);
+            if (!data)
+                return false;
+            const auto& identities = data->get().ctx().get<lux::scene::WorldResidency>().identities();
+            return identities.entity(f.object) != ecs::NullEntity;
+        });
+        const auto& identities = take(inspection->borrow(id)).get().ctx().get<lux::scene::WorldResidency>().identities();
+        const auto entity = identities.entity(f.object);
+        const auto target = take(inspection->reference(id, entity));
+        const auto checking = [&](const ecs::Registry&, const std::optional<editing::HistorySnapshot>&)
+            -> RunResult<void>
+        {
+            const auto busy = scope.settled();
+            assert(!busy && busy.error().code == services::EServiceError::BUSY);
+            const auto maintained = scope.maintain();
+            assert(!maintained && maintained.error().code == services::EServiceError::BUSY);
+            const auto nested = runs->resume(id);
+            assert(!nested && std::get<ERunError>(nested.error().cause) == ERunError::BUSY);
+            return {};
+        };
+        assert(runs->withInspection(target, checking));
+        RunResult<bool> wrong = true;
+        std::jthread([&] { wrong = runs->settled(); }).join();
+        assert(!wrong && std::get<ERunError>(wrong.error().cause) == ERunError::WRONG_THREAD);
+        const auto step = take(runs->step(id));
+        const auto retired = take(runs->stop(id));
+        f.until([&] { assert(scope.maintain()); return retired.complete(); });
+        assert(scope.maintain());
+        assert(take(inspection->describe(id)).state == ERunState::STOPPED);
+        assert(take(runs->stepStatus(step)).state == lux::scene::ESceneStepState::CANCELLED);
+        assert(!take(scope.settled())); // Reclaimed instance does not acknowledge the original Run/ticket.
+        assert(scope.beginClose());
+        const auto closing = registry.get<RunStore>(scope);
+        assert(!closing && closing.error().code == services::EServiceError::CLOSED);
+        assert(scope.cancelClose() && take(registry.get<RunStore>(scope)) == runs);
+        assert(runs->acknowledgeStep(step) && runs->acknowledgeStop(id));
+        assert(take(scope.settled()));
+        assert(!inspection->contains(target));
+        const auto author_after = f.author->describe();
+        assert(author_after.current == author_before.current && author_after.observed == author_before.observed);
+        assert(author_after.dirty == author_before.dirty && author_after.binding == author_before.binding);
+        assert(scope.beginClose() && scope.release());
+        runs.reset();
+        assert(!identity.expired() && !registry.drained()); // The public inspection still retains the exact allocation.
+        std::jthread([access = std::move(inspection)]() mutable { access.reset(); }).join();
+        inspection.reset();
+        assert(identity.expired() && !registry.drained()); // Worker release only enqueues owner-thread destruction.
+        (void)f.authors_messages.collect();
+        assert(scope.drained() && registry.drained());
+        std::puts(
+            "PASS EC4 declared RunStore: lazy/shared/scoped identity, completion without UI, "
+            "original late tickets, retained inspection, owner-thread retirement"
+        );
+    }
     void completion()
     {
         Fixture f;
@@ -827,7 +928,9 @@ namespace
 int main(int argc, char** argv)
 {
     const std::string_view mode = argc > 1 ? argv[1] : "isolation";
-    if (mode == "model-insertion")
+    if (mode == "service")
+        scopedService();
+    else if (mode == "model-insertion")
         modelInsertion();
     else if (mode == "isolation")
         isolation();

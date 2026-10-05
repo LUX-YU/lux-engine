@@ -18,10 +18,10 @@ namespace lux::editor::scene
     class RunInspectorView final : public lux::ui::Pane
     {
     public:
-        RunInspectorView(
+        [[nodiscard]] static RunResult<std::unique_ptr<RunInspectorView>> create(
             object::ObjectDispatcherRef,
             lux::ui::PaneId,
-            RunStore&,
+            std::shared_ptr<RunStore>,
             simulation::ecs::ComponentSchemaSet,
             std::vector<RunInspectorComponent>,
             project::ProjectCatalogModel* = {},
@@ -42,6 +42,15 @@ namespace lux::editor::scene
         [[nodiscard]] const RunResult<void>& status() const noexcept;
 
     private:
+        RunInspectorView(
+            object::ObjectDispatcherRef,
+            lux::ui::PaneId,
+            std::shared_ptr<RunStore>,
+            simulation::ecs::ComponentSchemaSet,
+            std::vector<RunInspectorComponent>,
+            project::ProjectCatalogModel*,
+            std::shared_ptr<SceneInteractionGroup>
+        );
         struct Impl;
         std::unique_ptr<Impl> impl_;
         void update() noexcept override;

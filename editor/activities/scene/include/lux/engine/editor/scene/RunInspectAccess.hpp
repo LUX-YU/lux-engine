@@ -1,6 +1,7 @@
 #pragma once
 
 #include <lux/engine/editor/scene/RunTypes.hpp>
+#include <memory>
 
 namespace lux::editor::scene
 {
@@ -17,6 +18,13 @@ namespace lux::editor::scene
     class RunInspectAccess final
     {
     public:
+        // Retains the actual allocation, not a Session/Registry alias. inspect() remains an explicit
+        // non-owning borrow for stack-owned stores; registered UI uses this owning access instead.
+        [[nodiscard]] static RunResult<RunInspectAccess> create(std::shared_ptr<const RunStore>) noexcept;
+        RunInspectAccess(const RunInspectAccess&) = default;
+        RunInspectAccess(RunInspectAccess&&) noexcept = default;
+        RunInspectAccess& operator=(const RunInspectAccess&) = delete;
+        RunInspectAccess& operator=(RunInspectAccess&&) = delete;
         using BorrowResult = RunResult<std::reference_wrapper<const simulation::ecs::Registry>>;
         [[nodiscard]] BorrowResult borrow(RunId id) const noexcept
         {
@@ -50,6 +58,7 @@ namespace lux::editor::scene
         ) noexcept
             : store_(store), contains_(contains), borrow_(borrow), describe_(describe), reference_(reference)
         {}
+        std::shared_ptr<const RunStore> owner_;
         const RunStore& store_;
         Contains contains_;
         Borrow borrow_;

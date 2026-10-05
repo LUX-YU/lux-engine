@@ -790,15 +790,11 @@ namespace lux::editor::application
             }
             receive(applicationFailure("scene.execution", std::shared_ptr<const SceneFailures>{std::move(failure)}));
         }
-        if (auto maintained = runs_.update(); !maintained)
-        {
-            receive(applicationFailure("run.receive", maintained.error()));
-        }
-        receive(maintainRuns());
         if (auto maintained = editor_context_.scope().maintain(); !maintained)
         {
             receive(applicationFailure("services.maintain", maintained.error()));
         }
+        receive(maintainRuns());
         receive(settleOperations());
         (void)messages_.collectRetired();
         if (!outcome && !maintenance_failure_)

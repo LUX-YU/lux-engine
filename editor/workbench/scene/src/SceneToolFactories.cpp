@@ -91,7 +91,7 @@ namespace lux::editor::scene
             {services::ServiceNameView{"lux.editor.scene.runs"},
              1,
              cxx::typeToken<RunStore>(),
-             services::EDependencyKind::BORROWED,
+             services::EDependencyKind::SHARED,
              services::EDependencyScope::ROOT,
              {},
              {},
@@ -117,7 +117,8 @@ namespace lux::editor::scene
             sessions::TSessionAccess<SceneSession> sessions;
             simulation::ecs::ComponentSchemaSet schemas;
             std::shared_ptr<SceneInteractionGroup> group;
-            RunStore* runs{};
+            std::shared_ptr<RunStore> runs;
+            std::optional<RunInspectAccess> inspection;
         };
         desktop::UiResult<InspectionInput> inspectionInput(
             services::ServiceResolver& resolver,
@@ -143,7 +144,7 @@ namespace lux::editor::scene
             {
                 return failure(selected.error());
             }
-            auto runs = resolver.require<RunStore>(3);
+            auto runs = resolver.get<RunStore>(3);
             if (!runs && runs.error().code != services::EServiceError::NOT_FOUND)
             {
                 return failure(runs.error());
@@ -152,8 +153,17 @@ namespace lux::editor::scene
                 store->get().access<SceneSession>(),
                 schemas->get(),
                 selected ? selected->get() : nullptr,
-                runs ? &runs->get() : nullptr
+                runs ? *runs : nullptr
             };
+            if (result.runs)
+            {
+                auto access = RunInspectAccess::create(result.runs);
+                if (!access)
+                {
+                    return failure(access.error());
+                }
+                result.inspection.emplace(std::move(*access));
+            }
             if (result.group)
             {
                 const auto author = result.group->session();
@@ -183,7 +193,7 @@ namespace lux::editor::scene
                     result.sessions,
                     *key,
                     InteractionGroupId{input.instance.hash()},
-                    result.runs ? std::optional{result.runs->inspect()} : std::nullopt
+                    result.inspection
                 );
                 if (auto synchronized = result.group->synchronize(); !synchronized)
                 {
@@ -219,7 +229,7 @@ namespace lux::editor::scene
                 input.instance,
                 dependencies->sessions,
                 binding(dependencies->group),
-                dependencies->runs ? std::optional{dependencies->runs->inspect()} : std::nullopt,
+                dependencies->inspection,
                 dependencies->schemas,
                 dependencies->group
             );
@@ -311,18 +321,18 @@ namespace lux::editor::scene
             {
                 return failure(catalog.error());
             }
-            auto view = std::make_unique<RunInspectorView>(
+            auto view = RunInspectorView::create(
                 input.dispatcher,
                 input.instance,
-                *dependencies->runs,
+                dependencies->runs,
                 dependencies->schemas,
                 runInspectorComponents(),
                 catalog ? &catalog->get() : nullptr,
                 dependencies->group
             );
-            if (!view->status())
+            if (!view)
             {
-                return failure(view->status().error());
+                return failure(view.error());
             }
             if (dependencies->group)
             {
@@ -336,13 +346,13 @@ namespace lux::editor::scene
                             desktop::UiFailure{desktop::EUiError::INVALID_CONFIGURATION, "scene.inspector.run-target"}
                         );
                     }
-                    if (auto bound = view->rebind(*target); !bound)
+                    if (auto bound = (*view)->rebind(*target); !bound)
                     {
                         return failure(bound.error());
                     }
                 }
             }
-            return std::unique_ptr<lux::ui::Pane>(std::move(view));
+            return std::unique_ptr<lux::ui::Pane>(std::move(*view));
         }
         constexpr services::ServiceDependency configuration_dependencies[]{
             inspection_dependencies[0],

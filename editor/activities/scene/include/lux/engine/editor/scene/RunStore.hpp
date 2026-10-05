@@ -8,6 +8,11 @@
 #include <lux/engine/editor/editing/EditHistory.hpp>
 #include <lux/cxx/core/function_ref.hpp>
 
+namespace lux::services
+{
+    struct ServiceDescriptor;
+}
+
 namespace lux::scene
 {
     struct ScriptRuntimeHost;
@@ -15,6 +20,7 @@ namespace lux::scene
 
 namespace lux::editor::scene
 {
+    extern const services::ServiceDescriptor kRunStoreService;
     class SceneSession;
     class SceneEditing;
     struct RunEnvironment final
@@ -66,6 +72,8 @@ namespace lux::editor::scene
         [[nodiscard]] RunResult<void> acknowledgeStop(RunId);
         // Receives actual drive/retirement facts, then maintains pause debug state. No tick here.
         [[nodiscard]] RunResult<void> update();
+        // No live or unacknowledged Run remains. Preparation results have their own operation owner.
+        [[nodiscard]] RunResult<bool> settled() const noexcept;
         [[nodiscard]] RunInspectAccess inspect() const noexcept;
         [[nodiscard]] RunResult<std::reference_wrapper<SceneEditing>> debugEditing(RunId) noexcept;
         [[nodiscard]] RunResult<std::reference_wrapper<editing::EditHistory>> debugHistory(RunId) noexcept;

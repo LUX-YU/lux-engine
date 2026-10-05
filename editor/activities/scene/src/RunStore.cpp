@@ -9,7 +9,10 @@
 #include <lux/engine/scene/ScriptRuntimeSystem.hpp>
 #include <lux/engine/simulation/ecs/Parent.hpp>
 #include <lux/cxx/container/SlotMap.hpp>
+#include <lux/engine/services/ServiceRegistry.hpp>
+#include <algorithm>
 #include <atomic>
+#include <type_traits>
 #include <thread>
 
 namespace lux::editor::scene
@@ -35,7 +38,97 @@ namespace lux::editor::scene
         };
         constexpr editing::HistoryLimits historyLimits{1024, 64U * 1024U * 1024U, 16U * 1024U * 1024U, 256};
         std::atomic_uint64_t nextDomain{1};
-    }
+        constexpr services::ServiceContract run_contracts[]{
+            services::ServiceContract::forType<RunStore, RunStore>(services::ServiceNameView{"lux.editor.scene.runs"})
+        };
+        constexpr services::ServiceDependency run_dependencies[]{
+            {services::ServiceNameView{"lux.scene.runtime"}, 1, cxx::typeToken<lux::scene::SceneRuntime>(),
+             services::EDependencyKind::BORROWED, services::EDependencyScope::ROOT},
+            {services::ServiceNameView{"lux.process.execution"}, 1, cxx::typeToken<process::ExecutionRuntime>(),
+             services::EDependencyKind::BORROWED, services::EDependencyScope::ROOT}
+        };
+        services::ServiceResult<std::unique_ptr<RunStore>>
+        createRuns(services::ServiceResolver& resolver, const services::ServiceConfiguration&) noexcept
+        {
+            auto runtime = resolver.require<lux::scene::SceneRuntime>(0);
+            if (!runtime)
+            {
+                return cxx::unexpected(std::move(runtime.error()));
+            }
+            auto execution = resolver.require<process::ExecutionRuntime>(1);
+            if (!execution)
+            {
+                return cxx::unexpected(std::move(execution.error()));
+            }
+            return std::make_unique<RunStore>(runtime->get(), execution->get());
+        }
+        // Service maintenance reports its actual leaf error; RunInfo separately retains drive failures.
+        template <class Error> services::ServiceFailure serviceFailure(const Error& error)
+        {
+            if constexpr (!requires { error.code; } && requires { error.cause; })
+            {
+                return std::visit([](const auto& cause) { return serviceFailure(cause); }, error.cause);
+            }
+            else
+            {
+                services::ServiceFailure result{
+                    services::EServiceError::FACTORY_FAILURE, {}, std::string(cxx::typeToken<Error>().name())
+                };
+                const auto code = [&]
+                {
+                    if constexpr (std::is_enum_v<Error>)
+                        return error;
+                    else
+                        return error.code;
+                }();
+                result.domain_code = static_cast<std::uint64_t>(code);
+                using Code = std::remove_cv_t<decltype(code)>;
+                if constexpr (requires { Code::BUSY; })
+                {
+                    if (code == Code::BUSY)
+                        result.code = services::EServiceError::BUSY;
+                }
+                if constexpr (requires { Code::WRONG_THREAD; })
+                {
+                    if (code == Code::WRONG_THREAD)
+                        result.code = services::EServiceError::WRONG_THREAD;
+                }
+                if constexpr (std::is_same_v<Error, editing::EditFailure>)
+                {
+                    const auto end = std::find(error.message.begin(), error.message.end(), '\0');
+                    result.detail.assign(error.message.begin(), end);
+                }
+                return result;
+            }
+        }
+    } // namespace
+    constinit const services::ServiceDescriptor kRunStoreService = []
+    {
+        auto descriptor = services::ServiceDescriptor::forType<RunStore, createRuns>(
+            services::ServiceNameView{"lux.editor.scene.runs"}, run_contracts, run_dependencies
+        );
+        descriptor.retention = services::EServiceRetention::SCOPED;
+        descriptor.affinity = services::EServiceAffinity::OWNER;
+        descriptor.settled = [](const void* allocation) noexcept -> services::ServiceResult<bool>
+        {
+            auto result = static_cast<const RunStore*>(allocation)->settled();
+            if (!result)
+            {
+                return cxx::unexpected(serviceFailure(result.error()));
+            }
+            return *result;
+        };
+        descriptor.maintain = [](void* allocation) noexcept -> services::ServiceResult<void>
+        {
+            auto result = static_cast<RunStore*>(allocation)->update();
+            if (!result)
+            {
+                return cxx::unexpected(serviceFailure(result.error()));
+            }
+            return {};
+        };
+        return descriptor;
+    }();
 
     class RunSession final
     {
@@ -455,6 +548,24 @@ namespace lux::editor::scene
         return edit(run.debug->editing);
     }
 
+    RunResult<bool> RunStore::settled() const noexcept
+    {
+        if (auto allowed = impl_->access(); !allowed)
+        {
+            return cxx::unexpected(allowed.error());
+        }
+        return impl_->runs.empty();
+    }
+    RunResult<RunInspectAccess> RunInspectAccess::create(std::shared_ptr<const RunStore> owner) noexcept
+    {
+        if (!owner)
+        {
+            return rejected(ERunError::INVALID_ID);
+        }
+        auto access = owner->inspect();
+        access.owner_ = std::move(owner);
+        return access;
+    }
     RunInspectAccess RunStore::inspect() const noexcept
     {
         return RunInspectAccess(

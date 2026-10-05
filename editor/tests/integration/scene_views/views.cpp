@@ -988,7 +988,29 @@ namespace
     }
     void runningView(Fixture& f)
     {
-        author::RunStore runs(*f.runtime, f.execution);
+        services::ServiceRegistry run_services(f.messages.dispatcherRef());
+        auto run_scope = take(run_services.createScope());
+        // Declared before every UI/client reference: drain their actual owner after their destructors.
+        struct Retirement final
+        {
+            services::ServiceRegistry& registry;
+            services::ServiceScope& scope;
+            object::ObjectMessageQueue& messages;
+            ~Retirement()
+            {
+                assert(take(scope.settled()));
+                assert(scope.release());
+                (void)messages.collectRetired();
+                assert(scope.drained() && registry.drained());
+            }
+        } retirement{run_services, run_scope, f.messages};
+        assert(run_scope.provide(services::ServiceNameView{"lux.scene.runtime"}, *f.runtime));
+        assert(run_scope.provide(services::ServiceNameView{"lux.process.execution"}, f.execution));
+        assert(run_scope.provide(services::ServiceNameView{"lux.editor.sessions"}, f.store));
+        assert(run_scope.provide(services::ServiceNameView{"lux.simulation.components"}, f.environment.components));
+        assert(run_services.publish({services::ServiceEntry::bind<author::kRunStoreService>(object::CodeLease::builtin())}));
+        auto run_owner = take(run_services.get<author::RunStore>(run_scope));
+        auto& runs = *run_owner;
         f.runs = &runs;
         auto reads = take(process::asset_loading::makeAssetReadOverlay({}, {}));
         author::RunEnvironment environment{
@@ -1005,7 +1027,7 @@ namespace
         const auto run = take(runs.adopt(*prepare));
         prepare.reset();
         auto services = f.services();
-        services.runs.emplace(runs.inspect());
+        services.runs.emplace(take(author::RunInspectAccess::create(run_owner)));
         author::SceneInteractionGroup author_group(f.store.access<author::SceneSession>(), *f.key, {20});
         author::SceneInteractionGroup run_group(f.store.access<author::SceneSession>(), *f.key, {21}, runs.inspect());
         auto author_candidate =
@@ -1042,7 +1064,8 @@ namespace
         auto run_commands = author::makeRunViewCommands(
             available,
             f.desktop->root(),
-            runs,
+            [&](author::RunId id, bool paused) -> author::RunResult<void>
+            { return paused ? runs.pause(id) : runs.resume(id); },
             [&](author::RunId id) -> commands::CommandResult<void>
             {
                 assert(id == run && !command_step);
@@ -1181,13 +1204,11 @@ namespace
         assert(runs.withInspection(target, inspect_command));
         assert(take(runs.info(run)).state == author::ERunState::PAUSED);
         {
-            services::ServiceRegistry registry(f.messages.dispatcherRef());
-            auto scope = take(registry.createScope());
-            assert(scope.provide(services::ServiceNameView{"lux.editor.sessions"}, f.store));
-            assert(scope.provide(services::ServiceNameView{"lux.simulation.components"}, f.environment.components));
-            assert(scope.provide(services::ServiceNameView{"lux.editor.scene.runs"}, runs));
-            auto group =
-                std::make_shared<author::SceneInteractionGroup>(runs.inspect(), run, author::InteractionGroupId{902});
+            auto& registry = run_services;
+            auto scope = take(registry.createScope(&run_scope));
+            auto group = std::make_shared<author::SceneInteractionGroup>(
+                take(author::RunInspectAccess::create(run_owner)), run, author::InteractionGroupId{902}
+            );
             assert(group->select({{target}}));
             desktop::UiRegistry windows(f.messages.dispatcherRef(), registry);
             assert(windows.publish(take(desktop::UiCatalog::prepare(
@@ -1223,13 +1244,17 @@ namespace
             assert(f.session->describe().current == stamp.current);
             assert(scope.release() && scope.drained());
         }
-        auto run_inspector = std::make_unique<author::RunInspectorView>(
+        const auto missing_runs = author::RunInspectorView::create(
+            f.messages.dispatcherRef(), ui::PaneId{"missing-run-store"}, {}, {}, {}
+        );
+        assert(!missing_runs && std::get<author::ERunError>(missing_runs.error().cause) == author::ERunError::INVALID_ID);
+        auto run_inspector = take(author::RunInspectorView::create(
             f.messages.dispatcherRef(),
             ui::PaneId{"run-fields"},
-            runs,
+            run_owner,
             f.environment.components,
             author::runInspectorComponents()
-        );
+        ));
         assert(run_inspector->status() && run_inspector->rebind(target));
         auto* run_fields_view = run_inspector.get();
         assert(root.addSubPane(std::move(run_inspector)));
@@ -1645,7 +1670,7 @@ namespace
         auto module = take(extensions::EditorExtension::fromStatic(author::sceneModule()));
         auto declared = take(module.contributions());
         assert(declared.sessions.size() == 1 && declared.commands.empty());
-        assert(declared.services.size() == 2 && declared.ui.size() == 7);
+        assert(declared.services.size() == 3 && declared.ui.size() == 7);
         useFixedEnvironment(declared, f.environment);
         assert(services.publish(std::move(declared.services)));
         assert(scope.provide(services::ServiceNameView{"lux.editor.sessions"}, f.store));

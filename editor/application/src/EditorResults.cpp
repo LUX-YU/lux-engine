@@ -74,7 +74,11 @@ namespace lux::editor::application
                 else if constexpr (std::same_as<Action, AcknowledgeStep>)
                 {
                     const auto ticket = action.target;
-                    auto acknowledged = runs_.acknowledgeStep(ticket);
+                    if (!runs_)
+                    {
+                        return applicationFailure("run.step.acknowledge", scene::ERunError::INVALID_ID);
+                    }
+                    auto acknowledged = runs_->acknowledgeStep(ticket);
                     if (!acknowledged)
                     {
                         return applicationFailure("run.step.acknowledge", acknowledged.error());
@@ -210,7 +214,7 @@ namespace lux::editor::application
             }
             for (const auto& ticket : run.steps)
             {
-                auto step = runs_.stepStatus(ticket);
+                auto step = runs_->stepStatus(ticket);
                 if (!step)
                 {
                     return applicationFailure("results.step", step.error());

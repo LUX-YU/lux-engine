@@ -1,7 +1,7 @@
 # scene interaction（P08）
 
 该 STATIC target 只保存选择和一份临时领域批次，不拥有 Session、History、Registry 或保存基线。
-SessionStore 必须活得更久；Scene 的 RunInspectAccess 是值形式的非拥有能力，其 RunStore 也必须活得更久。
+SessionStore 必须活得更久；直接 RunStore.inspect() 是非拥有借用，调用者保持 Store 寿命。正式工厂使用 RunInspectAccess::create() 保留原共享 RunStore，交互组复制的是同一 allocation 的持有关系，不延长已确认 RunId 的有效期。
 构造、读取和交互在同一 owner 线程。活动交互 owner 不可复制或移动。
 
 - `begin` 捕获既有 ContentStamp；重复开始或领域 gate 占用时拒绝。

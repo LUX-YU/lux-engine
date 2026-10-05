@@ -12,32 +12,7 @@ namespace lux::editor::scene
             const auto* error = std::get_if<ERunError>(&failure.cause);
             return error && (*error == ERunError::INVALID_ID || *error == ERunError::STOPPED);
         }
-        views::ViewPreparationFailure preparationFailure(const RunFailure& failure)
-        {
-            if (const auto* error = std::get_if<ERunError>(&failure.cause))
-                return {
-                    "run",
-                    static_cast<std::uint64_t>(*error),
-                    "Run inspection unavailable",
-                    *error == ERunError::BUSY || *error == ERunError::NOT_READY
-                };
-            if (const auto* error = std::get_if<editing::EditFailure>(&failure.cause))
-                return {
-                    "run.edit",
-                    static_cast<std::uint64_t>(error->code),
-                    "Run field editing unavailable",
-                    error->code == editing::EEditError::BUSY
-                };
-            if (const auto* runtime = std::get_if<lux::scene::SceneRuntimeFailure>(&failure.cause))
-                if (const auto* error = std::get_if<lux::scene::ESceneRuntimeError>(&runtime->cause))
-                    return {
-                        "scene.runtime",
-                        static_cast<std::uint64_t>(*error),
-                        "Run instance unavailable",
-                        *error == lux::scene::ESceneRuntimeError::BUSY
-                    };
-            return {"run.inspector", failure.cause.index(), "Run inspection rejected", false};
-        }
+
     }
 
     struct RunInspectorView::Impl final
@@ -311,48 +286,5 @@ namespace lux::editor::scene
             }
         }
         impl_->update();
-    }
-    RunResult<views::DetachedView> makeRunInspectorView(
-        object::ObjectDispatcherRef dispatcher,
-        lux::ui::PaneId id,
-        RunStore& runs,
-        RunningObjectRef target,
-        simulation::ecs::ComponentSchemaSet schemas,
-        std::vector<RunInspectorComponent> registrations,
-        project::ProjectCatalogModel* catalog,
-        std::shared_ptr<SceneInteractionGroup> selection
-    )
-    {
-        auto view = std::make_unique<RunInspectorView>(
-            dispatcher,
-            std::move(id),
-            runs,
-            std::move(schemas),
-            std::move(registrations),
-            catalog,
-            std::move(selection)
-        );
-        if (!view->status())
-            return cxx::unexpected(view->status().error());
-        auto bound = view->rebind(target);
-        if (!bound)
-            return cxx::unexpected(bound.error());
-        const auto close = +[](lux::ui::Pane& pane) -> views::ViewCloseResult {
-            auto result = static_cast<RunInspectorView&>(pane).prepareClose();
-            if (result)
-                return {};
-            return cxx::unexpected(preparationFailure(result.error()));
-        };
-        return views::DetachedView{
-            lux::object::CodeLease::builtin(),
-            std::move(view),
-            close,
-            +[](lux::ui::Pane& pane) -> views::ViewCloseResult {
-                auto result = static_cast<RunInspectorView&>(pane).cancelEditing();
-                if (result)
-                    return {};
-                return cxx::unexpected(preparationFailure(result.error()));
-            }
-        };
     }
 }

@@ -1,6 +1,6 @@
 #pragma once
 #include <lux/engine/editor/scene/RunInspectorFields.hpp>
-#include <lux/engine/editor/views/IViewHost.hpp>
+#include <lux/engine/ui/Pane.hpp>
 
 namespace lux::editor::scene
 {
@@ -46,14 +46,4 @@ namespace lux::editor::scene
         std::unique_ptr<Impl> impl_;
         void update() noexcept override;
     };
-    [[nodiscard]] RunResult<views::DetachedView> makeRunInspectorView(
-        object::ObjectDispatcherRef,
-        lux::ui::PaneId,
-        RunStore&,
-        RunningObjectRef,
-        simulation::ecs::ComponentSchemaSet,
-        std::vector<RunInspectorComponent>,
-        project::ProjectCatalogModel* = {},
-        std::shared_ptr<SceneInteractionGroup> = {}
-    );
 }

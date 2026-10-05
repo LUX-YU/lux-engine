@@ -27,13 +27,6 @@ namespace lux::editor::scene
         RESOURCES,
         CONFIGURATION
     };
-    [[nodiscard]] SceneViewResult<views::DetachedView> makeRunSceneView(
-        object::ObjectDispatcherRef,
-        SceneViewServices,
-        lux::ui::PaneId,
-        RunId,
-        system::SystemInstanceId
-    );
     // Retains only the interaction group, never a Pane pointer or a live Registry borrow.
     [[nodiscard]] cxx::expected<std::shared_ptr<SceneInteractionGroup>, lux::ui::EAttachmentError>
     shareSceneInteraction(lux::ui::Root&, lux::ui::PaneHandle);

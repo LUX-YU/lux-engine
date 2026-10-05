@@ -2,7 +2,6 @@
 #include <cassert>
 #include <cstdio>
 #include <lux/engine/editor/desktop/UiRegistry.hpp>
-#include <lux/engine/editor/desktop/ViewHost.hpp>
 #include <lux/engine/editor/project/AssetPickerElement.hpp>
 #include <lux/engine/editor/project/ProjectView.hpp>
 #include <lux/engine/ui/Layout.hpp>
@@ -23,7 +22,6 @@ int main()
 {
     auto messages = take(object::ObjectMessageQueue::create(64));
     auto root = take(ui::Root::create(messages.dispatcherRef()));
-    desktop::ViewHost host(*root);
     project::ProjectCatalogModel source(messages.dispatcherRef(), 41);
     unsigned opens{};
     AssetReference opened;
@@ -184,44 +182,46 @@ int main()
     unsigned received{};
     auto lifetime = std::make_shared<int>(17);
     std::weak_ptr<int> weak = lifetime;
-    auto factory = project::makeProjectViewFactory(
-        source,
-        [pin = lifetime, &received](const AssetReference&)
-        {
-            assert(*pin == 17);
-            ++received;
-        }
-    );
+    project::ProjectView::Open receiver_open = [pin = lifetime.get(), &received](const AssetReference&)
+    {
+        assert(*pin == 17);
+        ++received;
+    };
+    auto binding_scope = take(services.createScope());
+    assert(binding_scope.provide(services::ServiceNameView{"lux.editor.project.catalog"}, source));
+    assert(binding_scope.provide(services::ServiceNameView{"lux.editor.project.open"}, receiver_open));
+    auto factory = desktop::UiEntry::bind<project::kProjectView>(object::CodeLease::plugin(lifetime));
     lifetime.reset();
-    auto peer_factory = project::makeProjectViewFactory(source, {});
+    auto peer_factory = desktop::UiEntry::bind<project::kProjectView>(object::CodeLease::builtin());
     assert(&factory->descriptor() == &peer_factory->descriptor());
-    auto factories = take(views::ViewFactorySnapshot::create({factory}));
+    auto factories = take(desktop::UiCatalog::prepare({factory}));
+    assert(windows.publish(factories));
     const auto build = [&](const char* name)
     {
-        return take(factories.prepare(
-            views::ViewTypeId{"lux.editor.project"},
-            {messages.dispatcherRef(),
-             ui::PaneId{name},
-             lux::object::CodeLease::builtin(),
-             cxx::typeToken<std::monostate>(),
-             std::make_shared<const std::monostate>()}
-        ));
+        return take(
+            windows.create(take(factories.at(0)), binding_scope, {messages.dispatcherRef(), ui::PaneId{name}, {}, {}})
+        );
     };
     const auto mounted_before = root->panes().size();
     auto first_bound = build("factory-first");
     auto second_bound = build("factory-second");
     std::printf("Detached tool factories: Root windows before=%zu after=%zu\n", mounted_before, root->panes().size());
     assert(root->panes().size() == mounted_before);
-    auto* first_pane = static_cast<project::ProjectView*>(first_bound.pane());
-    auto* second_pane = static_cast<project::ProjectView*>(second_bound.pane());
-    const auto first_id = take(host.adopt(first_bound, views::ViewRestoreKey{"factory-first"})).id;
-    const auto last_id = take(host.adopt(second_bound, views::ViewRestoreKey{"factory-second"})).id;
+    auto* first_pane = static_cast<project::ProjectView*>(first_bound.get());
+    auto* second_pane = static_cast<project::ProjectView*>(second_bound.get());
+    assert(root->addSubPane(std::move(first_bound)) && root->addSubPane(std::move(second_bound)));
+    const auto first_id = take(root->identify(*first_pane));
+    const auto last_id = take(root->identify(*second_pane));
     factory.reset();
     factories = {};
+    assert(windows.publish(take(desktop::UiCatalog::prepare({}))));
     assert(!weak.expired());
     assert(first_pane->requestOpen(current_reference) && received == 1);
-    assert(host.close(first_id) && host.drain());
+    auto first_close = take(windows.prepareClose(*root, std::array{first_id}));
+    assert(root->commit(first_close) && messages.collectRetired() == 1);
     assert(!weak.expired() && second_pane->requestOpen(current_reference) && received == 2);
-    assert(host.close(last_id) && host.drain());
+    auto last_close = take(windows.prepareClose(*root, std::array{last_id}));
+    assert(root->commit(last_close) && messages.collectRetired() == 1);
     assert(weak.expired());
+    assert(binding_scope.release() && binding_scope.drained());
 }

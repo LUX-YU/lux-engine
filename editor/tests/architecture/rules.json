@@ -8142,9 +8142,7 @@
   "tasks_ui": {
     "direct": [
       "imgui::core",
-      "view_api",
       "editor_tasks",
-      "view_host",
       "editor_composition"
     ],
     "closure": {
@@ -8232,9 +8230,6 @@
       "ui_imgui_backend": {
         "path": "modules/function/ui"
       },
-      "view_api": {
-        "path": "editor/workbench/desktop"
-      },
       "window": {
         "path": "modules/platform/window"
       },
@@ -8243,9 +8238,6 @@
       },
       "layout_model": {
         "path": "editor/authoring/layout"
-      },
-      "view_host": {
-        "path": "editor/workbench/desktop"
       },
       "ui_input": {
         "path": "modules/function/ui"
@@ -8274,14 +8266,12 @@
       "imgui.h",
       "lux/engine/editor/tasks/TaskMonitor.hpp",
       "lux/engine/editor/tasks/TaskView.hpp",
-      "lux/engine/editor/views/IViewHost.hpp",
       "lux/engine/process/ExecutionRuntime.hpp",
       "lux/engine/ui/Element.hpp",
       "lux/engine/object/LuxObject.hpp",
       "lux/engine/process/TaskInfo.hpp",
       "vector",
       "memory",
-      "lux/engine/editor/workbench/ViewFactorySupport.hpp",
       "lux/cxx/core/move_only_function.hpp",
       "lux/engine/editor/desktop/ViewCommands.hpp",
       "lux/engine/editor/workbench/CommandSupport.hpp",
@@ -8292,7 +8282,6 @@
     "prefixes": [],
     "test_headers": {
       "editor/tests/integration/tasks/monitor.cpp": [
-        "lux/engine/editor/desktop/ViewHost.hpp",
         "cassert",
         "chrono",
         "thread",
@@ -8320,8 +8309,6 @@
       "editor_project",
       "imgui::core",
       "ui",
-      "view_api",
-      "view_host",
       "editor_composition"
     ],
     "closure": {
@@ -8451,9 +8438,6 @@
       "ui_imgui_backend": {
         "path": "modules/function/ui"
       },
-      "view_api": {
-        "path": "editor/workbench/desktop"
-      },
       "window": {
         "path": "modules/platform/window"
       },
@@ -8474,9 +8458,6 @@
       },
       "layout_model": {
         "path": "editor/authoring/layout"
-      },
-      "view_host": {
-        "path": "editor/workbench/desktop"
       },
       "ui_input": {
         "path": "modules/function/ui"
@@ -8510,13 +8491,11 @@
       "lux/engine/editor/project/AssetPickerElement.hpp",
       "lux/engine/editor/project/ProjectCatalogModel.hpp",
       "lux/engine/editor/project/ProjectView.hpp",
-      "lux/engine/editor/views/IViewHost.hpp",
       "lux/engine/ui/Controls.hpp",
       "lux/engine/ui/Element.hpp",
       "optional",
       "span",
       "variant",
-      "lux/engine/editor/workbench/ViewFactorySupport.hpp",
       "lux/cxx/core/move_only_function.hpp",
       "lux/engine/editor/desktop/ViewCommands.hpp",
       "lux/engine/editor/workbench/CommandSupport.hpp",
@@ -8528,7 +8507,6 @@
     "test_headers": {
       "editor/workbench/project/test/catalog.cpp": [
         "cassert",
-        "lux/engine/editor/desktop/ViewHost.hpp",
         "lux/engine/editor/project/AssetPickerElement.hpp",
         "lux/engine/editor/project/ProjectView.hpp",
         "lux/engine/ui/Layout.hpp",

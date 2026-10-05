@@ -8118,7 +8118,8 @@
       "imgui::core",
       "view_api",
       "editor_tasks",
-      "view_host"
+      "view_host",
+      "editor_composition"
     ],
     "closure": {
       "Eigen3::Eigen": {
@@ -8234,6 +8235,9 @@
       },
       "services": {
         "path": "modules/core/services"
+      },
+      "editor_composition": {
+        "path": "editor/workbench/desktop"
       }
     },
     "native_libraries": [
@@ -8256,7 +8260,8 @@
       "lux/engine/editor/desktop/ViewCommands.hpp",
       "lux/engine/editor/workbench/CommandSupport.hpp",
       "lux/engine/object/CodeLease.hpp",
-      "exception"
+      "exception",
+      "lux/engine/editor/desktop/UiRegistry.hpp"
     ],
     "prefixes": [],
     "test_headers": {
@@ -8269,7 +8274,8 @@
         "cstdio",
         "algorithm",
         "lux/engine/ui/Root.hpp",
-        "lux/engine/editor/desktop/ReviewView.hpp"
+        "lux/engine/editor/desktop/ReviewView.hpp",
+        "lux/engine/editor/desktop/UiRegistry.hpp"
       ]
     },
     "files": [

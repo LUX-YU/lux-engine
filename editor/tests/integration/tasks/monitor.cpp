@@ -1,13 +1,14 @@
-#include <lux/engine/editor/tasks/TaskView.hpp>
-#include <lux/engine/editor/desktop/ViewHost.hpp>
-#include <lux/engine/ui/Root.hpp>
-#include <lux/engine/process/ExecutionRuntime.hpp>
-#include <cassert>
 #include <algorithm>
+#include <array>
+#include <cassert>
 #include <chrono>
+#include <cstdio>
+#include <lux/engine/editor/desktop/UiRegistry.hpp>
+#include <lux/engine/editor/tasks/TaskView.hpp>
+#include <lux/engine/process/ExecutionRuntime.hpp>
+#include <lux/engine/ui/Root.hpp>
 #include <thread>
 #include <type_traits>
-#include <cstdio>
 using namespace lux;
 using namespace lux::editor;
 namespace
@@ -29,7 +30,10 @@ int main()
     object::LuxObject receiver(delayed.dispatcherRef());
     auto root = take(ui::Root::create(messages.dispatcherRef(), {.docking = false}));
     tasks::TaskMonitor monitor(messages.dispatcherRef(), execution);
-    desktop::ViewHost host(*root);
+    services::ServiceRegistry services(messages.dispatcherRef());
+    auto scope = take(services.createScope());
+    assert(scope.provide(services::ServiceNameView{"lux.editor.tasks.monitor"}, monitor));
+    desktop::UiRegistry windows(messages.dispatcherRef(), services);
     unsigned notifications{};
     auto connection = take(object::LuxObject::connect(
         &monitor,
@@ -38,28 +42,24 @@ int main()
         [&](std::uint64_t) noexcept { ++notifications; },
         object::EDelivery::QUEUED
     ));
-    auto factory = tasks::makeTaskViewFactory(monitor);
-    auto peer = tasks::makeTaskViewFactory(monitor);
-    assert(&factory->descriptor() == &peer->descriptor());
-    auto factories = take(views::ViewFactorySnapshot::create({factory}));
+    auto entry = desktop::UiEntry::bind<tasks::kTaskView>(object::CodeLease::builtin());
+    auto peer = desktop::UiEntry::bind<tasks::kTaskView>(object::CodeLease::builtin());
+    assert(&entry->descriptor() == &peer->descriptor());
+    auto catalog = take(desktop::UiCatalog::prepare({std::move(entry)}));
+    assert(windows.publish(catalog));
+    const auto factory = take(catalog.at(0));
     const auto create = [&](const char* id)
-    {
-        return take(factories.prepare(
-            views::ViewTypeId{"lux.editor.tasks"},
-            {messages.dispatcherRef(),
-             ui::PaneId{id},
-             lux::object::CodeLease::builtin(),
-             cxx::typeToken<std::monostate>(),
-             std::make_shared<const std::monostate>()}
-        ));
-    };
+    { return take(windows.create(factory, scope, {messages.dispatcherRef(), ui::PaneId{id}, {}, {}})); };
+    auto rejected =
+        windows.create(factory, scope, {messages.dispatcherRef(), ui::PaneId{"invalid"}, {}, {1, {std::byte{1}}}});
+    assert(!rejected && rejected.error().code == desktop::EUiError::INVALID_CONFIGURATION);
     auto first = create("first");
     auto second = create("second");
     assert(root->panes().empty());
-    auto* a = static_cast<tasks::TaskView*>(first.pane());
-    auto* b = static_cast<tasks::TaskView*>(second.pane());
-    const auto aid = take(host.adopt(first, views::ViewRestoreKey{"first"})).id;
-    const auto bid = take(host.adopt(second, views::ViewRestoreKey{"second"})).id;
+    auto* a = static_cast<tasks::TaskView*>(first.get());
+    auto* b = static_cast<tasks::TaskView*>(second.get());
+    assert(root->addSubPane(std::move(first)) && root->addSubPane(std::move(second)));
+    const std::array handles{take(root->identify(*a)), take(root->identify(*b))};
     bool completed{};
     auto task = take(execution.submit(
         {"monitor", "P10Q"},
@@ -86,11 +86,16 @@ int main()
     assert(a->tasks().rows().data() == b->tasks().rows().data());
     const auto snapshot = monitor.snapshot();
     for (int i{}; i != 1000; ++i)
+    {
         assert(monitor.snapshot().get() == snapshot.get());
+    }
     a->tasks().requestCancel(task.id());
     assert(root->update({{640, 480}, .016F}, nullptr));
     assert(a->tasks().rejectedCancellations().empty());
-    assert(host.close(aid) && host.close(bid) && take(host.drain()).completed == 2);
+    auto close = take(windows.prepareClose(*root, handles));
+    assert(root->commit(close));
+    assert(!root->findPane(handles[0]) && !root->findPane(handles[1]));
+    assert(messages.collectRetired() == 2);
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
     while (!completed)
     {
@@ -133,6 +138,16 @@ int main()
     take(execution.dispatchTaskEvents());
     static_cast<void>(monitor.dispatchChanges());
     assert(execution.taskInfo(next.id())->state == process::ETaskState::SUCCEEDED);
+    auto reopened = create("reopened");
+    auto* observer = static_cast<tasks::TaskView*>(reopened.get());
+    assert(root->addSubPane(std::move(reopened)));
+    assert(root->update({{640, 480}, .016F}, nullptr));
+    const auto current = monitor.snapshot();
+    assert(observer->tasks().rows().data() == current->data());
+    const std::array reopened_id{take(root->identify(*observer))};
+    auto closed_again = take(windows.prepareClose(*root, reopened_id));
+    assert(root->commit(closed_again) && messages.collectRetired() == 1);
+    assert(scope.release() && scope.drained() && services.drained());
     std::puts("XQ05 actual Runtime: two views share rows; FULL/CLOSED preserve terminal facts; last view does not "
               "cancel observer/tasks");
 }

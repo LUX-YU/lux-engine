@@ -1,9 +1,10 @@
+#include <algorithm>
 #include <exception>
+#include <imgui.h>
+#include <lux/engine/editor/desktop/UiRegistry.hpp>
+#include <lux/engine/editor/tasks/TaskView.hpp>
 #include <lux/engine/editor/workbench/CommandSupport.hpp>
 #include <lux/engine/editor/workbench/ViewFactorySupport.hpp>
-#include <lux/engine/editor/tasks/TaskView.hpp>
-#include <imgui.h>
-#include <algorithm>
 namespace lux::editor::tasks
 {
     namespace
@@ -13,12 +14,54 @@ namespace lux::editor::tasks
             "Background Tasks",
             "Window"
         };
+        constexpr services::ServiceDependency kDependencies[]{
+            {services::ServiceNameView{"lux.editor.tasks.monitor"},
+             1,
+             cxx::typeToken<TaskMonitor>(),
+             services::EDependencyKind::BORROWED,
+             services::EDependencyScope::ROOT}
+        };
+        desktop::UiResult<std::unique_ptr<lux::ui::Pane>> createView(
+            services::ServiceResolver& resolver,
+            const desktop::UiCreateInfo& input
+        )
+        {
+            const bool has_content = !input.content.sessions.empty();
+            const bool has_configuration = !input.configuration.bytes.empty();
+            const bool is_invalid_input = has_content || has_configuration;
+            if (is_invalid_input)
+            {
+                return cxx::unexpected(desktop::UiFailure{
+                    desktop::EUiError::INVALID_CONFIGURATION,
+                    "tasks.window",
+                    0,
+                    "The task window accepts no author binding or configuration payload"
+                });
+            }
+            auto monitor = resolver.require<TaskMonitor>(0);
+            if (!monitor)
+            {
+                return cxx::unexpected(desktop::UiFailure{
+                    desktop::EUiError::DEPENDENCY,
+                    "tasks.monitor",
+                    static_cast<std::uint64_t>(monitor.error().code),
+                    monitor.error().detail
+                });
+            }
+            return std::make_unique<TaskView>(input.dispatcher, input.instance, monitor->get());
+        }
         constexpr views::ViewFactoryDescriptor kFactoryDescriptor{
             views::ViewTypeIdView{"lux.editor.tasks"},
             "Tasks",
             cxx::typeToken<std::monostate>()
         };
     } // namespace
+    constinit const desktop::UiDescriptor kTaskView{
+        .type = kFactoryDescriptor.type,
+        .label = kFactoryDescriptor.label,
+        .dependencies = kDependencies,
+        .create = createView
+    };
     TaskListElement::TaskListElement(lux::ui::Pane& parent, TaskMonitor& query)
         : Element(parent, lux::ui::ElementId{"tasks"}), query_(query), rows_(query_.snapshot()),
           revision_(query.revision())
@@ -29,20 +72,28 @@ namespace lux::editor::tasks
             [this](std::uint64_t) noexcept { revision_.reset(); }
         );
         if (!connected)
+        {
             std::terminate();
+        }
         changes_ = std::move(*connected);
     }
     void TaskListElement::requestCancel(process::TaskId id)
     {
         if (std::ranges::find(cancel_, id) == cancel_.end())
+        {
             cancel_.push_back(id);
+        }
     }
     void TaskListElement::update() noexcept
     {
         rejected_.clear();
         for (auto id : cancel_)
+        {
             if (!query_.requestCancel(id))
+            {
                 rejected_.push_back(id);
+            }
+        }
         cancel_.clear();
         const auto revision = query_.revision();
         if (revision != revision_)
@@ -56,7 +107,9 @@ namespace lux::editor::tasks
           content_(*this, query)
     {
         if (!setContent(content_))
+        {
             std::terminate(); // Fixed content in a detached Pane.
+        }
     }
     views::DetachedView makeTaskView(object::ObjectDispatcherRef dispatcher, lux::ui::PaneId id, TaskMonitor& query)
     {
@@ -66,7 +119,9 @@ namespace lux::editor::tasks
     {
         constexpr const char* states[]{"Queued", "Running", "Succeeded", "Failed", "Cancelled"};
         if (!ImGui::BeginTable("tasks", 5, ImGuiTableFlags_ScrollY | ImGuiTableFlags_RowBg))
+        {
             return;
+        }
         ImGui::TableSetupColumn("Task");
         ImGui::TableSetupColumn("Stage");
         ImGui::TableSetupColumn("Progress");
@@ -76,6 +131,7 @@ namespace lux::editor::tasks
         ImGuiListClipper clipper;
         clipper.Begin(static_cast<int>(rows_->size()));
         while (clipper.Step())
+        {
             for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i)
             {
                 const auto& task = (*rows_)[i];
@@ -87,13 +143,17 @@ namespace lux::editor::tasks
                 ImGui::TextUnformatted(task.phase.c_str());
                 ImGui::TableNextColumn();
                 if (task.progress && task.progress->total != 0)
+                {
                     ImGui::Text(
                         "%.0f%%",
                         100.0 * static_cast<double>(task.progress->completed) /
                             static_cast<double>(task.progress->total)
                     );
+                }
                 else
+                {
                     ImGui::TextUnformatted("--");
+                }
                 ImGui::TableNextColumn();
                 ImGui::TextUnformatted(states[static_cast<unsigned>(task.state)]);
                 ImGui::TableNextColumn();
@@ -101,11 +161,14 @@ namespace lux::editor::tasks
                 {
                     ImGui::BeginDisabled(task.cancel_requested);
                     if (ImGui::SmallButton("Cancel"))
+                    {
                         cancel_.push_back(task.id);
+                    }
                     ImGui::EndDisabled();
                 }
                 ImGui::PopID();
             }
+        }
         ImGui::EndTable();
     }
 } // namespace lux::editor::tasks

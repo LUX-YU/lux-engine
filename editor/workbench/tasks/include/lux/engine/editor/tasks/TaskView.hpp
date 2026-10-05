@@ -1,6 +1,6 @@
 #pragma once
-#include <lux/engine/editor/desktop/ViewCommands.hpp>
 #include <lux/cxx/core/move_only_function.hpp>
+#include <lux/engine/editor/desktop/ViewCommands.hpp>
 #include <lux/engine/editor/tasks/TaskMonitor.hpp>
 #include <lux/engine/editor/views/IViewHost.hpp>
 #include <lux/engine/ui/Element.hpp>
@@ -9,8 +9,14 @@ namespace lux::editor::views
     class ViewFactoryEntry;
 }
 
+namespace lux::editor::desktop
+{
+    struct UiDescriptor;
+}
+
 namespace lux::editor::tasks
 {
+    extern const desktop::UiDescriptor kTaskView;
     // Shared task table; observation and cancellation remain with TaskMonitor and ExecutionRuntime.
     class TaskListElement final : public lux::ui::Element
     {

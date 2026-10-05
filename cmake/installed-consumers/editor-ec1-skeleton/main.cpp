@@ -435,6 +435,8 @@ int main(int argc, char** argv)
             assert(!ui_root->findPane(first_id) && store.size() == 1);
             auto closed_second = take(registry.prepareClose(*ui_root, std::span{&second_id, 1}));
             take(ui_root->commit(closed_second));
+            assert(!ui_root->findPane(second_id) && facts.panes_destroyed == 0);
+            assert(messages.collectRetired() == 2);
             assert(facts.panes_created == facts.panes_destroyed && facts.rows_prepared >= 4);
             assert(!facts.indices_displayed);
         }

@@ -44,7 +44,7 @@ namespace lux::editor::project
                         draft.services.push_back(services::ServiceEntry::bind<kProjectPluginSelectionService>(code));
                         draft.services.push_back(services::ServiceEntry::bind<scene::kProjectSceneEnvironment>(code));
                         draft.services.push_back(services::ServiceEntry::bind<kContentReviewService>(code));
-                        draft.services.push_back(services::ServiceEntry::bind<kContentViewsService>(code));
+                        draft.services.push_back(services::ServiceEntry::bind<ContentViews::service>(code));
                         draft.services.push_back(services::ServiceEntry::bind<kProjectCreationService>(code));
                         draft.services.push_back(services::ServiceEntry::bind<kProjectLaunchingService>(code));
                         draft.services.push_back(services::ServiceEntry::bind<assets::kModelImporterService>(code));

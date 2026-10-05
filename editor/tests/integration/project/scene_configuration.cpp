@@ -1,3 +1,4 @@
+#include "../../../../cmake/test-support/SessionCreationFixture.hpp"
 #include "../../../../cmake/installed-consumers/common/UiTestContent.hpp"
 #include <algorithm>
 #include <cassert>
@@ -282,7 +283,7 @@ int main(int argc, char** argv)
         auto entries = contributions.snapshot().services();
         std::vector<std::shared_ptr<const services::ServiceEntry>> services(entries.begin(), entries.end());
         services.push_back(services::ServiceEntry::bind<sessions::kSessionStoreService>(object::CodeLease::builtin()));
-        assert(editor_context.services().publish(std::move(services)));
+        assert(editor_context.services().publish(services));
         auto store_owner = editor_context.services().get<sessions::SessionStore>(scope);
         assert(store_owner);
         auto& store = **store_owner;
@@ -290,7 +291,7 @@ int main(int argc, char** argv)
         editor::persistence::SaveService saves{writes};
         std::vector<sessions::InstalledSession> installed;
         unsigned requests{};
-        sessions::SessionCreation receive = [&](sessions::SessionPreparation input
+        lux::test::SessionCreationFixture::Create receive = [&](sessions::SessionPreparation input
                                             ) -> editor::commands::CommandResult<editor::commands::DispatchReceipt>
         {
             ++requests;
@@ -313,7 +314,8 @@ int main(int argc, char** argv)
         assert(scope.provide(services::ServiceNameView{"lux.scene.systems"}, registrations->scene_systems));
         assert(scope.provide(services::ServiceNameView{"lux.render.features"}, registrations->features));
         assert(scope.provide(services::ServiceNameView{"lux.render.scene.bindings"}, registrations->render_bindings));
-        assert(scope.provide(sessions::kSessionCreation, receive));
+        services.push_back(lux::test::SessionCreationFixture::entry(std::move(receive)));
+        assert(editor_context.services().publish(services));
         auto catalog = desktop::UiCatalog::prepare(
             {desktop::UiEntry::bind<author::kSceneCreationView>(object::CodeLease::builtin()),
              desktop::UiEntry::bind<author::kSceneConfigurationView>(object::CodeLease::builtin())}

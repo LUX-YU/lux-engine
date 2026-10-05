@@ -45,21 +45,4 @@ namespace lux::editor::application
         draft.commands.push_back(project::makeAssetsCommand(running, toolOpening()));
         draft.commands.push_back(tasks::makeTasksCommand(running, toolOpening()));
     }
-    sessions::SessionCreation EditorApplication::Impl::contentCreation()
-    {
-        return [this](sessions::SessionPreparation prepared) -> commands::CommandResult<commands::DispatchReceipt>
-        {
-            auto opened = content_views_->create(std::move(prepared));
-            if (!opened)
-            {
-                const auto& error = opened.error();
-                const auto code = error.code == EEditorError::BUSY ? commands::ECommandError::BUSY
-                                                                   : commands::ECommandError::DOMAIN_FAILURE;
-                return cxx::unexpected(commands::CommandFailure{code, error.domain, error.reason, error.message});
-            }
-            return commands::DispatchReceipt{
-                commands::AcceptedOperation{commands::OperationKindId{"open"}, opened->value}
-            };
-        };
-    }
 } // namespace lux::editor::application

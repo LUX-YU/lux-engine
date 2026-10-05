@@ -41,3 +41,9 @@ completion state. Static module and V10 DLL consumers use this same path with a 
 `readBatch()` pins the participating owner's publication boundary for a fixed factory/read batch; it does not reserve a revision. `preparePublication(snapshot)` additionally checks revision capacity and owns a single-use candidate. The returned move-only `CommandRegistry::Batch` borrows its fixed-address registry, which must outlive it. `commit()` swaps the prepared candidate without allocation, callbacks or ordinary failure, and returns the previous snapshot. The scope remains active until destruction, including abandoned-candidate destruction. Reusing a consumed commit permission violates the contract.
 
 Ordinary `publish`, a publication batch, and dispatcher drain return BUSY while a scope exists. Read scopes may nest, including inside an executing command that needs a fixed catalog for recovery or UI construction. The final read scope releases only its publication hold; command calling and dispatcher state remain independent. A publication scope still rejects new reads through its candidate cleanup and notification interval. Read-only snapshots, pinned query/execute, and dispatcher enqueue retain their existing behavior; recursive command execution is still rejected. Failed entry never clears another owner's scope. Commands do not depend on the application or know about contribution registries. Accepted task completions remain the responsibility of their original services.
+
+Final teardown uses `releaseBindings()` after scope admission closes and outside command/read/dispatch
+stacks. It releases cached receivers under the original command guard, before the composition owner
+collects surrendered services. It changes neither pinned entry identity nor accepted operation results.
+Ordinary catalog replacement still retains pinned receivers. A reversible review does not call this
+final-release entry point.

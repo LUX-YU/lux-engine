@@ -6593,7 +6593,8 @@
         "lux/engine/editor/views/ViewportElement.hpp",
         "source_location",
         "lux/engine/editor/scene/AuthoringFacts.hpp",
-        "lux/engine/scene/RenderFeatureSceneBinding.hpp"
+        "lux/engine/scene/RenderFeatureSceneBinding.hpp",
+        "SessionCreationFixture.hpp"
       ],
       "editor/tests/integration/scene_views/AuxiliaryViews.hpp": [],
       "editor/tests/integration/scene_views/DraftSources.hpp": [],
@@ -9353,7 +9354,8 @@
         "lux/engine/editor/storage/ProjectContentSaving.hpp",
         "lux/engine/editor/sessions/SessionOpening.hpp",
         "lux/engine/resource/asset/storage/pak/PakArchive.hpp",
-        "lux/engine/editor/storage/ProjectStorage.hpp"
+        "lux/engine/editor/storage/ProjectStorage.hpp",
+        "SessionCreationFixture.hpp"
       ],
       "editor/tests/integration/scene_views/AuxiliaryViews.hpp": [],
       "editor/tests/integration/scene_views/DraftSources.hpp": [],

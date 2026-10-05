@@ -1,4 +1,5 @@
 #include "ObjectQueue.hpp"
+#include "SessionCreationFixture.hpp"
 #include <lux/engine/editor/sessions/SessionCommands.hpp>
 #include <lux/engine/editor/scene/SceneSessionFactory.hpp>
 #include <lux/engine/editor/sessions/SessionOperations.hpp>
@@ -634,10 +635,10 @@ namespace
         std::vector<InstalledSession> installed;
         auto available = true;
         unsigned submitted{};
-        commands::CommandEntry::Query query =
+        lux::test::SessionCreationFixture::Query query =
             [&](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
         { return commands::CommandState{available}; };
-        SessionCreation create = [&](SessionPreparation input) -> commands::CommandResult<commands::DispatchReceipt>
+        lux::test::SessionCreationFixture::Create create = [&](SessionPreparation input) -> commands::CommandResult<commands::DispatchReceipt>
         {
             auto prepared = take(std::move(input).prepare(store, saves));
             installed.push_back(take(prepared.publish()));
@@ -654,8 +655,10 @@ namespace
         auto missing = commands.execute(handle, commands::CommandInvocation{});
         assert(!missing && missing.error().code == commands::ECommandError::DOMAIN_FAILURE);
         assert(submitted == 0 && dependencies.drained());
-        assert(root.provide(kSessionCreation, create));
-        assert(root.provide(kSessionCreationAvailability, query));
+        assert(dependencies.publish({
+            services::ServiceEntry::bind<ef::kFlowEnvironmentService>(object::CodeLease::builtin()),
+            lux::test::SessionCreationFixture::entry(std::move(create), std::move(query))
+        }));
         assert(commands.execute(handle, commands::CommandInvocation{}));
         available = false;
         auto refused = commands.execute(handle, commands::CommandInvocation{});
@@ -678,10 +681,11 @@ namespace
         assert(scope.beginClose());
         auto closed = commands.execute(handle, commands::CommandInvocation{});
         assert(!closed && closed.error().code == commands::ECommandError::CLOSED && submitted == 2);
+        assert(commands.releaseBindings());
         assert(scope.release() && root.release());
         (void)messages.collect();
         assert(dependencies.drained());
-        std::cout << "PASS EC4 lazy New Flow command; exact borrowed admission; two real sessions and closed scope\n";
+        std::cout << "PASS EC4 lazy New Flow command; same-allocation shared admission; two real sessions and closed scope\n";
     }
 
     template <class Model, class Batch, class Rename>
@@ -700,18 +704,17 @@ namespace
         std::optional<SessionPreparation> input;
         std::weak_ptr<const int> code_owner;
         bool uses_original_code{};
-        commands::CommandEntry::Query query =
+        lux::test::SessionCreationFixture::Query query =
             [](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
         { return commands::CommandState{true}; };
-        SessionCreation receive = [&](SessionPreparation prepared) -> commands::CommandResult<commands::DispatchReceipt>
+        lux::test::SessionCreationFixture::Create receive = [&](SessionPreparation prepared) -> commands::CommandResult<commands::DispatchReceipt>
         {
             input.emplace(std::move(prepared));
             return commands::DispatchReceipt{commands::ImmediateCompletion{}};
         };
-        assert(root.provide(kSessionCreation, receive));
-        assert(root.provide(kSessionCreationAvailability, query));
         assert(dependencies.publish(
-            {services::ServiceEntry::bind<ef::kFlowEnvironmentService>(object::CodeLease::builtin())}
+            {services::ServiceEntry::bind<ef::kFlowEnvironmentService>(object::CodeLease::builtin()),
+             lux::test::SessionCreationFixture::entry(std::move(receive), std::move(query))}
         ));
         {
             auto owner = std::make_shared<const int>(42);

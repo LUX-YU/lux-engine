@@ -67,7 +67,7 @@ namespace lux::editor::scene
             {sessions::kSessionCreation,
              1,
              cxx::typeToken<sessions::SessionCreation>(),
-             services::EDependencyKind::BORROWED,
+             services::EDependencyKind::SHARED,
              services::EDependencyScope::ROOT}
         };
         desktop::UiResult<std::unique_ptr<lux::ui::Pane>> createView(
@@ -103,16 +103,16 @@ namespace lux::editor::scene
                     error.domain, error.reason, error.message
                 });
             }
-            auto receiver = resolver.require<sessions::SessionCreation>(7);
+            auto receiver = resolver.get<sessions::SessionCreation>(7);
             if (!receiver)
             {
                 return failedDependency(receiver.error());
             }
-            // The composition owner outlives this exact borrowed endpoint and the form registrations.
+            // The receiver projects from its real shared owner; a detached form retains that allocation.
             auto requests = creationRequests(
                 *configuration,
-                [&create = receiver->get()](sessions::SessionPreparation prepared)
-                { return create(std::move(prepared)); }
+                [create = *receiver](sessions::SessionPreparation prepared)
+                { return (*create)(std::move(prepared)); }
             );
             SceneConfigurationResult<void> status;
             auto pane = std::make_unique<SceneCreationView>(

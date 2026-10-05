@@ -107,12 +107,12 @@ namespace lux::editor::material
             {sessions::kSessionCreationAvailability,
              1,
              cxx::typeToken<commands::CommandEntry::Query>(),
-             services::EDependencyKind::BORROWED,
+             services::EDependencyKind::SHARED,
              services::EDependencyScope::ROOT},
             {sessions::kSessionCreation,
              1,
              cxx::typeToken<sessions::SessionCreation>(),
-             services::EDependencyKind::BORROWED,
+             services::EDependencyKind::SHARED,
              services::EDependencyScope::ROOT}
         };
         commands::CommandResult<std::unique_ptr<commands::CommandBinding>> bindNewCommand(
@@ -139,17 +139,17 @@ namespace lux::editor::material
                     commands::CommandFailure{code, std::move(value.domain), value.domain_code, std::move(value.detail)}
                 );
             };
-            auto available = resolver.require<commands::CommandEntry::Query>(0);
+            auto available = resolver.get<commands::CommandEntry::Query>(0);
             if (!available)
             {
                 return failure(std::move(available.error()));
             }
-            auto create = resolver.require<sessions::SessionCreation>(1);
+            auto create = resolver.get<sessions::SessionCreation>(1);
             if (!create)
             {
                 return failure(std::move(create.error()));
             }
-            const bool has_missing_endpoint = !available->get() || !create->get();
+            const bool has_missing_endpoint = !**available || !**create;
             if (has_missing_endpoint)
             {
                 return cxx::unexpected(
@@ -157,13 +157,13 @@ namespace lux::editor::material
                 );
             }
             return std::make_unique<commands::CommandBinding>(
-                [query = *available](const commands::CommandQuery& input) { return query.get()(input); },
+                [query = *available](const commands::CommandQuery& input) { return (*query)(input); },
                 [receiver = *create, code](const commands::CommandInvocation&)
                 {
                     std::mt19937 random{std::random_device{}()};
                     const asset::AssetId id{uuids::uuid_random_generator{random}()};
                     lux::material::MaterialSource source{id, "Untitled Material", {}};
-                    return receiver.get()(prepareMaterialSession({std::move(source)}, {}, {}, code));
+                    return (*receiver)(prepareMaterialSession({std::move(source)}, {}, {}, code));
                 }
             );
         }

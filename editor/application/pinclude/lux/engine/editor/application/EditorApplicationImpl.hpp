@@ -159,15 +159,6 @@ namespace lux::editor::application
         std::optional<PluginSelection> plugin_selection_;
         std::optional<EPluginAction> plugin_action_;
         std::optional<EditorFailure> plugin_failure_;
-        sessions::SessionCreation content_creation_{contentCreation()};
-        commands::CommandEntry::Query content_creation_available_{
-            [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
-            {
-                return commands::CommandState{
-                    phase_ == EApplicationPhase::RUNNING && content_views_ && content_views_->hasCapacity()
-                };
-            }
-        };
         desktop::EditorContext editor_context_{messages_.dispatcherRef()};
         // Runs after all window/factory/service references, before any borrowed foundation dies.
         struct ServiceRetirement final
@@ -263,7 +254,6 @@ namespace lux::editor::application
         [[nodiscard]] EditorResult<void> installContributions();
         [[nodiscard]] commands::CommandResult<commands::CommandInvocation>
         captureCommand(const commands::CommandDescriptor&, const lux::ui::Pane*, const lux::ui::Element*);
-        [[nodiscard]] sessions::SessionCreation contentCreation();
         void installContentCommands(extensions::ContributionDraft&);
         void installSceneCommands(extensions::ContributionDraft&);
         void installSaveCommands(extensions::ContributionDraft&);

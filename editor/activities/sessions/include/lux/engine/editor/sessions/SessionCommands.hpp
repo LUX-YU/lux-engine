@@ -29,7 +29,8 @@ namespace lux::editor::sessions
     class SessionPreparation;
     using SessionCreation =
         cxx::move_only_function<commands::CommandResult<commands::DispatchReceipt>(SessionPreparation)>;
-    // Narrow borrowed creation endpoints. Factories retain these exact endpoints, never an Application.
+    // Narrow shared creation endpoints project from their real owner allocation.
+    // Command/UI bindings retain the owner, never an Application or a no-op shared pointer.
     inline constexpr services::ServiceNameView kSessionCreation{"lux.editor.content.create"};
     inline constexpr services::ServiceNameView kSessionCreationAvailability{"lux.editor.content.can-create"};
     using HistoryActionLookup = cxx::move_only_function<InstalledSession*(SessionId)>;

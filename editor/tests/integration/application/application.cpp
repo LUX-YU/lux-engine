@@ -951,6 +951,28 @@ int main(int argc, char** argv)
             }
         }
     };
+    {
+        auto& providers = impl.editor_context_.services();
+        auto& scope = impl.editor_context_.scope();
+        const auto receiver = providers.get<sessions::SessionCreation>(scope);
+        assert(receiver);
+        const auto query_handle = providers.resolve<commands::CommandEntry::Query>(sessions::kSessionCreationAvailability);
+        assert(query_handle);
+        const auto available = providers.get<commands::CommandEntry::Query>(*query_handle, scope);
+        assert(available);
+        const auto& views = impl.content_views_;
+        assert(!views.owner_before(*receiver) && !receiver->owner_before(views));
+        assert(!views.owner_before(*available) && !available->owner_before(views));
+        const commands::VCommandTarget target{};
+        const commands::CommandArguments arguments{};
+        const commands::CommandQuery query{target, arguments};
+        assert((**available)(query)->enabled);
+        assert(views->suspend());
+        assert(!(**available)(query)->enabled);
+        assert(views->resume());
+        assert((**available)(query)->enabled);
+        std::cout << "Creation receiver/query share the actual ContentViews allocation; suspend/resume preserves admission\n";
+    }
     const auto material_id = create_content("lux.editor.new.material");
     const auto flow_id = create_content("lux.editor.new.flow");
     const auto material_view = contentViews(impl, material_id).front().handle;

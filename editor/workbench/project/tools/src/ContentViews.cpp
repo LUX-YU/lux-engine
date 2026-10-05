@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <lux/engine/editor/extensions/Contributions.hpp>
 #include <lux/engine/editor/project/ContentViews.hpp>
+#include <lux/engine/editor/sessions/SessionCommands.hpp>
 #include <lux/engine/editor/storage/ProjectContentOpening.hpp>
 #include <lux/engine/editor/storage/ProjectStorage.hpp>
 #include <lux/engine/services/ServiceRegistry.hpp>
@@ -83,6 +84,8 @@ namespace lux::editor::project
         std::vector<OpenPresentation> opens_;
         std::vector<AssetReference> intents_;
         std::uint64_t next_view_{1};
+        sessions::SessionCreation creation_;
+        commands::CommandEntry::Query creation_available_;
         Impl(
             std::shared_ptr<sessions::SessionStore> sessions,
             std::shared_ptr<sessions::SessionOpening> opening,
@@ -381,6 +384,46 @@ namespace lux::editor::project
               contributions
           ))
     {
+        impl_->creation_ = [this](sessions::SessionPreparation prepared
+                           ) -> commands::CommandResult<commands::DispatchReceipt>
+        {
+            auto opened = create(std::move(prepared));
+            if (!opened)
+            {
+                const auto& error = opened.error();
+                auto code = commands::ECommandError::DOMAIN_FAILURE;
+                switch (error.code)
+                {
+                case EEditorError::BUSY:
+                    code = commands::ECommandError::BUSY;
+                    break;
+                case EEditorError::CLOSING:
+                    code = commands::ECommandError::CLOSED;
+                    break;
+                case EEditorError::CAPACITY:
+                    code = commands::ECommandError::CAPACITY;
+                    break;
+                default:
+                    break;
+                }
+                return cxx::unexpected(commands::CommandFailure{code, error.domain, error.reason, error.message});
+            }
+            return commands::DispatchReceipt{
+                commands::AcceptedOperation{commands::OperationKindId{"open"}, opened->value}
+            };
+        };
+        impl_->creation_available_ =
+            [this](const commands::CommandQuery&) -> commands::CommandResult<commands::CommandState>
+        {
+            if (auto admitted = impl_->admission(); !admitted)
+            {
+                const auto& error = admitted.error();
+                const auto code = error.code == EEditorError::BUSY ? commands::ECommandError::BUSY
+                                                                   : commands::ECommandError::WRONG_THREAD;
+                return cxx::unexpected(commands::CommandFailure{code, error.domain, error.reason, error.message});
+            }
+            return commands::CommandState{hasCapacity()};
+        };
     }
     ContentViews::~ContentViews() = default;
     EditorResult<sessions::OpenAssetId> ContentViews::open(AssetReference reference)
@@ -585,9 +628,6 @@ namespace lux::editor::project
     }
     namespace
     {
-        constexpr services::ServiceContract contracts[]{services::ServiceContract::forType<ContentViews, ContentViews>(
-            services::ServiceNameView{"lux.editor.project.content-views"}
-        )};
         constexpr services::ServiceDependency dependencies[]{
             {services::ServiceNameView{"lux.editor.sessions"},
              1,
@@ -685,11 +725,24 @@ namespace lux::editor::project
             );
         }
     } // namespace
-    constinit const services::ServiceDescriptor kContentViewsService = []
+    constinit const services::ServiceContract ContentViews::contracts_[]{
+        services::ServiceContract::forType<ContentViews, ContentViews>(
+            services::ServiceNameView{"lux.editor.project.content-views"}
+        ),
+        {sessions::kSessionCreation,
+         1,
+         cxx::typeToken<sessions::SessionCreation>(),
+         [](void* value) noexcept -> void* { return &static_cast<ContentViews*>(value)->impl_->creation_; }},
+        {sessions::kSessionCreationAvailability,
+         1,
+         cxx::typeToken<commands::CommandEntry::Query>(),
+         [](void* value) noexcept -> void* { return &static_cast<ContentViews*>(value)->impl_->creation_available_; }}
+    };
+    constinit const services::ServiceDescriptor ContentViews::service = []
     {
         auto descriptor = services::ServiceDescriptor::forType<ContentViews, createViews>(
             services::ServiceNameView{"lux.editor.project.content-views"},
-            contracts,
+            contracts_,
             dependencies
         );
         descriptor.retention = services::EServiceRetention::SCOPED;

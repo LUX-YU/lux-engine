@@ -177,6 +177,10 @@ namespace lux::editor::commands
         CommandRegistry& operator=(CommandRegistry&&) = delete;
         [[nodiscard]] CommandResult<void> canPublish() const noexcept;
         [[nodiscard]] CommandResult<CommandRegistrySnapshot> publish(CommandRegistrySnapshot) noexcept;
+        // Final composition teardown after scope admission closes. Releases cached receiver ownership
+        // under the same callback guard as destruction; catalog publication alone cannot do this,
+        // because pinned handles remain valid across catalog replacement.
+        [[nodiscard]] CommandResult<void> releaseBindings() noexcept;
         [[nodiscard]] CommandRegistrySnapshot snapshot() const noexcept;
         [[nodiscard]] std::uint64_t revision() const noexcept;
         [[nodiscard]] CommandResult<CommandState> query(CommandHandle, const CommandQuery&);

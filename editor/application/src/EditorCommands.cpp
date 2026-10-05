@@ -89,16 +89,6 @@ namespace lux::editor::application
             return applicationFailure("content.views", content_views.error());
         }
         content_views_ = std::move(*content_views);
-        auto creation = scope.provide(sessions::kSessionCreation, content_creation_);
-        if (!creation)
-        {
-            return applicationFailure("content.creation", creation.error());
-        }
-        auto availability = scope.provide(sessions::kSessionCreationAvailability, content_creation_available_);
-        if (!availability)
-        {
-            return applicationFailure("content.creation-availability", availability.error());
-        }
         extensions::ContributionDraft draft;
 
         draft.reflection.push_back({lux::object::CodeLease::builtin(), project::registerDesktopSettings});

@@ -580,6 +580,54 @@ namespace
         std::puts("PASS lazy command bindings: zero registration construction, one binding per scope, pinned target, "
                   "BUSY retry and guarded refusal");
     }
+    void releaseScopedBindings()
+    {
+        auto messages = lux::object::ObjectMessageQueue::create(16);
+        assert(messages);
+        lux::services::ServiceRegistry services{messages->dispatcherRef()};
+        assert(services.publish({lux::services::ServiceEntry::bind<receiver_descriptor>(lux::object::CodeLease::builtin(
+        ))}));
+        auto scope = services.createScope();
+        assert(scope);
+        BindingTrace trace;
+        assert(scope->provide(trace_dependency[0].contract, trace));
+        CommandRegistry commands{services, *scope};
+        auto catalog =
+            CommandRegistrySnapshot::create({CommandEntry::bind<deferred_command>(lux::object::CodeLease::builtin())});
+        assert(catalog && commands.publish(*catalog));
+        const auto handle = *catalog->at(0);
+        assert(commands.execute(handle, CommandInvocation{}));
+        assert(commands.releaseBindings().error().code == ECommandError::BUSY);
+        assert(trace.created == 1 && trace.destroyed == 0);
+        assert(commands.publish({}) && trace.destroyed == 0); // Pinned handle retains its receiver.
+        bool rejected_thread{};
+        std::jthread worker(
+            [&] { rejected_thread = commands.releaseBindings().error().code == ECommandError::WRONG_THREAD; }
+        );
+        worker.join();
+        assert(rejected_thread && trace.destroyed == 0);
+        assert(scope->release());
+        assert(!services.drained()); // Only the cached binding now retains the actual receiver.
+        trace.destroying = [&]
+        {
+            assert(commands.releaseBindings().error().code == ECommandError::BUSY);
+            assert(commands.publish({}).error().code == ECommandError::BUSY);
+            assert(commands.execute(handle, CommandInvocation{}).error().code == ECommandError::BUSY);
+        };
+        {
+            auto reading = commands.readBatch();
+            assert(reading);
+            assert(commands.releaseBindings().error().code == ECommandError::BUSY);
+        }
+        assert(commands.releaseBindings());
+        assert(trace.destroyed == 1 && services.drained());
+        assert(commands.releaseBindings());
+        assert(commands.execute(handle, CommandInvocation{}).error().code == ECommandError::CLOSED);
+        assert(trace.created == 1 && trace.destroyed == 1 && trace.executed == 1);
+        std::puts(
+            "PASS closed-scope receiver release: pinned identity, wrong-thread, read/cleanup reentry, exact destruction"
+        );
+    }
     void dynamicBindings()
     {
         auto messages = lux::object::ObjectMessageQueue::create(16);
@@ -657,5 +705,6 @@ int main()
     busyAndReentry();
     lazyBindings();
     dynamicBindings();
+    releaseScopedBindings();
     std::puts("PASS immutable command entries, pinned/current policy, bounded BUSY FIFO, recursive and foreign calls");
 }

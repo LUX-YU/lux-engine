@@ -9,6 +9,7 @@ namespace lux::services
 {
     class ServiceScope;
     struct ServiceDescriptor;
+    struct ServiceContract;
 } // namespace lux::services
 namespace lux::ui
 {
@@ -43,6 +44,7 @@ namespace lux::editor::project
     class ContentViews final
     {
     public:
+        static const services::ServiceDescriptor service;
         ContentViews(
             std::shared_ptr<sessions::SessionStore>,
             std::shared_ptr<sessions::SessionOpening>,
@@ -79,8 +81,8 @@ namespace lux::editor::project
         [[nodiscard]] bool hasCapacity() const noexcept;
 
     private:
+        static const services::ServiceContract contracts_[];
         struct Impl;
         std::unique_ptr<Impl> impl_;
     };
-    extern const services::ServiceDescriptor kContentViewsService;
 } // namespace lux::editor::project

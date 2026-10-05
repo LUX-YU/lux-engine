@@ -226,12 +226,12 @@ namespace lux::editor::flowforge
             {sessions::kSessionCreationAvailability,
              1,
              cxx::typeToken<commands::CommandEntry::Query>(),
-             services::EDependencyKind::BORROWED,
+             services::EDependencyKind::SHARED,
              services::EDependencyScope::ROOT},
             {sessions::kSessionCreation,
              1,
              cxx::typeToken<sessions::SessionCreation>(),
-             services::EDependencyKind::BORROWED,
+             services::EDependencyKind::SHARED,
              services::EDependencyScope::ROOT},
             {services::ServiceNameView{"lux.editor.flow.environment"}, 1, cxx::typeToken<FlowEnvironment>()}
         };
@@ -259,17 +259,17 @@ namespace lux::editor::flowforge
                     commands::CommandFailure{code, std::move(value.domain), value.domain_code, std::move(value.detail)}
                 );
             };
-            auto available = resolver.require<commands::CommandEntry::Query>(0);
+            auto available = resolver.get<commands::CommandEntry::Query>(0);
             if (!available)
             {
                 return failure(std::move(available.error()));
             }
-            auto create = resolver.require<sessions::SessionCreation>(1);
+            auto create = resolver.get<sessions::SessionCreation>(1);
             if (!create)
             {
                 return failure(std::move(create.error()));
             }
-            const bool has_missing_endpoint = !available->get() || !create->get();
+            const bool has_missing_endpoint = !**available || !**create;
             if (has_missing_endpoint)
             {
                 return cxx::unexpected(commands::CommandFailure{
@@ -282,7 +282,7 @@ namespace lux::editor::flowforge
                 return failure(std::move(environment.error()));
             }
             return std::make_unique<commands::CommandBinding>(
-                [query = *available](const commands::CommandQuery& input) { return query.get()(input); },
+                [query = *available](const commands::CommandQuery& input) { return (*query)(input); },
                 [receiver = *create, environment = (*environment)->view(), code](const commands::CommandInvocation&)
                 {
                     std::mt19937 random{std::random_device{}()};
@@ -290,7 +290,7 @@ namespace lux::editor::flowforge
                     lux::flowforge::FlowSource source;
                     source.id = id;
                     source.name = "Untitled Flow";
-                    return receiver.get()(prepareFlowSession({std::move(source)}, {}, {}, environment, code));
+                    return (*receiver)(prepareFlowSession({std::move(source)}, {}, {}, environment, code));
                 }
             );
         }

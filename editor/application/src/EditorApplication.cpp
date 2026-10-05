@@ -42,6 +42,10 @@ namespace lux::editor::application
         {
             std::terminate();
         }
+        if (!context_.commands().releaseBindings())
+        {
+            std::terminate();
+        }
         while (!context_.scope().drained())
         {
             if (!messages_.collectRetired())

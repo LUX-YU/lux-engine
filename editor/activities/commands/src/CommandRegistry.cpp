@@ -539,6 +539,20 @@ namespace lux::editor::commands
         impl_->bindings.clear();
         impl_->current = {};
     }
+    CommandResult<void> CommandRegistry::releaseBindings() noexcept
+    {
+        if (auto ready = impl_->canBeginBatch(); !ready)
+        {
+            return cxx::unexpected(ready.error());
+        }
+        if (impl_->scope && impl_->scope->isOpen())
+        {
+            return failure(ECommandError::BUSY);
+        }
+        CallScope guard{impl_->calling};
+        impl_->bindings.clear();
+        return {};
+    }
     CommandResult<CommandBinding*> CommandRegistry::binding(const std::shared_ptr<CommandEntry>& entry)
     {
         const auto& descriptor = entry->descriptor();

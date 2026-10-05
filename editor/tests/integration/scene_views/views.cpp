@@ -1,3 +1,4 @@
+#include "SessionCreationFixture.hpp"
 #include "../../../../../cmake/installed-consumers/common/ControlsTestAccess.hpp"
 #include "ObjectQueue.hpp"
 #include <fstream>
@@ -3124,7 +3125,7 @@ namespace
         const auto before = f.session->describe();
         std::size_t requests{};
         std::optional<sessions::InstalledSession> installed;
-        sessions::SessionCreation sink =
+        lux::test::SessionCreationFixture::Create sink =
             [&](sessions::SessionPreparation input) -> commands::CommandResult<commands::DispatchReceipt>
         {
             ++requests;
@@ -3139,7 +3140,8 @@ namespace
             created = installed->id();
             return commands::DispatchReceipt{commands::ImmediateCompletion{}};
         };
-        assert(scope.provide(sessions::kSessionCreation, sink));
+        declared.services.push_back(lux::test::SessionCreationFixture::entry(std::move(sink)));
+        assert(f.publish(std::move(declared.services)));
         auto view = take(windows.create(
             take(ui_catalog.find(author::kSceneCreationView.type)), scope,
             {f.messages.dispatcherRef(), ui::PaneId{"creation"}}

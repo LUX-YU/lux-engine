@@ -138,27 +138,3 @@ namespace lux::editor::application
         ));
     }
 } // namespace lux::editor::application
-
-namespace lux::editor::application
-{
-    void EditorApplication::Impl::receiveArtifact(persistence::DerivedArtifact source)
-    {
-        if (phase_ != EApplicationPhase::RUNNING)
-        {
-            result_failure_ = EditorFailure{EEditorError::CLOSING, "artifact.admission"};
-            return;
-        }
-        auto requested = content_saving_->requestArtifact(std::move(source));
-        if (!requested)
-        {
-            result_failure_ = EditorFailure{
-                requested.error().code == persistence::EPersistenceError::BUSY ? EEditorError::BUSY
-                                                                               : EEditorError::SOURCE_FAILURE,
-                "artifact.admission",
-                0,
-                {},
-                std::move(requested.error())
-            };
-        }
-    }
-} // namespace lux::editor::application

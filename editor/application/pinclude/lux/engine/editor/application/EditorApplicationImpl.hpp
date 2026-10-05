@@ -272,7 +272,6 @@ namespace lux::editor::application
         [[nodiscard]] EditorResult<void> settleRecovery();
         [[nodiscard]] EditorResult<void> receiveResultIntent();
 
-        void receiveArtifact(persistence::DerivedArtifact);
         [[nodiscard]] EditorResult<void> update();
         [[nodiscard]] EditorResult<void> reviewClose();
         [[nodiscard]] EditorResult<void> requestClose(sessions::ContentStamp);
